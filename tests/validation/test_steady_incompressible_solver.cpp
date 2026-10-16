@@ -78,17 +78,27 @@ static Mesh make_two_cell_channel()
     m.cells().push_cell({0,1,3,4,5,6});
     m.cells().push_cell({1,2,7,8,9,10});
 
+    Patch inlet;
+    inlet.name = "inlet";
+    inlet.type = PatchType::INLET;
+    inlet.face_ids = {0};
+    Patch outlet;
+    outlet.name = "outlet";
+    outlet.type = PatchType::OUTLET;
+    outlet.face_ids = {2};
     Patch wall;
     wall.name = "wall";
     wall.type = PatchType::WALL;
-    wall.face_ids = {0,2,3,4,5,6,7,8,9,10};
+    wall.face_ids = {3,4,5,6,7,8,9,10};
+    m.boundary().add_patch(inlet);
+    m.boundary().add_patch(outlet);
     m.boundary().add_patch(wall);
     return m;
 }
 
 int main()
 {
-    run_case("n9_2_rhie_chow_pressure_sensitivity_and_flux_reference", [] {
+    run_case("n9_2_rhie_chow_linear_pressure_cancellation_and_offset_invariance", [] {
         const Mesh m = make_two_cell_channel();
         const auto geometry = build_fv_geometry(m);
 
@@ -98,14 +108,27 @@ int main()
         U.fill(0.0);
         U.set(0,2.0,0.0,0.0);
         U.set(1,2.0,0.0,0.0);
-        p0.fill(0.0);
-        p1.fill(0.0);
-        p1(1) = 2.0;
+        // Cell-centred values sample the exact linear field p=x at x=0.5,1.5.
+        // Fixed pressure values at x=0 and x=2 make the gradient reconstruction
+        // consistent with that same field, so the Rhie-Chow residual must vanish.
+        p0(0) = 0.5;
+        p0(1) = 1.5;
+        // Adding a constant to both cell and boundary pressure must not change phi.
+        p1(0) = 10.5;
+        p1(1) = 11.5;
 
         VelocityBoundaryConditions ubc;
+        ubc["inlet"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0.0,0.0,0.0}};
+        ubc["outlet"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0.0,0.0,0.0}};
         ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
-        ScalarBoundaryConditions pbc;
-        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        ScalarBoundaryConditions pbc0;
+        pbc0["inlet"] = {ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        pbc0["outlet"] = {ScalarBoundaryType::FIXED_VALUE,2.0,0.0};
+        pbc0["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        ScalarBoundaryConditions pbc1;
+        pbc1["inlet"] = {ScalarBoundaryType::FIXED_VALUE,10.0,0.0};
+        pbc1["outlet"] = {ScalarBoundaryType::FIXED_VALUE,12.0,0.0};
+        pbc1["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
 
         const std::array<std::vector<double>,3> rAU{
             std::vector<double>{1.0,1.0},
@@ -115,17 +138,22 @@ int main()
         const auto phi_cell = make_mass_flux(
             m, geometry, U, 1.0, ubc);
         const auto phi0 = make_rhie_chow_mass_flux(
-            m, geometry, U, p0, rAU, 1.0, ubc, pbc);
+            m, geometry, U, p0, rAU, 1.0, ubc, pbc0);
         const auto phi1 = make_rhie_chow_mass_flux(
-            m, geometry, U, p1, rAU, 1.0, ubc, pbc);
+            m, geometry, U, p1, rAU, 1.0, ubc, pbc1);
 
         EXPECT_NEAR(phi_cell(1), 2.0, 1e-12);
-        EXPECT_NEAR(phi0(1), 2.0, 1e-12);
-        EXPECT_NEAR(phi1(1), 0.0, 1e-12);
-        EXPECT_TRUE(std::abs(phi0(1)) > std::abs(phi1(1)));
-        EXPECT_NEAR(phi1(1), 0.0, 1e-12);
-        EXPECT_NEAR(phi1(0), 0.0, 1e-14);
-        EXPECT_NEAR(phi1(2), 0.0, 1e-14);
+        EXPECT_NEAR(phi0(1), phi_cell(1), 1e-12);
+        EXPECT_NEAR(phi1(1), phi_cell(1), 1e-12);
+        EXPECT_NEAR(phi0(1), phi1(1), 1e-12);
+        EXPECT_NEAR(phi0(0), -2.0, 1e-12);
+        EXPECT_NEAR(phi1(0), -2.0, 1e-12);
+        EXPECT_NEAR(phi0(2), 2.0, 1e-12);
+        EXPECT_NEAR(phi1(2), 2.0, 1e-12);
+        for (const std::size_t f : {3u,4u,5u,6u,7u,8u,9u,10u}) {
+            EXPECT_NEAR(phi0(f), 0.0, 1e-14);
+            EXPECT_NEAR(phi1(f), 0.0, 1e-14);
+        }
 
         // The authoritative flux is antisymmetric across the internal face:
         // owner cell sees phi, neighbour cell sees -phi.
