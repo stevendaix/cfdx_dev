@@ -1,0 +1,76 @@
+name: PR923 spatial operator campaigns on HEAD (diag)
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/pr923_spatial_marker.txt'
+      - '.github/workflows/pr923_spatial_campaigns_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  spatial:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 200
+    env:
+      SPATIAL: '^test_(polyhedral_gradient_campaign|gradient_verification|polyhedral_laplacian_campaign|nonorthogonal_laplacian_campaign|polyhedral_poisson_convergence)$'
+      EVID: diag-evidence/logs
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch PR 923 head into a worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin refs/pull/923/head
+          PR923_SHA="$(git rev-parse FETCH_HEAD)"
+          git worktree add "$RUNNER_TEMP/pr923" "$PR923_SHA"
+          echo "PR923_SHA=$PR923_SHA" >> "$GITHUB_ENV"
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev
+      - name: Configure and build spatial campaign targets
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake -S "$RUNNER_TEMP/pr923" -B "$RUNNER_TEMP/pr923/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_spatial_configure_2026-10-16.log"
+          cmake --build "$RUNNER_TEMP/pr923/build" --target test_polyhedral_gradient_campaign test_gradient_verification test_polyhedral_laplacian_campaign test_nonorthogonal_laplacian_campaign test_polyhedral_poisson_convergence --parallel 2 \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_spatial_build_2026-10-16.log"
+      - name: Run spatial operator campaigns
+        id: campaigns
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ctest --test-dir "$RUNNER_TEMP/pr923/build" -R "$SPATIAL" -N 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_spatial_testlist_2026-10-16.log"
+          ctest --test-dir "$RUNNER_TEMP/pr923/build" -R "$SPATIAL" --output-on-failure -V \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_spatial_campaigns_2026-10-16.log"
+      - name: Collect meta
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "pr923_head_sha=$PR923_SHA"
+            echo "build_outcome=${{ steps.build.outcome }}"
+            echo "campaigns_outcome=${{ steps.campaigns.outcome }}"
+            echo "purpose: plan 2026-10-16 step 3 — reproduce gradient/Laplacian spatial defects on the exact PR 923 HEAD"
+            echo "campaigns: polyhedral_gradient, gradient_verification, polyhedral_laplacian, nonorthogonal_laplacian, polyhedral_poisson_convergence"
+          } > "$E/pr923_spatial_meta_2026-10-16.txt"
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: PR 923 HEAD spatial operator campaigns (gradient/Laplacian/Poisson) evidence (2026-10-16)"
+            git push
+          fi

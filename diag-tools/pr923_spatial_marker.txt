@@ -1,0 +1,5 @@
+# PR 923 spatial campaigns marker - triggers .github/workflows/pr923_spatial_campaigns_diag.yml
+# Plan step 3 (2026-10-16): re-run the polyhedral gradient, gradient verification,
+# polyhedral/nonorthogonal Laplacian and polyhedral Poisson convergence campaigns on
+# the exact PR 923 head, producing observed errors/orders evidence on that SHA.
+trigger: 2026-10-16 audit - spatial operator campaigns on PR 923 HEAD
