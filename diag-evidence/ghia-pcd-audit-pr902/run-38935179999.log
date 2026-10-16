@@ -1,0 +1,34 @@
+AUDIT_START case=ghia_pcd_32x32 reynolds=100 out_dir=diag-evidence/ghia-pcd-audit-pr902
+AUDIT_PHASE1 iteration1_momentum_equations_assembled t_s=0.00431522
+COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.54234 G_l2=1.43614 D_l2=1.39124 C_l2=2.35617 zero_rows=0 zero_cols=0 schur_diag_min=0.0536722 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.902439 gauge_row=3600
+COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.54234 G_l2=1.43614 D_l2=1.39124 C_l2=2.35617 zero_rows=0 zero_cols=0 schur_diag_min=0.0536722 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.902439 gauge_row=3600
+COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+COUPLED_LINEAR_TRUE_RESIDUAL norm=1.10392e-11 relative=9.75738e-11 gmres_reported=1.10392e-11
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_relative=1 continuity_normalized=0.00310014 velocity_change_inf=1 pressure_change_inf=0.447277 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0.0014275 worst_momentum_cell=1022 worst_momentum_patch=front
+AUDIT_CALLBACK iteration=1 stop_after_iteration=1
+AUDIT_PHASE2 production_nonlinear_iterations=1 t_s=9.7849
+AUDIT_PHASE2_STATE continuity_normalized=0.00310014 velocity_change_inf=1 pressure_change_inf=0.447277 effective_alpha_u=0.7 effective_alpha_p=0.3
+AUDIT_PHASE3 iteration2_momentum_equations_assembled t_s=9.78712
+COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.85644 G_l2=1.43614 D_l2=1.39124 C_l2=2.1722 zero_rows=0 zero_cols=0 schur_diag_min=0.0465948 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.91252 gauge_row=3600
+AUDIT_PHASE5 pcd_operators_assembled Mp_nnz=1024 Kp_nnz=4988 Fp_nnz=4988 t_s=9.79476
+AUDIT_ITER1_SUMMARY n=4096 nnz=76991 M_l2=2.54234 G_l2=1.43614 D_l2=1.39124 C_l2=2.35617 schur_diag_min=0.0536722 gauge_row=3600
+AUDIT_ITER1_EXPECTED nnz=76991 M_l2=2.54234 G_l2=1.43614 D_l2=1.39124 C_l2=2.35617 schur_diag_min=0.0536722
+AUDIT_ITER1_MATCH M_l2=ok G_l2=ok D_l2=ok C_l2=ok schur_diag_min=ok nnz=ok
+AUDIT_ITER1_MATCH overall=PASS
+AUDIT_ITER2_SUMMARY n=4096 nnz=76991 M_l2=2.85644 G_l2=1.43614 D_l2=1.39124 C_l2=2.1722 schur_diag_min=0.0465948 gauge_row=3600
+AUDIT_ITER2_EXPECTED nnz=76991 M_l2=2.85644 G_l2=1.43614 D_l2=1.39124 C_l2=2.1722 schur_diag_min=0.0465948
+AUDIT_ITER2_MATCH M_l2=ok G_l2=ok D_l2=ok C_l2=ok schur_diag_min=ok nnz=ok
+AUDIT_ITER2_MATCH overall=PASS
+AUDIT_ITER1_NONLINEAR continuity_normalized=0.00310014 expected=0.00310014 match=ok
+AUDIT_CHECKSUM name=A_iter1_values count=76991 fnv1a=0a2ebb5380c9074e
+AUDIT_CHECKSUM name=A_iter2_values count=76991 fnv1a=f1c712aa91af8a05
+AUDIT_CHECKSUM name=Mp_values count=1024 fnv1a=8e8450068b1f4383
+AUDIT_CHECKSUM name=Kp_values count=4988 fnv1a=a55ea9de9852207a
+AUDIT_CHECKSUM name=Fp_values count=4988 fnv1a=482578abba20a0ba
+AUDIT_CHECKSUM name=b_iter1 count=4096 fnv1a=e23aaf3a9955d383
+AUDIT_CHECKSUM name=x0_iter1 count=4096 fnv1a=1d08ce74c4230383
+AUDIT_CHECKSUM name=b_iter2 count=4096 fnv1a=ba89d2d797327475
+AUDIT_CHECKSUM name=x0_iter2 count=4096 fnv1a=62e4545f548ca62c
+AUDIT_CHECKSUM name=schur_diag_iter2 count=1024 fnv1a=4dc5589da1bbabc9
+AUDIT_DONE validation_overall=PASS elapsed_s=9.82234
+AUDIT_EXIT_CODE=0

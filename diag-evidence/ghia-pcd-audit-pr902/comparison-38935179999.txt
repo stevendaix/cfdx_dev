@@ -1,0 +1,12 @@
+### Comparison against reference content (master aa806657 + #902, run 38865832905)
+
+- fnv1a A_iter1_values: PR-content=0a2ebb5380c9074e reference=0a2ebb5380c9074e -> IDENTICAL
+- fnv1a A_iter2_values: PR-content=f1c712aa91af8a05 reference=f1c712aa91af8a05 -> IDENTICAL
+- fnv1a Mp_values: PR-content=8e8450068b1f4383 reference=8e8450068b1f4383 -> IDENTICAL
+- fnv1a Kp_values: PR-content=a55ea9de9852207a reference=a55ea9de9852207a -> IDENTICAL
+- fnv1a Fp_values: PR-content=482578abba20a0ba reference=482578abba20a0ba -> IDENTICAL
+- fnv1a b_iter2: PR-content=ba89d2d797327475 reference=ba89d2d797327475 -> IDENTICAL
+- fnv1a x0_iter2: PR-content=62e4545f548ca62c reference=62e4545f548ca62c -> IDENTICAL
+
+### Iteration-1 coupled acceptance (reference: relative=9.75738e-11 vs gate 1e-10)
+COUPLED_LINEAR_TRUE_RESIDUAL norm=1.10392e-11 relative=9.75738e-11 gmres_reported=1.10392e-11
