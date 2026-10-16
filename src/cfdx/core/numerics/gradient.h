@@ -700,24 +700,12 @@ inline Field<double, Location::CELL> compute_gradient_least_squares_quadratic(
     return grad;
 }
 
-// Point-linear (skew-corrected) Green-Gauss gradient.
-//
-// The two-point Gauss interpolation evaluates the face value on the
-// owner->neighbour centre line, which is NOT the face centroid on a generally
-// shaped polyhedron (e.g. a tetrahedron): the resulting O(1) interpolation
-// bias makes the operator inconsistent for linear fields (see the #461
-// investigation note in NUMERICAL_METHOD_CONTRACTS.md).
-//
-// The point-linear scheme (Greenshields & Weller, Notes on CFD, sec. 3.15)
-// builds phi_f from:
-//   - vertex values, interpolated from the adjacent cells with inverse
-//     distance weights;
-//   - phi_fp, the value at the FACE POINT: the intersection of the centre line
-//     with the face plane, obtained by linear interpolation along the line;
-//   - a signed-area-weighted average over the triangles (v_j, v_{j+1}, fp).
-// For a linear field every ingredient is exact, so the triangle-average equals
-// phi at the face centroid and the gradient is linear-exact on any
 // Point-reconstructed Green-Gauss gradient using least-squares reconstruction at faces.
+//
+// The former implementation mixed inverse-distance vertex interpolation with
+// a scalar interpolation on the owner-neighbour centre line. That construction
+// is not linear-exact on general unstructured meshes when the centre line does
+// not pass through the face centroid.
 //
 // Internal face values are reconstructed independently from both adjacent cell
 // centres and averaged at the geometric face centre. For a linear field, a
