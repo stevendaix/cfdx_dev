@@ -1,0 +1,37 @@
+VMFL036_AXISYMESH: PASS nr=48 nt=72 cells=3456 nodes=3577
+VMFL036_AXISYM ITER=1 continuity=2.58611e-07 momentum=0.0221603 pcorr=9.61815e-07
+VMFL036_AXISYM ITER=50 continuity=2.04722e-08 momentum=0.00408288 pcorr=1.99422e-07
+VMFL036_AXISYM ITER=100 continuity=2.26383e-08 momentum=0.00162064 pcorr=1.95316e-07
+VMFL036_AXISYM ITER=150 continuity=2.59851e-08 momentum=0.00181795 pcorr=1.97365e-07
+VMFL036_AXISYM ITER=200 continuity=2.70294e-08 momentum=0.00133102 pcorr=1.94073e-07
+VMFL036_AXISYM ITER=250 continuity=2.6236e-08 momentum=0.00072981 pcorr=1.91333e-07
+VMFL036_AXISYM ITER=300 continuity=2.68632e-08 momentum=0.000367421 pcorr=1.94069e-07
+VMFL036_AXISYM ITER=350 continuity=2.67895e-08 momentum=0.000226583 pcorr=1.89764e-07
+VMFL036_AXISYM ITER=400 continuity=2.63399e-08 momentum=0.000143823 pcorr=1.95461e-07
+VMFL036_AXISYM ITER=450 continuity=2.35985e-08 momentum=8.4027e-05 pcorr=1.85177e-07
+VMFL036_AXISYM ITER=500 continuity=2.3634e-08 momentum=4.70276e-05 pcorr=1.97304e-07
+VMFL036_AXISYM ITER=550 continuity=2.19782e-08 momentum=2.57414e-05 pcorr=1.91471e-07
+VMFL036_AXISYM ITER=600 continuity=1.65132e-08 momentum=1.38685e-05 pcorr=1.82444e-07
+VMFL036_AXISYM ITER=650 continuity=1.58006e-08 momentum=7.38211e-06 pcorr=1.99906e-07
+VMFL036_AXISYM ITER=700 continuity=1.54202e-08 momentum=3.89846e-06 pcorr=1.95719e-07
+VMFL036_AXISYM ITER=750 continuity=1.55888e-08 momentum=2.04593e-06 pcorr=1.95204e-07
+VMFL036_ALPHA_SWEEP alpha_u=0.3 converged=true iterations=752 continuity=1.513159e-08 momentum=1.992942e-06 pcorr=1.895055e-07 Cd_pressure=7.973496e-01 Cd_viscous=3.982151e-01 Cd_total=1.195565e+00
+VMFL036_AXISYM ITER=1 continuity=2.609410e-07 momentum=2.113696e-02 pcorr=9.705366e-07
+VMFL036_AXISYM ITER=50 continuity=2.437643e-08 momentum=1.583154e-03 pcorr=1.917259e-07
+VMFL036_AXISYM ITER=100 continuity=2.906482e-08 momentum=8.959964e-04 pcorr=1.982346e-07
+VMFL036_AXISYM ITER=150 continuity=2.849739e-08 momentum=2.260826e-04 pcorr=1.989078e-07
+VMFL036_AXISYM ITER=200 continuity=2.626613e-08 momentum=7.274530e-05 pcorr=1.812588e-07
+VMFL036_AXISYM ITER=250 continuity=2.226045e-08 momentum=1.848058e-05 pcorr=1.932095e-07
+VMFL036_AXISYM ITER=300 continuity=1.264471e-08 momentum=4.323460e-06 pcorr=1.459428e-07
+VMFL036_ALPHA_SWEEP alpha_u=5.000000e-01 converged=true iterations=326 continuity=1.533765e-08 momentum=1.998742e-06 pcorr=1.919360e-07 Cd_pressure=7.980782e-01 Cd_viscous=3.987879e-01 Cd_total=1.196866e+00
+VMFL036_AXISYM ITER=1 continuity=2.646919e-07 momentum=1.982521e-02 pcorr=9.845680e-07
+VMFL036_AXISYM ITER=50 continuity=2.916712e-08 momentum=1.105920e-03 pcorr=1.922849e-07
+VMFL036_AXISYM ITER=100 continuity=2.842640e-08 momentum=1.096159e-04 pcorr=1.957814e-07
+VMFL036_AXISYM ITER=150 continuity=2.116473e-08 momentum=9.627281e-06 pcorr=1.850922e-07
+VMFL036_ALPHA_SWEEP alpha_u=6.500000e-01 converged=true iterations=180 continuity=1.382759e-08 momentum=1.949491e-06 pcorr=1.938343e-07 Cd_pressure=7.984731e-01 Cd_viscous=3.991676e-01 Cd_total=1.197641e+00
+VMFL036_AXISYM ITER=1 continuity=2.668555e-07 momentum=1.918685e-02 pcorr=9.926532e-07
+VMFL036_AXISYM ITER=50 continuity=2.984879e-08 momentum=5.739442e-04 pcorr=1.983875e-07
+VMFL036_AXISYM ITER=100 continuity=2.761453e-08 momentum=3.605854e-05 pcorr=1.881767e-07
+VMFL036_ALPHA_SWEEP alpha_u=7.000000e-01 converged=true iterations=146 continuity=1.300272e-08 momentum=1.892476e-06 pcorr=1.533877e-07 Cd_pressure=7.985862e-01 Cd_viscous=3.992876e-01 Cd_total=1.197874e+00
+VMFL036_AXISYM ITER=1 continuity=3.428027e-07 momentum=9.067736e-03 pcorr=1.270364e-06
+VMFL036_AXISYMMETRIC_VALIDATION: FAIL: VMFL036 invalid momentum coefficients at cell 3391 ax=-5.141158 ar=-5.126746

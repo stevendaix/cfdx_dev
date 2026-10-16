@@ -1,0 +1,6 @@
+master_sha=16734e82545c66bf03911ddd3df4cf629ff3436f
+pr919_test_harness_sha=7c0fe4f73d3cd36e1ca4c21e996bd00515de8e73
+campaign_outcome=success
+sweep_outcome=failure
+purpose: attribute the alpha_u=1.0 sweep failure — master solver (pre-919) vs PR 919 head (operators coincide at alpha_u=1.0)
+pr919_reference_sweep: spread Cd_total 0.193% over alpha 0.3-0.7, alpha=1.0 fail-closed (negative momentum diagonal, iter 1)

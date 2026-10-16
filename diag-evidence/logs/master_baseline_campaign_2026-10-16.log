@@ -1,0 +1,24 @@
+VMFL036_AXISYMESH: PASS nr=44 nt=54 cells=2376 nodes=2475
+VMFL036_AXISYMESH: PASS nr=24 nt=36 cells=864 nodes=925
+VMFL036_AXISYMESH: PASS nr=44 nt=54 cells=2376 nodes=2475
+VMFL036_AXISYMESH: PASS nr=48 nt=72 cells=3456 nodes=3577
+VMFL036_AXISYM ITER=1 continuity=5.92616e-08 momentum=0.0312267 pcorr=1.98589e-07
+VMFL036_AXISYM ITER=50 continuity=1.8422e-08 momentum=0.00140416 pcorr=1.96729e-07
+VMFL036_AXISYM ITER=100 continuity=2.99421e-08 momentum=0.000116406 pcorr=1.9347e-07
+VMFL036_AXISYM ITER=150 continuity=1.99488e-08 momentum=5.66902e-06 pcorr=1.94531e-07
+VMFL036_AXISYM RESULT level=medium converged=true iterations=167 continuity=1.69784e-08 momentum=1.95662e-06 pcorr=1.81795e-07 Cd_pressure=0.983588 Cd_viscous=0.622708 Cd_total=1.6063 Cd_reference=1.5785 Cd_relative_error=0.0176091
+VMFL036_AXISYM RE50 Cd=1.6063 reference=1.5785 relative_error=0.0176091
+VMFL036_AXISYM ITER=1 continuity=1.29992e-07 momentum=0.0307853 pcorr=1.93981e-07
+VMFL036_AXISYM ITER=50 continuity=1.25639e-07 momentum=4.95819e-05 pcorr=1.89739e-07
+VMFL036_AXISYM RESULT level=coarse converged=true iterations=75 continuity=6.99486e-08 momentum=1.97441e-06 pcorr=1.74799e-07 Cd_pressure=0.700162 Cd_viscous=0.171489 Cd_total=0.871651 Cd_reference=1.0895 Cd_relative_error=0.199953
+VMFL036_AXISYM ITER=1 continuity=7.02429e-08 momentum=0.0245146 pcorr=1.99484e-07
+VMFL036_AXISYM ITER=50 continuity=2.93073e-08 momentum=0.000983017 pcorr=1.55321e-07
+VMFL036_AXISYM ITER=100 continuity=2.97415e-08 momentum=2.91508e-05 pcorr=1.99582e-07
+VMFL036_AXISYM RESULT level=medium converged=true iterations=136 continuity=1.66666e-08 momentum=1.93159e-06 pcorr=1.38187e-07 Cd_pressure=0.816593 Cd_viscous=0.375066 Cd_total=1.19166 Cd_reference=1.0895 Cd_relative_error=0.0937674
+VMFL036_AXISYM ITER=1 continuity=2.64692e-07 momentum=0.0198252 pcorr=9.84568e-07
+VMFL036_AXISYM ITER=50 continuity=2.91671e-08 momentum=0.00110592 pcorr=1.92285e-07
+VMFL036_AXISYM ITER=100 continuity=2.84264e-08 momentum=0.000109616 pcorr=1.95781e-07
+VMFL036_AXISYM ITER=150 continuity=2.11647e-08 momentum=9.62728e-06 pcorr=1.85092e-07
+VMFL036_AXISYM RESULT level=fine converged=true iterations=180 continuity=1.38276e-08 momentum=1.94949e-06 pcorr=1.93834e-07 Cd_pressure=0.798473 Cd_viscous=0.399168 Cd_total=1.19764 Cd_reference=1.0895 Cd_relative_error=0.0992572
+VMFL036_AXISYM REFINEMENT fine_relative_error=0.0992572 fine_to_medium_change=0.0049941
+VMFL036_AXISYMMETRIC_VALIDATION: PASS
