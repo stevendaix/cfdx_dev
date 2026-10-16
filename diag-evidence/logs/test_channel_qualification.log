@@ -898,7 +898,7 @@ test 131
 131: CHANNEL n=64 iterations=17206 L2=0.000305175 Linf=0.000305176 continuity=1.04083e-17
 131: CHANNEL observed_order=2
 131: CHANNEL_QUALIFICATION: PASS
-1/1 Test #131: test_channel_qualification .......   Passed  3240.31 sec
+1/1 Test #131: test_channel_qualification .......   Passed  3216.44 sec
 
 The following tests passed:
 	test_channel_qualification
@@ -906,8 +906,8 @@ The following tests passed:
 100% tests passed, 0 tests failed out of 1
 
 Label Time Summary:
-long             = 3240.31 sec*proc (1 test)
-qualification    = 3240.31 sec*proc (1 test)
-validation       = 3240.31 sec*proc (1 test)
+long             = 3216.44 sec*proc (1 test)
+qualification    = 3216.44 sec*proc (1 test)
+validation       = 3216.44 sec*proc (1 test)
 
-Total Test time (real) = 3240.31 sec
+Total Test time (real) = 3216.44 sec

@@ -47,7 +47,7 @@ test 128
 128: NACA0012_RE1000_A0 level=256 Cd=0.0587257 Cl=-1.41112e-06 Cm=2.19791e-05 Cd_pressure=-0.0363217 Cd_viscous=0.0950475 continuity=1.10968e-11 iterations=3989
 128: NACA0012 Cd mesh differences=0.0200016,0.01727 literature Re=1000 alpha=0 Cd~0.12
 128: NACA0012_QUALIFICATION: DIAGNOSTIC solver_converged forces_conservation_symmetry_reference_gate_pending
-1/1 Test #128: test_naca0012_qualification ......   Passed  2942.21 sec
+1/1 Test #128: test_naca0012_qualification ......   Passed  2943.07 sec
 
 The following tests passed:
 	test_naca0012_qualification
@@ -55,8 +55,8 @@ The following tests passed:
 100% tests passed, 0 tests failed out of 1
 
 Label Time Summary:
-long             = 2942.21 sec*proc (1 test)
-qualification    = 2942.21 sec*proc (1 test)
-validation       = 2942.21 sec*proc (1 test)
+long             = 2943.07 sec*proc (1 test)
+qualification    = 2943.07 sec*proc (1 test)
+validation       = 2943.07 sec*proc (1 test)
 
-Total Test time (real) = 2942.22 sec
+Total Test time (real) = 2943.08 sec
