@@ -697,14 +697,14 @@ make_rhie_chow_mass_flux(
 
     // Momentum-weighted (Rhie-Chow) face flux:
     //
-    //     phi_f = rho [ H/A |_f . Sf
-    //                    - d_f (p_N - p_P)/|C_N-C_P| |Sf| ]
+    //     phi_f = rho [ H/A |_f . Sf - rAU_f * grad(p)_f . Sf ]
     //
     // The first term is linearly interpolated from the cell-centred predictor.
-    // The pressure difference is evaluated directly on the face-normal line.
-    // This is deliberately the same pressure operator used to build the
-    // segregated pressure equation; it must never be replaced by an unrelated
-    // least-squares fit of the cell velocity.
+    // The implicit pressure jump is taken along the owner-neighbour centre
+    // line and multiplied by Sf.e, not |Sf|. The tangential remainder is a
+    // deferred non-orthogonal correction. The same implicit coefficient is
+    // assembled in the pressure-correction matrix below; it must never be
+    // replaced by an unrelated least-squares fit of the cell velocity.
     //
     // For a fixed-pressure boundary the boundary pressure is known. For a
     // zero-gradient pressure boundary there is no normal pressure correction.
@@ -2887,13 +2887,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // Explicit pressure flux at fixed-pressure boundaries (#894):
                 // the half-Dirichlet diagonal term above is only consistent
                 // when the boundary mass flux is reconstructed as
-                //   phi_b = phiHbyA_b - rho*rfn*area/d*(p_bc - p_P).
-                // Without the matching source term the discretised equation
-                // forces the boundary flux to zero and the continuity
-                // residual stalls on a nonzero floor. Inject the source into
-                // the RHS (b is assembled before this loop, so it must be
-                // updated directly), with the same directional coefficient
-                // rfn as the matrix (rAU: SIMPLE, rAtU: SIMPLEC).
+                //   phi_b = phiHbyA_b - rho*boundary_coeff*(p_bc - p_P).
+                // boundary_coeff uses the same centre-line projection as the
+                // boundary flux reconstruction below. Without the matching
+                // source term the discretised equation forces the boundary
+                // flux to zero and continuity stalls on a nonzero floor.
                 b(o) += controls.density * boundary_coeff *
                     (it->second.value - p(o));
             }
