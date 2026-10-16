@@ -194,19 +194,13 @@ inline Field<double, Location::CELL> compute_gradient_least_squares(
     return grad;
 }
 
-// Vertex-based (secondary) Green-Gauss gradient.
+// Point-reconstructed Green-Gauss gradient.
 //
-// Cell values are interpolated to the mesh vertices with inverse-distance
-// weighting, vertex values are averaged onto each face, and the gradient is
-// then the Green-Gauss sum:
-//   phi_v   = sum_c (phi_c / |C_c - P_v|) / sum_c (1/|C_c - P_v|)
-//   phi_f   = average of phi_v over the face vertices
-//   grad_c  = (1/V_c) sum_f phi_f Sf_c
-//
-// This is the classic "Green-Gauss node based" variant. It is linear-exact on
-// affine meshes (the weighted vertex average is exact there) but does not, in
-// general, reproduce quadratic fields to machine precision, so its
-// verification requirements differ from the cell-based scheme.
+// Internal face values are reconstructed independently from both adjacent
+// cell centres and averaged at the geometric face centre. A linear-consistent
+// least-squares cell gradient makes this reconstruction exact for linear fields
+// on skewed planar faces. Boundary faces retain the zero-gradient value policy,
+// so boundary-adjacent cells are exact only when that policy matches the field.
 inline Field<double, Location::CELL> compute_gradient_gauss_vertex(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
