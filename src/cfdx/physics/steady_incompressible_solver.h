@@ -1532,6 +1532,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     const double area = rawSf.mag();
                     const double d = (geometry.face_centres[f] -
                                       geometry.cell_centres[c]).mag();
+                    if (!(area > 0.0) || !(d > 0.0) ||
+                        !std::isfinite(area) || !std::isfinite(d))
+                        throw std::runtime_error(
+                            "solve_coupled_momentum_continuity: degenerate fixed-pressure boundary face");
                     const Vec3 dvec = geometry.face_centres[f] -
                                       geometry.cell_centres[c];
                     const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
@@ -2916,6 +2920,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const std::size_t o = mesh.ownership().owner(f);
                 const double distance =
                     (geometry.face_centres[f]-geometry.cell_centres[o]).mag();
+                if (!(distance > 0.0) || !std::isfinite(distance))
+                    throw std::runtime_error(
+                        "solve_steady_incompressible: degenerate fixed-pressure boundary distance");
                 const Vec3 Sf = geometry.face_area_vectors[f];
                 const auto& pressure_coeff =
                     controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
