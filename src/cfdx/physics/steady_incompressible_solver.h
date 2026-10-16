@@ -624,13 +624,12 @@ inline double rhie_chow_pressure_flux_internal(
     const std::size_t n = static_cast<std::size_t>(nr);
     const Vec3 Sf = geometry.face_area_vectors[face];
     const double area = Sf.mag();
-    if (!(area > 0.0))
+    if (!(area > 0.0) || !std::isfinite(area))
         throw std::runtime_error("rhie_chow_pressure_flux_internal: degenerate face");
     const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
     const double d = dvec.mag();
-    if (!(d > 0.0))
+    if (!(d > 0.0) || !std::isfinite(d))
         throw std::runtime_error("rhie_chow_pressure_flux_internal: degenerate centre distance");
-    const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
     // rAU is the inverse integrated momentum diagonal (1/A_P). The volume
     // factor is introduced here, at the velocity/pressure projection stage,
     // because the pressure gradient is a volumetric momentum source. Thus
@@ -641,8 +640,6 @@ inline double rhie_chow_pressure_flux_internal(
                            geometry.cell_volumes[n] * rAU[1][n]);
     const double cz = 0.5*(geometry.cell_volumes[o] * rAU[2][o] +
                            geometry.cell_volumes[n] * rAU[2][n]);
-    const double rfn = cx*e.x*e.x + cy*e.y*e.y + cz*e.z*e.z;
-    const double orthogonal_area = Sf.dot(e);
     const Vec3 gp{
         0.5*(grad_p.component_data(0)[o] + grad_p.component_data(0)[n]),
         0.5*(grad_p.component_data(1)[o] + grad_p.component_data(1)[n]),
