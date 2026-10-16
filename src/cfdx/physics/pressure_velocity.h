@@ -22,9 +22,13 @@ struct PressureCorrectionSystem {
 inline PressureCorrectionSystem assemble_pressure_correction(
     const cfdx::core::Mesh& mesh,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& momentum_diagonal,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>& continuity)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& continuity,
+    double density = 1.0)
 {
     using namespace cfdx::core;
+    if (!(density > 0.0) || !std::isfinite(density))
+        throw std::invalid_argument(
+            "assemble_pressure_correction: density must be finite and positive");
     const std::size_t n = mesh.n_cells();
     if (momentum_diagonal.dimension() != 1 || momentum_diagonal.size() != n ||
         continuity.dimension() != 1 || continuity.size() != n) {
@@ -91,7 +95,7 @@ inline PressureCorrectionSystem assemble_pressure_correction(
         // non-unit or skewed cells.
         const double dAU_face = 0.5 * (
             volume[o] / ao + volume[nb] / an);
-        const double coefficient = dAU_face * orthogonal_area / distance;
+        const double coefficient = density * dAU_face * orthogonal_area / distance;
         if (!(coefficient > 0.0) || !std::isfinite(coefficient))
             throw std::runtime_error(
                 "assemble_pressure_correction: invalid face pressure coefficient");
