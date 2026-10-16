@@ -10,6 +10,52 @@ N9-S9 closes the pressure–velocity consistency boundary with executable operat
 
 The checks use the production `make_rhie_chow_mass_flux()` path rather than a duplicated test implementation.
 
+## Majumdar relaxation treatment (derivation, 2026-10-16)
+
+The production RC term of PR #895 weights the face pressure flux with the
+RELAXED momentum diagonals: D^RC = V/a_P^r where a_P^r = a_P/alpha_u, while
+the pressure-correction velocity update uses the unrelaxed operator
+D^pc = V/a_P. Hence **D^RC = alpha_u * D^pc** (alpha_u = 0.65 in the
+campaigns: the RC coefficients are ~35 % smaller than the p' divergence
+coefficients).
+
+Derivation: with implicit under-relaxation the momentum equation solved is
+u_P = alpha_u * (H_P/a_P - V/a_P * grad p) + (1 - alpha_u) * u_P^old, so the
+velocity correction inherits the relaxed matrix,
+u' = -alpha_u * V/a_P * grad p'. The Majumdar-consistent collocated flux must
+therefore interpolate the SAME relaxed inverse diagonal that produced the
+cell velocities:
+phi_f = rho [ (H/a)_f . S_f - D^RC_f * (dp/dn)_f ], with D^RC_f = V/a_P^r.
+The pressure-correction divergence D^pc only weights the p'-gradient on the
+ITERATION path: p' -> 0 at convergence, so it cannot move the fixed point -
+its residual effect is O(h^2) on smooth modes. Consequences, both testable:
+
+- operator level: scaling rAU (equivalently alpha_u) must scale the RC
+  correction linearly (tests below);
+- fixed point: the CONVERGED solution must be alpha_u-independent
+  (empirical campaign v4 on the diag branch, alpha_u in {0.5, 0.65, 0.8,
+  0.95} on the VMFL036 coarse and fine cases; diagnostic, not a gate).
+
+The unrelaxed variant (D^RC = D^pc) was tested empirically on 2026-10-15 and
+rejected: fine_err 10.06 % FAIL vs 9.93 % PASS for the relaxed form
+(cf. VMFL036_FINE_GAP_STUDY.md).
+
+## Analytical tests (operator level, production path)
+
+Five additional operator-level tests, all through the production
+make_rhie_chow_mass_flux() (no duplicated implementation):
+
+1. the RC correction scales linearly with rAU - the operator-level statement
+   of D^RC = alpha_u * D^pc (Majumdar);
+2. the correction is linear in p (superposition of an alternating field and a
+   linear field);
+3. directional rAU anisotropy: only the face-normal projection of the
+   directional inverse diagonals enters rfn;
+4. stretched mesh with unequal cell volumes: the face coefficient is the
+   volume-weighted dAU = mean(V*rAU) interpolation;
+5. uniform-mesh limit: the production correction collapses exactly to
+   rho * dAU_f * (p_N - p_P)/d * (S_f . e).
+
 ## Total Validation
 
 `test_n9_s9_rhie_chow_consistency` is labelled `n9;qualification;validation;long;validation-total`.
