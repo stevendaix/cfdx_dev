@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="(empty)"
+	tests="6"
+	failures="0"
+	disabled="0"
+	skipped="6"
+	hostname=""
+	time="0"
+	timestamp="2026-10-16T21:34:28"
+	>
+	<testcase name="test_ghia_cavity_n8_pcd" classname="test_ghia_cavity_n8_pcd" time="0" status="notrun">
+		<skipped message="Unable to find executable"/>
+		<properties>
+			<property name="cmake_labels" value="long;n8;qualification;validation"/>
+		</properties>
+		<system-out>Unable to find executable: /home/runner/work/_temp/base/build/test_ghia_cavity</system-out>
+	</testcase>
+	<testcase name="test_bfs_qualification" classname="test_bfs_qualification" time="0" status="notrun">
+		<skipped message="Unable to find executable"/>
+		<properties>
+			<property name="cmake_labels" value="long;qualification;validation"/>
+		</properties>
+		<system-out>Unable to find executable: /home/runner/work/_temp/base/build/test_bfs_qualification</system-out>
+	</testcase>
+	<testcase name="test_naca0012_qualification" classname="test_naca0012_qualification" time="0" status="notrun">
+		<skipped message="Unable to find executable"/>
+		<properties>
+			<property name="cmake_labels" value="long;qualification;validation"/>
+		</properties>
+		<system-out>Unable to find executable: /home/runner/work/_temp/base/build/test_naca0012_qualification</system-out>
+	</testcase>
+	<testcase name="test_channel_qualification" classname="test_channel_qualification" time="0" status="notrun">
+		<skipped message="Unable to find executable"/>
+		<properties>
+			<property name="cmake_labels" value="long;qualification;validation"/>
+		</properties>
+		<system-out>Unable to find executable: /home/runner/work/_temp/base/build/test_channel_qualification</system-out>
+	</testcase>
+	<testcase name="test_n12_coupled_pressure_velocity_mms" classname="test_n12_coupled_pressure_velocity_mms" time="0" status="notrun">
+		<skipped message="Unable to find executable"/>
+		<properties>
+			<property name="cmake_labels" value="long;mms;n12;validation;validation-total"/>
+		</properties>
+		<system-out>Unable to find executable: /home/runner/work/_temp/base/build/test_n12_coupled_pressure_velocity_mms</system-out>
+	</testcase>
+	<testcase name="test_n9_s9_rhie_chow_consistency" classname="test_n9_s9_rhie_chow_consistency" time="0" status="notrun">
+		<skipped message="Unable to find executable"/>
+		<properties>
+			<property name="cmake_labels" value="long;n9;qualification;validation;validation-total"/>
+		</properties>
+		<system-out>Unable to find executable: /home/runner/work/_temp/base/build/test_n9_s9_rhie_chow_consistency</system-out>
+	</testcase>
+</testsuite>

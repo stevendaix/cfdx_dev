@@ -1,0 +1,32 @@
+VERDICT: INCONCLUSIVE_BUILD
+base_sha=bfaf71071c72f6a9f37391039826a5964787a2a5
+pr923_head_sha=b987b4a3534bdf6aea0df9deaa3ae6b77f98b4f2
+base build outcome=failure
+head build outcome=failure
+base no outcome line for test_bfs_qualification
+base no outcome line for test_channel_qualification
+base no outcome line for test_naca0012_qualification
+base no outcome line for test_ghia_cavity_n8_pcd
+base no outcome line for test_n12_coupled_pressure_velocity_mms
+base no outcome line for test_n9_s9_rhie_chow_consistency
+head no outcome line for test_bfs_qualification
+head no outcome line for test_channel_qualification
+head no outcome line for test_naca0012_qualification
+head no outcome line for test_ghia_cavity_n8_pcd
+head no outcome line for test_n12_coupled_pressure_velocity_mms
+head no outcome line for test_n9_s9_rhie_chow_consistency
+
+--- per-test report ---
+ref	test	status	duration
+base	test_bfs_qualification	MISSING	unknown
+base	test_channel_qualification	MISSING	unknown
+base	test_naca0012_qualification	MISSING	unknown
+base	test_ghia_cavity_n8_pcd	MISSING	unknown
+base	test_n12_coupled_pressure_velocity_mms	MISSING	unknown
+base	test_n9_s9_rhie_chow_consistency	MISSING	unknown
+head	test_bfs_qualification	MISSING	unknown
+head	test_channel_qualification	MISSING	unknown
+head	test_naca0012_qualification	MISSING	unknown
+head	test_ghia_cavity_n8_pcd	MISSING	unknown
+head	test_n12_coupled_pressure_velocity_mms	MISSING	unknown
+head	test_n9_s9_rhie_chow_consistency	MISSING	unknown
