@@ -1,6 +1,7 @@
 #include "cfdx/core/numerics/convection.h"
 #include "cfdx/physics/incompressible.h"
 #include "cfdx/physics/pressure_velocity.h"
+#include "cfdx/physics/steady_incompressible_solver.h"
 #include "common/test_harness.h"
 #include <cmath>\n#include <stdexcept>
 
@@ -67,13 +68,28 @@ int main(){
         Mesh m=make_two_tetra();
         Field<double,Location::CELL> ap(2,"aP","1",1);
         Field<double,Location::CELL> r(2,"r","m3/s",1);
-        ap(0)=ap(1)=1.0;
+        ap(0)=2.0; ap(1)=4.0;
         r(0)=1.0; r(1)=-1.0;
         auto pc=assemble_pressure_correction(m,ap,r);
         EXPECT_NEAR(pc.matrix(0,0)+pc.matrix(0,1),0.0,1e-12);
         EXPECT_NEAR(pc.matrix(1,0)+pc.matrix(1,1),0.0,1e-12);
         EXPECT_NEAR(pc.rhs(0)+pc.rhs(1),0.0,1e-12);
         EXPECT_TRUE(pc.matrix.n_rows()==2);
+
+        const auto geometry = build_fv_geometry(m);
+        std::size_t internal_face = m.n_faces();
+        for (std::size_t f = 0; f < m.n_faces(); ++f)
+            if (m.ownership().neighbour(f) >= 0) internal_face = f;
+        EXPECT_TRUE(internal_face < m.n_faces());
+        const Vec3 dvec = geometry.cell_centres[1] - geometry.cell_centres[0];
+        const double distance = dvec.mag();
+        const Vec3 e{dvec.x/distance, dvec.y/distance, dvec.z/distance};
+        const Vec3 Sf = geometry.face_area_vectors[internal_face];
+        const double expected = 0.5 * (
+            geometry.cell_volumes[0] / ap(0) +
+            geometry.cell_volumes[1] / ap(1)) *
+            Sf.dot(e) / distance;
+        EXPECT_NEAR(-pc.matrix(0,1), expected, 1e-12);
     });
     run_case("piso_gain_uses_exact_positive_denominator", []() {
         EXPECT_NEAR(piso_correction_gain(4.0, 1.0), 1.0 / 3.0, 1e-12);
