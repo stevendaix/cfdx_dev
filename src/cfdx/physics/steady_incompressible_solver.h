@@ -2840,9 +2840,21 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                        geometry.cell_volumes[n]*rAtU[2][n]) -
                                   0.5*(geometry.cell_volumes[o]*rAU[2][o] +
                                        geometry.cell_volumes[n]*rAU[2][n]);
+                const Vec3 delta_dAU{dx, dy, dz};
                 const double correction_coeff = pressure_face_orthogonal_coefficient(
-                    Sf, dvec, {dx, dy, dz});
-                phiHbyA(f) += controls.density * correction_coeff * (p(n)-p(o));
+                    Sf, dvec, delta_dAU);
+                const Vec3 grad_p_face{
+                    0.5 * (grad_p.component_data(0)[o] + grad_p.component_data(0)[n]),
+                    0.5 * (grad_p.component_data(1)[o] + grad_p.component_data(1)[n]),
+                    0.5 * (grad_p.component_data(2)[o] + grad_p.component_data(2)[n])};
+                // SIMPLEC changes the full face response, not only its
+                // centre-line coefficient. Include the matching deferred
+                // difference or skewed-face continuity retains an O(grad p)
+                // mismatch between rAtU and rAU.
+                const double correction_deferred = pressure_face_nonorthogonal_flux(
+                    Sf, dvec, delta_dAU, grad_p_face);
+                phiHbyA(f) += controls.density * (
+                    correction_coeff * (p(n)-p(o)) + correction_deferred);
             }
         }
 
