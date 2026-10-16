@@ -578,6 +578,36 @@ inline double pressure_face_orthogonal_coefficient(
     return coefficient;
 }
 
+// Deferred part of the pressure-response face flux. The implicit term uses
+// only the centre-line pressure jump; this remainder makes the sum equal to
+// (diag(dAU) * grad(p)) dot Sf for a linear pressure field, including skewed
+// faces and anisotropic momentum response.
+inline double pressure_face_nonorthogonal_flux(
+    const cfdx::core::Vec3& Sf,
+    const cfdx::core::Vec3& dvec,
+    const cfdx::core::Vec3& dAU_diagonal,
+    const cfdx::core::Vec3& grad_p)
+{
+    const double d = dvec.mag();
+    if (!(d > 0.0) || !std::isfinite(d))
+        throw std::runtime_error("pressure_face_nonorthogonal_flux: invalid centre distance");
+    const cfdx::core::Vec3 e{dvec.x / d, dvec.y / d, dvec.z / d};
+    const double orthogonal_area = Sf.dot(e);
+    const double rfn = dAU_diagonal.x * e.x * e.x +
+                       dAU_diagonal.y * e.y * e.y +
+                       dAU_diagonal.z * e.z * e.z;
+    const double full_response_flux =
+        dAU_diagonal.x * grad_p.x * Sf.x +
+        dAU_diagonal.y * grad_p.y * Sf.y +
+        dAU_diagonal.z * grad_p.z * Sf.z;
+    const double implicit_gradient_flux =
+        rfn * grad_p.dot(e) * orthogonal_area;
+    const double deferred = full_response_flux - implicit_gradient_flux;
+    if (!std::isfinite(deferred))
+        throw std::runtime_error("pressure_face_nonorthogonal_flux: non-finite deferred flux");
+    return deferred;
+}
+
 inline double rhie_chow_pressure_flux_internal(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -629,16 +659,8 @@ inline double rhie_chow_pressure_flux_internal(
     // same discrete operator on arbitrary meshes.
     const double implicit_coefficient = pressure_face_orthogonal_coefficient(
         Sf, dvec, {cx, cy, cz});
-    // The deferred term is the full tensor-response flux minus the part
-    // represented by the implicit centre-line pressure jump. For anisotropic
-    // dAU, projecting only onto Snon omits cross-direction coupling between
-    // the centre-line and global coordinate axes.
-    const double response_gradient_dot_Sf =
-        cx * gp.x * Sf.x + cy * gp.y * Sf.y + cz * gp.z * Sf.z;
-    const double implicit_gradient_flux =
-        rfn * gp.dot(e) * orthogonal_area;
-    const double non_orthogonal_flux =
-        response_gradient_dot_Sf - implicit_gradient_flux;
+    const double non_orthogonal_flux = pressure_face_nonorthogonal_flux(
+        Sf, dvec, {cx, cy, cz}, gp);
     return rho * (
         implicit_coefficient * (p(n) - p(o)) +
         non_orthogonal_flux);
@@ -759,12 +781,22 @@ make_rhie_chow_mass_flux(
                             rAU[0][o]*e.x*e.x +
                             rAU[1][o]*e.y*e.y +
                             rAU[2][o]*e.z*e.z);
-                    // For a prescribed boundary pressure the normal pressure
-                    // difference is implicit. The non-orthogonal remainder
-                    // requires a boundary gradient model and is therefore not
-                    // fabricated here.
-                    correction = rho * rfn * (pbc->second.value - p(o)) *
-                        Sf.dot(e) / d;
+                    const Vec3 gp{
+                        grad_p.component_data(0)[o],
+                        grad_p.component_data(1)[o],
+                        grad_p.component_data(2)[o]};
+                    const Vec3 dAU_boundary{
+                        geometry.cell_volumes[o] * rAU[0][o],
+                        geometry.cell_volumes[o] * rAU[1][o],
+                        geometry.cell_volumes[o] * rAU[2][o]};
+                    const double implicit_coefficient =
+                        pressure_face_orthogonal_coefficient(
+                            Sf, dvec, dAU_boundary);
+                    const double deferred = pressure_face_nonorthogonal_flux(
+                        Sf, dvec, dAU_boundary, gp);
+                    correction = rho * (
+                        implicit_coefficient * (pbc->second.value - p(o)) +
+                        deferred);
                 }
             }
         }
@@ -2904,8 +2936,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // boundary flux reconstruction below. Without the matching
                 // source term the discretised equation forces the boundary
                 // flux to zero and continuity stalls on a nonzero floor.
-                b(o) += controls.density * boundary_coeff *
-                    (it->second.value - p(o));
+                const Vec3 gp_boundary{
+                    current_grad_p.component_data(0)[o],
+                    current_grad_p.component_data(1)[o],
+                    current_grad_p.component_data(2)[o]};
+                const double deferred_boundary = pressure_face_nonorthogonal_flux(
+                    Sf, dvec, dAU_boundary, gp_boundary);
+                b(o) += controls.density * (
+                    boundary_coeff * (it->second.value - p(o)) +
+                    deferred_boundary);
             }
 
             Vector p_corr(nc, 0.0);
