@@ -49,7 +49,7 @@ Le terme de correction de flux additionnel n'est pas activé en production par c
 
 ## 6. Références
 
-- Patankar, *Numerical Heat Transfer and Fluid Flow*, 1980, ISBN-13: 978-0-89116-522-4 — relaxation et méthode SIMPLE.
+- Patankar, *Numerical Heat Transfer and Fluid Flow*, 1980, ISBN: 978-0-89116-522-4 — relaxation et méthode SIMPLE.
 - Rhie & Chow, « Numerical study of the turbulent flow past an airfoil with trailing edge separation », *AIAA Journal* 21(11), 1983 — interpolation momentum-weighted sur maillage collocatif.
 - Majumdar, « Role of underrelaxation in momentum interpolation for calculation of flow with nonstaggered grids », *Numerical Heat Transfer* 13, 1988 — correction de flux sous relaxation.
 
