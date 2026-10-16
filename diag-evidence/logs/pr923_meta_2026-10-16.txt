@@ -1,0 +1,5 @@
+base_sha=bfaf71071c72f6a9f37391039826a5964787a2a5
+pr923_head_sha=df1bb31ceeca0bacbbfe57032d58721bda455d18
+base_cmake_outcome=skipped
+pr923_cmake_outcome=skipped
+targeted_tests: BFS Re=200, channel, NACA0012 laminar, Ghia PCD, N12 coupled MMS, N9-S9 RC consistency
