@@ -1,0 +1,169 @@
+name: Ghia PCD coupled-matrix audit
+
+# Diagnostic-only workflow (#914, audit Fp-vs-Kp de l'action PCD
+# single-inverse -Fp^-1 de pcd_schur.h) : branche jamais mergee
+# ci/long-campaign-diagnostics (pattern n9-negative-trace #913).
+#
+# Compile l'outil d'audit avec les flags production EXACTS
+# (g++ -std=c++17 -O2 -DNDEBUG ; CMakeLists : CXX_EXTENSIONS OFF,
+# CMAKE_CXX_FLAGS_RELEASE "-O2 -DNDEBUG") — l'iteration-1 production est
+# acceptee a 9.76e-11 contre une gate 1e-10, donc tout ecart d'arrondi
+# casserait la trajectoire. Dump la matrice couplee production ghia 32x32
+# --pcd a l'iteration non-lineaire 2 (premier regime a flux Rhie-Chow non
+# nul, la ou l'ordre Fp/Kp compte) + iteration 1 (validation), avec les
+# operateurs PCD Mp/Kp/Fp assembles depuis le meme etat, en %a bit-exact
+# (chunks CSR de 1024 lignes, chaque fichier < ~550 KB, lisibles via l'API
+# contents). Valide l'assemblage contre le log production 38809298638
+# (M_l2/G_l2/D_l2/C_l2/schur_diag_min/nnz des deux iterations +
+# INCOMPRESSIBLE_ITER it=1).
+#
+# Un jumeau FP64 rejouera ensuite le FGMRES externe (restart 4096, tol
+# 1e-10, warm x0) avec l'action -Fp^-1 vs -Kp^-1 sur ces operateurs
+# exacts et publiera l'analyse sur #914.
+#
+# Evidence commit [ci skip] : jamais de re-trigger de la campagne 3 h
+# (long-campaign-diagnostics.yml paths-ignore .github/workflows/** et
+# diag-evidence/**) ni des autres workflows de la branche (paths filters).
+
+on:
+  push:
+    branches:
+      - ci/long-campaign-diagnostics
+    paths:
+      - '.github/workflows/ghia-pcd-audit.yml'
+      - '.github/workflows/ghia_pcd_audit_dump.cpp'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: ghia-pcd-audit
+  cancel-in-progress: true
+
+jobs:
+  ghia-pcd-audit:
+    name: Dump ghia 32x32 PCD coupled system (iter 1+2) and PCD operators
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install compiler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ libhdf5-openmpi-dev libopenmpi-dev
+
+      - name: Compile the audit tool (production flags)
+        shell: bash
+        run: |
+          set -euo pipefail
+          g++ --version
+          SRCS="src/cfdx/core/mesh/point.cpp src/cfdx/core/mesh/face.cpp src/cfdx/core/mesh/ownership.cpp src/cfdx/core/mesh/cell.cpp src/cfdx/core/mesh/mesh.cpp src/cfdx/core/mesh/boundary.cpp src/cfdx/core/geometry/face_geometry.cpp src/cfdx/core/geometry/cell_geometry.cpp src/cfdx/core/field/field.cpp src/cfdx/core/field/storage.cpp src/cfdx/core/linalg/hypre_amg.cpp"
+          if ! g++ -std=c++17 -O2 -DNDEBUG -I src .github/workflows/ghia_pcd_audit_dump.cpp $SRCS -o /tmp/ghia_audit 2> /tmp/ghia-audit-build.log; then
+            echo "::group::first build attempt log"
+            cat /tmp/ghia-audit-build.log
+            echo "::endgroup::"
+            EXTRA=""
+            for f in memory_planner gpu_kernels; do
+              found=$(find src -name "${f}.cpp" 2>/dev/null | head -n 1 || true)
+              [ -n "$found" ] && EXTRA="$EXTRA $found"
+            done
+            echo "retry with extra sources:${EXTRA:-none}"
+            g++ -std=c++17 -O2 -DNDEBUG -I src .github/workflows/ghia_pcd_audit_dump.cpp $SRCS $EXTRA -o /tmp/ghia_audit 2>> /tmp/ghia-audit-build.log
+          fi
+          echo "build ok"
+
+      - name: Run the audit dump
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -u
+          mkdir -p diag-evidence/ghia-pcd-audit
+          set +e
+          /tmp/ghia_audit diag-evidence/ghia-pcd-audit 2>&1 | tee /tmp/ghia-audit.log
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "AUDIT_EXIT_CODE=$code"
+          echo "AUDIT_EXIT_CODE=$code" >> /tmp/ghia-audit.log
+          echo "--- build log ---"
+          cat /tmp/ghia-audit-build.log 2>/dev/null || true
+          exit 0
+
+      - name: Commit evidence (dumps + log) to the diagnostic branch
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          mkdir -p diag-evidence/ghia-pcd-audit
+          cp /tmp/ghia-audit.log "diag-evidence/ghia-pcd-audit/run-$GITHUB_RUN_ID.log" 2>/dev/null || true
+          cp /tmp/ghia-audit-build.log "diag-evidence/ghia-pcd-audit/build-$GITHUB_RUN_ID.log" 2>/dev/null || true
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add diag-evidence 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "no evidence change to commit"
+          else
+            git commit -m "diag(evidence): ghia PCD audit dump run $GITHUB_RUN_ID (#914) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              echo "::warning::push failed — pulling and retrying"
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+          exit 0
+
+      - name: Upload audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ghia-pcd-audit-${{ github.run_id }}
+          path: |
+            /tmp/ghia-audit.log
+            /tmp/ghia-audit-build.log
+            diag-evidence/ghia-pcd-audit/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Post audit summary to issue #914 (best effort)
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          {
+            echo "## Audit dump ghia 32x32 PCD — run $GITHUB_RUN_ID"
+            echo
+            echo "HEAD diagnostic : $GITHUB_SHA"
+            echo "Outil : .github/workflows/ghia_pcd_audit_dump.cpp (flags production g++ -std=c++17 -O2 -DNDEBUG)"
+            echo "Preuve complete : diag-evidence/ghia-pcd-audit/ sur ci/long-campaign-diagnostics (A_iter1/A_iter2/Mp/Kp/Fp chunks CSR %a + b/x0/schur_diag + meta.txt) + artefact"
+            echo
+            echo '~~~'
+            grep -E 'AUDIT_|COUPLED_MATRIX_SUMMARY|COUPLED_PRECONDITIONER|INCOMPRESSIBLE_ITER' /tmp/ghia-audit.log 2>/dev/null | head -n 150 || true
+            echo '~~~'
+          } > /tmp/comment.md 2>/dev/null || true
+          if [ ! -s /tmp/comment.md ]; then echo "(log vide)" > /tmp/comment.md; fi
+          jq -n --rawfile body /tmp/comment.md '{body: $body}' > /tmp/payload.json 2>/dev/null || true
+          http=$(curl -sS --fail-with-body -o /dev/null -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/914/comments" \
+            -d @/tmp/payload.json) || http=failed
+          echo "POST to #914: $http"
+          exit 0
+
+      - name: Verdict (red if the audit failed or a validation check mismatched)
+        if: always()
+        shell: bash
+        run: |
+          if grep -q "validation_overall=PASS" /tmp/ghia-audit.log 2>/dev/null \
+             && grep -q "AUDIT_EXIT_CODE=0" /tmp/ghia-audit.log 2>/dev/null; then
+            echo "audit validation PASS"
+          else
+            echo "::error::audit validation FAILED — see diag-evidence/ghia-pcd-audit/run-$GITHUB_RUN_ID.log"
+            exit 1
+          fi
