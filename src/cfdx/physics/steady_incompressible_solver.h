@@ -711,19 +711,19 @@ make_rhie_chow_mass_flux(
         }
     }
 
-    // Momentum-weighted (Rhie-Chow) face flux:
+    // Conservative Rhie-Chow face flux reconstructed from the cell-centred
+    // velocity predictor:
     //
-    //     phi_f = rho [ H/A |_f . Sf
-    //                    - d_f (p_N - p_P)/|C_N-C_P| |Sf| ]
+    //   phi_f = rho [ U_f·Sf - ((dAU e)·Sf)
+    //                    * ((p_N-p_P)/d - grad(p)_f·e) ]
     //
-    // The first term is linearly interpolated from the cell-centred predictor.
-    // The pressure difference is evaluated directly on the face-normal line.
-    // This is deliberately the same pressure operator used to build the
-    // segregated pressure equation; it must never be replaced by an unrelated
-    // least-squares fit of the cell velocity.
+    // The residual form is algebraically equivalent to interpolating HbyA and
+    // subtracting the full pressure operator, but it makes the linear-pressure
+    // cancellation explicit. The coefficient is tensor-consistent for
+    // anisotropic momentum diagonals and oblique faces.
     //
-    // For a fixed-pressure boundary the boundary pressure is known. For a
-    // zero-gradient pressure boundary there is no normal pressure correction.
+    // For a fixed-pressure boundary the same centre-to-face response is used;
+    // zero-gradient pressure boundaries have no pressure-jump correction.
     Field<double, Location::FACE> flux(mesh.n_faces(), "phi", "kg/s", 1);
     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
         const std::size_t o = own.owner(f);
