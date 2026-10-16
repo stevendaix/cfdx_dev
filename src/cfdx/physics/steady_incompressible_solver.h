@@ -1377,11 +1377,15 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
                 const Vec3 rawSf = geometry.face_area_vectors[f];
                 const double area = rawSf.mag();
-                const double d = (geometry.cell_centres[ncell] -
-                                  geometry.cell_centres[c]).mag();
-                const double nx = rawSf.x / area;
-                const double ny = rawSf.y / area;
-                const double nz = rawSf.z / area;
+                const Vec3 dvec = geometry.cell_centres[ncell] -
+                                  geometry.cell_centres[c];
+                const double d = dvec.mag();
+                if (!(area > 0.0) || !std::isfinite(area) ||
+                    !(d > 0.0) || !std::isfinite(d))
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face geometry on face " +
+                        std::to_string(f));
+                const Vec3 e{dvec.x / d, dvec.y / d, dvec.z / d};
                 const double aox = ex.diagonal[c], anx = ex.diagonal[ncell];
                 const double aoy = ey.diagonal[c], any = ey.diagonal[ncell];
                 const double aoz = ez.diagonal[c], anz = ez.diagonal[ncell];
@@ -1406,12 +1410,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 const double rAUz_f = 0.5 * (
                     geometry.cell_volumes[c] / aoz +
                     geometry.cell_volumes[ncell] / anz);
-                const double rfn = rAUx_f*nx*nx + rAUy_f*ny*ny + rAUz_f*nz*nz;
+                const double rfn = rAUx_f*e.x*e.x + rAUy_f*e.y*e.y + rAUz_f*e.z*e.z;
                 if (!(rfn > 0.0) || !std::isfinite(rfn))
                     throw std::runtime_error(
                         "solve_coupled_momentum_continuity: invalid face rAU on face " +
                         std::to_string(f));
-                const double D = rho * rfn * area / d;
+                const double D = rho * pressure_face_orthogonal_coefficient(
+                    rawSf, dvec, {rAUx_f, rAUy_f, rAUz_f});
                 if (!(d > 0.0) || !(area > 0.0) ||
                     !std::isfinite(d) || !std::isfinite(area) ||
                     !(D > 0.0) || !std::isfinite(D)) {
@@ -1441,9 +1446,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 A.push_back(row, nv + ncell, -D);
                 coupled_pressure_schur_diagonal[c] += D;
 
-                const Vec3 dvec = geometry.cell_centres[ncell] -
-                                  geometry.cell_centres[c];
-                const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
                 const double orthogonal_area = rawSf.dot(e);
                 const Vec3 Snon{
                     rawSf.x - orthogonal_area*e.x,
@@ -1501,12 +1503,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
                 if (pbc && pbc->type == ScalarBoundaryType::FIXED_VALUE) {
                     const Vec3 rawSf = geometry.face_area_vectors[f];
-                    const double area = rawSf.mag();
-                    const double d = (geometry.face_centres[f] -
-                                      geometry.cell_centres[c]).mag();
-                    const double nx = rawSf.x / area;
-                    const double ny = rawSf.y / area;
-                    const double nz = rawSf.z / area;
+                    const Vec3 dvec = geometry.face_centres[f] -
+                                      geometry.cell_centres[c];
                     const double a_x = ex.diagonal[c];
                     const double a_y = ey.diagonal[c];
                     const double a_z = ez.diagonal[c];
@@ -1518,12 +1516,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     const double rAUx = geometry.cell_volumes[c] / a_x;
                     const double rAUy = geometry.cell_volumes[c] / a_y;
                     const double rAUz = geometry.cell_volumes[c] / a_z;
-                    const double rfn = rAUx*nx*nx + rAUy*ny*ny + rAUz*nz*nz;
-                    if (!(rfn > 0.0) || !std::isfinite(rfn))
-                        throw std::runtime_error(
-                            "solve_coupled_momentum_continuity: invalid boundary face rAU on face " +
-                            std::to_string(f));
-                    const double D = rho * rfn * area / d;
+                    const double D = rho * pressure_face_orthogonal_coefficient(
+                        rawSf, dvec, {rAUx, rAUy, rAUz});
                     if (!(D > 0.0) || !std::isfinite(D))
                         throw std::runtime_error(
                             "solve_coupled_momentum_continuity: invalid boundary pressure coefficient on face " +
