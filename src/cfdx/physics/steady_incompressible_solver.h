@@ -2774,7 +2774,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const auto Sf = geometry.face_area_vectors[f];
                 const double area = Sf.mag();
                 const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-                const Vec3 nf{Sf.x/area, Sf.y/area, Sf.z/area};
+                const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+                const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
                 const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
                                        geometry.cell_volumes[n]*rAtU[0][n]) -
                                   0.5*(geometry.cell_volumes[o]*rAU[0][o] +
@@ -2787,9 +2788,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                        geometry.cell_volumes[n]*rAtU[2][n]) -
                                   0.5*(geometry.cell_volumes[o]*rAU[2][o] +
                                        geometry.cell_volumes[n]*rAU[2][n]);
-                const double drn = dx*nf.x*nf.x + dy*nf.y*nf.y + dz*nf.z*nf.z;
-                phiHbyA(f) += controls.density * drn *
-                    (p(n)-p(o))/d * area;
+                const double delta_response_s =
+                    dx*e.x*Sf.x + dy*e.y*Sf.y + dz*e.z*Sf.z;
+                phiHbyA(f) += controls.density * delta_response_s *
+                    (p(n)-p(o))/d;
             }
         }
 
@@ -3021,7 +3023,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const auto Sf = geometry.face_area_vectors[f];
                     const double area = Sf.mag();
                     const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-                    const Vec3 nf{Sf.x/area, Sf.y/area, Sf.z/area};
+                    const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+                const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
                     const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
                                            geometry.cell_volumes[n]*rAtU[0][n]) -
                                       0.5*(geometry.cell_volumes[o]*rAU[0][o] +
@@ -3034,9 +3037,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                            geometry.cell_volumes[n]*rAtU[2][n]) -
                                       0.5*(geometry.cell_volumes[o]*rAU[2][o] +
                                            geometry.cell_volumes[n]*rAU[2][n]);
-                    const double drn = dx*nf.x*nf.x + dy*nf.y*nf.y + dz*nf.z*nf.z;
-                    mass_flux(f) += controls.density * drn *
-                        (p(n)-p(o))/d * area;
+                    const double delta_response_s =
+                        dx*e.x*Sf.x + dy*e.y*Sf.y + dz*e.z*Sf.z;
+                    mass_flux(f) += controls.density * delta_response_s *
+                        (p(n)-p(o))/d;
                 }
             }
 
