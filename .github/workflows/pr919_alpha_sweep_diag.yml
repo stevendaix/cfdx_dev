@@ -45,7 +45,7 @@ jobs:
           set -o pipefail
           GITHUB_SHA="$PR919_SHA" ctest --test-dir "$RUNNER_TEMP/pr919/build" \
             -R '^test_vmfl036_axisymmetric$' --output-on-failure -V \
-            2>&1 | tee "$GITHUB_WORKSPACE/diag-evidence/logs/pr919_campaign_2026-10-16.log
+            2>&1 | tee "$GITHUB_WORKSPACE/diag-evidence/logs/pr919_campaign_2026-10-16.log"
       - name: Run alpha sensitivity sweep on PR 919 head
         id: sweep
         continue-on-error: true
