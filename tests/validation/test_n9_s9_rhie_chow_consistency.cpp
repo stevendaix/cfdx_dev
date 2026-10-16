@@ -492,7 +492,10 @@ int main()
         Field<double, Location::CELL> grad_p(2, "grad_p", "Pa/m", 3);
         p(0) = 1.0;
         p(1) = -1.0;
-        grad_p.fill(0.0);
+        // A tangential gradient with anisotropic dAU exposes whether the
+        // deferred term uses the full diagonal response or an invalid scalar.
+        grad_p.set(0, 0.0, 2.0, 0.0);
+        grad_p.set(1, 0.0, 2.0, 0.0);
 
         std::array<std::vector<double>, 3> rAU{
             std::vector<double>(mesh.n_cells(), 1.0),
@@ -507,8 +510,17 @@ int main()
                    geometry.cell_volumes[1] * rAU[1][1]),
             0.5 * (geometry.cell_volumes[0] * rAU[2][0] +
                    geometry.cell_volumes[1] * rAU[2][1])};
-        const double expected = pressure_face_orthogonal_coefficient(
+        const double d = dvec.mag();
+        const Vec3 e{dvec.x / d, dvec.y / d, dvec.z / d};
+        const double orthogonal_area = Sf.dot(e);
+        const Vec3 Snon = Sf - e * orthogonal_area;
+        const Vec3 gp{0.0, 2.0, 0.0};
+        const double implicit = pressure_face_orthogonal_coefficient(
             Sf, dvec, dAU_face) * (p(1) - p(0));
+        const double deferred = dAU_face.x * gp.x * Snon.x +
+                                dAU_face.y * gp.y * Snon.y +
+                                dAU_face.z * gp.z * Snon.z;
+        const double expected = implicit + deferred;
         const double actual = rhie_chow_pressure_flux_internal(
             mesh, geometry, 1, p, grad_p, rAU, 1.0);
         EXPECT_NEAR(actual, expected, 1e-12);
