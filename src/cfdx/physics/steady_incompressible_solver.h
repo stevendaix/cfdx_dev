@@ -653,10 +653,7 @@ make_rhie_chow_mass_flux(
     const std::array<std::vector<double>, 3>& rAU,
     double rho,
     const VelocityBoundaryConditions& bcs,
-    const ScalarBoundaryConditions& pressure_bcs = {},
-    const cfdx::core::Field<double, cfdx::core::Location::FACE>* previous_flux = nullptr,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>* previous_U = nullptr,
-    double alpha_u = 1.0)
+    const ScalarBoundaryConditions& pressure_bcs = {})
 ;
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
@@ -683,27 +680,13 @@ make_rhie_chow_mass_flux(
     const std::array<std::vector<double>, 3>& rAU,
     double rho,
     const VelocityBoundaryConditions& bcs,
-    const ScalarBoundaryConditions& pressure_bcs,
-    const cfdx::core::Field<double, cfdx::core::Location::FACE>* previous_flux,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>* previous_U,
-    double alpha_u)
+    const ScalarBoundaryConditions& pressure_bcs)
 {
     using namespace cfdx::core;
     const auto& own = mesh.ownership();
     if (p.size() != mesh.n_cells() || U.size() != mesh.n_cells() ||
         U.dimension() != 3)
         throw std::invalid_argument("make_rhie_chow_mass_flux: field size mismatch");
-    if ((previous_flux == nullptr) != (previous_U == nullptr))
-        throw std::invalid_argument(
-            "make_rhie_chow_mass_flux: previous_flux and previous_U must be supplied together");
-    if (!std::isfinite(alpha_u) || !(alpha_u > 0.0) || alpha_u > 1.0)
-        throw std::invalid_argument(
-            "make_rhie_chow_mass_flux: alpha_u must be finite and in (0, 1]");
-    if (previous_flux &&
-        (previous_flux->size() != mesh.n_faces() ||
-         previous_U->size() != mesh.n_cells() || previous_U->dimension() != 3))
-        throw std::invalid_argument(
-            "make_rhie_chow_mass_flux: previous state dimensions do not match mesh");
     // Boundary pressure is passed explicitly to the gradient operator. A
     // boundary face has no neighbour coefficient: any dAU/rAU interpolation
     // must therefore use the owner-cell value rather than a ghost/zero entry.
@@ -793,23 +776,10 @@ make_rhie_chow_mass_flux(
         flux(f) = rho * Hf.dot(geometry.face_area_vectors[f]) - correction;
     }
 
-    // Majumdar correction for implicit momentum under-relaxation. It restores
-    // the face-flux response lost when the momentum diagonal is increased by
-    // 1/alpha_u. The correction is zero for alpha_u=1 and is based on the
-    // previous conservative flux and the previous cell-velocity interpolation.
-    if (previous_flux && alpha_u < 1.0) {
-        const auto previous_velocity_flux =
-            make_mass_flux(mesh, geometry, *previous_U, rho, bcs);
-        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-            const std::size_t patch = geometry.face_patch[f];
-            if (mesh.ownership().neighbour(f) < 0 &&
-                patch < mesh.boundary().n_patches() &&
-                mesh.boundary().patch(patch).type == PatchType::EMPTY)
-                continue;
-            flux(f) += (1.0 - alpha_u) *
-                ((*previous_flux)(f) - previous_velocity_flux(f));
-        }
-    }
+    // The momentum and pressure operators both use the relaxed diagonal
+    // response. Do not add an un-derived second face-flux correction here:
+    // its interaction with the residual Rhie-Chow split must be established
+    // by an alpha_u sweep before it can be enabled in production.
     return flux;
 }
 
@@ -3093,8 +3063,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // This is the single authoritative phi state for continuity.
             mass_flux = make_rhie_chow_mass_flux(
                 mesh, geometry, U, p, rAU,
-                controls.density, velocity_bcs, pressure_bcs,
-                &mass_flux, &U_old, effective_alpha_u);
+                controls.density, velocity_bcs, pressure_bcs);
 
             // The authoritative flux is reconstructed from the corrected
             // cell velocity and the physical momentum response rAU. SIMPLEC's
