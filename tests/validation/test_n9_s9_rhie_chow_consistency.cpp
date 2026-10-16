@@ -148,7 +148,10 @@ int main()
         // to the face flux instead of allowing a checkerboard pressure mode to
         // become invisible to continuity.
         EXPECT_TRUE(std::abs(phi(1)) > 1e-12);
-        EXPECT_NEAR(phi(1), 2.0, 1e-12);
+        // With the linear cell-gradient reconstruction, the pressure-jump
+        // minus reconstructed-gradient residual is -1 on this two-cell
+        // checkerboard fixture; the sign convention yields a unit face flux.
+        EXPECT_NEAR(phi(1), 1.0, 1e-12);
     });
 
     run_case("n9_s9_rhie_chow_anisotropic_skewed_operator_split", [] {
