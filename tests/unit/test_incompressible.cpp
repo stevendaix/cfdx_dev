@@ -91,6 +91,8 @@ int main(){
             geometry.cell_volumes[1] / ap(1)) *
             Sf.dot(e) / distance;
         EXPECT_NEAR(-pc.matrix(0,1), expected, 1e-12);
+        const auto pc_rho2 = assemble_pressure_correction(m, ap, r, 2.0);
+        EXPECT_NEAR(-pc_rho2.matrix(0,1), 2.0 * expected, 1e-12);
     });
     run_case("piso_gain_uses_exact_positive_denominator", []() {
         EXPECT_NEAR(piso_correction_gain(4.0, 1.0), 1.0 / 3.0, 1e-12);
