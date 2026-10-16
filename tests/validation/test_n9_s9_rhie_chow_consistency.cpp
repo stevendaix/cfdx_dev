@@ -154,8 +154,8 @@ int main()
     });
 
     run_case("n9_s9_rhie_chow_anisotropic_skewed_operator_split", [] {
-        // A skewed face and anisotropic response must use the same
-        // (D e)·Sf coefficient in both the implicit and deferred parts.
+        // The implicit jump plus deferred remainder must reconstruct the
+        // independently evaluated tensor-gradient flux on a skewed face.
         const Vec3 e{0.8, 0.6, 0.0};
         const Vec3 Sf{1.0, 0.5, 0.0};
         const Vec3 grad_p{3.0, -2.0, 0.5};
@@ -164,15 +164,16 @@ int main()
         const double dAUz = 1.0;
         const double response = rhie_chow_orthogonal_response(
             dAUx, dAUy, dAUz, e, Sf);
-        const double deferred = rhie_chow_deferred_response(
-            dAUx, dAUy, dAUz, grad_p, e, Sf);
         const double tensor_gradient_flux =
             dAUx*grad_p.x*Sf.x +
             dAUy*grad_p.y*Sf.y +
             dAUz*grad_p.z*Sf.z;
+        const double pressure_jump_gradient = grad_p.dot(e);
+        const double deferred = rhie_chow_deferred_response(
+            response, tensor_gradient_flux, pressure_jump_gradient);
         EXPECT_NEAR(response, 3.1, 1e-12);
         EXPECT_NEAR(deferred, -2.72, 1e-12);
-        EXPECT_NEAR(response*grad_p.dot(e) + deferred,
+        EXPECT_NEAR(response*pressure_jump_gradient + deferred,
                     tensor_gradient_flux, 1e-12);
     });
 
@@ -185,12 +186,12 @@ int main()
         const double pressure_jump_gradient=6.5;
         const double response =
             rhie_chow_orthogonal_response(dx,dy,dz,e,Sf);
-        const double deferred = rhie_chow_deferred_response(
-            dx,dy,dz,grad_p,e,Sf,pressure_jump_gradient);
-        const double split_flux=response*pressure_jump_gradient+deferred;
-        const double tensor_flux=
+        const double tensor_gradient_flux=
             dx*grad_p.x*Sf.x+dy*grad_p.y*Sf.y+dz*grad_p.z*Sf.z;
-        EXPECT_NEAR(split_flux,tensor_flux,1e-12);
+        const double deferred = rhie_chow_deferred_response(
+            response,tensor_gradient_flux,pressure_jump_gradient);
+        const double split_flux=response*pressure_jump_gradient+deferred;
+        EXPECT_NEAR(split_flux,tensor_gradient_flux,1e-12);
 
         // On an orthogonal face with a linear pressure field, the deferred
         // term vanishes exactly.
@@ -199,10 +200,12 @@ int main()
         const Vec3 grad_linear{3.0,0.0,0.0};
         const double response_orth =
             rhie_chow_orthogonal_response(dx,dy,dz,e_orth,Sf_orth);
+        const double tensor_gradient_flux_orth =
+            dx*grad_linear.x*Sf_orth.x;
         const double deferred_orth = rhie_chow_deferred_response(
-            dx,dy,dz,grad_linear,e_orth,Sf_orth,3.0);
+            response_orth,tensor_gradient_flux_orth,3.0);
         EXPECT_NEAR(response_orth*3.0+deferred_orth,
-                    dx*grad_linear.x*Sf_orth.x,1e-12);
+                    tensor_gradient_flux_orth,1e-12);
         EXPECT_NEAR(deferred_orth,0.0,1e-12);
     });
 
