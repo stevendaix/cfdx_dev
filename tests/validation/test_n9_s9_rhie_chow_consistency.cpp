@@ -534,5 +534,25 @@ int main()
         EXPECT_NEAR(actual, expected, 1e-12);
     });
 
+    run_case("n9_s9_skew_boundary_deferred_flux_preserves_linear_pressure", [] {
+        // A prescribed boundary pressure lies along an oblique centre-to-face
+        // vector. The implicit jump plus deferred remainder must reproduce the
+        // full anisotropic pressure-response flux for a linear pressure field.
+        const Vec3 Sf{1.0, 0.4, 0.0};
+        const Vec3 dvec{1.0, 0.3, 0.0};
+        const Vec3 dAU{1.0, 4.0, 9.0};
+        const Vec3 grad_p{0.0, 2.0, 0.0};
+        const double pressure_jump = grad_p.dot(dvec);
+        const double implicit = pressure_face_orthogonal_coefficient(
+            Sf, dvec, dAU) * pressure_jump;
+        const double deferred = pressure_face_nonorthogonal_flux(
+            Sf, dvec, dAU, grad_p);
+        const double full_flux = dAU.x * grad_p.x * Sf.x +
+                                 dAU.y * grad_p.y * Sf.y +
+                                 dAU.z * grad_p.z * Sf.z;
+        EXPECT_NEAR(implicit + deferred, full_flux, 1e-12);
+        EXPECT_NEAR(deferred, 8.0 * (Sf.y - 0.4 * 0.3 / dvec.mag()), 1e-12);
+    });
+
     return 0;
 }
