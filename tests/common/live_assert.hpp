@@ -18,11 +18,14 @@
 #include <string>
 
 #undef assert
-#define assert(expr)                                                     \
+// Variadic: template commas (e.g. assert(std::is_same<A, B>::value)) are not
+// protected by angle brackets at the preprocessor level, so a single-argument
+// macro would break on them. __VA_ARGS__ absorbs them all.
+#define assert(...)                                                     \
     do {                                                                 \
-        if (!(expr)) {                                                  \
+        if (!(__VA_ARGS__)) {                                           \
             throw std::runtime_error(                                   \
-                "live_assert failed: " #expr " (" __FILE__ ":" +         \
+                "live_assert failed: " #__VA_ARGS__ " (" __FILE__ ":" +  \
                 std::to_string(__LINE__) + ")");                          \
         }                                                                \
     } while (0)
