@@ -32,7 +32,7 @@ Il serait donc incorrect de conclure que la même relation de Majumdar, interpr�
 
 ## 3. Ce que les tests actuels prouvent — et ne prouvent pas
 
-Le test `n9_s9_rhie_chow_correction_scales_linearly_with_rAU_majumdar` appelle bien le constructeur de flux de production. Il vérifie la linéarité de la correction en `rAU`, mais le cas utilisé est un canal à deux cellules avec une face interne orthogonale. Il ne vérifie pas à lui seul :
+Le test `n9_s9_rhie_chow_correction_scales_linearly_with_rAU_majumdar` vérifie la linéarité sur une face orthogonale. Un nouveau test, `n9_s9_rhie_chow_oblique_3d_face_operator_and_relaxation_scaling`, exerce directement l'opérateur de flux de production sur un hexaèdre 3D cisaillé : il vérifie la contribution non orthogonale avec un champ de pression linéaire exact, des réponses directionnelles anisotropes et la mise à l'échelle par `alpha_u`. Cela améliore la preuve opérateur, mais ne vérifie pas à lui seul :
 
 - le passage effectif de `alpha_u` à la diagonale relaxée dans une itération complète du solveur 3D ;
 - la cohérence entre le flux de Rhie–Chow, la matrice de correction de pression et la correction de vitesse sur un maillage 3D oblique/non orthogonal ;
@@ -43,13 +43,13 @@ Les tests d'invariance de décalage de pression et de mode de pression alterné 
 
 ## 4. Actions de qualification requises
 
-- [ ] Ajouter un test opérateur 3D sur maillage non orthogonal, avec réponses directionnelles anisotropes et vérification du flux conservatif.
+- [x] Ajouter un test opérateur 3D sur maillage non orthogonal, avec réponses directionnelles anisotropes et vérification analytique du flux de pression.
 - [ ] Ajouter une vérification d'intégration démontrant que le `rAU` passé au flux ségrégé provient bien de la diagonale relaxée pour plusieurs valeurs de `alpha_u`.
 - [ ] Comparer les bilans de continuité du flux conservatif et du flux reconstruit à partir de la vitesse corrigée sur un cas 3D oblique.
 - [ ] Faire un sweep `alpha_u` sur un cas 3D validé, en exigeant la convergence de toutes les métriques physiques avant de comparer les quantités d'intérêt.
 - [ ] Auditer séparément `COUPLED` : dérivation documentée, puis test de cohérence du bloc et de sa réponse pression–vitesse. Ne pas transposer automatiquement la formule ségrégée.
 
-## 5. Décision
+## 5. Impact vérifié et limites\n\nLe test ajouté ne change aucune formule de production. Il est conçu pour échouer si le terme différé non orthogonal est omis ou si la réponse directionnelle est projetée de manière incohérente ; il vérifie aussi que multiplier les trois `rAU` par `alpha_u` multiplie le flux de pression par le même facteur. La validation effective dépend du résultat CI de la PR. Aucun résultat de compilation ou d'exécution ne doit être annoncé tant que ce job n'a pas terminé.\n\n## 6. Décision
 
 **Pas de modification de formule dans le solveur 3D ségrégé à ce stade** : l'inspection du code indique que la diagonale relaxée est déjà transmise à Rhie–Chow. Une modification supplémentaire risquerait de compter deux fois `alpha_u`.
 
