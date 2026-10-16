@@ -1,6 +1,6 @@
 {
   "campaign": "vmfl036_wall_refinement",
-  "version": 2,
+  "version": 3,
   "date": "2026-10-16",
   "twin": "diag-tools/port4_rhie_chow.ts @ ci/long-campaign-diagnostics",
   "controls": {
@@ -14,7 +14,7 @@
     "alphaP": 0.25,
     "omega": 1.8
   },
-  "question": "v1: near-wall sampling (REFUTED - Cd saturates ~1.256). v2: far-field momentum budget vs wall integration (post-processing vs solution bias) + tangential refinement nt=144.",
+  "question": "v3: corrected momentum budget sign + telescoped wall-force decomposition (equation closures) vs drag() sampling vs reference.",
   "selfcheck": "re100 coarse 24x36 pre-campaign run: converged it=75, Cd=0.8716507056286522 (bit-exact vs 2026-10-15 campaign)",
   "cases": {
     "re100_nr96": {
@@ -35,7 +35,7 @@
       "mom": 0.000001977770703173818,
       "cont": 9.734936673615609e-9,
       "pcorr": 1.9852893542229655e-7,
-      "wallMs": 4233,
+      "wallMs": 4343,
       "traj": [
         "ITER=1 cont=2.090e-7 mom=2.593e-2 pcorr=2.287e-6 Cd=11.2579 cdp=8.982 cdv=2.275",
         "ITER=50 cont=1.122e-8 mom=1.112e-3 pcorr=1.947e-7 Cd=1.2749 cdp=0.661 cdv=0.614",
@@ -45,7 +45,7 @@
       ],
       "budget": {
         "qA": 0.39269908169872414,
-        "cd_budget": 0.58985483240447,
+        "cd_budget": 1.339963103977779,
         "massIn": -7853.981633974481,
         "massOut": 7853.981608557376,
         "massImbalance": -0.000025417105462111067,
@@ -60,6 +60,18 @@
         "viscIn": -0.0006001089254801336,
         "viscOut": -0.00008791770443848754,
         "viscTotal": -0.0006880266299186212
+      },
+      "wallEq": {
+        "sphereFaces": 72,
+        "extrapolated": 72,
+        "wall_eq_pressure": 0.26719604196522606,
+        "wall_eq_visc": 0.25915132271709157,
+        "wall_eq_total": 0.5263473646823176
+      },
+      "wallEqCd": {
+        "cd_eq_p": -0.6804091336536837,
+        "cd_eq_v": 0.6599234243076498,
+        "cd_eq_total": 1.3403325579613334
       }
     },
     "re100_nr72": {
@@ -80,7 +92,7 @@
       "mom": 0.00000196824758693403,
       "cont": 1.110014022612129e-8,
       "pcorr": 1.8650944266834646e-7,
-      "wallMs": 3918,
+      "wallMs": 3867,
       "traj": [
         "ITER=1 cont=2.295e-7 mom=2.267e-2 pcorr=1.551e-6 Cd=9.4829 cdp=7.950 cdv=1.533",
         "ITER=50 cont=1.719e-8 mom=1.307e-3 pcorr=1.937e-7 Cd=1.2450 cdp=0.698 cdv=0.547",
@@ -90,7 +102,7 @@
       ],
       "budget": {
         "qA": 0.39269908169872414,
-        "cd_budget": 0.5821802733182514,
+        "cd_budget": 1.3786728514793758,
         "massIn": -7853.981633974481,
         "massOut": 7853.9816228987065,
         "massImbalance": -0.000011075774636992719,
@@ -105,6 +117,18 @@
         "viscIn": -0.0005612244602665893,
         "viscOut": -0.00007132212015949125,
         "viscTotal": -0.0006325465804260806
+      },
+      "wallEq": {
+        "sphereFaces": 72,
+        "extrapolated": 72,
+        "wall_eq_pressure": 0.29102327994606075,
+        "wall_eq_visc": 0.2504459529881776,
+        "wall_eq_total": 0.5414692329342383
+      },
+      "wallEqCd": {
+        "cd_eq_p": -0.7410846969317124,
+        "cd_eq_v": 0.6377553823268625,
+        "cd_eq_total": 1.3788400792585747
       }
     },
     "re50_nr88": {
@@ -125,7 +149,7 @@
       "mom": 0.000001922615903870565,
       "cont": 1.128151649200757e-8,
       "pcorr": 1.9513150347790655e-7,
-      "wallMs": 2934,
+      "wallMs": 2999,
       "traj": [
         "ITER=1 cont=5.797e-8 mom=4.729e-2 pcorr=4.233e-7 Cd=12.5577 cdp=8.814 cdv=3.744",
         "ITER=50 cont=7.762e-9 mom=1.506e-3 pcorr=1.993e-7 Cd=1.7731 cdp=0.845 cdv=0.928",
@@ -135,7 +159,7 @@
       ],
       "budget": {
         "qA": 0.39269908169872414,
-        "cd_budget": 0.7829234212442637,
+        "cd_budget": 1.8762810010708448,
         "massIn": -7853.981633974481,
         "massOut": 7853.9815846522715,
         "massImbalance": -0.000049322209633828606,
@@ -150,6 +174,18 @@
         "viscIn": -0.0015736863851297208,
         "viscOut": -0.00022300288644124607,
         "viscTotal": -0.0017966892715709669
+      },
+      "wallEq": {
+        "sphereFaces": 54,
+        "extrapolated": 54,
+        "wall_eq_pressure": 0.343591176868272,
+        "wall_eq_visc": 0.39300897877684715,
+        "wall_eq_total": 0.7366001556451192
+      },
+      "wallEqCd": {
+        "cd_eq_p": -0.8749477472215549,
+        "cd_eq_v": 1.0007891464293281,
+        "cd_eq_total": 1.8757368936508831
       }
     },
     "re100_nr128": {
@@ -170,7 +206,7 @@
       "mom": 0.0000019904238249318723,
       "cont": 7.958594325397363e-9,
       "pcorr": 1.9617994796274275e-7,
-      "wallMs": 8930,
+      "wallMs": 9089,
       "traj": [
         "ITER=1 cont=1.863e-7 mom=3.142e-2 pcorr=3.648e-6 Cd=13.6161 cdp=10.316 cdv=3.300",
         "ITER=50 cont=7.334e-9 mom=9.269e-4 pcorr=1.978e-7 Cd=1.2802 cdp=0.636 cdv=0.644",
@@ -181,7 +217,7 @@
       ],
       "budget": {
         "qA": 0.39269908169872414,
-        "cd_budget": 0.5933927626036486,
+        "cd_budget": 1.3028525262521125,
         "massIn": -7853.981633974481,
         "massOut": 7853.98157266284,
         "massImbalance": -0.00006131164082034957,
@@ -196,6 +232,18 @@
         "viscIn": -0.000634551228621713,
         "viscOut": -0.00010302651123499952,
         "viscTotal": -0.0007375777398567126
+      },
+      "wallEq": {
+        "sphereFaces": 72,
+        "extrapolated": 72,
+        "wall_eq_pressure": 0.2546663192133068,
+        "wall_eq_visc": 0.25721744795555046,
+        "wall_eq_total": 0.5118837671688572
+      },
+      "wallEqCd": {
+        "cd_eq_p": -0.6485024566690607,
+        "cd_eq_v": 0.654998852665731,
+        "cd_eq_total": 1.3035013093347916
       }
     },
     "re100_nt144": {
@@ -216,7 +264,7 @@
       "mom": 0.0000019915303761619637,
       "cont": 7.02268925971342e-9,
       "pcorr": 1.9901523417026814e-7,
-      "wallMs": 18358,
+      "wallMs": 18418,
       "traj": [
         "ITER=1 cont=7.739e-6 mom=1.087e-2 pcorr=1.812e-4 Cd=19.4599 cdp=18.635 cdv=0.825",
         "ITER=50 cont=1.659e-8 mom=1.328e-3 pcorr=1.988e-7 Cd=1.1817 cdp=0.714 cdv=0.468",
@@ -229,7 +277,7 @@
       ],
       "budget": {
         "qA": 0.39269908169872414,
-        "cd_budget": 0.6075681194017359,
+        "cd_budget": 1.4850759161982567,
         "massIn": -7853.981633974483,
         "massOut": 7853.98163226755,
         "massImbalance": -0.0000017069332898245193,
@@ -244,6 +292,18 @@
         "viscIn": -0.0005254656526788974,
         "viscOut": -0.00004849664419280271,
         "viscTotal": -0.0005739622968717001
+      },
+      "wallEq": {
+        "sphereFaces": 144,
+        "extrapolated": 144,
+        "wall_eq_pressure": 0.33955844018599124,
+        "wall_eq_visc": 0.24421397619943294,
+        "wall_eq_total": 0.5837724163854242
+      },
+      "wallEqCd": {
+        "cd_eq_p": -0.8646784675867869,
+        "cd_eq_v": 0.6218857837482598,
+        "cd_eq_total": 1.4865642513350468
       }
     },
     "re100_nr96_nt144": {
@@ -264,7 +324,7 @@
       "mom": 0.00000199083515578807,
       "cont": 4.24503270892266e-9,
       "pcorr": 1.9494367945333391e-7,
-      "wallMs": 43521,
+      "wallMs": 43954,
       "traj": [
         "ITER=1 cont=3.554e-6 mom=1.539e-2 pcorr=2.166e-4 Cd=25.6307 cdp=23.201 cdv=2.429",
         "ITER=50 cont=6.283e-9 mom=8.268e-4 pcorr=1.998e-7 Cd=1.3202 cdp=0.596 cdv=0.724",
@@ -279,7 +339,7 @@
       ],
       "budget": {
         "qA": 0.39269908169872414,
-        "cd_budget": 0.6029102909748234,
+        "cd_budget": 1.2997392973824338,
         "massIn": -7853.981633974483,
         "massOut": 7853.981629036959,
         "massImbalance": -0.000004937523954140488,
@@ -294,6 +354,18 @@
         "viscIn": -0.0005908114246790935,
         "viscOut": -0.00008799107322359177,
         "viscTotal": -0.0006788024979026853
+      },
+      "wallEq": {
+        "sphereFaces": 144,
+        "extrapolated": 144,
+        "wall_eq_pressure": 0.2553347827872801,
+        "wall_eq_visc": 0.2558302014950433,
+        "wall_eq_total": 0.5111649842823234
+      },
+      "wallEqCd": {
+        "cd_eq_p": -0.6502046851822564,
+        "cd_eq_v": 0.6514662585621078,
+        "cd_eq_total": 1.301670943744364
       }
     }
   }
