@@ -761,8 +761,10 @@ make_rhie_chow_mass_flux(
                     const Vec3 dvec =
                         geometry.face_centres[f] - geometry.cell_centres[o];
                     const double d = dvec.mag();
-                    if (!(d > 0.0))
-                        throw std::runtime_error("make_rhie_chow_mass_flux: degenerate boundary distance");
+                    if (!(area > 0.0) || !(d > 0.0) ||
+                        !std::isfinite(area) || !std::isfinite(d))
+                        throw std::runtime_error(
+                            "make_rhie_chow_mass_flux: degenerate boundary geometry");
                     const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
                     const double cx = geometry.cell_volumes[o] * rAU[0][o];
                     const double cy = geometry.cell_volumes[o] * rAU[1][o];
@@ -790,9 +792,15 @@ make_rhie_chow_mass_flux(
     if (previous_flux && alpha_u < 1.0) {
         const auto previous_velocity_flux =
             make_mass_flux(mesh, geometry, *previous_U, rho, bcs);
-        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            const std::size_t patch = geometry.face_patch[f];
+            if (mesh.ownership().neighbour(f) < 0 &&
+                patch < mesh.boundary().n_patches() &&
+                mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                continue;
             flux(f) += (1.0 - alpha_u) *
                 ((*previous_flux)(f) - previous_velocity_flux(f));
+        }
     }
     return flux;
 }
