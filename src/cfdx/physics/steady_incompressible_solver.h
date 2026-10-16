@@ -548,6 +548,36 @@ make_mass_flux(
     return flux;
 }
 
+// Orthogonal implicit coefficient shared by the Rhie-Chow face flux and the
+// pressure-correction matrix. dAU_diagonal contains the volume-weighted
+// directional inverse momentum diagonal (V*rAU), interpolated to the face.
+// The implicit pressure difference is along the owner-to-neighbour line, so
+// the matching surface measure is Sf.e, not |Sf|. They coincide only on an
+// orthogonal face. The deferred non-orthogonal part is handled separately by
+// the Rhie-Chow flux reconstruction.
+inline double pressure_face_orthogonal_coefficient(
+    const cfdx::core::Vec3& Sf,
+    const cfdx::core::Vec3& dvec,
+    const cfdx::core::Vec3& dAU_diagonal)
+{
+    const double d = dvec.mag();
+    const double area = Sf.mag();
+    if (!(d > 0.0) || !std::isfinite(d) || !(area > 0.0) || !std::isfinite(area))
+        throw std::runtime_error("pressure_face_orthogonal_coefficient: invalid face geometry");
+    const cfdx::core::Vec3 e{dvec.x / d, dvec.y / d, dvec.z / d};
+    const double orthogonal_area = Sf.dot(e);
+    if (!(orthogonal_area > 0.0) || !std::isfinite(orthogonal_area))
+        throw std::runtime_error(
+            "pressure_face_orthogonal_coefficient: face orientation is inconsistent with cell-centre direction");
+    const double rfn = dAU_diagonal.x * e.x * e.x +
+                       dAU_diagonal.y * e.y * e.y +
+                       dAU_diagonal.z * e.z * e.z;
+    const double coefficient = rfn * orthogonal_area / d;
+    if (!std::isfinite(coefficient))
+        throw std::runtime_error("pressure_face_orthogonal_coefficient: non-finite coefficient");
+    return coefficient;
+}
+
 inline double rhie_chow_pressure_flux_internal(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -2324,11 +2354,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     auto directional_face_coefficient =
         [&](const std::array<std::vector<double>,3>& coeff,
             std::size_t o, std::size_t n,
-            const Vec3& Sf) {
-            const double area = Sf.mag();
-            if (!(area > 0.0))
-                throw std::runtime_error("solve_steady_incompressible: degenerate face area");
-            const Vec3 nf{Sf.x/area, Sf.y/area, Sf.z/area};
+            const Vec3& Sf, const Vec3& dvec) {
             const double cx = 0.5 * (
                 geometry.cell_volumes[o] * coeff[0][o] +
                 geometry.cell_volumes[n] * coeff[0][n]);
@@ -2338,7 +2364,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             const double cz = 0.5 * (
                 geometry.cell_volumes[o] * coeff[2][o] +
                 geometry.cell_volumes[n] * coeff[2][n]);
-            return cx*nf.x*nf.x + cy*nf.y*nf.y + cz*nf.z*nf.z;
+            return pressure_face_orthogonal_coefficient(Sf, dvec, {cx, cy, cz});
         };
 
     Field<double, Location::FACE> mass_flux =
@@ -2767,9 +2793,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const std::size_t o = mesh.ownership().owner(f);
                 const std::size_t n = static_cast<std::size_t>(nr);
                 const auto Sf = geometry.face_area_vectors[f];
-                const double area = Sf.mag();
-                const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-                const Vec3 nf{Sf.x/area, Sf.y/area, Sf.z/area};
+                const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
                 const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
                                        geometry.cell_volumes[n]*rAtU[0][n]) -
                                   0.5*(geometry.cell_volumes[o]*rAU[0][o] +
@@ -2782,9 +2806,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                        geometry.cell_volumes[n]*rAtU[2][n]) -
                                   0.5*(geometry.cell_volumes[o]*rAU[2][o] +
                                        geometry.cell_volumes[n]*rAU[2][n]);
-                const double drn = dx*nf.x*nf.x + dy*nf.y*nf.y + dz*nf.z*nf.z;
-                phiHbyA(f) += controls.density * drn *
-                    (p(n)-p(o))/d * area;
+                const double correction_coeff = pressure_face_orthogonal_coefficient(
+                    Sf, dvec, {dx, dy, dz});
+                phiHbyA(f) += controls.density * correction_coeff * (p(n)-p(o));
             }
         }
 
@@ -2824,13 +2848,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const std::size_t o = mesh.ownership().owner(f);
                 const std::size_t n = static_cast<std::size_t>(nr);
                 const Vec3 Sf = geometry.face_area_vectors[f];
-                const double area = Sf.mag();
-                const double d = (geometry.cell_centres[n]-geometry.cell_centres[o]).mag();
+                const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
                 const auto& pressure_coeff =
                     controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
-                const double rfn = directional_face_coefficient(
-                    pressure_coeff, o, n, Sf);
-                const double coeff = controls.density * rfn * area / d;
+                const double coeff = controls.density * directional_face_coefficient(
+                    pressure_coeff, o, n, Sf, dvec);
                 diag[o] += coeff;
                 diag[n] += coeff;
                 rows[o][n] -= coeff;
@@ -2851,17 +2873,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (it == pressure_bcs.end() ||
                     it->second.type != ScalarBoundaryType::FIXED_VALUE) continue;
                 const std::size_t o = mesh.ownership().owner(f);
-                const double distance =
-                    (geometry.face_centres[f]-geometry.cell_centres[o]).mag();
+                const Vec3 dvec = geometry.face_centres[f] - geometry.cell_centres[o];
                 const Vec3 Sf = geometry.face_area_vectors[f];
-                const double area = Sf.mag();
                 const auto& pressure_coeff =
                     controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
-                const double rfn =
-                    pressure_coeff[0][o]*(Sf.x/area)*(Sf.x/area) +
-                    pressure_coeff[1][o]*(Sf.y/area)*(Sf.y/area) +
-                    pressure_coeff[2][o]*(Sf.z/area)*(Sf.z/area);
-                rows[o][o] += controls.density * rfn * area / distance;
+                const Vec3 dAU_boundary{
+                    geometry.cell_volumes[o] * pressure_coeff[0][o],
+                    geometry.cell_volumes[o] * pressure_coeff[1][o],
+                    geometry.cell_volumes[o] * pressure_coeff[2][o]};
+                const double boundary_coeff = pressure_face_orthogonal_coefficient(
+                    Sf, dvec, dAU_boundary);
+                rows[o][o] += controls.density * boundary_coeff;
                 // Explicit pressure flux at fixed-pressure boundaries (#894):
                 // the half-Dirichlet diagonal term above is only consistent
                 // when the boundary mass flux is reconstructed as
@@ -2872,7 +2894,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // the RHS (b is assembled before this loop, so it must be
                 // updated directly), with the same directional coefficient
                 // rfn as the matrix (rAU: SIMPLE, rAtU: SIMPLEC).
-                b(o) += controls.density * rfn * area / distance *
+                b(o) += controls.density * boundary_coeff *
                     (it->second.value - p(o));
             }
 
@@ -3014,9 +3036,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const std::size_t o = mesh.ownership().owner(f);
                     const std::size_t n = static_cast<std::size_t>(nr);
                     const auto Sf = geometry.face_area_vectors[f];
-                    const double area = Sf.mag();
-                    const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-                    const Vec3 nf{Sf.x/area, Sf.y/area, Sf.z/area};
+                    const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
                     const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
                                            geometry.cell_volumes[n]*rAtU[0][n]) -
                                       0.5*(geometry.cell_volumes[o]*rAU[0][o] +
@@ -3029,9 +3049,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                            geometry.cell_volumes[n]*rAtU[2][n]) -
                                       0.5*(geometry.cell_volumes[o]*rAU[2][o] +
                                            geometry.cell_volumes[n]*rAU[2][n]);
-                    const double drn = dx*nf.x*nf.x + dy*nf.y*nf.y + dz*nf.z*nf.z;
-                    mass_flux(f) += controls.density * drn *
-                        (p(n)-p(o))/d * area;
+                    const double correction_coeff = pressure_face_orthogonal_coefficient(
+                        Sf, dvec, {dx, dy, dz});
+                    mass_flux(f) += controls.density * correction_coeff * (p(n)-p(o));
                 }
             }
 
