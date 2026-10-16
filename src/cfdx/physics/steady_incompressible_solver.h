@@ -1377,8 +1377,14 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
 
                 const Vec3 rawSf = geometry.face_area_vectors[f];
                 const double area = rawSf.mag();
-                const Vec3 dvec = geometry.cell_centres[ncell] -
-                                  geometry.cell_centres[c];
+                // Keep the geometric direction aligned with the stored
+                // owner-to-neighbour face orientation even when this row is
+                // the neighbour cell; the matrix coefficient must be positive
+                // and identical in both continuity rows.
+                const std::size_t face_owner = mesh.ownership().owner(f);
+                const std::size_t face_neighbour = static_cast<std::size_t>(nr);
+                const Vec3 dvec = geometry.cell_centres[face_neighbour] -
+                                  geometry.cell_centres[face_owner];
                 const double d = dvec.mag();
                 if (!(area > 0.0) || !std::isfinite(area) ||
                     !(d > 0.0) || !std::isfinite(d))
