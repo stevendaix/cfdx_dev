@@ -1,0 +1,1 @@
+cfdx_wall_distance_controlled_benchmark exit=0
