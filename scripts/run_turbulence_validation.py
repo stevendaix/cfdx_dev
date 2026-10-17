@@ -59,6 +59,36 @@ def main() -> int:
         print(f"ERROR: build directory is not configured: {build_dir}", file=sys.stderr)
         return 2
 
+    source_root = Path(__file__).resolve().parents[1]
+    head = run(["git", "-C", str(source_root), "rev-parse", "HEAD"])
+    if head.returncode != 0:
+        print("ERROR: cannot record the source HEAD SHA", file=sys.stderr)
+        return 2
+
+    cache_path = build_dir / "CMakeCache.txt"
+    if not cache_path.is_file():
+        print(f"ERROR: CMake cache is missing: {cache_path}", file=sys.stderr)
+        return 2
+    recorded_options = {
+        "CMAKE_BUILD_TYPE",
+        "CMAKE_CXX_COMPILER",
+        "CMAKE_CXX_COMPILER_ID",
+        "CFDX_BUILD_TESTS",
+        "CFDX_ENABLE_MPI",
+        "CFDX_ENABLE_GPU",
+        "CFDX_USE_HDF5_SERIAL",
+        "CFDX_ENABLE_PARALLEL_HDF5",
+        "CFDX_ENABLE_LONG_VALIDATION",
+    }
+    cmake_configuration: dict[str, str] = {}
+    for line in cache_path.read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith(("#", "//")) or "=" not in line:
+            continue
+        declaration, value = line.split("=", maxsplit=1)
+        option = declaration.split(":", maxsplit=1)[0]
+        if option in recorded_options:
+            cmake_configuration[option] = value
+
     try:
         available = registered_tests(build_dir)
     except RuntimeError as exc:
@@ -105,7 +135,10 @@ def main() -> int:
     report = {
         "schema_version": 1,
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "source_root": str(source_root),
+        "git_head_sha": head.stdout.strip(),
         "build_dir": str(build_dir),
+        "cmake_configuration": cmake_configuration,
         "scope": "existing component/equation tests plus laminar baseline; not physical validation",
         "results": records,
         "physical_validation": {
