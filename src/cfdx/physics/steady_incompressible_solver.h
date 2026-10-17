@@ -207,6 +207,19 @@ struct IncompressibleIteration {
     double continuity_l1 = std::numeric_limits<double>::infinity();
     double continuity_linf = std::numeric_limits<double>::infinity();
     double continuity_normalized = std::numeric_limits<double>::infinity();
+    // Explicit normalization evidence: raw residual / max(abs(momentum RHS))
+    // and raw residual / first-iteration raw residual are different metrics.
+    double momentum_rhs_scale = std::numeric_limits<double>::infinity();
+    double momentum_equation_residual_reference = std::numeric_limits<double>::infinity();
+    double momentum_equation_residual_rhs_relative = std::numeric_limits<double>::infinity();
+    std::array<double, 3> momentum_rhs_scale_components{
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity()};
+    std::array<double, 3> momentum_equation_residual_rhs_relative_components{
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity()};
     double momentum_equation_residual = std::numeric_limits<double>::infinity();
     double momentum_equation_residual_relative = std::numeric_limits<double>::infinity();
     double velocity_change_inf = std::numeric_limits<double>::infinity();
@@ -3287,10 +3300,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const std::size_t face = mesh.cells().faces_data()[off + k];
                     if (mesh.ownership().neighbour(face) < 0) {
                         const std::size_t patch = geometry.face_patch[face];
-                        if (patch < mesh.boundary().n_patches()) {
-                            diagnostic.patch = mesh.boundary().patch(patch).name;
-                            break;
-                        }
+                        if (patch >= mesh.boundary().n_patches())
+                            continue;
+                        // EMPTY faces are geometric extrusion faces, not
+                        // physical boundary patches. Do not let the first
+                        // front/back face mask the physical patch adjacent to
+                        // the worst momentum-residual cell.
+                        if (mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                            continue;
+                        diagnostic.patch = mesh.boundary().patch(patch).name;
+                        break;
                     }
                 }
                 return diagnostic;
@@ -3358,11 +3377,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             {pressure_range, controls.density * velocity_scale * velocity_scale, 1.0e-30});
         pressure_change_inf /= pressure_scale;
 
-        double momentum_rhs_scale = 0.0;
-        for (const auto* eq : {&final_ex, &final_ey, &final_ez})
-            for (std::size_t c = 0; c < mesh.n_cells(); ++c)
-                momentum_rhs_scale = std::max(momentum_rhs_scale, std::abs(eq->rhs(c)));
-        momentum_rhs_scale = std::max(momentum_rhs_scale, tiny);
+        const std::array<const ScalarEquation*, 3> momentum_equations{
+            &final_ex, &final_ey, &final_ez};
+        std::array<double, 3> momentum_rhs_scale_components{0.0, 0.0, 0.0};
+        for (std::size_t d = 0; d < momentum_equations.size(); ++d) {
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                momentum_rhs_scale_components[d] = std::max(
+                    momentum_rhs_scale_components[d],
+                    std::abs(momentum_equations[d]->rhs(c)));
+            }
+            momentum_rhs_scale_components[d] =
+                std::max(momentum_rhs_scale_components[d], tiny);
+        }
+        const double momentum_rhs_scale = std::max({
+            momentum_rhs_scale_components[0],
+            momentum_rhs_scale_components[1],
+            momentum_rhs_scale_components[2]});
 
         IncompressibleIteration h;
         h.iteration = iter;
@@ -3371,8 +3401,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.continuity_l1 = l1;
         h.continuity_linf = linf;
         h.momentum_equation_residual = final_momentum_residual;
-        h.momentum_equation_residual_relative =
+        h.momentum_rhs_scale = momentum_rhs_scale;
+        h.momentum_rhs_scale_components = momentum_rhs_scale_components;
+        h.momentum_equation_residual_rhs_relative =
             final_momentum_residual / momentum_rhs_scale;
+        h.momentum_equation_residual_rhs_relative_components = {
+            rx_diag.global / momentum_rhs_scale_components[0],
+            ry_diag.global / momentum_rhs_scale_components[1],
+            rz_diag.global / momentum_rhs_scale_components[2]};
         double flux_reference = 0.0;
         for (std::size_t f = 0; f < mesh.n_faces(); ++f)
             flux_reference += std::abs(mass_flux(f));
@@ -3382,8 +3418,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (iter == 1)
             result.reference_momentum_residual =
                 std::max(final_momentum_residual, tiny);
+        h.momentum_equation_residual_reference =
+            std::max(result.reference_momentum_residual, tiny);
         h.momentum_equation_residual_relative =
-            final_momentum_residual / std::max(result.reference_momentum_residual, tiny);
+            final_momentum_residual / h.momentum_equation_residual_reference;
         h.velocity_change_inf = velocity_change_inf;
         h.pressure_change_inf = pressure_change_inf;
         h.effective_alpha_u = effective_alpha_u;
@@ -3471,7 +3509,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // Diagnostic-only trace: expose the authoritative nonlinear history
             // before the convergence gate. No criterion or tolerance is changed.
             std::cerr << "INCOMPRESSIBLE_ITER iter=" << iter
-                      << " momentum_residual_relative=" << h.momentum_equation_residual_relative
+                      << " momentum_residual_rhs_relative=" << h.momentum_equation_residual_rhs_relative
+                      << " momentum_residual_reference_relative=" << h.momentum_equation_residual_relative
+                      << " momentum_residual_raw=" << h.momentum_equation_residual
+                      << " momentum_rhs_scale=" << h.momentum_rhs_scale
+                      << " momentum_residual_reference=" << h.momentum_equation_residual_reference
+                      << " momentum_rhs_scale_components=("
+                      << h.momentum_rhs_scale_components[0] << ","
+                      << h.momentum_rhs_scale_components[1] << ","
+                      << h.momentum_rhs_scale_components[2] << ")"
+                      << " momentum_rhs_relative_components=("
+                      << h.momentum_equation_residual_rhs_relative_components[0] << ","
+                      << h.momentum_equation_residual_rhs_relative_components[1] << ","
+                      << h.momentum_equation_residual_rhs_relative_components[2] << ")"
                       << " continuity_normalized=" << h.continuity_normalized
                       << " velocity_change_inf=" << h.velocity_change_inf
                       << " pressure_change_inf=" << h.pressure_change_inf
