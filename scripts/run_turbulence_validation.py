@@ -26,7 +26,12 @@ BASELINE_TESTS = ("test_channel_qualification",)
 
 def run(command: list[str]) -> subprocess.CompletedProcess[str]:
     print("$ " + " ".join(command), flush=True)
-    return subprocess.run(command, text=True, check=False)
+    result = subprocess.run(command, text=True, capture_output=True, check=False)
+    if result.stdout:
+        print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
+    if result.stderr:
+        print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
+    return result
 
 
 def registered_tests(build_dir: Path) -> set[str]:
