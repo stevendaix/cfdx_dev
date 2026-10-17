@@ -146,7 +146,10 @@ Result solve_case(const std::string& mesh_path, std::size_t n)
     c.body_force={G,0.0,0.0};
     c.linear_max_iterations=4000;
     c.linear_tolerance=1e-10;
-    c.convergence.max_iterations=6000;
+    // Measured SIMPLE tail convergence scales approximately with n^2;
+    // n64 needs the larger Picard budget. This changes no physical gate.
+    c.convergence.max_iterations=24000;
+    c.convergence.stagnation_relative_improvement=1e-4;
     c.convergence.relative_tolerance=1e-9;
     c.convergence.continuity_tolerance=1e-9;
     c.coupling.alpha_u=0.7;
