@@ -7,10 +7,22 @@ name: PR923 targeted campaign comparison (diag)
 #  - rapport structure par test (TSV : ref, test, statut, duree) + junit
 #    archive, pas seulement des listes d'echecs extraites du texte ;
 #  - fail-closed : build/pip/meshgen en echec, decouverte incomplete (<6
-#    tests sur une ref), test sans ligne d'issue, ou TIMEOUT sur une ref =>
+#    tests sur une ref), test sans ligne d'issue, TIMEOUT sur une ref =>
 #    verdict INCONCLUSIVE_*, jamais "identique" ;
+#  - fix 2026-10-17 (apres run 38970138370 INCONCLUSIVE_BUILD) : les noms
+#    CTest ne sont pas des cibles CMake. Le test CTest
+#    test_ghia_cavity_n8_pcd est un add_test(NAME ... COMMAND test_ghia_cavity
+#    --pcd) ; on construit donc la cible executable test_ghia_cavity, apres
+#    verification explicite que chaque cible demandee existe dans le build
+#    Ninja (ninja -t targets all) ;
+#  - le parseur des lignes d'issue ctest capture aussi ***Exception:* (crash,
+#    ex. naca subprocess aborted), normalise en Failed ;
+#  - cross-check junit vs parse des lignes d'issue : tout conflit ou junit
+#    absent alors que le log a des issues => INCONCLUSIVE_JUNIT_CONFLICT /
+#    INCONCLUSIVE_MISSING_JUNIT ;
 #  - verdicts possibles : INCONCLUSIVE_BUILD / INCONCLUSIVE_DISCOVERY /
 #    INCONCLUSIVE_MISSING_OUTCOME / INCONCLUSIVE_TIMEOUT / INCONCLUSIVE_NOT_RUN /
+#    INCONCLUSIVE_MISSING_JUNIT / INCONCLUSIVE_JUNIT_CONFLICT /
 #    REGRESSION / FAILURE_SETS_DIFFER / IDENTICAL_FAILURE_SETS ;
 #  - commentaire automatique du verdict sur #923 ; job rouge sauf
 #    IDENTICAL_FAILURE_SETS.
@@ -94,7 +106,14 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
             -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON \
             2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_base_configure_run$GITHUB_RUN_ID.log"
-          cmake --build "$RUNNER_TEMP/base/build" --parallel 2 \
+          # Cibles CMake reelles : test_ghia_cavity_n8_pcd est un nom CTest (add_test),
+          # l'executable est test_ghia_cavity. Verification fail-closed des cibles.
+          TARGETS="test_bfs_qualification test_channel_qualification test_naca0012_qualification test_ghia_cavity test_n12_coupled_pressure_velocity_mms test_n9_s9_rhie_chow_consistency"
+          avail="$(ninja -C "$RUNNER_TEMP/base/build" -t targets all | awk '{print $1}' | sort -u)"
+          for t in $TARGETS; do
+            echo "$avail" | grep -qx "$t" || { echo "::error::missing CMake target: $t"; exit 1; }
+          done
+          cmake --build "$RUNNER_TEMP/base/build" --target $TARGETS --parallel 2 \
             2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_base_build_run$GITHUB_RUN_ID.log"
           test -d "$RUNNER_TEMP/validation_meshes" && cp -r "$RUNNER_TEMP/validation_meshes" "$RUNNER_TEMP/base/build/validation_meshes"
 
@@ -107,7 +126,14 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
             -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON \
             2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_head_configure_run$GITHUB_RUN_ID.log"
-          cmake --build "$RUNNER_TEMP/pr923/build" --parallel 2 \
+          # Cibles CMake reelles : test_ghia_cavity_n8_pcd est un nom CTest (add_test),
+          # l'executable est test_ghia_cavity. Verification fail-closed des cibles.
+          TARGETS="test_bfs_qualification test_channel_qualification test_naca0012_qualification test_ghia_cavity test_n12_coupled_pressure_velocity_mms test_n9_s9_rhie_chow_consistency"
+          avail="$(ninja -C "$RUNNER_TEMP/pr923/build" -t targets all | awk '{print $1}' | sort -u)"
+          for t in $TARGETS; do
+            echo "$avail" | grep -qx "$t" || { echo "::error::missing CMake target: $t"; exit 1; }
+          done
+          cmake --build "$RUNNER_TEMP/pr923/build" --target $TARGETS --parallel 2 \
             2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_head_build_run$GITHUB_RUN_ID.log"
           test -d "$RUNNER_TEMP/validation_meshes" && cp -r "$RUNNER_TEMP/validation_meshes" "$RUNNER_TEMP/pr923/build/validation_meshes"
 
@@ -166,15 +192,59 @@ jobs:
               st = {}
               if os.path.exists(path):
                   txt = open(path, errors="replace").read()
-                  pat = re.compile(r"Test\s+#\d+:\s+(\S+)\s+\.\.\.\s+"
-                                   r"(Passed|\*\*\*Failed|\*\*\*Timeout|\*\*\*Not Run)"
+                  pat = re.compile(r"Test\s+#\d+:\s+(\S+)\s+\.\.\.\s*"
+                                   r"(Passed|\*\*\*Failed|\*\*\*Timeout|\*\*\*Not Run"
+                                   r"|\*\*\*Exception:\s*\S+)"
                                    r"\s*([0-9.]+ sec)?")
                   for m in pat.finditer(txt):
-                      st[m.group(1)] = (m.group(2).replace("***", ""),
-                                        m.group(3) or "unknown")
+                      raw = m.group(2)
+                      if raw == "Passed":
+                          key = "Passed"
+                      elif raw == "***Timeout":
+                          key = "Timeout"
+                      elif raw == "***Not Run":
+                          key = "Not Run"
+                      elif raw.startswith("***Exception"):
+                          key = "Failed"  # crash/exception normalise en Failed
+                      else:
+                          key = "Failed"
+                      st[m.group(1)] = (key, m.group(3) or "unknown")
               return st
+          JUNIT_MAP = {"passed": "Passed", "failed": "Failed",
+                        "timeout": "Timeout", "notrun": "Not Run"}
+          def parse_junit(tag):
+              # Cross-check fail-closed : le junit --output-junit doit concorder
+              # avec le parse des lignes d'issue de la campagne.
+              path = os.path.join(E, "pr923_%s_junit_run%s.xml" % (tag, RUN))
+              res = {}
+              if not os.path.exists(path):
+                  return res
+              txt = open(path, errors="replace").read()
+              for m in re.finditer(r"<testcase\b([^>]*?)(/?)>", txt):
+                  attrs = m.group(1)
+                  if m.group(2) == "/":
+                      body = ""
+                  else:
+                      end = txt.find("</testcase>", m.end())
+                      if end < 0:
+                          continue
+                      body = txt[m.end():end]
+                  nm = re.search(r'\bname="([^"]+)"', attrs)
+                  if not nm:
+                      continue
+                  st_ = re.search(r'\bstatus="([^"]+)"', attrs)
+                  failed = ("<failure" in body) or ("<error" in body)
+                  s = (st_.group(1).lower() if st_ else "unknown")
+                  key = JUNIT_MAP.get(s)
+                  if key is None:
+                      key = "Failed" if failed else "JUNIT_STATUS=" + s
+                  elif failed and key == "Passed":
+                      key = "Failed"
+                  res[nm.group(1)] = key
+              return res
           disc = {"base": parse_testlist("base"), "head": parse_testlist("head")}
           stat = {"base": parse_campaign("base"), "head": parse_campaign("head")}
+          junit = {"base": parse_junit("base"), "head": parse_junit("head")}
           tsv_path = os.path.join(E, "pr923_per_test_run%s.tsv" % RUN)
           reasons = []
           verdict = None
@@ -220,6 +290,23 @@ jobs:
                   if s == "Not Run":
                       set_verdict("INCONCLUSIVE_NOT_RUN")
                       reasons.append("%s %s NOT RUN" % (tag, t))
+          for tag in ("base", "head"):
+              ju = junit[tag]
+              if not ju:
+                  if stat[tag]:
+                      set_verdict("INCONCLUSIVE_MISSING_JUNIT")
+                      reasons.append("%s junit missing/unreadable while campaign log has outcomes" % tag)
+              else:
+                  for t in expected:
+                      js = ju.get(t)
+                      if js is None:
+                          set_verdict("INCONCLUSIVE_MISSING_JUNIT")
+                          reasons.append("%s junit has no entry for %s" % (tag, t))
+                      else:
+                          ls = stat[tag].get(t, ("", ""))[0]
+                          if ls and js != ls:
+                              set_verdict("INCONCLUSIVE_JUNIT_CONFLICT")
+                              reasons.append("%s %s junit=%s log=%s" % (tag, t, js, ls))
           if verdict is None:
               reg = [t for t in expected
                      if stat["base"][t][0] == "Passed" and stat["head"][t][0] != "Passed"]
