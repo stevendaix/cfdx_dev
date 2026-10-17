@@ -25,7 +25,7 @@ option(CFDX_ENABLE_LONG_VALIDATION "Register full long-running validation campai
 
 if(CFDX_ENABLE_GPU)
     enable_language(CUDA)
-    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD 14)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 endif()
 
@@ -503,8 +503,6 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_n11_unit_invariance_robustness tests/validation/test_n11_unit_invariance_robustness.cpp)
     set_tests_properties(test_n11_unit_invariance_robustness PROPERTIES LABELS "n11;qualification;validation")
     add_cfdx_test(test_backend_equivalence tests/unit/test_backend_equivalence.cpp)
-    add_executable(test_n13_cuda_equivalence tests/validation/test_n13_cuda_equivalence.cpp)
-    target_link_libraries(test_n13_cuda_equivalence PRIVATE cfdx_core)
     add_cfdx_test(test_n13_restart_equivalence tests/validation/test_n13_restart_equivalence.cpp)
 
     # Unit tests - Numerical
@@ -858,8 +856,6 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
 
     # Phase 13 verification labels. The campaign driver selects these tests
     # without conflating unit/regression coverage with numerical verification.
-    add_test(NAME test_n13_cuda_equivalence COMMAND test_n13_cuda_equivalence)
-    set_tests_properties(test_n13_cuda_equivalence PROPERTIES LABELS "phase13;validation;n13;hardware" SKIP_RETURN_CODE 2)
     set_tests_properties(test_backend_equivalence test_n13_restart_equivalence
         PROPERTIES LABELS "phase13;validation;n13")
     set_tests_properties(test_mms_scalar_diffusion
@@ -1036,6 +1032,10 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     if(CFDX_ENABLE_GPU)
         add_cfdx_test(test_cuda_runtime tests/unit/test_cuda_runtime.cpp)
         add_cfdx_test(test_phase8_cuda_poisson tests/validation/test_phase8_cuda_poisson.cpp)
+        add_executable(test_n13_cuda_equivalence tests/validation/test_n13_cuda_equivalence.cpp)
+        target_link_libraries(test_n13_cuda_equivalence PRIVATE cfdx_core)
+        add_test(NAME test_n13_cuda_equivalence COMMAND test_n13_cuda_equivalence)
+        set_tests_properties(test_n13_cuda_equivalence PROPERTIES LABELS "phase13;validation;n13;hardware")
     endif()
 
     # HDF5 tests require the native reader/writer implementation.

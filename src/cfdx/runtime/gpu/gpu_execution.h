@@ -6,6 +6,8 @@
 #include "cfdx/runtime/gpu/cuda_backend.h"
 #include "cfdx/runtime/gpu/gpu_profiler.h"
 #include "cfdx/runtime/ooc/cuda_pinned_buffer_pool.h"
+
+using cfdx::runtime::ooc::CudaPinnedBufferPool;
 #endif
 
 #include <algorithm>
