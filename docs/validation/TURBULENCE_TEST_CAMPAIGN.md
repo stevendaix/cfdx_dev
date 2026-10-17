@@ -61,7 +61,7 @@ implemented and executed.
 ### Gate A — implementation audit (source audit completed; coupling remains blocked)
 
 The source audit is recorded in
-`docs/audits/TURBULENCE_PRODUCTION_PATH_AUDIT.md`. The case schema and Python setup catalogue
+`docs/validation/TURBULENCE_PRODUCTION_PATH_AUDIT.md`. The case schema and Python setup catalogue
 carry a turbulence model, and the C++ transport APIs implement component equations, but the
 production driver does not yet call those transport entry points or couple `nu_t` back into
 momentum. Therefore this is not yet a production RANS solver.
