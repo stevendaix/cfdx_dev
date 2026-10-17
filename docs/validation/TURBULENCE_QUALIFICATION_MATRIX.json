@@ -35,11 +35,11 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
-        "solver_verification": true,
+        "analytical_mms": false,
+        "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
-        "conservation_convergence": true,
+        "conservation_convergence": false,
         "documentation": true
       }
     },
@@ -55,11 +55,11 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
-        "solver_verification": true,
+        "analytical_mms": false,
+        "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
-        "conservation_convergence": true,
+        "conservation_convergence": false,
         "documentation": true
       }
     },
@@ -75,11 +75,11 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
-        "solver_verification": true,
+        "analytical_mms": false,
+        "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
-        "conservation_convergence": true,
+        "conservation_convergence": false,
         "documentation": true
       }
     },
@@ -95,11 +95,11 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
-        "solver_verification": true,
+        "analytical_mms": false,
+        "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
-        "conservation_convergence": true,
+        "conservation_convergence": false,
         "documentation": true
       }
     },
@@ -115,11 +115,11 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
-        "solver_verification": true,
+        "analytical_mms": false,
+        "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
-        "conservation_convergence": true,
+        "conservation_convergence": false,
         "documentation": true
       }
     },
@@ -135,11 +135,11 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
-        "solver_verification": true,
+        "analytical_mms": false,
+        "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
-        "conservation_convergence": true,
+        "conservation_convergence": false,
         "documentation": true
       }
     },
@@ -271,5 +271,10 @@
     "physical_validation_requires_reference_and_real_solver_execution": true,
     "no_tolerance_relaxation": true,
     "no_disabled_validation": true
+  },
+  "production_integration_audit": {
+    "status": "BLOCKED",
+    "evidence": "docs/validation/TURBULENCE_PRODUCTION_PATH_AUDIT.md",
+    "note": "Standalone RANS transport APIs exist, but the production incompressible driver does not couple them to momentum. Non-laminar declarations are rejected fail-closed."
   }
 }
