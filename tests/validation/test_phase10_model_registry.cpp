@@ -107,13 +107,19 @@ int main() {
                 throw std::runtime_error("non-physical turbulent viscosity");
         }
 
-        if (turbulence_solver_ready(AdvancedTurbulenceModel::SST) ||
-            turbulence_solver_ready(AdvancedTurbulenceModel::SPALART_ALLMARAS) ||
-            turbulence_capability(AdvancedTurbulenceModel::SST).status !=
-                TurbulenceImplementationStatus::COMPONENT_READY ||
-            turbulence_capability(AdvancedTurbulenceModel::SPALART_ALLMARAS).status !=
-                TurbulenceImplementationStatus::COMPONENT_READY)
-            throw std::runtime_error("RANS transport components must not advertise production readiness");
+        for (const auto model : {
+                 AdvancedTurbulenceModel::KEPSILON,
+                 AdvancedTurbulenceModel::RNG_KEPSILON,
+                 AdvancedTurbulenceModel::REALIZABLE_KEPSILON,
+                 AdvancedTurbulenceModel::KOMEGA,
+                 AdvancedTurbulenceModel::SST,
+                 AdvancedTurbulenceModel::SPALART_ALLMARAS}) {
+            if (turbulence_solver_ready(model) ||
+                turbulence_capability(model).status !=
+                    TurbulenceImplementationStatus::COMPONENT_READY)
+                throw std::runtime_error(
+                    "RANS transport components must not advertise production readiness");
+        }
         if (turbulence_solver_ready(AdvancedTurbulenceModel::DES) ||
             turbulence_capability(AdvancedTurbulenceModel::DES).status != TurbulenceImplementationStatus::KERNEL_ONLY)
             throw std::runtime_error("DES capability status is incorrect");
