@@ -22,6 +22,19 @@ int main()
         validate_production_turbulence_selection(setup);
     });
 
+    run_case("production_turbulence_rejects_implicit_rans_physics", [] {
+        CaseSetup setup;
+        setup.physics_model = "incompressible_turbulent";
+        bool rejected = false;
+        try {
+            validate_production_turbulence_selection(setup);
+        } catch (const std::invalid_argument& error) {
+            rejected = std::string(error.what()).find("no turbulence_model") !=
+                       std::string::npos;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
     run_case("production_turbulence_rejects_declared_rans", [] {
         CaseSetup setup;
         setup.turbulence_model = "k_omega_sst";
