@@ -118,17 +118,17 @@ def parse_ghia(output: str) -> list[dict[str, float | str]]:
 
 
 def parse_vmfl036(output: str) -> dict[str, float | int | str] | None:
-    axis = re.findall(
+    axis_pattern = re.compile(
         r"VMFL036_AXISYM RESULT level=(?P<level>[A-Za-z0-9_]+)"
         r"(?: converged=(?P<converged>true|false))?"
         r" iterations=(?P<iterations>\d+) continuity=(?P<continuity>[-+0-9.eE]+) "
         r"momentum=(?P<momentum>[-+0-9.eE]+) pcorr=(?P<pcorr>[-+0-9.eE]+) "
         r"Cd_pressure=(?P<cdp>[-+0-9.eE]+) Cd_viscous=(?P<cdv>[-+0-9.eE]+) "
-        r"Cd_total=(?P<cd>[-+0-9.eE]+) Cd_reference=(?P<ref>[-+0-9.eE]+)",
-        output,
+        r"Cd_total=(?P<cd>[-+0-9.eE]+) Cd_reference=(?P<ref>[-+0-9.eE]+)"
     )
+    axis = list(axis_pattern.finditer(output))
     if axis:
-        x = axis[-1]
+        x = axis[-1].groupdict()
         cd_total = float(x["cd"])
         cd_reference = float(x["ref"])
         data: dict[str, float | int | str] = {
