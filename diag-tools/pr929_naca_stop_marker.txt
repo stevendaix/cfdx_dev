@@ -1,17 +1,18 @@
 marker: pr929-naca-stop-trace
-version: 2
+version: 3
 date: 2026-10-17
 purpose: >
-  Declenche le diagnostic P1-b v2 demande par Steven (2026-10-17 ~20:27Z) :
-  rejouer le diagnostic NACA sur le head ACTUEL en captant EXPLICITEMENT
-  convergence_status, convergence_reason (statuts OFFICIELS du solveur),
-  les rejets de transactions non lineaires et la derniere iteration
-  reellement executee — pour distinguer stagnation, divergence, rejet de
-  tentative et autre sortie prematuree (la v1, capture-only sur e1cbefee,
-  run 39060532348, avait borne l'arret du solve N128 entre les iterations
-  1 et 200 sans pouvoir trancher). Instrumentation env-gated du solveur
-  dans le worktree du runner uniquement : semantique INCHANGEE, no-op sans
-  CFDX_NACA_STOP_DUMP_DIR, patch fail-closed a 5 ancres uniques. Verdicts
-  fail-closed ; EVIDENCE_COMPLETE est un diagnostic de la raison d'arret,
-  PAS un PASS/FAIL numerique. Jamais merger cette branche.
+  v3 = fix bug analyseur du run v2 (39068012865) : le step de run renommait
+  le dump en pr929x_nacastop_dumps_run$ID.tsv mais l'analyseur cherchait
+  l'extension .txt -> INCONCLUSIVE_NO_DUMP a tort (le dump etait present,
+  capture complete : N64 CONVERGED 424 iters ; N128 STAGNATED iter 11,
+  raison officielle insufficient_residual_improvement_over_the_configured_
+  stagnation_window, 0 rejet). v2 = instrumentation env-gated a 5 ancres,
+  statuts OFFICIELS convergence_status/reason, rejets de transactions non
+  lineaires, derniere iteration reellement executee (demande Steven
+  2026-10-17 ~20:27Z ; la v1 capture-only, run 39060532348, head e1cbefee,
+  avait borne l'arret N128 entre iterations 1 et 200 sans trancher).
+  Semantique du solveur INCHANGEE, no-op sans CFDX_NACA_STOP_DUMP_DIR.
+  Verdicts fail-closed ; EVIDENCE_COMPLETE est un diagnostic de la raison
+  d'arret, PAS un PASS/FAIL numerique. Jamais merger cette branche.
 head_pin: 5a680640b1229e115a19f4e980bac850f4031837

@@ -347,7 +347,7 @@ jobs:
           build_path = os.path.join(evid, "pr929x_nacastop_build_status_run" + run_id + ".txt")
           test_status = os.path.join(evid, "pr929x_nacastop_test_status_run" + run_id + ".txt")
           patch_path = os.path.join(evid, "pr929x_nacastop_patch_status_run" + run_id + ".txt")
-          dumps_path = os.path.join(evid, "pr929x_nacastop_dumps_run" + run_id + ".txt")
+          dumps_path = os.path.join(evid, "pr929x_nacastop_dumps_run" + run_id + ".tsv")
 
           EXCEPTION = "NACA0012 solver did not converge"
           TRACE_PREFIX = "INCOMPRESSIBLE_ITER"
@@ -468,7 +468,7 @@ jobs:
 
               # ---- gate 3 : dump d'instrumentation ---------------------------
               if not os.path.exists(dumps_path):
-                  emit("dump absent : pr929x_nacastop_dumps_run" + run_id + ".txt")
+                  emit("dump absent : pr929x_nacastop_dumps_run" + run_id + ".tsv")
                   if os.path.exists(test_status):
                       emit(open(test_status).read())
                   write_all("INCONCLUSIVE_NO_DUMP", ["no naca_stop_dumps.tsv captured"])
