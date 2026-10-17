@@ -8,10 +8,12 @@ import subprocess
 from pathlib import Path
 
 
-SCALAR_PATTERN = re.compile(r"(?<!\\S)(?P<name>[A-Za-z_]\\w*)=(?P<value>[-+0-9.eE]+)(?=\\s|$)")
+SCALAR_PATTERN = re.compile(
+    r"(?<!\S)(?P<name>[A-Za-z_]\w*)=(?P<value>[-+0-9.eE]+)(?=\s|$)"
+)
 TUPLE_PATTERN = re.compile(
-    r"(?<!\\S)(?P<name>[A-Za-z_]\\w*)=\\(\\s*(?P<x>[-+0-9.eE]+)\\s*,\\s*"
-    r"(?P<y>[-+0-9.eE]+)\\s*,\\s*(?P<z>[-+0-9.eE]+)\\s*\\)"
+    r"(?<!\S)(?P<name>[A-Za-z_]\w*)=\(\s*(?P<x>[-+0-9.eE]+)\s*,\s*"
+    r"(?P<y>[-+0-9.eE]+)\s*,\s*(?P<z>[-+0-9.eE]+)\s*\)"
 )
 
 
