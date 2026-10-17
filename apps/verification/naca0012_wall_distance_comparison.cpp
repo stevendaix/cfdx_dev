@@ -160,6 +160,30 @@ bool inside_airfoil(const NacaMesh& mesh,const WallDistanceVec3& p) {
     return inside;
 }
 
+std::vector<double> independent_segment_reference(const NacaMesh& mesh,
+                                                  const WallDistanceGrid& grid) {
+    // Independent 2-D point-to-segment oracle. Deliberately does not call
+    // point_triangle_distance2(), exact_point_distance(), or the wall BVH.
+    std::vector<double> reference(grid.points.size(),std::numeric_limits<double>::infinity());
+    for(std::size_t i=0;i<grid.points.size();++i) {
+        if(grid.solid[i]) continue;
+        const auto& p=grid.points[i];
+        double best2=std::numeric_limits<double>::infinity();
+        for(const auto& edge:mesh.airfoil_edges) {
+            const auto& a=mesh.points[edge.a];
+            const auto& b=mesh.points[edge.b];
+            const double dx=b.x-a.x,dy=b.y-a.y;
+            const double length2=dx*dx+dy*dy;
+            if(length2<=0.0) throw std::runtime_error("degenerate airfoil marker segment");
+            const double t=std::clamp(((p.x-a.x)*dx+(p.y-a.y)*dy)/length2,0.0,1.0);
+            const double rx=p.x-(a.x+t*dx),ry=p.y-(a.y+t*dy);
+            best2=std::min(best2,rx*rx+ry*ry);
+        }
+        reference[i]=std::sqrt(best2);
+    }
+    return reference;
+}
+
 struct ResultRow {
     std::string method;
     double l2{0.0},linf{0.0},near_l2{0.0},residual{0.0};
@@ -197,7 +221,7 @@ int main(int argc,char** argv) {
         const WallDistanceGrid grid=make_wall_distance_grid(
             nx,ny,3,{xlo,ylo,-depth},{hx,hy,depth},
             [&mesh](const WallDistanceVec3& p){ return inside_airfoil(mesh,p); });
-        const auto reference=exact_reference(surface,grid);
+        const auto reference=independent_segment_reference(mesh,grid);
         const std::array<WallDistanceMethod,9> methods={{
             WallDistanceMethod::EXACT_GEOMETRIC,WallDistanceMethod::SEARCH_BASED,
             WallDistanceMethod::MESH_WAVE,WallDistanceMethod::DIRECTIONAL_MESH_WAVE,
