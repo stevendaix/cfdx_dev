@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import math
 import os
-from pathlib import Path
 import re
 import subprocess
+from pathlib import Path
 
 
 SCALAR_PATTERN = re.compile(
@@ -147,10 +147,14 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
             "momentum_linear_iterations": int(fields["momentum_linear_iterations"]),
             "flux_velocity_mismatch_linf": float(fields["flux_velocity_mismatch_linf"]),
             "momentum_rhs_scale_components": (
-                parse_trace_tuple(stripped, "momentum_rhs_scale_components") if has_n10_metrics else None
+                parse_trace_tuple(stripped, "momentum_rhs_scale_components")
+                if has_n10_metrics
+                else None
             ),
             "momentum_rhs_relative_components": (
-                parse_trace_tuple(stripped, "momentum_rhs_relative_components") if has_n10_metrics else None
+                parse_trace_tuple(stripped, "momentum_rhs_relative_components")
+                if has_n10_metrics
+                else None
             ),
         }
         numeric_values = [
