@@ -28,7 +28,9 @@ inline void validate_production_turbulence_selection(
 {
     const auto validate = [](const std::string& declared, const std::string& source) {
         const std::string normalized = normalize_turbulence_model_key(declared);
-        if (normalized.empty() || normalized == "laminar" ||
+        const bool unspecified =
+            declared.find_first_not_of(" \\t\\r\\n") == std::string::npos;
+        if (unspecified || normalized == "laminar" ||
             normalized == "none" || normalized == "off" ||
             normalized == "disabled" || normalized == "incompressiblelaminar") {
             return;
