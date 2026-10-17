@@ -29,11 +29,15 @@ three z planes; the wall panels span that depth, so the target distance field
 is invariant in z. Grid resolution is adjustable to support a quick CI smoke
 test and a more detailed local comparison.
 
-The reference is generated with CFDX's direct exact point-to-triangle routine
-on the extruded marker panels. exact_geometric and search_based must reproduce
-that oracle to relative L2 and L-infinity error 1e-12 or better. Other methods
-are measured, not pre-declared PASS: their error, convergence status,
-residual, iteration count, and elapsed time are recorded independently.
+The reference is computed independently from the original 2-D marker edges
+using the analytic point-to-segment projection formula. It does not call
+CFDX's point-to-triangle distance function or its BVH. Because the extruded
+wall panels extend beyond all three sample planes, this 2-D oracle represents
+the exact distance to the discrete airfoil boundary at every sample. The
+exact_geometric and search_based methods must reproduce it to relative L2 and
+L-infinity error 1e-12 or better. Other methods are measured, not pre-declared
+PASS: their error, convergence status, residual, iteration count, and elapsed
+time are recorded independently.
 
 ## Build and run
 
@@ -53,7 +57,7 @@ table; the CSV contains one row per method.
 
 The CTest registration runs a smaller resolution as an integration smoke test.
 It checks that the official marker is parsed and that both geometric methods
-agree with the direct oracle. It does not impose an accuracy threshold on the
+agree with the independent segment-distance oracle. It does not impose an accuracy threshold on the
 PDE methods.
 
 ## Interpretation and limitations
