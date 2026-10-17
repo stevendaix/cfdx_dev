@@ -169,12 +169,12 @@ jobs:
           E="$GITHUB_WORKSPACE/$EVID"
           S="$E/pr929x_wd_status_base_run$GITHUB_RUN_ID.txt"
           : > "$S"
-          "$B/cfdx_wall_distance_controlled_benchmark" "$E/pr929x_wd_controlled_base_run$GITHUB_RUN_ID.csv" 16 32 64 > "$E/pr929x_wd_controlled_base_run$GITHUB_RUN_ID.log" 2>&1
-          rc=$?; echo "cfdx_wall_distance_controlled_benchmark exit=$rc" | tee -a "$S" "$E/pr929x_wd_controlled_base_run$GITHUB_RUN_ID.log"
-          "$B/cfdx_wall_distance_poisson_manufactured" "$E/pr929x_wd_manufactured_base_run$GITHUB_RUN_ID.csv" > "$E/pr929x_wd_manufactured_base_run$GITHUB_RUN_ID.log" 2>&1
-          rc=$?; echo "cfdx_wall_distance_poisson_manufactured exit=$rc" | tee -a "$S" "$E/pr929x_wd_manufactured_base_run$GITHUB_RUN_ID.log"
-          "$B/cfdx_wall_distance_poisson_decomposition" "$E/pr929x_wd_decomposition_base_run$GITHUB_RUN_ID.csv" > "$E/pr929x_wd_decomposition_base_run$GITHUB_RUN_ID.log" 2>&1
-          rc=$?; echo "cfdx_wall_distance_poisson_decomposition exit=$rc" | tee -a "$S" "$E/pr929x_wd_decomposition_base_run$GITHUB_RUN_ID.log"
+          if "$B/cfdx_wall_distance_controlled_benchmark" "$E/pr929x_wd_controlled_base_run$GITHUB_RUN_ID.csv" 16 32 64 > "$E/pr929x_wd_controlled_base_run$GITHUB_RUN_ID.log" 2>&1; then rc=0; else rc=$?; fi
+          echo "cfdx_wall_distance_controlled_benchmark exit=$rc" | tee -a "$S" "$E/pr929x_wd_controlled_base_run$GITHUB_RUN_ID.log"
+          if "$B/cfdx_wall_distance_poisson_manufactured" "$E/pr929x_wd_manufactured_base_run$GITHUB_RUN_ID.csv" > "$E/pr929x_wd_manufactured_base_run$GITHUB_RUN_ID.log" 2>&1; then rc=0; else rc=$?; fi
+          echo "cfdx_wall_distance_poisson_manufactured exit=$rc" | tee -a "$S" "$E/pr929x_wd_manufactured_base_run$GITHUB_RUN_ID.log"
+          if "$B/cfdx_wall_distance_poisson_decomposition" "$E/pr929x_wd_decomposition_base_run$GITHUB_RUN_ID.csv" > "$E/pr929x_wd_decomposition_base_run$GITHUB_RUN_ID.log" 2>&1; then rc=0; else rc=$?; fi
+          echo "cfdx_wall_distance_poisson_decomposition exit=$rc" | tee -a "$S" "$E/pr929x_wd_decomposition_base_run$GITHUB_RUN_ID.log"
 
       - name: Run wall-distance programs (pinned head)
         id: wd_head
@@ -186,12 +186,12 @@ jobs:
           E="$GITHUB_WORKSPACE/$EVID"
           S="$E/pr929x_wd_status_head_run$GITHUB_RUN_ID.txt"
           : > "$S"
-          "$B/cfdx_wall_distance_controlled_benchmark" "$E/pr929x_wd_controlled_head_run$GITHUB_RUN_ID.csv" 16 32 64 > "$E/pr929x_wd_controlled_head_run$GITHUB_RUN_ID.log" 2>&1
-          rc=$?; echo "cfdx_wall_distance_controlled_benchmark exit=$rc" | tee -a "$S" "$E/pr929x_wd_controlled_head_run$GITHUB_RUN_ID.log"
-          "$B/cfdx_wall_distance_poisson_manufactured" "$E/pr929x_wd_manufactured_head_run$GITHUB_RUN_ID.csv" > "$E/pr929x_wd_manufactured_head_run$GITHUB_RUN_ID.log" 2>&1
-          rc=$?; echo "cfdx_wall_distance_poisson_manufactured exit=$rc" | tee -a "$S" "$E/pr929x_wd_manufactured_head_run$GITHUB_RUN_ID.log"
-          "$B/cfdx_wall_distance_poisson_decomposition" "$E/pr929x_wd_decomposition_head_run$GITHUB_RUN_ID.csv" > "$E/pr929x_wd_decomposition_head_run$GITHUB_RUN_ID.log" 2>&1
-          rc=$?; echo "cfdx_wall_distance_poisson_decomposition exit=$rc" | tee -a "$S" "$E/pr929x_wd_decomposition_head_run$GITHUB_RUN_ID.log"
+          if "$B/cfdx_wall_distance_controlled_benchmark" "$E/pr929x_wd_controlled_head_run$GITHUB_RUN_ID.csv" 16 32 64 > "$E/pr929x_wd_controlled_head_run$GITHUB_RUN_ID.log" 2>&1; then rc=0; else rc=$?; fi
+          echo "cfdx_wall_distance_controlled_benchmark exit=$rc" | tee -a "$S" "$E/pr929x_wd_controlled_head_run$GITHUB_RUN_ID.log"
+          if "$B/cfdx_wall_distance_poisson_manufactured" "$E/pr929x_wd_manufactured_head_run$GITHUB_RUN_ID.csv" > "$E/pr929x_wd_manufactured_head_run$GITHUB_RUN_ID.log" 2>&1; then rc=0; else rc=$?; fi
+          echo "cfdx_wall_distance_poisson_manufactured exit=$rc" | tee -a "$S" "$E/pr929x_wd_manufactured_head_run$GITHUB_RUN_ID.log"
+          if "$B/cfdx_wall_distance_poisson_decomposition" "$E/pr929x_wd_decomposition_head_run$GITHUB_RUN_ID.csv" > "$E/pr929x_wd_decomposition_head_run$GITHUB_RUN_ID.log" 2>&1; then rc=0; else rc=$?; fi
+          echo "cfdx_wall_distance_poisson_decomposition exit=$rc" | tee -a "$S" "$E/pr929x_wd_decomposition_head_run$GITHUB_RUN_ID.log"
 
       - name: Run N12 coupled campaign (pinned base)
         id: n12_base
