@@ -1,0 +1,11 @@
+run_id=39051228975
+started_utc=2026-10-17T17:30:38Z
+base_sha=16734e82545c66bf03911ddd3df4cf629ff3436f (pinned master commit, base of integration/numerics-2026-10)
+head_sha=b758af667b10f9e808f1a94d9f360e6fc43c04ae (pinned head of PR #929 at request time)
+scope: wall-distance 3 programs (controlled_benchmark 16 32 64, poisson_manufactured, poisson_decomposition) + ctest test_n12_coupled_pressure_velocity_mms (CFDX_ENABLE_LONG_VALIDATION=ON)
+rule: identical base/head failure attributes pre-existence only (level 2), never proves numerical correctness
+base_wd_outcome=success
+head_wd_outcome=success
+base_n12_outcome=failure
+head_n12_outcome=failure
+verdict=IDENTICAL_FAILURES

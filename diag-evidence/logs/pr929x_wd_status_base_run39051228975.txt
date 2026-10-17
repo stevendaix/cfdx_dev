@@ -1,0 +1,3 @@
+cfdx_wall_distance_controlled_benchmark exit=0
+cfdx_wall_distance_poisson_manufactured exit=5
+cfdx_wall_distance_poisson_decomposition exit=0
