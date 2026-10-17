@@ -1,0 +1,81 @@
+== NACA0012 qualification — capture sur head epingle (capture-only, aucune modification) ==
+exception ligne 10 : NACA0012 solver did not converge
+nb traces INCOMPRESSIBLE_ITER = 4 | iters tracees = [1, 200, 400, 1]
+
+== Trajectoire (cle momentum = momentum_residual_rhs_relative, continuite = continuity_normalized, mismatch = flux_velocity_mismatch_linf) ==
+iter	momentum	continuity	mismatch
+1	9.992330e-03	9.416510e-05	9.188780e-04
+200	1.734420e-07	2.932300e-09	1.015220e-02
+400	1.430330e-10	8.988330e-13	1.015430e-02
+1	1.959420e-02	5.324930e-05	2.087860e-04
+
+== DERNIERE trace avant l'exception (champ par champ, ordre-independant) ==
+  alpha_p=0.25
+  alpha_u=0.6
+  continuity_normalized=5.32493e-05
+  flux_velocity_mismatch_linf=0.000208786
+  iter=1
+  momentum_linear_iterations=3
+  momentum_residual_raw=0.00960235
+  momentum_residual_reference=0.00960235
+  momentum_residual_reference_relative=1
+  momentum_residual_rhs_relative=0.0195942
+  momentum_rhs_scale=0.490061
+  pressure_change_inf=0.568382
+  pressure_linear_iterations=9
+  pressure_relative_residual=6.10678e-11
+  velocity_change_inf=0.16998
+  worst_momentum_cell=403
+
+== Contexte brut : 30 dernieres lignes avant l'exception ==
+  | Internal ctest changing into directory: /home/runner/work/_temp/head/build
+  | Test project /home/runner/work/_temp/head/build
+  |     Start 128: test_naca0012_qualification
+  | 1/1 Test #128: test_naca0012_qualification ......Subprocess aborted***Exception:  19.30 sec
+  | INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.00999233 momentum_residual_reference_relative=1 momentum_residual_raw=0.00974183 momentum_rhs_scale=0.974931 momentum_residual_reference=0.00974183 momentum_rhs_scale_components=(0.974931,0.00986867,1e-300) momentum_rhs_relative_components=(0.00618544,0.987147,0) continuity_normalized=9.41651e-05 velocity_change_inf=0.086649 pressure_change_inf=0.641635 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=7.84622e-11 momentum_linear_iterations=4 flux_velocity_mismatch_linf=0.000918878 worst_momentum_cell=206 worst_momentum_patch=
+  | INCOMPRESSIBLE_ITER iter=200 momentum_residual_rhs_relative=1.73442e-07 momentum_residual_reference_relative=1.73394e-05 momentum_residual_raw=1.68918e-07 momentum_rhs_scale=0.973916 momentum_residual_reference=0.00974183 momentum_rhs_scale_components=(0.973916,0.00462238,1e-300) momentum_rhs_relative_components=(1.73442e-07,1.48394e-05,0) continuity_normalized=2.9323e-09 velocity_change_inf=1.93112e-06 pressure_change_inf=2.57056e-07 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=8.89868e-12 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.0101522 worst_momentum_cell=3095 worst_momentum_patch=farfield
+  | INCOMPRESSIBLE_ITER iter=400 momentum_residual_rhs_relative=1.43033e-10 momentum_residual_reference_relative=1.42993e-08 momentum_residual_raw=1.39302e-10 momentum_rhs_scale=0.973916 momentum_residual_reference=0.00974183 momentum_rhs_scale_components=(0.973916,0.00462276,1e-300) momentum_rhs_relative_components=(1.43033e-10,6.84282e-09,0) continuity_normalized=8.98833e-13 velocity_change_inf=2.23892e-10 pressure_change_inf=1.17145e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=6.08918e-12 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.0101543 worst_momentum_cell=3095 worst_momentum_patch=farfield
+  | NACA0012_RE1000_A0 level=64 Cd=0.0902469 Cl=3.49125e-05 Cm=-0.00094 Cd_pressure=0.0343964 Cd_viscous=0.0558506 continuity=1.45849e-10 iterations=424
+  | INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0195942 momentum_residual_reference_relative=1 momentum_residual_raw=0.00960235 momentum_rhs_scale=0.490061 momentum_residual_reference=0.00960235 momentum_rhs_scale_components=(0.490061,0.00976876,1e-300) momentum_rhs_relative_components=(0.0137899,0.982965,0) continuity_normalized=5.32493e-05 velocity_change_inf=0.16998 pressure_change_inf=0.568382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=6.10678e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000208786 worst_momentum_cell=403 worst_momentum_patch=
+  | terminate called after throwing an instance of 'std::runtime_error'
+  |   what():  NACA0012 solver did not converge
+  | 
+  | 
+
+== Raison d'arret (MESURE depuis la capture, pas un verdict du solveur) ==
+aucun marqueur STAGNATED/DIVERG/MAX_ITERATIONS/nan/inf explicite hors traces
+classification : EARLY_STOP_RISING_RESIDUAL (divergence-like) — le residu momentum croit fortement sur les dernieres traces ; arret AVANT le budget (derniere trace iter=1 < 8000)
+NOTE : la derniere trace est a iter=1 (trace tous les 200 iters) ; l'arret reel est dans (1, 201]
+
+== Audit cisaillement pariétal (best-effort, echec en cascade attendu) ==
+log present : 31 lignes, exceptions=1, traces=4
+exception audit ligne 16 : NACA0012_WALL_SHEAR_AUDIT: FAIL: NACA0012 audit solve did not converge
+derniere trace audit : iter=1
+  alpha_p=0.25
+  alpha_u=0.6
+  continuity_normalized=5.32493e-05
+  flux_velocity_mismatch_linf=0.000208786
+  iter=1
+  momentum_linear_iterations=3
+  momentum_residual_raw=0.00960235
+  momentum_residual_reference=0.00960235
+  momentum_residual_reference_relative=1
+  momentum_residual_rhs_relative=0.0195942
+  momentum_rhs_scale=0.490061
+  pressure_change_inf=0.568382
+  pressure_linear_iterations=9
+  pressure_relative_residual=6.10678e-11
+  velocity_change_inf=0.16998
+  worst_momentum_cell=403
+  | WALL_SHEAR_MMS field=linear_y method=wls max_abs_err=0 oracle=1
+  | WALL_SHEAR_MMS field=sin_pi_y method=gg max_rel_err=0.0111975 oracle=3.14159
+  | WALL_SHEAR_MMS field=sin_pi_y method=wls max_rel_err=0.0111975 oracle=3.14159
+  | WALL_SHEAR_MMS field=sin_pi_y method=one_d max_rel_err=0.00160561 oracle=3.14159
+  | WALL_SHEAR_MMS field=y_1_minus_y method=gg max_rel_err=0.078125 oracle=1
+  | WALL_SHEAR_MMS field=y_1_minus_y method=wls max_rel_err=0.078125 oracle=1
+  | WALL_SHEAR_MMS field=y_1_minus_y method=one_d max_rel_err=0.03125 oracle=1
+  | NACA0012_WALL_SHEAR_AUDIT level=64 Cd_visc_gg=0.0558506 Cd_visc_wls=0.0582141 Cd_visc_1d=0.106089 rel_spread=0.684596 dn_min=0.00521978 dn_mean=0.0258091 contin
+  | NACA0012_WALL_SHEAR_AUDIT: FAIL: NACA0012 audit solve did not converge
+audit_state=TRACE_CAPTURED
+
+traces=4 last_iter=1 budget=8000

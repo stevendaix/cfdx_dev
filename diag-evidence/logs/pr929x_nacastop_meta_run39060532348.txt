@@ -1,0 +1,6 @@
+run_id=39060532348
+started_utc=2026-10-17T19:00:13Z
+head_sha=e1cbefee90b4f3703d709f436585918a201ed536 (pinned head of PR #929, capture-only, NO code modification)
+scope: full stdout/stderr capture of test_naca0012_qualification (expected FAIL ~31 s) + best-effort test_naca0012_wall_shear_audit
+target: LAST solver iteration trace before 'NACA0012 solver did not converge' — STAGNATED vs MAX_ITERATIONS vs divergence
+rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL

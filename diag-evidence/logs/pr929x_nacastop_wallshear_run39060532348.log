@@ -1,0 +1,31 @@
+Internal ctest changing into directory: /home/runner/work/_temp/head/build
+Test project /home/runner/work/_temp/head/build
+    Start 130: test_naca0012_wall_shear_audit
+1/1 Test #130: test_naca0012_wall_shear_audit ...***Failed   18.87 sec
+WALL_SHEAR_MMS field=linear_y method=wls max_abs_err=0 oracle=1
+WALL_SHEAR_MMS field=sin_pi_y method=gg max_rel_err=0.0111975 oracle=3.14159
+WALL_SHEAR_MMS field=sin_pi_y method=wls max_rel_err=0.0111975 oracle=3.14159
+WALL_SHEAR_MMS field=sin_pi_y method=one_d max_rel_err=0.00160561 oracle=3.14159
+WALL_SHEAR_MMS field=y_1_minus_y method=gg max_rel_err=0.078125 oracle=1
+WALL_SHEAR_MMS field=y_1_minus_y method=wls max_rel_err=0.078125 oracle=1
+WALL_SHEAR_MMS field=y_1_minus_y method=one_d max_rel_err=0.03125 oracle=1
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.00999233 momentum_residual_reference_relative=1 momentum_residual_raw=0.00974183 momentum_rhs_scale=0.974931 momentum_residual_reference=0.00974183 momentum_rhs_scale_components=(0.974931,0.00986867,1e-300) momentum_rhs_relative_components=(0.00618544,0.987147,0) continuity_normalized=9.41651e-05 velocity_change_inf=0.086649 pressure_change_inf=0.641635 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=7.84622e-11 momentum_linear_iterations=4 flux_velocity_mismatch_linf=0.000918878 worst_momentum_cell=206 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=200 momentum_residual_rhs_relative=1.73442e-07 momentum_residual_reference_relative=1.73394e-05 momentum_residual_raw=1.68918e-07 momentum_rhs_scale=0.973916 momentum_residual_reference=0.00974183 momentum_rhs_scale_components=(0.973916,0.00462238,1e-300) momentum_rhs_relative_components=(1.73442e-07,1.48394e-05,0) continuity_normalized=2.9323e-09 velocity_change_inf=1.93112e-06 pressure_change_inf=2.57056e-07 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=8.89868e-12 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.0101522 worst_momentum_cell=3095 worst_momentum_patch=farfield
+INCOMPRESSIBLE_ITER iter=400 momentum_residual_rhs_relative=1.43033e-10 momentum_residual_reference_relative=1.42993e-08 momentum_residual_raw=1.39302e-10 momentum_rhs_scale=0.973916 momentum_residual_reference=0.00974183 momentum_rhs_scale_components=(0.973916,0.00462276,1e-300) momentum_rhs_relative_components=(1.43033e-10,6.84282e-09,0) continuity_normalized=8.98833e-13 velocity_change_inf=2.23892e-10 pressure_change_inf=1.17145e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=6.08918e-12 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.0101543 worst_momentum_cell=3095 worst_momentum_patch=farfield
+NACA0012_WALL_SHEAR_AUDIT level=64 Cd_visc_gg=0.0558506 Cd_visc_wls=0.0582141 Cd_visc_1d=0.106089 rel_spread=0.684596 dn_min=0.00521978 dn_mean=0.0258091 continuity=1.45849e-10 iterations=424
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0195942 momentum_residual_reference_relative=1 momentum_residual_raw=0.00960235 momentum_rhs_scale=0.490061 momentum_residual_reference=0.00960235 momentum_rhs_scale_components=(0.490061,0.00976876,1e-300) momentum_rhs_relative_components=(0.0137899,0.982965,0) continuity_normalized=5.32493e-05 velocity_change_inf=0.16998 pressure_change_inf=0.568382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=6.10678e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000208786 worst_momentum_cell=403 worst_momentum_patch=
+NACA0012_WALL_SHEAR_AUDIT: FAIL: NACA0012 audit solve did not converge
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+long             =  18.87 sec*proc (1 test)
+qualification    =  18.87 sec*proc (1 test)
+validation       =  18.87 sec*proc (1 test)
+
+Total Test time (real) =  18.88 sec
+
+The following tests FAILED:
+	130 - test_naca0012_wall_shear_audit (Failed)           long qualification validation
+Errors while running CTest

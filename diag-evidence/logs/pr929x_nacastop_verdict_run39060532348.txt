@@ -1,0 +1,7 @@
+VERDICT: EVIDENCE_COMPLETE
+n_traces=4
+last_iter=1
+picard_budget=8000
+audit_state=TRACE_CAPTURED
+interpretation: EVIDENCE_COMPLETE = preuve de capture et auto-coherente ;
+ceci est un DIAGNOSTIC de localisation de la raison d'arret, PAS un verdict de correction numerique.
