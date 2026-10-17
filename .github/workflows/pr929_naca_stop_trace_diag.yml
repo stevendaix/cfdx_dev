@@ -1,23 +1,26 @@
-name: PR929 NACA0012 stop-trace capture (diag)
+name: PR929 NACA0012 stop-reason diagnostic v2 (diag)
 
 # DIAG-ONLY — branche ci/long-campaign-diagnostics (PR #903 fermee, JAMAIS merger).
-# Objectif (P1-b de l'audit Steven #929, feu vert 2026-10-17 ~17:40Z) :
-#   capturer la DERNIERE trace d'iteration du solveur avant l'exception
-#   "NACA0012 solver did not converge" du test test_naca0012_qualification
-#   (echec en 31.09 s sur run 39041321620, PAS un timeout), et la meme
-#   capture best-effort pour test_naca0012_wall_shear_audit (echec en cascade
-#   30.34 s). Question posee par Steven : arret STAGNATED, MAX_ITERATIONS,
-#   divergence ou autre ?
-# CAPTURE-ONLY : AUCUNE modification du code, du test, des seuils ou des
-#   budgets. On execute le test tel quel sur le head epingle et on analyse
-#   sa sortie stdout/stderr. Faits ancre's sur le head epingle e1cbefee
-#   (tests/validation/test_naca0012_geometry.cpp) : budget Picard
-#   c.convergence.max_iterations=8000, trace iteration_trace=true frequence
-#   200, l'exception est jetee si !solve.converged apres le solve N64.
-# Ref epinglee : head #929 e1cbefee90b4f3703d709f436585918a201ed536.
+# Objectif (P1-b v2 demande par Steven, 2026-10-17 ~20:27Z) : rejouer le
+#   diagnostic NACA sur le head ACTUEL en captant EXPLICITEMENT
+#   convergence_status, convergence_reason (statuts OFFICIELS du solveur),
+#   les rejets de transactions non lineaires (NonlinearRetryableFailure) et
+#   la derniere iteration reellement executee — pour distinguer stagnation,
+#   divergence, rejet de tentative et autre sortie prematuree. La v1
+#   (capture-only, run 39060532348, head e1cbefee) avait borne l'arret du
+#   solve N128 entre les iterations 1 et 200 (granularite de trace 200 trop
+#   grossiere) et sa classification EARLY_STOP_RISING_RESIDUAL n'etait PAS
+#   demontreee (comparaison inter-solves, pas intra-solve).
+# INSTRUMENTATION ENV-GATED : patch fail-closed a 5 ancres uniques du solveur
+#   du head epingle (aucune semantique modifiee ; no-op total sans la variable
+#   d'environnement CFDX_NACA_STOP_DUMP_DIR). Dump TSV par solve :
+#   kind=START / ITER (chaque tentative, tous les champs d'iteration) /
+#   REJECTED (transaction non lineaire rejetee) / STOP (statut + raison
+#   officiels). Un STOP ABSENT = sortie du solveur par exception (throw).
+# Ref epinglee : head #929 5a680640b1229e115a19f4e980bac850f4031837.
 # Verdicts fail-closed : EVIDENCE_COMPLETE (seul vert — diagnostic, PAS un
-#   PASS/FAIL numerique), INCONCLUSIVE_BUILD / TEST_RUN / NO_TRACE,
-#   INCONCLUSIVE_ANALYZER_CRASH.
+#   PASS/FAIL numerique), INCONCLUSIVE_PATCH_FAILED / BUILD / TEST_RUN /
+#   NO_DUMP / NO_STOP_ROW, INCONCLUSIVE_ANALYZER_CRASH.
 # Evidence suffixee $GITHUB_RUN_ID, commitee sur la branche diag par le bot.
 
 on:
@@ -37,7 +40,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  HEAD_SHA_PIN: e1cbefee90b4f3703d709f436585918a201ed536
+  HEAD_SHA_PIN: 5a680640b1229e115a19f4e980bac850f4031837
   EVID: diag-evidence/logs
 
 jobs:
@@ -61,9 +64,9 @@ jobs:
           {
             echo "run_id=$GITHUB_RUN_ID"
             echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo "head_sha=$HEAD_SHA_PIN (pinned head of PR #929, capture-only, NO code modification)"
-            echo "scope: full stdout/stderr capture of test_naca0012_qualification (expected FAIL ~31 s) + best-effort test_naca0012_wall_shear_audit"
-            echo "target: LAST solver iteration trace before 'NACA0012 solver did not converge' — STAGNATED vs MAX_ITERATIONS vs divergence"
+            echo "head_sha=$HEAD_SHA_PIN (pinned head of PR #929, env-gated diag instrumentation, solver semantics UNCHANGED)"
+            echo "scope: instrumented run of test_naca0012_qualification (expected FAIL ~31 s) + best-effort test_naca0012_wall_shear_audit"
+            echo "target: OFFICIAL convergence_status + convergence_reason + nonlinear transaction rejections + last executed iteration"
             echo "rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL"
           } > "$GITHUB_WORKSPACE/$EVID/pr929x_nacastop_meta_run$GITHUB_RUN_ID.txt"
 
@@ -93,7 +96,167 @@ jobs:
               || { echo "::error::missing mesh naca0012_laminar_n$n.h5"; exit 1; }
           done
 
-      - name: Configure and build (pinned head, capture-only)
+      - name: Apply diag instrumentation patch (fail-closed anchors, env-gated)
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, sys
+
+          run_id = os.environ["GITHUB_RUN_ID"]
+          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+          status_path = os.path.join(evid, "pr929x_nacastop_patch_status_run" + run_id + ".txt")
+          solver = os.path.join(os.environ["RUNNER_TEMP"], "head", "src", "cfdx",
+                                "physics", "steady_incompressible_solver.h")
+
+          def fail(reason):
+              with open(status_path, "w") as fh:
+                  fh.write("patch_exit=1\nreason=" + reason + "\n")
+              print("::error::instrumentation patch failed: " + reason)
+              sys.exit(1)
+
+          if not os.path.exists(solver):
+              fail("solver file not found in worktree: " + solver)
+          with open(solver, "r", encoding="utf-8") as fh:
+              text = fh.read()
+          sha_before = hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+          # Ancres fail-closed, verifiees UNIQUES sur le head epingle 5a680640
+          # (fichier extrait du distant a ce SHA exact).
+          A1 = "#include <functional>"
+          A3 = "    validate_incompressible_controls(controls, mesh.n_cells());"
+          A2 = "        result.history.push_back(h);"
+          A4 = "                retry_controller.reject();"
+          A5 = ("    if (pressure_context)\n"
+                "        result.pressure_linear_context = pressure_context->stats();\n"
+                "    return result;")
+          for name, anchor in (("A1", A1), ("A3", A3), ("A2", A2), ("A4", A4), ("A5", A5)):
+              n = text.count(anchor)
+              if n != 1:
+                  fail("anchor %s count=%d (expected 1)" % (name, n))
+
+          # Insertions : instrumentation no-op sans CFDX_NACA_STOP_DUMP_DIR.
+          # PIEGE : r-strings pour garder les \n du C++ LITERAUX (backslash-n),
+          # pas des sauts de ligne Python. Les espaces dans reason/what sont
+          # remplaces par '_' pour que chaque ligne du dump reste un TSV
+          # tokennable (cle=valeur separees par des espaces).
+          I1 = "#include <functional>\n#include <cstdlib>\n#include <fstream>\n"
+
+          I3 = A3 + r"""
+              static std::size_t cfdx_diag_solve_seq = 0;
+              ++cfdx_diag_solve_seq;
+              auto cfdx_diag_sanitize = [](std::string s) {
+                  for (char& c : s) {
+                      if (c == '\t' || c == '\n' || c == '\r' || c == ' ')
+                          c = '_';
+                  }
+                  return s;
+              };
+              if (const char* cfdx_diag_dir = std::getenv("CFDX_NACA_STOP_DUMP_DIR")) {
+                  std::ofstream cfdx_dump_out(std::string(cfdx_diag_dir) + "/naca_stop_dumps.tsv",
+                                              std::ios::app);
+                  cfdx_dump_out << "kind=START solve=" << cfdx_diag_solve_seq
+                                << " n_cells=" << mesh.n_cells() << "\n";
+              }
+              """
+
+          I2 = A2 + r"""
+                  if (const char* cfdx_diag_dir = std::getenv("CFDX_NACA_STOP_DUMP_DIR")) {
+                      std::ofstream cfdx_dump_out(std::string(cfdx_diag_dir) + "/naca_stop_dumps.tsv",
+                                                  std::ios::app);
+                      cfdx_dump_out << "kind=ITER solve=" << cfdx_diag_solve_seq
+                                    << " iteration=" << h.iteration
+                                    << " momentum_residual=" << h.momentum_residual
+                                    << " pressure_residual=" << h.pressure_residual
+                                    << " continuity_l1=" << h.continuity_l1
+                                    << " continuity_linf=" << h.continuity_linf
+                                    << " continuity_normalized=" << h.continuity_normalized
+                                    << " momentum_rhs_scale=" << h.momentum_rhs_scale
+                                    << " momentum_equation_residual_reference=" << h.momentum_equation_residual_reference
+                                    << " momentum_equation_residual_rhs_relative=" << h.momentum_equation_residual_rhs_relative
+                                    << " momentum_equation_residual=" << h.momentum_equation_residual
+                                    << " momentum_equation_residual_relative=" << h.momentum_equation_residual_relative
+                                    << " velocity_change_inf=" << h.velocity_change_inf
+                                    << " pressure_change_inf=" << h.pressure_change_inf
+                                    << " effective_alpha_u=" << h.effective_alpha_u
+                                    << " effective_alpha_p=" << h.effective_alpha_p
+                                    << " nonlinear_convergence_metric=" << h.nonlinear_convergence_metric
+                                    << " momentum_linear_iterations=" << h.momentum_linear_iterations
+                                    << " pressure_linear_iterations=" << h.pressure_linear_iterations
+                                    << " pressure_correctors_used=" << h.pressure_correctors_used
+                                    << " corrected_flux_continuity_linf=" << h.corrected_flux_continuity_linf
+                                    << " reconstructed_velocity_continuity_linf=" << h.reconstructed_velocity_continuity_linf
+                                    << " flux_velocity_mismatch_linf=" << h.flux_velocity_mismatch_linf
+                                    << " momentum_residual_cell=" << h.momentum_residual_cell
+                                    << " momentum_residual_patch=" << cfdx_diag_sanitize(h.momentum_residual_patch)
+                                    << " mass_normalized_imbalance=" << h.mass_normalized_imbalance
+                                    << " boundedness_nonfinite_velocity=" << h.boundedness_nonfinite_velocity
+                                    << "\n";
+                  }
+                  """
+
+          I4 = A4 + r"""
+                          if (const char* cfdx_diag_dir = std::getenv("CFDX_NACA_STOP_DUMP_DIR")) {
+                              std::ofstream cfdx_dump_out(std::string(cfdx_diag_dir) + "/naca_stop_dumps.tsv",
+                                                          std::ios::app);
+                              cfdx_dump_out << "kind=REJECTED solve=" << cfdx_diag_solve_seq
+                                            << " iteration=" << iter
+                                            << " retries=" << retry_controller.retries()
+                                            << " reason=" << cfdx_diag_sanitize(error.what())
+                                            << "\n";
+                          }
+                          """
+
+          I5 = r"""    if (pressure_context)
+                  result.pressure_linear_context = pressure_context->stats();
+              if (const char* cfdx_diag_dir = std::getenv("CFDX_NACA_STOP_DUMP_DIR")) {
+                  std::ofstream cfdx_dump_out(std::string(cfdx_diag_dir) + "/naca_stop_dumps.tsv",
+                                              std::ios::app);
+                  cfdx_dump_out << "kind=STOP solve=" << cfdx_diag_solve_seq
+                                << " iterations=" << result.iterations
+                                << " converged=" << (result.converged ? 1 : 0)
+                                << " status=" << cfdx::core::to_string(result.convergence_status)
+                                << " reason=" << cfdx_diag_sanitize(result.convergence_reason)
+                                << "\n";
+              }
+              return result;"""
+
+          new = text.replace(A1, I1, 1).replace(A3, I3, 1).replace(A2, I2, 1) \
+                    .replace(A4, I4, 1).replace(A5, I5, 1)
+
+          # Post-conditions fail-closed : chaque bloc insere exactement une fois.
+          post = [
+              ("A1_present", new.count(A1), 1),
+              ("A3_present", new.count(A3), 1),
+              ("A2_present", new.count(A2), 1),
+              ("A4_present", new.count(A4), 1),
+              # PIEGE : A5 est CONSOMMEE par l'insertion — le bloc STOP s'insere
+              # ENTRE le prefixe 2 lignes et le "return result;", donc la sequence
+              # A5 complete n'existe plus apres le patch. On verifie le prefixe.
+              ("A5_prefix_present", new.count(A5.split("\n")[0] + "\n" + A5.split("\n")[1]), 1),
+              ("solve_seq_count", new.count("cfdx_diag_solve_seq"), 6),
+              ("getenv_count", new.count('std::getenv("CFDX_NACA_STOP_DUMP_DIR")'), 4),
+              ("sanitize_count", new.count("cfdx_diag_sanitize"), 4),
+              ("start_rows", new.count('"kind=START'), 1),
+              ("iter_rows", new.count('"kind=ITER'), 1),
+              ("rejected_rows", new.count('"kind=REJECTED'), 1),
+              ("stop_rows", new.count('"kind=STOP'), 1),
+          ]
+          for name, got, want in post:
+              if got != want:
+                  fail("post-condition %s=%d (expected %d)" % (name, got, want))
+
+          with open(solver, "w", encoding="utf-8") as fh:
+              fh.write(new)
+          sha_after = hashlib.sha256(new.encode("utf-8")).hexdigest()
+          with open(status_path, "w") as fh:
+              fh.write("patch_exit=0\n")
+              fh.write("sha256_before=" + sha_before + "\n")
+              fh.write("sha256_after=" + sha_after + "\n")
+              for name, got, want in post:
+                  fh.write("%s=%d\n" % (name, got))
+          print("instrumentation patch applied: " + sha_before[:12] + " -> " + sha_after[:12])
+          PY
+
+      - name: Configure and build (pinned head + env-gated diag instrumentation)
         id: build_head
         continue-on-error: true
         run: |
@@ -132,9 +295,11 @@ jobs:
         run: |
           echo "build_head_exit=nonzero" > "$GITHUB_WORKSPACE/$EVID/pr929x_nacastop_build_status_run$GITHUB_RUN_ID.txt"
 
-      - name: Run NACA0012 qualification (capture full output)
+      - name: Run NACA0012 qualification (capture full output + diag dump)
         id: naca_run
         continue-on-error: true
+        env:
+          CFDX_NACA_STOP_DUMP_DIR: ${{ github.workspace }}/diag-evidence/logs
         run: |
           E="$GITHUB_WORKSPACE/$EVID"
           ctest --test-dir "$RUNNER_TEMP/head/build" -R '^test_naca0012_qualification$' -N > "$E/pr929x_nacastop_testlist_run$GITHUB_RUN_ID.log" 2>&1
@@ -155,6 +320,15 @@ jobs:
             rca=${PIPESTATUS[0]}
             echo "wallshear_test_exit=$rca" >> "$E/pr929x_nacastop_test_status_run$GITHUB_RUN_ID.txt"
           fi
+          # Le dump TSV de l'instrumentation (START/ITER/REJECTED/STOP par
+          # solve) a atterri dans diag-evidence/logs via la variable d'env.
+          # Renommage suffixe run_id : pas d'ecrasement entre runs successifs.
+          if [ -f "$E/naca_stop_dumps.tsv" ]; then
+            mv "$E/naca_stop_dumps.tsv" "$E/pr929x_nacastop_dumps_run$GITHUB_RUN_ID.tsv"
+            echo "naca_dump=present" >> "$E/pr929x_nacastop_test_status_run$GITHUB_RUN_ID.txt"
+          else
+            echo "naca_dump=MISSING" >> "$E/pr929x_nacastop_test_status_run$GITHUB_RUN_ID.txt"
+          fi
           echo "naca_test_exit=$rc (echec ATTENDU : defaut pre-existant documente)"
           exit 0
 
@@ -172,12 +346,12 @@ jobs:
           shear_log = os.path.join(evid, "pr929x_nacastop_wallshear_run" + run_id + ".log")
           build_path = os.path.join(evid, "pr929x_nacastop_build_status_run" + run_id + ".txt")
           test_status = os.path.join(evid, "pr929x_nacastop_test_status_run" + run_id + ".txt")
+          patch_path = os.path.join(evid, "pr929x_nacastop_patch_status_run" + run_id + ".txt")
+          dumps_path = os.path.join(evid, "pr929x_nacastop_dumps_run" + run_id + ".txt")
 
-          # Budget Picard du test sur le head epingle (test_naca0012_geometry.cpp,
-          # c.convergence.max_iterations=8000) — constante documentee, capture-only.
-          PICARD_BUDGET = 8000
-          TRACE_PREFIX = "INCOMPRESSIBLE_ITER"
           EXCEPTION = "NACA0012 solver did not converge"
+          TRACE_PREFIX = "INCOMPRESSIBLE_ITER"
+          STDERR_REJECT = "CFDX nonlinear iteration"
 
           rep = []
           def emit(line=""):
@@ -214,32 +388,66 @@ jobs:
               with open(path, errors="replace") as fh:
                   return [strip_prefix(l.rstrip("\n")) for l in fh]
 
-          def momentum_key(d):
-              for k in d:
-                  if "momentum" in k:
-                      return k
-              return None
+          # ---- parse du dump TSV de l'instrumentation (k=v separes par espaces) ----
+          def parse_dump_rows(path):
+              rows = []
+              with open(path, errors="replace") as fh:
+                  for raw in fh:
+                      line = raw.rstrip("\n").strip()
+                      if not line:
+                          continue
+                      d = {}
+                      for tok in line.split():
+                          if "=" in tok:
+                              k, v = tok.split("=", 1)
+                              d[k] = v
+                      if d.get("kind"):
+                          rows.append(d)
+              return rows
 
-          def continuity_key(d):
-              for k in d:
-                  if "continuity" in k:
-                      return k
-              return None
+          def group_solves(rows):
+              solves = []
+              cur = None
+              for d in rows:
+                  kind = d.get("kind")
+                  if kind == "START":
+                      cur = {"solve": d.get("solve", "?"), "n_cells": d.get("n_cells", "?"),
+                             "iters": [], "rejected": [], "stop": None}
+                      solves.append(cur)
+                  elif cur is None:
+                      continue
+                  elif kind == "ITER":
+                      cur["iters"].append(d)
+                  elif kind == "REJECTED":
+                      cur["rejected"].append(d)
+                  elif kind == "STOP":
+                      cur["stop"] = d
+              return solves
 
-          def mismatch_key(d):
-              for k in d:
-                  if "mismatch" in k:
-                      return k
-              return None
-
-          def fnum(x):
-              return float(x)
-
-          def fmt(x):
-              return "%.6e" % fnum(x)
+          def last_exec(dicts):
+              last = None
+              for d in dicts:
+                  v = d.get("iteration")
+                  if v is not None:
+                      last = int(float(v))
+              return last
 
           try:
-              # ---- gates fail-closed (INCONCLUSIVE != PASS) --------------------
+              # ---- gate 0 : instrumentation patch (fail-closed) --------------
+              patch_lines = []
+              if os.path.exists(patch_path):
+                  patch_lines = open(patch_path, errors="replace").read().splitlines()
+              if not any(l.startswith("patch_exit=0") for l in patch_lines):
+                  emit("== Instrumentation patch ==")
+                  for l in patch_lines[:20]:
+                      emit("  " + l)
+                  if not patch_lines:
+                      emit("  (fichier de statut absent : le step de patch n'a pas abouti)")
+                  write_all("INCONCLUSIVE_PATCH_FAILED",
+                            patch_lines[:5] or ["patch status file missing"])
+                  sys.exit(0)
+
+              # ---- gate 1 : build (INCONCLUSIVE != PASS) ---------------------
               if os.path.exists(build_path):
                   bs = open(build_path).read().strip()
               else:
@@ -250,151 +458,172 @@ jobs:
                   write_all("INCONCLUSIVE_BUILD", ["build_status=" + bs])
                   sys.exit(0)
 
+              # ---- gate 2 : qualification log --------------------------------
               if not os.path.exists(qual_log):
                   write_all("INCONCLUSIVE_TEST_RUN", ["no qualification log produced"])
                   sys.exit(0)
 
               lines = read_stripped_lines(qual_log)
               exc_idx = [i for i, l in enumerate(lines) if EXCEPTION in l]
-              if not exc_idx:
-                  emit("exception '" + EXCEPTION + "' NOT found in the captured log")
+
+              # ---- gate 3 : dump d'instrumentation ---------------------------
+              if not os.path.exists(dumps_path):
+                  emit("dump absent : pr929x_nacastop_dumps_run" + run_id + ".txt")
                   if os.path.exists(test_status):
                       emit(open(test_status).read())
-                  write_all("INCONCLUSIVE_TEST_RUN",
-                            ["expected failure exception not present — see test status"])
+                  write_all("INCONCLUSIVE_NO_DUMP", ["no naca_stop_dumps.tsv captured"])
+                  sys.exit(0)
+              rows = parse_dump_rows(dumps_path)
+              solves = group_solves(rows)
+              if not solves:
+                  write_all("INCONCLUSIVE_NO_DUMP", ["dump present but no kind=START row"])
                   sys.exit(0)
 
-              traces = [(i, parse_kv(l)) for i, l in enumerate(lines)
-                        if TRACE_PREFIX in l]
-              if not traces:
-                  emit("no '" + TRACE_PREFIX + "' trace line found before the exception")
-                  write_all("INCONCLUSIVE_NO_TRACE",
-                            ["no iteration trace in captured output (stop possibly < 200 iters)"])
-                  sys.exit(0)
+              # ---- rapport par solve : statuts OFFICIELS, aucune inference ---
+              emit("== NACA0012 stop-reason diagnostic v2 — head epingle + instrumentation env-gated ==")
+              emit("regle de lecture : ITER = tentative dans le try (peut etre roulee back) ;")
+              emit("  REJECTED = transaction non lineaire rejetee ; STOP fait autorite")
+              emit("  (iterations officielles) ; STOP ABSENT = sortie par exception (throw).")
+              emit("solves = " + str(len(solves)) + " | exception '" + EXCEPTION
+                   + "' dans le log : " + str(bool(exc_idx)))
+              for s in solves:
+                  emit()
+                  emit("== Solve " + str(s["solve"]) + " (n_cells=" + str(s["n_cells"]) + ") ==")
+                  le = last_exec(s["iters"])
+                  emit("ITER rows (tentatives) = " + str(len(s["iters"]))
+                       + " | derniere iteration reellement executee = " + str(le))
+                  emit("transactions non lineaires rejetees = " + str(len(s["rejected"])))
+                  for d in s["rejected"]:
+                      emit("  REJECTED iter=" + str(d.get("iteration", "?"))
+                           + " retries=" + str(d.get("retries", "?"))
+                           + " reason=" + str(d.get("reason", "?"))[:160])
+                  if s["stop"] is not None:
+                      st = s["stop"]
+                      emit("STOP OFFICIEL : iterations=" + str(st.get("iterations"))
+                           + " converged=" + str(st.get("converged"))
+                           + " status=" + str(st.get("status"))
+                           + " reason=" + str(st.get("reason")))
+                  else:
+                      emit("STOP ABSENT : sortie par EXCEPTION (throw) — le solveur n'a")
+                      emit("  pas atteint la fin normale ; iterations officielles indisponibles")
+                      if s["rejected"]:
+                          emit("  dernier REJECTED reason="
+                               + str(s["rejected"][-1].get("reason", "?"))[:200])
+                  emit("trajectoire (TOUTES les iterations executees, instrumentation) :")
+                  emit("iteration\tmom_eq_rel\tcont_norm\tmismatch\talpha_u\talpha_p")
+                  for d in s["iters"]:
+                      emit("%s\t%s\t%s\t%s\t%s\t%s" % (
+                          d.get("iteration", "?"),
+                          d.get("momentum_equation_residual_relative", "n/a"),
+                          d.get("continuity_normalized", "n/a"),
+                          d.get("flux_velocity_mismatch_linf", "n/a"),
+                          d.get("effective_alpha_u", "n/a"),
+                          d.get("effective_alpha_p", "n/a")))
+                  emit("champ par champ de la DERNIERE tentative (ITER) :")
+                  if s["iters"]:
+                      for k in sorted(s["iters"][-1].keys()):
+                          emit("  " + k + "=" + str(s["iters"][-1][k]))
 
-              # ---- dernier etat du solveur ------------------------------------
-              last_idx, last = traces[-1]
-              first_idx, first = traces[0]
-              n_traces = len(traces)
-              iters = [int(fnum(d["iter"])) for _, d in traces if "iter" in d]
-              mk = momentum_key(last) or momentum_key(first)
-              ck = continuity_key(last) or continuity_key(first)
-              xk = mismatch_key(last) or mismatch_key(first)
-              # last_iter est recalcule plus bas (cle "iter", tolerance aux cles absentes)
-
-              emit("== NACA0012 qualification — capture sur head epingle (capture-only, aucune modification) ==")
-              emit("exception ligne " + str(exc_idx[0]) + " : " + EXCEPTION)
-              emit("nb traces " + TRACE_PREFIX + " = " + str(n_traces)
-                   + " | iters tracees = " + str(iters))
+              # ---- cross-check avec la capture brute (elements v1 conserves) --
               emit()
-              emit("== Trajectoire (cle momentum = " + str(mk) + ", continuite = " + str(ck)
-                   + ", mismatch = " + str(xk) + ") ==")
-              emit("iter\tmomentum\tcontinuity\tmismatch")
+              emit("== Cross-check log brut ==")
+              traces = [(i, parse_kv(l)) for i, l in enumerate(lines) if TRACE_PREFIX in l]
+              lti = None
               for _, d in traces:
-                  mi = d.get(mk, "n/a") if mk else "n/a"
-                  ci = d.get(ck, "n/a") if ck else "n/a"
-                  xi = d.get(xk, "n/a") if xk else "n/a"
-                  emit("%s\t%s\t%s\t%s" % (d.get("iter", "?"),
-                                           fmt(mi) if mi != "n/a" else "n/a",
-                                           fmt(ci) if ci != "n/a" else "n/a",
-                                           fmt(xi) if xi != "n/a" else "n/a"))
-
-              emit()
-              emit("== DERNIERE trace avant l'exception (champ par champ, ordre-independant) ==")
-              for k in sorted(last.keys()):
-                  emit("  " + k + "=" + last[k])
-
-              emit()
-              emit("== Contexte brut : 30 dernieres lignes avant l'exception ==")
-              for l in lines[max(0, exc_idx[0] - 30):exc_idx[0] + 3]:
-                  emit("  | " + l)
-
-              # ---- classification mesuree de la raison d'arret ------------------
-              emit()
-              emit("== Raison d'arret (MESURE depuis la capture, pas un verdict du solveur) ==")
+                  v = d.get("iter")
+                  if v is not None:
+                      lti = int(float(v))
+              emit("traces " + TRACE_PREFIX + " (freq 200) = " + str(len(traces))
+                   + " | derniere trace iter=" + str(lti)
+                   + " (granularite 200 : a confronter aux ITER rows ci-dessus)")
+              stderr_rej = [l for l in lines if STDERR_REJECT in l and "rejected" in l]
+              emit("lignes stderr '" + STDERR_REJECT + " ... rejected' = "
+                   + str(len(stderr_rej)))
+              for l in stderr_rej[:10]:
+                  emit("  | " + l.strip()[:200])
+              n_rej_rows = sum(len(s["rejected"]) for s in solves)
+              if len(stderr_rej) != n_rej_rows:
+                  emit("NOTE : stderr rejets=" + str(len(stderr_rej))
+                       + " != dump REJECTED=" + str(n_rej_rows) + " (a examiner)")
+              if exc_idx:
+                  emit("exception ligne " + str(exc_idx[0]) + " : " + EXCEPTION)
+                  emit("== Contexte brut : 30 dernieres lignes avant l'exception ==")
+                  for l in lines[max(0, exc_idx[0] - 30):exc_idx[0] + 3]:
+                      emit("  | " + l)
+              else:
+                  emit("exception '" + EXCEPTION + "' ABSENTE du log capture")
               marker_re = re.compile(
                   r"STAGNATED|stagnat|DIVERG|diverg|MAX_ITERATIONS|\bnan\b|NaN|\binf\b")
               markers = []
               for i, l in enumerate(lines):
                   if TRACE_PREFIX in l:
-                      continue  # traces analysees separement (valeurs ci-dessous)
+                      continue
                   m = marker_re.search(l)
                   if m:
                       markers.append((i, m.group(0), l.strip()[:160]))
               if markers:
-                  emit("marqueurs trouves dans le log :")
+                  emit("marqueurs hors traces :")
                   for i, pat, l in markers[:20]:
                       emit("  ligne " + str(i) + " [" + pat + "] " + l)
               else:
                   emit("aucun marqueur STAGNATED/DIVERG/MAX_ITERATIONS/nan/inf explicite hors traces")
-              nonfinite = [(d.get("iter"), k) for _, d in traces for k, v in d.items()
-                           if v.lower() in ("nan", "inf", "-inf", "+inf", "infinity")]
-              if nonfinite:
-                  emit("valeurs non finies dans les traces : " + str(nonfinite[:10]))
-              last_iter = None
-              for _, d in traces:
-                  v = d.get("iter")
-                  if v is not None:
-                      last_iter = int(fnum(v))
 
-              if last_iter is not None and last_iter >= PICARD_BUDGET:
-                  emit("classification : STOP_AT_MAX_ITERATIONS — la derniere trace atteint le budget Picard "
-                       + str(PICARD_BUDGET) + " (c.convergence.max_iterations du test epingle)")
-              else:
-                  moms = [abs(fnum(d[mk])) for _, d in traces if mk and mk in d]
-                  rising = len(moms) >= 2 and max(moms[-3:]) > 10.0 * max(min(moms), 1e-300) \
-                      and max(moms[-3:]) > max(moms[:max(1, len(moms) // 2)])
-                  if rising:
-                      emit("classification : EARLY_STOP_RISING_RESIDUAL (divergence-like) — le residu momentum "
-                           "croit fortement sur les dernieres traces ; arret AVANT le budget (derniere trace iter="
-                           + str(last_iter) + " < " + str(PICARD_BUDGET) + ")")
-                  else:
-                      emit("classification : EARLY_STOP_FLAT (stagnation-like) — pas de croissance marquee du "
-                           "residu ; arret AVANT le budget (derniere trace iter="
-                           + str(last_iter) + " < " + str(PICARD_BUDGET) + ")")
-              if last_iter is not None and last_iter < PICARD_BUDGET:
-                  emit("NOTE : la derniere trace est a iter=" + str(last_iter)
-                       + " (trace tous les 200 iters) ; l'arret reel est dans ("
-                       + str(last_iter) + ", " + str(last_iter + 200) + "]")
-
-              # ---- audit cisaillement (best-effort) ----------------------------
+              # ---- audit cisaillement (best-effort, echec en cascade attendu) --
               emit()
-              emit("== Audit cisaillement pariétal (best-effort, echec en cascade attendu) ==")
+              emit("== Audit cisaillement parietal (best-effort, echec en cascade attendu) ==")
               shear_state = "ABSENT"
               if os.path.exists(shear_log):
                   slines = read_stripped_lines(shear_log)
                   sexc = [i for i, l in enumerate(slines) if "did not converge" in l]
-                  straces = [(i, parse_kv(l)) for i, l in enumerate(slines) if TRACE_PREFIX in l]
                   emit("log present : " + str(len(slines)) + " lignes, exceptions="
-                       + str(len(sexc)) + ", traces=" + str(len(straces)))
+                       + str(len(sexc)))
                   if sexc:
                       emit("exception audit ligne " + str(sexc[0]) + " : "
                            + slines[sexc[0]].strip()[:200])
-                  if straces:
-                      _, slast = straces[-1]
-                      emit("derniere trace audit : iter=" + str(slast.get("iter", "?")))
-                      for k in sorted(slast.keys()):
-                          emit("  " + k + "=" + slast[k])
-                      shear_state = "TRACE_CAPTURED"
-                  else:
-                      shear_state = "NO_TRACE"
                   ctx = [l for l in slines if "NACA0012" in l or "WALL_SHEAR" in l]
                   for l in ctx[:15]:
                       emit("  | " + l.strip()[:160])
+                  shear_state = "CAPTURED" if slines else "EMPTY"
               else:
                   emit("log absent (cible absente ou non executee)")
               emit("audit_state=" + shear_state)
+              emit("(les solves de l'audit, s'il a tourne, sont dans le meme dump TSV)")
 
+              # ---- synthese : reponse OFFICIELLE a la question P1-b -----------
               emit()
-              emit("traces=" + str(n_traces) + " last_iter=" + str(last_iter)
-                   + " budget=" + str(PICARD_BUDGET))
+              emit("== Synthese (statuts OFFICIELS du solveur, aucune inference) ==")
+              n_stop = sum(1 for s in solves if s["stop"] is not None)
+              n_thrown = len(solves) - n_stop
+              emit("solves=" + str(len(solves)) + " avec_STOP=" + str(n_stop)
+                   + " sans_STOP(exception)=" + str(n_thrown))
+              for s in solves:
+                  if s["stop"] is not None:
+                      st = s["stop"]
+                      emit("  solve " + str(s["solve"]) + " n_cells=" + str(s["n_cells"])
+                           + " : status=" + str(st.get("status"))
+                           + " converged=" + str(st.get("converged"))
+                           + " iterations=" + str(st.get("iterations"))
+                           + " reason=" + str(st.get("reason")))
+                  else:
+                      emit("  solve " + str(s["solve"]) + " n_cells=" + str(s["n_cells"])
+                           + " : EXCEPTION, derniere iteration tentee=" + str(last_exec(s["iters"]))
+                           + ", dernier REJECTED reason="
+                           + (str(s["rejected"][-1].get("reason")) if s["rejected"] else "aucun"))
+
+              if n_stop == 0 and not exc_idx:
+                  write_all("INCONCLUSIVE_NO_STOP_ROW",
+                            ["no STOP row and no exception — stop reason not classifiable"])
+                  sys.exit(0)
+
               write_all("EVIDENCE_COMPLETE", [
-                  "n_traces=" + str(n_traces),
-                  "last_iter=" + str(last_iter),
-                  "picard_budget=" + str(PICARD_BUDGET),
+                  "solves=" + str(len(solves)),
+                  "solves_with_stop=" + str(n_stop),
+                  "solves_thrown=" + str(n_thrown),
+                  "exception_in_log=" + str(bool(exc_idx)),
                   "audit_state=" + shear_state,
-                  "interpretation: EVIDENCE_COMPLETE = preuve de capture et auto-coherente ;",
-                  "ceci est un DIAGNOSTIC de localisation de la raison d'arret, PAS un verdict de correction numerique.",
+                  "interpretation: EVIDENCE_COMPLETE = capture instrumentee auto-coherente ;",
+                  "les statuts rapportes sont les statuts OFFICIELS du solveur, PAS une inference ;",
+                  "ceci est un DIAGNOSTIC de la raison d'arret, PAS un verdict de correction numerique.",
               ])
           except Exception:
               emit("ANALYZER CRASH:")
@@ -411,7 +640,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: PR 929 NACA0012 stop-trace capture run $GITHUB_RUN_ID (#929 P1-b) [ci skip]"
+            git commit -m "diag: PR 929 NACA0012 stop-reason v2 run $GITHUB_RUN_ID (#929 P1-b) [ci skip]"
             if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
               git pull --rebase origin "$GITHUB_REF_NAME"
               git push origin "HEAD:$GITHUB_REF_NAME"
@@ -426,12 +655,12 @@ jobs:
           set -u
           E="$GITHUB_WORKSPACE/$EVID"
           {
-            echo "## NACA0012 — capture de la dernière trace d'arrêt (P1-b) — run $GITHUB_RUN_ID — verdict : $(sed -n 's/^VERDICT: //p' "$E/pr929x_nacastop_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo UNKNOWN)"
+            echo "## NACA0012 — raison d'arrêt officielle du solveur (P1-b v2) — run $GITHUB_RUN_ID — verdict : $(sed -n 's/^VERDICT: //p' "$E/pr929x_nacastop_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo UNKNOWN)"
             echo
-            echo "Réf épinglée : \`$HEAD_SHA_PIN\` (head #929 ; capture-only, AUCUNE modification de code/test/budget)."
-            echo "Évidence : \`diag-evidence/logs/pr929x_nacastop_*_run$GITHUB_RUN_ID.*\` sur \`ci/long-campaign-diagnostics\`."
+            echo "Réf épinglée : \`$HEAD_SHA_PIN\` (head #929 actuel ; instrumentation env-gated du solveur dans le worktree du runner UNIQUEMENT, sémantique inchangée, no-op sans \`CFDX_NACA_STOP_DUMP_DIR\`)."
+            echo "Évidence : \`diag-evidence/logs/pr929x_nacastop_*_run$GITHUB_RUN_ID.*\` — dont \`pr929x_nacastop_dumps_run$GITHUB_RUN_ID.tsv\` (START / ITER / REJECTED / STOP par solve : convergence_status, convergence_reason, rejets de transactions non linéaires, dernière itération réellement exécutée) — sur \`ci/long-campaign-diagnostics\`."
             echo
-            echo "Règle d'interprétation (Steven) : \`EVIDENCE_COMPLETE\` = preuve de capture auto-cohérente — PAS un PASS/FAIL numérique. Le test NACA reste attendu en échec tant que la non-convergence pré-existante n'est pas résolue."
+            echo "Règle d'interprétation (Steven) : \`EVIDENCE_COMPLETE\` = capture instrumentée auto-cohérente — PAS un PASS/FAIL numérique. Les statuts rapportés sont les statuts OFFICIELS du solveur, pas une inference. Le test NACA reste attendu en échec tant que la non-convergence pré-existante n'est pas résolue."
             echo
             echo '~~~'
             cat "$E/pr929x_nacastop_analysis_run$GITHUB_RUN_ID.txt" 2>/dev/null || cat "$E/pr929x_nacastop_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "(analyse indisponible)"
