@@ -1,26 +1,31 @@
-name: PR929 NACA0012 stop-reason diagnostic v2 (diag)
+name: PR929 NACA0012 stop-reason + cell forensics diagnostic v4 (diag)
 
 # DIAG-ONLY — branche ci/long-campaign-diagnostics (PR #903 fermee, JAMAIS merger).
-# Objectif (P1-b v2 demande par Steven, 2026-10-17 ~20:27Z) : rejouer le
-#   diagnostic NACA sur le head ACTUEL en captant EXPLICITEMENT
-#   convergence_status, convergence_reason (statuts OFFICIELS du solveur),
-#   les rejets de transactions non lineaires (NonlinearRetryableFailure) et
-#   la derniere iteration reellement executee — pour distinguer stagnation,
-#   divergence, rejet de tentative et autre sortie prematuree. La v1
-#   (capture-only, run 39060532348, head e1cbefee) avait borne l'arret du
-#   solve N128 entre les iterations 1 et 200 (granularite de trace 200 trop
-#   grossiere) et sa classification EARLY_STOP_RISING_RESIDUAL n'etait PAS
-#   demontreee (comparaison inter-solves, pas intra-solve).
-# INSTRUMENTATION ENV-GATED : patch fail-closed a 5 ancres uniques du solveur
-#   du head epingle (aucune semantique modifiee ; no-op total sans la variable
-#   d'environnement CFDX_NACA_STOP_DUMP_DIR). Dump TSV par solve :
-#   kind=START / ITER (chaque tentative, tous les champs d'iteration) /
-#   REJECTED (transaction non lineaire rejetee) / STOP (statut + raison
-#   officiels). Un STOP ABSENT = sortie du solveur par exception (throw).
-# Ref epinglee : head #929 5a680640b1229e115a19f4e980bac850f4031837.
+# v4 (P1 étapes A/B du plan Steven, 2026-10-17) : complète la capture v3 (raison
+#   d'arrêt OFFICIELLE par solve) par la forensique des COEFFICIENTS des
+#   cellules où la divergence démarre (N128 : patch airfoil cellules 7-8 iters
+#   3-8 puis 262-264, evidence v3) :
+#   - étape A : dump par itération (iter <= 40) des LIGNES DE MATRICE momentum
+#     (CELLROW : diag/rhs/x_pre/x_post/ax/nnz/vol/gradp) + coefficients par
+#     voisin (CELLNZ) pour les cellules cibles CFDX_NACA_CELL_CELLS et leurs
+#     voisins par faces ;
+#   - étape B : row_residual = A.x - b recalculé INDEPENDAMMENT du solveur
+#     linéaire, confronté au lin_res DÉCLARÉ — divergent pareil = opérateur/
+#     coefficients suspects ; divergent différemment = calcul/normalisation du
+#     résidu suspects ;
+#   - microscope momentum EXISTANT du solveur (reconstruction indépendante
+#     make_mass_flux + audit rhie_chow_expected/actual) forcé via
+#     CFDX_NACA_DEBUG_CELL/CFDX_NACA_MIC_FORCE sur la cellule 7, y compris sur
+#     arrêt STAGNATED/DIVERGED et itérations <= 40 (production : convergence ou
+#     max_iterations uniquement, sémantique inchangée sans les variables).
+# Base v2/v3 (conservée) : dump TSV par solve kind=START/ITER/REJECTED/STOP —
+#   statut + raison officiels, rejets de transactions non linéaires, dernière
+#   itération exécutée ; STOP ABSENT = sortie par exception (throw).
+# Ref epinglee : head #929 4b54d920fad91f779731b12373ec2ed93ec64c2f.
 # Verdicts fail-closed : EVIDENCE_COMPLETE (seul vert — diagnostic, PAS un
 #   PASS/FAIL numerique), INCONCLUSIVE_PATCH_FAILED / BUILD / TEST_RUN /
-#   NO_DUMP / NO_STOP_ROW, INCONCLUSIVE_ANALYZER_CRASH.
+#   NO_DUMP / NO_CELLROWS / NO_MICROSCOPE / NO_STOP_ROW,
+#   INCONCLUSIVE_ANALYZER_CRASH.
 # Evidence suffixee $GITHUB_RUN_ID, commitee sur la branche diag par le bot.
 
 on:
@@ -40,7 +45,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  HEAD_SHA_PIN: 5a680640b1229e115a19f4e980bac850f4031837
+  HEAD_SHA_PIN: 4b54d920fad91f779731b12373ec2ed93ec64c2f
   EVID: diag-evidence/logs
 
 jobs:
@@ -66,7 +71,8 @@ jobs:
             echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "head_sha=$HEAD_SHA_PIN (pinned head of PR #929, env-gated diag instrumentation, solver semantics UNCHANGED)"
             echo "scope: instrumented run of test_naca0012_qualification (expected FAIL ~31 s) + best-effort test_naca0012_wall_shear_audit"
-            echo "target: OFFICIAL convergence_status + convergence_reason + nonlinear transaction rejections + last executed iteration"
+            echo "target v4: OFFICIAL convergence_status/reason + transaction rejections + last executed iteration"
+            echo "target v4 (etapes A/B): momentum matrix rows CELLROW/CELLNZ cells 7,8,262,264+voisins, row_residual=A.x-b independant, microscope cell 7"
             echo "rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL"
           } > "$GITHUB_WORKSPACE/$EVID/pr929x_nacastop_meta_run$GITHUB_RUN_ID.txt"
 
@@ -119,8 +125,12 @@ jobs:
               text = fh.read()
           sha_before = hashlib.sha256(text.encode("utf-8")).hexdigest()
 
-          # Ancres fail-closed, verifiees UNIQUES sur le head epingle 5a680640
-          # (fichier extrait du distant a ce SHA exact).
+          # Ancres fail-closed, verifiees UNIQUES sur le head epingle :
+          # A1/A3/A2/A4/A5 identiques depuis 5a680640, B1/B2/B3/B4 verifiees
+          # sur 4b54d920 (fichier extrait du distant a ce SHA exact). Les 9
+          # remplacements et les post-conditions ci-dessous ont ete simules
+          # integralement (splice complet + deltas braces/parens = 0) contre
+          # la copie exacte du solveur du head epingle.
           A1 = "#include <functional>"
           A3 = "    validate_incompressible_controls(controls, mesh.n_cells());"
           A2 = "        result.history.push_back(h);"
@@ -128,7 +138,15 @@ jobs:
           A5 = ("    if (pressure_context)\n"
                 "        result.pressure_linear_context = pressure_context->stats();\n"
                 "    return result;")
-          for name, anchor in (("A1", A1), ("A3", A3), ("A2", A2), ("A4", A4), ("A5", A5)):
+          # v4 : ancres supplementaires (verifiees UNIQUES x1 sur le head epingle
+          # 4b54d920, fichier extrait du distant a ce SHA exact).
+          B1 = "        rz = solve_scalar_equation(ez, uz, momentum_solve_controls);"
+          B2 = ("        if (debug_cell_enabled && (converged_now "
+                "|| iter == controls.convergence.max_iterations)) {")
+          B3 = "            debug_cell = static_cast<std::size_t>(controls.diagnostics.debug_cell);"
+          B4 = "        const bool debug_cell_enabled ="
+          for name, anchor in (("A1", A1), ("A3", A3), ("A2", A2), ("A4", A4), ("A5", A5),
+                               ("B1", B1), ("B2", B2), ("B3", B3), ("B4", B4)):
               n = text.count(anchor)
               if n != 1:
                   fail("anchor %s count=%d (expected 1)" % (name, n))
@@ -143,6 +161,8 @@ jobs:
           I3 = A3 + r"""
               static std::size_t cfdx_diag_solve_seq = 0;
               ++cfdx_diag_solve_seq;
+              static const bool cfdx_diag_mic_force =
+                  std::getenv("CFDX_NACA_MIC_FORCE") != nullptr;
               auto cfdx_diag_sanitize = [](std::string s) {
                   for (char& c : s) {
                       if (c == '\t' || c == '\n' || c == '\r' || c == ' ')
@@ -219,10 +239,160 @@ jobs:
               }
               return result;"""
 
+          # v4 : IB1 — dump par iteration des lignes de matrice momentum des
+          # cellules cibles (env CFDX_NACA_CELL_CELLS) + voisins par faces.
+          # Etape A (coefficients) + etape B (residu assemble r = A.x - b
+          # recalcule INDEPENDAMMENT du solveur lineaire) du plan Steven.
+          # Cap iter <= 40 : couvre integralement le N128 divergent (11 iters)
+          # sans alourdir le N64 convergent (424 iters).
+          IB1 = B1 + r"""
+          { // CFDX diag v4 (env-gated) : momentum matrix rows for targeted cells
+            if (const char* cfdx_diag_dir = std::getenv("CFDX_NACA_STOP_DUMP_DIR")) {
+                if (iter <= 40) {
+                    const ScalarEquation* cfdx_diag_eqs[3] = {&ex, &ey, &ez};
+                    const Vector* cfdx_diag_xv[3] = {&ux, &uy, &uz};
+                    const Vector* cfdx_diag_xo[3] = {&ux_old, &uy_old, &uz_old};
+                    const cfdx::core::SolverResult* cfdx_diag_lr[3] = {&rx, &ry, &rz};
+                    std::vector<std::size_t> cfdx_diag_targets;
+                    if (const char* cfdx_diag_cs = std::getenv("CFDX_NACA_CELL_CELLS")) {
+                        std::istringstream cfdx_diag_iss(cfdx_diag_cs);
+                        std::string cfdx_diag_tok;
+                        while (std::getline(cfdx_diag_iss, cfdx_diag_tok, ',')) {
+                            if (cfdx_diag_tok.empty()) continue;
+                            const long cfdx_diag_v =
+                                std::strtol(cfdx_diag_tok.c_str(), nullptr, 10);
+                            if (cfdx_diag_v >= 0)
+                                cfdx_diag_targets.push_back(
+                                    static_cast<std::size_t>(cfdx_diag_v));
+                        }
+                    }
+                    std::vector<std::size_t> cfdx_diag_all(cfdx_diag_targets);
+                    for (std::size_t cfdx_diag_c : cfdx_diag_targets) {
+                        if (cfdx_diag_c >= mesh.n_cells()) continue;
+                        const Offset cfdx_diag_off =
+                            mesh.cells().offsets_data()[cfdx_diag_c];
+                        const Offset cfdx_diag_cnt =
+                            mesh.cells().offsets_data()[cfdx_diag_c + 1] - cfdx_diag_off;
+                        for (Offset cfdx_diag_k = 0;
+                             cfdx_diag_k < cfdx_diag_cnt; ++cfdx_diag_k) {
+                            const std::size_t cfdx_diag_f =
+                                mesh.cells().faces_data()[cfdx_diag_off + cfdx_diag_k];
+                            const auto cfdx_diag_o =
+                                mesh.ownership().owner(cfdx_diag_f);
+                            const auto cfdx_diag_nb =
+                                mesh.ownership().neighbour(cfdx_diag_f);
+                            const auto cfdx_diag_other =
+                                (cfdx_diag_o == cfdx_diag_c) ? cfdx_diag_nb : cfdx_diag_o;
+                            if (cfdx_diag_other >= 0 &&
+                                static_cast<std::size_t>(cfdx_diag_other)
+                                    < mesh.n_cells())
+                                cfdx_diag_all.push_back(
+                                    static_cast<std::size_t>(cfdx_diag_other));
+                        }
+                    }
+                    std::sort(cfdx_diag_all.begin(), cfdx_diag_all.end());
+                    cfdx_diag_all.erase(
+                        std::unique(cfdx_diag_all.begin(), cfdx_diag_all.end()),
+                        cfdx_diag_all.end());
+                    std::ofstream cfdx_dump_out(
+                        std::string(cfdx_diag_dir) + "/naca_stop_dumps.tsv",
+                        std::ios::app);
+                    for (std::size_t cfdx_diag_c : cfdx_diag_all) {
+                        if (cfdx_diag_c >= mesh.n_cells()) continue;
+                        for (std::size_t cfdx_diag_d = 0; cfdx_diag_d < 3; ++cfdx_diag_d) {
+                            const ScalarEquation& cfdx_diag_eq =
+                                *(cfdx_diag_eqs[cfdx_diag_d]);
+                            const Vector& cfdx_diag_sol =
+                                *(cfdx_diag_xv[cfdx_diag_d]);
+                            const Vector& cfdx_diag_pre =
+                                *(cfdx_diag_xo[cfdx_diag_d]);
+                            const cfdx::core::SolverResult& cfdx_diag_lin =
+                                *(cfdx_diag_lr[cfdx_diag_d]);
+                            const auto cfdx_diag_rb =
+                                cfdx_diag_eq.matrix.row_offsets_data()[cfdx_diag_c];
+                            const auto cfdx_diag_re =
+                                cfdx_diag_eq.matrix.row_offsets_data()[cfdx_diag_c + 1];
+                            double cfdx_diag_ax = 0.0;
+                            for (auto cfdx_diag_k = cfdx_diag_rb;
+                                 cfdx_diag_k < cfdx_diag_re; ++cfdx_diag_k)
+                                cfdx_diag_ax +=
+                                    cfdx_diag_eq.matrix.values_data()[cfdx_diag_k]
+                                    * cfdx_diag_sol(
+                                        cfdx_diag_eq.matrix.columns_data()[cfdx_diag_k]);
+                            cfdx_dump_out << "kind=CELLROW solve=" << cfdx_diag_solve_seq
+                                          << " iteration=" << iter
+                                          << " cell=" << cfdx_diag_c
+                                          << " comp=" << cfdx_diag_d
+                                          << " diag=" << cfdx_diag_eq.diagonal[cfdx_diag_c]
+                                          << " rhs=" << cfdx_diag_eq.rhs(cfdx_diag_c)
+                                          << " x_pre=" << cfdx_diag_pre(cfdx_diag_c)
+                                          << " x_post=" << cfdx_diag_sol(cfdx_diag_c)
+                                          << " ax=" << cfdx_diag_ax
+                                          << " row_residual=" << (cfdx_diag_ax - cfdx_diag_eq.rhs(cfdx_diag_c))
+                                          << " lin_res=" << cfdx_diag_lin.residual
+                                          << " lin_it=" << cfdx_diag_lin.iterations
+                                          << " gradp=" << grad_p.component_data(cfdx_diag_d)[cfdx_diag_c]
+                                          << " vol=" << geometry.cell_volumes[cfdx_diag_c]
+                                          << " nnz=" << (cfdx_diag_re - cfdx_diag_rb)
+                                          << "\n";
+                            for (auto cfdx_diag_k = cfdx_diag_rb;
+                                 cfdx_diag_k < cfdx_diag_re; ++cfdx_diag_k) {
+                                const auto cfdx_diag_col =
+                                    cfdx_diag_eq.matrix.columns_data()[cfdx_diag_k];
+                                cfdx_dump_out << "kind=CELLNZ solve=" << cfdx_diag_solve_seq
+                                              << " iteration=" << iter
+                                              << " cell=" << cfdx_diag_c
+                                              << " comp=" << cfdx_diag_d
+                                              << " col=" << cfdx_diag_col
+                                              << " a=" << cfdx_diag_eq.matrix.values_data()[cfdx_diag_k]
+                                              << " x=" << cfdx_diag_sol(cfdx_diag_col)
+                                              << "\n";
+                            }
+                        }
+                    }
+                }
+            }
+            }
+          """
+
+          # v4 : IB3 — override env du debug_cell du microscope (sinon le test
+          # ne set pas diagnostics.debug_cell et le microscope ne se declenche
+          # jamais). B4 : retire le const pour permettre l'override.
+          IB3 = B3 + r"""
+              if (const char* cfdx_diag_dc = std::getenv("CFDX_NACA_DEBUG_CELL")) {
+                  const long cfdx_diag_dcl =
+                      std::strtol(cfdx_diag_dc, nullptr, 10);
+                  if (cfdx_diag_dcl >= 0 &&
+                      static_cast<std::size_t>(cfdx_diag_dcl) < mesh.n_cells()) {
+                      debug_cell = static_cast<std::size_t>(cfdx_diag_dcl);
+                      debug_cell_enabled = true;
+                  }
+              }
+              """
+
+          # v4 : B2NEW — microscope ALSO on early stop (STAGNATED/DIVERGED) and
+          # on iterations <= 40, only when env-gated CFDX_NACA_MIC_FORCE is set.
+          # Sans env : comportement de production INCHANGE (converged_now ||
+          # max_iterations).
+          B2NEW = ("        if (debug_cell_enabled && (converged_now "
+                   "|| iter == controls.convergence.max_iterations "
+                   "|| (cfdx_diag_mic_force "
+                   "&& (iter <= 40 "
+                   "|| convergence_report.status "
+                   "!= cfdx::core::ConvergenceStatus::CONTINUE)))) {")
+
           new = text.replace(A1, I1, 1).replace(A3, I3, 1).replace(A2, I2, 1) \
-                    .replace(A4, I4, 1).replace(A5, I5, 1)
+                    .replace(A4, I4, 1).replace(A5, I5, 1) \
+                    .replace(B1, IB1, 1).replace(B3, IB3, 1) \
+                    .replace(B2, B2NEW, 1).replace(B4, "        bool debug_cell_enabled =", 1)
 
           # Post-conditions fail-closed : chaque bloc insere exactement une fois.
+          # Valeurs v4 VERIFIEES par simulation locale complete du splice contre
+          # le solveur exact du head epingle 4b54d920 (ancres x1, 9 remplacements
+          # OK, deltas braces/parens = 0) : solve_seq=8 (START/ITER/REJECTED/STOP/
+          # CELLROW/CELLNZ + decl + increment), getenv(STOP_DUMP_DIR)=5 (IB1 en
+          # ajoute un), sanitize=4, mic_force=2 (decl I3 + usage B2NEW),
+          # CFDX_NACA_DEBUG_CELL=1, CFDX_NACA_CELL_CELLS=1.
           post = [
               ("A1_present", new.count(A1), 1),
               ("A3_present", new.count(A3), 1),
@@ -232,13 +402,22 @@ jobs:
               # ENTRE le prefixe 2 lignes et le "return result;", donc la sequence
               # A5 complete n'existe plus apres le patch. On verifie le prefixe.
               ("A5_prefix_present", new.count(A5.split("\n")[0] + "\n" + A5.split("\n")[1]), 1),
-              ("solve_seq_count", new.count("cfdx_diag_solve_seq"), 6),
-              ("getenv_count", new.count('std::getenv("CFDX_NACA_STOP_DUMP_DIR")'), 4),
+              ("B1_present", new.count(B1), 1),
+              ("B3_present", new.count(B3), 1),
+              ("B2NEW_present", new.count(B2NEW), 1),
+              ("debug_cell_nonconst", new.count("        bool debug_cell_enabled ="), 1),
+              ("solve_seq_count", new.count("cfdx_diag_solve_seq"), 8),
+              ("getenv_count", new.count('std::getenv("CFDX_NACA_STOP_DUMP_DIR")'), 5),
               ("sanitize_count", new.count("cfdx_diag_sanitize"), 4),
+              ("mic_force_count", new.count("cfdx_diag_mic_force"), 2),
+              ("debug_cell_env_count", new.count('std::getenv("CFDX_NACA_DEBUG_CELL")'), 1),
+              ("cells_env_count", new.count('std::getenv("CFDX_NACA_CELL_CELLS")'), 1),
               ("start_rows", new.count('"kind=START'), 1),
               ("iter_rows", new.count('"kind=ITER'), 1),
               ("rejected_rows", new.count('"kind=REJECTED'), 1),
               ("stop_rows", new.count('"kind=STOP'), 1),
+              ("cellrow_rows", new.count('"kind=CELLROW'), 1),
+              ("cellnz_rows", new.count('"kind=CELLNZ'), 1),
           ]
           for name, got, want in post:
               if got != want:
@@ -300,6 +479,17 @@ jobs:
         continue-on-error: true
         env:
           CFDX_NACA_STOP_DUMP_DIR: ${{ github.workspace }}/diag-evidence/logs
+          # v4 (P1 etapes A/B du plan Steven) : forensique des lignes de matrice
+          # momentum pour les cellules cibles + voisins par faces. Cibles =
+          # demarrage de la croissance (patch airfoil, cellules 7-8, iters 3-8
+          # d'apres l'evidence v3) puis cellule de relais 262-264. Voisins
+          # ajoutes automatiquement par l'instrumentation.
+          CFDX_NACA_CELL_CELLS: 7,8,262,264
+          # v4 : microscope momentum force sur la cellule 7 (reconstruction
+          # independante make_mass_flux + audit rhie_chow expected/actual), aussi
+          # declenche sur arret STAGNATED/DIVERGED et iterations <= 40.
+          CFDX_NACA_DEBUG_CELL: 7
+          CFDX_NACA_MIC_FORCE: 1
         run: |
           E="$GITHUB_WORKSPACE/$EVID"
           ctest --test-dir "$RUNNER_TEMP/head/build" -R '^test_naca0012_qualification$' -N > "$E/pr929x_nacastop_testlist_run$GITHUB_RUN_ID.log" 2>&1
@@ -479,8 +669,20 @@ jobs:
                   write_all("INCONCLUSIVE_NO_DUMP", ["dump present but no kind=START row"])
                   sys.exit(0)
 
+              # ---- gate 3b (v4) : forensique lignes de matrice momentum -------
+              # Si le test NACA tournait en algorithme coupled, la branche
+              # segregated (ancre B1) ne serait jamais executee et aucune ligne
+              # CELLROW n'existerait : fail-closed explicite, a distinguer d'un
+              # patch defectueux (qui aurait echoue a la gate 0).
+              cellrows = [d for d in rows if d.get("kind") == "CELLROW"]
+              if not cellrows:
+                  emit("aucune ligne kind=CELLROW : branche segregated non executee")
+                  emit("  (algorithme coupled ?) ou CFDX_NACA_CELL_CELLS absent du run.")
+                  write_all("INCONCLUSIVE_NO_CELLROWS", ["no kind=CELLROW rows in dump"])
+                  sys.exit(0)
+
               # ---- rapport par solve : statuts OFFICIELS, aucune inference ---
-              emit("== NACA0012 stop-reason diagnostic v2 — head epingle + instrumentation env-gated ==")
+              emit("== NACA0012 stop-reason + cell forensics diagnostic v4 — head epingle + instrumentation env-gated ==")
               emit("regle de lecture : ITER = tentative dans le try (peut etre roulee back) ;")
               emit("  REJECTED = transaction non lineaire rejetee ; STOP fait autorite")
               emit("  (iterations officielles) ; STOP ABSENT = sortie par exception (throw).")
@@ -523,6 +725,92 @@ jobs:
                   if s["iters"]:
                       for k in sorted(s["iters"][-1].keys()):
                           emit("  " + k + "=" + str(s["iters"][-1][k]))
+
+              # ---- (v4) microscope momentum : extraction des sections stderr --
+              mic_sections = []
+              mic_cur = None
+              for l in lines:
+                  if mic_cur is None:
+                      if "=== CFDX MOMENTUM MICROSCOPE" in l and "END" not in l:
+                          mic_cur = [l]
+                  else:
+                      mic_cur.append(l)
+                      if "=== END CFDX MOMENTUM MICROSCOPE ===" in l:
+                          mic_sections.append(mic_cur)
+                          mic_cur = None
+              try:
+                  with open(os.path.join(evid, "pr929x_nacastop_microscope_run" + run_id + ".txt"),
+                            "w") as fh:
+                      for sec in mic_sections:
+                          fh.write("\n".join(sec) + "\n")
+              except Exception:
+                  pass
+              emit()
+              emit("== Microscope momentum (cellule forcee via CFDX_NACA_DEBUG_CELL) ==")
+              emit("sections microscope extraites = " + str(len(mic_sections))
+                   + " -> pr929x_nacastop_microscope_run" + run_id + ".txt")
+              if not mic_sections:
+                  emit("PIEGE : CELLROW presents mais ZERO section microscope — trigger")
+                  emit("  B2NEW non declenche ou stderr non capture dans le log.")
+                  write_all("INCONCLUSIVE_NO_MICROSCOPE",
+                            ["cellrows present but no microscope sections in qualification log"])
+                  sys.exit(0)
+
+              # ---- (v4) forensique CELLROW : residu assemble r = A.x - b ------
+              # Etape B du plan Steven : le row_residual est recalcule
+              # INDEPENDAMMENT (A.x - b sur la ligne assemblee) et confronte au
+              # lin_res DECLARE par le solveur lineaire. S'ils divergent
+              # differemment, le calcul/la normalisation du residu est suspecte ;
+              # s'ils explosent ensemble, l'operateur/les coefficients le sont.
+              cr_by_solve = {}
+              for d in rows:
+                  if d.get("kind") == "CELLROW":
+                      cr_by_solve.setdefault(d.get("solve", "?"), []).append(d)
+              n_cellnz = sum(1 for d in rows if d.get("kind") == "CELLNZ")
+              emit()
+              emit("== Forensique lignes de matrice momentum (CELLROW/CELLNZ) ==")
+              emit("coefficients par voisin (kind=CELLNZ) = " + str(n_cellnz)
+                   + " lignes dans le dump TSV brut")
+              for skey in sorted(cr_by_solve, key=lambda k: (len(k), k)):
+                  crs = cr_by_solve[skey]
+                  iters_seen = sorted({int(d["iteration"]) for d in crs if d.get("iteration")})
+                  emit()
+                  emit("-- Solve " + str(skey) + " : " + str(len(crs))
+                       + " lignes CELLROW sur " + str(len(iters_seen)) + " iterations --")
+                  emit("max |row_residual| par iteration (cellules cibles+voisins, 3 composantes) :")
+                  emit("iteration\tmax_row_res\tcell\tcomp\tdiag\tlin_res\tlin_it")
+                  for it in iters_seen:
+                      sub = [d for d in crs if int(d.get("iteration", "-1")) == it]
+                      try:
+                          best = max(sub, key=lambda d: abs(float(d.get("row_residual", "nan"))))
+                      except ValueError:
+                          best = sub[0]
+                      try:
+                          maxdiag = max(float(d.get("diag", "0")) for d in sub)
+                      except ValueError:
+                          maxdiag = float("nan")
+                      emit("%s\t%s\t%s\t%s\t%s\t%s\t%s" % (
+                          it, best.get("row_residual"), best.get("cell"),
+                          best.get("comp"), best.get("diag"),
+                          best.get("lin_res"), best.get("lin_it")))
+                  show_iters = [i for i in iters_seen if i <= 12]
+                  if iters_seen and iters_seen[-1] not in show_iters:
+                      show_iters.append(iters_seen[-1])
+                  for it in show_iters:
+                      emit()
+                      emit("detail iteration " + str(it)
+                           + " (cell/comp/diag/rhs/x_pre/x_post/ax/row_res/lin_res/lin_it/gradp/vol/nnz) :")
+                      for d in sorted([d for d in crs if int(d.get("iteration", "-1")) == it],
+                                      key=lambda d: (int(d.get("cell", "0")),
+                                                     int(d.get("comp", "0")))):
+                          emit("%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s" % (
+                              d.get("cell"), d.get("comp"), d.get("diag"), d.get("rhs"),
+                              d.get("x_pre"), d.get("x_post"), d.get("ax"),
+                              d.get("row_residual"), d.get("lin_res"), d.get("lin_it"),
+                              d.get("gradp"), d.get("vol"), d.get("nnz")))
+                  if len(iters_seen) > len(show_iters):
+                      emit("(detail limite aux iterations <= 12 + derniere ; dump TSV brut"
+                           " = donnee integrale commitee en evidence)")
 
               # ---- cross-check avec la capture brute (elements v1 conserves) --
               emit()
@@ -621,9 +909,12 @@ jobs:
                   "solves_thrown=" + str(n_thrown),
                   "exception_in_log=" + str(bool(exc_idx)),
                   "audit_state=" + shear_state,
+                  "cellrow_rows=" + str(len(cellrows)),
+                  "microscope_sections=" + str(len(mic_sections)),
                   "interpretation: EVIDENCE_COMPLETE = capture instrumentee auto-coherente ;",
                   "les statuts rapportes sont les statuts OFFICIELS du solveur, PAS une inference ;",
-                  "ceci est un DIAGNOSTIC de la raison d'arret, PAS un verdict de correction numerique.",
+                  "ceci est un DIAGNOSTIC de la raison d'arret et des coefficients cellules cibles,",
+                  "PAS un verdict de correction numerique.",
               ])
           except Exception:
               emit("ANALYZER CRASH:")
@@ -640,7 +931,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: PR 929 NACA0012 stop-reason v2 run $GITHUB_RUN_ID (#929 P1-b) [ci skip]"
+            git commit -m "diag: PR 929 NACA0012 stop-reason + cell forensics v4 run $GITHUB_RUN_ID (#929 P1 étapes A/B) [ci skip]"
             if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
               git pull --rebase origin "$GITHUB_REF_NAME"
               git push origin "HEAD:$GITHUB_REF_NAME"
@@ -655,10 +946,10 @@ jobs:
           set -u
           E="$GITHUB_WORKSPACE/$EVID"
           {
-            echo "## NACA0012 — raison d'arrêt officielle du solveur (P1-b v2) — run $GITHUB_RUN_ID — verdict : $(sed -n 's/^VERDICT: //p' "$E/pr929x_nacastop_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo UNKNOWN)"
+            echo "## NACA0012 — raison d'arrêt officielle + forensique cellules (P1 étapes A/B, v4) — run $GITHUB_RUN_ID — verdict : $(sed -n 's/^VERDICT: //p' "$E/pr929x_nacastop_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo UNKNOWN)"
             echo
             echo "Réf épinglée : \`$HEAD_SHA_PIN\` (head #929 actuel ; instrumentation env-gated du solveur dans le worktree du runner UNIQUEMENT, sémantique inchangée, no-op sans \`CFDX_NACA_STOP_DUMP_DIR\`)."
-            echo "Évidence : \`diag-evidence/logs/pr929x_nacastop_*_run$GITHUB_RUN_ID.*\` — dont \`pr929x_nacastop_dumps_run$GITHUB_RUN_ID.tsv\` (START / ITER / REJECTED / STOP par solve : convergence_status, convergence_reason, rejets de transactions non linéaires, dernière itération réellement exécutée) — sur \`ci/long-campaign-diagnostics\`."
+            echo "Évidence : \`diag-evidence/logs/pr929x_nacastop_*_run$GITHUB_RUN_ID.*\` — dont \`pr929x_nacastop_dumps_run$GITHUB_RUN_ID.tsv\` (START / ITER / REJECTED / STOP par solve : convergence_status, convergence_reason, rejets de transactions non linéaires, dernière itération réellement exécutée ; + CELLROW / CELLNZ : lignes de matrice momentum des cellules cibles 7,8,262,264 et voisins — diag/rhs/x_pre/x_post/ax/row_residual recalculé indépendamment r=A·x−b, et coefficients par voisin) et \`pr929x_nacastop_microscope_run$GITHUB_RUN_ID.txt\` (microscope momentum forcé sur la cellule 7 : reconstruction indépendante du flux et audit Rhie–Chow expected/actual) — sur \`ci/long-campaign-diagnostics\`."
             echo
             echo "Règle d'interprétation (Steven) : \`EVIDENCE_COMPLETE\` = capture instrumentée auto-cohérente — PAS un PASS/FAIL numérique. Les statuts rapportés sont les statuts OFFICIELS du solveur, pas une inference. Le test NACA reste attendu en échec tant que la non-convergence pré-existante n'est pas résolue."
             echo

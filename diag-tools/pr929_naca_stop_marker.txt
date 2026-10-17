@@ -1,18 +1,25 @@
 marker: pr929-naca-stop-trace
-version: 3
+version: 4
 date: 2026-10-17
 purpose: >
-  v3 = fix bug analyseur du run v2 (39068012865) : le step de run renommait
-  le dump en pr929x_nacastop_dumps_run$ID.tsv mais l'analyseur cherchait
-  l'extension .txt -> INCONCLUSIVE_NO_DUMP a tort (le dump etait present,
-  capture complete : N64 CONVERGED 424 iters ; N128 STAGNATED iter 11,
-  raison officielle insufficient_residual_improvement_over_the_configured_
-  stagnation_window, 0 rejet). v2 = instrumentation env-gated a 5 ancres,
-  statuts OFFICIELS convergence_status/reason, rejets de transactions non
-  lineaires, derniere iteration reellement executee (demande Steven
-  2026-10-17 ~20:27Z ; la v1 capture-only, run 39060532348, head e1cbefee,
-  avait borne l'arret N128 entre iterations 1 et 200 sans trancher).
-  Semantique du solveur INCHANGEE, no-op sans CFDX_NACA_STOP_DUMP_DIR.
-  Verdicts fail-closed ; EVIDENCE_COMPLETE est un diagnostic de la raison
-  d'arret, PAS un PASS/FAIL numerique. Jamais merger cette branche.
-head_pin: 5a680640b1229e115a19f4e980bac850f4031837
+  v4 = P1 etapes A/B du plan Steven (forensique de la divergence N128) :
+  dump par iteration (iter <= 40) des lignes de matrice momentum (CELLROW :
+  diag/rhs/x_pre/x_post/ax/row_residual recalcule INDEPENDAMMENT r=A.x-b,
+  gradp/vol/nnz, plus CELLNZ coefficients par voisin) pour les cellules
+  cibles 7,8,262,264 (demarrage patch airfoil + relais, evidence v3) et
+  leurs voisins par faces ; microscope momentum force sur la cellule 7
+  (CFDX_NACA_DEBUG_CELL / CFDX_NACA_MIC_FORCE), declenche aussi sur arret
+  STAGNATED/DIVERGED et iterations <= 40 (production : convergence ou
+  max_iterations uniquement). v3 = fix bug analyseur .tsv/.txt du run v2 ;
+  v2 = instrumentation env-gated a 5 ancres, statuts OFFICIELS
+  convergence_status/reason, rejets de transactions non lineaires, derniere
+  iteration reellement executee ; v1 capture-only (run 39060532348). La v3
+  a etabli : N64 CONVERGED 424 iters ; N128 STAGNATED iter 11, raison
+  officielle insufficient_residual_improvement_over_the_configured_
+  stagnation_window, 0 rejet, trajectoire residu momentum relatif
+  0.894->13795 (divergence reelle, pas un manque d'iterations). Semantique
+  du solveur INCHANGEE, no-op sans CFDX_NACA_STOP_DUMP_DIR. Verdicts
+  fail-closed (NO_CELLROWS / NO_MICROSCOPE ajoutes) ; EVIDENCE_COMPLETE
+  est un diagnostic, PAS un PASS/FAIL numerique. Jamais merger cette
+  branche.
+head_pin: 4b54d920fad91f779731b12373ec2ed93ec64c2f
