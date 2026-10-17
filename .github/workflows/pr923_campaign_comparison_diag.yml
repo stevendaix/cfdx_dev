@@ -20,10 +20,24 @@ name: PR923 targeted campaign comparison (diag)
 #  - cross-check junit vs parse des lignes d'issue : tout conflit ou junit
 #    absent alors que le log a des issues => INCONCLUSIVE_JUNIT_CONFLICT /
 #    INCONCLUSIVE_MISSING_JUNIT ;
+#  - v6 (review Steven 2026-10-17) : (a) normalisation du ':' final de la
+#    sortie `ninja -t targets all` (format "target: rule" — sinon le check
+#    echouait meme si la cible existe) + distinction echec ninja vs cible
+#    absente ; (b) parseur junit en xml.etree.ElementTree (statut ctest
+#    passed/failed/notrun, enfants failure/error/skipped, attribut standard
+#    junit "run"), XML illisible => fail-closed ; (c) self-test fixtures
+#    embarrees des deux parseurs (verdict INCONCLUSIVE_PARSER_SELFTEST si
+#    echec) ; (d) tolerance documentee junit Failed vs log Timeout (le junit
+#    ctest peut replier timeout/crash dans failed) ; (e) verification du
+#    contrat de base : #923 doit avoir master en branche de base, sinon
+#    fail-closed immediat ; (f) le verdict IDENTICAL_FAILURE_SETS est un
+#    niveau 2 (statuts des 6 tests ciblés), jamais une qualification
+#    numerique ;
 #  - verdicts possibles : INCONCLUSIVE_BUILD / INCONCLUSIVE_DISCOVERY /
 #    INCONCLUSIVE_MISSING_OUTCOME / INCONCLUSIVE_TIMEOUT / INCONCLUSIVE_NOT_RUN /
 #    INCONCLUSIVE_MISSING_JUNIT / INCONCLUSIVE_JUNIT_CONFLICT /
-#    REGRESSION / FAILURE_SETS_DIFFER / IDENTICAL_FAILURE_SETS ;
+#    INCONCLUSIVE_PARSER_SELFTEST / REGRESSION / FAILURE_SETS_DIFFER /
+#    IDENTICAL_FAILURE_SETS ;
 #  - commentaire automatique du verdict sur #923 ; job rouge sauf
 #    IDENTICAL_FAILURE_SETS.
 #
@@ -58,6 +72,16 @@ jobs:
       - name: Fetch refs and create worktrees
         run: |
           mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          # Contrat de comparaison : la base de #923 doit etre master (non empilee).
+          # Fail-closed immediat si la PR change de branche de base (review Steven).
+          PR923_BASE_REF="$(curl -sS --fail-with-body \
+            -H "Authorization: Bearer ${{ github.token }}" \
+            -H "Accept: application/vnd.github+json" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/pulls/923" | jq -r '.base.ref')"
+          if [ "$PR923_BASE_REF" != "master" ]; then
+            echo "::error::PR 923 base ref is '$PR923_BASE_REF' (expected master) — comparison contract changed"
+            exit 1
+          fi
           git fetch origin master
           git fetch origin refs/pull/923/head
           PR923_SHA="$(git rev-parse FETCH_HEAD)"
@@ -71,6 +95,7 @@ jobs:
             echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "base_sha=$BASE_SHA"
             echo "pr923_head_sha=$PR923_SHA"
+            echo "pr923_base_ref=$PR923_BASE_REF"
             echo "targeted_tests: BFS Re=200, channel, NACA0012 laminar, Ghia PCD, N12 coupled MMS, N9-S9 RC consistency"
           } > "$GITHUB_WORKSPACE/$EVID/pr923_meta_run$GITHUB_RUN_ID.txt"
 
@@ -109,9 +134,16 @@ jobs:
           # Cibles CMake reelles : test_ghia_cavity_n8_pcd est un nom CTest (add_test),
           # l'executable est test_ghia_cavity. Verification fail-closed des cibles.
           TARGETS="test_bfs_qualification test_channel_qualification test_naca0012_qualification test_ghia_cavity test_n12_coupled_pressure_velocity_mms test_n9_s9_rhie_chow_consistency"
-          avail="$(ninja -C "$RUNNER_TEMP/base/build" -t targets all | awk '{print $1}' | sort -u)"
+          # NB : la sortie de `ninja -t targets all` est au format "target: rule"
+          # -> retirer le ':' final avant comparaison exacte (defaut signale par
+          # Steven, review 2026-10-17 : sinon le check echoue meme si la cible existe).
+          if ! avail_raw="$(ninja -C "$RUNNER_TEMP/base/build" -t targets all 2>&1)"; then
+            echo "::error::ninja -t targets failed (base build) — build system error, not a missing target"
+            exit 1
+          fi
+          avail="$(printf '%s\n' "$avail_raw" | awk '{sub(/:$/, "", $1); print $1}' | sort -u)"
           for t in $TARGETS; do
-            echo "$avail" | grep -qx "$t" || { echo "::error::missing CMake target: $t"; exit 1; }
+            printf '%s\n' "$avail" | grep -qx "$t" || { echo "::error::missing CMake target: $t"; exit 1; }
           done
           cmake --build "$RUNNER_TEMP/base/build" --target $TARGETS --parallel 2 \
             2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_base_build_run$GITHUB_RUN_ID.log"
@@ -129,9 +161,16 @@ jobs:
           # Cibles CMake reelles : test_ghia_cavity_n8_pcd est un nom CTest (add_test),
           # l'executable est test_ghia_cavity. Verification fail-closed des cibles.
           TARGETS="test_bfs_qualification test_channel_qualification test_naca0012_qualification test_ghia_cavity test_n12_coupled_pressure_velocity_mms test_n9_s9_rhie_chow_consistency"
-          avail="$(ninja -C "$RUNNER_TEMP/pr923/build" -t targets all | awk '{print $1}' | sort -u)"
+          # NB : la sortie de `ninja -t targets all` est au format "target: rule"
+          # -> retirer le ':' final avant comparaison exacte (defaut signale par
+          # Steven, review 2026-10-17 : sinon le check echoue meme si la cible existe).
+          if ! avail_raw="$(ninja -C "$RUNNER_TEMP/pr923/build" -t targets all 2>&1)"; then
+            echo "::error::ninja -t targets failed (pr923 build) — build system error, not a missing target"
+            exit 1
+          fi
+          avail="$(printf '%s\n' "$avail_raw" | awk '{sub(/:$/, "", $1); print $1}' | sort -u)"
           for t in $TARGETS; do
-            echo "$avail" | grep -qx "$t" || { echo "::error::missing CMake target: $t"; exit 1; }
+            printf '%s\n' "$avail" | grep -qx "$t" || { echo "::error::missing CMake target: $t"; exit 1; }
           done
           cmake --build "$RUNNER_TEMP/pr923/build" --target $TARGETS --parallel 2 \
             2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_head_build_run$GITHUB_RUN_ID.log"
@@ -187,61 +226,113 @@ jobs:
                       if m.group(1) in expected:
                           found.add(m.group(1))
               return found
+          def parse_campaign_txt(txt):
+              st = {}
+              pat = re.compile(r"Test\s+#\d+:\s+(\S+)\s+\.\.\.\s*"
+                               r"(Passed|\*\*\*Failed|\*\*\*Timeout|\*\*\*Not Run"
+                               r"|\*\*\*Exception:\s*\S+)"
+                               r"\s*([0-9.]+ sec)?")
+              for m in pat.finditer(txt):
+                  raw = m.group(2)
+                  if raw == "Passed":
+                      key = "Passed"
+                  elif raw == "***Timeout":
+                      key = "Timeout"
+                  elif raw == "***Not Run":
+                      key = "Not Run"
+                  else:
+                      key = "Failed"  # ***Failed et ***Exception:* (crash)
+                  st[m.group(1)] = (key, m.group(3) or "unknown")
+              return st
           def parse_campaign(tag):
               path = os.path.join(E, "pr923_%s_campaign_run%s.log" % (tag, RUN))
-              st = {}
               if os.path.exists(path):
-                  txt = open(path, errors="replace").read()
-                  pat = re.compile(r"Test\s+#\d+:\s+(\S+)\s+\.\.\.\s*"
-                                   r"(Passed|\*\*\*Failed|\*\*\*Timeout|\*\*\*Not Run"
-                                   r"|\*\*\*Exception:\s*\S+)"
-                                   r"\s*([0-9.]+ sec)?")
-                  for m in pat.finditer(txt):
-                      raw = m.group(2)
-                      if raw == "Passed":
-                          key = "Passed"
-                      elif raw == "***Timeout":
-                          key = "Timeout"
-                      elif raw == "***Not Run":
-                          key = "Not Run"
-                      elif raw.startswith("***Exception"):
-                          key = "Failed"  # crash/exception normalise en Failed
-                      else:
-                          key = "Failed"
-                      st[m.group(1)] = (key, m.group(3) or "unknown")
-              return st
+                  return parse_campaign_txt(open(path, errors="replace").read())
+              return {}
+          import xml.etree.ElementTree as ET
           JUNIT_MAP = {"passed": "Passed", "failed": "Failed",
                         "timeout": "Timeout", "notrun": "Not Run"}
-          def parse_junit(tag):
-              # Cross-check fail-closed : le junit --output-junit doit concorder
-              # avec le parse des lignes d'issue de la campagne.
-              path = os.path.join(E, "pr923_%s_junit_run%s.xml" % (tag, RUN))
+          def junit_tc_status(tc):
+              # Normalisation fail-closed d'un <testcase> junit (review Steven
+              # 2026-10-17) : attribut status ctest (passed/failed/notrun) quand
+              # connu, sinon decision par les ENFANTS (failure/error -> Failed,
+              # skipped -> Not Run) ; attribut standard junit "run"/absent -> Passed
+              # UNIQUEMENT si aucun enfant d'echec. Statut inconnu -> marque
+              # JUNIT_STATUS=* -> declenchera le verdict INCONCLUSIVE_JUNIT_CONFLICT.
+              st = (tc.get("status") or "").strip().lower()
+              has_fail = tc.find("failure") is not None
+              has_err = tc.find("error") is not None
+              has_skip = tc.find("skipped") is not None
+              if st in JUNIT_MAP:
+                  key = JUNIT_MAP[st]
+                  if key == "Passed" and (has_fail or has_err):
+                      return "Failed"
+                  return key
+              if has_skip:
+                  return "Not Run"
+              if has_fail or has_err:
+                  return "Failed"
+              if st in ("", "run", "executed"):
+                  return "Passed"
+              return "JUNIT_STATUS=" + (st or "missing")
+          def parse_junit_txt(txt):
+              # Retourne dict name -> statut normalise, ou None si XML illisible.
+              try:
+                  root = ET.fromstring(txt)
+              except ET.ParseError:
+                  return None
               res = {}
-              if not os.path.exists(path):
-                  return res
-              txt = open(path, errors="replace").read()
-              for m in re.finditer(r"<testcase\b([^>]*?)(/?)>", txt):
-                  attrs = m.group(1)
-                  if m.group(2) == "/":
-                      body = ""
-                  else:
-                      end = txt.find("</testcase>", m.end())
-                      if end < 0:
-                          continue
-                      body = txt[m.end():end]
-                  nm = re.search(r'\bname="([^"]+)"', attrs)
-                  if not nm:
-                      continue
-                  st_ = re.search(r'\bstatus="([^"]+)"', attrs)
-                  failed = ("<failure" in body) or ("<error" in body)
-                  s = (st_.group(1).lower() if st_ else "unknown")
-                  key = JUNIT_MAP.get(s)
-                  if key is None:
-                      key = "Failed" if failed else "JUNIT_STATUS=" + s
-                  elif failed and key == "Passed":
-                      key = "Failed"
-                  res[nm.group(1)] = key
+              for tc in root.iter("testcase"):
+                  nm = tc.get("name")
+                  if nm:
+                      res[nm] = junit_tc_status(tc)
               return res
+          def parse_junit(tag):
+              path = os.path.join(E, "pr923_%s_junit_run%s.xml" % (tag, RUN))
+              if not os.path.exists(path):
+                  return {}
+              return parse_junit_txt(open(path, errors="replace").read())
+          def junit_compatible(js, ls):
+              # Le junit ctest peut replier Timeout/crash dans "failed" ; le log
+              # garde la granularite. Conflit seulement si Passed vs non-passe,
+              # ou Not Run vs execute, ou statut junit inconnu.
+              return js == ls or (js == "Failed" and ls == "Timeout")
+          def selftest():
+              # Fixtures embarrees (demande review Steven 2026-10-17) : le workflow
+              # valide ses parseurs sur des fixtures AVANT de leur faire confiance.
+              log_fix = ("Test  #1: t_pass ... Passed          0.01 sec\n"
+                         "Test  #2: t_timeout ...***Timeout     720.00 sec\n"
+                         "Test  #3: t_exception ...***Exception: SegFault  0.35 sec\n"
+                         "Test  #4: t_fail ...***Failed        5.10 sec\n"
+                         "Test  #5: t_notrun ...***Not Run       0.00 sec\n")
+              got = parse_campaign_txt(log_fix)
+              want = {"t_pass": "Passed", "t_timeout": "Timeout",
+                      "t_exception": "Failed", "t_fail": "Failed",
+                      "t_notrun": "Not Run"}
+              for k, v in want.items():
+                  if got.get(k, ("", ""))[0] != v:
+                      return "campaign parser fixture failed on %s (got %r)" % (k, got.get(k))
+              jfix = [
+                  ('<?xml version="1.0"?><testsuite><testcase name="a" status="passed"><system-out>ok</system-out></testcase></testsuite>', {"a": "Passed"}),
+                  ('<?xml version="1.0"?><testsuite><testcase name="b" status="failed"><failure message="x" type="Exception">out</failure></testcase></testsuite>', {"b": "Failed"}),
+                  ('<?xml version="1.0"?><testsuite><testcase name="c" status="notrun"/></testsuite>', {"c": "Not Run"}),
+                  ('<?xml version="1.0"?><testsuite><testcase name="d" status="run"><system-out>ok</system-out></testcase></testsuite>', {"d": "Passed"}),
+                  ('<?xml version="1.0"?><testsuite><testcase name="e" status="failed"/></testsuite>', {"e": "Failed"}),
+                  ('<?xml version="1.0"?><testsuite><testcase name="f"><error message="crash">out</error></testcase></testsuite>', {"f": "Failed"}),
+                  ('<?xml version="1.0"?><testsuite><testcase name="g"><skipped/></testcase></testsuite>', {"g": "Not Run"}),
+              ]
+              for xml, want_d in jfix:
+                  got_d = parse_junit_txt(xml)
+                  if got_d != want_d:
+                      return "junit parser fixture failed (want %r got %r)" % (want_d, got_d)
+              if parse_junit_txt("<not-xml") is not None:
+                  return "junit parser must return None on invalid xml"
+              if (not junit_compatible("Failed", "Timeout")
+                      or junit_compatible("Passed", "Failed")
+                      or junit_compatible("Failed", "Not Run")
+                      or junit_compatible("Not Run", "Passed")):
+                  return "compat rule fixture failed"
+              return None
           disc = {"base": parse_testlist("base"), "head": parse_testlist("head")}
           stat = {"base": parse_campaign("base"), "head": parse_campaign("head")}
           junit = {"base": parse_junit("base"), "head": parse_junit("head")}
@@ -252,6 +343,10 @@ jobs:
               global verdict
               if verdict is None:
                   verdict = v
+          st_err = selftest()
+          if st_err:
+              set_verdict("INCONCLUSIVE_PARSER_SELFTEST")
+              reasons.append("parser selftest failed: %s" % st_err)
           with open(tsv_path, "w") as f:
               f.write("ref\ttest\tstatus\tduration\n")
               for ref in ("base", "head"):
@@ -292,10 +387,14 @@ jobs:
                       reasons.append("%s %s NOT RUN" % (tag, t))
           for tag in ("base", "head"):
               ju = junit[tag]
-              if not ju:
+              jpath = os.path.join(E, "pr923_%s_junit_run%s.xml" % (tag, RUN))
+              if ju is None:
+                  set_verdict("INCONCLUSIVE_MISSING_JUNIT")
+                  reasons.append("%s junit unreadable (invalid XML): %s" % (tag, jpath))
+              elif not ju:
                   if stat[tag]:
                       set_verdict("INCONCLUSIVE_MISSING_JUNIT")
-                      reasons.append("%s junit missing/unreadable while campaign log has outcomes" % tag)
+                      reasons.append("%s junit missing/empty while campaign log has outcomes: %s" % (tag, jpath))
               else:
                   for t in expected:
                       js = ju.get(t)
@@ -304,7 +403,7 @@ jobs:
                           reasons.append("%s junit has no entry for %s" % (tag, t))
                       else:
                           ls = stat[tag].get(t, ("", ""))[0]
-                          if ls and js != ls:
+                          if ls and not junit_compatible(js, ls):
                               set_verdict("INCONCLUSIVE_JUNIT_CONFLICT")
                               reasons.append("%s %s junit=%s log=%s" % (tag, t, js, ls))
           if verdict is None:
@@ -367,6 +466,8 @@ jobs:
             echo "Base : \`$BASE_SHA\` (merge-base master) — HEAD : \`$PR923_SHA\`"
             echo "Evidence : \`diag-evidence/logs/pr923_*_run$GITHUB_RUN_ID.*\` sur \`ci/long-campaign-diagnostics\`"
             echo
+            echo "Niveau d'interprétation (règles Steven) : ce verdict est un **niveau 2** — absence de régression DÉTECTÉE sur le périmètre des 6 tests ciblés avec ces configurations. Ce n'est PAS une qualification numérique (niveau 3 : invariants de couplage, conservation, champs manufacturés, quantités d'intérêt, validation totale), qui reste requise avant tout merge."
+            echo
             echo '~~~'
             cat "$E/pr923_comparison_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "(verdict indisponible)"
             echo '~~~'
@@ -388,7 +489,7 @@ jobs:
         run: |
           E="$GITHUB_WORKSPACE/$EVID"
           if grep -q "^VERDICT: IDENTICAL_FAILURE_SETS" "$E/pr923_comparison_run$GITHUB_RUN_ID.txt" 2>/dev/null; then
-            echo "verdict: IDENTICAL_FAILURE_SETS — comparaison concluante"
+            echo "verdict: IDENTICAL_FAILURE_SETS — comparaison des statuts concluante (niveau 2 : périmètre des 6 tests ciblés, PAS une qualification numérique)"
           else
             v=$(sed -n 's/^VERDICT: //p' "$E/pr923_comparison_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "MISSING_VERDICT_FILE")
             echo "::error::verdict=$v — preuve non concluante ou régression, voir diag-evidence/logs/pr923_comparison_run$GITHUB_RUN_ID.txt"
