@@ -27,8 +27,6 @@ class N11CampaignIntegrityTests(unittest.TestCase):
     def test_empty_expected_sha_allows_local_run(self):
         self.assertTrue(expected_sha_matches("a" * 40, ""))
 
-
-
 class ParseQuantitativeRecordsTests(unittest.TestCase):
     def test_plain_record_line_is_parsed(self):
         records = CAMPAIGN.parse_quantitative_records(
