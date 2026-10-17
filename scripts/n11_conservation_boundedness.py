@@ -28,10 +28,15 @@ QUANTITATIVE_RECORD_PREFIXES = (
     "N11_MPI_RESULT ",
 )
 
+# ctest -V prefixes emitted test output with lines such as "106: MODEL_RESULT ...".
+# Strip only that prefix before parsing quantitative records.
+CTEST_VERBOSE_LINE_PREFIX = re.compile(r"^\\s*\\d+:\\s*")
+
 
 def parse_quantitative_records(output: str) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
-    for line in output.splitlines():
+    for raw_line in output.splitlines():
+        line = CTEST_VERBOSE_LINE_PREFIX.sub("", raw_line, count=1)
         prefix = next(
             (p for p in QUANTITATIVE_RECORD_PREFIXES if line.startswith(p)),
             None,
