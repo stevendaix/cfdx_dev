@@ -19,6 +19,7 @@ REQUIRED_TESTS = (
     "test_phase10_turbulence_hardening",
     "test_n11_sa_negative_nu_tilde_policy",
     "test_n11_bound_reporting_hardening",
+    "test_production_turbulence_contract",
 )
 BASELINE_TESTS = ("test_channel_qualification",)
 
