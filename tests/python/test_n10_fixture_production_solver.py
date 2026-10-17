@@ -1,11 +1,26 @@
 from __future__ import annotations
 
 import json
-import os
 import math
+import os
 import re
 import subprocess
 from pathlib import Path
+
+SCALAR_PATTERN = re.compile(
+    r"(?<!\S)(?P<name>[A-Za-z_]\w*)=(?P<value>[-+0-9.eE]+)(?=\s|$)"
+)
+TUPLE_PATTERN = re.compile(
+    r"(?<!\S)(?P<name>[A-Za-z_]\w*)=\(\s*(?P<x>[-+0-9.eE]+)\s*,\s*"
+    r"(?P<y>[-+0-9.eE]+)\s*,\s*(?P<z>[-+0-9.eE]+)\s*\)"
+)
+
+
+def parse_trace_tuple(line: str, name: str) -> list[float]:
+    for match in TUPLE_PATTERN.finditer(line):
+        if match.group("name") == name:
+            return [float(match.group(axis)) for axis in ("x", "y", "z")]
+    raise AssertionError(f"Malformed INCOMPRESSIBLE_ITER tuple {name}: {line}")
 
 
 def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
@@ -76,42 +91,85 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
     restart_path = output_dir / "restart.dat"
     assert result.returncode == 0, diagnostics[-12000:]
 
-    trace_pattern = re.compile(
-        r"^INCOMPRESSIBLE_ITER iter=(?P<iteration>\d+)"
-        r" momentum_residual_relative=(?P<momentum>[-+0-9.eE]+)"
-        r" continuity_normalized=(?P<continuity>[-+0-9.eE]+)"
-        r" velocity_change_inf=(?P<velocity>[-+0-9.eE]+)"
-        r" pressure_change_inf=(?P<pressure>[-+0-9.eE]+)"
-        r" alpha_u=(?P<alpha_u>[-+0-9.eE]+)"
-        r" alpha_p=(?P<alpha_p>[-+0-9.eE]+)"
-        r" pressure_linear_iterations=(?P<pressure_iterations>\d+)"
-        r" pressure_relative_residual=(?P<pressure_residual>[-+0-9.eE]+)"
-        r" momentum_linear_iterations=(?P<momentum_iterations>\d+)"
-        r" flux_velocity_mismatch_linf=(?P<flux_mismatch>[-+0-9.eE]+)"
-    )
-    history: list[dict[str, float | int]] = []
+    # Parse named fields rather than relying on their output order. The solver's
+    # trace was extended by N10 to expose separate RHS- and first-iteration-
+    # reference-normalized momentum residuals; accept the old field name too
+    # for compatibility with traces produced before that change.
+    history: list[dict[str, float | int | list[float]]] = []
     for line in diagnostics.splitlines():
-        match = trace_pattern.match(line.strip())
-        if not match:
+        stripped = line.strip()
+        if not stripped.startswith("INCOMPRESSIBLE_ITER "):
             continue
-        row: dict[str, float | int] = {
-            "iteration": int(match.group("iteration")),
-            "momentum_residual_relative": float(match.group("momentum")),
-            "continuity_normalized": float(match.group("continuity")),
-            "velocity_change_inf": float(match.group("velocity")),
-            "pressure_change_inf": float(match.group("pressure")),
-            "alpha_u": float(match.group("alpha_u")),
-            "alpha_p": float(match.group("alpha_p")),
-            "pressure_linear_iterations": int(match.group("pressure_iterations")),
-            "pressure_relative_residual": float(match.group("pressure_residual")),
-            "momentum_linear_iterations": int(match.group("momentum_iterations")),
-            "flux_velocity_mismatch_linf": float(match.group("flux_mismatch")),
+        fields = {
+            match.group("name"): match.group("value")
+            for match in SCALAR_PATTERN.finditer(stripped)
         }
-        assert all(
-            math.isfinite(float(value))
-            for key, value in row.items()
-            if key not in {"iteration", "pressure_linear_iterations", "momentum_linear_iterations"}
+        momentum_key = (
+            "momentum_residual_reference_relative"
+            if "momentum_residual_reference_relative" in fields
+            else "momentum_residual_relative"
         )
+        required = {
+            "iter",
+            momentum_key,
+            "continuity_normalized",
+            "velocity_change_inf",
+            "pressure_change_inf",
+            "alpha_u",
+            "alpha_p",
+            "pressure_linear_iterations",
+            "pressure_relative_residual",
+            "momentum_linear_iterations",
+            "flux_velocity_mismatch_linf",
+        }
+        missing = sorted(required.difference(fields))
+        assert not missing, (
+            f"Malformed INCOMPRESSIBLE_ITER trace; missing fields {missing}: {stripped}"
+        )
+
+        # The newer trace includes RHS normalization and per-axis tuples.
+        # Preserve support for the previous scalar-only trace format.
+        has_n10_metrics = "momentum_residual_rhs_relative" in fields
+        row: dict[str, float | int | list[float] | None] = {
+            "iteration": int(fields["iter"]),
+            "momentum_residual_relative": float(fields[momentum_key]),
+            "momentum_residual_rhs_relative": float(
+                fields.get("momentum_residual_rhs_relative", fields[momentum_key])
+            ),
+            "continuity_normalized": float(fields["continuity_normalized"]),
+            "velocity_change_inf": float(fields["velocity_change_inf"]),
+            "pressure_change_inf": float(fields["pressure_change_inf"]),
+            "alpha_u": float(fields["alpha_u"]),
+            "alpha_p": float(fields["alpha_p"]),
+            "pressure_linear_iterations": int(fields["pressure_linear_iterations"]),
+            "pressure_relative_residual": float(fields["pressure_relative_residual"]),
+            "momentum_linear_iterations": int(fields["momentum_linear_iterations"]),
+            "flux_velocity_mismatch_linf": float(fields["flux_velocity_mismatch_linf"]),
+            "momentum_rhs_scale_components": (
+                parse_trace_tuple(stripped, "momentum_rhs_scale_components")
+                if has_n10_metrics
+                else None
+            ),
+            "momentum_rhs_relative_components": (
+                parse_trace_tuple(stripped, "momentum_rhs_relative_components")
+                if has_n10_metrics
+                else None
+            ),
+        }
+        numeric_values = [
+            float(value)
+            for value in row.values()
+            if value is not None
+            and not isinstance(value, list)
+            and not isinstance(value, int)
+        ]
+        numeric_values.extend(
+            component
+            for value in row.values()
+            if isinstance(value, list)
+            for component in value
+        )
+        assert all(math.isfinite(value) for value in numeric_values)
         history.append(row)
 
     assert history, diagnostics[-12000:]
