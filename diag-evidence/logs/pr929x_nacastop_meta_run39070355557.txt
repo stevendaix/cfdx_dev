@@ -1,0 +1,7 @@
+run_id=39070355557
+started_utc=2026-10-17T21:18:13Z
+head_sha=4b54d920fad91f779731b12373ec2ed93ec64c2f (pinned head of PR #929, env-gated diag instrumentation, solver semantics UNCHANGED)
+scope: instrumented run of test_naca0012_qualification (expected FAIL ~31 s) + best-effort test_naca0012_wall_shear_audit
+target v4: OFFICIAL convergence_status/reason + transaction rejections + last executed iteration
+target v4 (etapes A/B): momentum matrix rows CELLROW/CELLNZ cells 7,8,262,264+voisins, row_residual=A.x-b independant, microscope cell 7
+rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL

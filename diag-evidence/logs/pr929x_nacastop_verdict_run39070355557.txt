@@ -1,0 +1,12 @@
+VERDICT: EVIDENCE_COMPLETE
+solves=4
+solves_with_stop=4
+solves_thrown=0
+exception_in_log=True
+audit_state=CAPTURED
+cellrow_rows=4680
+microscope_sections=56
+interpretation: EVIDENCE_COMPLETE = capture instrumentee auto-coherente ;
+les statuts rapportes sont les statuts OFFICIELS du solveur, PAS une inference ;
+ceci est un DIAGNOSTIC de la raison d'arret et des coefficients cellules cibles,
+PAS un verdict de correction numerique.
