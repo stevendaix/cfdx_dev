@@ -8,6 +8,8 @@
 #include <stdexcept>
 #include <vector>
 
+using namespace cfdx::runtime::gpu;
+
 namespace {
 
 struct ErrorMetrics {

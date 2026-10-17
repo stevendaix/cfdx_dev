@@ -12,6 +12,23 @@ public:
     CudaDeviceBuffer() = default;
     explicit CudaDeviceBuffer(std::size_t bytes) { resize(bytes); }
     ~CudaDeviceBuffer() override { release(); }
+    CudaDeviceBuffer(const CudaDeviceBuffer&) = delete;
+    CudaDeviceBuffer& operator=(const CudaDeviceBuffer&) = delete;
+    CudaDeviceBuffer(CudaDeviceBuffer&& other) noexcept
+        : ptr_(other.ptr_), size_(other.size_) {
+        other.ptr_ = nullptr;
+        other.size_ = 0;
+    }
+    CudaDeviceBuffer& operator=(CudaDeviceBuffer&& other) noexcept {
+        if (this != &other) {
+            release();
+            ptr_ = other.ptr_;
+            size_ = other.size_;
+            other.ptr_ = nullptr;
+            other.size_ = 0;
+        }
+        return *this;
+    }
 
     void resize(std::size_t bytes) override {
         if (bytes == size_) return;
