@@ -51,6 +51,8 @@ reconstruction globale sont inchangés.
 - ISO/IEC/IEEE 12207:2017 — Software life cycle processes (verification,
   validation, and testing), referenced by CFDX V&V governance
   (`docs/validation/CFDX_VV_GOVERNANCE.md`).
+- ISO 14001:2015 — Environmental management systems (build toolchain provenance),
+  doi:10.3403/iso140012015, referenced for build environment reproducibility.
 
 ## 7. Statut d'implémentation
 
