@@ -1,0 +1,2 @@
+VERDICT: INCONCLUSIVE_NO_DUMP
+no naca_stop_dumps.tsv captured

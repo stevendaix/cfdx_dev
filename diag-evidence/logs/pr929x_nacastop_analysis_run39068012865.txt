@@ -1,0 +1,5 @@
+dump absent : pr929x_nacastop_dumps_run39068012865.txt
+naca_test_exit=8
+wallshear_test_exit=8
+naca_dump=present
+

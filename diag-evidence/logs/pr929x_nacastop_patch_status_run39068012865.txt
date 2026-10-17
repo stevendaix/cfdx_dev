@@ -1,0 +1,15 @@
+patch_exit=0
+sha256_before=dfe5902b7b1786c28a0bbc4343fb30e3786b5e7474c34c64a09b7fa4d2cd5138
+sha256_after=b974c78714d64ba2543ccee33fed275294d025e455caf9f9dfd153f1e2dba9e5
+A1_present=1
+A3_present=1
+A2_present=1
+A4_present=1
+A5_prefix_present=1
+solve_seq_count=6
+getenv_count=4
+sanitize_count=4
+start_rows=1
+iter_rows=1
+rejected_rows=1
+stop_rows=1

@@ -1,0 +1,6 @@
+run_id=39068012865
+started_utc=2026-10-17T20:44:54Z
+head_sha=5a680640b1229e115a19f4e980bac850f4031837 (pinned head of PR #929, env-gated diag instrumentation, solver semantics UNCHANGED)
+scope: instrumented run of test_naca0012_qualification (expected FAIL ~31 s) + best-effort test_naca0012_wall_shear_audit
+target: OFFICIAL convergence_status + convergence_reason + nonlinear transaction rejections + last executed iteration
+rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL
