@@ -153,20 +153,23 @@ def test_every_dynamic_injection_point_is_escaped(tmp_path: Path) -> None:
     assert rf"\texttt{{{escaped}}}: return code 0." in tex
     # The capability-matrix row keeps its four columns even though the hostile
     # identifier itself contains an ampersand, so the table structure survives.
-    matrix_row = " & ".join([
-        rf"\texttt{{{escaped}}}",
-        MODULE.latex_escape("case & name"),
-        MODULE.latex_escape("READY"),
-        MODULE.latex_escape("50% done #1"),
-    ]) + r"\\"
+    matrix_row = (
+        " & ".join(
+            [
+                rf"\texttt{{{escaped}}}",
+                MODULE.latex_escape("case & name"),
+                MODULE.latex_escape("READY"),
+                MODULE.latex_escape("50% done #1"),
+            ]
+        )
+        + r"\\"
+    )
     assert matrix_row in tex.splitlines()
 
 
 def test_actual_vmfl_matrix_escapes_technical_unicode(tmp_path: Path) -> None:
     output = tmp_path / "report.tex"
-    cases = MODULE.parse_matrix(
-        ROOT / "docs" / "validation" / "FLUENT_VMFL_MATRIX.md"
-    )
+    cases = MODULE.parse_matrix(ROOT / "docs" / "validation" / "FLUENT_VMFL_MATRIX.md")
     MODULE.write_tex(
         output,
         cases,
