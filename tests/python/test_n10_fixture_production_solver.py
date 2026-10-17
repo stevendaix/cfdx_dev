@@ -123,7 +123,10 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
             )
             return [float(match.group(index)) for index in range(1, 4)]
 
-        row: dict[str, float | int | list[float]] = {
+        # The newer trace includes RHS normalization and per-axis tuples.
+        # Preserve support for the previous scalar-only trace format.
+        has_n10_metrics = "momentum_residual_rhs_relative" in fields
+        row: dict[str, float | int | list[float] | None] = {
             "iteration": int(fields["iter"]),
             "momentum_residual_relative": float(fields[momentum_key]),
             "momentum_residual_rhs_relative": float(
@@ -138,15 +141,18 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
             "pressure_relative_residual": float(fields["pressure_relative_residual"]),
             "momentum_linear_iterations": int(fields["momentum_linear_iterations"]),
             "flux_velocity_mismatch_linf": float(fields["flux_velocity_mismatch_linf"]),
-            "momentum_rhs_scale_components": parse_tuple("momentum_rhs_scale_components"),
-            "momentum_rhs_relative_components": parse_tuple(
-                "momentum_rhs_relative_components"
+            "momentum_rhs_scale_components": (
+                parse_tuple("momentum_rhs_scale_components") if has_n10_metrics else None
+            ),
+            "momentum_rhs_relative_components": (
+                parse_tuple("momentum_rhs_relative_components") if has_n10_metrics else None
             ),
         }
         numeric_values = [
             float(value)
             for value in row.values()
-            if not isinstance(value, list)
+            if value is not None
+            and not isinstance(value, list)
             and not isinstance(value, int)
         ]
         numeric_values.extend(
