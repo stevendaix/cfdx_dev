@@ -38,8 +38,9 @@ Errors gradient_error(const Field<double, Location::CELL>& gradient,
     // patch-wise constants, whereas the exact inlet/outlet data vary with y.
     for (std::size_t c = 0; c < geometry.cell_centres.size(); ++c) {
         const auto& x = geometry.cell_centres[c];
+        constexpr double channel_length = 4.0;
         const auto i = static_cast<std::size_t>(
-            std::llround(x.x * static_cast<double>(nx) / 8.0));
+            std::floor(x.x * static_cast<double>(nx) / channel_length));
         if (i == 0 || i + 1 >= nx) continue;
         const double exact_y = quadratic ? quadratic_derivative(x.y) : 1.0;
         const double ex = gradient.component_data(0)[c];
