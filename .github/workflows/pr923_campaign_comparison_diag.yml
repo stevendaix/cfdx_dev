@@ -33,6 +33,15 @@ name: PR923 targeted campaign comparison (diag)
 #    fail-closed immediat ; (f) le verdict IDENTICAL_FAILURE_SETS est un
 #    niveau 2 (statuts des 6 tests ciblés), jamais une qualification
 #    numerique ;
+#  - v7 (apres run 39009406615 INCONCLUSIVE_MISSING_OUTCOME) : ctest pade
+#    la ligne d'issue avec un nombre VARIABLE de points (3 a 19 observes)
+#    et peut prefixer ***Exception: d'un label ("Subprocess
+#    aborted***Exception: 131.90 sec"). La regex v6 attendait exactement
+#    3 points + alternance stricte => 5/6 tests non parses. v7 : regex
+#    \.{3,}, capture du reste de ligne + duree, classification PAR CONTENU
+#    (Passed / Timeout / Not Run / Failed|Exception|aborted, sinon
+#    UNKNOWN:* fail-closed via cross-check junit) ; fixtures du self-test
+#    etendues aux lignes REELLES du run 39009406615 ;
 #  - verdicts possibles : INCONCLUSIVE_BUILD / INCONCLUSIVE_DISCOVERY /
 #    INCONCLUSIVE_MISSING_OUTCOME / INCONCLUSIVE_TIMEOUT / INCONCLUSIVE_NOT_RUN /
 #    INCONCLUSIVE_MISSING_JUNIT / INCONCLUSIVE_JUNIT_CONFLICT /
@@ -227,22 +236,33 @@ jobs:
                           found.add(m.group(1))
               return found
           def parse_campaign_txt(txt):
+              # v7 : le padding de points de ctest est de longueur VARIABLE
+              # (3 a 19 observes, run 39009406615) et un label peut preceder
+              # ***Exception: ("Subprocess aborted***Exception: 131.90 sec").
+              # Donc : \.{3,}, capture du reste de ligne, extraction de la
+              # duree terminale, classification du texte de statut PAR CONTENU.
               st = {}
-              pat = re.compile(r"Test\s+#\d+:\s+(\S+)\s+\.\.\.\s*"
-                               r"(Passed|\*\*\*Failed|\*\*\*Timeout|\*\*\*Not Run"
-                               r"|\*\*\*Exception:\s*\S+)"
-                               r"\s*([0-9.]+ sec)?")
+              pat = re.compile(r"Test\s+#\d+:\s+(\S+)\s+\.{3,}\s*([^\n]+?)\s*$",
+                               re.M)
               for m in pat.finditer(txt):
-                  raw = m.group(2)
-                  if raw == "Passed":
+                  name, raw = m.group(1), m.group(2)
+                  dm = re.search(r"([0-9.]+) sec\s*$", raw)
+                  dur = (dm.group(1) + " sec") if dm else "unknown"
+                  s = raw[:dm.start()].strip() if dm else raw.strip()
+                  if s == "Passed":
                       key = "Passed"
-                  elif raw == "***Timeout":
+                  elif "Timeout" in s:
                       key = "Timeout"
-                  elif raw == "***Not Run":
+                  elif "Not Run" in s:
                       key = "Not Run"
+                  elif ("Failed" in s or "Exception" in s
+                        or "aborted" in s.lower()):
+                      key = "Failed"  # ***Failed, ***Exception:*, aborted
                   else:
-                      key = "Failed"  # ***Failed et ***Exception:* (crash)
-                  st[m.group(1)] = (key, m.group(3) or "unknown")
+                      # fail-closed : statut inconnu -> declenchera le
+                      # cross-check junit (INCONCLUSIVE_JUNIT_CONFLICT)
+                      key = "UNKNOWN:" + s
+                  st[name] = (key, dur)
               return st
           def parse_campaign(tag):
               path = os.path.join(E, "pr923_%s_campaign_run%s.log" % (tag, RUN))
@@ -304,14 +324,30 @@ jobs:
                          "Test  #2: t_timeout ...***Timeout     720.00 sec\n"
                          "Test  #3: t_exception ...***Exception: SegFault  0.35 sec\n"
                          "Test  #4: t_fail ...***Failed        5.10 sec\n"
-                         "Test  #5: t_notrun ...***Not Run       0.00 sec\n")
+                         "Test  #5: t_notrun ...***Not Run       0.00 sec\n"
+                         # lignes REELLES du run 39009406615 : padding
+                         # variable, label "Subprocess aborted" AVANT
+                         # ***Exception:, durees et espacements constates :
+                         "Test #12: test_ghia_cavity_n8_pcd ..................   Passed  646.44 sec\n"
+                         "Test  #3: test_channel_qualification ...............***Failed  233.68 sec\n"
+                         "Test  #4: test_naca0012_qualification ...................Subprocess aborted***Exception: 131.90 sec\n"
+                         "Test  #6: t_n12 ...***Failed    0.02 sec\n"
+                         "Test  #9: t_unknown ......WeirdStatus  1.00 sec\n")
               got = parse_campaign_txt(log_fix)
               want = {"t_pass": "Passed", "t_timeout": "Timeout",
                       "t_exception": "Failed", "t_fail": "Failed",
-                      "t_notrun": "Not Run"}
+                      "t_notrun": "Not Run",
+                      "test_ghia_cavity_n8_pcd": "Passed",
+                      "test_channel_qualification": "Failed",
+                      "test_naca0012_qualification": "Failed",
+                      "t_n12": "Failed"}
               for k, v in want.items():
                   if got.get(k, ("", ""))[0] != v:
                       return "campaign parser fixture failed on %s (got %r)" % (k, got.get(k))
+              if got.get("test_ghia_cavity_n8_pcd", ("", ""))[1] != "646.44 sec":
+                  return "campaign parser duration fixture failed (got %r)" % (got.get("test_ghia_cavity_n8_pcd"),)
+              if not got.get("t_unknown", ("", ""))[0].startswith("UNKNOWN:"):
+                  return "campaign parser must be fail-closed on unknown status (got %r)" % (got.get("t_unknown"),)
               jfix = [
                   ('<?xml version="1.0"?><testsuite><testcase name="a" status="passed"><system-out>ok</system-out></testcase></testsuite>', {"a": "Passed"}),
                   ('<?xml version="1.0"?><testsuite><testcase name="b" status="failed"><failure message="x" type="Exception">out</failure></testcase></testsuite>', {"b": "Failed"}),
