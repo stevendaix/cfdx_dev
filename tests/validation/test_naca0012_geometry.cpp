@@ -6,6 +6,7 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -69,8 +70,27 @@ static Forces run(const std::string& path,std::size_t level)
         mesh, geometry, strict_bc, validation_flux, "NACA0012_RE1000_A0");
 
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
-    if(!solve.converged)
-        throw std::runtime_error("NACA0012 solver did not converge");
+    if(!solve.converged) {
+        std::ostringstream message;
+        message << "NACA0012 solver did not converge: status="
+                << cfdx::core::to_string(solve.convergence_status)
+                << " reason=" << solve.convergence_reason
+                << " iterations=" << solve.iterations;
+        if(!solve.history.empty()) {
+            const auto& last=solve.history.back();
+            message << " momentum_rhs_relative="
+                    << last.momentum_equation_residual_rhs_relative
+                    << " momentum_reference_relative="
+                    << last.momentum_equation_residual_relative
+                    << " pressure_residual=" << last.pressure_residual
+                    << " continuity=" << last.continuity_normalized
+                    << " dU=" << last.velocity_change_inf
+                    << " dP=" << last.pressure_change_inf
+                    << " alpha_u=" << last.effective_alpha_u
+                    << " alpha_p=" << last.effective_alpha_p;
+        }
+        throw std::runtime_error(message.str());
+    }
 
     ScalarBoundaryConditions gx,gy;
     gx["farfield"]={ScalarBoundaryType::FIXED_VALUE,Uinf,0};
