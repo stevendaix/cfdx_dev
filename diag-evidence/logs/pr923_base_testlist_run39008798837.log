@@ -1,0 +1,10 @@
+Internal ctest changing into directory: /home/runner/work/_temp/base/build
+Test project /home/runner/work/_temp/base/build
+  Test #101: test_ghia_cavity_n8_pcd
+  Test #127: test_bfs_qualification
+  Test #128: test_naca0012_qualification
+  Test #131: test_channel_qualification
+  Test #144: test_n12_coupled_pressure_velocity_mms
+  Test #197: test_n9_s9_rhie_chow_consistency
+
+Total Tests: 6
