@@ -7,7 +7,6 @@ import re
 import subprocess
 from pathlib import Path
 
-
 SCALAR_PATTERN = re.compile(
     r"(?<!\S)(?P<name>[A-Za-z_]\w*)=(?P<value>[-+0-9.eE]+)(?=\s|$)"
 )
