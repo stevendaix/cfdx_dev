@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run the executable part of CFDX turbulence qualification without overstating evidence.
 
 This driver runs existing CTest targets and records missing gates as BLOCKED.
@@ -30,7 +29,11 @@ def run(command: list[str]) -> subprocess.CompletedProcess[str]:
     if result.stdout:
         print(result.stdout, end="" if result.stdout.endswith("\n") else "\n")
     if result.stderr:
-        print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
+        print(
+            result.stderr,
+            file=sys.stderr,
+            end="" if result.stderr.endswith("\n") else "\n",
+        )
     return result
 
 
@@ -38,7 +41,7 @@ def registered_tests(build_dir: Path) -> set[str]:
     result = run(["ctest", "--test-dir", str(build_dir), "-N"])
     if result.returncode != 0:
         raise RuntimeError(f"ctest -N failed with exit code {result.returncode}")
-    return set(re.findall(r"Test\s+#\d+:\s+(\S+)", result.stdout))
+    return set(re.findall(r"Test\\s+#\\d+:\\s+(\\S+)", result.stdout))
 
 
 def main() -> int:
@@ -64,7 +67,10 @@ def main() -> int:
     records: list[dict[str, object]] = []
     missing_required: list[str] = []
     failed = False
-    for category, names in (("turbulence", REQUIRED_TESTS), ("laminar_baseline", BASELINE_TESTS)):
+    for category, names in (
+        ("turbulence", REQUIRED_TESTS),
+        ("laminar_baseline", BASELINE_TESTS),
+    ):
         for name in names:
             if name not in available:
                 status = "BLOCKED_NOT_REGISTERED"
@@ -73,18 +79,26 @@ def main() -> int:
                 records.append({"category": category, "test": name, "status": status})
                 print(f"{status}: {name}")
                 continue
-            result = run([
-                "ctest", "--test-dir", str(build_dir), "-R", f"^{re.escape(name)}$",
-                "--output-on-failure",
-            ])
+            result = run(
+                [
+                    "ctest",
+                    "--test-dir",
+                    str(build_dir),
+                    "-R",
+                    f"^{re.escape(name)}$",
+                    "--output-on-failure",
+                ]
+            )
             status = "PASS" if result.returncode == 0 else "FAIL"
             failed |= result.returncode != 0
-            records.append({
-                "category": category,
-                "test": name,
-                "status": status,
-                "exit_code": result.returncode,
-            })
+            records.append(
+                {
+                    "category": category,
+                    "test": name,
+                    "status": status,
+                    "exit_code": result.returncode,
+                }
+            )
             print(f"{status}: {name}")
 
     report = {
@@ -113,7 +127,9 @@ def main() -> int:
     if missing_required:
         return 2
     # Exit 2 is intentional while physical/MMS gates remain blocked.
-    print("BLOCKED: component tests completed, but turbulence qualification is not closed.")
+    print(
+        "BLOCKED: component tests completed, but turbulence qualification is not closed."
+    )
     return 2
 
 
