@@ -6,6 +6,7 @@
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/mesh/mesh.h"
+#include "cfdx/physics/finite_volume_transport.h"
 #include <cmath>
 #include <cstddef>
 #include <algorithm>
@@ -22,38 +23,24 @@ struct PressureCorrectionSystem {
 inline PressureCorrectionSystem assemble_pressure_correction(
     const cfdx::core::Mesh& mesh,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& momentum_diagonal,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>& continuity)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& continuity,
+    double density = 1.0)
 {
     using namespace cfdx::core;
+    if (!(density > 0.0) || !std::isfinite(density))
+        throw std::invalid_argument(
+            "assemble_pressure_correction: density must be finite and positive");
     const std::size_t n = mesh.n_cells();
     if (momentum_diagonal.dimension() != 1 || momentum_diagonal.size() != n ||
         continuity.dimension() != 1 || continuity.size() != n) {
         throw std::runtime_error("assemble_pressure_correction: invalid fields");
     }
 
-    std::vector<Vec3> centres(mesh.n_faces());
-    std::vector<Vec3> sf(mesh.n_faces());
-    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-        const auto off = mesh.faces().offsets_data()[f];
-        const auto count = mesh.faces().offsets_data()[f + 1] - off;
-        const auto fg = compute_face_geometry(
-            mesh.points().x_data(), mesh.points().y_data(), mesh.points().z_data(),
-            mesh.faces().vertices_data(), off, count);
-        centres[f] = fg.centre;
-        sf[f] = fg.Sf;
-    }
-
-    std::vector<double> volume(n, 0.0);
-    std::vector<Vec3> cell_centre(n);
-    for (std::size_t c = 0; c < n; ++c) {
-        const auto off = mesh.cells().offsets_data()[c];
-        const auto count = mesh.cells().offsets_data()[c + 1] - off;
-        const auto cg = compute_cell_geometry_oriented(
-            centres.data(), sf.data(), mesh.cells().faces_data() + off, count,
-            static_cast<CellIndex>(c), mesh.ownership());
-        volume[c] = cg.volume;
-        cell_centre[c] = cg.centre;
-    }
+    // Use the canonical FV geometry builder so imported face winding is
+    // normalized before cell volumes and centres are computed. Reconstructing
+    // this geometry locally used the raw face winding and produced a different
+    // pressure coefficient on meshes whose face orientation was not canonical.
+    const FvGeometry geometry = build_fv_geometry(mesh);
 
     std::vector<std::vector<std::pair<std::size_t, double>>> rows(n);
     std::vector<double> diagonal(n, 0.0);
@@ -71,15 +58,31 @@ inline PressureCorrectionSystem assemble_pressure_correction(
             throw std::runtime_error("assemble_pressure_correction: momentum diagonal must be positive");
         }
 
-        const Vec3 d = cell_centre[nb] - cell_centre[o];
+        const Vec3 d = geometry.cell_centres[nb] - geometry.cell_centres[o];
         const double distance = d.mag();
         if (!(distance > 1e-14)) {
             throw std::runtime_error("assemble_pressure_correction: degenerate cell-centre distance");
         }
-        const double face_area = sf[f].mag();
-        const double face_area_sq = face_area * face_area;
-        const double coefficient =
-            0.5 * (1.0 / ao + 1.0 / an) * face_area_sq / distance;
+        const double face_area = geometry.face_area_vectors[f].mag();
+        if (!(face_area > 0.0) || !std::isfinite(face_area))
+            throw std::runtime_error(
+                "assemble_pressure_correction: degenerate face area");
+        const Vec3 e{d.x / distance, d.y / distance, d.z / distance};
+        const Vec3 Sf = geometry.face_area_vectors[f];
+        const double orthogonal_area = Sf.x * e.x +
+                                       Sf.y * e.y +
+                                       Sf.z * e.z;
+        // This legacy scalar helper follows the production convention
+        // dAU = V/A_P. The pressure-flux derivative is dAU_f*(Sf·e)/d;
+        // using (1/A_P)_f*|Sf|^2/d omits the cell volume and assumes
+        // orthogonality, so it disagrees with the production operator on
+        // non-unit or skewed cells.
+        const double dAU_face = 0.5 * (
+            geometry.cell_volumes[o] / ao + geometry.cell_volumes[nb] / an);
+        const double coefficient = density * dAU_face * orthogonal_area / distance;
+        if (!(coefficient > 0.0) || !std::isfinite(coefficient))
+            throw std::runtime_error(
+                "assemble_pressure_correction: invalid face pressure coefficient");
         diagonal[o] += coefficient;
         diagonal[nb] += coefficient;
         rows[o].push_back({nb, -coefficient});
