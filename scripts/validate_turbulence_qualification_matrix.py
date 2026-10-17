@@ -31,8 +31,15 @@ def main(path: str) -> int:
             raise SystemExit(f"invalid stage map for {m.get('key')}")
         if m["status"] == "PLANNED" and stages["solver_verification"]:
             raise SystemExit(f"planned model cannot have solver verification: {m['key']}")
-        if m["status"] == "COMPONENT_READY" and stages["solver_verification"]:
-            raise SystemExit(f"component-ready model cannot claim production solver verification: {m['key']}")
+        if m["status"] == "COMPONENT_READY" and any(
+            stages[key] for key in (
+                "analytical_mms", "solver_verification", "conservation_convergence"
+            )
+        ):
+            raise SystemExit(
+                f"component-ready model cannot claim transport MMS, production solver verification, "
+                f"or coupled conservation: {m['key']}"
+            )
         if m["status"] != "SOLVER_READY" and stages["physical_validation"]:
             raise SystemExit(f"non-solver-ready model cannot have physical validation: {m['key']}")
         if m["family"] == "RANS" and m["key"] in {"KEPSILON","RNG_KEPSILON","REALIZABLE_KEPSILON","KOMEGA"} and m["wall_distance"]:
