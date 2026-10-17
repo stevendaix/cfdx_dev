@@ -26,7 +26,7 @@
     {
       "key": "KEPSILON",
       "family": "RANS",
-      "status": "SOLVER_READY",
+      "status": "COMPONENT_READY",
       "equation_level": "implemented",
       "wall_distance": false,
       "stages": {
@@ -46,7 +46,7 @@
     {
       "key": "RNG_KEPSILON",
       "family": "RANS",
-      "status": "SOLVER_READY",
+      "status": "COMPONENT_READY",
       "equation_level": "implemented",
       "wall_distance": false,
       "stages": {
@@ -66,7 +66,7 @@
     {
       "key": "REALIZABLE_KEPSILON",
       "family": "RANS",
-      "status": "SOLVER_READY",
+      "status": "COMPONENT_READY",
       "equation_level": "implemented",
       "wall_distance": false,
       "stages": {
@@ -86,7 +86,7 @@
     {
       "key": "KOMEGA",
       "family": "RANS",
-      "status": "SOLVER_READY",
+      "status": "COMPONENT_READY",
       "equation_level": "implemented",
       "wall_distance": false,
       "stages": {
@@ -106,7 +106,7 @@
     {
       "key": "SST",
       "family": "RANS",
-      "status": "SOLVER_READY",
+      "status": "COMPONENT_READY",
       "equation_level": "implemented",
       "wall_distance": true,
       "stages": {
@@ -126,7 +126,7 @@
     {
       "key": "SPALART_ALLMARAS",
       "family": "RANS",
-      "status": "SOLVER_READY",
+      "status": "COMPONENT_READY",
       "equation_level": "implemented",
       "wall_distance": true,
       "stages": {
@@ -270,7 +270,8 @@
     "wall_distance_is_not_turbulence_validation": true,
     "physical_validation_requires_reference_and_real_solver_execution": true,
     "no_tolerance_relaxation": true,
-    "no_disabled_validation": true
+    "no_disabled_validation": true,
+    "production_momentum_coupling_required": true
   },
   "production_integration_audit": {
     "status": "BLOCKED",
