@@ -20,7 +20,7 @@ def test_turbulence_catalog_exposes_all_current_model_states():
         "KOMEGA", "SST", "SPALART_ALLMARAS", "SMAGORINSKY", "WALE",
         "DYNAMIC_KEQN", "DES", "DDES", "IDDES",
     } <= keys
-    assert turbulence_model("SST").status is TurbulenceStatus.COMPONENT_READY
+    assert turbulence_model("SST").status is TurbulenceStatus.SOLVER_READY
     assert turbulence_model("DES").status is TurbulenceStatus.KERNEL_ONLY
     assert turbulence_model("DYNAMIC_KEQN").status is TurbulenceStatus.PLANNED
 
@@ -29,8 +29,7 @@ def test_turbulence_dropdown_contains_only_solver_ready_models():
     params = {p.name: p for p in default_parameters(physics_spec("turbulence"))}
     assert params["model"].kind is ParameterType.CHOICE
     assert params["model"].choices == TURBULENCE_MODELS
-    assert "LAMINAR" in params["model"].choices
-    assert "SST" not in params["model"].choices
+    assert "SST" in params["model"].choices
     assert "SMAGORINSKY" not in params["model"].choices
     assert "DES" not in params["model"].choices
 
@@ -67,12 +66,7 @@ def test_legacy_turbulence_settings_normalize_to_structured_schema():
     assert normalized["model"] == "SST"
     assert normalized["wall_treatment"] == "resolved"
     assert normalized["transition"] == {"model": "none"}
-    try:
-        validate_turbulence_selection({"model": "SST"})
-    except ValueError as exc:
-        assert "component_ready" in str(exc)
-    else:
-        raise AssertionError("SST must remain blocked until production momentum coupling exists")
+    assert validate_turbulence_selection({"model": "SST"})["model"] == "SST"
 
 
 def test_non_solver_ready_turbulence_models_are_rejected_for_production_cases():
