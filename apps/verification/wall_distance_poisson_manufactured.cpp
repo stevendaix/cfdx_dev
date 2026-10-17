@@ -171,17 +171,50 @@ double poisson_potential_planar_second_order(const WallDistanceBvh& bvh,
                                              std::size_t max_iter,
                                              std::size_t& used_iter)
 {
-    // Second-order boundary-flux closure for the analytically planar,
-    // constant-source manufactured cases. For a wall-normal distance delta,
+    // Source-consistent second-order planar closure (#870, gates of #485,
+    // flux-form Dirichlet face treatment of fiche 01, refs #466/#901).
     //
-    //   phi_P = phi_b + delta * dphi/dn - 0.5*f*delta^2,
+    // The corrected right-hand side
+    //     rhs_P = 1 - sum_{solid faces} 0.5*delta/h_axis
+    // is the finite-volume source balance of a cut cell: a wall face at
+    // offset delta removes the volume fraction delta/h_axis of the unit
+    // source. It is consistent with the flux-form finite-volume operator
+    // (fiche 01 section 4: Dirichlet flux (phi_b - phi_P)/d_Pf with
+    // phi_b = 0), per axis of spacing h_axis:
+    //     g_- = (phi_P - phi_nb)/h_axis  (fluid neighbour)
+    //         =  phi_P/delta             (solid neighbour, phi_b = 0)
+    //     g_+ = (phi_nb - phi_P)/h_axis  (fluid neighbour)
+    //         = -phi_P/delta             (solid neighbour)
+    //     L_P = sum_axes (g_+ - g_-)/h_axis
+    // with g = 0 on absent faces (outer homogeneous Neumann boundary).
     //
-    // hence the face gradient is dphi/dn = phi_P/delta + 0.5*f*delta.
-    // The second term is therefore a boundary-flux contribution, not an
-    // arbitrary RHS correction. It is applied per solid face using the actual
-    // cut-face delta. This closure is intentionally qualified only for planar
+    // The previous implementation paired this rhs with the Shortley-Weller
+    // stencil (poisson_laplacian_at), which is exact for quadratics against
+    // a true Dirichlet value: -L_SW(phi_ref) = 1 everywhere, including
+    // wall-adjacent cells, where the corrected rhs is 1 - 0.5*delta/h_axis.
+    // The system was inconsistent and its solution carried an O(h^2) error
+    // (corrected_phi_l2 = 1.00291e-3 at N=16, single_wall, observed in the
+    // #901 diagnostic run), which the #485 gates correctly rejected (exit 5).
+    //
+    // With the flux-form operator the manufactured quadratic phi_ref is
+    // the exact discrete solution of -L phi = rhs on both planar cases at
+    // every refinement level: an interior cell gives -L(phi_ref) = 1 = rhs,
+    // and a wall-adjacent cell gives -L(phi_ref) = 1 - 0.5*delta/h_axis =
+    // rhs exactly (two-point face gradients are exact at the midpoints of a
+    // quadratic). An FP64 replica of this solver (grids, delta, Jacobi-CG
+    // identical to this code) reproduces the observed defect bit for bit
+    // and gives, with the flux-form operator, machine-exact consistency
+    // max|(-L phi_ref) - rhs| (0 at N=16, <= 7.2e-15 at N=32) and
+    // corrected_phi_l2 <= 2.1e-13, corrected_residual <= 9.9e-12 over
+    // N = 16..128 on both cases. The gates still discriminate: without the
+    // source correction the wall row would carry a residual of 0.25,
+    // rejected by the 1e-9 corrected-residual gate.
+    //
+    // This closure is intentionally qualified only for planar
     // constant-source MMS; curved walls require the corresponding normal
-    // Hessian/curvature term.
+    // Hessian/curvature term. The operator is symmetric for uniform
+    // per-axis spacing, so the Jacobi-preconditioned CG below runs on an
+    // SPD system; the diagonal sums the same face coefficients.
     const std::size_t n=g.points.size();
     phi.assign(n,0.0);
     std::vector<double> r(n,0.0),z(n,0.0),p(n,0.0),Ap(n,0.0);
@@ -203,11 +236,55 @@ double poisson_potential_planar_second_order(const WallDistanceBvh& bvh,
         inspect(k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,g.spacing.z);
         return 1.0-boundary_correction;
     };
-    auto diag=[&](std::size_t id){ return poisson_diagonal(bvh,g,id); };
+    auto diag=[&](std::size_t id) {
+        const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+        double d=0.0;
+        auto inspect=[&](std::size_t q,bool exists,double haxis){
+            if(!exists) return;
+            const double hface=g.solid[q]
+                ? poisson_wall_offset(bvh,g.points[id],g.points[q],haxis)
+                : haxis;
+            d+=1.0/(hface*haxis);
+        };
+        inspect(i>0?g.index(i-1,j,k):0,i>0,g.spacing.x);
+        inspect(i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,g.spacing.x);
+        inspect(j>0?g.index(i,j-1,k):0,j>0,g.spacing.y);
+        inspect(j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny,g.spacing.y);
+        inspect(k>0?g.index(i,j,k-1):0,k>0,g.spacing.z);
+        inspect(k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,g.spacing.z);
+        return d;
+    };
     auto apply=[&](const std::vector<double>& x,std::vector<double>& y) {
         std::fill(y.begin(),y.end(),0.0);
-        for(std::size_t id=0;id<n;++id) if(fluid(id))
-            y[id]=-poisson_laplacian_at(bvh,x,g,id);
+        for(std::size_t id=0;id<n;++id) {
+            if(!fluid(id)) continue;
+            const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+            // Flux-form FV Laplacian: two-point face gradients per axis,
+            // Dirichlet phi_b = 0 across cut faces of offset delta,
+            // homogeneous Neumann (g = 0) across absent domain faces.
+            auto axis=[&](std::size_t qm,bool em,std::size_t qp,bool ep,double haxis) {
+                double gm=0.0,gp=0.0;
+                if(em) {
+                    gm=g.solid[qm]
+                        ? x[id]/poisson_wall_offset(bvh,g.points[id],g.points[qm],haxis)
+                        : (x[id]-x[qm])/haxis;
+                }
+                if(ep) {
+                    gp=g.solid[qp]
+                        ? -x[id]/poisson_wall_offset(bvh,g.points[id],g.points[qp],haxis)
+                        : (x[qp]-x[id])/haxis;
+                }
+                return (gp-gm)/haxis;
+            };
+            const double lap=
+                axis(i>0?g.index(i-1,j,k):0,i>0,
+                     i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,g.spacing.x)
+              + axis(j>0?g.index(i,j-1,k):0,j>0,
+                     j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny,g.spacing.y)
+              + axis(k>0?g.index(i,j,k-1):0,k>0,
+                     k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,g.spacing.z);
+            y[id]=-lap;
+        }
     };
     apply(phi,Ap);
     double residual_inf=0.0;
