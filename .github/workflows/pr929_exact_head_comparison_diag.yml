@@ -260,7 +260,7 @@ jobs:
                   res["single_wall_N"] = int(m.group(1))
                   res["single_wall_corrected_phi_l2"] = float(m.group(2))
                   res["single_wall_corrected_residual"] = float(m.group(3))
-              s = re.search(r"sphere_poisson_counterexample[^\n]*?reconstructed=(%s)" % NUM, txt)
+              s = re.search(r"(?:sphere_poisson_counterexample|sphere_counterexample)[^\n]*?reconstructed=(%s)" % NUM, txt)
               if s:
                   res["sphere_reconstructed"] = float(s.group(1))
               return res
