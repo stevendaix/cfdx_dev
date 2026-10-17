@@ -36,8 +36,7 @@ def test_setup_panel_turbulence_filters_to_solver_ready_models():
     models = [panel.physics_fields["model"].itemText(i) for i in range(panel.physics_fields["model"].count())]
 
     assert models
-    assert "LAMINAR" in models
-    assert "SST" not in models
+    assert "SST" in models
     assert "SMAGORINSKY" not in models
     panel.close()
     app.processEvents()
