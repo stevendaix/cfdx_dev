@@ -447,5 +447,112 @@ int main()
         EXPECT_NEAR(corr, expected, 1e-12);
     });
 
+
+    run_case("n9_s9_pressure_matrix_coefficient_matches_rhie_chow_on_skew_face", [] {
+        // The implicit pressure matrix must use the same centre-line
+        // projection as rhie_chow_pressure_flux_internal(). On this skew face
+        // d points along x while Sf has a tangential y component. The
+        // directional inverse diagonal is intentionally anisotropic so that
+        // projecting it on Sf (rather than d) is also detected.
+        const Vec3 dvec{1.0, 0.0, 0.0};
+        const Vec3 Sf{1.0, 0.4, 0.0};
+        const Vec3 dAU_diagonal{1.0, 4.0, 9.0};
+
+        const double coefficient =
+            pressure_face_orthogonal_coefficient(Sf, dvec, dAU_diagonal);
+        EXPECT_NEAR(coefficient, 1.0, 1e-12);
+
+        const double area = Sf.mag();
+        const Vec3 face_normal{Sf.x / area, Sf.y / area, Sf.z / area};
+        const double old_face_normal_rfn =
+            dAU_diagonal.x * face_normal.x * face_normal.x +
+            dAU_diagonal.y * face_normal.y * face_normal.y +
+            dAU_diagonal.z * face_normal.z * face_normal.z;
+        const double old_area_over_distance = old_face_normal_rfn * area / dvec.mag();
+
+        // This is deliberately not a loose numerical tolerance: the old
+        // area/d plus face-normal projection differs by more than 0.5 on this
+        // analytic geometry, while the corrected coefficient is exactly 1.
+        EXPECT_TRUE(std::abs(old_area_over_distance - coefficient) > 0.4);
+
+        // Orthogonal limit: retain the previous coefficient exactly even for
+        // anisotropic momentum response.
+        const double orthogonal = pressure_face_orthogonal_coefficient(
+            Vec3{1.0, 0.0, 0.0}, dvec, dAU_diagonal);
+        EXPECT_NEAR(orthogonal, 1.0, 1e-12);
+    });
+
+
+    run_case("n9_s9_rhie_chow_skewed_face_uses_shared_implicit_coefficient", [] {
+        const Mesh mesh = make_two_cell_channel();
+        auto geometry = build_fv_geometry(mesh);
+        geometry.face_area_vectors[1].y = 0.4;
+        // Rotate the centre-line as well: anisotropic response then couples
+        // the centre-line and tangential components in global coordinates.
+        geometry.cell_centres[1].y += 0.3;
+
+        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        Field<double, Location::CELL> grad_p(2, "grad_p", "Pa/m", 3);
+        p(0) = 0.0;
+        p(1) = 0.6;
+        // A linear tangential pressure gradient with anisotropic dAU exposes
+        // whether the deferred term preserves the full face flux.
+        grad_p.set(0, 0.0, 2.0, 0.0);
+        grad_p.set(1, 0.0, 2.0, 0.0);
+
+        std::array<std::vector<double>, 3> rAU{
+            std::vector<double>(mesh.n_cells(), 1.0),
+            std::vector<double>(mesh.n_cells(), 4.0),
+            std::vector<double>(mesh.n_cells(), 9.0)};
+        const Vec3 dvec = geometry.cell_centres[1] - geometry.cell_centres[0];
+        const Vec3 Sf = geometry.face_area_vectors[1];
+        const Vec3 dAU_face{
+            0.5 * (geometry.cell_volumes[0] * rAU[0][0] +
+                   geometry.cell_volumes[1] * rAU[0][1]),
+            0.5 * (geometry.cell_volumes[0] * rAU[1][0] +
+                   geometry.cell_volumes[1] * rAU[1][1]),
+            0.5 * (geometry.cell_volumes[0] * rAU[2][0] +
+                   geometry.cell_volumes[1] * rAU[2][1])};
+        const double d = dvec.mag();
+        const Vec3 e{dvec.x / d, dvec.y / d, dvec.z / d};
+        const double orthogonal_area = Sf.dot(e);
+        const Vec3 gp{0.0, 2.0, 0.0};
+        const double rfn = dAU_face.x * e.x * e.x +
+                           dAU_face.y * e.y * e.y +
+                           dAU_face.z * e.z * e.z;
+        const double implicit = pressure_face_orthogonal_coefficient(
+            Sf, dvec, dAU_face) * (p(1) - p(0));
+        const double full_face_flux = dAU_face.x * gp.x * Sf.x +
+                                      dAU_face.y * gp.y * Sf.y +
+                                      dAU_face.z * gp.z * Sf.z;
+        const double deferred = full_face_flux -
+                               rfn * gp.dot(e) * orthogonal_area;
+        const double expected = implicit + deferred;
+        EXPECT_NEAR(expected, full_face_flux, 1e-12);
+        const double actual = rhie_chow_pressure_flux_internal(
+            mesh, geometry, 1, p, grad_p, rAU, 1.0);
+        EXPECT_NEAR(actual, expected, 1e-12);
+    });
+
+    run_case("n9_s9_skew_boundary_deferred_flux_preserves_linear_pressure", [] {
+        // A prescribed boundary pressure lies along an oblique centre-to-face
+        // vector. The implicit jump plus deferred remainder must reproduce the
+        // full anisotropic pressure-response flux for a linear pressure field.
+        const Vec3 Sf{1.0, 0.4, 0.0};
+        const Vec3 dvec{1.0, 0.3, 0.0};
+        const Vec3 dAU{1.0, 4.0, 9.0};
+        const Vec3 grad_p{0.0, 2.0, 0.0};
+        const double pressure_jump = grad_p.dot(dvec);
+        const double implicit = pressure_face_orthogonal_coefficient(
+            Sf, dvec, dAU) * pressure_jump;
+        const double deferred = pressure_face_nonorthogonal_flux(
+            Sf, dvec, dAU, grad_p);
+        const double full_flux = dAU.x * grad_p.x * Sf.x +
+                                 dAU.y * grad_p.y * Sf.y +
+                                 dAU.z * grad_p.z * Sf.z;
+        EXPECT_NEAR(implicit + deferred, full_flux, 1e-12);
+        EXPECT_TRUE(std::abs(deferred) > 1.0);
+    });
+
     return 0;
 }
