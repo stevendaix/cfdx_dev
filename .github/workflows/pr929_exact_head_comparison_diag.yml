@@ -164,6 +164,8 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
+          # Override Actions' default bash -e so each executable's exit code is recorded.
+          set +e
           set -u
           B="$RUNNER_TEMP/base/build"
           E="$GITHUB_WORKSPACE/$EVID"
@@ -181,6 +183,8 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
+          # Override Actions' default bash -e so each executable's exit code is recorded.
+          set +e
           set -u
           B="$RUNNER_TEMP/head/build"
           E="$GITHUB_WORKSPACE/$EVID"
