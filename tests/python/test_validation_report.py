@@ -110,22 +110,26 @@ def test_every_dynamic_injection_point_is_escaped(tmp_path: Path) -> None:
     MODULE.write_tex(
         output,
         [MODULE.Case(hostile, "case & name", "READY", "50% done #1")],
-        [{
-            "re": 100.0,
-            "grid": "64x64 & 50%",
-            "continuity": 1e-12,
-            "momentum": 2e-8,
-            "u_rms": 0.01,
-            "u_max": 0.02,
-            "v_rms": 0.03,
-            "v_max": 0.04,
-        }],
-        [{
-            "name": hostile,
-            "metric": "error & bias",
-            "value": "1e-6 %",
-            "reference": "exact #1",
-        }],
+        [
+            {
+                "re": 100.0,
+                "grid": "64x64 & 50%",
+                "continuity": 1e-12,
+                "momentum": 2e-8,
+                "u_rms": 0.01,
+                "u_max": 0.02,
+                "v_rms": 0.03,
+                "v_max": 0.04,
+            }
+        ],
+        [
+            {
+                "name": hostile,
+                "metric": "error & bias",
+                "value": "1e-6 %",
+                "reference": "exact #1",
+            }
+        ],
         {hostile: (0, "")},
         {hostile: 0},
         None,
