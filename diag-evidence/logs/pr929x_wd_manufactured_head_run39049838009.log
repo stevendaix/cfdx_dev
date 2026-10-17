@@ -1,0 +1,3 @@
+sphere_counterexample: reconstructed=0.57735 exact=1
+FAIL second-order planar closure: case=single_wall N=16 corrected_phi_l2=0.00100291 corrected_residual=8.11007e-12
+cfdx_wall_distance_poisson_manufactured exit=5
