@@ -13,6 +13,31 @@ Upstream references:
 - Configuration: https://github.com/su2code/SU2/blob/master/TestCases/euler/naca0012/inv_NACA0012.cfg
 - The upstream configuration describes Mach 0.8 and angle of attack 1.25 degrees. Those flow settings do not enter the distance calculation.
 
+## SU2 wall-distance availability audit
+
+The checked-in `mesh_NACA0012_inv.su2` is a mesh file: it contains coordinates,
+connectivity, and boundary markers, not a precomputed wall-distance field. The
+repository's `inv_NACA0012_basic.cfg` is an import/validation configuration;
+there is no compatible SU2 solution or volume-output file beside it. The
+existing Python import test explicitly treats the synthetic
+`mismatched_solution.csv` as non-validation evidence.
+
+SU2 does calculate and store wall distance internally at geometry nodes
+(`GetWall_Distance`). However, the upstream `CFlowOutput.cpp` currently
+registers the `WALL_DISTANCE` volume-output field inside the hybrid RANS-LES
+(`DDES`) output group, so it is not a generally available field in the
+Euler NACA0012 configuration. A compatible SU2 run could be configured and
+checked to export it, but that would be a solver-generated nodal field—not an
+exact geometric oracle—and would require matching node coordinates, output
+format, SU2 revision, and wall-marker semantics before comparison.
+
+For this benchmark, retain the independent analytic point-to-segment oracle
+as the accuracy reference. It avoids dependence on SU2's wall-distance
+algorithm and avoids comparing different sample locations. SU2's exported
+field can be added later as a separate cross-code comparison when an
+appropriate viscous/hybrid case and verified output are available; it must not
+replace the geometric oracle.
+
 ## Method
 
 The executable reads the MARKER_TAG= airfoil line elements directly from the
