@@ -1,0 +1,462 @@
+name: PR929 NACA0012 stop-trace capture (diag)
+
+# DIAG-ONLY — branche ci/long-campaign-diagnostics (PR #903 fermee, JAMAIS merger).
+# Objectif (P1-b de l'audit Steven #929, feu vert 2026-10-17 ~17:40Z) :
+#   capturer la DERNIERE trace d'iteration du solveur avant l'exception
+#   "NACA0012 solver did not converge" du test test_naca0012_qualification
+#   (echec en 31.09 s sur run 39041321620, PAS un timeout), et la meme
+#   capture best-effort pour test_naca0012_wall_shear_audit (echec en cascade
+#   30.34 s). Question posee par Steven : arret STAGNATED, MAX_ITERATIONS,
+#   divergence ou autre ?
+# CAPTURE-ONLY : AUCUNE modification du code, du test, des seuils ou des
+#   budgets. On execute le test tel quel sur le head epingle et on analyse
+#   sa sortie stdout/stderr. Faits ancre's sur le head epingle e1cbefee
+#   (tests/validation/test_naca0012_geometry.cpp) : budget Picard
+#   c.convergence.max_iterations=8000, trace iteration_trace=true frequence
+#   200, l'exception est jetee si !solve.converged apres le solve N64.
+# Ref epinglee : head #929 e1cbefee90b4f3703d709f436585918a201ed536.
+# Verdicts fail-closed : EVIDENCE_COMPLETE (seul vert — diagnostic, PAS un
+#   PASS/FAIL numerique), INCONCLUSIVE_BUILD / TEST_RUN / NO_TRACE,
+#   INCONCLUSIVE_ANALYZER_CRASH.
+# Evidence suffixee $GITHUB_RUN_ID, commitee sur la branche diag par le bot.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/pr929_naca_stop_marker.txt'
+      - '.github/workflows/pr929_naca_stop_trace_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: pr929-naca-stop-trace
+  cancel-in-progress: false
+
+env:
+  HEAD_SHA_PIN: e1cbefee90b4f3703d709f436585918a201ed536
+  EVID: diag-evidence/logs
+
+jobs:
+  naca-stop-trace:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve pinned ref and create worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin integration/numerics-2026-10
+          # Fail-closed : le SHA pinné doit exister et être sur la branche
+          # d'intégration (jamais un master mobile).
+          git cat-file -e "$HEAD_SHA_PIN^{commit}" \
+            || { echo "::error::pinned head SHA not resolvable: $HEAD_SHA_PIN"; exit 1; }
+          git merge-base --is-ancestor "$HEAD_SHA_PIN" origin/integration/numerics-2026-10 \
+            || { echo "::error::pinned head is not on integration branch: $HEAD_SHA_PIN"; exit 1; }
+          git worktree add "$RUNNER_TEMP/head" "$HEAD_SHA_PIN"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "head_sha=$HEAD_SHA_PIN (pinned head of PR #929, capture-only, NO code modification)"
+            echo "scope: full stdout/stderr capture of test_naca0012_qualification (expected FAIL ~31 s) + best-effort test_naca0012_wall_shear_audit"
+            echo "target: LAST solver iteration trace before 'NACA0012 solver did not converge' — STAGNATED vs MAX_ITERATIONS vs divergence"
+            echo "rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL"
+          } > "$GITHUB_WORKSPACE/$EVID/pr929x_nacastop_meta_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python tooling
+        id: pip
+        continue-on-error: true
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip > /dev/null 2>&1
+          "$RUNNER_TEMP/venv/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml > "$GITHUB_WORKSPACE/$EVID/pr929x_nacastop_pip_run$GITHUB_RUN_ID.log" 2>&1
+
+      - name: Generate validation meshes (all, incl. NACA n64/128/256)
+        id: meshgen
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          "$RUNNER_TEMP/venv/bin/python" "$RUNNER_TEMP/head/scripts/generate_2d_validation_meshes.py" all \
+            --output-dir "$RUNNER_TEMP/validation_meshes" 2>&1 \
+            | tee "$GITHUB_WORKSPACE/$EVID/pr929x_nacastop_meshgen_run$GITHUB_RUN_ID.log"
+          for n in 64 128 256; do
+            test -f "$RUNNER_TEMP/validation_meshes/naca0012_laminar_n$n.h5" \
+              || { echo "::error::missing mesh naca0012_laminar_n$n.h5"; exit 1; }
+          done
+
+      - name: Configure and build (pinned head, capture-only)
+        id: build_head
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake -S "$RUNNER_TEMP/head" -B "$RUNNER_TEMP/head/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr929x_nacastop_configure_run$GITHUB_RUN_ID.log"
+          TARGETS="test_naca0012_qualification"
+          AUDIT="test_naca0012_wall_shear_audit"
+          # PIEGE DURABLE : la sortie de `ninja -t targets all` est au format
+          # "target: rule" -> retirer le ':' final avant comparaison exacte.
+          if ! avail_raw="$(ninja -C "$RUNNER_TEMP/head/build" -t targets all 2>&1)"; then
+            echo "::error::ninja -t targets failed — build system error, not a missing target"
+            exit 1
+          fi
+          avail="$(printf '%s\n' "$avail_raw" | awk '{sub(/:$/, "", $1); print $1}' | sort -u)"
+          for t in $TARGETS; do
+            printf '%s\n' "$avail" | grep -qx "$t" || { echo "::error::missing CMake target: $t"; exit 1; }
+          done
+          if printf '%s\n' "$avail" | grep -qx "$AUDIT"; then
+            echo "$AUDIT available" > "$GITHUB_WORKSPACE/$EVID/pr929x_nacastop_audit_target_run$GITHUB_RUN_ID.txt"
+            TARGETS="$TARGETS $AUDIT"
+          else
+            echo "$AUDIT MISSING (capture best-effort, non bloquant)" > "$GITHUB_WORKSPACE/$EVID/pr929x_nacastop_audit_target_run$GITHUB_RUN_ID.txt"
+          fi
+          cmake --build "$RUNNER_TEMP/head/build" --target $TARGETS --parallel 2 \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr929x_nacastop_build_run$GITHUB_RUN_ID.log"
+          cp -r "$RUNNER_TEMP/validation_meshes" "$RUNNER_TEMP/head/build/validation_meshes"
+          test -f "$RUNNER_TEMP/head/build/validation_meshes/naca0012_laminar_n64.h5" \
+            || { echo "::error::meshes not in place in build dir"; exit 1; }
+          echo "build_head_exit=0" > "$GITHUB_WORKSPACE/$EVID/pr929x_nacastop_build_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Record build failure status
+        if: always() && steps.build_head.outcome == 'failure'
+        run: |
+          echo "build_head_exit=nonzero" > "$GITHUB_WORKSPACE/$EVID/pr929x_nacastop_build_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Run NACA0012 qualification (capture full output)
+        id: naca_run
+        continue-on-error: true
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          ctest --test-dir "$RUNNER_TEMP/head/build" -R '^test_naca0012_qualification$' -N > "$E/pr929x_nacastop_testlist_run$GITHUB_RUN_ID.log" 2>&1
+          grep -q "test_naca0012_qualification" "$E/pr929x_nacastop_testlist_run$GITHUB_RUN_ID.log" \
+            || { echo "naca_discovery=MISSING" > "$E/pr929x_nacastop_test_status_run$GITHUB_RUN_ID.txt"; echo "::error::test not discovered"; exit 1; }
+          # PIEGE DURABLE : steps run: = bash -e par defaut. Le test est attendu
+          # en ECHEC (defaut pre-existant documente) — set +e + capture rc.
+          set +e
+          ctest --test-dir "$RUNNER_TEMP/head/build" -R '^test_naca0012_qualification$' --output-on-failure \
+            --output-junit "$E/pr929x_nacastop_junit_run$GITHUB_RUN_ID.xml" \
+            2>&1 | tee "$E/pr929x_nacastop_qualification_run$GITHUB_RUN_ID.log"
+          rc=${PIPESTATUS[0]}
+          echo "naca_test_exit=$rc" > "$E/pr929x_nacastop_test_status_run$GITHUB_RUN_ID.txt"
+          # Audit cisaillement pariétal : capture best-effort (echec en cascade attendu).
+          if grep -q "available" "$E/pr929x_nacastop_audit_target_run$GITHUB_RUN_ID.txt" 2>/dev/null; then
+            ctest --test-dir "$RUNNER_TEMP/head/build" -R '^test_naca0012_wall_shear_audit$' --output-on-failure \
+              2>&1 | tee "$E/pr929x_nacastop_wallshear_run$GITHUB_RUN_ID.log"
+            rca=${PIPESTATUS[0]}
+            echo "wallshear_test_exit=$rca" >> "$E/pr929x_nacastop_test_status_run$GITHUB_RUN_ID.txt"
+          fi
+          echo "naca_test_exit=$rc (echec ATTENDU : defaut pre-existant documente)"
+          exit 0
+
+      - name: Structured fail-closed verdict and stop-reason analysis
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, re, sys, traceback
+
+          run_id = os.environ["GITHUB_RUN_ID"]
+          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+          verdict_path = os.path.join(evid, "pr929x_nacastop_verdict_run" + run_id + ".txt")
+          report_path = os.path.join(evid, "pr929x_nacastop_analysis_run" + run_id + ".txt")
+          qual_log = os.path.join(evid, "pr929x_nacastop_qualification_run" + run_id + ".log")
+          shear_log = os.path.join(evid, "pr929x_nacastop_wallshear_run" + run_id + ".log")
+          build_path = os.path.join(evid, "pr929x_nacastop_build_status_run" + run_id + ".txt")
+          test_status = os.path.join(evid, "pr929x_nacastop_test_status_run" + run_id + ".txt")
+
+          # Budget Picard du test sur le head epingle (test_naca0012_geometry.cpp,
+          # c.convergence.max_iterations=8000) — constante documentee, capture-only.
+          PICARD_BUDGET = 8000
+          TRACE_PREFIX = "INCOMPRESSIBLE_ITER"
+          EXCEPTION = "NACA0012 solver did not converge"
+
+          rep = []
+          def emit(line=""):
+              rep.append(line)
+
+          def write_all(verdict, extra=()):
+              try:
+                  with open(verdict_path, "w") as fh:
+                      fh.write("VERDICT: " + verdict + "\n")
+                      for l in extra:
+                          fh.write(l + "\n")
+              except Exception:
+                  pass
+              try:
+                  with open(report_path, "w") as fh:
+                      fh.write("\n".join(rep) + "\n")
+              except Exception:
+                  pass
+
+          # ctest (-V / --output-on-failure) prefixes output lines with the test
+          # number "NN: " — le piege du parseur N11 (#907). On le retire.
+          CTEST_PREFIX = re.compile(r"^\s*\d+:\s?(.*)$")
+          def strip_prefix(line):
+              m = CTEST_PREFIX.match(line)
+              return m.group(1) if m else line
+
+          KV = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=(-?[0-9]+\.?[0-9]*(?:[eE][-+]?[0-9]+)?)")
+          def parse_kv(text):
+              return dict(KV.findall(text))
+
+          def read_stripped_lines(path):
+              if not os.path.exists(path):
+                  return None
+              with open(path, errors="replace") as fh:
+                  return [strip_prefix(l.rstrip("\n")) for l in fh]
+
+          def momentum_key(d):
+              for k in d:
+                  if "momentum" in k:
+                      return k
+              return None
+
+          def continuity_key(d):
+              for k in d:
+                  if "continuity" in k:
+                      return k
+              return None
+
+          def mismatch_key(d):
+              for k in d:
+                  if "mismatch" in k:
+                      return k
+              return None
+
+          def fnum(x):
+              return float(x)
+
+          def fmt(x):
+              return "%.6e" % fnum(x)
+
+          try:
+              # ---- gates fail-closed (INCONCLUSIVE != PASS) --------------------
+              if os.path.exists(build_path):
+                  bs = open(build_path).read().strip()
+              else:
+                  bs = "build_status_missing"
+              if not bs.endswith("exit=0"):
+                  emit("build_status=" + bs)
+                  emit("compiler output in pr929x_nacastop_build_run" + run_id + ".log")
+                  write_all("INCONCLUSIVE_BUILD", ["build_status=" + bs])
+                  sys.exit(0)
+
+              if not os.path.exists(qual_log):
+                  write_all("INCONCLUSIVE_TEST_RUN", ["no qualification log produced"])
+                  sys.exit(0)
+
+              lines = read_stripped_lines(qual_log)
+              exc_idx = [i for i, l in enumerate(lines) if EXCEPTION in l]
+              if not exc_idx:
+                  emit("exception '" + EXCEPTION + "' NOT found in the captured log")
+                  if os.path.exists(test_status):
+                      emit(open(test_status).read())
+                  write_all("INCONCLUSIVE_TEST_RUN",
+                            ["expected failure exception not present — see test status"])
+                  sys.exit(0)
+
+              traces = [(i, parse_kv(l)) for i, l in enumerate(lines)
+                        if TRACE_PREFIX in l]
+              if not traces:
+                  emit("no '" + TRACE_PREFIX + "' trace line found before the exception")
+                  write_all("INCONCLUSIVE_NO_TRACE",
+                            ["no iteration trace in captured output (stop possibly < 200 iters)"])
+                  sys.exit(0)
+
+              # ---- dernier etat du solveur ------------------------------------
+              last_idx, last = traces[-1]
+              first_idx, first = traces[0]
+              n_traces = len(traces)
+              iters = [int(fnum(d["iter"])) for _, d in traces if "iter" in d]
+              mk = momentum_key(last) or momentum_key(first)
+              ck = continuity_key(last) or continuity_key(first)
+              xk = mismatch_key(last) or mismatch_key(first)
+              # last_iter est recalcule plus bas (cle "iter", tolerance aux cles absentes)
+
+              emit("== NACA0012 qualification — capture sur head epingle (capture-only, aucune modification) ==")
+              emit("exception ligne " + str(exc_idx[0]) + " : " + EXCEPTION)
+              emit("nb traces " + TRACE_PREFIX + " = " + str(n_traces)
+                   + " | iters tracees = " + str(iters))
+              emit()
+              emit("== Trajectoire (cle momentum = " + str(mk) + ", continuite = " + str(ck)
+                   + ", mismatch = " + str(xk) + ") ==")
+              emit("iter\tmomentum\tcontinuity\tmismatch")
+              for _, d in traces:
+                  mi = d.get(mk, "n/a") if mk else "n/a"
+                  ci = d.get(ck, "n/a") if ck else "n/a"
+                  xi = d.get(xk, "n/a") if xk else "n/a"
+                  emit("%s\t%s\t%s\t%s" % (d.get("iter", "?"),
+                                           fmt(mi) if mi != "n/a" else "n/a",
+                                           fmt(ci) if ci != "n/a" else "n/a",
+                                           fmt(xi) if xi != "n/a" else "n/a"))
+
+              emit()
+              emit("== DERNIERE trace avant l'exception (champ par champ, ordre-independant) ==")
+              for k in sorted(last.keys()):
+                  emit("  " + k + "=" + last[k])
+
+              emit()
+              emit("== Contexte brut : 30 dernieres lignes avant l'exception ==")
+              for l in lines[max(0, exc_idx[0] - 30):exc_idx[0] + 3]:
+                  emit("  | " + l)
+
+              # ---- classification mesuree de la raison d'arret ------------------
+              emit()
+              emit("== Raison d'arret (MESURE depuis la capture, pas un verdict du solveur) ==")
+              marker_re = re.compile(
+                  r"STAGNATED|stagnat|DIVERG|diverg|MAX_ITERATIONS|\bnan\b|NaN|\binf\b")
+              markers = []
+              for i, l in enumerate(lines):
+                  if TRACE_PREFIX in l:
+                      continue  # traces analysees separement (valeurs ci-dessous)
+                  m = marker_re.search(l)
+                  if m:
+                      markers.append((i, m.group(0), l.strip()[:160]))
+              if markers:
+                  emit("marqueurs trouves dans le log :")
+                  for i, pat, l in markers[:20]:
+                      emit("  ligne " + str(i) + " [" + pat + "] " + l)
+              else:
+                  emit("aucun marqueur STAGNATED/DIVERG/MAX_ITERATIONS/nan/inf explicite hors traces")
+              nonfinite = [(d.get("iter"), k) for _, d in traces for k, v in d.items()
+                           if v.lower() in ("nan", "inf", "-inf", "+inf", "infinity")]
+              if nonfinite:
+                  emit("valeurs non finies dans les traces : " + str(nonfinite[:10]))
+              last_iter = None
+              for _, d in traces:
+                  v = d.get("iter")
+                  if v is not None:
+                      last_iter = int(fnum(v))
+
+              if last_iter is not None and last_iter >= PICARD_BUDGET:
+                  emit("classification : STOP_AT_MAX_ITERATIONS — la derniere trace atteint le budget Picard "
+                       + str(PICARD_BUDGET) + " (c.convergence.max_iterations du test epingle)")
+              else:
+                  moms = [abs(fnum(d[mk])) for _, d in traces if mk and mk in d]
+                  rising = len(moms) >= 2 and max(moms[-3:]) > 10.0 * max(min(moms), 1e-300) \
+                      and max(moms[-3:]) > max(moms[:max(1, len(moms) // 2)])
+                  if rising:
+                      emit("classification : EARLY_STOP_RISING_RESIDUAL (divergence-like) — le residu momentum "
+                           "croit fortement sur les dernieres traces ; arret AVANT le budget (derniere trace iter="
+                           + str(last_iter) + " < " + str(PICARD_BUDGET) + ")")
+                  else:
+                      emit("classification : EARLY_STOP_FLAT (stagnation-like) — pas de croissance marquee du "
+                           "residu ; arret AVANT le budget (derniere trace iter="
+                           + str(last_iter) + " < " + str(PICARD_BUDGET) + ")")
+              if last_iter is not None and last_iter < PICARD_BUDGET:
+                  emit("NOTE : la derniere trace est a iter=" + str(last_iter)
+                       + " (trace tous les 200 iters) ; l'arret reel est dans ("
+                       + str(last_iter) + ", " + str(last_iter + 200) + "]")
+
+              # ---- audit cisaillement (best-effort) ----------------------------
+              emit()
+              emit("== Audit cisaillement pariétal (best-effort, echec en cascade attendu) ==")
+              shear_state = "ABSENT"
+              if os.path.exists(shear_log):
+                  slines = read_stripped_lines(shear_log)
+                  sexc = [i for i, l in enumerate(slines) if "did not converge" in l]
+                  straces = [(i, parse_kv(l)) for i, l in enumerate(slines) if TRACE_PREFIX in l]
+                  emit("log present : " + str(len(slines)) + " lignes, exceptions="
+                       + str(len(sexc)) + ", traces=" + str(len(straces)))
+                  if sexc:
+                      emit("exception audit ligne " + str(sexc[0]) + " : "
+                           + slines[sexc[0]].strip()[:200])
+                  if straces:
+                      _, slast = straces[-1]
+                      emit("derniere trace audit : iter=" + str(slast.get("iter", "?")))
+                      for k in sorted(slast.keys()):
+                          emit("  " + k + "=" + slast[k])
+                      shear_state = "TRACE_CAPTURED"
+                  else:
+                      shear_state = "NO_TRACE"
+                  ctx = [l for l in slines if "NACA0012" in l or "WALL_SHEAR" in l]
+                  for l in ctx[:15]:
+                      emit("  | " + l.strip()[:160])
+              else:
+                  emit("log absent (cible absente ou non executee)")
+              emit("audit_state=" + shear_state)
+
+              emit()
+              emit("traces=" + str(n_traces) + " last_iter=" + str(last_iter)
+                   + " budget=" + str(PICARD_BUDGET))
+              write_all("EVIDENCE_COMPLETE", [
+                  "n_traces=" + str(n_traces),
+                  "last_iter=" + str(last_iter),
+                  "picard_budget=" + str(PICARD_BUDGET),
+                  "audit_state=" + shear_state,
+                  "interpretation: EVIDENCE_COMPLETE = preuve de capture et auto-coherente ;",
+                  "ceci est un DIAGNOSTIC de localisation de la raison d'arret, PAS un verdict de correction numerique.",
+              ])
+          except Exception:
+              emit("ANALYZER CRASH:")
+              emit(traceback.format_exc())
+              write_all("INCONCLUSIVE_ANALYZER_CRASH", ["analyzer crashed — see report"])
+          PY
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: PR 929 NACA0012 stop-trace capture run $GITHUB_RUN_ID (#929 P1-b) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Post verdict comment to PR #929 (best effort)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          E="$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "## NACA0012 — capture de la dernière trace d'arrêt (P1-b) — run $GITHUB_RUN_ID — verdict : $(sed -n 's/^VERDICT: //p' "$E/pr929x_nacastop_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo UNKNOWN)"
+            echo
+            echo "Réf épinglée : \`$HEAD_SHA_PIN\` (head #929 ; capture-only, AUCUNE modification de code/test/budget)."
+            echo "Évidence : \`diag-evidence/logs/pr929x_nacastop_*_run$GITHUB_RUN_ID.*\` sur \`ci/long-campaign-diagnostics\`."
+            echo
+            echo "Règle d'interprétation (Steven) : \`EVIDENCE_COMPLETE\` = preuve de capture auto-cohérente — PAS un PASS/FAIL numérique. Le test NACA reste attendu en échec tant que la non-convergence pré-existante n'est pas résolue."
+            echo
+            echo '~~~'
+            cat "$E/pr929x_nacastop_analysis_run$GITHUB_RUN_ID.txt" 2>/dev/null || cat "$E/pr929x_nacastop_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "(analyse indisponible)"
+            echo '~~~'
+          } > /tmp/comment.md 2>/dev/null || true
+          if [ ! -s /tmp/comment.md ]; then echo "(comment vide)" > /tmp/comment.md; fi
+          jq -n --rawfile body /tmp/comment.md '{body: $body}' > /tmp/payload.json
+          http=$(curl -sS --fail-with-body -o /dev/null -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/929/comments" \
+            -d @/tmp/payload.json) || http=failed
+          echo "POST to #929: $http"
+          exit 0
+
+      - name: Final verdict (green only for EVIDENCE_COMPLETE)
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          if grep -q "^VERDICT: EVIDENCE_COMPLETE" "$E/pr929x_nacastop_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null; then
+            echo "verdict: EVIDENCE_COMPLETE — trace d'arrêt capturée et analysée (diagnostic de localisation, PAS un PASS numérique)"
+          else
+            v=$(sed -n 's/^VERDICT: //p' "$E/pr929x_nacastop_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "MISSING_VERDICT_FILE")
+            echo "::error::verdict=$v — voir diag-evidence/logs/pr929x_nacastop_verdict_run$GITHUB_RUN_ID.txt"
+            exit 1
+          fi

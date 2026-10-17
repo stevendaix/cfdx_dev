@@ -1,0 +1,14 @@
+marker: pr929-naca-stop-trace
+version: 1
+date: 2026-10-17
+purpose: >
+  Declenche le diagnostic P1-b demande par Steven (audit #929, feu vert
+  2026-10-17 ~17:40Z) : capture de la DERNIERE trace d'arret du solveur
+  NACA0012 avant l'exception "NACA0012 solver did not converge"
+  (test_naca0012_qualification, echec 31.09 s sur run 39041321620, PAS un
+  timeout), + best-effort test_naca0012_wall_shear_audit (echec en cascade).
+  Capture-only sur le head epingle e1cbefee : AUCUNE modification de
+  code/test/budget/tolerance. Verdicts fail-closed, EVIDENCE_COMPLETE est un
+  diagnostic de localisation, PAS un PASS/FAIL numerique. Jamais merger cette
+  branche.
+head_pin: e1cbefee90b4f3703d709f436585918a201ed536
