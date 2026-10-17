@@ -1,7 +1,6 @@
+import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-import sys
-
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = spec_from_file_location(
@@ -60,22 +59,26 @@ def test_generated_dynamic_table_rows_are_valid_latex(tmp_path: Path) -> None:
     MODULE.write_tex(
         output,
         [MODULE.Case("VMFL001", "Case", "READY", "Comparison")],
-        [{
-            "re": 100.0,
-            "grid": "64x64",
-            "continuity": 1e-12,
-            "momentum": 2e-8,
-            "u_rms": 0.01,
-            "u_max": 0.02,
-            "v_rms": 0.03,
-            "v_max": 0.04,
-        }],
-        [{
-            "name": "MODEL",
-            "metric": "error",
-            "value": "1e-6",
-            "reference": "exact",
-        }],
+        [
+            {
+                "re": 100.0,
+                "grid": "64x64",
+                "continuity": 1e-12,
+                "momentum": 2e-8,
+                "u_rms": 0.01,
+                "u_max": 0.02,
+                "v_rms": 0.03,
+                "v_max": 0.04,
+            }
+        ],
+        [
+            {
+                "name": "MODEL",
+                "metric": "error",
+                "value": "1e-6",
+                "reference": "exact",
+            }
+        ],
         {"oracle": (0, "")},
         {"test_a": 0},
         None,
@@ -107,22 +110,26 @@ def test_every_dynamic_injection_point_is_escaped(tmp_path: Path) -> None:
     MODULE.write_tex(
         output,
         [MODULE.Case(hostile, "case & name", "READY", "50% done #1")],
-        [{
-            "re": 100.0,
-            "grid": "64x64 & 50%",
-            "continuity": 1e-12,
-            "momentum": 2e-8,
-            "u_rms": 0.01,
-            "u_max": 0.02,
-            "v_rms": 0.03,
-            "v_max": 0.04,
-        }],
-        [{
-            "name": hostile,
-            "metric": "error & bias",
-            "value": "1e-6 %",
-            "reference": "exact #1",
-        }],
+        [
+            {
+                "re": 100.0,
+                "grid": "64x64 & 50%",
+                "continuity": 1e-12,
+                "momentum": 2e-8,
+                "u_rms": 0.01,
+                "u_max": 0.02,
+                "v_rms": 0.03,
+                "v_max": 0.04,
+            }
+        ],
+        [
+            {
+                "name": hostile,
+                "metric": "error & bias",
+                "value": "1e-6 %",
+                "reference": "exact #1",
+            }
+        ],
         {hostile: (0, "")},
         {hostile: 0},
         None,
@@ -146,20 +153,23 @@ def test_every_dynamic_injection_point_is_escaped(tmp_path: Path) -> None:
     assert rf"\texttt{{{escaped}}}: return code 0." in tex
     # The capability-matrix row keeps its four columns even though the hostile
     # identifier itself contains an ampersand, so the table structure survives.
-    matrix_row = " & ".join([
-        rf"\texttt{{{escaped}}}",
-        MODULE.latex_escape("case & name"),
-        MODULE.latex_escape("READY"),
-        MODULE.latex_escape("50% done #1"),
-    ]) + r"\\"
+    matrix_row = (
+        " & ".join(
+            [
+                rf"\texttt{{{escaped}}}",
+                MODULE.latex_escape("case & name"),
+                MODULE.latex_escape("READY"),
+                MODULE.latex_escape("50% done #1"),
+            ]
+        )
+        + r"\\"
+    )
     assert matrix_row in tex.splitlines()
 
 
 def test_actual_vmfl_matrix_escapes_technical_unicode(tmp_path: Path) -> None:
     output = tmp_path / "report.tex"
-    cases = MODULE.parse_matrix(
-        ROOT / "docs" / "validation" / "FLUENT_VMFL_MATRIX.md"
-    )
+    cases = MODULE.parse_matrix(ROOT / "docs" / "validation" / "FLUENT_VMFL_MATRIX.md")
     MODULE.write_tex(
         output,
         cases,
@@ -186,7 +196,6 @@ def test_latex_escape_does_not_reescape_generated_commands() -> None:
     assert r"\&" in escaped
     assert r"90$^\circ$" in escaped
     assert r"$\Delta$p" in escaped
-
 
 
 def test_parse_vmfl036_reads_named_groups_and_last_result() -> None:
