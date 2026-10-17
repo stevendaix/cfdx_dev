@@ -1,0 +1,9 @@
+run_id=39017567638
+started_utc=2026-10-17T08:29:52Z
+base_sha=bfaf71071c72f6a9f37391039826a5964787a2a5
+pr923_head_sha=b987b4a3534bdf6aea0df9deaa3ae6b77f98b4f2
+pr923_base_ref=master
+targeted_tests: BFS Re=200, channel, NACA0012 laminar, Ghia PCD, N12 coupled MMS, N9-S9 RC consistency
+base_ctest_outcome=failure
+head_ctest_outcome=failure
+verdict=INCONCLUSIVE_TIMEOUT

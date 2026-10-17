@@ -1,0 +1,20 @@
+VERDICT: INCONCLUSIVE_TIMEOUT
+base_sha=bfaf71071c72f6a9f37391039826a5964787a2a5
+pr923_head_sha=b987b4a3534bdf6aea0df9deaa3ae6b77f98b4f2
+base test_ghia_cavity_n8_pcd TIMEOUT (not a comparable outcome)
+head test_ghia_cavity_n8_pcd TIMEOUT (not a comparable outcome)
+
+--- per-test report ---
+ref	test	status	duration
+base	test_bfs_qualification	Failed	155.40 sec
+base	test_channel_qualification	Failed	297.40 sec
+base	test_naca0012_qualification	Failed	380.73 sec
+base	test_ghia_cavity_n8_pcd	Timeout	720.00 sec
+base	test_n12_coupled_pressure_velocity_mms	Failed	0.04 sec
+base	test_n9_s9_rhie_chow_consistency	Passed	0.00 sec
+head	test_bfs_qualification	Passed	1785.51 sec
+head	test_channel_qualification	Failed	203.86 sec
+head	test_naca0012_qualification	Failed	33.26 sec
+head	test_ghia_cavity_n8_pcd	Timeout	720.00 sec
+head	test_n12_coupled_pressure_velocity_mms	Failed	0.04 sec
+head	test_n9_s9_rhie_chow_consistency	Passed	0.00 sec
