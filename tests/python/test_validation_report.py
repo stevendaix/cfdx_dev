@@ -2,7 +2,6 @@ import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = spec_from_file_location(
     "validation_report",
@@ -60,22 +59,26 @@ def test_generated_dynamic_table_rows_are_valid_latex(tmp_path: Path) -> None:
     MODULE.write_tex(
         output,
         [MODULE.Case("VMFL001", "Case", "READY", "Comparison")],
-        [{
-            "re": 100.0,
-            "grid": "64x64",
-            "continuity": 1e-12,
-            "momentum": 2e-8,
-            "u_rms": 0.01,
-            "u_max": 0.02,
-            "v_rms": 0.03,
-            "v_max": 0.04,
-        }],
-        [{
-            "name": "MODEL",
-            "metric": "error",
-            "value": "1e-6",
-            "reference": "exact",
-        }],
+        [
+            {
+                "re": 100.0,
+                "grid": "64x64",
+                "continuity": 1e-12,
+                "momentum": 2e-8,
+                "u_rms": 0.01,
+                "u_max": 0.02,
+                "v_rms": 0.03,
+                "v_max": 0.04,
+            }
+        ],
+        [
+            {
+                "name": "MODEL",
+                "metric": "error",
+                "value": "1e-6",
+                "reference": "exact",
+            }
+        ],
         {"oracle": (0, "")},
         {"test_a": 0},
         None,
