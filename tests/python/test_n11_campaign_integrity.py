@@ -28,10 +28,6 @@ class N11CampaignIntegrityTests(unittest.TestCase):
         self.assertTrue(expected_sha_matches("a" * 40, ""))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 
 class ParseQuantitativeRecordsTests(unittest.TestCase):
     def test_plain_record_line_is_parsed(self):
@@ -54,7 +50,7 @@ class ParseQuantitativeRecordsTests(unittest.TestCase):
 
     def test_prefixed_non_record_lines_are_ignored(self):
         records = CAMPAIGN.parse_quantitative_records(
-            "24: PASS: test_case\\n25: ITER 1 continuity=1e-12"
+            "24: PASS: test_case\n25: ITER 1 continuity=1e-12"
         )
         self.assertEqual(records, [])
 
@@ -62,3 +58,7 @@ class ParseQuantitativeRecordsTests(unittest.TestCase):
         plain = CAMPAIGN.parse_quantitative_records("GHIA re=100 max=0.05")
         prefixed = CAMPAIGN.parse_quantitative_records("7: GHIA re=100 max=0.05")
         self.assertEqual(plain, prefixed)
+
+if __name__ == "__main__":
+    unittest.main()
+
