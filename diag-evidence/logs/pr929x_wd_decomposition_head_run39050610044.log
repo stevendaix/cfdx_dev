@@ -1,0 +1,5 @@
+N=16 phi_L2=4.12724e-12 operator_exact_inf=14.75 residual=8.07461e-11 grad_exact_L2=0.0135383 recon_exact=0 recon_phi_num_grad_exact=2.61157e-12 recon_phi_exact_grad_num=0.0129041 recon_full=0.0129041 iterations=84 converged=true
+N=32 phi_L2=5.83553e-12 operator_exact_inf=30.75 residual=9.42464e-11 grad_exact_L2=0.00478474 recon_exact=0 recon_phi_num_grad_exact=3.69116e-12 recon_phi_exact_grad_num=0.00467262 recon_full=0.00467262 iterations=159 converged=true
+N=64 phi_L2=1.18687e-11 operator_exact_inf=62.75 residual=1.01579e-10 grad_exact_L2=0.00169151 recon_exact=0 recon_phi_num_grad_exact=7.50666e-12 recon_phi_exact_grad_num=0.00167169 recon_full=0.00167169 iterations=323 converged=true
+N=128 phi_L2=5.48611e-12 operator_exact_inf=126.75 residual=1.48361e-10 grad_exact_L2=0.000598025 recon_exact=0 recon_phi_num_grad_exact=3.46974e-12 recon_phi_exact_grad_num=0.000594521 recon_full=0.000594521 iterations=635 converged=true
+cfdx_wall_distance_poisson_decomposition exit=0

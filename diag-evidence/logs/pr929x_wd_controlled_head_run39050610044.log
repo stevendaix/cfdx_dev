@@ -1,0 +1,67 @@
+N=16, h=0.133333333333, samples=4096
+Poisson operator: fluid=3584, fluid_fluid_faces=9792, solid_faces=384, outer_faces=1536, diag=[168.75,375], min_diagonal_dominance=0, symmetry_error=0
+Poisson wall offsets: faces=384, delta=[0.1,0.1], delta_over_h=[0.75,0.75], max_wall_coefficient=75, max_wall_coefficient_cell=836, max_wall_coefficient_ijk=4:4:3, max_wall_coefficient_point=0.0333333333333:0.0333333333333:-0.1, max_wall_coefficient_delta=0.1, max_wall_coefficient_h=0.133333333333, degenerate=0
+exact_geometric, L1=0, L2=0, Linf=0, nearL2=0, residual=0, violations=0, iterations=0, converged=true, stopping_reason=direct, ms=0.598107
+search_based, L1=0, L2=0, Linf=0, nearL2=0, residual=0, violations=0, iterations=0, converged=true, stopping_reason=direct, ms=0.498811
+mesh_wave, L1=0.172973311492, L2=0.271236213195, Linf=0.585640646055, nearL2=0.0461976017592, residual=0, violations=0, iterations=0, converged=true, stopping_reason=graph_complete, ms=0.695279
+directional_mesh_wave, L1=0.226331201664, L2=0.346692708878, Linf=0.724204710661, nearL2=0.0717952702617, residual=0, violations=6, iterations=0, converged=true, stopping_reason=graph_complete, ms=3.879786
+POISSON_STENCIL_MICROSCOPE cell=819 ijk=3:3:3 point=-0.1:-0.1:-0.1 phi=0.158205080757 target_b=1
+  face=xm type=fluid neighbour=818 coefficient=56.25 contribution=-4.35475065469 phi_neighbour=0.235622870174
+  face=xp type=fluid neighbour=820 coefficient=56.25 contribution=1.50658450423 phi_neighbour=0.131421356237
+  face=ym type=fluid neighbour=803 coefficient=56.25 contribution=-4.35475065469 phi_neighbour=0.235622870174
+  face=yp type=fluid neighbour=835 coefficient=56.25 contribution=1.50658450423 phi_neighbour=0.131421356237
+  face=zm type=fluid neighbour=563 coefficient=56.25 contribution=-4.35475065469 phi_neighbour=0.235622870174
+  face=zp type=fluid neighbour=1075 coefficient=56.25 contribution=1.50658450423 phi_neighbour=0.131421356237
+  stencil_summary aP=337.5 A_h_phi=-8.54449845138 operator_residual=9.54449845138
+Poisson exact-phi operator audit, max_abs_Aphi_minus_b=9.54449845138, max_cut_cell=4.0974025767, max_face_region=4.0974025767, max_edge_region=0, max_corner_region=0, cut_cells=384, face_cells=384, edge_cells=0, corner_cells=0, max_cell=819, max_point=-0.1:-0.1:-0.1
+Poisson reconstruction decomposition, exact_phi_exact_grad_L2=0.373144243805, numerical_phi_exact_grad_L2=0.380011636691, exact_phi_numerical_grad_L2=0.258084003233, full_L2=0.294163686295, exact_phi_exact_grad_Linf=0.529051618688, numerical_phi_exact_grad_Linf=0.532772822855, exact_phi_numerical_grad_Linf=0.209351756453, full_Linf=0.311870616689, diagnostic_residual=4.88929325818e-11, diagnostic_iterations=31
+poisson, L1=0.27590391361, L2=0.294163686295, Linf=0.311870616689, nearL2=0.384628041266, residual=4.88929325818e-11, violations=0, iterations=31, converged=true, stopping_reason=converged, ms=14.719961, wall_ray_hits=384, wall_ray_misses=0, wall_fallbacks=0, wall_bad_alignment=0, wall_min_alignment=1, phi=[0.0888056584899,0.486493567894], grad_phi=[0.0769800358891,1.47848931999], poisson_distance_L2=0.294163686295, poisson_distance_Linf=0.311870616689
+eikonal, L1=0.0583032793205, L2=0.0815199979881, Linf=0.12818234118, nearL2=0.0350211752974, residual=2.27595720048e-14, violations=0, iterations=2, converged=true, stopping_reason=converged, ms=2.330131
+hamilton_jacobi, L1=0.0736416277047, L2=0.0904528064794, Linf=0.128311585227, nearL2=0.0821588402469, residual=8.52084380831e-09, violations=0, iterations=208, converged=true, stopping_reason=converged, ms=62.913529
+advection_diffusion, L1=0.0838226588552, L2=0.10607725594, Linf=0.153663102492, nearL2=0.0814874692358, residual=8.78619182965e-09, violations=0, iterations=68, converged=true, stopping_reason=converged, ms=25.222056
+hybrid_poisson_eikonal, L1=0.08264846145, L2=0.103574444011, Linf=0.158599341525, nearL2=0.117801306592, residual=9.43534406161e-09, violations=0, iterations=152, converged=true, stopping_reason=converged, ms=63.863724
+N=32, h=0.0645161290323, samples=32768
+Poisson operator: fluid=28672, fluid_fluid_faces=82176, solid_faces=1536, outer_faces=6144, diag=[720.75,1601.66666667], min_diagonal_dominance=0, symmetry_error=0
+Poisson wall offsets: faces=1536, delta=[0.0483870967742,0.0483870967742], delta_over_h=[0.75,0.75], max_wall_coefficient=320.333333333, max_wall_coefficient_cell=8472, max_wall_coefficient_ijk=24:8:8, max_wall_coefficient_point=1.04838709677:0.0161290322581:0.0161290322581, max_wall_coefficient_delta=0.0483870967742, max_wall_coefficient_h=0.0645161290323, degenerate=0
+exact_geometric, L1=0, L2=0, Linf=0, nearL2=0, residual=0, violations=0, iterations=0, converged=true, stopping_reason=direct, ms=4.312424
+search_based, L1=0, L2=0, Linf=0, nearL2=0, residual=0, violations=0, iterations=0, converged=true, stopping_reason=direct, ms=3.750805
+mesh_wave, L1=0.214296747287, L2=0.322674988862, Linf=0.66120718103, nearL2=0.0362186357358, residual=0, violations=0, iterations=0, converged=true, stopping_reason=graph_complete, ms=5.498389
+directional_mesh_wave, L1=0.276443722889, L2=0.407340297474, Linf=0.791648254711, nearL2=0.0562870504558, residual=0, violations=40, iterations=0, converged=true, stopping_reason=graph_complete, ms=33.579024
+POISSON_STENCIL_MICROSCOPE cell=7399 ijk=7:7:7 point=-0.0483870967742:-0.0483870967742:-0.0483870967742 phi=0.0802969433423 target_b=1
+  face=xm type=fluid neighbour=7398 coefficient=240.25 contribution=-10.333151353 phi_neighbour=0.123306938568
+  face=xp type=fluid neighbour=7400 coefficient=240.25 contribution=3.4136079754 phi_neighbour=0.0660883773677
+  face=ym type=fluid neighbour=7367 coefficient=240.25 contribution=-10.333151353 phi_neighbour=0.123306938568
+  face=yp type=fluid neighbour=7431 coefficient=240.25 contribution=3.4136079754 phi_neighbour=0.0660883773677
+  face=zm type=fluid neighbour=6375 coefficient=240.25 contribution=-10.333151353 phi_neighbour=0.123306938568
+  face=zp type=fluid neighbour=8423 coefficient=240.25 contribution=3.4136079754 phi_neighbour=0.0660883773677
+  stencil_summary aP=1441.5 A_h_phi=-20.7586301328 operator_residual=21.7586301328
+Poisson exact-phi operator audit, max_abs_Aphi_minus_b=21.7586301328, max_cut_cell=9.06796532517, max_face_region=9.06796532517, max_edge_region=0, max_corner_region=0, cut_cells=1536, face_cells=1536, edge_cells=0, corner_cells=0, max_cell=7399, max_point=-0.0483870967742:-0.0483870967742:-0.0483870967742
+Poisson reconstruction decomposition, exact_phi_exact_grad_L2=0.356968146609, numerical_phi_exact_grad_L2=0.419617467099, exact_phi_numerical_grad_L2=0.35417906832, full_L2=0.294617280281, exact_phi_exact_grad_Linf=0.529051618688, numerical_phi_exact_grad_Linf=0.584004704156, exact_phi_numerical_grad_Linf=0.297136858855, full_Linf=0.282123081158, diagnostic_residual=5.77914850754e-11, diagnostic_iterations=64
+poisson, L1=0.28194196839, L2=0.294617280281, Linf=0.282123081158, nearL2=0.29627938919, residual=5.77914850754e-11, violations=0, iterations=64, converged=true, stopping_reason=converged, ms=210.189672, wall_ray_hits=1536, wall_ray_misses=0, wall_fallbacks=0, wall_bad_alignment=0, wall_min_alignment=1, phi=[0.0396943071039,0.425157026367], grad_phi=[0.0372484044645,2.01763173305], poisson_distance_L2=0.294617280281, poisson_distance_Linf=0.282123081158
+eikonal, L1=0.0450338196447, L2=0.0611281256968, Linf=0.0872871308676, nearL2=0.0274563861073, residual=1.34892097492e-13, violations=0, iterations=2, converged=true, stopping_reason=converged, ms=16.950327
+hamilton_jacobi, L1=0.0937220063818, L2=0.114925077196, Linf=0.162184480765, nearL2=0.0955076095054, residual=9.32903576611e-09, violations=0, iterations=844, converged=true, stopping_reason=converged, ms=2159.885156
+advection_diffusion, L1=0.123397966243, L2=0.150476968867, Linf=0.188803874382, nearL2=0.108651751269, residual=3.26905602588e-08, violations=0, iterations=224, converged=true, stopping_reason=converged, ms=597.765514
+hybrid_poisson_eikonal, L1=0.114081901741, L2=0.139561959567, Linf=0.188718088906, nearL2=0.124177609445, residual=9.30570842606e-09, violations=0, iterations=616, converged=true, stopping_reason=converged, ms=1720.545395
+N=64, h=0.031746031746, samples=262144
+Poisson operator: fluid=229376, fluid_fluid_faces=672768, solid_faces=6144, outer_faces=24576, diag=[2976.75,6615], min_diagonal_dominance=0, symmetry_error=0
+Poisson wall offsets: faces=6144, delta=[0.0238095238095,0.0238095238095], delta_over_h=[0.75,0.75], max_wall_coefficient=1323, max_wall_coefficient_cell=66608, max_wall_coefficient_ijk=48:16:16, max_wall_coefficient_point=1.02380952381:0.00793650793651:0.00793650793651, max_wall_coefficient_delta=0.0238095238095, max_wall_coefficient_h=0.031746031746, degenerate=0
+exact_geometric, L1=0, L2=0, Linf=0, nearL2=0, residual=0, violations=0, iterations=0, converged=true, stopping_reason=direct, ms=34.12168
+search_based, L1=0, L2=0, Linf=0, nearL2=0, residual=0, violations=0, iterations=0, converged=true, stopping_reason=direct, ms=29.437242
+mesh_wave, L1=0.237077459656, L2=0.350427779485, Linf=0.697191245304, nearL2=0.0271965343924, residual=0, violations=0, iterations=0, converged=true, stopping_reason=graph_complete, ms=54.678158
+directional_mesh_wave, L1=0.281171700875, L2=0.406539596491, Linf=0.761376535528, nearL2=0.0422658852955, residual=0, violations=120, iterations=0, converged=true, stopping_reason=graph_complete, ms=274.120414
+POISSON_STENCIL_MICROSCOPE cell=62415 ijk=15:15:15 point=-0.0238095238095:-0.0238095238095:-0.0238095238095 phi=0.0403889648061 target_b=1
+  face=xm type=fluid neighbour=62414 coefficient=992.25 contribution=-22.2899527497 phi_neighbour=0.0628530139365
+  face=xp type=fluid neighbour=62416 coefficient=992.25 contribution=7.22765491775 phi_neighbour=0.033104858061
+  face=ym type=fluid neighbour=62351 coefficient=992.25 contribution=-22.2899527497 phi_neighbour=0.0628530139365
+  face=yp type=fluid neighbour=62479 coefficient=992.25 contribution=7.22765491775 phi_neighbour=0.033104858061
+  face=zm type=fluid neighbour=58319 coefficient=992.25 contribution=-22.2899527497 phi_neighbour=0.0628530139365
+  face=zp type=fluid neighbour=66511 coefficient=992.25 contribution=7.22765491775 phi_neighbour=0.033104858061
+  stencil_summary aP=5953.5 A_h_phi=-45.1868934958 operator_residual=46.1868934958
+Poisson exact-phi operator audit, max_abs_Aphi_minus_b=46.1868934958, max_cut_cell=19.0090908221, max_face_region=19.0090908221, max_edge_region=0, max_corner_region=0, cut_cells=6144, face_cells=6144, edge_cells=0, corner_cells=0, max_cell=62415, max_point=-0.0238095238095:-0.0238095238095:-0.0238095238095
+Poisson reconstruction decomposition, exact_phi_exact_grad_L2=0.348553540373, numerical_phi_exact_grad_L2=0.438128761132, exact_phi_numerical_grad_L2=0.395821567132, full_L2=0.290438719661, exact_phi_exact_grad_Linf=0.529051618688, numerical_phi_exact_grad_Linf=0.607622901855, exact_phi_numerical_grad_Linf=0.359641695524, full_Linf=0.272763339945, diagnostic_residual=8.44999281707e-11, diagnostic_iterations=133
+poisson, L1=0.278249367875, L2=0.290438719661, Linf=0.272763339945, nearL2=0.209468125164, residual=8.44999281707e-11, violations=0, iterations=133, converged=true, stopping_reason=converged, ms=2928.134549, wall_ray_hits=6144, wall_ray_misses=0, wall_fallbacks=0, wall_bad_alignment=0, wall_min_alignment=1, phi=[0.0188140578444,0.397543455037], grad_phi=[0.0183285799735,2.83817831928], poisson_distance_L2=0.290438719661, poisson_distance_Linf=0.272763339945
+eikonal, L1=0.0306986235399, L2=0.0413325379221, Linf=0.0558003584893, nearL2=0.0206169706255, residual=4.60409488312e-13, violations=0, iterations=2, converged=true, stopping_reason=converged, ms=129.54749
+hamilton_jacobi, L1=0.102780453435, L2=0.126562320253, Linf=0.17474980687, nearL2=0.0754906665221, residual=9.93893456425e-09, violations=0, iterations=3420, converged=true, stopping_reason=converged, ms=72175.220984
+advection_diffusion, L1=0.147936081812, L2=0.176637530026, Linf=0.203537049028, nearL2=0.131131474604, residual=5.89296611508e-08, violations=0, iterations=760, converged=true, stopping_reason=converged, ms=15617.395985
+hybrid_poisson_eikonal, L1=0.12360050669, L2=0.150285953796, Linf=0.196283175785, nearL2=0.0959869244661, residual=9.96965454636e-09, violations=0, iterations=2388, converged=true, stopping_reason=converged, ms=49838.119986
+cfdx_wall_distance_controlled_benchmark exit=0
