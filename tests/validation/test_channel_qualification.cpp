@@ -155,8 +155,47 @@ Result solve_case(const std::string& mesh_path, std::size_t n)
     c.convection_scheme=ConvectionScheme::UPWIND;
     c.pressure_reference_cell=0;
     c.pressure_reference_value=0.0;
+    // The qualification case is the forensic reproducer for slow n64 SIMPLE
+    // convergence. Keep the trace bounded and inspect the independently
+    // reassembled worst momentum cell at convergence or budget exhaustion.
+    c.diagnostics.iteration_trace = true;
+    c.diagnostics.iteration_trace_frequency = 50;
+    c.diagnostics.debug_cell_auto = true;
 
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
+    if (!solve.history.empty()) {
+        const auto& last = solve.history.back();
+        std::cout << "CHANNEL_SOLVE_DIAGNOSTIC n=" << n
+                  << " converged=" << (solve.converged ? 1 : 0)
+                  << " iterations=" << solve.iterations
+                  << " momentum_residual_raw=" << last.momentum_equation_residual
+                  << " momentum_rhs_scale=" << last.momentum_rhs_scale
+                  << " momentum_rhs_relative=" << last.momentum_equation_residual_rhs_relative
+                  << " momentum_reference=" << last.momentum_equation_residual_reference
+                  << " momentum_reference_relative=" << last.momentum_equation_residual_relative
+                  << " momentum_component_residuals=("
+                  << last.momentum_equation_residual_components[0] << ","
+                  << last.momentum_equation_residual_components[1] << ","
+                  << last.momentum_equation_residual_components[2] << ")"
+                  << " momentum_component_rhs_scales=("
+                  << last.momentum_rhs_scale_components[0] << ","
+                  << last.momentum_rhs_scale_components[1] << ","
+                  << last.momentum_rhs_scale_components[2] << ")"
+                  << " momentum_component_rhs_relative=("
+                  << last.momentum_equation_residual_rhs_relative_components[0] << ","
+                  << last.momentum_equation_residual_rhs_relative_components[1] << ","
+                  << last.momentum_equation_residual_rhs_relative_components[2] << ")"
+                  << " continuity_linf=" << last.continuity_linf
+                  << " continuity_normalized=" << last.continuity_normalized
+                  << " pressure_residual=" << last.pressure_residual
+                  << " dU_inf=" << last.velocity_change_inf
+                  << " dP_inf=" << last.pressure_change_inf
+                  << " alpha_u=" << last.effective_alpha_u
+                  << " alpha_p=" << last.effective_alpha_p
+                  << " worst_cell=" << last.momentum_residual_cell
+                  << " worst_patch=" << last.momentum_residual_patch
+                  << "\\n";
+    }
     if(!solve.converged) throw std::runtime_error("channel solver did not converge");
 
     const FvGeometry geometry = build_fv_geometry(mesh);
