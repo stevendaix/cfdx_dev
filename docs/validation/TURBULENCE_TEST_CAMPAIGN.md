@@ -99,8 +99,9 @@ The current Phase 13 acceptance document explicitly identifies this as missing:
 
 ### Gate C — first physical RANS benchmark: TUR-CHANNEL
 
-Use the frozen Moser–Kim–Mansour DNS reference and selected friction Reynolds number from
-`docs/validation/TUR-CHANNEL_QUALIFICATION_CASE.md`. Before running, freeze:
+Choose one Moser–Kim–Mansour DNS friction Reynolds number (180, 395 or 590) and pin the
+source file/version and checksum; the current case sheet does not yet freeze one dataset.
+See `docs/validation/TUR-CHANNEL_QUALIFICATION_CASE.md`. Before running, freeze:
 - model and constants (recommend SST as the first wall-distance-dependent model);
 - geometry, mesh family, wall-normal cell-centre distribution and target y+;
 - inlet/outlet or periodic conditions and pressure-gradient/bulk-flow control;
