@@ -251,10 +251,25 @@ jobs:
               return open(p, errors="replace").read()
 
           def wd_exits(ref):
-              txt = maybe_read("pr929x_wd_status_%s_run%s.txt" % (ref, RUN)) or ""
+              # Prefer the status summary, but recover each executable outcome
+              # from its own raw log as well. Earlier runs showed the summary
+              # could be truncated after the first command even though the
+              # manufactured/decomposition logs were present. Missing outcome
+              # must remain inconclusive, never be inferred from a FAIL line.
+              names = {
+                  "controlled": "cfdx_wall_distance_controlled_benchmark",
+                  "manufactured": "cfdx_wall_distance_poisson_manufactured",
+                  "decomposition": "cfdx_wall_distance_poisson_decomposition",
+              }
               mp = {}
-              for m in re.finditer(r"(\S+)\s+exit=(\d+)", txt):
-                  mp[m.group(1)] = int(m.group(2))
+              sources = [
+                  maybe_read("pr929x_wd_status_%s_run%s.txt" % (ref, RUN)) or ""
+              ]
+              for comp in names:
+                  sources.append(wd_log(ref, comp))
+              for txt in sources:
+                  for m in re.finditer(r"(\S+)\s+exit=(\d+)", txt):
+                      mp[m.group(1)] = int(m.group(2))
               return mp
 
           def manufactured_metrics_from(txt):
