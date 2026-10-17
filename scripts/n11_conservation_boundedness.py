@@ -30,7 +30,7 @@ QUANTITATIVE_RECORD_PREFIXES = (
 
 # ctest -V prefixes emitted test output with lines such as "106: MODEL_RESULT ...".
 # Strip only that prefix before parsing quantitative records.
-CTEST_VERBOSE_LINE_PREFIX = re.compile(r"^\\s*\\d+:\\s*")
+CTEST_VERBOSE_LINE_PREFIX = re.compile(r"^\s*\d+:\s*")
 
 
 def parse_quantitative_records(output: str) -> list[dict[str, object]]:
