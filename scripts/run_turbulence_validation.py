@@ -41,7 +41,7 @@ def registered_tests(build_dir: Path) -> set[str]:
     result = run(["ctest", "--test-dir", str(build_dir), "-N"])
     if result.returncode != 0:
         raise RuntimeError(f"ctest -N failed with exit code {result.returncode}")
-    return set(re.findall(r"Test\\s+#\\d+:\\s+(\\S+)", result.stdout))
+    return set(re.findall(r"Test\s+#\d+:\s+(\S+)", result.stdout))
 
 
 def main() -> int:
