@@ -1,6 +1,7 @@
 
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/production_energy_stage.h"
+#include "cfdx/physics/production_turbulence_contract.h"
 #include "cfdx/io/gmsh/gmsh_importer.h"
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/io/hdf5/case_hdf5_io.h"
@@ -480,6 +481,7 @@ int main(int argc, char** argv)
         // being discovered after the carrier solve, even when the energy
         // stage itself would not run.
         if (is_case_hdf5) {
+            validate_production_turbulence_selection(case_setup);
             validate_production_energy_model(case_setup);
             // Supported-by-this-executable gate: the schema accepts more
             // energy models than this incompressible frozen-flow solver
