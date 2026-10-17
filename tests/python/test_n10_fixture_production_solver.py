@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import math
 import os
+from pathlib import Path
 import re
 import subprocess
-from pathlib import Path
 
 
 SCALAR_PATTERN = re.compile(
@@ -101,7 +101,10 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
         stripped = line.strip()
         if not stripped.startswith("INCOMPRESSIBLE_ITER "):
             continue
-        fields = {match.group("name"): match.group("value") for match in SCALAR_PATTERN.finditer(stripped)}
+        fields = {
+            match.group("name"): match.group("value")
+            for match in SCALAR_PATTERN.finditer(stripped)
+        }
         momentum_key = (
             "momentum_residual_reference_relative"
             if "momentum_residual_reference_relative" in fields
