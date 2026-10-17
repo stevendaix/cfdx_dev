@@ -72,11 +72,11 @@ laminar momentum equations. The test `test_production_turbulence_contract` cover
 RANS, material-level and unknown model declarations. This guard is an interim correctness
 barrier, not turbulence implementation.
 
-The canonical C++ and Python catalogues now distinguish `COMPONENT_READY` from
-`SOLVER_READY`. The six RANS entries are component-ready, excluded from the production
-selector, and have transport MMS, production solver verification and coupled conservation
-marked as incomplete in the JSON qualification matrix. Recommendations may still explain
-SST/SA applicability, but warn that the current production solver cannot execute them.
+The C++ capability registry and canonical JSON matrix distinguish `COMPONENT_READY` from
+`SOLVER_READY`. The six RANS entries are component-ready, with transport MMS, production
+solver verification and coupled conservation marked incomplete. The Python GUI catalogue
+still has legacy readiness labels and may show these choices; the production driver rejects
+them explicitly. Aligning the Python catalogue is a remaining follow-up, not evidence of support.
 
 The source audit also found and corrected repeated full-field gradient work inside the SST
 per-cell loop. `cell_gradient_dot(k, omega, mesh)` is now evaluated once per outer iteration,
