@@ -491,9 +491,30 @@ private:
             if(!std::isfinite(hoop) || !(hoop>0.0))
                 throw std::runtime_error("VMFL036 invalid radial geometric coefficient at cell "+std::to_string(cell));
             ar+=hoop;
-            if(!std::isfinite(ax) || !std::isfinite(ar) || !(ax>0.0) || !(ar>0.0))
-                throw std::runtime_error("VMFL036 invalid momentum coefficients at cell "+
-                    std::to_string(cell)+" ax="+std::to_string(ax)+" ar="+std::to_string(ar));
+            if(!std::isfinite(ax) || !std::isfinite(ar) || !(ax>0.0) || !(ar>0.0)) {
+                std::string message="VMFL036 invalid momentum coefficients at cell "+
+                    std::to_string(cell)+" ij=("+
+                    std::to_string(ce.i)+","+std::to_string(ce.j)+") ax="+
+                    std::to_string(ax)+" ar="+std::to_string(ar);
+                // Keep the fail-closed error actionable: negative diagonals
+                // can be caused by a backflowing zero-gradient pressure outlet.
+                // Record each face's signed mass flux and classification so a
+                // failure identifies the offending boundary without changing
+                // the discretization or suppressing the negative coefficient.
+                for(const auto fid:ce.faces) {
+                    const auto& f=m_.faces[fid];
+                    const double F=(f.owner==cell?phi_[fid]:-phi_[fid]);
+                    message+=" [face="+std::to_string(fid)+
+                        " F="+std::to_string(F)+
+                        " internal="+std::to_string(
+                            f.neighbour!=static_cast<std::size_t>(-1))+
+                        " outer="+std::to_string(f.outer)+
+                        " cx="+std::to_string(f.cx)+
+                        " sphere="+std::to_string(f.sphere)+
+                        " axis="+std::to_string(f.axis)+"]";
+                }
+                throw std::runtime_error(message);
+            }
             // Under-relaxation: relaxed diagonal a_P/alpha_u on the left,
             // explicit source from the pre-solve values on the right.
             const double oldx=ux[cell], oldr=ur[cell];
