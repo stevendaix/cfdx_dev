@@ -2281,7 +2281,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // the configured residual/conservation gates. Divergence is detected only
     // after repeated growth and never by relaxing a tolerance.
     monitor_controls.stagnation_window = 10;
-    monitor_controls.stagnation_relative_improvement = 1e-3;
+    monitor_controls.stagnation_relative_improvement =
+        controls.convergence.stagnation_relative_improvement;
     monitor_controls.divergence_window = 3;
     monitor_controls.divergence_growth_factor = 10.0;
     monitor_controls.qoi_gates = controls.qoi_gates;
