@@ -995,7 +995,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_executable(test_n13_cuda_equivalence tests/validation/test_n13_cuda_equivalence.cpp)
         target_link_libraries(test_n13_cuda_equivalence PRIVATE cfdx_core)
         add_test(NAME test_n13_cuda_equivalence COMMAND test_n13_cuda_equivalence)
-        set_tests_properties(test_n13_cuda_equivalence PROPERTIES LABELS "phase13;validation;n13;hardware" SKIP_RETURN_CODE 2)
+        set_tests_properties(test_n13_cuda_equivalence PROPERTIES LABELS "phase13;validation;n13;hardware")
     endif()
 
     # HDF5 tests require the native reader/writer implementation.
