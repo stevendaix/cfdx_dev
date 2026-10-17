@@ -3183,10 +3183,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const std::size_t face = mesh.cells().faces_data()[off + k];
                     if (mesh.ownership().neighbour(face) < 0) {
                         const std::size_t patch = geometry.face_patch[face];
-                        if (patch < mesh.boundary().n_patches()) {
-                            diagnostic.patch = mesh.boundary().patch(patch).name;
-                            break;
-                        }
+                        if (patch >= mesh.boundary().n_patches())
+                            continue;
+                        // EMPTY faces are geometric extrusion faces, not
+                        // physical boundary patches. Do not let the first
+                        // front/back face mask the physical patch adjacent to
+                        // the worst momentum-residual cell.
+                        if (mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                            continue;
+                        diagnostic.patch = mesh.boundary().patch(patch).name;
+                        break;
                     }
                 }
                 return diagnostic;
