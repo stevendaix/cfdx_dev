@@ -43,7 +43,7 @@ Each model is qualified through the same traceability chain:
 11. documentation;
 12. capability-matrix promotion only after the applicable evidence exists.
 
-`SOLVER_READY` means the production executable consumes the model in its runtime path. `COMPONENT_READY` means standalone transport APIs and component tests exist, but the model is not coupled into `cfdx_production_solver`'s momentum loop. The production-path audit found this coupling absent for all RANS entries, so they are `COMPONENT_READY`, hidden from the production selector, and rejected fail-closed by the driver. Their transport MMS, coupled-solver verification, independent conservation and physical validation remain blocked.
+`SOLVER_READY` means the production executable consumes the model in its runtime path. `COMPONENT_READY` means standalone transport APIs and component tests exist, but the model is not coupled into `cfdx_production_solver`'s momentum loop. The production-path audit found this coupling absent for all RANS entries, so the C++ capability registry and JSON qualification matrix now mark them `COMPONENT_READY`. The production driver rejects declared RANS models fail-closed. The Python GUI catalogue still has legacy readiness labels and may expose these choices; aligning that UI catalogue is an explicit follow-up, not evidence of runtime support. Their transport MMS, coupled-solver verification, independent conservation and physical validation remain blocked.
 
 ## Wall-distance separation
 
