@@ -106,6 +106,11 @@ inline void write_convergence_history(
             out << "      \"continuity_linf\": "; convergence_json_number(out, h.continuity_linf); out << ",\n";
             out << "      \"continuity_normalized\": "; convergence_json_number(out, h.continuity_normalized); out << ",\n";
             out << "      \"momentum_equation_residual\": "; convergence_json_number(out, h.momentum_equation_residual); out << ",\n";
+            out << "      \"momentum_rhs_scale\": "; convergence_json_number(out, h.momentum_rhs_scale); out << ",\n";
+            out << "      \"momentum_equation_residual_reference\": "; convergence_json_number(out, h.momentum_equation_residual_reference); out << ",\n";
+            out << "      \"momentum_equation_residual_rhs_relative\": "; convergence_json_number(out, h.momentum_equation_residual_rhs_relative); out << ",\n";
+            out << "      \"momentum_rhs_scale_components\": "; convergence_json_array3(out, h.momentum_rhs_scale_components); out << ",\n";
+            out << "      \"momentum_equation_residual_rhs_relative_components\": "; convergence_json_array3(out, h.momentum_equation_residual_rhs_relative_components); out << ",\n";
             out << "      \"momentum_equation_residual_relative\": "; convergence_json_number(out, h.momentum_equation_residual_relative); out << ",\n";
             out << "      \"velocity_change_inf\": "; convergence_json_number(out, h.velocity_change_inf); out << ",\n";
             out << "      \"pressure_change_inf\": "; convergence_json_number(out, h.pressure_change_inf); out << ",\n";
