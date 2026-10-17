@@ -6,7 +6,7 @@ This audit compares the current CFDX turbulence stack with the model-selection s
 
 ## Current CFDX state
 
-### Solver-ready transport models
+### Component-ready transport models (not yet production-coupled)
 - Standard k-epsilon
 - RNG k-epsilon
 - Realizable k-epsilon
@@ -14,7 +14,7 @@ This audit compares the current CFDX turbulence stack with the model-selection s
 - k-omega SST
 - Spalart-Allmaras
 
-These have transport-equation implementations in the current C++ turbulence layer and regression/validation-level tests. Presence here does not mean solver-level physical validation is complete; #118 remains the qualification authority.
+These have standalone transport-equation implementations in the current C++ turbulence layer and component tests. The production-path audit found no coupling from the production driver to these transport entry points. They are therefore COMPONENT_READY, not production SOLVER_READY; #118 remains the qualification authority.
 
 ### Kernel-only / incomplete scale-resolving models
 - Smagorinsky
@@ -101,7 +101,7 @@ It does not claim that LES, DES, DDES, IDDES, transition, RSM or wall functions 
 
 ## Validation policy
 
-A model can move from KERNEL_ONLY or PLANNED to SOLVER_READY only after:
+A model can move from COMPONENT_READY, KERNEL_ONLY or PLANNED to SOLVER_READY only after:
 1. complete governing-equation implementation;
 2. boundary/initial-condition contract;
 3. positivity and boundedness diagnostics where applicable;
