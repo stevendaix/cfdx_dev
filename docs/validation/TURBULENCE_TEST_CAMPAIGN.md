@@ -48,7 +48,7 @@ that silently disables HDF5/MPI-dependent targets as equivalent to the productio
 | Closure/equation references | `test_turbulence_qualification_equations` | Tested closure identities agree with the test's frozen expressions |
 | Phase 10 hardening | `test_phase10_turbulence_hardening` | The covered hardening regressions pass |
 | SA negative-ν-tilde policy | `test_n11_sa_negative_nu_tilde_policy` | The explicitly covered negative-state policy passes |
-| Bound reporting | `test_n11_bound_reporting_hardening` | The covered bound-reporting checks pass |
+| Bound reporting | `test_n11_bound_reporting_hardening` | The covered bound-reporting checks pass |\n| Production selection guard | `test_production_turbulence_contract` | The production driver accepts laminar declarations and rejects unsupported declared RANS models instead of silently running laminar equations |
 | Laminar baseline only | `test_channel_qualification` | The existing analytical laminar channel regression passes; **not turbulence evidence** |
 
 A missing registered test is reported as `BLOCKED_NOT_REGISTERED`, not skipped or passed.
@@ -58,12 +58,27 @@ implemented and executed.
 
 ## Blocking work before a turbulent PASS
 
-### Gate A — implementation audit
+### Gate A — implementation audit (source audit completed; coupling remains blocked)
 
-For each model, trace configuration -> initialization -> transport assembly -> linear solve
--> positivity/bounds -> eddy viscosity -> momentum flux assembly -> wall treatment.
-Record exact source locations and tests. Confirm the model selected in the case is the
-model actually used by the production solver. No silent model fallback is allowed.
+The source audit is recorded in
+`docs/audits/TURBULENCE_PRODUCTION_PATH_AUDIT.md`. The case schema and Python setup catalogue
+carry a turbulence model, and the C++ transport APIs implement component equations, but the
+production driver does not yet call those transport entry points or couple `nu_t` back into
+momentum. Therefore this is not yet a production RANS solver.
+
+This PR adds a fail-closed contract at the production-driver boundary: a case declaring
+non-laminar turbulence is rejected with an explicit message rather than being solved by the
+laminar momentum equations. The test `test_production_turbulence_contract` covers laminar,
+RANS, material-level and unknown model declarations. This guard is an interim correctness
+barrier, not turbulence implementation.
+
+The source audit also found and corrected repeated full-field gradient work inside the SST
+per-cell loop. `cell_gradient_dot(k, omega, mesh)` is now evaluated once per outer iteration,
+avoiding O(N²) work in that stage without changing its formula or convergence controls.
+
+Next implementation work must connect one model end-to-end (recommended first target: SST):
+initialization, wall distance, strain, F1/F2, transport, `nu_t`, momentum coupling and outer
+convergence. Only then can a transport MMS test the actual production equation path.
 
 ### Gate B — isolated transport MMS
 
