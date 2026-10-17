@@ -12,6 +12,8 @@
 //           ghosts DIRICHLET par face sur airfoil/farfield, même traction.
 //   one_d : reconstruction tangentielle 1D mu |u_t| / d_n par face.
 //
+// Cas M0 (reprise de #927) : exactitude affine WLS (u = y, gate linf 1e-9) ;
+// gg non testé en affine (CL scalaire par patch, écart documenté).
 // Partie M (quick, sans solveur) : MMS pariétal sur le canal channel_n16.h5.
 //   M1 : u = sin(pi y), oracle |du/dy| = pi sur les deux parois.
 //   M2 : u = y (1 - y), oracle |du/dy| = 1 sur les deux parois.
@@ -156,6 +158,53 @@ MmsWallShear wall_shear_mms(const std::string& path, int field_id)
     return out;
 }
 
+// Cas M0 (reprise de #927 à la consolidation) : exactitude affine WLS sur
+// le canal. Champ u = y, gradient exact (0, 1, 0) en toute cellule ; ghosts
+// DIRICHLET par face = y du centre de face sur les patches non-EMPTY
+// (inlet/outlet/bottom/top), front/back (EMPTY) gardent le zéro-gradient par
+// défaut, exact ici car u ne dépend pas de z. gg n'est pas testé en affine :
+// sa condition scalaire par patch ne peut pas représenter les profils
+// variables de inlet/outlet (écart documenté, l'objet de ce cas est WLS).
+void affine_wls_exactness(const std::string& path)
+{
+    Mesh mesh;
+    if (!cfdx::io::read_mesh_hdf5(path, mesh))
+        throw std::runtime_error("cannot read channel mesh: " + path);
+    if (!mesh.topo_validate().ok)
+        throw std::runtime_error("invalid channel topology: " + path);
+    const auto geometry = build_fv_geometry(mesh);
+    const std::size_t n_cells = mesh.n_cells();
+
+    Field<double, Location::CELL> u(n_cells, "affine_u", "m/s", 1);
+    for (std::size_t c = 0; c < n_cells; ++c)
+        u(c) = geometry.cell_centres[c].y;
+
+    std::vector<BoundaryGradientCondition> bc(boundary_bc_size(mesh));
+    for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p) {
+        if (mesh.boundary().patch(p).type == PatchType::EMPTY)
+            continue;
+        for (const auto f : mesh.boundary().patch(p).face_ids)
+            bc[f] = BoundaryGradientCondition{
+                BoundaryGradientConditionType::DIRICHLET, geometry.face_centres[f].y};
+    }
+    const auto g = compute_gradient_weighted_least_squares(
+        u, mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+        std::numeric_limits<double>::infinity(),
+        BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, &bc);
+
+    double max_abs_err = 0.0;
+    for (std::size_t c = 0; c < n_cells; ++c) {
+        const double ex = std::abs(g.component_data(0)[c]);
+        const double ey = std::abs(g.component_data(1)[c] - 1.0);
+        const double ez = std::abs(g.component_data(2)[c]);
+        max_abs_err = std::max(max_abs_err, std::max({ex, ey, ez}));
+    }
+    std::cout << "WALL_SHEAR_MMS field=linear_y method=wls"
+              << " max_abs_err=" << max_abs_err << " oracle=1" << "\n";
+    if (!std::isfinite(max_abs_err) || max_abs_err > 1e-9)
+        throw std::runtime_error("WLS failed affine-field exactness on channel mesh");
+}
+
 void run_channel_mms(const std::string& path)
 {
     struct Spec { const char* field; int id; double gate_grad; double gate_one_d; };
@@ -163,6 +212,8 @@ void run_channel_mms(const std::string& path)
         {"sin_pi_y", 1, 5e-2, 5e-2},
         {"y_1_minus_y", 2, 12e-2, 5e-2},
     };
+    affine_wls_exactness(path);
+
     for (const auto& spec : specs) {
         const MmsWallShear r = wall_shear_mms(path, spec.id);
         const double oracle = (spec.id == 1) ? kPi : 1.0;
