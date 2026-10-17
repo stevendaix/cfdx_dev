@@ -209,10 +209,16 @@ def latex_table_row(cells: list[str]) -> str:
 def make_plot(out: Path, ghia: list[dict]) -> str | None:
     if not ghia:
         return None
-    import matplotlib
+    try:
+        import matplotlib
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except ImportError:
+        # Plotting is optional report decoration; absence of matplotlib must
+        # not suppress the numerical report or its independent validation gate.
+        print("VALIDATION_REPORT_WARNING: matplotlib unavailable; skipping optional Ghia plot")
+        return None
 
     re100 = [x for x in ghia if x["re"] == 100.0]
     if not re100:
