@@ -186,3 +186,38 @@ def test_latex_escape_does_not_reescape_generated_commands() -> None:
     assert r"\&" in escaped
     assert r"90$^\circ$" in escaped
     assert r"$\Delta$p" in escaped
+
+
+
+def test_parse_vmfl036_reads_named_groups_and_last_result() -> None:
+    output = "\\n".join(
+        [
+            "VMFL036_AXISYM RESULT level=coarse converged=false iterations=10 "
+            "continuity=1e-4 momentum=2e-3 pcorr=3e-4 Cd_pressure=0.4 "
+            "Cd_viscous=0.6 Cd_total=1.0 Cd_reference=1.2",
+            "VMFL036_AXISYM RESULT level=medium converged=true iterations=25 "
+            "continuity=1e-10 momentum=2e-9 pcorr=3e-8 Cd_pressure=0.5 "
+            "Cd_viscous=0.7 Cd_total=1.2 Cd_reference=1.25",
+            "VMFL036_AXISYMMETRIC_VALIDATION: PASS",
+        ]
+    )
+
+    result = MODULE.parse_vmfl036(output)
+
+    assert result is not None
+    assert result["level"] == "medium"
+    assert result["converged"] == "true"
+    assert result["iterations"] == 25
+    assert result["continuity"] == 1e-10
+    assert result["momentum"] == 2e-9
+    assert result["pressure_correction"] == 3e-8
+    assert result["cd_pressure"] == 0.5
+    assert result["cd_viscous"] == 0.7
+    assert result["cd_total"] == 1.2
+    assert result["cd_reference"] == 1.25
+    assert abs(result["cd_relative_error"] - 0.04) < 1e-15
+    assert result["status"] == "PASS"
+
+
+def test_parse_vmfl036_returns_none_without_result_record() -> None:
+    assert MODULE.parse_vmfl036("no VMFL036 output") is None
