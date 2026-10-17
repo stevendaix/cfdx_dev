@@ -10,6 +10,7 @@ Requires the Gmsh Python module. Mesh sizes are scaled by D and are deliberately
 configurable so the coarse case can be used first to qualify the production
 solver path before a refined campaign is attempted.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -107,10 +108,18 @@ def generate(output: Path, lc_wall: float, lc_far: float, order: int = 1) -> Non
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--lc-wall", type=float, default=0.10,
-                        help="target element size at sphere wall, in units of D")
-    parser.add_argument("--lc-far", type=float, default=4.0,
-                        help="target element size in the far field, in units of D")
+    parser.add_argument(
+        "--lc-wall",
+        type=float,
+        default=0.10,
+        help="target element size at sphere wall, in units of D",
+    )
+    parser.add_argument(
+        "--lc-far",
+        type=float,
+        default=4.0,
+        help="target element size in the far field, in units of D",
+    )
     parser.add_argument("--order", type=int, choices=(1, 2), default=1)
     args = parser.parse_args()
     generate(args.output, args.lc_wall, args.lc_far, args.order)
