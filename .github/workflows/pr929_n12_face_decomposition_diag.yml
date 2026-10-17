@@ -1,0 +1,756 @@
+name: PR929 N12 per-face flux decomposition (diag)
+
+# DIAG-ONLY — branche ci/long-campaign-diagnostics (PR #903 fermee, JAMAIS merger).
+# Objectif (P1-a de l'audit Steven #929, feu vert 2026-10-17 ~17:20Z) :
+#   decomposer PAR FACE le desaccord flux-vitesse du cas N12 COUPLED
+#   (test_n12_coupled_pressure_velocity_mms), a chaque iteration Picard
+#   1/5/10/20 de chaque cas :
+#     - conv      = rho * Hf . Sf                    (convectif interpole)
+#     - corr      = rho*(implicit_coeff*dp + deferred) (correction RC, avec
+#                   ses ingredients : dAU face, implicit_coeff, deferred, dp,
+#                   grad p face) — identite a verifier contre le flux RC
+#                   autoritaire production (fail-closed bit-level)
+#     - phi_interp = make_mass_flux(U)(f)            (interpolation lineaire
+#                   des vitesses cellulaires, FIXED_VALUE aux frontieres U)
+#     - mismatch   = phi_rc - phi_interp, par face
+#     - classes : faces internes vs frontieres (ubc/pbc par patch ; x0/x1
+#       sont les frontieres a PRESSION FIXEE du cas N12 — separation
+#       intérieur vs p fixee demandee par Steven)
+#     - bilans de masse PAR CELLULE recalcules depuis les flux de faces,
+#       independamment de tout indicateur de convergence du solveur
+#     - trajectoire it. 1/5/10/20 + cross-check contre les traces production
+#       N12_COUPLED_FAILURE_TRACE (continuite corrige, continuite reconstruite,
+#       mismatch)
+#   Le test est attendu EN ECHEC (defaut pre-existant documente ; metriques
+#   bit-identiques base/head prouvees par les runs diag 39045774024/39049838009).
+#   L'objectif est la LOCALISATION du defaut, pas un PASS/FAIL numerique.
+# Ref epinglee : head #929 e1cbefee90b4f3703d709f436585918a201ed536.
+# AUCUNE semantique/oracle/tolerance/budget modifie : le patch n'ajoute QUE de
+# l'instrumentation (1 fonction de dump + 1 bloc d'appel), activee uniquement
+# via CFDX_N12_FACE_DUMP_DIR (absente = no-op strict).
+# Verdicts fail-closed : EVIDENCE_COMPLETE (seul vert — diagnostic, PAS un
+#   PASS numerique), INCONCLUSIVE_PATCH_FAILED / BUILD / TEST_RUN / NO_DUMP,
+#   INCONSISTENT_DUMP (identite phi_rc == flux autoritaire en echec).
+# Evidence suffixee $GITHUB_RUN_ID, commitee sur la branche diag par le bot.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/pr929_n12_face_marker.txt'
+      - '.github/workflows/pr929_n12_face_decomposition_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: pr929-n12-face-decomposition
+  cancel-in-progress: false
+
+env:
+  HEAD_SHA_PIN: e1cbefee90b4f3703d709f436585918a201ed536
+  EVID: diag-evidence/logs
+
+jobs:
+  n12-face-decomposition:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve pinned ref and create worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin integration/numerics-2026-10
+          # Fail-closed : le SHA pinné doit exister et être sur la branche
+          # d'intégration (jamais un master mobile).
+          git cat-file -e "$HEAD_SHA_PIN^{commit}" \
+            || { echo "::error::pinned head SHA not resolvable: $HEAD_SHA_PIN"; exit 1; }
+          git merge-base --is-ancestor "$HEAD_SHA_PIN" origin/integration/numerics-2026-10 \
+            || { echo "::error::pinned head is not on integration branch: $HEAD_SHA_PIN"; exit 1; }
+          git worktree add "$RUNNER_TEMP/head" "$HEAD_SHA_PIN"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "head_sha=$HEAD_SHA_PIN (pinned head of PR #929, instrumented for defect localization only)"
+            echo "scope: per-face flux decomposition of test_n12_coupled_pressure_velocity_mms at Picard iters 1/5/10/20, all cases"
+            echo "rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL"
+            echo "preexistence_context: N12 metrics proven bit-identical base/head by diag runs 39045774024/39049838009"
+          } > "$GITHUB_WORKSPACE/$EVID/pr929x_n12face_meta_run$GITHUB_RUN_ID.txt"
+
+      - name: Apply diag instrumentation patch (fail-closed anchors)
+        id: patch
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, sys
+
+          run_id = os.environ["GITHUB_RUN_ID"]
+          head = os.path.join(os.environ["RUNNER_TEMP"], "head")
+          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+          solver = os.path.join(head, "src", "cfdx", "physics", "steady_incompressible_solver.h")
+          status = os.path.join(evid, "pr929x_n12face_patch_status_run" + run_id + ".txt")
+
+          def fail(msg):
+              with open(status, "a") as fh:
+                  fh.write("PATCH_FAILED: " + msg + "\n")
+              print("::error::" + msg)
+              sys.exit(1)
+
+          if not os.path.exists(solver):
+              fail("solver header missing at " + solver)
+
+          with open(solver, "r", encoding="utf-8") as fh:
+              src = fh.read()
+          orig_len = len(src)
+          orig_sha = hashlib.sha256(src.encode("utf-8")).hexdigest()
+
+          # --- anchors (each must occur EXACTLY once, fail-closed) -----------
+          A1 = "#include <functional>\n"
+          A2 = "    return flux;\n}\n\ninline ScalarEquation assemble_momentum_component(\n"
+          A3 = (
+              "            mass_flux = make_rhie_chow_mass_flux(\n"
+              "                mesh, geometry, U, p, coupled_rAU,\n"
+              "                controls.density, velocity_bcs, pressure_bcs);\n"
+          )
+          for name, anchor in (("A1_include_functional", A1),
+                                ("A2_return_flux_assemble_momentum", A2),
+                                ("A3_coupled_mass_flux_call", A3)):
+              n = src.count(anchor)
+              if n != 1:
+                  fail("anchor %s count=%d (expected 1) — solver header diverges from pinned expectations" % (name, n))
+
+          # --- S1: includes for the dump (<cstdlib> getenv, <fstream> ofstream)
+          src = src.replace(
+              A1,
+              "#include <functional>\n#include <cstdlib>\n#include <fstream>\n",
+              1)
+
+          # --- S2: dump function, inserted right after make_rhie_chow_mass_flux
+          DUMP_FN = r'''
+          // --- DIAG-ONLY (ci/long-campaign-diagnostics, never merged) --------
+          // Per-face flux decomposition dump for the N12 COUPLED audit
+          // (PR #929, P1-a). Recomputes, with the same production helpers,
+          // for every face:
+          //   conv   = rho * Hf . Sf                            (convective part)
+          //   corr   = rho * (implicit_coeff * dp + deferred)  (Rhie-Chow
+          //            pressure term; implicit = centre-line dp, deferred =
+          //            non-orthogonal remainder)
+          //   phi_rc = conv - corr    (must match the authoritative production
+          //            flux bit-level — verified by the external analyzer)
+          // plus phi_interp = make_mass_flux(U)(f) (linear interpolation of
+          // the cell velocities, FIXED_VALUE at velocity boundaries) and all
+          // ingredients (dAU at the face, implicit_coeff, deferred, dp, grad p
+          // at the face, geometry, boundary condition types) so an external
+          // analyzer can verify every identity independently of the solver's
+          // own convergence indicators. The authoritative flux is recorded
+          // unmodified for the identity check.
+          inline void n12_diag_dump_face_decomposition(
+              const std::string& path,
+              const cfdx::core::Mesh& mesh,
+              const FvGeometry& geometry,
+              const cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
+              const cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
+              const std::array<std::vector<double>, 3>& rAU,
+              double rho,
+              const VelocityBoundaryConditions& velocity_bcs,
+              const ScalarBoundaryConditions& pressure_bcs,
+              const cfdx::core::Field<double, cfdx::core::Location::FACE>& authoritative_flux)
+          {
+              using namespace cfdx::core;
+              const auto& own = mesh.ownership();
+              const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+              const auto interp_flux = make_mass_flux(mesh, geometry, U, rho, velocity_bcs);
+              std::ofstream out(path);
+              if (!out)
+                  throw std::runtime_error("n12_diag_dump_face_decomposition: cannot open " + path);
+              out << std::setprecision(17);
+              out << "f\towner\tneighbour\tubc\tpbc\tpatch_name\t"
+                     "conv_flux\tpressure_correction\timplicit_coeff\tdeferred_flux\tdp\t"
+                     "phi_rc\tphi_authoritative\tphi_interp\tmismatch\t"
+                     "dAUx\tdAUy\tdAUz\tgradp_x\tgradp_y\tgradp_z\t"
+                     "Sfx\tSfy\tSfz\tarea\tdist\tp_owner\tp_neighbour\tUox\tUoy\tUoz\n";
+              for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                  const std::size_t o = own.owner(f);
+                  const auto nr = own.neighbour(f);
+                  const Vec3 Sf = geometry.face_area_vectors[f];
+                  Vec3 Hf;
+                  U.get(o, Hf.x, Hf.y, Hf.z);
+                  std::string ubc_kind = "none";
+                  std::string pbc_kind = "none";
+                  std::string patch_name = "-";
+                  bool is_empty = false;
+                  double implicit_coeff = 0.0;
+                  double deferred = 0.0;
+                  double dp = 0.0;
+                  double dAUx = 0.0, dAUy = 0.0, dAUz = 0.0;
+                  double gpx = 0.0, gpy = 0.0, gpz = 0.0;
+                  double dist = 0.0;
+                  double correction = 0.0;
+                  if (nr >= 0) {
+                      const std::size_t n = static_cast<std::size_t>(nr);
+                      Vec3 Hn;
+                      U.get(n, Hn.x, Hn.y, Hn.z);
+                      Hf = (Hf + Hn) * 0.5;
+                      dAUx = 0.5 * (geometry.cell_volumes[o] * rAU[0][o] +
+                                    geometry.cell_volumes[n] * rAU[0][n]);
+                      dAUy = 0.5 * (geometry.cell_volumes[o] * rAU[1][o] +
+                                    geometry.cell_volumes[n] * rAU[1][n]);
+                      dAUz = 0.5 * (geometry.cell_volumes[o] * rAU[2][o] +
+                                    geometry.cell_volumes[n] * rAU[2][n]);
+                      gpx = 0.5 * (grad_p.component_data(0)[o] + grad_p.component_data(0)[n]);
+                      gpy = 0.5 * (grad_p.component_data(1)[o] + grad_p.component_data(1)[n]);
+                      gpz = 0.5 * (grad_p.component_data(2)[o] + grad_p.component_data(2)[n]);
+                      const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+                      dist = dvec.mag();
+                      implicit_coeff = pressure_face_orthogonal_coefficient(
+                          Sf, dvec, Vec3{dAUx, dAUy, dAUz});
+                      deferred = pressure_face_nonorthogonal_flux(
+                          Sf, dvec, Vec3{dAUx, dAUy, dAUz}, Vec3{gpx, gpy, gpz});
+                      dp = p(n) - p(o);
+                      correction = rho * (implicit_coeff * dp + deferred);
+                  } else {
+                      const std::size_t patch = geometry.face_patch[f];
+                      if (patch < mesh.boundary().n_patches()) {
+                          patch_name = mesh.boundary().patch(patch).name;
+                          if (mesh.boundary().patch(patch).type == PatchType::EMPTY) {
+                              // EMPTY face: production assigns flux = 0 by
+                              // construction (no convective part, no RC term).
+                              is_empty = true;
+                              ubc_kind = "empty";
+                              pbc_kind = "empty";
+                          } else {
+                              const auto ubc = velocity_bcs.find(patch_name);
+                              if (ubc != velocity_bcs.end()) {
+                                  if (ubc->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE) {
+                                      Hf = ubc->second.value;
+                                      ubc_kind = "fixed_value";
+                                  } else {
+                                      ubc_kind = "zero_gradient";
+                                  }
+                              }
+                              const auto pbc = pressure_bcs.find(patch_name);
+                              if (pbc != pressure_bcs.end()) {
+                                  if (pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                                      pbc_kind = "fixed_value";
+                                      const Vec3 dvec =
+                                          geometry.face_centres[f] - geometry.cell_centres[o];
+                                      dist = dvec.mag();
+                                      if (!(dist > 0.0) || !std::isfinite(dist))
+                                          throw std::runtime_error(
+                                              "n12_diag_dump_face_decomposition: degenerate boundary distance");
+                                      const Vec3 gp{
+                                          grad_p.component_data(0)[o],
+                                          grad_p.component_data(1)[o],
+                                          grad_p.component_data(2)[o]};
+                                      const Vec3 dAU_boundary{
+                                          geometry.cell_volumes[o] * rAU[0][o],
+                                          geometry.cell_volumes[o] * rAU[1][o],
+                                          geometry.cell_volumes[o] * rAU[2][o]};
+                                      implicit_coeff = pressure_face_orthogonal_coefficient(
+                                          Sf, dvec, dAU_boundary);
+                                      deferred = pressure_face_nonorthogonal_flux(
+                                          Sf, dvec, dAU_boundary, gp);
+                                      dp = pbc->second.value - p(o);
+                                      dAUx = dAU_boundary.x;
+                                      dAUy = dAU_boundary.y;
+                                      dAUz = dAU_boundary.z;
+                                      gpx = gp.x;
+                                      gpy = gp.y;
+                                      gpz = gp.z;
+                                      correction = rho * (implicit_coeff * dp + deferred);
+                                  } else {
+                                      pbc_kind = "zero_gradient";
+                                  }
+                              }
+                          }
+                      }
+                  }
+                  const double conv_flux = is_empty ? 0.0 : rho * Hf.dot(Sf);
+                  const double phi_rc = conv_flux - correction;
+                  const double phi_auth = authoritative_flux(f);
+                  const double phi_interp = interp_flux(f);
+                  out << f << '\t' << o << '\t' << nr << '\t'
+                      << ubc_kind << '\t' << pbc_kind << '\t' << patch_name << '\t'
+                      << conv_flux << '\t' << correction << '\t'
+                      << implicit_coeff << '\t' << deferred << '\t' << dp << '\t'
+                      << phi_rc << '\t' << phi_auth << '\t' << phi_interp << '\t'
+                      << (phi_rc - phi_interp) << '\t'
+                      << dAUx << '\t' << dAUy << '\t' << dAUz << '\t'
+                      << gpx << '\t' << gpy << '\t' << gpz << '\t'
+                      << Sf.x << '\t' << Sf.y << '\t' << Sf.z << '\t' << Sf.mag() << '\t'
+                      << dist << '\t' << p(o) << '\t'
+                      << (nr >= 0 ? p(static_cast<std::size_t>(nr)) : 0.0) << '\t'
+                      << Hf.x << '\t' << Hf.y << '\t' << Hf.z << '\n';
+              }
+          }
+          '''.strip("\n")
+
+          src = src.replace(
+              A2,
+              "    return flux;\n}\n\n" + DUMP_FN + "\n\ninline ScalarEquation assemble_momentum_component(\n",
+              1)
+
+          # --- S3: dump call in the COUPLED branch, right after the
+          # authoritative flux rebuild (no-op without the env var)
+          DUMP_CALL = r'''
+                      // DIAG-ONLY (ci/long-campaign-diagnostics, never merged):
+                      // per-face flux decomposition dump for the N12 audit
+                      // (PR #929, P1-a). Strict no-op unless
+                      // CFDX_N12_FACE_DUMP_DIR is set in the environment.
+                      if (const char* n12_diag_dir = std::getenv("CFDX_N12_FACE_DUMP_DIR")) {
+                          static std::size_t n12_diag_case_counter = 0;
+                          if (iter == 1)
+                              ++n12_diag_case_counter;
+                          if (iter == 1 || iter == 5 || iter == 10 || iter == 20)
+                              n12_diag_dump_face_decomposition(
+                                  std::string(n12_diag_dir) + "/n12_face_case"
+                                      + std::to_string(n12_diag_case_counter) + "_iter"
+                                      + std::to_string(iter) + ".tsv",
+                                  mesh, geometry, U, p, coupled_rAU,
+                                  controls.density, velocity_bcs, pressure_bcs,
+                                  mass_flux);
+                      }
+                  '''.strip("\n")
+
+          src = src.replace(A3, A3 + DUMP_CALL + "\n", 1)
+
+          with open(solver, "w", encoding="utf-8") as fh:
+              fh.write(src)
+          new_sha = hashlib.sha256(src.encode("utf-8")).hexdigest()
+
+          # Post-conditions fail-closed : A1/A3 doivent toujours exister
+          # exactement une fois ; A2 est CONSOMMEE par l'insertion (count=0
+          # attendu) — vérifier la présence unique de l'instrumentation.
+          for name, anchor in (("A1_include_functional", A1),
+                                ("A3_coupled_mass_flux_call", A3)):
+              n = src.count(anchor)
+              if n != 1:
+                  fail("post-patch anchor %s count=%d (expected 1) — splice went wrong" % (name, n))
+          if src.count(A2) != 0:
+              fail("post-patch A2 still present — splice went wrong")
+          for marker in ("n12_diag_dump_face_decomposition",
+                          'std::getenv("CFDX_N12_FACE_DUMP_DIR")',
+                          "#include <fstream>"):
+              if src.count(marker) < 1:
+                  fail("post-patch marker missing: " + marker)
+
+          with open(status, "w") as fh:
+              fh.write("PATCH_OK\n")
+              fh.write("solver=" + solver + "\n")
+              fh.write("sha256_before=" + orig_sha + "\n")
+              fh.write("sha256_after=" + new_sha + "\n")
+              fh.write("bytes_before=%d bytes_after=%d\n" % (orig_len, len(src)))
+              fh.write("anchors=A1:1 A2:1 A3:1\n")
+              fh.write("instrumentation=n12_diag_dump_face_decomposition + COUPLED-branch call block + <cstdlib>/<fstream>\n")
+          print("patch OK: " + solver)
+          PY
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3
+
+      - name: Install Python tooling and package
+        id: pip
+        continue-on-error: true
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip > /dev/null 2>&1
+          "$RUNNER_TEMP/venv/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml > "$GITHUB_WORKSPACE/$EVID/pr929x_n12face_pip_run$GITHUB_RUN_ID.log" 2>&1
+          "$RUNNER_TEMP/venv/bin/python" -m pip install -e "$RUNNER_TEMP/head" >> "$GITHUB_WORKSPACE/$EVID/pr929x_n12face_pip_run$GITHUB_RUN_ID.log" 2>&1
+
+      - name: Configure and build (pinned head + diag patch)
+        id: build_head
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake -S "$RUNNER_TEMP/head" -B "$RUNNER_TEMP/head/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr929x_n12face_configure_run$GITHUB_RUN_ID.log"
+          TARGETS="test_n12_coupled_pressure_velocity_mms"
+          # NB : la sortie de `ninja -t targets all` est au format "target: rule"
+          # -> retirer le ':' final avant comparaison exacte (lecon v6 #923).
+          if ! avail_raw="$(ninja -C "$RUNNER_TEMP/head/build" -t targets all 2>&1)"; then
+            echo "::error::ninja -t targets failed — build system error, not a missing target"
+            exit 1
+          fi
+          avail="$(printf '%s\n' "$avail_raw" | awk '{sub(/:$/, "", $1); print $1}' | sort -u)"
+          for t in $TARGETS; do
+            printf '%s\n' "$avail" | grep -qx "$t" || { echo "::error::missing CMake target: $t"; exit 1; }
+          done
+          cmake --build "$RUNNER_TEMP/head/build" --target $TARGETS --parallel 2 \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr929x_n12face_build_run$GITHUB_RUN_ID.log"
+          echo "build_head_exit=0" > "$GITHUB_WORKSPACE/$EVID/pr929x_n12face_build_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Record build failure status
+        if: always() && steps.build_head.outcome == 'failure'
+        run: |
+          echo "build_head_exit=nonzero" > "$GITHUB_WORKSPACE/$EVID/pr929x_n12face_build_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Run N12 coupled campaign with per-face dump enabled
+        id: n12run
+        continue-on-error: true
+        env:
+          CFDX_N12_FACE_DUMP_DIR: ${{ github.workspace }}/${{ env.EVID }}/n12_face_dumps_run${{ github.run_id }}
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          mkdir -p "$CFDX_N12_FACE_DUMP_DIR"
+          # Decouverte fail-closed : le test doit exister dans le build.
+          ctest --test-dir "$RUNNER_TEMP/head/build" -R '^test_n12_coupled_pressure_velocity_mms$' -N > "$E/pr929x_n12face_testlist_run$GITHUB_RUN_ID.log" 2>&1
+          if ! grep -q "test_n12_coupled_pressure_velocity_mms" "$E/pr929x_n12face_testlist_run$GITHUB_RUN_ID.log"; then
+            echo "n12_test_exit=DISCOVERY_MISSING" > "$E/pr929x_n12face_test_status_run$GITHUB_RUN_ID.txt"
+            echo "::error::test_n12_coupled_pressure_velocity_mms not discovered"
+            exit 1
+          fi
+          # PIEGE DURABLE : steps run: = bash -e par defaut. Le test est attendu
+          # en ECHEC (defaut pre-existant documente) — set +e + capture rc pour
+          # ne pas avorter le step avant la capture.
+          set +e
+          ctest --test-dir "$RUNNER_TEMP/head/build" -R '^test_n12_coupled_pressure_velocity_mms$' --output-on-failure \
+            2>&1 | tee "$E/pr929x_n12face_campaign_run$GITHUB_RUN_ID.log"
+          rc=${PIPESTATUS[0]}
+          echo "n12_test_exit=$rc" > "$E/pr929x_n12face_test_status_run$GITHUB_RUN_ID.txt"
+          echo "n12_test_exit=$rc (echec ATTENDU : defaut pre-existant documente)"
+          exit 0
+
+      - name: Structured fail-closed verdict and independent analysis
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, os, re, sys, traceback
+
+          run_id = os.environ["GITHUB_RUN_ID"]
+          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+          dump_dir = os.path.join(evid, "n12_face_dumps_run" + run_id)
+          verdict_path = os.path.join(evid, "pr929x_n12face_verdict_run" + run_id + ".txt")
+          report_path = os.path.join(evid, "pr929x_n12face_analysis_run" + run_id + ".txt")
+          log_path = os.path.join(evid, "pr929x_n12face_campaign_run" + run_id + ".log")
+          patch_path = os.path.join(evid, "pr929x_n12face_patch_status_run" + run_id + ".txt")
+          build_path = os.path.join(evid, "pr929x_n12face_build_status_run" + run_id + ".txt")
+
+          rep = []
+          def emit(line=""):
+              rep.append(line)
+
+          def write_all(verdict, extra=()):
+              try:
+                  with open(verdict_path, "w") as fh:
+                      fh.write("VERDICT: " + verdict + "\n")
+                      for l in extra:
+                          fh.write(l + "\n")
+              except Exception:
+                  pass
+              try:
+                  with open(report_path, "w") as fh:
+                      fh.write("\n".join(rep) + "\n")
+              except Exception:
+                  pass
+
+          try:
+              # ---- gates (fail-closed, INCONCLUSIVE != PASS) -----------------
+              if os.path.exists(patch_path):
+                  pt = open(patch_path).read()
+                  if "PATCH_OK" not in pt:
+                      emit("patch status file:")
+                      emit(pt)
+                      write_all("INCONCLUSIVE_PATCH_FAILED", ["see patch status file"])
+                      sys.exit(0)
+              else:
+                  write_all("INCONCLUSIVE_PATCH_FAILED", ["patch status file missing"])
+                  sys.exit(0)
+
+              if os.path.exists(build_path):
+                  bs = open(build_path).read().strip()
+              else:
+                  bs = "build_status_missing"
+              if not bs.endswith("exit=0"):
+                  emit("build_status=" + bs)
+                  write_all("INCONCLUSIVE_BUILD", ["build_status=" + bs,
+                            "compiler output in pr929x_n12face_build_run" + run_id + ".log"])
+                  sys.exit(0)
+
+              if not os.path.exists(log_path):
+                  write_all("INCONCLUSIVE_TEST_RUN", ["no campaign log produced"])
+                  sys.exit(0)
+
+              files = sorted(glob.glob(os.path.join(dump_dir, "n12_face_case*_iter*.tsv")))
+              if not files:
+                  write_all("INCONCLUSIVE_NO_DUMP",
+                            ["no per-face dump files — see campaign log and test status"])
+                  sys.exit(0)
+
+              COLS = ("f owner neighbour ubc pbc patch_name conv_flux pressure_correction "
+                      "implicit_coeff deferred_flux dp phi_rc phi_authoritative phi_interp "
+                      "mismatch dAUx dAUy dAUz gradp_x gradp_y gradp_z Sfx Sfy Sfz area dist "
+                      "p_owner p_neighbour Uox Uoy Uoz").split()
+
+              def read_tsv(path):
+                  rows = []
+                  with open(path) as fh:
+                      header = fh.readline().rstrip("\n").split("\t")
+                      if header != COLS:
+                          raise RuntimeError("unexpected TSV header in " + path + ": " + str(header))
+                      for line in fh:
+                          if not line.strip():
+                              continue
+                          parts = line.rstrip("\n").split("\t")
+                          if len(parts) != len(COLS):
+                              raise RuntimeError("bad column count in " + path + ": " + str(len(parts)))
+                          rows.append(dict(zip(COLS, parts)))
+                  return rows
+
+              def fnum(r, k):
+                  return float(r[k])
+
+              def inum(r, k):
+                  return int(r[k])
+
+              cases = []
+              bad_identity = []
+              for path in files:
+                  m = re.search(r"n12_face_case(\d+)_iter(\d+)\.tsv$", path)
+                  if not m:
+                      continue
+                  case_id = int(m.group(1)); it = int(m.group(2))
+                  rows = read_tsv(path)
+                  n_cells = max(inum(r, "owner") for r in rows) + 1
+                  scale = max(1.0, max(abs(fnum(r, "phi_authoritative")) for r in rows))
+                  id1 = max(abs(fnum(r, "phi_rc") - fnum(r, "phi_authoritative")) for r in rows)
+                  id2 = max(abs((fnum(r, "conv_flux") - fnum(r, "pressure_correction")) - fnum(r, "phi_rc")) for r in rows)
+                  id3 = max(abs((fnum(r, "phi_rc") - fnum(r, "phi_interp")) - fnum(r, "mismatch")) for r in rows)
+                  if id1 > 1e-9 * scale:
+                      bad_identity.append((case_id, it, "phi_rc_vs_authoritative", id1, scale))
+                  if id2 > 1e-9 * scale:
+                      bad_identity.append((case_id, it, "arithmetic_conv_minus_corr", id2, scale))
+                  cases.append({"case": case_id, "iter": it, "n_cells": n_cells,
+                                  "file": os.path.basename(path),
+                                  "id1": id1, "id2": id2, "id3": id3, "rows": rows})
+
+              if bad_identity:
+                  emit("IDENTITY VIOLATIONS (recomputed decomposition != production flux):")
+                  for b in bad_identity:
+                      emit("  case %d iter %d %s err=%.6e scale=%.3e" % b)
+                  write_all("INCONSISTENT_DUMP", ["identity violations: " + str(len(bad_identity))])
+                  sys.exit(0)
+
+              def face_class(r):
+                  if inum(r, "neighbour") >= 0:
+                      return "interior"
+                  pbc = r["pbc"]; ubc = r["ubc"]
+                  if pbc == "fixed_value":
+                      if ubc == "fixed_value":
+                          return "boundary_fixed_p_fixed_u"
+                      return "boundary_fixed_p"
+                  if ubc == "fixed_value":
+                      return "boundary_fixed_u"
+                  if pbc == "empty":
+                      return "empty"
+                  return "boundary_other"
+
+              def cells_adj_fixed_p(rows):
+                  s = set()
+                  for r in rows:
+                      if r["pbc"] == "fixed_value":
+                          s.add(inum(r, "owner"))
+                  return s
+
+              # Traces production pour cross-check (continuite corrigee,
+              # continuite reconstruite, mismatch — depuis le log de campagne).
+              trace_re = re.compile(
+                  r"N12_COUPLED_FAILURE_TRACE n=(\d+) iter=(\d+)"
+                  r".*?corrected_flux_continuity=([-0-9.eE+]+)"
+                  r".*?reconstructed_velocity_continuity=([-0-9.eE+]+)"
+                  r".*?flux_velocity_mismatch=([-0-9.eE+]+)")
+              traces = {}
+              for line in open(log_path, errors="replace"):
+                  m = trace_re.search(line)
+                  if m:
+                      traces[(int(m.group(1)), int(m.group(2)))] = (
+                          float(m.group(3)), float(m.group(4)), float(m.group(5)))
+
+              cases.sort(key=lambda c: (c["case"], c["iter"]))
+              emit("== Decomposition par cas / iteration (recalcul INDEPENDANT depuis les faces) ==")
+              emit("case iter n_cells | max|mismatch| pire face (classe) | max|corr| interior | max|corr| frontieres | max|div_rc| interior/adj_p_fixe | max|div_interp| interior/adj_p_fixe | id1/id2/id3")
+              crosscheck_fail = []
+              for c in cases:
+                  rows = c["rows"]
+                  div_rc = {}; div_in = {}
+                  for r in rows:
+                      o = inum(r, "owner"); nr = inum(r, "neighbour")
+                      prc = fnum(r, "phi_rc"); pin = fnum(r, "phi_interp")
+                      div_rc[o] = div_rc.get(o, 0.0) + prc
+                      div_in[o] = div_in.get(o, 0.0) + pin
+                      if nr >= 0:
+                          div_rc[nr] = div_rc.get(nr, 0.0) - prc
+                          div_in[nr] = div_in.get(nr, 0.0) - pin
+                  adj = cells_adj_fixed_p(rows)
+                  def cell_stat(div, sel):
+                      vals = [abs(v) for k, v in div.items() if sel(k)]
+                      return max(vals) if vals else 0.0
+                  d_rc_i = cell_stat(div_rc, lambda k: k not in adj)
+                  d_rc_a = cell_stat(div_rc, lambda k: k in adj)
+                  d_in_i = cell_stat(div_in, lambda k: k not in adj)
+                  d_in_a = cell_stat(div_in, lambda k: k in adj)
+                  classes = {}
+                  for r in rows:
+                      k = face_class(r)
+                      d = classes.setdefault(k, {"n": 0, "max_corr": 0.0,
+                                                  "max_mismatch": 0.0, "sum_abs_mismatch": 0.0})
+                      d["n"] += 1
+                      d["max_corr"] = max(d["max_corr"], abs(fnum(r, "pressure_correction")))
+                      mm = abs(fnum(r, "mismatch"))
+                      d["max_mismatch"] = max(d["max_mismatch"], mm)
+                      d["sum_abs_mismatch"] += mm
+                  worst = max(rows, key=lambda r: abs(fnum(r, "mismatch")))
+                  c["classes"] = classes
+                  int_corr = classes.get("interior", {}).get("max_corr", 0.0)
+                  bnd_corr = max([d["max_corr"] for k, d in classes.items() if k != "interior"] or [0.0])
+                  emit("%4d %4d %7d | %.6e (f=%s,%s) | %.3e | %.3e | %.3e/%.3e | %.3e/%.3e | %.1e/%.1e/%.1e" % (
+                      c["case"], c["iter"], c["n_cells"],
+                      abs(fnum(worst, "mismatch")), worst["f"], face_class(worst),
+                      int_corr, bnd_corr,
+                      d_rc_i, d_rc_a, d_in_i, d_in_a,
+                      c["id1"], c["id2"], c["id3"]))
+                  key = (c["n_cells"], c["iter"])
+                  if key in traces:
+                      tc, ti, tm = traces[key]
+                      def close(a, b):
+                          return abs(a - b) <= 1e-6 * max(1.0, abs(b))
+                      ok = (close(max(d_rc_i, d_rc_a), tc)
+                            and close(max(d_in_i, d_in_a), ti)
+                            and close(abs(fnum(worst, "mismatch")), tm))
+                      if not ok:
+                          crosscheck_fail.append((c["case"], c["iter"], tc, ti, tm,
+                                                   max(d_rc_i, d_rc_a), max(d_in_i, d_in_a),
+                                                   abs(fnum(worst, "mismatch"))))
+                      emit("        cross-check vs trace production n=%d iter=%d : %s (trace: cont_corr=%.6e cont_recon=%.6e mismatch=%.6e)" % (
+                          key[0], key[1], "OK" if ok else "DIFF", tc, ti, tm))
+
+              emit()
+              emit("== Distribution du mismatch par classe de face (tous cas/iters, L1) ==")
+              agg = {}
+              for c in cases:
+                  for k, d in c["classes"].items():
+                      a = agg.setdefault(k, {"n": 0, "max_mismatch": 0.0, "sum_abs_mismatch": 0.0})
+                      a["n"] += d["n"]
+                      a["max_mismatch"] = max(a["max_mismatch"], d["max_mismatch"])
+                      a["sum_abs_mismatch"] += d["sum_abs_mismatch"]
+              total = sum(a["sum_abs_mismatch"] for a in agg.values()) or 1.0
+              for k in sorted(agg, key=lambda k: -agg[k]["sum_abs_mismatch"]):
+                  a = agg[k]
+                  emit("  %-26s n_faces_obs=%7d  max|mismatch|=%.6e  part_du_L1_total=%.4f%%" % (
+                      k, a["n"], a["max_mismatch"], 100.0 * a["sum_abs_mismatch"] / total))
+
+              emit()
+              emit("== Hypotheses analytiques a trancher par ces donnees (PAS un verdict) ==")
+              emit("  H1 : corrections RC ~ 0 sur les faces internes (p lineaire, Sf purement +/-y sur faces internes du cas N12)")
+              emit("  H2 : mismatch concentre sur les frontieres a pression fixee x0/x1, ~ rho*dAU*aire (aire=dy=1/n)")
+              emit("  H3 : si H1+H2 vrais, l'invariant 'flux corrige = flux conservatif de la vitesse reconstruite' est violé")
+              emit("       PAR CONSTRUCTION sur les frontieres a p fixee de ce cas (make_mass_flux applique la CL de")
+              emit("       vitesse, pas la reconstruction momentum-consistante) — a confronter au point (b) #923.")
+
+              if crosscheck_fail:
+                  emit()
+                  emit("!! CROSS-CHECK DIFF vs traces production (recalcul independant en desaccord) :")
+                  for x in crosscheck_fail:
+                      emit("  case %d iter %s : trace=(cont=%.6e, recon=%.6e, mismatch=%.6e) analyseur=(%.6e, %.6e, %.6e)" % x)
+
+              emit()
+              emit("== Top-10 faces pire mismatch (derniere iteration de chaque cas) ==")
+              latest = {}
+              for c in cases:
+                  prev = latest.get(c["case"])
+                  if prev is None or c["iter"] > prev["iter"]:
+                      latest[c["case"]] = c
+              for c in sorted(latest.values(), key=lambda c: c["case"]):
+                  rows = sorted(c["rows"], key=lambda r: -abs(fnum(r, "mismatch")))[:10]
+                  emit("  case %d (n_cells=%d, iter=%d, fichier=%s) :" % (
+                      c["case"], c["n_cells"], c["iter"], c["file"]))
+                  for r in rows:
+                      emit("    f=%s classe=%s patch=%s ubc=%s pbc=%s | phi_rc=%.9e phi_interp=%.9e mismatch=%.9e | corr=%.9e (implicit=%.9e * dp=%.9e + deferred=%.9e) dAU=(%.9e,%.9e,%.9e)" % (
+                          r["f"], face_class(r), r["patch_name"], r["ubc"], r["pbc"],
+                          fnum(r, "phi_rc"), fnum(r, "phi_interp"), fnum(r, "mismatch"),
+                          fnum(r, "pressure_correction"), fnum(r, "implicit_coeff"),
+                          fnum(r, "dp"), fnum(r, "deferred_flux"),
+                          fnum(r, "dAUx"), fnum(r, "dAUy"), fnum(r, "dAUz")))
+
+              n_cases = len(set(c["case"] for c in cases))
+              emit()
+              emit("cases=%d fichiers_dump=%d identity_max=%.3e crosscheck_diffs=%d" % (
+                  n_cases, len(files),
+                  max(max(c["id1"], c["id2"], c["id3"]) for c in cases),
+                  len(crosscheck_fail)))
+              write_all("EVIDENCE_COMPLETE", [
+                  "cases=%d dump_files=%d" % (n_cases, len(files)),
+                  "identity_max=%.3e" % max(max(c["id1"], c["id2"], c["id3"]) for c in cases),
+                  "crosscheck_diffs=%d" % len(crosscheck_fail),
+                  "interpretation: EVIDENCE_COMPLETE = evidence produite et auto-coherente ;",
+                  "ceci est un DIAGNOSTIC de localisation de defaut, PAS un verdict de correction numerique.",
+              ])
+          except Exception:
+              emit("ANALYZER CRASH:")
+              emit(traceback.format_exc())
+              write_all("INCONCLUSIVE_ANALYZER_CRASH", ["analyzer crashed — see report"])
+          PY
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: PR 929 N12 per-face flux decomposition run $GITHUB_RUN_ID (#929 P1-a) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Post verdict comment to PR #929 (best effort)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          E="$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "## N12 — décomposition par face des flux (P1-a) — run $GITHUB_RUN_ID — verdict : $(sed -n 's/^VERDICT: //p' "$E/pr929x_n12face_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo UNKNOWN)"
+            echo
+            echo "Réf épinglée instrumentée : \`$HEAD_SHA_PIN\` (head #929 ; défaut pré-existant prouvé bit-identique base/head par les runs diag 39045774024/39049838009)."
+            echo "Évidence : \`diag-evidence/logs/pr929x_n12face_*_run$GITHUB_RUN_ID.*\` et \`diag-evidence/logs/n12_face_dumps_run$GITHUB_RUN_ID/\` sur \`ci/long-campaign-diagnostics\`."
+            echo
+            echo "Règle d'interprétation (Steven) : \`EVIDENCE_COMPLETE\` = preuve de localisation produite et auto-cohérente — PAS un PASS/FAIL numérique. Le test N12 reste attendu en échec tant que le défaut pré-existant n'est pas corrigé (Lot C)."
+            echo
+            echo '~~~'
+            cat "$E/pr929x_n12face_analysis_run$GITHUB_RUN_ID.txt" 2>/dev/null || cat "$E/pr929x_n12face_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "(analyse indisponible)"
+            echo '~~~'
+          } > /tmp/comment.md 2>/dev/null || true
+          if [ ! -s /tmp/comment.md ]; then echo "(comment vide)" > /tmp/comment.md; fi
+          jq -n --rawfile body /tmp/comment.md '{body: $body}' > /tmp/payload.json
+          http=$(curl -sS --fail-with-body -o /dev/null -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/929/comments" \
+            -d @/tmp/payload.json) || http=failed
+          echo "POST to #929: $http"
+          exit 0
+
+      - name: Final verdict (green only for EVIDENCE_COMPLETE)
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          if grep -q "^VERDICT: EVIDENCE_COMPLETE" "$E/pr929x_n12face_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null; then
+            echo "verdict: EVIDENCE_COMPLETE — décomposition par face produite, identités vérifiées (diagnostic de localisation, PAS un PASS numérique)"
+          else
+            v=$(sed -n 's/^VERDICT: //p' "$E/pr929x_n12face_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "MISSING_VERDICT_FILE")
+            echo "::error::verdict=$v — voir diag-evidence/logs/pr929x_n12face_verdict_run$GITHUB_RUN_ID.txt"
+            exit 1
+          fi

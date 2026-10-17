@@ -1,0 +1,15 @@
+marker: pr929-n12-face-decomposition
+version: 1
+date: 2026-10-17
+purpose: >
+  Declenche le diagnostic P1-a demande par Steven (audit #929, 2026-10-17) :
+  decomposition PAR FACE du desaccord flux-vitesse du cas N12 COUPLED
+  (test_n12_coupled_pressure_velocity_mms) — flux convectif interpole,
+  correction Rhie-Chow (implicite + differe), flux RC autoritaire, flux
+  interpole de la vitesse cellulaire, ingredients (dAU, dp, grad p), classes
+  interieur vs frontieres a pression fixee, bilans de masse par cellule
+  recalcules independamment, trajectoire it. 1/5/10/20, cross-check vs traces
+  production. Instrumentation diag-only activee uniquement par la variable
+  d'environnement CFDX_N12_FACE_DUMP_DIR. Aucune semantique/oracle/tolerance
+  modifiee. Jamais merger cette branche.
+head_pin: e1cbefee90b4f3703d709f436585918a201ed536
