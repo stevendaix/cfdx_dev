@@ -1,0 +1,6 @@
+run_id=39053938794
+started_utc=2026-10-17T17:29:01Z
+head_sha=e1cbefee90b4f3703d709f436585918a201ed536 (pinned head of PR #929, instrumented for defect localization only)
+scope: per-face flux decomposition of test_n12_coupled_pressure_velocity_mms at Picard iters 1/5/10/20, all cases
+rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL
+preexistence_context: N12 metrics proven bit-identical base/head by diag runs 39045774024/39049838009

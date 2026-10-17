@@ -1,0 +1,48 @@
+== Decomposition par cas / iteration (recalcul INDEPENDANT depuis les faces) ==
+case iter n_cells | max|mismatch| pire face (classe) | max|corr| interior | max|corr| frontieres | max|div_rc| interior/adj_p_fixe | max|div_interp| interior/adj_p_fixe | id1/id2/id3
+   1    1      16 | 4.111842e-02 (f=7,boundary_fixed_p_fixed_u) | 2.337e-15 | 4.112e-02 | 0.000e+00/3.157e-15 | 0.000e+00/5.243e-16 | 0.0e+00/0.0e+00/0.0e+00
+   1    5      16 | 1.180596e-01 (f=23,boundary_fixed_p_fixed_u) | 1.238e-13 | 1.181e-01 | 0.000e+00/1.300e-13 | 0.000e+00/5.243e-16 | 0.0e+00/0.0e+00/0.0e+00
+   1   10      16 | 8.901663e-02 (f=27,boundary_fixed_p_fixed_u) | 1.154e-13 | 8.902e-02 | 0.000e+00/1.202e-13 | 0.000e+00/5.243e-16 | 0.0e+00/0.0e+00/0.0e+00
+   1   20      16 | 1.069871e-01 (f=7,boundary_fixed_p_fixed_u) | 1.258e-13 | 1.070e-01 | 0.000e+00/1.314e-13 | 0.000e+00/5.243e-16 | 0.0e+00/0.0e+00/0.0e+00
+   2    1      16 | 6.990132e-02 (f=7,boundary_fixed_p_fixed_u) | 5.843e-16 | 6.990e-02 | 0.000e+00/5.757e-02 | 0.000e+00/3.670e-16 | 0.0e+00/0.0e+00/0.0e+00
+   2    5      16 | 7.605501e-02 (f=55,boundary_fixed_p_fixed_u) | 1.851e-15 | 7.606e-02 | 0.000e+00/2.189e-02 | 0.000e+00/4.741e-16 | 0.0e+00/0.0e+00/0.0e+00
+   2   10      16 | 6.968068e-02 (f=55,boundary_fixed_p_fixed_u) | 1.926e-15 | 6.968e-02 | 0.000e+00/3.828e-03 | 0.000e+00/6.469e-16 | 0.0e+00/0.0e+00/0.0e+00
+   2   20      16 | 6.213192e-02 (f=63,boundary_fixed_p_fixed_u) | 1.260e-15 | 6.213e-02 | 0.000e+00/9.907e-05 | 0.000e+00/3.174e-16 | 0.0e+00/0.0e+00/0.0e+00
+
+== Distribution du mismatch par classe de face (tous cas/iters, L1) ==
+  boundary_fixed_p_fixed_u   n_faces_obs=    256  max|mismatch|=1.180596e-01  part_du_L1_total=100.0000%
+  interior                   n_faces_obs=    120  max|mismatch|=1.257931e-13  part_du_L1_total=0.0000%
+  boundary_fixed_u           n_faces_obs=    272  max|mismatch|=0.000000e+00  part_du_L1_total=0.0000%
+
+== Hypotheses analytiques a trancher par ces donnees (PAS un verdict) ==
+  H1 : corrections RC ~ 0 sur les faces internes (p lineaire, Sf purement +/-y sur faces internes du cas N12)
+  H2 : mismatch concentre sur les frontieres a pression fixee x0/x1, ~ rho*dAU*aire (aire=dy=1/n)
+  H3 : si H1+H2 vrais, l'invariant 'flux corrige = flux conservatif de la vitesse reconstruite' est violé
+       PAR CONSTRUCTION sur les frontieres a p fixee de ce cas (make_mass_flux applique la CL de
+       vitesse, pas la reconstruction momentum-consistante) — a confronter au point (b) #923.
+
+== Top-10 faces pire mismatch (derniere iteration de chaque cas) ==
+  case 1 (n_cells=16, iter=20, fichier=n12_face_case1_iter20.tsv) :
+    f=7 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=-4.448710486e-02 phi_interp=6.250000000e-02 mismatch=-1.069871049e-01 | corr=1.069871049e-01 (implicit=2.139742097e-01 * dp=5.000000000e-01 + deferred=0.000000000e+00) dAU=(1.711793678e+00,1.711793678e+00,1.711793678e+00)
+    f=6 classe=boundary_fixed_p_fixed_u patch=x0 ubc=fixed_value pbc=fixed_value | phi_rc=4.448710486e-02 phi_interp=-6.250000000e-02 mismatch=1.069871049e-01 | corr=-1.069871049e-01 (implicit=2.139742097e-01 * dp=-5.000000000e-01 + deferred=0.000000000e+00) dAU=(1.711793678e+00,1.711793678e+00,1.711793678e+00)
+    f=43 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=-4.448710477e-02 phi_interp=6.250000000e-02 mismatch=-1.069871048e-01 | corr=1.069871048e-01 (implicit=2.139742095e-01 * dp=5.000000000e-01 + deferred=0.000000000e+00) dAU=(1.711793676e+00,1.711793676e+00,1.711793676e+00)
+    f=42 classe=boundary_fixed_p_fixed_u patch=x0 ubc=fixed_value pbc=fixed_value | phi_rc=4.448710477e-02 phi_interp=-6.250000000e-02 mismatch=1.069871048e-01 | corr=-1.069871048e-01 (implicit=2.139742095e-01 * dp=-5.000000000e-01 + deferred=0.000000000e+00) dAU=(1.711793676e+00,1.711793676e+00,1.711793676e+00)
+    f=31 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=-4.448710477e-02 phi_interp=6.250000000e-02 mismatch=-1.069871048e-01 | corr=1.069871048e-01 (implicit=2.139742095e-01 * dp=5.000000000e-01 + deferred=0.000000000e+00) dAU=(1.711793676e+00,1.711793676e+00,1.711793676e+00)
+    f=30 classe=boundary_fixed_p_fixed_u patch=x0 ubc=fixed_value pbc=fixed_value | phi_rc=4.448710477e-02 phi_interp=-6.250000000e-02 mismatch=1.069871048e-01 | corr=-1.069871048e-01 (implicit=2.139742095e-01 * dp=-5.000000000e-01 + deferred=0.000000000e+00) dAU=(1.711793676e+00,1.711793676e+00,1.711793676e+00)
+    f=55 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=-4.448710477e-02 phi_interp=6.250000000e-02 mismatch=-1.069871048e-01 | corr=1.069871048e-01 (implicit=2.139742095e-01 * dp=5.000000000e-01 + deferred=0.000000000e+00) dAU=(1.711793676e+00,1.711793676e+00,1.711793676e+00)
+    f=54 classe=boundary_fixed_p_fixed_u patch=x0 ubc=fixed_value pbc=fixed_value | phi_rc=4.448710477e-02 phi_interp=-6.250000000e-02 mismatch=1.069871048e-01 | corr=-1.069871048e-01 (implicit=2.139742095e-01 * dp=-5.000000000e-01 + deferred=0.000000000e+00) dAU=(1.711793676e+00,1.711793676e+00,1.711793676e+00)
+    f=47 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=-4.448710477e-02 phi_interp=6.250000000e-02 mismatch=-1.069871048e-01 | corr=1.069871048e-01 (implicit=2.139742095e-01 * dp=5.000000000e-01 + deferred=0.000000000e+00) dAU=(1.711793676e+00,1.711793676e+00,1.711793676e+00)
+    f=46 classe=boundary_fixed_p_fixed_u patch=x0 ubc=fixed_value pbc=fixed_value | phi_rc=4.448710477e-02 phi_interp=-6.250000000e-02 mismatch=1.069871048e-01 | corr=-1.069871048e-01 (implicit=2.139742095e-01 * dp=-5.000000000e-01 + deferred=0.000000000e+00) dAU=(1.711793676e+00,1.711793676e+00,1.711793676e+00)
+  case 2 (n_cells=16, iter=20, fichier=n12_face_case2_iter20.tsv) :
+    f=63 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=3.680828771e-04 phi_interp=6.250000000e-02 mismatch=-6.213191712e-02 | corr=6.213191712e-02 (implicit=1.241647604e-01 * dp=5.003989613e-01 + deferred=0.000000000e+00) dAU=(9.933180830e-01,9.933180830e-01,9.933180830e-01)
+    f=3 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=3.680828771e-04 phi_interp=6.250000000e-02 mismatch=-6.213191712e-02 | corr=6.213191712e-02 (implicit=1.241647604e-01 * dp=5.003989613e-01 + deferred=0.000000000e+00) dAU=(9.933180830e-01,9.933180830e-01,9.933180830e-01)
+    f=62 classe=boundary_fixed_p_fixed_u patch=x0 ubc=fixed_value pbc=fixed_value | phi_rc=-4.671567534e-04 phi_interp=-6.250000000e-02 mismatch=6.203284325e-02 | corr=-6.203284325e-02 (implicit=1.241647604e-01 * dp=-4.996010387e-01 + deferred=0.000000000e+00) dAU=(9.933180830e-01,9.933180830e-01,9.933180830e-01)
+    f=2 classe=boundary_fixed_p_fixed_u patch=x0 ubc=fixed_value pbc=fixed_value | phi_rc=-4.671567534e-04 phi_interp=-6.250000000e-02 mismatch=6.203284325e-02 | corr=-6.203284325e-02 (implicit=1.241647604e-01 * dp=-4.996010387e-01 + deferred=0.000000000e+00) dAU=(9.933180830e-01,9.933180830e-01,9.933180830e-01)
+    f=55 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=1.811766015e-02 phi_interp=6.250000000e-02 mismatch=-4.438233985e-02 | corr=4.438233985e-02 (implicit=8.869390881e-02 * dp=5.003989613e-01 + deferred=0.000000000e+00) dAU=(7.095512705e-01,7.095512705e-01,7.095512705e-01)
+    f=27 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=1.811766015e-02 phi_interp=6.250000000e-02 mismatch=-4.438233985e-02 | corr=4.438233985e-02 (implicit=8.869390881e-02 * dp=5.003989613e-01 + deferred=0.000000000e+00) dAU=(7.095512705e-01,7.095512705e-01,7.095512705e-01)
+    f=15 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=1.811766015e-02 phi_interp=6.250000000e-02 mismatch=-4.438233985e-02 | corr=4.438233985e-02 (implicit=8.869390881e-02 * dp=5.003989613e-01 + deferred=0.000000000e+00) dAU=(7.095512705e-01,7.095512705e-01,7.095512705e-01)
+    f=11 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=1.811766015e-02 phi_interp=6.250000000e-02 mismatch=-4.438233985e-02 | corr=4.438233985e-02 (implicit=8.869390881e-02 * dp=5.003989613e-01 + deferred=0.000000000e+00) dAU=(7.095512705e-01,7.095512705e-01,7.095512705e-01)
+    f=39 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=1.811766015e-02 phi_interp=6.250000000e-02 mismatch=-4.438233985e-02 | corr=4.438233985e-02 (implicit=8.869390881e-02 * dp=5.003989613e-01 + deferred=0.000000000e+00) dAU=(7.095512705e-01,7.095512705e-01,7.095512705e-01)
+    f=59 classe=boundary_fixed_p_fixed_u patch=x1 ubc=fixed_value pbc=fixed_value | phi_rc=1.811766015e-02 phi_interp=6.250000000e-02 mismatch=-4.438233985e-02 | corr=4.438233985e-02 (implicit=8.869390881e-02 * dp=5.003989613e-01 + deferred=0.000000000e+00) dAU=(7.095512705e-01,7.095512705e-01,7.095512705e-01)
+
+cases=2 fichiers_dump=8 identity_max=0.000e+00 crosscheck_diffs=0

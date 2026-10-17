@@ -1,0 +1,6 @@
+VERDICT: EVIDENCE_COMPLETE
+cases=2 dump_files=8
+identity_max=0.000e+00
+crosscheck_diffs=0
+interpretation: EVIDENCE_COMPLETE = evidence produite et auto-coherente ;
+ceci est un DIAGNOSTIC de localisation de defaut, PAS un verdict de correction numerique.
