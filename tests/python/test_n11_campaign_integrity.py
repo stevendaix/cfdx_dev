@@ -58,6 +58,7 @@ class ParseQuantitativeRecordsTests(unittest.TestCase):
         prefixed = CAMPAIGN.parse_quantitative_records("7: GHIA re=100 max=0.05")
         self.assertEqual(plain, prefixed)
 
+
 if __name__ == "__main__":
     unittest.main()
 
