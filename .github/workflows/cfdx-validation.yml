@@ -179,7 +179,11 @@ jobs:
     name: Long validation campaigns
     needs: prepare
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # #906: the channel n64 Picard budget (24000 its, measured tail law
+    # 1-rho = C*h^2, ~16k its expected) adds ~50-70 min of compute to this
+    # job. 90 min left no margin on a cold runner. Gates and campaign
+    # content are unchanged; this is wall-clock headroom only.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - name: Install runtime dependencies

@@ -28,10 +28,20 @@ QUANTITATIVE_RECORD_PREFIXES = (
     "N11_MPI_RESULT ",
 )
 
+# ctest -V prefixes every line of a test's output with the test number
+# followed by a colon ("106: MODEL_RESULT ..."). The campaign runs its
+# sub-tests through ctest -V, so quantitative records embedded in that
+# output carry the prefix and it must be stripped before matching: without
+# it zero records are observed and the campaign fails even though every
+# sub-test passed (#907, diagnostic run 38690061509). Lines without the
+# prefix are left untouched.
+CTEST_VERBOSE_LINE_PREFIX = re.compile(r"^\s*\d+:\s*")
+
 
 def parse_quantitative_records(output: str) -> list[dict[str, object]]:
     records: list[dict[str, object]] = []
-    for line in output.splitlines():
+    for raw_line in output.splitlines():
+        line = CTEST_VERBOSE_LINE_PREFIX.sub("", raw_line, count=1)
         prefix = next(
             (p for p in QUANTITATIVE_RECORD_PREFIXES if line.startswith(p)),
             None,

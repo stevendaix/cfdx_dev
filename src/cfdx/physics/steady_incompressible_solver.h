@@ -2200,7 +2200,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // the configured residual/conservation gates. Divergence is detected only
     // after repeated growth and never by relaxing a tolerance.
     monitor_controls.stagnation_window = 10;
-    monitor_controls.stagnation_relative_improvement = 1e-3;
+    // Delegated to the caller's convergence criteria (#906): a campaign whose
+    // measured tail-contraction rate 1 - rho = C*h^2 falls below the default
+    // threshold on fine meshes must lower it instead of letting the detector
+    // terminate a solve that is still converging on schedule. The stagnation
+    // detector stays a diagnostic abort; no convergence gate is affected.
+    monitor_controls.stagnation_relative_improvement =
+        controls.convergence.stagnation_relative_improvement;
     monitor_controls.divergence_window = 3;
     monitor_controls.divergence_growth_factor = 10.0;
     monitor_controls.qoi_gates = controls.qoi_gates;
@@ -2849,29 +2855,51 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (it == pressure_bcs.end() ||
                     it->second.type != ScalarBoundaryType::FIXED_VALUE) continue;
                 const std::size_t o = mesh.ownership().owner(f);
-                const double distance =
-                    (geometry.face_centres[f]-geometry.cell_centres[o]).mag();
+                const Vec3 dvec =
+                    geometry.face_centres[f] - geometry.cell_centres[o];
+                const double distance = dvec.mag();
+                if (!(distance > 0.0))
+                    throw std::runtime_error(
+                        "solve_steady_incompressible: degenerate "
+                        "fixed-pressure boundary distance");
                 const Vec3 Sf = geometry.face_area_vectors[f];
-                const double area = Sf.mag();
                 const auto& pressure_coeff =
                     controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
-                const double rfn =
-                    pressure_coeff[0][o]*(Sf.x/area)*(Sf.x/area) +
-                    pressure_coeff[1][o]*(Sf.y/area)*(Sf.y/area) +
-                    pressure_coeff[2][o]*(Sf.z/area)*(Sf.z/area);
-                rows[o][o] += controls.density * rfn * area / distance;
-                // Explicit pressure flux at fixed-pressure boundaries (#894):
-                // the half-Dirichlet diagonal term above is only consistent
-                // when the boundary mass flux is reconstructed as
-                //   phi_b = phiHbyA_b - rho*rfn*area/d*(p_bc - p_P).
-                // Without the matching source term the discretised equation
-                // forces the boundary flux to zero and the continuity
-                // residual stalls on a nonzero floor. Inject the source into
-                // the RHS (b is assembled before this loop, so it must be
-                // updated directly), with the same directional coefficient
-                // rfn as the matrix (rAU: SIMPLE, rAtU: SIMPLEC).
-                b(o) += controls.density * rfn * area / distance *
-                    (it->second.value - p(o));
+                // Half-Dirichlet boundary coefficient (#894, #904): the
+                // pressure-correction matrix must balance the SAME
+                // dAU = V*rAU velocity-response operator that
+                // make_rhie_chow_mass_flux() uses to reconstruct the
+                // authoritative boundary flux,
+                //   phi_b = phiHbyA_b - rho*rfn*(Sf.e)/d*(p_bc - p_P),
+                // and that directional_face_coefficient() uses on the
+                // internal faces of this same matrix. The previous
+                // r_f = rAU projection omitted the cell volume V_o, so the
+                // matrix under-weighted the boundary pressure response by a
+                // factor V_o relative to the flux: the corrected flux and
+                // the p' operator disagreed, the continuity residual froze
+                // on a nonzero floor with momentum at machine zero, and the
+                // fixed-pressure campaigns could never reach their gates.
+                const Vec3 e{dvec.x/distance, dvec.y/distance,
+                             dvec.z/distance};
+                const double rfn = geometry.cell_volumes[o] * (
+                    pressure_coeff[0][o]*e.x*e.x +
+                    pressure_coeff[1][o]*e.y*e.y +
+                    pressure_coeff[2][o]*e.z*e.z);
+                const double coeff =
+                    controls.density * rfn * Sf.dot(e) / distance;
+                rows[o][o] += coeff;
+                // Explicit pressure flux source at fixed-pressure boundaries
+                // (#894): the half-Dirichlet diagonal term above is only
+                // consistent when the boundary mass flux is reconstructed
+                // as phi_b = phiHbyA_b - coeff*(p_bc - p_P) with this exact
+                // coeff. Without the matching source term the discretised
+                // equation forces the boundary flux to zero and the
+                // continuity residual stalls on a nonzero floor. Inject the
+                // source into the RHS (b is assembled before this loop, so
+                // it must be updated directly), with the same directional
+                // coefficient and the same dAU = V*rAU volume factor as the
+                // matrix (rAU: SIMPLE, rAtU: SIMPLEC).
+                b(o) += coeff * (it->second.value - p(o));
             }
 
             Vector p_corr(nc, 0.0);
@@ -3278,8 +3306,27 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (iter == 1)
             result.reference_momentum_residual =
                 std::max(final_momentum_residual, tiny);
-        h.momentum_equation_residual_relative =
-            final_momentum_residual / std::max(result.reference_momentum_residual, tiny);
+        // Guard (#905): the reference-relative overwrite below is only
+        // meaningful when the iteration-1 audit residual is itself physical.
+        // When the first Picard iterate already satisfies the momentum
+        // equation to round-off (the coupled solver on a linear
+        // manufactured case), the ratio divides two round-off values: an
+        // O(1) noise quotient that no configured tolerance can ever
+        // satisfy while the equation IS solved. In that regime keep the
+        // rhs-normalized absolute residual assigned above: the
+        // well-defined convergence measure of the same audit, checked
+        // against the same tolerance. Every solve whose iteration-1
+        // reference is physical keeps the exact previous metric, bit for
+        // bit (the guard floor is 64*eps of the rhs scale, unreachable by
+        // any cold-started nonlinear flow, where the iteration-1 residual
+        // is O(1) of that scale).
+        const double reference_roundoff_floor =
+            64.0 * std::numeric_limits<double>::epsilon() * momentum_rhs_scale;
+        if (result.reference_momentum_residual > reference_roundoff_floor) {
+            h.momentum_equation_residual_relative =
+                final_momentum_residual /
+                std::max(result.reference_momentum_residual, tiny);
+        }
         h.velocity_change_inf = velocity_change_inf;
         h.pressure_change_inf = pressure_change_inf;
         h.effective_alpha_u = effective_alpha_u;
@@ -3976,3 +4023,4 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 }
 
 } // namespace cfdx::physics
+

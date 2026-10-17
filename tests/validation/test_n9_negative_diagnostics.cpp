@@ -741,21 +741,30 @@ int main()
     // under unreachable convergence gates, with a pathologically weak
     // momentum relaxation alpha_u = 0.02 and pressure relaxation
     // alpha_p = 0.01, while the inner linear settings keep their
-    // production values (1e-9 / 1000). CI evidence from the two
-    // warm-started runs at alpha_u = 0.7: the monitored nonlinear metric
-    // decays geometrically along the SIMPLE slow mode at 0.99122 per
-    // iteration with alpha_p = 0.3 and at 0.99208 with alpha_p = 0.01 —
-    // the mode is essentially alpha_p-INDEPENDENT; it propagates through
-    // the momentum predictor, whose response is exactly linear in
-    // alpha_u (implicit under-relaxation identity A (u* - u) =
-    // alpha_u r), plus a weak alpha_p-scaled pressure contribution
-    // (~8.6e-4 of the 8.78e-3 per-iteration contraction at alpha_p =
-    // 0.3). At (alpha_u, alpha_p) = (0.02, 0.01) the measured scaling
-    // puts the per-iteration improvement at ~2.5e-4, below the 1e-3
-    // stagnation threshold, and the production stagnation detector
-    // (10-iteration window) MUST terminate the solve with the STAGNATED
-    // verdict around iteration 11 — never a false converged under gates
-    // that no residual can satisfy, and never the iteration cap.
+    // production values (1e-9 / 1000). The historical premise — a smooth
+    // ~2.5e-4/iter decay extrapolated from the two alpha_u = 0.7
+    // warm-start CI runs — is FALSIFIED by measurement (#913): the
+    // measured warm-start trajectory (diagnostic run 38855589690,
+    // branch ci/long-campaign-diagnostics, never merged) RISES from 1
+    // to 1.047 over iterations 1-10 (per-step |delta| up to 1.08e-2,
+    // an establishment transient), shoulders at ~2.8e-3/iter over
+    // iterations 10-20, then decays at a sustained 1.0e-3-1.7e-3/iter
+    // (asymptote ~1.3e-3/iter) from iteration 20 to the 400-iteration
+    // cap. A sustained rate ABOVE the production default threshold
+    // (1e-3) means the flat-envelope detector (#906) can never saturate
+    // its 10-iteration window on this trajectory and the verdict
+    // degrades to MAX_ITERATIONS. The campaign therefore delegates its
+    // own envelope scale (#906 delegation, pattern #898; precedent:
+    // test_channel_qualification sets 1e-4 from its measured n64 tail
+    // rate): the delegated stagnation_relative_improvement = 2.5e-3
+    // sits >= 31% above the sustained-band maximum (1.7e-3) and below
+    // the transient shoulder, so the envelope declares no meaningful
+    // progress once the trajectory settles into its slow mode and the
+    // production detector (10-iteration window) MUST terminate the
+    // solve with the STAGNATED verdict around iteration 30 — never a
+    // false converged under gates that no residual can satisfy, and
+    // never the iteration cap. The production default (1e-3) is
+    // unchanged for every other caller.
     // Earlier candidate triggers that died on CI evidence are not
     // asserted: pathological under-relaxation on the SIMPLEC consistent
     // correction (alpha_u = alpha_p = 1e-6 still improved 3e-3 to 7e-2
@@ -776,19 +785,21 @@ int main()
         // Unreachable gates: the monitor normalizes the metric by this
         // solve's first sample, so a 1e-24 gate can never be satisfied
         // and CONVERGED can never fire. The pathological knobs are the
-        // relaxation factors only: alpha_u = 0.02, alpha_p = 0.01 (the
-        // CI-measured slow mode contraction of 0.99122/0.99208 per
-        // iteration at alpha_u = 0.7 is driven by the momentum
-        // predictor, exactly linear in alpha_u, so the per-iteration
-        // improvement drops to ~2.5e-4, below the 1e-3 stagnation
-        // threshold). The inner linear settings (1e-9 / 1000) keep
-        // their production values.
+        // relaxation factors only: alpha_u = 0.02, alpha_p = 0.01, with
+        // the inner linear settings (1e-9 / 1000) at their production
+        // values. Delegated envelope scale, measured on diagnostic run
+        // 38855589690 (#913): the warm-start slow mode decays at
+        // 1.0e-3-1.7e-3/iter (asymptote ~1.3e-3/iter), above the 1e-3
+        // production default, so the campaign declares progress below
+        // 2.5e-3/iter as flat and the detector fires around iteration
+        // 30 instead of degrading to the 400-iteration cap.
         c.coupling.alpha_u = 0.02;
         c.coupling.alpha_p = 0.01;
         c.convergence.absolute_tolerance = 1e-24;
         c.convergence.relative_tolerance = 1e-24;
         c.convergence.continuity_tolerance = 1e-24;
         c.convergence.max_iterations = 400;
+        c.convergence.stagnation_relative_improvement = 2.5e-3;
         c.body_force = {1.0, 0.0, 0.0};
         c.diagnostics.iteration_trace = true;
         c.diagnostics.iteration_trace_frequency = 10;
@@ -821,8 +832,9 @@ int main()
         EXPECT_FALSE(result.convergence_reason.empty());
         // Terminated by the stagnation detector, not by chance or by the
         // iteration cap: the 10-iteration window cannot saturate before
-        // iteration 11, and the detector must fire long before the
-        // 400-iteration maximum.
+        // iteration 11, and on the measured trajectory (diagnostic run
+        // 38855589690) the detector fires around iteration 30, long
+        // before the 400-iteration maximum.
         EXPECT_TRUE(result.iterations >= 11);
         EXPECT_TRUE(result.iterations < 400);
         // Evidence, not just the verdict: the monitored metric is
