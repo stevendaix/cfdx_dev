@@ -1,11 +1,25 @@
 from __future__ import annotations
 
 import json
-import os
 import math
+import os
 import re
 import subprocess
 from pathlib import Path
+
+
+SCALAR_PATTERN = re.compile(r"(?<!\\S)(?P<name>[A-Za-z_]\\w*)=(?P<value>[-+0-9.eE]+)(?=\\s|$)")
+TUPLE_PATTERN = re.compile(
+    r"(?<!\\S)(?P<name>[A-Za-z_]\\w*)=\\(\\s*(?P<x>[-+0-9.eE]+)\\s*,\\s*"
+    r"(?P<y>[-+0-9.eE]+)\\s*,\\s*(?P<z>[-+0-9.eE]+)\\s*\\)"
+)
+
+
+def parse_trace_tuple(line: str, name: str) -> list[float]:
+    for match in TUPLE_PATTERN.finditer(line):
+        if match.group("name") == name:
+            return [float(match.group(axis)) for axis in ("x", "y", "z")]
+    raise AssertionError(f"Malformed INCOMPRESSIBLE_ITER tuple {name}: {line}")
 
 
 def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
@@ -80,15 +94,12 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
     # trace was extended by N10 to expose separate RHS- and first-iteration-
     # reference-normalized momentum residuals; accept the old field name too
     # for compatibility with traces produced before that change.
-    scalar_pattern = re.compile(
-        r"(?<!\S)([A-Za-z_]\w*)=([-+0-9.eE]+)(?=\s|$)"
-    )
     history: list[dict[str, float | int | list[float]]] = []
     for line in diagnostics.splitlines():
         stripped = line.strip()
         if not stripped.startswith("INCOMPRESSIBLE_ITER "):
             continue
-        fields = dict(scalar_pattern.findall(stripped))
+        fields = {match.group("name"): match.group("value") for match in SCALAR_PATTERN.finditer(stripped)}
         momentum_key = (
             "momentum_residual_reference_relative"
             if "momentum_residual_reference_relative" in fields
@@ -112,17 +123,6 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
             f"Malformed INCOMPRESSIBLE_ITER trace; missing fields {missing}: {stripped}"
         )
 
-        def parse_tuple(name: str) -> list[float]:
-            tuple_pattern = re.compile(
-                rf"(?<!\S){re.escape(name)}=\(\s*([-+0-9.eE]+)\s*,\s*"
-                rf"([-+0-9.eE]+)\s*,\s*([-+0-9.eE]+)\s*\)"
-            )
-            match = tuple_pattern.search(stripped)
-            assert match is not None, (
-                f"Malformed INCOMPRESSIBLE_ITER tuple {name}: {stripped}"
-            )
-            return [float(match.group(index)) for index in range(1, 4)]
-
         # The newer trace includes RHS normalization and per-axis tuples.
         # Preserve support for the previous scalar-only trace format.
         has_n10_metrics = "momentum_residual_rhs_relative" in fields
@@ -142,10 +142,10 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
             "momentum_linear_iterations": int(fields["momentum_linear_iterations"]),
             "flux_velocity_mismatch_linf": float(fields["flux_velocity_mismatch_linf"]),
             "momentum_rhs_scale_components": (
-                parse_tuple("momentum_rhs_scale_components") if has_n10_metrics else None
+                parse_trace_tuple(stripped, "momentum_rhs_scale_components") if has_n10_metrics else None
             ),
             "momentum_rhs_relative_components": (
-                parse_tuple("momentum_rhs_relative_components") if has_n10_metrics else None
+                parse_trace_tuple(stripped, "momentum_rhs_relative_components") if has_n10_metrics else None
             ),
         }
         numeric_values = [
