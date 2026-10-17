@@ -1,9 +1,9 @@
 """Structured setup schemas for supported CFDX physics controls.
 
 This is an application/UI schema, not a second solver implementation. The
-turbulence catalogue distinguishes production-ready models from standalone
-transport components and kernel-only models. Component-ready RANS transport
-APIs are hidden until their coupling into the production momentum loop exists.
+turbulence catalogue deliberately distinguishes solver-ready transport models
+from algebraic/kernel-only models so the GUI never presents an unvalidated
+kernel as a production solver option.
 """
 from __future__ import annotations
 
@@ -38,7 +38,6 @@ class TurbulenceFamily(str, Enum):
 
 class TurbulenceStatus(str, Enum):
     SOLVER_READY = "solver_ready"
-    COMPONENT_READY = "component_ready"
     KERNEL_ONLY = "kernel_only"
     PLANNED = "planned"
 
@@ -69,32 +68,32 @@ TURBULENCE_CATALOG: tuple[TurbulenceModelSpec, ...] = (
     ),
     TurbulenceModelSpec(
         "KEPSILON", "k-epsilon (standard)", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
+        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
         "Classical two-equation eddy-viscosity RANS closure.",
     ),
     TurbulenceModelSpec(
         "RNG_KEPSILON", "RNG k-epsilon", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
+        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
         "RNG k-epsilon transport model with its dedicated production correction.",
     ),
     TurbulenceModelSpec(
         "REALIZABLE_KEPSILON", "Realizable k-epsilon", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
+        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
         "Variable-Cmu realizable k-epsilon transport model.",
     ),
     TurbulenceModelSpec(
         "KOMEGA", "k-omega", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
+        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
         "Two-equation k-omega transport model.",
     ),
     TurbulenceModelSpec(
         "SST", "k-omega SST", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
+        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
         "Menter SST transport model with blending, cross-diffusion and production limiting.",
     ),
     TurbulenceModelSpec(
         "SPALART_ALLMARAS", "Spalart-Allmaras", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 1, True, True, True, (2, 3),
+        TurbulenceStatus.SOLVER_READY, 1, True, True, True, (2, 3),
         "One-equation eddy-viscosity transport model.",
         ("SA-negative, rotation, compressibility and QCR variants are not yet exposed.",),
     ),
@@ -140,12 +139,12 @@ TURBULENCE_CATALOG: tuple[TurbulenceModelSpec, ...] = (
 # the model catalogue so adding a new model cannot silently imply completeness.
 TURBULENCE_MODEL_GAPS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "LAMINAR": (("U",), ()),
-    "KEPSILON": (("k", "epsilon"), ("production momentum coupling", "wall treatment", "turbulence inlet specification", "quantitative benchmark campaign")),
-    "RNG_KEPSILON": (("k", "epsilon"), ("production momentum coupling", "wall treatment contract", "dedicated quantitative RNG benchmark campaign")),
-    "REALIZABLE_KEPSILON": (("k", "epsilon"), ("production momentum coupling", "mesh/y+ sensitivity", "quantitative benchmark qualification")),
-    "KOMEGA": (("k", "omega"), ("production momentum coupling", "wall treatment contract", "quantitative benchmark qualification")),
-    "SST": (("k", "omega"), ("production momentum coupling", "transition/corrections", "complete wall-treatment qualification", "quantitative benchmark qualification")),
-    "SPALART_ALLMARAS": (("nu_tilde",), ("production momentum coupling", "negative/rotation/compressibility/QCR variants", "quantitative benchmark qualification")),
+    "KEPSILON": (("k", "epsilon"), ("wall treatment", "turbulence inlet specification", "quantitative benchmark campaign")),
+    "RNG_KEPSILON": (("k", "epsilon"), ("wall treatment contract", "dedicated quantitative RNG benchmark campaign")),
+    "REALIZABLE_KEPSILON": (("k", "epsilon"), ("mesh/y+ sensitivity", "quantitative benchmark qualification")),
+    "KOMEGA": (("k", "omega"), ("wall treatment contract", "quantitative benchmark qualification")),
+    "SST": (("k", "omega"), ("transition/corrections", "complete wall-treatment qualification", "quantitative benchmark qualification")),
+    "SPALART_ALLMARAS": (("nu_tilde",), ("negative/rotation/compressibility/QCR variants", "quantitative benchmark qualification")),
     "SMAGORINSKY": (("velocity gradient", "Delta"), ("LES transient driver", "SGS BC contract", "wall treatment", "V&V")),
     "WALE": (("velocity-gradient tensor", "Delta"), ("full tensor WALE integration", "LES transient driver", "wall treatment", "V&V")),
     "DYNAMIC_KEQN": (("k_sgs", "velocity gradient", "Delta"), ("dynamic SGS transport", "test filtering", "clipping", "LES driver", "V&V")),
@@ -263,11 +262,6 @@ def recommend_turbulence_models(
         elif key == "KOMEGA":
             reasons.append("two-equation near-wall-oriented RANS alternative")
 
-        if turbulence_model(key).status is TurbulenceStatus.COMPONENT_READY:
-            warnings.append(
-                "standalone transport API only; production momentum coupling is not implemented, "
-                "so this model is not selectable in cfdx_production_solver yet"
-            )
         if context.transition_expected:
             warnings.append("transition transport is not yet implemented; these are fully turbulent RANS models")
         if context.target_y_plus is not None and context.target_y_plus > 30:
@@ -294,7 +288,7 @@ ENERGY = PhysicsSpec("energy","Energy",(
     FieldSpec("dt",ParameterType.REAL,"s",0.0),
 ),("incompressible",))
 TURBULENCE = PhysicsSpec("turbulence","Turbulence",(
-    FieldSpec("model",ParameterType.CHOICE,None,"LAMINAR"),
+    FieldSpec("model",ParameterType.CHOICE,None,"SST"),
     FieldSpec("density",ParameterType.REAL,"kg/m^3",1.0),
     FieldSpec("molecular_viscosity",ParameterType.REAL,"Pa s",1.0e-3),
     FieldSpec("turbulent_prandtl",ParameterType.REAL,None,0.9),
