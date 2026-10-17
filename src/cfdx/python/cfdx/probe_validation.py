@@ -1,9 +1,11 @@
 """Quantitative point-probe validation contracts for GUI post-processing."""
+
 from __future__ import annotations
-from dataclasses import dataclass
-from collections.abc import Sequence
-from pathlib import Path
+
 import math
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
 
 # Schema written by the native probe exporter (`cfdx::io::write_probe_csv`) and
 # read back here, so a file produced by a solver run is consumable by the
@@ -19,6 +21,7 @@ class ProbeSample:
     time: float
     value: float
 
+
 @dataclass(frozen=True)
 class ProbeSeries:
     name: str
@@ -29,8 +32,11 @@ class ProbeSeries:
 
     def validate_monotonic(self) -> None:
         for a, b in zip(self.samples, self.samples[1:]):
-            if b.iteration < a.iteration or b.time < a.time:
-                raise ValueError("probe samples must be monotonic")
+            if b.iteration <= a.iteration or b.time < a.time:
+                raise ValueError(
+                    "probe samples must be monotonic: strictly increasing iterations "
+                    "and non-decreasing time"
+                )
 
     def max_relative_error(self, reference: Sequence[float]) -> float:
         if len(reference) != len(self.samples):
@@ -44,7 +50,9 @@ class ProbeSeries:
             maximum = max(maximum, abs(sample.value - float(expected)) / scale)
         return maximum
 
-    def validate_against(self, reference: Sequence[float], *, atol: float = 1e-12, rtol: float = 1e-8) -> float:
+    def validate_against(
+        self, reference: Sequence[float], *, atol: float = 1e-12, rtol: float = 1e-8
+    ) -> float:
         error = self.max_relative_error(reference)
         for sample, expected in zip(self.samples, reference):
             if abs(sample.value - float(expected)) > atol + rtol * abs(float(expected)):
@@ -76,7 +84,9 @@ def _format_probe_metadata_line(
     return f"# probe {name} at {coords} field={field} unit={unit}"
 
 
-def _parse_probe_metadata_line(body: str) -> tuple[str, tuple[float, float, float], str, str] | None:
+def _parse_probe_metadata_line(
+    body: str,
+) -> tuple[str, tuple[float, float, float], str, str] | None:
     """Parse the text after the leading ``#`` of a ``# probe`` metadata line.
 
     Returns ``(name, (x, y, z), field, unit)`` or ``None`` for anything that does
@@ -85,22 +95,22 @@ def _parse_probe_metadata_line(body: str) -> tuple[str, tuple[float, float, floa
     prefix = "probe "
     if not body.startswith(prefix):
         return None
-    rest = body[len(prefix):]
+    rest = body[len(prefix) :]
     field_key = " field="
     unit_key = " unit="
     field_index = rest.rfind(field_key)
     unit_index = rest.rfind(unit_key)
     if field_index == -1 or unit_index == -1 or unit_index < field_index:
         return None
-    unit = rest[unit_index + len(unit_key):]
-    field = rest[field_index + len(field_key):unit_index]
+    unit = rest[unit_index + len(unit_key) :]
+    field = rest[field_index + len(field_key) : unit_index]
     head = rest[:field_index]
     at_key = " at "
     at_index = head.rfind(at_key)
     if at_index == -1:
         return None
     name = head[:at_index]
-    coords = head[at_index + len(at_key):].split(",")
+    coords = head[at_index + len(at_key) :].split(",")
     if len(coords) != 3:
         return None
     try:
@@ -110,7 +120,7 @@ def _parse_probe_metadata_line(body: str) -> tuple[str, tuple[float, float, floa
     return name, point, field, unit
 
 
-def write_probe_csv(path: str | Path, series: Sequence["ProbeSeries"]) -> Path:
+def write_probe_csv(path: str | Path, series: Sequence[ProbeSeries]) -> Path:
     """Write probe series as the native probe CSV schema.
 
     Rows are ordered by probe name then iteration, matching
@@ -120,9 +130,9 @@ def write_probe_csv(path: str | Path, series: Sequence["ProbeSeries"]) -> Path:
     if not series:
         raise ValueError("probe CSV export requires at least one probe series")
     destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
 
     rows: list[tuple[str, int, float, float]] = []
+    seen_names: set[str] = set()
     for probe in series:
         if not probe.name:
             raise ValueError("probe name must not be empty")
@@ -130,31 +140,68 @@ def write_probe_csv(path: str | Path, series: Sequence["ProbeSeries"]) -> Path:
             raise ValueError(
                 f"probe name must not contain a comma or newline: {probe.name!r}"
             )
+        if probe.name in seen_names:
+            raise ValueError(f"probe names must be unique: {probe.name!r}")
+        seen_names.add(probe.name)
+        has_metadata = (
+            bool(probe.point) or probe.field is not None or probe.unit is not None
+        )
+        if has_metadata and (
+            len(probe.point) != 3 or not probe.field or not probe.unit
+        ):
+            raise ValueError(
+                f"probe {probe.name!r} has incomplete metadata; expected "
+                "three coordinates, field, and unit"
+            )
+        seen_iterations: set[int] = set()
+        history: list[ProbeSample] = []
         for sample in probe.samples:
             if sample.iteration < 0:
                 raise ValueError("probe iteration must be non-negative")
-            if not math.isfinite(sample.time) or not math.isfinite(sample.value):
+            if sample.iteration in seen_iterations:
                 raise ValueError(
-                    f"probe {probe.name!r} has a non-finite sample"
+                    f"probe {probe.name!r} has duplicate iteration {sample.iteration}"
                 )
+            seen_iterations.add(sample.iteration)
+            if not math.isfinite(sample.time) or not math.isfinite(sample.value):
+                raise ValueError(f"probe {probe.name!r} has a non-finite sample")
+            history.append(sample)
             rows.append((probe.name, sample.iteration, sample.time, sample.value))
+        # Validate the same iteration-ordered history that will be serialized.
+        # Sort a copy so callers may provide samples in arbitrary input order.
+        ordered_history = sorted(history, key=lambda sample: sample.iteration)
+        ProbeSeries(
+            probe.name,
+            probe.point,
+            tuple(ordered_history),
+            field=probe.field,
+            unit=probe.unit,
+        ).validate_monotonic()
     rows.sort(key=lambda row: (row[0], row[1]))
 
     lines = [
         f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}",
         "# columns: " + ",".join(_PROBE_CSV_COLUMNS),
     ]
-    by_name: dict[str, "ProbeSeries"] = {probe.name: probe for probe in series}
+    by_name: dict[str, ProbeSeries] = {probe.name: probe for probe in series}
     sampled_names = sorted({row[0] for row in rows})
     for name in sampled_names:
         probe = by_name.get(name)
-        if probe is not None and probe.point and probe.field is not None and probe.unit is not None:
-            lines.append(_format_probe_metadata_line(name, probe.point, probe.field, probe.unit))
+        if (
+            probe is not None
+            and probe.point
+            and probe.field is not None
+            and probe.unit is not None
+        ):
+            lines.append(
+                _format_probe_metadata_line(name, probe.point, probe.field, probe.unit)
+            )
     for name, iteration, time_value, value in rows:
         lines.append(
             f"{name},{iteration},{_format_probe_csv_value(time_value)},"
             f"{_format_probe_csv_value(value)}"
         )
+    destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return destination
 
@@ -186,9 +233,7 @@ def read_probe_csv(path: str | Path) -> tuple[ProbeSeries, ...]:
                 except ValueError as exc:
                     raise ValueError(f"malformed probe CSV header: {body}") from exc
                 if version != PROBE_CSV_VERSION:
-                    raise ValueError(
-                        f"unsupported probe CSV version: {parts[1]}"
-                    )
+                    raise ValueError(f"unsupported probe CSV version: {parts[1]}")
                 magic = parts[0]
             elif body.startswith("columns:"):
                 expected_columns = "columns: " + ",".join(_PROBE_CSV_COLUMNS)
@@ -223,14 +268,18 @@ def read_probe_csv(path: str | Path) -> tuple[ProbeSeries, ...]:
         try:
             iteration = int(iteration_text)
         except ValueError as exc:
-            raise ValueError(f"probe CSV row has a non-integer iteration: {line!r}") from exc
+            raise ValueError(
+                f"probe CSV row has a non-integer iteration: {line!r}"
+            ) from exc
         if iteration < 0:
             raise ValueError("probe CSV iteration must be non-negative")
         try:
             time_value = float(time_text)
             value = float(value_text)
         except ValueError as exc:
-            raise ValueError(f"probe CSV row has a non-numeric value: {line!r}") from exc
+            raise ValueError(
+                f"probe CSV row has a non-numeric value: {line!r}"
+            ) from exc
         if not math.isfinite(time_value) or not math.isfinite(value):
             raise ValueError(f"probe CSV row has a non-finite value: {line!r}")
         grouped.setdefault(name, []).append(ProbeSample(iteration, time_value, value))
