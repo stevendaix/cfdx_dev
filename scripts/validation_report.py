@@ -217,7 +217,9 @@ def make_plot(out: Path, ghia: list[dict]) -> str | None:
     except ImportError:
         # Plotting is optional report decoration; absence of matplotlib must
         # not suppress the numerical report or its independent validation gate.
-        print("VALIDATION_REPORT_WARNING: matplotlib unavailable; skipping optional Ghia plot")
+        print(
+            "VALIDATION_REPORT_WARNING: matplotlib unavailable; skipping optional Ghia plot"
+        )
         return None
 
     re100 = [x for x in ghia if x["re"] == 100.0]
