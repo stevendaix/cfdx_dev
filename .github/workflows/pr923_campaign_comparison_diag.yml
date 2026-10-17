@@ -94,7 +94,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
             -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON \
             2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_base_configure_run$GITHUB_RUN_ID.log"
-          cmake --build "$RUNNER_TEMP/base/build" --target test_bfs_qualification test_channel_qualification test_naca0012_qualification test_ghia_cavity_n8_pcd test_n12_coupled_pressure_velocity_mms test_n9_s9_rhie_chow_consistency --parallel 2 \
+          cmake --build "$RUNNER_TEMP/base/build" --parallel 2 \
             2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_base_build_run$GITHUB_RUN_ID.log"
           test -d "$RUNNER_TEMP/validation_meshes" && cp -r "$RUNNER_TEMP/validation_meshes" "$RUNNER_TEMP/base/build/validation_meshes"
 
@@ -107,7 +107,7 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
             -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON \
             2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_head_configure_run$GITHUB_RUN_ID.log"
-          cmake --build "$RUNNER_TEMP/pr923/build" --target test_bfs_qualification test_channel_qualification test_naca0012_qualification test_ghia_cavity_n8_pcd test_n12_coupled_pressure_velocity_mms test_n9_s9_rhie_chow_consistency --parallel 2 \
+          cmake --build "$RUNNER_TEMP/pr923/build" --parallel 2 \
             2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr923_head_build_run$GITHUB_RUN_ID.log"
           test -d "$RUNNER_TEMP/validation_meshes" && cp -r "$RUNNER_TEMP/validation_meshes" "$RUNNER_TEMP/pr923/build/validation_meshes"
 
