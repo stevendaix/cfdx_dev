@@ -10,15 +10,15 @@ The equation-level closure contract for all 13 models is:
 
 ## Catalogue
 
-| Family | Model | Implementation status | Wall distance | Current qualification boundary |
+| Family | Model | Model API status | Wall distance | Current qualification boundary |
 |---|---|---|---|---|
 | Laminar | Laminar | SOLVER_READY | No | Full solver/physical validation can proceed independently |
-| RANS | standard k-epsilon | SOLVER_READY | No | Equation/term/invariant verification now; physical campaign separate |
-| RANS | RNG k-epsilon | SOLVER_READY | No | Equation/term/invariant verification now; physical campaign separate |
-| RANS | Realizable k-epsilon | SOLVER_READY | No | Equation/term/invariant verification now; physical campaign separate |
-| RANS | k-omega | SOLVER_READY | No | Equation/term/invariant verification now; physical campaign separate |
-| RANS | k-omega SST | SOLVER_READY | Yes | Equation verification now; wall-dependent qualification remains separate |
-| RANS | Spalart-Allmaras | SOLVER_READY | Yes | Equation verification now; wall-dependent qualification remains separate |
+| RANS | standard k-epsilon | SOLVER_READY | No | Standalone transport component only; not coupled to production momentum; fail-closed in production driver |
+| RANS | RNG k-epsilon | SOLVER_READY | No | Standalone transport component only; not coupled to production momentum; fail-closed in production driver |
+| RANS | Realizable k-epsilon | SOLVER_READY | No | Standalone transport component only; not coupled to production momentum; fail-closed in production driver |
+| RANS | k-omega | SOLVER_READY | No | Standalone transport component only; not coupled to production momentum; fail-closed in production driver |
+| RANS | k-omega SST | SOLVER_READY | Yes | Standalone transport component only; not coupled to production momentum; fail-closed in production driver |
+| RANS | Spalart-Allmaras | SOLVER_READY | Yes | Standalone transport component only; not coupled to production momentum; fail-closed in production driver |
 | LES | Smagorinsky | KERNEL_ONLY | No | Kernel equations/invariants only |
 | LES | WALE | KERNEL_ONLY | No | Kernel equations/invariants only |
 | LES | Dynamic one-equation | KERNEL_ONLY | No | Closure kernel and dynamic-coefficient algebra verified; SGS transport/test-filter/complete dynamic path remains incomplete |
@@ -43,7 +43,7 @@ Each model is qualified through the same traceability chain:
 11. documentation;
 12. capability-matrix promotion only after the applicable evidence exists.
 
-A `SOLVER_READY` status means that a complete solver path exists. It is **not** a validation result.
+A `SOLVER_READY` entry in the historical model catalogue means that the standalone model transport API exists; it must not be read as proof that `cfdx_production_solver` couples the model into the momentum loop. The production-path audit found that coupling absent for the RANS models, so those selections now fail closed in the production driver. Their transport MMS, coupled-solver verification, independent conservation and physical validation remain blocked.
 
 ## Wall-distance separation
 
