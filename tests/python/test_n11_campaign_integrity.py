@@ -50,7 +50,7 @@ class ParseQuantitativeRecordsTests(unittest.TestCase):
 
     def test_prefixed_non_record_lines_are_ignored(self):
         records = CAMPAIGN.parse_quantitative_records(
-            "24: PASS: test_case\\n25: ITER 1 continuity=1e-12"
+            "24: PASS: test_case\n25: ITER 1 continuity=1e-12"
         )
         self.assertEqual(records, [])
 
