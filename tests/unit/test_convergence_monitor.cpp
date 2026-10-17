@@ -45,6 +45,31 @@ int main() {
     auto sr = stagnant.update({3, 0.989, 1.0, {}});
     assert(sr.status == ConvergenceStatus::STAGNATED);
 
+    // A material transient rise must not be counted as stagnation. It belongs
+    // to the divergence detector, which has a separate and larger growth gate.
+    ConvergenceMonitorControls transient_rise = controls;
+    transient_rise.qoi_gates.clear();
+    transient_rise.stagnation_window = 2;
+    transient_rise.stagnation_relative_improvement = 1e-3;
+    transient_rise.divergence_window = 3;
+    transient_rise.divergence_growth_factor = 10.0;
+    ConvergenceMonitor rising(transient_rise);
+    rising.update({1, 1.0, 1.0, {}});
+    rising.update({2, 1.005, 1.0, {}});
+    auto rr = rising.update({3, 1.01, 1.0, {}});
+    assert(rr.status == ConvergenceStatus::CONTINUE);
+
+    // Micro-rises below the configured threshold still count as a flat envelope.
+    ConvergenceMonitorControls micro_rise_controls = controls;
+    micro_rise_controls.qoi_gates.clear();
+    micro_rise_controls.stagnation_window = 2;
+    micro_rise_controls.stagnation_relative_improvement = 1e-3;
+    ConvergenceMonitor micro_rise(micro_rise_controls);
+    micro_rise.update({1, 1.0, 1.0, {}});
+    micro_rise.update({2, 1.0005, 1.0, {}});
+    auto mr = micro_rise.update({3, 1.001, 1.0, {}});
+    assert(mr.status == ConvergenceStatus::STAGNATED);
+
     ConvergenceMonitorControls divergence = controls;
     divergence.qoi_gates.clear();
     divergence.divergence_window = 2;
