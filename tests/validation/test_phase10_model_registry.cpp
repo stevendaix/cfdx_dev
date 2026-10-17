@@ -76,10 +76,11 @@ int main() {
             if (capability.key == nullptr || capability.label == nullptr ||
                 capability.required_fields == nullptr || capability.missing == nullptr)
                 throw std::runtime_error("model capability metadata is incomplete");
-            if (capability.status == TurbulenceImplementationStatus::SOLVER_READY &&
+            if ((capability.status == TurbulenceImplementationStatus::SOLVER_READY ||
+                 capability.status == TurbulenceImplementationStatus::COMPONENT_READY) &&
                 capability.model != AdvancedTurbulenceModel::LAMINAR &&
                 std::string(capability.missing).empty())
-                throw std::runtime_error("solver-ready model has no explicit remaining qualification gap");
+                throw std::runtime_error("ready model has no explicit remaining qualification gap");
         }
 
         TurbulenceTransportControls c;
@@ -106,9 +107,13 @@ int main() {
                 throw std::runtime_error("non-physical turbulent viscosity");
         }
 
-        if (!turbulence_solver_ready(AdvancedTurbulenceModel::SST) ||
-            !turbulence_solver_ready(AdvancedTurbulenceModel::SPALART_ALLMARAS))
-            throw std::runtime_error("solver-ready RANS models are not registered");
+        if (turbulence_solver_ready(AdvancedTurbulenceModel::SST) ||
+            turbulence_solver_ready(AdvancedTurbulenceModel::SPALART_ALLMARAS) ||
+            turbulence_capability(AdvancedTurbulenceModel::SST).status !=
+                TurbulenceImplementationStatus::COMPONENT_READY ||
+            turbulence_capability(AdvancedTurbulenceModel::SPALART_ALLMARAS).status !=
+                TurbulenceImplementationStatus::COMPONENT_READY)
+            throw std::runtime_error("RANS transport components must not advertise production readiness");
         if (turbulence_solver_ready(AdvancedTurbulenceModel::DES) ||
             turbulence_capability(AdvancedTurbulenceModel::DES).status != TurbulenceImplementationStatus::KERNEL_ONLY)
             throw std::runtime_error("DES capability status is incorrect");
