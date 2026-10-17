@@ -140,12 +140,12 @@ TURBULENCE_CATALOG: tuple[TurbulenceModelSpec, ...] = (
 # the model catalogue so adding a new model cannot silently imply completeness.
 TURBULENCE_MODEL_GAPS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "LAMINAR": (("U",), ()),
-    "KEPSILON": (("k", "epsilon"), ("wall treatment", "turbulence inlet specification", "quantitative benchmark campaign")),
-    "RNG_KEPSILON": (("k", "epsilon"), ("wall treatment contract", "dedicated quantitative RNG benchmark campaign")),
-    "REALIZABLE_KEPSILON": (("k", "epsilon"), ("mesh/y+ sensitivity", "quantitative benchmark qualification")),
-    "KOMEGA": (("k", "omega"), ("wall treatment contract", "quantitative benchmark qualification")),
-    "SST": (("k", "omega"), ("transition/corrections", "complete wall-treatment qualification", "quantitative benchmark qualification")),
-    "SPALART_ALLMARAS": (("nu_tilde",), ("negative/rotation/compressibility/QCR variants", "quantitative benchmark qualification")),
+    "KEPSILON": (("k", "epsilon"), ("production momentum coupling", "wall treatment", "turbulence inlet specification", "quantitative benchmark campaign")),
+    "RNG_KEPSILON": (("k", "epsilon"), ("production momentum coupling", "wall treatment contract", "dedicated quantitative RNG benchmark campaign")),
+    "REALIZABLE_KEPSILON": (("k", "epsilon"), ("production momentum coupling", "mesh/y+ sensitivity", "quantitative benchmark qualification")),
+    "KOMEGA": (("k", "omega"), ("production momentum coupling", "wall treatment contract", "quantitative benchmark qualification")),
+    "SST": (("k", "omega"), ("production momentum coupling", "transition/corrections", "complete wall-treatment qualification", "quantitative benchmark qualification")),
+    "SPALART_ALLMARAS": (("nu_tilde",), ("production momentum coupling", "negative/rotation/compressibility/QCR variants", "quantitative benchmark qualification")),
     "SMAGORINSKY": (("velocity gradient", "Delta"), ("LES transient driver", "SGS BC contract", "wall treatment", "V&V")),
     "WALE": (("velocity-gradient tensor", "Delta"), ("full tensor WALE integration", "LES transient driver", "wall treatment", "V&V")),
     "DYNAMIC_KEQN": (("k_sgs", "velocity gradient", "Delta"), ("dynamic SGS transport", "test filtering", "clipping", "LES driver", "V&V")),
