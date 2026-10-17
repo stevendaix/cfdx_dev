@@ -41,20 +41,26 @@ def generate(output: Path, lc_wall: float, lc_far: float, order: int = 1) -> Non
 
         outer = gmsh.model.occ.addSphere(0.0, 0.0, 0.0, farfield_radius)
         inner = gmsh.model.occ.addSphere(0.0, 0.0, 0.0, sphere_radius)
-        fluid, _ = gmsh.model.occ.cut(\n            [(3, outer)], [(3, inner)], removeObject=True, removeTool=True\n        )
+        fluid, _ = gmsh.model.occ.cut(
+            [(3, outer)], [(3, inner)], removeObject=True, removeTool=True
+        )
         gmsh.model.occ.synchronize()
         volumes = [tag for dim, tag in fluid if dim == 3]
         if len(volumes) != 1:
             raise RuntimeError(f"Expected one fluid volume, found {len(volumes)}")
 
-        surface_entities = gmsh.model.getBoundary(\n            [(3, volumes[0])], oriented=False, recursive=False\n        )
+        surface_entities = gmsh.model.getBoundary(
+            [(3, volumes[0])], oriented=False, recursive=False
+        )
         wall_surfaces: list[int] = []
         farfield_surfaces: list[int] = []
         for dim, tag in surface_entities:
             if dim != 2:
                 continue
             xmin, ymin, zmin, xmax, ymax, zmax = gmsh.model.getBoundingBox(2, tag)
-            radius = max(\n                abs(xmin), abs(ymin), abs(zmin), abs(xmax), abs(ymax), abs(zmax)\n            )
+            radius = max(
+                abs(xmin), abs(ymin), abs(zmin), abs(xmax), abs(ymax), abs(zmax)
+            )
             if abs(radius - sphere_radius) < 1.0e-6 * diameter:
                 wall_surfaces.append(tag)
             elif abs(radius - farfield_radius) < 1.0e-6 * diameter:
