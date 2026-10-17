@@ -44,13 +44,12 @@ inline void validate_production_turbulence_selection(
 
     const std::string physics =
         normalize_turbulence_model_key(setup.physics_model);
-    if ((physics.find("turbulent") != std::string::npos ||
-         physics == "rans" || physics.find("rans") != std::string::npos) &&
-        normalize_turbulence_model_key(setup.turbulence_model).empty()) {
+    if (physics.find("turbulent") != std::string::npos ||
+        physics == "rans" || physics.find("rans") != std::string::npos) {
         throw std::invalid_argument(
             "production solver: physics_model '" + setup.physics_model +
-            "' declares turbulence but no turbulence_model is specified; "
-            "the production solver currently supports laminar flow only");
+            "' declares a turbulent flow model that is not coupled to the "
+            "production momentum solver; only laminar flow is currently supported");
     }
 
     validate(setup.turbulence_model, "case setup");
