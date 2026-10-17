@@ -1,6 +1,7 @@
 #include "cfdx/physics/wall_distance.h"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
@@ -217,7 +218,7 @@ int main(int argc,char** argv) {
         const double hx=xspan/static_cast<double>(nx-1);
         const double hy=yspan/static_cast<double>(ny-1);
         const double depth=2.0*chord;
-        const WallSurface surface=make_extruded_wall_surface(mesh,depth);
+        const WallSurface surface=make_extruded_wall_surface(mesh,2.0*depth);
         const WallDistanceGrid grid=make_wall_distance_grid(
             nx,ny,3,{xlo,ylo,-depth},{hx,hy,depth},
             [&mesh](const WallDistanceVec3& p){ return inside_airfoil(mesh,p); });
