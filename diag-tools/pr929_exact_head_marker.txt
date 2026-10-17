@@ -1,0 +1,6 @@
+PR929 exact-HEAD comparison marker v1 (2026-10-17)
+base=16734e82545c66bf03911ddd3df4cf629ff3436f (pinned master commit, base of integration/numerics-2026-10)
+head=b758af667b10f9e808f1a94d9f360e6fc43c04ae (pinned #929 head at request time)
+scope=wall-distance 3 programs (controlled_benchmark 16 32 64, poisson_manufactured, poisson_decomposition) + ctest test_n12_coupled_pressure_velocity_mms (CFDX_ENABLE_LONG_VALIDATION=ON)
+rule=identical base/head failure attributes pre-existence only (level 2), never numerical correctness; INCONCLUSIVE != PASS
+requested_by=Steven (chat 2026-10-17 ~15:35Z)

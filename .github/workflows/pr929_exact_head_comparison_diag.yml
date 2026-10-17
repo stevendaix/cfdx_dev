@@ -1,0 +1,698 @@
+name: PR929 exact-HEAD wall-distance + N12 comparison (diag)
+
+# Comparaison exact-HEAD pincee pour #929, demandee par Steven (2026-10-17 ~15:35Z) :
+#  - refs EPINGLEES PAR SHA (regle Steven : jamais un master mobile) :
+#      base = 16734e82545c66bf03911ddd3df4cf629ff3436f (commit master, base de
+#             integration/numerics-2026-10) ;
+#      head = b758af667b10f9e808f1a94d9f360e6fc43c04ae (head de #929 au moment
+#             de la demande). On verifie que chaque SHA pinne est atteignable
+#             (base ancetre de master, head ancetre de la branche d'integration),
+#             mais on compare TOUJOURS les deux SHA pinnes, pas des pointeurs.
+#  - perimetre = les 2 signaux numeriques en litige, replication EXACTE des
+#    jobs CI (cfdx-validation.yml / protocole comparaison #923 run C-D) :
+#      1. wall-distance : les 3 programmes du job "Wall-distance benchmarks",
+#         memes arguments :
+#         - cfdx_wall_distance_controlled_benchmark <csv> 16 32 64
+#         - cfdx_wall_distance_poisson_manufactured <csv>
+#         - cfdx_wall_distance_poisson_decomposition <csv>
+#         Le gate planaire single_wall N=16 (corrected_phi_l2) est DISTINGUE du
+#         TEMOIN ANALYTIQUE SPHERIQUE VOLONTAIRE : le test IMPOSE 1/sqrt(3) via
+#         require_close, il echoue si la valeur n'est PAS 1/sqrt(3) (cf. #902,
+#         commentaire d'attribution 6232747754). Le plateau poisson N=32/64 du
+#         benchmark controle est releve comme MESURE non gatee.
+#      2. n12 COUPLED : ctest -R '^test_n12_coupled_pressure_velocity_mms$' sur
+#         un build CFDX_ENABLE_LONG_VALIDATION=ON ; traces brutes conservees ;
+#         extraction fail-closee de flux_velocity_mismatch, du residu momentum
+#         relatif (cle legacy momentum_residual_relative sur la base pre-Lot-A,
+#         cle #910 momentum_residual_reference_relative sur le head — difference
+#         de format DOCUMENTEE, les deux formes acceptees) et des lignes
+#         COUPLED_MATRIX_SUMMARY.
+#  - fail-closed (regle Steven) : ref non resolue, deps/pip/meshgen/build en
+#    echec, cible absente, exit code manquant, metrique attendue introuvable,
+#    conflit junit => INCONCLUSIVE_*, jamais "identique", jamais PASS ;
+#  - REGLE D'INTERPRETATION : un echec IDENTIQUE base/head prouve uniquement
+#    l'attribution "pre-existant" (niveau 2). Une trace identique N'EST PAS
+#    une preuve de correction numerique du defaut ;
+#  - evidence suffixee $GITHUB_RUN_ID, commitee sur la branche diag par le bot.
+#
+# Branche diag ci/long-campaign-diagnostics, jamais mergee (PR #903).
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/pr929_exact_head_marker.txt'
+      - '.github/workflows/pr929_exact_head_comparison_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: pr929-exact-head-comparison
+  cancel-in-progress: false
+
+env:
+  BASE_SHA_PIN: 16734e82545c66bf03911ddd3df4cf629ff3436f
+  HEAD_SHA_PIN: b758af667b10f9e808f1a94d9f360e6fc43c04ae
+  EVID: diag-evidence/logs
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve pinned refs and create worktrees
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin master
+          git fetch origin integration/numerics-2026-10
+          # Fail-closed : les SHA pinnes doivent exister et etre atteignables.
+          git cat-file -e "$BASE_SHA_PIN^{commit}" \
+            || { echo "::error::pinned base SHA not resolvable: $BASE_SHA_PIN"; exit 1; }
+          git cat-file -e "$HEAD_SHA_PIN^{commit}" \
+            || { echo "::error::pinned head SHA not resolvable: $HEAD_SHA_PIN"; exit 1; }
+          git merge-base --is-ancestor "$BASE_SHA_PIN" origin/master \
+            || { echo "::error::pinned base is not a master commit: $BASE_SHA_PIN"; exit 1; }
+          git merge-base --is-ancestor "$HEAD_SHA_PIN" origin/integration/numerics-2026-10 \
+            || { echo "::error::pinned head is not on integration branch: $HEAD_SHA_PIN"; exit 1; }
+          git worktree add "$RUNNER_TEMP/base" "$BASE_SHA_PIN"
+          git worktree add "$RUNNER_TEMP/head" "$HEAD_SHA_PIN"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "base_sha=$BASE_SHA_PIN (pinned master commit, base of integration/numerics-2026-10)"
+            echo "head_sha=$HEAD_SHA_PIN (pinned head of PR #929 at request time)"
+            echo "scope: wall-distance 3 programs (controlled_benchmark 16 32 64, poisson_manufactured, poisson_decomposition) + ctest test_n12_coupled_pressure_velocity_mms (CFDX_ENABLE_LONG_VALIDATION=ON)"
+            echo "rule: identical base/head failure attributes pre-existence only (level 2), never proves numerical correctness"
+          } > "$GITHUB_WORKSPACE/$EVID/pr929x_meta_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python tooling and package
+        id: pip
+        continue-on-error: true
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip > /dev/null 2>&1
+          "$RUNNER_TEMP/venv/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml > "$GITHUB_WORKSPACE/$EVID/pr929x_pip_run$GITHUB_RUN_ID.log" 2>&1
+          "$RUNNER_TEMP/venv/bin/python" -m pip install -e "$RUNNER_TEMP/base" >> "$GITHUB_WORKSPACE/$EVID/pr929x_pip_run$GITHUB_RUN_ID.log" 2>&1
+
+      - name: Generate validation meshes (shared by both refs)
+        id: meshes
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" "$RUNNER_TEMP/base/scripts/generate_2d_validation_meshes.py" all --output-dir "$RUNNER_TEMP/validation_meshes" 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr929x_meshgen_run$GITHUB_RUN_ID.log"
+          for mesh in channel_n16.h5 channel_n32.h5 channel_n64.h5 bfs_re200_n16.h5 bfs_re200_n32.h5 bfs_re200_n64.h5 naca0012_laminar_n64.h5 naca0012_laminar_n128.h5 naca0012_laminar_n256.h5; do
+            test -s "$RUNNER_TEMP/validation_meshes/$mesh" || { echo "::error::missing mesh: $mesh"; exit 1; }
+          done
+
+      - name: Configure and build (pinned base 16734e82)
+        id: build_base
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake -S "$RUNNER_TEMP/base" -B "$RUNNER_TEMP/base/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr929x_base_configure_run$GITHUB_RUN_ID.log"
+          TARGETS="cfdx_wall_distance_controlled_benchmark cfdx_wall_distance_poisson_manufactured cfdx_wall_distance_poisson_decomposition test_n12_coupled_pressure_velocity_mms"
+          # NB : la sortie de `ninja -t targets all` est au format "target: rule"
+          # -> retirer le ':' final avant comparaison exacte (lecon v6 #923).
+          if ! avail_raw="$(ninja -C "$RUNNER_TEMP/base/build" -t targets all 2>&1)"; then
+            echo "::error::ninja -t targets failed (base build) — build system error, not a missing target"
+            exit 1
+          fi
+          avail="$(printf '%s\n' "$avail_raw" | awk '{sub(/:$/, "", $1); print $1}' | sort -u)"
+          for t in $TARGETS; do
+            printf '%s\n' "$avail" | grep -qx "$t" || { echo "::error::missing CMake target: $t"; exit 1; }
+          done
+          cmake --build "$RUNNER_TEMP/base/build" --target $TARGETS --parallel 2 \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr929x_base_build_run$GITHUB_RUN_ID.log"
+          test -d "$RUNNER_TEMP/validation_meshes" && cp -r "$RUNNER_TEMP/validation_meshes" "$RUNNER_TEMP/base/build/validation_meshes"
+
+      - name: Configure and build (pinned head b758af66)
+        id: build_head
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake -S "$RUNNER_TEMP/head" -B "$RUNNER_TEMP/head/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr929x_head_configure_run$GITHUB_RUN_ID.log"
+          TARGETS="cfdx_wall_distance_controlled_benchmark cfdx_wall_distance_poisson_manufactured cfdx_wall_distance_poisson_decomposition test_n12_coupled_pressure_velocity_mms"
+          if ! avail_raw="$(ninja -C "$RUNNER_TEMP/head/build" -t targets all 2>&1)"; then
+            echo "::error::ninja -t targets failed (head build) — build system error, not a missing target"
+            exit 1
+          fi
+          avail="$(printf '%s\n' "$avail_raw" | awk '{sub(/:$/, "", $1); print $1}' | sort -u)"
+          for t in $TARGETS; do
+            printf '%s\n' "$avail" | grep -qx "$t" || { echo "::error::missing CMake target: $t"; exit 1; }
+          done
+          cmake --build "$RUNNER_TEMP/head/build" --target $TARGETS --parallel 2 \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr929x_head_build_run$GITHUB_RUN_ID.log"
+          test -d "$RUNNER_TEMP/validation_meshes" && cp -r "$RUNNER_TEMP/validation_meshes" "$RUNNER_TEMP/head/build/validation_meshes"
+
+      - name: Run wall-distance programs (pinned base)
+        id: wd_base
+        if: always()
+        continue-on-error: true
+        run: |
+          set -u
+          B="$RUNNER_TEMP/base/build"
+          E="$GITHUB_WORKSPACE/$EVID"
+          S="$E/pr929x_wd_status_base_run$GITHUB_RUN_ID.txt"
+          : > "$S"
+          "$B/cfdx_wall_distance_controlled_benchmark" "$E/pr929x_wd_controlled_base_run$GITHUB_RUN_ID.csv" 16 32 64 > "$E/pr929x_wd_controlled_base_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?; echo "cfdx_wall_distance_controlled_benchmark exit=$rc" | tee -a "$S" "$E/pr929x_wd_controlled_base_run$GITHUB_RUN_ID.log"
+          "$B/cfdx_wall_distance_poisson_manufactured" "$E/pr929x_wd_manufactured_base_run$GITHUB_RUN_ID.csv" > "$E/pr929x_wd_manufactured_base_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?; echo "cfdx_wall_distance_poisson_manufactured exit=$rc" | tee -a "$S" "$E/pr929x_wd_manufactured_base_run$GITHUB_RUN_ID.log"
+          "$B/cfdx_wall_distance_poisson_decomposition" "$E/pr929x_wd_decomposition_base_run$GITHUB_RUN_ID.csv" > "$E/pr929x_wd_decomposition_base_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?; echo "cfdx_wall_distance_poisson_decomposition exit=$rc" | tee -a "$S" "$E/pr929x_wd_decomposition_base_run$GITHUB_RUN_ID.log"
+
+      - name: Run wall-distance programs (pinned head)
+        id: wd_head
+        if: always()
+        continue-on-error: true
+        run: |
+          set -u
+          B="$RUNNER_TEMP/head/build"
+          E="$GITHUB_WORKSPACE/$EVID"
+          S="$E/pr929x_wd_status_head_run$GITHUB_RUN_ID.txt"
+          : > "$S"
+          "$B/cfdx_wall_distance_controlled_benchmark" "$E/pr929x_wd_controlled_head_run$GITHUB_RUN_ID.csv" 16 32 64 > "$E/pr929x_wd_controlled_head_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?; echo "cfdx_wall_distance_controlled_benchmark exit=$rc" | tee -a "$S" "$E/pr929x_wd_controlled_head_run$GITHUB_RUN_ID.log"
+          "$B/cfdx_wall_distance_poisson_manufactured" "$E/pr929x_wd_manufactured_head_run$GITHUB_RUN_ID.csv" > "$E/pr929x_wd_manufactured_head_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?; echo "cfdx_wall_distance_poisson_manufactured exit=$rc" | tee -a "$S" "$E/pr929x_wd_manufactured_head_run$GITHUB_RUN_ID.log"
+          "$B/cfdx_wall_distance_poisson_decomposition" "$E/pr929x_wd_decomposition_head_run$GITHUB_RUN_ID.csv" > "$E/pr929x_wd_decomposition_head_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?; echo "cfdx_wall_distance_poisson_decomposition exit=$rc" | tee -a "$S" "$E/pr929x_wd_decomposition_head_run$GITHUB_RUN_ID.log"
+
+      - name: Run N12 coupled campaign (pinned base)
+        id: n12_base
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ctest --test-dir "$RUNNER_TEMP/base/build" -R '^test_n12_coupled_pressure_velocity_mms$' -N > "$GITHUB_WORKSPACE/$EVID/pr929x_n12_base_testlist_run$GITHUB_RUN_ID.log" 2>&1
+          ctest --test-dir "$RUNNER_TEMP/base/build" -R '^test_n12_coupled_pressure_velocity_mms$' --output-on-failure \
+            --output-junit "$GITHUB_WORKSPACE/$EVID/pr929x_n12_base_junit_run$GITHUB_RUN_ID.xml" \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr929x_n12_base_campaign_run$GITHUB_RUN_ID.log"
+
+      - name: Run N12 coupled campaign (pinned head)
+        id: n12_head
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ctest --test-dir "$RUNNER_TEMP/head/build" -R '^test_n12_coupled_pressure_velocity_mms$' -N > "$GITHUB_WORKSPACE/$EVID/pr929x_n12_head_testlist_run$GITHUB_RUN_ID.log" 2>&1
+          ctest --test-dir "$RUNNER_TEMP/head/build" -R '^test_n12_coupled_pressure_velocity_mms$' --output-on-failure \
+            --output-junit "$GITHUB_WORKSPACE/$EVID/pr929x_n12_head_junit_run$GITHUB_RUN_ID.xml" \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr929x_n12_head_campaign_run$GITHUB_RUN_ID.log"
+
+      - name: Structured fail-closed verdict
+        if: always()
+        env:
+          PIP_OUTCOME: ${{ steps.pip.outcome }}
+          MESHES_OUTCOME: ${{ steps.meshes.outcome }}
+          BASE_BUILD: ${{ steps.build_base.outcome }}
+          HEAD_BUILD: ${{ steps.build_head.outcome }}
+          BASE_WD: ${{ steps.wd_base.outcome }}
+          HEAD_WD: ${{ steps.wd_head.outcome }}
+          BASE_N12: ${{ steps.n12_base.outcome }}
+          HEAD_N12: ${{ steps.n12_head.outcome }}
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+          import xml.etree.ElementTree as ET
+          E = os.path.join(os.environ["GITHUB_WORKSPACE"], "diag-evidence/logs")
+          RUN = os.environ["GITHUB_RUN_ID"]
+          env = os.environ
+          REFS = ["base", "head"]
+          TEST = "test_n12_coupled_pressure_velocity_mms"
+          EXE = {"controlled": "cfdx_wall_distance_controlled_benchmark",
+                 "manufactured": "cfdx_wall_distance_poisson_manufactured",
+                 "decomposition": "cfdx_wall_distance_poisson_decomposition"}
+          NUM = r"[-+]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?"
+
+          def maybe_read(name):
+              p = os.path.join(E, name)
+              if not os.path.exists(p):
+                  return None
+              return open(p, errors="replace").read()
+
+          def wd_exits(ref):
+              txt = maybe_read("pr929x_wd_status_%s_run%s.txt" % (ref, RUN)) or ""
+              mp = {}
+              for m in re.finditer(r"(\S+)\s+exit=(\d+)", txt):
+                  mp[m.group(1)] = int(m.group(2))
+              return mp
+
+          def manufactured_metrics_from(txt):
+              res = {}
+              m = re.search(r"case=single_wall\s+N=(\d+)\s+corrected_phi_l2=(%s)\s+corrected_residual=(%s)" % (NUM, NUM), txt)
+              if m:
+                  res["single_wall_N"] = int(m.group(1))
+                  res["single_wall_corrected_phi_l2"] = float(m.group(2))
+                  res["single_wall_corrected_residual"] = float(m.group(3))
+              s = re.search(r"sphere_poisson_counterexample[^\n]*?reconstructed=(%s)" % NUM, txt)
+              if s:
+                  res["sphere_reconstructed"] = float(s.group(1))
+              return res
+
+          def wd_log(ref, comp):
+              return maybe_read("pr929x_wd_%s_%s_run%s.log" % (comp, ref, RUN)) or ""
+
+          def normalized_fails(txt):
+              # Signature d'echec : lignes contenant FAIL, nombres masques.
+              return sorted(re.sub(NUM, "<num>", l.strip()) for l in txt.splitlines() if "FAIL" in l)
+
+          def plateau_rows(ref):
+              txt = maybe_read("pr929x_wd_controlled_%s_run%s.csv" % (ref, RUN)) or ""
+              return [l for l in txt.splitlines() if l and "poisson" in l.lower()]
+
+          def parse_campaign_txt(txt):
+              # Parseur v7 valide (run 39017567638, 12/12) : padding de points
+              # VARIABLE (3-19), label possible avant ***Exception:, duree terminale.
+              st = {}
+              pat = re.compile(r"Test\s+#\d+:\s+(\S+)\s+\.{3,}\s*([^\n]+?)\s*$", re.M)
+              for m in pat.finditer(txt):
+                  name, raw = m.group(1), m.group(2)
+                  dm = re.search(r"([0-9.]+) sec\s*$", raw)
+                  dur = (dm.group(1) + " sec") if dm else "unknown"
+                  s = raw[:dm.start()].strip() if dm else raw.strip()
+                  if s == "Passed":
+                      key = "Passed"
+                  elif "Timeout" in s:
+                      key = "Timeout"
+                  elif "Not Run" in s:
+                      key = "Not Run"
+                  elif ("Failed" in s or "Exception" in s or "aborted" in s.lower()):
+                      key = "Failed"
+                  else:
+                      key = "UNKNOWN:" + s
+                  st[name] = (key, dur)
+              return st
+
+          def parse_campaign(ref):
+              path = os.path.join(E, "pr929x_n12_%s_campaign_run%s.log" % (ref, RUN))
+              if os.path.exists(path):
+                  return parse_campaign_txt(open(path, errors="replace").read())
+              return {}
+
+          JUNIT_MAP = {"passed": "Passed", "failed": "Failed",
+                        "timeout": "Timeout", "notrun": "Not Run"}
+
+          def junit_tc_status(tc):
+              st = (tc.get("status") or "").strip().lower()
+              has_fail = tc.find("failure") is not None
+              has_err = tc.find("error") is not None
+              has_skip = tc.find("skipped") is not None
+              if st in JUNIT_MAP:
+                  key = JUNIT_MAP[st]
+                  if key == "Passed" and (has_fail or has_err):
+                      return "Failed"
+                  return key
+              if has_skip:
+                  return "Not Run"
+              if has_fail or has_err:
+                  return "Failed"
+              if st in ("", "run", "executed"):
+                  return "Passed"
+              return "JUNIT_STATUS=" + (st or "missing")
+
+          def parse_junit_txt(txt):
+              try:
+                  root = ET.fromstring(txt)
+              except ET.ParseError:
+                  return None
+              res = {}
+              for tc in root.iter("testcase"):
+                  nm = tc.get("name")
+                  if nm:
+                      res[nm] = junit_tc_status(tc)
+              return res
+
+          def parse_junit(ref):
+              path = os.path.join(E, "pr929x_n12_%s_junit_run%s.xml" % (ref, RUN))
+              if not os.path.exists(path):
+                  return {}
+              return parse_junit_txt(open(path, errors="replace").read())
+
+          def junit_compatible(js, ls):
+              return js == ls or (js == "Failed" and ls == "Timeout")
+
+          def n12_metrics(ref):
+              txt = maybe_read("pr929x_n12_%s_campaign_run%s.log" % (ref, RUN)) or ""
+              res = {}
+              fm = re.findall(r"flux_velocity_mismatch=(%s)" % NUM, txt)
+              if fm:
+                  res["flux_velocity_mismatch"] = float(fm[-1])
+              lg = re.findall(r"momentum_residual_relative=(%s)" % NUM, txt)
+              if lg:
+                  res["momentum_residual_relative"] = float(lg[-1])
+                  res["momentum_key"] = "legacy(momentum_residual_relative)"
+              nw = re.findall(r"momentum_residual_reference_relative=(%s)" % NUM, txt)
+              if nw:
+                  res["momentum_residual_reference_relative"] = float(nw[-1])
+                  res["momentum_key"] = "#910(momentum_residual_reference_relative)"
+              res["coupled_summary"] = [l.strip() for l in txt.splitlines() if "COUPLED_MATRIX_SUMMARY" in l][:10]
+              return res
+
+          def rel_diff(a, b):
+              if a == b:
+                  return 0.0
+              denom = max(abs(a), abs(b))
+              if denom == 0.0:
+                  return float("inf")
+              return abs(a - b) / denom
+
+          def selftest():
+              # Fixtures embarquees (regle Steven) : les lignes ci-dessous sont
+              # les lignes REELLES relevees par Steven dans les annotations du
+              # job 117423466542 et le run C #923.
+              man_fix = ("INFO poisson_manufactured case=single_wall N=16 corrected_phi_l2=0.00100291 corrected_residual=8.11007e-12\n"
+                         "FAIL second-order planar closure: case=single_wall N=16 corrected_phi_l2=0.00100291 corrected_residual=8.11007e-12\n"
+                         "sphere_poisson_counterexample: reconstructed=0.57735 exact=1\n")
+              got = manufactured_metrics_from(man_fix)
+              if got.get("single_wall_N") != 16:
+                  return "manufactured fixture failed (N)"
+              if abs(got.get("single_wall_corrected_phi_l2", -1) - 0.00100291) > 1e-12:
+                  return "manufactured fixture failed (phi_l2)"
+              if abs(got.get("single_wall_corrected_residual", -1) - 8.11007e-12) > 1e-18:
+                  return "manufactured fixture failed (residual)"
+              if abs(got.get("sphere_reconstructed", -1) - 0.57735) > 1e-9:
+                  return "manufactured fixture failed (sphere witness)"
+              camp_fix = ("Test  #1: t_pass ... Passed          0.01 sec\n"
+                          "Test  #2: t_timeout ...***Timeout     720.00 sec\n"
+                          "Test  #3: t_exception ...***Exception: SegFault  0.35 sec\n"
+                          "Test #12: test_n12_coupled_pressure_velocity_mms ..................***Failed  0.02 sec\n"
+                          "Test  #4: t_naca ...Subprocess aborted***Exception: 131.90 sec\n"
+                          "Test  #9: t_unknown ......WeirdStatus  1.00 sec\n")
+              gotc = parse_campaign_txt(camp_fix)
+              want = {"t_pass": "Passed", "t_timeout": "Timeout",
+                      "t_exception": "Failed", "test_n12_coupled_pressure_velocity_mms": "Failed",
+                      "t_naca": "Failed"}
+              for k, v in want.items():
+                  if gotc.get(k, ("", ""))[0] != v:
+                      return "campaign parser fixture failed on %s (got %r)" % (k, gotc.get(k))
+              if not gotc.get("t_unknown", ("", ""))[0].startswith("UNKNOWN:"):
+                  return "campaign parser must be fail-closed on unknown status"
+              jfix = [
+                  ('<?xml version="1.0"?><testsuite><testcase name="a" status="passed"><system-out>ok</system-out></testcase></testsuite>', {"a": "Passed"}),
+                  ('<?xml version="1.0"?><testsuite><testcase name="b" status="failed"><failure message="x" type="Exception">out</failure></testcase></testsuite>', {"b": "Failed"}),
+                  ('<?xml version="1.0"?><testsuite><testcase name="c" status="notrun"/></testsuite>', {"c": "Not Run"}),
+                  ('<?xml version="1.0"?><testsuite><testcase name="e" status="failed"/></testsuite>', {"e": "Failed"}),
+              ]
+              for xml, want_d in jfix:
+                  got_d = parse_junit_txt(xml)
+                  if got_d != want_d:
+                      return "junit parser fixture failed (want %r got %r)" % (want_d, got_d)
+              if parse_junit_txt("<not-xml") is not None:
+                  return "junit parser must return None on invalid xml"
+              if (not junit_compatible("Failed", "Timeout")
+                      or junit_compatible("Passed", "Failed")
+                      or junit_compatible("Failed", "Not Run")
+                      or junit_compatible("Not Run", "Passed")):
+                  return "compat rule fixture failed"
+              return None
+
+          verdict = None
+          reasons = []
+          def setv(v):
+              global verdict
+              if verdict is None:
+                  verdict = v
+
+          st_err = selftest()
+          if st_err:
+              setv("INCONCLUSIVE_PARSER_SELFTEST")
+              reasons.append("parser selftest failed: %s" % st_err)
+
+          for key, tag in (("PIP_OUTCOME", "pip"), ("MESHES_OUTCOME", "meshgen")):
+              if env.get(key) not in (None, "success", ""):
+                  setv("INCONCLUSIVE_BUILD")
+                  reasons.append("%s outcome=%s" % (tag, env.get(key)))
+          for key, tag in (("BASE_BUILD", "base"), ("HEAD_BUILD", "head")):
+              if env.get(key) not in (None, "success", ""):
+                  setv("INCONCLUSIVE_BUILD")
+                  reasons.append("%s build outcome=%s" % (tag, env.get(key)))
+
+          exits = {ref: wd_exits(ref) for ref in REFS}
+          wd_exit = {}
+          for comp, exe in EXE.items():
+              wd_exit[comp] = (exits["base"].get(exe), exits["head"].get(exe))
+              if wd_exit[comp][0] is None or wd_exit[comp][1] is None:
+                  setv("INCONCLUSIVE_MISSING_OUTCOME")
+                  reasons.append("wd %s exit code missing (base=%r head=%r)" % (comp, wd_exit[comp][0], wd_exit[comp][1]))
+
+          man = {ref: manufactured_metrics_from(wd_log(ref, "manufactured")) for ref in REFS}
+          for ref in REFS:
+              if "sphere_reconstructed" not in man[ref]:
+                  # Le temoin sphertique s'execute toujours : son absence est un
+                  # defaut d'extraction, pas un etat admissible (fail-closed).
+                  setv("INCONCLUSIVE_MISSING_METRIC")
+                  reasons.append("%s manufactured log: sphere counterexample witness not found" % ref)
+              rc = wd_exit.get("manufactured", (None, None))[0 if ref == "base" else 1]
+              if rc not in (None, 0) and "single_wall_corrected_phi_l2" not in man[ref]:
+                  setv("INCONCLUSIVE_MISSING_METRIC")
+                  reasons.append("%s manufactured failed but single_wall corrected_phi_l2 not extractable" % ref)
+
+          stat = {ref: parse_campaign(ref) for ref in REFS}
+          junit = {ref: parse_junit(ref) for ref in REFS}
+          n12m = {ref: n12_metrics(ref) for ref in REFS}
+          for ref in REFS:
+              tl = maybe_read("pr929x_n12_%s_testlist_run%s.log" % (ref, RUN)) or ""
+              disc = set(m.group(1) for m in re.finditer(r"Test\s+#\d+:\s+(\S+)", tl))
+              if disc != {TEST}:
+                  setv("INCONCLUSIVE_DISCOVERY")
+                  reasons.append("%s n12 discovery=%r" % (ref, sorted(disc)))
+              if TEST not in stat[ref]:
+                  setv("INCONCLUSIVE_MISSING_OUTCOME")
+                  reasons.append("%s no n12 outcome line" % ref)
+          for ref in REFS:
+              for t in (TEST,):
+                  s = stat[ref].get(t, ("", ""))[0]
+                  if s == "Timeout":
+                      setv("INCONCLUSIVE_TIMEOUT")
+                      reasons.append("%s %s TIMEOUT (not a comparable outcome)" % (ref, t))
+                  if s == "Not Run":
+                      setv("INCONCLUSIVE_NOT_RUN")
+                      reasons.append("%s %s NOT RUN" % (ref, t))
+          for ref in REFS:
+              ju = junit[ref]
+              jpath = os.path.join(E, "pr929x_n12_%s_junit_run%s.xml" % (ref, RUN))
+              if ju is None:
+                  setv("INCONCLUSIVE_MISSING_JUNIT")
+                  reasons.append("%s junit unreadable (invalid XML): %s" % (ref, jpath))
+              elif not ju:
+                  if stat[ref]:
+                      setv("INCONCLUSIVE_MISSING_JUNIT")
+                      reasons.append("%s junit missing/empty while campaign log has outcomes: %s" % (ref, jpath))
+              else:
+                  for t in (TEST,):
+                      js = ju.get(t)
+                      if js is None:
+                          setv("INCONCLUSIVE_MISSING_JUNIT")
+                          reasons.append("%s junit has no entry for %s" % (ref, t))
+                      else:
+                          ls = stat[ref].get(t, ("", ""))[0]
+                          if ls and not junit_compatible(js, ls):
+                              setv("INCONCLUSIVE_JUNIT_CONFLICT")
+                              reasons.append("%s %s junit=%s log=%s" % (ref, t, js, ls))
+
+          comp_verdicts = {}
+          if verdict is None:
+              regress = []
+              differs = []
+              identical = []
+              bothpass = []
+              for comp, exe in EXE.items():
+                  eb, eh = wd_exit[comp]
+                  if eb == 0 and eh == 0:
+                      bothpass.append(comp)
+                      comp_verdicts[comp] = "BOTH_PASS"
+                  elif eb == 0 and eh != 0:
+                      regress.append(comp)
+                      comp_verdicts[comp] = "REGRESSION"
+                  elif eb != 0 and eh == 0:
+                      differs.append(comp)
+                      comp_verdicts[comp] = "IMPROVEMENT"
+                  else:
+                      fa = normalized_fails(wd_log("base", comp))
+                      fh = normalized_fails(wd_log("head", comp))
+                      if fa != fh:
+                          differs.append(comp)
+                          comp_verdicts[comp] = "FAILURE_SIGNATURE_DIFFERS"
+                      elif comp == "manufactured":
+                          pa = man["base"].get("single_wall_corrected_phi_l2")
+                          ph = man["head"].get("single_wall_corrected_phi_l2")
+                          if pa is None or ph is None:
+                              setv("INCONCLUSIVE_MISSING_METRIC")
+                              comp_verdicts[comp] = "INCONCLUSIVE_MISSING_METRIC"
+                          elif rel_diff(pa, ph) <= 1e-9:
+                              identical.append(comp)
+                              comp_verdicts[comp] = "IDENTICAL_FAILURE"
+                          else:
+                              differs.append(comp)
+                              comp_verdicts[comp] = "FAILURE_SIGNATURE_DIFFERS"
+                      else:
+                          identical.append(comp)
+                          comp_verdicts[comp] = "IDENTICAL_FAILURE"
+              sb = stat["base"].get(TEST, ("", ""))[0]
+              sh_ = stat["head"].get(TEST, ("", ""))[0]
+              if sb == "Passed" and sh_ == "Passed":
+                  bothpass.append(TEST)
+                  comp_verdicts[TEST] = "BOTH_PASS"
+              elif sb == "Passed" and sh_ != "Passed":
+                  regress.append(TEST)
+                  comp_verdicts[TEST] = "REGRESSION"
+              elif sb != "Passed" and sh_ == "Passed":
+                  differs.append(TEST)
+                  comp_verdicts[TEST] = "IMPROVEMENT"
+              else:
+                  fa_ = n12m["base"].get("flux_velocity_mismatch")
+                  fh_ = n12m["head"].get("flux_velocity_mismatch")
+                  ra_ = (n12m["base"].get("momentum_residual_relative")
+                         or n12m["base"].get("momentum_residual_reference_relative"))
+                  rh_ = (n12m["head"].get("momentum_residual_relative")
+                         or n12m["head"].get("momentum_residual_reference_relative"))
+                  if fa_ is None or fh_ is None or ra_ is None or rh_ is None:
+                      setv("INCONCLUSIVE_MISSING_METRIC")
+                      comp_verdicts[TEST] = "INCONCLUSIVE_MISSING_METRIC"
+                      reasons.append("n12 metric extraction incomplete (flux base=%r head=%r, momentum base=%r head=%r)" % (fa_, fh_, ra_, rh_))
+                  elif rel_diff(fa_, fh_) > 1e-6:
+                      differs.append(TEST)
+                      comp_verdicts[TEST] = "FAILURE_SIGNATURE_DIFFERS"
+                  elif rel_diff(ra_, rh_) > 0.10:
+                      # Les cles momentum different par construction (legacy vs
+                      # #910, normalisations distinctes) : tolerance documentee
+                      # 10 % ; au-dela, l'identite de signature n'est pas
+                      # etablie (fail-closed, regle Steven).
+                      differs.append(TEST)
+                      comp_verdicts[TEST] = "FAILURE_SIGNATURE_DIFFERS"
+                  else:
+                      identical.append(TEST)
+                      comp_verdicts[TEST] = "IDENTICAL_FAILURE"
+              if verdict is None:
+                  if regress:
+                      setv("REGRESSION")
+                      reasons.append("head fails where base passes: %s" % ",".join(regress))
+                  elif differs:
+                      setv("FAILURE_SETS_DIFFER")
+                      reasons.append("outcome/signature changes: %s" % ",".join(sorted(set(differs))))
+                  elif identical:
+                      setv("IDENTICAL_FAILURES")
+                      reasons.append("failures identical on both pinned refs: %s (pre-existence proven at level 2, NOT numerical correctness)" % ",".join(identical))
+                  else:
+                      setv("INCONCLUSIVE_REPRODUCED_NONE")
+                      reasons.append("no failure reproduced in this environment on either ref — nothing comparable")
+
+          report = []
+          report.append("VERDICT: %s" % verdict)
+          report.append("base_sha=%s" % env.get("BASE_SHA_PIN"))
+          report.append("head_sha=%s" % env.get("HEAD_SHA_PIN"))
+          report.append("run_id=%s" % RUN)
+          for r in reasons:
+              report.append("%s" % r)
+          report.append("")
+          report.append("--- per-component report ---")
+          for comp in list(EXE) + [TEST]:
+              report.append("%s: %s" % (comp, comp_verdicts.get(comp, "not-classified")))
+          report.append("")
+          report.append("--- raw metrics (measurements, not gates) ---")
+          for ref in REFS:
+              d = man[ref]
+              report.append("manufactured[%s]: single_wall_N=%s corrected_phi_l2=%s corrected_residual=%s" % (
+                  ref, d.get("single_wall_N"), d.get("single_wall_corrected_phi_l2"), d.get("single_wall_corrected_residual")))
+              report.append("manufactured[%s]: sphere_poisson_counterexample reconstructed=%s (TEMOIN ANALYTIQUE VOLONTAIRE : le test impose 1/sqrt(3), il echoue si la valeur n'est PAS 1/sqrt(3) ; ce n'est pas un ecart)" % (ref, d.get("sphere_reconstructed")))
+          for ref in REFS:
+              m = n12m[ref]
+              report.append("n12[%s]: flux_velocity_mismatch=%s momentum_key=%s momentum=%s" % (
+                  ref, m.get("flux_velocity_mismatch"), m.get("momentum_key"),
+                  m.get("momentum_residual_relative") or m.get("momentum_residual_reference_relative")))
+              for l in m.get("coupled_summary", []):
+                  report.append("n12[%s]: %s" % (ref, l))
+          report.append("")
+          report.append("--- poisson plateau (controlled benchmark, rows containing poisson) ---")
+          for ref in REFS:
+              for row in plateau_rows(ref):
+                  report.append("plateau[%s]: %s" % (ref, row))
+          report.append("")
+          report.append("INTERPRETATION: un echec IDENTIQUE base/head prouve l'attribution pre-existante (niveau 2). Une trace identique n'est PAS une preuve de correction numerique. INCONCLUSIVE != PASS.")
+          comp_path = os.path.join(E, "pr929x_comparison_run%s.txt" % RUN)
+          with open(comp_path, "w") as f:
+              f.write("\n".join(report) + "\n")
+          meta_path = os.path.join(E, "pr929x_meta_run%s.txt" % RUN)
+          with open(meta_path, "a") as f:
+              f.write("base_wd_outcome=%s\n" % env.get("BASE_WD"))
+              f.write("head_wd_outcome=%s\n" % env.get("HEAD_WD"))
+              f.write("base_n12_outcome=%s\n" % env.get("BASE_N12"))
+              f.write("head_n12_outcome=%s\n" % env.get("HEAD_N12"))
+              f.write("verdict=%s\n" % verdict)
+          print("\n".join(report))
+          PY
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: PR 929 exact-HEAD comparison run $GITHUB_RUN_ID — wall-distance + N12 (#929) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Post verdict comment to PR #929 (best effort)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -u
+          E="$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "## Comparaison exact-HEAD wall-distance + N12 — run $GITHUB_RUN_ID — verdict : $(sed -n 's/^VERDICT: //p' "$E/pr929x_comparison_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo UNKNOWN)"
+            echo
+            echo "Réfs épinglées : base \`$BASE_SHA_PIN\` (commit master) — head \`$HEAD_SHA_PIN\` (head #929)."
+            echo "Evidence : \`diag-evidence/logs/pr929x_*_run$GITHUB_RUN_ID.*\` sur \`ci/long-campaign-diagnostics\`"
+            echo
+            echo "Règles d'interprétation (Steven) : un échec **identique** base/head prouve uniquement l'attribution **pré-existante** (niveau 2) — une trace identique n'est PAS une preuve de correction numérique. Toute différence de protocole, référence manquante ou métrique non extractible => INCONCLUSIVE, jamais PASS."
+            echo
+            echo '~~~'
+            cat "$E/pr929x_comparison_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "(verdict indisponible)"
+            echo '~~~'
+          } > /tmp/comment.md 2>/dev/null || true
+          if [ ! -s /tmp/comment.md ]; then echo "(comment vide)" > /tmp/comment.md; fi
+          jq -n --rawfile body /tmp/comment.md '{body: $body}' > /tmp/payload.json
+          http=$(curl -sS --fail-with-body -o /dev/null -w '%{http_code}' \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/issues/929/comments" \
+            -d @/tmp/payload.json) || http=failed
+          echo "POST to #929: $http"
+          exit 0
+
+      - name: Final verdict (green only for IDENTICAL_FAILURES)
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          if grep -q "^VERDICT: IDENTICAL_FAILURES" "$E/pr929x_comparison_run$GITHUB_RUN_ID.txt" 2>/dev/null; then
+            echo "verdict: IDENTICAL_FAILURES — échecs identiques sur les deux réfs épinglées (attribution pré-existante prouvée, niveau 2 ; PAS une preuve de correction numérique)"
+          else
+            v=$(sed -n 's/^VERDICT: //p' "$E/pr929x_comparison_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "MISSING_VERDICT_FILE")
+            echo "::error::verdict=$v — preuve non concluante ou différence/régression, voir diag-evidence/logs/pr929x_comparison_run$GITHUB_RUN_ID.txt"
+            exit 1
+          fi
