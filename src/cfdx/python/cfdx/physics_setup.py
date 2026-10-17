@@ -1,9 +1,9 @@
 """Structured setup schemas for supported CFDX physics controls.
 
 This is an application/UI schema, not a second solver implementation. The
-turbulence catalogue deliberately distinguishes solver-ready transport models
-from algebraic/kernel-only models so the GUI never presents an unvalidated
-kernel as a production solver option.
+turbulence catalogue distinguishes production-ready models from standalone
+transport components and kernel-only models. Component-ready RANS transport
+APIs are hidden until their coupling into the production momentum loop exists.
 """
 from __future__ import annotations
 
@@ -263,6 +263,11 @@ def recommend_turbulence_models(
         elif key == "KOMEGA":
             reasons.append("two-equation near-wall-oriented RANS alternative")
 
+        if turbulence_model(key).status is TurbulenceStatus.COMPONENT_READY:
+            warnings.append(
+                "standalone transport API only; production momentum coupling is not implemented, "
+                "so this model is not selectable in cfdx_production_solver yet"
+            )
         if context.transition_expected:
             warnings.append("transition transport is not yet implemented; these are fully turbulent RANS models")
         if context.target_y_plus is not None and context.target_y_plus > 30:
