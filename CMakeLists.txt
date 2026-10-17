@@ -707,6 +707,20 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     if(Python3_Interpreter_FOUND)
         set_tests_properties(test_channel_quick PROPERTIES DEPENDS test_generate_2d_validation_meshes)
     endif()
+
+    # Diagnostic-only manufactured-gradient comparison for wall-shear reconstruction.
+    # Kept separate from the production NACA force qualification until its error
+    # metrics and near-wall behavior have been reviewed.
+    add_executable(test_wall_shear_gradient_audit tests/validation/test_wall_shear_gradient_audit.cpp)
+    target_link_libraries(test_wall_shear_gradient_audit PRIVATE cfdx_core)
+    add_test(NAME test_wall_shear_gradient_audit
+        COMMAND test_wall_shear_gradient_audit ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5)
+    set_tests_properties(test_wall_shear_gradient_audit PROPERTIES
+        LABELS "qualification;validation;gradient-audit")
+    if(Python3_Interpreter_FOUND)
+        set_tests_properties(test_wall_shear_gradient_audit PROPERTIES
+            DEPENDS test_generate_2d_validation_meshes)
+    endif()
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_channel_qualification COMMAND test_channel_qualification ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n32.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n64.h5)
         set_tests_properties(test_channel_qualification PROPERTIES LABELS "qualification;validation;long")
