@@ -10,9 +10,21 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-_ALLOWED_CATEGORIES = frozenset({"native_field", "derived_field", "mesh_quality", "probe", "integration", "engineering", "report"})
+_ALLOWED_CATEGORIES = frozenset(
+    {
+        "native_field",
+        "derived_field",
+        "mesh_quality",
+        "probe",
+        "integration",
+        "engineering",
+        "report",
+    }
+)
 _ALLOWED_AVAILABILITY = frozenset({"available", "conditional", "unavailable"})
-_ALLOWED_STATUS = frozenset({"planned", "implemented", "verified", "validated", "qualified"})
+_ALLOWED_STATUS = frozenset(
+    {"planned", "implemented", "verified", "validated", "qualified"}
+)
 
 
 @dataclass(frozen=True)
@@ -36,7 +48,9 @@ class PostProcessingSpec:
         if self.category not in _ALLOWED_CATEGORIES:
             raise ValueError(f"unsupported post-processing category: {self.category!r}")
         if self.availability not in _ALLOWED_AVAILABILITY:
-            raise ValueError(f"unsupported post-processing availability: {self.availability!r}")
+            raise ValueError(
+                f"unsupported post-processing availability: {self.availability!r}"
+            )
         if self.validation_status not in _ALLOWED_STATUS:
             raise ValueError(
                 f"unsupported post-processing validation status: {self.validation_status!r}"
@@ -67,14 +81,18 @@ class PostProcessingRegistry:
 
     def register(self, spec: PostProcessingSpec) -> None:
         if spec.stable_id in self._specs:
-            raise ValueError(f"post-processing stable_id already registered: {spec.stable_id!r}")
+            raise ValueError(
+                f"post-processing stable_id already registered: {spec.stable_id!r}"
+            )
         self._specs[spec.stable_id] = spec
 
     def get(self, stable_id: str) -> PostProcessingSpec:
         try:
             return self._specs[stable_id]
         except KeyError as exc:
-            raise KeyError(f"unknown post-processing capability: {stable_id!r}") from exc
+            raise KeyError(
+                f"unknown post-processing capability: {stable_id!r}"
+            ) from exc
 
     def all(self) -> tuple[PostProcessingSpec, ...]:
         return tuple(self._specs[key] for key in sorted(self._specs))
