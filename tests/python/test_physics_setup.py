@@ -34,7 +34,9 @@ def test_turbulence_catalog_exposes_all_current_model_states():
     } <= keys
     assert turbulence_model("SST").status is TurbulenceStatus.COMPONENT_READY
     assert turbulence_model("KEPSILON").status is TurbulenceStatus.COMPONENT_READY
-    assert turbulence_model("SPALART_ALLMARAS").status is TurbulenceStatus.COMPONENT_READY
+    assert (
+        turbulence_model("SPALART_ALLMARAS").status is TurbulenceStatus.COMPONENT_READY
+    )
     assert {
         model.key
         for model in TURBULENCE_CATALOG
