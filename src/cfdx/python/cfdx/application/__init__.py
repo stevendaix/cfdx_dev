@@ -34,7 +34,13 @@ from .properties import PropertyState, properties_for_selection, set_property
 from ..setup_schema import SetupField, SetupDomain, SetupSchema, build_setup_schema, setup_fields_for_selection
 from .run_center import RunCenterModel, RunCenterState
 from .results import DisplayObject, ResultDataset, ResultFrameState, ResultsState, build_results_state
-from .postprocessing import PostProcessingRegistry, PostProcessingSpec, build_post_processing_registry
+from .postprocessing import (
+    FieldDataset,
+    PostProcessingRegistry,
+    PostProcessingSpec,
+    build_post_processing_registry,
+    execute_derived,
+)
 
 __all__ = [
     "Application",

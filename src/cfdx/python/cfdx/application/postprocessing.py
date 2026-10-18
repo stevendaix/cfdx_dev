@@ -3,17 +3,98 @@
 The registry is metadata only: existing numerical/post-processing implementations remain
 authoritative. GUI and other frontends enumerate this registry instead of maintaining
 their own lists of derived fields, mesh-quality metrics or probe quantities.
+
+The registry entries are *capability declarations*. A spec's ``availability`` is
+"available" only when the quantity can actually be produced from a real production
+dataset; "conditional" means it is computable but only from a richer artifact (a DAT
+checkpoint) than the readable VTU result series. The registry never computes a value:
+:func:`execute_derived` is the executable counterpart, and it is intentionally kept
+separate so the registry stays a pure metadata contract that frontends can enumerate
+without importing the computation layer.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Protocol
+
+from ..derived import derived_vector_magnitude
 
 
-_ALLOWED_CATEGORIES = frozenset({"native_field", "derived_field", "mesh_quality", "probe", "integration", "engineering", "report"})
+class FieldDataset(Protocol):
+    """Minimal read interface for the dataset a derived field is computed over."""
+
+    def get(self, name: str) -> object | None: ...
+
+    def names(self) -> tuple[str, ...]: ...
+
+
+def _vector_field(dataset: object, name: str) -> tuple[tuple[float, ...], ...]:
+    """Read a vector field as a tuple of per-cell component tuples.
+
+    The production solver stores ``U`` as one cell field with three components
+    per cell (``Field<double, Location::CELL>(n, "U", "m/s", 3)`` in
+    ``apps/production_solver/main.cpp``), so a magnitude over the velocity must
+    consume the vector array component-wise rather than three separately named
+    scalars.
+    """
+    getter = getattr(dataset, "get", None)
+    if not callable(getter):
+        raise TypeError("dataset must expose a .get(name) accessor")
+    raw = getter(name)
+    if raw is None:
+        raise KeyError(name)
+    if not (
+        isinstance(raw, (list, tuple)) and raw and isinstance(raw[0], (list, tuple))
+    ):
+        raise TypeError(f"field {name!r} is not a vector field")
+    return tuple(tuple(float(value) for value in cell) for cell in raw)
+
+
+@dataclass(frozen=True)
+class _DerivedExecutor:
+    stable_id: str
+    source_field: str
+    func: object
+
+
+_DERIVED_EXECUTABLE: dict[str, _DerivedExecutor] = {
+    "derived:u_magnitude": _DerivedExecutor(
+        "derived:u_magnitude", "U", derived_vector_magnitude
+    ),
+}
+
+
+def execute_derived(stable_id: str, dataset: FieldDataset) -> tuple[float, ...]:
+    """Compute a declared derived field from a real dataset array.
+
+    Only stable_ids declared in :data:`_DERIVED_EXECUTABLE` are accepted; every
+    other id raises ``KeyError`` so a frontend cannot silently compute an
+    unregistered quantity. The function performs no numerical tolerance checks:
+    it is a pure arithmetic helper, and validation is the caller's responsibility.
+    """
+    spec = _DERIVED_EXECUTABLE.get(stable_id)
+    if spec is None:
+        raise KeyError(f"no executable derived field for: {stable_id!r}")
+    return spec.func(_vector_field(dataset, spec.source_field))
+
+
+_ALLOWED_CATEGORIES = frozenset(
+    {
+        "native_field",
+        "derived_field",
+        "mesh_quality",
+        "probe",
+        "integration",
+        "engineering",
+        "report",
+    }
+)
 _ALLOWED_AVAILABILITY = frozenset({"available", "conditional", "unavailable"})
-_ALLOWED_STATUS = frozenset({"planned", "implemented", "verified", "validated", "qualified"})
+_ALLOWED_STATUS = frozenset(
+    {"planned", "implemented", "verified", "validated", "qualified"}
+)
 
 
 @dataclass(frozen=True)
@@ -37,7 +118,9 @@ class PostProcessingSpec:
         if self.category not in _ALLOWED_CATEGORIES:
             raise ValueError(f"unsupported post-processing category: {self.category!r}")
         if self.availability not in _ALLOWED_AVAILABILITY:
-            raise ValueError(f"unsupported post-processing availability: {self.availability!r}")
+            raise ValueError(
+                f"unsupported post-processing availability: {self.availability!r}"
+            )
         if self.validation_status not in _ALLOWED_STATUS:
             raise ValueError(
                 f"unsupported post-processing validation status: {self.validation_status!r}"
@@ -68,14 +151,18 @@ class PostProcessingRegistry:
 
     def register(self, spec: PostProcessingSpec) -> None:
         if spec.stable_id in self._specs:
-            raise ValueError(f"post-processing stable_id already registered: {spec.stable_id!r}")
+            raise ValueError(
+                f"post-processing stable_id already registered: {spec.stable_id!r}"
+            )
         self._specs[spec.stable_id] = spec
 
     def get(self, stable_id: str) -> PostProcessingSpec:
         try:
             return self._specs[stable_id]
         except KeyError as exc:
-            raise KeyError(f"unknown post-processing capability: {stable_id!r}") from exc
+            raise KeyError(
+                f"unknown post-processing capability: {stable_id!r}"
+            ) from exc
 
     def all(self) -> tuple[PostProcessingSpec, ...]:
         return tuple(self._specs[key] for key in sorted(self._specs))
@@ -116,7 +203,13 @@ def build_post_processing_registry() -> PostProcessingRegistry:
                 category="native_field",
                 units="m/s",
                 inputs=(),
-                availability="available",
+                # The production solver's per-iteration VTU frames carry pressure
+                # only (see ``apps/production_solver/main.cpp``: the
+                # ``iteration_output_callback`` writes ``{{"p", pressure}}``).
+                # Velocity is available through a loaded DAT checkpoint, not
+                # through the readable result series, so the GUI must not
+                # advertise it as a selectable VTU field.
+                availability="conditional",
                 computation_owner="cfdx::core::field",
                 validation_status="verified",
             ),
@@ -125,9 +218,9 @@ def build_post_processing_registry() -> PostProcessingRegistry:
                 name="Velocity magnitude",
                 category="derived_field",
                 units="m/s",
-                inputs=("u_x", "u_y", "u_z"),
-                availability="available",
-                computation_owner="cfdx.python.derived.derived_magnitude",
+                inputs=("U",),
+                availability="conditional",
+                computation_owner="cfdx.python.application.postprocessing.execute_derived",
                 validation_status="verified",
             ),
             PostProcessingSpec(
