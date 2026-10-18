@@ -773,13 +773,13 @@ int main()
         // Unreachable gates: the monitor normalizes the metric by this
         // solve's first sample, so a 1e-24 gate can never be satisfied
         // and CONVERGED can never fire. The pathological knobs are the
-        // relaxation factors only: alpha_u = 0.02, alpha_p = 0.01 (the
-        // CI-measured slow mode contraction of 0.99122/0.99208 per
-        // iteration at alpha_u = 0.7 is driven by the momentum
-        // predictor, exactly linear in alpha_u, so the per-iteration
-        // improvement drops to ~2.5e-4, below the 1e-3 stagnation
-        // threshold). The inner linear settings (1e-9 / 1000) keep
-        // their production values.
+        // relaxation factors only: alpha_u = 0.005, alpha_p = 0.01.
+        // The previous alpha_u=0.02 run reached MAX_ITERATIONS because its
+        // late metric contraction remained just above the existing
+        // stagnation threshold. This lower test-only relaxation is intended
+        // to produce a flat envelope; the assertions below and CI evidence
+        // must confirm the status. Inner linear settings (1e-9 / 1000)
+        // remain at their production values.
         c.coupling.alpha_u = 0.005;
         c.coupling.alpha_p = 0.01;
         c.convergence.absolute_tolerance = 1e-24;
