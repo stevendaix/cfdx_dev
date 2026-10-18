@@ -21,8 +21,11 @@ inline WallSurface wall_surface_from_mesh(
     if (mesh.n_points() == 0 || mesh.n_faces() == 0 || mesh.n_cells() == 0)
         throw std::invalid_argument("wall_surface_from_mesh: mesh is empty");
     if (!mesh.faces().is_consistent() ||
-        !mesh.faces().indices_valid(mesh.n_points()))
-        throw std::invalid_argument("wall_surface_from_mesh: invalid face connectivity");
+        !mesh.faces().indices_valid(mesh.n_points()) ||
+        mesh.ownership().size() != mesh.n_faces() ||
+        !mesh.boundary().is_consistent(mesh.n_faces()))
+        throw std::invalid_argument(
+            "wall_surface_from_mesh: invalid face, ownership, or patch connectivity");
 
     std::set<std::string> requested;
     for (const auto& name : patch_names) {
