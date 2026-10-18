@@ -31,8 +31,8 @@ def test_setup_panel_exposes_physics_controls_and_applies_model():
 
 
 def test_setup_panel_turbulence_filters_to_solver_ready_models():
-    from PySide6.QtWidgets import QApplication
     from cfdx.setup_panel import CaseSetupPanel
+    from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
     session = CFDXSession()
@@ -77,9 +77,9 @@ def test_setup_panel_routes_physics_diagnostic_to_field_widget():
 
 
 def test_setup_panel_selects_tab_for_material_boundary_and_initialization_diagnostics():
-    from PySide6.QtWidgets import QApplication
     from cfdx.setup_model import SetupDiagnostic
     from cfdx.setup_panel import CaseSetupPanel
+    from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
     session = CFDXSession()
