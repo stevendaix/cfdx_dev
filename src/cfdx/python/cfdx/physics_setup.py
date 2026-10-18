@@ -613,7 +613,7 @@ def physics_spec(key: str) -> PhysicsSpec:
 
 def turbulence_model_from_case(values: dict[str, object]) -> dict[str, object]:
     """Normalize legacy flat turbulence settings to the structured contract."""
-    model = str(values.get("model", "SST")).upper()
+    model = str(values.get("model", "LAMINAR")).upper()
     spec = turbulence_model(model)
     family = spec.family.value.upper()
     return {
