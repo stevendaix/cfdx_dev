@@ -1,11 +1,11 @@
 import pytest
 
+from cfdx import CFDXSession
+
 PySide6 = pytest.importorskip(
     "PySide6",
     reason="GUI tests require the optional [gui] dependencies",
 )
-
-from cfdx import CFDXSession
 
 
 def test_setup_panel_exposes_physics_controls_and_applies_model():
