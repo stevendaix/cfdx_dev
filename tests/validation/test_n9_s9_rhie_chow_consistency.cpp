@@ -143,6 +143,51 @@ static double rc_correction(std::size_t face,
     return phi_interp(face) - phi_rc(face);
 }
 
+static Mesh make_two_cell_channel_oblique()
+{
+    Mesh m;
+    m.points().resize(12);
+    constexpr double shear = 0.35;
+    const double xyz[12][3] = {
+        {0,0,0},{1,0,0},{1,1,0},{0,1,0},
+        {0,0,1},{1,0,1},{1,1,1},{0,1,1},
+        {2,0,0},{2,1,0},{2,0,1},{2,1,1}
+    };
+    for (std::size_t i = 0; i < 12; ++i)
+        m.points().set(i, xyz[i][0] + shear * xyz[i][1],
+                       xyz[i][1], xyz[i][2]);
+
+    m.faces().push_face({0,3,7,4});
+    m.faces().push_face({1,2,6,5}); // Internal face is non-orthogonal to C_O C_N.
+    m.faces().push_face({8,9,11,10});
+    m.faces().push_face({0,1,5,4});
+    m.faces().push_face({3,7,6,2});
+    m.faces().push_face({0,3,2,1});
+    m.faces().push_face({4,5,6,7});
+    m.faces().push_face({1,8,10,5});
+    m.faces().push_face({2,6,11,9});
+    m.faces().push_face({1,2,9,8});
+    m.faces().push_face({5,10,11,6});
+
+    m.ownership().resize(11);
+    for (std::size_t f = 0; f < 11; ++f) {
+        const auto owner = (f == 2 || f >= 7) ? 1 : 0;
+        m.ownership().set_owner(f, owner);
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    m.ownership().set_owner(1, 0);
+    m.ownership().set_neighbour(1, 1);
+    m.cells().push_cell({0,1,3,4,5,6});
+    m.cells().push_cell({1,2,7,8,9,10});
+
+    Patch wall;
+    wall.name = "wall";
+    wall.type = PatchType::WALL;
+    wall.face_ids = {0,2,3,4,5,6,7,8,9,10};
+    m.boundary().add_patch(wall);
+    return m;
+}
+
 int main()
 {
     run_case("n9_s9_rhie_chow_linear_pressure_consistency", [] {
@@ -445,6 +490,302 @@ int main()
         const double expected =
             1.0 * dAU_f * ((p(1) - p(0)) / d) * Sf_dot_e;
         EXPECT_NEAR(corr, expected, 1e-12);
+    });
+
+
+    run_case("n9_s9_pressure_matrix_coefficient_matches_rhie_chow_on_skew_face", [] {
+        // The implicit pressure matrix must use the same centre-line
+        // projection as rhie_chow_pressure_flux_internal(). On this skew face
+        // d points along x while Sf has a tangential y component. The
+        // directional inverse diagonal is intentionally anisotropic so that
+        // projecting it on Sf (rather than d) is also detected.
+        const Vec3 dvec{1.0, 0.0, 0.0};
+        const Vec3 Sf{1.0, 0.4, 0.0};
+        const Vec3 dAU_diagonal{1.0, 4.0, 9.0};
+
+        const double coefficient =
+            pressure_face_orthogonal_coefficient(Sf, dvec, dAU_diagonal);
+        EXPECT_NEAR(coefficient, 1.0, 1e-12);
+
+        const double area = Sf.mag();
+        const Vec3 face_normal{Sf.x / area, Sf.y / area, Sf.z / area};
+        const double old_face_normal_rfn =
+            dAU_diagonal.x * face_normal.x * face_normal.x +
+            dAU_diagonal.y * face_normal.y * face_normal.y +
+            dAU_diagonal.z * face_normal.z * face_normal.z;
+        const double old_area_over_distance = old_face_normal_rfn * area / dvec.mag();
+
+        // This is deliberately not a loose numerical tolerance: the old
+        // area/d plus face-normal projection differs by more than 0.5 on this
+        // analytic geometry, while the corrected coefficient is exactly 1.
+        EXPECT_TRUE(std::abs(old_area_over_distance - coefficient) > 0.4);
+
+        // Orthogonal limit: retain the previous coefficient exactly even for
+        // anisotropic momentum response.
+        const double orthogonal = pressure_face_orthogonal_coefficient(
+            Vec3{1.0, 0.0, 0.0}, dvec, dAU_diagonal);
+        EXPECT_NEAR(orthogonal, 1.0, 1e-12);
+    });
+
+
+    run_case("n9_s9_rhie_chow_skewed_face_uses_shared_implicit_coefficient", [] {
+        const Mesh mesh = make_two_cell_channel();
+        auto geometry = build_fv_geometry(mesh);
+        geometry.face_area_vectors[1].y = 0.4;
+        // Rotate the centre-line as well: anisotropic response then couples
+        // the centre-line and tangential components in global coordinates.
+        geometry.cell_centres[1].y += 0.3;
+
+        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        Field<double, Location::CELL> grad_p(2, "grad_p", "Pa/m", 3);
+        p(0) = 0.0;
+        p(1) = 0.6;
+        // A linear tangential pressure gradient with anisotropic dAU exposes
+        // whether the deferred term preserves the full face flux.
+        grad_p.set(0, 0.0, 2.0, 0.0);
+        grad_p.set(1, 0.0, 2.0, 0.0);
+
+        std::array<std::vector<double>, 3> rAU{
+            std::vector<double>(mesh.n_cells(), 1.0),
+            std::vector<double>(mesh.n_cells(), 4.0),
+            std::vector<double>(mesh.n_cells(), 9.0)};
+        const Vec3 dvec = geometry.cell_centres[1] - geometry.cell_centres[0];
+        const Vec3 Sf = geometry.face_area_vectors[1];
+        const Vec3 dAU_face{
+            0.5 * (geometry.cell_volumes[0] * rAU[0][0] +
+                   geometry.cell_volumes[1] * rAU[0][1]),
+            0.5 * (geometry.cell_volumes[0] * rAU[1][0] +
+                   geometry.cell_volumes[1] * rAU[1][1]),
+            0.5 * (geometry.cell_volumes[0] * rAU[2][0] +
+                   geometry.cell_volumes[1] * rAU[2][1])};
+        const double d = dvec.mag();
+        const Vec3 e{dvec.x / d, dvec.y / d, dvec.z / d};
+        const double orthogonal_area = Sf.dot(e);
+        const Vec3 gp{0.0, 2.0, 0.0};
+        const double rfn = dAU_face.x * e.x * e.x +
+                           dAU_face.y * e.y * e.y +
+                           dAU_face.z * e.z * e.z;
+        const double implicit = pressure_face_orthogonal_coefficient(
+            Sf, dvec, dAU_face) * (p(1) - p(0));
+        const double full_face_flux = dAU_face.x * gp.x * Sf.x +
+                                      dAU_face.y * gp.y * Sf.y +
+                                      dAU_face.z * gp.z * Sf.z;
+        const double deferred = full_face_flux -
+                               rfn * gp.dot(e) * orthogonal_area;
+        const double expected = implicit + deferred;
+        EXPECT_NEAR(expected, full_face_flux, 1e-12);
+        const double actual = rhie_chow_pressure_flux_internal(
+            mesh, geometry, 1, p, grad_p, rAU, 1.0);
+        EXPECT_NEAR(actual, expected, 1e-12);
+    });
+
+    run_case("n9_s9_skew_boundary_deferred_flux_preserves_linear_pressure", [] {
+        // A prescribed boundary pressure lies along an oblique centre-to-face
+        // vector. The implicit jump plus deferred remainder must reproduce the
+        // full anisotropic pressure-response flux for a linear pressure field.
+        const Vec3 Sf{1.0, 0.4, 0.0};
+        const Vec3 dvec{1.0, 0.3, 0.0};
+        const Vec3 dAU{1.0, 4.0, 9.0};
+        const Vec3 grad_p{0.0, 2.0, 0.0};
+        const double pressure_jump = grad_p.dot(dvec);
+        const double implicit = pressure_face_orthogonal_coefficient(
+            Sf, dvec, dAU) * pressure_jump;
+        const double deferred = pressure_face_nonorthogonal_flux(
+            Sf, dvec, dAU, grad_p);
+        const double full_flux = dAU.x * grad_p.x * Sf.x +
+                                 dAU.y * grad_p.y * Sf.y +
+                                 dAU.z * grad_p.z * Sf.z;
+        EXPECT_NEAR(implicit + deferred, full_flux, 1e-12);
+        EXPECT_TRUE(std::abs(deferred) > 1.0);
+    });
+
+
+    run_case("n9_s9_rhie_chow_oblique_3d_face_operator_and_relaxation_scaling", [] {
+        // An affine shear creates a valid 3D hexahedral mesh whose internal
+        // face normal is not parallel to the owner-neighbour centre vector.
+        // For an exact linear pressure field, the production face operator
+        // (#923 contract: implicit orthogonal coefficient plus deferred
+        // non-orthogonal flux) must return the full anisotropic directional
+        // flux rho * sum_d dAU_d * grad_d(p) * Sf_d, with
+        // dAU_d = 0.5*(V_P*rAU_d[P] + V_N*rAU_d[N]). The complete pressure
+        // flux must then scale linearly with the relaxed inverse momentum
+        // diagonal; no extra alpha_u factor belongs in Rhie-Chow.
+        const Mesh mesh = make_two_cell_channel_oblique();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        Field<double, Location::CELL> grad_p(2, "grad_p", "Pa/m", 3);
+        const Vec3 exact_gradient{2.0, -1.25, 0.75};
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            const Vec3 centre = geometry.cell_centres[c];
+            p(c) = exact_gradient.dot(centre);
+            grad_p.set(c, exact_gradient.x, exact_gradient.y, exact_gradient.z);
+        }
+
+        const Vec3 Sf = geometry.face_area_vectors[1];
+        const Vec3 dvec = geometry.cell_centres[1] - geometry.cell_centres[0];
+        const double d = dvec.mag();
+        const Vec3 e{dvec.x / d, dvec.y / d, dvec.z / d};
+        const double orthogonal_area = Sf.dot(e);
+        const Vec3 Snon = Sf - e * orthogonal_area;
+        EXPECT_TRUE(Snon.mag() > 1e-3);
+        EXPECT_TRUE(std::abs(exact_gradient.dot(Snon)) > 1e-3);
+
+        std::array<std::vector<double>, 3> rAU{
+            std::vector<double>{0.7, 1.3},
+            std::vector<double>{1.1, 0.6},
+            std::vector<double>{0.9, 1.8}};
+        constexpr double rho = 1.7;
+        const double actual = rhie_chow_pressure_flux_internal(
+            mesh, geometry, 1, p, grad_p, rAU, rho);
+
+        const double cx = 0.5 * (geometry.cell_volumes[0] * rAU[0][0] +
+                                 geometry.cell_volumes[1] * rAU[0][1]);
+        const double cy = 0.5 * (geometry.cell_volumes[0] * rAU[1][0] +
+                                 geometry.cell_volumes[1] * rAU[1][1]);
+        const double cz = 0.5 * (geometry.cell_volumes[0] * rAU[2][0] +
+                                 geometry.cell_volumes[1] * rAU[2][1]);
+        // Oracle adapted to the #923 operator contract: the implicit
+        // orthogonal coefficient plus the deferred non-orthogonal flux
+        // equals the full directional tensor contraction for a linear
+        // pressure field.
+        const double expected = rho * (cx * exact_gradient.x * Sf.x +
+                                       cy * exact_gradient.y * Sf.y +
+                                       cz * exact_gradient.z * Sf.z);
+        EXPECT_NEAR(actual, expected, 1e-12);
+
+        constexpr double alpha_u = 0.4;
+        const auto relaxed_rAU = scale_rAU(rAU, alpha_u);
+        const double relaxed_actual = rhie_chow_pressure_flux_internal(
+            mesh, geometry, 1, p, grad_p, relaxed_rAU, rho);
+        EXPECT_NEAR(relaxed_actual, alpha_u * actual, 1e-12);
+    });
+
+    run_case("n9_s9_flux_velocity_mismatch_detects_known_inconsistency", [] {
+        // Sensitivity proof for the restored independent audit channel:
+        // phi_U (plain interpolation of the corrected velocity) and phi_RC
+        // (authoritative Rhie-Chow flux) are two independent paths. For the
+        // checkerboard pressure mode the channels MUST disagree by the known
+        // Rhie-Chow correction (the channel is not blind); for the consistent
+        // linear pressure field the internal-face mismatch MUST read zero
+        // (the channel does not report an artifact when the identity holds).
+        const Mesh mesh = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        const auto rAU = unit_rAU(mesh.n_cells());
+
+        Field<double, Location::CELL> U(2, "U", "m/s", 3);
+        U.fill(0.0);
+        Field<double, Location::CELL> p_check(2, "p", "Pa", 1);
+        p_check(0) = 1.0;
+        p_check(1) = -1.0;
+        const auto phi_rc_check = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_check, rAU, 1.0, ubc, pbc);
+        const auto phi_u = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+        const double mismatch_check = std::abs(phi_rc_check(1) - phi_u(1));
+        EXPECT_TRUE(mismatch_check > 1e-12);
+
+        Field<double, Location::CELL> p_linear(2, "p", "Pa", 1);
+        p_linear(0) = 1.0;
+        p_linear(1) = 3.0;
+        const auto phi_rc_linear = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_linear, rAU, 1.0, ubc, pbc);
+        EXPECT_NEAR(phi_rc_linear(1), phi_u(1), 1e-12);
+    });
+
+    run_case("n9_s9_flux_velocity_mismatch_boundary_channel_sees_expected_correction", [] {
+        // The boundary channel must not be blind either: on a fixed-pressure
+        // boundary face the two reconstruction paths differ by exactly the
+        // Rhie-Chow boundary correction
+        // rho*(implicit_coeff*(p_bc - p_P) + deferred), evaluated with the
+        // owner-cell dAU = V*rAU and the owner-centre -> face-centre
+        // distance, using the same production coefficient helpers.
+        const Mesh mesh = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+
+        Field<double, Location::CELL> U(2, "U", "m/s", 3);
+        U.fill(0.0);
+        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        p(0) = 1.0;
+        p(1) = 3.0;
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::FIXED_VALUE, 0.5, 0.0};
+
+        const auto rAU = unit_rAU(mesh.n_cells());
+        const auto phi_rc = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+        const auto phi_u = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+
+        const std::size_t f = 0;  // x = 0 plane, owner = cell 0
+        const std::size_t o = mesh.ownership().owner(f);
+        const Vec3 Sf = geometry.face_area_vectors[f];
+        const Vec3 dvec = geometry.face_centres[f] - geometry.cell_centres[o];
+        const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
+        const Vec3 dAU_boundary{
+            geometry.cell_volumes[o] * rAU[0][o],
+            geometry.cell_volumes[o] * rAU[1][o],
+            geometry.cell_volumes[o] * rAU[2][o]};
+        const double implicit_coefficient =
+            pressure_face_orthogonal_coefficient(Sf, dvec, dAU_boundary);
+        const Vec3 gp{
+            grad_p.component_data(0)[o],
+            grad_p.component_data(1)[o],
+            grad_p.component_data(2)[o]};
+        const double deferred =
+            pressure_face_nonorthogonal_flux(Sf, dvec, dAU_boundary, gp);
+        const double expected_correction =
+            1.0 * (implicit_coefficient * (0.5 - p(o)) + deferred);
+
+        EXPECT_TRUE(std::abs(expected_correction) > 1e-12);
+        EXPECT_NEAR(phi_u(f), 0.0, 1e-12);
+        EXPECT_NEAR(phi_rc(f), -expected_correction, 1e-12);
+        EXPECT_NEAR(phi_rc(f) - phi_u(f), -expected_correction, 1e-12);
+    });
+
+    run_case("n9_s9_rhie_chow_identity_detects_stale_state", [] {
+        // The identity channel re-derives the authoritative flux from the
+        // current state: re-deriving from the same state reads exactly zero,
+        // while a stored flux built from a different (stale) state MUST be
+        // detected as a nonzero identity error.
+        const Mesh mesh = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+
+        Field<double, Location::CELL> U(2, "U", "m/s", 3);
+        U.fill(0.0);
+        Field<double, Location::CELL> p_a(2, "p", "Pa", 1);
+        Field<double, Location::CELL> p_b(2, "p", "Pa", 1);
+        p_a(0) = 1.0; p_a(1) = -1.0;
+        p_b(0) = 4.0; p_b(1) = -2.0;
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        const auto rAU = unit_rAU(mesh.n_cells());
+
+        const auto phi_stored = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_a, rAU, 1.0, ubc, pbc);
+        const auto phi_rederived_same = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_a, rAU, 1.0, ubc, pbc);
+        const auto phi_rederived_stale = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_b, rAU, 1.0, ubc, pbc);
+
+        double identity_same = 0.0;
+        double identity_stale = 0.0;
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            identity_same = std::max(
+                identity_same, std::abs(phi_stored(f) - phi_rederived_same(f)));
+            identity_stale = std::max(
+                identity_stale, std::abs(phi_stored(f) - phi_rederived_stale(f)));
+        }
+        EXPECT_TRUE(identity_same == 0.0);
+        EXPECT_TRUE(identity_stale > 1e-12);
     });
 
     return 0;

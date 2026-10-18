@@ -136,6 +136,14 @@ int main() {
         EXPECT_NEAR(grad(1, 0), 1.0, 1e-12);
         EXPECT_NEAR(grad(1, 1), 0.0, 1e-12);
         EXPECT_NEAR(grad(1, 2), 0.0, 1e-12);
+
+        // The point-reconstructed Green-Gauss variant must use the geometric
+        // face-centre reconstruction, not a scalar interpolation along the
+        // owner-neighbour line, on this affine interior stencil.
+        const auto point_grad = compute_gradient_gauss_point(f, m, geometry);
+        EXPECT_NEAR(point_grad(1, 0), 1.0, 1e-12);
+        EXPECT_NEAR(point_grad(1, 1), 0.0, 1e-12);
+        EXPECT_NEAR(point_grad(1, 2), 0.0, 1e-12);
     });
 
     run_case("gradient_gauss_quadratic_field_exact_on_interior_cell", []() {

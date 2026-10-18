@@ -674,6 +674,11 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_vmfl036_axisymmetric COMMAND test_vmfl036_axisymmetric)
         set_tests_properties(test_vmfl036_axisymmetric PROPERTIES LABELS "phase14;validation;axisymmetric;long")
+        add_test(NAME test_vmfl036_alpha_sensitivity
+                 COMMAND test_vmfl036_axisymmetric --alpha-sweep
+                         ${CMAKE_BINARY_DIR}/validation-report/vmfl036-alpha-sweep.json)
+        set_tests_properties(test_vmfl036_alpha_sensitivity PROPERTIES
+            LABELS "phase14;validation;axisymmetric;long;validation-total")
     endif()
     set_tests_properties(test_axisymmetric_vmfl036_kernel PROPERTIES LABELS "phase14;validation;axisymmetric")
     target_compile_definitions(test_vmfl036_reference_case PRIVATE
@@ -703,6 +708,25 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         set_tests_properties(test_naca0012_qualification PROPERTIES LABELS "qualification;validation;long")
         if(Python3_Interpreter_FOUND)
             set_tests_properties(test_bfs_qualification test_naca0012_qualification PROPERTIES DEPENDS test_generate_2d_validation_meshes)
+        endif()
+    endif()
+    # Wall-shear reconstruction audit (GG vs WLS vs 1D) - post-processing
+    # only, no solver method change. The quick test runs the wall MMS on the
+    # channel mesh without any solve; the long campaign adds the NACA0012
+    # Re=1000 three-level comparison where the spread is the measurement
+    # (explicitly NOT gated).
+    add_executable(test_naca0012_wall_shear_audit tests/validation/test_naca0012_wall_shear_audit.cpp)
+    target_link_libraries(test_naca0012_wall_shear_audit PRIVATE cfdx_core)
+    add_test(NAME test_naca0012_wall_shear_audit_quick COMMAND test_naca0012_wall_shear_audit --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5)
+    set_tests_properties(test_naca0012_wall_shear_audit_quick PROPERTIES LABELS "qualification;validation")
+    if(Python3_Interpreter_FOUND)
+        set_tests_properties(test_naca0012_wall_shear_audit_quick PROPERTIES DEPENDS test_generate_2d_validation_meshes)
+    endif()
+    if(CFDX_ENABLE_LONG_VALIDATION)
+        add_test(NAME test_naca0012_wall_shear_audit COMMAND test_naca0012_wall_shear_audit ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n128.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n256.h5)
+        set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES LABELS "qualification;validation;long")
+        if(Python3_Interpreter_FOUND)
+            set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES DEPENDS test_generate_2d_validation_meshes)
         endif()
     endif()
     if(Python3_Interpreter_FOUND)

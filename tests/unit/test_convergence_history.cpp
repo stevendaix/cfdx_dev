@@ -27,6 +27,11 @@ int main()
     h.continuity_linf = 0.2;
     h.continuity_normalized = 0.3;
     h.momentum_equation_residual = 0.4;
+    h.momentum_rhs_scale = 0.5;
+    h.momentum_equation_residual_reference = 0.25;
+    h.momentum_equation_residual_rhs_relative = 0.125;
+    h.momentum_rhs_scale_components = {0.5, 0.25, 0.125};
+    h.momentum_equation_residual_rhs_relative_components = {0.125, 0.25, 0.5};
     h.momentum_equation_residual_relative = 0.5;
     h.velocity_change_inf = 0.01;
     h.pressure_change_inf = 0.02;
@@ -40,6 +45,9 @@ int main()
     h.corrected_flux_continuity_linf = 0.01;
     h.reconstructed_velocity_continuity_linf = 0.02;
     h.flux_velocity_mismatch_linf = 0.03;
+    h.flux_velocity_mismatch_boundary_linf = 0.3125;
+    h.flux_velocity_mismatch_normalized = 0.0625;
+    h.rhie_chow_identity_linf = 0.03125;
     h.momentum_equation_residual_components = {0.1, 0.2, 0.3};
     h.momentum_equation_residual_internal = 0.4;
     h.momentum_equation_residual_boundary = 0.5;
@@ -78,6 +86,14 @@ int main()
     assert(json.find("\"schema_version\": 1") != std::string::npos);
     assert(json.find("\"history\": [") != std::string::npos);
     assert(json.find("\"momentum_residual\": 1") != std::string::npos);
+    assert(json.find("\"momentum_rhs_scale\": 0.5") != std::string::npos);
+    assert(json.find("\"momentum_equation_residual_reference\": 0.25") != std::string::npos);
+    assert(json.find("\"momentum_equation_residual_rhs_relative\": 0.125") != std::string::npos);
+    assert(json.find("\"momentum_rhs_scale_components\": [0.5,0.25,0.125]") != std::string::npos);
+    assert(json.find("\"flux_velocity_mismatch_boundary_linf\": 0.3125") != std::string::npos);
+    assert(json.find("\"flux_velocity_mismatch_normalized\": 0.0625") != std::string::npos);
+    assert(json.find("\"rhie_chow_identity_linf\": 0.03125") != std::string::npos);
+    assert(json.find("\"momentum_equation_residual_rhs_relative_components\": [0.125,0.25,0.5]") != std::string::npos);
     assert(json.find("\"momentum_conservation_worst_cell\": [1,2,3]") != std::string::npos);
     assert(json.find("\\\"normally\\\"") != std::string::npos);
 

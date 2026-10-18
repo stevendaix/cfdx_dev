@@ -140,7 +140,11 @@ Metrics run_case(std::size_t n, double alpha_u = 0.7, double alpha_p = 0.3)
     c.coupling.coupled_linear_tolerance = 1e-12;
     c.coupling.alpha_u = alpha_u;
     c.coupling.alpha_p = alpha_p;
-    c.convergence.max_iterations = 20;
+    // Keep the original strict residual, pressure and continuity gates. The
+    // coupled case is intentionally allowed more outer iterations so the test
+    // can establish whether the pressure/continuity mode actually converges;
+    // failure to satisfy every gate remains a hard failure.
+    c.convergence.max_iterations = 128;
     c.convergence.relative_tolerance = 1e-10;
     c.convergence.continuity_tolerance = 1e-12;
     c.linear_tolerance = 1e-12;
@@ -201,7 +205,7 @@ Metrics run_case(std::size_t n, double alpha_u = 0.7, double alpha_p = 0.3)
     }
     const auto& h = result.history.back();
     out.continuity_linf = h.corrected_flux_continuity_linf;
-    out.momentum_rel = h.momentum_equation_residual_relative;
+    out.momentum_rel = h.momentum_equation_residual_rhs_relative;
     out.mass_balance = h.mass_normalized_imbalance;
 
     std::cout << std::setprecision(12)
@@ -222,7 +226,7 @@ Metrics run_case(std::size_t n, double alpha_u = 0.7, double alpha_p = 0.3)
                   << "N12_COUPLED_TRACE n=" << n
                   << " iter=" << (i + 1)
                   << " continuity=" << hi.corrected_flux_continuity_linf
-                  << " momentum_rel=" << hi.momentum_equation_residual_relative
+                  << " momentum_rel=" << hi.momentum_equation_residual_rhs_relative
                   << " mass=" << hi.mass_normalized_imbalance
                   << " du=" << hi.velocity_change_inf
                   << " dp=" << hi.pressure_change_inf

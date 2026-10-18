@@ -45,6 +45,51 @@ int main() {
     auto sr = stagnant.update({3, 0.989, 1.0, {}});
     assert(sr.status == ConvergenceStatus::STAGNATED);
 
+    // A material transient rise must not be counted as stagnation. It belongs
+    // to the divergence detector, which has a separate and larger growth gate.
+    ConvergenceMonitorControls transient_rise = controls;
+    transient_rise.qoi_gates.clear();
+    transient_rise.stagnation_window = 2;
+    transient_rise.stagnation_relative_improvement = 1e-3;
+    transient_rise.divergence_window = 3;
+    transient_rise.divergence_growth_factor = 10.0;
+    ConvergenceMonitor rising(transient_rise);
+    rising.update({1, 1.0, 1.0, {}});
+    rising.update({2, 1.005, 1.0, {}});
+    auto rr = rising.update({3, 1.01, 1.0, {}});
+    assert(rr.status == ConvergenceStatus::CONTINUE);
+
+    // Micro-rises below the configured threshold still count as a flat envelope.
+    ConvergenceMonitorControls micro_rise_controls = controls;
+    micro_rise_controls.qoi_gates.clear();
+    micro_rise_controls.stagnation_window = 2;
+    micro_rise_controls.stagnation_relative_improvement = 1e-3;
+    ConvergenceMonitor micro_rise(micro_rise_controls);
+    micro_rise.update({1, 1.0, 1.0, {}});
+    micro_rise.update({2, 1.0005, 1.0, {}});
+    auto mr = micro_rise.update({3, 1.001, 1.0, {}});
+    assert(mr.status == ConvergenceStatus::STAGNATED);
+
+    // A measurable monotone contraction above the stagnation threshold is
+    // slow convergence, not stagnation. With 0.13% improvement per sample,
+    // no transition belongs to the 0.1% flat-envelope band.
+    ConvergenceMonitorControls slow_contraction = controls;
+    slow_contraction.qoi_gates.clear();
+    slow_contraction.max_iterations = 20;
+    slow_contraction.stagnation_window = 3;
+    slow_contraction.stagnation_relative_improvement = 1e-3;
+    ConvergenceMonitor slowly_contracting(slow_contraction);
+    double slow_residual = 1.0;
+    ConvergenceReport slow_report;
+    for (std::size_t iteration = 1; iteration <= 20; ++iteration) {
+        slow_report = slowly_contracting.update(
+            {iteration, slow_residual, 1.0, {}});
+        slow_residual *= 0.9987;
+    }
+    assert(slow_report.status == ConvergenceStatus::MAX_ITERATIONS);
+    assert(slow_report.stagnation_count == 0);
+    assert(slow_report.iteration == 20);
+
     ConvergenceMonitorControls divergence = controls;
     divergence.qoi_gates.clear();
     divergence.divergence_window = 2;

@@ -143,7 +143,7 @@ public:
             report.reason = "residual growth exceeded the configured divergence criterion";
         } else if (stagnation_count >= controls_.stagnation_window) {
             status_ = ConvergenceStatus::STAGNATED;
-            report.reason = "insufficient residual improvement over the configured stagnation window";
+            report.reason = "flat residual envelope over the configured stagnation window";
         } else if (sample.iteration >= controls_.max_iterations) {
             status_ = ConvergenceStatus::MAX_ITERATIONS;
             report.reason = "maximum nonlinear iteration count reached without satisfying all gates";
@@ -218,7 +218,11 @@ private:
             const double current = history_[i].residual;
             const double improvement =
                 (previous - current) / std::max(previous, std::numeric_limits<double>::min());
-            if (improvement < controls_.stagnation_relative_improvement)
+            // Stagnation means a flat residual envelope, not a transient rise.
+            // A material increase is handled by the independent divergence detector;
+            // counting every negative improvement here can abort a still-contracting
+            // nonlinear solve when the synthetic max-residual changes dominant metric.
+            if (std::abs(improvement) < controls_.stagnation_relative_improvement)
                 ++count;
         }
         return count;

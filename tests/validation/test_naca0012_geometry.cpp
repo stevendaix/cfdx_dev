@@ -6,6 +6,7 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -69,8 +70,27 @@ static Forces run(const std::string& path,std::size_t level)
         mesh, geometry, strict_bc, validation_flux, "NACA0012_RE1000_A0");
 
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
-    if(!solve.converged)
-        throw std::runtime_error("NACA0012 solver did not converge");
+    if(!solve.converged) {
+        std::ostringstream message;
+        message << "NACA0012 solver did not converge: status="
+                << cfdx::core::to_string(solve.convergence_status)
+                << " reason=" << solve.convergence_reason
+                << " iterations=" << solve.iterations;
+        if(!solve.history.empty()) {
+            const auto& last=solve.history.back();
+            message << " momentum_rhs_relative="
+                    << last.momentum_equation_residual_rhs_relative
+                    << " momentum_reference_relative="
+                    << last.momentum_equation_residual_relative
+                    << " pressure_residual=" << last.pressure_residual
+                    << " continuity=" << last.continuity_normalized
+                    << " dU=" << last.velocity_change_inf
+                    << " dP=" << last.pressure_change_inf
+                    << " alpha_u=" << last.effective_alpha_u
+                    << " alpha_p=" << last.effective_alpha_p;
+        }
+        throw std::runtime_error(message.str());
+    }
 
     ScalarBoundaryConditions gx,gy;
     gx["farfield"]={ScalarBoundaryType::FIXED_VALUE,Uinf,0};
@@ -97,10 +117,18 @@ static Forces run(const std::string& path,std::size_t level)
         const double txx=2.0*rho*nu*gux.component_data(0)[o];
         const double tyy=2.0*rho*nu*guy.component_data(1)[o];
         const double txy=rho*nu*(gux.component_data(1)[o]+guy.component_data(0)[o]);
-        const double tx=-(pp*n.x+txx*n.x+txy*n.y)*Sf.mag();
-        const double ty=-(pp*n.y+txy*n.x+tyy*n.y)*Sf.mag();
+        // Face normal convention: n = Sf/|Sf| points out of the fluid domain
+        // (into the body) on wall faces, because build_fv_geometry()
+        // enforces Sf.(Cf - C_owner) > 0 on boundary faces. With this
+        // fluid-outward n, the force exerted by the fluid on the body is
+        //   F = int (p n - tau n) dS
+        // i.e. pressure pushes along +p n and viscous traction acts along
+        // -tau n (equivalent to the body->fluid normal contract of
+        // src/cfdx/physics/forces.h).
+        const double tx=(pp*n.x-txx*n.x-txy*n.y)*Sf.mag();
+        const double ty=(pp*n.y-txy*n.x-tyy*n.y)*Sf.mag();
         Fx+=tx; Fy+=ty;
-        Fxp+=-pp*n.x*Sf.mag(); Fyp+=-pp*n.y*Sf.mag();
+        Fxp+=pp*n.x*Sf.mag(); Fyp+=pp*n.y*Sf.mag();
         Fxv+=-(txx*n.x+txy*n.y)*Sf.mag();
         Fyv+=-(txy*n.x+tyy*n.y)*Sf.mag();
         const auto r=geometry.face_centres[f]-Vec3{0.25,0,0};
@@ -172,6 +200,11 @@ int main(int argc,char**argv)
         if(!(x.continuity<1e-7)) throw std::runtime_error("NACA0012 continuity gate failed");
         if(!std::isfinite(x.cd) || !std::isfinite(x.cl)) throw std::runtime_error("NACA0012 force integration produced non-finite QoI");
         if(std::abs(x.cl)>2e-2) throw std::runtime_error("NACA0012 alpha=0 symmetry gate failed");
+        // Regression gate for the wall-normal orientation of the pressure
+        // force integration: at alpha=0 the airfoil pressure drag is
+        // strictly positive. This catches the historical sign inversion
+        // where Fxp accumulated -p n with n pointing into the body.
+        if(!(x.cdp>0.0)) throw std::runtime_error("NACA0012 pressure drag sign gate failed (Cd_pressure must be > 0 at alpha=0)");
     }
     if(!quick) {
         const double d01=std::abs(r[1].cd-r[0].cd), d12=std::abs(r[2].cd-r[1].cd);

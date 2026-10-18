@@ -14,6 +14,9 @@ struct ConvergenceCriteria {
     double relative_tolerance = 1e-6;
     double continuity_tolerance = 1e-10;
     double energy_tolerance = 1e-10;
+    // Relative change threshold for diagnosing a flat residual envelope.
+    // This does not participate in the convergence acceptance gates.
+    double stagnation_relative_improvement = 1e-3;
     std::size_t max_iterations = 1000;
     bool require_turbulence = false;
     bool require_energy = false;
@@ -35,6 +38,8 @@ inline void validate_convergence_criteria(const ConvergenceCriteria& c)
         !(c.relative_tolerance > 0.0) ||
         !(c.continuity_tolerance > 0.0) ||
         !(c.energy_tolerance > 0.0) ||
+        !(c.stagnation_relative_improvement >= 0.0) ||
+        !std::isfinite(c.stagnation_relative_improvement) ||
         c.max_iterations == 0)
         throw std::invalid_argument("invalid convergence criteria");
 }

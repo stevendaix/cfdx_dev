@@ -279,9 +279,18 @@ inline double simplec_abs_sum_diagnostic_denominator(
 
 inline double piso_correction_gain(double diagonal, double neighbor_sum)
 {
-    if (!std::isfinite(diagonal) || !std::isfinite(neighbor_sum) || diagonal <= 0.0)
-        throw std::invalid_argument("piso_correction_gain: diagonal must be positive");
-    return 1.0 / std::max(diagonal - neighbor_sum, diagonal * 1e-12);
+    if (!std::isfinite(diagonal) || !std::isfinite(neighbor_sum) ||
+        diagonal <= 0.0)
+        throw std::invalid_argument(
+            "piso_correction_gain: diagonal must be positive");
+    const double denominator = diagonal - neighbor_sum;
+    // A non-positive effective diagonal is an invalid algebraic operator, not
+    // a small denominator to be silently regularized. Clamping it here can
+    // manufacture an arbitrarily large PISO gain and conceal a sign error.
+    if (!(denominator > 0.0) || !std::isfinite(denominator))
+        throw std::invalid_argument(
+            "piso_correction_gain: effective diagonal must be finite and positive");
+    return 1.0 / denominator;
 }
 
 
