@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace cfdx::physics {
 
@@ -38,6 +39,7 @@ inline void refresh_sst_production_eddy_viscosity(
     if (!(controls.a1 > 0.0) || !std::isfinite(controls.a1))
         throw std::invalid_argument("SST production closure requires finite positive a1");
 
+    std::vector<double> refreshed(n, 0.0);
     for (std::size_t i = 0; i < n; ++i) {
         const double ki = k(i), wi = omega(i), si = strain_rate(i), f2 = F2(i);
         if (!std::isfinite(ki) || ki < 0.0 ||
@@ -49,8 +51,10 @@ inline void refresh_sst_production_eddy_viscosity(
         const double value = controls.a1 * ki / denominator;
         if (!std::isfinite(value) || value < 0.0)
             throw std::domain_error("SST production closure produced invalid nu_t");
-        nu_t(i) = value;
+        refreshed[i] = value;
     }
+    for (std::size_t i = 0; i < n; ++i)
+        nu_t(i) = refreshed[i];
 }
 
 // Execute a dynamic-blending SST transport update transactionally. k, omega,
