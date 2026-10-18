@@ -2,8 +2,9 @@ import importlib.util
 
 import pytest
 
-from cfdx import CFDXSession
 from cfdx.workbench import CFDXWorkbenchWindow
+
+from cfdx import CFDXSession
 
 
 def test_workbench_is_importable_without_qt() -> None:
@@ -14,11 +15,13 @@ def test_workbench_is_importable_without_qt() -> None:
         CFDXWorkbenchWindow(CFDXSession())
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
 def test_workbench_has_stable_docks() -> None:
-    from PySide6.QtWidgets import QDockWidget
     from cfdx.gui import create_application
     from cfdx.session import SimulationState
+    from PySide6.QtWidgets import QDockWidget
 
     app = create_application(["cfdx-workbench-test"])
     session = CFDXSession()
