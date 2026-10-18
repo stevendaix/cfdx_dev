@@ -136,5 +136,28 @@ int main() {
         EXPECT_THROW(compute_mesh_cell_wall_distance(mesh, geometry), std::invalid_argument);
     });
 
+
+    run_case("production_mesh_wall_distance_rejects_concave_wall_polygons", [] {
+        using namespace cfdx::core;
+        Mesh mesh;
+        mesh.points().resize(5);
+        const double p[5][3] = {
+            {0,0,0}, {2,0,0}, {1,0.5,0}, {2,2,0}, {0,2,0}
+        };
+        for (std::size_t i=0; i<5; ++i)
+            mesh.points().set(i,p[i][0],p[i][1],p[i][2]);
+        mesh.faces().push_face({0,1,2,3,4});
+        mesh.ownership().resize(1);
+        mesh.ownership().set_owner(0,0);
+        mesh.ownership().set_neighbour(0,FaceOwnership::BOUNDARY);
+        mesh.cells().push_cell({0});
+        Patch wall;
+        wall.name = "wall";
+        wall.type = PatchType::WALL;
+        wall.face_ids = {0};
+        mesh.boundary().add_patch(wall);
+        EXPECT_THROW(wall_surface_from_mesh(mesh), std::invalid_argument);
+    });
+
     return run_all();
 }
