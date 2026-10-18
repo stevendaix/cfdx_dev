@@ -402,6 +402,7 @@ def write_case_cfdx_h5(result: ConversionResult, output_path) -> None:
     """
 
     import pathlib
+
     output_path = pathlib.Path(output_path)
 
     with h5py.File(output_path, "w") as f:
