@@ -1,18 +1,12 @@
 from __future__ import annotations
 
 import sys
+import threading
 import time
 
 import pytest
 
 from cfdx.runner import SolverRunner
-
-
-def wait_for_completion(runner: SolverRunner, timeout: float = 5.0) -> None:
-    deadline = time.monotonic() + timeout
-    while runner.running and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert not runner.running
 
 
 def test_runner_streams_stdout_and_stderr() -> None:
@@ -24,13 +18,21 @@ def test_runner_streams_stdout_and_stderr() -> None:
     ]
     output: list[tuple[str, bool]] = []
     completed = []
+    completion_event = threading.Event()
+
+    def on_complete(result) -> None:
+        completed.append(result)
+        completion_event.set()
 
     runner = SolverRunner(command)
-    runner.start(on_output=lambda line, is_stderr: output.append((line, is_stderr)),
-                 on_complete=completed.append)
-    wait_for_completion(runner)
+    runner.start(
+        on_output=lambda line, is_stderr: output.append((line, is_stderr)),
+        on_complete=on_complete,
+    )
+    assert completion_event.wait(timeout=5.0), "runner did not report process completion"
 
     assert sorted(output) == [("err", True), ("out", False)]
+    assert len(completed) == 1
     assert completed[0].returncode == 0
 
 
