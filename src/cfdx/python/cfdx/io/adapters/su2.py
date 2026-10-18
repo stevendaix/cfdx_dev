@@ -361,6 +361,12 @@ class Su2Adapter(SolverAdapter):
                     elif bnd["name"].lower().find("sym") >= 0:
                         bc.type = BCType.SYMMETRY
                         bc.value_type = BCValueType.ZERO_GRADIENT
+                    elif bc.type == BCType.UNKNOWN:
+                        # SU2 markers such as "airfoil" are not in the vendor
+                        # taxonomy table; treat them as walls so the solver's
+                        # BC matching has a concrete type to validate against.
+                        bc.type = BCType.WALL
+                        bc.value_type = BCValueType.WALL_NO_SLIP
                     self.setup.boundary_conditions.append(bc)
             else:
                 idx += 1
@@ -381,7 +387,18 @@ class Su2Adapter(SolverAdapter):
             else np.empty((0, 3))
         )
 
-        mesh = {"points": points_arr, "cells": cells, "cell_data": cell_data}
+        mesh = {
+            "points": points_arr,
+            "cells": cells,
+            "cell_data": cell_data,
+            "boundary_patch_assignment": [
+                {
+                    "name": bnd["name"],
+                    "faces": bnd["face_nodes"],
+                }
+                for bnd in self._boundaries
+            ],
+        }
 
         if self._points:
             self._mesh = mesh

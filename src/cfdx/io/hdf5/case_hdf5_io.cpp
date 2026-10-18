@@ -88,7 +88,7 @@ static bool case_read_dataset_double(hid_t loc_id, const char* name,
 }
 
 static bool case_read_dataset_u64(hid_t loc_id, const char* name,
-                             std::vector<std::uint64_t>& out) {
+                              std::vector<std::uint64_t>& out) {
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
     if (ds < 0) return false;
     hid_t space = H5Dget_space(ds);
@@ -116,7 +116,7 @@ static bool case_read_dataset_u64(hid_t loc_id, const char* name,
 }
 
 static bool case_read_dataset_i64(hid_t loc_id, const char* name,
-                             std::vector<std::int64_t>& out) {
+                              std::vector<std::int64_t>& out) {
     hid_t ds = H5Dopen2(loc_id, name, H5P_DEFAULT);
     if (ds < 0) return false;
     hid_t space = H5Dget_space(ds);
@@ -890,10 +890,10 @@ static void gap_analysis_from_json(const mini_json::value& json, GapAnalysis& ga
 // ===========================================================================
 
 bool read_case_cfdx_h5(const std::string& filename,
-                       cfdx::core::Mesh& mesh,
-                       SourceInfo& source,
-                       CaseSetup& setup,
-                       GapAnalysis& gap) {
+                        cfdx::core::Mesh& mesh,
+                        SourceInfo& source,
+                        CaseSetup& setup,
+                        GapAnalysis& gap) {
     hid_t fapl = case_create_file_access_plist();
     if (fapl < 0) return false;
     hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, fapl);
@@ -1186,9 +1186,9 @@ bool read_case_cfdx_h5(const std::string& filename,
         mesh.set_boundary(bp);
     }
 
-    const bool valid = mesh.topo_validate().ok;
+    const auto validation = mesh.topo_validate();
     H5Fclose(file);
-    return valid;
+    return validation.ok;
 }
 
 // ===========================================================================
@@ -1255,9 +1255,9 @@ bool write_case_cfdx_h5(const std::string& filename,
         if (!numerical_report.valid()) return false;
     }
 
-    hid_t fapl = case_create_file_access_plist();
+hid_t fapl = case_create_file_access_plist();
     if (fapl < 0) return false;
-    hid_t file = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
+    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, fapl);
     H5Pclose(fapl);
     if (file < 0) return false;
 
@@ -1515,9 +1515,9 @@ bool read_vector_fields_hdf5(const std::string& filename,
 bool write_fields_hdf5(const std::string& filename,
                        const std::vector<cfdx::core::ScalarCellField>& scalars,
                        const std::vector<cfdx::core::Vec3CellField>& vectors) {
-    hid_t fapl = case_create_file_access_plist();
+hid_t fapl = case_create_file_access_plist();
     if (fapl < 0) return false;
-    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, fapl);
+    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_TRUNC, fapl);
     H5Pclose(fapl);
     if (file < 0) return false;
 

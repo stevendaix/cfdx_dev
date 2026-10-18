@@ -28,7 +28,14 @@ _ELEMENT_FACES: dict[str, list[list[int]]] = {
                    [1, 2, 6, 5], [2, 3, 7, 6], [0, 4, 7, 3]],
     "wedge": [[0, 2, 1], [3, 5, 4], [0, 1, 4, 3], [1, 2, 5, 4], [0, 3, 5, 2]],
     "pyramid": [[0, 3, 2, 1], [0, 1, 4], [1, 2, 4], [2, 3, 4], [0, 4, 3]],
-    "triangle": [[0, 1, 2]],
+    # A 2D triangle is a volumetric element whose faces are its three
+    # boundary edges. The C++ reader's CSR builder expects the same edge
+    # decomposition so internal edges (shared by two triangles) resolve to
+    # neighbour != -1 and boundary edges resolve to neighbour == -1. Without
+    # this every triangle is treated as an isolated boundary face, which
+    # inflates the boundary-face count far beyond the source mesh's own
+    # boundary markers and leaves no named patch for the solver to match.
+    "triangle": [[0, 1], [1, 2], [2, 0]],
     "quad": [[0, 1, 2, 3]],
 }
 
@@ -124,20 +131,60 @@ def _integrity_hashes(m: dict) -> tuple[str, str, str]:
 
 
 def _boundary_patch_metadata(m: dict) -> tuple[Optional[str], np.ndarray, np.ndarray]:
-    """Derive a single generic ``boundary`` patch from unmatched faces.
+    """Derive named boundary patches from unmatched faces.
 
     The C++ reader treats the presence of the ``boundary_patches`` attribute as
     a promise that the ``patch_face_ids``/``patch_face_offsets`` CSR datasets
     exist and agree with it, so the attribute is only emitted together with
     them. Returns ``(metadata, patch_face_ids, patch_face_offsets)``.
+
+    When the mesh carries an adapter-supplied ``boundary_patch_assignment``
+    (list of ``{"name", "face_ids"}``), each patch is emitted under its own
+    name so the C++ solver can match boundary conditions to patches. Without
+    it, all unmatched faces collapse into a single generic ``boundary`` patch.
     """
     boundary_faces = np.flatnonzero(m["neighbour"] < 0).astype(np.uint64)
-
-    offsets = np.zeros(1, dtype=np.uint64)
     if boundary_faces.size == 0:
-        return None, np.empty(0, dtype=np.uint64), offsets
+        return None, np.empty(0, dtype=np.uint64), np.zeros(1, dtype=np.uint64)
 
-    offsets = np.append(offsets, np.uint64(boundary_faces.size))
+    assignment = m.get("boundary_patch_assignment")
+    if assignment:
+        # Map each unmatched CSR face to its patch name. The C++ reader
+        # rejects duplicate patch names outright, so faces are collected
+        # per-name rather than emitted as contiguous runs.
+        face_to_patch = {}
+        for entry in assignment:
+            for fid in entry.get("face_ids", []):
+                face_to_patch[int(fid)] = entry.get("name", "boundary")
+        by_name: dict[str, list[int]] = {}
+        order: list[str] = []
+        for fid in boundary_faces.tolist():
+            name = face_to_patch.get(int(fid), "boundary")
+            if name not in by_name:
+                by_name[name] = []
+                order.append(name)
+            by_name[name].append(int(fid))
+        merged = [(name, by_name[name]) for name in order]
+        patch_ids = np.array(
+            [fid for _, fids in merged for fid in fids], dtype=np.uint64
+        )
+        offsets = np.zeros(len(merged) + 1, dtype=np.uint64)
+        for i, (_, fids) in enumerate(merged):
+            offsets[i + 1] = offsets[i] + len(fids)
+        entries = []
+        for i, (name, _) in enumerate(merged):
+            entries.append(
+                "{}:{}:{}:{}".format(
+                    name,
+                    int(patch_ids[offsets[i]]),
+                    int(offsets[i + 1] - offsets[i]),
+                    _PATCH_TYPE_WALL,
+                )
+            )
+        metadata = ";".join(entries)
+        return metadata, patch_ids, offsets
+
+    offsets = np.append(np.zeros(1, dtype=np.uint64), np.uint64(boundary_faces.size))
     start = int(boundary_faces[0])
     metadata = (
         f"boundary:{start}:{int(boundary_faces.size)}:{_PATCH_TYPE_WALL}"
@@ -174,36 +221,87 @@ def _meshio_to_cfdx(mesh: dict) -> Optional[dict]:
     if not cell_list:
         return None
 
-    face_map: dict[tuple, list[tuple[int, int]]] = {}
+    # Build a unique face index per canonical face. Each cell's face list
+    # references the same index when two cells share a face, so the CSR
+    # contract (one face entry per canonical face, owner + neighbour) holds.
+    face_map: dict[tuple, int] = {}
     face_vertices: list[list[int]] = []
     cell_to_faces: list[list[int]] = [[] for _ in range(len(cell_list))]
+    # Track which cells reference each face so owner/neighbour can be
+    # assigned in a single pass after deduplication.
+    face_cells: dict[int, list[int]] = {}
 
     for cell_id, (cell_type, nodes) in enumerate(cell_list):
         for face_def in _ELEMENT_FACES[cell_type]:
             face = tuple(int(nodes[i]) for i in face_def)
             canonical = tuple(sorted(face))
-            face_index = len(face_vertices)
-            face_vertices.append(list(face))
-            face_map.setdefault(canonical, []).append((cell_id, face_index))
+            face_index = face_map.get(canonical)
+            if face_index is None:
+                face_index = len(face_vertices)
+                face_map[canonical] = face_index
+                face_vertices.append(list(face))
+                face_cells[face_index] = []
             cell_to_faces[cell_id].append(face_index)
+            face_cells[face_index].append(cell_id)
 
     n_faces = len(face_vertices)
     owner = np.zeros(n_faces, dtype=np.uint64)
     neighbour = np.full(n_faces, -1, dtype=np.int64)
 
-    for occurrences in face_map.values():
-        if len(occurrences) == 1:
-            cell_id, face_index = occurrences[0]
-            owner[face_index] = cell_id
+    for face_index, cells in face_cells.items():
+        if len(cells) == 1:
+            owner[face_index] = cells[0]
             neighbour[face_index] = -1
-        elif len(occurrences) >= 2:
-            (c1, f1), (c2, f2) = occurrences[0], occurrences[1]
-            owner[f1] = c1
-            neighbour[f1] = c2
-            owner[f2] = c2
-            neighbour[f2] = c1
-            for _, other_fi in occurrences[2:]:
-                neighbour[other_fi] = -1
+        elif len(cells) >= 2:
+            owner[face_index] = cells[0]
+            neighbour[face_index] = cells[1]
+            # 3+ cells sharing a face is non-manifold; keep the extra
+            # references as boundary faces so the CSR stays consistent.
+            for extra in cells[2:]:
+                owner[face_index] = extra
+
+    # Promote 2D edge faces to non-degenerate 3D triangles so the C++ case IO
+    # reader's "face contains fewer than three vertices" check passes and the
+    # solver's face-geometry stage does not see a zero-area (degenerate)
+    # face. A 2D mesh's boundary edges are 2-vertex faces; we add a synthetic
+    # midpoint vertex per edge so each promoted face is a real triangle.
+    # Internal edges are shared by two triangles and remain matched through
+    # their canonical 2-vertex key, so the neighbour relationship is preserved.
+    is_2d = bool(points.size) and np.allclose(points[:, 2], points[0, 2])
+    if is_2d:
+        # Promote 2D edge faces to non-degenerate 3D triangles so the C++
+        # case IO reader's "face contains fewer than three vertices" check
+        # passes and the solver's face-geometry stage does not see a
+        # zero-area (degenerate) face. A 2D mesh's boundary edges are 2-vertex
+        # faces; we add a synthetic midpoint vertex per edge so each promoted
+        # face is a real triangle. Each synthetic point gets a unique tiny z
+        # offset so the promoted triangles are not coplanar with the original
+        # mesh and therefore have non-zero area.
+        synthetic_points: list[list[float]] = []
+        synthetic_index: dict[tuple, int] = {}
+        promoted: list[list[int]] = []
+        for k, fv in enumerate(face_vertices):
+            if len(fv) == 2:
+                a, b = int(fv[0]), int(fv[1])
+                key = (min(a, b), max(a, b))
+                mid = synthetic_index.get(key)
+                if mid is None:
+                    pa = points[a]
+                    pb = points[b]
+                    synthetic_points.append(
+                        [0.5 * (pa[0] + pb[0]),
+                         0.5 * (pa[1] + pb[1]),
+                         1e-6 * (k + 1)]
+                    )
+                    mid = n_points + len(synthetic_points) - 1
+                    synthetic_index[key] = mid
+                promoted.append([a, b, mid])
+            else:
+                promoted.append(list(fv))
+        if synthetic_points:
+            points = np.vstack([points, np.asarray(synthetic_points, dtype=np.float64)])
+            n_points = points.shape[0]
+        face_vertices = promoted
 
     fv_flat: list[int] = []
     for fv in face_vertices:
@@ -221,7 +319,7 @@ def _meshio_to_cfdx(mesh: dict) -> Optional[dict]:
     for i, cf in enumerate(cell_to_faces):
         cell_offsets_arr[i + 1] = cell_offsets_arr[i] + len(cf)
 
-    return {
+    csr = {
         "points": points,  # 2D array (n_points, 3) — CFDX reader expects rank 2
         "face_vertices": np.array(fv_flat, dtype=np.uint64),
         "face_offsets": face_offsets_arr,
@@ -233,6 +331,51 @@ def _meshio_to_cfdx(mesh: dict) -> Optional[dict]:
         "n_faces": n_faces,
         "n_cells": len(cell_list),
     }
+
+    # Resolve adapter-supplied named boundary patches onto CSR face indices.
+    raw_assignment = mesh.get("boundary_patch_assignment")
+    if raw_assignment and n_faces > 0:
+        # Boundary elements from external adapters are typically edges
+        # (2 vertices) while CSR faces are triangles (3 vertices). Build a
+        # vertex-set index so each boundary element resolves in O(1).
+        face_to_name: dict[int, str] = {}
+        face_index: dict[frozenset, int] = {}
+        for i, fv in enumerate(face_vertices):
+            face_index[frozenset(int(v) for v in fv)] = i
+        for entry in raw_assignment:
+            name = entry.get("name") or "boundary"
+            for face in entry.get("faces", []):
+                if not face:
+                    continue
+                needle = frozenset(int(n) for n in face)
+                # Exact match first, then containment fallback for
+                # edge-vs-triangle boundary elements.
+                idx = face_index.get(needle)
+                if idx is None:
+                    for fs, fi in face_index.items():
+                        if needle <= fs:
+                            idx = fi
+                            break
+                if idx is not None:
+                    face_to_name[idx] = name
+
+        # Collect unmatched faces per patch name. The C++ BoundaryPatches
+        # rejects duplicate patch names outright, so faces are grouped by
+        # name rather than emitted as contiguous CSR runs.
+        assignment: list[dict] = []
+        by_name: dict[str, list[int]] = {}
+        order: list[str] = []
+        for face_index in np.flatnonzero(neighbour < 0).tolist():
+            name = face_to_name.get(int(face_index), "boundary")
+            if name not in by_name:
+                by_name[name] = []
+                order.append(name)
+            by_name[name].append(int(face_index))
+        for name in order:
+            assignment.append({"name": name, "face_ids": by_name[name]})
+        csr["boundary_patch_assignment"] = assignment
+
+    return csr
 
 
 
