@@ -13,8 +13,7 @@ The case schemas carry a `turbulence_model` string:
 - `src/cfdx/io/cfdx_io/case_schema.h`
 - `src/cfdx/python/cfdx/io/schema.py`
 
-The Python setup catalogue exposes RANS choices in `src/cfdx/python/cfdx/physics_setup.py`.
-That establishes a configuration/UI contract, not runtime coupling.
+The Python setup catalogue previously exposed RANS as solver-ready. PR #941 changes those six entries to `COMPONENT_READY`, removes them from the production dropdown, and adds an explicit warning to advisory recommendations. Direct case validation also rejects component-only RANS selections.
 
 The production executable `apps/production_solver/main.cpp` includes
 `steady_incompressible_solver.h` and `production_energy_stage.h`. Its options and help text
@@ -28,9 +27,10 @@ but no production-driver caller:
 - `solve_spalart_allmaras_transport` in `src/cfdx/physics/turbulence_solver.h`.
 
 **Consequence:** the repository does not yet demonstrate that a case selecting SST, SA or
-k-epsilon changes the production momentum solve. Until a fail-closed guard or complete coupling
-is added, the model catalogue must not be interpreted as proof of a production RANS run. A
-case-file field or a standalone transport function is not a coupled RANS capability.
+k-epsilon changes the production momentum solve. PR #941 adds a fail-closed production-driver
+guard for declared non-laminar models. The GUI catalogue and direct Python validation now also
+mark these models as component-only. A case-file field or standalone transport function is not
+a coupled RANS capability.
 
 ## Finding 2 — transport functions are component-level solvers, not a demonstrated coupled RANS loop
 
@@ -78,8 +78,9 @@ path), independent analytic sources, exact boundary values, and mesh-refinement 
 
 ## Required implementation order
 
-1. **Fail closed on runtime selection:** until coupled RANS exists, reject non-laminar
-   `turbulence_model` in the production driver rather than silently running laminar flow.
+1. **Fail closed on runtime selection — implemented in this PR, pending exact-HEAD CI:** reject
+   non-laminar `turbulence_model` in the production driver rather than silently running laminar
+   flow; the Python production dropdown now only offers the laminar model.
 2. **Couple one model end to end:** SST is the recommended first target because its eddy
    viscosity and wall-distance/F1/F2 dependencies make the data path explicit. Define where
    k/omega are initialized, how wall distance and strain are computed, how mass flux is
