@@ -3646,9 +3646,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         else if (debug_cell_enabled)
             debug_cell = static_cast<std::size_t>(controls.diagnostics.debug_cell);
 
+        // The first-iteration-relative equation residual is diagnostic only:
+        // if the initial residual is already at round-off, its denominator is
+        // ill-conditioned and the ratio can grow while the actual equation
+        // residual remains negligible. Use the RHS-normalized residual for the
+        // nonlinear convergence monitor and keep the reference-relative value
+        // available in history for diagnostics/adaptive-relaxation analysis.
         const double nonlinear_metric = std::max({
             h.momentum_residual,
-            h.momentum_equation_residual_relative,
             h.pressure_residual,
             h.velocity_change_inf,
             h.pressure_change_inf});
@@ -3693,10 +3698,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // absolute scale sits far below that first maximum would be exempted
         // from the gate. nonlinear_metric is therefore a diagnostic summary and
         // never a replacement for the individual physical criteria.
-        const bool momentum_residual_gate =
-            h.momentum_residual <= controls.convergence.relative_tolerance;
         const bool momentum_equation_residual_gate =
-            h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance;
+            h.momentum_equation_residual_rhs_relative <= controls.convergence.relative_tolerance;
         const bool pressure_residual_gate =
             h.pressure_residual <= controls.convergence.relative_tolerance;
         const bool velocity_change_gate =
@@ -3704,8 +3707,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const bool pressure_change_gate =
             h.pressure_change_inf <= controls.convergence.relative_tolerance;
         const bool per_criterion_gates_ok =
-            momentum_residual_gate && momentum_equation_residual_gate &&
-            pressure_residual_gate && velocity_change_gate && pressure_change_gate;
+            momentum_equation_residual_gate && pressure_residual_gate &&
+            velocity_change_gate && pressure_change_gate;
 
         // Reject severe adaptive overshoots before they reach the convergence
         // monitor. A retry is the same nonlinear iteration, so convergence
