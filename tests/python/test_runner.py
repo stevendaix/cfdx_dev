@@ -65,7 +65,6 @@ def test_runner_stop_terminates_process() -> None:
     assert not runner.running
 
 
-
 @pytest.mark.skipif(
     __import__("os").name != "posix",
     reason="POSIX process groups provide pause semantics",
