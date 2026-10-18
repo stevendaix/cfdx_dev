@@ -1,0 +1,4 @@
+pr942_fastctest_diag marker version 1
+purpose: capture-only replica of CI Release "Run fast CTest" on pinned PR #942 head eb4a765382328f532d5e27525637630037b5cd34
+date: 2026-10-18
+rule: evidence-only diagnostic, never a numerical PASS/FAIL
