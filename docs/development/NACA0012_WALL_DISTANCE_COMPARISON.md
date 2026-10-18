@@ -52,7 +52,12 @@ of 0.2 chord on each side. The solid mask is computed by a point-in-polygon
 test against the original boundary segments. The grid is extruded through
 three z planes; the wall panels span that depth, so the target distance field
 is invariant in z. Grid resolution is adjustable to support a quick CI smoke
-test and a more detailed local comparison.
+test and a more detailed local comparison. The standard CTest run uses
+nx=25; Release CI additionally runs nx=61 and uploads
+wall_distance_naca0012_refined.csv as part of the
+cfdx-ci-Release-diagnostics artifact. This second run records method
+metrics at a finer sample spacing; it does not by itself qualify the PDE
+methods or impose unsupported accuracy thresholds.
 
 The reference is computed independently from the original 2-D marker edges
 using the analytic point-to-segment projection formula. It does not call
