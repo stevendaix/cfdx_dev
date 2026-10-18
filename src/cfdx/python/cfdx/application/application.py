@@ -8,6 +8,7 @@ from typing import Any
 
 from ..dat_io import DatRestart, read_dat_restart
 from ..execution import ExecutionController
+from ..mesh_model import MeshCatalog, read_mesh_catalog
 from ..probe import ProbeCatalog
 from ..probe_validation import ProbeSeries, read_probe_csv, write_probe_csv
 from ..project import Project
@@ -345,6 +346,10 @@ class Application:
         return self.set_results(
             discover_result_series(path, inspect_fields=True), directory=path
         )
+
+    def load_mesh(self, path: str | Path) -> MeshCatalog:
+        """Load a CFDX mesh and return its catalog via the application facade."""
+        return read_mesh_catalog(Path(path))
 
     def select_result_frame(self, stable_id: str) -> ApplicationState:
         if stable_id not in {frame.stable_id for frame in self.results.frames}:
