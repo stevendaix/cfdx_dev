@@ -323,25 +323,28 @@ private:
             if(f.neighbour!=static_cast<std::size_t>(-1)){
                 u=0.5*(ux_[f.owner]+ux_[f.neighbour]);
                 v=0.5*(ur_[f.owner]+ur_[f.neighbour]);
-                // Rhie-Chow pressure-velocity coupling: a plain interpolated
-                // face velocity re-injects the interpolation imbalance every
-                // outer iteration and the momentum residual stalls in a limit
-                // cycle ~1e-5 (gate 2e-6). Add the pressure-gradient
-                // transport of the two adjacent cells, minus the compact
-                // face-normal pressure gradient, weighted by the RELAXED
-                // component-wise momentum diagonals apx_/apr_ (V/(a_P/alpha_u),
-                // no extra alpha_u factor - validated component-wise in the
-                // TS twin; the unrelaxed V/(alpha_u*a_P) variant misses the
-                // fine-mesh drag band by 0.06pt).
+                // Rhie-Chow and pressure correction use the same response
+                // derived from the relaxed momentum equation:
+                //   a_P^r = a_P / alpha_u,  U' = -(V/a_P^r) grad(p').
+                // apx_/apr_ store a_P^r, so the response is V/apx_ or V/apr_.
+                // Dividing by alpha_u again would undo relaxation a second time
+                // and make the pressure matrix differ from the face-flux operator.
                 const double d=dist(m_.cells[f.owner],m_.cells[f.neighbour]);
                 const double Dox=m_.cells[f.owner].volume/apx_[f.owner];
                 const double Dor=m_.cells[f.owner].volume/apr_[f.owner];
                 const double Dnx=m_.cells[f.neighbour].volume/apx_[f.neighbour];
                 const double Dnr=m_.cells[f.neighbour].volume/apr_[f.neighbour];
+                const double ex=(m_.cells[f.neighbour].cx-m_.cells[f.owner].cx)/d;
+                const double er=(m_.cells[f.neighbour].cr-m_.cells[f.owner].cr)/d;
+                const double Dxf=0.5*(Dox+Dnx);
+                const double Drf=0.5*(Dor+Dnr);
+                // The implicit coefficient is (D_f e) dot n. The full
+                // interpolated D grad(p) dot n remains explicit; using
+                // D_f projected twice on n is inconsistent on skewed faces.
+                const double response_s=Dxf*ex*f.nx+Drf*er*f.nr;
                 rc=0.5*(Dox*gp_x[f.owner]+Dnx*gp_x[f.neighbour])*f.nx
                   +0.5*(Dor*gp_r[f.owner]+Dnr*gp_r[f.neighbour])*f.nr
-                  -0.5*((Dox+Dnx)*f.nx*f.nx+(Dor+Dnr)*f.nr*f.nr)
-                       *(p_[f.neighbour]-p_[f.owner])/d;
+                  -response_s*(p_[f.neighbour]-p_[f.owner])/d;
             }else{
                 u=boundary_ux(f,f.owner); v=boundary_ur(f,f.owner);
             }
@@ -556,13 +559,34 @@ private:
         return r;
     }
 
-    // Face-normal pressure response of a cell:
-    // nx^2*V/(alpha_u*a_Px) + nr^2*V/(alpha_u*a_Pr). apx_/apr_ store the
-    // relaxed diagonals a_P/alpha_u, so dividing by alpha_u recovers the
-    // unrelaxed momentum diagonal required by fiche 04.
-    double face_response(std::size_t cell,double nx,double nr,const AxisymControls& c) const {
-        const double v=m_.cells[cell].volume;
-        return (nx*nx*v)/(c.alpha_u*apx_[cell])+(nr*nr*v)/(c.alpha_u*apr_[cell]);
+    // Coefficient of the centre-to-centre pressure difference on an
+    // internal face: (D_f e) dot n, using the relaxed diagonal response.
+    double internal_face_response(
+        std::size_t owner,std::size_t neighbour,double nx,double nr) const {
+        const auto& o=m_.cells[owner];
+        const auto& n=m_.cells[neighbour];
+        const double dx=n.cx-o.cx, dr=n.cr-o.cr;
+        const double d=std::hypot(dx,dr);
+        if (!(d>0.0) || !std::isfinite(d))
+            throw std::runtime_error("VMFL036 degenerate internal face centre distance");
+        const double ex=dx/d, er=dr/d;
+        const double Dox=o.volume/apx_[owner];
+        const double Dor=o.volume/apr_[owner];
+        const double Dnx=n.volume/apx_[neighbour];
+        const double Dnr=n.volume/apr_[neighbour];
+        return 0.5*(Dox+Dnx)*ex*nx + 0.5*(Dor+Dnr)*er*nr;
+    }
+
+    // Boundary counterpart: e points from the cell centroid to the face centre.
+    double boundary_face_response(std::size_t cell,const AxisymFace& face) const {
+        const auto& c=m_.cells[cell];
+        const double dx=face.cx-c.cx, dr=face.cr-c.cr;
+        const double d=std::hypot(dx,dr);
+        if (!(d>0.0) || !std::isfinite(d))
+            throw std::runtime_error("VMFL036 degenerate boundary face centre distance");
+        const double ex=dx/d, er=dr/d;
+        return (c.volume/apx_[cell])*ex*face.nx
+             + (c.volume/apr_[cell])*er*face.nr;
     }
 
     double pressure_correction(const AxisymControls& c){
@@ -582,21 +606,26 @@ private:
                 if(f.neighbour!=static_cast<std::size_t>(-1)){
                     const std::size_t nb=(f.owner==cell?f.neighbour:f.owner);
                     const double d=dist(m_.cells[cell],m_.cells[nb]);
-                    // Directional face response: the face-normal velocity
-                    // correction is -(nx^2*rAU_x + nr^2*rAU_r)*dp'/dn per cell,
-                    // so faces with a radial normal use the radial diagonal
-                    // (which carries the hoop term), consistently with the
-                    // component-wise velocity correction below.
-                    const double df=0.5*(face_response(cell,f.nx,f.nr,c)
-                                         +face_response(nb,f.nx,f.nr,c));
+                    // Use the same owner-to-neighbour centre-line response
+                    // as compute_fluxes() and the conservative flux update.
+                    // This keeps the implicit pressure coefficient identical
+                    // to the pressure-jump part of the face-flux operator.
+                    const double df=internal_face_response(
+                        f.owner,f.neighbour,f.nx,f.nr);
                     const double a=rho_*f.area*df/d;
                     diag[cell]+=a;
                     prow_nb[cell][prow_cnt[cell]]=nb;
                     prow_a[cell][prow_cnt[cell]]=-a;
                     ++prow_cnt[cell];
                 } else if(f.outer && f.cx >= 0.0){
-                    const double d=std::max(1e-12,std::abs((f.cx-m_.cells[cell].cx)*f.nx+(f.cr-m_.cells[cell].cr)*f.nr));
-                    const double a=rho_*f.area*face_response(cell,f.nx,f.nr,c)/d;
+                    const double d=std::hypot(
+                        f.cx-m_.cells[cell].cx,f.cr-m_.cells[cell].cr);
+                    const double response=boundary_face_response(cell,f);
+                    if (!(response>0.0) || !std::isfinite(response))
+                        throw std::runtime_error(
+                            "VMFL036 invalid outlet pressure response at face "+
+                            std::to_string(fid));
+                    const double a=rho_*f.area*response/d;
                     // Fixed physical pressure at the outlet implies a
                     // homogeneous pressure-correction boundary condition:
                     // p'_b = 0. Do not inject -p_P into the correction RHS.
@@ -727,10 +756,8 @@ private:
                !std::isfinite(apr_[cell]) || !(apr_[cell]>0.0))
                 throw std::runtime_error("VMFL036 invalid momentum diagonal during pressure correction at cell "+
                     std::to_string(cell));
-            ux_[cell]-=m_.cells[cell].volume/
-                (c.alpha_u*apx_[cell])*gx;
-            ur_[cell]-=m_.cells[cell].volume/
-                (c.alpha_u*apr_[cell])*gr;
+            ux_[cell]-=m_.cells[cell].volume/apx_[cell]*gx;
+            ur_[cell]-=m_.cells[cell].volume/apr_[cell]*gr;
             if(!std::isfinite(ux_[cell]) || !std::isfinite(ur_[cell]))
                 throw std::runtime_error("VMFL036 non-finite corrected velocity at cell "+
                     std::to_string(cell));
@@ -745,10 +772,11 @@ private:
         // from the corrected velocities, apply the discrete continuity
         // statement of the assembled pressure equation directly to the
         // carried fluxes:
-        //   internal faces: phi_f += rho*A*df/d*(p'_owner - p'_neighbour)
-        //                   (same symmetric df = (resp_o + resp_n)/2 as the
-        //                   assembled coefficients)
-        //   outlet faces   : phi_f += rho*A*resp/d*p'_owner  (p'_b = 0)
+        //   internal faces: phi_f += rho*A*((D_f e) dot n)/d
+        //                                  *(p'_owner - p'_neighbour)
+        //   outlet faces   : phi_f += rho*A*((D_o e_b) dot n)/d*p'_owner
+        //                   (p'_b = 0). These are the same coefficients used
+        //                   in pressure_correction() above.
         //   sphere/axis    : no pressure coefficient was assembled, so no
         //                   flux correction (wall/symmetry velocities do not
         //                   respond to p' in this operator)
@@ -765,13 +793,18 @@ private:
                     std::to_string(k));
             if(f.neighbour!=static_cast<std::size_t>(-1)){
                 const double d=dist(m_.cells[f.owner],m_.cells[f.neighbour]);
-                const double df=0.5*(face_response(f.owner,f.nx,f.nr,c)
-                                    +face_response(f.neighbour,f.nx,f.nr,c));
+                const double df=internal_face_response(
+                    f.owner,f.neighbour,f.nx,f.nr);
                 phi_[k]+=rho_*f.area*df/d*(pc_[f.owner]-pc_[f.neighbour]);
             } else if(f.outer && f.cx >= 0.0){
                 const std::size_t o=f.owner;
-                const double d=std::max(1e-12,std::abs((f.cx-m_.cells[o].cx)*f.nx+(f.cr-m_.cells[o].cr)*f.nr));
-                phi_[k]+=rho_*f.area*face_response(o,f.nx,f.nr,c)/d*pc_[o];
+                const double d=std::hypot(f.cx-m_.cells[o].cx,f.cr-m_.cells[o].cr);
+                const double response=boundary_face_response(o,f);
+                if (!(response>0.0) || !std::isfinite(response))
+                    throw std::runtime_error(
+                        "VMFL036 invalid outlet pressure response during flux correction at face "+
+                        std::to_string(k));
+                phi_[k]+=rho_*f.area*response/d*pc_[o];
             }
             if(!std::isfinite(phi_[k]))
                 throw std::runtime_error("VMFL036 non-finite face flux after conservative correction at face "+
