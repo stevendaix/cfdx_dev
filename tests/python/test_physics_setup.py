@@ -1,14 +1,16 @@
 from cfdx.physics_setup import (
-    TURBULENCE_MODELS,
     TURBULENCE_CATALOG,
+    TURBULENCE_MODEL_GAPS,
+    TURBULENCE_MODELS,
     TurbulenceSelectionContext,
     TurbulenceStatus,
     default_parameters,
     physics_spec,
     recommend_turbulence_models,
     turbulence_model,
+    turbulence_model_from_case,
     turbulence_model_requirements,
-    TURBULENCE_MODEL_GAPS,
+    validate_turbulence_selection,
 )
 from cfdx.setup_model import ParameterType
 
@@ -16,15 +18,29 @@ from cfdx.setup_model import ParameterType
 def test_turbulence_catalog_exposes_all_current_model_states():
     keys = {model.key for model in TURBULENCE_CATALOG}
     assert {
-        "LAMINAR", "KEPSILON", "RNG_KEPSILON", "REALIZABLE_KEPSILON",
-        "KOMEGA", "SST", "SPALART_ALLMARAS", "SMAGORINSKY", "WALE",
-        "DYNAMIC_KEQN", "DES", "DDES", "IDDES",
+        "LAMINAR",
+        "KEPSILON",
+        "RNG_KEPSILON",
+        "REALIZABLE_KEPSILON",
+        "KOMEGA",
+        "SST",
+        "SPALART_ALLMARAS",
+        "SMAGORINSKY",
+        "WALE",
+        "DYNAMIC_KEQN",
+        "DES",
+        "DDES",
+        "IDDES",
     } <= keys
     assert turbulence_model("SST").status is TurbulenceStatus.COMPONENT_READY
     assert turbulence_model("KEPSILON").status is TurbulenceStatus.COMPONENT_READY
-    assert turbulence_model("SPALART_ALLMARAS").status is TurbulenceStatus.COMPONENT_READY
+    assert (
+        turbulence_model("SPALART_ALLMARAS").status
+        is TurbulenceStatus.COMPONENT_READY
+    )
     assert {
-        model.key for model in TURBULENCE_CATALOG
+        model.key
+        for model in TURBULENCE_CATALOG
         if model.status is TurbulenceStatus.SOLVER_READY
     } == {"LAMINAR"}
     assert turbulence_model("LAMINAR").status is TurbulenceStatus.SOLVER_READY
@@ -33,7 +49,7 @@ def test_turbulence_catalog_exposes_all_current_model_states():
 
 
 def test_turbulence_dropdown_contains_only_solver_ready_models():
-    params = {p.name: p for p in default_parameters(physics_spec("turbulence"))}
+    params = {parameter.name: parameter for parameter in default_parameters(physics_spec("turbulence"))}
     assert params["model"].kind is ParameterType.CHOICE
     assert params["model"].choices == TURBULENCE_MODELS
     assert params["model"].value == "LAMINAR"
@@ -55,7 +71,10 @@ def test_turbulence_recommendations_are_explicit_and_non_mutating():
     recommendations = recommend_turbulence_models(context)
     assert recommendations[0].model == "SST"
     assert any("transition" in warning.lower() for warning in recommendations[0].warnings)
-    assert any("component_ready" in warning.lower() for warning in recommendations[0].warnings)
+    assert any(
+        "component_ready" in warning.lower()
+        for warning in recommendations[0].warnings
+    )
     assert any("separation" in reason.lower() for reason in recommendations[0].reasons)
 
 
@@ -69,8 +88,6 @@ def test_turbulence_selection_rejects_invalid_context():
 
 
 def test_legacy_turbulence_settings_normalize_to_structured_schema():
-    from cfdx.physics_setup import turbulence_model_from_case, validate_turbulence_selection
-
     normalized = turbulence_model_from_case({"model": "SST"})
     assert normalized["family"] == "RANS"
     assert normalized["model"] == "SST"
@@ -86,9 +103,14 @@ def test_legacy_turbulence_settings_normalize_to_structured_schema():
         raise AssertionError("component-ready SST must not be selectable in production")
 
 
-def test_non_solver_ready_turbulence_models_are_rejected_for_production_cases():
-    from cfdx.physics_setup import validate_turbulence_selection
+def test_legacy_turbulence_settings_default_to_laminar():
+    normalized = turbulence_model_from_case({})
+    assert normalized["model"] == "LAMINAR"
+    assert normalized["family"] == "LAMINAR"
+    assert validate_turbulence_selection({})["model"] == "LAMINAR"
 
+
+def test_non_solver_ready_turbulence_models_are_rejected_for_production_cases():
     # Guard precedence matters here. Every KERNEL_ONLY closure is LES or
     # HYBRID, so the default steady solver type trips the transient guard
     # first and the user is told the actionable reason. Production readiness
@@ -110,8 +132,6 @@ def test_non_solver_ready_turbulence_models_are_rejected_for_production_cases():
 
 
 def test_all_component_ready_rans_models_fail_closed_in_production():
-    from cfdx.physics_setup import validate_turbulence_selection
-
     rans_models = (
         "KEPSILON",
         "RNG_KEPSILON",
@@ -127,12 +147,12 @@ def test_all_component_ready_rans_models_fail_closed_in_production():
             assert "component_ready" in str(exc)
             assert "No fallback to laminar" in str(exc)
         else:
-            raise AssertionError(f"{model} must fail closed until production coupling exists")
+            raise AssertionError(
+                f"{model} must fail closed until production coupling exists"
+            )
 
 
 def test_steady_scale_resolving_models_are_rejected_explicitly():
-    from cfdx.physics_setup import validate_turbulence_selection
-
     for model in ("SMAGORINSKY", "WALE", "DES", "DDES", "IDDES"):
         try:
             validate_turbulence_selection({"model": model, "solver_type": "steady"})
@@ -143,8 +163,6 @@ def test_steady_scale_resolving_models_are_rejected_explicitly():
 
 
 def test_transient_hybrid_guard_is_independent_of_gui_filtering():
-    from cfdx.physics_setup import validate_turbulence_selection
-
     try:
         validate_turbulence_selection({"model": "DDES", "solver_type": "steady"})
     except ValueError:
@@ -160,7 +178,6 @@ def test_transient_hybrid_guard_is_independent_of_gui_filtering():
         assert "kernel_only" in str(exc)
     else:
         raise AssertionError("DDES must still be blocked by production readiness")
-
 
 
 def test_every_turbulence_model_has_explicit_requirements_and_gaps():
