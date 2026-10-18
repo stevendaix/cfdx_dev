@@ -3,6 +3,7 @@ import importlib.util
 import pytest
 
 from cfdx.workbench import CFDXWorkbenchWindow
+
 from cfdx import CFDXSession
 
 
