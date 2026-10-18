@@ -926,7 +926,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         RUN_SERIAL TRUE)
     add_cfdx_test(test_n9_s9_rhie_chow_consistency tests/validation/test_n9_s9_rhie_chow_consistency.cpp)
     set_tests_properties(test_n9_s9_rhie_chow_consistency PROPERTIES
-        LABELS "n9;qualification;validation;validation-total"
+        LABELS "n9;qualification;validation;long;validation-total"
         TIMEOUT 300
         RUN_SERIAL TRUE)
     add_cfdx_test(test_n9_negative_diagnostics tests/validation/test_n9_negative_diagnostics.cpp)

@@ -660,5 +660,133 @@ int main()
         EXPECT_NEAR(relaxed_actual, alpha_u * actual, 1e-12);
     });
 
+    run_case("n9_s9_flux_velocity_mismatch_detects_known_inconsistency", [] {
+        // Sensitivity proof for the restored independent audit channel:
+        // phi_U (plain interpolation of the corrected velocity) and phi_RC
+        // (authoritative Rhie-Chow flux) are two independent paths. For the
+        // checkerboard pressure mode the channels MUST disagree by the known
+        // Rhie-Chow correction (the channel is not blind); for the consistent
+        // linear pressure field the internal-face mismatch MUST read zero
+        // (the channel does not report an artifact when the identity holds).
+        const Mesh mesh = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        const auto rAU = unit_rAU(mesh.n_cells());
+
+        Field<double, Location::CELL> U(2, "U", "m/s", 3);
+        U.fill(0.0);
+        Field<double, Location::CELL> p_check(2, "p", "Pa", 1);
+        p_check(0) = 1.0;
+        p_check(1) = -1.0;
+        const auto phi_rc_check = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_check, rAU, 1.0, ubc, pbc);
+        const auto phi_u = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+        const double mismatch_check = std::abs(phi_rc_check(1) - phi_u(1));
+        EXPECT_TRUE(mismatch_check > 1e-12);
+
+        Field<double, Location::CELL> p_linear(2, "p", "Pa", 1);
+        p_linear(0) = 1.0;
+        p_linear(1) = 3.0;
+        const auto phi_rc_linear = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_linear, rAU, 1.0, ubc, pbc);
+        EXPECT_NEAR(phi_rc_linear(1), phi_u(1), 1e-12);
+    });
+
+    run_case("n9_s9_flux_velocity_mismatch_boundary_channel_sees_expected_correction", [] {
+        // The boundary channel must not be blind either: on a fixed-pressure
+        // boundary face the two reconstruction paths differ by exactly the
+        // Rhie-Chow boundary correction
+        // rho*(implicit_coeff*(p_bc - p_P) + deferred), evaluated with the
+        // owner-cell dAU = V*rAU and the owner-centre -> face-centre
+        // distance, using the same production coefficient helpers.
+        const Mesh mesh = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+
+        Field<double, Location::CELL> U(2, "U", "m/s", 3);
+        U.fill(0.0);
+        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        p(0) = 1.0;
+        p(1) = 3.0;
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::FIXED_VALUE, 0.5, 0.0};
+
+        const auto rAU = unit_rAU(mesh.n_cells());
+        const auto phi_rc = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+        const auto phi_u = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+
+        const std::size_t f = 0;  // x = 0 plane, owner = cell 0
+        const std::size_t o = mesh.ownership().owner(f);
+        const Vec3 Sf = geometry.face_area_vectors[f];
+        const Vec3 dvec = geometry.face_centres[f] - geometry.cell_centres[o];
+        const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
+        const Vec3 dAU_boundary{
+            geometry.cell_volumes[o] * rAU[0][o],
+            geometry.cell_volumes[o] * rAU[1][o],
+            geometry.cell_volumes[o] * rAU[2][o]};
+        const double implicit_coefficient =
+            pressure_face_orthogonal_coefficient(Sf, dvec, dAU_boundary);
+        const Vec3 gp{
+            grad_p.component_data(0)[o],
+            grad_p.component_data(1)[o],
+            grad_p.component_data(2)[o]};
+        const double deferred =
+            pressure_face_nonorthogonal_flux(Sf, dvec, dAU_boundary, gp);
+        const double expected_correction =
+            1.0 * (implicit_coefficient * (0.5 - p(o)) + deferred);
+
+        EXPECT_TRUE(std::abs(expected_correction) > 1e-12);
+        EXPECT_NEAR(phi_u(f), 0.0, 1e-12);
+        EXPECT_NEAR(phi_rc(f), -expected_correction, 1e-12);
+        EXPECT_NEAR(phi_rc(f) - phi_u(f), -expected_correction, 1e-12);
+    });
+
+    run_case("n9_s9_rhie_chow_identity_detects_stale_state", [] {
+        // The identity channel re-derives the authoritative flux from the
+        // current state: re-deriving from the same state reads exactly zero,
+        // while a stored flux built from a different (stale) state MUST be
+        // detected as a nonzero identity error.
+        const Mesh mesh = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+
+        Field<double, Location::CELL> U(2, "U", "m/s", 3);
+        U.fill(0.0);
+        Field<double, Location::CELL> p_a(2, "p", "Pa", 1);
+        Field<double, Location::CELL> p_b(2, "p", "Pa", 1);
+        p_a(0) = 1.0; p_a(1) = -1.0;
+        p_b(0) = 4.0; p_b(1) = -2.0;
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        const auto rAU = unit_rAU(mesh.n_cells());
+
+        const auto phi_stored = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_a, rAU, 1.0, ubc, pbc);
+        const auto phi_rederived_same = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_a, rAU, 1.0, ubc, pbc);
+        const auto phi_rederived_stale = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_b, rAU, 1.0, ubc, pbc);
+
+        double identity_same = 0.0;
+        double identity_stale = 0.0;
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            identity_same = std::max(
+                identity_same, std::abs(phi_stored(f) - phi_rederived_same(f)));
+            identity_stale = std::max(
+                identity_stale, std::abs(phi_stored(f) - phi_rederived_stale(f)));
+        }
+        EXPECT_TRUE(identity_same == 0.0);
+        EXPECT_TRUE(identity_stale > 1e-12);
+    });
+
     return 0;
 }
