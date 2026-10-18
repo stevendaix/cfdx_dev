@@ -1,9 +1,10 @@
 """Read-only application snapshots for GUI, TUI, and CLI clients."""
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from ..session import CFDXSession, SimulationState
 from .results import ResultsState

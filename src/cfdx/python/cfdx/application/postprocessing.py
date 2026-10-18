@@ -7,9 +7,8 @@ their own lists of derived fields, mesh-quality metrics or probe quantities.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
-
 
 _ALLOWED_CATEGORIES = frozenset({"native_field", "derived_field", "mesh_quality", "probe", "integration", "engineering", "report"})
 _ALLOWED_AVAILABILITY = frozenset({"available", "conditional", "unavailable"})

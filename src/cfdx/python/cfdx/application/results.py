@@ -1,4 +1,5 @@
 """Application-level result browsing and display-object contracts."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -31,10 +32,19 @@ class ResultsState:
 
     @property
     def selected_frame(self) -> ResultFrameState | None:
-        return next((frame for frame in self.frames if frame.stable_id == self.selected_frame_id), None)
+        return next(
+            (
+                frame
+                for frame in self.frames
+                if frame.stable_id == self.selected_frame_id
+            ),
+            None,
+        )
 
 
-_DISPLAY_KINDS = frozenset({"surface", "contour", "slice", "vector", "streamline", "volume", "probe"})
+_DISPLAY_KINDS = frozenset(
+    {"surface", "contour", "slice", "vector", "streamline", "volume", "probe"}
+)
 
 
 @dataclass(frozen=True)
@@ -85,16 +95,18 @@ class DisplayObject:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, object]) -> "DisplayObject":
+    def from_dict(cls, data: dict[str, object]) -> DisplayObject:
         raw_parameters = data.get("parameters", {})
         if not isinstance(raw_parameters, dict):
-            raise ValueError("display object parameters must be an object")
+            raise TypeError("display object parameters must be an object")
         return cls(
             stable_id=str(data["stable_id"]),
             kind=str(data["kind"]),
             dataset_id=str(data["dataset_id"]),
             field=None if data.get("field") is None else str(data["field"]),
-            parameters=tuple(sorted((str(k), str(v)) for k, v in raw_parameters.items())),
+            parameters=tuple(
+                sorted((str(k), str(v)) for k, v in raw_parameters.items())
+            ),
         )
 
 

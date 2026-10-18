@@ -1,8 +1,8 @@
 """Headless Run Center state fed by the existing execution controller."""
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from ..execution import ExecutionController
 from ..metrics import SolverMetrics
