@@ -1,0 +1,4 @@
+VERDICT: EVIDENCE_COMPLETE
+series=4 events=4
+classifications=1:CONVERGED, 2:CONVERGED, 3:CONVERGED, 4:CONVERGED
+rule: diagnostic evidence verdict, never a numerical PASS/FAIL

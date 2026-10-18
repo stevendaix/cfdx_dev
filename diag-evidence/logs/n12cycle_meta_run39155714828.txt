@@ -1,0 +1,7 @@
+run_id=39155714828
+started_utc=2026-10-18T18:46:48Z
+pinned_sha=0c61c51ee8622e8019ff7cdb895f795f647ccecc (master 16:41:08Z — consolidation #929 incluant #956 : gate momentum RHS #905 + budget N12 128 de #937)
+master_head_resolved=729e19a4d78acbcbee679956771c329ef7878d06
+scope: capture-only per-iteration INCOMPRESSIBLE_ITER traces of test_n12_coupled_pressure_velocity_mms; NO code instrumentation, NO tolerance/oracle/gate/budget change
+hypotheses: H1 plancher de relaxation (continuity_normalized ~ C*dp); H2 cycle limite pression (dp borne, periode); H3 => aucun budget ne satisfait la gate continuite sans correctif
+rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL
