@@ -745,14 +745,13 @@ int main()
     // warm-started runs at alpha_u = 0.7: the monitored nonlinear metric
     // decays geometrically along the SIMPLE slow mode at 0.99122 per
     // iteration with alpha_p = 0.3 and at 0.99208 with alpha_p = 0.01 —
-    // the mode is essentially alpha_p-INDEPENDENT. The exact-HEAD trace
-    // for alpha_u = 0.02 did NOT meet the intended stagnation contract:
-    // after a short initial rise, the metric kept contracting by slightly
-    // more than 1e-3 per iteration and reached MAX_ITERATIONS at 400.
-    // Reduce only the test's pathological momentum relaxation to 0.005
-    // (not the production thresholds or iteration budget) so this negative
-    // case exercises the detector's flat-envelope branch. CI must confirm
-    // that the resulting trajectory is STAGNATED rather than assuming it.
+    // the mode is essentially alpha_p-INDEPENDENT. Exact-HEAD traces
+    // disproved both alpha_u=0.02 and alpha_u=0.005: the latter still
+    // reduced the metric by about 0.13% per iteration late in the run,
+    // just above the existing 0.1% flat-envelope threshold, and reached
+    // MAX_ITERATIONS at 400. Reduce only this pathological test stimulus
+    // to alpha_u=0.001; do not change production thresholds or the budget.
+    // CI must confirm STAGNATED on the new trajectory; it is not assumed.
     // Earlier candidate triggers that died on CI evidence are not
     // asserted: pathological under-relaxation on the SIMPLEC consistent
     // correction (alpha_u = alpha_p = 1e-6 still improved 3e-3 to 7e-2
@@ -773,14 +772,13 @@ int main()
         // Unreachable gates: the monitor normalizes the metric by this
         // solve's first sample, so a 1e-24 gate can never be satisfied
         // and CONVERGED can never fire. The pathological knobs are the
-        // relaxation factors only: alpha_u = 0.005, alpha_p = 0.01.
-        // The previous alpha_u=0.02 run reached MAX_ITERATIONS because its
-        // late metric contraction remained just above the existing
-        // stagnation threshold. This lower test-only relaxation is intended
-        // to produce a flat envelope; the assertions below and CI evidence
-        // must confirm the status. Inner linear settings (1e-9 / 1000)
-        // remain at their production values.
-        c.coupling.alpha_u = 0.005;
+        // relaxation factors only: alpha_u = 0.001, alpha_p = 0.01.
+        // At alpha_u=0.005, the measured contraction remained just above
+        // the unchanged 1e-3 stagnation threshold. This smaller test-only
+        // relaxation should create the flat envelope needed to exercise
+        // STAGNATED; exact-HEAD CI must verify that outcome.
+        // Inner linear settings (1e-9 / 1000) remain at production values.
+        c.coupling.alpha_u = 0.001;
         c.coupling.alpha_p = 0.01;
         c.convergence.absolute_tolerance = 1e-24;
         c.convergence.relative_tolerance = 1e-24;
