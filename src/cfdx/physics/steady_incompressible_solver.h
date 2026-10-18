@@ -168,10 +168,18 @@ struct IncompressibleSolverControls {
         40,
         false,
         cfdx::core::NullSpaceModel::None};
+    // Fp is the nested PCD pressure convection-diffusion operator. The
+    // Ghia Re=100 qualification showed that FGMRES(40) repeatedly hit the
+    // 100-iteration cap with true relative residuals above the unchanged
+    // 1e-8 gate; an isolated FP64 experiment converged in roughly 53-56
+    // iterations with restart 512. Give this inner solve enough Krylov space
+    // to avoid the measured restart plateau. The iteration budget and
+    // tolerance remain unchanged; the effective restart is clamped to n_rows
+    // at the call site.
     cfdx::core::LinearSolverRequest pcd_convection_diffusion_linear_solver{
         cfdx::core::KrylovModel::FGMRES,
         cfdx::core::PreconditionerModel::ILU0,
-        40,
+        512,
         false,
         cfdx::core::NullSpaceModel::None};
     std::size_t pcd_laplacian_max_iterations = 100;

@@ -70,6 +70,26 @@ int main() {
     auto mr = micro_rise.update({3, 1.001, 1.0, {}});
     assert(mr.status == ConvergenceStatus::STAGNATED);
 
+    // A measurable monotone contraction above the stagnation threshold is
+    // slow convergence, not stagnation. With 0.13% improvement per sample,
+    // no transition belongs to the 0.1% flat-envelope band.
+    ConvergenceMonitorControls slow_contraction = controls;
+    slow_contraction.qoi_gates.clear();
+    slow_contraction.max_iterations = 20;
+    slow_contraction.stagnation_window = 3;
+    slow_contraction.stagnation_relative_improvement = 1e-3;
+    ConvergenceMonitor slowly_contracting(slow_contraction);
+    double slow_residual = 1.0;
+    ConvergenceReport slow_report;
+    for (std::size_t iteration = 1; iteration <= 20; ++iteration) {
+        slow_report = slowly_contracting.update(
+            {iteration, slow_residual, 1.0, {}});
+        slow_residual *= 0.9987;
+    }
+    assert(slow_report.status == ConvergenceStatus::MAX_ITERATIONS);
+    assert(slow_report.stagnation_count == 0);
+    assert(slow_report.iteration == 20);
+
     ConvergenceMonitorControls divergence = controls;
     divergence.qoi_gates.clear();
     divergence.divergence_window = 2;
