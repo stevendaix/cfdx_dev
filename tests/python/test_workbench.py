@@ -24,6 +24,10 @@ def test_workbench_has_stable_docks() -> None:
     session = CFDXSession()
     session.state = SimulationState.READY
     window = CFDXWorkbenchWindow(session)
+    from cfdx.application import WorkflowStatus
+
+    assert window._status_marker(WorkflowStatus.CONDITIONAL) == "[~]"
+    assert window._status_marker(WorkflowStatus.COMPLETE) == "[OK]"
     assert window.objectName() == ""
     assert window.workflow_tree.objectName() == "workbench.workflow_tree"
     assert window.workflow_tree.topLevelItem(1).child(2).text(0).endswith("[OK]")
