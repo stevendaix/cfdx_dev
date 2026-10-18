@@ -131,7 +131,9 @@ def test_non_solver_ready_turbulence_models_are_rejected_for_production_cases():
     except ValueError as exc:
         assert "kernel_only" in str(exc)
     else:
-        raise AssertionError("kernel-only turbulence model must not be production-selectable")
+        raise AssertionError(
+            "kernel-only turbulence model must not be production-selectable"
+        )
 
 
 def test_all_component_ready_rans_models_fail_closed_in_production():
