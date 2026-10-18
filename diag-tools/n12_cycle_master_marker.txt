@@ -1,0 +1,29 @@
+DIAG-ONLY marker — N12 pressure limit-cycle capture (master pin)
+
+Fired: 2026-10-18 ~17:20Z (feu vert Steven : « fait la suite sur le cycle
+  limite pression » puis re-ancrage « on repart depuis le master »).
+
+Pinned ref: 0c61c51ee8622e8019ff7cdb895f795f647ccecc (master 16:41:08Z,
+  consolidation #929 — contient #956 : gate momentum RHS-normalisé #905 +
+  test N12 budget 128 consolidé de #937).
+
+Purpose: capture-only per-iteration INCOMPRESSIBLE_ITER traces of
+  test_n12_coupled_pressure_velocity_mms (iteration_trace=true, frequency=1).
+  Analyse mesurée, fail-closed :
+    H1 plancher de relaxation : continuity_normalized ≈ C·dp (C stable ?)
+       — mécanisme : flux autoritaire reconstruit depuis l'état SOUS-RELAXÉ
+         (audit #956, commentaire id 6252211326) ;
+    H2 cycle limite pression : dp borné non décroissant, période (2-cycle
+       vs 4-cycle vs irrégulier), taux géométrique de contraction ;
+    H3 budget requis estimé pour satisfaire la gate solver
+       continuity_normalized ≤ 1e-12 via le plancher mesuré.
+
+AUCUNE instrumentation du code, AUCUNE tolérance/oracle/gate/budget modifié.
+
+Evidence: diag-evidence/logs/n12cycle_*_run$GITHUB_RUN_ID.*
+
+Verdicts fail-closed: EVIDENCE_COMPLETE (seul vert — diagnostic, PAS un
+  PASS/FAIL numérique) / INCONCLUSIVE_BUILD / INCONCLUSIVE_TEST_RUN /
+  INCONCLUSIVE_NO_TRACE / INCONCLUSIVE_SPARSE_TRACE / INCONCLUSIVE_ANALYZER_CRASH.
+
+Owner: trajectoire Vibe (Steven). Branche diag — JAMAIS merger.

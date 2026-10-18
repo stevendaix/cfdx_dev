@@ -1,0 +1,507 @@
+name: N12 pressure limit-cycle capture (master pin) (diag)
+
+# DIAG-ONLY — branche ci/long-campaign-diagnostics (JAMAIS merger).
+# Feu vert Steven 2026-10-18 ~16:45Z : « fait la suite sur le cycle limite
+# pression » ; re-ancré sur master 2026-10-18 ~17:15Z : « on repart depuis le
+# master » (#929 mergée dans master 16:41:08Z ; le master contient #956 :
+# gate momentum RHS-normalisé #905 + test N12 budget 128 consolidé de #937).
+# Objectif : CAPTURE-ONLY, zéro instrumentation, zéro changement de
+# sémantique/oracle/tolérance/budget. On exécute test_n12_coupled_pressure_
+# velocity_mms TEL QUEL sur le head master épinglé (le test active
+# c.diagnostics.iteration_trace=true, frequency=1 → INCOMPRESSIBLE_ITER sur
+# stderr à CHAQUE itération) et on analyse la dynamique par itération du cas
+# α_u=0.7/α_p=0.3 (le MMS « qui converge pas ») pour trancher :
+#   H1 (plancher de relaxation) : continuity_normalized ≈ C·dp avec C stable
+#       — le flux autoritaire est reconstruit depuis l'état SOUS-RELAXÉ, donc
+#       le résidu de continuité mesuré n'est jamais celui de l'état brut
+#       solénoïdal du solve couplé (audit #956, commentaire id 6252211326) ;
+#   H2 (cycle limite pression) : dp borné non décroissant ? alternance de
+#       signe (cycle de période 2) ou période 4 du Picard amorti à
+#       opérateurs lagés ? taux géométrique de contraction ?
+#   H3 (conséquence quantitative) : si H1+H2, dp devrait tomber à
+#       1e-12/C pour satisfaire la gate solver — sous l'amplitude mesurée
+#       du cycle ⇒ AUCUN budget d'itérations ne peut satisfaire la gate ;
+#       le correctif est soit de mesurer la continuité brute du solve
+#       (qualité linéaire) séparément de la continuité relaxée (monitor
+#       physique), soit de casser le cycle. Décision Steven — CE WORKFLOW
+#       NE MODIFIE AUCUNE GATE.
+# Ref épinglée : master 0c61c51ee8622e8019ff7cdb895f795f647ccecc
+#   (« integration(numerics): consolidate pressure-velocity and validation
+#      fixes », 16:41:08Z).
+# Le cas par défaut est attendu EN ÉCHEC (bloqueur continuité/pression
+# distinct du momentum) — un PASS au budget 128 serait une information
+# nouvelle favorable (dynamique contractante).
+# Verdicts fail-closed : EVIDENCE_COMPLETE (seul vert — diagnostic, PAS un
+#   PASS/FAIL numérique), INCONCLUSIVE_BUILD / TEST_RUN / NO_TRACE /
+#   SPARSE_TRACE / ANALYZER_CRASH.
+# Evidence suffixée $GITHUB_RUN_ID, commise sur la branche diag par le bot.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/n12_cycle_master_marker.txt'
+      - '.github/workflows/n12_pressure_cycle_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: n12-pressure-cycle-master
+  cancel-in-progress: false
+
+env:
+  HEAD_SHA_PIN: 0c61c51ee8622e8019ff7cdb895f795f647ccecc
+  EVID: diag-evidence/logs
+
+jobs:
+  n12-pressure-cycle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve pinned master ref and create worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin master
+          # Fail-closed : le SHA pinné doit exister et être un ancêtre du
+          # master actuel (jamais une réf mobile inconnue).
+          git cat-file -e "$HEAD_SHA_PIN^{commit}" \
+            || { echo "::error::pinned master SHA not resolvable: $HEAD_SHA_PIN"; exit 1; }
+          git merge-base --is-ancestor "$HEAD_SHA_PIN" origin/master \
+            || { echo "::error::pinned SHA is not an ancestor of master: $HEAD_SHA_PIN"; exit 1; }
+          git worktree add "$RUNNER_TEMP/head" "$HEAD_SHA_PIN"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pinned_sha=$HEAD_SHA_PIN (master 16:41:08Z — consolidation #929 incluant #956 : gate momentum RHS #905 + budget N12 128 de #937)"
+            echo "master_head_resolved=$(git rev-parse origin/master)"
+            echo "scope: capture-only per-iteration INCOMPRESSIBLE_ITER traces of test_n12_coupled_pressure_velocity_mms; NO code instrumentation, NO tolerance/oracle/gate/budget change"
+            echo "hypotheses: H1 plancher de relaxation (continuity_normalized ~ C*dp); H2 cycle limite pression (dp borne, periode); H3 => aucun budget ne satisfait la gate continuite sans correctif"
+            echo "rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL"
+          } > "$GITHUB_WORKSPACE/$EVID/n12cycle_meta_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3
+
+      - name: Install Python tooling and package
+        id: pip
+        continue-on-error: true
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip > /dev/null 2>&1
+          "$RUNNER_TEMP/venv/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml > "$GITHUB_WORKSPACE/$EVID/n12cycle_pip_run$GITHUB_RUN_ID.log" 2>&1
+          "$RUNNER_TEMP/venv/bin/python" -m pip install -e "$RUNNER_TEMP/head" >> "$GITHUB_WORKSPACE/$EVID/n12cycle_pip_run$GITHUB_RUN_ID.log" 2>&1
+
+      - name: Configure and build (pinned master, NO instrumentation)
+        id: build_head
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake -S "$RUNNER_TEMP/head" -B "$RUNNER_TEMP/head/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/n12cycle_configure_run$GITHUB_RUN_ID.log"
+          TARGETS="test_n12_coupled_pressure_velocity_mms"
+          # NB : la sortie de ninja -t targets all est au format "target: rule"
+          # -> retirer le ':' final avant comparaison exacte (leçon v6 #923).
+          if ! avail_raw="$(ninja -C "$RUNNER_TEMP/head/build" -t targets all 2>&1)"; then
+            echo "::error::ninja -t targets failed — build system error, not a missing target"
+            exit 1
+          fi
+          avail="$(printf '%s\n' "$avail_raw" | awk '{sub(/:$/, "", $1); print $1}' | sort -u)"
+          for t in $TARGETS; do
+            printf '%s\n' "$avail" | grep -qx "$t" || { echo "::error::missing CMake target: $t"; exit 1; }
+          done
+          cmake --build "$RUNNER_TEMP/head/build" --target $TARGETS --parallel 2 \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/n12cycle_build_run$GITHUB_RUN_ID.log"
+          echo "build_head_exit=0" > "$GITHUB_WORKSPACE/$EVID/n12cycle_build_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Record build failure status
+        if: always() && steps.build_head.outcome == 'failure'
+        run: |
+          echo "build_head_exit=nonzero" > "$GITHUB_WORKSPACE/$EVID/n12cycle_build_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Run N12 coupled test with full per-iteration trace capture
+        id: n12run
+        continue-on-error: true
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          # Découverte fail-closed : le test doit exister dans le build.
+          ctest --test-dir "$RUNNER_TEMP/head/build" -R '^test_n12_coupled_pressure_velocity_mms$' -N > "$E/n12cycle_testlist_run$GITHUB_RUN_ID.log" 2>&1
+          if ! grep -q "test_n12_coupled_pressure_velocity_mms" "$E/n12cycle_testlist_run$GITHUB_RUN_ID.log"; then
+            echo "n12_test_exit=DISCOVERY_MISSING" > "$E/n12cycle_test_status_run$GITHUB_RUN_ID.txt"
+            echo "::error::test_n12_coupled_pressure_velocity_mms not discovered"
+            exit 1
+          fi
+          # PIÈGE DURABLE : steps run: = bash -e par défaut ; le cas par
+          # défaut est attendu EN ÉCHEC (bloqueur continuité/pression
+          # distinct du momentum) — set +e + capture rc. On utilise -V pour
+          # capter TOUTE la sortie même en cas de PASS (--output-on-failure
+          # n'affiche rien si le test réussit) ; l'analyseur tolère le
+          # préfixe ctest via recherche non ancrée (leçon #907).
+          set +e
+          ctest --test-dir "$RUNNER_TEMP/head/build" -R '^test_n12_coupled_pressure_velocity_mms$' -V \
+            2>&1 | tee "$E/n12cycle_campaign_run$GITHUB_RUN_ID.log"
+          rc=${PIPESTATUS[0]}
+          echo "n12_test_exit=$rc" > "$E/n12cycle_test_status_run$GITHUB_RUN_ID.txt"
+          echo "n12_test_exit=$rc (échec attendu du cas par défaut : bloqueur continuité/pression ; un PASS serait une information nouvelle favorable)"
+          exit 0
+
+      - name: Structured fail-closed verdict and per-iteration cycle analysis
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import math, os, re, sys, traceback
+
+          run_id = os.environ["GITHUB_RUN_ID"]
+          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+          verdict_path = os.path.join(evid, "n12cycle_verdict_run" + run_id + ".txt")
+          report_path = os.path.join(evid, "n12cycle_analysis_run" + run_id + ".txt")
+          log_path = os.path.join(evid, "n12cycle_campaign_run" + run_id + ".log")
+          build_path = os.path.join(evid, "n12cycle_build_status_run" + run_id + ".txt")
+          test_path = os.path.join(evid, "n12cycle_test_status_run" + run_id + ".txt")
+
+          rep = []
+          def emit(line=""):
+              rep.append(line)
+
+          def write_all(verdict, extra=()):
+              try:
+                  with open(verdict_path, "w") as fh:
+                      fh.write("VERDICT: " + verdict + "\n")
+                      for l in extra:
+                          fh.write(l + "\n")
+              except Exception:
+                  pass
+              try:
+                  with open(report_path, "w") as fh:
+                      fh.write("\n".join(rep) + "\n")
+              except Exception:
+                  pass
+
+          NUM = r'-?(?:\d+\.?\d*(?:[eE][-+]?\d+)?|nan|inf)'
+          KV = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)=\(?(' + NUM + r')')
+
+          def parse_kv(line):
+              d = {}
+              for k, v in KV.findall(line):
+                  if k in d:
+                      continue
+                  try:
+                      d[k] = float(v)
+                  except ValueError:
+                      d[k] = float('nan')
+              return d
+
+          def med(xs):
+              xs = sorted(xs)
+              n = len(xs)
+              if n == 0:
+                  return float('nan')
+              return xs[n // 2] if n % 2 else 0.5 * (xs[n // 2 - 1] + xs[n // 2])
+
+          def geo_rate(vals):
+              # taux géométrique ajusté sur log|v| vs indice (2e moitié)
+              half = vals[len(vals) // 2:]
+              pts = [(i, math.log(abs(v))) for i, v in enumerate(half)
+                     if abs(v) > 0.0 and math.isfinite(v)]
+              if len(pts) < 4:
+                  return None
+              n = len(pts)
+              sx = sum(p[0] for p in pts); sy = sum(p[1] for p in pts)
+              sxx = sum(p[0] * p[0] for p in pts); sxy = sum(p[0] * p[1] for p in pts)
+              den = n * sxx - sx * sx
+              if den == 0:
+                  return None
+              return math.exp((n * sxy - sx * sy) / den)
+
+          CONTINUITY_GATE = 1e-12      # solver continuity_tolerance (réf épinglée)
+          MOMENTUM_GATE = 1e-10        # relative_tolerance solver / tol test
+
+          try:
+              # ---- gates fail-closed ----------------------------------------
+              if os.path.exists(build_path):
+                  bs = open(build_path).read().strip()
+              else:
+                  bs = "build_status_missing"
+              if not bs.endswith("exit=0"):
+                  emit("build_status=" + bs)
+                  write_all("INCONCLUSIVE_BUILD", ["build_status=" + bs,
+                            "compiler output in n12cycle_build_run" + run_id + ".log"])
+                  sys.exit(0)
+              if not os.path.exists(log_path):
+                  write_all("INCONCLUSIVE_TEST_RUN", ["no campaign log produced"])
+                  sys.exit(0)
+
+              lines = open(log_path, errors="replace").read().splitlines()
+              test_status = open(test_path).read().strip() if os.path.exists(test_path) else "missing"
+
+              # ---- séries INCOMPRESSIBLE_ITER (frequency=1) -----------------
+              series = []
+              cur = None
+              for raw in lines:
+                  if "CFDX nonlinear iteration" in raw and "rejected" in raw:
+                      if cur is not None:
+                          cur["rejections"] += 1
+                      continue
+                  if "INCOMPRESSIBLE_ITER" not in raw:
+                      continue
+                  d = parse_kv(raw)
+                  if "iter" not in d:
+                      continue
+                  it = int(d["iter"])
+                  if it == 1:
+                      cur = {"attempts": [], "rejections": 0}
+                      series.append(cur)
+                  if cur is None:
+                      continue
+                  d["_iter"] = it
+                  cur["attempts"].append(d)
+
+              # ---- événements de cas (ordre du log) ---------------------------
+              events = []
+              probe_line = None
+              for raw in lines:
+                  if "N12_COUPLED_AB" in raw and probe_line is None:
+                      probe_line = raw.strip()
+                  m = re.search(r'N12_COUPLED_PV_MMS n=(\d+)', raw)
+                  if m:
+                      d = parse_kv(raw)
+                      events.append({"kind": "pass", "n": int(m.group(1)),
+                                     "iterations": int(d.get("iterations", -1)),
+                                     "alpha_u": d.get("alpha_u"), "alpha_p": d.get("alpha_p")})
+                      continue
+                  m = re.search(r'N12_COUPLED_FAILURE n=(\d+) reason=(\S+) iterations=(\d+)', raw)
+                  if m:
+                      events.append({"kind": "fail", "n": int(m.group(1)),
+                                     "reason": m.group(2), "iterations": int(m.group(3))})
+                      continue
+
+              # traces d'échec (12 dernières iters) — continuité BRUTE
+              ftraces = []
+              for raw in lines:
+                  m = re.search(r'N12_COUPLED_FAILURE_TRACE n=(\d+) iter=(\d+)', raw)
+                  if m:
+                      ftraces.append({"n": int(m.group(1)), "iter": int(m.group(2)),
+                                      "kv": parse_kv(raw)})
+
+              if not series:
+                  emit("test_status=" + test_status)
+                  emit("aucune ligne INCOMPRESSIBLE_ITER parsée — pas de trace par itération dans le log de campagne")
+                  write_all("INCONCLUSIVE_NO_TRACE", ["no per-iteration solver trace in campaign log"])
+                  sys.exit(0)
+
+              emit("== Capture par itération (INCOMPRESSIBLE_ITER, frequency=1) — master épinglé %s ==" % os.environ.get("HEAD_SHA_PIN", "?"))
+              emit("test_status=" + test_status)
+              emit("séries=%d événements=%d" % (len(series), len(events)))
+              if probe_line:
+                  emit("sonde alpha=1 : " + probe_line)
+              emit()
+
+              sparse = False
+              summary = []
+              for si, s in enumerate(series):
+                  ev = events[si] if si < len(events) else None
+                  # collapse par iter : une itération rejouée par le rollback
+                  # transactionnel laisse plusieurs lignes pour le même iter —
+                  # on garde la DERNIÈRE (état accepté) ; rejets comptés à part.
+                  acc = {}
+                  for d in s["attempts"]:
+                      acc[d["_iter"]] = d
+                  iters = sorted(acc)
+                  if len(iters) < 2:
+                      sparse = True
+                  def col(key):
+                      return [acc[it].get(key, float('nan')) for it in iters]
+                  dp = col("pressure_change_inf")
+                  du = col("velocity_change_inf")
+                  cont = col("continuity_normalized")
+                  mom = col("momentum_residual_rhs_relative")
+                  mm = col("flux_velocity_mismatch_linf")
+                  au = col("alpha_u"); ap = col("alpha_p")
+                  kind = ev["kind"] if ev else "unknown"
+                  n_case = ev["n"] if ev else None
+                  nit = len(iters)
+                  issue = "PASS" if kind == "pass" else ("FAIL reason=%s" % ev.get("reason") if ev and ev.get("reason") else "unknown")
+                  emit("-- série %d : n=%s issue=%s iters=%d alpha_u=%.3f alpha_p=%.3f rejets_nonlineaires=%d --" %
+                       (si + 1, n_case, issue, nit,
+                        au[0] if au else float('nan'), ap[0] if ap else float('nan'),
+                        s["rejections"]))
+                  if au and ap and (any(a != au[0] for a in au) or any(b != ap[0] for b in ap)):
+                      emit("   alpha effectif VARIABLE au cours du solve (retry adaptatif) : alpha_u %.3f..%.3f alpha_p %.3f..%.3f" %
+                           (min(au), max(au), min(ap), max(ap)))
+
+                  def statline(name, vals):
+                      fin = [v for v in vals if math.isfinite(v)]
+                      if not fin:
+                          emit("  %-26s aucune valeur finie" % name)
+                          return
+                      emit("  %-26s n=%3d first=%.6e last=%.6e min=%.6e max=%.6e" %
+                           (name, len(fin), fin[0], fin[-1], min(fin), max(fin)))
+                  statline("pressure_change_inf (dp)", dp)
+                  statline("velocity_change_inf (du)", du)
+                  statline("continuity_normalized", cont)
+                  statline("momentum_rhs_relative", mom)
+                  statline("flux_velocity_mismatch_linf", mm)
+
+                  # ---- H1 : plancher continuity ≈ C·dp -----------------------
+                  pairs = [(c, q) for c, q in zip(cont, dp)
+                           if abs(q) > 1e-300 and math.isfinite(c) and math.isfinite(q)]
+                  cmed = None
+                  if len(pairs) >= 3:
+                      cs = [c / q for c, q in pairs]
+                      cmed = med(cs)
+                      if cmed != 0 and math.isfinite(cmed):
+                          spread = (max(cs) - min(cs)) / abs(cmed)
+                          emit("  H1 plancher : C = continuity/dp  médian=%.6e  spread_rel=%.3e  stable=%s" %
+                               (cmed, spread, spread < 0.5))
+                      else:
+                          cmed = None
+                          emit("  H1 plancher : dégénéré (C≈0)")
+                  else:
+                      emit("  H1 plancher : indéterminé (dp≈0 ou série courte)")
+
+                  # ---- H2 : dynamique dp -------------------------------------
+                  ratios = [abs(dp[k]) / abs(dp[k - 1]) for k in range(1, len(dp))
+                            if abs(dp[k - 1]) > 0.0 and math.isfinite(dp[k]) and math.isfinite(dp[k - 1])]
+                  rmed = med(ratios) if ratios else float('nan')
+                  rate = geo_rate(dp)
+                  alt = (sum(1 for k in range(1, len(dp)) if dp[k] * dp[k - 1] < 0)
+                         / max(1, len(dp) - 1)) if len(dp) > 1 else 0.0
+                  deltas = [dp[k] - dp[k - 1] for k in range(1, len(dp))]
+                  dalt = (sum(1 for k in range(1, len(deltas)) if deltas[k] * deltas[k - 1] < 0)
+                          / max(1, len(deltas) - 1)) if len(deltas) > 1 else 0.0
+                  q = max(1, len(dp) // 4)
+                  amp_first = max(abs(x) for x in dp[:q])
+                  amp_last = max(abs(x) for x in dp[-q:])
+                  emit("  H2 dynamique : ratio|dp| médian=%.6f  taux_géo_2e_moitie=%.6f  alternance_signe_dp=%.3f  alternance_delta=%.3f  amp_1er_quart=%.6e  amp_dernier_quart=%.6e" %
+                       (rmed, rate if rate is not None else float('nan'), alt, dalt, amp_first, amp_last))
+                  if alt >= 0.9:
+                      emit("  dp alterne de signe à chaque itération : cycle de PÉRIODE 2 du Picard amorti")
+                  elif dalt >= 0.9:
+                      emit("  delta-dp alterne : cycle de PÉRIODE 4")
+
+                  # ---- gates & classification --------------------------------
+                  def lastfin(vals):
+                      for v in reversed(vals):
+                          if math.isfinite(v):
+                              return v
+                      return float('nan')
+                  mom_last = lastfin(mom); cont_last = lastfin(cont)
+                  mom_ok = "satisfaite" if mom_last <= MOMENTUM_GATE else "NON satisfaite"
+                  cont_ok = "satisfaite" if cont_last <= CONTINUITY_GATE else "NON satisfaite"
+                  emit("  gates : momentum_rhs_relative=%.6e (<= %.0e) %s ; continuity_normalized=%.6e (<= %.0e) %s" %
+                       (mom_last, MOMENTUM_GATE, mom_ok, cont_last, CONTINUITY_GATE, cont_ok))
+                  if kind == "pass":
+                      cls = "CONVERGED"
+                  elif nit < 8:
+                      cls = "SPARSE"
+                      sparse = True
+                  else:
+                      if rate is not None and rate < 0.98:
+                          cls = "CONTRACTING"
+                      elif rate is not None and rate > 1.05:
+                          cls = "DIVERGING"
+                      elif amp_last >= 0.5 * amp_first:
+                          cls = ("LIMIT_CYCLE_P2" if alt >= 0.9
+                                 else ("LIMIT_CYCLE_P4" if dalt >= 0.9
+                                       else "LIMIT_CYCLE_IRREGULIER"))
+                      else:
+                          cls = "STAGNATED_FLAT"
+                  # ---- H3 : budget requis (estimation MESURÉE, pas une gate) --
+                  if cmed is not None and cls != "CONVERGED":
+                      dp_target = CONTINUITY_GATE / abs(cmed)
+                      if cls == "CONTRACTING" and rate and rate < 1.0 and abs(dp[-1]) > dp_target:
+                          extra = math.log(abs(dp[-1]) / dp_target) / math.log(1.0 / rate)
+                          emit("  H3 budget estimé : ≈ %.0f itérations supplémentaires au taux géométrique mesuré (dp devrait tomber à %.3e)" %
+                               (extra, dp_target))
+                      elif cls.startswith("LIMIT_CYCLE") or cls == "STAGNATED_FLAT":
+                          factor = amp_last / dp_target if dp_target > 0 else float('inf')
+                          emit("  H3 : dp devrait tomber à %.3e pour satisfaire la gate continuité via le plancher mesuré (C=%.3e) ; amplitude du cycle = %.3e ⇒ facteur %.3g SOUS le cycle : AUCUN budget d'itérations ne peut satisfaire la gate sans casser le cycle ou changer la mesure" %
+                               (dp_target, cmed, amp_last, factor))
+                  emit("  classification : %s" % cls)
+                  summary.append((si + 1, n_case, kind, cls))
+                  emit()
+                  # ---- dump complet de la série --------------------------------
+                  emit("  it | dp | du | continuity | momentum_rhs_rel | mismatch | alpha_u | alpha_p")
+                  for it in iters:
+                      d = acc[it]
+                      emit("  %4d %.9e %.9e %.9e %.9e %.9e %.3f %.3f" %
+                           (it,
+                            d.get("pressure_change_inf", float('nan')),
+                            d.get("velocity_change_inf", float('nan')),
+                            d.get("continuity_normalized", float('nan')),
+                            d.get("momentum_residual_rhs_relative", float('nan')),
+                            d.get("flux_velocity_mismatch_linf", float('nan')),
+                            d.get("alpha_u", float('nan')),
+                            d.get("alpha_p", float('nan'))))
+                  emit()
+
+              # ---- cross-check traces d'échec (continuité BRUTE) --------------
+              if ftraces:
+                  emit("== Cross-check N12_COUPLED_FAILURE_TRACE (continuité BRUTE du flux, 12 dernières iters du cas en échec) ==")
+                  for t in ftraces:
+                      kv = t["kv"]
+                      cfc = kv.get("corrected_flux_continuity")
+                      fvm = kv.get("flux_velocity_mismatch")
+                      emit("  n=%d iter=%d corrected_flux_continuity=%s flux_velocity_mismatch=%s" %
+                           (t["n"], t["iter"],
+                            ("%.9e" % cfc) if cfc is not None else "absent",
+                            ("%.9e" % fvm) if fvm is not None else "absent"))
+                  emit("  (la continuité BRUTE du solve vs la continuité NORMALISÉE du flux reconstruit distinguent qualité linéaire et monitor physique — cf. mécanisme #956 commentaire 6252211326)")
+                  emit()
+
+              emit("== Résumé ==")
+              for ssi, n_case, kind, cls in summary:
+                  emit("  série %d : n=%s %s → %s" % (ssi, n_case, kind, cls))
+              if sparse:
+                  emit("au moins une série non convergée a moins de 8 itérations parsées")
+              emit()
+              emit("Règle d'interprétation : EVIDENCE_COMPLETE = preuve de dynamique capturée et classée — PAS un verdict de correction.")
+              if sparse:
+                  write_all("INCONCLUSIVE_SPARSE_TRACE",
+                            ["a non-converged series has fewer than 8 parsed iterations"])
+              else:
+                  write_all("EVIDENCE_COMPLETE", [
+                      "series=%d events=%d" % (len(series), len(events)),
+                      "classifications=%s" % ", ".join("%d:%s" % (x[0], x[3]) for x in summary),
+                      "rule: diagnostic evidence verdict, never a numerical PASS/FAIL",
+                  ])
+          except Exception:
+              emit("ANALYZER CRASH:")
+              emit(traceback.format_exc())
+              write_all("INCONCLUSIVE_ANALYZER_CRASH", ["analyzer crashed — see report"])
+          PY
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: N12 pressure limit-cycle capture run $GITHUB_RUN_ID (master pin, #956 heritage) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final verdict (green only for EVIDENCE_COMPLETE)
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          if grep -q "^VERDICT: EVIDENCE_COMPLETE" "$E/n12cycle_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null; then
+            echo "verdict: EVIDENCE_COMPLETE — dynamique par itération capturée et classée (diagnostic, PAS un PASS numérique)"
+          else
+            v=$(sed -n 's/^VERDICT: //p' "$E/n12cycle_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "MISSING_VERDICT_FILE")
+            echo "::error::verdict=$v — voir diag-evidence/logs/n12cycle_verdict_run$GITHUB_RUN_ID.txt"
+            exit 1
+          fi
