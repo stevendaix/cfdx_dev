@@ -32,7 +32,7 @@ def test_turbulence_dropdown_contains_only_solver_ready_models():
     params = {p.name: p for p in default_parameters(physics_spec("turbulence"))}
     assert params["model"].kind is ParameterType.CHOICE
     assert params["model"].choices == TURBULENCE_MODELS
-    assert params["model"].default == "LAMINAR"
+    assert params["model"].value == "LAMINAR"
     assert params["model"].choices == ("LAMINAR",)
     assert "SST" not in params["model"].choices
     assert "SMAGORINSKY" not in params["model"].choices
