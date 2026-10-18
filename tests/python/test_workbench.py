@@ -30,6 +30,7 @@ def test_workbench_has_stable_docks() -> None:
 
     assert window._status_marker(WorkflowStatus.CONDITIONAL) == "[~]"
     assert window._status_marker(WorkflowStatus.COMPLETE) == "[OK]"
+    assert window._status_marker(WorkflowStatus.NOT_CONFIGURED) == "[ ]"
     assert window.objectName() == ""
     assert window.workflow_tree.objectName() == "workbench.workflow_tree"
     assert window.workflow_tree.topLevelItem(1).child(2).text(0).endswith("[OK]")
