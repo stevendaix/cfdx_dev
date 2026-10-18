@@ -1,7 +1,6 @@
+import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-import sys
-
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = spec_from_file_location(
@@ -60,22 +59,26 @@ def test_generated_dynamic_table_rows_are_valid_latex(tmp_path: Path) -> None:
     MODULE.write_tex(
         output,
         [MODULE.Case("VMFL001", "Case", "READY", "Comparison")],
-        [{
-            "re": 100.0,
-            "grid": "64x64",
-            "continuity": 1e-12,
-            "momentum": 2e-8,
-            "u_rms": 0.01,
-            "u_max": 0.02,
-            "v_rms": 0.03,
-            "v_max": 0.04,
-        }],
-        [{
-            "name": "MODEL",
-            "metric": "error",
-            "value": "1e-6",
-            "reference": "exact",
-        }],
+        [
+            {
+                "re": 100.0,
+                "grid": "64x64",
+                "continuity": 1e-12,
+                "momentum": 2e-8,
+                "u_rms": 0.01,
+                "u_max": 0.02,
+                "v_rms": 0.03,
+                "v_max": 0.04,
+            }
+        ],
+        [
+            {
+                "name": "MODEL",
+                "metric": "error",
+                "value": "1e-6",
+                "reference": "exact",
+            }
+        ],
         {"oracle": (0, "")},
         {"test_a": 0},
         None,
@@ -107,22 +110,26 @@ def test_every_dynamic_injection_point_is_escaped(tmp_path: Path) -> None:
     MODULE.write_tex(
         output,
         [MODULE.Case(hostile, "case & name", "READY", "50% done #1")],
-        [{
-            "re": 100.0,
-            "grid": "64x64 & 50%",
-            "continuity": 1e-12,
-            "momentum": 2e-8,
-            "u_rms": 0.01,
-            "u_max": 0.02,
-            "v_rms": 0.03,
-            "v_max": 0.04,
-        }],
-        [{
-            "name": hostile,
-            "metric": "error & bias",
-            "value": "1e-6 %",
-            "reference": "exact #1",
-        }],
+        [
+            {
+                "re": 100.0,
+                "grid": "64x64 & 50%",
+                "continuity": 1e-12,
+                "momentum": 2e-8,
+                "u_rms": 0.01,
+                "u_max": 0.02,
+                "v_rms": 0.03,
+                "v_max": 0.04,
+            }
+        ],
+        [
+            {
+                "name": hostile,
+                "metric": "error & bias",
+                "value": "1e-6 %",
+                "reference": "exact #1",
+            }
+        ],
         {hostile: (0, "")},
         {hostile: 0},
         None,
@@ -146,20 +153,23 @@ def test_every_dynamic_injection_point_is_escaped(tmp_path: Path) -> None:
     assert rf"\texttt{{{escaped}}}: return code 0." in tex
     # The capability-matrix row keeps its four columns even though the hostile
     # identifier itself contains an ampersand, so the table structure survives.
-    matrix_row = " & ".join([
-        rf"\texttt{{{escaped}}}",
-        MODULE.latex_escape("case & name"),
-        MODULE.latex_escape("READY"),
-        MODULE.latex_escape("50% done #1"),
-    ]) + r"\\"
+    matrix_row = (
+        " & ".join(
+            [
+                rf"\texttt{{{escaped}}}",
+                MODULE.latex_escape("case & name"),
+                MODULE.latex_escape("READY"),
+                MODULE.latex_escape("50% done #1"),
+            ]
+        )
+        + r"\\"
+    )
     assert matrix_row in tex.splitlines()
 
 
 def test_actual_vmfl_matrix_escapes_technical_unicode(tmp_path: Path) -> None:
     output = tmp_path / "report.tex"
-    cases = MODULE.parse_matrix(
-        ROOT / "docs" / "validation" / "FLUENT_VMFL_MATRIX.md"
-    )
+    cases = MODULE.parse_matrix(ROOT / "docs" / "validation" / "FLUENT_VMFL_MATRIX.md")
     MODULE.write_tex(
         output,
         cases,
@@ -186,3 +196,31 @@ def test_latex_escape_does_not_reescape_generated_commands() -> None:
     assert r"\&" in escaped
     assert r"90$^\circ$" in escaped
     assert r"$\Delta$p" in escaped
+
+
+def test_parse_vmfl036_reads_named_groups_and_last_result() -> None:
+    output = """
+VMFL036_AXISYM RESULT level=coarse converged=false iterations=10 continuity=1e-4 momentum=2e-3 pcorr=3e-4 Cd_pressure=0.4 Cd_viscous=0.6 Cd_total=1.0 Cd_reference=1.2
+VMFL036_AXISYM RESULT level=medium converged=true iterations=25 continuity=1e-10 momentum=2e-9 pcorr=3e-8 Cd_pressure=0.5 Cd_viscous=0.7 Cd_total=1.2 Cd_reference=1.25
+VMFL036_AXISYMMETRIC_VALIDATION: PASS
+""".strip()
+
+    result = MODULE.parse_vmfl036(output)
+
+    assert result is not None
+    assert result["level"] == "medium"
+    assert result["converged"] == "true"
+    assert result["iterations"] == 25
+    assert result["continuity"] == 1e-10
+    assert result["momentum"] == 2e-9
+    assert result["pressure_correction"] == 3e-8
+    assert result["cd_pressure"] == 0.5
+    assert result["cd_viscous"] == 0.7
+    assert result["cd_total"] == 1.2
+    assert result["cd_reference"] == 1.25
+    assert abs(result["cd_relative_error"] - 0.04) < 1e-15
+    assert result["status"] == "PASS"
+
+
+def test_parse_vmfl036_returns_none_without_result_record() -> None:
+    assert MODULE.parse_vmfl036("no VMFL036 output") is None
