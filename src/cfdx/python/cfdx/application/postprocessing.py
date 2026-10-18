@@ -8,9 +8,15 @@ The registry entries are *capability declarations*. A spec's ``availability`` is
 "available" only when the quantity can actually be produced from a real production
 dataset; "conditional" means it is computable but only from a richer artifact (a DAT
 checkpoint) than the readable VTU result series. The registry never computes a value:
-:func:`execute_derived` is the executable counterpart, and it is intentionally kept
-separate so the registry stays a pure metadata contract that frontends can enumerate
-without importing the computation layer.
+:func:`execute_derived` is the executable counterpart for derived fields, and it is
+intentionally kept separate so the registry stays a pure metadata contract that
+frontends can enumerate without importing the computation layer.
+
+Mesh-quality metrics are declared with ``computation_owner =
+"cfdx::core::compute_face_quality"``: the C++ geometry kernel owns them, and the
+Python application layer must not re-derive skewness or non-orthogonality. The
+registry is the only place a frontend learns that ownership, so it is also the
+place that pins it.
 """
 
 from __future__ import annotations
@@ -229,7 +235,14 @@ def build_post_processing_registry() -> PostProcessingRegistry:
                 category="mesh_quality",
                 units=None,
                 inputs=("face_centre", "owner_centre", "neighbour_centre", "Sf"),
-                availability="available",
+                # The C++ kernel cfdx::core::compute_face_quality owns this
+                # computation and the Python layer must not re-derive it. It is
+                # "conditional" rather than "available" because there is not
+                # yet an export path that exposes the kernel's per-face values
+                # through the results contract; the registry is capability
+                # declaration, not executable evidence, and must not imply a
+                # path that does not exist.
+                availability="conditional",
                 computation_owner="cfdx::core::compute_face_quality",
                 validation_status="verified",
             ),
@@ -239,7 +252,7 @@ def build_post_processing_registry() -> PostProcessingRegistry:
                 category="mesh_quality",
                 units="rad",
                 inputs=("face_centre", "owner_centre", "neighbour_centre", "Sf"),
-                availability="available",
+                availability="conditional",
                 computation_owner="cfdx::core::compute_face_quality",
                 validation_status="verified",
             ),

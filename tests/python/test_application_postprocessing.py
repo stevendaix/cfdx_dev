@@ -20,6 +20,27 @@ def test_post_processing_registry_exposes_existing_capabilities() -> None:
     assert registry.get("probe:p").validation_status == "validated"
 
 
+def test_mesh_quality_computation_is_owned_by_the_cpp_kernel_not_python() -> None:
+    """Mesh-quality values must not be duplicated in the Python application layer.
+
+    The registry declares mesh-quality as owned by ``cfdx::core::compute_face_quality``
+    (the C++ geometry kernel). The Python layer must not re-derive skewness or
+    non-orthogonality: that would silently diverge from the discretisation the
+    solver actually used. This test pins the ownership string so a future
+    refactor cannot swap in a Python duplicate without failing the contract.
+
+    The values are "conditional" rather than "available" because, although the
+    C++ kernel computes them, there is not yet an export path that exposes the
+    per-face values through the results contract. The registry is capability
+    declaration, not executable evidence, and must not imply a path that does
+    not exist.
+    """
+    registry = build_post_processing_registry()
+    for spec in registry.by_category("mesh_quality"):
+        assert spec.computation_owner == "cfdx::core::compute_face_quality"
+        assert spec.availability == "conditional"
+
+
 def test_post_processing_registry_marks_unavailable_fields() -> None:
     """The registry must not advertise fields the production solver does not emit.
 
@@ -81,7 +102,9 @@ def test_post_processing_spec_round_trips_as_metadata() -> None:
         "category": "mesh_quality",
         "units": "rad",
         "inputs": ["face_centre", "owner_centre", "neighbour_centre", "Sf"],
-        "availability": "available",
+        # Conditional: the C++ kernel computes the value, but there is not yet
+        # an export path exposing per-face values through the results contract.
+        "availability": "conditional",
         "computation_owner": "cfdx::core::compute_face_quality",
         "validation_status": "verified",
     }
