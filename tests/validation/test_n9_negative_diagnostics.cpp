@@ -30,6 +30,7 @@
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/numerics/gradient.h"
+#include "cfdx/cfdx/core/utils/convergence_monitor.h"
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "common/test_harness.h"
 
@@ -736,54 +737,60 @@ int main()
     });
 
     // ------------------------------------------------------------------
-    // Item 10 — nonlinear stagnation: the solve is warm-started from the
-    // converged reference fields (the exact state the final gate accepts)
-    // under unreachable convergence gates, with a pathologically weak
-    // momentum relaxation alpha_u = 0.02 and pressure relaxation
-    // alpha_p = 0.01, while the inner linear settings keep their
-    // production values (1e-9 / 1000). CI evidence from the two
-    // warm-started runs at alpha_u = 0.7: the monitored nonlinear metric
-    // decays geometrically along the SIMPLE slow mode at 0.99122 per
-    // iteration with alpha_p = 0.3 and at 0.99208 with alpha_p = 0.01 —
-    // the mode is essentially alpha_p-INDEPENDENT. Exact-HEAD traces
-    // disproved both alpha_u=0.02 and alpha_u=0.005: the latter still
-    // reduced the metric by about 0.13% per iteration late in the run,
-    // just above the existing 0.1% flat-envelope threshold, and reached
-    // MAX_ITERATIONS at 400. Reduce only this pathological test stimulus
-    // to alpha_u=0.001; do not change production thresholds or the budget.
-    // CI must confirm STAGNATED on the new trajectory; it is not assumed.
-    // Earlier candidate triggers that died on CI evidence are not
-    // asserted: pathological under-relaxation on the SIMPLEC consistent
-    // correction (alpha_u = alpha_p = 1e-6 still improved 3e-3 to 7e-2
-    // per iteration), a 1e-14 inner linear tolerance (unattainable for
-    // the SIMPLE pressure-correction solve, classified as a linear
-    // failure at nonlinear iteration 1, aborts once the retry controller
-    // exhausts its retries), a warm start with fully production
-    // relaxation, and an alpha_p-only reduction (still 0.79% per
-    // iteration at alpha_p = 0.01).
     // ------------------------------------------------------------------
-    run_case("n9_7_item10_nonlinear_stagnation_detected", [] {
-        // Warm start: the converged reference solution, the exact state
-        // the final gate below accepts on its unchanged physical
-        // thresholds, so the iteration starts from a physically
-        // converged state and every residual stays at that level.
+    // Item 10a — stagnation-monitor contract: a genuinely flat residual
+    // envelope must be classified as STAGNATED after the configured window.
+    // This isolates the detector from pressure-velocity coupling and avoids
+    // tuning alpha_u to manufacture a desired status.
+    // ------------------------------------------------------------------
+    run_case("n9_7_item10a_flat_residual_is_stagnated", [] {
+        ConvergenceMonitorControls c;
+        c.residual.absolute_tolerance = 1e-24;
+        c.residual.relative_tolerance = 1e-24;
+        c.conservation_tolerance = 1e-24;
+        c.max_iterations = 400;
+        c.stagnation_window = 10;
+        c.stagnation_relative_improvement = 1e-3;
+        c.divergence_window = 3;
+        c.divergence_growth_factor = 10.0;
+        ConvergenceMonitor monitor(c);
+
+        ConvergenceReport report;
+        for (std::size_t iter = 1; iter <= 20; ++iter) {
+            report = monitor.update({iter, 1.0, 1.0, {}});
+            if (report.status != ConvergenceStatus::CONTINUE) break;
+        }
+        EXPECT_TRUE(report.status == ConvergenceStatus::STAGNATED);
+        EXPECT_TRUE(report.iteration == 11);
+        EXPECT_TRUE(report.stagnation_count == 10);
+        EXPECT_FALSE(report.residual_gate);
+        EXPECT_FALSE(report.conservation_gate);
+        EXPECT_TRUE(report.reason.find("flat residual envelope") != std::string::npos);
+        std::cout << "N9_7_ITEM10A status=" << to_string(report.status)
+                  << " iteration=" << report.iteration
+                  << " stagnation_count=" << report.stagnation_count << "\n";
+    });
+
+    // ------------------------------------------------------------------
+    // Item 10b — production nonlinear trajectory: preserve the observed
+    // slow-but-steady contraction instead of forcing a STAGNATED verdict by
+    // changing alpha_u. At alpha_u=0.005, exact-HEAD traces contracted by
+    // ~0.13% per iteration, above the unchanged 0.1% stagnation threshold.
+    // Therefore MAX_ITERATIONS is the expected conservative result with the
+    // deliberately unreachable gates. This remains a solver integration
+    // diagnostic; the deterministic plateau behavior is tested separately
+    // above and in tests/unit/test_convergence_monitor.cpp.
+    // ------------------------------------------------------------------
+    run_case("n9_7_item10b_slow_nonlinear_contraction_not_stagnated", [] {
         const auto& reference = reference_case();
         auto c = controls_for(PressureVelocityAlgorithm::SIMPLE);
-        // Unreachable gates: the monitor normalizes the metric by this
-        // solve's first sample, so a 1e-24 gate can never be satisfied
-        // and CONVERGED can never fire. The pathological knobs are the
-        // relaxation factors only: alpha_u = 0.001, alpha_p = 0.01.
-        // At alpha_u=0.005, the measured contraction remained just above
-        // the unchanged 1e-3 stagnation threshold. This smaller test-only
-        // relaxation should create the flat envelope needed to exercise
-        // STAGNATED; exact-HEAD CI must verify that outcome.
-        // Inner linear settings (1e-9 / 1000) remain at production values.
-        c.coupling.alpha_u = 0.001;
+        c.coupling.alpha_u = 0.005;
         c.coupling.alpha_p = 0.01;
         c.convergence.absolute_tolerance = 1e-24;
         c.convergence.relative_tolerance = 1e-24;
         c.convergence.continuity_tolerance = 1e-24;
         c.convergence.max_iterations = 400;
+        c.convergence.stagnation_relative_improvement = 1e-3;
         c.body_force = {1.0, 0.0, 0.0};
         c.diagnostics.iteration_trace = true;
         c.diagnostics.iteration_trace_frequency = 10;
@@ -793,13 +800,10 @@ int main()
         Field<double, Location::CELL> p = reference.run.p;
         const auto result = solve_steady_incompressible(
             mesh, U, p, channel_velocity_bc(0.0), channel_pressure_bc(), c);
-        // Forensic trail published before the verdict: the negative
-        // campaign never trusts a solver-reported status without its
-        // evidence.
         for (std::size_t i = 0; i < result.history.size(); ++i) {
             if (i < 15 || (i + 1) % 10 == 0 || i + 1 == result.history.size()) {
                 const auto& h = result.history[i];
-                std::cout << "N9_7_ITEM10 trace iter=" << h.iteration
+                std::cout << "N9_7_ITEM10B trace iter=" << h.iteration
                           << " metric=" << h.nonlinear_convergence_metric
                           << " momentum_residual=" << h.momentum_residual
                           << " pressure_residual=" << h.pressure_residual
@@ -808,29 +812,20 @@ int main()
                           << " continuity_normalized=" << h.continuity_normalized << "\n";
             }
         }
-        std::cout << "N9_7_ITEM10 status=" << to_string(result.convergence_status)
+        std::cout << "N9_7_ITEM10B status=" << to_string(result.convergence_status)
                   << " iterations=" << result.iterations
                   << " reason=" << result.convergence_reason << "\n";
         EXPECT_FALSE(result.converged);
-        EXPECT_TRUE(result.convergence_status == ConvergenceStatus::STAGNATED);
-        EXPECT_FALSE(result.convergence_reason.empty());
-        // Terminated by the stagnation detector, not by chance or by the
-        // iteration cap: the 10-iteration window cannot saturate before
-        // iteration 11, and the detector must fire long before the
-        // 400-iteration maximum.
-        EXPECT_TRUE(result.iterations >= 11);
-        EXPECT_TRUE(result.iterations < 400);
-        // Evidence, not just the verdict: the monitored metric is
-        // normalized by this solve's first sample, so a warm-started
-        // solve sits at ~1 by construction; the physical evidence gate
-        // instead pins the absolute momentum residual to the final
-        // gate's own acceptance bound (1e-7). The STAGNATED verdict is
-        // delivered while the fields still hold the converged
-        // reference solution's residual level, not mid-divergence.
-        EXPECT_TRUE(result.history.back().momentum_residual <= 1e-7);
+        EXPECT_TRUE(result.convergence_status == ConvergenceStatus::MAX_ITERATIONS);
+        EXPECT_TRUE(result.iterations == 400);
+        EXPECT_TRUE(result.history.size() == result.iterations);
+        EXPECT_TRUE(result.history.back().nonlinear_convergence_metric <
+                    result.history[result.history.size() - 11].nonlinear_convergence_metric);
+        EXPECT_TRUE(result.history.back().momentum_residual > 1e-7);
+        EXPECT_TRUE(result.convergence_reason.find("maximum nonlinear iteration") !=
+                    std::string::npos);
     });
 
-    // ------------------------------------------------------------------
     // Final gate — no false green: the same machinery that rejected the ten
     // corrupted cases still solves the reference Poiseuille case to the
     // unchanged physical gates.
