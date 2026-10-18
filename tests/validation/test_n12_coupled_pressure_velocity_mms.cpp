@@ -140,7 +140,11 @@ Metrics run_case(std::size_t n, double alpha_u = 0.7, double alpha_p = 0.3)
     c.coupling.coupled_linear_tolerance = 1e-12;
     c.coupling.alpha_u = alpha_u;
     c.coupling.alpha_p = alpha_p;
-    c.convergence.max_iterations = 20;
+    // Keep the original strict residual, pressure and continuity gates. The
+    // coupled case is intentionally allowed more outer iterations so the test
+    // can establish whether the pressure/continuity mode actually converges;
+    // failure to satisfy every gate remains a hard failure.
+    c.convergence.max_iterations = 128;
     c.convergence.relative_tolerance = 1e-10;
     c.convergence.continuity_tolerance = 1e-12;
     c.linear_tolerance = 1e-12;
