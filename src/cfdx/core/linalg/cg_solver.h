@@ -12,6 +12,7 @@
 #include "sparse_matrix.h"
 #include "vector.h"
 #include "mixed_precision.h"
+#include "solver_status.h"
 #include "krylov_reductions.h"
 #include "null_space.h"
 #include "preconditioner.h"
@@ -28,54 +29,6 @@ enum class CGResidualReplacementPolicy : std::uint8_t {
     Adaptive,
     Disabled,
     Periodic
-};
-
-enum class SolverStatus : std::uint8_t {
-    CONVERGED = 0,
-    MAX_ITER_REACHED,
-    DIVERGED,
-    NOT_APPLICABLE
-};
-
-inline const char* to_string(SolverStatus s) {
-    switch (s) {
-        case SolverStatus::CONVERGED:       return "converged";
-        case SolverStatus::MAX_ITER_REACHED: return "max_iter_reached";
-        case SolverStatus::DIVERGED:        return "diverged";
-        case SolverStatus::NOT_APPLICABLE:  return "not_applicable";
-        default:                             return "unknown";
-    }
-}
-
-struct SolverDiagnosticSample {
-    std::size_t iteration = 0;
-    double true_residual = 0.0;
-    double recursive_residual = 0.0;
-    double preconditioned_dot = 0.0;
-    double pAp = 0.0;
-    double alpha = 0.0;
-    double beta = 0.0;
-};
-
-struct SolverResult {
-    SolverStatus status = SolverStatus::NOT_APPLICABLE;
-    std::size_t iterations = 0;
-    double residual = 0.0;
-    double residual_relative = 0.0;
-    // Diagnostic evidence sampled during the iteration. This is intentionally
-    // observational: it does not alter stopping criteria or Krylov updates.
-    std::vector<SolverDiagnosticSample> diagnostics;
-    // Residual-replacement evidence is observational and does not alter
-    // convergence criteria. It is used to distinguish Krylov recurrence drift
-    // from preconditioner/coarse-space limitations.
-    std::size_t residual_replacements = 0;
-    double max_true_recursive_gap = 0.0;
-    double min_true_recursive_ratio = std::numeric_limits<double>::infinity();
-    double max_true_recursive_ratio = 0.0;
-    double max_true_residual = 0.0;
-    double min_true_residual = std::numeric_limits<double>::infinity();
-    std::size_t first_residual_replacement = 0;
-    std::size_t last_residual_replacement = 0;
 };
 
 // Résout A x = b par la méthode du gradient conjugué (CG).
