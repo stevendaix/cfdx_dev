@@ -1,3 +1,6 @@
+import json
+from pathlib import Path
+
 from cfdx.physics_setup import (
     TURBULENCE_CATALOG,
     TURBULENCE_MODEL_GAPS,
@@ -195,3 +198,27 @@ def test_every_turbulence_model_has_explicit_requirements_and_gaps():
         assert isinstance(missing, tuple)
         assert all(item.strip() for item in required)
         assert all(item.strip() for item in missing)
+
+
+def test_python_selectability_matches_canonical_qualification_matrix():
+    matrix_path = (
+        Path(__file__).resolve().parents[2]
+        / "docs"
+        / "validation"
+        / "TURBULENCE_QUALIFICATION_MATRIX.json"
+    )
+    matrix = json.loads(matrix_path.read_text(encoding="utf-8"))
+    matrix_models = {model["key"]: model for model in matrix["models"]}
+    catalog_models = {model.key: model for model in TURBULENCE_CATALOG}
+
+    assert catalog_models.keys() == matrix_models.keys()
+    expected_selectable = tuple(
+        model["key"]
+        for model in matrix["models"]
+        if model["status"] == "SOLVER_READY"
+    )
+    assert TURBULENCE_MODELS == expected_selectable
+    assert {
+        key for key, model in catalog_models.items()
+        if model.status is TurbulenceStatus.SOLVER_READY
+    } == set(expected_selectable)
