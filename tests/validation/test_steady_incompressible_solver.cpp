@@ -724,5 +724,48 @@ int main()
         EXPECT_TRUE(rejected);
     });
 
+
+    run_case("momentum_assembly_uses_harmonic_cellwise_viscosity", [] {
+        const Mesh m = make_two_cell_channel();
+        const FvGeometry geometry = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1);
+        Field<double,Location::CELL> grad_p(m.n_cells(),"grad_p","Pa/m",3);
+        Field<double,Location::CELL> body(m.n_cells(),"body","N/m3",1);
+        flux.fill(0.0);
+        grad_p.fill(0.0);
+        body.fill(0.0);
+        ScalarBoundaryConditions bc;
+        bc["wall"] = {ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+
+        const std::vector<double> mu_cell{1.0,3.0};
+        const auto variable = assemble_momentum_component(
+            m,geometry,flux,grad_p,body,mu_cell,bc,0,true);
+        // The internal face uses the harmonic coefficient 1.5 and has
+        // unit area and unit centre distance on this two-cell mesh.
+        EXPECT_NEAR(variable.matrix(0,1),-1.5,1e-12);
+        EXPECT_NEAR(variable.matrix(1,0),-1.5,1e-12);
+
+        const std::vector<double> uniform_mu{2.0,2.0};
+        const auto variable_uniform = assemble_momentum_component(
+            m,geometry,flux,grad_p,body,uniform_mu,bc,0,true);
+        const auto scalar_uniform = assemble_momentum_component(
+            m,geometry,flux,grad_p,body,2.0,bc,0,true);
+        for (std::size_t row=0; row<m.n_cells(); ++row) {
+            for (std::size_t col=0; col<m.n_cells(); ++col)
+                EXPECT_NEAR(variable_uniform.matrix(row,col),
+                            scalar_uniform.matrix(row,col),1e-12);
+        }
+
+        const std::vector<double> wrong_size{1.0};
+        EXPECT_THROW(assemble_momentum_component(
+            m,geometry,flux,grad_p,body,wrong_size,bc,0,true),
+            std::invalid_argument);
+        const std::vector<double> invalid_mu{
+            1.0,std::numeric_limits<double>::quiet_NaN()};
+        EXPECT_THROW(assemble_momentum_component(
+            m,geometry,flux,grad_p,body,invalid_mu,bc,0,true),
+            std::invalid_argument);
+    });
+
     return run_all();
 }
