@@ -57,6 +57,31 @@ solver actually reports.
   `pressure_linear_iterations`.
 - `tests/python/test_metrics.py` — production trace parsing tests.
 
+### P3-E (workflow state reflects registry availability) — DONE
+
+The Workbench renders the post-processing capability registry as workflow
+nodes, but previously every node was rendered from a hand-maintained
+configured/not_configured split that had no connection to the registry. A
+conditional capability (one the registry declares but for which no export path
+exists) was therefore indistinguishable from a complete one.
+
+- `src/cfdx/python/cfdx/application/workflow.py` — `_post_processing_availability`
+  maps the registry's availability to workflow status and is the single place
+  a frontend learns what is genuinely available versus what is only declared.
+  The registry's stable_ids are mapped to the Workbench's result-group node ids
+  (``fields``, ``probes``). A node is "conditional" when at least one of the
+  capabilities it groups is conditional, because the node cannot be reported
+  complete until every capability it represents is actually producible from
+  the production dataset through the results contract. A new
+  `WorkflowStatus.CONDITIONAL` status is surfaced separately from
+  COMPLETE so the Workbench can show a real-but-unproducible capability without
+  a green check. Group labels and node labels are kept in separate dicts
+  because the "run" key is shared by the RUN group and the Run node and needs
+  different casing.
+- `tests/python/test_application_workflow.py` — pins the mapping, including a
+  test that a validation diagnostic overrides the registry-derived status for
+  the current case.
+
 ### P3-E (remaining) — NOT STARTED
 
 No work has been done on P3-E yet.
