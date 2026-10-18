@@ -1,0 +1,622 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+        Start 123: test_generate_2d_validation_meshes
+        Start   3: test_n11_campaign_integrity
+        Start   4: test_point
+        Start   5: test_face
+  1/224 Test   #4: test_point ..................................   Passed    0.00 sec
+        Start   6: test_ownership
+  2/224 Test   #5: test_face ...................................   Passed    0.00 sec
+        Start   7: test_cell
+  3/224 Test   #6: test_ownership ..............................   Passed    0.00 sec
+        Start   8: test_boundary
+  4/224 Test   #7: test_cell ...................................   Passed    0.00 sec
+        Start   9: test_mesh
+  5/224 Test   #8: test_boundary ...............................   Passed    0.00 sec
+        Start  10: test_field
+  6/224 Test   #9: test_mesh ...................................   Passed    0.00 sec
+        Start  11: test_field_storage
+  7/224 Test  #11: test_field_storage ..........................   Passed    0.00 sec
+        Start  12: test_field_wall_hardening
+  8/224 Test  #10: test_field ..................................   Passed    0.00 sec
+        Start  13: test_boundary_field
+  9/224 Test  #12: test_field_wall_hardening ...................   Passed    0.00 sec
+        Start  14: test_boundary_contract
+ 10/224 Test  #13: test_boundary_field .........................   Passed    0.00 sec
+ 11/224 Test  #14: test_boundary_contract ......................   Passed    0.00 sec
+        Start  15: test_boundary_fvm_constraints
+        Start  16: test_boundary_validator
+ 12/224 Test  #15: test_boundary_fvm_constraints ...............   Passed    0.00 sec
+        Start  17: test_interpolation
+ 13/224 Test  #16: test_boundary_validator .....................   Passed    0.00 sec
+        Start  18: test_gradient
+ 14/224 Test  #17: test_interpolation ..........................   Passed    0.00 sec
+        Start  19: test_pressure_velocity_system
+ 15/224 Test  #19: test_pressure_velocity_system ...............   Passed    0.00 sec
+        Start  20: test_oriented_numerics
+ 16/224 Test  #18: test_gradient ...............................   Passed    0.00 sec
+        Start  21: test_divergence
+ 17/224 Test  #20: test_oriented_numerics ......................   Passed    0.00 sec
+        Start  22: test_flux
+ 18/224 Test  #21: test_divergence .............................   Passed    0.00 sec
+ 19/224 Test  #22: test_flux ...................................   Passed    0.00 sec
+        Start  23: test_spatial_scheme_contract
+        Start  24: test_conservation_boundedness
+ 20/224 Test  #23: test_spatial_scheme_contract ................   Passed    0.00 sec
+        Start  25: test_transport_conservation
+ 21/224 Test  #24: test_conservation_boundedness ...............   Passed    0.00 sec
+        Start  26: test_conservation_assembly
+ 22/224 Test  #26: test_conservation_assembly ..................   Passed    0.00 sec
+        Start  27: test_integrate
+ 23/224 Test  #25: test_transport_conservation .................   Passed    0.00 sec
+        Start  28: test_forces
+ 24/224 Test  #27: test_integrate ..............................   Passed    0.00 sec
+        Start  29: test_probe_csv
+ 25/224 Test  #28: test_forces .................................   Passed    0.00 sec
+        Start  30: test_sparse_matrix
+ 26/224 Test  #30: test_sparse_matrix ..........................   Passed    0.00 sec
+        Start  31: test_vector
+ 27/224 Test  #29: test_probe_csv ..............................   Passed    0.00 sec
+        Start  32: test_linear_system
+ 28/224 Test  #31: test_vector .................................   Passed    0.00 sec
+        Start  33: test_cg_solver
+ 29/224 Test  #32: test_linear_system ..........................   Passed    0.00 sec
+        Start  34: test_null_space
+ 30/224 Test  #33: test_cg_solver ..............................   Passed    0.00 sec
+        Start  35: test_n8_pinned_pressure_gauge
+ 31/224 Test  #35: test_n8_pinned_pressure_gauge ...............   Passed    0.00 sec
+        Start  36: test_bicgstab_solver
+ 32/224 Test  #34: test_null_space .............................   Passed    0.01 sec
+        Start  37: test_gmres_solver
+ 33/224 Test  #36: test_bicgstab_solver ........................   Passed    0.00 sec
+        Start  38: test_fgmres_solver
+ 34/224 Test  #37: test_gmres_solver ...........................   Passed    0.01 sec
+        Start  39: test_krylov_preconditioning
+ 35/224 Test  #38: test_fgmres_solver ..........................   Passed    0.01 sec
+        Start  40: test_krylov_diagnostics
+ 36/224 Test  #40: test_krylov_diagnostics .....................   Passed    0.00 sec
+        Start  41: test_stationary_solvers
+ 37/224 Test  #39: test_krylov_preconditioning .................   Passed    0.01 sec
+        Start  42: test_performance_foundations
+ 38/224 Test  #41: test_stationary_solvers .....................   Passed    0.01 sec
+        Start  43: test_performance_runtime
+ 39/224 Test  #42: test_performance_foundations ................   Passed    0.00 sec
+        Start  44: test_phase6_memory_benchmark
+ 40/224 Test  #43: test_performance_runtime ....................   Passed    0.00 sec
+        Start  45: test_amg_chebyshev
+ 41/224 Test  #44: test_phase6_memory_benchmark ................   Passed    0.00 sec
+        Start  46: test_native_external_methods
+ 42/224 Test   #3: test_n11_campaign_integrity .................   Passed    0.06 sec
+        Start  47: test_matrix_characteristics
+ 43/224 Test  #46: test_native_external_methods ................   Passed    0.01 sec
+ 44/224 Test  #47: test_matrix_characteristics .................   Passed    0.00 sec
+        Start  48: test_amg_preconditioner_qualification
+        Start  49: test_matrix_free_fv_operator
+ 45/224 Test  #49: test_matrix_free_fv_operator ................   Passed    0.00 sec
+        Start  50: test_n11_scaling_equivalence
+ 46/224 Test  #50: test_n11_scaling_equivalence ................   Passed    0.00 sec
+        Start  51: test_n11_production_scaling
+ 47/224 Test  #51: test_n11_production_scaling .................   Passed    0.00 sec
+        Start  52: test_n11_unit_invariance_robustness
+ 48/224 Test  #52: test_n11_unit_invariance_robustness .........   Passed    0.00 sec
+        Start  53: test_backend_equivalence
+ 49/224 Test  #53: test_backend_equivalence ....................   Passed    0.00 sec
+        Start  54: test_n13_restart_equivalence
+ 50/224 Test  #54: test_n13_restart_equivalence ................   Passed    0.00 sec
+        Start  55: test_laplacian
+ 51/224 Test  #55: test_laplacian ..............................   Passed    0.00 sec
+        Start  56: test_diffusion_diagnostics
+ 52/224 Test  #56: test_diffusion_diagnostics ..................   Passed    0.00 sec
+        Start  57: test_phase123_regression
+ 53/224 Test  #57: test_phase123_regression ....................   Passed    0.01 sec
+        Start  58: test_phase12_radiation_vv
+ 54/224 Test  #58: test_phase12_radiation_vv ...................   Passed    0.00 sec
+        Start  59: test_scalar_diffusion
+ 55/224 Test  #59: test_scalar_diffusion .......................   Passed    0.01 sec
+        Start  60: test_advanced_preconditioners
+ 56/224 Test  #60: test_advanced_preconditioners ...............   Passed    0.00 sec
+        Start  61: test_schur_preconditioner
+ 57/224 Test  #61: test_schur_preconditioner ...................   Passed    0.00 sec
+        Start  62: test_face_geometry
+ 58/224 Test  #62: test_face_geometry ..........................   Passed    0.00 sec
+        Start  63: test_cell_geometry
+ 59/224 Test  #63: test_cell_geometry ..........................   Passed    0.00 sec
+        Start  64: test_mesh_quality
+ 60/224 Test  #64: test_mesh_quality ...........................   Passed    0.00 sec
+        Start  65: test_geometry_invariants
+ 61/224 Test  #65: test_geometry_invariants ....................   Passed    0.00 sec
+        Start  66: test_dat_restart_identity
+ 62/224 Test  #66: test_dat_restart_identity ...................   Passed    0.00 sec
+        Start  67: test_mesh_family_volumes
+ 63/224 Test  #67: test_mesh_family_volumes ....................   Passed    0.00 sec
+        Start  68: test_source_term
+ 64/224 Test  #45: test_amg_chebyshev ..........................   Passed    0.08 sec
+        Start  69: test_temporal_physics
+ 65/224 Test  #68: test_source_term ............................   Passed    0.00 sec
+        Start  70: test_dual_time_stepping
+ 66/224 Test  #69: test_temporal_physics .......................   Passed    0.00 sec
+        Start  71: test_dual_time_adaptive
+ 67/224 Test  #70: test_dual_time_stepping .....................   Passed    0.00 sec
+        Start  72: test_dual_time_field_driver
+ 68/224 Test  #71: test_dual_time_adaptive .....................   Passed    0.00 sec
+        Start  73: test_dual_time_field_integrator
+ 69/224 Test  #72: test_dual_time_field_driver .................   Passed    0.00 sec
+        Start  74: test_dual_time_physical_lifecycle
+ 70/224 Test  #73: test_dual_time_field_integrator .............   Passed    0.00 sec
+ 71/224 Test  #74: test_dual_time_physical_lifecycle ...........   Passed    0.00 sec
+        Start  75: test_dual_time_navier_stokes
+        Start  76: test_case_numerics_report
+ 72/224 Test  #76: test_case_numerics_report ...................   Passed    0.00 sec
+        Start  77: test_temporal_history
+ 73/224 Test  #77: test_temporal_history .......................   Passed    0.00 sec
+        Start  78: test_core_temporal
+ 74/224 Test  #78: test_core_temporal ..........................   Passed    0.00 sec
+        Start  79: test_newton_field
+ 75/224 Test  #79: test_newton_field ...........................   Passed    0.00 sec
+        Start  80: test_simulation_controller
+ 76/224 Test  #80: test_simulation_controller ..................   Passed    0.00 sec
+        Start  81: test_adaptive_cfl
+ 77/224 Test  #81: test_adaptive_cfl ...........................   Passed    0.00 sec
+        Start  82: test_timestep_control
+ 78/224 Test  #82: test_timestep_control .......................   Passed    0.00 sec
+        Start  83: test_continuation
+ 79/224 Test  #83: test_continuation ...........................   Passed    0.00 sec
+        Start  84: test_local_time_stepping
+ 80/224 Test  #84: test_local_time_stepping ....................   Passed    0.00 sec
+        Start  85: test_incompressible
+ 81/224 Test  #85: test_incompressible .........................   Passed    0.00 sec
+        Start  86: test_m1_m4_physics
+ 82/224 Test  #86: test_m1_m4_physics ..........................   Passed    0.00 sec
+        Start  87: test_m1_m4_validation
+ 83/224 Test  #87: test_m1_m4_validation .......................   Passed    0.00 sec
+        Start  88: test_solver_control
+ 84/224 Test  #88: test_solver_control .........................   Passed    0.00 sec
+        Start  89: test_convergence_monitor
+ 85/224 Test  #89: test_convergence_monitor ....................   Passed    0.00 sec
+        Start  90: test_initialization
+ 86/224 Test  #90: test_initialization .........................   Passed    0.01 sec
+        Start  91: test_n7_convergence_qualification
+ 87/224 Test  #75: test_dual_time_navier_stokes ................   Passed    0.19 sec
+        Start  92: test_n7_adaptive_relaxation_re400
+ 88/224 Test  #48: test_amg_preconditioner_qualification .......   Passed    1.06 sec
+        Start  93: test_n7_causal_overshoot_regression
+ 89/224 Test  #93: test_n7_causal_overshoot_regression .........   Passed    0.00 sec
+        Start  94: test_n11_scalar_conservation
+ 90/224 Test  #94: test_n11_scalar_conservation ................   Passed    0.00 sec
+        Start  95: test_finite_volume_transport
+ 91/224 Test  #95: test_finite_volume_transport ................   Passed    0.00 sec
+        Start  96: test_steady_incompressible_solver
+ 92/224 Test  #96: test_steady_incompressible_solver ...........   Passed    0.00 sec
+        Start  97: test_vtu_writer_validation
+ 93/224 Test  #97: test_vtu_writer_validation ..................   Passed    0.00 sec
+        Start  98: test_solver_vtu_provenance
+ 94/224 Test  #98: test_solver_vtu_provenance ..................   Passed    0.00 sec
+        Start  99: test_ghia_cavity_quick
+ 95/224 Test  #92: test_n7_adaptive_relaxation_re400 ...........   Passed    1.31 sec
+        Start 100: test_ghia_cavity_order
+ 96/224 Test  #99: test_ghia_cavity_quick ......................   Passed    5.65 sec
+        Start 102: test_couette_quick
+ 97/224 Test #102: test_couette_quick ..........................   Passed   10.36 sec
+        Start 103: test_m2_m4_solver_validation
+ 98/224 Test #103: test_m2_m4_solver_validation ................   Passed    0.00 sec
+        Start 104: test_phase10_turbulence_hardening
+ 99/224 Test #104: test_phase10_turbulence_hardening ...........   Passed    0.00 sec
+        Start 105: test_turbulence_qualification_equations
+100/224 Test #105: test_turbulence_qualification_equations .....   Passed    0.00 sec
+        Start 106: test_n11_sa_negative_nu_tilde_policy
+101/224 Test #106: test_n11_sa_negative_nu_tilde_policy ........   Passed    0.00 sec
+        Start 107: test_n11_bound_reporting_hardening
+102/224 Test #107: test_n11_bound_reporting_hardening ..........   Passed    0.00 sec
+        Start 108: test_phase10_model_registry
+103/224 Test #108: test_phase10_model_registry .................   Passed    0.00 sec
+        Start 109: test_wall_distance_methods
+104/224 Test #109: test_wall_distance_methods ..................   Passed    0.05 sec
+        Start 110: test_n11_fw1_nearest_normal_fallback
+105/224 Test #110: test_n11_fw1_nearest_normal_fallback ........   Passed    0.01 sec
+        Start 111: test_n11_fw2_positivity_clamp_counter
+106/224 Test #111: test_n11_fw2_positivity_clamp_counter .......   Passed    0.02 sec
+        Start 112: test_n11_b1_b2_b3_linalg_guards
+107/224 Test #112: test_n11_b1_b2_b3_linalg_guards .............   Passed    0.00 sec
+        Start 113: test_n11_b4_b5_amg_footprint
+108/224 Test #113: test_n11_b4_b5_amg_footprint ................   Passed    0.00 sec
+        Start 114: benchmark_wall_distance_complex
+109/224 Test #123: test_generate_2d_validation_meshes ..........   Passed   26.98 sec
+        Start 115: test_phase10_sst_limiter
+110/224 Test #115: test_phase10_sst_limiter ....................   Passed    0.00 sec
+        Start 116: test_analytical_benchmarks
+111/224 Test #116: test_analytical_benchmarks ..................   Passed    0.00 sec
+        Start 117: test_vmfl036_reference_case
+112/224 Test #117: test_vmfl036_reference_case .................   Passed    0.00 sec
+        Start 118: test_axisymmetric_vmfl036_kernel
+113/224 Test #118: test_axisymmetric_vmfl036_kernel ............   Passed    0.00 sec
+        Start 119: test_vmfl036_axisymmetric_quick
+114/224 Test #119: test_vmfl036_axisymmetric_quick .............   Passed    0.10 sec
+        Start 120: test_bfs_quick
+115/224 Test #120: test_bfs_quick ..............................   Passed    0.03 sec
+        Start 121: test_naca0012_quick
+116/224 Test #121: test_naca0012_quick .........................   Passed    0.04 sec
+        Start 122: test_naca0012_wall_shear_audit_quick
+117/224 Test #122: test_naca0012_wall_shear_audit_quick ........   Passed    0.02 sec
+        Start 124: test_channel_quick
+118/224 Test  #91: test_n7_convergence_qualification ...........   Passed   30.10 sec
+        Start 125: test_numerical_model_verification
+119/224 Test #125: test_numerical_model_verification ...........   Passed    0.01 sec
+        Start 126: test_poiseuille_quick
+120/224 Test #126: test_poiseuille_quick .......................   Passed    0.00 sec
+        Start 127: test_mms_scalar_diffusion
+121/224 Test #127: test_mms_scalar_diffusion ...................   Passed    0.18 sec
+        Start 128: test_nonorthogonal_skew_campaign
+122/224 Test #128: test_nonorthogonal_skew_campaign ............   Passed    0.00 sec
+        Start 129: test_nonorthogonal_laplacian_campaign
+123/224 Test #129: test_nonorthogonal_laplacian_campaign .......   Passed    0.23 sec
+        Start 130: test_transient_mms
+124/224 Test #130: test_transient_mms ..........................   Passed    0.07 sec
+        Start 131: test_transient_mms_closure
+125/224 Test #131: test_transient_mms_closure ..................   Passed    4.23 sec
+        Start 132: test_transient_mms_3d_stiff
+126/224 Test #132: test_transient_mms_3d_stiff .................   Passed    0.01 sec
+        Start 133: test_n12_momentum_mms
+127/224 Test #133: test_n12_momentum_mms .......................   Passed    0.00 sec
+        Start 134: test_n12_pressure_continuity_mms
+128/224 Test #134: test_n12_pressure_continuity_mms ............   Passed    0.00 sec
+        Start 136: test_polyhedral_laplacian_campaign
+129/224 Test #136: test_polyhedral_laplacian_campaign ..........   Passed    0.58 sec
+        Start 137: test_polyhedral_poisson_convergence
+130/224 Test #124: test_channel_quick ..........................   Passed   10.43 sec
+        Start 138: test_convection_scheme_verification
+131/224 Test #138: test_convection_scheme_verification .........   Passed    0.00 sec
+        Start 139: test_convection_3d_verification
+132/224 Test #139: test_convection_3d_verification .............   Passed    1.27 sec
+        Start 140: test_convection_blending
+133/224 Test #140: test_convection_blending ....................   Passed    0.23 sec
+        Start 141: test_n16_weno5z
+134/224 Test #141: test_n16_weno5z .............................   Passed    0.00 sec
+        Start 142: test_temporal_order_matrix
+135/224 Test #142: test_temporal_order_matrix ..................   Passed    0.00 sec
+        Start 143: test_gradient_verification
+136/224 Test #143: test_gradient_verification ..................   Passed    0.14 sec
+        Start 144: test_polyhedral_gradient_campaign
+137/224 Test #144: test_polyhedral_gradient_campaign ...........   Passed    2.01 sec
+        Start 145: test_n10_difficult_mesh_robustness
+138/224 Test #145: test_n10_difficult_mesh_robustness ..........   Passed    0.02 sec
+        Start 147: test_n10_mesh_fixture_manifest
+139/224 Test #147: test_n10_mesh_fixture_manifest ..............   Passed    0.02 sec
+        Start 148: test_convection_polyhedral_campaign
+140/224 Test #148: test_convection_polyhedral_campaign .........   Passed    0.00 sec
+        Start 149: test_convection_solver_qualification
+141/224 Test #149: test_convection_solver_qualification ........   Passed    0.02 sec
+        Start 150: test_fluent_vmfl_reference
+142/224 Test #150: test_fluent_vmfl_reference ..................   Passed    0.00 sec
+        Start 151: test_benchmark_matrix
+143/224 Test #151: test_benchmark_matrix .......................   Passed    0.00 sec
+        Start 152: test_level_b_reference_benchmarks
+144/224 Test #152: test_level_b_reference_benchmarks ...........   Passed    0.00 sec
+        Start 153: test_level_c_coupled_verification
+145/224 Test #153: test_level_c_coupled_verification ...........   Passed    0.00 sec
+        Start 154: test_cht_validation
+146/224 Test #154: test_cht_validation .........................   Passed    0.00 sec
+        Start 155: test_thermal_vv
+147/224 Test #155: test_thermal_vv .............................   Passed    0.00 sec
+        Start 156: test_thermal_zones_vv
+148/224 Test #156: test_thermal_zones_vv .......................   Passed    0.00 sec
+        Start 157: test_production_energy_stage_vv
+149/224 Test #157: test_production_energy_stage_vv .............   Passed    0.03 sec
+        Start 158: test_radiation_vv
+150/224 Test #158: test_radiation_vv ...........................   Passed    0.00 sec
+        Start 159: test_s2s_radiation_vv
+151/224 Test #159: test_s2s_radiation_vv .......................   Passed    0.00 sec
+        Start 160: test_thermal_radiation_model_matrix
+152/224 Test #160: test_thermal_radiation_model_matrix .........   Passed    0.00 sec
+        Start 161: test_thermal_radiation_regression
+153/224 Test #161: test_thermal_radiation_regression ...........   Passed    0.00 sec
+        Start 162: test_thermal_challenge_vv
+154/224 Test #162: test_thermal_challenge_vv ...................   Passed    0.02 sec
+        Start 163: test_thermophysical_models_vv
+155/224 Test #163: test_thermophysical_models_vv ...............   Passed    0.00 sec
+        Start 164: test_turbulence_qualification_matrix
+156/224 Test #164: test_turbulence_qualification_matrix ........   Passed    0.02 sec
+        Start 165: test_cfdx_qualification_registry
+157/224 Test #165: test_cfdx_qualification_registry ............   Passed    0.03 sec
+        Start 166: test_n13_cuda_equivalence
+158/224 Test #166: test_n13_cuda_equivalence ...................***Skipped   0.00 sec
+        Start 167: test_schur_infrastructure
+159/224 Test #167: test_schur_infrastructure ...................   Passed    0.00 sec
+        Start 168: test_exact_schur
+160/224 Test #168: test_exact_schur ............................   Passed    0.00 sec
+        Start 169: test_n9_schur_oracle
+161/224 Test #169: test_n9_schur_oracle ........................   Passed    0.00 sec
+        Start 170: test_simplerc_schur
+162/224 Test #170: test_simplerc_schur .........................   Passed    0.00 sec
+        Start 171: test_lsc_bfbt_schur
+163/224 Test #171: test_lsc_bfbt_schur .........................   Passed    0.00 sec
+        Start 172: test_pcd_schur
+164/224 Test #172: test_pcd_schur ..............................   Passed    0.00 sec
+        Start 173: test_coupled_schur_selection
+165/224 Test #173: test_coupled_schur_selection ................   Passed    0.00 sec
+        Start 174: test_lsc_bfbt_schur_null_space
+166/224 Test #174: test_lsc_bfbt_schur_null_space ..............   Passed    0.00 sec
+        Start 175: test_schur_approximation_comparison
+167/224 Test #175: test_schur_approximation_comparison .........   Passed    0.00 sec
+        Start 176: test_schur_quantitative_qualification
+168/224 Test #176: test_schur_quantitative_qualification .......   Passed    0.00 sec
+        Start 177: test_mgr_preconditioner
+169/224 Test #177: test_mgr_preconditioner .....................   Passed    0.00 sec
+        Start 178: test_wall_distance_turbulence
+170/224 Test #178: test_wall_distance_turbulence ...............   Passed    0.00 sec
+        Start 179: test_geometry_cache
+171/224 Test #179: test_geometry_cache .........................   Passed    0.00 sec
+        Start 180: test_coupled_block_schur_amg
+172/224 Test #180: test_coupled_block_schur_amg ................   Passed    0.00 sec
+        Start 181: test_n8_schur_production_benchmark
+173/224 Test #181: test_n8_schur_production_benchmark ..........   Passed    0.00 sec
+        Start 182: test_n8_schur_representative_cfd
+174/224 Test #182: test_n8_schur_representative_cfd ............   Passed    0.01 sec
+        Start 183: test_n8_schur_complete_krylov
+175/224 Test #183: test_n8_schur_complete_krylov ...............   Passed    0.01 sec
+        Start 184: test_n8_amg_anisotropy_scaling
+176/224 Test #184: test_n8_amg_anisotropy_scaling ..............   Passed    0.12 sec
+        Start 185: test_n9_common_schur_qualification
+177/224 Test #185: test_n9_common_schur_qualification ..........   Passed    0.02 sec
+        Start 190: test_mpi_deterministic
+178/224 Test #190: test_mpi_deterministic ......................   Passed    0.42 sec
+        Start 191: test_n13_mpi_equivalence
+179/224 Test #191: test_n13_mpi_equivalence ....................   Passed    0.36 sec
+        Start 192: test_mpi_partition
+180/224 Test #192: test_mpi_partition ..........................   Passed    0.35 sec
+        Start 193: test_mpi_fused_reduction
+181/224 Test #193: test_mpi_fused_reduction ....................   Passed    0.34 sec
+        Start 194: test_mpi_krylov_reduction
+182/224 Test #194: test_mpi_krylov_reduction ...................   Passed    0.35 sec
+        Start 195: test_phase8_mpi_poisson
+183/224 Test #195: test_phase8_mpi_poisson .....................   Passed    0.36 sec
+        Start 196: test_n8_mpi_boundary
+184/224 Test #196: test_n8_mpi_boundary ........................   Passed    0.35 sec
+        Start 197: test_convergence_history
+185/224 Test #197: test_convergence_history ....................   Passed    0.00 sec
+        Start 198: test_execution_summary
+186/224 Test #198: test_execution_summary ......................   Passed    0.00 sec
+        Start 199: test_restart_mapping
+187/224 Test #199: test_restart_mapping ........................   Passed    0.00 sec
+        Start 200: test_transport_models
+188/224 Test #200: test_transport_models .......................   Passed    0.00 sec
+        Start 201: test_equation_of_state_consistency
+189/224 Test #201: test_equation_of_state_consistency ..........   Passed    0.00 sec
+        Start 202: test_sst_blending
+190/224 Test #202: test_sst_blending ...........................   Passed    0.00 sec
+        Start 203: test_thermo_transport_contracts
+191/224 Test #203: test_thermo_transport_contracts .............   Passed    0.00 sec
+        Start 204: test_thermophysical_models
+192/224 Test #204: test_thermophysical_models ..................   Passed    0.00 sec
+        Start 205: test_m5_m7_foundations
+193/224 Test #205: test_m5_m7_foundations ......................   Passed    0.00 sec
+        Start 206: test_runtime_execution_ooc
+194/224 Test #206: test_runtime_execution_ooc ..................   Passed    0.00 sec
+        Start 207: test_runtime_pipeline
+195/224 Test #207: test_runtime_pipeline .......................   Passed    0.01 sec
+        Start 208: test_phase6_runtime_acceptance
+196/224 Test #208: test_phase6_runtime_acceptance ..............   Passed    0.00 sec
+        Start 209: test_ooc_pipeline
+197/224 Test #209: test_ooc_pipeline ...........................   Passed    0.00 sec
+        Start 210: test_phase7_ooc_validation
+198/224 Test #210: test_phase7_ooc_validation ..................   Passed    0.01 sec
+        Start 211: test_hdf5_writer
+199/224 Test #211: test_hdf5_writer ............................   Passed    0.01 sec
+        Start 212: test_hdf5_roundtrip
+200/224 Test #212: test_hdf5_roundtrip .........................   Passed    0.01 sec
+        Start 213: test_field_roundtrip
+201/224 Test #213: test_field_roundtrip ........................   Passed    0.01 sec
+        Start 214: test_case_hdf5_io
+202/224 Test #214: test_case_hdf5_io ...........................   Passed    0.01 sec
+        Start 215: test_memory_planner_validation
+203/224 Test #215: test_memory_planner_validation ..............   Passed    0.00 sec
+        Start 216: test_plan_complet
+204/224 Test #216: test_plan_complet ...........................   Passed    0.00 sec
+        Start 217: test_validation_simple
+205/224 Test #217: test_validation_simple ......................   Passed    0.00 sec
+        Start 218: test_openfoam_importer
+206/224 Test #218: test_openfoam_importer ......................   Passed    0.00 sec
+        Start 219: test_cross_import_equivalence
+207/224 Test #219: test_cross_import_equivalence ...............   Passed    0.23 sec
+        Start 220: test_n9_s8_naca0012_contract
+208/224 Test #220: test_n9_s8_naca0012_contract ................   Passed    0.12 sec
+        Start 221: test_n9_coupled_schur_case_selection
+209/224 Test #221: test_n9_coupled_schur_case_selection ........   Passed    0.21 sec
+        Start 222: test_n9_poiseuille_body_force_production
+210/224 Test #222: test_n9_poiseuille_body_force_production ....   Passed    0.26 sec
+        Start 223: test_missing_qualification_case_contracts
+211/224 Test #223: test_missing_qualification_case_contracts ...   Passed    0.02 sec
+        Start 224: test_production_solver_e2e
+212/224 Test #224: test_production_solver_e2e ..................   Passed    0.82 sec
+        Start 225: test_production_solver_numerics_e2e
+213/224 Test #225: test_production_solver_numerics_e2e .........   Passed    0.14 sec
+        Start 226: test_meshio_bridge
+214/224 Test #226: test_meshio_bridge ..........................   Passed    0.41 sec
+        Start 227: test_mesh_geometry_matrix
+215/224 Test #227: test_mesh_geometry_matrix ...................   Passed    2.78 sec
+        Start 228: test_gap_analysis
+216/224 Test #228: test_gap_analysis ...........................   Passed    0.00 sec
+217/224 Test #137: test_polyhedral_poisson_convergence .........   Passed   18.12 sec
+218/224 Test #114: benchmark_wall_distance_complex .............   Passed   42.73 sec
+219/224 Test #100: test_ghia_cavity_order ......................   Passed   72.67 sec
+        Start   1: test_n8_physical_qualification
+220/224 Test   #1: test_n8_physical_qualification ..............   Passed   18.56 sec
+        Start 101: test_n8_pressure_velocity_matrix
+221/224 Test #101: test_n8_pressure_velocity_matrix ............   Passed   14.62 sec
+        Start 146: test_n10_qualification
+222/224 Test #146: test_n10_qualification ......................***Failed    0.03 sec
+error: PyYAML is required to parse the N10 fixture manifest
+
+        Start 188: test_n9_s9_rhie_chow_consistency
+223/224 Test #188: test_n9_s9_rhie_chow_consistency ............   Passed    0.00 sec
+        Start 189: test_n9_negative_diagnostics
+224/224 Test #189: test_n9_negative_diagnostics ................***Failed    1.58 sec
+Running 11 test cases...
+N9_7_ITEM1 true_residual=0 null_component=0
+  PASS: n9_7_item1_singular_pressure_system
+N9_7_ITEM2 wrong_null_operator_residual=0.570088 solve_status=not_applicable
+  PASS: n9_7_item2_wrong_null_space_rejected
+N9_7_ITEM3 rhs_component_norm=2.82843 classified=incompatible_rhs
+  PASS: n9_7_item3_incompatible_rhs_classified
+N9_7_ITEM4 all pinned rejections thrown
+  PASS: n9_7_item4_invalid_coefficients_rejected
+N9_7_ITEM5 clean=3.66442e-11 sign_fault=0.15625 flipped=0.15625 flipped_face=408
+  PASS: n9_7_item5_flux_antisymmetry_violation_detected
+N9_7_ITEM6 exact_gradient_error=1.33227e-15 collapsed_gradient_error=19 divergence_clean=0 divergence_sign_fault=0.04625
+  PASS: n9_7_item6_gradient_divergence_consistency
+N9_7_ITEM7 offset_delta=0 bump_delta=0.00694444
+  PASS: n9_7_item7_rhie_chow_reconstruction_perturbed
+N9_7_ITEM8 near_zero_diagonal=1 diagonal_dynamic_range=1e+15
+  PASS: n9_7_item8_schur_conditioning_and_pathology
+CFDX nonlinear iteration 1 rejected; retry=1 alpha_u=0.35 alpha_p=0.15 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=1, iterations=1, residual=9.126e-02, relative=2.282e-01)
+CFDX nonlinear iteration 1 rejected; retry=2 alpha_u=0.175 alpha_p=0.075 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=1, iterations=1, residual=4.064e-02, relative=1.016e-01)
+CFDX nonlinear iteration 1 rejected; retry=3 alpha_u=0.1 alpha_p=0.05 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=1, iterations=1, residual=1.917e-02, relative=4.793e-02)
+N9_7_ITEM9 linear failure propagated with pinned diagnostic
+  PASS: n9_7_item9_linear_failure_propagates
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=1.00367e-08 momentum_residual_reference_relative=1 momentum_residual_raw=5.22744e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,4.03516e-11,1e-300) momentum_rhs_relative_components=(1.00367e-08,0.154807,0) continuity_normalized=5.3045e-12 velocity_change_inf=8.46185e-12 pressure_change_inf=1.79857e-10 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.57568e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=8.1077e-13 worst_momentum_cell=93 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=10 momentum_residual_rhs_relative=1.05056e-08 momentum_residual_reference_relative=1.04672 momentum_residual_raw=5.47167e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,3.9963e-11,1e-300) momentum_rhs_relative_components=(1.05056e-08,0.906848,0) continuity_normalized=3.04614e-12 velocity_change_inf=9.38753e-12 pressure_change_inf=9.6843e-11 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=3.97375e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=8.49704e-13 worst_momentum_cell=94 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=20 momentum_residual_rhs_relative=1.02177e-08 momentum_residual_reference_relative=1.01803 momentum_residual_raw=5.32169e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,2.83593e-11,1e-300) momentum_rhs_relative_components=(1.02176e-08,1.42579,0) continuity_normalized=2.30735e-12 velocity_change_inf=1.05409e-11 pressure_change_inf=6.09135e-11 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.81534e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=5.69181e-13 worst_momentum_cell=91 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=30 momentum_residual_rhs_relative=1.00446e-08 momentum_residual_reference_relative=1.00079 momentum_residual_raw=5.23155e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,9.54754e-12,1e-300) momentum_rhs_relative_components=(1.00446e-08,1.27352,0) continuity_normalized=1.5163e-12 velocity_change_inf=8.47145e-12 pressure_change_inf=8.05612e-11 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=4.08337e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=2.55518e-13 worst_momentum_cell=88 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=40 momentum_residual_rhs_relative=9.94074e-09 momentum_residual_reference_relative=0.990441 momentum_residual_raw=5.17747e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,2.34647e-11,1e-300) momentum_rhs_relative_components=(9.94075e-09,0.573887,0) continuity_normalized=1.47095e-12 velocity_change_inf=8.38742e-12 pressure_change_inf=3.80015e-11 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.98394e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=4.10876e-13 worst_momentum_cell=85 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=50 momentum_residual_rhs_relative=9.78117e-09 momentum_residual_reference_relative=0.974543 momentum_residual_raw=5.09436e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,2.16026e-11,1e-300) momentum_rhs_relative_components=(9.78118e-09,0.196513,0) continuity_normalized=1.45775e-12 velocity_change_inf=8.24691e-12 pressure_change_inf=1.8096e-11 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=4.02451e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=4.87876e-13 worst_momentum_cell=90 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=60 momentum_residual_rhs_relative=9.64586e-09 momentum_residual_reference_relative=0.96106 momentum_residual_raw=5.02388e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.76591e-11,1e-300) momentum_rhs_relative_components=(9.64586e-09,0.193193,0) continuity_normalized=1.19722e-12 velocity_change_inf=8.13287e-12 pressure_change_inf=6.53554e-12 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=4.05672e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=4.40884e-13 worst_momentum_cell=90 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=70 momentum_residual_rhs_relative=9.50415e-09 momentum_residual_reference_relative=0.946942 momentum_residual_raw=4.95008e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.74128e-11,1e-300) momentum_rhs_relative_components=(9.50415e-09,0.11278,0) continuity_normalized=1.02165e-12 velocity_change_inf=8.01208e-12 pressure_change_inf=3.12622e-12 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=3.81625e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=4.2076e-13 worst_momentum_cell=92 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=80 momentum_residual_rhs_relative=9.40482e-09 momentum_residual_reference_relative=0.937045 momentum_residual_raw=4.89834e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.7337e-11,1e-300) momentum_rhs_relative_components=(9.40482e-09,0.0808826,0) continuity_normalized=9.14275e-13 velocity_change_inf=7.92948e-12 pressure_change_inf=2.08051e-12 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=2.82479e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=4.16477e-13 worst_momentum_cell=89 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=90 momentum_residual_rhs_relative=9.26951e-09 momentum_residual_reference_relative=0.923563 momentum_residual_raw=4.82787e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.70634e-11,1e-300) momentum_rhs_relative_components=(9.26952e-09,0.074611,0) continuity_normalized=8.51854e-13 velocity_change_inf=7.81473e-12 pressure_change_inf=2.04617e-12 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=6.41445e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=4.10532e-13 worst_momentum_cell=91 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=100 momentum_residual_rhs_relative=9.15611e-09 momentum_residual_reference_relative=0.912264 momentum_residual_raw=4.7688e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.70163e-11,1e-300) momentum_rhs_relative_components=(9.1561e-09,0.062049,0) continuity_normalized=8.10299e-13 velocity_change_inf=7.7188e-12 pressure_change_inf=1.24312e-12 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=8.00248e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=4.06469e-13 worst_momentum_cell=91 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=110 momentum_residual_rhs_relative=9.03638e-09 momentum_residual_reference_relative=0.900335 momentum_residual_raw=4.70645e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.67709e-11,1e-300) momentum_rhs_relative_components=(9.03637e-09,0.051911,0) continuity_normalized=7.86797e-13 velocity_change_inf=7.61826e-12 pressure_change_inf=7.41149e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=7.86634e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=4.01713e-13 worst_momentum_cell=90 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=120 momentum_residual_rhs_relative=8.91348e-09 momentum_residual_reference_relative=0.88809 momentum_residual_raw=4.64244e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.65913e-11,1e-300) momentum_rhs_relative_components=(8.91347e-09,0.0465144,0) continuity_normalized=7.67282e-13 velocity_change_inf=7.51417e-12 pressure_change_inf=1.61709e-12 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=1.01015e-10 momentum_linear_iterations=1 flux_velocity_mismatch_linf=3.9703e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=130 momentum_residual_rhs_relative=8.80309e-09 momentum_residual_reference_relative=0.877092 momentum_residual_raw=4.58494e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.64225e-11,1e-300) momentum_rhs_relative_components=(8.8031e-09,0.0429002,0) continuity_normalized=7.51848e-13 velocity_change_inf=7.42109e-12 pressure_change_inf=6.42943e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=6.21182e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=3.92568e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=140 momentum_residual_rhs_relative=8.69271e-09 momentum_residual_reference_relative=0.866094 momentum_residual_raw=4.52745e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.61143e-11,1e-300) momentum_rhs_relative_components=(8.69271e-09,0.0417699,0) continuity_normalized=7.39494e-13 velocity_change_inf=7.328e-12 pressure_change_inf=8.05575e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.78229e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=3.86476e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=150 momentum_residual_rhs_relative=8.58253e-09 momentum_residual_reference_relative=0.855116 momentum_residual_raw=4.47007e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.58505e-11,1e-300) momentum_rhs_relative_components=(8.58252e-09,0.0386901,0) continuity_normalized=7.28652e-13 velocity_change_inf=7.23528e-12 pressure_change_inf=8.23721e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=6.96261e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=3.80102e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=160 momentum_residual_rhs_relative=8.47413e-09 momentum_residual_reference_relative=0.844316 momentum_residual_raw=4.41361e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.56807e-11,1e-300) momentum_rhs_relative_components=(8.47413e-09,0.036383,0) continuity_normalized=7.18192e-13 velocity_change_inf=7.1438e-12 pressure_change_inf=8.90372e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.57453e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=3.75216e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=170 momentum_residual_rhs_relative=8.36575e-09 momentum_residual_reference_relative=0.833518 momentum_residual_raw=4.35716e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.55088e-11,1e-300) momentum_rhs_relative_components=(8.36575e-09,0.0348789,0) continuity_normalized=7.08481e-13 velocity_change_inf=7.05249e-12 pressure_change_inf=6.42064e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.53427e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=3.70939e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=180 momentum_residual_rhs_relative=8.25842e-09 momentum_residual_reference_relative=0.822824 momentum_residual_raw=4.30126e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.52937e-11,1e-300) momentum_rhs_relative_components=(8.25843e-09,0.0336565,0) continuity_normalized=6.98758e-13 velocity_change_inf=6.9619e-12 pressure_change_inf=4.99976e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=6.22783e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=3.6604e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=190 momentum_residual_rhs_relative=8.15298e-09 momentum_residual_reference_relative=0.812318 momentum_residual_raw=4.24634e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.50719e-11,1e-300) momentum_rhs_relative_components=(8.15297e-09,0.0340359,0) continuity_normalized=6.89445e-13 velocity_change_inf=6.87344e-12 pressure_change_inf=5.20389e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.5599e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=3.60876e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=200 momentum_residual_rhs_relative=8.04853e-09 momentum_residual_reference_relative=0.801912 momentum_residual_raw=4.19194e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.48733e-11,1e-300) momentum_rhs_relative_components=(8.04853e-09,0.0335451,0) continuity_normalized=6.80386e-13 velocity_change_inf=6.78515e-12 pressure_change_inf=6.05962e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.58591e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=3.56007e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=210 momentum_residual_rhs_relative=7.94483e-09 momentum_residual_reference_relative=0.79158 momentum_residual_raw=4.13793e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.46847e-11,1e-300) momentum_rhs_relative_components=(7.94484e-09,0.0325694,0) continuity_normalized=6.71197e-13 velocity_change_inf=6.69775e-12 pressure_change_inf=5.37646e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.63178e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=3.51385e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=220 momentum_residual_rhs_relative=7.84251e-09 momentum_residual_reference_relative=0.781384 momentum_residual_raw=4.08464e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.44889e-11,1e-300) momentum_rhs_relative_components=(7.84251e-09,0.0325882,0) continuity_normalized=6.62219e-13 velocity_change_inf=6.6116e-12 pressure_change_inf=4.84336e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.62252e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=3.46748e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=230 momentum_residual_rhs_relative=7.74146e-09 momentum_residual_reference_relative=0.771316 momentum_residual_raw=4.03201e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.42944e-11,1e-300) momentum_rhs_relative_components=(7.74145e-09,0.0323403,0) continuity_normalized=6.53434e-13 velocity_change_inf=6.52651e-12 pressure_change_inf=5.20261e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.71365e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=3.42107e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=240 momentum_residual_rhs_relative=7.64129e-09 momentum_residual_reference_relative=0.761336 momentum_residual_raw=3.97984e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.4106e-11,1e-300) momentum_rhs_relative_components=(7.6413e-09,0.0320628,0) continuity_normalized=6.44734e-13 velocity_change_inf=6.44178e-12 pressure_change_inf=5.02835e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.62621e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=3.37566e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=250 momentum_residual_rhs_relative=7.54256e-09 momentum_residual_reference_relative=0.751499 momentum_residual_raw=3.92842e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.392e-11,1e-300) momentum_rhs_relative_components=(7.54255e-09,0.0319643,0) continuity_normalized=6.36166e-13 velocity_change_inf=6.35865e-12 pressure_change_inf=4.91626e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.69571e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=3.3311e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=260 momentum_residual_rhs_relative=7.4448e-09 momentum_residual_reference_relative=0.741759 momentum_residual_raw=3.8775e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.37366e-11,1e-300) momentum_rhs_relative_components=(7.4448e-09,0.0317078,0) continuity_normalized=6.27783e-13 velocity_change_inf=6.27622e-12 pressure_change_inf=4.82286e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.71665e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=3.28711e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=270 momentum_residual_rhs_relative=7.3483e-09 momentum_residual_reference_relative=0.732145 momentum_residual_raw=3.82724e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.35551e-11,1e-300) momentum_rhs_relative_components=(7.3483e-09,0.031628,0) continuity_normalized=6.19457e-13 velocity_change_inf=6.19504e-12 pressure_change_inf=4.7639e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.68873e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=3.24367e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=280 momentum_residual_rhs_relative=7.253e-09 momentum_residual_reference_relative=0.722649 momentum_residual_raw=3.7776e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.33768e-11,1e-300) momentum_rhs_relative_components=(7.253e-09,0.0315418,0) continuity_normalized=6.11296e-13 velocity_change_inf=6.11458e-12 pressure_change_inf=4.84566e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.75397e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=3.20093e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=290 momentum_residual_rhs_relative=7.15874e-09 momentum_residual_reference_relative=0.713258 momentum_residual_raw=3.72851e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.32005e-11,1e-300) momentum_rhs_relative_components=(7.15874e-09,0.0314167,0) continuity_normalized=6.03206e-13 velocity_change_inf=6.03499e-12 pressure_change_inf=4.6559e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.71683e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=3.15873e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=300 momentum_residual_rhs_relative=7.06555e-09 momentum_residual_reference_relative=0.703973 momentum_residual_raw=3.67997e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.30263e-11,1e-300) momentum_rhs_relative_components=(7.06555e-09,0.0313943,0) continuity_normalized=5.95237e-13 velocity_change_inf=5.95666e-12 pressure_change_inf=4.56896e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.73655e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=3.11707e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=310 momentum_residual_rhs_relative=6.9739e-09 momentum_residual_reference_relative=0.694841 momentum_residual_raw=3.63224e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.28538e-11,1e-300) momentum_rhs_relative_components=(6.9739e-09,0.0313407,0) continuity_normalized=5.87372e-13 velocity_change_inf=5.87903e-12 pressure_change_inf=4.52217e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.76968e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=3.07584e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=320 momentum_residual_rhs_relative=6.88308e-09 momentum_residual_reference_relative=0.685793 momentum_residual_raw=3.58494e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.26855e-11,1e-300) momentum_rhs_relative_components=(6.88308e-09,0.0312597,0) continuity_normalized=5.79641e-13 velocity_change_inf=5.80247e-12 pressure_change_inf=4.56304e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.75183e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=3.03541e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=330 momentum_residual_rhs_relative=6.7934e-09 momentum_residual_reference_relative=0.676857 momentum_residual_raw=3.53823e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.25188e-11,1e-300) momentum_rhs_relative_components=(6.7934e-09,0.0312126,0) continuity_normalized=5.71989e-13 velocity_change_inf=5.72715e-12 pressure_change_inf=4.44014e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.75407e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=2.99551e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=340 momentum_residual_rhs_relative=6.70485e-09 momentum_residual_reference_relative=0.668035 momentum_residual_raw=3.49211e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.23537e-11,1e-300) momentum_rhs_relative_components=(6.70485e-09,0.0311842,0) continuity_normalized=5.64467e-13 velocity_change_inf=5.65237e-12 pressure_change_inf=4.38716e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.77868e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=2.95604e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=350 momentum_residual_rhs_relative=6.61735e-09 momentum_residual_reference_relative=0.659316 momentum_residual_raw=3.44653e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.21907e-11,1e-300) momentum_rhs_relative_components=(6.61733e-09,0.031174,0) continuity_normalized=5.57004e-13 velocity_change_inf=5.57883e-12 pressure_change_inf=4.35983e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.77587e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=2.91705e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=360 momentum_residual_rhs_relative=6.53089e-09 momentum_residual_reference_relative=0.650702 momentum_residual_raw=3.40151e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.2033e-11,1e-300) momentum_rhs_relative_components=(6.5309e-09,0.0310244,0) continuity_normalized=5.49697e-13 velocity_change_inf=5.50564e-12 pressure_change_inf=4.34376e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.77151e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=2.87904e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=370 momentum_residual_rhs_relative=6.4458e-09 momentum_residual_reference_relative=0.642225 momentum_residual_raw=3.35719e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.18734e-11,1e-300) momentum_rhs_relative_components=(6.4458e-09,0.0311178,0) continuity_normalized=5.42483e-13 velocity_change_inf=5.43405e-12 pressure_change_inf=4.00539e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.76025e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=2.84111e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=380 momentum_residual_rhs_relative=6.36154e-09 momentum_residual_reference_relative=0.633829 momentum_residual_raw=3.3133e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.1717e-11,1e-300) momentum_rhs_relative_components=(6.36153e-09,0.0310735,0) continuity_normalized=5.35383e-13 velocity_change_inf=5.36318e-12 pressure_change_inf=4.34069e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.80414e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=2.80367e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=390 momentum_residual_rhs_relative=6.27838e-09 momentum_residual_reference_relative=0.625544 momentum_residual_raw=3.26999e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.15641e-11,1e-300) momentum_rhs_relative_components=(6.27839e-09,0.0310283,0) continuity_normalized=5.28301e-13 velocity_change_inf=5.29319e-12 pressure_change_inf=3.98224e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.75805e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=2.76696e-13 worst_momentum_cell=104 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=400 momentum_residual_rhs_relative=6.19652e-09 momentum_residual_reference_relative=0.617387 momentum_residual_raw=3.22735e-11 momentum_rhs_scale=0.00520833 momentum_residual_reference=5.22744e-11 momentum_rhs_scale_components=(0.00520833,1.14112e-11,1e-300) momentum_rhs_relative_components=(6.1965e-09,0.0310935,0) continuity_normalized=5.21364e-13 velocity_change_inf=5.22391e-12 pressure_change_inf=3.98703e-13 alpha_u=0.02 alpha_p=0.01 pressure_linear_iterations=6 pressure_relative_residual=5.74822e-11 momentum_linear_iterations=7 flux_velocity_mismatch_linf=2.73051e-13 worst_momentum_cell=104 worst_momentum_patch=
+N9_7_ITEM10 trace iter=1 metric=1 momentum_residual=1.00367e-08 pressure_residual=5.57568e-11 velocity_change=8.46185e-12 pressure_change=1.79857e-10 continuity_normalized=5.3045e-12
+N9_7_ITEM10 trace iter=2 metric=1.01084 momentum_residual=1.01455e-08 pressure_residual=5.52127e-11 velocity_change=8.55476e-12 pressure_change=1.71239e-10 continuity_normalized=5.10459e-12
+N9_7_ITEM10 trace iter=3 metric=1.02034 momentum_residual=1.02409e-08 pressure_residual=5.39252e-11 velocity_change=8.63611e-12 pressure_change=1.6216e-10 continuity_normalized=4.87512e-12
+N9_7_ITEM10 trace iter=4 metric=1.02839 momentum_residual=1.03216e-08 pressure_residual=5.16551e-11 velocity_change=8.70433e-12 pressure_change=1.5276e-10 continuity_normalized=4.62072e-12
+N9_7_ITEM10 trace iter=5 metric=1.03489 momentum_residual=1.03869e-08 pressure_residual=4.803e-11 velocity_change=8.75993e-12 pressure_change=1.43147e-10 continuity_normalized=4.35143e-12
+N9_7_ITEM10 trace iter=6 metric=1.03984 momentum_residual=1.04366e-08 pressure_residual=4.26209e-11 velocity_change=8.80167e-12 pressure_change=1.33372e-10 continuity_normalized=4.07435e-12
+N9_7_ITEM10 trace iter=7 metric=1.04326 momentum_residual=1.04709e-08 pressure_residual=3.61157e-11 velocity_change=8.8308e-12 pressure_change=1.23502e-10 continuity_normalized=3.79057e-12
+N9_7_ITEM10 trace iter=8 metric=1.04522 momentum_residual=1.04905e-08 pressure_residual=3.62966e-11 velocity_change=8.84732e-12 pressure_change=1.1354e-10 continuity_normalized=3.50844e-12
+N9_7_ITEM10 trace iter=9 metric=1.04651 momentum_residual=1.05035e-08 pressure_residual=4.64939e-11 velocity_change=8.85887e-12 pressure_change=1.03575e-10 continuity_normalized=3.23578e-12
+N9_7_ITEM10 trace iter=10 metric=1.04672 momentum_residual=1.05056e-08 pressure_residual=3.97375e-11 velocity_change=9.38753e-12 pressure_change=9.6843e-11 continuity_normalized=3.04614e-12
+N9_7_ITEM10 trace iter=11 metric=1.04591 momentum_residual=1.04974e-08 pressure_residual=6.6655e-11 velocity_change=1.00204e-11 pressure_change=8.95725e-11 continuity_normalized=2.98413e-12
+N9_7_ITEM10 trace iter=12 metric=1.0442 momentum_residual=1.04803e-08 pressure_residual=6.95843e-11 velocity_change=1.05646e-11 pressure_change=8.75495e-11 continuity_normalized=2.94336e-12
+N9_7_ITEM10 trace iter=13 metric=1.04173 momentum_residual=1.04555e-08 pressure_residual=6.95269e-11 velocity_change=1.10076e-11 pressure_change=8.63665e-11 continuity_normalized=2.88563e-12
+N9_7_ITEM10 trace iter=14 metric=1.03866 momentum_residual=1.04247e-08 pressure_residual=6.86996e-11 velocity_change=1.13374e-11 pressure_change=8.3452e-11 continuity_normalized=2.80872e-12
+N9_7_ITEM10 trace iter=15 metric=1.03513 momentum_residual=1.03892e-08 pressure_residual=6.75799e-11 velocity_change=1.15439e-11 pressure_change=7.87865e-11 continuity_normalized=2.72227e-12
+N9_7_ITEM10 trace iter=20 metric=1.01803 momentum_residual=1.02177e-08 pressure_residual=5.81534e-11 velocity_change=1.05409e-11 pressure_change=6.09135e-11 continuity_normalized=2.30735e-12
+N9_7_ITEM10 trace iter=30 metric=1.00079 momentum_residual=1.00446e-08 pressure_residual=4.08337e-11 velocity_change=8.47145e-12 pressure_change=8.05612e-11 continuity_normalized=1.5163e-12
+N9_7_ITEM10 trace iter=40 metric=0.990441 momentum_residual=9.94074e-09 pressure_residual=5.98394e-11 velocity_change=8.38742e-12 pressure_change=3.80015e-11 continuity_normalized=1.47095e-12
+N9_7_ITEM10 trace iter=50 metric=0.974543 momentum_residual=9.78117e-09 pressure_residual=4.02451e-11 velocity_change=8.24691e-12 pressure_change=1.8096e-11 continuity_normalized=1.45775e-12
+N9_7_ITEM10 trace iter=60 metric=0.96106 momentum_residual=9.64586e-09 pressure_residual=4.05672e-11 velocity_change=8.13287e-12 pressure_change=6.53554e-12 continuity_normalized=1.19722e-12
+N9_7_ITEM10 trace iter=70 metric=0.946942 momentum_residual=9.50415e-09 pressure_residual=3.81625e-11 velocity_change=8.01208e-12 pressure_change=3.12622e-12 continuity_normalized=1.02165e-12
+N9_7_ITEM10 trace iter=80 metric=0.937045 momentum_residual=9.40482e-09 pressure_residual=2.82479e-11 velocity_change=7.92948e-12 pressure_change=2.08051e-12 continuity_normalized=9.14275e-13
+N9_7_ITEM10 trace iter=90 metric=0.923563 momentum_residual=9.26951e-09 pressure_residual=6.41445e-11 velocity_change=7.81473e-12 pressure_change=2.04617e-12 continuity_normalized=8.51854e-13
+N9_7_ITEM10 trace iter=100 metric=0.912264 momentum_residual=9.15611e-09 pressure_residual=8.00248e-11 velocity_change=7.7188e-12 pressure_change=1.24312e-12 continuity_normalized=8.10299e-13
+N9_7_ITEM10 trace iter=110 metric=0.900335 momentum_residual=9.03638e-09 pressure_residual=7.86634e-11 velocity_change=7.61826e-12 pressure_change=7.41149e-13 continuity_normalized=7.86797e-13
+N9_7_ITEM10 trace iter=120 metric=0.88809 momentum_residual=8.91348e-09 pressure_residual=1.01015e-10 velocity_change=7.51417e-12 pressure_change=1.61709e-12 continuity_normalized=7.67282e-13
+N9_7_ITEM10 trace iter=130 metric=0.877092 momentum_residual=8.80309e-09 pressure_residual=6.21182e-11 velocity_change=7.42109e-12 pressure_change=6.42943e-13 continuity_normalized=7.51848e-13
+N9_7_ITEM10 trace iter=140 metric=0.866094 momentum_residual=8.69271e-09 pressure_residual=5.78229e-11 velocity_change=7.328e-12 pressure_change=8.05575e-13 continuity_normalized=7.39494e-13
+N9_7_ITEM10 trace iter=150 metric=0.855116 momentum_residual=8.58253e-09 pressure_residual=6.96261e-11 velocity_change=7.23528e-12 pressure_change=8.23721e-13 continuity_normalized=7.28652e-13
+N9_7_ITEM10 trace iter=160 metric=0.844316 momentum_residual=8.47413e-09 pressure_residual=5.57453e-11 velocity_change=7.1438e-12 pressure_change=8.90372e-13 continuity_normalized=7.18192e-13
+N9_7_ITEM10 trace iter=170 metric=0.833518 momentum_residual=8.36575e-09 pressure_residual=5.53427e-11 velocity_change=7.05249e-12 pressure_change=6.42064e-13 continuity_normalized=7.08481e-13
+N9_7_ITEM10 trace iter=180 metric=0.822824 momentum_residual=8.25842e-09 pressure_residual=6.22783e-11 velocity_change=6.9619e-12 pressure_change=4.99976e-13 continuity_normalized=6.98758e-13
+N9_7_ITEM10 trace iter=190 metric=0.812318 momentum_residual=8.15298e-09 pressure_residual=5.5599e-11 velocity_change=6.87344e-12 pressure_change=5.20389e-13 continuity_normalized=6.89445e-13
+N9_7_ITEM10 trace iter=200 metric=0.801912 momentum_residual=8.04853e-09 pressure_residual=5.58591e-11 velocity_change=6.78515e-12 pressure_change=6.05962e-13 continuity_normalized=6.80386e-13
+N9_7_ITEM10 trace iter=210 metric=0.79158 momentum_residual=7.94483e-09 pressure_residual=5.63178e-11 velocity_change=6.69775e-12 pressure_change=5.37646e-13 continuity_normalized=6.71197e-13
+N9_7_ITEM10 trace iter=220 metric=0.781384 momentum_residual=7.84251e-09 pressure_residual=5.62252e-11 velocity_change=6.6116e-12 pressure_change=4.84336e-13 continuity_normalized=6.62219e-13
+N9_7_ITEM10 trace iter=230 metric=0.771316 momentum_residual=7.74146e-09 pressure_residual=5.71365e-11 velocity_change=6.52651e-12 pressure_change=5.20261e-13 continuity_normalized=6.53434e-13
+N9_7_ITEM10 trace iter=240 metric=0.761336 momentum_residual=7.64129e-09 pressure_residual=5.62621e-11 velocity_change=6.44178e-12 pressure_change=5.02835e-13 continuity_normalized=6.44734e-13
+N9_7_ITEM10 trace iter=250 metric=0.751499 momentum_residual=7.54256e-09 pressure_residual=5.69571e-11 velocity_change=6.35865e-12 pressure_change=4.91626e-13 continuity_normalized=6.36166e-13
+N9_7_ITEM10 trace iter=260 metric=0.741759 momentum_residual=7.4448e-09 pressure_residual=5.71665e-11 velocity_change=6.27622e-12 pressure_change=4.82286e-13 continuity_normalized=6.27783e-13
+N9_7_ITEM10 trace iter=270 metric=0.732145 momentum_residual=7.3483e-09 pressure_residual=5.68873e-11 velocity_change=6.19504e-12 pressure_change=4.7639e-13 continuity_normalized=6.19457e-13
+N9_7_ITEM10 trace iter=280 metric=0.722649 momentum_residual=7.253e-09 pressure_residual=5.75397e-11 velocity_change=6.11458e-12 pressure_change=4.84566e-13 continuity_normalized=6.11296e-13
+N9_7_ITEM10 trace iter=290 metric=0.713258 momentum_residual=7.15874e-09 pressure_residual=5.71683e-11 velocity_change=6.03499e-12 pressure_change=4.6559e-13 continuity_normalized=6.03206e-13
+N9_7_ITEM10 trace iter=300 metric=0.703973 momentum_residual=7.06555e-09 pressure_residual=5.73655e-11 velocity_change=5.95666e-12 pressure_change=4.56896e-13 continuity_normalized=5.95237e-13
+N9_7_ITEM10 trace iter=310 metric=0.694841 momentum_residual=6.9739e-09 pressure_residual=5.76968e-11 velocity_change=5.87903e-12 pressure_change=4.52217e-13 continuity_normalized=5.87372e-13
+N9_7_ITEM10 trace iter=320 metric=0.685793 momentum_residual=6.88308e-09 pressure_residual=5.75183e-11 velocity_change=5.80247e-12 pressure_change=4.56304e-13 continuity_normalized=5.79641e-13
+N9_7_ITEM10 trace iter=330 metric=0.676857 momentum_residual=6.7934e-09 pressure_residual=5.75407e-11 velocity_change=5.72715e-12 pressure_change=4.44014e-13 continuity_normalized=5.71989e-13
+N9_7_ITEM10 trace iter=340 metric=0.668035 momentum_residual=6.70485e-09 pressure_residual=5.77868e-11 velocity_change=5.65237e-12 pressure_change=4.38716e-13 continuity_normalized=5.64467e-13
+N9_7_ITEM10 trace iter=350 metric=0.659316 momentum_residual=6.61735e-09 pressure_residual=5.77587e-11 velocity_change=5.57883e-12 pressure_change=4.35983e-13 continuity_normalized=5.57004e-13
+N9_7_ITEM10 trace iter=360 metric=0.650702 momentum_residual=6.53089e-09 pressure_residual=5.77151e-11 velocity_change=5.50564e-12 pressure_change=4.34376e-13 continuity_normalized=5.49697e-13
+N9_7_ITEM10 trace iter=370 metric=0.642225 momentum_residual=6.4458e-09 pressure_residual=5.76025e-11 velocity_change=5.43405e-12 pressure_change=4.00539e-13 continuity_normalized=5.42483e-13
+N9_7_ITEM10 trace iter=380 metric=0.633829 momentum_residual=6.36154e-09 pressure_residual=5.80414e-11 velocity_change=5.36318e-12 pressure_change=4.34069e-13 continuity_normalized=5.35383e-13
+N9_7_ITEM10 trace iter=390 metric=0.625544 momentum_residual=6.27838e-09 pressure_residual=5.75805e-11 velocity_change=5.29319e-12 pressure_change=3.98224e-13 continuity_normalized=5.28301e-13
+N9_7_ITEM10 trace iter=400 metric=0.617387 momentum_residual=6.19652e-09 pressure_residual=5.74822e-11 velocity_change=5.22391e-12 pressure_change=3.98703e-13 continuity_normalized=5.21364e-13
+N9_7_ITEM10 status=MAX_ITERATIONS iterations=400 reason=maximum nonlinear iteration count reached without satisfying all gates
+  FAILED: result.convergence_status == ConvergenceStatus::STAGNATED in operator() at /home/runner/work/_temp/head/tests/validation/test_n9_negative_diagnostics.cpp:820
+  FAIL: n9_7_item10_nonlinear_stagnation_detected - Assertion failed: result.convergence_status == ConvergenceStatus::STAGNATED
+N9_7_FINAL continuity_linf=3.66442e-11 momentum_residual=9.91865e-09 poiseuille_l2=0.00488281
+  PASS: n9_7_final_gate_reference_solution_still_accepted
+
+Results: 10 passed, 1 failed
+
+
+99% tests passed, 2 tests failed out of 224
+
+Label Time Summary:
+axisymmetric        =   0.10 sec*proc (2 tests)
+benchmark           =  42.73 sec*proc (1 test)
+campaign            =  72.67 sec*proc (1 test)
+experimental        =   0.00 sec*proc (1 test)
+hardware            =   0.00 sec*proc (1 test)
+integration         =   0.47 sec*proc (2 tests)
+mesh                =  27.00 sec*proc (2 tests)
+mms                 =   4.31 sec*proc (5 tests)
+mpi                 =   0.35 sec*proc (1 test)
+n10                 =  21.15 sec*proc (9 tests)
+n11                 =   0.07 sec*proc (3 tests)
+n12                 =   4.31 sec*proc (5 tests)
+n13                 =   0.37 sec*proc (4 tests)
+n16                 =   0.00 sec*proc (1 test)
+n7                  =  31.41 sec*proc (3 tests)
+n8                  =  33.53 sec*proc (3 tests)
+n9                  =   2.17 sec*proc (5 tests)
+phase12             =   0.00 sec*proc (1 test)
+phase13             = 116.43 sec*proc (30 tests)
+phase14             =   0.10 sec*proc (3 tests)
+provenance          =   0.02 sec*proc (1 test)
+qualification       = 141.66 sec*proc (34 tests)
+reference           =   0.00 sec*proc (1 test)
+regression          =   0.00 sec*proc (1 test)
+sanitizer-slow      = 109.14 sec*proc (8 tests)
+schur               =   0.21 sec*proc (1 test)
+total-validation    =   0.12 sec*proc (1 test)
+turbulence          =   0.02 sec*proc (1 test)
+unit                =   0.07 sec*proc (2 tests)
+validation          = 262.75 sec*proc (73 tests)
+validation-total    =   2.05 sec*proc (4 tests)
+
+Total Test time (real) = 109.12 sec
+
+The following tests did not run:
+	166 - test_n13_cuda_equivalence (Skipped)
+
+The following tests FAILED:
+	146 - test_n10_qualification (Failed)                   n10 qualification validation
+	189 - test_n9_negative_diagnostics (Failed)             n9 qualification validation validation-total
+Errors while running CTest

@@ -1,0 +1,403 @@
+build_exit=0
+--- build log (tail 400) ---
+[296/467] Linking CXX executable test_native_external_methods
+[297/467] Linking CXX executable test_n11_unit_invariance_robustness
+[298/467] Linking CXX executable test_amg_preconditioner_qualification
+[299/467] Linking CXX executable test_n11_scaling_equivalence
+[300/467] Linking CXX executable test_n13_cuda_equivalence
+[301/467] Linking CXX executable test_backend_equivalence
+[302/467] Linking CXX executable test_n11_production_scaling
+[303/467] Linking CXX executable test_n13_restart_equivalence
+[304/467] Linking CXX executable test_laplacian
+[305/467] Linking CXX executable test_diffusion_diagnostics
+[306/467] Linking CXX executable test_phase12_radiation_vv
+[307/467] Linking CXX executable test_advanced_preconditioners
+[308/467] Linking CXX executable test_face_geometry
+[309/467] Linking CXX executable test_scalar_diffusion
+[310/467] Linking CXX executable test_cell_geometry
+[311/467] Linking CXX executable test_phase123_regression
+[312/467] Linking CXX executable test_schur_preconditioner
+[313/467] Linking CXX executable test_mesh_quality
+[314/467] Linking CXX executable test_geometry_invariants
+[315/467] Linking CXX executable test_dual_time_stepping
+[316/467] Linking CXX executable test_temporal_physics
+[317/467] Linking CXX executable test_dual_time_adaptive
+[318/467] Linking CXX executable test_mesh_family_volumes
+[319/467] Linking CXX executable test_dat_restart_identity
+[320/467] Linking CXX executable test_source_term
+[321/467] Linking CXX executable test_dual_time_field_integrator
+[322/467] Linking CXX executable test_dual_time_navier_stokes
+[323/467] Linking CXX executable test_dual_time_field_driver
+[324/467] Linking CXX executable test_temporal_history
+[325/467] Linking CXX executable test_case_numerics_report
+[326/467] Linking CXX executable test_dual_time_physical_lifecycle
+[327/467] Linking CXX executable test_core_temporal
+[328/467] Linking CXX executable test_simulation_controller
+[329/467] Linking CXX executable test_local_time_stepping
+[330/467] Linking CXX executable test_adaptive_cfl
+[331/467] Linking CXX executable test_newton_field
+[332/467] Linking CXX executable test_incompressible
+[333/467] Linking CXX executable test_timestep_control
+[334/467] Linking CXX executable test_continuation
+[335/467] Linking CXX executable test_m1_m4_physics
+[336/467] Linking CXX executable test_initialization
+[337/467] Linking CXX executable test_solver_control
+[338/467] Linking CXX executable test_m1_m4_validation
+[339/467] Linking CXX executable test_convergence_monitor
+[340/467] Linking CXX executable test_n7_convergence_qualification
+[341/467] Linking CXX executable test_n7_adaptive_relaxation_re400
+[342/467] Linking CXX executable test_n7_causal_overshoot_regression
+[343/467] Linking CXX executable test_n11_scalar_conservation
+[344/467] Linking CXX executable test_finite_volume_transport
+[345/467] Linking CXX executable test_steady_incompressible_solver
+[346/467] Linking CXX executable test_vtu_writer_validation
+[347/467] Linking CXX executable test_ghia_cavity
+[348/467] Linking CXX executable test_solver_vtu_provenance
+[349/467] Linking CXX executable test_m2_m4_solver_validation
+[350/467] Linking CXX executable test_n11_bound_reporting_hardening
+[351/467] Linking CXX executable test_phase10_turbulence_hardening
+[352/467] Linking CXX executable test_phase9_acceptance
+[353/467] Linking CXX executable test_n11_sa_negative_nu_tilde_policy
+[354/467] Linking CXX executable test_turbulence_qualification_equations
+[355/467] Linking CXX executable test_wall_distance_methods
+[356/467] Linking CXX executable test_n11_fw1_nearest_normal_fallback
+[357/467] Linking CXX executable test_n11_b4_b5_amg_footprint
+[358/467] Linking CXX executable test_phase10_sst_limiter
+[359/467] Linking CXX executable test_phase10_model_registry
+[360/467] Linking CXX executable test_vmfl036_reference_case
+[361/467] Linking CXX executable test_n11_fw2_positivity_clamp_counter
+[362/467] Linking CXX executable test_n11_b1_b2_b3_linalg_guards
+[363/467] Linking CXX executable test_analytical_benchmarks
+[364/467] Linking CXX executable test_axisymmetric_vmfl036_kernel
+[365/467] Linking CXX executable test_vmfl036_axisymmetric
+[366/467] Linking CXX executable test_naca0012_wall_shear_audit
+[367/467] Linking CXX executable test_channel_qualification
+[368/467] Linking CXX executable test_numerical_model_verification
+[369/467] Linking CXX executable test_poiseuille_diagnostics
+[370/467] Linking CXX executable test_bfs_qualification
+[371/467] Linking CXX executable test_mesh_refinement_order
+[372/467] Linking CXX executable test_naca0012_qualification
+[373/467] Linking CXX executable test_mms_scalar_diffusion
+[374/467] Linking CXX executable test_nonorthogonal_skew_campaign
+[375/467] Linking CXX executable test_nonorthogonal_laplacian_campaign
+[376/467] Linking CXX executable test_transient_mms_closure
+[377/467] Linking CXX executable test_transient_mms
+[378/467] Linking CXX executable test_transient_mms_3d_stiff
+[379/467] Linking CXX executable test_n12_pressure_continuity_mms
+[380/467] Linking CXX executable test_n12_momentum_mms
+[381/467] Linking CXX executable test_convection_scheme_verification
+[382/467] Linking CXX executable test_convection_blending
+[383/467] Linking CXX executable test_polyhedral_poisson_convergence
+[384/467] Linking CXX executable test_n12_coupled_pressure_velocity_mms
+[385/467] Linking CXX executable test_polyhedral_laplacian_campaign
+[386/467] Linking CXX executable test_convection_3d_verification
+[387/467] Linking CXX executable test_gradient_verification
+[388/467] Linking CXX executable test_temporal_order_matrix
+[389/467] Linking CXX executable test_n10_difficult_mesh_robustness
+[390/467] Linking CXX executable test_n16_weno5z
+[391/467] Linking CXX executable test_polyhedral_gradient_campaign
+[392/467] Linking CXX executable test_convection_polyhedral_campaign
+[393/467] Linking CXX executable test_convection_solver_qualification
+[394/467] Linking CXX executable test_n10_fixture_production_case
+[395/467] Linking CXX executable test_benchmark_matrix
+[396/467] Linking CXX executable test_fluent_vmfl_reference
+[397/467] Building CXX object CMakeFiles/test_case_hdf5_io.dir/tests/unit/test_case_hdf5_io.cpp.o
+[398/467] Linking CXX executable test_n10_external_fixture_import
+[399/467] Linking CXX executable test_level_c_coupled_verification
+[400/467] Linking CXX executable test_n10_fixture_numerical_qualification
+[401/467] Linking CXX executable test_thermal_vv
+[402/467] Linking CXX executable test_level_b_reference_benchmarks
+[403/467] Linking CXX executable test_production_energy_stage_vv
+[404/467] Linking CXX executable test_cht_validation
+[405/467] Linking CXX executable test_thermal_zones_vv
+[406/467] Linking CXX executable test_radiation_vv
+[407/467] Linking CXX executable test_thermal_radiation_model_matrix
+[408/467] Linking CXX executable test_thermal_radiation_regression
+[409/467] Linking CXX executable test_schur_infrastructure
+[410/467] Linking CXX executable test_s2s_radiation_vv
+[411/467] Linking CXX executable test_thermal_challenge_vv
+[412/467] Linking CXX executable test_n9_schur_oracle
+[413/467] Linking CXX executable test_exact_schur
+[414/467] Linking CXX executable test_thermophysical_models_vv
+[415/467] Linking CXX executable test_lsc_bfbt_schur
+[416/467] Linking CXX executable test_schur_approximation_comparison
+[417/467] Linking CXX executable test_pcd_schur
+[418/467] Linking CXX executable test_simplerc_schur
+[419/467] Linking CXX executable test_coupled_schur_selection
+[420/467] Linking CXX executable test_lsc_bfbt_schur_null_space
+[421/467] Linking CXX executable test_schur_quantitative_qualification
+[422/467] Linking CXX executable test_mgr_preconditioner
+[423/467] Linking CXX executable test_geometry_cache
+[424/467] Linking CXX executable test_wall_distance_turbulence
+[425/467] Linking CXX executable test_coupled_block_schur_amg
+[426/467] Linking CXX executable test_n8_schur_representative_cfd
+[427/467] Linking CXX executable test_n8_schur_production_benchmark
+[428/467] Linking CXX executable test_n9_common_schur_qualification
+[429/467] Linking CXX executable test_n8_amg_anisotropy_scaling
+[430/467] Linking CXX executable test_n8_schur_complete_krylov
+[431/467] Linking CXX executable test_mpi_partition
+[432/467] Linking CXX executable test_n13_mpi_equivalence
+[433/467] Linking CXX executable test_mpi_deterministic
+[434/467] Linking CXX executable test_n9_s9_rhie_chow_consistency
+[435/467] Linking CXX executable test_mpi_fused_reduction
+[436/467] Linking CXX executable test_n9_s10_pressure_reference_policies
+[437/467] Linking CXX executable test_phase8_mpi_poisson
+[438/467] Linking CXX executable test_mpi_krylov_reduction
+[439/467] Linking CXX executable test_execution_summary
+[440/467] Building CXX object CMakeFiles/test_n9_negative_diagnostics.dir/tests/validation/test_n9_negative_diagnostics.cpp.o
+In file included from /home/runner/work/_temp/head/src/cfdx/core/linalg/krylov_reductions.h:6,
+                 from /home/runner/work/_temp/head/src/cfdx/core/linalg/cg_solver.h:15,
+                 from /home/runner/work/_temp/head/tests/validation/test_n9_negative_diagnostics.cpp:26:
+/home/runner/work/_temp/head/src/cfdx/core/parallel/mpi_utils.h: In function ‘std::string cfdx::core::parallel::mpi_bcast_string(const std::string&, int, MPI_Comm)’:
+/home/runner/work/_temp/head/src/cfdx/core/parallel/mpi_utils.h:171:24: warning: conversion to ‘std::__cxx11::basic_string<char>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  171 |     std::string result(len, '\0');
+      |                        ^~~
+In file included from /home/runner/work/_temp/head/src/cfdx/core/linalg/cg_solver.h:17:
+/home/runner/work/_temp/head/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/home/runner/work/_temp/head/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+In file included from /home/runner/work/_temp/head/tests/validation/test_n9_negative_diagnostics.cpp:32:
+/home/runner/work/_temp/head/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/home/runner/work/_temp/head/src/cfdx/core/numerics/gradient.h:513:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  513 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/home/runner/work/_temp/head/src/cfdx/core/numerics/gradient.h:515:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  515 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+In file included from /home/runner/work/_temp/head/src/cfdx/core/linalg/linear_solver_context.h:4,
+                 from /home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:7,
+                 from /home/runner/work/_temp/head/tests/validation/test_n9_negative_diagnostics.cpp:33:
+/home/runner/work/_temp/head/src/cfdx/core/linalg/gmres_solver.h: In function ‘cfdx::core::SolverResult cfdx::core::solve_gmres(const LinearOperator&, const Vector&, Vector&, int, std::size_t, double, Preconditioner*, KrylovControls, GmresWorkspace*)’:
+/home/runner/work/_temp/head/src/cfdx/core/linalg/gmres_solver.h:131:66: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  131 |                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
+      |                                                                  ^
+/home/runner/work/_temp/head/src/cfdx/core/linalg/gmres_solver.h:142:31: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  142 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                               ^
+/home/runner/work/_temp/head/src/cfdx/core/linalg/gmres_solver.h:142:39: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  142 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                                       ^
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:15:
+/home/runner/work/_temp/head/src/cfdx/io/restart/dat_restart.h: In function ‘cfdx::io::DatRestartState cfdx::io::read_dat_restart_fields(const std::string&, const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, DatRestartFields)’:
+/home/runner/work/_temp/head/src/cfdx/io/restart/dat_restart.h:254:10: warning: variable ‘read_scalar_field’ set but not used [-Wunused-but-set-variable]
+  254 |     auto read_scalar_field = [&](const char* expected,
+      |          ^~~~~~~~~~~~~~~~~
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:17:
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_scalar_equation(const ScalarEquation&, cfdx::core::Vector&, const ScalarSolveControls&)’:
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:733:13: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+  733 |             };
+      |             ^
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:741:9: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+  741 |         };
+      |         ^
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:880:17: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+  880 |                 };
+      |                 ^
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h: In lambda function:
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:1286:23: warning: unused variable ‘old_component’ [-Wunused-variable]
+ 1286 |         const double* old_component = U_old.component_data(component);
+      |                       ^~~~~~~~~~~~~
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_coupled_momentum_continuity(const cfdx::core::Mesh&, const FvGeometry&, ScalarEquation, ScalarEquation, ScalarEquation, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, double, double, std::size_t, double, std::size_t, double, const DiagnosticsControls&, CoupledSchurModel, const cfdx::core::LinearSolverRequest&, const IncompressibleSolverControls&, double, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::LinearSolverPlan*)’:
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:1332:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 1331 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 1332 |                     ? nr
+      |                     ^~~~
+ 1333 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:1417:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 1416 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 1417 |                     ? nr
+      |                     ^~~~
+ 1418 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::physics::IncompressibleSolveResult cfdx::physics::solve_steady_incompressible(const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, const IncompressibleSolverControls&, const std::string&, cfdx::io::DatRestartFields)’:
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:3416:44: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+ 3416 |                       std::max<std::size_t>(mesh.n_cells(), 1));
+      |                       ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/tests/validation/test_n9_negative_diagnostics.cpp: In function ‘cfdx::core::Mesh {anonymous}::make_channel_mesh(std::size_t, std::size_t, double)’:
+/home/runner/work/_temp/head/tests/validation/test_n9_negative_diagnostics.cpp:114:46: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+  114 |     Patch inlet{"inlet", PatchType::INLET, {}};
+      |                                              ^
+/home/runner/work/_temp/head/tests/validation/test_n9_negative_diagnostics.cpp:115:49: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+  115 |     Patch outlet{"outlet", PatchType::OUTLET, {}};
+      |                                                 ^
+/home/runner/work/_temp/head/tests/validation/test_n9_negative_diagnostics.cpp:116:47: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+  116 |     Patch bottom{"bottom", PatchType::WALL, {}};
+      |                                               ^
+/home/runner/work/_temp/head/tests/validation/test_n9_negative_diagnostics.cpp:117:41: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+  117 |     Patch top{"top", PatchType::WALL, {}};
+      |                                         ^
+/home/runner/work/_temp/head/tests/validation/test_n9_negative_diagnostics.cpp:118:46: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+  118 |     Patch front{"front", PatchType::EMPTY, {}};
+      |                                              ^
+/home/runner/work/_temp/head/tests/validation/test_n9_negative_diagnostics.cpp:119:44: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+  119 |     Patch back{"back", PatchType::EMPTY, {}};
+      |                                            ^
+In file included from /home/runner/work/_temp/head/src/cfdx/core/numerics/gradient.h:19:
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::CELL]’:
+/home/runner/work/_temp/head/tests/validation/test_n9_negative_diagnostics.cpp:254:11:   required from here
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+[441/467] Linking CXX executable test_transport_models
+[442/467] Linking CXX executable test_n8_mpi_boundary
+[443/467] Linking CXX executable test_equation_of_state_consistency
+[444/467] Linking CXX executable test_sst_blending
+[445/467] Linking CXX executable test_restart_mapping
+[446/467] Linking CXX executable test_convergence_history
+[447/467] Linking CXX executable test_thermo_transport_contracts
+[448/467] Linking CXX executable test_phase6_runtime_acceptance
+[449/467] Linking CXX executable test_n9_negative_diagnostics
+[450/467] Linking CXX executable test_thermophysical_models
+[451/467] Linking CXX executable test_m5_m7_foundations
+[452/467] Linking CXX executable test_runtime_execution_ooc
+[453/467] Linking CXX executable test_runtime_pipeline
+[454/467] Linking CXX executable test_ooc_pipeline
+[455/467] Linking CXX executable test_plan_complet
+[456/467] Linking CXX executable test_phase7_ooc_validation
+[457/467] Linking CXX executable test_validation_simple
+[458/467] Linking CXX executable test_memory_planner_validation
+[459/467] Linking CXX executable test_field_roundtrip
+[460/467] Linking CXX executable test_hdf5_roundtrip
+[461/467] Linking CXX executable test_openfoam_importer
+[462/467] Linking CXX executable test_gap_analysis
+[463/467] Linking CXX executable test_cross_import_equivalence
+[464/467] Linking CXX executable test_hdf5_writer
+[465/467] Linking CXX executable test_case_hdf5_io
+[466/467] Building CXX object CMakeFiles/test_n9_physical_matrix.dir/tests/validation/test_n9_physical_matrix.cpp.o
+In file included from /home/runner/work/_temp/head/src/cfdx/core/linalg/krylov_reductions.h:6,
+                 from /home/runner/work/_temp/head/src/cfdx/core/linalg/cg_solver.h:15,
+                 from /home/runner/work/_temp/head/src/cfdx/core/linalg/bicgstab_solver.h:4,
+                 from /home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:4,
+                 from /home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:1:
+/home/runner/work/_temp/head/src/cfdx/core/parallel/mpi_utils.h: In function ‘std::string cfdx::core::parallel::mpi_bcast_string(const std::string&, int, MPI_Comm)’:
+/home/runner/work/_temp/head/src/cfdx/core/parallel/mpi_utils.h:171:24: warning: conversion to ‘std::__cxx11::basic_string<char>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  171 |     std::string result(len, '\0');
+      |                        ^~~
+In file included from /home/runner/work/_temp/head/src/cfdx/core/linalg/cg_solver.h:17:
+/home/runner/work/_temp/head/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/home/runner/work/_temp/head/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+In file included from /home/runner/work/_temp/head/src/cfdx/core/linalg/linear_solver_context.h:4,
+                 from /home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:7:
+/home/runner/work/_temp/head/src/cfdx/core/linalg/gmres_solver.h: In function ‘cfdx::core::SolverResult cfdx::core::solve_gmres(const LinearOperator&, const Vector&, Vector&, int, std::size_t, double, Preconditioner*, KrylovControls, GmresWorkspace*)’:
+/home/runner/work/_temp/head/src/cfdx/core/linalg/gmres_solver.h:131:66: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  131 |                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
+      |                                                                  ^
+/home/runner/work/_temp/head/src/cfdx/core/linalg/gmres_solver.h:142:31: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  142 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                               ^
+/home/runner/work/_temp/head/src/cfdx/core/linalg/gmres_solver.h:142:39: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  142 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                                       ^
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:14:
+/home/runner/work/_temp/head/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/home/runner/work/_temp/head/src/cfdx/core/numerics/gradient.h:513:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  513 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/home/runner/work/_temp/head/src/cfdx/core/numerics/gradient.h:515:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  515 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:15:
+/home/runner/work/_temp/head/src/cfdx/io/restart/dat_restart.h: In function ‘cfdx::io::DatRestartState cfdx::io::read_dat_restart_fields(const std::string&, const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, DatRestartFields)’:
+/home/runner/work/_temp/head/src/cfdx/io/restart/dat_restart.h:254:10: warning: variable ‘read_scalar_field’ set but not used [-Wunused-but-set-variable]
+  254 |     auto read_scalar_field = [&](const char* expected,
+      |          ^~~~~~~~~~~~~~~~~
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:17:
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_scalar_equation(const ScalarEquation&, cfdx::core::Vector&, const ScalarSolveControls&)’:
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:733:13: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+  733 |             };
+      |             ^
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:741:9: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+  741 |         };
+      |         ^
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:880:17: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+  880 |                 };
+      |                 ^
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h: In lambda function:
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:1286:23: warning: unused variable ‘old_component’ [-Wunused-variable]
+ 1286 |         const double* old_component = U_old.component_data(component);
+      |                       ^~~~~~~~~~~~~
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_coupled_momentum_continuity(const cfdx::core::Mesh&, const FvGeometry&, ScalarEquation, ScalarEquation, ScalarEquation, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, double, double, std::size_t, double, std::size_t, double, const DiagnosticsControls&, CoupledSchurModel, const cfdx::core::LinearSolverRequest&, const IncompressibleSolverControls&, double, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::LinearSolverPlan*)’:
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:1332:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 1331 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 1332 |                     ? nr
+      |                     ^~~~
+ 1333 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:1417:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 1416 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 1417 |                     ? nr
+      |                     ^~~~
+ 1418 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::physics::IncompressibleSolveResult cfdx::physics::solve_steady_incompressible(const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, const IncompressibleSolverControls&, const std::string&, cfdx::io::DatRestartFields)’:
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:3416:44: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+ 3416 |                       std::max<std::size_t>(mesh.n_cells(), 1));
+      |                       ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp: In function ‘cfdx::core::Mesh {anonymous}::make_channel_mesh(std::size_t, std::size_t, double)’:
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:73:46: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+   73 |     Patch inlet{"inlet", PatchType::INLET, {}};
+      |                                              ^
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:74:49: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+   74 |     Patch outlet{"outlet", PatchType::OUTLET, {}};
+      |                                                 ^
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:75:47: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+   75 |     Patch bottom{"bottom", PatchType::WALL, {}};
+      |                                               ^
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:76:41: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+   76 |     Patch top{"top", PatchType::WALL, {}};
+      |                                         ^
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:77:46: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+   77 |     Patch front{"front", PatchType::EMPTY, {}};
+      |                                              ^
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:78:44: warning: missing initializer for member ‘cfdx::core::Patch::metadata’ [-Wmissing-field-initializers]
+   78 |     Patch back{"back", PatchType::EMPTY, {}};
+      |                                            ^
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:3:
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::CELL]’:
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:240:11:   required from here
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp: In function ‘int main()’:
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:460:14: warning: ignoring return value of ‘ssize_t write(int, const void*, size_t)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  460 |         write(2, buf, strlen(buf));
+      |         ~~~~~^~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:467:14: warning: ignoring return value of ‘ssize_t write(int, const void*, size_t)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  467 |         write(2, buf, strlen(buf));
+      |         ~~~~~^~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:474:14: warning: ignoring return value of ‘ssize_t write(int, const void*, size_t)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  474 |         write(2, buf, strlen(buf));
+      |         ~~~~~^~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:491:14: warning: ignoring return value of ‘ssize_t write(int, const void*, size_t)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  491 |         write(2, msg.data(), msg.size());
+      |         ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:503:14: warning: ignoring return value of ‘ssize_t write(int, const void*, size_t)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  503 |         write(2, msg2.data(), msg2.size());
+      |         ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:513:14: warning: ignoring return value of ‘ssize_t write(int, const void*, size_t)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  513 |         write(2, msg3.data(), msg3.size());
+      |         ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp: In lambda function:
+/home/runner/work/_temp/head/tests/validation/test_n9_physical_matrix.cpp:593:14: warning: ignoring return value of ‘ssize_t write(int, const void*, size_t)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+  593 |         write(2,buf,strlen(buf));
+      |         ~~~~~^~~~~~~~~~~~~~~~~~~
+[467/467] Linking CXX executable test_n9_physical_matrix
+--- build errors (if any) ---

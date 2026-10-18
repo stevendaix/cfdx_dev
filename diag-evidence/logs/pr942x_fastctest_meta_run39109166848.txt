@@ -1,0 +1,5 @@
+run_id=39109166848
+started_utc=2026-10-18T07:50:27Z
+head_sha=eb4a765382328f532d5e27525637630037b5cd34 (pinned head of PR #942, capture-only, no instrumentation)
+scope: replicate CI Release 'Run fast CTest' (-LE long) + rerun-failed full output
+rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL
