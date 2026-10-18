@@ -427,7 +427,9 @@ def turbulence_corrections_for_model(
     key: str,
 ) -> tuple[TurbulenceCorrectionSpec, ...]:
     key = key.upper()
-    return tuple(correction for correction in TURBULENCE_CORRECTIONS if key in correction.models)
+    return tuple(
+        correction for correction in TURBULENCE_CORRECTIONS if key in correction.models
+    )
 
 
 @dataclass(frozen=True)
@@ -520,9 +522,13 @@ def recommend_turbulence_models(
                     "separation behaviour should be qualified on the actual target geometry"
                 )
         elif key == "REALIZABLE_KEPSILON":
-            reasons.append("two-equation RANS option for general industrial/internal-flow use")
+            reasons.append(
+                "two-equation RANS option for general industrial/internal-flow use"
+            )
         elif key == "RNG_KEPSILON":
-            reasons.append("two-equation RANS variant with an RNG production correction")
+            reasons.append(
+                "two-equation RANS variant with an RNG production correction"
+            )
         elif key == "KEPSILON":
             reasons.append("classical, economical two-equation RANS baseline")
         elif key == "KOMEGA":
@@ -635,9 +641,11 @@ def validate_turbulence_selection(values: dict[str, object]) -> dict[str, object
     # Scale-resolving LES/hybrid closures require the transient 3-D driver.
     # Keep this guard explicit because manually authored case files bypass the
     # GUI filtering and must not be able to force a steady DES/DDES/IDDES case.
-    solver_type = str(
-        values.get("solver_type", values.get("time_integration", "steady"))
-    ).strip().lower()
+    solver_type = (
+        str(values.get("solver_type", values.get("time_integration", "steady")))
+        .strip()
+        .lower()
+    )
     if solver_type in {"steady", "stationary"} and model.family in {
         TurbulenceFamily.LES,
         TurbulenceFamily.HYBRID,
