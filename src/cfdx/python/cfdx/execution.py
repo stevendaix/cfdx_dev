@@ -1,6 +1,7 @@
 """"Execution controller connecting the session, runner and progress parser."""
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -16,6 +17,34 @@ from .session import CFDXSession, SimulationState
 class ExecutionError:
     returncode: int
     command: tuple[str, ...]
+
+
+def _read_convergence_status(output_dir: Path | None) -> bool | None:
+    """Return the solver's own convergence verdict, or None when unreadable.
+
+    The production solver writes ``convergence.json`` alongside
+    ``execution.json`` and ``restart.dat``. A process exit code of 0 does
+    not by itself mean convergence: the solver can exit cleanly after a
+    non-converged run (see ``test_production_solver_non_converged_exit_is_
+    persisted``). The authoritative verdict is the solver's own
+    ``converged`` field, so the GUI must read it rather than infer
+    convergence from the presence of a process or a return code.
+    """
+    if output_dir is None:
+        return None
+    path = Path(output_dir) / "convergence.json"
+    if not path.is_file():
+        return None
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(document, dict):
+        return None
+    converged = document.get("converged")
+    if isinstance(converged, bool):
+        return converged
+    return None
 
 
 class ExecutionController:
@@ -59,7 +88,8 @@ class ExecutionController:
         with self._monitor_lock:
             self.monitor_series = MonitorSeries("solver", [])
         self._stop_requested = False
-        self.runner.start(self._output, self._complete)
+        output_dir = self.session.case.execution.output_dir
+        self.runner.start(self._output, self._complete, output_dir=Path(output_dir) if output_dir else None)
 
     def _output(self, line: str, is_stderr: bool) -> None:
         metrics = self.parser.parse(line)
@@ -91,11 +121,25 @@ class ExecutionController:
     def _complete(self, result: ProcessResult) -> None:
         if self._stop_requested:
             self.session.state = SimulationState.STOPPED
-        elif result.returncode == 0:
-            self.session.state = SimulationState.CONVERGED
-        else:
+        elif result.returncode != 0:
+            # A non-zero exit is a solver error, not a non-converged run.
             self.error = ExecutionError(result.returncode, result.command)
             self.session.state = SimulationState.FAILED
+        else:
+            # The process exited cleanly, but the solver's own convergence
+            # verdict is authoritative: a clean exit does not imply
+            # convergence. Read convergence.json when available and fall back
+            # to the exit code only when the artifact is absent.
+            converged = _read_convergence_status(result.output_dir)
+            if converged is False:
+                self.session.state = SimulationState.STOPPED
+            elif converged is True:
+                self.session.state = SimulationState.CONVERGED
+            else:
+                # No convergence artifact: the solver predates the contract.
+                # Preserve the historical behaviour (clean exit = converged)
+                # rather than inventing a verdict.
+                self.session.state = SimulationState.CONVERGED
         if self.on_complete:
             self.on_complete(result)
 

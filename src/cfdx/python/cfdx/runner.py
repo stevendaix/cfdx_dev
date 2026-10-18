@@ -14,6 +14,7 @@ from typing import Callable, Sequence
 class ProcessResult:
     returncode: int
     command: tuple[str, ...]
+    output_dir: Path | None = None
 
 
 OutputCallback = Callable[[str, bool], None]
@@ -58,6 +59,7 @@ class SolverRunner:
         on_complete: CompletionCallback | None = None,
         restart_path: Path | None = None,
         restart_option: str | None = "--restart",
+        output_dir: Path | None = None,
     ) -> None:
         if restart_path is not None and restart_option is None:
             raise ValueError("restart_option must be configured for a restart")
@@ -103,7 +105,7 @@ class SolverRunner:
             for reader in readers:
                 reader.join()
             if on_complete:
-                on_complete(ProcessResult(returncode, command))
+                on_complete(ProcessResult(returncode, command, output_dir=output_dir))
 
         self._thread = threading.Thread(target=monitor, name="cfdx-solver-monitor", daemon=True)
         self._thread.start()

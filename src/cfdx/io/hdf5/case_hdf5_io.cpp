@@ -154,6 +154,28 @@ static bool case_read_attr_str(hid_t loc_id, const char* name, std::string& out)
     hid_t atype = H5Aget_type(attr);
     if (atype < 0) { H5Aclose(attr); return false; }
 
+    // H5T_C_S1 strings come in two flavours: fixed-size (H5Tget_size > 0)
+    // and variable-length (H5Tget_size == 0). Reading them differs:
+    //  - fixed-size: H5Aread copies the bytes into the destination buffer.
+    //  - variable-length: H5Aread copies a char* pointer *into* the
+    //    destination buffer, so the buffer must hold a pointer, not the data.
+    // Treating a variable-length attribute as fixed-size reads a pointer as
+    // if it were the string bytes, which is what produced the
+    // "invalid HDF5 format version" garbage read on Python-written case
+    // files (h5py 3.x writes variable-length C_S1 by default).
+    const bool is_varlen = (H5Tget_class(atype) == H5T_STRING) &&
+                           H5Tis_variable_str(atype);
+    if (is_varlen) {
+        char* raw = nullptr;
+        herr_t status = H5Aread(attr, atype, &raw);
+        H5Tclose(atype);
+        H5Aclose(attr);
+        if (status < 0 || raw == nullptr) return false;
+        out = raw;
+        free(raw);
+        return true;
+    }
+
     hsize_t type_size = H5Tget_size(atype);
     if (type_size == 0) {
         type_size = H5Aget_storage_size(attr);
