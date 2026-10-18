@@ -1,4 +1,5 @@
 #include "cfdx/physics/wall_distance_turbulence.h"
+#include "cfdx/physics/mesh_wall_distance.h"
 #include "common/test_harness.h"
 #include <array>
 #include <cmath>
@@ -6,6 +7,47 @@
 #include <vector>
 using namespace cfdx::physics;
 using namespace cfdx::testing;
+
+static cfdx::core::Mesh make_rectangular_wall_distance_mesh()
+{
+    using namespace cfdx::core;
+    Mesh mesh;
+    mesh.points().resize(8);
+    const double p[8][3] = {
+        {0,0,0},{4,0,0},{4,2,0},{0,2,0},
+        {0,0,2},{4,0,2},{4,2,2},{0,2,2}
+    };
+    for (std::size_t i=0; i<8; ++i)
+        mesh.points().set(i,p[i][0],p[i][1],p[i][2]);
+
+    const std::vector<std::vector<FaceIndex>> faces = {
+        {0,4,7,3}, {1,2,6,5}, {0,1,5,4},
+        {3,7,6,2}, {0,3,2,1}, {4,5,6,7}
+    };
+    for (const auto& face : faces)
+        mesh.faces().push_face(face);
+    mesh.ownership().resize(faces.size());
+    for (std::size_t f=0; f<faces.size(); ++f) {
+        mesh.ownership().set_owner(f,0);
+        mesh.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);
+    }
+    mesh.cells().push_cell({0,1,2,3,4,5});
+
+    const std::array<std::pair<const char*, PatchType>, 6> patches{{
+        {"wall",PatchType::WALL}, {"inlet",PatchType::INLET},
+        {"side_low",PatchType::SYMMETRY}, {"side_high",PatchType::SYMMETRY},
+        {"bottom",PatchType::SYMMETRY}, {"top",PatchType::SYMMETRY}
+    }};
+    for (std::size_t f=0; f<patches.size(); ++f) {
+        Patch patch;
+        patch.name = patches[f].first;
+        patch.type = patches[f].second;
+        patch.face_ids = {static_cast<FaceIndex>(f)};
+        mesh.boundary().add_patch(patch);
+    }
+    return mesh;
+}
+
 int main() {
     run_case("distance_field_and_yplus_contract", [] {
         std::vector<double> d{1e-3, 2e-3, 5e-3, 1e-2}, u{.5, .5, .5, .5};
@@ -69,5 +111,29 @@ int main() {
         EXPECT_NEAR(m.linf_relative, 0, 1e-14);
         EXPECT_NEAR(m.near_wall_l2_relative, 0, 1e-14);
     });
+
+    run_case("production_mesh_wall_distance_uses_only_wall_patches", [] {
+        const auto mesh = make_rectangular_wall_distance_mesh();
+        const auto geometry = build_fv_geometry(mesh);
+        const auto result = compute_mesh_cell_wall_distance(mesh, geometry);
+        EXPECT_TRUE(result.converged);
+        EXPECT_TRUE(result.valid.size() == 1 && result.valid[0] == 1);
+        EXPECT_TRUE(result.distance.size() == 1);
+        // Cell centre is (2,1,1): wall x=0 is 2 units away. Other
+        // non-wall patches are only 1 unit away and must not be included.
+        EXPECT_NEAR(result.distance[0], 2.0, 1e-12);
+        const auto surface = wall_surface_from_mesh(mesh, {"wall"});
+        EXPECT_TRUE(surface.triangles.size() == 2);
+        EXPECT_THROW(wall_surface_from_mesh(mesh, {"inlet"}), std::invalid_argument);
+        EXPECT_THROW(wall_surface_from_mesh(mesh, {"missing_wall"}), std::invalid_argument);
+    });
+
+    run_case("production_mesh_wall_distance_rejects_missing_wall_patches", [] {
+        auto mesh = make_rectangular_wall_distance_mesh();
+        mesh.boundary().patch(0).type = cfdx::core::PatchType::INLET;
+        const auto geometry = build_fv_geometry(mesh);
+        EXPECT_THROW(compute_mesh_cell_wall_distance(mesh, geometry), std::invalid_argument);
+    });
+
     return run_all();
 }
