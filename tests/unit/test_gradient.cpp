@@ -529,5 +529,15 @@ int main() {
             phi, m, geometry, std::vector<double>{}), std::invalid_argument);
     });
 
+    run_case("gradient_boundary_values_reject_nonfinite_cell_values", []() {
+        Mesh m = make_unit_cube();
+        const auto geometry = make_geometry_cache(m);
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = std::numeric_limits<double>::quiet_NaN();
+        std::vector<double> face_values(m.n_faces(), 1.0);
+        EXPECT_THROW(compute_gradient_gauss_boundary_values(
+            phi, m, geometry, face_values), std::invalid_argument);
+    });
+
     return run_all();
 }
