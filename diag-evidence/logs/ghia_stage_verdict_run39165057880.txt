@@ -1,0 +1,4 @@
+VERDICT: EVIDENCE_COMPLETE
+pcd_classification=EXIT_0
+gate_classification=CONVERGED_PASS
+rule: diagnostic evidence verdict, never a numerical PASS/FAIL

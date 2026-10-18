@@ -1,0 +1,9 @@
+1792357629.418096988 Running 1 test cases...
+1792357629.419579540 n8_schur_benchmark cells=16 unknowns=64 nnz=190 schur_nnz=46 csr_bytes_est=3560 schur_csr_bytes_est=872 factorization=full velocity_approximation=block krylov=FGMRES status=0 iterations=1 reported_residual=1.60119e-15 true_residual=1.21449e-16 setup_us=21 solve_us=31 pressure_coarse_size=16 hierarchy_builds=1 numeric_updates=0
+1792357629.421029624 n8_schur_benchmark cells=32 unknowns=128 nnz=382 schur_nnz=94 csr_bytes_est=7144 schur_csr_bytes_est=1768 factorization=full velocity_approximation=block krylov=FGMRES status=0 iterations=1 reported_residual=3.84432e-15 true_residual=1.25008e-16 setup_us=17 solve_us=54 pressure_coarse_size=32 hierarchy_builds=1 numeric_updates=0
+1792357629.422382084 n8_schur_benchmark cells=64 unknowns=256 nnz=766 schur_nnz=190 csr_bytes_est=14312 schur_csr_bytes_est=3560 factorization=full velocity_approximation=block krylov=FGMRES status=0 iterations=1 reported_residual=7.06832e-15 true_residual=1.47002e-16 setup_us=37 solve_us=172 pressure_coarse_size=64 hierarchy_builds=1 numeric_updates=0
+1792357629.423755923 n8_schur_benchmark cells=128 unknowns=512 nnz=1534 schur_nnz=382 csr_bytes_est=28648 schur_csr_bytes_est=7144 factorization=full velocity_approximation=block krylov=FGMRES status=0 iterations=1 reported_residual=8.09935e-15 true_residual=1.57282e-16 setup_us=64 solve_us=769 pressure_coarse_size=128 hierarchy_builds=1 numeric_updates=0
+1792357629.425052108 n8_schur_benchmark_lifecycle cells=64 coefficient_changed=true hierarchy_builds_before=1 hierarchy_builds_after=2 numeric_updates=1 updated_iterations=1 updated_true_residual=1.41362e-16 graph_change_rebuild=explicit_setup_required
+1792357629.426223100   PASS: n8_schur_production_benchmark
+1792357629.427395223 
+1792357629.428625415 Results: 1 passed, 0 failed

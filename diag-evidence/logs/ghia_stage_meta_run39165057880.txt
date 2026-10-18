@@ -1,0 +1,7 @@
+run_id=39165057880
+started_utc=2026-10-18T20:49:30Z
+pinned_sha=faeb645771cf318fdb11482f8b5185280acbdba8 (master 20:38Z, inclut fix ruff f6a310cb + wrappers GUI)
+scope=capture-only per-stage wall cost: ghia --pcd-preflight / --pcd / --gate + schur production benchmark; NO solver instrumentation, NO tolerance/oracle/gate/budget change
+hypotheses=H1 cost-per-outer-iteration drives the 720s timeout; H2 regular geometric outer contraction (rate ~ alpha_p); H3 SIMPLE baseline far cheaper on same case; H4 Schur-AMG benchmark gives preconditioner cost/quality baseline
+rule=EVIDENCE_COMPLETE is a diagnostic evidence verdict, NEVER a numerical PASS/FAIL
+historical_note=campaign log 2026-10-18: test_ghia_cavity_n8_pcd Timeout 720.01s with ~23 coupled outer iterations visible (COUPLED_LINEAR_TRUE_RESIDUAL relative ~9.3-9.99e-11 < 1e-10 gate each), i.e. ~31 s/outer-iteration

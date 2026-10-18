@@ -1,0 +1,61 @@
+== PCD qualification capture (test_ghia_cavity --pcd, direct binary, no ctest 720s cap) ==
+outer_iterations_captured=51
+wall_span_s=874.7
+s_per_outer_iteration_median=18.299
+coupled_linear_true_relative: min=8.721e-11 max=9.996e-11 median=9.818e-11 (gate 1e-10)
+continuity_normalized trace (freq=50): 3.100e-03, 2.306e-10
+outer_continuity_geo_rate=0.000000
+extrapolation: ~-0.2 more outer iterations to continuity 1e-8 => ~929 s total (~1.29 x the 720s ctest timeout)
+classification=EXIT_0 (rc=0)
+H1 (cost per outer iteration drives the timeout): s/iter=18.3s => SUPPORTED
+
+== PCD preflight (16x16) ==
+pass=False span_s=34.9 s_per_outer_iter=0.681 lines=n/a
+
+== SIMPLE baseline (test_ghia_cavity --gate, 16/32/64 + observed-order gate) ==
+  case t=0.4s grid=?x? iterations=156.0 continuity=8.66925e-12
+  case t=5.6s grid=?x? iterations=497.0 continuity=3.11284e-12
+  case t=74.8s grid=?x? iterations=1675.0 continuity=6.79611e-13
+  [t=0.4s] GHIA Re=100 grid=16x16 iterations=156 continuity=8.66925e-12 continuity_norm=2.0456e-10 momentum_eq=7.38527e-11 U_RMS=0.0419747 U_max=0.110985 V_RMS=0.0229548 V_max=0.0598526
+  [t=5.6s] GHIA Re=100 grid=32x32 iterations=497 continuity=3.11284e-12 continuity_norm=1.55177e-10 momentum_eq=7.92388e-11 U_RMS=0.0201662 U_max=0.0336808 V_RMS=0.0138368 V_max=0.0359704
+  [t=74.8s] GHIA Re=100 grid=64x64 iterations=1675 continuity=6.79611e-13 continuity_norm=6.9227e-11 momentum_eq=8.05809e-11 U_RMS=0.0140328 U_max=0.0251006 V_RMS=0.00956347 V_max=0.0233741
+  GHIA_ORDER_GATE Re=100 grid=16/32/64 observed_order U_RMS=2.04786 V_RMS=1.15687 U_max=2.73954 dU_RMS(16,32)=0.0270178 dU_RMS(32,64)=0.00653407 dV_RMS(16,32)=0.00982946 dV_RMS(32,64)=0.00440837
+  GHIA_ORDER_GATE: PASS
+classification=CONVERGED_PASS (rc=0) total_span_s=74.8
+H3 (SIMPLE far cheaper on the same case): gate span=74.8s vs PCD qualification capture=874.7s
+
+== Schur-AMG production benchmark (per-stage cost baseline, no PCD) ==
+  cells=16.0 unknowns=64.0 iterations=1.0 true_residual=1.21449e-16 setup_us=21.0 solve_us=31.0
+  cells=32.0 unknowns=128.0 iterations=1.0 true_residual=1.25008e-16 setup_us=17.0 solve_us=54.0
+  cells=64.0 unknowns=256.0 iterations=1.0 true_residual=1.47002e-16 setup_us=37.0 solve_us=172.0
+  cells=128.0 unknowns=512.0 iterations=1.0 true_residual=1.57282e-16 setup_us=64.0 solve_us=769.0
+  cells=64.0 unknowns=None iterations=None true_residual=None setup_us=None solve_us=None
+classification=PASS span_s=0.0
+
+== Historical cross-case signatures (from diag-branch evidence, campaign logs) ==
+-- ghia_pcd_720s_timeout: outcome=Timeout INCOMPRESSIBLE_ITER_pts=1 coupled_blocks=34
+   continuity: first=3.100e-03 last=3.100e-03 geo_rate=undefined
+   momentum: first=1.000e+00 last=1.000e+00 geo_rate=undefined
+   flux_velocity_mismatch_linf: first=1.427e-03 last=1.427e-03 plateau=True
+   ~21.2 s per coupled outer iteration in the 720s campaign run (720.01s / 34 blocks)
+-- channel_qualification: outcome=PASS INCOMPRESSIBLE_ITER_pts=879 coupled_blocks=0
+   continuity: first=4.085e-03 last=9.710e-17 geo_rate=0.954986
+   momentum: first=1.000e+00 last=8.276e-10 geo_rate=0.954729
+   flux_velocity_mismatch_linf: first=1.792e-05 last=6.618e-16 plateau=False
+-- bfs_qualification: outcome=PASS INCOMPRESSIBLE_ITER_pts=68 coupled_blocks=0
+   continuity: first=2.312e-03 last=1.856e-13 geo_rate=0.718414
+   momentum: first=1.000e+00 last=1.079e-08 geo_rate=0.732900
+   flux_velocity_mismatch_linf: first=1.684e-03 last=5.255e-04 plateau=True
+-- naca0012_qualification: outcome=PASS INCOMPRESSIBLE_ITER_pts=28 coupled_blocks=0
+   continuity: first=9.374e-05 last=2.581e-14 geo_rate=0.383285
+   momentum: first=1.000e+00 last=1.409e-08 geo_rate=0.405356
+   flux_velocity_mismatch_linf: first=7.588e-04 last=7.360e-03 plateau=True
+-- naca0012_wall_shear_audit: absent --
+-- n11_conservation_boundedness: outcome=PASS INCOMPRESSIBLE_ITER_pts=217 coupled_blocks=147
+   continuity: first=3.644e-02 last=1.480e-11 geo_rate=0.845346
+   momentum: first=1.000e+00 last=1.058e-08 geo_rate=0.851338
+   flux_velocity_mismatch_linf: first=4.876e-04 last=9.003e-04 plateau=True
+
+== Résumé / règle ==
+EVIDENCE_COMPLETE = capture dynamique complète et classification par étage ; PAS un PASS/FAIL numérique.
+Décision Steven (aucune gate modifiée sans accord) : si H1+H2 soutenus => le timeout 720s est un problème de BUDGET TEMPS vs coût/itération du chemin PCD couplé ; options = réduire le coût par étage (préconditionneur, cf. benchmark Schur) ou requalifier le budget du test ; si H3 soutenu => le chemin SIMPLE reste la référence coût.

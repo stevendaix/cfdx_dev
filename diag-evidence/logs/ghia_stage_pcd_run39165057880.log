@@ -1,0 +1,158 @@
+1792356679.914863927 GHIA START Re=100 grid=32x32 max_outer_iterations=5000
+1792356679.927659243 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.54234 G_l2=1.43614 D_l2=1.39124 C_l2=2.35617 zero_rows=0 zero_cols=0 schur_diag_min=0.0536722 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.902439 gauge_row=3600
+1792356679.941585018 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356689.682359468 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.10392e-11 relative=9.75738e-11 gmres_reported=1.10392e-11
+1792356689.685059338 INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.47393 momentum_residual_reference_relative=1 momentum_residual_raw=0.00946641 momentum_rhs_scale=0.0199743 momentum_residual_reference=0.00946641 momentum_rhs_scale_components=(0.0199743,0.00152295,1e-300) momentum_rhs_relative_components=(0.47393,1.53751,0) continuity_normalized=0.00310014 velocity_change_inf=1 pressure_change_inf=0.447277 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0.0014275 worst_momentum_cell=1022 worst_momentum_patch=front
+1792356689.693314756 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.85644 G_l2=1.43614 D_l2=1.39124 C_l2=2.1722 zero_rows=0 zero_cols=0 schur_diag_min=0.0465948 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.91252 gauge_row=3600
+1792356689.705609608 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356714.386724749 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.05643e-11 relative=9.3376e-11 gmres_reported=1.05643e-11
+1792356714.397758313 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.95602 G_l2=1.43614 D_l2=1.39124 C_l2=2.12727 zero_rows=0 zero_cols=0 schur_diag_min=0.0445141 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.915327 gauge_row=3600
+1792356714.409939395 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356742.042545667 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.0907e-11 relative=9.64054e-11 gmres_reported=1.0907e-11
+1792356742.053280261 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97726 G_l2=1.43614 D_l2=1.39124 C_l2=2.119 zero_rows=0 zero_cols=0 schur_diag_min=0.0439902 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916147 gauge_row=3600
+1792356742.065338070 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356770.071911951 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.11654e-11 relative=9.8689e-11 gmres_reported=1.11654e-11
+1792356770.082569423 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97934 G_l2=1.43614 D_l2=1.39124 C_l2=2.11881 zero_rows=0 zero_cols=0 schur_diag_min=0.043953 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916236 gauge_row=3600
+1792356770.094409293 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356797.402210414 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.09071e-11 relative=9.64057e-11 gmres_reported=1.09071e-11
+1792356797.412918532 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97868 G_l2=1.43614 D_l2=1.39124 C_l2=2.11947 zero_rows=0 zero_cols=0 schur_diag_min=0.0440442 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916192 gauge_row=3600
+1792356797.424899361 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356823.688280514 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.11307e-11 relative=9.8382e-11 gmres_reported=1.11307e-11
+1792356823.698934110 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97832 G_l2=1.43614 D_l2=1.39124 C_l2=2.11979 zero_rows=0 zero_cols=0 schur_diag_min=0.0441496 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916159 gauge_row=3600
+1792356823.711096317 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356848.616249661 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.06373e-11 relative=9.40211e-11 gmres_reported=1.06373e-11
+1792356848.626802006 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97833 G_l2=1.43614 D_l2=1.39124 C_l2=2.11982 zero_rows=0 zero_cols=0 schur_diag_min=0.044238 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916153 gauge_row=3600
+1792356848.638633544 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356873.350602383 COUPLED_LINEAR_TRUE_RESIDUAL norm=9.8668e-12 relative=8.7211e-11 gmres_reported=9.8668e-12
+1792356873.361148287 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.9785 G_l2=1.43614 D_l2=1.39124 C_l2=2.11976 zero_rows=0 zero_cols=0 schur_diag_min=0.044305 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916158 gauge_row=3600
+1792356873.372876784 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356897.785209062 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.11762e-11 relative=9.87845e-11 gmres_reported=1.11762e-11
+1792356897.795618997 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97867 G_l2=1.43614 D_l2=1.39124 C_l2=2.11967 zero_rows=0 zero_cols=0 schur_diag_min=0.0443535 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916167 gauge_row=3600
+1792356897.807353649 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356921.261632821 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.04858e-11 relative=9.26823e-11 gmres_reported=1.04858e-11
+1792356921.271888939 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.9788 G_l2=1.43614 D_l2=1.39124 C_l2=2.1196 zero_rows=0 zero_cols=0 schur_diag_min=0.0443881 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916176 gauge_row=3600
+1792356921.283894918 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356945.244617918 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12911e-11 relative=9.97999e-11 gmres_reported=1.12911e-11
+1792356945.255254786 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.9789 G_l2=1.43614 D_l2=1.39124 C_l2=2.11955 zero_rows=0 zero_cols=0 schur_diag_min=0.0444124 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916182 gauge_row=3600
+1792356945.267120173 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356969.131951498 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.09815e-11 relative=9.70638e-11 gmres_reported=1.09815e-11
+1792356969.142349195 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97898 G_l2=1.43614 D_l2=1.39124 C_l2=2.11951 zero_rows=0 zero_cols=0 schur_diag_min=0.0444295 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916186 gauge_row=3600
+1792356969.154128987 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792356992.560958018 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.06173e-11 relative=9.38444e-11 gmres_reported=1.06173e-11
+1792356992.571396424 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97903 G_l2=1.43614 D_l2=1.39124 C_l2=2.11949 zero_rows=0 zero_cols=0 schur_diag_min=0.0444414 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916189 gauge_row=3600
+1792356992.583181119 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357015.772830030 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.09557e-11 relative=9.68354e-11 gmres_reported=1.09557e-11
+1792357015.784018544 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97906 G_l2=1.43614 D_l2=1.39124 C_l2=2.11947 zero_rows=0 zero_cols=0 schur_diag_min=0.0444497 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916192 gauge_row=3600
+1792357015.796386855 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357038.750067814 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12992e-11 relative=9.98714e-11 gmres_reported=1.12992e-11
+1792357038.760539433 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97909 G_l2=1.43614 D_l2=1.39124 C_l2=2.11945 zero_rows=0 zero_cols=0 schur_diag_min=0.0444555 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916193 gauge_row=3600
+1792357038.772323227 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357061.214934919 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.11952e-11 relative=9.89522e-11 gmres_reported=1.11952e-11
+1792357061.225706918 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97911 G_l2=1.43614 D_l2=1.39124 C_l2=2.11944 zero_rows=0 zero_cols=0 schur_diag_min=0.0444595 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916194 gauge_row=3600
+1792357061.237615153 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357083.541387574 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.08959e-11 relative=9.63069e-11 gmres_reported=1.08959e-11
+1792357083.551861798 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97912 G_l2=1.43614 D_l2=1.39124 C_l2=2.11944 zero_rows=0 zero_cols=0 schur_diag_min=0.0444624 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916195 gauge_row=3600
+1792357083.563848600 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357105.501093228 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12191e-11 relative=9.91641e-11 gmres_reported=1.12191e-11
+1792357105.511518358 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97913 G_l2=1.43614 D_l2=1.39124 C_l2=2.11943 zero_rows=0 zero_cols=0 schur_diag_min=0.0444643 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916196 gauge_row=3600
+1792357105.523492725 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357127.003578513 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12649e-11 relative=9.95682e-11 gmres_reported=1.12649e-11
+1792357127.013818902 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97913 G_l2=1.43614 D_l2=1.39124 C_l2=2.11943 zero_rows=0 zero_cols=0 schur_diag_min=0.0444657 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916196 gauge_row=3600
+1792357127.025773011 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357148.088263949 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.10484e-11 relative=9.76553e-11 gmres_reported=1.10484e-11
+1792357148.098988360 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97914 G_l2=1.43614 D_l2=1.39124 C_l2=2.11943 zero_rows=0 zero_cols=0 schur_diag_min=0.0444666 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916196 gauge_row=3600
+1792357148.110972678 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357168.498977172 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.06894e-11 relative=9.4482e-11 gmres_reported=1.06894e-11
+1792357168.509220500 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97914 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444673 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916196 gauge_row=3600
+1792357168.520921111 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357188.571427334 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.05008e-11 relative=9.28151e-11 gmres_reported=1.05008e-11
+1792357188.581965331 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97914 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444677 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357188.593654802 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357208.139791126 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.10349e-11 relative=9.75356e-11 gmres_reported=1.10349e-11
+1792357208.150278157 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97914 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.044468 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357208.162494248 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357227.377838349 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.13093e-11 relative=9.99609e-11 gmres_reported=1.13093e-11
+1792357227.388632521 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444683 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357227.400545467 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357246.258781460 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12524e-11 relative=9.94579e-11 gmres_reported=1.12524e-11
+1792357246.269307745 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444684 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357246.281373106 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357264.843969351 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.05625e-11 relative=9.33604e-11 gmres_reported=1.05625e-11
+1792357264.854636680 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444685 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357264.866817398 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357282.856826316 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.11055e-11 relative=9.81598e-11 gmres_reported=1.11055e-11
+1792357282.868392768 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444686 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357282.881207849 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357300.457779974 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.07204e-11 relative=9.47562e-11 gmres_reported=1.07204e-11
+1792357300.468286754 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444686 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357300.480362746 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357317.550646098 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.08022e-11 relative=9.54784e-11 gmres_reported=1.08022e-11
+1792357317.561377818 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357317.573538258 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357334.137331855 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12727e-11 relative=9.96373e-11 gmres_reported=1.12727e-11
+1792357334.148186813 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357334.160302862 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357350.226434561 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.07818e-11 relative=9.52986e-11 gmres_reported=1.07818e-11
+1792357350.237426122 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357350.249644084 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357365.744517858 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12844e-11 relative=9.9741e-11 gmres_reported=1.12844e-11
+1792357365.755785159 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357365.768025622 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357380.780925850 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.09029e-11 relative=9.63691e-11 gmres_reported=1.09029e-11
+1792357380.791904019 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357380.803847326 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357395.330979612 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.10436e-11 relative=9.76124e-11 gmres_reported=1.10436e-11
+1792357395.341438533 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357395.353676356 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357409.495305366 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12663e-11 relative=9.95809e-11 gmres_reported=1.12663e-11
+1792357409.506410134 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357409.518583292 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357423.378696911 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.10786e-11 relative=9.7922e-11 gmres_reported=1.10786e-11
+1792357423.389340558 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357423.401493408 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357436.956847016 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.06467e-11 relative=9.41046e-11 gmres_reported=1.06467e-11
+1792357436.968086137 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357436.980594704 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357450.116496811 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.1081e-11 relative=9.79427e-11 gmres_reported=1.1081e-11
+1792357450.127224075 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357450.139150462 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357462.966745632 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.11221e-11 relative=9.83061e-11 gmres_reported=1.11221e-11
+1792357462.977418321 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357462.989634356 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357475.258234977 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.11075e-11 relative=9.8177e-11 gmres_reported=1.11075e-11
+1792357475.269081715 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357475.281353209 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357486.754546329 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12204e-11 relative=9.91752e-11 gmres_reported=1.12204e-11
+1792357486.765201446 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357486.777581908 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357497.400263530 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.11515e-11 relative=9.85661e-11 gmres_reported=1.11515e-11
+1792357497.411030187 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357497.423272805 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357507.084278779 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.13067e-11 relative=9.99381e-11 gmres_reported=1.13067e-11
+1792357507.094786409 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357507.107015806 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357515.887329735 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.11679e-11 relative=9.87115e-11 gmres_reported=1.11679e-11
+1792357515.897882374 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357515.910508776 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357523.797698715 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.1211e-11 relative=9.90924e-11 gmres_reported=1.1211e-11
+1792357523.808850272 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357523.821236008 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357530.889262475 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.11606e-11 relative=9.86464e-11 gmres_reported=1.11606e-11
+1792357530.900640591 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357530.912869632 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357537.056237863 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.13042e-11 relative=9.99164e-11 gmres_reported=1.13042e-11
+1792357537.067140343 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357537.079670979 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357542.535132645 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12871e-11 relative=9.97645e-11 gmres_reported=1.12871e-11
+1792357542.545915594 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357542.558244262 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357547.197365835 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12912e-11 relative=9.9801e-11 gmres_reported=1.12912e-11
+1792357547.208029852 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357547.220514531 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357551.167023715 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12743e-11 relative=9.96516e-11 gmres_reported=1.12743e-11
+1792357551.169816218 INCOMPRESSIBLE_ITER iter=50 momentum_residual_rhs_relative=5.1669e-09 momentum_residual_reference_relative=1.09853e-08 momentum_residual_raw=1.03991e-10 momentum_rhs_scale=0.0201264 momentum_residual_reference=0.00946641 momentum_rhs_scale_components=(0.0201264,0.00650745,1e-300) momentum_rhs_relative_components=(5.05113e-09,1.59803e-08,0) continuity_normalized=2.30644e-10 velocity_change_inf=2.84088e-10 pressure_change_inf=5.56224e-09 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=0 pressure_relative_residual=inf momentum_linear_iterations=0 flux_velocity_mismatch_linf=0.00496188 worst_momentum_cell=927 worst_momentum_patch=front
+1792357551.178303770 COUPLED_MATRIX_SUMMARY n=4096 nnz=76991 M_l2=2.97915 G_l2=1.43614 D_l2=1.39124 C_l2=2.11942 zero_rows=0 zero_cols=0 schur_diag_min=0.0444687 schur_diag_absmax=1 schur_near_zero=0 rhie_chow_schur_vs_algebraic_diag_delta=0.916197 gauge_row=3600
+1792357551.190708871 COUPLED_PRECONDITIONER name=CoupledBlockSchur-AMG[pcd] restart=4096 adaptive_restart=0
+1792357554.585768606 COUPLED_LINEAR_TRUE_RESIDUAL norm=1.12996e-11 relative=9.98752e-11 gmres_reported=1.12996e-11
+1792357554.588784114 N8_GHIA_MODEL algorithm=COUPLED preconditioner=pcd iterations=51 true_momentum_residual=7.28437e-11 continuity=6.09747e-11
+1792357554.590133160 GHIA Re=100 grid=32x32 iterations=51 continuity=6.09747e-11 continuity_norm=1.63512e-10 momentum_eq=7.28437e-11 U_RMS=0.0227893 U_max=0.0397624 V_RMS=0.0166003 V_max=0.0402187
