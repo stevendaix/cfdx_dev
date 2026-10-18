@@ -31,12 +31,21 @@ class ProbeSeries:
     unit: str | None = None
 
     def validate_monotonic(self) -> None:
+        """Require samples to be ordered by iteration and by physical time.
+
+        Iteration ordering is the structural contract: a probe history is a
+        sequence of samples indexed by iteration, so duplicate or out-of-order
+        iterations are rejected. Physical time must move in the same direction
+        as iteration, because a solver that rewinds the clock between two
+        successive iterations would be emitting an inconsistent history.
+        """
         for a, b in zip(self.samples, self.samples[1:]):
-            if b.iteration <= a.iteration or b.time < a.time:
+            if b.iteration <= a.iteration:
                 raise ValueError(
-                    "probe samples must be monotonic: strictly increasing iterations "
-                    "and non-decreasing time"
+                    "probe samples must be strictly monotonic in iteration"
                 )
+            if b.time < a.time:
+                raise ValueError("probe samples must be monotonic in time")
 
     def max_relative_error(self, reference: Sequence[float]) -> float:
         if len(reference) != len(self.samples):
@@ -289,8 +298,13 @@ def read_probe_csv(path: str | Path) -> tuple[ProbeSeries, ...]:
 
     series = []
     for name in sorted(grouped):
+        samples = grouped[name]
+        seen_iterations = {sample.iteration for sample in samples}
+        if len(seen_iterations) != len(samples):
+            raise ValueError(f"probe {name!r} has duplicate iteration IDs in the CSV")
+        samples = tuple(sorted(samples, key=lambda sample: sample.iteration))
         point, field, unit = metadata.get(name, ((), None, None))
-        probe = ProbeSeries(name, point, tuple(grouped[name]), field=field, unit=unit)
+        probe = ProbeSeries(name, point, samples, field=field, unit=unit)
         probe.validate_monotonic()
         series.append(probe)
     return tuple(series)

@@ -41,7 +41,7 @@ def test_read_probe_csv_rejects_duplicate_iterations(tmp_path):
         "pressure,1,0.2,1.1\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="strictly increasing iterations"):
+    with pytest.raises(ValueError, match="duplicate iteration IDs"):
         read_probe_csv(path)
 
 
@@ -67,7 +67,7 @@ def test_write_probe_csv_rejects_decreasing_time_in_iteration_order(tmp_path):
         (),
         (ProbeSample(1, 0.2, 10.0), ProbeSample(2, 0.1, 11.0)),
     )
-    with pytest.raises(ValueError, match="non-decreasing time"):
+    with pytest.raises(ValueError, match="monotonic in time"):
         write_probe_csv(tmp_path / "decreasing_time.csv", [series])
 
 

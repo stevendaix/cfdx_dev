@@ -13,9 +13,6 @@ from cfdx.probe_validation import (
     write_probe_csv,
 )
 
-MAGIC_LINE = f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\n"
-COLUMNS_LINE = "# columns: probe,iteration,time,value\n"
-
 
 def test_probe_series_validates_quantitatively():
     series = ProbeSeries(
@@ -34,17 +31,19 @@ def test_probe_series_rejects_out_of_tolerance():
 
 def test_probe_series_rejects_non_monotonic_samples():
     series = ProbeSeries(
-        "pressure",
-        (0.5,),
-        (ProbeSample(2, 0.2, 1.0), ProbeSample(1, 0.1, 1.0)),
+        "pressure", (0.5,), (ProbeSample(2, 0.2, 1.0), ProbeSample(1, 0.1, 1.0))
     )
     with pytest.raises(ValueError, match="monotonic"):
         series.validate_against((1.0, 1.0))
 
 
 def test_write_probe_csv_emits_native_schema(tmp_path):
-    series = [ProbeSeries("pressure", (), (ProbeSample(1, 0.1, 1.0),))]
-    path = write_probe_csv(tmp_path / "probes.csv", series)
+    path = write_probe_csv(
+        tmp_path / "probes.csv",
+        [
+            ProbeSeries("pressure", (), (ProbeSample(1, 0.1, 1.0),)),
+        ],
+    )
     text = path.read_text()
     assert text.startswith(f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\n")
     assert text.splitlines()[1] == "# columns: probe,iteration,time,value"
@@ -81,14 +80,18 @@ def test_canonical_float_format_matches_cpp():
 
 
 def test_write_probe_csv_value_encoding_is_canonical(tmp_path):
-    samples = [
-        ProbeSample(index + 1, 0.0, value)
-        for index, (value, _) in enumerate(CANONICAL_FLOATS)
+    series = [
+        ProbeSeries(
+            "probe",
+            (),
+            (
+                ProbeSample(i, 0.0, value)
+                for i, (value, _) in enumerate(CANONICAL_FLOATS, start=1)
+            ),
+        ),
     ]
-    series = [ProbeSeries("probe", (), samples)]
     path = write_probe_csv(tmp_path / "probes.csv", series)
-    text = path.read_text()
-    rows = [line for line in text.splitlines() if not line.startswith("#")]
+    rows = [line for line in path.read_text().splitlines() if not line.startswith("#")]
     for (value, expected), row in zip(CANONICAL_FLOATS, rows):
         # The value column must equal the canonical token shared with the C++
         # writer, and parse back to the identical double.
@@ -122,22 +125,40 @@ def test_write_probe_csv_byte_stable(tmp_path):
 
 def test_write_probe_csv_overwrites_existing_file(tmp_path):
     path = tmp_path / "overwrite.csv"
-    write_probe_csv(path, [ProbeSeries("a", (), (ProbeSample(1, 0.0, 1.0),))])
+    write_probe_csv(
+        path,
+        [
+            ProbeSeries("a", (), (ProbeSample(1, 0.0, 1.0),)),
+        ],
+    )
     assert path.read_text().splitlines()[-1] == "a,1,0.0,1.0"
     # Overwrite with different content; no .tmp may be left behind.
-    write_probe_csv(path, [ProbeSeries("b", (), (ProbeSample(1, 0.0, 2.0),))])
+    write_probe_csv(
+        path,
+        [
+            ProbeSeries("b", (), (ProbeSample(1, 0.0, 2.0),)),
+        ],
+    )
     assert path.read_text().splitlines()[-1] == "b,1,0.0,2.0"
     assert not (tmp_path / "overwrite.csv.tmp").exists()
 
 
 def test_write_probe_csv_orders_by_name_then_iteration(tmp_path):
-    series = [
-        ProbeSeries("zeta", (), (ProbeSample(2, 0.2, 3.0),)),
-        ProbeSeries("alpha", (), (ProbeSample(2, 0.2, 2.0), ProbeSample(1, 0.1, 1.0))),
-    ]
-    path = write_probe_csv(tmp_path / "probes.csv", series)
-    text = path.read_text()
-    rows = [line for line in text.splitlines() if not line.startswith("#")]
+    path = write_probe_csv(
+        tmp_path / "probes.csv",
+        [
+            ProbeSeries("zeta", (), (ProbeSample(2, 0.2, 3.0),)),
+            ProbeSeries(
+                "alpha",
+                (),
+                (
+                    ProbeSample(2, 0.2, 2.0),
+                    ProbeSample(1, 0.1, 1.0),
+                ),
+            ),
+        ],
+    )
+    rows = [line for line in path.read_text().splitlines() if not line.startswith("#")]
     assert rows == [
         "alpha,1,0.1,1.0",
         "alpha,2,0.2,2.0",
@@ -150,7 +171,10 @@ def test_read_probe_csv_round_trips(tmp_path):
         ProbeSeries(
             "pressure",
             (),
-            (ProbeSample(1, 0.1, 1.0), ProbeSample(2, 0.2, 1.1)),
+            (
+                ProbeSample(1, 0.1, 1.0),
+                ProbeSample(2, 0.2, 1.1),
+            ),
         ),
         ProbeSeries("u_x", (), (ProbeSample(1, 0.1, 0.5),)),
     ]
@@ -194,7 +218,9 @@ def test_read_probe_csv_parses_native_c_format(tmp_path):
 )
 def test_read_probe_csv_rejects_bad_row(tmp_path, bad):
     csv = tmp_path / "bad.csv"
-    csv.write_text(f"{MAGIC_LINE}{COLUMNS_LINE}{bad}\n")
+    csv.write_text(
+        f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\n# columns: probe,iteration,time,value\n{bad}\n"
+    )
     with pytest.raises(ValueError, match="four columns"):
         read_probe_csv(csv)
 
@@ -208,43 +234,61 @@ def test_read_probe_csv_rejects_missing_magic(tmp_path):
 
 def test_read_probe_csv_rejects_unsupported_version(tmp_path):
     csv = tmp_path / "v9.csv"
-    csv.write_text(f"# {PROBE_CSV_MAGIC} v9\n{COLUMNS_LINE}x,1,0,0.0\n")
+    csv.write_text(
+        f"# {PROBE_CSV_MAGIC} v9\n# columns: probe,iteration,time,value\nx,1,0,0.0\n"
+    )
     with pytest.raises(ValueError, match="unsupported probe CSV version"):
         read_probe_csv(csv)
 
 
 def test_read_probe_csv_rejects_non_numeric_value(tmp_path):
     csv = tmp_path / "nan_value.csv"
-    csv.write_text(f"{MAGIC_LINE}{COLUMNS_LINE}pressure,1,0.0,notanumber\n")
+    csv.write_text(
+        f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\n# columns: probe,iteration,time,value\npressure,1,0.0,notanumber\n"
+    )
     with pytest.raises(ValueError, match="non-numeric"):
         read_probe_csv(csv)
 
 
 def test_read_probe_csv_rejects_no_samples(tmp_path):
     csv = tmp_path / "empty.csv"
-    csv.write_text(f"{MAGIC_LINE}{COLUMNS_LINE}")
+    csv.write_text(
+        f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\n# columns: probe,iteration,time,value\n"
+    )
     with pytest.raises(ValueError, match="no samples"):
         read_probe_csv(csv)
 
 
 def test_read_probe_csv_rejects_non_monotonic_samples(tmp_path):
+    """A probe history whose physical time rewinds between iterations is invalid.
+
+    Iteration ordering is structural (the reader sorts by iteration), but the
+    physical time must still move forward with each successive iteration: a
+    solver that rewinds the clock between two iterations is emitting an
+    inconsistent history that the reader must reject.
+    """
     csv = tmp_path / "non_mono.csv"
-    rows = "pressure,2,0.2,1.0\npressure,1,0.1,1.0\n"
-    csv.write_text(f"{MAGIC_LINE}{COLUMNS_LINE}{rows}")
+    csv.write_text(
+        "# cfdx-probe-csv v1\n"
+        "# columns: probe,iteration,time,value\n"
+        "pressure,1,0.2,1.0\n"
+        "pressure,2,0.1,1.0\n"
+    )
     with pytest.raises(ValueError, match="monotonic"):
         read_probe_csv(csv)
 
 
 @pytest.mark.parametrize("bad_name", ["", "has,comma", "has\nnewline"])
 def test_write_probe_csv_rejects_bad_name(tmp_path, bad_name):
-    if bad_name:
-        expected_match = "comma or newline"
-    else:
-        expected_match = "probe name must not be empty"
-    with pytest.raises(ValueError, match=expected_match):
+    with pytest.raises(
+        ValueError,
+        match="probe name must not be empty" if not bad_name else "comma or newline",
+    ):
         write_probe_csv(
             tmp_path / "bad.csv",
-            [ProbeSeries(bad_name, (), (ProbeSample(1, 0.0, 1.0),))],
+            [
+                ProbeSeries(bad_name, (), (ProbeSample(1, 0.0, 1.0),)),
+            ],
         )
 
 
@@ -257,14 +301,17 @@ def test_write_probe_csv_rejects_nonfinite_value(tmp_path):
     with pytest.raises(ValueError, match="non-finite"):
         write_probe_csv(
             tmp_path / "bad.csv",
-            [ProbeSeries("p", (), (ProbeSample(1, 0.0, math.inf),))],
+            [
+                ProbeSeries("p", (), (ProbeSample(1, 0.0, math.inf),)),
+            ],
         )
 
 
 def test_read_probe_csv_rejects_bad_columns_header(tmp_path):
     csv = tmp_path / "bad_columns.csv"
-    cols = "# columns: foo,bar,baz,qux\n"
-    csv.write_text(f"{MAGIC_LINE}{cols}x,1,0,0.0\n")
+    csv.write_text(
+        f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\n# columns: foo,bar,baz,qux\nx,1,0,0.0\n"
+    )
     with pytest.raises(ValueError, match="column header mismatch"):
         read_probe_csv(csv)
 
@@ -277,33 +324,37 @@ def test_read_probe_csv_rejects_missing_columns_header(tmp_path):
 
 
 def test_probe_metadata_line_matches_native_writer_format() -> None:
-    # The C++ writer emits "# probe <name> at <x>,<y>,<z> field=<cli> unit=<u>"
+    # The C++ writer emits `# probe <name> at <x>,<y>,<z> field=<cli> unit=<u>`
     # with canonical float coordinates; the Python helper reproduces it verbatim.
-    line = _format_probe_metadata_line("pressure", (0.5, 0.5, 0.5), "p", "Pa")
-    assert line == "# probe pressure at 0.5,0.5,0.5 field=p unit=Pa"
+    assert _format_probe_metadata_line("pressure", (0.5, 0.5, 0.5), "p", "Pa") == (
+        "# probe pressure at 0.5,0.5,0.5 field=p unit=Pa"
+    )
     tiny = 1e-9
-    line = _format_probe_metadata_line("u", (tiny, 1e16, 0.0), "u_mag", "m/s")
-    assert line == "# probe u at 1e-09,1e+16,0.0 field=u_mag unit=m/s"
+    assert _format_probe_metadata_line("u", (tiny, 1e16, 0.0), "u_mag", "m/s") == (
+        "# probe u at 1e-09,1e+16,0.0 field=u_mag unit=m/s"
+    )
 
 
 def test_write_probe_csv_emits_probe_metadata(tmp_path) -> None:
-    series = [
-        ProbeSeries(
-            "pressure",
-            (0.5, 0.5, 0.5),
-            (ProbeSample(1, 0.1, 1.0),),
-            field="p",
-            unit="Pa",
-        ),
-        ProbeSeries(
-            "u_mag",
-            (1.0, 0.0, 0.0),
-            (ProbeSample(1, 0.1, 0.5),),
-            field="u_mag",
-            unit="m/s",
-        ),
-    ]
-    path = write_probe_csv(tmp_path / "probes.csv", series)
+    path = write_probe_csv(
+        tmp_path / "probes.csv",
+        [
+            ProbeSeries(
+                "pressure",
+                (0.5, 0.5, 0.5),
+                (ProbeSample(1, 0.1, 1.0),),
+                field="p",
+                unit="Pa",
+            ),
+            ProbeSeries(
+                "u_mag",
+                (1.0, 0.0, 0.0),
+                (ProbeSample(1, 0.1, 0.5),),
+                field="u_mag",
+                unit="m/s",
+            ),
+        ],
+    )
     lines = path.read_text().splitlines()
     # Metadata lines sit between the columns header and the first data row,
     # ordered by probe name to match the native writer.
@@ -320,7 +371,10 @@ def test_read_probe_csv_round_trips_metadata(tmp_path) -> None:
         ProbeSeries(
             "pressure",
             (0.5, 0.5, 0.5),
-            (ProbeSample(1, 0.1, 1.0), ProbeSample(2, 0.2, 1.1)),
+            (
+                ProbeSample(1, 0.1, 1.0),
+                ProbeSample(2, 0.2, 1.1),
+            ),
             field="p",
             unit="Pa",
         ),
@@ -334,11 +388,10 @@ def test_read_probe_csv_round_trips_metadata(tmp_path) -> None:
     ]
     path = write_probe_csv(tmp_path / "probes.csv", original)
     loaded = read_probe_csv(path)
-    expected = [
+    assert [(s.name, s.point, s.field, s.unit) for s in loaded] == [
         ("pressure", (0.5, 0.5, 0.5), "p", "Pa"),
         ("u_mag", (1.0, 0.0, 0.0), "u_mag", "m/s"),
     ]
-    assert [(s.name, s.point, s.field, s.unit) for s in loaded] == expected
     for original_series, loaded_series in zip(original, loaded):
         assert loaded_series.samples == original_series.samples
 
