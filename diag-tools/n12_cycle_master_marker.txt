@@ -27,3 +27,8 @@ Verdicts fail-closed: EVIDENCE_COMPLETE (seul vert — diagnostic, PAS un
   INCONCLUSIVE_NO_TRACE / INCONCLUSIVE_SPARSE_TRACE / INCONCLUSIVE_ANALYZER_CRASH.
 
 Owner: trajectoire Vibe (Steven). Branche diag — JAMAIS merger.
+
+Retry 1 (2026-10-18 ~18:50Z) : le push initial (commit 937699a8, 17:21Z) portait la mention
+de skip CI dans son message de commit et GitHub Actions a ignoré le push (aucun run créé).
+Re-push de ce marker pour déclencher la capture, sans mention de skip. Pin master
+0c61c51ee8622e8019ff7cdb895f795f647ccecc inchangé (fail-closed is-ancestor dans le workflow).
