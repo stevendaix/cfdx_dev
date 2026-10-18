@@ -75,18 +75,77 @@ inline WallSurface wall_surface_from_mesh(
             const std::size_t offset =
                 static_cast<std::size_t>(mesh.faces().face_offset(face));
             const auto* vertices = mesh.faces().vertices_data();
-            const auto v0 = static_cast<std::size_t>(vertices[offset]);
+            std::vector<std::size_t> face_vertices;
+            face_vertices.reserve(count);
+            for (std::size_t j = 0; j < count; ++j)
+                face_vertices.push_back(
+                    static_cast<std::size_t>(vertices[offset + j]));
+
+            const auto cross = [](const WallDistanceVec3& a,
+                                  const WallDistanceVec3& b) {
+                return WallDistanceVec3{
+                    a.y * b.z - a.z * b.y,
+                    a.z * b.x - a.x * b.z,
+                    a.x * b.y - a.y * b.x};
+            };
+            const auto& origin = surface.points[face_vertices[0]];
+            WallDistanceVec3 normal{};
+            double normal2 = 0.0;
+            double scale = 0.0;
             for (std::size_t j = 1; j + 1 < count; ++j) {
-                const auto v1 = static_cast<std::size_t>(vertices[offset + j]);
-                const auto v2 = static_cast<std::size_t>(vertices[offset + j + 1]);
-                const auto ab = surface.points[v1] - surface.points[v0];
-                const auto ac = surface.points[v2] - surface.points[v0];
-                const WallDistanceVec3 cross{
-                    ab.y * ac.z - ab.z * ac.y,
-                    ab.z * ac.x - ab.x * ac.z,
-                    ab.x * ac.y - ab.y * ac.x};
-                const double area2 = wd_norm2(cross);
-                if (!std::isfinite(area2) || area2 <= 0.0)
+                const auto a = surface.points[face_vertices[j]] - origin;
+                const auto b = surface.points[face_vertices[j + 1]] - origin;
+                normal = cross(a, b);
+                normal2 = wd_norm2(normal);
+                if (normal2 > 0.0 && std::isfinite(normal2))
+                    break;
+            }
+            for (const auto vertex : face_vertices)
+                scale = std::max(
+                    scale, wd_norm(surface.points[vertex] - origin));
+            if (!(scale > 0.0) || !std::isfinite(scale) ||
+                !(normal2 > 0.0) || !std::isfinite(normal2))
+                throw std::invalid_argument(
+                    "wall_surface_from_mesh: degenerate wall polygon");
+            const double normal_length = std::sqrt(normal2);
+            const WallDistanceVec3 unit_normal{
+                normal.x / normal_length,
+                normal.y / normal_length,
+                normal.z / normal_length};
+            const double planar_tolerance = 1e-10 * scale;
+            const double turn_tolerance = 1e-12 * scale * scale;
+            for (const auto vertex : face_vertices) {
+                const auto delta = surface.points[vertex] - origin;
+                if (std::abs(wd_dot(delta, unit_normal)) > planar_tolerance)
+                    throw std::invalid_argument(
+                        "wall_surface_from_mesh: non-planar wall polygon");
+            }
+
+            int turn_sign = 0;
+            for (std::size_t j = 0; j < count; ++j) {
+                const auto& a = surface.points[face_vertices[j]];
+                const auto& b = surface.points[face_vertices[(j + 1) % count]];
+                const auto& c = surface.points[face_vertices[(j + 2) % count]];
+                const double turn = wd_dot(
+                    cross(b - a, c - b), unit_normal);
+                if (std::abs(turn) <= turn_tolerance)
+                    continue;
+                const int sign = turn > 0.0 ? 1 : -1;
+                if (turn_sign != 0 && sign != turn_sign)
+                    throw std::invalid_argument(
+                        "wall_surface_from_mesh: non-convex or self-intersecting wall polygon");
+                turn_sign = sign;
+            }
+
+            const auto v0 = face_vertices[0];
+            for (std::size_t j = 1; j + 1 < count; ++j) {
+                const auto v1 = face_vertices[j];
+                const auto v2 = face_vertices[j + 1];
+                const double area2 = wd_norm2(cross(
+                    surface.points[v1] - surface.points[v0],
+                    surface.points[v2] - surface.points[v0]));
+                if (!std::isfinite(area2) ||
+                    area2 <= turn_tolerance * turn_tolerance)
                     throw std::invalid_argument(
                         "wall_surface_from_mesh: degenerate triangle in wall face");
                 surface.triangles.push_back({{v0, v1, v2}});
