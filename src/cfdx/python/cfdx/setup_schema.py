@@ -4,10 +4,12 @@ This module contains metadata only. It does not introduce a second CFD model:
 the authoritative values remain on Case and existing physics/boundary schemas
 remain the source of supported capabilities.
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from .boundary_setup import fields_for_boundary_type
 from .case import Case
@@ -16,9 +18,11 @@ from .setup_model import ChangeImpact, ParameterType
 
 ValueReader = Callable[[Case], Any]
 
+
 @dataclass(frozen=True)
 class SetupField:
     """Stable metadata for one user-facing setup property."""
+
     key: str
     label: str
     kind: ParameterType
@@ -31,16 +35,20 @@ class SetupField:
     def value(self, case: Case) -> Any:
         return self.reader(case)
 
+
 @dataclass(frozen=True)
 class SetupDomain:
     """A named group of setup fields exposed by the application contract."""
+
     key: str
     label: str
     fields: tuple[SetupField, ...]
 
+
 @dataclass(frozen=True)
 class SetupSchema:
     """Immutable schema consumed by generic setup editors."""
+
     domains: tuple[SetupDomain, ...]
 
     def domain(self, key: str) -> SetupDomain:
@@ -56,6 +64,7 @@ class SetupSchema:
                     return field
         raise KeyError(key)
 
+
 def _physics_fields(case: Case) -> tuple[SetupField, ...]:
     fields: list[SetupField] = []
     for spec_key in ("incompressible", "energy", "turbulence"):
@@ -65,12 +74,15 @@ def _physics_fields(case: Case) -> tuple[SetupField, ...]:
             continue
         for field in spec.fields:
             key = f"physics.{spec_key}.{field.name}"
+            default = field.default
             fields.append(
                 SetupField(
                     key,
                     f"{spec.label}: {field.name.replace('_', ' ').title()}",
                     field.kind,
-                    lambda c, sk=spec_key, fn=field.name: c.physics[sk].get(fn, field.default),
+                    lambda c, sk=spec_key, fn=field.name, dv=default: c.physics[sk].get(
+                        fn, dv
+                    ),
                     field.unit,
                     (),
                     True,
@@ -78,6 +90,7 @@ def _physics_fields(case: Case) -> tuple[SetupField, ...]:
                 )
             )
     return tuple(fields)
+
 
 def _boundary_fields(case: Case) -> tuple[SetupField, ...]:
     fields: list[SetupField] = []
@@ -105,28 +118,48 @@ def _boundary_fields(case: Case) -> tuple[SetupField, ...]:
             )
     return tuple(fields)
 
+
 def build_setup_schema(case: Case) -> SetupSchema:
     """Build the current schema without copying or mutating case state."""
     numerics = SetupDomain(
         "numerics",
         "Numerics",
-        (SetupField("numerics.cfl", "CFL", ParameterType.REAL,
-                    lambda c: c.numerics.get("cfl", 1.0), impact=ChangeImpact.HOT),),
+        (
+            SetupField(
+                "numerics.cfl",
+                "CFL",
+                ParameterType.REAL,
+                lambda c: c.numerics.get("cfl", 1.0),
+                impact=ChangeImpact.HOT,
+            ),
+        ),
     )
     solver = SetupDomain(
         "solver",
         "Solver",
-        (SetupField("execution.solver", "Solver executable", ParameterType.STRING,
-                    lambda c: c.execution.solver or "", impact=ChangeImpact.REQUIRES_RESTART),),
+        (
+            SetupField(
+                "execution.solver",
+                "Solver executable",
+                ParameterType.STRING,
+                lambda c: c.execution.solver or "",
+                impact=ChangeImpact.REQUIRES_RESTART,
+            ),
+        ),
     )
-    return SetupSchema((
-        SetupDomain("physics", "Physics", _physics_fields(case)),
-        SetupDomain("boundaries", "Boundary conditions", _boundary_fields(case)),
-        numerics,
-        solver,
-    ))
+    return SetupSchema(
+        (
+            SetupDomain("physics", "Physics", _physics_fields(case)),
+            SetupDomain("boundaries", "Boundary conditions", _boundary_fields(case)),
+            numerics,
+            solver,
+        )
+    )
 
-def setup_fields_for_selection(case: Case, stable_id: str | None) -> tuple[SetupField, ...]:
+
+def setup_fields_for_selection(
+    case: Case, stable_id: str | None
+) -> tuple[SetupField, ...]:
     """Resolve a navigation domain to fields of the shared setup schema."""
     if stable_id is None:
         return ()
