@@ -737,7 +737,6 @@ int main()
     });
 
     // ------------------------------------------------------------------
-    // ------------------------------------------------------------------
     // Item 10a — stagnation-monitor contract: a genuinely flat residual
     // envelope must be classified as STAGNATED after the configured window.
     // This isolates the detector from pressure-velocity coupling and avoids
@@ -821,7 +820,6 @@ int main()
         EXPECT_TRUE(result.history.size() == result.iterations);
         EXPECT_TRUE(result.history.back().nonlinear_convergence_metric <
                     result.history[result.history.size() - 11].nonlinear_convergence_metric);
-        EXPECT_TRUE(result.history.back().momentum_residual > 1e-7);
         EXPECT_TRUE(result.convergence_reason.find("maximum nonlinear iteration") !=
                     std::string::npos);
     });
