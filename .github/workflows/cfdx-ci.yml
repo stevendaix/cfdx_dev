@@ -98,6 +98,16 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
           UBSAN_OPTIONS: halt_on_error=1
 
+      - name: Run NACA0012 wall-distance refinement benchmark
+        id: naca0012_wall_distance
+        if: steps.build.outcome == 'success' && matrix.build_type == 'Release'
+        run: |
+          timeout 300s build/cfdx_naca0012_wall_distance_comparison \
+            tests/data/su2/mesh_NACA0012_inv.su2 \
+            build/wall_distance_naca0012_refined.csv 61
+          test -s build/wall_distance_naca0012_refined.csv
+          test "$(wc -l < build/wall_distance_naca0012_refined.csv)" -eq 10
+
       # The whole tests/python tree runs here, not a hand-picked subset:
       # contracts such as ResultFrame.complete and the case/DAT separation were
       # previously changed with no CI coverage at all, because only three of the
@@ -159,6 +169,7 @@ jobs:
             build/**/*.log
             build/compile_commands.json
             build/n12-mms-quick/
+            build/wall_distance_naca0012_refined.csv
             build.log
           if-no-files-found: ignore
 

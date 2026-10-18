@@ -347,6 +347,10 @@ endif()
 add_executable(cfdx_wall_distance_complex_benchmark apps/verification/wall_distance_complex_benchmark.cpp)
 target_link_libraries(cfdx_wall_distance_complex_benchmark PRIVATE cfdx_core)
 
+add_executable(cfdx_naca0012_wall_distance_comparison
+    apps/verification/naca0012_wall_distance_comparison.cpp)
+target_link_libraries(cfdx_naca0012_wall_distance_comparison PRIVATE cfdx_core)
+
 add_executable(cfdx_wall_distance_controlled_benchmark apps/verification/wall_distance_controlled_benchmark.cpp)
 target_link_libraries(cfdx_wall_distance_controlled_benchmark PRIVATE cfdx_core)
 
@@ -639,6 +643,13 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_n11_bound_reporting_hardening tests/unit/test_n11_bound_reporting_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_wall_distance_methods tests/unit/test_wall_distance_methods.cpp)
+    add_test(NAME benchmark_wall_distance_naca0012
+        COMMAND cfdx_naca0012_wall_distance_comparison
+                ${CMAKE_SOURCE_DIR}/tests/data/su2/mesh_NACA0012_inv.su2
+                ${CMAKE_BINARY_DIR}/wall_distance_naca0012.csv 25)
+    set_tests_properties(benchmark_wall_distance_naca0012 PROPERTIES
+        LABELS "phase13;validation;benchmark;wall-distance"
+        TIMEOUT 180)
     add_cfdx_test(test_n11_fw1_nearest_normal_fallback tests/unit/test_n11_fw1_nearest_normal_fallback.cpp)
 add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_positivity_clamp_counter.cpp)
     add_cfdx_test(test_n11_b1_b2_b3_linalg_guards tests/unit/test_n11_b1_b2_b3_linalg_guards.cpp)
