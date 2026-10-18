@@ -773,6 +773,51 @@ inline ScalarEquation assemble_momentum_component(
     const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure_gradient_component,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& body_component,
+    const std::vector<double>& cell_effective_dynamic_viscosity,
+    const ScalarBoundaryConditions& velocity_bcs,
+    std::size_t component,
+    bool bounded,
+    ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
+{
+    const std::size_t nc = mesh.n_cells();
+    if (cell_effective_dynamic_viscosity.size() != nc)
+        throw std::invalid_argument(
+            "assemble_momentum_component: cell viscosity size does not match mesh");
+    for (const double viscosity : cell_effective_dynamic_viscosity) {
+        if (!std::isfinite(viscosity) || viscosity < 0.0)
+            throw std::invalid_argument(
+                "assemble_momentum_component: cell viscosity must be finite and non-negative");
+    }
+    if (component >= 3)
+        throw std::invalid_argument("assemble_momentum_component: component index out of range");
+    if (pressure_gradient_component.dimension() != 3 ||
+        pressure_gradient_component.size() != nc ||
+        body_component.size() != nc || body_component.dimension() != 1)
+        throw std::invalid_argument(
+            "assemble_momentum_component: source/pressure-gradient field shape mismatch");
+
+    cfdx::core::Field<double, cfdx::core::Location::CELL> source(
+        nc, "momentum_source", "N/m3", 1);
+    cfdx::core::Field<double, cfdx::core::Location::CELL> sp(
+        nc, "momentum_sp", "kg/m3/s", 1);
+    for (std::size_t c = 0; c < nc; ++c) {
+        source(c) = body_component(c) -
+                    pressure_gradient_component.component_data(component)[c];
+        sp(c) = 0.0;
+    }
+    return assemble_scalar_equation(
+        mesh, geometry, mass_flux, 0.0, source, sp, velocity_bcs, bounded,
+        nullptr, nullptr, nullptr, &cell_effective_dynamic_viscosity,
+        convection_scheme, convected_field);
+}
+
+inline ScalarEquation assemble_momentum_component(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure_gradient_component,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& body_component,
     double effective_dynamic_viscosity,
     const BoundaryConstraintMap& boundary_constraints,
     std::size_t component,

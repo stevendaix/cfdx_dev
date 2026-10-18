@@ -1,6 +1,7 @@
 #include "cfdx/physics/finite_volume_transport.h"
 #include "common/test_harness.h"
 #include <cmath>
+#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
