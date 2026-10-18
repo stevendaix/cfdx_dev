@@ -1,13 +1,16 @@
 import pytest
 
-PySide6 = pytest.importorskip("PySide6", reason="GUI tests require the optional [gui] dependencies")
-
 from cfdx import CFDXSession
+
+PySide6 = pytest.importorskip(
+    "PySide6",
+    reason="GUI tests require the optional [gui] dependencies",
+)
 
 
 def test_setup_panel_exposes_physics_controls_and_applies_model():
-    from PySide6.QtWidgets import QApplication
     from cfdx.setup_panel import CaseSetupPanel
+    from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
     session = CFDXSession()
@@ -20,37 +23,51 @@ def test_setup_panel_exposes_physics_controls_and_applies_model():
 
     assert session.case.physics["incompressible"]["enabled"] is True
     assert session.case.physics["incompressible"]["density"] == pytest.approx(1.225)
-    assert session.case.physics["incompressible"]["kinematic_viscosity"] == pytest.approx(1.5e-5)
+    assert session.case.physics["incompressible"][
+        "kinematic_viscosity"
+    ] == pytest.approx(1.5e-5)
     panel.close()
     app.processEvents()
 
 
 def test_setup_panel_turbulence_filters_to_solver_ready_models():
-    from PySide6.QtWidgets import QApplication
     from cfdx.setup_panel import CaseSetupPanel
+    from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
     session = CFDXSession()
     panel = CaseSetupPanel(session.case)
     panel.physics_model.setCurrentText("turbulence")
-    models = [panel.physics_fields["model"].itemText(i) for i in range(panel.physics_fields["model"].count())]
+    models = [
+        panel.physics_fields["model"].itemText(index)
+        for index in range(panel.physics_fields["model"].count())
+    ]
 
-    assert models
-    assert "SST" in models
+    assert models == ["LAMINAR"]
+    assert panel.turbulence_family.currentText() == "LAMINAR"
+    assert panel.physics_fields["model"].currentText() == "LAMINAR"
+    assert "SST" not in models
     assert "SMAGORINSKY" not in models
     panel.close()
     app.processEvents()
 
 
 def test_setup_panel_routes_physics_diagnostic_to_field_widget():
-    from PySide6.QtWidgets import QApplication
     from cfdx.setup_model import SetupDiagnostic
     from cfdx.setup_panel import CaseSetupPanel
+    from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
     panel = CaseSetupPanel(CFDXSession().case)
     panel.set_diagnostics(
-        [SetupDiagnostic("error", "PHYSICS_VALUE", "density is invalid", "physics.incompressible.density")]
+        [
+            SetupDiagnostic(
+                "error",
+                "PHYSICS_VALUE",
+                "density is invalid",
+                "physics.incompressible.density",
+            )
+        ]
     )
 
     assert "1 error(s)" in panel.validation_summary.text()
@@ -60,9 +77,9 @@ def test_setup_panel_routes_physics_diagnostic_to_field_widget():
 
 
 def test_setup_panel_selects_tab_for_material_boundary_and_initialization_diagnostics():
-    from PySide6.QtWidgets import QApplication
     from cfdx.setup_model import SetupDiagnostic
     from cfdx.setup_panel import CaseSetupPanel
+    from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
     session = CFDXSession()
@@ -70,16 +87,40 @@ def test_setup_panel_selects_tab_for_material_boundary_and_initialization_diagno
     session.case.boundaries["inlet"] = {"type": "inlet", "fields": ["pressure"]}
     panel = CaseSetupPanel(session.case)
 
-    panel.set_diagnostics([SetupDiagnostic("error", "MATERIAL_VALUE", "density invalid", "materials.air.density")])
+    panel.set_diagnostics(
+        [
+            SetupDiagnostic(
+                "error", "MATERIAL_VALUE", "density invalid", "materials.air.density"
+            )
+        ]
+    )
     assert panel.tabs.currentIndex() == 1
     assert "density invalid" in panel.material_density.toolTip()
 
-    panel.set_diagnostics([SetupDiagnostic("error", "BOUNDARY_SCHEMA", "boundary invalid", "boundaries.inlet.type")])
+    panel.set_diagnostics(
+        [
+            SetupDiagnostic(
+                "error",
+                "BOUNDARY_SCHEMA",
+                "boundary invalid",
+                "boundaries.inlet.type",
+            )
+        ]
+    )
     assert panel.tabs.currentIndex() == 2
     assert panel.boundary_list.currentItem().text() == "inlet"
     assert "boundary invalid" in panel.boundary_type.toolTip()
 
-    panel.set_diagnostics([SetupDiagnostic("error", "INITIALIZATION", "initialization invalid", "physics.initialization")])
+    panel.set_diagnostics(
+        [
+            SetupDiagnostic(
+                "error",
+                "INITIALIZATION",
+                "initialization invalid",
+                "physics.initialization",
+            )
+        ]
+    )
     assert panel.tabs.currentIndex() == 3
     assert "initialization invalid" in panel.initialization_mode.toolTip()
     panel.close()
