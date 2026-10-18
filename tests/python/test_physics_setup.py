@@ -23,6 +23,10 @@ def test_turbulence_catalog_exposes_all_current_model_states():
     assert turbulence_model("SST").status is TurbulenceStatus.COMPONENT_READY
     assert turbulence_model("KEPSILON").status is TurbulenceStatus.COMPONENT_READY
     assert turbulence_model("SPALART_ALLMARAS").status is TurbulenceStatus.COMPONENT_READY
+    assert {
+        model.key for model in TURBULENCE_CATALOG
+        if model.status is TurbulenceStatus.SOLVER_READY
+    } == {"LAMINAR"}
     assert turbulence_model("LAMINAR").status is TurbulenceStatus.SOLVER_READY
     assert turbulence_model("DES").status is TurbulenceStatus.KERNEL_ONLY
     assert turbulence_model("DYNAMIC_KEQN").status is TurbulenceStatus.PLANNED
@@ -103,6 +107,27 @@ def test_non_solver_ready_turbulence_models_are_rejected_for_production_cases():
         assert "kernel_only" in str(exc)
     else:
         raise AssertionError("kernel-only turbulence model must not be production-selectable")
+
+
+def test_all_component_ready_rans_models_fail_closed_in_production():
+    from cfdx.physics_setup import validate_turbulence_selection
+
+    rans_models = (
+        "KEPSILON",
+        "RNG_KEPSILON",
+        "REALIZABLE_KEPSILON",
+        "KOMEGA",
+        "SST",
+        "SPALART_ALLMARAS",
+    )
+    for model in rans_models:
+        try:
+            validate_turbulence_selection({"model": model})
+        except ValueError as exc:
+            assert "component_ready" in str(exc)
+            assert "No fallback to laminar" in str(exc)
+        else:
+            raise AssertionError(f"{model} must fail closed until production coupling exists")
 
 
 def test_steady_scale_resolving_models_are_rejected_explicitly():
