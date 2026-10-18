@@ -38,6 +38,7 @@ class TurbulenceFamily(str, Enum):
 
 class TurbulenceStatus(str, Enum):
     SOLVER_READY = "solver_ready"
+    COMPONENT_READY = "component_ready"
     KERNEL_ONLY = "kernel_only"
     PLANNED = "planned"
 
@@ -68,32 +69,32 @@ TURBULENCE_CATALOG: tuple[TurbulenceModelSpec, ...] = (
     ),
     TurbulenceModelSpec(
         "KEPSILON", "k-epsilon (standard)", TurbulenceFamily.RANS,
-        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
+        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
         "Classical two-equation eddy-viscosity RANS closure.",
     ),
     TurbulenceModelSpec(
         "RNG_KEPSILON", "RNG k-epsilon", TurbulenceFamily.RANS,
-        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
+        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
         "RNG k-epsilon transport model with its dedicated production correction.",
     ),
     TurbulenceModelSpec(
         "REALIZABLE_KEPSILON", "Realizable k-epsilon", TurbulenceFamily.RANS,
-        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
+        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
         "Variable-Cmu realizable k-epsilon transport model.",
     ),
     TurbulenceModelSpec(
         "KOMEGA", "k-omega", TurbulenceFamily.RANS,
-        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
+        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
         "Two-equation k-omega transport model.",
     ),
     TurbulenceModelSpec(
         "SST", "k-omega SST", TurbulenceFamily.RANS,
-        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
+        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
         "Menter SST transport model with blending, cross-diffusion and production limiting.",
     ),
     TurbulenceModelSpec(
         "SPALART_ALLMARAS", "Spalart-Allmaras", TurbulenceFamily.RANS,
-        TurbulenceStatus.SOLVER_READY, 1, True, True, True, (2, 3),
+        TurbulenceStatus.COMPONENT_READY, 1, True, True, True, (2, 3),
         "One-equation eddy-viscosity transport model.",
         ("SA-negative, rotation, compressibility and QCR variants are not yet exposed.",),
     ),
@@ -241,6 +242,12 @@ def recommend_turbulence_models(
         reasons: list[str] = []
         warnings: list[str] = []
 
+        model_status = turbulence_model(key).status
+        if model_status is not TurbulenceStatus.SOLVER_READY:
+            warnings.append(
+                f"{model_status.value}: this model is not selectable in the production solver yet"
+            )
+
         if key == "SST":
             reasons.append("general wall-bounded RANS choice with near-wall and adverse-pressure-gradient coverage")
             if context.strong_separation:
@@ -288,7 +295,7 @@ ENERGY = PhysicsSpec("energy","Energy",(
     FieldSpec("dt",ParameterType.REAL,"s",0.0),
 ),("incompressible",))
 TURBULENCE = PhysicsSpec("turbulence","Turbulence",(
-    FieldSpec("model",ParameterType.CHOICE,None,"SST"),
+    FieldSpec("model",ParameterType.CHOICE,None,"LAMINAR"),
     FieldSpec("density",ParameterType.REAL,"kg/m^3",1.0),
     FieldSpec("molecular_viscosity",ParameterType.REAL,"Pa s",1.0e-3),
     FieldSpec("turbulent_prandtl",ParameterType.REAL,None,0.9),
@@ -344,7 +351,8 @@ def validate_turbulence_selection(values: dict[str, object]) -> dict[str, object
         )
     if model.status is not TurbulenceStatus.SOLVER_READY:
         raise ValueError(
-            f"{model.label} is {model.status.value}; it is not a production solver model"
+            f"{model.label} is {model.status.value}; it is not available in the production solver. "
+            "No fallback to laminar is performed."
         )
     if normalized["wall_treatment"] not in {"resolved", "wall_function", "all_y_plus", "none"}:
         raise ValueError("unsupported turbulence wall treatment")
