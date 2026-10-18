@@ -2,6 +2,7 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "common/test_harness.h"
 #include <cmath>
+#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
