@@ -400,6 +400,7 @@ def write_case_cfdx_h5(result: ConversionResult, output_path) -> None:
       only when the mesh has unmatched (boundary) faces.
     * ``/fields/scalar/<name>`` and ``/fields/vector/<name>`` datasets.
     """
+
     import pathlib
     output_path = pathlib.Path(output_path)
 
