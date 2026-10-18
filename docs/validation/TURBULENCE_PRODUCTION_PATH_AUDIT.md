@@ -13,7 +13,7 @@ The case schemas carry a `turbulence_model` string:
 - `src/cfdx/io/cfdx_io/case_schema.h`
 - `src/cfdx/python/cfdx/io/schema.py`
 
-The Python setup catalogue previously exposed RANS as solver-ready. PR #941 changes those six entries to `COMPONENT_READY`, removes them from the production dropdown, and adds an explicit warning to advisory recommendations. Direct case validation also rejects component-only RANS selections.
+The Python setup catalogue still has legacy `SOLVER_READY` labels for RANS and its recommendation helper can suggest these models. This is a known UI/configuration mismatch: the production C++ driver rejects declared RANS cases, but Python catalogue alignment remains a required follow-up.
 
 The production executable `apps/production_solver/main.cpp` includes
 `steady_incompressible_solver.h` and `production_energy_stage.h`. Its options and help text
@@ -28,9 +28,9 @@ but no production-driver caller:
 
 **Consequence:** the repository does not yet demonstrate that a case selecting SST, SA or
 k-epsilon changes the production momentum solve. PR #941 adds a fail-closed production-driver
-guard for declared non-laminar models. The GUI catalogue and direct Python validation now also
-mark these models as component-only. A case-file field or standalone transport function is not
-a coupled RANS capability.
+guard for declared non-laminar models. The Python catalogue still needs to be aligned so the
+GUI does not advertise unsupported models as solver-ready. A case-file field or standalone
+transport function is not a coupled RANS capability.
 
 ## Finding 2 — transport functions are component-level solvers, not a demonstrated coupled RANS loop
 
@@ -80,19 +80,21 @@ path), independent analytic sources, exact boundary values, and mesh-refinement 
 
 1. **Fail closed on runtime selection — implemented in this PR, pending exact-HEAD CI:** reject
    non-laminar `turbulence_model` in the production driver rather than silently running laminar
-   flow; the Python production dropdown now only offers the laminar model.
-2. **Couple one model end to end:** SST is the recommended first target because its eddy
+   flow.
+2. **Align the Python GUI catalogue:** mark RANS entries component-only, remove them from the
+   production dropdown and surface a clear warning in recommendations.
+3. **Couple one model end to end:** SST is the recommended first target because its eddy
    viscosity and wall-distance/F1/F2 dependencies make the data path explicit. Define where
    k/omega are initialized, how wall distance and strain are computed, how mass flux is
    updated, when nu_t is refreshed, and how outer convergence includes turbulence residuals.
-3. **Add a production-path integration test:** case file selecting SST must either produce
+4. **Add a production-path integration test:** case file selecting SST must either produce
    explicit coupled-turbulence evidence or fail closed; it must never silently execute laminar.
-4. **Add transport MMS on the actual equation assembly path:** start with a scalar manufactured
+5. **Add transport MMS on the actual equation assembly path:** start with a scalar manufactured
    field and source-injection seam; then cover both transported SST equations and SA `nu_tilde`.
    Extend to k-epsilon only after the source/linearisation contract is independently checked.
-5. **Run TUR-CHANNEL against frozen Moser–Kim–Mansour DNS** with mesh/y+ sensitivity and
+6. **Run TUR-CHANNEL against frozen Moser–Kim–Mansour DNS** with mesh/y+ sensitivity and
    independent mass and pressure-gradient/bulk-flow balances.
-6. **Run TUR-FLATPLATE and TUR-NACA0012** only after the coupled production path and channel
+7. **Run TUR-FLATPLATE and TUR-NACA0012** only after the coupled production path and channel
    benchmark pass their predeclared gates.
 
 ## Promotion decision
