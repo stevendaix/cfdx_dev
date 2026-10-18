@@ -245,6 +245,21 @@ struct IncompressibleIteration {
     double reconstructed_velocity_continuity_linf = std::numeric_limits<double>::infinity();
     // Maximum face-flux discrepancy between the conservative flux and reconstructed U flux.
     double flux_velocity_mismatch_linf = std::numeric_limits<double>::infinity();
+    // Boundary-separated evidence channel: same discrepancy restricted to
+    // fixed-pressure boundary faces, where the two reconstruction paths
+    // differ analytically (Rhie-Chow boundary correction plus the
+    // predictor/corrector velocity response). Diagnostic only.
+    double flux_velocity_mismatch_boundary_linf = std::numeric_limits<double>::infinity();
+    // Normalized internal-face mismatch
+    // E_phi = ||phi_RC - phi_U||_inf / max(||phi_RC||_inf, rho*max|U|*max|Sf|),
+    // with an explicit physical floor so the value is comparable across
+    // meshes and never divides by a vanishing flux scale.
+    double flux_velocity_mismatch_normalized = std::numeric_limits<double>::infinity();
+    // Operator identity: max |phi_stored - phi_rederived| where phi_rederived
+    // is the same Rhie-Chow operator re-derived on the current state.
+    // Expected zero up to round-off; nonzero flags a stale or mutated
+    // authoritative flux, or an omitted/duplicated SIMPLEC response term.
+    double rhie_chow_identity_linf = std::numeric_limits<double>::infinity();
     // SIMPLEC coefficient audit: compare the signed row sum used by the
     // production denominator with the absolute-value alternative. These are
     // diagnostics only; validation gates remain independent.
@@ -2635,6 +2650,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         std::array<double, 3> simplec_denominator_abs_audit{0.0, 0.0, 0.0};
         std::array<double, 3> simplec_denominator_gap_audit{0.0, 0.0, 0.0};
         std::array<std::size_t, 3> simplec_denominator_worst_cell_audit{0, 0, 0};
+        // Rhie-Chow operator identity audit (common scope): each algorithm
+        // branch evaluates it right after its authoritative flux rebuild.
+        // Evidence channel only; no acceptance criterion consumes it.
+        bool rhie_chow_identity_evaluated = false;
+        double rhie_chow_identity_audit_linf = 0.0;
         if (controls.algorithm == PressureVelocityAlgorithm::COUPLED) {
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
@@ -2722,6 +2742,21 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             mass_flux = make_rhie_chow_mass_flux(
                 mesh, geometry, U, p, coupled_rAU,
                 controls.density, velocity_bcs, pressure_bcs);
+
+            // Operator identity audit: re-derive the authoritative flux from
+            // the same state through the same production call and compare
+            // against the stored field. Zero unless the stored flux was
+            // mutated after the rebuild.
+            {
+                const auto rederived_flux = make_rhie_chow_mass_flux(
+                    mesh, geometry, U, p, coupled_rAU,
+                    controls.density, velocity_bcs, pressure_bcs);
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+                    rhie_chow_identity_audit_linf = std::max(
+                        rhie_chow_identity_audit_linf,
+                        std::abs(mass_flux(f) - rederived_flux(f)));
+                rhie_chow_identity_evaluated = true;
+            }
 
             // A coupled iteration has no segregated momentum/pressure Krylov
             // sub-solves. The block residual is the authoritative linear metric.
@@ -3173,6 +3208,53 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // into the next one.
         }
 
+        // Operator identity audit: re-derive the authoritative flux from the
+        // CURRENT HbyA/p/rAtU(rAU) state through the same operator primitives
+        // the pressure equation balanced (including the SIMPLEC
+        // consistent-response term) and compare with the stored mass_flux.
+        // Expected zero up to round-off; a nonzero value flags a stale or
+        // mutated flux, or an omitted/duplicated SIMPLEC response term.
+        {
+            auto rederived_flux = make_rhie_chow_mass_flux(
+                mesh, geometry, HbyA, p,
+                controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                    ? rAtU : rAU,
+                controls.density, velocity_bcs, pressure_bcs);
+            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                    const auto nr = mesh.ownership().neighbour(f);
+                    if (nr < 0) continue;
+                    const std::size_t o = mesh.ownership().owner(f);
+                    const std::size_t n = static_cast<std::size_t>(nr);
+                    const auto Sf = geometry.face_area_vectors[f];
+                    const Vec3 dvec =
+                        geometry.cell_centres[n] - geometry.cell_centres[o];
+                    const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
+                                          geometry.cell_volumes[n]*rAtU[0][n]) -
+                                      0.5*(geometry.cell_volumes[o]*rAU[0][o] +
+                                           geometry.cell_volumes[n]*rAU[0][n]);
+                    const double dy = 0.5*(geometry.cell_volumes[o]*rAtU[1][o] +
+                                          geometry.cell_volumes[n]*rAtU[1][n]) -
+                                      0.5*(geometry.cell_volumes[o]*rAU[1][o] +
+                                           geometry.cell_volumes[n]*rAU[1][n]);
+                    const double dz = 0.5*(geometry.cell_volumes[o]*rAtU[2][o] +
+                                          geometry.cell_volumes[n]*rAtU[2][n]) -
+                                      0.5*(geometry.cell_volumes[o]*rAU[2][o] +
+                                           geometry.cell_volumes[n]*rAU[2][n]);
+                    const double correction_coeff =
+                        pressure_face_orthogonal_coefficient(
+                            Sf, dvec, {dx, dy, dz});
+                    rederived_flux(f) +=
+                        controls.density * correction_coeff * (p(n)-p(o));
+                }
+            }
+            for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+                rhie_chow_identity_audit_linf = std::max(
+                    rhie_chow_identity_audit_linf,
+                    std::abs(mass_flux(f) - rederived_flux(f)));
+            rhie_chow_identity_evaluated = true;
+        }
+
         }
         
         // Independent final momentum residual: evaluate the actual corrected
@@ -3451,14 +3533,28 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.linear_tolerance_used = controls.algorithm == PressureVelocityAlgorithm::COUPLED
             ? controls.coupling.coupled_linear_tolerance : linear_tolerance;
         h.corrected_flux_continuity_linf = linf;
-        // The conservative face flux and the reconstructed velocity flux must
-        // be built by the same operator; otherwise the audit metric reports a
-        // persistent mismatch that is an artifact of the two interpolations,
-        // not a conservation error. mass_flux is the authoritative Rhie-Chow
-        // flux, so the reconstructed flux used for the audit is that same field.
-        auto reconstructed_flux = mass_flux;
+        // Independent flux/velocity audit (restores the measurement channel
+        // that commit 7c7dadf5 made tautological with
+        // reconstructed_flux = mass_flux). Two reconstruction paths are
+        // compared:
+        //   channel RC (authoritative): mass_flux, the Rhie-Chow flux built
+        //     from HbyA/p plus, for SIMPLEC, the consistent-response term;
+        //   channel U (independent): the flux rebuilt from the corrected
+        //     cell velocity with the plain linear interpolation of
+        //     make_mass_flux, which shares no operator with Rhie-Chow.
+        // The mismatch is split internal / fixed-pressure boundary faces:
+        // on fixed-pressure boundary faces the two channels differ
+        // analytically by the Rhie-Chow boundary correction plus the
+        // predictor/corrector velocity response, so a persistent value there
+        // is an expected artifact of the boundary contract, not a
+        // conservation error. A persistent internal-face mismatch at
+        // convergence is an evidence channel about the interpolation
+        // identity. Neither channel is an acceptance metric: no criterion
+        // consumes them (see the N9/S9 test suite for the sensitivity
+        // proofs).
+        auto reconstructed_flux = make_mass_flux(
+            mesh, geometry, U, controls.density, velocity_bcs);
         double reconstructed_linf = 0.0;
-        double flux_mismatch_linf = 0.0;
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             double div_reconstructed = 0.0;
             const Offset off = cell_offsets[c];
@@ -3467,14 +3563,56 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const std::size_t f = cell_faces[off+k];
                 div_reconstructed +=
                     mesh.ownership().owner(f) == c ? reconstructed_flux(f) : -reconstructed_flux(f);
-                flux_mismatch_linf = std::max(
-                    flux_mismatch_linf,
-                    std::abs(mass_flux(f) - reconstructed_flux(f)));
             }
             reconstructed_linf = std::max(reconstructed_linf, std::abs(div_reconstructed));
         }
+        double flux_mismatch_linf = 0.0;
+        double flux_mismatch_boundary_linf = 0.0;
+        double flux_mismatch_scale = 0.0;
+        double max_velocity_abs = 0.0;
+        double max_face_area = 0.0;
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+            for (std::size_t d = 0; d < 3; ++d)
+                max_velocity_abs = std::max(
+                    max_velocity_abs, std::abs(U.component_data(d)[c]));
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            const double mismatch =
+                std::abs(mass_flux(f) - reconstructed_flux(f));
+            flux_mismatch_scale = std::max(flux_mismatch_scale, std::abs(mass_flux(f)));
+            max_face_area = std::max(
+                max_face_area, geometry.face_area_vectors[f].mag());
+            if (mesh.ownership().neighbour(f) >= 0) {
+                flux_mismatch_linf = std::max(flux_mismatch_linf, mismatch);
+                continue;
+            }
+            const std::size_t patch = geometry.face_patch[f];
+            if (patch >= mesh.boundary().n_patches())
+                continue;
+            if (mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                continue;
+            const auto& patch_name = mesh.boundary().patch(patch).name;
+            const auto pbc = pressure_bcs.find(patch_name);
+            if (pbc != pressure_bcs.end() &&
+                pbc->second.type == ScalarBoundaryType::FIXED_VALUE)
+                flux_mismatch_boundary_linf =
+                    std::max(flux_mismatch_boundary_linf, mismatch);
+        }
+        // Normalized internal mismatch with an explicit physical floor:
+        // E_phi = ||phi_RC - phi_U||_inf / max(||phi_RC||_inf,
+        // rho * max|U| * max|Sf|). Never divides by a vanishing scale.
+        const double flux_mismatch_denominator = std::max(
+            flux_mismatch_scale,
+            controls.density * max_velocity_abs * max_face_area);
+        const double flux_mismatch_normalized =
+            flux_mismatch_denominator > 0.0
+                ? flux_mismatch_linf / flux_mismatch_denominator
+                : 0.0;
         h.reconstructed_velocity_continuity_linf = reconstructed_linf;
         h.flux_velocity_mismatch_linf = flux_mismatch_linf;
+        h.flux_velocity_mismatch_boundary_linf = flux_mismatch_boundary_linf;
+        h.flux_velocity_mismatch_normalized = flux_mismatch_normalized;
+        h.rhie_chow_identity_linf =
+            rhie_chow_identity_evaluated ? rhie_chow_identity_audit_linf : 0.0;
         h.momentum_equation_residual_components =
             std::array<double, 3>{rx_diag.global, ry_diag.global, rz_diag.global};
         h.momentum_equation_residual_internal =

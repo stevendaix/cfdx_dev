@@ -124,6 +124,9 @@ inline void write_convergence_history(
             out << "      \"corrected_flux_continuity_linf\": "; convergence_json_number(out, h.corrected_flux_continuity_linf); out << ",\n";
             out << "      \"reconstructed_velocity_continuity_linf\": "; convergence_json_number(out, h.reconstructed_velocity_continuity_linf); out << ",\n";
             out << "      \"flux_velocity_mismatch_linf\": "; convergence_json_number(out, h.flux_velocity_mismatch_linf); out << ",\n";
+            out << "      \"flux_velocity_mismatch_boundary_linf\": "; convergence_json_number(out, h.flux_velocity_mismatch_boundary_linf); out << ",\n";
+            out << "      \"flux_velocity_mismatch_normalized\": "; convergence_json_number(out, h.flux_velocity_mismatch_normalized); out << ",\n";
+            out << "      \"rhie_chow_identity_linf\": "; convergence_json_number(out, h.rhie_chow_identity_linf); out << ",\n";
             out << "      \"simplec_signed_offdiag_sum_linf\": [" << h.simplec_signed_offdiag_sum_linf[0] << "," << h.simplec_signed_offdiag_sum_linf[1] << "," << h.simplec_signed_offdiag_sum_linf[2] << "],\n";
             out << "      \"simplec_abs_offdiag_sum_linf\": [" << h.simplec_abs_offdiag_sum_linf[0] << "," << h.simplec_abs_offdiag_sum_linf[1] << "," << h.simplec_abs_offdiag_sum_linf[2] << "],\n";
             out << "      \"simplec_denominator_signed_linf\": [" << h.simplec_denominator_signed_linf[0] << "," << h.simplec_denominator_signed_linf[1] << "," << h.simplec_denominator_signed_linf[2] << "],\n";
