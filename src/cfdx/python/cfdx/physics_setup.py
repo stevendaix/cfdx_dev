@@ -38,7 +38,6 @@ class TurbulenceFamily(str, Enum):
 
 class TurbulenceStatus(str, Enum):
     SOLVER_READY = "solver_ready"
-    COMPONENT_READY = "component_ready"
     KERNEL_ONLY = "kernel_only"
     PLANNED = "planned"
 
@@ -69,40 +68,34 @@ TURBULENCE_CATALOG: tuple[TurbulenceModelSpec, ...] = (
     ),
     TurbulenceModelSpec(
         "KEPSILON", "k-epsilon (standard)", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
-        "Classical two-equation eddy-viscosity RANS transport component.",
-        ("Not coupled to the production momentum solver; production cases are rejected.",),
+        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
+        "Classical two-equation eddy-viscosity RANS closure.",
     ),
     TurbulenceModelSpec(
         "RNG_KEPSILON", "RNG k-epsilon", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
-        "RNG k-epsilon transport component with its dedicated production correction.",
-        ("Not coupled to the production momentum solver; production cases are rejected.",),
+        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
+        "RNG k-epsilon transport model with its dedicated production correction.",
     ),
     TurbulenceModelSpec(
         "REALIZABLE_KEPSILON", "Realizable k-epsilon", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
-        "Variable-Cmu realizable k-epsilon transport component.",
-        ("Not coupled to the production momentum solver; production cases are rejected.",),
+        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
+        "Variable-Cmu realizable k-epsilon transport model.",
     ),
     TurbulenceModelSpec(
         "KOMEGA", "k-omega", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
-        "Two-equation k-omega transport component.",
-        ("Not coupled to the production momentum solver; production cases are rejected.",),
+        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
+        "Two-equation k-omega transport model.",
     ),
     TurbulenceModelSpec(
         "SST", "k-omega SST", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
-        "Menter SST transport component with blending, cross-diffusion and production limiting.",
-        ("Not coupled to the production momentum solver; production cases are rejected.",),
+        TurbulenceStatus.SOLVER_READY, 2, True, True, True, (2, 3),
+        "Menter SST transport model with blending, cross-diffusion and production limiting.",
     ),
     TurbulenceModelSpec(
         "SPALART_ALLMARAS", "Spalart-Allmaras", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 1, True, True, True, (2, 3),
-        "One-equation eddy-viscosity transport component.",
-        ("Not coupled to the production momentum solver; production cases are rejected.",
-         "SA-negative, rotation, compressibility and QCR variants are not yet exposed."),
+        TurbulenceStatus.SOLVER_READY, 1, True, True, True, (2, 3),
+        "One-equation eddy-viscosity transport model.",
+        ("SA-negative, rotation, compressibility and QCR variants are not yet exposed.",),
     ),
     TurbulenceModelSpec(
         "SMAGORINSKY", "Smagorinsky LES", TurbulenceFamily.LES,
@@ -269,9 +262,6 @@ def recommend_turbulence_models(
         elif key == "KOMEGA":
             reasons.append("two-equation near-wall-oriented RANS alternative")
 
-        warnings.append(
-            "CFDX production momentum coupling is not implemented; this RANS model is component-only and cannot currently run as a production case"
-        )
         if context.transition_expected:
             warnings.append("transition transport is not yet implemented; these are fully turbulent RANS models")
         if context.target_y_plus is not None and context.target_y_plus > 30:
@@ -298,7 +288,7 @@ ENERGY = PhysicsSpec("energy","Energy",(
     FieldSpec("dt",ParameterType.REAL,"s",0.0),
 ),("incompressible",))
 TURBULENCE = PhysicsSpec("turbulence","Turbulence",(
-    FieldSpec("model",ParameterType.CHOICE,None,"LAMINAR"),
+    FieldSpec("model",ParameterType.CHOICE,None,"SST"),
     FieldSpec("density",ParameterType.REAL,"kg/m^3",1.0),
     FieldSpec("molecular_viscosity",ParameterType.REAL,"Pa s",1.0e-3),
     FieldSpec("turbulent_prandtl",ParameterType.REAL,None,0.9),
@@ -322,7 +312,7 @@ def physics_spec(key: str) -> PhysicsSpec:
 
 def turbulence_model_from_case(values: dict[str, object]) -> dict[str, object]:
     # Normalize legacy flat turbulence settings to the structured contract.
-    model = str(values.get("model", "LAMINAR")).upper()
+    model = str(values.get("model", "SST")).upper()
     spec = turbulence_model(model)
     family = spec.family.value.upper()
     return {
