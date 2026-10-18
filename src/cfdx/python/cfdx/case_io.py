@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -19,7 +18,6 @@ from .dat_io import read_dat_restart, remap_dat_restart, write_dat_hdf5
 from .probe import Probe
 from .session import CFDXSession
 
-
 _FORMAT = "CFDX"
 _SCHEMA_VERSION = 1
 _CASE_DATASET = "case/config"
@@ -27,11 +25,23 @@ _RUNTIME_ROOT = "runtime"
 # Top-level names that carry solver runtime state. Numerical iteration/time and
 # field state belongs exclusively to the paired DAT artifact, so their presence
 # in a .cfdx.h5 bundle means the two artifacts were not separated.
-_RUNTIME_STATE_NAMES = frozenset({
-    "checkpoint", "history", "iteration", "iterations", "monitor",
-    "monitor_series", "residual", "residuals", "restart", "solution",
-    "solution_history", "time", "times",
-})
+_RUNTIME_STATE_NAMES = frozenset(
+    {
+        "checkpoint",
+        "history",
+        "iteration",
+        "iterations",
+        "monitor",
+        "monitor_series",
+        "residual",
+        "residuals",
+        "restart",
+        "solution",
+        "solution_history",
+        "time",
+        "times",
+    }
+)
 
 
 def _sha256(path: Path) -> str:
@@ -45,7 +55,9 @@ def _sha256(path: Path) -> str:
 def _canonical_case_hash(case_data: dict, mesh_hash: str | None = None) -> str:
     """Hash normalized case configuration plus the persisted mesh identity."""
     payload = {"case": case_data, "mesh_hash": mesh_hash}
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    encoded = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 
 
@@ -60,7 +72,7 @@ def _paired_dat_path(case_path: Path) -> Path:
     """Return the canonical DAT sibling for case.cfdx.h5."""
     name = case_path.name
     if name.lower().endswith(".cfdx.h5"):
-        name = name[:-len(".cfdx.h5")]
+        name = name[: -len(".cfdx.h5")]
     else:
         name = case_path.stem
     return case_path.with_name(f"{name}.dat.h5")
@@ -110,7 +122,12 @@ def save_case(session: CFDXSession, path: Path) -> Path:
     return path
 
 
-_CHECKPOINT_REVISION_NAMES = ("case_revision", "mesh_revision", "physics_revision", "numerics_revision")
+_CHECKPOINT_REVISION_NAMES = (
+    "case_revision",
+    "mesh_revision",
+    "physics_revision",
+    "numerics_revision",
+)
 _CHECKPOINT_SCHEMA_VERSION = 1
 
 
@@ -146,7 +163,8 @@ def _validate_checkpoint_revisions(path: Path, session: CFDXSession) -> None:
         missing = [name for name in _CHECKPOINT_REVISION_NAMES if name not in h5.attrs]
         if missing:
             raise ValueError(
-                "DAT checkpoint is missing compatibility metadata: " + ", ".join(missing)
+                "DAT checkpoint is missing compatibility metadata: "
+                + ", ".join(missing)
             )
         actual = {}
         for name in _CHECKPOINT_REVISION_NAMES:
@@ -156,9 +174,16 @@ def _validate_checkpoint_revisions(path: Path, session: CFDXSession) -> None:
                 raise ValueError(
                     f"DAT checkpoint has a non-integer {name!r} binding"
                 ) from exc
-        mismatches = [name for name in _CHECKPOINT_REVISION_NAMES if actual[name] != expected[name]]
+        mismatches = [
+            name
+            for name in _CHECKPOINT_REVISION_NAMES
+            if actual[name] != expected[name]
+        ]
         if mismatches:
-            details = ", ".join(f"{name}={actual[name]} expected={expected[name]}" for name in mismatches)
+            details = ", ".join(
+                f"{name}={actual[name]} expected={expected[name]}"
+                for name in mismatches
+            )
             raise ValueError("incompatible DAT checkpoint revisions: " + details)
 
 
@@ -235,7 +260,15 @@ def validate_case_bundle(path: Path) -> dict[str, bool]:
     case_path = _validate_path(path)
     if not case_path.is_file():
         raise FileNotFoundError(case_path)
-    required_mesh = ("points", "face_vertices", "face_offsets", "owner", "neighbour", "cell_faces", "cell_offsets")
+    required_mesh = (
+        "points",
+        "face_vertices",
+        "face_offsets",
+        "owner",
+        "neighbour",
+        "cell_faces",
+        "cell_offsets",
+    )
     with h5py.File(case_path, "r") as h5:
         if h5.attrs.get("format") != _FORMAT:
             raise ValueError("not a CFDX HDF5 case")
@@ -274,16 +307,22 @@ def validate_case_bundle(path: Path) -> dict[str, bool]:
         # Any runtime subtree is therefore rejected outright, as is any
         # top-level member named after solver runtime state.
         unexpected_runtime = [
-            name for name in h5
-            if name == _RUNTIME_ROOT
-            or name.rsplit("/", 1)[-1] in _RUNTIME_STATE_NAMES
+            name
+            for name in h5
+            if name == _RUNTIME_ROOT or name.rsplit("/", 1)[-1] in _RUNTIME_STATE_NAMES
         ]
         runtime_separated = (
             "case" in h5
             and _CASE_DATASET.rsplit("/", 1)[-1] in h5["case"]
             and not unexpected_runtime
         )
-    return {"mesh": True, "fields": True, "physics": True, "numerics": True, "runtime_separated": runtime_separated}
+    return {
+        "mesh": True,
+        "fields": True,
+        "physics": True,
+        "numerics": True,
+        "runtime_separated": runtime_separated,
+    }
 
 
 def read_case(path: Path) -> CFDXSession:
@@ -300,7 +339,9 @@ def _read_case_cell_ids(path: Path) -> tuple[int, ...] | None:
     try:
         ids = tuple(int(value) for value in raw_ids)
     except (TypeError, ValueError) as exc:
-        raise ValueError("case cell_ids must contain integer IDs for DAT restart") from exc
+        raise ValueError(
+            "case cell_ids must contain integer IDs for DAT restart"
+        ) from exc
     if len(set(ids)) != len(ids):
         raise ValueError("case contains duplicate cell ids")
     if any(value < 0 for value in ids):
@@ -343,7 +384,9 @@ def read_case_with_dat(
         if missing:
             raise ValueError(f"target cell id missing from checkpoint: {min(missing)}")
         if extra:
-            raise ValueError(f"checkpoint cell id is absent from target mesh: {min(extra)}")
+            raise ValueError(
+                f"checkpoint cell id is absent from target mesh: {min(extra)}"
+            )
         restart = remap_dat_restart(restart, case_cell_ids)
     elif restart.cell_ids is not None:
         # Preserve the DAT's explicit ordering when the case does not carry a

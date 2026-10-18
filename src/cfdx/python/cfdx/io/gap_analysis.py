@@ -7,8 +7,7 @@ Corresponds to the C++ header:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 from cfdx.io.schema import Severity
 
@@ -39,25 +38,33 @@ class GapAnalysis:
         feature: str,
         detail: str = "",
         suggestion: str = "",
-    ) -> "GapAnalysis":
-        self._findings.append(
-            Finding(severity, category, feature, detail, suggestion)
-        )
+    ) -> GapAnalysis:
+        self._findings.append(Finding(severity, category, feature, detail, suggestion))
         return self
 
-    def supported(self, category: str, feature: str, detail: str = "") -> "GapAnalysis":
+    def supported(self, category: str, feature: str, detail: str = "") -> GapAnalysis:
         return self.add(Severity.SUPPORTED, category, feature, detail)
 
-    def approximated(self, category: str, feature: str, detail: str, suggestion: str = "") -> "GapAnalysis":
+    def approximated(
+        self, category: str, feature: str, detail: str, suggestion: str = ""
+    ) -> GapAnalysis:
         return self.add(Severity.APPROXIMATED, category, feature, detail, suggestion)
 
-    def unsupported_nonblocking(self, category: str, feature: str, detail: str, suggestion: str = "") -> "GapAnalysis":
-        return self.add(Severity.UNSUPPORTED_NONBLOCK, category, feature, detail, suggestion)
+    def unsupported_nonblocking(
+        self, category: str, feature: str, detail: str, suggestion: str = ""
+    ) -> GapAnalysis:
+        return self.add(
+            Severity.UNSUPPORTED_NONBLOCK, category, feature, detail, suggestion
+        )
 
-    def unsupported_blocking(self, category: str, feature: str, detail: str, suggestion: str = "") -> "GapAnalysis":
-        return self.add(Severity.UNSUPPORTED_BLOCK, category, feature, detail, suggestion)
+    def unsupported_blocking(
+        self, category: str, feature: str, detail: str, suggestion: str = ""
+    ) -> GapAnalysis:
+        return self.add(
+            Severity.UNSUPPORTED_BLOCK, category, feature, detail, suggestion
+        )
 
-    def unavailable(self, category: str, feature: str, detail: str) -> "GapAnalysis":
+    def unavailable(self, category: str, feature: str, detail: str) -> GapAnalysis:
         return self.add(Severity.UNAVAILABLE, category, feature, detail)
 
     @property
@@ -68,16 +75,24 @@ class GapAnalysis:
         return any(f.severity == Severity.UNSUPPORTED_BLOCK for f in self._findings)
 
     def n_supported(self) -> int:
-        return sum(1 for f in self._findings if f.severity in (Severity.SUPPORTED, Severity.APPROXIMATED))
+        return sum(
+            1
+            for f in self._findings
+            if f.severity in (Severity.SUPPORTED, Severity.APPROXIMATED)
+        )
 
     def n_approximated(self) -> int:
         return sum(1 for f in self._findings if f.severity == Severity.APPROXIMATED)
 
     def n_unsupported_nonblocking(self) -> int:
-        return sum(1 for f in self._findings if f.severity == Severity.UNSUPPORTED_NONBLOCK)
+        return sum(
+            1 for f in self._findings if f.severity == Severity.UNSUPPORTED_NONBLOCK
+        )
 
     def n_unsupported_blocking(self) -> int:
-        return sum(1 for f in self._findings if f.severity == Severity.UNSUPPORTED_BLOCK)
+        return sum(
+            1 for f in self._findings if f.severity == Severity.UNSUPPORTED_BLOCK
+        )
 
     def n_unavailable(self) -> int:
         return sum(1 for f in self._findings if f.severity == Severity.UNAVAILABLE)
@@ -121,9 +136,15 @@ class GapAnalysisReport:
         lines.append("|----------|-------|")
         lines.append(f"| Supported / Mapped | {self.gap.n_supported()} |")
         lines.append(f"| Approximated | {self.gap.n_approximated()} |")
-        lines.append(f"| Unsupported (non-blocking) | {self.gap.n_unsupported_nonblocking()} |")
-        lines.append(f"| Unsupported (blocking) | {self.gap.n_unsupported_blocking()} |")
-        lines.append(f"| Unavailable (source info missing) | {self.gap.n_unavailable()} |")
+        lines.append(
+            f"| Unsupported (non-blocking) | {self.gap.n_unsupported_nonblocking()} |"
+        )
+        lines.append(
+            f"| Unsupported (blocking) | {self.gap.n_unsupported_blocking()} |"
+        )
+        lines.append(
+            f"| Unavailable (source info missing) | {self.gap.n_unavailable()} |"
+        )
         lines.append(f"| **Total** | {len(self.gap.findings)} |")
         lines.append("")
 
@@ -137,7 +158,10 @@ class GapAnalysisReport:
             ("## 1. Supported / Mapped Features", Severity.SUPPORTED),
             ("## 2. Approximated / Fallback Mappings", Severity.APPROXIMATED),
             ("## 3. Unavailable Source Information", Severity.UNAVAILABLE),
-            ("## 4. Unsupported Features (non-blocking)", Severity.UNSUPPORTED_NONBLOCK),
+            (
+                "## 4. Unsupported Features (non-blocking)",
+                Severity.UNSUPPORTED_NONBLOCK,
+            ),
             ("## 5. Unsupported Features (blocking)", Severity.UNSUPPORTED_BLOCK),
         ]
 

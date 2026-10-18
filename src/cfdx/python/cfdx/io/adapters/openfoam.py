@@ -12,25 +12,21 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 
 from cfdx.io.interfaces import (
-    SolverAdapter,
     ConversionResult,
+    SolverAdapter,
 )
+from cfdx.io.mapping_rules import MappingRules
 from cfdx.io.schema import (
     BCType,
     BCValueType,
-    CaseSetup,
-    MaterialSpec,
     BoundarySpec,
+    CaseSetup,
     SourceInfo,
 )
-from cfdx.io.mapping_rules import MappingRules
-from cfdx.io.gap_analysis import GapAnalysis
-
 
 _FIELD_DIMS = {"scalar": 1, "vector": 3, "symmTensor": 6, "tensor": 9}
 
@@ -67,7 +63,7 @@ def _extract_foam_list(content: str):
         count = int(prefix_match.group(1))
 
     lines = []
-    for raw in content[start + 1:end].splitlines():
+    for raw in content[start + 1 : end].splitlines():
         line = re.sub(r"/\*.*?\*/", " ", raw)
         line = re.sub(r"//.*$", "", line).strip()
         if line:
@@ -79,13 +75,13 @@ class OpenFOAMAdapter(SolverAdapter):
     solver_name = "OpenFOAM"
     format_name = "openfoam"
 
-    def __init__(self, rules: Optional[MappingRules] = None) -> None:
+    def __init__(self, rules: MappingRules | None = None) -> None:
         self.rules = rules or MappingRules.load_default()
         self.setup = CaseSetup(source=SourceInfo(solver="OpenFOAM", format="openfoam"))
 
-    def convert(self, case_path: Union[str, Path], result: ConversionResult) -> bool:
+    def convert(self, case_path: str | Path, result: ConversionResult) -> bool:
         path = Path(str(case_path))
-        
+
         if not path.is_dir():
             result.gap_report.unsupported_blocking(
                 "case_path",
@@ -144,7 +140,7 @@ class OpenFOAMAdapter(SolverAdapter):
 
         return result.success
 
-    def _parse_mesh(self, poly_mesh: Path) -> tuple[Optional[np.ndarray], Optional[dict]]:
+    def _parse_mesh(self, poly_mesh: Path) -> tuple[np.ndarray | None, dict | None]:
         """Parse OpenFOAM polyMesh files."""
         try:
             # Parse points
@@ -173,10 +169,10 @@ class OpenFOAMAdapter(SolverAdapter):
 
             return points, cells
 
-        except Exception as e:
+        except Exception:
             return None, None
 
-    def _parse_points(self, points_file: Path) -> Optional[np.ndarray]:
+    def _parse_points(self, points_file: Path) -> np.ndarray | None:
         """Parse OpenFOAM points file."""
         try:
             content = points_file.read_text()
@@ -202,7 +198,7 @@ class OpenFOAMAdapter(SolverAdapter):
         except Exception:
             return None
 
-            data_lines = match.group(1).strip().split('\n')
+            data_lines = match.group(1).strip().split("\n")
             # First line might be the count
             first_line = data_lines[0].strip()
             if first_line.isdigit():
@@ -210,17 +206,19 @@ class OpenFOAMAdapter(SolverAdapter):
 
             points = []
             for line in data_lines:
-                line = line.strip().rstrip(';')
-                if line.startswith('(') and line.endswith(')'):
+                line = line.strip().rstrip(";")
+                if line.startswith("(") and line.endswith(")"):
                     coords = line[1:-1].split()
                     if len(coords) >= 3:
-                        points.append([float(coords[0]), float(coords[1]), float(coords[2])])
+                        points.append(
+                            [float(coords[0]), float(coords[1]), float(coords[2])]
+                        )
 
             return np.array(points, dtype=np.float64)
         except Exception:
             return None
 
-    def _parse_faces(self, faces_file: Path) -> Optional[list]:
+    def _parse_faces(self, faces_file: Path) -> list | None:
         """Parse OpenFOAM faces file.
 
         Handles both the compact ``4(0 1 2 3)`` form written by OpenFOAM and
@@ -235,7 +233,9 @@ class OpenFOAMAdapter(SolverAdapter):
 
             faces = []
             for line in data_lines:
-                match = re.match(r"^\s*(\d*)\s*\(?\s*([-\d.eE+,\s]+?)\s*\)?\s*;?\s*$", line)
+                match = re.match(
+                    r"^\s*(\d*)\s*\(?\s*([-\d.eE+,\s]+?)\s*\)?\s*;?\s*$", line
+                )
                 if not match:
                     continue
                 n_declared = int(match.group(1)) if match.group(1) else None
@@ -252,7 +252,7 @@ class OpenFOAMAdapter(SolverAdapter):
         except Exception:
             return None
 
-    def _parse_label_list(self, label_file: Path) -> Optional[list]:
+    def _parse_label_list(self, label_file: Path) -> list | None:
         """Parse OpenFOAM label list (owner, neighbour)."""
         try:
             content = label_file.read_text()
@@ -263,7 +263,7 @@ class OpenFOAMAdapter(SolverAdapter):
 
             labels = []
             for line in data_lines:
-                token = line.strip().rstrip(';')
+                token = line.strip().rstrip(";")
                 if not token or token.startswith("/*") or token.startswith("//"):
                     continue
                 try:
@@ -286,25 +286,27 @@ class OpenFOAMAdapter(SolverAdapter):
         """Parse OpenFOAM boundary file to get patch info."""
         patches = []
         try:
-            with open(boundary_file, 'r') as f:
+            with open(boundary_file, "r") as f:
                 content = f.read()
 
             # Parse each patch block
             patch_pattern = re.compile(
-                r'(\w+)\s*\{[^}]*type\s+(\w+)[^}]*nFaces\s+(\d+)[^}]*startFace\s+(\d+)',
-                re.DOTALL
+                r"(\w+)\s*\{[^}]*type\s+(\w+)[^}]*nFaces\s+(\d+)[^}]*startFace\s+(\d+)",
+                re.DOTALL,
             )
             for match in patch_pattern.finditer(content):
                 name = match.group(1)
                 patch_type = match.group(2)
                 n_faces = int(match.group(3))
                 start_face = int(match.group(4))
-                patches.append({
-                    'name': name,
-                    'type': patch_type,
-                    'n_faces': n_faces,
-                    'start_face': start_face
-                })
+                patches.append(
+                    {
+                        "name": name,
+                        "type": patch_type,
+                        "n_faces": n_faces,
+                        "start_face": start_face,
+                    }
+                )
         except Exception:
             pass
         return patches
@@ -315,7 +317,7 @@ class OpenFOAMAdapter(SolverAdapter):
         # the full cell topology. For now, return a minimal structure.
         n_faces = len(faces)
         n_cells = max(owner) + 1 if owner else 0
-        
+
         # Create a simple cell->faces mapping (each cell gets its owned faces)
         cell_faces = {i: [] for i in range(n_cells)}
         for face_idx, cell_idx in enumerate(owner):
@@ -344,28 +346,34 @@ class OpenFOAMAdapter(SolverAdapter):
         """Parse boundary patches and add to setup."""
         patches = self._parse_boundary_file(poly_mesh / "boundary")
         for patch in patches:
-            bc_type = self._map_patch_type(patch['type'])
-            bc_value = BCValueType.FIXED if bc_type in (BCType.INLET, BCType.OUTLET) else BCValueType.ZERO_GRADIENT
-            
-            self.setup.boundary_conditions.append(BoundarySpec(
-                patch_name=patch['name'],
-                type=bc_type,
-                value_type=bc_value,
-            ))
+            bc_type = self._map_patch_type(patch["type"])
+            bc_value = (
+                BCValueType.FIXED
+                if bc_type in (BCType.INLET, BCType.OUTLET)
+                else BCValueType.ZERO_GRADIENT
+            )
+
+            self.setup.boundary_conditions.append(
+                BoundarySpec(
+                    patch_name=patch["name"],
+                    type=bc_type,
+                    value_type=bc_value,
+                )
+            )
 
     def _map_patch_type(self, of_type: str) -> BCType:
         """Map OpenFOAM patch type to CFDX BCType."""
         mapping = {
-            'patch': BCType.WALL,
-            'wall': BCType.WALL,
-            'inlet': BCType.INLET,
-            'outlet': BCType.OUTLET,
-            'pressureInletOutletVelocity': BCType.PRESSURE_OUTLET,
-            'pressureOutlet': BCType.PRESSURE_OUTLET,
-            'symmetry': BCType.SYMMETRY,
-            'symmetryPlane': BCType.SYMMETRY,
-            'cyclic': BCType.PERIODIC,
-            'empty': BCType.EMPTY,
+            "patch": BCType.WALL,
+            "wall": BCType.WALL,
+            "inlet": BCType.INLET,
+            "outlet": BCType.OUTLET,
+            "pressureInletOutletVelocity": BCType.PRESSURE_OUTLET,
+            "pressureOutlet": BCType.PRESSURE_OUTLET,
+            "symmetry": BCType.SYMMETRY,
+            "symmetryPlane": BCType.SYMMETRY,
+            "cyclic": BCType.PERIODIC,
+            "empty": BCType.EMPTY,
         }
         return mapping.get(of_type.lower(), BCType.UNKNOWN)
 
@@ -378,7 +386,7 @@ class OpenFOAMAdapter(SolverAdapter):
         """
         parsed = 0
         for field_file in sorted(zero_dir.iterdir()):
-            if not field_file.is_file() or field_file.name.startswith('.'):
+            if not field_file.is_file() or field_file.name.startswith("."):
                 continue
             try:
                 content = field_file.read_text()
@@ -416,7 +424,7 @@ class OpenFOAMAdapter(SolverAdapter):
 
         return parsed
 
-    def _parse_field_value(self, text: str) -> Optional[np.ndarray]:
+    def _parse_field_value(self, text: str) -> np.ndarray | None:
         """Parse an OpenFOAM internalField value into a numpy array."""
         text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
         text = re.sub(r"//.*$", "", text, flags=re.MULTILINE).strip()

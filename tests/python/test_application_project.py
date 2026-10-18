@@ -1,10 +1,13 @@
 from pathlib import Path
 
-from cfdx import CFDXSession
 from cfdx.application.application import Application
 
+from cfdx import CFDXSession
 
-def test_application_project_lifecycle_uses_shared_case_boundary(tmp_path: Path) -> None:
+
+def test_application_project_lifecycle_uses_shared_case_boundary(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "channel.cfdx.h5"
     session = CFDXSession()
     session.case.name = "channel"

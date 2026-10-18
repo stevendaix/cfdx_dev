@@ -1,7 +1,8 @@
-from cfdx import CFDXSession
-from cfdx.application import Application
 from cfdx.application.commands import ConfigureProbes
 from cfdx.probe import Probe, ProbeCatalog, ProbeField
+
+from cfdx import CFDXSession
+from cfdx.application import Application
 
 
 def test_configure_probes_command_attaches_probes_to_case() -> None:
@@ -23,13 +24,21 @@ def test_configure_probes_replaces_existing_catalogue() -> None:
     session = CFDXSession()
     application = Application(session)
 
-    application.execute(ConfigureProbes(ProbeCatalog([
-        Probe("a", 0, 0, 0, ProbeField.PRESSURE),
-        Probe("b", 1, 1, 1, ProbeField.U_X),
-    ])))
+    application.execute(
+        ConfigureProbes(
+            ProbeCatalog(
+                [
+                    Probe("a", 0, 0, 0, ProbeField.PRESSURE),
+                    Probe("b", 1, 1, 1, ProbeField.U_X),
+                ]
+            )
+        )
+    )
     assert len(session.case.probes) == 2
 
-    application.execute(ConfigureProbes(ProbeCatalog([Probe("only", 2, 2, 2, ProbeField.U_MAGNITUDE)])))
+    application.execute(
+        ConfigureProbes(ProbeCatalog([Probe("only", 2, 2, 2, ProbeField.U_MAGNITUDE)]))
+    )
     assert [p.name for p in session.case.probes] == ["only"]
 
 
@@ -38,4 +47,3 @@ def test_configure_probes_does_not_require_solver_restart() -> None:
     application = Application(session)
     application.execute(ConfigureProbes(ProbeCatalog([Probe("p", 0, 0, 0)])))
     assert not session.requires_restart
-

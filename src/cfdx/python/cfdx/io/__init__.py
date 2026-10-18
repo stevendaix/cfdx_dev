@@ -1,32 +1,34 @@
 """CFDX I/O subpackage — unified solver converters and Gap Analysis."""
 
-from cfdx.io.interfaces import SolverAdapter, ConversionResult, SourceInfo
-from cfdx.io.gap_analysis import GapAnalysis, GapAnalysisReport, Severity, Finding
-from cfdx.io.schema import CaseSetup
-from cfdx.io.mapping_rules import MappingRules
 from cfdx.io.converter import (
     ConversionResult as CanonicalConversionResult,
+)
+from cfdx.io.converter import (
     SolverConverter,
-    get_converter,
+    available_converters,
     convert,
     detect_solver,
-    available_converters,
+    get_converter,
 )
+from cfdx.io.gap_analysis import Finding, GapAnalysis, GapAnalysisReport, Severity
+from cfdx.io.interfaces import ConversionResult, SolverAdapter, SourceInfo
+from cfdx.io.mapping_rules import MappingRules
+from cfdx.io.schema import CaseSetup
 
 __all__ = [
-    "SolverAdapter",
+    "CanonicalConversionResult",
+    "CaseSetup",
     "ConversionResult",
-    "SourceInfo",
+    "Finding",
     "GapAnalysis",
     "GapAnalysisReport",
-    "Severity",
-    "Finding",
-    "CaseSetup",
     "MappingRules",
-    "CanonicalConversionResult",
+    "Severity",
+    "SolverAdapter",
     "SolverConverter",
-    "get_converter",
+    "SourceInfo",
+    "available_converters",
     "convert",
     "detect_solver",
-    "available_converters",
+    "get_converter",
 ]

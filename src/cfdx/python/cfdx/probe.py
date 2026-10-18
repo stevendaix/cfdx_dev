@@ -11,14 +11,15 @@ It is a deliberately leaf module: only the standard library is imported, so it
 can be used by :mod:`cfdx.case` and :mod:`cfdx.application.commands` without
 introducing import cycles.
 """
+
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
-import math
 
 
 def nearest_probe(
@@ -36,7 +37,9 @@ def nearest_probe(
         raise ValueError("coordinate dimensions must match the probe")
     index = min(
         range(len(coordinates)),
-        key=lambda i: sum((coordinates[i][j] - point[j]) ** 2 for j in range(dimensions)),
+        key=lambda i: sum(
+            (coordinates[i][j] - point[j]) ** 2 for j in range(dimensions)
+        ),
     )
     return float(values[index])
 
@@ -61,7 +64,7 @@ class ProbeField(Enum):
         self.unit = unit
 
     @classmethod
-    def from_cli(cls, token: str) -> "ProbeField":
+    def from_cli(cls, token: str) -> ProbeField:
         token = (token or "").strip()
         for member in cls:
             if member.cli == token:
@@ -82,9 +85,7 @@ class Probe:
     field: ProbeField = ProbeField.PRESSURE
 
     def __post_init__(self) -> None:
-        if not self.name or any(
-            character in self.name for character in ",\r\n"
-        ):
+        if not self.name or any(character in self.name for character in ",\r\n"):
             raise ValueError(
                 "probe name must be non-empty and free of commas/newlines: "
                 f"{self.name!r}"
@@ -110,7 +111,7 @@ class Probe:
         }
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, Any]) -> "Probe":
+    def from_dict(cls, data: Mapping[str, Any]) -> Probe:
         """Rebuild a probe from its case-file representation."""
         return cls(
             name=data["name"],

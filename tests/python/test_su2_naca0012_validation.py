@@ -7,8 +7,8 @@ It deliberately does not treat the synthetic solution.csv fixture as
 validation evidence.
 """
 
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 from cfdx.io.adapters.su2 import Su2Adapter
 from cfdx.io.interfaces import ConversionResult, SourceInfo
@@ -33,7 +33,11 @@ def test_read_su2_naca0012_validation_case(tmp_path, request):
 
     ok = adapter.convert(case_dir, result)
 
-    assert ok, [f"{f.feature}: {f.message}" for f in result.gap_report.findings if f.severity.value.endswith("blocking")]
+    assert ok, [
+        f"{f.feature}: {f.message}"
+        for f in result.gap_report.findings
+        if f.severity.value.endswith("blocking")
+    ]
 
     # Mesh contract from the real SU2 NACA0012 validation mesh.
     assert result.mesh is not None

@@ -1,18 +1,19 @@
 """Unit tests for the SU2 adapter."""
-import pytest
-import numpy as np
+
 import os
 from pathlib import Path
 
+import numpy as np
+import pytest
 from cfdx.io.adapters.su2 import (
-    Su2Adapter,
     _SU2_ELEM_TYPES,
+    Su2Adapter,
     _canonical_convection_scheme,
     _to_meshio_type,
 )
 from cfdx.io.interfaces import ConversionResult, SourceInfo
 from cfdx.io.numerical_selection import validate_numerical_selection
-from cfdx.io.schema import BCType, CaseSetup, Severity
+from cfdx.io.schema import Severity
 
 
 class TestSu2Adapter:
@@ -64,7 +65,6 @@ class TestSu2Adapter:
         assert adapter.setup.initial_condition.velocity > 0
         assert adapter.setup.turbulence_model == "laminar"
         assert adapter.setup.numerics.linear_solver == "fgmres"
-
 
     def test_parse_incompressible_naca0012_config(self):
         """INC_RANS must not be classified as compressible RANS."""
@@ -147,14 +147,26 @@ class TestSu2Adapter:
         assert scalar_fields["Density"].shape == (10,)
         assert scalar_fields["Pressure"].shape == (10,)
         assert scalar_fields["Temperature"].shape == (10,)
-        np.testing.assert_allclose(scalar_fields["Density"], [1.225, 1.200, 1.180, 1.160, 1.140, 1.120, 1.100, 1.080, 1.060, 1.040])
-        np.testing.assert_allclose(scalar_fields["Pressure"], [101325, 100000, 99000, 98000, 97000, 96000, 95000, 94000, 93000, 92000])
+        np.testing.assert_allclose(
+            scalar_fields["Density"],
+            [1.225, 1.200, 1.180, 1.160, 1.140, 1.120, 1.100, 1.080, 1.060, 1.040],
+        )
+        np.testing.assert_allclose(
+            scalar_fields["Pressure"],
+            [101325, 100000, 99000, 98000, 97000, 96000, 95000, 94000, 93000, 92000],
+        )
 
         # Check vector fields
         assert "Velocity" in vec_fields
         assert vec_fields["Velocity"].shape == (10, 3)
-        np.testing.assert_allclose(vec_fields["Velocity"][:, 0], [50.0, 48.0, 46.0, 45.0, 44.0, 43.0, 42.0, 41.0, 40.0, 39.0])
-        np.testing.assert_allclose(vec_fields["Velocity"][:, 1], [0.0, 1.0, 2.0, 1.5, 1.0, 0.5, 0.0, -0.5, -1.0, -1.5])
+        np.testing.assert_allclose(
+            vec_fields["Velocity"][:, 0],
+            [50.0, 48.0, 46.0, 45.0, 44.0, 43.0, 42.0, 41.0, 40.0, 39.0],
+        )
+        np.testing.assert_allclose(
+            vec_fields["Velocity"][:, 1],
+            [0.0, 1.0, 2.0, 1.5, 1.0, 0.5, 0.0, -0.5, -1.0, -1.5],
+        )
         np.testing.assert_allclose(vec_fields["Velocity"][:, 2], [0.0] * 10)
 
     def test_import_results(self, su2_file, solution_file):
@@ -176,7 +188,9 @@ class TestSu2Adapter:
         assert result.gap_report.has_blocking()
         assert result.scalar_fields == []
         assert result.vec_fields == []
-        mismatch = [f for f in result.gap_report.findings if f.feature == "field_size_mismatch"]
+        mismatch = [
+            f for f in result.gap_report.findings if f.feature == "field_size_mismatch"
+        ]
         assert mismatch
 
     def test_import_results_missing_file(self, su2_file):
@@ -200,6 +214,7 @@ class TestSu2Adapter:
         """Test full convert including solution import."""
         # Copy solution.csv to expected location next to mesh file
         import shutil
+
         target = Path(su2_file).with_name(Path(su2_file).stem + "_solution.csv")
         shutil.copy(solution_file, target)
 
@@ -237,15 +252,27 @@ class TestSu2ConvectionMapping:
             ({"CONV_NUM_METHOD_FLOW": "NO_CONV"}, "central"),
             ({"CONV_NUM_METHOD_FLOW": "FDS", "MUSCL_FLOW": "YES"}, "tvd_vanalbada"),
             (
-                {"CONV_NUM_METHOD_FLOW": "FDS", "MUSCL_FLOW": "YES", "MUSCL_LIMITER": "MINMOD"},
+                {
+                    "CONV_NUM_METHOD_FLOW": "FDS",
+                    "MUSCL_FLOW": "YES",
+                    "MUSCL_LIMITER": "MINMOD",
+                },
                 "tvd_minmod",
             ),
             (
-                {"CONV_NUM_METHOD_FLOW": "FDS", "MUSCL_FLOW": "YES", "MUSCL_LIMITER": "VAN_LEER"},
+                {
+                    "CONV_NUM_METHOD_FLOW": "FDS",
+                    "MUSCL_FLOW": "YES",
+                    "MUSCL_LIMITER": "VAN_LEER",
+                },
                 "tvd_vanleer",
             ),
             (
-                {"CONV_NUM_METHOD_FLOW": "FDS", "MUSCL_FLOW": "YES", "MUSCL_LIMITER_FLOW": "SUPERBEE"},
+                {
+                    "CONV_NUM_METHOD_FLOW": "FDS",
+                    "MUSCL_FLOW": "YES",
+                    "MUSCL_LIMITER_FLOW": "SUPERBEE",
+                },
                 "tvd_superbee",
             ),
             (
@@ -268,11 +295,19 @@ class TestSu2ConvectionMapping:
             ({"CONV_NUM_METHOD_FLOW": "AUSM"}, "sensor-based AUSM limiting"),
             ({"CONV_NUM_METHOD_FLOW": "SLAU2"}, "sensor-based SLAU2 limiting"),
             (
-                {"CONV_NUM_METHOD_FLOW": "FDS", "MUSCL_FLOW": "YES", "SLOPE_LIMITER_FLOW": "NONE"},
+                {
+                    "CONV_NUM_METHOD_FLOW": "FDS",
+                    "MUSCL_FLOW": "YES",
+                    "SLOPE_LIMITER_FLOW": "NONE",
+                },
                 "unbounded MUSCL, while every CFDX second-order key claims boundedness",
             ),
             (
-                {"CONV_NUM_METHOD_FLOW": "ROE", "MUSCL_FLOW": "YES", "MUSCL_LIMITER": "BARTH_JESPERSEN"},
+                {
+                    "CONV_NUM_METHOD_FLOW": "ROE",
+                    "MUSCL_FLOW": "YES",
+                    "MUSCL_LIMITER": "BARTH_JESPERSEN",
+                },
                 "limiter absent from the CFDX registry",
             ),
             ({}, "no convection setting at all"),

@@ -1,7 +1,8 @@
 """Optional Qt controls for a ResultSeries."""
+
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer, Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -55,7 +56,9 @@ class ResultsSeriesPanel(QWidget):
             self.field.setCurrentIndex(0)
         self._update_status()
 
-    def set_checkpoint_fields(self, fields: list[str], iteration: int, time: float, source_name: str) -> None:
+    def set_checkpoint_fields(
+        self, fields: list[str], iteration: int, time: float, source_name: str
+    ) -> None:
         """Expose fields from a standalone CFDX DAT checkpoint."""
         self.series = None
         self.field.blockSignals(True)

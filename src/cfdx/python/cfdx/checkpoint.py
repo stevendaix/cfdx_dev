@@ -1,4 +1,5 @@
 """Versioned, atomic persistence for orchestration checkpoint metadata."""
+
 from __future__ import annotations
 
 import json
@@ -78,14 +79,16 @@ def _checkpoint_from_data(data: object) -> Checkpoint:
         raise ValueError("invalid CFDX checkpoint fields")
     schema_version = _validate_integer(data["schema_version"], "schema_version")
     if schema_version != CHECKPOINT_SCHEMA_VERSION:
-        raise ValueError(
-            f"unsupported CFDX checkpoint schema version {schema_version}"
-        )
+        raise ValueError(f"unsupported CFDX checkpoint schema version {schema_version}")
     return Checkpoint(
         case_revision=_validate_integer(data["case_revision"], "case_revision"),
         mesh_revision=_validate_integer(data["mesh_revision"], "mesh_revision"),
-        physics_revision=_validate_integer(data["physics_revision"], "physics_revision"),
-        numerics_revision=_validate_integer(data["numerics_revision"], "numerics_revision"),
+        physics_revision=_validate_integer(
+            data["physics_revision"], "physics_revision"
+        ),
+        numerics_revision=_validate_integer(
+            data["numerics_revision"], "numerics_revision"
+        ),
         iteration=_validate_integer(data["iteration"], "iteration"),
         time=_validate_time(data["time"]),
     )

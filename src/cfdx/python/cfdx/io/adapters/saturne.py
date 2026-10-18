@@ -46,27 +46,24 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional, Union
 from xml.etree import ElementTree as ET
 
 import numpy as np
 
+from cfdx.io.gap_analysis import GapAnalysis
 from cfdx.io.interfaces import (
-    SolverAdapter,
     ConversionResult,
+    SolverAdapter,
     SourceInfo,
 )
+from cfdx.io.mapping_rules import MappingRules
 from cfdx.io.schema import (
     BCType,
     BCValueType,
+    BoundarySpec,
     CaseSetup,
     MaterialSpec,
-    BoundarySpec,
-    MeshMetadata,
 )
-from cfdx.io.mapping_rules import MappingRules
-from cfdx.io.gap_analysis import GapAnalysis
-
 
 # XML element name → (section, field) for Code_Saturne
 _SATURNE_XML_MAP: dict[str, tuple[str, str]] = {
@@ -115,9 +112,11 @@ class SaturneAdapter(SolverAdapter):
     solver_name = "Code_Saturne"
     format_name = "saturne_xml_py"
 
-    def __init__(self, rules: Optional[MappingRules] = None) -> None:
+    def __init__(self, rules: MappingRules | None = None) -> None:
         self.rules = rules or MappingRules.load_default()
-        self.setup = CaseSetup(source=SourceInfo(solver="Code_Saturne", format="saturne_xml_py"))
+        self.setup = CaseSetup(
+            source=SourceInfo(solver="Code_Saturne", format="saturne_xml_py")
+        )
         self._entries: list[dict] = []
         self._neutral_files: list[str] = []
         # Status of the Python setup extraction. "status" is always one of:
@@ -127,7 +126,11 @@ class SaturneAdapter(SolverAdapter):
         #                      resolve (see _PYTHON_UNRESOLVABLE_PATTERNS)
         #   "literal_only"   — every case.set() call seen used two string
         #                      literals; still NOT a validated mapping
-        self._python_extraction: dict = {"status": "not_attempted", "entries": 0, "unresolved": {}}
+        self._python_extraction: dict = {
+            "status": "not_attempted",
+            "entries": 0,
+            "unresolved": {},
+        }
 
     def detect_source(self, case_path: str, info: SourceInfo) -> bool:
         p = Path(str(case_path))
@@ -146,14 +149,21 @@ class SaturneAdapter(SolverAdapter):
                 head = cand.read_text(errors="replace")[:512]
             except OSError:
                 continue
-            if cand.suffix == ".xml" and ("<Case" in head or "<case" in head.lower() or "saturne" in head.lower()):
-                info.solver = "Code_Saturne"
-                info.format = "saturne_xml_py"
-                info.case_path = str(cand.parent)
-                info.case_name = cand.stem
-                info.version = "unknown"
-                return True
-            elif cand.suffix == ".py" and ("case.set" in head or "cs_" in head or "Code_Saturne" in head or "saturne" in head.lower()):
+            if (
+                cand.suffix == ".xml"
+                and (
+                    "<Case" in head
+                    or "<case" in head.lower()
+                    or "saturne" in head.lower()
+                )
+                or cand.suffix == ".py"
+                and (
+                    "case.set" in head
+                    or "cs_" in head
+                    or "Code_Saturne" in head
+                    or "saturne" in head.lower()
+                )
+            ):
                 info.solver = "Code_Saturne"
                 info.format = "saturne_xml_py"
                 info.case_path = str(cand.parent)
@@ -162,10 +172,10 @@ class SaturneAdapter(SolverAdapter):
                 return True
         return False
 
-    def convert(self, case_path: Union[str, Path], result: ConversionResult) -> bool:
+    def convert(self, case_path: str | Path, result: ConversionResult) -> bool:
         base = Path(str(case_path))
-        xml_file: Optional[Path] = None
-        py_file: Optional[Path] = None
+        xml_file: Path | None = None
+        py_file: Path | None = None
 
         if base.is_file():
             if base.suffix == ".xml":
@@ -191,7 +201,8 @@ class SaturneAdapter(SolverAdapter):
             self.parse_xml_setup(str(xml_file))
         else:
             result.gap_report.unsupported_nonblocking(
-                "config", "saturne_xml",
+                "config",
+                "saturne_xml",
                 f"No Code_Saturne XML setup file found at {xml_file}",
                 "Code_Saturne XML setup is optional; physics will be approximated",
             )
@@ -201,7 +212,8 @@ class SaturneAdapter(SolverAdapter):
             self.parse_python_setup(str(py_file))
         else:
             result.gap_report.unsupported_nonblocking(
-                "config", "saturne_py",
+                "config",
+                "saturne_py",
                 f"No Code_Saturne Python setup file found at {py_file}",
                 "Code_Saturne Python setup is optional; some BCs may be approximated",
             )
@@ -216,14 +228,16 @@ class SaturneAdapter(SolverAdapter):
         # not parsing — no mesh geometry is read during convert().
         if self._neutral_files:
             result.gap_report.approximated(
-                "mesh", "neutral_export",
+                "mesh",
+                "neutral_export",
                 f"Detected {len(self._neutral_files)} neutral mesh export(s) "
                 f"({', '.join(self._neutral_files)}); file presence only, mesh not read",
                 "Call import_results() on a readable export (.vtk/.vtu) to load mesh and field data",
             )
         else:
             result.gap_report.unsupported_blocking(
-                "mesh", "neutral_mesh",
+                "mesh",
+                "neutral_mesh",
                 "No neutral mesh export (MED/CGNS/VTK/EnSight) found for Code_Saturne mesh import",
                 "Export mesh via: Computation → Export → Select format (MED, CGNS, VTK, EnSight)",
             )
@@ -251,14 +265,25 @@ class SaturneAdapter(SolverAdapter):
                 if attr_lower in _SATURNE_XML_MAP:
                     sec, field = _SATURNE_XML_MAP[attr_lower]
                     self._entries.append(
-                        {"key": attr_name, "value": attr_val,
-                         "section": sec, "attributes": dict(attrib)}
+                        {
+                            "key": attr_name,
+                            "value": attr_val,
+                            "section": sec,
+                            "attributes": dict(attrib),
+                        }
                     )
 
             # Check tag-based entries (text content)
             if tag in _SATURNE_XML_MAP:
                 sec, field = _SATURNE_XML_MAP[tag]
-                self._entries.append({"key": tag, "value": text, "section": sec, "attributes": dict(attrib)})
+                self._entries.append(
+                    {
+                        "key": tag,
+                        "value": text,
+                        "section": sec,
+                        "attributes": dict(attrib),
+                    }
+                )
 
             # Handle boundary conditions (tag can be "boundary" or "boundary_condition")
             if tag in ("boundary", "boundary_condition"):
@@ -267,7 +292,9 @@ class SaturneAdapter(SolverAdapter):
                     source_zone_name=attrib.get("name", attrib.get("marker", "")),
                     source_type_name=attrib.get("type", attrib.get("bc_type", tag)),
                 )
-                bc_type_str = (attrib.get("type", "") or attrib.get("bc_type", "") or tag).lower()
+                bc_type_str = (
+                    attrib.get("type", "") or attrib.get("bc_type", "") or tag
+                ).lower()
                 mapped = self.rules.map_boundary_type(bc_type_str)
                 bc.type = mapped
                 bc.value_type = self.rules.map_bc_value_type(bc_type_str)
@@ -293,7 +320,9 @@ class SaturneAdapter(SolverAdapter):
                 mat = MaterialSpec(
                     name=attrib.get("name", "fluid"),
                     density=float(attrib.get("density", "1.225") or "1.225"),
-                    dynamic_viscosity=float(attrib.get("viscosity", "1.789e-5") or "1.789e-5"),
+                    dynamic_viscosity=float(
+                        attrib.get("viscosity", "1.789e-5") or "1.789e-5"
+                    ),
                 )
                 self.setup.materials.append(mat)
 
@@ -315,12 +344,20 @@ class SaturneAdapter(SolverAdapter):
                         self.setup.physics_model = "incompressible_laminar"
                 elif entry["key"].lower() == "turbulence_model":
                     mapped = self.rules.map_turbulence(entry["value"])
-                    self.setup.turbulence_model = mapped if mapped else entry["value"].lower()
+                    self.setup.turbulence_model = (
+                        mapped if mapped else entry["value"].lower()
+                    )
                 elif entry["key"].lower() == "energy_model":
-                    self.setup.energy_model = "buoyant" if val_lower in ("yes", "true", "on") else "isothermal"
+                    self.setup.energy_model = (
+                        "buoyant"
+                        if val_lower in ("yes", "true", "on")
+                        else "isothermal"
+                    )
                 elif entry["key"].lower() == "transient":
                     self.setup.transient = val_lower in ("yes", "true", "on")
-                    self.setup.solver_mode = "transient" if self.setup.transient else "steady"
+                    self.setup.solver_mode = (
+                        "transient" if self.setup.transient else "steady"
+                    )
 
         self.setup.source.case_path = xml_file
         self.setup.source.case_name = Path(xml_file).stem
@@ -343,13 +380,15 @@ class SaturneAdapter(SolverAdapter):
         matched_spans = []
         for match in set_pattern.finditer(text):
             key, value = match.group(1), match.group(2)
-            self._entries.append({"key": key, "value": value, "section": "python", "attributes": {}})
+            self._entries.append(
+                {"key": key, "value": value, "section": "python", "attributes": {}}
+            )
             matched_spans.append(match.span())
 
         # Count case.set() calls whose arguments this regex could NOT capture
         # (variables, expressions, function calls, dicts, ...). These are
         # dropped, not approximated.
-        all_set_calls = list(re.finditer(r'\bcase\.set\s*\(', text))
+        all_set_calls = list(re.finditer(r"\bcase\.set\s*\(", text))
         captured = sum(1 for s in matched_spans)
         unresolved_calls = max(0, len(all_set_calls) - captured)
 
@@ -373,7 +412,10 @@ class SaturneAdapter(SolverAdapter):
             "unresolved_case_set_calls": unresolved_calls,
             "file": str(py_file),
         }
-        self.setup.source_metadata = {**self.setup.source_metadata, "python_extraction": self._python_extraction}
+        self.setup.source_metadata = {
+            **self.setup.source_metadata,
+            "python_extraction": self._python_extraction,
+        }
 
         # Apply physics from Python keys
         for entry in self._entries:
@@ -382,12 +424,20 @@ class SaturneAdapter(SolverAdapter):
                 val_lower = entry["value"].lower()
                 if "turbulence" in key_lower or "keps" in key_lower:
                     mapped = self.rules.map_turbulence(entry["value"])
-                    self.setup.turbulence_model = mapped if mapped else entry["value"].lower()
+                    self.setup.turbulence_model = (
+                        mapped if mapped else entry["value"].lower()
+                    )
                 elif "energy" in key_lower or "heat" in key_lower:
-                    self.setup.energy_model = "buoyant" if val_lower in ("yes", "true", "on", "1") else "isothermal"
+                    self.setup.energy_model = (
+                        "buoyant"
+                        if val_lower in ("yes", "true", "on", "1")
+                        else "isothermal"
+                    )
                 elif "transient" in key_lower:
                     self.setup.transient = val_lower in ("yes", "true", "on", "1")
-                    self.setup.solver_mode = "transient" if self.setup.transient else "steady"
+                    self.setup.solver_mode = (
+                        "transient" if self.setup.transient else "steady"
+                    )
 
         self.setup.source.case_path = py_file
         self.setup.source.case_name = Path(py_file).stem
@@ -406,7 +456,8 @@ class SaturneAdapter(SolverAdapter):
 
         if suffix not in _SATURNE_RESULT_EXTS:
             result.gap_report.unsupported_nonblocking(
-                "results", "saturne_results",
+                "results",
+                "saturne_results",
                 f"Code_Saturne results file format '{suffix}' not supported: {results_path}",
                 f"Use a neutral export format: {', '.join(sorted(_SATURNE_RESULT_EXTS))}",
             )
@@ -414,7 +465,8 @@ class SaturneAdapter(SolverAdapter):
 
         if not rp.exists():
             result.gap_report.unsupported_nonblocking(
-                "results", "saturne_results",
+                "results",
+                "saturne_results",
                 f"Code_Saturne results file does not exist: {results_path}",
                 "Verify the export path and re-export from Code_Saturne",
             )
@@ -422,7 +474,8 @@ class SaturneAdapter(SolverAdapter):
 
         if suffix not in _SATURNE_READABLE_RESULT_EXTS:
             result.gap_report.unsupported_nonblocking(
-                "results", f"neutral_{suffix[1:]}",
+                "results",
+                f"neutral_{suffix[1:]}",
                 f"Detected Code_Saturne results in neutral format ({suffix}) but no reader "
                 f"is wired up: presence was recorded, no field data was read",
                 f"Re-export as a readable format ({', '.join(sorted(_SATURNE_READABLE_RESULT_EXTS))}), "
@@ -434,7 +487,8 @@ class SaturneAdapter(SolverAdapter):
             import meshio
         except ImportError:
             result.gap_report.unsupported_nonblocking(
-                "results", f"neutral_{suffix[1:]}",
+                "results",
+                f"neutral_{suffix[1:]}",
                 f"Code_Saturne results in {suffix} require the optional 'meshio' dependency, "
                 "which is not installed; no field data was read",
                 "Install meshio (pip install meshio) and re-run the import",
@@ -446,9 +500,14 @@ class SaturneAdapter(SolverAdapter):
         except (Exception, SystemExit) as e:
             # meshio's internal readers call sys.exit(1) on an unreadable file,
             # so SystemExit must be caught here or it kills the whole CLI.
-            reason = "meshio could not parse the file" if isinstance(e, SystemExit) else str(e)
+            reason = (
+                "meshio could not parse the file"
+                if isinstance(e, SystemExit)
+                else str(e)
+            )
             result.gap_report.unsupported_nonblocking(
-                "results", f"neutral_{suffix[1:]}",
+                "results",
+                f"neutral_{suffix[1:]}",
                 f"Failed to read Code_Saturne results from {results_path}: {reason}",
                 "Re-export the results from Code_Saturne, or use another conversion tool",
             )
@@ -465,7 +524,8 @@ class SaturneAdapter(SolverAdapter):
 
         if not scalars and not vecs:
             result.gap_report.unsupported_nonblocking(
-                "results", f"neutral_{suffix[1:]}",
+                "results",
+                f"neutral_{suffix[1:]}",
                 f"Read {results_path} but found no point data fields; no field data imported",
                 "Ensure the export includes solution fields (velocity, pressure, ...)",
             )
@@ -485,7 +545,8 @@ class SaturneAdapter(SolverAdapter):
             }
 
         result.gap_report.supported(
-            "results", f"neutral_{suffix[1:]}",
+            "results",
+            f"neutral_{suffix[1:]}",
             f"Read {len(scalars)} scalar and {len(vecs)} vector field(s) from {results_path}",
         )
         return True
@@ -504,12 +565,14 @@ class SaturneAdapter(SolverAdapter):
 
         if xml_entries:
             gap.supported(
-                "config", "saturne_xml",
+                "config",
+                "saturne_xml",
                 f"Code_Saturne XML setup parsed ({len(xml_entries)} recognised element(s)/attribute(s))",
             )
         else:
             gap.unsupported_nonblocking(
-                "config", "saturne_xml",
+                "config",
+                "saturne_xml",
                 "No Code_Saturne XML setup entries were recognised",
                 "Provide the XML case file, or map physics/BCs manually in the CFDX setup",
             )
@@ -517,29 +580,42 @@ class SaturneAdapter(SolverAdapter):
         self._report_python_extraction(gap)
 
         for entry in self._entries:
-            gap.supported("config", entry["key"], f"Parsed '{entry['key']}' = '{entry['value']}' from setup")
+            gap.supported(
+                "config",
+                entry["key"],
+                f"Parsed '{entry['key']}' = '{entry['value']}' from setup",
+            )
 
         for bc in self.setup.boundary_conditions:
-            gap.supported("boundary_condition", bc.patch_name, f"Mapped Code_Saturne BC '{bc.source_zone_name}' to {bc.type.value}")
+            gap.supported(
+                "boundary_condition",
+                bc.patch_name,
+                f"Mapped Code_Saturne BC '{bc.source_zone_name}' to {bc.type.value}",
+            )
 
         for mat in self.setup.materials:
-            gap.supported("material", mat.name, f"Parsed material '{mat.name}' (ρ={mat.density})")
+            gap.supported(
+                "material", mat.name, f"Parsed material '{mat.name}' (ρ={mat.density})"
+            )
 
         if self._neutral_files:
             for nf in self._neutral_files:
                 gap.approximated(
-                    "mesh", "neutral_export",
+                    "mesh",
+                    "neutral_export",
                     f"Detected neutral export: {nf} (presence only, contents not read)",
                 )
             gap.unsupported_nonblocking(
-                "results", "neutral_field_data",
+                "results",
+                "neutral_field_data",
                 "Neutral exports were detected but no field data was read; "
                 f"readable formats are {', '.join(sorted(_SATURNE_READABLE_RESULT_EXTS))}",
                 "Call import_results() with a .vtk/.vtu export to populate field data",
             )
         else:
             gap.unsupported_blocking(
-                "mesh", "neutral_mesh",
+                "mesh",
+                "neutral_mesh",
                 "No neutral mesh export (MED/CGNS/VTK/EnSight) found",
                 "Export mesh via: Computation → Export → Select format (MED, CGNS, VTK, EnSight)",
             )
@@ -551,7 +627,8 @@ class SaturneAdapter(SolverAdapter):
 
         if status == "not_attempted":
             gap.unsupported_nonblocking(
-                "config", "saturne_py",
+                "config",
+                "saturne_py",
                 "No Code_Saturne Python case script was found or parsed",
                 "Provide the case .py file, or set up boundaries/physics manually",
             )
@@ -565,42 +642,50 @@ class SaturneAdapter(SolverAdapter):
 
         if status == "literal_only":
             gap.approximated(
-                "config", "saturne_py",
-                detail + " No unresolvable constructs were detected, but the mapping remains unvalidated.",
+                "config",
+                "saturne_py",
+                detail
+                + " No unresolvable constructs were detected, but the mapping remains unvalidated.",
             )
             return
 
         reasons = ", ".join(f"{k}×{v}" for k, v in sorted(ex["unresolved"].items()))
         missed = ex.get("unresolved_case_set_calls", 0)
         gap.approximated(
-            "config", "saturne_py",
+            "config",
+            "saturne_py",
             detail + f" Unresolvable constructs found ({reasons}); "
             f"{missed} case.set() call(s) with non-literal arguments were skipped entirely.",
         )
         gap.unsupported_nonblocking(
-            "features", "python_scripting",
+            "features",
+            "python_scripting",
             "Code_Saturne Python scripting is only syntactically scanned. Settings expressed as "
             "intermediate variables, expressions, function calls, dictionaries, loops, imports or "
             "computed values are not extracted and cannot be distinguished from unset settings.",
             "Review the case script manually and confirm every boundary and physics option in the CFDX setup",
         )
         gap.unsupported_nonblocking(
-            "features", "user_subscripts",
+            "features",
+            "user_subscripts",
             "User subroutines (.usr files) not supported",
             "Verify user subroutines are translated to CFDX equivalent models",
         )
         gap.unsupported_nonblocking(
-            "features", "multiphase_advanced",
+            "features",
+            "multiphase_advanced",
             "Advanced multiphase models (lift, turbulent dispersion, etc.) may not fully translate",
             "Review multiphase model settings in CFDX setup",
         )
         gap.unsupported_nonblocking(
-            "features", "radiation",
+            "features",
+            "radiation",
             "Code_Saturne radiation models not mapped",
             "Configure radiation manually in CFDX if required",
         )
         gap.unsupported_nonblocking(
-            "features", "anisotropy",
+            "features",
+            "anisotropy",
             "Anisotropic conductivity and permeability tensors not supported",
             "Review material anisotropy in CFDX setup",
         )

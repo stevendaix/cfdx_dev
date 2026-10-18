@@ -1,10 +1,9 @@
 import pytest
-
 from cfdx.probe import (
-    nearest_probe,
     Probe,
     ProbeCatalog,
     ProbeField,
+    nearest_probe,
 )
 
 
@@ -45,10 +44,12 @@ def test_probe_rejects_name_with_comma() -> None:
 
 
 def test_probe_catalog_specs_and_csv_path(tmp_path) -> None:
-    catalog = ProbeCatalog([
-        Probe("p_wall", 1.0, 2.0, 3.0, ProbeField.PRESSURE),
-        Probe("u_inlet", 0.0, 0.0, 0.0, ProbeField.U_X),
-    ])
+    catalog = ProbeCatalog(
+        [
+            Probe("p_wall", 1.0, 2.0, 3.0, ProbeField.PRESSURE),
+            Probe("u_inlet", 0.0, 0.0, 0.0, ProbeField.U_X),
+        ]
+    )
     assert catalog.specs() == ["p_wall:1.0,2.0,3.0:p", "u_inlet:0.0,0.0,0.0:u_x"]
     case_file = tmp_path / "case.cfdx.h5"
     assert catalog.csv_path(case_file) == tmp_path / "case.cfdx.probes.csv"

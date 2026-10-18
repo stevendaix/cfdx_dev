@@ -1,4 +1,5 @@
 """Headless case validation shared by CLI, TUI and GUI."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,7 +10,7 @@ from .boundary_setup import validate_boundary_definition
 from .case import Case
 from .initialization import InitializationMode, InitializationSpec
 from .materials import MaterialSpec
-from .physics_setup import PHYSICS_SPECS, physics_spec
+from .physics_setup import PHYSICS_SPECS
 from .setup_model import SetupDiagnostic
 
 
@@ -40,7 +41,8 @@ class ValidationReport:
 
 def _enabled_models(case: Case) -> set[str]:
     return {
-        key for key, value in case.physics.items()
+        key
+        for key, value in case.physics.items()
         if isinstance(value, dict) and bool(value.get("enabled", True))
     }
 
@@ -49,11 +51,20 @@ def validate_case(case: Case, mesh: MeshInfo | None = None) -> ValidationReport:
     diagnostics: list[SetupDiagnostic] = []
 
     if not case.name.strip():
-        diagnostics.append(SetupDiagnostic("error", "CASE_NAME", "case name is empty", "name"))
+        diagnostics.append(
+            SetupDiagnostic("error", "CASE_NAME", "case name is empty", "name")
+        )
 
     ranks = case.execution.mpi_ranks
     if not isinstance(ranks, int) or ranks < 1:
-        diagnostics.append(SetupDiagnostic("error", "MPI_RANKS", "mpi_ranks must be a positive integer", "execution.mpi_ranks"))
+        diagnostics.append(
+            SetupDiagnostic(
+                "error",
+                "MPI_RANKS",
+                "mpi_ranks must be a positive integer",
+                "execution.mpi_ranks",
+            )
+        )
 
     cfl = case.numerics.get("cfl")
     if cfl is not None and (
@@ -62,32 +73,68 @@ def validate_case(case: Case, mesh: MeshInfo | None = None) -> ValidationReport:
         or not isfinite(float(cfl))
         or cfl <= 0
     ):
-        diagnostics.append(SetupDiagnostic("error", "CFL", "CFL must be a finite positive number", "numerics.cfl"))
+        diagnostics.append(
+            SetupDiagnostic(
+                "error", "CFL", "CFL must be a finite positive number", "numerics.cfl"
+            )
+        )
 
     if not case.execution.solver:
-        diagnostics.append(SetupDiagnostic("warning", "SOLVER_UNSET", "no solver executable is configured", "execution.solver"))
+        diagnostics.append(
+            SetupDiagnostic(
+                "warning",
+                "SOLVER_UNSET",
+                "no solver executable is configured",
+                "execution.solver",
+            )
+        )
 
     if mesh is not None and mesh.n_cells <= 0:
-        diagnostics.append(SetupDiagnostic("error", "EMPTY_MESH", "mesh contains no cells", "mesh"))
+        diagnostics.append(
+            SetupDiagnostic("error", "EMPTY_MESH", "mesh contains no cells", "mesh")
+        )
 
     enabled = _enabled_models(case)
     if not enabled:
-        diagnostics.append(SetupDiagnostic("error", "PHYSICS_UNSET", "no enabled physics model is configured", "physics"))
+        diagnostics.append(
+            SetupDiagnostic(
+                "error",
+                "PHYSICS_UNSET",
+                "no enabled physics model is configured",
+                "physics",
+            )
+        )
 
     known_models = {spec.key: spec for spec in PHYSICS_SPECS}
     for model, value in case.physics.items():
         if model == "initialization":
             continue
         if model not in known_models:
-            diagnostics.append(SetupDiagnostic("error", "PHYSICS_UNSUPPORTED", f"unsupported physics model {model!r}", f"physics.{model}"))
+            diagnostics.append(
+                SetupDiagnostic(
+                    "error",
+                    "PHYSICS_UNSUPPORTED",
+                    f"unsupported physics model {model!r}",
+                    f"physics.{model}",
+                )
+            )
             continue
         if not isinstance(value, dict):
-            diagnostics.append(SetupDiagnostic("error", "PHYSICS_SCHEMA", "physics definition must be a mapping", f"physics.{model}"))
+            diagnostics.append(
+                SetupDiagnostic(
+                    "error",
+                    "PHYSICS_SCHEMA",
+                    "physics definition must be a mapping",
+                    f"physics.{model}",
+                )
+            )
             continue
         if not bool(value.get("enabled", True)):
             continue
         spec = known_models[model]
-        missing = [dependency for dependency in spec.requires if dependency not in enabled]
+        missing = [
+            dependency for dependency in spec.requires if dependency not in enabled
+        ]
         for dependency in missing:
             diagnostics.append(
                 SetupDiagnostic(
@@ -104,18 +151,35 @@ def validate_case(case: Case, mesh: MeshInfo | None = None) -> ValidationReport:
             field = supported_fields.get(name)
             if field is None:
                 diagnostics.append(
-                    SetupDiagnostic("error", "PHYSICS_PARAMETER", f"unsupported parameter {name!r} for {model}", f"physics.{model}.{name}")
+                    SetupDiagnostic(
+                        "error",
+                        "PHYSICS_PARAMETER",
+                        f"unsupported parameter {name!r} for {model}",
+                        f"physics.{model}.{name}",
+                    )
                 )
                 continue
             try:
                 from .setup_model import Parameter
+
                 Parameter(name, parameter, field.kind, field.unit).validate()
             except (TypeError, ValueError) as exc:
-                diagnostics.append(SetupDiagnostic("error", "PHYSICS_VALUE", str(exc), f"physics.{model}.{name}"))
+                diagnostics.append(
+                    SetupDiagnostic(
+                        "error", "PHYSICS_VALUE", str(exc), f"physics.{model}.{name}"
+                    )
+                )
 
     for name, raw_material in case.materials.items():
         if not isinstance(raw_material, dict):
-            diagnostics.append(SetupDiagnostic("error", "MATERIAL_SCHEMA", "material definition must be a mapping", f"materials.{name}"))
+            diagnostics.append(
+                SetupDiagnostic(
+                    "error",
+                    "MATERIAL_SCHEMA",
+                    "material definition must be a mapping",
+                    f"materials.{name}",
+                )
+            )
             continue
         try:
             MaterialSpec(
@@ -126,15 +190,33 @@ def validate_case(case: Case, mesh: MeshInfo | None = None) -> ValidationReport:
                 float(raw_material.get("conductivity", 0.0)),
             ).validate()
         except (TypeError, ValueError) as exc:
-            diagnostics.append(SetupDiagnostic("error", "MATERIAL_VALUE", str(exc), f"materials.{name}"))
+            diagnostics.append(
+                SetupDiagnostic(
+                    "error", "MATERIAL_VALUE", str(exc), f"materials.{name}"
+                )
+            )
 
     if enabled & {"incompressible", "energy", "turbulence"} and not case.materials:
-        diagnostics.append(SetupDiagnostic("error", "MATERIAL_UNSET", "enabled physics requires at least one material", "materials"))
+        diagnostics.append(
+            SetupDiagnostic(
+                "error",
+                "MATERIAL_UNSET",
+                "enabled physics requires at least one material",
+                "materials",
+            )
+        )
 
     initialization = case.physics.get("initialization")
     if initialization is not None:
         if not isinstance(initialization, dict):
-            diagnostics.append(SetupDiagnostic("error", "INITIALIZATION_SCHEMA", "initialization definition must be a mapping", "physics.initialization"))
+            diagnostics.append(
+                SetupDiagnostic(
+                    "error",
+                    "INITIALIZATION_SCHEMA",
+                    "initialization definition must be a mapping",
+                    "physics.initialization",
+                )
+            )
         else:
             try:
                 InitializationSpec(
@@ -143,30 +225,60 @@ def validate_case(case: Case, mesh: MeshInfo | None = None) -> ValidationReport:
                     initialization.get("value"),
                 ).validate()
             except (KeyError, TypeError, ValueError) as exc:
-                diagnostics.append(SetupDiagnostic("error", "INITIALIZATION", str(exc), "physics.initialization"))
+                diagnostics.append(
+                    SetupDiagnostic(
+                        "error", "INITIALIZATION", str(exc), "physics.initialization"
+                    )
+                )
 
     allowed = {"inlet", "outlet", "wall", "symmetry", "periodic", "interface", "empty"}
     for name, boundary in case.boundaries.items():
         if not name.strip():
-            diagnostics.append(SetupDiagnostic("error", "BOUNDARY_NAME", "boundary name is empty", "boundaries"))
+            diagnostics.append(
+                SetupDiagnostic(
+                    "error", "BOUNDARY_NAME", "boundary name is empty", "boundaries"
+                )
+            )
         if not isinstance(boundary, dict):
-            diagnostics.append(SetupDiagnostic("error", "BOUNDARY_TYPE", "boundary definition must be a mapping", f"boundaries.{name}"))
+            diagnostics.append(
+                SetupDiagnostic(
+                    "error",
+                    "BOUNDARY_TYPE",
+                    "boundary definition must be a mapping",
+                    f"boundaries.{name}",
+                )
+            )
             continue
         boundary_type = boundary.get("type")
         if boundary_type not in allowed:
-            diagnostics.append(SetupDiagnostic("error", "BOUNDARY_KIND", f"unsupported boundary type {boundary_type!r}", f"boundaries.{name}.type"))
+            diagnostics.append(
+                SetupDiagnostic(
+                    "error",
+                    "BOUNDARY_KIND",
+                    f"unsupported boundary type {boundary_type!r}",
+                    f"boundaries.{name}.type",
+                )
+            )
 
     for name, boundary in case.boundaries.items():
         try:
             validate_boundary_definition(
                 boundary,
-                known_fields=tuple(boundary.get("fields", ())) if isinstance(boundary, dict) else (),
+                known_fields=tuple(boundary.get("fields", ()))
+                if isinstance(boundary, dict)
+                else (),
             )
         except (KeyError, ValueError) as exc:
-            diagnostics.append(SetupDiagnostic("error", "BOUNDARY_SCHEMA", str(exc), f"boundaries.{name}"))
+            diagnostics.append(
+                SetupDiagnostic(
+                    "error", "BOUNDARY_SCHEMA", str(exc), f"boundaries.{name}"
+                )
+            )
 
     if mesh is not None:
-        mesh_patches = {patch.name if hasattr(patch, "name") else patch for patch in mesh.patches}
+        mesh_patches = {
+            patch.name if hasattr(patch, "name") else patch for patch in mesh.patches
+        }
         for name in case.boundaries:
             if name not in mesh_patches:
                 diagnostics.append(

@@ -1,4 +1,5 @@
 """Explicit application commands used by GUI, TUI, and CLI frontends."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

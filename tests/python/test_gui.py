@@ -3,9 +3,9 @@ import sys
 from pathlib import Path
 
 import pytest
+from cfdx.gui import CFDXMainWindow
 
 from cfdx import CFDXSession, SimulationState
-from cfdx.gui import CFDXMainWindow
 
 
 def test_gui_module_is_importable() -> None:
@@ -19,10 +19,13 @@ def test_gui_without_qt_has_clear_error() -> None:
         CFDXMainWindow(CFDXSession())
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
 def test_gui_controls_and_parameters(tmp_path: Path) -> None:
-    from PySide6.QtCore import Qt
     from cfdx.gui import create_application
+    from PySide6.QtCore import Qt
+
     app = create_application(["cfdx-test"])
     session = CFDXSession()
     window = CFDXMainWindow(session)
@@ -50,6 +53,7 @@ def test_gui_controls_and_parameters(tmp_path: Path) -> None:
     window.setup_panel.boundary_value.setValue(2.0)
     window.setup_panel.boundary_button.click()
     assert session.case.boundaries["inlet"]["vendor_extension"] == {"keep": True}
+
     class FakeRunner:
         running = False
 
@@ -89,10 +93,14 @@ def test_gui_controls_and_parameters(tmp_path: Path) -> None:
     app.quit()
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
-def test_gui_file_actions_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from PySide6.QtWidgets import QFileDialog
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_gui_file_actions_roundtrip(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from cfdx.gui import create_application
+    from PySide6.QtWidgets import QFileDialog
 
     app = create_application(["cfdx-file-test"])
     session = CFDXSession()
@@ -115,7 +123,9 @@ def test_gui_file_actions_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     monkeypatch.setattr(
         QFileDialog,
         "getOpenFileName",
-        staticmethod(lambda *args, **kwargs: (str(dat_source), "Solver restart (*.dat)")),
+        staticmethod(
+            lambda *args, **kwargs: (str(dat_source), "Solver restart (*.dat)")
+        ),
     )
     assert window._save_case_with_dat()
     assert (tmp_path / "channel.dat.h5").is_file()
@@ -124,7 +134,9 @@ def test_gui_file_actions_roundtrip(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     app.quit()
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
 def test_gui_real_execution_controller_roundtrip(tmp_path: Path) -> None:
     from cfdx.gui import create_application
 
@@ -142,6 +154,7 @@ def test_gui_real_execution_controller_roundtrip(tmp_path: Path) -> None:
     window = CFDXMainWindow(session)
     window._case_path = tmp_path / "e2e.cfdx.h5"
     from cfdx.case_io import save_case
+
     save_case(session, window._case_path)
     window._dirty = False
 
@@ -157,7 +170,9 @@ def test_gui_real_execution_controller_roundtrip(tmp_path: Path) -> None:
     app.quit()
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
 def test_gui_restart_command_uses_validated_dat(tmp_path: Path) -> None:
     from cfdx.case_io import save_case_with_dat
     from cfdx.gui import create_application
@@ -168,7 +183,9 @@ def test_gui_restart_command_uses_validated_dat(tmp_path: Path) -> None:
     session.case.execution.solver = sys.executable
     source = tmp_path / "solver.dat"
     source.write_text("restart-state\n", encoding="utf-8")
-    case_path, dat_path = save_case_with_dat(session, tmp_path / "restart.cfdx.h5", source)
+    case_path, dat_path = save_case_with_dat(
+        session, tmp_path / "restart.cfdx.h5", source
+    )
 
     window = CFDXMainWindow(session)
     window._case_path = case_path
@@ -181,12 +198,16 @@ def test_gui_restart_command_uses_validated_dat(tmp_path: Path) -> None:
     app.quit()
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
-def test_gui_loads_hdf5_dat_checkpoint(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from PySide6.QtWidgets import QFileDialog
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_gui_loads_hdf5_dat_checkpoint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from cfdx.case_io import save_case
     from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
     from cfdx.gui import create_application
+    from PySide6.QtWidgets import QFileDialog
 
     app = create_application(["cfdx-hdf5-dat-test"])
     session = CFDXSession()
@@ -231,12 +252,16 @@ def test_gui_loads_hdf5_dat_checkpoint(tmp_path: Path, monkeypatch: pytest.Monke
     app.quit()
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
-def test_gui_loads_dat_as_result_without_enabling_restart(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from PySide6.QtWidgets import QFileDialog
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_gui_loads_dat_as_result_without_enabling_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from cfdx.case_io import save_case
     from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
     from cfdx.gui import create_application
+    from PySide6.QtWidgets import QFileDialog
 
     app = create_application(["cfdx-dat-result-test"])
     session = CFDXSession()
@@ -281,7 +306,9 @@ def test_gui_loads_dat_as_result_without_enabling_restart(tmp_path: Path, monkey
     app.quit()
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
 def test_gui_refuses_to_ignore_dat_when_restart_disabled(tmp_path: Path) -> None:
     from cfdx.case_io import save_case_with_dat
     from cfdx.gui import create_application

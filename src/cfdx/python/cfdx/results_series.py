@@ -1,14 +1,19 @@
 """Headless discovery of CFD result time series."""
+
 from __future__ import annotations
+
+import re
 from dataclasses import dataclass
 from pathlib import Path
-import re
 
-_SUPPORTED={".vtu",".vtk",".vtp",".pvtu"}
-_NUMBER=re.compile(r"(?<![A-Za-z])(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?![A-Za-z])")
-_XML_SUFFIXES=frozenset({".vtu",".vtp",".pvtu"})
-_XML_HEADER=b"<?xml"
-_LEGACY_HEADER=b"# vtk DataFile Version"
+_SUPPORTED = {".vtu", ".vtk", ".vtp", ".pvtu"}
+_NUMBER = re.compile(
+    r"(?<![A-Za-z])(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?(?![A-Za-z])"
+)
+_XML_SUFFIXES = frozenset({".vtu", ".vtp", ".pvtu"})
+_XML_HEADER = b"<?xml"
+_LEGACY_HEADER = b"# vtk DataFile Version"
+
 
 @dataclass(frozen=True)
 class ResultFrame:
@@ -27,29 +32,38 @@ class ResultFrame:
     sequence: int
     time: float | None = None
     complete: bool = True
-    fields: tuple[str,...] = ()
+    fields: tuple[str, ...] = ()
     iteration: int | None = None
     time_source: str | None = None
 
+
 @dataclass(frozen=True)
 class ResultSeries:
-    frames: tuple[ResultFrame,...]
+    frames: tuple[ResultFrame, ...]
+
     @property
     def is_transient(self) -> bool:
-        return len(self.frames)>1
-    @property
-    def paths(self) -> tuple[Path,...]:
-        return tuple(frame.path for frame in self.frames)
-    def field_names(self) -> tuple[str,...]:
-        return tuple(sorted({field for frame in self.frames for field in frame.fields}))
-    def frame(self,index: int) -> ResultFrame:
-        try: return self.frames[index]
-        except IndexError as exc: raise IndexError(f"result frame index out of range: {index}") from exc
+        return len(self.frames) > 1
 
-def _sort_key(path: Path) -> tuple[float,int,str]:
-    values=_NUMBER.findall(path.stem)
-    value=float(values[-1]) if values else float("inf")
-    return (value,0,path.name)
+    @property
+    def paths(self) -> tuple[Path, ...]:
+        return tuple(frame.path for frame in self.frames)
+
+    def field_names(self) -> tuple[str, ...]:
+        return tuple(sorted({field for frame in self.frames for field in frame.fields}))
+
+    def frame(self, index: int) -> ResultFrame:
+        try:
+            return self.frames[index]
+        except IndexError as exc:
+            raise IndexError(f"result frame index out of range: {index}") from exc
+
+
+def _sort_key(path: Path) -> tuple[float, int, str]:
+    values = _NUMBER.findall(path.stem)
+    value = float(values[-1]) if values else float("inf")
+    return (value, 0, path.name)
+
 
 def _metadata_scalar(field_data, names: tuple[str, ...]) -> float | None:
     for name in names:
@@ -67,6 +81,7 @@ def _metadata_scalar(field_data, names: tuple[str, ...]) -> float | None:
         if value == value and value not in (float("inf"), float("-inf")):
             return value
     return None
+
 
 def _dataset_is_empty(dataset) -> bool:
     """Report whether a reader produced no points and no cells.
@@ -88,13 +103,18 @@ def _has_recognised_header(path: Path) -> bool:
     with the XML declaration and legacy .vtk with its version banner, so the
     banner is the cheapest available structural evidence of readability.
     """
-    suffix=path.suffix.lower()
-    if suffix not in _XML_SUFFIXES and suffix!=".vtk": return True
+    suffix = path.suffix.lower()
+    if suffix not in _XML_SUFFIXES and suffix != ".vtk":
+        return True
     try:
-        with path.open("rb") as handle: head=handle.read(64).lstrip()
-    except OSError: return False
-    if suffix in _XML_SUFFIXES: return head.startswith(_XML_HEADER)
+        with path.open("rb") as handle:
+            head = handle.read(64).lstrip()
+    except OSError:
+        return False
+    if suffix in _XML_SUFFIXES:
+        return head.startswith(_XML_HEADER)
     return head.startswith(_LEGACY_HEADER)
+
 
 def validate_physical_time_provenance(series: ResultSeries) -> None:
     """Require every non-empty result frame to carry authoritative physical time.
@@ -104,53 +124,95 @@ def validate_physical_time_provenance(series: ResultSeries) -> None:
     numerical time provenance contract.
     """
     missing = [
-        frame.path.name
-        for frame in series.frames
-        if frame.time_source != "metadata"
+        frame.path.name for frame in series.frames if frame.time_source != "metadata"
     ]
     if missing:
         raise ValueError(
             "authoritative physical-time metadata missing for: " + ", ".join(missing)
         )
     times = [
-        frame.time for frame in series.frames
+        frame.time
+        for frame in series.frames
         if frame.complete and frame.time is not None
     ]
     if any(b < a for a, b in zip(times, times[1:])):
         raise ValueError("physical-time metadata must be monotonic")
 
 
-def discover_result_series(directory: Path, *, inspect_fields: bool = False, require_physical_time: bool = False) -> ResultSeries:
+def discover_result_series(
+    directory: Path,
+    *,
+    inspect_fields: bool = False,
+    require_physical_time: bool = False,
+) -> ResultSeries:
     """Discover VTK-family files; preserve explicit time/iteration metadata when available."""
-    directory=Path(directory)
-    if not directory.is_dir(): raise NotADirectoryError(directory)
-    paths=sorted((p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in _SUPPORTED),key=_sort_key)
-    frames=[]
+    directory = Path(directory)
+    if not directory.is_dir():
+        raise NotADirectoryError(directory)
+    paths = sorted(
+        (
+            p
+            for p in directory.iterdir()
+            if p.is_file() and p.suffix.lower() in _SUPPORTED
+        ),
+        key=_sort_key,
+    )
+    frames = []
     for p in paths:
-        complete=p.stat().st_size > 0 and _has_recognised_header(p)
-        fields=()
-        iteration=None
-        metadata_time=None
+        complete = p.stat().st_size > 0 and _has_recognised_header(p)
+        fields = ()
+        iteration = None
+        metadata_time = None
         if inspect_fields and complete:
             try:
                 import pyvista as pv
-                dataset=pv.read(p)
+
+                dataset = pv.read(p)
                 # pyvista does not raise on a structurally broken file: the VTK
                 # reader logs, warns and hands back an empty dataset. An empty
                 # dataset is therefore the only usable unreadability signal.
                 if _dataset_is_empty(dataset):
-                    complete=False
-                fields=tuple(sorted(set(dataset.point_data.keys()) | set(dataset.cell_data.keys())))
-                iteration_value = _metadata_scalar(dataset.field_data, ("iteration","Iteration","step","Step"))
-                metadata_time = _metadata_scalar(dataset.field_data, ("physical_time","PhysicalTime","time","Time","timeValue","TIME"))
-                iteration = int(iteration_value) if iteration_value is not None and iteration_value.is_integer() else None
-            except (ImportError,OSError,RuntimeError,ValueError):
-                complete=False
-        filename_time=_sort_key(p)[0]
-        if filename_time == float("inf"): filename_time=None
-        frame_time=metadata_time if metadata_time is not None else filename_time
-        time_source="metadata" if metadata_time is not None else ("filename" if filename_time is not None else None)
-        frames.append(ResultFrame(p,len(frames),frame_time,complete,fields,iteration,time_source))
+                    complete = False
+                fields = tuple(
+                    sorted(
+                        set(dataset.point_data.keys()) | set(dataset.cell_data.keys())
+                    )
+                )
+                iteration_value = _metadata_scalar(
+                    dataset.field_data, ("iteration", "Iteration", "step", "Step")
+                )
+                metadata_time = _metadata_scalar(
+                    dataset.field_data,
+                    (
+                        "physical_time",
+                        "PhysicalTime",
+                        "time",
+                        "Time",
+                        "timeValue",
+                        "TIME",
+                    ),
+                )
+                iteration = (
+                    int(iteration_value)
+                    if iteration_value is not None and iteration_value.is_integer()
+                    else None
+                )
+            except (ImportError, OSError, RuntimeError, ValueError):
+                complete = False
+        filename_time = _sort_key(p)[0]
+        if filename_time == float("inf"):
+            filename_time = None
+        frame_time = metadata_time if metadata_time is not None else filename_time
+        time_source = (
+            "metadata"
+            if metadata_time is not None
+            else ("filename" if filename_time is not None else None)
+        )
+        frames.append(
+            ResultFrame(
+                p, len(frames), frame_time, complete, fields, iteration, time_source
+            )
+        )
     series = ResultSeries(tuple(frames))
     if require_physical_time:
         validate_physical_time_provenance(series)

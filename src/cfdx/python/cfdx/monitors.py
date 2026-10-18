@@ -1,12 +1,13 @@
-""""Headless monitor/probe contracts synchronized to solver iteration/time."""
+""" "Headless monitor/probe contracts synchronized to solver iteration/time."""
+
 from __future__ import annotations
 
 import json
 import math
 from bisect import bisect_left
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
 
 @dataclass(frozen=True)
@@ -67,13 +68,14 @@ class MonitorSeries:
         destination = Path(path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text(
-            json.dumps(self.to_dict(), indent=2, sort_keys=True, allow_nan=False) + "\n",
+            json.dumps(self.to_dict(), indent=2, sort_keys=True, allow_nan=False)
+            + "\n",
             encoding="utf-8",
         )
         return destination
 
     @classmethod
-    def from_dict(cls, payload: Mapping[str, object]) -> "MonitorSeries":
+    def from_dict(cls, payload: Mapping[str, object]) -> MonitorSeries:
         """Reconstruct a monitor series while applying the normal monotonic contract."""
         name = payload.get("name")
         raw_samples = payload.get("samples")
@@ -88,7 +90,11 @@ class MonitorSeries:
             iteration = raw.get("iteration")
             time_value = raw.get("time")
             values = raw.get("values")
-            if not isinstance(iteration, int) or isinstance(iteration, bool) or iteration < 0:
+            if (
+                not isinstance(iteration, int)
+                or isinstance(iteration, bool)
+                or iteration < 0
+            ):
                 raise ValueError("invalid monitor iteration")
             if not isinstance(time_value, (int, float)) or isinstance(time_value, bool):
                 raise ValueError("invalid monitor time")
@@ -111,10 +117,17 @@ class MonitorSeries:
         return series
 
     @classmethod
-    def read_json(cls, path: str | Path) -> "MonitorSeries":
+    def read_json(cls, path: str | Path) -> MonitorSeries:
         """Load a persisted monitor series."""
         source = Path(path)
-        return cls.from_dict(json.loads(source.read_text(encoding="utf-8"), parse_constant=lambda value: (_ for _ in ()).throw(ValueError(f"invalid JSON constant: {value}"))))
+        return cls.from_dict(
+            json.loads(
+                source.read_text(encoding="utf-8"),
+                parse_constant=lambda value: (_ for _ in ()).throw(
+                    ValueError(f"invalid JSON constant: {value}")
+                ),
+            )
+        )
 
     def at(self, iteration: int) -> MonitorSample:
         for sample in reversed(self.samples):

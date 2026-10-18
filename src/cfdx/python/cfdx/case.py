@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-import subprocess
 from typing import Any
 
 from .probe import Probe
@@ -29,15 +29,15 @@ class Case:
     execution: ExecutionConfig = field(default_factory=ExecutionConfig)
     probes: list[Probe] = field(default_factory=list)
 
-    def enable(self, model: str) -> "Case":
+    def enable(self, model: str) -> Case:
         self.physics[model] = {"enabled": True}
         return self
 
-    def set_numerics(self, **values: Any) -> "Case":
+    def set_numerics(self, **values: Any) -> Case:
         self.numerics.update(values)
         return self
 
-    def set_boundary(self, name: str, **values: Any) -> "Case":
+    def set_boundary(self, name: str, **values: Any) -> Case:
         self.boundaries[name] = dict(values)
         return self
 
@@ -65,7 +65,5 @@ class Case:
         if extra_args:
             command.extend(extra_args)
         if self.execution.mpi_ranks > 1:
-            command = [
-                "mpiexec", "-n", str(self.execution.mpi_ranks), *command
-            ]
+            command = ["mpiexec", "-n", str(self.execution.mpi_ranks), *command]
         return subprocess.call(command)

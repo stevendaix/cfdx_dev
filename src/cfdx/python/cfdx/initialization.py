@@ -1,12 +1,17 @@
 """Initialization capabilities exposed by the application layer."""
+
 from __future__ import annotations
+
 from dataclasses import dataclass
 from enum import Enum
+
 from .setup_model import ChangeImpact
+
 
 class InitializationMode(str, Enum):
     UNIFORM = "uniform"
     FIELD = "field"
+
 
 @dataclass(frozen=True)
 class InitializationSpec:
@@ -28,7 +33,8 @@ class InitializationSpec:
             if self.field is None or not self.field.strip():
                 raise ValueError("field initialization requires a source field")
 
-def supported_initialization_modes() -> tuple[InitializationMode,...]:
+
+def supported_initialization_modes() -> tuple[InitializationMode, ...]:
     # Standard/hybrid initialization is intentionally absent until the solver
     # exposes a corresponding numerical contract.
     return (InitializationMode.UNIFORM, InitializationMode.FIELD)

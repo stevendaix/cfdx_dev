@@ -1,9 +1,9 @@
-from pathlib import Path
 import json
+from pathlib import Path
 
 import pytest
-
 from cfdx.checkpoint import CHECKPOINT_SCHEMA_VERSION, load_checkpoint, save_checkpoint
+
 from cfdx import Checkpoint
 
 
@@ -24,21 +24,44 @@ def test_checkpoint_schema_is_strict(tmp_path: Path) -> None:
 
 def test_checkpoint_rejects_unsupported_schema_version(tmp_path: Path) -> None:
     path = tmp_path / "bad.json"
-    path.write_text(json.dumps({
-        "schema_version": 99, "case_revision": 0, "mesh_revision": 0,
-        "physics_revision": 0, "numerics_revision": 0, "iteration": 0, "time": 0.0
-    }))
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": 99,
+                "case_revision": 0,
+                "mesh_revision": 0,
+                "physics_revision": 0,
+                "numerics_revision": 0,
+                "iteration": 0,
+                "time": 0.0,
+            }
+        )
+    )
     with pytest.raises(ValueError, match="schema version"):
         load_checkpoint(path)
 
 
-@pytest.mark.parametrize("field", ["case_revision", "mesh_revision", "physics_revision",
-                                   "numerics_revision", "iteration"])
-def test_checkpoint_rejects_negative_integer_metadata(tmp_path: Path, field: str) -> None:
+@pytest.mark.parametrize(
+    "field",
+    [
+        "case_revision",
+        "mesh_revision",
+        "physics_revision",
+        "numerics_revision",
+        "iteration",
+    ],
+)
+def test_checkpoint_rejects_negative_integer_metadata(
+    tmp_path: Path, field: str
+) -> None:
     payload = {
-        "schema_version": CHECKPOINT_SCHEMA_VERSION, "case_revision": 0,
-        "mesh_revision": 0, "physics_revision": 0, "numerics_revision": 0,
-        "iteration": 0, "time": 0.0,
+        "schema_version": CHECKPOINT_SCHEMA_VERSION,
+        "case_revision": 0,
+        "mesh_revision": 0,
+        "physics_revision": 0,
+        "numerics_revision": 0,
+        "iteration": 0,
+        "time": 0.0,
     }
     payload[field] = -1
     path = tmp_path / "bad.json"
@@ -50,11 +73,19 @@ def test_checkpoint_rejects_negative_integer_metadata(tmp_path: Path, field: str
 @pytest.mark.parametrize("time_value", ["nan", "inf", "-inf"])
 def test_checkpoint_rejects_non_finite_time(tmp_path: Path, time_value: str) -> None:
     path = tmp_path / "bad.json"
-    path.write_text(json.dumps({
-        "schema_version": CHECKPOINT_SCHEMA_VERSION, "case_revision": 0,
-        "mesh_revision": 0, "physics_revision": 0, "numerics_revision": 0,
-        "iteration": 0, "time": time_value,
-    }))
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": CHECKPOINT_SCHEMA_VERSION,
+                "case_revision": 0,
+                "mesh_revision": 0,
+                "physics_revision": 0,
+                "numerics_revision": 0,
+                "iteration": 0,
+                "time": time_value,
+            }
+        )
+    )
     with pytest.raises(ValueError, match="time"):
         load_checkpoint(path)
 

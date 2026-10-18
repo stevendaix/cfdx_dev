@@ -3,10 +3,11 @@ import importlib.util
 import pytest
 
 
-@pytest.mark.skipif(importlib.util.find_spec("pyvista") is None, reason="PyVista optional")
+@pytest.mark.skipif(
+    importlib.util.find_spec("pyvista") is None, reason="PyVista optional"
+)
 def test_pyvista_renderer_loads_vtu(tmp_path) -> None:
     import pyvista as pv
-
     from cfdx.renderer_pyvista import PyVistaRenderer
 
     # .vtu holds unstructured grids; pv.Sphere() is PolyData, which PyVista

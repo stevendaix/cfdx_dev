@@ -23,25 +23,23 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 
+from cfdx.io.gap_analysis import GapAnalysis
 from cfdx.io.interfaces import (
-    SolverAdapter,
     ConversionResult,
+    SolverAdapter,
 )
+from cfdx.io.mapping_rules import MappingRules
 from cfdx.io.schema import (
     BCType,
     BCValueType,
+    BoundarySpec,
     CaseSetup,
     MaterialSpec,
-    BoundarySpec,
     SourceInfo,
 )
-from cfdx.io.mapping_rules import MappingRules
-from cfdx.io.gap_analysis import GapAnalysis
-
 
 # SU2 element type codes → (name, n_nodes)
 _SU2_ELEM_TYPES: dict[int, tuple[str, int]] = {
@@ -143,14 +141,14 @@ class Su2Adapter(SolverAdapter):
     solver_name = "SU2"
     format_name = "su2"
 
-    def __init__(self, rules: Optional[MappingRules] = None) -> None:
+    def __init__(self, rules: MappingRules | None = None) -> None:
         self.rules = rules or MappingRules.load_default()
         self.setup = CaseSetup(source=SourceInfo(solver="SU2", format="su2"))
         self._points: list[np.ndarray] = []
         self._elements: list[tuple[str, list[int]]] = []
         self._boundaries: list[dict] = []
         self._cfg_params: dict[str, str] = {}
-        self._mesh: Optional[dict] = None
+        self._mesh: dict | None = None
 
     def detect_source(self, case_path: str, info: SourceInfo) -> bool:
         p = Path(case_path)
@@ -179,7 +177,7 @@ class Su2Adapter(SolverAdapter):
                 return True
         return False
 
-    def convert(self, case_path: Union[str, Path], result: ConversionResult) -> bool:
+    def convert(self, case_path: str | Path, result: ConversionResult) -> bool:
         base = Path(str(case_path))
         su2_file = base
         cfg_file = base
@@ -200,7 +198,8 @@ class Su2Adapter(SolverAdapter):
 
         if not mesh_ok:
             result.gap_report.unsupported_blocking(
-                "mesh", "su2_mesh",
+                "mesh",
+                "su2_mesh",
                 f"Cannot parse SU2 mesh file: {su2_file}",
                 "Ensure the .su2 file uses the standard NDIME/NELEM/NPOIN/NMARK format",
             )
@@ -208,7 +207,8 @@ class Su2Adapter(SolverAdapter):
 
         if not cfg_ok:
             result.gap_report.unsupported_nonblocking(
-                "config", "su2_cfg",
+                "config",
+                "su2_cfg",
                 f"Cannot parse SU2 config file: {cfg_file}",
                 "Config parsing is optional; mesh will still be imported",
             )
@@ -227,7 +227,8 @@ class Su2Adapter(SolverAdapter):
             self.import_results(str(solution_file), result)
         else:
             result.gap_report.unsupported_nonblocking(
-                "results", "solution_csv",
+                "results",
+                "solution_csv",
                 f"No SU2 solution.csv found alongside mesh (looked for {solution_file.name})",
                 "Run SU2 simulation to generate solution.csv, or provide it manually",
             )
@@ -302,7 +303,9 @@ class Su2Adapter(SolverAdapter):
                         continue
                     marker_name = tag_line.split("=", 1)[1].strip()
 
-                    if idx < len(lines) and lines[idx].strip().upper().startswith("MARKER_ELEMS="):
+                    if idx < len(lines) and lines[idx].strip().upper().startswith(
+                        "MARKER_ELEMS="
+                    ):
                         n_elems = int(lines[idx].split("=")[1].strip())
                         idx += 1
                     else:
@@ -323,12 +326,14 @@ class Su2Adapter(SolverAdapter):
                         fn_nodes = _SU2_ELEM_TYPES.get(ftype, ("UNKNOWN", 0))[1]
                         face_nodes.append([int(t) for t in ftokens[1 : 1 + fn_nodes]])
 
-                    boundaries.append({
-                        "name": marker_name,
-                        "n_elements": n_elems,
-                        "node_ids": [n for face in face_nodes for n in face],
-                        "face_nodes": face_nodes,
-                    })
+                    boundaries.append(
+                        {
+                            "name": marker_name,
+                            "n_elements": n_elems,
+                            "node_ids": [n for face in face_nodes for n in face],
+                            "face_nodes": face_nodes,
+                        }
+                    )
                 self._boundaries = boundaries
 
                 # Build boundary BC specs
@@ -343,8 +348,15 @@ class Su2Adapter(SolverAdapter):
                     if bnd["name"].lower().find("wall") >= 0:
                         bc.type = BCType.WALL
                         bc.value_type = BCValueType.WALL_NO_SLIP
-                    elif bnd["name"].lower().find("far") >= 0 or bnd["name"].lower().find("inlet") >= 0:
-                        bc.type = BCType.INLET if "inlet" in bnd["name"].lower() else BCType.OUTLET
+                    elif (
+                        bnd["name"].lower().find("far") >= 0
+                        or bnd["name"].lower().find("inlet") >= 0
+                    ):
+                        bc.type = (
+                            BCType.INLET
+                            if "inlet" in bnd["name"].lower()
+                            else BCType.OUTLET
+                        )
                         bc.value_type = BCValueType.FIXED
                     elif bnd["name"].lower().find("sym") >= 0:
                         bc.type = BCType.SYMMETRY
@@ -363,7 +375,11 @@ class Su2Adapter(SolverAdapter):
             if meshio_type:
                 cells[meshio_type] = arr
 
-        points_arr = np.array(self._points, dtype=np.float64) if self._points else np.empty((0, 3))
+        points_arr = (
+            np.array(self._points, dtype=np.float64)
+            if self._points
+            else np.empty((0, 3))
+        )
 
         mesh = {"points": points_arr, "cells": cells, "cell_data": cell_data}
 
@@ -376,7 +392,9 @@ class Su2Adapter(SolverAdapter):
             self.setup.mesh_info.n_patches = len(self._boundaries)
 
             # Count boundary faces
-            self.setup.mesh_info.n_boundary_faces = sum(b["n_elements"] for b in self._boundaries)
+            self.setup.mesh_info.n_boundary_faces = sum(
+                b["n_elements"] for b in self._boundaries
+            )
 
         self.setup.source.case_path = su2_file
         self.setup.source.case_name = Path(su2_file).stem
@@ -392,7 +410,7 @@ class Su2Adapter(SolverAdapter):
             if eq == -1:
                 continue
             key = stripped[:eq].strip()
-            val = stripped[eq + 1:].strip()
+            val = stripped[eq + 1 :].strip()
             # Remove inline comments
             if ";" in val:
                 val = val[: val.find(";")]
@@ -414,7 +432,9 @@ class Su2Adapter(SolverAdapter):
             try:
                 alpha = float(p["AOA"]) * np.pi / 180.0
                 self.setup.initial_condition.velocity_vector = [
-                    float(np.cos(alpha)), float(np.sin(alpha)), 0.0
+                    float(np.cos(alpha)),
+                    float(np.sin(alpha)),
+                    0.0,
                 ]
             except ValueError:
                 pass
@@ -425,7 +445,9 @@ class Su2Adapter(SolverAdapter):
                 pass
         if "FREESTREAM_TEMPERATURE" in p:
             try:
-                self.setup.initial_condition.temperature = float(p["FREESTREAM_TEMPERATURE"])
+                self.setup.initial_condition.temperature = float(
+                    p["FREESTREAM_TEMPERATURE"]
+                )
             except ValueError:
                 pass
         if "SOLVER" in p:
@@ -490,14 +512,18 @@ class Su2Adapter(SolverAdapter):
                 if self.setup.materials:
                     self.setup.materials[0].dynamic_viscosity = mu
                 else:
-                    self.setup.materials.append(MaterialSpec(name="fluid", dynamic_viscosity=mu))
+                    self.setup.materials.append(
+                        MaterialSpec(name="fluid", dynamic_viscosity=mu)
+                    )
             except ValueError:
                 pass
 
         # Turbulence model
         if "KIND_TURB_MODEL" in p:
             mapped = self.rules.map_turbulence(p["KIND_TURB_MODEL"])
-            self.setup.turbulence_model = mapped if mapped else p["KIND_TURB_MODEL"].lower()
+            self.setup.turbulence_model = (
+                mapped if mapped else p["KIND_TURB_MODEL"].lower()
+            )
         elif "TURB_MODEL" in p:
             mapped = self.rules.map_turbulence(p["TURB_MODEL"])
             self.setup.turbulence_model = mapped if mapped else p["TURB_MODEL"].lower()
@@ -507,7 +533,9 @@ class Su2Adapter(SolverAdapter):
         # Numerical schemes
         if "NUM_METHOD_GRAD" in p:
             mapped = self.rules.map_scheme(p["NUM_METHOD_GRAD"])
-            self.setup.numerics.gradient_operator = mapped if mapped else "green_gauss_cell"
+            self.setup.numerics.gradient_operator = (
+                mapped if mapped else "green_gauss_cell"
+            )
         if "CONV_NUM_METHOD_FLOW" in p:
             self.setup.numerics.momentum_scheme = _canonical_convection_scheme(p)
             if not self.setup.numerics.momentum_scheme:
@@ -547,7 +575,9 @@ class Su2Adapter(SolverAdapter):
         self.setup.numerics.raw_settings = dict(p)
         return True
 
-    def parse_solution_csv(self, csv_file: str) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    def parse_solution_csv(
+        self, csv_file: str
+    ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
         """Parse SU2 solution.csv file and return scalar and vector fields.
 
         Returns:
@@ -628,8 +658,10 @@ class Su2Adapter(SolverAdapter):
                 # Also check for momentum (rho * velocity) - convert to velocity if density available
                 if "Velocity" not in vec_fields:
                     mom_cols = None
-                    for comp_set in [["Momentum_x", "Momentum_y", "Momentum_z"],
-                                      ["MOMENTUM-X", "MOMENTUM-Y", "MOMENTUM-Z"]]:
+                    for comp_set in [
+                        ["Momentum_x", "Momentum_y", "Momentum_z"],
+                        ["MOMENTUM-X", "MOMENTUM-Y", "MOMENTUM-Z"],
+                    ]:
                         if all(c in col_indices for c in comp_set):
                             mom_cols = [col_indices[c] for c in comp_set]
                             break
@@ -639,7 +671,9 @@ class Su2Adapter(SolverAdapter):
                         # Avoid division by zero
                         with np.errstate(divide="ignore", invalid="ignore"):
                             vel_data = mom_data / rho[:, np.newaxis]
-                        vel_data = np.nan_to_num(vel_data, nan=0.0, posinf=0.0, neginf=0.0)
+                        vel_data = np.nan_to_num(
+                            vel_data, nan=0.0, posinf=0.0, neginf=0.0
+                        )
                         vec_fields["Velocity"] = vel_data
 
         except Exception:
@@ -661,7 +695,8 @@ class Su2Adapter(SolverAdapter):
 
         if not solution_file.exists():
             result.gap_report.unsupported_nonblocking(
-                "results", "solution_csv",
+                "results",
+                "solution_csv",
                 f"SU2 solution file not found: {solution_file}",
                 "Provide solution.csv or run SU2 to generate results",
             )
@@ -671,7 +706,8 @@ class Su2Adapter(SolverAdapter):
 
         if not scalar_fields and not vec_fields:
             result.gap_report.unsupported_nonblocking(
-                "results", "solution_csv",
+                "results",
+                "solution_csv",
                 f"No valid fields parsed from SU2 solution.csv: {solution_file}",
                 "Check that the CSV has proper headers and numeric data",
             )
@@ -681,75 +717,119 @@ class Su2Adapter(SolverAdapter):
         mismatches = []
         for name, arr in scalar_fields.items():
             if arr.shape[0] != n_cells_expected:
-                mismatches.append(f"Scalar field '{name}' has {arr.shape[0]} values, expected {n_cells_expected} (n_cells)")
+                mismatches.append(
+                    f"Scalar field '{name}' has {arr.shape[0]} values, expected {n_cells_expected} (n_cells)"
+                )
             else:
                 result.scalar_fields.append((name, arr))
 
         for name, arr in vec_fields.items():
             if arr.shape[0] != n_cells_expected:
-                mismatches.append(f"Vector field '{name}' has {arr.shape[0]} values, expected {n_cells_expected} (n_cells)")
+                mismatches.append(
+                    f"Vector field '{name}' has {arr.shape[0]} values, expected {n_cells_expected} (n_cells)"
+                )
             else:
                 result.vec_fields.append((name, arr))
 
         if mismatches:
             result.gap_report.unsupported_blocking(
-                "results", "field_size_mismatch",
+                "results",
+                "field_size_mismatch",
                 "; ".join(mismatches),
                 "Provide a solution file whose field localisation and cardinality match the imported SU2 mesh",
             )
             return False
 
         result.gap_report.supported(
-            "results", "solution_csv",
-            f"Imported SU2 solution.csv: {solution_file} ({len(result.scalar_fields)} scalars, {len(result.vec_fields)} vectors)"
+            "results",
+            "solution_csv",
+            f"Imported SU2 solution.csv: {solution_file} ({len(result.scalar_fields)} scalars, {len(result.vec_fields)} vectors)",
         )
         result.field_data_source = str(solution_file)
         return True
 
     def _populate_gap_report(self, gap: GapAnalysis) -> None:
-        gap.supported("mesh", "points", f"Parsed {len(self._points)} vertices from .su2")
-        gap.supported("mesh", "elements", f"Parsed {len(self._elements)} elements from .su2")
+        gap.supported(
+            "mesh", "points", f"Parsed {len(self._points)} vertices from .su2"
+        )
+        gap.supported(
+            "mesh", "elements", f"Parsed {len(self._elements)} elements from .su2"
+        )
 
         for bnd in self._boundaries:
-            gap.supported("boundary", bnd["name"], f"Detected boundary marker '{bnd['name']}' with {bnd['n_elements']} faces")
+            gap.supported(
+                "boundary",
+                bnd["name"],
+                f"Detected boundary marker '{bnd['name']}' with {bnd['n_elements']} faces",
+            )
 
         for bc in self.setup.boundary_conditions:
             gap.supported(
-                "boundary_condition", bc.patch_name,
+                "boundary_condition",
+                bc.patch_name,
                 f"Mapped SU2 marker '{bc.source_zone_name}' to CFDX BC type '{bc.type.value}'",
             )
 
         if self._cfg_params:
-            gap.supported("config", "su2_cfg", f"Parsed {len(self._cfg_params)} config parameters from .cfg")
+            gap.supported(
+                "config",
+                "su2_cfg",
+                f"Parsed {len(self._cfg_params)} config parameters from .cfg",
+            )
 
-        unmapped_keys = [k for k, v in self._cfg_params.items()
-                         if k not in ("MACH_NUMBER", "AOA", "FREESTREAM_PRESSURE",
-                                      "FREESTREAM_TEMPERATURE", "SOLVER", "KIND_TURB_MODEL",
-                                      "TURB_MODEL", "NUM_METHOD_GRAD", "CONV_NUM_METHOD_FLOW",
-                                      "TIME_DISCRE_FLOW", "MUSCL", "LINEAR_SOLVER", "ITER", "CFL_NUMBER",
-                                      "FREESTREAM_DENSITY", "VISC")]
+        unmapped_keys = [
+            k
+            for k, v in self._cfg_params.items()
+            if k
+            not in (
+                "MACH_NUMBER",
+                "AOA",
+                "FREESTREAM_PRESSURE",
+                "FREESTREAM_TEMPERATURE",
+                "SOLVER",
+                "KIND_TURB_MODEL",
+                "TURB_MODEL",
+                "NUM_METHOD_GRAD",
+                "CONV_NUM_METHOD_FLOW",
+                "TIME_DISCRE_FLOW",
+                "MUSCL",
+                "LINEAR_SOLVER",
+                "ITER",
+                "CFL_NUMBER",
+                "FREESTREAM_DENSITY",
+                "VISC",
+            )
+        ]
         for k in unmapped_keys:
             gap.unsupported_nonblocking(
-                "config", k,
+                "config",
+                k,
                 f"Unmapped SU2 config parameter: {k} = {self._cfg_params[k]}",
                 "Manually verify the parameter is applied in CFDX setup",
             )
 
         if not self._cfg_params:
-            gap.unavailable("config", "su2_cfg", "No .cfg config file found — physics and BCs not extracted")
+            gap.unavailable(
+                "config",
+                "su2_cfg",
+                "No .cfg config file found — physics and BCs not extracted",
+            )
 
         gap.unsupported_nonblocking(
-            "features", "multiphase",
+            "features",
+            "multiphase",
             "SU2 multiphase (VOF) extensions not supported",
             "Use single-phase SU2 configuration",
         )
         gap.unsupported_nonblocking(
-            "features", "turbomachinery",
+            "features",
+            "turbomachinery",
             "SU2 turbomachinery extensions not supported",
             "Use base SU2 configuration without turbo machinery options",
         )
         gap.unsupported_nonblocking(
-            "features", "deforming_mesh",
+            "features",
+            "deforming_mesh",
             "SU2 dynamic mesh options not supported",
             "Use static mesh for CFDX conversion",
         )

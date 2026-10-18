@@ -1,10 +1,17 @@
 """Qt adapter for the headless Application Run Center."""
+
 from __future__ import annotations
 
-from .application import Application, ApplicationStateChanged
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
+from .application import Application, ApplicationStateChanged
 
 
 class RunCenterPanel(QWidget):
@@ -24,7 +31,12 @@ class RunCenterPanel(QWidget):
         self.resume_button = QPushButton("Resume")
         self.stop_button = QPushButton("Stop")
         controls = QHBoxLayout()
-        for button in (self.run_button, self.pause_button, self.resume_button, self.stop_button):
+        for button in (
+            self.run_button,
+            self.pause_button,
+            self.resume_button,
+            self.stop_button,
+        ):
             controls.addWidget(button)
         layout = QVBoxLayout(self)
         layout.addWidget(self.status)
@@ -59,7 +71,12 @@ class RunCenterPanel(QWidget):
             self.status.setText("No execution controller attached")
             self.metrics.setText("Iteration: — | Time: — | CFL: —")
             self.output.clear()
-            for button in (self.run_button, self.pause_button, self.resume_button, self.stop_button):
+            for button in (
+                self.run_button,
+                self.pause_button,
+                self.resume_button,
+                self.stop_button,
+            ):
                 button.setEnabled(False)
             return
         center_state = center.state
@@ -70,7 +87,9 @@ class RunCenterPanel(QWidget):
             f"Iteration: {center_state.iteration} | Time: {center_state.time:g} | CFL: {cfl_text}"
         )
         self.output.setPlainText("\n".join(center_state.output))
-        self.output.verticalScrollBar().setValue(self.output.verticalScrollBar().maximum())
+        self.output.verticalScrollBar().setValue(
+            self.output.verticalScrollBar().maximum()
+        )
         running = center_state.simulation_state.value == "RUNNING"
         paused = center_state.simulation_state.value == "PAUSED"
         self.run_button.setEnabled(not running and not paused)

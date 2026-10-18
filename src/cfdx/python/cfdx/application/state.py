@@ -1,4 +1,5 @@
 """Read-only application snapshots for GUI, TUI, and CLI clients."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable

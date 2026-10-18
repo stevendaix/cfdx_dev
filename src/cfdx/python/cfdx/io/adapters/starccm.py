@@ -30,25 +30,21 @@ from __future__ import annotations
 import re
 import struct
 from pathlib import Path
-from typing import Optional, Union
 
-import numpy as np
-
+from cfdx.io.gap_analysis import GapAnalysis
 from cfdx.io.interfaces import (
-    SolverAdapter,
     ConversionResult,
+    SolverAdapter,
     SourceInfo,
 )
+from cfdx.io.mapping_rules import MappingRules
 from cfdx.io.schema import (
-    CaseSetup,
-    MaterialSpec,
-    BoundarySpec,
     BCType,
     BCValueType,
+    BoundarySpec,
+    CaseSetup,
+    MaterialSpec,
 )
-from cfdx.io.mapping_rules import MappingRules
-from cfdx.io.gap_analysis import GapAnalysis
-
 
 # ASCII string patterns for physics detection
 _STARCCM_PHYSICS_PATTERNS: dict[str, str] = {
@@ -93,7 +89,7 @@ class StarCCMAdapter(SolverAdapter):
     solver_name = "STAR-CCM+"
     format_name = "sim"
 
-    def __init__(self, rules: Optional[MappingRules] = None) -> None:
+    def __init__(self, rules: MappingRules | None = None) -> None:
         self.rules = rules or MappingRules.load_default()
         self.setup = CaseSetup(source=SourceInfo(solver="STAR-CCM+", format="sim"))
         self._zones: list[dict] = []
@@ -118,7 +114,7 @@ class StarCCMAdapter(SolverAdapter):
         info.version = "unknown"
         return True
 
-    def convert(self, case_path: Union[str, Path], result: ConversionResult) -> bool:
+    def convert(self, case_path: str | Path, result: ConversionResult) -> bool:
         base = Path(str(case_path))
         sim_file = base
         if base.is_file():
@@ -132,7 +128,8 @@ class StarCCMAdapter(SolverAdapter):
 
         if not sim_file.exists():
             result.gap_report.unsupported_blocking(
-                "mesh", "starccm_sim",
+                "mesh",
+                "starccm_sim",
                 f"STAR-CCM+ .sim file not found: {sim_file}",
                 "Provide a valid .sim file path",
             )
@@ -142,7 +139,8 @@ class StarCCMAdapter(SolverAdapter):
         ok = self._scan_sim(str(sim_file))
         if not ok:
             result.gap_report.unsupported_blocking(
-                "mesh", "starccm_sim",
+                "mesh",
+                "starccm_sim",
                 f"Cannot read STAR-CCM+ .sim file: {sim_file} (binary corruption or permissions)",
                 "Verify file integrity and try again",
             )
@@ -153,7 +151,8 @@ class StarCCMAdapter(SolverAdapter):
 
         # No mesh is populated — .sim binary topology is NOT reconstructed
         result.gap_report.unsupported_blocking(
-            "mesh", "sim_topology",
+            "mesh",
+            "sim_topology",
             "STAR-CCM+ .sim binary mesh topology (faces, cells, owner/neighbour) not reconstructed",
             "Export the mesh via STAR-CCM+ File → Export → Mesh: use .plt (EnSight), .cgns, .vtk, or .msh (Gmsh)",
         )
@@ -192,9 +191,14 @@ class StarCCMAdapter(SolverAdapter):
                 # Heuristic: STAR-CCM+ boundary names often end with _wall, _inlet, etc.
                 lower = zone_name.lower()
                 is_boundary_candidate = (
-                    "wall" in lower or "inlet" in lower or "outlet" in lower
-                    or "far" in lower or "symmetr" in lower or "interface" in lower
-                    or "periodic" in lower or "opening" in lower
+                    "wall" in lower
+                    or "inlet" in lower
+                    or "outlet" in lower
+                    or "far" in lower
+                    or "symmetr" in lower
+                    or "interface" in lower
+                    or "periodic" in lower
+                    or "opening" in lower
                 )
                 if is_boundary_candidate:
                     self._zones.append({"name": zone_name})
@@ -209,8 +213,17 @@ class StarCCMAdapter(SolverAdapter):
         self._zones = deduped
 
         # Detect materials
-        material_keywords = ("air", "water", "oxygen", "nitrogen", "fuel",
-                             "constant", "ideal", "real", "material")
+        material_keywords = (
+            "air",
+            "water",
+            "oxygen",
+            "nitrogen",
+            "fuel",
+            "constant",
+            "ideal",
+            "real",
+            "material",
+        )
         for s in self._all_strings:
             lower = s.lower()
             if lower in material_keywords and len(s) < 32:
@@ -272,44 +285,61 @@ class StarCCMAdapter(SolverAdapter):
 
     def import_results(self, results_path: str, result: ConversionResult) -> bool:
         result.gap_report.unsupported_blocking(
-            "results", "sim_results",
+            "results",
+            "sim_results",
             "STAR-CCM+ .sim results cannot be directly parsed",
             "Export results via: Tools → Export → Results File (.enc, .plt, .vtk)",
         )
         return False
 
     def _populate_gap_report(self, gap: GapAnalysis) -> None:
-        gap.supported("mesh", "header", f"Scanned STAR-CCM+ .sim header ({self._header_info.get('file_size', 0)} bytes)")
+        gap.supported(
+            "mesh",
+            "header",
+            f"Scanned STAR-CCM+ .sim header ({self._header_info.get('file_size', 0)} bytes)",
+        )
 
         for z in self._zones:
-            gap.supported("boundary_zone", z["name"], f"Detected boundary zone '{z['name']}'")
+            gap.supported(
+                "boundary_zone", z["name"], f"Detected boundary zone '{z['name']}'"
+            )
 
         for m in self._materials:
             gap.supported("material", m["name"], f"Detected material '{m['name']}'")
 
         for pattern, mapped in self._physics.items():
-            gap.supported("physics", pattern, f"Detected physics model '{pattern}' → '{mapped}'")
+            gap.supported(
+                "physics", pattern, f"Detected physics model '{pattern}' → '{mapped}'"
+            )
 
         for bc in self.setup.boundary_conditions:
-            gap.supported("boundary_condition", bc.patch_name, f"Mapped STAR-CCM+ zone '{bc.source_zone_name}' to {bc.type.value}")
+            gap.supported(
+                "boundary_condition",
+                bc.patch_name,
+                f"Mapped STAR-CCM+ zone '{bc.source_zone_name}' to {bc.type.value}",
+            )
 
         gap.unsupported_blocking(
-            "mesh", "sim_topology",
+            "mesh",
+            "sim_topology",
             "STAR-CCM+ .sim binary mesh topology (faces, cells, owner/neighbour) not reconstructed",
             "Export mesh via: File → Export → Mesh (.plt, .cgns, .vtk, or .msh)",
         )
         gap.unsupported_blocking(
-            "results", "field_data",
+            "results",
+            "field_data",
             "STAR-CCM+ .sim field results cannot be directly parsed",
             "Export results via: Tools → Export → Results File (.enc, .plt, .vtk)",
         )
         gap.unsupported_nonblocking(
-            "features", "udfs",
+            "features",
+            "udfs",
             "User-Defined Functions (UDFs) and custom models not detectable",
             "Document UDFs manually and verify in CFDX setup",
         )
         gap.unsupported_nonblocking(
-            "features", "overset",
+            "features",
+            "overset",
             "Overset (chimera) mesh information not extractable from .sim",
             "Export overset mesh via documented EnSight or VTK export",
         )

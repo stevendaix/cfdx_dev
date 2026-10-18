@@ -1,6 +1,7 @@
 """Pytest configuration: add the CFDX Python package to sys.path."""
-import sys
+
 import os
+import sys
 
 import pytest
 

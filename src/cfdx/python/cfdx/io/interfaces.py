@@ -13,23 +13,22 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
-from pydantic import BaseModel
 
-from cfdx.io.schema import CaseSetup, SourceInfo, BoundarySpec, MaterialSpec
 from cfdx.io.gap_analysis import GapAnalysis
+from cfdx.io.schema import CaseSetup, SourceInfo
 
 
 @dataclass
 class ConversionResult:
     """Everything an adapter produces after conversion."""
+
     source: SourceInfo
-    mesh: Optional[dict] = None  # meshio.Mesh or dict with points/cells
+    mesh: dict | None = None  # meshio.Mesh or dict with points/cells
     scalar_fields: list[tuple[str, np.ndarray]] = field(default_factory=list)
     vec_fields: list[tuple[str, np.ndarray]] = field(default_factory=list)
-    setup: Optional[CaseSetup] = None
+    setup: CaseSetup | None = None
     gap_report: GapAnalysis = field(default_factory=GapAnalysis)
     available_fields: dict[str, list[str]] = field(default_factory=dict)
     field_data_source: str = ""
@@ -64,7 +63,7 @@ class SolverAdapter(ABC):
         ...
 
     @abstractmethod
-    def convert(self, case_path: Union[str, Path], result: ConversionResult) -> bool:
+    def convert(self, case_path: str | Path, result: ConversionResult) -> bool:
         """Parse the source files and populate result.
 
         Returns True if the conversion completed without blocking

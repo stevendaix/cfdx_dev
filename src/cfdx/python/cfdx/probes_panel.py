@@ -1,14 +1,10 @@
 """Qt adapter for the application-level point-probe catalogue."""
+
 from __future__ import annotations
 
-from .application import Application, ApplicationStateChanged
-from .application.commands import ConfigureProbes
-from .probe import Probe, ProbeCatalog, ProbeField
-
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QHBoxLayout,
     QComboBox,
+    QHBoxLayout,
     QHeaderView,
     QPushButton,
     QTableWidget,
@@ -16,6 +12,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
+from .application import Application, ApplicationStateChanged
+from .application.commands import ConfigureProbes
+from .probe import Probe, ProbeCatalog, ProbeField
 
 _FIELD_CHOICES = [field.cli for field in ProbeField]
 
@@ -44,7 +44,9 @@ class ProbesPanel(QWidget):
         self._remove_button = QPushButton("Remove")
         self._remove_button.clicked.connect(self._remove_selected)
         self._remove_button.setEnabled(False)
-        self._table.selectionModel().selectionChanged.connect(self._on_selection_changed)
+        self._table.selectionModel().selectionChanged.connect(
+            self._on_selection_changed
+        )
 
         self._apply_button = QPushButton("Apply to case")
         self._apply_button.setEnabled(False)
@@ -98,7 +100,9 @@ class ProbesPanel(QWidget):
         self._set_dirty(True)
 
     def _on_selection_changed(self) -> None:
-        self._remove_button.setEnabled(bool(self._table.selectionModel().selectedRows()))
+        self._remove_button.setEnabled(
+            bool(self._table.selectionModel().selectedRows())
+        )
 
     def _set_dirty(self, dirty: bool) -> None:
         self._dirty = dirty
@@ -118,7 +122,9 @@ class ProbesPanel(QWidget):
             field_token = combo.currentText() if combo is not None else ""
             if not name or field_token not in _FIELD_CHOICES:
                 continue
-            catalog.add(Probe(name=name, x=x, y=y, z=z, field=ProbeField.from_cli(field_token)))
+            catalog.add(
+                Probe(name=name, x=x, y=y, z=z, field=ProbeField.from_cli(field_token))
+            )
         try:
             self.application.execute(ConfigureProbes(catalog))
         except ValueError as exc:

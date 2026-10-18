@@ -1,10 +1,10 @@
 """Headless-safe result directory change detection."""
+
 from __future__ import annotations
 
-from pathlib import Path
 import threading
-import time
-from typing import Callable
+from collections.abc import Callable
+from pathlib import Path
 
 
 class ResultWatcher:
@@ -41,7 +41,9 @@ class ResultWatcher:
             return
         self._signature = self._signature_for()
         self._stop.clear()
-        self._thread = threading.Thread(target=self._watch, name="cfdx-result-watcher", daemon=True)
+        self._thread = threading.Thread(
+            target=self._watch, name="cfdx-result-watcher", daemon=True
+        )
         self._thread.start()
 
     def _watch(self) -> None:

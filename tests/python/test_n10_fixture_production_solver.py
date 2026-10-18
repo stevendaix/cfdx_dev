@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
 import math
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -110,7 +110,12 @@ def test_n10_verified_fixture_reaches_production_solver(tmp_path: Path) -> None:
         assert all(
             math.isfinite(float(value))
             for key, value in row.items()
-            if key not in {"iteration", "pressure_linear_iterations", "momentum_linear_iterations"}
+            if key
+            not in {
+                "iteration",
+                "pressure_linear_iterations",
+                "momentum_linear_iterations",
+            }
         )
         history.append(row)
 

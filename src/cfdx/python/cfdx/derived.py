@@ -1,4 +1,5 @@
 """Dependency-free scalar post-processing primitives."""
+
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
@@ -13,8 +14,7 @@ def derived_magnitude(values: Mapping[str, Sequence[float]]) -> tuple[float, ...
     if any(len(values[name]) != size for name in names):
         raise ValueError("component lengths must match")
     return tuple(
-        sum(float(values[name][i]) ** 2 for name in names) ** 0.5
-        for i in range(size)
+        sum(float(values[name][i]) ** 2 for name in names) ** 0.5 for i in range(size)
     )
 
 

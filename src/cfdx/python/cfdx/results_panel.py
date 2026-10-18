@@ -1,10 +1,18 @@
 """Qt results browser backed by Application.results state."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QComboBox, QLabel, QListWidget, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QComboBox,
+    QLabel,
+    QListWidget,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 from .application import Application, ResultsChanged
 
@@ -65,7 +73,11 @@ class ResultsPanel(QWidget):
         self.field.blockSignals(False)
         self.status.setText(
             f"{len(results.frames)} frame(s)"
-            + (f" | {results.selected_frame_id} | {results.selected_field}" if results.selected_frame_id else "")
+            + (
+                f" | {results.selected_frame_id} | {results.selected_field}"
+                if results.selected_frame_id
+                else ""
+            )
         )
 
     def _frame_changed(self, current, _previous) -> None:

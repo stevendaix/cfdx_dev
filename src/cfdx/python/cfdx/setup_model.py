@@ -4,17 +4,21 @@ The objects in this module describe user-editable values without introducing a
 second numerical model. Numerical ownership stays with the C++ mesh/field and
 physics implementations.
 """
+
 from __future__ import annotations
 
+import math
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
-import math
-from typing import Any, Callable
+from typing import Any
+
 
 class ChangeImpact(str, Enum):
     HOT = "Hot"
     REQUIRES_RESTART = "RequiresRestart"
     REQUIRES_REBUILD = "RequiresRebuild"
+
 
 class ParameterType(str, Enum):
     BOOL = "bool"
@@ -23,11 +27,14 @@ class ParameterType(str, Enum):
     STRING = "string"
     CHOICE = "choice"
 
+
 Validator = Callable[[Any], str | None]
+
 
 @dataclass(frozen=True)
 class Parameter:
     """A typed user-facing parameter contract."""
+
     name: str
     value: Any
     kind: ParameterType
@@ -39,11 +46,19 @@ class Parameter:
     def validate(self) -> None:
         if self.kind is ParameterType.BOOL and not isinstance(self.value, bool):
             raise ValueError(f"{self.name}: expected bool")
-        if self.kind is ParameterType.INTEGER and (not isinstance(self.value, int) or isinstance(self.value, bool)):
+        if self.kind is ParameterType.INTEGER and (
+            not isinstance(self.value, int) or isinstance(self.value, bool)
+        ):
             raise ValueError(f"{self.name}: expected integer")
-        if self.kind is ParameterType.REAL and (isinstance(self.value, bool) or not isinstance(self.value, (int, float)) or not math.isfinite(float(self.value))):
+        if self.kind is ParameterType.REAL and (
+            isinstance(self.value, bool)
+            or not isinstance(self.value, (int, float))
+            or not math.isfinite(float(self.value))
+        ):
             raise ValueError(f"{self.name}: expected finite real")
-        if self.kind in {ParameterType.STRING, ParameterType.CHOICE} and not isinstance(self.value, str):
+        if self.kind in {ParameterType.STRING, ParameterType.CHOICE} and not isinstance(
+            self.value, str
+        ):
             raise ValueError(f"{self.name}: expected string")
         if self.choices and self.value not in self.choices:
             raise ValueError(f"{self.name}: unsupported value {self.value!r}")
@@ -52,9 +67,11 @@ class Parameter:
             if message:
                 raise ValueError(f"{self.name}: {message}")
 
+
 @dataclass(frozen=True)
 class MeshSelection:
     """Stable application identity for a mesh object."""
+
     kind: str
     index: int
     name: str | None = None
@@ -67,6 +84,7 @@ class MeshSelection:
             raise ValueError("mesh selection index must be non-negative")
         if self.stable_id is not None and not self.stable_id.strip():
             raise ValueError("mesh selection stable_id must not be empty")
+
 
 @dataclass(frozen=True)
 class SetupDiagnostic:
@@ -92,6 +110,7 @@ class SetupDiagnostic:
             raise ValueError("diagnostic domain must not be empty")
         if not self.source.strip():
             raise ValueError("diagnostic source must not be empty")
+
     def to_dict(self) -> dict[str, str | None]:
         """Return a JSON-safe diagnostic representation for frontends."""
         return {
@@ -105,7 +124,15 @@ class SetupDiagnostic:
             "remediation": self.remediation,
         }
 
-def typed_parameter(name: str, value: Any, *, unit: str | None = None, choices: tuple[Any, ...] = (), impact: ChangeImpact = ChangeImpact.HOT) -> Parameter:
+
+def typed_parameter(
+    name: str,
+    value: Any,
+    *,
+    unit: str | None = None,
+    choices: tuple[Any, ...] = (),
+    impact: ChangeImpact = ChangeImpact.HOT,
+) -> Parameter:
     """Infer the supported user-facing parameter type."""
     if isinstance(value, bool):
         kind = ParameterType.BOOL

@@ -1,8 +1,8 @@
 """Unit tests for the STAR-CCM+ .sim adapter."""
-import pytest
 
 import os
 
+import pytest
 from cfdx.io.adapters.starccm import StarCCMAdapter, _extract_ascii_strings
 from cfdx.io.interfaces import ConversionResult, SourceInfo
 

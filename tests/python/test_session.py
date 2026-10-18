@@ -31,7 +31,10 @@ def test_hot_and_restart_edits_are_explicit() -> None:
     assert session.edit("output.frequency", 10) is ChangeImpact.HOT
     assert not session.requires_restart
 
-    assert session.edit("pressure.solver", "gmres", ChangeImpact.REBUILD) is ChangeImpact.REBUILD
+    assert (
+        session.edit("pressure.solver", "gmres", ChangeImpact.REBUILD)
+        is ChangeImpact.REBUILD
+    )
     assert session.requires_restart
 
     session.acknowledge_restart()
@@ -52,8 +55,17 @@ def test_case_tree_is_stable() -> None:
     session = CFDXSession()
     ids = [node.id for node in session.case_tree()]
     assert ids == [
-        "geometry", "mesh", "physics", "materials", "boundaries",
-        "numerics", "solver", "run", "monitors", "results", "reports",
+        "geometry",
+        "mesh",
+        "physics",
+        "materials",
+        "boundaries",
+        "numerics",
+        "solver",
+        "run",
+        "monitors",
+        "results",
+        "reports",
     ]
 
 

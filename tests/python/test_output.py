@@ -3,7 +3,11 @@ from cfdx.output import OutputThrottle
 
 def test_throttle_batches_and_preserves_stream() -> None:
     emitted = []
-    throttle = OutputThrottle(lambda line, is_stderr: emitted.append((line, is_stderr)), interval=0.05, max_lines=2)
+    throttle = OutputThrottle(
+        lambda line, is_stderr: emitted.append((line, is_stderr)),
+        interval=0.05,
+        max_lines=2,
+    )
     throttle.push("a", False)
     throttle.push("b", True)
     assert throttle.flush(now=1.0) == 2

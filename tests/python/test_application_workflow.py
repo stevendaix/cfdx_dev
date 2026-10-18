@@ -16,9 +16,19 @@ def test_workflow_state_has_stable_groups_and_children() -> None:
     state = build_workflow_state(session)
 
     roots = workflow_children(state, None)
-    assert [step.id for step in roots] == ["workflow.setup", "workflow.run", "workflow.results"]
+    assert [step.id for step in roots] == [
+        "workflow.setup",
+        "workflow.run",
+        "workflow.results",
+    ]
     assert [step.id for step in workflow_children(state, "workflow.setup")] == [
-        "geometry", "mesh", "physics", "materials", "boundaries", "numerics", "solver"
+        "geometry",
+        "mesh",
+        "physics",
+        "materials",
+        "boundaries",
+        "numerics",
+        "solver",
     ]
     assert all(step.status is WorkflowStatus.NOT_CONFIGURED for step in roots)
 

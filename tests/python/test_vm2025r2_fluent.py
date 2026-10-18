@@ -10,13 +10,16 @@ The Fluent .cas.h5 reader therefore has no CI coverage, and a green run
 says nothing about it. Run it locally against a directory of cases.
 """
 
-import pytest
 import os
 import sys
 from pathlib import Path
 
+import pytest
+
 # Add CFDX Python package to path
-_pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src", "cfdx", "python"))
+_pkg_root = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "src", "cfdx", "python")
+)
 if _pkg_root not in sys.path:
     sys.path.insert(0, _pkg_root)
 
@@ -41,6 +44,7 @@ def _try_pyfluent() -> bool:
     """Check if pyfluent CaseFile reader is available."""
     try:
         from ansys.fluent.core.filereader.case_file import CaseFile  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -129,7 +133,9 @@ class TestVM2025R2FluentCases:
             adapter.parse_cas_h5(str(cas_file))
             # Most cases should have a turbulence model
             turb = adapter.setup.turbulence_model
-            assert turb is not None and turb != "", f"No turbulence model for {cas_file}"
+            assert turb is not None and turb != "", (
+                f"No turbulence model for {cas_file}"
+            )
 
     def test_cas_h5_materials_extraction(self, cas_h5_files):
         """Test materials extraction from RP variables."""
@@ -187,14 +193,17 @@ class TestVM2025R2FluentCases:
             assert result.mesh["points"].shape[1] == 3
             assert result.setup.mesh_info.n_vertices > 0
 
-    @pytest.mark.parametrize("case_path", [
-        "VMFL001/VMFL001_WB_0_files/dp0/FLU/Fluent/VMFL001_rot_conc_cyl-1.cas.h5",
-        "VMFL015_WB/VMFL015_WB_1_files/dp0/FLU/Fluent/valve10-2.cas.h5",
-        "VMFL042_WB/VMFL042_WB_0_files/dp0/FFF/Fluent/VMFL042_mixing-1.cas.h5",
-        "VMFL040_WB/VMFL040_WB_1_files/dp0/FFF/Fluent/diffuser-1.cas.h5",
-        "VMFL044_WB/VMFL044_WB_1_files/dp0/FFF/Fluent/nozzle-3d-1.cas.h5",
-        "VMFL048_WB/VMFL048_WB_1_files/dp0/FLU/Fluent/VMFL048_pipebend-1.cas.h5",
-    ])
+    @pytest.mark.parametrize(
+        "case_path",
+        [
+            "VMFL001/VMFL001_WB_0_files/dp0/FLU/Fluent/VMFL001_rot_conc_cyl-1.cas.h5",
+            "VMFL015_WB/VMFL015_WB_1_files/dp0/FLU/Fluent/valve10-2.cas.h5",
+            "VMFL042_WB/VMFL042_WB_0_files/dp0/FFF/Fluent/VMFL042_mixing-1.cas.h5",
+            "VMFL040_WB/VMFL040_WB_1_files/dp0/FFF/Fluent/diffuser-1.cas.h5",
+            "VMFL044_WB/VMFL044_WB_1_files/dp0/FFF/Fluent/nozzle-3d-1.cas.h5",
+            "VMFL048_WB/VMFL048_WB_1_files/dp0/FLU/Fluent/VMFL048_pipebend-1.cas.h5",
+        ],
+    )
     def test_specific_cases(self, case_path, base_dir):
         """Test specific known cases by relative path."""
         cas_file = self._archive_case(base_dir, case_path)
@@ -212,7 +221,15 @@ class TestVM2025R2FluentCases:
     def test_dat_h5_import(self, base_dir):
         """Test .dat.h5 import for cases that have it."""
         # Find a case with both .cas.h5 and .dat.h5
-        cas_file = base_dir / "VMFL001" / "VMFL001_WB_0_files" / "dp0" / "FLU" / "Fluent" / "VMFL001_rot_conc_cyl-1.cas.h5"
+        cas_file = (
+            base_dir
+            / "VMFL001"
+            / "VMFL001_WB_0_files"
+            / "dp0"
+            / "FLU"
+            / "Fluent"
+            / "VMFL001_rot_conc_cyl-1.cas.h5"
+        )
         dat_file = cas_file.parent / "VMFL001_rot_conc_cyl-1-00150.dat.h5"
 
         if not dat_file.exists():
@@ -279,7 +296,15 @@ class TestVM2025R2FluentCases:
     def test_full_workflow_2d_rerun(self, base_dir):
         """Test full workflow: read cas.h5 + dat.h5, convert, save, rerun."""
         # VMFL001 - 2D axisymmetric rotating concentric cylinder
-        cas_file = base_dir / "VMFL001" / "VMFL001_WB_0_files" / "dp0" / "FLU" / "Fluent" / "VMFL001_rot_conc_cyl-1.cas.h5"
+        cas_file = (
+            base_dir
+            / "VMFL001"
+            / "VMFL001_WB_0_files"
+            / "dp0"
+            / "FLU"
+            / "Fluent"
+            / "VMFL001_rot_conc_cyl-1.cas.h5"
+        )
         dat_file = cas_file.parent / "VMFL001_rot_conc_cyl-1-00150.dat.h5"
 
         if not dat_file.exists():
@@ -313,7 +338,15 @@ class TestVM2025R2FluentCases:
     def test_full_workflow_3d_rerun(self, base_dir):
         """Test full workflow for 3D case."""
         # VMFL015 - 3D valve
-        cas_file = base_dir / "VMFL015_WB" / "VMFL015_WB_1_files" / "dp0" / "FLU" / "Fluent" / "valve10-2.cas.h5"
+        cas_file = (
+            base_dir
+            / "VMFL015_WB"
+            / "VMFL015_WB_1_files"
+            / "dp0"
+            / "FLU"
+            / "Fluent"
+            / "valve10-2.cas.h5"
+        )
         dat_file = cas_file.parent / "valve10-2-00170.dat.h5"
 
         if not dat_file.exists():

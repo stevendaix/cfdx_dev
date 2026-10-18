@@ -1,16 +1,22 @@
 """Bounded solver output delivery for interactive clients."""
+
 from __future__ import annotations
 
-from collections import deque
 import threading
 import time
-from typing import Callable
+from collections import deque
+from collections.abc import Callable
 
 
 class OutputThrottle:
     """Batch output callbacks so high-volume solver logs do not flood a UI."""
 
-    def __init__(self, emit: Callable[[str, bool], None], interval: float = 0.05, max_lines: int = 100) -> None:
+    def __init__(
+        self,
+        emit: Callable[[str, bool], None],
+        interval: float = 0.05,
+        max_lines: int = 100,
+    ) -> None:
         if interval <= 0:
             raise ValueError("interval must be positive")
         if max_lines <= 0:
@@ -31,7 +37,10 @@ class OutputThrottle:
         with self._lock:
             if not self._queue or now - self._last_flush < self._interval:
                 return 0
-            batch = [self._queue.popleft() for _ in range(min(self._max_lines, len(self._queue)))]
+            batch = [
+                self._queue.popleft()
+                for _ in range(min(self._max_lines, len(self._queue)))
+            ]
             self._last_flush = now
         for line, is_stderr in batch:
             self._emit(line, is_stderr)

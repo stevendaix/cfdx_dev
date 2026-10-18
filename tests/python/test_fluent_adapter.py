@@ -3,11 +3,10 @@
 The .cas.h5 tests are guarded on pyfluent, which CI does not install, so they
 skip there. The adapter's HDF5 import path has no CI coverage.
 """
-import pytest
-import numpy as np
 
 import os
 
+import pytest
 from cfdx.io.adapters.fluent import FluentAdapter, _parse_s_expressions, _try_pyfluent
 from cfdx.io.interfaces import ConversionResult, SourceInfo
 from cfdx.io.schema import BCType
@@ -91,7 +90,7 @@ class TestFluentAdapter:
         assert len(adapter._model_settings) > 0
 
     def test_s_expression_parser(self):
-        text = "(1 \"COMPILED\") (2 3 6\\n 0.0 0.0 0.0\\n )"
+        text = '(1 "COMPILED") (2 3 6\\n 0.0 0.0 0.0\\n )'
         sections = _parse_s_expressions(text)
         assert len(sections) == 2
         assert sections[0][0] == 1

@@ -4,6 +4,7 @@ A Project owns the canonical CFDX case artifact and its paired numerical DAT
 restart artifact. It deliberately does not introduce a project manifest:
 .cfdx.h5 remains setup/mesh state and .dat.h5 remains numerical state.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -33,7 +34,9 @@ class Project:
     def __post_init__(self) -> None:
         path = Path(self.path)
         if not path.name.lower().endswith(".cfdx.h5"):
-            raise ValueError("CFDX project case must use the canonical .cfdx.h5 extension")
+            raise ValueError(
+                "CFDX project case must use the canonical .cfdx.h5 extension"
+            )
         object.__setattr__(self, "path", path)
 
     @property
@@ -50,7 +53,9 @@ class Project:
         """Persist setup/mesh state only; never consumes or writes DAT state."""
         return save_case(session, self.path)
 
-    def save_with_dat(self, session: CFDXSession, source_dat: Path) -> tuple[Path, Path]:
+    def save_with_dat(
+        self, session: CFDXSession, source_dat: Path
+    ) -> tuple[Path, Path]:
         """Persist the case and canonicalize an explicit numerical checkpoint."""
         return save_case_with_dat(session, self.path, Path(source_dat))
 

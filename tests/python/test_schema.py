@@ -1,24 +1,21 @@
 """Unit tests for the CFDX I/O schema, interfaces, and GapAnalysis."""
-import pytest
-import numpy as np
 
-from cfdx.io.schema import (
-    CaseSetup,
-    BoundarySpec,
-    MaterialSpec,
-    SourceInfo,
-    MeshMetadata,
-    BCType,
-    BCValueType,
-    CFDX_SCHEMA_VERSION,
-    Severity,
-)
+
+from cfdx.io.gap_analysis import Finding, GapAnalysis, GapAnalysisReport
 from cfdx.io.interfaces import (
-    SolverAdapter,
     ConversionResult,
 )
-from cfdx.io.gap_analysis import GapAnalysis, GapAnalysisReport, Finding
 from cfdx.io.mapping_rules import MappingRules
+from cfdx.io.schema import (
+    CFDX_SCHEMA_VERSION,
+    BCType,
+    BCValueType,
+    BoundarySpec,
+    CaseSetup,
+    MaterialSpec,
+    Severity,
+    SourceInfo,
+)
 
 
 class TestSchema:

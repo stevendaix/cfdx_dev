@@ -1,4 +1,5 @@
 """Optional pyqtgraph monitor plot widget."""
+
 from __future__ import annotations
 
 from .metrics import SolverMetrics
@@ -20,8 +21,8 @@ class MetricsHistory:
             return
         self.iterations.append(metrics.iteration)
         self.residuals.append(value)
-        del self.iterations[:-self.max_points]
-        del self.residuals[:-self.max_points]
+        del self.iterations[: -self.max_points]
+        del self.residuals[: -self.max_points]
 
 
 def create_metrics_plot(history: MetricsHistory):

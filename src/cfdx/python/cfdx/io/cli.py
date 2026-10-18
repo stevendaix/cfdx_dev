@@ -5,6 +5,7 @@ Usage:
     cfdx-io convert <case_path> [--output DIR] [--solver NAME]
     cfdx-io list-adapters
 """
+
 from __future__ import annotations
 
 import sys
@@ -66,7 +67,9 @@ def main(argv: list[str] | None = None) -> int:
         print("\nConversion completed successfully.")
         print(f"  Supported features: {result.gap_report.n_supported()}")
         print(f"  Approximated: {result.gap_report.n_approximated()}")
-        print(f"  Unsupported (non-blocking): {result.gap_report.n_unsupported_nonblocking()}")
+        print(
+            f"  Unsupported (non-blocking): {result.gap_report.n_unsupported_nonblocking()}"
+        )
         print(f"  Blocking issues: {result.gap_report.n_unsupported_blocking()}")
 
         if result.mesh:
@@ -74,10 +77,10 @@ def main(argv: list[str] | None = None) -> int:
 
         if output_path:
             print(f"\nReports written to: {output_path}")
-            print(f"  - gap_analysis.md")
-            print(f"  - gap_analysis.json")
-            print(f"  - case_setup.json")
-            print(f"  - mesh.vtk")
+            print("  - gap_analysis.md")
+            print("  - gap_analysis.json")
+            print("  - case_setup.json")
+            print("  - mesh.vtk")
 
         return 0
 

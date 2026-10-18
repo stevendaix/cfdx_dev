@@ -8,19 +8,16 @@ runs conversion, and exports GapAnalysis reports.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
-from typing import Optional, Union
 
 from cfdx.io.adapters.fluent import FluentAdapter
-from cfdx.io.adapters.su2 import Su2Adapter
-from cfdx.io.adapters.starccm import StarCCMAdapter
-from cfdx.io.adapters.saturne import SaturneAdapter
 from cfdx.io.adapters.openfoam import OpenFOAMAdapter
+from cfdx.io.adapters.saturne import SaturneAdapter
+from cfdx.io.adapters.starccm import StarCCMAdapter
+from cfdx.io.adapters.su2 import Su2Adapter
+from cfdx.io.gap_analysis import GapAnalysisReport
 from cfdx.io.interfaces import ConversionResult
 from cfdx.io.schema import SourceInfo
-from cfdx.io.gap_analysis import GapAnalysisReport
-
 
 _ADAPTER_REGISTRY = {
     "fluent": (FluentAdapter, (".cas",)),
@@ -31,7 +28,7 @@ _ADAPTER_REGISTRY = {
 }
 
 
-def detect_adapter(path: Union[str, Path]) -> Optional[str]:
+def detect_adapter(path: str | Path) -> str | None:
     """Detect solver type from file extension and content."""
     p = Path(str(path))
 
@@ -48,7 +45,6 @@ def detect_adapter(path: Union[str, Path]) -> Optional[str]:
         ext = "." + stem.split(".")[-1] + ext
         # This will make ext = ".cas.h5" or ".dat.h5", but we want to map to fluent
         # Actually let's just check the stem
-        pass
 
     # Extension-based detection
     ext_map = {
@@ -106,9 +102,9 @@ def create_adapter(solver_name: str):
 
 
 def convert(
-    case_path: Union[str, Path],
-    output_path: Optional[Union[str, Path]] = None,
-    solver: Optional[str] = None,
+    case_path: str | Path,
+    output_path: str | Path | None = None,
+    solver: str | None = None,
     write_reports: bool = True,
 ) -> ConversionResult:
     """Convert an external solver case to CFDX IR.

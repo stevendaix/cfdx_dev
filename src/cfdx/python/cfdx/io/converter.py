@@ -34,14 +34,17 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any
 
 import numpy as np
 
 from cfdx.io.gap_analysis import GapAnalysis, GapAnalysisReport
 from cfdx.io.hdf5_writer import write_case_cfdx_h5
-from cfdx.io.numerical_selection import build_numerical_selection, validate_numerical_selection
 from cfdx.io.interfaces import ConversionResult as AdapterResult
+from cfdx.io.numerical_selection import (
+    build_numerical_selection,
+    validate_numerical_selection,
+)
 from cfdx.io.schema import (
     CFDX_SCHEMA_VERSION,
     BoundarySpec,
@@ -49,7 +52,6 @@ from cfdx.io.schema import (
     MaterialSpec,
     SourceInfo,
 )
-
 
 # --------------------------------------------------------------------------
 # Canonical result
@@ -61,14 +63,14 @@ class ConversionResult:
     """Canonical CFDX representation of a converted solver case."""
 
     source: SourceInfo = field(default_factory=SourceInfo)
-    case: Optional[CaseSetup] = None
-    mesh: Optional[dict] = None
+    case: CaseSetup | None = None
+    mesh: dict | None = None
     fields: list[tuple[str, np.ndarray]] = field(default_factory=list)
     boundaries: list[BoundarySpec] = field(default_factory=list)
     materials: list[MaterialSpec] = field(default_factory=list)
     solver_settings: dict[str, Any] = field(default_factory=dict)
     gap_analysis: GapAnalysis = field(default_factory=GapAnalysis)
-    output_path: Optional[str] = None
+    output_path: str | None = None
 
     # -- convenience -------------------------------------------------------
 
@@ -93,7 +95,7 @@ class ConversionResult:
     def material_names(self) -> list[str]:
         return [mat.name for mat in self.materials]
 
-    def find_field(self, name: str) -> Optional[np.ndarray]:
+    def find_field(self, name: str) -> np.ndarray | None:
         for field_name, data in self.fields:
             if field_name == name:
                 return data
@@ -189,9 +191,7 @@ def _copy_gap(src: GapAnalysis, dst: GapAnalysis) -> None:
         dst.add(f.severity, f.category, f.feature, f.detail, f.suggestion)
 
 
-def _solver_settings(
-    setup: Optional[CaseSetup], legacy: AdapterResult
-) -> dict[str, Any]:
+def _solver_settings(setup: CaseSetup | None, legacy: AdapterResult) -> dict[str, Any]:
     settings: dict[str, Any] = {}
     if setup is not None:
         for key in _SOLVER_SETTING_KEYS:
@@ -276,11 +276,15 @@ def _normalize(
 
     if setup is not None:
         setup.numerics.selection = build_numerical_selection(setup.numerics)
-        result.solver_settings["numerics"]["selection"] = setup.numerics.selection.model_dump(mode="json")
+        result.solver_settings["numerics"]["selection"] = (
+            setup.numerics.selection.model_dump(mode="json")
+        )
         for error in validate_numerical_selection(setup.numerics):
             result.gap_analysis.unsupported_blocking(
-                "numerics", "canonical_selection", error,
-                "Add an explicit CFDX numerical registry mapping before conversion"
+                "numerics",
+                "canonical_selection",
+                error,
+                "Add an explicit CFDX numerical registry mapping before conversion",
             )
 
     _copy_gap(legacy.gap_report, result.gap_analysis)
@@ -367,7 +371,7 @@ def _write_csr_h5(result: ConversionResult, output: Path, csr: dict) -> None:
 
 def write_result(
     result: ConversionResult,
-    output: Union[str, Path],
+    output: str | Path,
     write_reports: bool = True,
 ) -> Path:
     """Write a canonical result to ``output`` (HDF5 by default)."""
@@ -406,8 +410,8 @@ class SolverConverter:
 
     def convert(
         self,
-        source: Union[str, Path],
-        output: Optional[Union[str, Path]] = None,
+        source: str | Path,
+        output: str | Path | None = None,
         write_reports: bool = True,
     ) -> ConversionResult:
         """Convert ``source`` into the CFDX canonical representation.
@@ -422,7 +426,7 @@ class SolverConverter:
             write_result(result, output, write_reports=write_reports)
         return result
 
-    def read(self, source: Union[str, Path]) -> ConversionResult:
+    def read(self, source: str | Path) -> ConversionResult:
         path = Path(str(source))
         if not path.exists():
             result = ConversionResult(source=SourceInfo(solver=self.solver_name))
@@ -568,7 +572,9 @@ class CfdxConverter(SolverConverter):
         with f:
             attrs = f.attrs
             result.source.solver = str(attrs.get("source_solver", "CFDX") or "CFDX")
-            result.source.format = str(attrs.get("source_format", "cfdx_h5") or "cfdx_h5")
+            result.source.format = str(
+                attrs.get("source_format", "cfdx_h5") or "cfdx_h5"
+            )
             result.source.version = str(attrs.get("source_version", "") or "")
             result.source.case_path = str(attrs.get("source_case_path", "") or "")
             result.source.case_name = str(attrs.get("source_case_name", "") or "")
@@ -583,14 +589,17 @@ class CfdxConverter(SolverConverter):
                     result.case = CaseSetup.model_validate_json(str(setup_json))
                 except Exception as exc:
                     result.gap_analysis.unsupported_nonblocking(
-                        "schema", "case_setup_json",
+                        "schema",
+                        "case_setup_json",
                         f"Cannot parse stored case setup: {exc}",
                         "Re-convert from the original solver case",
                     )
             if result.case is not None:
                 result.boundaries = list(result.case.boundary_conditions)
                 result.materials = list(result.case.materials)
-                result.solver_settings = _solver_settings(result.case, AdapterResult(source=result.source))
+                result.solver_settings = _solver_settings(
+                    result.case, AdapterResult(source=result.source)
+                )
 
             gap_json = attrs.get("gap_report_json")
             if isinstance(gap_json, bytes):
@@ -617,7 +626,9 @@ class CfdxConverter(SolverConverter):
                     "points": points,
                     "cells": {},
                     "cfdx_csr": csr,
-                    "n_cells": int(len(csr["cell_offsets"]) - 1) if "cell_offsets" in csr else 0,
+                    "n_cells": int(len(csr["cell_offsets"]) - 1)
+                    if "cell_offsets" in csr
+                    else 0,
                 }
 
             for kind in ("scalar", "vector"):
@@ -721,7 +732,7 @@ def register_converter(name: str, converter_class: type[SolverConverter]) -> Non
     _CONVERTER_REGISTRY[name.strip().lower()] = converter_class
 
 
-def get_converter(solver_name: Union[str, type]) -> SolverConverter:
+def get_converter(solver_name: str | type) -> SolverConverter:
     """Return a converter instance for ``solver_name``.
 
     Args:
@@ -748,7 +759,7 @@ def get_converter(solver_name: Union[str, type]) -> SolverConverter:
     return converter_class()
 
 
-def detect_solver(source: Union[str, Path]) -> Optional[str]:
+def detect_solver(source: str | Path) -> str | None:
     """Detect the converter key for ``source`` from extension or layout.
 
     Returns a registry key (``"fluent"``, ``"su2"``, ...) or ``None`` when the
@@ -781,7 +792,7 @@ def detect_solver(source: Union[str, Path]) -> Optional[str]:
     return _sniff_content(path)
 
 
-def _sniff_content(path: Path) -> Optional[str]:
+def _sniff_content(path: Path) -> str | None:
     try:
         head = path.read_text(errors="replace")[:4096]
     except OSError:
@@ -796,9 +807,9 @@ def _sniff_content(path: Path) -> Optional[str]:
 
 
 def convert(
-    source: Union[str, Path],
-    output: Optional[Union[str, Path]] = None,
-    solver: Optional[str] = None,
+    source: str | Path,
+    output: str | Path | None = None,
+    solver: str | None = None,
     write_reports: bool = True,
 ) -> ConversionResult:
     """Convert ``source`` to the CFDX canonical representation.
@@ -826,19 +837,19 @@ def convert(
 
 
 __all__ = [
-    "ConversionResult",
-    "SolverConverter",
     "AdapterConverter",
-    "FluentConverter",
-    "Su2Converter",
-    "StarCcmConverter",
-    "SaturneConverter",
-    "OpenFoamConverter",
     "CfdxConverter",
-    "get_converter",
+    "ConversionResult",
+    "FluentConverter",
+    "OpenFoamConverter",
+    "SaturneConverter",
+    "SolverConverter",
+    "StarCcmConverter",
+    "Su2Converter",
+    "available_converters",
     "convert",
     "detect_solver",
+    "get_converter",
     "register_converter",
-    "available_converters",
     "write_result",
 ]

@@ -4,25 +4,33 @@ from pathlib import Path
 import pytest
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="optional Qt stack")
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="optional Qt stack"
+)
 def test_browser_widgets_import():
     from cfdx.mesh_browser_panel import MeshBrowserPanel
     from cfdx.results_series_panel import ResultsSeriesPanel
+
     assert MeshBrowserPanel is not None and ResultsSeriesPanel is not None
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="optional Qt stack")
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="optional Qt stack"
+)
 def test_results_series_panel_exposes_field_and_playback_controls():
-    from cfdx import create_application
     from cfdx.results_series import ResultFrame, ResultSeries
     from cfdx.results_series_panel import ResultsSeriesPanel
 
+    from cfdx import create_application
+
     app = create_application(["cfdx-results-panel-test"])
     panel = ResultsSeriesPanel()
-    series = ResultSeries((
-        ResultFrame(Path("step_0.vtu"), 0, 0.0, True, ("U", "p")),
-        ResultFrame(Path("step_1.vtu"), 1, 1.0, True, ("U", "p")),
-    ))
+    series = ResultSeries(
+        (
+            ResultFrame(Path("step_0.vtu"), 0, 0.0, True, ("U", "p")),
+            ResultFrame(Path("step_1.vtu"), 1, 1.0, True, ("U", "p")),
+        )
+    )
     fields = []
     frames = []
     panel.field_changed.connect(fields.append)
@@ -39,7 +47,9 @@ def test_results_series_panel_exposes_field_and_playback_controls():
     app.quit()
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="optional Qt stack")
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="optional Qt stack"
+)
 def test_3d_patch_actor_id_uses_stable_identity():
     from cfdx.gui_3d import PyVistaQtView
 

@@ -1,13 +1,12 @@
 """Unit tests for the Code_Saturne adapter."""
-import pytest
+
 import os
 
-import numpy as np
 import meshio
-
+import numpy as np
+import pytest
 from cfdx.io.adapters.saturne import SaturneAdapter
 from cfdx.io.interfaces import ConversionResult, SourceInfo
-from cfdx.io.schema import BCType
 
 
 class TestSaturneAdapter:

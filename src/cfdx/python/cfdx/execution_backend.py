@@ -1,9 +1,11 @@
 """Execution backend contracts for local and scheduler-based runs."""
+
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol, Sequence
+from typing import Protocol
 
 from .runner import SolverRunner
 
@@ -36,7 +38,14 @@ def slurm_command(command: Sequence[str], config: SlurmConfig) -> tuple[str, ...
     """Build an sbatch command without submitting it."""
     if not command:
         raise ValueError("command must not be empty")
-    result = ["sbatch", "--wait", "--nodes", str(config.nodes), "--ntasks", str(config.tasks)]
+    result = [
+        "sbatch",
+        "--wait",
+        "--nodes",
+        str(config.nodes),
+        "--ntasks",
+        str(config.tasks),
+    ]
     if config.partition:
         result += ["--partition", config.partition]
     if config.time_limit:

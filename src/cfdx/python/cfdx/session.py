@@ -3,6 +3,7 @@
 The session owns orchestration state and the in-memory numerical restart state
 used by the application layer. Numerical kernels remain in C++.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -97,7 +98,9 @@ class CFDXSession:
             raise RuntimeError("convergence requires a running session")
         self.state = SimulationState.CONVERGED
 
-    def edit(self, key: str, value: Any, impact: ChangeImpact = ChangeImpact.HOT) -> ChangeImpact:
+    def edit(
+        self, key: str, value: Any, impact: ChangeImpact = ChangeImpact.HOT
+    ) -> ChangeImpact:
         if self.state in {SimulationState.RUNNING, SimulationState.VALIDATING}:
             raise RuntimeError("case edits are not allowed while the session is active")
         self.case.numerics[key] = value

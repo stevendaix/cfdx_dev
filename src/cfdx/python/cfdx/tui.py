@@ -1,4 +1,5 @@
 """Dependency-free TUI renderer for CFDX sessions."""
+
 from __future__ import annotations
 
 from .session import CFDXSession

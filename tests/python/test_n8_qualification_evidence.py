@@ -1,7 +1,6 @@
+import sys
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
-import sys
-
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = spec_from_file_location(
@@ -70,7 +69,10 @@ def test_model_failures_retain_reported_gate_names() -> None:
 
 
 def test_records_without_a_payload_are_ignored() -> None:
-    assert MODULE.parse_key_value_records("MODEL_RESULT\nMODEL_FAILURES\n", "MODEL_RESULT") == []
+    assert (
+        MODULE.parse_key_value_records("MODEL_RESULT\nMODEL_FAILURES\n", "MODEL_RESULT")
+        == []
+    )
 
 
 def test_run_configuration_names_the_requested_preconditioner() -> None:
@@ -87,9 +89,13 @@ def test_evidence_routes_each_emitter_to_its_own_list() -> None:
     evidence = MODULE.extract_n8_evidence([{"name": "t", "output": CTEST_OUTPUT}])
     assert evidence["run_configuration"] == [
         MODEL_CONFIGURATION,
-        {**MODEL_CONFIGURATION, "algorithm": "COUPLED/MGR/upwind/bounded",
-         "preconditioner": "mgr", "preconditioner_id": 14,
-         "pressure_requested_preconditioner": "auto"},
+        {
+            **MODEL_CONFIGURATION,
+            "algorithm": "COUPLED/MGR/upwind/bounded",
+            "preconditioner": "mgr",
+            "preconditioner_id": 14,
+            "pressure_requested_preconditioner": "auto",
+        },
     ]
     assert [record["model"] for record in evidence["physical_model_results"]] == [
         "COUPLED/BlockSchur/upwind/bounded",
@@ -99,7 +105,9 @@ def test_evidence_routes_each_emitter_to_its_own_list() -> None:
     # The quantitative test emits one oracle record plus one record per method.
     assert [record["case"] for record in evidence["schur_quantitative"]] == [0, 0]
     assert evidence["schur_quantitative"][0]["cond_inf_Auu"] == 1.51309
-    assert evidence["schur_quantitative"][0]["exact_solve_backward_error"] == 5.64312e-17
+    assert (
+        evidence["schur_quantitative"][0]["exact_solve_backward_error"] == 5.64312e-17
+    )
     assert evidence["schur_quantitative"][1]["method"] == "LSC"
     assert evidence["schur_quantitative"][1]["exact_schur_error"] == 8.5631
     # The lifecycle prefix extends the benchmark prefix, so it must not be counted
@@ -272,10 +280,17 @@ def test_evidence_coverage_separates_the_two_schur_quantitative_shapes() -> None
     assert "schur_quantitative_method" not in coverage["missing_fields"]
 
 
-def test_evidence_coverage_reports_missing_fields_without_reinterpreting_results() -> None:
+def test_evidence_coverage_reports_missing_fields_without_reinterpreting_results() -> (
+    None
+):
     evidence = complete_evidence()
     evidence["physical_model_results"] = [
-        {"model": "Couette", "solver_converged": True, "iterations": 10, "gates_failed": 0},
+        {
+            "model": "Couette",
+            "solver_converged": True,
+            "iterations": 10,
+            "gates_failed": 0,
+        },
         {"model": "Ghia", "solver_converged": False, "execution_exception": "boom"},
     ]
     coverage = MODULE.audit_evidence_coverage(evidence)
@@ -346,7 +361,6 @@ def test_evidence_coverage_is_complete_on_a_captured_campaign() -> None:
     assert MODULE.audit_evidence_coverage(evidence)["status"] == "COMPLETE"
 
 
-
 def test_resolved_plans_carry_resolution_only() -> None:
     records = MODULE.parse_key_value_records(CTEST_OUTPUT, "MODEL_PLAN")
     assert records[0] == RESOLVED_PLAN
@@ -384,9 +398,12 @@ def test_linear_plan_records_an_automatic_resolution_instead_of_hiding_it() -> N
     # and has to be reported rather than inferred from the request.
     segmented = {
         "run_configuration": [
-            {**MODEL_CONFIGURATION, "algorithm": "SIMPLE/upwind/bounded",
-             "preconditioner": "auto",
-             "pressure_requested_preconditioner": "auto"},
+            {
+                **MODEL_CONFIGURATION,
+                "algorithm": "SIMPLE/upwind/bounded",
+                "preconditioner": "auto",
+                "pressure_requested_preconditioner": "auto",
+            },
         ],
         "resolved_plans": [
             {
@@ -726,7 +743,9 @@ def test_linear_plan_reports_each_structure_mismatch_once_per_subproblem() -> No
             ],
         }
     )
-    assert [entry["subproblem"] for entry in plan["structure_mismatches"]] == ["pressure"]
+    assert [entry["subproblem"] for entry in plan["structure_mismatches"]] == [
+        "pressure"
+    ]
 
 
 class _FakeCompleted:
@@ -735,7 +754,9 @@ class _FakeCompleted:
         self.stdout = stdout
 
 
-def _run_with_fake_ctest(returncode: int, stdout: str, name: str) -> tuple[dict, list[str]]:
+def _run_with_fake_ctest(
+    returncode: int, stdout: str, name: str
+) -> tuple[dict, list[str]]:
     captured: list[str] = []
 
     def fake_ctest(build_dir, *args):
@@ -790,7 +811,11 @@ def test_preconditioner_identity_accepts_ordinals_matching_the_enum() -> None:
         {
             "run_configuration": [
                 {**MODEL_CONFIGURATION},
-                {**MODEL_CONFIGURATION, "preconditioner": "mgr", "preconditioner_id": 14},
+                {
+                    **MODEL_CONFIGURATION,
+                    "preconditioner": "mgr",
+                    "preconditioner_id": 14,
+                },
             ]
         }
     )
@@ -806,7 +831,11 @@ def test_preconditioner_identity_reports_an_ordinal_that_no_longer_matches() -> 
     result = MODULE.audit_preconditioner_identity(
         {
             "run_configuration": [
-                {**MODEL_CONFIGURATION, "preconditioner": "mgr", "preconditioner_id": 13}
+                {
+                    **MODEL_CONFIGURATION,
+                    "preconditioner": "mgr",
+                    "preconditioner_id": 13,
+                }
             ]
         }
     )
@@ -823,7 +852,11 @@ def test_preconditioner_identity_reports_an_ordinal_that_no_longer_matches() -> 
 
 def test_preconditioner_identity_flags_a_name_outside_the_catalogue() -> None:
     result = MODULE.audit_preconditioner_identity(
-        {"run_configuration": [{**MODEL_CONFIGURATION, "preconditioner": "not_a_model"}]}
+        {
+            "run_configuration": [
+                {**MODEL_CONFIGURATION, "preconditioner": "not_a_model"}
+            ]
+        }
     )
     assert result["status"] == "INCOMPLETE"
     assert result["unknown_preconditioners"] == ["not_a_model"]

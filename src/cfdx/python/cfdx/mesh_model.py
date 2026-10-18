@@ -4,6 +4,7 @@ The reader consumes the CFDX HDF5 mesh interchange layout.  It exposes only
 metadata required by the browser and keeps numerical topology owned by C++.
 Both legacy single-region files and region-grouped HDF5 cases are supported.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -14,8 +15,14 @@ import h5py
 from .setup_model import MeshSelection
 
 _PATCH_TYPES = {
-    0: "wall", 1: "inlet", 2: "outlet", 3: "symmetry",
-    4: "periodic", 5: "interface", 6: "empty", 7: "unknown",
+    0: "wall",
+    1: "inlet",
+    2: "outlet",
+    3: "symmetry",
+    4: "periodic",
+    5: "interface",
+    6: "empty",
+    7: "unknown",
 }
 
 
@@ -81,7 +88,9 @@ class MeshCatalog:
         if self.regions:
             if len(self.regions) == 1:
                 return self.regions[0].cell_ids
-            return tuple(cell_id for region in self.regions for cell_id in region.cell_ids)
+            return tuple(
+                cell_id for region in self.regions for cell_id in region.cell_ids
+            )
         return tuple(f"cell:{i}" for i in range(self.n_cells))
 
     def cell(self, index: int) -> MeshCell:
@@ -154,7 +163,9 @@ def _read_region(name: str, h5: h5py.Group) -> MeshRegion:
             value = str(value)
             if not value:
                 raise ValueError(f"region {name!r} contains an empty cell ID")
-            ids.append(f"region:{name}/cell:{value}" if name != "default" else f"cell:{value}")
+            ids.append(
+                f"region:{name}/cell:{value}" if name != "default" else f"cell:{value}"
+            )
         if len(ids) != len(set(ids)):
             raise ValueError(f"region {name!r} cell IDs must be unique")
     else:
@@ -169,7 +180,9 @@ def _read_region(name: str, h5: h5py.Group) -> MeshRegion:
     face_ids = h5["patch_face_ids"][:]
     metadata = _parse_patch_metadata(h5.attrs.get("boundary_patches", ""))
     if len(offsets) != len(metadata) + 1:
-        raise ValueError(f"region {name!r} boundary patch metadata/offset count mismatch")
+        raise ValueError(
+            f"region {name!r} boundary patch metadata/offset count mismatch"
+        )
     if len(offsets) == 0 or int(offsets[0]) != 0:
         raise ValueError(f"region {name!r} patch offsets must start at zero")
     if any(int(offsets[i + 1]) < int(offsets[i]) for i in range(len(offsets) - 1)):
@@ -187,8 +200,9 @@ def _read_region(name: str, h5: h5py.Group) -> MeshRegion:
         if start < 0 or end < start or end > len(face_ids):
             raise ValueError(f"invalid face range for patch {patch_name!r}")
         patches.append(
-            MeshPatch(i, patch_name, _PATCH_TYPES.get(type_code, "unknown"),
-                      end - start, name)
+            MeshPatch(
+                i, patch_name, _PATCH_TYPES.get(type_code, "unknown"), end - start, name
+            )
         )
     return MeshRegion(name, n_points, n_faces, n_cells, tuple(patches), tuple(ids))
 
@@ -205,8 +219,9 @@ def read_mesh_catalog(path: Path) -> MeshCatalog:
         regions = tuple(_read_region(name, group) for name, group in groups)
         if len(regions) == 1 and regions[0].name == "default":
             region = regions[0]
-            return MeshCatalog(region.n_points, region.n_faces, region.n_cells,
-                               region.patches, regions)
+            return MeshCatalog(
+                region.n_points, region.n_faces, region.n_cells, region.patches, regions
+            )
         patches = tuple(patch for region in regions for patch in region.patches)
         return MeshCatalog(
             sum(region.n_points for region in regions),

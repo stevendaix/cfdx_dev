@@ -13,7 +13,6 @@ Corresponds to the C++ header:
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 from cfdx.io.schema import BCType, BCValueType
 
@@ -205,7 +204,7 @@ class MappingRules:
         self._patch_map: dict[str, int] = {}
 
     @classmethod
-    def load_default(cls) -> "MappingRules":
+    def load_default(cls) -> MappingRules:
         rules = cls()
         for vendor, cfdx_name in cls._DEFAULT_BC.items():
             rules.add_bc_mapping(vendor, BCType[cfdx_name])
@@ -220,7 +219,7 @@ class MappingRules:
         return rules
 
     @classmethod
-    def load_from_file(cls, path: str) -> "MappingRules":
+    def load_from_file(cls, path: str) -> MappingRules:
         rules = cls.load_default()
 
         if not os.path.exists(path):
@@ -249,7 +248,7 @@ class MappingRules:
         return rules
 
     @classmethod
-    def _load_from_simple_yaml(cls, path: str, rules: "MappingRules") -> "MappingRules":
+    def _load_from_simple_yaml(cls, path: str, rules: MappingRules) -> MappingRules:
         """Minimal YAML parser for the simple key:value format in mapping_rules.yaml."""
         section = ""
         with open(path, "r") as f:

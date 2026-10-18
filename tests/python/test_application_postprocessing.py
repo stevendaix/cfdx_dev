@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from cfdx.application import PostProcessingRegistry, PostProcessingSpec, build_post_processing_registry
+from cfdx.application import (
+    PostProcessingRegistry,
+    PostProcessingSpec,
+    build_post_processing_registry,
+)
 
 
 def test_post_processing_registry_exposes_existing_capabilities() -> None:

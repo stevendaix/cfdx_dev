@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import h5py
 import pytest
+from cfdx.case_io import read_case, save_case, validate_case_bundle
 
 from cfdx import CFDXSession
-from cfdx.case_io import read_case, save_case, validate_case_bundle
 
 
 def make_session() -> CFDXSession:
@@ -25,8 +24,13 @@ def make_session() -> CFDXSession:
 def write_native_mesh(h5: h5py.File) -> None:
     h5.attrs["format"] = "CFDX"
     h5.attrs["schema_version"] = 1
-    h5.create_dataset("points", data=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
-    h5.create_dataset("face_vertices", data=[0, 2, 1, 0, 1, 3, 1, 3, 2, 2, 3, 0], dtype="u8")
+    h5.create_dataset(
+        "points",
+        data=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+    )
+    h5.create_dataset(
+        "face_vertices", data=[0, 2, 1, 0, 1, 3, 1, 3, 2, 2, 3, 0], dtype="u8"
+    )
     h5.create_dataset("face_offsets", data=[0, 3, 6, 9, 12], dtype="u8")
     h5.create_dataset("owner", data=[0, 0, 0, 0], dtype="u8")
     h5.create_dataset("neighbour", data=[-1, -1, -1, -1], dtype="i8")
@@ -89,13 +93,26 @@ def bundle_with_parasite(tmp_path: Path, populate) -> Path:
     [
         pytest.param(lambda h5: h5.create_group("runtime/checkpoint"), id="checkpoint"),
         pytest.param(lambda h5: h5.create_group("runtime/restart"), id="restart"),
-        pytest.param(lambda h5: h5.create_dataset("runtime/foo", data=[1.0]), id="arbitrary-runtime-group"),
-        pytest.param(lambda h5: h5.create_dataset("iteration", data=[7]), id="top-level-iteration"),
-        pytest.param(lambda h5: h5.create_dataset("time", data=[0.5]), id="top-level-time"),
-        pytest.param(lambda h5: h5.create_dataset("solution/u", data=[1.0]), id="top-level-solution"),
+        pytest.param(
+            lambda h5: h5.create_dataset("runtime/foo", data=[1.0]),
+            id="arbitrary-runtime-group",
+        ),
+        pytest.param(
+            lambda h5: h5.create_dataset("iteration", data=[7]),
+            id="top-level-iteration",
+        ),
+        pytest.param(
+            lambda h5: h5.create_dataset("time", data=[0.5]), id="top-level-time"
+        ),
+        pytest.param(
+            lambda h5: h5.create_dataset("solution/u", data=[1.0]),
+            id="top-level-solution",
+        ),
     ],
 )
-def test_runtime_state_parasites_are_reported_as_not_separated(tmp_path: Path, populate) -> None:
+def test_runtime_state_parasites_are_reported_as_not_separated(
+    tmp_path: Path, populate
+) -> None:
     """Absent checkpoint/restart groups alone never proved runtime separation.
 
     Each parasite is runtime state that leaked into the case artifact under a

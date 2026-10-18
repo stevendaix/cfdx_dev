@@ -1,4 +1,5 @@
 """Contextual property contracts for the Workbench Properties panel."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,27 +21,64 @@ class PropertyState:
     message: str | None = None
 
 
-def properties_for_selection(case: Case, stable_id: str | None) -> tuple[PropertyState, ...]:
+def properties_for_selection(
+    case: Case, stable_id: str | None
+) -> tuple[PropertyState, ...]:
     """Resolve a stable navigation ID to editable application properties."""
     if stable_id == "numerics":
         value = case.numerics.get("cfl", 1.0)
-        return (PropertyState("numerics.cfl", "CFL", value, ParameterType.REAL, impact=ChangeImpact.HOT),)
+        return (
+            PropertyState(
+                "numerics.cfl",
+                "CFL",
+                value,
+                ParameterType.REAL,
+                impact=ChangeImpact.HOT,
+            ),
+        )
     if stable_id == "solver":
-        return (PropertyState("execution.solver", "Solver executable", case.execution.solver or "", ParameterType.STRING, impact=ChangeImpact.REQUIRES_RESTART),)
+        return (
+            PropertyState(
+                "execution.solver",
+                "Solver executable",
+                case.execution.solver or "",
+                ParameterType.STRING,
+                impact=ChangeImpact.REQUIRES_RESTART,
+            ),
+        )
     if stable_id == "physics":
         return tuple(
-            PropertyState(f"physics.{name}.enabled", name.title(), bool(value.get("enabled", True)), ParameterType.BOOL)
-            for name, value in case.physics.items() if isinstance(value, dict)
+            PropertyState(
+                f"physics.{name}.enabled",
+                name.title(),
+                bool(value.get("enabled", True)),
+                ParameterType.BOOL,
+            )
+            for name, value in case.physics.items()
+            if isinstance(value, dict)
         )
     if stable_id == "materials":
         return tuple(
-            PropertyState(f"materials.{name}", name.title(), value, ParameterType.STRING, editable=False)
+            PropertyState(
+                f"materials.{name}",
+                name.title(),
+                value,
+                ParameterType.STRING,
+                editable=False,
+            )
             for name, value in case.materials.items()
         )
     if stable_id == "boundaries":
         return tuple(
-            PropertyState(f"boundaries.{name}.type", name, value.get("type", ""), ParameterType.STRING, editable=False)
-            for name, value in case.boundaries.items() if isinstance(value, dict)
+            PropertyState(
+                f"boundaries.{name}.type",
+                name,
+                value.get("type", ""),
+                ParameterType.STRING,
+                editable=False,
+            )
+            for name, value in case.boundaries.items()
+            if isinstance(value, dict)
         )
     return ()
 

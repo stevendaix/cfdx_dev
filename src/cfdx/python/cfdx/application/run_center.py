@@ -1,4 +1,5 @@
 """Headless Run Center state fed by the existing execution controller."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -27,7 +28,9 @@ class RunCenterModel:
     subscribes to its existing callbacks and keeps a bounded output transcript.
     """
 
-    def __init__(self, controller: ExecutionController, *, max_output_lines: int = 2000) -> None:
+    def __init__(
+        self, controller: ExecutionController, *, max_output_lines: int = 2000
+    ) -> None:
         self.controller = controller
         self.max_output_lines = max_output_lines
         self.output: list[str] = []

@@ -1,9 +1,9 @@
 from pathlib import Path
 
 import pytest
+from cfdx.case_io import save_case
 
 from cfdx import CFDXSession, Project
-from cfdx.case_io import save_case
 
 
 def make_session() -> CFDXSession:

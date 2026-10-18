@@ -4,11 +4,14 @@ from pathlib import Path
 import pytest
 
 
-@pytest.mark.skipif(importlib.util.find_spec("PySide6") is None, reason="PySide6 optional")
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
 def test_workbench_save_pairs_selected_restart_dat(tmp_path: Path) -> None:
-    from cfdx import CFDXSession
     from cfdx.gui import create_application
     from cfdx.workbench import CFDXWorkbenchWindow
+
+    from cfdx import CFDXSession
 
     app = create_application(["cfdx-workbench-save-bundle"])
     session = CFDXSession()

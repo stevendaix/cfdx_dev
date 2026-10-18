@@ -1,4 +1,5 @@
 """Generic surface reduction primitives for forces and fluxes."""
+
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence

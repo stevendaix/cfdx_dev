@@ -4,7 +4,6 @@ import sys
 import time
 
 import pytest
-
 from cfdx.runner import SolverRunner
 
 
@@ -26,8 +25,10 @@ def test_runner_streams_stdout_and_stderr() -> None:
     completed = []
 
     runner = SolverRunner(command)
-    runner.start(on_output=lambda line, is_stderr: output.append((line, is_stderr)),
-                 on_complete=completed.append)
+    runner.start(
+        on_output=lambda line, is_stderr: output.append((line, is_stderr)),
+        on_complete=completed.append,
+    )
     wait_for_completion(runner)
 
     assert sorted(output) == [("err", True), ("out", False)]
@@ -62,10 +63,17 @@ def test_runner_stop_terminates_process() -> None:
     assert not runner.running
 
 
-
-@pytest.mark.skipif(__import__("os").name != "posix", reason="POSIX process groups provide pause semantics")
+@pytest.mark.skipif(
+    __import__("os").name != "posix",
+    reason="POSIX process groups provide pause semantics",
+)
 def test_runner_pause_and_resume() -> None:
-    command = [sys.executable, "-u", "-c", "import time; [print(i, flush=True) or time.sleep(0.05) for i in range(1000)]"]
+    command = [
+        sys.executable,
+        "-u",
+        "-c",
+        "import time; [print(i, flush=True) or time.sleep(0.05) for i in range(1000)]",
+    ]
     output: list[str] = []
     runner = SolverRunner(command)
     runner.start(on_output=lambda line, is_stderr: output.append(line))

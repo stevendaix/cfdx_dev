@@ -1,8 +1,9 @@
 """Parsing of solver progress metrics from CFDX runner output."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
@@ -35,13 +36,15 @@ class SolverMetricsParser:
     # progress lines use "Iteration N". Accept both forms so the final
     # authoritative solver iteration is not lost by the monitor parser.
     _ITERATION = re.compile(
-        rf"\b(?:iterations?|iter)\s*(?:=|:)?\s*(\d+)\b", re.I
+        r"\b(?:iterations?|iter)\s*(?:=|:)?\s*(\d+)\b", re.IGNORECASE
     )
-    _TIME = re.compile(rf"\b(?:time|physical\s+time)\s*(?:=|:)\s*({_NUMBER})\b", re.I)
-    _CFL = re.compile(rf"\bCFL\s*(?:=|:)\s*({_NUMBER})\b", re.I)
+    _TIME = re.compile(
+        rf"\b(?:time|physical\s+time)\s*(?:=|:)\s*({_NUMBER})\b", re.IGNORECASE
+    )
+    _CFL = re.compile(rf"\bCFL\s*(?:=|:)\s*({_NUMBER})\b", re.IGNORECASE)
     _RESIDUAL = re.compile(
         rf"\b(?:residual|res)\s*[(:]?\s*([A-Za-z0-9_.-]+)\s*[)]?\s*(?:=|:)\s*({_NUMBER})\b",
-        re.I,
+        re.IGNORECASE,
     )
 
     def parse(self, line: str) -> SolverMetrics | None:

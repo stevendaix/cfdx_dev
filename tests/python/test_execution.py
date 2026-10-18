@@ -1,7 +1,7 @@
-from pathlib import Path
 import os
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -51,10 +51,15 @@ def test_controller_stop_reports_stopped(tmp_path: Path) -> None:
     assert session.state.value == "STOPPED"
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX process groups provide pause semantics")
+@pytest.mark.skipif(
+    os.name != "posix", reason="POSIX process groups provide pause semantics"
+)
 def test_controller_pause_resume(tmp_path: Path) -> None:
     script = tmp_path / "solver.py"
-    script.write_text("import time; [print(i, flush=True) or time.sleep(0.05) for i in range(1000)]\n", encoding="utf-8")
+    script.write_text(
+        "import time; [print(i, flush=True) or time.sleep(0.05) for i in range(1000)]\n",
+        encoding="utf-8",
+    )
     session = CFDXSession()
     runner = SolverRunner([sys.executable, "-u", str(script)])
     controller = ExecutionController(session, runner)
@@ -118,6 +123,7 @@ def test_controller_builds_monitor_series_from_solver_metrics(tmp_path: Path) ->
     assert controller.monitor_series.samples[-1].time == pytest.approx(0.2)
     assert controller.monitor_series.at(2).values["p"] == pytest.approx(2.0e-3)
     assert controller.monitor_series.at(2).values["CFL"] == pytest.approx(0.3)
+
 
 def test_controller_merges_metrics_emitted_on_separate_lines(tmp_path: Path) -> None:
     script = tmp_path / "solver.py"
