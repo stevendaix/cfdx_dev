@@ -9,6 +9,31 @@ handoff document for the next session.
 
 P3-A completed by merged PR #817. P3-B through P3-E remain.
 
+### P3-B (DAT/restart production contract) — DONE
+
+The Application now owns the DAT/restart contract end-to-end, qualified
+against an artifact actually emitted by the production solver:
+
+- `src/cfdx/python/cfdx/case.py` — `ExecutionConfig` gains `mesh` and
+  `output_dir` fields. The production solver requires ``--mesh`` and
+  ``--output-dir`` even when restarting from a checkpoint, so a bare DAT
+  restart must carry those options alongside the checkpoint path. They are
+  stored on the session's execution config rather than on the DAT itself,
+  because the DAT carries numerical state only.
+- `src/cfdx/python/cfdx/application/application.py` — `load_restart` loads a
+  bare DAT checkpoint as the solver restart state without requiring the
+  caller to first save a paired ``.cfdx.h5`` project. `ensure_controller`
+  builds the canonical solver command from either a saved project path or a
+  bare DAT restart path, carrying the checkpoint through the
+  case-configured restart option.
+- `src/cfdx/python/cfdx/application/commands.py` — `_ControllerCommand`
+  constructs the controller on demand through `ensure_controller` rather than
+  requiring the caller to have pre-built one, so controller commands work
+  from an unsaved project as long as the case config is complete.
+- `tests/python/test_application_restart_production_e2e.py` — qualifies the
+  restart command against a real production solver run: the solver's
+  initialization strategy must be ``restart`` after loading the checkpoint.
+
 ### P3-C (post-processing capability registry) — DONE
 
 The post-processing registry is now a capability declaration that reflects

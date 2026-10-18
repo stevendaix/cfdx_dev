@@ -1,8 +1,9 @@
 """Explicit application commands used by GUI, TUI, and CLI frontends."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Protocol
 
 from ..probe import ProbeCatalog
 from ..session import CFDXSession, ChangeImpact
@@ -15,6 +16,8 @@ if TYPE_CHECKING:
 class CommandContext(Protocol):
     session: CFDXSession
     controller: ExecutionController | None
+
+    def ensure_controller(self) -> ExecutionController: ...
 
 
 class Command:
@@ -66,9 +69,18 @@ class ConfigureProbes(Command):
 
 class _ControllerCommand(Command):
     def _controller(self, context: CommandContext) -> ExecutionController:
-        if context.controller is None:
-            raise RuntimeError("an execution controller is required")
-        return context.controller
+        if context.controller is not None:
+            return context.controller
+        # The Application owns controller construction through
+        # ``ensure_controller``, which builds the canonical solver command
+        # from the case config and, when a DAT restart is loaded, from the
+        # checkpoint path. A controller command must therefore be able to
+        # construct the controller on demand rather than requiring the
+        # caller to have pre-built one.
+        ensure = getattr(context, "ensure_controller", None)
+        if callable(ensure):
+            return ensure()
+        raise RuntimeError("an execution controller is required")
 
 
 class RunSolver(_ControllerCommand):

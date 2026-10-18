@@ -185,30 +185,94 @@ class Application:
         self._restart_dat = None
         return self._publish_state()
 
+    def load_restart(
+        self,
+        dat_path: str | Path,
+        *,
+        solver: str | None = None,
+        mesh: str | Path | None = None,
+        output_dir: str | Path | None = None,
+    ) -> DatRestart:
+        """Load a bare DAT checkpoint as the solver restart state.
+
+        The production solver writes a standalone ``restart.dat`` next to its
+        output directory; the GUI must be able to open that file directly and
+        have it become the solver's restart state, without requiring the
+        caller to first save a paired ``.cfdx.h5`` project. The DAT is read
+        through the existing ``dat_io`` contract, so the numerical values are
+        validated exactly as they would be for a paired checkpoint.
+
+        The production solver requires ``--mesh`` and ``--output-dir`` even
+        when restarting from a checkpoint, so a bare DAT restart must carry
+        those options alongside the checkpoint path. They are stored on the
+        session's execution config rather than on the DAT itself, because the
+        DAT carries numerical state only.
+        """
+        path = Path(dat_path)
+        if not path.is_file():
+            raise FileNotFoundError(path)
+        restart = read_dat_restart(path)
+        if solver is not None:
+            self.session.case.execution.solver = solver
+        elif not self.session.case.execution.solver:
+            raise ValueError(
+                "a bare DAT restart requires a configured execution.solver"
+            )
+        if mesh is not None:
+            self.session.case.execution.mesh = str(Path(mesh))
+        if output_dir is not None:
+            self.session.case.execution.output_dir = str(Path(output_dir))
+        self._restart_dat = path
+        self._publish_state()
+        return restart
+
     def ensure_controller(self) -> ExecutionController:
-        """Construct the canonical solver execution controller on demand."""
+        """Construct the canonical solver execution controller on demand.
+
+        Two paths are supported:
+
+        * A saved ``.cfdx.h5`` project: the solver command carries the
+          project path and, if a paired DAT was loaded, the restart option and
+          checkpoint path.
+        * A bare DAT restart loaded through :meth:`load_restart`: the solver
+          command carries the DAT path directly through the case-configured
+          restart option. The DAT has no case setup of its own, so the command
+          is built from the DAT path and the configured solver rather than
+          from a project path.
+        """
         if self.controller is not None:
             return self.controller
-        if self.project_path is None:
-            raise ValueError("save the case before starting the solver")
         solver = self.session.case.execution.solver
         if not solver:
             raise ValueError("execution.solver must be configured before Run")
-        command = [solver, str(self.project_path)]
-        if self._restart_dat is not None:
-            restart_option = self.session.case.execution.restart_option
-            if not restart_option:
-                raise ValueError(
-                    "a DAT checkpoint is loaded but no restart option is configured"
-                )
-            command.extend([restart_option, str(self._restart_dat)])
+        restart_option = self.session.case.execution.restart_option
+        if self._restart_dat is not None and not restart_option:
+            raise ValueError(
+                "a DAT checkpoint is loaded but no restart option is configured"
+            )
+        if self.project_path is not None:
+            command: list[str] = [solver, str(self.project_path)]
+            cwd = Path(self.project_path).parent
+            if self._restart_dat is not None:
+                command.extend([restart_option, str(self._restart_dat)])
+        elif self._restart_dat is not None:
+            # A bare DAT restart: the solver consumes the checkpoint
+            # directly, so the command carries the DAT path through the
+            # restart option alongside the mesh and output-dir the solver
+            # requires even when restarting from a checkpoint.
+            command = [solver, "--mesh", str(self.session.case.execution.mesh)]
+            command += ["--output-dir", str(self.session.case.execution.output_dir)]
+            command += [restart_option, str(self._restart_dat)]
+            cwd = Path(self._restart_dat).parent
+        else:
+            raise ValueError("save the case before starting the solver")
         probe_catalog = ProbeCatalog(self.session.case.probes)
         if probe_catalog.probes:
             for spec in probe_catalog.specs():
                 command += ["--probe", spec]
             command += [
                 "--probe-csv",
-                str(probe_catalog.csv_path(self.project_path)),
+                str(probe_catalog.csv_path(self.project_path or self._restart_dat)),
             ]
         if self.session.case.execution.mpi_ranks > 1:
             command = [
@@ -219,7 +283,7 @@ class Application:
             ]
         controller = ExecutionController(
             self.session,
-            SolverRunner(command, cwd=Path(self.project_path).parent),
+            SolverRunner(command, cwd=cwd),
         )
         self.attach_controller(controller)
         return controller

@@ -62,5 +62,15 @@ def test_application_routes_execution_to_controller_and_publishes_state() -> Non
 
 
 def test_application_run_requires_a_saved_project() -> None:
-    with pytest.raises(ValueError, match="save the case before starting the solver"):
+    """A run with no saved project and no configured solver must be rejected.
+
+    The Application owns controller construction, so an unsaved project
+    without a configured solver is rejected before any process is started.
+    Either the missing project path or the missing solver is a valid reason
+    to refuse, and the message names whichever is missing first.
+    """
+    with pytest.raises(
+        ValueError,
+        match="save the case before starting the solver|execution.solver must be configured before Run",
+    ):
         Application(CFDXSession()).run()
