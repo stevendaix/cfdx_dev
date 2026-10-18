@@ -24,7 +24,7 @@ CFDX assemble (A_u), (b_u) et le résidu dans l’opérateur volumes finis exist
 - Résidu RHS-normalisé : (eta_b=|r_u|/max(|b_u|,epsilon)).
 - Résidu relatif à l’itération initiale : (eta_0=|r_u|/max(|r_u^{(0)}|,epsilon)).
 
-La première est la mesure d’acceptation retenue pour le résidu momentum. La seconde reste une donnée de diagnostic et d’analyse de relaxation adaptative. Aucun terme de matrice, flux de face ou source discrète n’est modifié.
+- Le résidu RHS-normalisé reste toujours un gate d’acceptation. Le ratio à la première itération est également exigé lorsque sa référence est résolue ; si la référence est au niveau du bruit machine (référence <= 100 epsilon machine × échelle RHS), ce ratio est exclu du monitor et du gate, tout en restant disponible dans l’historique. Aucun terme de matrice, flux de face ou source discrète n’est modifié.
 
 ## 4. Traitement des frontières
 
@@ -52,7 +52,7 @@ Validation requise :
 ## 7. Statut d’implémentation
 
 - Fichier source : `src/cfdx/physics/steady_incompressible_solver.h`.
-- Changements : le RHS-normalisé est le critère momentum autoritaire ; le ratio de première itération reste dans l’historique mais est retiré du monitor non linéaire et du gate d’acceptation.
+- Changements : le RHS-normalisé est toujours exigé ; le ratio de première itération reste exigé si sa référence est bien conditionnée, et est retiré du monitor/gate uniquement lorsque cette référence est au niveau du bruit machine.
 - Implémenté : candidat dans la PR #956.
 - Vérifié : CI en cours ; pas encore qualifié physiquement.
 - Qualification : **PENDING** jusqu’au verdict exact-HEAD de `validation-total`.
