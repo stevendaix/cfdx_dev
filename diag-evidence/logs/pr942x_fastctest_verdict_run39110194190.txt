@@ -1,0 +1,2 @@
+verdict=INCONCLUSIVE_NO_FAILED_LIST
+ctest_exit=8 but failed list not parsed — read the raw ctest log
