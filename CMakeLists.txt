@@ -25,7 +25,7 @@ option(CFDX_ENABLE_LONG_VALIDATION "Register full long-running validation campai
 
 if(CFDX_ENABLE_GPU)
     enable_language(CUDA)
-    set(CMAKE_CUDA_STANDARD 17)
+    set(CMAKE_CUDA_STANDARD 14)
     set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 endif()
 
@@ -347,6 +347,10 @@ endif()
 add_executable(cfdx_wall_distance_complex_benchmark apps/verification/wall_distance_complex_benchmark.cpp)
 target_link_libraries(cfdx_wall_distance_complex_benchmark PRIVATE cfdx_core)
 
+add_executable(cfdx_naca0012_wall_distance_comparison
+    apps/verification/naca0012_wall_distance_comparison.cpp)
+target_link_libraries(cfdx_naca0012_wall_distance_comparison PRIVATE cfdx_core)
+
 add_executable(cfdx_wall_distance_controlled_benchmark apps/verification/wall_distance_controlled_benchmark.cpp)
 target_link_libraries(cfdx_wall_distance_controlled_benchmark PRIVATE cfdx_core)
 
@@ -503,8 +507,6 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_n11_unit_invariance_robustness tests/validation/test_n11_unit_invariance_robustness.cpp)
     set_tests_properties(test_n11_unit_invariance_robustness PROPERTIES LABELS "n11;qualification;validation")
     add_cfdx_test(test_backend_equivalence tests/unit/test_backend_equivalence.cpp)
-    add_executable(test_n13_cuda_equivalence tests/validation/test_n13_cuda_equivalence.cpp)
-    target_link_libraries(test_n13_cuda_equivalence PRIVATE cfdx_core)
     add_cfdx_test(test_n13_restart_equivalence tests/validation/test_n13_restart_equivalence.cpp)
 
     # Unit tests - Numerical
@@ -641,6 +643,13 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_n11_bound_reporting_hardening tests/unit/test_n11_bound_reporting_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_wall_distance_methods tests/unit/test_wall_distance_methods.cpp)
+    add_test(NAME benchmark_wall_distance_naca0012
+        COMMAND cfdx_naca0012_wall_distance_comparison
+                ${CMAKE_SOURCE_DIR}/tests/data/su2/mesh_NACA0012_inv.su2
+                ${CMAKE_BINARY_DIR}/wall_distance_naca0012.csv 25)
+    set_tests_properties(benchmark_wall_distance_naca0012 PROPERTIES
+        LABELS "phase13;validation;benchmark;wall-distance"
+        TIMEOUT 180)
     add_cfdx_test(test_n11_fw1_nearest_normal_fallback tests/unit/test_n11_fw1_nearest_normal_fallback.cpp)
 add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_positivity_clamp_counter.cpp)
     add_cfdx_test(test_n11_b1_b2_b3_linalg_guards tests/unit/test_n11_b1_b2_b3_linalg_guards.cpp)
@@ -882,8 +891,6 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
 
     # Phase 13 verification labels. The campaign driver selects these tests
     # without conflating unit/regression coverage with numerical verification.
-    add_test(NAME test_n13_cuda_equivalence COMMAND test_n13_cuda_equivalence)
-    set_tests_properties(test_n13_cuda_equivalence PROPERTIES LABELS "phase13;validation;n13;hardware" SKIP_RETURN_CODE 2)
     set_tests_properties(test_backend_equivalence test_n13_restart_equivalence
         PROPERTIES LABELS "phase13;validation;n13")
     set_tests_properties(test_mms_scalar_diffusion
@@ -1060,6 +1067,10 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     if(CFDX_ENABLE_GPU)
         add_cfdx_test(test_cuda_runtime tests/unit/test_cuda_runtime.cpp)
         add_cfdx_test(test_phase8_cuda_poisson tests/validation/test_phase8_cuda_poisson.cpp)
+        add_executable(test_n13_cuda_equivalence tests/validation/test_n13_cuda_equivalence.cpp)
+        target_link_libraries(test_n13_cuda_equivalence PRIVATE cfdx_core)
+        add_test(NAME test_n13_cuda_equivalence COMMAND test_n13_cuda_equivalence)
+        set_tests_properties(test_n13_cuda_equivalence PROPERTIES LABELS "phase13;validation;n13;hardware")
     endif()
 
     # HDF5 tests require the native reader/writer implementation.

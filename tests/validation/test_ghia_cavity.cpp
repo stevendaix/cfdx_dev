@@ -165,6 +165,41 @@ CavityResult solve_cavity(
             ? std::min<std::size_t>(coupled_unknowns,
                                     std::max<std::size_t>(1024,coupled_budget))
             : std::min<std::size_t>(coupled_unknowns,512));
+    // #870 (N8-PCD, nested counterpart of the #898/fiche-16 fix): the NESTED
+    // PCD convection-diffusion solve (Fp, the -Fp^-1 action of pcd_schur.h,
+    // invoked by CoupledBlockSchurAMGPreconditioner through solve_fp)
+    // inherits the same generic LinearSolverRequest default restart (40)
+    // that stalled the coupled solve before #898 - truncated far below its
+    // own budget (pcd_convection_diffusion_max_iterations). With the default
+    // adaptive KrylovControls the 100-iteration budget is consumed as 2-3
+    // truncated cycles (40 then 35/30: the adaptive policy shrinks the
+    // restart when a cycle reduces well). Production signature (run
+    // 38743667702): the first coupled solve converges (zero mass flux, Fp
+    // proportional to Kp, true relative residual 9.70666e-11); at the
+    // second nonlinear iteration the mass flux is non-zero, Fp is genuinely
+    // convective, and every Fp apply exhausts its budget on a
+    // 1.4e-8..2.9e-6 relative floor (~16000 best-effort lines, 720 s
+    // timeout). Each best-effort apply carries that relative error into
+    // the preconditioner action - which then is not a fixed linear map -
+    // so the outer FGMRES can never reduce below its preconditioner noise
+    // floor to the 1e-10 coupled gate. FP64 twin of the 32x32 gauged Fp
+    // (exact assembly + ILU0 + GMRES replicas, 3 proxy velocity fields x 5
+    // RHS): status quo stalls at 3e-7..2e-5; the same operators with a
+    // restart never truncated below the nested budget (bounded by the
+    // pressure dimension and the 512 memory cap) converge in 53-56
+    // iterations, and the measured need is ~3.6x below the doubled budget.
+    // Mirror the #898 rule on the nested path; converged solves exit
+    // early, so the extra budget costs nothing on a healthy solve. No
+    // tolerance, gate or acceptance criterion is modified. Kp
+    // (pcd_laplacian_*) is unchanged: the single-inverse PCD action never
+    // invokes it (see pcd_schur.h). Method sheet 18.
+    const std::size_t pressure_unknowns=test.nx*test.ny;
+    const std::size_t pcd_fp_budget=200;
+    controls.pcd_convection_diffusion_max_iterations=pcd_fp_budget;
+    controls.pcd_convection_diffusion_linear_solver.gmres_restart=
+        static_cast<int>(std::min<std::size_t>(
+            pressure_unknowns,std::max<std::size_t>(512,pcd_fp_budget)));
+
     // Trace the effective coupled preconditioner and restart in future
     // validation-total evidence (COUPLED_PRECONDITIONER stderr line).
     if(algorithm==PressureVelocityAlgorithm::COUPLED)
