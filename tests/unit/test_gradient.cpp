@@ -1,6 +1,7 @@
 // M0.7-T01 — Tests for Gauss gradient
 
 #include "cfdx/core/numerics/gradient.h"
+#include "cfdx/core/numerics/gradient_boundary.h"
 #include "cfdx/core/fvm/least_squares_gradient.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "common/test_harness.h"
@@ -486,6 +487,46 @@ int main() {
         EXPECT_NEAR(g(0, 0), 0.0, 1e-12);
         EXPECT_NEAR(g(0, 1), 0.0, 1e-12);
         EXPECT_NEAR(g(0, 2), 0.0, 1e-12);
+    });
+
+
+    run_case("gradient_boundary_values_reconstruct_affine_field", []() {
+        Mesh m = make_unit_cube();
+        const auto geometry = make_geometry_cache(m);
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 1.0 + 2.0 * geometry.cell_centres[0].x
+                      - 3.0 * geometry.cell_centres[0].y
+                      + 0.5 * geometry.cell_centres[0].z;
+        std::vector<double> face_values(m.n_faces(), 0.0);
+        for (std::size_t f = 0; f < m.n_faces(); ++f) {
+            const auto& c = geometry.face_centres[f];
+            face_values[f] = 1.0 + 2.0 * c.x - 3.0 * c.y + 0.5 * c.z;
+        }
+        const auto grad = compute_gradient_gauss_boundary_values(
+            phi, m, geometry, face_values);
+        EXPECT_NEAR(grad(0, 0), 2.0, 1e-12);
+        EXPECT_NEAR(grad(0, 1), -3.0, 1e-12);
+        EXPECT_NEAR(grad(0, 2), 0.5, 1e-12);
+    });
+
+    run_case("gradient_boundary_values_reject_missing_face_values", []() {
+        Mesh m = make_unit_cube();
+        const auto geometry = make_geometry_cache(m);
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 1.0;
+        std::vector<double> face_values(m.n_faces(), 1.0);
+        face_values[3] = std::numeric_limits<double>::quiet_NaN();
+        EXPECT_THROW(compute_gradient_gauss_boundary_values(
+            phi, m, geometry, face_values), std::invalid_argument);
+    });
+
+    run_case("gradient_boundary_values_reject_wrong_array_size", []() {
+        Mesh m = make_unit_cube();
+        const auto geometry = make_geometry_cache(m);
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 1.0;
+        EXPECT_THROW(compute_gradient_gauss_boundary_values(
+            phi, m, geometry, std::vector<double>{}), std::invalid_argument);
     });
 
     return run_all();
