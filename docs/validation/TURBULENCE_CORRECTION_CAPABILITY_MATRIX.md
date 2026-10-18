@@ -41,7 +41,7 @@ Wall distance is an independent dependency. Roughness, SA variants and hybrid sh
 
 ## Next V&V wave
 
-The next turbulence work should qualify the six SOLVER_READY RANS models at equation level:
+The next turbulence work should first integrate the six COMPONENT_READY RANS transport APIs into the production momentum loop; only then should their solver-level and physical qualification campaigns proceed:
 
 - standard k-epsilon;
 - RNG k-epsilon;

@@ -69,10 +69,12 @@ $$a_P\phi_P=\sum_{nb}a_{nb}\phi_{nb}+b,\qquad a_P=\sum_{nb}a_{nb}+\frac{\rho V_P
 - Parallèle : parité CPU/MPI/GPU à 1e-12 sur le même maillage (fiche 12).
 
 ## 7. Statut d'implémentation CFDX
-- Fichiers source concernés : src/cfdx/physics/turbulence.h, turbulence_models.h, turbulence_solver.h, turbulence_transport.h, sst_solver.h, spalart_allmaras.h, wall_functions.h, wall_distance.h, wall_distance_turbulence.h.
+- Fichiers source concernés : src/cfdx/physics/turbulence.h, turbulence_models.h, turbulence_solver.h, turbulence_transport.h, sst_solver.h, spalart_allmaras.h, wall_functions.h, wall_distance.h, wall_distance_turbulence.h, apps/production_solver/main.cpp.
 - Tests exécutables : tests/validation/test_channel_qualification.cpp, tests/validation/test_phase10_turbulence_hardening.cpp et les autres tests test_phase10_* ; cas TUR-CHANNEL, TUR-FLATPLATE, TUR-NACA0012 (docs/validation/TUR-*_QUALIFICATION_CASE.md).
-- Écarts connus code <-> fiche : à auditer ligne à ligne lors de la Phase 3 — cette fiche est le contrat de l'audit.
-- Gaps et prochaines actions : qualification MPI des modèles RANS absente ; campagnes TUR-* + GCI à exécuter sur un HEAD exact ; promotion BLOCKED derrière le verrouillage Phase 1 (règle du Plan Directeur).
+- Audit production (PR #941, base `120070dedebecd70e9f78f30691e9e5172a71925`) : les API `solve_kepsilon_transport`, `solve_sst_transport`/`solve_sst_transport_dynamic_blending` et `solve_spalart_allmaras_transport` existent, mais la recherche des appelants et l'inspection de `apps/production_solver/main.cpp` n'ont trouvé aucun branchement de ces transports dans la boucle de quantité de mouvement de production. Les cas qui déclarent un modèle autre que laminaire sont donc rejetés explicitement par le garde-fou ajouté dans cette PR ; aucun RANS de production n'est revendiqué.
+- Correction de performance dans `sst_solver.h` : `cell_gradient_dot(k, omega, mesh)` est calculé une fois par itération externe, au lieu d'être recalculé dans chaque cellule (suppression du travail O(N²) redondant sans changement de formule ni tolérance).
+- Écarts connus code <-> fiche : le couplage de la viscosité turbulente à la matrice de quantité de mouvement, l'initialisation des variables transportées et la convergence externe restent à implémenter et qualifier. Les statuts `COMPONENT_READY` du registre C++/JSON ne valent pas `SOLVER_READY`.
+- Gaps et prochaines actions : MMS transport indépendantes sur au moins trois maillages ; intégration SST de bout en bout ; TUR-CHANNEL contre DNS Moser–Kim–Mansour, puis TUR-FLATPLATE et TUR-NACA0012 ; qualification MPI des modèles RANS ; GCI et conservation indépendante sur un HEAD exact. Promotion physique toujours BLOCKED selon la gouvernance #118.
 
 ## 8. Journal des modifications de la fiche
 - 2026-10-12 — création (Phase 3 du Plan Directeur, PR empilée sur governance/constitution-technique).

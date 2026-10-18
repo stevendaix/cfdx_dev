@@ -161,8 +161,10 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
     for(std::size_t iter=1;iter<=max_iterations;++iter){
         auto old_k=k,old_w=omega;
         cfdx::core::Field<double,cfdx::core::Location::CELL> F1(n,"F1","1",1),F2(n,"F2","1",1);
+        // Compute the full-cell gradient contraction once per outer iteration.
+        // Recomputing this n-cell vector inside the n-cell loop made this O(n^2).
+        const auto cross=cell_gradient_dot(k,omega,mesh);
         for(std::size_t i=0;i<n;++i){
-            const auto cross=cell_gradient_dot(k,omega,mesh);
             const auto b=compute_sst_blending(k(i),omega(i),wall_distance(i),controls.molecular_viscosity,controls.beta_star,cross[i],controls.density,controls.sst_sigma_w2);
             F1(i)=b.first; F2(i)=b.second;
         }

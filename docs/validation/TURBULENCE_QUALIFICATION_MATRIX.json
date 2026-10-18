@@ -26,7 +26,7 @@
     {
       "key": "KEPSILON",
       "family": "RANS",
-      "status": "SOLVER_READY",
+      "status": "COMPONENT_READY",
       "equation_level": "implemented",
       "wall_distance": false,
       "stages": {
@@ -35,18 +35,18 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
-        "solver_verification": true,
+        "analytical_mms": false,
+        "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
-        "conservation_convergence": true,
+        "conservation_convergence": false,
         "documentation": true
       }
     },
     {
       "key": "RNG_KEPSILON",
       "family": "RANS",
-      "status": "SOLVER_READY",
+      "status": "COMPONENT_READY",
       "equation_level": "implemented",
       "wall_distance": false,
       "stages": {
@@ -55,18 +55,18 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
-        "solver_verification": true,
+        "analytical_mms": false,
+        "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
-        "conservation_convergence": true,
+        "conservation_convergence": false,
         "documentation": true
       }
     },
     {
       "key": "REALIZABLE_KEPSILON",
       "family": "RANS",
-      "status": "SOLVER_READY",
+      "status": "COMPONENT_READY",
       "equation_level": "implemented",
       "wall_distance": false,
       "stages": {
@@ -75,18 +75,18 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
-        "solver_verification": true,
+        "analytical_mms": false,
+        "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
-        "conservation_convergence": true,
+        "conservation_convergence": false,
         "documentation": true
       }
     },
     {
       "key": "KOMEGA",
       "family": "RANS",
-      "status": "SOLVER_READY",
+      "status": "COMPONENT_READY",
       "equation_level": "implemented",
       "wall_distance": false,
       "stages": {
@@ -95,18 +95,18 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
-        "solver_verification": true,
+        "analytical_mms": false,
+        "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
-        "conservation_convergence": true,
+        "conservation_convergence": false,
         "documentation": true
       }
     },
     {
       "key": "SST",
       "family": "RANS",
-      "status": "SOLVER_READY",
+      "status": "COMPONENT_READY",
       "equation_level": "implemented",
       "wall_distance": true,
       "stages": {
@@ -115,18 +115,18 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
-        "solver_verification": true,
+        "analytical_mms": false,
+        "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
-        "conservation_convergence": true,
+        "conservation_convergence": false,
         "documentation": true
       }
     },
     {
       "key": "SPALART_ALLMARAS",
       "family": "RANS",
-      "status": "SOLVER_READY",
+      "status": "COMPONENT_READY",
       "equation_level": "implemented",
       "wall_distance": true,
       "stages": {
@@ -135,11 +135,11 @@
         "implementation_audit": true,
         "term_tests": true,
         "invariants": true,
-        "analytical_mms": true,
-        "solver_verification": true,
+        "analytical_mms": false,
+        "solver_verification": false,
         "physical_validation": false,
         "mesh_yplus": false,
-        "conservation_convergence": true,
+        "conservation_convergence": false,
         "documentation": true
       }
     },
@@ -270,6 +270,12 @@
     "wall_distance_is_not_turbulence_validation": true,
     "physical_validation_requires_reference_and_real_solver_execution": true,
     "no_tolerance_relaxation": true,
-    "no_disabled_validation": true
+    "no_disabled_validation": true,
+    "production_momentum_coupling_required": true
+  },
+  "production_integration_audit": {
+    "status": "BLOCKED",
+    "evidence": "docs/validation/TURBULENCE_PRODUCTION_PATH_AUDIT.md",
+    "note": "Standalone RANS transport APIs exist, but the production incompressible driver does not couple them to momentum. Non-laminar declarations are rejected fail-closed."
   }
 }
