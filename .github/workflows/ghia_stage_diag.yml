@@ -1,0 +1,462 @@
+name: Ghia stage-efficiency and preconditioner capture (master pin) (diag)
+
+# DIAG-ONLY — branche ci/long-campaign-diagnostics (JAMAIS merger).
+# Feu vert Steven 2026-10-18 ~20:45Z : « résoudre mes problèmes de tests trop long
+# et failed » — chantier mesure par étage, capture UNIQUEMENT.
+# Objectif : le test test_ghia_cavity_n8_pcd timeout à 720 s alors que chaque
+# itération externe coûte ~31 s (≈23 itérations externes observées dans le log
+# de campagne de 17 Ko) et que les résidus linéaires couplés passent à ~9.8e-11
+# (< gate 1e-10) à CHAQUE itération. Hypothèses à trancher par la capture :
+#   H1 (coût par étage) : le driver du timeout est le coût ~30 s/itération
+#       externe du solveur couplé FGMRES(4096) + PCD (applies du Fp imbriqué),
+#       PAS une stagnation externe.
+#   H2 (convergence régulière) : la dynamique externe est une contraction
+#       géométrique (taux ≈ α_p = 0.3 ?), la qualification convergerait avec un
+#       budget temps suffisant (~N itérations × coût/itération).
+#   H3 (baseline SIMPLE) : le même cas via l'algorithme SIMPLE (--gate,
+#       réutilisation du préconditionneur pression, full_setups=1) converge en
+#       un coût marginal bien plus faible → le surcoût est porté par le chemin
+#       préconditionneur PCD couplé.
+#   H4 (alternative Schur) : le benchmark production CoupledBlockSchur-AMG
+#       (sans PCD) donne la baseline coût/qualité pour une décision de
+#       préconditionneur.
+# AUCUNE instrumentation du code, zéro changement de tolérance/oracle/gate/budget.
+# Les runs binaires directs reprennent EXACTEMENT les modes du test
+# (--pcd-preflight / --pcd / --gate) ; seul le timeout ctest 720 s est contourné
+# pour OBSERVER la trajectoire complète (le test lui-même n'est pas modifié).
+# Verdicts fail-closed : EVIDENCE_COMPLETE (seul vert, diagnostic ≠ PASS) vs
+# INCONCLUSIVE_{BUILD,PCD_RUN,GATE_RUN,NO_TRACE,ANALYZER_CRASH}.
+# Evidence suffixée $GITHUB_RUN_ID, commise par le bot sur la branche diag.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/ghia_stage_master_marker.txt'
+      - '.github/workflows/ghia_stage_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ghia-stage-master
+  cancel-in-progress: false
+
+env:
+  HEAD_SHA_PIN: faeb645771cf318fdb11482f8b5185280acbdba8
+  EVID: diag-evidence/logs
+
+jobs:
+  ghia-stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve pinned master ref and create worktrees
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin master
+          # Fail-closed : le SHA pinné doit exister et être un ancêtre du
+          # master actuel (jamais un ref mobile silencieux).
+          git cat-file -e "$HEAD_SHA_PIN^{commit}" \
+            || { echo "::error::pinned master SHA not resolvable: $HEAD_SHA_PIN"; exit 1; }
+          git merge-base --is-ancestor "$HEAD_SHA_PIN" origin/master \
+            || { echo "::error::pinned SHA is not an ancestor of master: $HEAD_SHA_PIN"; exit 1; }
+          git worktree add "$RUNNER_TEMP/head" "$HEAD_SHA_PIN"
+          # Worktree évidence (branche diag) pour la comparaison historique
+          # cross-cas (signatures Ghia/channel/BFS/NACA des campagnes passées).
+          if git fetch origin ci/long-campaign-diagnostics --depth 1; then
+            git worktree add "$RUNNER_TEMP/diagev" FETCH_HEAD || echo "diagev_unavailable"
+          else
+            echo "diagev_unavailable"
+          fi
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "pinned_sha=$HEAD_SHA_PIN (master 20:38Z, inclut fix ruff f6a310cb + wrappers GUI)"
+            echo "scope=capture-only per-stage wall cost: ghia --pcd-preflight / --pcd / --gate + schur production benchmark; NO solver instrumentation, NO tolerance/oracle/gate/budget change"
+            echo "hypotheses=H1 cost-per-outer-iteration drives the 720s timeout; H2 regular geometric outer contraction (rate ~ alpha_p); H3 SIMPLE baseline far cheaper on same case; H4 Schur-AMG benchmark gives preconditioner cost/quality baseline"
+            echo "rule=EVIDENCE_COMPLETE is a diagnostic evidence verdict, NEVER a numerical PASS/FAIL"
+            echo "historical_note=campaign log 2026-10-18: test_ghia_cavity_n8_pcd Timeout 720.01s with ~23 coupled outer iterations visible (COUPLED_LINEAR_TRUE_RESIDUAL relative ~9.3-9.99e-11 < 1e-10 gate each), i.e. ~31 s/outer-iteration"
+          } > "$GITHUB_WORKSPACE/$EVID/ghia_stage_meta_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev
+
+      - name: Configure and build (pinned master, NO instrumentation)
+        id: build_head
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake -S "$RUNNER_TEMP/head" -B "$RUNNER_TEMP/head/build" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON -DCFDX_BUILD_PYTHON=OFF -DCFDX_USE_HDF5_SERIAL=OFF -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            2>&1 | tee "$GITHUB_WORKSPACE/$EVID/ghia_stage_configure_run$GITHUB_RUN_ID.log"
+          if ! cmake --build "$RUNNER_TEMP/head/build" --target test_ghia_cavity --parallel 2 \
+            2>&1 | tee -a "$GITHUB_WORKSPACE/$EVID/ghia_stage_build_run$GITHUB_RUN_ID.log"; then
+            echo "build_head_exit=nonzero" > "$GITHUB_WORKSPACE/$EVID/ghia_stage_build_status_run$GITHUB_RUN_ID.txt"
+            exit 0
+          fi
+          # Benchmarks Schur : best-effort (absents => note, pas fatal).
+          for t in test_n8_schur_production_benchmark test_n8_schur_complete_krylov test_n9_common_schur_qualification; do
+            if cmake --build "$RUNNER_TEMP/head/build" --target "$t" --parallel 2 \
+              2>&1 | tee -a "$GITHUB_WORKSPACE/$EVID/ghia_stage_build_run$GITHUB_RUN_ID.log"; then
+              echo "$t=ok"
+            else
+              echo "$t=missing_or_failed"
+            fi
+          done | tee "$GITHUB_WORKSPACE/$EVID/ghia_stage_schur_targets_run$GITHUB_RUN_ID.txt"
+          echo "build_head_exit=0" > "$GITHUB_WORKSPACE/$EVID/ghia_stage_build_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Run ghia captures with per-line wall-clock timestamps
+        id: runs
+        continue-on-error: true
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          B="$RUNNER_TEMP/head/build"
+          if [ ! -x "$B/test_ghia_cavity" ]; then
+            echo "ghia_binary_missing" > "$E/ghia_stage_pcd_status_run$GITHUB_RUN_ID.txt"
+            echo "ghia_binary_missing" > "$E/ghia_stage_gate_status_run$GITHUB_RUN_ID.txt"
+            exit 0
+          fi
+          run_capture() {
+            # $1=tag $2=timeout_s $3...=args
+            local tag="$1"; shift
+            local tmo="$1"; shift
+            set +e
+            timeout --signal=TERM --kill-after=10s "$tmo" stdbuf -oL "$B/test_ghia_cavity" "$@" 2>&1 \
+              | while IFS= read -r line; do printf '%s %s\n' "$(date +%s.%N)" "$line"; done \
+              > "$E/ghia_stage_${tag}_run$GITHUB_RUN_ID.log"
+            local rc=${PIPESTATUS[0]}
+            set -e
+            echo "rc=$rc" > "$E/ghia_stage_${tag}_status_run$GITHUB_RUN_ID.txt"
+            echo "ghia_stage_${tag}: rc=$rc"
+          }
+          run_capture preflight 480 --pcd-preflight
+          run_capture pcd 2400 --pcd
+          run_capture gate 1800 --gate
+          # Benchmark Schur (binaire différent, best-effort).
+          if [ -x "$B/test_n8_schur_production_benchmark" ]; then
+            set +e
+            timeout --signal=TERM --kill-after=10s 900 stdbuf -oL "$B/test_n8_schur_production_benchmark" 2>&1 \
+              | while IFS= read -r line; do printf '%s %s\n' "$(date +%s.%N)" "$line"; done \
+              > "$E/ghia_stage_schur_run$GITHUB_RUN_ID.log"
+            echo "rc=${PIPESTATUS[0]}" > "$E/ghia_stage_schur_status_run$GITHUB_RUN_ID.txt"
+            set -e
+          else
+            echo "schur_benchmark_absent" > "$E/ghia_stage_schur_status_run$GITHUB_RUN_ID.txt"
+          fi
+
+      - name: Structured fail-closed verdict and per-stage analysis
+        if: always()
+        run: |
+          python3 - <<'PY'
+import math, os, re, sys, traceback
+
+run_id = os.environ["GITHUB_RUN_ID"]
+ws = os.environ["GITHUB_WORKSPACE"]
+evd = os.path.join(ws, os.environ["EVID"])
+diagev = os.path.join(os.environ["RUNNER_TEMP"], "diagev", "diag-evidence", "logs")
+
+rep = []
+def emit(line=""):
+    rep.append(line)
+
+def write_all(verdict, extra=()):
+    try:
+        with open(os.path.join(evd, "ghia_stage_verdict_run" + run_id + ".txt"), "w") as fh:
+            fh.write("VERDICT: " + verdict + "\n")
+            for l in extra:
+                fh.write(l + "\n")
+    except Exception:
+        pass
+    try:
+        with open(os.path.join(evd, "ghia_stage_analysis_run" + run_id + ".txt"), "w") as fh:
+            fh.write("\n".join(rep) + "\n")
+    except Exception:
+        pass
+
+NUM = r'-?(?:\d+\.?\d*(?:[eE][-+]?\d+)?|nan|inf)'
+KV = re.compile(r'([A-Za-z_][A-Za-z_0-9]*)=(' + NUM + r')')
+
+def parse_kv(line):
+    d = {}
+    for k, v in KV.findall(line):
+        if k in d:
+            continue
+        try:
+            d[k] = float(v)
+        except ValueError:
+            d[k] = float('nan')
+    return d
+
+def read_evd(name):
+    p = os.path.join(evd, name)
+    if not os.path.exists(p):
+        return None
+    return open(p, errors="replace").read().splitlines()
+
+def read_diagev(name):
+    p = os.path.join(diagev, name)
+    if not os.path.exists(p):
+        return None
+    return open(p, errors="replace").read().splitlines()
+
+def med(xs):
+    xs = sorted(xs)
+    n = len(xs)
+    if n == 0:
+        return float('nan')
+    return xs[n // 2] if n % 2 else 0.5 * (xs[n // 2 - 1] + xs[n // 2])
+
+def geo_rate(vals):
+    rs = [abs(vals[k]) / abs(vals[k - 1]) for k in range(1, len(vals))
+          if abs(vals[k - 1]) > 0.0 and math.isfinite(vals[k]) and math.isfinite(vals[k - 1])]
+    return med(rs) if rs else float('nan')
+
+CONT_GATE = 1e-8   # solveur continuity_tolerance du test ghia (référence pin)
+MOM_GATE = 1e-8    # solveur relative_tolerance du test ghia (référence pin)
+
+try:
+    # ---- gates fail-closed : build ----
+    bs_path = os.path.join(evd, "ghia_stage_build_status_run" + run_id + ".txt")
+    bs = open(bs_path).read().strip() if os.path.exists(bs_path) else "build_status_missing"
+    if "exit=0" not in bs:
+        emit("build_status=" + bs)
+        write_all("INCONCLUSIVE_BUILD", ["compiler output in ghia_stage_build_run" + run_id + ".log"])
+        sys.exit(0)
+
+    # ---- captures horodatées ----
+    TS = re.compile(r'^(\d+(?:\.\d+)?) (.*)$')
+
+    def timed_events(name):
+        lines = read_evd(name)
+        if lines is None:
+            return None, 0.0
+        ev = []
+        t0 = None
+        for raw in lines:
+            m = TS.match(raw)
+            if not m:
+                continue
+            t = float(m.group(1)); r = m.group(2)
+            if t0 is None:
+                t0 = t
+            ev.append((t - t0, r))
+        return ev, (ev[-1][0] if ev else 0.0)
+
+    def rc_of(tag):
+        p = os.path.join(evd, "ghia_stage_" + tag + "_status_run" + run_id + ".txt")
+        if not os.path.exists(p):
+            return None
+        m = re.search(r'rc=(\d+)', open(p).read())
+        return int(m.group(1)) if m else None
+
+    # ---- PCD (qualification 32x32, COUPLED+PCD) ----
+    emit("== PCD qualification capture (test_ghia_cavity --pcd, direct binary, no ctest 720s cap) ==")
+    pcd_rc = rc_of("pcd")
+    pcd_ev, pcd_span = timed_events("ghia_stage_pcd_run" + run_id + ".log")
+    pcd_class = "MISSING"
+    if pcd_ev is not None:
+        coupled_ts = [t for t, r in pcd_ev if "COUPLED_LINEAR_TRUE_RESIDUAL" in r]
+        deltas = [coupled_ts[i] - coupled_ts[i - 1] for i in range(1, len(coupled_ts))]
+        spc = med(deltas) if deltas else float('nan')
+        iters = [parse_kv(r) for t, r in pcd_ev if "INCOMPRESSIBLE_ITER" in r and "iter=" in r]
+        cont = [d["continuity_normalized"] for d in iters if "continuity_normalized" in d]
+        mom = [d["momentum_residual_relative"] for d in iters if "momentum_residual_relative" in d]
+        lrel = [d["relative"] for t, r in pcd_ev if "COUPLED_LINEAR_TRUE_RESIDUAL" in r
+                for d in [parse_kv(r)] if "relative" in d]
+        passed = any("GHIA_CAVITY_N8_PCD: PASS" in r for t, r in pcd_ev)
+        failed = any("GHIA_CAVITY_VALIDATION: FAIL" in r or "Ghia" in r and "FAIL" in r for t, r in pcd_ev)
+        if passed:
+            pcd_class = "CONVERGED_PASS"
+        elif pcd_rc == 124:
+            pcd_class = "CAPTURE_TIMEOUT"
+        elif failed:
+            pcd_class = "FAILED_ORACLE"
+        else:
+            pcd_class = "EXIT_" + str(pcd_rc)
+        emit("outer_iterations_captured=%d" % len(coupled_ts))
+        emit("wall_span_s=%.1f" % pcd_span)
+        emit("s_per_outer_iteration_median=%.3f" % spc)
+        if lrel:
+            emit("coupled_linear_true_relative: min=%.3e max=%.3e median=%.3e (gate 1e-10)"
+                 % (min(lrel), max(lrel), med(lrel)))
+        if cont:
+            emit("continuity_normalized trace (freq=50): %s" % ", ".join("%.3e" % c for c in cont))
+            rate = geo_rate(cont)
+            emit("outer_continuity_geo_rate=%s" % ("%.6f" % rate if math.isfinite(rate) else "undefined"))
+            if math.isfinite(rate) and rate < 1.0 and cont[-1] > 0:
+                need = math.log(cont[-1] / CONT_GATE) / math.log(1.0 / rate)
+                if math.isfinite(spc):
+                    est = (len(coupled_ts) + need) * spc
+                    emit("extrapolation: ~%.1f more outer iterations to continuity 1e-8 => ~%.0f s total (~%.2f x the 720s ctest timeout)" % (need, est, est / 720.0))
+        if mom:
+            emit("momentum_residual_relative trace: %s" % ", ".join("%.3e" % m for m in mom))
+        emit("classification=%s (rc=%s)" % (pcd_class, pcd_rc))
+        emit("H1 (cost per outer iteration drives the timeout): s/iter=%.1fs => %s" % (spc if math.isfinite(spc) else float('nan'), "SUPPORTED" if math.isfinite(spc) and spc > 5.0 else "NOT_SUPPORTED"))
+    else:
+        emit("pcd capture log missing")
+    emit()
+
+    # ---- Preflight 16x16 ----
+    emit("== PCD preflight (16x16) ==")
+    pf_ev, pf_span = timed_events("ghia_stage_preflight_run" + run_id + ".log")
+    if pf_ev is not None:
+        pf_pass = any("GHIA_CAVITY_N8_PCD_PREFLIGHT: PASS" in r for t, r in pf_ev)
+        stage = [r for t, r in pf_ev if "N8_PCD_STAGE" in r]
+        pf_c = [t for t, r in pf_ev if "COUPLED_LINEAR_TRUE_RESIDUAL" in r]
+        pf_d = [pf_c[i] - pf_c[i - 1] for i in range(1, len(pf_c))]
+        emit("pass=%s span_s=%.1f s_per_outer_iter=%.3f lines=%s"
+             % (pf_pass, pf_span, med(pf_d) if pf_d else float('nan'), (stage[-1].strip() if stage else "n/a")))
+    else:
+        emit("preflight log missing")
+    emit()
+
+    # ---- SIMPLE baseline (--gate) ----
+    emit("== SIMPLE baseline (test_ghia_cavity --gate, 16/32/64 + observed-order gate) ==")
+    gate_rc = rc_of("gate")
+    gate_ev, gate_span = timed_events("ghia_stage_gate_run" + run_id + ".log")
+    gate_class = "MISSING"
+    if gate_ev is not None:
+        cases = [(t, parse_kv(r)) for t, r in gate_ev if r.startswith("GHIA Re=")]
+        for t, d in cases:
+            emit("  case t=%.1fs grid=%sx%s iterations=%s continuity=%s"
+                 % (t, "?" , "?", d.get("iterations"), d.get("continuity")))
+        ghia_lines = [(t, r) for t, r in gate_ev if r.startswith("GHIA Re=")]
+        for t, r in ghia_lines:
+            emit("  [t=%.1fs] %s" % (t, r.strip()))
+        order = [r.strip() for t, r in gate_ev if "GHIA_ORDER_GATE" in r]
+        for r in order:
+            emit("  " + r)
+        gate_pass = any("GHIA_ORDER_GATE: PASS" in r for t, r in gate_ev)
+        gate_fail = any("Ghia" in r and "FAIL" in r for t, r in gate_ev)
+        if gate_pass:
+            gate_class = "CONVERGED_PASS"
+        elif gate_rc == 124:
+            gate_class = "CAPTURE_TIMEOUT"
+        elif gate_fail:
+            gate_class = "FAILED_ORACLE"
+        else:
+            gate_class = "EXIT_" + str(gate_rc)
+        emit("classification=%s (rc=%s) total_span_s=%.1f" % (gate_class, gate_rc, gate_span))
+        if pcd_ev is not None and gate_class == "CONVERGED_PASS":
+            emit("H3 (SIMPLE far cheaper on the same case): gate span=%.1fs vs PCD qualification capture=%.1fs" % (gate_span, pcd_span))
+    else:
+        emit("gate capture log missing")
+    emit()
+
+    # ---- Benchmark Schur (CoupledBlockSchur-AMG, sans PCD) ----
+    emit("== Schur-AMG production benchmark (per-stage cost baseline, no PCD) ==")
+    sch_rc = rc_of("schur")
+    sch_ev, sch_span = timed_events("ghia_stage_schur_run" + run_id + ".log")
+    if sch_ev is not None:
+        for t, r in sch_ev:
+            if "n8_schur_benchmark" in r:
+                d = parse_kv(r)
+                emit("  cells=%s unknowns=%s iterations=%s true_residual=%s setup_us=%s solve_us=%s"
+                     % (d.get("cells"), d.get("unknowns"), d.get("iterations"),
+                        d.get("true_residual"), d.get("setup_us"), d.get("solve_us")))
+        emit("classification=%s span_s=%.1f" % ("PASS" if sch_rc == 0 else "rc=" + str(sch_rc), sch_span))
+    else:
+        emit("schur benchmark absent or not captured (rc file=%s)" % sch_rc)
+    emit()
+
+    # ---- Signatures historiques cross-cas (évidence des campagnes passées) ----
+    emit("== Historical cross-case signatures (from diag-branch evidence, campaign logs) ==")
+    hist_files = [
+        ("ghia_pcd_720s_timeout", "test_ghia_cavity_n8_pcd.log"),
+        ("channel_qualification", "test_channel_qualification.log"),
+        ("bfs_qualification", "test_bfs_qualification.log"),
+        ("naca0012_qualification", "test_naca0012_qualification.log"),
+        ("naca0012_wall_shear_audit", "test_naca0012_wall_shear_audit.log"),
+        ("n11_conservation_boundedness", "test_n11_conservation_boundedness.log"),
+    ]
+    for label, fname in hist_files:
+        lines = read_diagev(fname)
+        if lines is None:
+            emit("-- %s: absent --" % label)
+            continue
+        iters = [parse_kv(r) for r in lines if "INCOMPRESSIBLE_ITER" in r and "iter=" in r]
+        cont = [d["continuity_normalized"] for d in iters if "continuity_normalized" in d]
+        mom = [d["momentum_residual_relative"] for d in iters if "momentum_residual_relative" in d]
+        flux = [d["flux_velocity_mismatch_linf"] for d in iters if "flux_velocity_mismatch_linf" in d]
+        ncoup = sum(1 for r in lines if "COUPLED_LINEAR_TRUE_RESIDUAL" in r)
+        outcome = "Timeout" if "Timeout" in "\n".join(lines[-40:]) else ("PASS" if "Passed" in "\n".join(lines[-40:]) else "?")
+        emit("-- %s: outcome=%s INCOMPRESSIBLE_ITER_pts=%d coupled_blocks=%d" % (label, outcome, len(iters), ncoup))
+        if cont:
+            emit("   continuity: first=%.3e last=%.3e geo_rate=%s" % (cont[0], cont[-1], ("%.6f" % geo_rate(cont)) if math.isfinite(geo_rate(cont)) else "undefined"))
+        if mom:
+            emit("   momentum: first=%.3e last=%.3e geo_rate=%s" % (mom[0], mom[-1], ("%.6f" % geo_rate(mom)) if math.isfinite(geo_rate(mom)) else "undefined"))
+        if flux:
+            plateau = abs(flux[-1] - flux[max(0, len(flux) - 3)]) < 1e-3 * max(abs(flux[-1]), 1e-300)
+            emit("   flux_velocity_mismatch_linf: first=%.3e last=%.3e plateau=%s" % (flux[0], flux[-1], plateau))
+        if ncoup and "ghia" in label:
+            emit("   ~%.1f s per coupled outer iteration in the 720s campaign run (720.01s / %d blocks)" % (720.01 / ncoup, ncoup))
+    emit()
+    emit("== Résumé / règle ==")
+    emit("EVIDENCE_COMPLETE = capture dynamique complète et classification par étage ; PAS un PASS/FAIL numérique.")
+    emit("Décision Steven (aucune gate modifiée sans accord) : si H1+H2 soutenus => le timeout 720s est un problème de BUDGET TEMPS vs coût/itération du chemin PCD couplé ; options = réduire le coût par étage (préconditionneur, cf. benchmark Schur) ou requalifier le budget du test ; si H3 soutenu => le chemin SIMPLE reste la référence coût.")
+    if pcd_ev is not None and pcd_class == "MISSING":
+        write_all("INCONCLUSIVE_NO_TRACE", ["no COUPLED trace in pcd capture"])
+        sys.exit(0)
+    if pcd_ev is None or not any("COUPLED_LINEAR_TRUE_RESIDUAL" in r for t, r in (pcd_ev or [])):
+        write_all("INCONCLUSIVE_NO_TRACE", ["no COUPLED trace in pcd capture"])
+        sys.exit(0)
+    if len([r for t, r in pcd_ev if "COUPLED_LINEAR_TRUE_RESIDUAL" in r]) < 5:
+        write_all("INCONCLUSIVE_NO_TRACE", ["fewer than 5 coupled outer iterations captured"])
+        sys.exit(0)
+    if rc_of("pcd") is None:
+        write_all("INCONCLUSIVE_PCD_RUN", ["no pcd rc status"])
+        sys.exit(0)
+    if gate_ev is None or rc_of("gate") is None:
+        write_all("INCONCLUSIVE_GATE_RUN", ["gate baseline capture missing"])
+        sys.exit(0)
+    write_all("EVIDENCE_COMPLETE", [
+        "pcd_classification=" + pcd_class,
+        "gate_classification=" + (gate_class if gate_ev is not None else "?"),
+        "rule: diagnostic evidence verdict, never a numerical PASS/FAIL",
+    ])
+except Exception:
+    emit("ANALYZER CRASH:")
+    emit(traceback.format_exc())
+    write_all("INCONCLUSIVE_ANALYZER_CRASH", ["analyzer crashed - see analysis report"])
+    sys.exit(0)
+PY
+
+      - name: Record build failure status
+        if: always() && steps.build_head.outcome == 'failure'
+        run: |
+          echo "build_head_exit=nonzero" > "$GITHUB_WORKSPACE/$EVID/ghia_stage_build_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A "$EVID"
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: ghia stage-efficiency capture run $GITHUB_RUN_ID (master pin, evidence) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final verdict (green only for EVIDENCE_COMPLETE)
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          if grep -q "^VERDICT: EVIDENCE_COMPLETE" "$E/ghia_stage_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null; then
+            echo "verdict: EVIDENCE_COMPLETE — per-stage capture and classification complete (diagnostic, never a numerical PASS)"
+          else
+            v=$(sed -n 's/^VERDICT: //p' "$E/ghia_stage_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "MISSING_VERDICT_FILE")
+            echo "::error::verdict=$v — voir diag-evidence/logs/ghia_stage_verdict_run$GITHUB_RUN_ID.txt"
+            exit 1
+          fi

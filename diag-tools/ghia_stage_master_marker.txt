@@ -1,0 +1,41 @@
+DIAG-ONLY marker — Ghia stage-efficiency and preconditioner capture (master pin)
+
+Fired: 2026-10-18 ~21:00Z (feu vert Steven : « fais ça en totalité, je veux
+  résoudre mes problèmes de tests trop long et failed » — chantier mesure
+  par étage, capture UNIQUEMENT, plan 5 étapes de Steven).
+
+Pinned ref: faeb645771cf318fdb11482f8b5185280acbdba8 (master 20:38Z,
+  wrapper GUI read_dat_restart ; inclut fix ruff f6a310cb 20:36Z qui a
+  corrigé l'échec Pre-commit de 729e19a4).
+
+Purpose: capture-only wall-cost per stage of test_ghia_cavity
+  (--pcd-preflight / --pcd / --gate) + n8 Schur production benchmark,
+  sur le pin master. Le test timeout à 720 s montre ~23 itérations
+  externes dans le log de campagne => ~31 s/itération externe, avec des
+  résidus linéaires couplés qui passent à ~9.8e-11 (< gate 1e-10) à
+  CHAQUE itération. Hypothèses à trancher par la capture :
+    H1 coût par étage : le driver du timeout est le coût ~30 s/itération
+       externe du couplé FGMRES(4096) + PCD (applies Fp imbriqués),
+       PAS une stagnation externe ;
+    H2 convergence régulière : contraction géométrique externe
+       (taux ~ alpha_p = 0.3 ?), la qualification convergerait avec un
+       budget temps suffisant ;
+    H3 baseline SIMPLE : le même cas via --gate (réutilisation du
+       préconditionneur, full_setups=1) a un coût marginal bien plus
+       faible => surcoût porté par le chemin PCD couplé ;
+    H4 alternative Schur : benchmark production CoupledBlockSchur-AMG
+       (sans PCD) = baseline coût/qualité pour la décision de
+       préconditionneur.
+
+AUCUNE instrumentation du code, AUCUNE tolérance/oracle/gate/budget
+  modifié. Le timeout ctest 720 s est contourné UNIQUEMENT pour observer
+  la trajectoire complète (le test lui-même n'est pas modifié).
+
+Evidence: diag-evidence/logs/ghia_stage_*_run$GITHUB_RUN_ID.*
+
+Verdicts fail-closed: EVIDENCE_COMPLETE (seul vert — diagnostic, PAS un
+  PASS/FAIL numérique) / INCONCLUSIVE_{BUILD,PCD_RUN,GATE_RUN,NO_TRACE,
+  ANALYZER_CRASH}.
+
+Owner: trajectoire Vibe (Steven). Branche diag — JAMAIS merger.
+Ce message de commit NE PORTE AUCUNE mention de skip CI (leçon 937699a8).
