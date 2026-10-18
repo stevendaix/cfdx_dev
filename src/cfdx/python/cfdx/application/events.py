@@ -1,4 +1,5 @@
 """Application events independent from Qt."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
@@ -61,7 +62,9 @@ class EventBus:
     def subscribe(self, event_type: type[EventT], callback: Subscriber[EventT]) -> None:
         self._subscribers.setdefault(event_type, []).append(callback)
 
-    def unsubscribe(self, event_type: type[EventT], callback: Subscriber[EventT]) -> None:
+    def unsubscribe(
+        self, event_type: type[EventT], callback: Subscriber[EventT]
+    ) -> None:
         callbacks = self._subscribers.get(event_type, [])
         if callback in callbacks:
             callbacks.remove(callback)
