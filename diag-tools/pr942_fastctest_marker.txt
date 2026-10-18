@@ -1,4 +1,4 @@
-pr942_fastctest_diag marker version 1
-purpose: capture-only replica of CI Release "Run fast CTest" on pinned PR #942 head eb4a765382328f532d5e27525637630037b5cd34
+pr942_fastctest_diag marker version 2
+purpose: capture-only replica of CI Release "Run fast CTest" on pinned integration head e0fa902ad03340c17ad25909a1271f0d9777bf4c (that head contains stimulus fix 54de03db; its Fast-regression CI still fails test_n9_negative_diagnostics, run 39104527241)
 date: 2026-10-18
 rule: evidence-only diagnostic, never a numerical PASS/FAIL

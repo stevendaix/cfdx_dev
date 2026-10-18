@@ -2,10 +2,11 @@ name: PR942 fast ctest failure capture (diag)
 
 # DIAG-ONLY — branche ci/long-campaign-diagnostics (PR #903 fermee, JAMAIS merger).
 # Capture-only : AUCUNE instrumentation du code. Replique le step "Run fast CTest"
-# du job "Build and test (Release)" de cfdx-ci.yml sur le head epingle de la PR #942
-# (eb4a765382328f532d5e27525637630037b5cd34, base integration 4b54d920 au moment de
-# la CI fautive 2026-10-17 21:35Z — Release ET DebugSanitizers exit 8 au meme step,
-# Build/N12-quick/Python-regression verts) :
+# du job "Build and test (Release)" de cfdx-ci.yml sur le head epingle de la branche
+# d'integration e0fa902ad03340c17ad25909a1271f0d9777bf4c (2026-10-18 06:34Z, CONTIENT le fix stimulus 54de03db
+# alpha_u=0.005) — la CI de CE head echoue encore sur test_n9_negative_diagnostics
+# (annotation "Annotate failing tests" du job Fast regression, run 39104527241) :
+# v2 pour capturer la sortie complete du test sur ce head :
 #   configure Release + build + ctest -LE long --output-on-failure --parallel 4,
 #   puis ctest --rerun-failed --output-on-failure pour la sortie COMPLETE des tests
 #   en echec (messages d'assertion).
@@ -32,7 +33,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  HEAD_SHA_PIN: eb4a765382328f532d5e27525637630037b5cd34
+  HEAD_SHA_PIN: e0fa902ad03340c17ad25909a1271f0d9777bf4c
   EVID: diag-evidence/logs
 
 jobs:
@@ -45,16 +46,17 @@ jobs:
       - name: Resolve pinned ref and create worktree
         run: |
           mkdir -p "$GITHUB_WORKSPACE/$EVID"
-          git fetch origin fix/n9s9-independent-flux-velocity-audit
+          git fetch origin integration/numerics-2026-10
           git cat-file -e "$HEAD_SHA_PIN^{commit}" \
             || { echo "::error::pinned head SHA not resolvable: $HEAD_SHA_PIN"; exit 1; }
-          git merge-base --is-ancestor "$HEAD_SHA_PIN" origin/fix/n9s9-independent-flux-velocity-audit \
-            || { echo "::error::pinned head is not on the PR branch: $HEAD_SHA_PIN"; exit 1; }
+          git merge-base --is-ancestor "$HEAD_SHA_PIN" origin/integration/numerics-2026-10 \
+            || { echo "::error::pinned head is not on the integration branch: $HEAD_SHA_PIN"; exit 1; }
           git worktree add "$RUNNER_TEMP/head" "$HEAD_SHA_PIN"
           {
             echo "run_id=$GITHUB_RUN_ID"
             echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            echo "head_sha=$HEAD_SHA_PIN (pinned head of PR #942, capture-only, no instrumentation)"
+            echo "head_sha=$HEAD_SHA_PIN (pinned head of integration/numerics-2026-10, capture-only, no instrumentation)"
+            echo "note: pyyaml added to the diag venv (deviation from run 1 where test_n10_qualification failed on the missing PyYAML artifact only)"
             echo "scope: replicate CI Release 'Run fast CTest' (-LE long) + rerun-failed full output"
             echo "rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL"
           } > "$GITHUB_WORKSPACE/$EVID/pr942x_fastctest_meta_run$GITHUB_RUN_ID.txt"
@@ -68,7 +70,7 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic > "$GITHUB_WORKSPACE/$EVID/pr942x_fastctest_pip_run$GITHUB_RUN_ID.log" 2>&1
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic pyyaml > "$GITHUB_WORKSPACE/$EVID/pr942x_fastctest_pip_run$GITHUB_RUN_ID.log" 2>&1
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Configure (Release)
@@ -202,7 +204,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: PR 942 fast ctest failure capture run $GITHUB_RUN_ID (#942 evidence-only) [ci skip]"
+            git commit -m "diag: fast ctest failure capture on integration head e0fa902a run $GITHUB_RUN_ID (evidence-only) [ci skip]"
             if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
               git pull --rebase origin "$GITHUB_REF_NAME"
               git push origin "HEAD:$GITHUB_REF_NAME"
