@@ -1257,7 +1257,7 @@ bool write_case_cfdx_h5(const std::string& filename,
 
 hid_t fapl = case_create_file_access_plist();
     if (fapl < 0) return false;
-    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, fapl);
+    hid_t file = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
     H5Pclose(fapl);
     if (file < 0) return false;
 
