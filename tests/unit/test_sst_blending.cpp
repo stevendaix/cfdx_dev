@@ -31,7 +31,7 @@ int main()
         cfdx::core::Field<double, cfdx::core::Location::CELL> nu_t(2, "nu_t", "m2/s", 1);
         k(0) = 0.5; k(1) = 1.0;
         omega(0) = 10.0; omega(1) = 20.0;
-        strain(0) = 2.0; strain(1) = 4.0;
+        strain(0) = 2.0; strain(1) = 8.0;
         f2(0) = 0.5; f2(1) = 1.0;
         nu_t.fill(7.0);
         TurbulenceTransportControls controls;
@@ -40,7 +40,7 @@ int main()
 
         refresh_sst_production_eddy_viscosity(k, omega, strain, f2, controls, nu_t);
         EXPECT_NEAR(nu_t(0), 0.31 * 0.5 / std::max(0.31 * 10.0, 2.0 * 0.5), 1e-14);
-        EXPECT_NEAR(nu_t(1), 0.31 * 1.0 / std::max(0.31 * 20.0, 4.0), 1e-14);
+        EXPECT_NEAR(nu_t(1), 0.31 * 1.0 / std::max(0.31 * 20.0, 8.0), 1e-14);
         EXPECT_TRUE(nu_t(0) != nu_t(1));
     });
 
