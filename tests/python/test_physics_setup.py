@@ -20,7 +20,10 @@ def test_turbulence_catalog_exposes_all_current_model_states():
         "KOMEGA", "SST", "SPALART_ALLMARAS", "SMAGORINSKY", "WALE",
         "DYNAMIC_KEQN", "DES", "DDES", "IDDES",
     } <= keys
-    assert turbulence_model("SST").status is TurbulenceStatus.SOLVER_READY
+    assert turbulence_model("SST").status is TurbulenceStatus.COMPONENT_READY
+    assert turbulence_model("KEPSILON").status is TurbulenceStatus.COMPONENT_READY
+    assert turbulence_model("SPALART_ALLMARAS").status is TurbulenceStatus.COMPONENT_READY
+    assert turbulence_model("LAMINAR").status is TurbulenceStatus.SOLVER_READY
     assert turbulence_model("DES").status is TurbulenceStatus.KERNEL_ONLY
     assert turbulence_model("DYNAMIC_KEQN").status is TurbulenceStatus.PLANNED
 
@@ -29,7 +32,9 @@ def test_turbulence_dropdown_contains_only_solver_ready_models():
     params = {p.name: p for p in default_parameters(physics_spec("turbulence"))}
     assert params["model"].kind is ParameterType.CHOICE
     assert params["model"].choices == TURBULENCE_MODELS
-    assert "SST" in params["model"].choices
+    assert params["model"].default == "LAMINAR"
+    assert params["model"].choices == ("LAMINAR",)
+    assert "SST" not in params["model"].choices
     assert "SMAGORINSKY" not in params["model"].choices
     assert "DES" not in params["model"].choices
 
@@ -46,6 +51,7 @@ def test_turbulence_recommendations_are_explicit_and_non_mutating():
     recommendations = recommend_turbulence_models(context)
     assert recommendations[0].model == "SST"
     assert any("transition" in warning.lower() for warning in recommendations[0].warnings)
+    assert any("component_ready" in warning.lower() for warning in recommendations[0].warnings)
     assert any("separation" in reason.lower() for reason in recommendations[0].reasons)
 
 
@@ -66,7 +72,14 @@ def test_legacy_turbulence_settings_normalize_to_structured_schema():
     assert normalized["model"] == "SST"
     assert normalized["wall_treatment"] == "resolved"
     assert normalized["transition"] == {"model": "none"}
-    assert validate_turbulence_selection({"model": "SST"})["model"] == "SST"
+    assert validate_turbulence_selection({"model": "LAMINAR"})["model"] == "LAMINAR"
+    try:
+        validate_turbulence_selection({"model": "SST"})
+    except ValueError as exc:
+        assert "component_ready" in str(exc)
+        assert "No fallback to laminar" in str(exc)
+    else:
+        raise AssertionError("component-ready SST must not be selectable in production")
 
 
 def test_non_solver_ready_turbulence_models_are_rejected_for_production_cases():
