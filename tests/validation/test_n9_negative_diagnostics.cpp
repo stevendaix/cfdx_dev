@@ -745,17 +745,14 @@ int main()
     // warm-started runs at alpha_u = 0.7: the monitored nonlinear metric
     // decays geometrically along the SIMPLE slow mode at 0.99122 per
     // iteration with alpha_p = 0.3 and at 0.99208 with alpha_p = 0.01 —
-    // the mode is essentially alpha_p-INDEPENDENT; it propagates through
-    // the momentum predictor, whose response is exactly linear in
-    // alpha_u (implicit under-relaxation identity A (u* - u) =
-    // alpha_u r), plus a weak alpha_p-scaled pressure contribution
-    // (~8.6e-4 of the 8.78e-3 per-iteration contraction at alpha_p =
-    // 0.3). At (alpha_u, alpha_p) = (0.02, 0.01) the measured scaling
-    // puts the per-iteration improvement at ~2.5e-4, below the 1e-3
-    // stagnation threshold, and the production stagnation detector
-    // (10-iteration window) MUST terminate the solve with the STAGNATED
-    // verdict around iteration 11 — never a false converged under gates
-    // that no residual can satisfy, and never the iteration cap.
+    // the mode is essentially alpha_p-INDEPENDENT. The exact-HEAD trace
+    // for alpha_u = 0.02 did NOT meet the intended stagnation contract:
+    // after a short initial rise, the metric kept contracting by slightly
+    // more than 1e-3 per iteration and reached MAX_ITERATIONS at 400.
+    // Reduce only the test's pathological momentum relaxation to 0.005
+    // (not the production thresholds or iteration budget) so this negative
+    // case exercises the detector's flat-envelope branch. CI must confirm
+    // that the resulting trajectory is STAGNATED rather than assuming it.
     // Earlier candidate triggers that died on CI evidence are not
     // asserted: pathological under-relaxation on the SIMPLEC consistent
     // correction (alpha_u = alpha_p = 1e-6 still improved 3e-3 to 7e-2
@@ -783,7 +780,7 @@ int main()
         // improvement drops to ~2.5e-4, below the 1e-3 stagnation
         // threshold). The inner linear settings (1e-9 / 1000) keep
         // their production values.
-        c.coupling.alpha_u = 0.02;
+        c.coupling.alpha_u = 0.005;
         c.coupling.alpha_p = 0.01;
         c.convergence.absolute_tolerance = 1e-24;
         c.convergence.relative_tolerance = 1e-24;
