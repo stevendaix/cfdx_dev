@@ -2,8 +2,8 @@ import importlib.util
 
 import pytest
 
-from cfdx import CFDXSession
 from cfdx.workbench import CFDXWorkbenchWindow
+from cfdx import CFDXSession
 
 
 def test_workbench_is_importable_without_qt() -> None:
