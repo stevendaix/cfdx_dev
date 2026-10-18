@@ -4,7 +4,6 @@
 #include <array>
 #include <cmath>
 #include <stdexcept>
-#include <string>
 
 namespace cfdx::physics {
 
@@ -33,9 +32,8 @@ inline double sst_strain_rate_magnitude(const std::array<double, 9>& grad_u)
 }
 
 // Compute the cell-centred SST strain-rate magnitude from the production
-// velocity field using the configured baseline Gauss gradient operator.
-// This function deliberately does not invent boundary gradient values: it uses
-// the same gradient contract as compute_gradient_gauss.
+// velocity field using the baseline Gauss gradient operator. The gradient
+// operator's existing boundary treatment is preserved, not replaced here.
 inline cfdx::core::Field<double, cfdx::core::Location::CELL>
 compute_sst_strain_rate(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
@@ -46,30 +44,31 @@ compute_sst_strain_rate(
         throw std::invalid_argument("compute_sst_strain_rate: velocity must be a 3-component cell field");
 
     const GeometryCache geometry = make_geometry_cache(mesh);
-    std::array<Field<double, Location::CELL>, 3> component_gradients;
-    for (std::size_t component = 0; component < 3; ++component) {
-        Field<double, Location::CELL> scalar(
-            mesh.n_cells(), "velocity_component", "m/s", 1);
-        const double* source = velocity.component_data(component);
-        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
-            if (!std::isfinite(source[cell]))
+    Field<double, Location::CELL> u(mesh.n_cells(), "u", "m/s", 1);
+    Field<double, Location::CELL> v(mesh.n_cells(), "v", "m/s", 1);
+    Field<double, Location::CELL> w(mesh.n_cells(), "w", "m/s", 1);
+    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+        for (std::size_t component = 0; component < 3; ++component) {
+            if (!std::isfinite(velocity.component_data(component)[cell]))
                 throw std::invalid_argument("compute_sst_strain_rate: non-finite velocity");
-            scalar(cell) = source[cell];
         }
-        component_gradients[component] =
-            compute_gradient_gauss(scalar, mesh, geometry);
+        u(cell) = velocity.component_data(0)[cell];
+        v(cell) = velocity.component_data(1)[cell];
+        w(cell) = velocity.component_data(2)[cell];
     }
+    const auto grad_u = compute_gradient_gauss(u, mesh, geometry);
+    const auto grad_v = compute_gradient_gauss(v, mesh, geometry);
+    const auto grad_w = compute_gradient_gauss(w, mesh, geometry);
 
     Field<double, Location::CELL> strain(
         mesh.n_cells(), "sst_strain_rate", "1/s", 1);
     for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
-        std::array<double, 9> grad{};
-        for (std::size_t velocity_component = 0; velocity_component < 3; ++velocity_component) {
-            for (std::size_t direction = 0; direction < 3; ++direction) {
-                grad[3 * velocity_component + direction] =
-                    component_gradients[velocity_component].component_data(direction)[cell];
-            }
-        }
+        const std::array<double, 9> grad{
+            grad_u.component_data(0)[cell], grad_u.component_data(1)[cell],
+            grad_u.component_data(2)[cell], grad_v.component_data(0)[cell],
+            grad_v.component_data(1)[cell], grad_v.component_data(2)[cell],
+            grad_w.component_data(0)[cell], grad_w.component_data(1)[cell],
+            grad_w.component_data(2)[cell]};
         strain(cell) = sst_strain_rate_magnitude(grad);
     }
     return strain;
