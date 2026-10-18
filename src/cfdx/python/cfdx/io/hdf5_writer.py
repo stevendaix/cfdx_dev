@@ -13,14 +13,12 @@ that the C++ reader (``cfdx::io::read_mesh_hdf5``) can ingest it directly.
 from __future__ import annotations
 
 import json
-from typing import Optional
 
 import h5py
 import numpy as np
 
 from cfdx.io.interfaces import ConversionResult
 from cfdx.io.schema import CFDX_SCHEMA_VERSION
-
 
 _ELEMENT_FACES: dict[str, list[list[int]]] = {
     "tetra": [[1, 2, 3], [0, 3, 2], [0, 1, 3], [0, 2, 1]],
@@ -130,7 +128,7 @@ def _integrity_hashes(m: dict) -> tuple[str, str, str]:
     return _hash_hex(topology), _hash_hex(geometry), _hash_hex(mesh_hash)
 
 
-def _boundary_patch_metadata(m: dict) -> tuple[Optional[str], np.ndarray, np.ndarray]:
+def _boundary_patch_metadata(m: dict) -> tuple[str | None, np.ndarray, np.ndarray]:
     """Derive named boundary patches from unmatched faces.
 
     The C++ reader treats the presence of the ``boundary_patches`` attribute as
@@ -174,12 +172,7 @@ def _boundary_patch_metadata(m: dict) -> tuple[Optional[str], np.ndarray, np.nda
         entries = []
         for i, (name, _) in enumerate(merged):
             entries.append(
-                "{}:{}:{}:{}".format(
-                    name,
-                    int(patch_ids[offsets[i]]),
-                    int(offsets[i + 1] - offsets[i]),
-                    _PATCH_TYPE_WALL,
-                )
+                f"{name}:{int(patch_ids[offsets[i]])}:{int(offsets[i + 1] - offsets[i])}:{_PATCH_TYPE_WALL}"
             )
         metadata = ";".join(entries)
         return metadata, patch_ids, offsets
@@ -192,7 +185,7 @@ def _boundary_patch_metadata(m: dict) -> tuple[Optional[str], np.ndarray, np.nda
     return metadata, boundary_faces, offsets
 
 
-def _meshio_to_cfdx(mesh: dict) -> Optional[dict]:
+def _meshio_to_cfdx(mesh: dict) -> dict | None:
     """Convert a meshio-style mesh dict to CFDX CSR arrays.
 
     Returns ``None`` when the mesh contains no usable volumetric surface
@@ -384,7 +377,7 @@ def _numerical_selection_report(setup) -> str:
     lines = ["case=" + (setup.source.case_name or "")]
     selection = setup.numerics.selection
     for entry in selection.entries:
-        lines.append("scheme[{}]={}".format(entry.family, entry.configuration_key))
+        lines.append(f"scheme[{entry.family}]={entry.configuration_key}")
     if not selection.entries:
         lines.append("error: no explicit numerical selections")
     return "\n".join(lines) + "\n"
