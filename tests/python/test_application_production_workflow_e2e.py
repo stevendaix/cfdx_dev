@@ -134,9 +134,15 @@ def test_full_production_workflow_e2e(tmp_path: Path) -> None:
     assert restart_execution["artifacts"]["restart_dat"] is True
 
     # 6. Drive the same cycle through the Application facade so the GUI
-    #    orchestration path is exercised end-to-end.
+    #    orchestration path is exercised end-to-end. The Application requires
+    #    a canonical .cfdx.h5 case artifact (format="CFDX"), so build one
+    #    through the session rather than copying the mesh file.
+    from cfdx.case_io import save_case
+    case_path = tmp_path / "case.cfdx.h5"
+    case_path.write_bytes(Path(mesh).read_bytes())
+    save_case(session, case_path)
     application = Application()
-    application.open_project(Path(mesh))
+    application.open_project(case_path)
     application.set_numerical_option("cfl", 0.5, ChangeImpact.HOT)
     controller = application.ensure_controller()
     assert controller is not None
