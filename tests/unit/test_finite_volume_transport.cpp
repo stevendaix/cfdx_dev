@@ -1,4 +1,5 @@
 #include "cfdx/physics/finite_volume_transport.h"
+#include "cfdx/physics/steady_incompressible_solver.h"
 #include "common/test_harness.h"
 #include <cmath>
 
@@ -296,6 +297,48 @@ int main()
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
         EXPECT_THROW(assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,true),
                      std::runtime_error);
+    });
+
+    run_case("momentum_assembly_uses_harmonic_cellwise_viscosity", [] {
+        const Mesh m = make_1d_chain(2);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1);
+        Field<double,Location::CELL> grad_p(m.n_cells(),"grad_p","Pa/m",3);
+        Field<double,Location::CELL> body(m.n_cells(),"body","N/m3",1);
+        flux.fill(0.0);
+        grad_p.fill(0.0);
+        body.fill(0.0);
+        ScalarBoundaryConditions bc;
+        bc["inlet"] = {ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        const std::vector<double> mu_cell{1.0,3.0};
+        const auto eq = assemble_momentum_component(
+            m,g,flux,grad_p,body,mu_cell,bc,0,true);
+        // The internal face uses the harmonic coefficient 2*1*3/(1+3)=1.5.
+        // With area=1 and centre distance=0.5, the diffusive coupling is 3.
+        EXPECT_NEAR(eq.matrix(0,1),-3.0,1e-12);
+        EXPECT_NEAR(eq.matrix(1,0),-3.0,1e-12);
+
+        const std::vector<double> uniform_mu{2.0,2.0};
+        const auto variable_uniform = assemble_momentum_component(
+            m,g,flux,grad_p,body,uniform_mu,bc,0,true);
+        const auto scalar_uniform = assemble_momentum_component(
+            m,g,flux,grad_p,body,2.0,bc,0,true);
+        for (std::size_t row=0; row<m.n_cells(); ++row) {
+            for (std::size_t col=0; col<m.n_cells(); ++col)
+                EXPECT_NEAR(variable_uniform.matrix(row,col),
+                            scalar_uniform.matrix(row,col),1e-12);
+        }
+
+        const std::vector<double> wrong_size{1.0};
+        EXPECT_THROW(assemble_momentum_component(
+            m,g,flux,grad_p,body,wrong_size,bc,0,true),std::invalid_argument);
+        const std::vector<double> invalid_mu{
+            1.0,std::numeric_limits<double>::quiet_NaN()};
+        EXPECT_THROW(assemble_momentum_component(
+            m,g,flux,grad_p,body,invalid_mu,bc,0,true),std::invalid_argument);
     });
 
     return run_all();
