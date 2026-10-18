@@ -86,7 +86,7 @@ def test_checkpoint_rejects_non_finite_time(tmp_path: Path, time_value: str) -> 
             }
         )
     )
-    with pytest.raises(ValueError, match="time"):
+    with pytest.raises((TypeError, ValueError), match="time"):
         load_checkpoint(path)
 
 

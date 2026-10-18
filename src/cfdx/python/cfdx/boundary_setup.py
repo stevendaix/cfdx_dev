@@ -77,7 +77,7 @@ def validate_boundary_definition(
     boundary: dict, *, known_fields: tuple[str, ...] = ()
 ) -> None:
     if not isinstance(boundary, dict):
-        raise ValueError("boundary definition must be a mapping")
+        raise TypeError("boundary definition must be a mapping")
     kind = boundary.get("type")
     fields_for_boundary_type(kind)
     for field in known_fields:

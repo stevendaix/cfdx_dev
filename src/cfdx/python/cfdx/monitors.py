@@ -80,13 +80,13 @@ class MonitorSeries:
         name = payload.get("name")
         raw_samples = payload.get("samples")
         if not isinstance(name, str) or not name:
-            raise ValueError("invalid monitor series name")
+            raise TypeError("invalid monitor series name")
         if not isinstance(raw_samples, list):
-            raise ValueError("invalid monitor series samples")
+            raise TypeError("invalid monitor series samples")
         series = cls(name, [])
         for raw in raw_samples:
             if not isinstance(raw, Mapping):
-                raise ValueError("invalid monitor sample payload")
+                raise TypeError("invalid monitor sample payload")
             iteration = raw.get("iteration")
             time_value = raw.get("time")
             values = raw.get("values")
@@ -95,20 +95,20 @@ class MonitorSeries:
                 or isinstance(iteration, bool)
                 or iteration < 0
             ):
-                raise ValueError("invalid monitor iteration")
+                raise TypeError("invalid monitor iteration")
             if not isinstance(time_value, (int, float)) or isinstance(time_value, bool):
-                raise ValueError("invalid monitor time")
+                raise TypeError("invalid monitor time")
             time_float = float(time_value)
             if not math.isfinite(time_float):
                 raise ValueError("invalid monitor time")
             if not isinstance(values, Mapping):
-                raise ValueError("invalid monitor values")
+                raise TypeError("invalid monitor values")
             normalized: dict[str, float] = {}
             for key, value in values.items():
                 if not isinstance(key, str) or not key:
-                    raise ValueError("invalid monitor value name")
+                    raise TypeError("invalid monitor value name")
                 if not isinstance(value, (int, float)) or isinstance(value, bool):
-                    raise ValueError("invalid monitor value")
+                    raise TypeError("invalid monitor value")
                 value_float = float(value)
                 if not math.isfinite(value_float):
                     raise ValueError("invalid monitor value")

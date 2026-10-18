@@ -137,7 +137,7 @@ def _checkpoint_revision_attributes(session: CFDXSession) -> dict[str, int]:
     for name in _CHECKPOINT_REVISION_NAMES:
         value = getattr(session, name)
         if isinstance(value, bool) or not isinstance(value, int):
-            raise ValueError(f"checkpoint field {name!r} must be an integer")
+            raise TypeError(f"checkpoint field {name!r} must be an integer")
         if value < 0:
             raise ValueError(f"checkpoint field {name!r} must be non-negative")
         attributes[name] = value
@@ -296,9 +296,9 @@ def validate_case_bundle(path: Path) -> dict[str, bool]:
         if "fields" not in h5 or "values" not in h5["fields"]:
             raise ValueError("fields data is missing from the self-contained case")
         if not isinstance(data.get("physics"), dict):
-            raise ValueError("physics configuration is missing")
+            raise TypeError("physics configuration is missing")
         if not isinstance(data.get("numerics"), dict):
-            raise ValueError("numerics configuration is missing")
+            raise TypeError("numerics configuration is missing")
         # Numerical iteration/time/field state belongs exclusively to the
         # paired DAT artifact, so a well-formed case never carries runtime
         # state. Checking the two historical checkpoint/restart paths alone only

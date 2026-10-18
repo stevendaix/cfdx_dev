@@ -24,7 +24,7 @@ _CHECKPOINT_FIELDS = {
 
 def _validate_integer(value: object, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"checkpoint field {field!r} must be an integer")
+        raise TypeError(f"checkpoint field {field!r} must be an integer")
     if value < 0:
         raise ValueError(f"checkpoint field {field!r} must be non-negative")
     return value
@@ -32,7 +32,7 @@ def _validate_integer(value: object, field: str) -> int:
 
 def _validate_time(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError("checkpoint field 'time' must be a number")
+        raise TypeError("checkpoint field 'time' must be a number")
     time = float(value)
     if not math.isfinite(time):
         raise ValueError("checkpoint field 'time' must be finite")
