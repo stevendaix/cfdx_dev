@@ -3652,11 +3652,27 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // residual remains negligible. Use the RHS-normalized residual for the
         // nonlinear convergence monitor and keep the reference-relative value
         // available in history for diagnostics/adaptive-relaxation analysis.
-        const double nonlinear_metric = std::max({
-            h.momentum_residual,
-            h.pressure_residual,
-            h.velocity_change_inf,
-            h.pressure_change_inf});
+        // The first-iteration normalization is useful only when its reference
+        // is resolved relative to the momentum RHS. If the reference is at
+        // round-off, keep it for diagnostics but do not let its ratio dominate
+        // the nonlinear monitor.
+        const double momentum_reference_roundoff =
+            100.0 * std::numeric_limits<double>::epsilon() *
+            std::max(h.momentum_rhs_scale, tiny);
+        const bool momentum_reference_ill_conditioned =
+            h.momentum_equation_residual_reference <= momentum_reference_roundoff;
+        const double nonlinear_metric = momentum_reference_ill_conditioned
+            ? std::max({
+                  h.momentum_residual,
+                  h.pressure_residual,
+                  h.velocity_change_inf,
+                  h.pressure_change_inf})
+            : std::max({
+                  h.momentum_residual,
+                  h.momentum_equation_residual_relative,
+                  h.pressure_residual,
+                  h.velocity_change_inf,
+                  h.pressure_change_inf});
         h.nonlinear_convergence_metric = nonlinear_metric;
 
         if (controls.diagnostics.iteration_trace &&
@@ -3698,8 +3714,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // absolute scale sits far below that first maximum would be exempted
         // from the gate. nonlinear_metric is therefore a diagnostic summary and
         // never a replacement for the individual physical criteria.
-        const bool momentum_equation_residual_gate =
+        const bool momentum_residual_gate =
             h.momentum_equation_residual_rhs_relative <= controls.convergence.relative_tolerance;
+        const bool momentum_equation_residual_gate =
+            momentum_reference_ill_conditioned ||
+            h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance;
         const bool pressure_residual_gate =
             h.pressure_residual <= controls.convergence.relative_tolerance;
         const bool velocity_change_gate =
@@ -3707,8 +3726,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const bool pressure_change_gate =
             h.pressure_change_inf <= controls.convergence.relative_tolerance;
         const bool per_criterion_gates_ok =
-            momentum_equation_residual_gate && pressure_residual_gate &&
-            velocity_change_gate && pressure_change_gate;
+            momentum_residual_gate && momentum_equation_residual_gate &&
+            pressure_residual_gate && velocity_change_gate && pressure_change_gate;
 
         // Reject severe adaptive overshoots before they reach the convergence
         // monitor. A retry is the same nonlinear iteration, so convergence
