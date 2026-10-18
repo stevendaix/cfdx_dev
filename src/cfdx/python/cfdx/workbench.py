@@ -486,6 +486,9 @@ if QMainWindow is not object:
                 WorkflowStatus.WARNING: "[!]",
                 WorkflowStatus.ERROR: "[X]",
                 WorkflowStatus.NOT_CONFIGURED: "[ ]",
+                # Conditional means declared but not currently producible; never
+                # render it as complete or silently omit the workflow capability.
+                WorkflowStatus.CONDITIONAL: "[~]",
             }[status]
 
         def _refresh_workflow(self, state) -> None:
