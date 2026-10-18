@@ -7,7 +7,7 @@ handoff document for the next session.
 
 **Issue #812 — GUI Phase 3: Application facade ownership** (open).
 
-P3-A completed by merged PR #817. P3-B through P3-E remain.
+P3-A completed by merged PR #817. P3-B through P3-E are DONE.
 
 ### P3-B (DAT/restart production contract) — DONE
 
