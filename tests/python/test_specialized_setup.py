@@ -9,8 +9,8 @@ from cfdx import CFDXSession
 
 
 def test_setup_panel_exposes_physics_controls_and_applies_model():
-    from PySide6.QtWidgets import QApplication
     from cfdx.setup_panel import CaseSetupPanel
+    from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
     session = CFDXSession()
@@ -23,9 +23,9 @@ def test_setup_panel_exposes_physics_controls_and_applies_model():
 
     assert session.case.physics["incompressible"]["enabled"] is True
     assert session.case.physics["incompressible"]["density"] == pytest.approx(1.225)
-    assert session.case.physics["incompressible"]["kinematic_viscosity"] == pytest.approx(
-        1.5e-5
-    )
+    assert session.case.physics["incompressible"][
+        "kinematic_viscosity"
+    ] == pytest.approx(1.5e-5)
     panel.close()
     app.processEvents()
 
@@ -53,9 +53,9 @@ def test_setup_panel_turbulence_filters_to_solver_ready_models():
 
 
 def test_setup_panel_routes_physics_diagnostic_to_field_widget():
-    from PySide6.QtWidgets import QApplication
     from cfdx.setup_model import SetupDiagnostic
     from cfdx.setup_panel import CaseSetupPanel
+    from PySide6.QtWidgets import QApplication
 
     app = QApplication.instance() or QApplication([])
     panel = CaseSetupPanel(CFDXSession().case)
