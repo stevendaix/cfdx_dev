@@ -15,7 +15,8 @@ inline std::string normalize_turbulence_model_key(const std::string& declared)
 {
     std::string normalized;
     normalized.reserve(declared.size());
-    for (const unsigned char character : declared) {
+    for (const char raw_character : declared) {
+        const auto character = static_cast<unsigned char>(raw_character);
         if (std::isalnum(character)) {
             normalized.push_back(static_cast<char>(std::tolower(character)));
         }
@@ -29,7 +30,7 @@ inline void validate_production_turbulence_selection(
     const auto validate = [](const std::string& declared, const std::string& source) {
         const std::string normalized = normalize_turbulence_model_key(declared);
         const bool unspecified =
-            declared.find_first_not_of(" \\t\\r\\n") == std::string::npos;
+            declared.find_first_not_of(" \t\r\n") == std::string::npos;
         if (unspecified || normalized == "laminar" ||
             normalized == "none" || normalized == "off" ||
             normalized == "disabled" || normalized == "incompressiblelaminar") {
