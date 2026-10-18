@@ -34,10 +34,7 @@ def test_turbulence_catalog_exposes_all_current_model_states():
     } <= keys
     assert turbulence_model("SST").status is TurbulenceStatus.COMPONENT_READY
     assert turbulence_model("KEPSILON").status is TurbulenceStatus.COMPONENT_READY
-    assert (
-        turbulence_model("SPALART_ALLMARAS").status
-        is TurbulenceStatus.COMPONENT_READY
-    )
+    assert turbulence_model("SPALART_ALLMARAS").status is TurbulenceStatus.COMPONENT_READY
     assert {
         model.key
         for model in TURBULENCE_CATALOG
@@ -49,7 +46,10 @@ def test_turbulence_catalog_exposes_all_current_model_states():
 
 
 def test_turbulence_dropdown_contains_only_solver_ready_models():
-    params = {parameter.name: parameter for parameter in default_parameters(physics_spec("turbulence"))}
+    params = {
+        parameter.name: parameter
+        for parameter in default_parameters(physics_spec("turbulence"))
+    }
     assert params["model"].kind is ParameterType.CHOICE
     assert params["model"].choices == TURBULENCE_MODELS
     assert params["model"].value == "LAMINAR"
@@ -70,10 +70,11 @@ def test_turbulence_recommendations_are_explicit_and_non_mutating():
     )
     recommendations = recommend_turbulence_models(context)
     assert recommendations[0].model == "SST"
-    assert any("transition" in warning.lower() for warning in recommendations[0].warnings)
     assert any(
-        "component_ready" in warning.lower()
-        for warning in recommendations[0].warnings
+        "transition" in warning.lower() for warning in recommendations[0].warnings
+    )
+    assert any(
+        "component_ready" in warning.lower() for warning in recommendations[0].warnings
     )
     assert any("separation" in reason.lower() for reason in recommendations[0].reasons)
 
@@ -121,7 +122,9 @@ def test_non_solver_ready_turbulence_models_are_rejected_for_production_cases():
         assert "transient 3-D" in str(exc)
         assert "kernel_only" not in str(exc)
     else:
-        raise AssertionError("kernel-only turbulence model must not be production-selectable")
+        raise AssertionError(
+            "kernel-only turbulence model must not be production-selectable"
+        )
 
     try:
         validate_turbulence_selection({"model": "DES", "solver_type": "transient"})
