@@ -119,3 +119,28 @@ def test_application_probe_csv_rejects_solver_emitted_ambiguous_history(
     application = Application()
     with pytest.raises(ValueError, match="duplicate iteration"):
         application.read_probe_results(bad_csv)
+
+
+def test_application_probe_csv_rejects_solver_emitted_non_monotonic_history(
+    tmp_path: Path,
+) -> None:
+    """A CSV whose physical time rewinds between iterations must fail to read.
+
+    The production solver writes one sample per iteration per probe with
+    physical time moving forward with each iteration. A file that violates
+    that contract is not a valid probe history and the Application reader must
+    reject it rather than silently accepting a rewound clock.
+    """
+    bad_csv = tmp_path / "rewound.probes.csv"
+    bad_csv.write_text(
+        "# cfdx-probe-csv v1\n"
+        "# columns: probe,iteration,time,value\n"
+        "# probe p at 0.05,0.5,0.5 field=p unit=Pa\n"
+        "p,1,0.2,101325.0\n"
+        "p,2,0.1,101326.0\n",
+        encoding="utf-8",
+    )
+
+    application = Application()
+    with pytest.raises(ValueError, match="monotonic"):
+        application.read_probe_results(bad_csv)

@@ -35,8 +35,12 @@ class SolverMetricsParser:
     # Production solver completion reports "Iterations N" (plural), while
     # progress lines use "Iteration N". Accept both forms so the final
     # authoritative solver iteration is not lost by the monitor parser.
-    _ITERATION = re.compile(r"\b(?:iterations?|iter)\s*(?:=|:)?\s*(\d+)\b", re.IGNORECASE)
-    _TIME = re.compile(rf"\b(?:time|physical\s+time)\s*(?:=|:)\s*({_NUMBER})\b", re.IGNORECASE)
+    _ITERATION = re.compile(
+        r"\b(?:iterations?|iter)\s*(?:=|:)?\s*(\d+)\b", re.IGNORECASE
+    )
+    _TIME = re.compile(
+        rf"\b(?:time|physical\s+time)\s*(?:=|:)\s*({_NUMBER})\b", re.IGNORECASE
+    )
     _CFL = re.compile(rf"\bCFL\s*(?:=|:)\s*({_NUMBER})\b", re.IGNORECASE)
     _RESIDUAL = re.compile(
         rf"\b(?:residual|res)\s*[(:]?\s*([A-Za-z0-9_.-]+)\s*[)]?\s*(?:=|:)\s*({_NUMBER})\b",
