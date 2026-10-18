@@ -351,6 +351,10 @@ class Application:
         """Load a CFDX mesh and return its catalog via the application facade."""
         return read_mesh_catalog(Path(path))
 
+    def read_dat_restart(self, path: str | Path) -> DatRestart:
+        """Read a numerical DAT artifact via the application facade."""
+        return read_dat_restart(Path(path))
+
     def select_result_frame(self, stable_id: str) -> ApplicationState:
         if stable_id not in {frame.stable_id for frame in self.results.frames}:
             raise KeyError(stable_id)
