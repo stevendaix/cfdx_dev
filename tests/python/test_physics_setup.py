@@ -213,12 +213,11 @@ def test_python_selectability_matches_canonical_qualification_matrix():
 
     assert catalog_models.keys() == matrix_models.keys()
     expected_selectable = tuple(
-        model["key"]
-        for model in matrix["models"]
-        if model["status"] == "SOLVER_READY"
+        model["key"] for model in matrix["models"] if model["status"] == "SOLVER_READY"
     )
     assert TURBULENCE_MODELS == expected_selectable
     assert {
-        key for key, model in catalog_models.items()
+        key
+        for key, model in catalog_models.items()
         if model.status is TurbulenceStatus.SOLVER_READY
     } == set(expected_selectable)
