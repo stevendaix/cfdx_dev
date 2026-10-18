@@ -11,6 +11,10 @@ build/
 *.dylib
 *.dll
 
+# CTest scratch and Python wheel artifacts
+Testing/
+dist/
+
 # Locally-built dependencies
 third_party/hdf5/
 
