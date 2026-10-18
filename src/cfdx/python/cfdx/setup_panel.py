@@ -1,4 +1,5 @@
 """Contract-driven Qt setup editor for CFDX cases."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
@@ -22,8 +23,12 @@ from .boundary_setup import FIELD_SPECS, SCALAR_TYPES, VELOCITY_TYPES
 from .case import Case
 from .initialization import InitializationMode, InitializationSpec
 from .materials import MaterialSpec
-from .physics_setup import (PHYSICS_SPECS, TURBULENCE_CATALOG, TURBULENCE_MODELS,
-                            turbulence_model_from_case, validate_turbulence_selection)
+from .physics_setup import (
+    PHYSICS_SPECS,
+    TURBULENCE_CATALOG,
+    turbulence_model_from_case,
+    validate_turbulence_selection,
+)
 from .setup_model import ParameterType
 
 
@@ -92,24 +97,36 @@ class CaseSetupPanel(QWidget):
         if model == "turbulence":
             normalized = turbulence_model_from_case(current)
             self.turbulence_family = QComboBox()
-            families = sorted({item.family.value.upper() for item in TURBULENCE_CATALOG})
+            families = sorted(
+                {item.family.value.upper() for item in TURBULENCE_CATALOG}
+            )
             self.turbulence_family.addItems(families)
             self.turbulence_family.setCurrentText(str(normalized.get("family", "RANS")))
             self.physics_fields["family"] = self.turbulence_family
             self.physics_fields_form.addRow("Turbulence family", self.turbulence_family)
 
             self.turbulence_wall = QComboBox()
-            self.turbulence_wall.addItems(["resolved", "wall_function", "all_y_plus", "none"])
-            self.turbulence_wall.setCurrentText(str(normalized.get("wall_treatment", "resolved")))
+            self.turbulence_wall.addItems(
+                ["resolved", "wall_function", "all_y_plus", "none"]
+            )
+            self.turbulence_wall.setCurrentText(
+                str(normalized.get("wall_treatment", "resolved"))
+            )
             self.physics_fields["wall_treatment"] = self.turbulence_wall
             self.physics_fields_form.addRow("Wall treatment", self.turbulence_wall)
 
-            self.turbulence_family.currentTextChanged.connect(self._filter_turbulence_models)
+            self.turbulence_family.currentTextChanged.connect(
+                self._filter_turbulence_models
+            )
         for field in spec.fields:
             if field.name == "model":
                 box = QComboBox()
                 self.physics_fields["model"] = box
-                self._filter_turbulence_models(str(normalized.get("model", field.default)) if model == "turbulence" else str(current.get(field.name, field.default)))
+                self._filter_turbulence_models(
+                    str(normalized.get("model", field.default))
+                    if model == "turbulence"
+                    else str(current.get(field.name, field.default))
+                )
                 widget: QWidget = box
             elif field.kind is ParameterType.REAL:
                 widget = self._real(float(current.get(field.name, field.default)))
@@ -132,7 +149,8 @@ class CaseSetupPanel(QWidget):
             return
         family = family_box.currentText().lower()
         choices = [
-            item.key for item in TURBULENCE_CATALOG
+            item.key
+            for item in TURBULENCE_CATALOG
             if item.status.value == "solver_ready" and item.family.value == family
         ]
         current = preferred or box.currentText()
@@ -146,7 +164,8 @@ class CaseSetupPanel(QWidget):
     def _update_physics_dependencies(self) -> None:
         model = self.physics_model.currentText()
         enabled_models = {
-            key for key, value in self.case.physics.items()
+            key
+            for key, value in self.case.physics.items()
             if isinstance(value, dict) and bool(value.get("enabled", True))
         }
         for spec in PHYSICS_SPECS:
@@ -244,7 +263,9 @@ class CaseSetupPanel(QWidget):
         self.boundary_button.clicked.connect(self._apply_boundary)
         self.boundary_remove_button.clicked.connect(self._remove_boundary)
         self.boundary_list.currentTextChanged.connect(self._load_boundary)
-        self.boundary_field.currentTextChanged.connect(self._update_boundary_field_controls)
+        self.boundary_field.currentTextChanged.connect(
+            self._update_boundary_field_controls
+        )
         self._update_boundary_field_controls(self.boundary_field.currentText())
         self._refresh_boundaries()
         return w
@@ -282,7 +303,8 @@ class CaseSetupPanel(QWidget):
         errors = sum(item.severity == "error" for item in diagnostics)
         self.validation_summary.setText(
             f"Validation: {errors} error(s), {len(diagnostics) - errors} warning(s)"
-            + " — " + "; ".join(item.message for item in diagnostics[:3])
+            + " — "
+            + "; ".join(item.message for item in diagnostics[:3])
         )
         self.validation_summary.setStyleSheet(
             "color: #a40000;" if errors else "color: #8a5a00;"
@@ -316,7 +338,8 @@ class CaseSetupPanel(QWidget):
                 self.tabs.setCurrentIndex(tab_index)
                 target.setToolTip(f"{item.code}: {item.message}")
                 target.setStyleSheet(
-                    "border: 1px solid #a40000;" if item.severity == "error"
+                    "border: 1px solid #a40000;"
+                    if item.severity == "error"
                     else "border: 1px solid #c58a00;"
                 )
 
@@ -423,10 +446,17 @@ class CaseSetupPanel(QWidget):
                 )
         existing = dict(self.case.boundaries.get(name, {}))
         supported_keys = {
-            "type", "fields", "scalar_type", "value", "gradient",
-            "velocity_type", "velocity_value",
+            "type",
+            "fields",
+            "scalar_type",
+            "value",
+            "gradient",
+            "velocity_type",
+            "velocity_value",
         }
-        preserved = {key: value for key, value in existing.items() if key not in supported_keys}
+        preserved = {
+            key: value for key, value in existing.items() if key not in supported_keys
+        }
         preserved.update(values)
         self.case.set_boundary(name, **preserved)
         self._refresh_boundaries()
@@ -455,7 +485,11 @@ class CaseSetupPanel(QWidget):
         index = self.boundary_field.findText(field)
         self.boundary_field.setCurrentIndex(max(0, index))
         index = self.boundary_scalar_type.findText(
-            str(boundary.get("scalar_type", boundary.get("velocity_type", "ZERO_GRADIENT")))
+            str(
+                boundary.get(
+                    "scalar_type", boundary.get("velocity_type", "ZERO_GRADIENT")
+                )
+            )
         )
         self.boundary_scalar_type.setCurrentIndex(max(0, index))
         vector = boundary.get("velocity_value", [0.0, 0.0, 0.0])
@@ -469,7 +503,11 @@ class CaseSetupPanel(QWidget):
     def _apply_initialization(self) -> None:
         mode = InitializationMode(self.initialization_mode.currentText())
         field = self.initialization_field.text().strip()
-        value = self.initialization_value.value() if mode is InitializationMode.UNIFORM else None
+        value = (
+            self.initialization_value.value()
+            if mode is InitializationMode.UNIFORM
+            else None
+        )
         spec = InitializationSpec(mode, field, value)
         try:
             spec.validate()
