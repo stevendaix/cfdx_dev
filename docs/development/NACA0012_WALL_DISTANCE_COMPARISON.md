@@ -69,6 +69,29 @@ L-infinity error 1e-12 or better. Other methods are measured, not pre-declared
 PASS: their error, convergence status, residual, iteration count, and elapsed
 time are recorded independently.
 
+## Recorded Release CI result (nx=61)
+
+The Release CI run on HEAD `48f283453633a506a1d94ada43daf89a8a439407` completed successfully, including the refinement benchmark. The uploaded artifact `cfdx-ci-Release-diagnostics` contains `build/wall_distance_naca0012_refined.csv` (3,750 valid fluid samples per method; zero invalid samples for every method).
+
+| Method | Relative L2 | Relative L-infinity | Near-wall relative L2 | Iterations | Converged flag | Time (ms) |
+|---|---:|---:|---:|---:|---|---:|
+| exact_geometric | 6.18e-17 | 3.38e-16 | 1.54e-16 | 0 | true (direct) | 19.25 |
+| search_based | 6.18e-17 | 3.38e-16 | 1.54e-16 | 0 | true (direct) | 5.61 |
+| mesh_wave | 2.149e-1 | 3.762e-1 | 3.781e-2 | 0 | true (graph complete) | 2.34 |
+| directional_mesh_wave | 2.566e-1 | 4.466e-1 | 4.960e-2 | 0 | true (graph complete) | 27.79 |
+| poisson | 1.9998e-1 | 3.4603e-1 | 1.6939e-1 | 145 | true | 489.66 |
+| eikonal | 3.1549e-2 | 4.8660e-2 | 1.8200e-2 | 2 | true | 5.55 |
+| hamilton_jacobi | 1.0019e-1 | 1.6912e-1 | 3.9263e-2 | 584 | true | 225.36 |
+| advection_diffusion | 1.2394e-1 | 1.4202e-1 | 7.1853e-2 | 408 | true | 323.29 |
+| hybrid_poisson_eikonal | 9.5965e-2 | 1.4807e-1 | 4.5996e-2 | 468 | true | 828.62 |
+
+Interpretation:
+- The two geometric methods match the independent oracle at floating-point precision and pass the benchmark's accuracy gate.
+- Eikonal is the most accurate PDE method in this run (3.15% relative L2; 1.82% near-wall relative L2), but that is a measurement, not a qualified production tolerance.
+- The other PDE methods have substantial global errors: approximately 9.6% to 25.7% relative L2. Poisson also has a large near-wall error (16.9%). These results must not be described as accuracy-qualified.
+- `converged=true` only reports each method's internal stopping condition. It does not establish distance-field accuracy; mesh-wave methods report graph completion rather than a PDE residual.
+- This is one geometry and one Cartesian sampling resolution. Before setting production thresholds, investigate boundary conditions, initialization, discretization, and resolution sensitivity for each PDE method, and add refinement/error-trend checks rather than relaxing thresholds to match these results.
+
 ## Build and run
 
 From the repository root after configuring and building:
