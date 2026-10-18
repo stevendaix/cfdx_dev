@@ -5,6 +5,7 @@ turbulence catalogue deliberately distinguishes solver-ready transport models
 from algebraic/kernel-only models so the GUI never presents an unvalidated
 kernel as a production solver option.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -63,98 +64,264 @@ class TurbulenceModelSpec:
 # experimental. Numerical evaluation remains in C++.
 TURBULENCE_CATALOG: tuple[TurbulenceModelSpec, ...] = (
     TurbulenceModelSpec(
-        "LAMINAR", "Laminar", TurbulenceFamily.LAMINAR,
-        TurbulenceStatus.SOLVER_READY, 0, False, True, True, (2, 3),
+        "LAMINAR",
+        "Laminar",
+        TurbulenceFamily.LAMINAR,
+        TurbulenceStatus.SOLVER_READY,
+        0,
+        False,
+        True,
+        True,
+        (2, 3),
         "No turbulence closure.",
     ),
     TurbulenceModelSpec(
-        "KEPSILON", "k-epsilon (standard)", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
+        "KEPSILON",
+        "k-epsilon (standard)",
+        TurbulenceFamily.RANS,
+        TurbulenceStatus.COMPONENT_READY,
+        2,
+        True,
+        True,
+        True,
+        (2, 3),
         "Classical two-equation eddy-viscosity RANS closure.",
     ),
     TurbulenceModelSpec(
-        "RNG_KEPSILON", "RNG k-epsilon", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
+        "RNG_KEPSILON",
+        "RNG k-epsilon",
+        TurbulenceFamily.RANS,
+        TurbulenceStatus.COMPONENT_READY,
+        2,
+        True,
+        True,
+        True,
+        (2, 3),
         "RNG k-epsilon transport model with its dedicated production correction.",
     ),
     TurbulenceModelSpec(
-        "REALIZABLE_KEPSILON", "Realizable k-epsilon", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
+        "REALIZABLE_KEPSILON",
+        "Realizable k-epsilon",
+        TurbulenceFamily.RANS,
+        TurbulenceStatus.COMPONENT_READY,
+        2,
+        True,
+        True,
+        True,
+        (2, 3),
         "Variable-Cmu realizable k-epsilon transport model.",
     ),
     TurbulenceModelSpec(
-        "KOMEGA", "k-omega", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
+        "KOMEGA",
+        "k-omega",
+        TurbulenceFamily.RANS,
+        TurbulenceStatus.COMPONENT_READY,
+        2,
+        True,
+        True,
+        True,
+        (2, 3),
         "Two-equation k-omega transport model.",
     ),
     TurbulenceModelSpec(
-        "SST", "k-omega SST", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 2, True, True, True, (2, 3),
+        "SST",
+        "k-omega SST",
+        TurbulenceFamily.RANS,
+        TurbulenceStatus.COMPONENT_READY,
+        2,
+        True,
+        True,
+        True,
+        (2, 3),
         "Menter SST transport model with blending, cross-diffusion and production limiting.",
     ),
     TurbulenceModelSpec(
-        "SPALART_ALLMARAS", "Spalart-Allmaras", TurbulenceFamily.RANS,
-        TurbulenceStatus.COMPONENT_READY, 1, True, True, True, (2, 3),
+        "SPALART_ALLMARAS",
+        "Spalart-Allmaras",
+        TurbulenceFamily.RANS,
+        TurbulenceStatus.COMPONENT_READY,
+        1,
+        True,
+        True,
+        True,
+        (2, 3),
         "One-equation eddy-viscosity transport model.",
-        ("SA-negative, rotation, compressibility and QCR variants are not yet exposed.",),
+        (
+            "SA-negative, rotation, compressibility and QCR variants are not yet exposed.",
+        ),
     ),
     TurbulenceModelSpec(
-        "SMAGORINSKY", "Smagorinsky LES", TurbulenceFamily.LES,
-        TurbulenceStatus.KERNEL_ONLY, 0, True, False, True, (3,),
+        "SMAGORINSKY",
+        "Smagorinsky LES",
+        TurbulenceFamily.LES,
+        TurbulenceStatus.KERNEL_ONLY,
+        0,
+        True,
+        False,
+        True,
+        (3,),
         "Algebraic subgrid-scale eddy-viscosity kernel.",
         ("Not yet a complete transported LES solver.",),
     ),
     TurbulenceModelSpec(
-        "WALE", "WALE LES", TurbulenceFamily.LES,
-        TurbulenceStatus.KERNEL_ONLY, 0, True, False, True, (3,),
+        "WALE",
+        "WALE LES",
+        TurbulenceFamily.LES,
+        TurbulenceStatus.KERNEL_ONLY,
+        0,
+        True,
+        False,
+        True,
+        (3,),
         "WALE algebraic subgrid-scale kernel.",
         ("Not yet a complete transported LES solver.",),
     ),
     TurbulenceModelSpec(
-        "DYNAMIC_KEQN", "Dynamic one-equation LES", TurbulenceFamily.LES,
-        TurbulenceStatus.PLANNED, 1, True, False, True, (3,),
+        "DYNAMIC_KEQN",
+        "Dynamic one-equation LES",
+        TurbulenceFamily.LES,
+        TurbulenceStatus.PLANNED,
+        1,
+        True,
+        False,
+        True,
+        (3,),
         "Dynamic one-equation subgrid-scale model.",
-        ("The enum exists, but a complete transport implementation is not currently exposed.",),
+        (
+            "The enum exists, but a complete transport implementation is not currently exposed.",
+        ),
     ),
     TurbulenceModelSpec(
-        "DES", "DES", TurbulenceFamily.HYBRID,
-        TurbulenceStatus.KERNEL_ONLY, 0, True, False, True, (3,),
+        "DES",
+        "DES",
+        TurbulenceFamily.HYBRID,
+        TurbulenceStatus.KERNEL_ONLY,
+        0,
+        True,
+        False,
+        True,
+        (3,),
         "Algebraic DES length-scale/eddy-viscosity kernel.",
         ("Not yet a complete hybrid RANS-LES transport implementation.",),
     ),
     TurbulenceModelSpec(
-        "DDES", "DDES", TurbulenceFamily.HYBRID,
-        TurbulenceStatus.KERNEL_ONLY, 0, True, False, True, (3,),
+        "DDES",
+        "DDES",
+        TurbulenceFamily.HYBRID,
+        TurbulenceStatus.KERNEL_ONLY,
+        0,
+        True,
+        False,
+        True,
+        (3,),
         "DDES shielding and length-scale kernel.",
         ("Transport, shielding and wall-treatment integration are not complete.",),
     ),
     TurbulenceModelSpec(
-        "IDDES", "IDDES", TurbulenceFamily.HYBRID,
-        TurbulenceStatus.KERNEL_ONLY, 0, True, False, True, (3,),
+        "IDDES",
+        "IDDES",
+        TurbulenceFamily.HYBRID,
+        TurbulenceStatus.KERNEL_ONLY,
+        0,
+        True,
+        False,
+        True,
+        (3,),
         "IDDES shielding/blending length-scale kernel.",
         ("Transport, shielding and wall-treatment integration are not complete.",),
     ),
 )
 
-# Explicit implementation-gap contract.  This is intentionally separate from
+# Explicit implementation-gap contract. This is intentionally separate from
 # the model catalogue so adding a new model cannot silently imply completeness.
 TURBULENCE_MODEL_GAPS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "LAMINAR": (("U",), ()),
-    "KEPSILON": (("k", "epsilon"), ("wall treatment", "turbulence inlet specification", "quantitative benchmark campaign")),
-    "RNG_KEPSILON": (("k", "epsilon"), ("wall treatment contract", "dedicated quantitative RNG benchmark campaign")),
-    "REALIZABLE_KEPSILON": (("k", "epsilon"), ("mesh/y+ sensitivity", "quantitative benchmark qualification")),
-    "KOMEGA": (("k", "omega"), ("wall treatment contract", "quantitative benchmark qualification")),
-    "SST": (("k", "omega"), ("transition/corrections", "complete wall-treatment qualification", "quantitative benchmark qualification")),
-    "SPALART_ALLMARAS": (("nu_tilde",), ("negative/rotation/compressibility/QCR variants", "quantitative benchmark qualification")),
-    "SMAGORINSKY": (("velocity gradient", "Delta"), ("LES transient driver", "SGS BC contract", "wall treatment", "V&V")),
-    "WALE": (("velocity-gradient tensor", "Delta"), ("full tensor WALE integration", "LES transient driver", "wall treatment", "V&V")),
-    "DYNAMIC_KEQN": (("k_sgs", "velocity gradient", "Delta"), ("dynamic SGS transport", "test filtering", "clipping", "LES driver", "V&V")),
-    "DES": (("base RANS fields", "Delta", "wall distance"), ("RANS coupling", "shielding/length-scale integration", "transient 3-D driver", "V&V")),
-    "DDES": (("base RANS fields", "Delta", "wall distance", "shielding"), ("base-model coupling", "complete shielding integration", "wall treatment", "transient 3-D driver", "V&V")),
-    "IDDES": (("base RANS fields", "Delta", "wall distance", "shielding"), ("stress/wake shielding and blending integration", "wall treatment", "transient 3-D driver", "V&V")),
+    "KEPSILON": (
+        ("k", "epsilon"),
+        (
+            "wall treatment",
+            "turbulence inlet specification",
+            "quantitative benchmark campaign",
+        ),
+    ),
+    "RNG_KEPSILON": (
+        ("k", "epsilon"),
+        ("wall treatment contract", "dedicated quantitative RNG benchmark campaign"),
+    ),
+    "REALIZABLE_KEPSILON": (
+        ("k", "epsilon"),
+        ("mesh/y+ sensitivity", "quantitative benchmark qualification"),
+    ),
+    "KOMEGA": (
+        ("k", "omega"),
+        ("wall treatment contract", "quantitative benchmark qualification"),
+    ),
+    "SST": (
+        ("k", "omega"),
+        (
+            "transition/corrections",
+            "complete wall-treatment qualification",
+            "quantitative benchmark qualification",
+        ),
+    ),
+    "SPALART_ALLMARAS": (
+        ("nu_tilde",),
+        (
+            "negative/rotation/compressibility/QCR variants",
+            "quantitative benchmark qualification",
+        ),
+    ),
+    "SMAGORINSKY": (
+        ("velocity gradient", "Delta"),
+        ("LES transient driver", "SGS BC contract", "wall treatment", "V&V"),
+    ),
+    "WALE": (
+        ("velocity-gradient tensor", "Delta"),
+        (
+            "full tensor WALE integration",
+            "LES transient driver",
+            "wall treatment",
+            "V&V",
+        ),
+    ),
+    "DYNAMIC_KEQN": (
+        ("k_sgs", "velocity gradient", "Delta"),
+        ("dynamic SGS transport", "test filtering", "clipping", "LES driver", "V&V"),
+    ),
+    "DES": (
+        ("base RANS fields", "Delta", "wall distance"),
+        (
+            "RANS coupling",
+            "shielding/length-scale integration",
+            "transient 3-D driver",
+            "V&V",
+        ),
+    ),
+    "DDES": (
+        ("base RANS fields", "Delta", "wall distance", "shielding"),
+        (
+            "base-model coupling",
+            "complete shielding integration",
+            "wall treatment",
+            "transient 3-D driver",
+            "V&V",
+        ),
+    ),
+    "IDDES": (
+        ("base RANS fields", "Delta", "wall distance", "shielding"),
+        (
+            "stress/wake shielding and blending integration",
+            "wall treatment",
+            "transient 3-D driver",
+            "V&V",
+        ),
+    ),
 }
 
-def turbulence_model_requirements(key: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+
+def turbulence_model_requirements(
+    key: str,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
     try:
         return TURBULENCE_MODEL_GAPS[key.upper()]
     except KeyError as exc:
@@ -162,7 +329,8 @@ def turbulence_model_requirements(key: str) -> tuple[tuple[str, ...], tuple[str,
 
 
 TURBULENCE_MODELS = tuple(
-    model.key for model in TURBULENCE_CATALOG
+    model.key
+    for model in TURBULENCE_CATALOG
     if model.status is TurbulenceStatus.SOLVER_READY
 )
 
@@ -174,18 +342,92 @@ class TurbulenceCorrectionSpec:
     models: tuple[str, ...]
     description: str
 
+
 TURBULENCE_CORRECTIONS: tuple[TurbulenceCorrectionSpec, ...] = (
-    TurbulenceCorrectionSpec("rotation_curvature", "Rotation / curvature", ("KEPSILON","RNG_KEPSILON","REALIZABLE_KEPSILON","KOMEGA","SST","SPALART_ALLMARAS","DES","DDES","IDDES"), "Sensitizes the closure to system rotation and streamline curvature."),
-    TurbulenceCorrectionSpec("compressibility", "Compressibility", ("KEPSILON","RNG_KEPSILON","REALIZABLE_KEPSILON","KOMEGA","SST","SPALART_ALLMARAS","DES","DDES","IDDES"), "Compressibility correction applied through the model production/closure contract."),
-    TurbulenceCorrectionSpec("roughness", "Wall roughness", ("KEPSILON","RNG_KEPSILON","REALIZABLE_KEPSILON","KOMEGA","SST","SPALART_ALLMARAS","DES","DDES","IDDES"), "Wall-roughness modifier kept independent from the base model."),
-    TurbulenceCorrectionSpec("production_limiter", "Production limiter", ("KEPSILON","RNG_KEPSILON","REALIZABLE_KEPSILON","KOMEGA","SST","SPALART_ALLMARAS","DES","DDES","IDDES"), "Bounds excessive turbulent production."),
-    TurbulenceCorrectionSpec("kato_launder", "Kato-Launder", ("KEPSILON","RNG_KEPSILON","REALIZABLE_KEPSILON","KOMEGA","SST"), "Rotation-aware production correction."),
-    TurbulenceCorrectionSpec("qcr", "QCR", ("SPALART_ALLMARAS",), "Quadratic constitutive relation correction for the SA stress."),
+    TurbulenceCorrectionSpec(
+        "rotation_curvature",
+        "Rotation / curvature",
+        (
+            "KEPSILON",
+            "RNG_KEPSILON",
+            "REALIZABLE_KEPSILON",
+            "KOMEGA",
+            "SST",
+            "SPALART_ALLMARAS",
+            "DES",
+            "DDES",
+            "IDDES",
+        ),
+        "Sensitizes the closure to system rotation and streamline curvature.",
+    ),
+    TurbulenceCorrectionSpec(
+        "compressibility",
+        "Compressibility",
+        (
+            "KEPSILON",
+            "RNG_KEPSILON",
+            "REALIZABLE_KEPSILON",
+            "KOMEGA",
+            "SST",
+            "SPALART_ALLMARAS",
+            "DES",
+            "DDES",
+            "IDDES",
+        ),
+        "Compressibility correction applied through the model production/closure contract.",
+    ),
+    TurbulenceCorrectionSpec(
+        "roughness",
+        "Wall roughness",
+        (
+            "KEPSILON",
+            "RNG_KEPSILON",
+            "REALIZABLE_KEPSILON",
+            "KOMEGA",
+            "SST",
+            "SPALART_ALLMARAS",
+            "DES",
+            "DDES",
+            "IDDES",
+        ),
+        "Wall-roughness modifier kept independent from the base model.",
+    ),
+    TurbulenceCorrectionSpec(
+        "production_limiter",
+        "Production limiter",
+        (
+            "KEPSILON",
+            "RNG_KEPSILON",
+            "REALIZABLE_KEPSILON",
+            "KOMEGA",
+            "SST",
+            "SPALART_ALLMARAS",
+            "DES",
+            "DDES",
+            "IDDES",
+        ),
+        "Bounds excessive turbulent production.",
+    ),
+    TurbulenceCorrectionSpec(
+        "kato_launder",
+        "Kato-Launder",
+        ("KEPSILON", "RNG_KEPSILON", "REALIZABLE_KEPSILON", "KOMEGA", "SST"),
+        "Rotation-aware production correction.",
+    ),
+    TurbulenceCorrectionSpec(
+        "qcr",
+        "QCR",
+        ("SPALART_ALLMARAS",),
+        "Quadratic constitutive relation correction for the SA stress.",
+    ),
 )
 
-def turbulence_corrections_for_model(key: str) -> tuple[TurbulenceCorrectionSpec, ...]:
+
+def turbulence_corrections_for_model(
+    key: str,
+) -> tuple[TurbulenceCorrectionSpec, ...]:
     key = key.upper()
-    return tuple(c for c in TURBULENCE_CORRECTIONS if key in c.models)
+    return tuple(correction for correction in TURBULENCE_CORRECTIONS if key in correction.models)
 
 
 @dataclass(frozen=True)
@@ -235,7 +477,14 @@ def recommend_turbulence_models(
     if context.target_y_plus is not None and context.target_y_plus < 0:
         raise ValueError("target_y_plus must be non-negative")
 
-    candidates = ["SST", "REALIZABLE_KEPSILON", "KOMEGA", "KEPSILON", "RNG_KEPSILON", "SPALART_ALLMARAS"]
+    candidates = [
+        "SST",
+        "REALIZABLE_KEPSILON",
+        "KOMEGA",
+        "KEPSILON",
+        "RNG_KEPSILON",
+        "SPALART_ALLMARAS",
+    ]
     recommendations: list[TurbulenceRecommendation] = []
 
     for key in candidates:
@@ -249,17 +498,27 @@ def recommend_turbulence_models(
             )
 
         if key == "SST":
-            reasons.append("general wall-bounded RANS choice with near-wall and adverse-pressure-gradient coverage")
+            reasons.append(
+                "general wall-bounded RANS choice with near-wall and adverse-pressure-gradient coverage"
+            )
             if context.strong_separation:
-                reasons.append("SST is explicitly retained as a separation-oriented RANS candidate")
+                reasons.append(
+                    "SST is explicitly retained as a separation-oriented RANS candidate"
+                )
             if context.strong_rotation:
-                warnings.append("a dedicated rotation/curvature correction is not yet exposed in CFDX")
+                warnings.append(
+                    "a dedicated rotation/curvature correction is not yet exposed in CFDX"
+                )
         elif key == "SPALART_ALLMARAS":
-            reasons.append("compact one-equation RANS model suited to attached external aerodynamic boundary layers")
+            reasons.append(
+                "compact one-equation RANS model suited to attached external aerodynamic boundary layers"
+            )
             if context.application == "external":
                 reasons.append("external-aerodynamics use is a natural target for SA")
             if context.strong_separation:
-                warnings.append("separation behaviour should be qualified on the actual target geometry")
+                warnings.append(
+                    "separation behaviour should be qualified on the actual target geometry"
+                )
         elif key == "REALIZABLE_KEPSILON":
             reasons.append("two-equation RANS option for general industrial/internal-flow use")
         elif key == "RNG_KEPSILON":
@@ -270,45 +529,79 @@ def recommend_turbulence_models(
             reasons.append("two-equation near-wall-oriented RANS alternative")
 
         if context.transition_expected:
-            warnings.append("transition transport is not yet implemented; these are fully turbulent RANS models")
+            warnings.append(
+                "transition transport is not yet implemented; these are fully turbulent RANS models"
+            )
         if context.target_y_plus is not None and context.target_y_plus > 30:
-            warnings.append("wall-function treatment is not yet a complete CFDX turbulence feature; do not infer wall-function readiness from y+ alone")
+            warnings.append(
+                "wall-function treatment is not yet a complete CFDX turbulence feature; "
+                "do not infer wall-function readiness from y+ alone"
+            )
         if context.high_fidelity and context.dimensions == 3 and context.steady:
-            warnings.append("high-fidelity scale-resolving models require transient 3-D solver support not yet complete in CFDX")
-        if context.dimensions == 2 and key in {"SST", "SPALART_ALLMARAS", "REALIZABLE_KEPSILON", "KOMEGA", "KEPSILON", "RNG_KEPSILON"}:
+            warnings.append(
+                "high-fidelity scale-resolving models require transient 3-D solver support "
+                "not yet complete in CFDX"
+            )
+        if context.dimensions == 2 and key in {
+            "SST",
+            "SPALART_ALLMARAS",
+            "REALIZABLE_KEPSILON",
+            "KOMEGA",
+            "KEPSILON",
+            "RNG_KEPSILON",
+        }:
             reasons.append("available in the current 2-D transport architecture")
 
-        recommendations.append(TurbulenceRecommendation(key, tuple(reasons), tuple(warnings)))
+        recommendations.append(
+            TurbulenceRecommendation(key, tuple(reasons), tuple(warnings))
+        )
 
     return tuple(recommendations)
 
 
-INCOMPRESSIBLE = PhysicsSpec("incompressible","Incompressible flow",(
-    FieldSpec("density",ParameterType.REAL,"kg/m^3",1.0),
-    FieldSpec("kinematic_viscosity",ParameterType.REAL,"m^2/s",1.0e-3),
-    FieldSpec("algorithm",ParameterType.CHOICE,None,"SIMPLE"),
-))
-ENERGY = PhysicsSpec("energy","Energy",(
-    FieldSpec("density",ParameterType.REAL,"kg/m^3",1.0),
-    FieldSpec("cp",ParameterType.REAL,"J/(kg K)",1000.0),
-    FieldSpec("conductivity",ParameterType.REAL,"W/(m K)",1.0),
-    FieldSpec("dt",ParameterType.REAL,"s",0.0),
-),("incompressible",))
-TURBULENCE = PhysicsSpec("turbulence","Turbulence",(
-    FieldSpec("model",ParameterType.CHOICE,None,"LAMINAR"),
-    FieldSpec("density",ParameterType.REAL,"kg/m^3",1.0),
-    FieldSpec("molecular_viscosity",ParameterType.REAL,"Pa s",1.0e-3),
-    FieldSpec("turbulent_prandtl",ParameterType.REAL,None,0.9),
-    FieldSpec("k_min",ParameterType.REAL,"m^2/s^2",1.0e-12),
-    FieldSpec("epsilon_min",ParameterType.REAL,"m^2/s^3",1.0e-12),
-    FieldSpec("omega_min",ParameterType.REAL,"1/s",1.0e-12),
-),("incompressible",))
+INCOMPRESSIBLE = PhysicsSpec(
+    "incompressible",
+    "Incompressible flow",
+    (
+        FieldSpec("density", ParameterType.REAL, "kg/m^3", 1.0),
+        FieldSpec("kinematic_viscosity", ParameterType.REAL, "m^2/s", 1.0e-3),
+        FieldSpec("algorithm", ParameterType.CHOICE, None, "SIMPLE"),
+    ),
+)
+ENERGY = PhysicsSpec(
+    "energy",
+    "Energy",
+    (
+        FieldSpec("density", ParameterType.REAL, "kg/m^3", 1.0),
+        FieldSpec("cp", ParameterType.REAL, "J/(kg K)", 1000.0),
+        FieldSpec("conductivity", ParameterType.REAL, "W/(m K)", 1.0),
+        FieldSpec("dt", ParameterType.REAL, "s", 0.0),
+    ),
+    ("incompressible",),
+)
+TURBULENCE = PhysicsSpec(
+    "turbulence",
+    "Turbulence",
+    (
+        FieldSpec("model", ParameterType.CHOICE, None, "LAMINAR"),
+        FieldSpec("density", ParameterType.REAL, "kg/m^3", 1.0),
+        FieldSpec("molecular_viscosity", ParameterType.REAL, "Pa s", 1.0e-3),
+        FieldSpec("turbulent_prandtl", ParameterType.REAL, None, 0.9),
+        FieldSpec("k_min", ParameterType.REAL, "m^2/s^2", 1.0e-12),
+        FieldSpec("epsilon_min", ParameterType.REAL, "m^2/s^3", 1.0e-12),
+        FieldSpec("omega_min", ParameterType.REAL, "1/s", 1.0e-12),
+    ),
+    ("incompressible",),
+)
 PHYSICS_SPECS = (INCOMPRESSIBLE, ENERGY, TURBULENCE)
 
 
 def default_parameters(spec: PhysicsSpec) -> tuple[Parameter, ...]:
     choices = TURBULENCE_MODELS if spec.key == "turbulence" else ()
-    return tuple(Parameter(f.name,f.default,f.kind,f.unit,choices) for f in spec.fields)
+    return tuple(
+        Parameter(field.name, field.default, field.kind, field.unit, choices)
+        for field in spec.fields
+    )
 
 
 def physics_spec(key: str) -> PhysicsSpec:
@@ -317,8 +610,9 @@ def physics_spec(key: str) -> PhysicsSpec:
             return spec
     raise KeyError(key)
 
+
 def turbulence_model_from_case(values: dict[str, object]) -> dict[str, object]:
-    # Normalize legacy flat turbulence settings to the structured contract.
+    """Normalize legacy flat turbulence settings to the structured contract."""
     model = str(values.get("model", "SST")).upper()
     spec = turbulence_model(model)
     family = spec.family.value.upper()
@@ -326,10 +620,13 @@ def turbulence_model_from_case(values: dict[str, object]) -> dict[str, object]:
         **values,
         "family": family,
         "model": model,
-        "wall_treatment": values.get("wall_treatment", "resolved" if spec.wall_bounded else "none"),
+        "wall_treatment": values.get(
+            "wall_treatment", "resolved" if spec.wall_bounded else "none"
+        ),
         "transition": values.get("transition", {"model": "none"}),
         "corrections": dict(values.get("corrections", {})),
     }
+
 
 def validate_turbulence_selection(values: dict[str, object]) -> dict[str, object]:
     normalized = turbulence_model_from_case(values)
@@ -354,10 +651,15 @@ def validate_turbulence_selection(values: dict[str, object]) -> dict[str, object
             f"{model.label} is {model.status.value}; it is not available in the production solver. "
             "No fallback to laminar is performed."
         )
-    if normalized["wall_treatment"] not in {"resolved", "wall_function", "all_y_plus", "none"}:
+    if normalized["wall_treatment"] not in {
+        "resolved",
+        "wall_function",
+        "all_y_plus",
+        "none",
+    }:
         raise ValueError("unsupported turbulence wall treatment")
     if not isinstance(normalized["corrections"], dict):
-        raise ValueError("turbulence corrections must be a mapping")
+        raise TypeError("turbulence corrections must be a mapping")
     if not isinstance(normalized["transition"], dict):
-        raise ValueError("turbulence transition must be a mapping")
+        raise TypeError("turbulence transition must be a mapping")
     return normalized
