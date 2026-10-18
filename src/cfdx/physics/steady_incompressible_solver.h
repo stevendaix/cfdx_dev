@@ -3646,12 +3646,33 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         else if (debug_cell_enabled)
             debug_cell = static_cast<std::size_t>(controls.diagnostics.debug_cell);
 
-        const double nonlinear_metric = std::max({
-            h.momentum_residual,
-            h.momentum_equation_residual_relative,
-            h.pressure_residual,
-            h.velocity_change_inf,
-            h.pressure_change_inf});
+        // The first-iteration-relative equation residual is diagnostic only:
+        // if the initial residual is already at round-off, its denominator is
+        // ill-conditioned and the ratio can grow while the actual equation
+        // residual remains negligible. Use the RHS-normalized residual for the
+        // nonlinear convergence monitor and keep the reference-relative value
+        // available in history for diagnostics/adaptive-relaxation analysis.
+        // The first-iteration normalization is useful only when its reference
+        // is resolved relative to the momentum RHS. If the reference is at
+        // round-off, keep it for diagnostics but do not let its ratio dominate
+        // the nonlinear monitor.
+        const double momentum_reference_roundoff =
+            100.0 * std::numeric_limits<double>::epsilon() *
+            std::max(h.momentum_rhs_scale, tiny);
+        const bool momentum_reference_ill_conditioned =
+            h.momentum_equation_residual_reference <= momentum_reference_roundoff;
+        const double nonlinear_metric = momentum_reference_ill_conditioned
+            ? std::max({
+                  h.momentum_residual,
+                  h.pressure_residual,
+                  h.velocity_change_inf,
+                  h.pressure_change_inf})
+            : std::max({
+                  h.momentum_residual,
+                  h.momentum_equation_residual_relative,
+                  h.pressure_residual,
+                  h.velocity_change_inf,
+                  h.pressure_change_inf});
         h.nonlinear_convergence_metric = nonlinear_metric;
 
         if (controls.diagnostics.iteration_trace &&
@@ -3694,8 +3715,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // from the gate. nonlinear_metric is therefore a diagnostic summary and
         // never a replacement for the individual physical criteria.
         const bool momentum_residual_gate =
-            h.momentum_residual <= controls.convergence.relative_tolerance;
+            h.momentum_equation_residual_rhs_relative <= controls.convergence.relative_tolerance;
         const bool momentum_equation_residual_gate =
+            momentum_reference_ill_conditioned ||
             h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance;
         const bool pressure_residual_gate =
             h.pressure_residual <= controls.convergence.relative_tolerance;
