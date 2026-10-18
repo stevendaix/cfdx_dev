@@ -100,31 +100,26 @@ def test_write_probe_csv_value_encoding_is_canonical(tmp_path):
 
 
 def test_write_probe_csv_byte_stable(tmp_path):
-    path = write_probe_csv(
-        tmp_path / "probes.csv",
-        [
-            ProbeSeries(
-                "u_mag",
-                (),
-                (
-                    ProbeSample(1, 1.0, 0.0),
-                    ProbeSample(2, 1.0 / 3.0, 1.0 / 3.0),
-                    ProbeSample(3, 1e-9, 123.45678901234568),
-                ),
-            ),
-        ],
+    # #828 history contract: strictly increasing iterations and non-decreasing
+    # time, so the canonical float tokens are ordered as an increasing time
+    # sequence instead of the previously arbitrary decreasing one.
+    samples = (
+        ProbeSample(1, 1e-9, 0.0),
+        ProbeSample(2, 1.0 / 3.0, 1.0 / 3.0),
+        ProbeSample(3, 1.0, 123.45678901234568),
     )
-    expected = (
+    series = [ProbeSeries("u_mag", (), samples)]
+    path = write_probe_csv(tmp_path / "probes.csv", series)
+    data_rows = []
+    for sample in samples:
+        time_token = _format_probe_csv_value(sample.time)
+        value_token = _format_probe_csv_value(sample.value)
+        data_rows.append(f"u_mag,{sample.iteration},{time_token},{value_token}\n")
+    header = (
         f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\n"
         "# columns: probe,iteration,time,value\n"
-        + "".join(
-            f"u_mag,{i},{_format_probe_csv_value(t)},{_format_probe_csv_value(v)}\n"
-            for i, (t, v) in zip(
-                (1, 2, 3),
-                ((1.0, 0.0), (1.0 / 3.0, 1.0 / 3.0), (1e-9, 123.45678901234568)),
-            )
-        )
     )
+    expected = header + "".join(data_rows)
     assert path.read_text() == expected
 
 
