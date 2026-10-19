@@ -1,5 +1,7 @@
 #include "cfdx/physics/sst_solver.h"
 #include "cfdx/physics/sst_production_coupling.h"
+#include "cfdx/physics/sst_strain_rate.h"
+#include <array>
 #include "common/test_harness.h"
 #include <cmath>
 #include <algorithm>
@@ -72,6 +74,35 @@ int main()
         EXPECT_NEAR(k(0), 0.4, 0.0);
         EXPECT_NEAR(omega(0), 8.0, 0.0);
         EXPECT_NEAR(nu_t(0), 0.02, 0.0);
+    });
+
+
+    run_case("sst_strain_rate_magnitude_matches_simple_shear", [] {
+        // Ux = gamma*y, Uy = Uz = 0 gives |S| = |gamma|.
+        const double gamma = 3.25;
+        const std::array<double, 9> grad{
+            0.0, gamma, 0.0,
+            0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0};
+        EXPECT_NEAR(sst_strain_rate_magnitude(grad), gamma, 1e-14);
+    });
+
+    run_case("sst_strain_rate_magnitude_matches_extension", [] {
+        // Ux = a*x and Uy = -a*y gives |S| = 2*|a|.
+        const double a = 1.75;
+        const std::array<double, 9> grad{
+            a, 0.0, 0.0,
+            0.0, -a, 0.0,
+            0.0, 0.0, 0.0};
+        EXPECT_NEAR(sst_strain_rate_magnitude(grad), 2.0 * a, 1e-14);
+    });
+
+    run_case("sst_strain_rate_magnitude_rejects_nonfinite_gradient", [] {
+        const std::array<double, 9> grad{
+            0.0, 0.0, 0.0,
+            0.0, std::numeric_limits<double>::infinity(), 0.0,
+            0.0, 0.0, 0.0};
+        EXPECT_THROW(sst_strain_rate_magnitude(grad), std::invalid_argument);
     });
 
     run_case("sst_blending_rejects_invalid_distance", [] {
