@@ -14,6 +14,35 @@ using namespace cfdx::physics;
 
 int main()
 {
+    run_case("sst_dynamic_blending_diagnostics_accumulate_all_bound_events", [] {
+        TurbulenceTransportResult aggregate;
+        aggregate.k_floor_events = 2;
+        aggregate.second_floor_events = 3;
+        aggregate.nonfinite_bound_events = 1;
+        aggregate.k_total_floor_correction = 0.25;
+        aggregate.second_total_floor_correction = 0.5;
+        aggregate.k_max_floor_correction = 0.2;
+        aggregate.second_max_floor_correction = 0.4;
+
+        TurbulenceTransportResult step;
+        step.k_floor_events = 4;
+        step.second_floor_events = 5;
+        step.nonfinite_bound_events = 2;
+        step.k_total_floor_correction = 0.75;
+        step.second_total_floor_correction = 1.5;
+        step.k_max_floor_correction = 0.6;
+        step.second_max_floor_correction = 1.2;
+
+        accumulate_turbulence_diagnostics(aggregate, step);
+        EXPECT_TRUE(aggregate.k_floor_events == 6);
+        EXPECT_TRUE(aggregate.second_floor_events == 8);
+        EXPECT_TRUE(aggregate.nonfinite_bound_events == 3);
+        EXPECT_NEAR(aggregate.k_total_floor_correction, 1.0, 0.0);
+        EXPECT_NEAR(aggregate.second_total_floor_correction, 2.0, 0.0);
+        EXPECT_NEAR(aggregate.k_max_floor_correction, 0.6, 0.0);
+        EXPECT_NEAR(aggregate.second_max_floor_correction, 1.2, 0.0);
+    });
+
     run_case("sst_blending_is_bounded", [] {
         const auto [f1, f2] = compute_sst_blending(0.5, 10.0, 0.01, 1.5e-5, 0.09);
         EXPECT_TRUE(f1 >= 0.0 && f1 <= 1.0);
