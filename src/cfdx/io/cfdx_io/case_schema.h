@@ -82,6 +82,22 @@ struct MaterialSpec {
     std::map<std::string, std::string> extra_properties; // vendor-specific extras
 };
 
+// Explicit SST transport boundary contract. This is persisted case metadata;
+// it does not imply that the production solver currently applies these values.
+enum class SSTScalarBoundaryType : std::uint8_t {
+    FIXED_VALUE,
+    ZERO_GRADIENT,
+    WALL_K_ZERO,
+    WALL_OMEGA_SST,
+    UNKNOWN
+};
+
+struct SSTScalarBoundarySpec {
+    std::string field; // "k" or "omega"
+    SSTScalarBoundaryType type = SSTScalarBoundaryType::UNKNOWN;
+    double value = 0.0; // used only by FIXED_VALUE
+};
+
 // ---------------------------------------------------------------------------
 // Boundary condition specification
 // ---------------------------------------------------------------------------
@@ -97,6 +113,7 @@ struct BoundarySpec {
     double pressure = 0.0;
     double turbulence_intensity = 0.0;
     double turbulence_length_scale = 0.0;
+    std::vector<SSTScalarBoundarySpec> sst_scalar_conditions;
 
     // For wall
     double roughness_height = 0.0;
