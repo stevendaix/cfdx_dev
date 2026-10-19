@@ -118,4 +118,76 @@ inline void validate_sst_case_prerequisites(
     }
 }
 
+// Validate that every patch has an explicit, unambiguous k/omega contract.
+// This validates metadata only; applying these conditions in the production
+// transport assembly is a separate qualification gate.
+inline void validate_sst_scalar_boundary_contract(const cfdx::io::CaseSetup& setup)
+{
+    if (setup.boundary_conditions.empty())
+        throw std::invalid_argument("SST case must declare at least one boundary patch");
+
+    std::map<std::string, bool> patch_names;
+    for (const auto& boundary : setup.boundary_conditions) {
+        if (boundary.patch_name.empty())
+            throw std::invalid_argument("SST boundary patch names must not be empty");
+        if (!patch_names.emplace(boundary.patch_name, true).second)
+            throw std::invalid_argument("duplicate SST boundary patch '" + boundary.patch_name + "'");
+        std::map<std::string, cfdx::io::SSTScalarBoundaryType> types;
+        for (const auto& scalar_bc : boundary.sst_scalar_conditions) {
+            if (scalar_bc.field != "k" && scalar_bc.field != "omega")
+                throw std::invalid_argument("SST scalar boundary field must be 'k' or 'omega'");
+            if (scalar_bc.type == cfdx::io::SSTScalarBoundaryType::UNKNOWN)
+                throw std::invalid_argument("SST scalar boundary type must be explicit");
+            if (!types.emplace(scalar_bc.field, scalar_bc.type).second)
+                throw std::invalid_argument("duplicate SST scalar boundary field '" +
+                                            scalar_bc.field + "' on patch '" +
+                                            boundary.patch_name + "'");
+            if (scalar_bc.type == cfdx::io::SSTScalarBoundaryType::FIXED_VALUE) {
+                if (!std::isfinite(scalar_bc.value) ||
+                    (scalar_bc.field == "k" ? scalar_bc.value <= 0.0 : scalar_bc.value <= 0.0))
+                    throw std::invalid_argument("SST fixed boundary value is invalid for field '" +
+                                                scalar_bc.field + "'");
+            } else if (!std::isfinite(scalar_bc.value) || scalar_bc.value != 0.0) {
+                throw std::invalid_argument("SST non-fixed boundary type must not carry a numeric value");
+            }
+        }
+        if (types.size() != 2 || types.find("k") == types.end() ||
+            types.find("omega") == types.end())
+            throw std::invalid_argument("SST patch '" + boundary.patch_name +
+                                        "' must define exactly one boundary condition for k and omega");
+
+        const auto k_type = types.at("k");
+        const auto omega_type = types.at("omega");
+        switch (boundary.type) {
+            case cfdx::io::BCType::WALL:
+                if (k_type != cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO ||
+                    omega_type != cfdx::io::SSTScalarBoundaryType::WALL_OMEGA_SST)
+                    throw std::invalid_argument("SST wall patch requires WALL_K_ZERO and WALL_OMEGA_SST");
+                break;
+            case cfdx::io::BCType::INLET:
+                if (k_type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE ||
+                    omega_type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE)
+                    throw std::invalid_argument("SST inlet patch requires fixed k and omega values");
+                break;
+            case cfdx::io::BCType::OUTLET:
+            case cfdx::io::BCType::PRESSURE_OUTLET:
+                if ((k_type != cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT &&
+                     k_type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE) ||
+                    (omega_type != cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT &&
+                     omega_type != cfdx::io::SSTScalarBoundaryType::FIXED_VALUE))
+                    throw std::invalid_argument("SST outlet patch requires fixed values or zero gradients");
+                break;
+            case cfdx::io::BCType::SYMMETRY:
+            case cfdx::io::BCType::PERIODIC:
+                if (k_type != cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT ||
+                    omega_type != cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT)
+                    throw std::invalid_argument("SST symmetry/periodic patch requires zero gradients");
+                break;
+            default:
+                throw std::invalid_argument("SST scalar boundary contract does not support patch type '" +
+                                            std::string(cfdx::io::to_string(boundary.type)) + "'");
+        }
+    }
+}
+
 } // namespace cfdx::physics
