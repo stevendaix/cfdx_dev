@@ -35,10 +35,10 @@ def test_write_probe_csv_rejects_duplicate_iterations(tmp_path):
 def test_read_probe_csv_rejects_duplicate_iterations(tmp_path):
     path = tmp_path / "duplicate_iteration.csv"
     path.write_text(
-        f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\n"
-        "# columns: probe,iteration,time,value\n"
-        "pressure,1,0.1,1.0\n"
-        "pressure,1,0.2,1.1\n",
+        f"# {PROBE_CSV_MAGIC} v{PROBE_CSV_VERSION}\\n"
+        "# columns: probe,iteration,time,value\\n"
+        "pressure,1,0.1,1.0\\n"
+        "pressure,1,0.2,1.1\\n",
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="duplicate iteration IDs"):
@@ -95,3 +95,15 @@ def test_write_probe_csv_allows_shared_iterations_across_probes(tmp_path):
     restored = {probe.name: probe for probe in read_probe_csv(destination)}
     assert restored["pressure"].samples[0].iteration == 1
     assert restored["velocity"].samples[0].iteration == 1
+
+
+def test_write_probe_csv_invalid_history_does_not_create_parent(tmp_path):
+    destination = tmp_path / "invalid" / "probes.csv"
+    series = ProbeSeries(
+        "pressure",
+        (),
+        (ProbeSample(1, 0.2, 10.0), ProbeSample(2, 0.1, 11.0)),
+    )
+    with pytest.raises(ValueError, match="monotonic in time"):
+        write_probe_csv(destination, [series])
+    assert not destination.parent.exists()
