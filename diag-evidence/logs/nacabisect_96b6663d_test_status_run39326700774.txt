@@ -1,0 +1,7 @@
+pin=96b6663d210df5527fa8c3385ad2492d7a80c439
+subject=feat(physics): support cellwise viscosity in momentum assembly
+commit_date=2026-10-18 16:07:09 +0200
+outcome=FAIL_DIVERGED
+test_rc=134
+test_duration_s=298
+run_id=39326700774
