@@ -438,9 +438,23 @@ inline void validate_incompressible_controls(
              c.transient.previous_previous->dimension() != 3))
             throw std::invalid_argument("transient BDF2 second velocity history is missing or invalid");
     }
-    if (!(c.density > 0.0) || !(c.kinematic_viscosity >= 0.0) ||
-        !(c.turbulent_viscosity >= 0.0))
+    if (!(c.density > 0.0) || !std::isfinite(c.density) ||
+        !(c.kinematic_viscosity >= 0.0) || !std::isfinite(c.kinematic_viscosity) ||
+        !(c.turbulent_viscosity >= 0.0) || !std::isfinite(c.turbulent_viscosity))
         throw std::invalid_argument("invalid incompressible material properties");
+    if (!c.cell_turbulent_viscosity.empty()) {
+        if (c.cell_turbulent_viscosity.size() != n_cells)
+            throw std::invalid_argument(
+                "cellwise turbulent viscosity size does not match mesh");
+        if (c.turbulent_viscosity != 0.0)
+            throw std::invalid_argument(
+                "specify either scalar or cellwise turbulent viscosity, not both");
+        for (const double nu_t : c.cell_turbulent_viscosity) {
+            if (!(nu_t >= 0.0) || !std::isfinite(nu_t))
+                throw std::invalid_argument(
+                    "cellwise turbulent viscosity must be finite and non-negative");
+        }
+    }
     if (c.pressure_reference_cell >= n_cells)
         throw std::invalid_argument("pressure reference cell out of range");
     if (c.linear_max_iterations == 0 || !(c.linear_tolerance > 0.0))
