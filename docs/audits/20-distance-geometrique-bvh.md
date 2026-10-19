@@ -5,7 +5,7 @@
 - Statut : DRAFT (2026-10-19) — contrat géométrique documenté ; validation numérique de la traversée BVH en cours.
 - Registre autoritaire : `docs/validation/CFDX_QUALIFICATION_REGISTRY.json` (campagnes) et `docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json` (exigences).
 - Issue / PR liées : PR #979 ; backlog wall-distance #34.
-- Dernier commit vérifié : `6fed1d42fc69bd5236c39fc1b48dcbe5e112f767` (branche PR #979).
+- Dernier commit vérifié : `1c655e9dffc8b4e1cb12c889728766881b2e27bb` (HEAD vérifié lors de la préparation de la campagne CI).
 - Limitations connues : les résultats N=128 antérieurs sont une baseline, pas une preuve du gain de cette modification. Le benchmark complet et la comparaison à la référence exhaustive restent requis.
 
 ## 1. Références sources
@@ -22,7 +22,7 @@ d(\mathbf{x})=\min_{\mathbf{y}\in\Gamma_w}\|\mathbf{x}-\mathbf{y}\|_2.
 \]
 Pour une face coupée, la fermeture géométrique utilise l'intersection du rayon \(\mathbf{x}+t\hat{\mathbf{r}}\) avec les triangles de la paroi, où \(\|\hat{\mathbf{r}}\|_2=1\) et \(0\le t\le t_{max}\). Le résultat est le plus petit paramètre admissible \(t\), ou \(+\infty\) en l'absence d'intersection.
 
-## 3. Discrétisation / algorithme
+## 3. Discrétisation Volume Fini
 
 La surface est indexée par un BVH binaire d'AABB. Chaque nœud borne tous les triangles de son sous-arbre ; les feuilles référencent un intervalle de triangles dans le tableau d'indices. Une requête rayon :
 1. normalise la direction, en rejetant une direction nulle ou une distance maximale non positive ;
@@ -32,7 +32,7 @@ La surface est indexée par un BVH binaire d'AABB. Chaque nœud borne tous les t
 
 La traversée est une accélération de recherche uniquement. Le test rayon-triangle, les tolérances barycentriques et la définition du premier impact doivent rester équivalents à la référence exhaustive. Le BVH ne doit jamais éliminer un triangle qui peut fournir un impact admissible.
 
-## 4. Conditions aux limites et domaine de validité
+## 4. Traitement des frontières
 
 - Le rayon est limité à une distance finie positive fournie par l'appelant.
 - Les impacts à l'intérieur des tolérances existantes autour de l'origine et de la limite restent traités comme dans la référence historique.
@@ -58,10 +58,10 @@ La traversée est une accélération de recherche uniquement. Le test rayon-tria
 ## 7. Statut d'implémentation CFDX
 
 - Fichier source : `src/cfdx/physics/wall_distance.h`, classe `WallDistanceBvh`.
-- Tests exécutables : `tests/unit/test_wall_distance_methods.cpp` ; tests rayons ciblés et équivalence exhaustive à compléter/vérifier dans PR #979.
+- Tests exécutables : `tests/unit/test_wall_distance_methods.cpp` ; tests rayons ciblés et oracle exhaustif ajoutés dans PR #979 ; exécution Release et DebugSanitizers encore en attente.
 - Écarts connus code ↔ fiche : la branche #979 introduit une traversée AABB/BVH dans `ray_distance()`, mais son équivalence numérique et son gain de performance ne sont pas encore qualifiés.
-- Prochaines actions : ajouter les tests de régression, passer le gate documentaire, vérifier Release et DebugSanitizers, puis exécuter le benchmark de référence.
+- Prochaines actions : confirmer le gate documentaire après correction de structure, vérifier Release et DebugSanitizers, puis exécuter le benchmark N=128 de référence.
 
 ## 8. Journal des modifications
 
-- 2026-10-19 — PR #979 — création de la fiche pour cadrer l'optimisation BVH et ses exigences de qualification.
+- 2026-10-19 — PR #979 — création de la fiche et ajout de tests de comparaison avec l'oracle exhaustif ; validation de performance toujours requise.
