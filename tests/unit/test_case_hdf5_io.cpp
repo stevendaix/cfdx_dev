@@ -622,5 +622,49 @@ int main() {
         EXPECT_TRUE(v.is_null());
     });
 
+    run_case("case_hdf5_sst_scalar_boundary_conditions_roundtrip", []() {
+        const std::string filename = "/tmp/cfdx_case_sst_scalar_bc.h5";
+        std::remove(filename.c_str());
+        Mesh mesh = make_unit_cube();
+        SourceInfo source = make_test_source();
+        CaseSetup setup = make_default_setup();
+        setup.turbulence_model = "k_omega_sst";
+        setup.has_initial_condition = true;
+        setup.initial_condition.scalar_fields["k"] = 0.01;
+        setup.initial_condition.scalar_fields["omega"] = 2.0;
+        auto& inlet = setup.boundary_conditions[0];
+        inlet.sst_scalar_conditions = {
+            SSTScalarBoundarySpec{"k", SSTScalarBoundaryType::FIXED_VALUE, 0.02},
+            SSTScalarBoundarySpec{"omega", SSTScalarBoundaryType::FIXED_VALUE, 3.0}
+        };
+        BoundarySpec wall;
+        wall.patch_name = "wall";
+        wall.type = BCType::WALL;
+        wall.sst_scalar_conditions = {
+            SSTScalarBoundarySpec{"k", SSTScalarBoundaryType::WALL_K_ZERO, 0.0},
+            SSTScalarBoundarySpec{"omega", SSTScalarBoundaryType::WALL_OMEGA_SST, 0.0}
+        };
+        setup.boundary_conditions.push_back(wall);
+        GapAnalysis gap;
+        EXPECT_TRUE(write_case_cfdx_h5(filename, mesh, source, setup, gap));
+
+        Mesh loaded_mesh;
+        SourceInfo loaded_source;
+        CaseSetup loaded_setup;
+        GapAnalysis loaded_gap;
+        EXPECT_TRUE(read_case_cfdx_h5(filename, loaded_mesh, loaded_source, loaded_setup, loaded_gap));
+        EXPECT_TRUE(loaded_setup.boundary_conditions.size() == 2);
+        EXPECT_TRUE(loaded_setup.boundary_conditions[0].sst_scalar_conditions.size() == 2);
+        EXPECT_TRUE(loaded_setup.boundary_conditions[0].sst_scalar_conditions[0].field == "k");
+        EXPECT_TRUE(loaded_setup.boundary_conditions[0].sst_scalar_conditions[0].type == SSTScalarBoundaryType::FIXED_VALUE);
+        EXPECT_NEAR(loaded_setup.boundary_conditions[0].sst_scalar_conditions[0].value, 0.02, 1e-14);
+        EXPECT_TRUE(loaded_setup.boundary_conditions[0].sst_scalar_conditions[1].field == "omega");
+        EXPECT_TRUE(loaded_setup.boundary_conditions[0].sst_scalar_conditions[1].type == SSTScalarBoundaryType::FIXED_VALUE);
+        EXPECT_NEAR(loaded_setup.boundary_conditions[0].sst_scalar_conditions[1].value, 3.0, 1e-14);
+        EXPECT_TRUE(loaded_setup.boundary_conditions[1].sst_scalar_conditions[0].type == SSTScalarBoundaryType::WALL_K_ZERO);
+        EXPECT_TRUE(loaded_setup.boundary_conditions[1].sst_scalar_conditions[1].type == SSTScalarBoundaryType::WALL_OMEGA_SST);
+        std::remove(filename.c_str());
+    });
+
     return run_all();
 }

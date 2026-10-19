@@ -191,5 +191,77 @@ int main()
                      std::invalid_argument);
     });
 
+    run_case("sst_scalar_boundary_contract_accepts_explicit_wall_inlet_outlet", [] {
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec inlet;
+        inlet.patch_name = "inlet";
+        inlet.type = cfdx::io::BCType::INLET;
+        inlet.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 0.01},
+            {"omega", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 2.0}
+        };
+        cfdx::io::BoundarySpec wall;
+        wall.patch_name = "wall";
+        wall.type = cfdx::io::BCType::WALL;
+        wall.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::WALL_OMEGA_SST, 0.0}
+        };
+        cfdx::io::BoundarySpec outlet;
+        outlet.patch_name = "outlet";
+        outlet.type = cfdx::io::BCType::PRESSURE_OUTLET;
+        outlet.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT, 0.0}
+        };
+        setup.boundary_conditions = {inlet, wall, outlet};
+        validate_sst_scalar_boundary_contract(setup);
+
+        setup.boundary_conditions.push_back(outlet);
+        EXPECT_THROW(validate_sst_scalar_boundary_contract(setup), std::invalid_argument);
+        setup.boundary_conditions.clear();
+        EXPECT_THROW(validate_sst_scalar_boundary_contract(setup), std::invalid_argument);
+    });
+
+    run_case("sst_scalar_boundary_contract_rejects_zero_fixed_k", [] {
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec inlet;
+        inlet.patch_name = "inlet";
+        inlet.type = cfdx::io::BCType::INLET;
+        inlet.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 2.0}
+        };
+        setup.boundary_conditions = {inlet};
+        EXPECT_THROW(validate_sst_scalar_boundary_contract(setup), std::invalid_argument);
+    });
+
+    run_case("sst_scalar_boundary_contract_rejects_missing_duplicate_and_incompatible_conditions", [] {
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec wall;
+        wall.patch_name = "wall";
+        wall.type = cfdx::io::BCType::WALL;
+        wall.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO, 0.0}
+        };
+        setup.boundary_conditions = {wall};
+        EXPECT_THROW(validate_sst_scalar_boundary_contract(setup), std::invalid_argument);
+
+        wall.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO, 0.0},
+            {"k", cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::WALL_OMEGA_SST, 0.0}
+        };
+        setup.boundary_conditions = {wall};
+        EXPECT_THROW(validate_sst_scalar_boundary_contract(setup), std::invalid_argument);
+
+        wall.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 0.01},
+            {"omega", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 2.0}
+        };
+        setup.boundary_conditions = {wall};
+        EXPECT_THROW(validate_sst_scalar_boundary_contract(setup), std::invalid_argument);
+    });
+
     return run_all();
 }
