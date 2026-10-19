@@ -9,7 +9,7 @@
 - [x] Production driver rejects unsupported non-laminar turbulence selections instead of silently solving laminar equations (merged PR #941).
 - [x] SST transport component APIs and dynamic blending exist; they are not yet coupled to the production outer loop.
 - [x] Cellwise momentum-viscosity assembly overload exists and has uniform-coefficient equivalence coverage.
-- [x] Production solver consumes a cellwise turbulent-viscosity field consistently in predictor, final nonlinear residual, and independent momentum conservation reconstruction (implementation in this PR; CI still pending).
+- [x] Production solver consumes a cellwise turbulent-viscosity field consistently in predictor, final nonlinear residual, and independent momentum conservation reconstruction (PR #967 merged; end-to-end SST remains disabled).
 - [ ] SST state `k`, `omega`, wall distance and turbulence residuals are owned by the production solve and participate in rollback/convergence.
 - [x] Add a non-production SST case preflight for explicit positive initial `k`/`omega` and validated inlet turbulence intensity/length scale; derive the standard inlet estimates without enabling the production selector.
 - [ ] Extend the persistent case contract to represent explicit wall/outlet scalar boundary conditions and define restart semantics.
@@ -39,6 +39,7 @@
 
 ### T1 — SST fields and boundary contract
 
+- [x] Add preflight validation for explicit initial `k`/`omega` and inlet intensity/length-scale inputs, plus a standard inlet estimate helper (unit tests added; not wired into production selection).
 - [ ] Define persistent production state for `k`, `omega`, and derived `nu_t`.
 - [ ] Define initialization and restart contracts; reject missing/inconsistent fields.
 - [ ] Define physically consistent wall/inlet/outlet boundary values for both transports.
