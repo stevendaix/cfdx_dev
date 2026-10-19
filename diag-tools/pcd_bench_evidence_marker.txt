@@ -13,3 +13,4 @@ fail-closed).
 
 Diagnostic only - this branch is never merged; no production file,
 tolerance, gate, budget or oracle is touched.
+retry1: analyzer strips ctest -V test-number prefix

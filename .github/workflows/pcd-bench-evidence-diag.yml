@@ -121,7 +121,7 @@ jobs:
               actions = {}
               validity_ok = False
               for line in open(f):
-                  line = line.strip()
+                  line = re.sub(r"^\s*\d+:\s+", "", line.strip())
                   if line.startswith("PCD_ACTION_SUMMARY"):
                       fields = dict(kv_re.findall(line))
                       actions[fields.get("action", "?")] = fields
