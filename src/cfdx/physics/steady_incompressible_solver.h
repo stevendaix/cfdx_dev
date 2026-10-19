@@ -152,6 +152,9 @@ struct IncompressibleSolverControls {
     double density = 1.0;
     double kinematic_viscosity = 1.0e-3;
     double turbulent_viscosity = 0.0;
+    // Optional cellwise kinematic eddy viscosity (m^2/s). Replaces the scalar
+    // value when supplied; the production RANS guard remains active.
+    std::vector<double> cell_turbulent_viscosity;
     cfdx::core::Vec3 body_force{0.0, 0.0, 0.0};
     PressureGaugePolicy pressure_gauge_policy = PressureGaugePolicy::REFERENCE_CELL;
     std::size_t pressure_reference_cell = 0;
@@ -435,9 +438,23 @@ inline void validate_incompressible_controls(
              c.transient.previous_previous->dimension() != 3))
             throw std::invalid_argument("transient BDF2 second velocity history is missing or invalid");
     }
-    if (!(c.density > 0.0) || !(c.kinematic_viscosity >= 0.0) ||
-        !(c.turbulent_viscosity >= 0.0))
+    if (!(c.density > 0.0) || !std::isfinite(c.density) ||
+        !(c.kinematic_viscosity >= 0.0) || !std::isfinite(c.kinematic_viscosity) ||
+        !(c.turbulent_viscosity >= 0.0) || !std::isfinite(c.turbulent_viscosity))
         throw std::invalid_argument("invalid incompressible material properties");
+    if (!c.cell_turbulent_viscosity.empty()) {
+        if (c.cell_turbulent_viscosity.size() != n_cells)
+            throw std::invalid_argument(
+                "cellwise turbulent viscosity size does not match mesh");
+        if (c.turbulent_viscosity != 0.0)
+            throw std::invalid_argument(
+                "specify either scalar or cellwise turbulent viscosity, not both");
+        for (const double nu_t : c.cell_turbulent_viscosity) {
+            if (!(nu_t >= 0.0) || !std::isfinite(nu_t))
+                throw std::invalid_argument(
+                    "cellwise turbulent viscosity must be finite and non-negative");
+        }
+    }
     if (c.pressure_reference_cell >= n_cells)
         throw std::invalid_argument("pressure reference cell out of range");
     if (c.linear_max_iterations == 0 || !(c.linear_tolerance > 0.0))
@@ -2330,15 +2347,25 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         p.dimension() != 1 || p.size() != mesh.n_cells())
         throw std::invalid_argument("solve_steady_incompressible: invalid fields");
 
-    // Initialization is applied here, before any residual or flux is formed, and
-    // is validated first so an invalid strategy cannot mutate the caller's state.
+    // Validate all controls and derived material properties before initialization
+    // can mutate the caller-provided solution fields.
     validate_incompressible_controls(controls, mesh.n_cells());
+    // Authoritative dynamic viscosity used by predictor assembly, nonlinear
+    // acceptance residuals, and the independent momentum conservation audit.
+    std::vector<double> mu_eff(mesh.n_cells());
+    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+        const double nu_t = controls.cell_turbulent_viscosity.empty()
+            ? controls.turbulent_viscosity
+            : controls.cell_turbulent_viscosity[cell];
+        mu_eff[cell] = controls.density * (controls.kinematic_viscosity + nu_t);
+        if (!(mu_eff[cell] >= 0.0) || !std::isfinite(mu_eff[cell]))
+            throw std::invalid_argument(
+                "effective cellwise dynamic viscosity must be finite and non-negative");
+    }
     apply_initialization(
         controls.initialization, mesh, U, p, restart_fields, restart_path);
 
     const FvGeometry geometry = build_fv_geometry(mesh);
-    const double mu_eff = controls.density *
-        (controls.kinematic_viscosity + controls.turbulent_viscosity);
     cfdx::core::ConvergenceMonitorControls monitor_controls;
     monitor_controls.residual.absolute_tolerance = controls.convergence.absolute_tolerance;
     monitor_controls.residual.relative_tolerance = controls.convergence.relative_tolerance;
@@ -4251,9 +4278,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // The flux is rebuilt from the accepted final field, independently
             // of the assembled matrix residual. Internal faces therefore have
             // one owner-oriented flux and are audited separately for balance.
-            const double mu_eff =
-                controls.density * (controls.kinematic_viscosity +
-                                    controls.turbulent_viscosity);
             for (std::size_t d = 0; d < 3; ++d) {
                 cfdx::core::Field<double, cfdx::core::Location::CELL> component(
                     mesh.n_cells(), "U_reconstructed", "m/s", 1);
@@ -4277,8 +4301,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     source(cell) = body_component - final_grad_p.component_data(d)[cell];
                 }
                 const auto flux = reconstruct_scalar_transport_flux(
-                    mesh, geometry, mass_flux, component, mu_eff, scalar_bcs,
-                    controls.use_bounded_convection, controls.convection_scheme);
+                    mesh, geometry, mass_flux, component, 0.0, scalar_bcs,
+                    controls.use_bounded_convection, controls.convection_scheme,
+                    nullptr, &mu_eff);
                 const auto balance = cfdx::core::audit_integrated_balance(
                     mesh, flux, source, geometry.cell_volumes);
                 h.momentum_conservation_residual[d] = balance.residual;
