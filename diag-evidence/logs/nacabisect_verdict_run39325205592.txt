@@ -1,0 +1,45 @@
+VERDICT: EVIDENCE_COMPLETE (diagnostic - NOT a numerical verdict)
+run_id=39325205592
+pin_0c61c51e=FAIL_DIVERGED
+pin_03ac6f6c=FAIL_DIVERGED
+pin_4056e249=FAIL_DIVERGED
+reference_pass=f88b3700 (2026-10-16, 3 levels converged, 2943 s)
+expected_control=4056e249 FAIL (same solver as red heads 979bf93d/d706846)
+
+Interpretation guide:
+- 0c61c51e FAIL -> culprit in {96b6663d cellwise momentum assembly, 0c61c51e consolidation}
+- 0c61c51e PASS + 03ac6f6c FAIL -> culprit window e9ac2796..03ac6f6c (likely 03ac6f6c cellwise mu_eff)
+- both PASS -> later window (SST 374c8fb4/257070a6, hook 4fb28173 #966, #973, #978) or campaign interaction
+- 4056e249 PASS -> divergence not reproducible in isolation
+
+--- per-pin NACA digest (last markers) ---
+### 0c61c51e
+NACA0012_RE1000_A0 level=64 Cd=0.0902469 Cl=3.49125e-05 Cm=-0.00094 Cd_pressure=0.0343964 Cd_viscous=0.0558506 continuity=1.45849e-10 iterations=424
+  what():  NACA0012 solver did not converge: status=DIVERGED reason=residual growth exceeded the configured divergence criterion iterations=15 momentum_rhs_relative=17217.3 momentum_reference_relative=1.43491e+12 pressure_residual=1.27653e-11 continuity=1.36922 dU=0.984388 dP=0.0143682 alpha_u=0.6 alpha_p=0.25
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0195942 momentum_residual_reference_relative=1 momentum_residual_raw=0.00960235 momentum_rhs_scale=0.490061 momentum_residual_reference=0.00960235 momentum_rhs_scale_components=(0.490061,0.00976876,1e-300) momentum_rhs_relative_components=(0.0137899,0.982965,0) continuity_normalized=5.32493e-05 velocity_change_inf=0.16998 pressure_change_inf=0.568382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=6.10678e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000208786 worst_momentum_cell=403 worst_momentum_patch=
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge: status=DIVERGED reason=residual growth exceeded the configured divergence criterion iterations=15 momentum_rhs_relative=17217.3 momentum_reference_relative=1.43491e+12 pressure_residual=1.27653e-11 continuity=1.36922 dU=0.984388 dP=0.0143682 alpha_u=0.6 alpha_p=0.25
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=20s ===
+
+### 03ac6f6c
+NACA0012_RE1000_A0 level=64 Cd=0.0902469 Cl=3.49125e-05 Cm=-0.00094 Cd_pressure=0.0343964 Cd_viscous=0.0558506 continuity=1.45849e-10 iterations=424
+  what():  NACA0012 solver did not converge: status=DIVERGED reason=residual growth exceeded the configured divergence criterion iterations=15 momentum_rhs_relative=17217.3 momentum_reference_relative=1.43491e+12 pressure_residual=1.27653e-11 continuity=1.36922 dU=0.984388 dP=0.0143682 alpha_u=0.6 alpha_p=0.25
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0195942 momentum_residual_reference_relative=1 momentum_residual_raw=0.00960235 momentum_rhs_scale=0.490061 momentum_residual_reference=0.00960235 momentum_rhs_scale_components=(0.490061,0.00976876,1e-300) momentum_rhs_relative_components=(0.0137899,0.982965,0) continuity_normalized=5.32493e-05 velocity_change_inf=0.16998 pressure_change_inf=0.568382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=6.10678e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000208786 worst_momentum_cell=403 worst_momentum_patch=
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge: status=DIVERGED reason=residual growth exceeded the configured divergence criterion iterations=15 momentum_rhs_relative=17217.3 momentum_reference_relative=1.43491e+12 pressure_residual=1.27653e-11 continuity=1.36922 dU=0.984388 dP=0.0143682 alpha_u=0.6 alpha_p=0.25
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=20s ===
+
+### 4056e249
+NACA0012_RE1000_A0 level=64 Cd=0.0902469 Cl=3.49125e-05 Cm=-0.00094 Cd_pressure=0.0343964 Cd_viscous=0.0558506 continuity=1.45849e-10 iterations=424
+  what():  NACA0012 solver did not converge: status=DIVERGED reason=residual growth exceeded the configured divergence criterion iterations=15 momentum_rhs_relative=17217.3 momentum_reference_relative=1.43491e+12 pressure_residual=1.27653e-11 continuity=1.36922 dU=0.984388 dP=0.0143682 alpha_u=0.6 alpha_p=0.25
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0195942 momentum_residual_reference_relative=1 momentum_residual_raw=0.00960235 momentum_rhs_scale=0.490061 momentum_residual_reference=0.00960235 momentum_rhs_scale_components=(0.490061,0.00976876,1e-300) momentum_rhs_relative_components=(0.0137899,0.982965,0) continuity_normalized=5.32493e-05 velocity_change_inf=0.16998 pressure_change_inf=0.568382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=6.10678e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000208786 worst_momentum_cell=403 worst_momentum_patch=
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge: status=DIVERGED reason=residual growth exceeded the configured divergence criterion iterations=15 momentum_rhs_relative=17217.3 momentum_reference_relative=1.43491e+12 pressure_residual=1.27653e-11 continuity=1.36922 dU=0.984388 dP=0.0143682 alpha_u=0.6 alpha_p=0.25
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=20s ===
+
