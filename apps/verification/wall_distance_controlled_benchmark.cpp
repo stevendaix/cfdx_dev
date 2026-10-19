@@ -738,7 +738,7 @@ int main(int argc, char** argv)
             << r.poisson_exact_phi_face_cells << ','
             << r.poisson_exact_phi_edge_cells << ','
             << r.poisson_exact_phi_corner_cells << ','
-            << r.poisson_exact_phi_max_residual_cell,
+            << r.poisson_exact_phi_max_residual_cell << ','
              << r.cut_offset_cache_build_ms << ','
              << r.cut_offset_cache_nodes << ','
              << r.cut_offset_cache_bytes
