@@ -639,10 +639,7 @@ int main(int argc, char** argv)
                 poisson_exact_phi_face_cells,
                 poisson_exact_phi_edge_cells,
                 poisson_exact_phi_corner_cells,
-                poisson_exact_phi_max_residual_cell,
-                cut_offset_cache_build_ms,
-                cut_offset_cache_nodes,
-                cut_offset_cache_bytes
+                poisson_exact_phi_max_residual_cell
             });
 
             std::cout << result.method << ", "
