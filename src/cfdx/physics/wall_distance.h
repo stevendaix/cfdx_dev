@@ -1251,6 +1251,41 @@ inline double poisson_wall_offset(const WallDistanceBvh& bvh,
     return poisson_wall_offset_diagnostic(bvh,p,q,h).delta;
 }
 
+// Immutable per-grid cache for cut-face offsets used by iterative transport
+// stencils. Geometry, solid mask and spacing are fixed during a solve, so
+// these values need not be recomputed by BVH ray queries on every iteration.
+class WallDistanceCutFaceOffsetCache {
+public:
+    WallDistanceCutFaceOffsetCache(const WallDistanceBvh& bvh,
+                                   const WallDistanceGrid& g)
+        : offsets_(g.points.size()) {
+        for(std::size_t id=0; id<g.points.size(); ++id) {
+            offsets_[id].fill(0.0);
+            if(g.solid[id]) continue;
+            const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny);
+            const std::size_t j=rem/g.nx, i=rem%g.nx;
+            const auto fill=[&](std::size_t slot,std::size_t q,bool exists,double h) {
+                if(!exists) return;
+                offsets_[id][slot]=g.solid[q]
+                    ? poisson_wall_offset(bvh,g.points[id],g.points[q],h) : h;
+            };
+            fill(0,i>0?g.index(i-1,j,k):0,i>0,g.spacing.x);
+            fill(1,i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,g.spacing.x);
+            fill(2,j>0?g.index(i,j-1,k):0,j>0,g.spacing.y);
+            fill(3,j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny,g.spacing.y);
+            fill(4,k>0?g.index(i,j,k-1):0,k>0,g.spacing.z);
+            fill(5,k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,g.spacing.z);
+        }
+    }
+
+    double delta(std::size_t id,std::size_t face) const {
+        return offsets_[id][face];
+    }
+
+private:
+    std::vector<std::array<double,6>> offsets_;
+};
+
 inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
                                    const std::vector<double>& f,
                                    const WallDistanceGrid& g,
@@ -1726,6 +1761,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     // direction, optionally blended with the evolving Eikonal direction.
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
     const WallDistanceBvh bvh(s);
+    const WallDistanceCutFaceOffsetCache offsets(bvh,g);
     const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     std::vector<unsigned char> fixed(g.points.size(),0);
     for(auto id:seeds) fixed[id]=1;
@@ -1806,13 +1842,13 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
                         if(i==0) return 0.0;
                         const auto q=g.index(i-1,j,k);
                         const double hh=g.spacing.x;
-                        const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                        const double delta=offsets.delta(id,0);
                         return u*(d[id]-value(q))/delta;
                     }
                     if(i+1==g.nx) return 0.0;
                     const auto q=g.index(i+1,j,k);
                     const double hh=g.spacing.x;
-                    const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                    const double delta=offsets.delta(id,1);
                     return u*(value(q)-d[id])/delta;
                 }
                 if(a==1) {
@@ -1820,26 +1856,26 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
                         if(j==0) return 0.0;
                         const auto q=g.index(i,j-1,k);
                         const double hh=g.spacing.y;
-                        const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                        const double delta=offsets.delta(id,2);
                         return u*(d[id]-value(q))/delta;
                     }
                     if(j+1==g.ny) return 0.0;
                     const auto q=g.index(i,j+1,k);
                     const double hh=g.spacing.y;
-                    const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                    const double delta=offsets.delta(id,3);
                     return u*(value(q)-d[id])/delta;
                 }
                 if(u>=0) {
                     if(k==0) return 0.0;
                     const auto q=g.index(i,j,k-1);
                     const double hh=g.spacing.z;
-                    const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                    const double delta=offsets.delta(id,4);
                     return u*(d[id]-value(q))/delta;
                 }
                 if(k+1==g.nz) return 0.0;
                 const auto q=g.index(i,j,k+1);
                 const double hh=g.spacing.z;
-                const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                const double delta=offsets.delta(id,5);
                 return u*(value(q)-d[id])/delta;
             };
             const double adv=up(ux,0)+up(uy,1)+up(uz,2);
