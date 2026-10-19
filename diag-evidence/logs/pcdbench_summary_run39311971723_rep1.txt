@@ -1,0 +1,9 @@
+102: PCD_ACTION_SUMMARY action=fp_amg stages_converged=2 of 2 total_solve_wall_ms=2.051314e+04 coupled_iterations=1323 schur_applications=1323 nested_iterations=8232 speedup_vs_baseline=1.738581e+00
+102: PCD_ACTION_SUMMARY action=fp_amg_loose stages_converged=2 of 2 total_solve_wall_ms=1.908802e+04 coupled_iterations=1324 schur_applications=1324 nested_iterations=4029 speedup_vs_baseline=1.868384e+00
+102: PCD_ACTION_SUMMARY action=fp_ilu0 stages_converged=2 of 2 total_solve_wall_ms=3.566376e+04 coupled_iterations=1317 schur_applications=1317 nested_iterations=75014
+102: PCD_ACTION_SUMMARY action=fp_ilu0_loose stages_converged=2 of 2 total_solve_wall_ms=2.793522e+04 coupled_iterations=1320 schur_applications=1320 nested_iterations=53987 speedup_vs_baseline=1.276659e+00
+102: PCD_ACTION_SUMMARY action=fp_rc_scaled stages_converged=2 of 2 total_solve_wall_ms=7.434837e+04 coupled_iterations=2192 schur_applications=2192 nested_iterations=125953 speedup_vs_baseline=4.796845e-01
+102: PCD_ACTION_SUMMARY action=kp_amg stages_converged=2 of 2 total_solve_wall_ms=1.392485e+04 coupled_iterations=1257 schur_applications=1257 nested_iterations=7524 speedup_vs_baseline=2.561158e+00
+102: PCD_ACTION_SUMMARY action=pcd_full stages_converged=2 of 2 total_solve_wall_ms=3.422775e+04 coupled_iterations=2050 schur_applications=2050 nested_iterations=10254 speedup_vs_baseline=1.041954e+00
+102: PCD_ACTION_SUMMARY action=rc_diag stages_converged=2 of 2 total_solve_wall_ms=2.729605e+04 coupled_iterations=1902 schur_applications=1902 nested_iterations=0 speedup_vs_baseline=1.306554e+00
+102: PCD_ACTION_VALIDITY OK: capture is the solved production system; baseline reproduces the production gate

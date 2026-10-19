@@ -1,0 +1,9 @@
+ctest_rc_rep1=0
+ctest_rc_rep2=0
+ctest_rc_rep3=0
+run_id=39311971723
+pin=4056e249eb7db829704c6eba98a58f8f1f618983
+reps=3
+ok_reps=3
+diag_head=1fad6a4398e853210da232ee9a37f1d0e49d8870
+analysis_rc=1
