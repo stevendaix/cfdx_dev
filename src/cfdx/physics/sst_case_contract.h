@@ -31,6 +31,7 @@ inline SSTInletTurbulenceState derive_sst_inlet_turbulence_state(
         throw std::invalid_argument("SST inlet turbulence state requires an inlet boundary");
     if (controls.model != TurbulenceModel::SST)
         throw std::invalid_argument("SST inlet turbulence state requires the SST model");
+    validate_turbulence_controls(controls);
     if (!std::isfinite(controls.beta_star) || controls.beta_star <= 0.0)
         throw std::invalid_argument("SST beta_star must be finite and positive");
     if (!std::isfinite(boundary.turbulence_intensity) ||
@@ -75,6 +76,7 @@ inline void validate_sst_case_prerequisites(
 {
     if (controls.model != TurbulenceModel::SST)
         throw std::invalid_argument("SST case prerequisites require the SST model");
+    validate_turbulence_controls(controls);
 
     std::string model;
     for (const unsigned char ch : setup.turbulence_model) {
@@ -103,6 +105,10 @@ inline void validate_sst_case_prerequisites(
             throw std::invalid_argument("SST boundary patch names must not be empty");
         if (!patch_names.emplace(boundary.patch_name, true).second)
             throw std::invalid_argument("SST case contains duplicate boundary patch '" +
+                                        boundary.patch_name + "'");
+        if (boundary.type == cfdx::io::BCType::UNKNOWN ||
+            boundary.type == cfdx::io::BCType::INTERNAL)
+            throw std::invalid_argument("SST case contains an unsupported boundary type on patch '" +
                                         boundary.patch_name + "'");
         if (boundary.type == cfdx::io::BCType::INLET) {
             // Reuse the exact same validation and derivation used by the solver
