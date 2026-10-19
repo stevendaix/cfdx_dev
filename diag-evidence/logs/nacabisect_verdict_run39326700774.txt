@@ -1,0 +1,43 @@
+VERDICT: EVIDENCE_COMPLETE (diagnostic - NOT a numerical verdict)
+run_id=39326700774
+pin_7684119b=FAIL_DIVERGED
+pin_96b6663d=FAIL_DIVERGED
+pin_406c0ff9=FAIL_DIVERGED
+reference_pass=f88b3700 (2026-10-16, 3 levels converged, 2943 s)
+known_fail=0c61c51e (round-1 run 39325205592: all 3 pins FAIL_DIVERGED, bit-identical metrics)
+round2_expected=406c0ff9 FAIL (direct parent of 0c61c51e; if PASS then culprit is 0c61c51e itself)
+
+Interpretation guide (round 2):
+- 7684119b FAIL -> culprit at or before 7684119b (round 3 window f88b3700..7684119b: 9ba3d338 CUDA/GPU, merges 120070de 2b414352 6282a2bf)
+- 7684119b PASS + 96b6663d FAIL -> culprit in (7684119b..96b6663d]: {74b13b95 gui, 6cf9a78b wall distance, 96b6663d} -> very likely 96b6663d
+- 96b6663d PASS + 406c0ff9 FAIL -> culprit in (96b6663d..406c0ff9] (gui cluster or SST 406c0ff9 #957)
+- 406c0ff9 PASS -> culprit = 0c61c51e (pressure-velocity consolidation itself)
+
+--- per-pin NACA digest (last markers) ---
+### 7684119b
+  what():  NACA0012 solver did not converge
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=8000 momentum_residual_relative=1.53264e-13 continuity_normalized=1.2828e-05 velocity_change_inf=5.04566e-16 pressure_change_inf=9.05781e-16 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=2.56732e-11 momentum_linear_iterations=0 flux_velocity_mismatch_linf=0.0113323 worst_momentum_cell=2473 worst_momentum_patch=front
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=293s ===
+
+### 96b6663d
+  what():  NACA0012 solver did not converge
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=8000 momentum_residual_relative=1.53264e-13 continuity_normalized=1.2828e-05 velocity_change_inf=5.04566e-16 pressure_change_inf=9.05781e-16 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=2.56732e-11 momentum_linear_iterations=0 flux_velocity_mismatch_linf=0.0113323 worst_momentum_cell=2473 worst_momentum_patch=front
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=298s ===
+
+### 406c0ff9
+  what():  NACA0012 solver did not converge
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=8000 momentum_residual_relative=1.53264e-13 continuity_normalized=1.2828e-05 velocity_change_inf=5.04566e-16 pressure_change_inf=9.05781e-16 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=2.56732e-11 momentum_linear_iterations=0 flux_velocity_mismatch_linf=0.0113323 worst_momentum_cell=2473 worst_momentum_patch=front
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=293s ===
+
