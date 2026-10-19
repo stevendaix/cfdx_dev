@@ -280,7 +280,19 @@ public:
         // the inner stencil work on refined meshes.
         const auto intersects_box=[&](const WallDistanceAabb& box) {
             double tmin=0.0, tmax=std::min(max_distance,best);
+            // The triangle test deliberately accepts barycentric coordinates
+            // within 1e-12 of an edge. Expand AABBs by a scale-aware spatial
+            // tolerance too, otherwise a near-edge hit accepted by the exact
+            // test could be pruned first (especially for axis-parallel rays).
+            const double spatial_eps=1e-12*std::max({
+                1.0,std::abs(p.x),std::abs(p.y),std::abs(p.z),
+                std::abs(box.lo.x),std::abs(box.lo.y),std::abs(box.lo.z),
+                std::abs(box.hi.x),std::abs(box.hi.y),std::abs(box.hi.z),
+                max_distance
+            });
             const auto slab=[&](double origin,double direction,double lo,double hi) {
+                lo-=spatial_eps;
+                hi+=spatial_eps;
                 if(std::abs(direction)<1e-30) return origin>=lo && origin<=hi;
                 double a=(lo-origin)/direction, b=(hi-origin)/direction;
                 if(a>b) std::swap(a,b);
