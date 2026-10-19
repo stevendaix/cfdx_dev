@@ -767,5 +767,34 @@ int main()
             std::invalid_argument);
     });
 
+    run_case("cellwise_turbulent_viscosity_controls_are_validated", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3), p(1,"p","Pa",1);
+        U.fill(0.0);
+        p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls controls;
+        controls.cell_turbulent_viscosity = {1.0e-3, 2.0e-3};
+        EXPECT_THROW(
+            solve_steady_incompressible(m, U, p, ubc, pbc, controls),
+            std::invalid_argument);
+
+        controls.cell_turbulent_viscosity = {
+            std::numeric_limits<double>::quiet_NaN()};
+        EXPECT_THROW(
+            solve_steady_incompressible(m, U, p, ubc, pbc, controls),
+            std::invalid_argument);
+
+        controls.cell_turbulent_viscosity = {1.0e-3};
+        controls.turbulent_viscosity = 1.0e-3;
+        EXPECT_THROW(
+            solve_steady_incompressible(m, U, p, ubc, pbc, controls),
+            std::invalid_argument);
+    });
+
     return run_all();
 }
