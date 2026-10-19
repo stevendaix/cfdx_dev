@@ -141,6 +141,12 @@ int main() {
         require(std::abs(godunov_gradient_at(cbvh,test_field,cg,id,cache)
                          -godunov_gradient_at(cbvh,test_field,cg,id))<1e-13,
                 "cached and uncached Godunov gradients differ");
+        require(std::abs(poisson_laplacian_at(cbvh,test_field,cg,id,cache)
+                         -poisson_laplacian_at(cbvh,test_field,cg,id))<1e-13,
+                "cached and uncached Poisson Laplacians differ");
+        require(std::abs(poisson_diagonal(cbvh,cg,id,cache)
+                         -poisson_diagonal(cbvh,cg,id))<1e-13,
+                "cached and uncached Poisson diagonals differ");
     }
     require(fractional_cut_faces>0,
             "cache equivalence test did not exercise a fractional cut-face offset");
