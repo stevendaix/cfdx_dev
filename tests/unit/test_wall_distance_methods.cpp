@@ -154,6 +154,58 @@ int main() {
     }
     require(fractional_cut_faces>0,
             "cache equivalence test did not exercise a fractional cut-face offset");
+
+    // Exercise the ray-miss fallback and the near-wall clamp independently.
+    WallSurface fallback_plane;
+    fallback_plane.points={{0.5,-1,-1},{0.5,1,-1},{0.5,1,1},{0.5,-1,1}};
+    fallback_plane.triangles={{{0,1,2}},{{0,2,3}}};
+    const WallDistanceBvh fallback_bvh(fallback_plane);
+    const WallDistanceCutFaceOffsetCache fallback_cache(fallback_bvh,cg);
+    bool fallback_observed=false;
+    for(std::size_t id=0;id<cg.points.size();++id) {
+        if(cg.solid[id]) continue;
+        const std::size_t k=id/(cg.nx*cg.ny), rem=id%(cg.nx*cg.ny);
+        const std::size_t j=rem/cg.nx, i=rem%cg.nx;
+        const std::array<std::size_t,6> q={{
+            i>0?cg.index(i-1,j,k):0, i+1<cg.nx?cg.index(i+1,j,k):0,
+            j>0?cg.index(i,j-1,k):0, j+1<cg.ny?cg.index(i,j+1,k):0,
+            k>0?cg.index(i,j,k-1):0, k+1<cg.nz?cg.index(i,j,k+1):0}};
+        const std::array<bool,6> exists={{
+            i>0,i+1<cg.nx,j>0,j+1<cg.ny,k>0,k+1<cg.nz}};
+        const std::array<double,3> spacing={{cg.spacing.x,cg.spacing.y,cg.spacing.z}};
+        for(std::size_t face=0;face<6;++face) {
+            if(!exists[face] || !cg.solid[q[face]]) continue;
+            const auto wd=poisson_wall_offset_diagnostic(
+                fallback_bvh,cg.points[id],cg.points[q[face]],spacing[face/2]);
+            require(fallback_cache.delta(id,face)==wd.delta,
+                    "cached offset differs on BVH ray-miss fallback");
+            fallback_observed |= wd.fallback;
+        }
+    }
+    require(fallback_observed,"fallback equivalence test did not exercise a BVH ray miss");
+
+    WallSurface near_wall_plane;
+    near_wall_plane.points={{0.249,-1,-1},{0.249,1,-1},{0.249,1,1},{0.249,-1,1}};
+    near_wall_plane.triangles={{{0,1,2}},{{0,2,3}}};
+    const WallDistanceBvh near_wall_bvh(near_wall_plane);
+    const WallDistanceCutFaceOffsetCache near_wall_cache(near_wall_bvh,cg);
+    bool clamp_observed=false;
+    for(std::size_t id=0;id<cg.points.size();++id) {
+        if(cg.solid[id]) continue;
+        const std::size_t k=id/(cg.nx*cg.ny), rem=id%(cg.nx*cg.ny);
+        const std::size_t j=rem/cg.nx, i=rem%cg.nx;
+        if(i==0 || !cg.solid[cg.index(i-1,j,k)]) continue;
+        const auto q=cg.index(i-1,j,k);
+        const auto wd=poisson_wall_offset_diagnostic(
+            near_wall_bvh,cg.points[id],cg.points[q],cg.spacing.x);
+        require(wd.ray_hit,"near-wall clamp test did not intersect the plane");
+        require(near_wall_cache.delta(id,0)==wd.delta,
+                "cached offset differs on near-wall clamp");
+        require(wd.delta==wall_offset_relative_floor*cg.spacing.x,
+                "near-wall offset did not respect the configured floor");
+        clamp_observed=true;
+    }
+    require(clamp_observed,"near-wall clamp test found no cut face");
     const std::array<WallDistanceMethod,1> plane_methods={{
         WallDistanceMethod::EIKONAL}};
     for(const auto method:plane_methods) {
