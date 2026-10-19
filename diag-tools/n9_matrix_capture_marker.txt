@@ -1,0 +1,9 @@
+n9-matrix-capture trigger marker
+Purpose: targeted diagnostic capture of test_n9_physical_matrix at pinned master.
+Context: red in "Long validation campaigns" at heads 979bf93d (#962, run 39296392731)
+and d706846 (#979, run 39299078514) on 2026-10-19; test file untouched since 10-10
+(eda0e19a) so the regression is solver-side. Goal: exact failing gate/exception
+message, committed as evidence on this never-merged branch.
+Owner: Steven daix. This file only triggers n9-matrix-capture-diag.yml via paths filter.
+Bump the date line to re-trigger.
+Last trigger: 2026-10-19T21:15Z

@@ -1,0 +1,156 @@
+name: N9 physical matrix failure capture (master pin, diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (JAMAIS merger).
+# Cible : test_n9_physical_matrix, rouge dans « Long validation campaigns »
+# aux heads 979bf93d (#962, run 39296392731) et d706846 (#979, run
+# 39299078514) le 2026-10-19. Le fichier de test n'a pas bouge depuis le
+# 10-10 (eda0e19a) : la regression vient du code solveur. Le test imprime sa
+# gate defaillante avant de throw - ce workflow capture le message exact et
+# le log complet, commites sur la branche diag (lisibles via l'API sans auth
+# admin). Zero instrumentation du code, zero changement de
+# tolerance/oracle/gate/budget. Verdicts fail-closed :
+#   CAPTURED_FAIL  = le test a tourne et echoue, log + message captures
+#   CAPTURED_PASS  = le test passe au pin en isole (echec non reproductible
+#                    hors campagne : regarder les interactions de campagne)
+#   INCONCLUSIVE_BUILD / INCONCLUSIVE_NO_LOG = capture impossible
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - diag-tools/n9_matrix_capture_marker.txt
+      - .github/workflows/n9-matrix-capture-diag.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BUILD_DIR: build-n9-matrix-diag
+  PIN: 4056e249eb7db829704c6eba98a58f8f1f618983
+
+concurrency:
+  group: n9-matrix-capture-diag
+  cancel-in-progress: false
+
+jobs:
+  n9-matrix-capture:
+    name: Build and run test_n9_physical_matrix at pinned master
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - name: Checkout diagnostics branch
+        uses: actions/checkout@v4
+
+      - name: Fail-closed pin verification (pinned master commit)
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin master
+          git cat-file -e "${PIN}^{commit}"
+          git merge-base --is-ancestor "${PIN}" FETCH_HEAD
+          echo "pin_ok ${PIN} is reachable from origin/master HEAD $(git rev-parse FETCH_HEAD)"
+
+      - name: Checkout pinned master source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PIN }}
+          path: cfdx-pin
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev
+
+      - name: Configure (Release, long validation, MPI + parallel HDF5)
+        run: |
+          cmake -S cfdx-pin -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
+
+      - name: Build the test target
+        id: build
+        run: |
+          cmake --build "$BUILD_DIR" --target test_n9_physical_matrix --parallel 2
+
+      - name: Run the test once and capture the verbose log
+        id: run
+        if: always() && steps.build.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p diag-evidence/logs
+          RUN_ID="${GITHUB_RUN_ID}"
+          rc=0
+          ctest --test-dir "$BUILD_DIR" -R '^test_n9_physical_matrix$' -V \
+            > "diag-evidence/logs/n9matrix_run${RUN_ID}.log" 2>&1 || rc=$?
+          echo "ctest_rc=${rc}" | tee "diag-evidence/logs/n9matrix_test_status_run${RUN_ID}.txt"
+          {
+            echo "pin=${PIN}"
+            echo "ctest_rc=${rc}"
+            echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > "diag-evidence/logs/n9matrix_meta_run${RUN_ID}.txt"
+
+      - name: Compose verdict and failure digest
+        if: always() && steps.build.outcome == 'success'
+        run: |
+          set -u
+          RUN_ID="${GITHUB_RUN_ID}"
+          E="diag-evidence/logs"
+          LOG="$E/n9matrix_run${RUN_ID}.log"
+          VER="$E/n9matrix_verdict_run${RUN_ID}.txt"
+          rc=$(sed -n 's/^ctest_rc=//p' "$E/n9matrix_test_status_run${RUN_ID}.txt" | tail -1)
+          if [ ! -s "$LOG" ]; then
+            echo "VERDICT: INCONCLUSIVE_NO_LOG" > "$VER"
+            exit 0
+          fi
+          {
+            if [ "${rc}" = "0" ]; then
+              echo "VERDICT: CAPTURED_PASS (diagnostic - NOT a numerical verdict)"
+            else
+              echo "VERDICT: CAPTURED_FAIL (diagnostic - NOT a numerical verdict)"
+            fi
+            echo "ctest_rc=${rc}"
+            echo "--- failing gate / exception (first 12 matches) ---"
+            grep -nE "did not converge|gate failed|mismatch|physical residual gate|Failed|Exit Code" "$LOG" | head -12 || true
+            echo "--- last 40 lines of the run ---"
+            tail -40 "$LOG"
+          } > "$VER"
+
+      - name: Record build failure status
+        if: always() && steps.build.outcome != 'success' && steps.build.outcome != 'skipped'
+        run: |
+          RUN_ID="${GITHUB_RUN_ID}"
+          echo "VERDICT: INCONCLUSIVE_BUILD" > "diag-evidence/logs/n9matrix_verdict_run${RUN_ID}.txt"
+
+      - name: Commit evidence (bot, ci-skip)
+        if: always()
+        run: |
+          set -euo pipefail
+          ls diag-evidence/logs/n9matrix_*_run"${GITHUB_RUN_ID}"* >/dev/null 2>&1 || { echo "no evidence files"; exit 0; }
+          git config user.name "cfdx-diag-bot"
+          git config user.email "actions@github.com"
+          git add diag-evidence/logs/n9matrix_*_run"${GITHUB_RUN_ID}"*
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "diag: n9 physical matrix capture run ${GITHUB_RUN_ID} (master pin ${PIN}) [ci skip]"
+            git push
+          fi
+
+      - name: Final verdict (green only for CAPTURED_*)
+        if: always()
+        run: |
+          V="diag-evidence/logs/n9matrix_verdict_run${GITHUB_RUN_ID}.txt"
+          if grep -q "^VERDICT: CAPTURED_" "$V" 2>/dev/null; then
+            echo "verdict: $(head -1 "$V")"
+          else
+            v=$(sed -n 's/^VERDICT: //p' "$V" 2>/dev/null || echo MISSING_VERDICT_FILE)
+            echo "::error::verdict=${v}"
+            exit 1
+          fi
