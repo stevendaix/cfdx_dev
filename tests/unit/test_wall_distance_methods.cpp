@@ -111,6 +111,10 @@ int main() {
         [](const WallDistanceVec3& p){ return p.x<0.1; });
     const WallDistanceBvh cbvh(shifted_plane);
     const WallDistanceCutFaceOffsetCache cache(cbvh,cg);
+    require(cache.cut_node_count()<cg.points.size(),
+            "sparse cut-face cache allocated offsets for every grid node");
+    require(cache.storage_bytes()<cg.points.size()*sizeof(std::array<double,6>),
+            "sparse cut-face cache uses more storage than a dense six-offset cache");
     std::vector<double> test_field(cg.points.size(),0.0);
     for(std::size_t id=0;id<test_field.size();++id)
         test_field[id]=cg.points[id].x+0.3*cg.points[id].y-0.2*cg.points[id].z;
