@@ -1451,20 +1451,17 @@ inline double poisson_diagonal(const WallDistanceBvh& bvh,
     using poisson_stencil_detail::AxisNeighbour;
     using poisson_stencil_detail::axis_diagonal;
     const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-    const auto side=[&](std::size_t q,bool exists,double h,std::size_t face) {
+    const auto side=[&](bool exists,std::size_t face) {
         AxisNeighbour out;
         if(!exists) return out;
         out.present=true;
         out.distance=offsets.delta(id,face);
         return out;
     };
-    const auto xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
-    const auto ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
-    const auto zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
     (void)bvh;
-    return axis_diagonal(side(xm,i>0,g.spacing.x,0),side(xp,i+1<g.nx,g.spacing.x,1),g.spacing.x)
-         + axis_diagonal(side(ym,j>0,g.spacing.y,2),side(yp,j+1<g.ny,g.spacing.y,3),g.spacing.y)
-         + axis_diagonal(side(zm,k>0,g.spacing.z,4),side(zp,k+1<g.nz,g.spacing.z,5),g.spacing.z);
+    return axis_diagonal(side(i>0,0),side(i+1<g.nx,1),g.spacing.x)
+         + axis_diagonal(side(j>0,2),side(j+1<g.ny,3),g.spacing.y)
+         + axis_diagonal(side(k>0,4),side(k+1<g.nz,5),g.spacing.z);
 }
 
 
