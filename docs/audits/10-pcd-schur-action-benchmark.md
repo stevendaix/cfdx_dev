@@ -40,7 +40,7 @@ Cavité de Ghia : lid Dirichlet $U=(1,0)$, parois sans glissement, pas de pressi
 - Les conventions de jauge doivent être identiques dans la matrice, le second membre, l'état initial, le préconditionneur et l'action de Schur.
 - L'action classique $-K_p^{-1}F_pM_p^{-1}$ (`pcd_full`) est composée avec les conventions de signe des opérateurs stockés de CFDX (apply() fournit la négation globale, comme pour $-F_p^{-1}$) ; son ordre, ses signes et son comportement de jauge ne sont pas affirmés a priori — une non-convergence de `pcd_full` est une mesure à interpréter (convention ou composition), pas un échec des gardes de validité.
 - Aucun résultat de ce benchmark n'autorise une modification de l'action PCD de production : un suivi explicite, une qualification couplée complète et l'absence de régression d'oracle physique sont requis.
-- Le workflow branche-only est une collecte d'évidence, pas destiné au merge en l'état ; l'enregistrement CTest et le hook read-only d'assemblage exigent une revue séparée avant toute intégration.
+- Le workflow de mesure reste scopé à la branche benchmark + `workflow_dispatch` (aucun job ajouté à la CI standard) ; l'enregistrement CTest sous `CFDX_ENABLE_LONG_VALIDATION` et le hook additif d'assemblage ont été revus puis intégrés par décision du mainteneur (2026-10-19, PR #966) — le hook reste nul par défaut (zéro overhead) et aucune variante d'action n'est activée par défaut.
 
 ## 6. Protocole de mesure
 
@@ -54,7 +54,7 @@ Cavité de Ghia : lid Dirichlet $U=(1,0)$, parois sans glissement, pas de pressi
 
 - Sources : `src/cfdx/physics/steady_incompressible_solver.h` (hook `CoupledAssemblySnapshot` + `controls.coupled_assembly_callback`, additif, nul par défaut) ; `src/cfdx/core/linalg/pcd_schur.h` **NON MODIFIÉ**.
 - Test : `tests/validation/test_pcd_schur_action_benchmark.cpp`, enregistré uniquement sous `CFDX_ENABLE_LONG_VALIDATION`, TIMEOUT ctest 1200 s.
-- Workflow : `.github/workflows/pcd-action-benchmark-validation.yml` (branche-only, pas destiné au merge en l'état).
+- Workflow : `.github/workflows/pcd-action-benchmark-validation.yml` (scopé à la branche benchmark + `workflow_dispatch` ; intégré par décision du mainteneur 2026-10-19, aucune exécution sur les push master).
 - Variantes mesurées : `fp_ilu0` (baseline production), `fp_amg` (axe #965), `kp_amg` (PROVISIONAL), `fp_rc_scaled`, `rc_diag` (référence SIMPLE-diag), `pcd_full` (action classique $-K_p^{-1}F_pM_p^{-1}$, Elman–Silvester–Wathen 2001).
 - Traçabilité : PR #966, #965, #914, #390 ; consolidation #929.
 - Journal : 2026-10-19 — création (f2207d12/7c2465dd), restructurée au format des fiches méthode lors de la réponse à l'audit de la PR #966 ; ajout de la variante `pcd_full` (action PCD classique de la littérature) et des références Elman–Silvester–Wathen 2001 / Elman–Tuminaro 2009 en réponse à la revue bibliographique PCD.

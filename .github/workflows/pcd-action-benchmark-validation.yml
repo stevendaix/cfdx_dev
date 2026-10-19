@@ -1,15 +1,17 @@
 name: PCD Schur-action benchmark validation
 
 # Runs the PCD Schur-action A/B benchmark (real assembled Ghia coupled
-# systems, five preconditioner action variants under identical linear-solve
-# conditions). This workflow exists only on the benchmark branch so the
-# measurement evidence is produced without waiting for the validation-total
-# label. It measures; it never judges the physical case
+# systems, six preconditioner action variants under identical linear-solve
+# conditions). It measures; it never judges the physical case
 # (test_ghia_cavity_n8_pcd keeps that responsibility) and nothing here
 # modifies a production gate, tolerance, budget or oracle.
 #
-# Not intended to be merged into master as-is (the maintainer decides
-# whether the CTest registration alone is enough once reviewed).
+# Integration decision (2026-10-19, #966): the CTest registration is merged
+# (the test runs only under CFDX_ENABLE_LONG_VALIDATION, so the standard CI
+# is unaffected); this measurement workflow stays trigger-scoped to the
+# benchmark branch plus manual workflow_dispatch - it does not run on
+# master pushes and adds no job to the standard CI. Benchmark evidence
+# artifacts are retained 90 days.
 
 on:
   push:
@@ -66,4 +68,4 @@ jobs:
           path: |
             ${{ env.BUILD_DIR }}/Testing/
           if-no-files-found: warn
-          retention-days: 30
+          retention-days: 90
