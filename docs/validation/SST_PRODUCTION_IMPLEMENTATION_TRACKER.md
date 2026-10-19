@@ -9,7 +9,7 @@
 - [x] Production driver rejects unsupported non-laminar turbulence selections instead of silently solving laminar equations (merged PR #941).
 - [x] SST transport component APIs and dynamic blending exist; they are not yet coupled to the production outer loop.
 - [x] Cellwise momentum-viscosity assembly overload exists and has uniform-coefficient equivalence coverage.
-- [ ] Production solver consumes a cellwise turbulent-viscosity field consistently in predictor, final nonlinear residual, and independent momentum conservation reconstruction.
+- [x] Production solver consumes a cellwise turbulent-viscosity field consistently in predictor, final nonlinear residual, and independent momentum conservation reconstruction (implementation in this PR; CI still pending).
 - [ ] SST state `k`, `omega`, wall distance and turbulence residuals are owned by the production solve and participate in rollback/convergence.
 - [ ] Production-path transport MMS on three or more meshes.
 - [ ] Frozen DNS channel qualification (Moser–Kim–Mansour), with mesh/y+ sensitivity and independent balance checks.
@@ -23,16 +23,16 @@
 `mu_eff[c] = rho * (nu + nu_t[c])`, and use it in every momentum equation path.
 
 - [ ] Add an optional cellwise kinematic turbulent-viscosity input to solver controls.
-- [ ] Reject wrong-sized, negative, or non-finite cell values before mutating the solution.
-- [ ] Reject ambiguous simultaneous nonzero scalar and cellwise turbulent-viscosity inputs.
-- [ ] Use the same effective-viscosity vector for all three momentum predictors.
-- [ ] Use that vector when reconstructing the final momentum equations used for nonlinear acceptance.
-- [ ] Use the same vector in the independent post-solve momentum flux/balance audit.
+- [x] Reject wrong-sized, negative, or non-finite cell values before mutating the solution (unit regression added).
+- [x] Reject ambiguous simultaneous nonzero scalar and cellwise turbulent-viscosity inputs (unit regression added).
+- [x] Use the same effective-viscosity vector for all three momentum predictors.
+- [x] Use that vector when reconstructing the final momentum equations used for nonlinear acceptance.
+- [x] Use the same vector in the independent post-solve momentum flux/balance audit.
 - [ ] Regression: uniform cellwise viscosity is algebraically equivalent to the legacy scalar-viscosity path.
-- [ ] Regression: invalid cellwise viscosity is rejected.
+- [x] Regression: invalid cellwise viscosity is rejected.
 - [ ] Exact-head CI/build/test evidence reviewed.
 
-**Current implementation PR:** [cellwise effective viscosity](https://github.com/stevendaix/cfdx_dev/pull/REPLACE_AFTER_CREATION)  
+**Current implementation PR:** to be linked after PR creation.  
 **Known risk:** this plumbing alone does not enable SST and must not bypass the production RANS guard.
 
 ### T1 — SST fields and boundary contract
