@@ -599,6 +599,21 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
             LABELS "n8;qualification;validation;long"
             TIMEOUT 720
             DEPENDS test_ghia_cavity_n8_pcd_preflight)
+        # PCD Schur-action A/B benchmark on the REAL assembled Ghia coupled
+        # systems (evidence-only replay through the coupled_assembly_callback
+        # hook; the test header documents the five action variants). This is a
+        # measurement test: the physical case remains the responsibility of
+        # test_ghia_cavity_n8_pcd, no production tolerance, gate, budget or
+        # oracle is modified, and the baseline variant must reproduce the
+        # production 1e-10 convergence on every captured stage or the test
+        # fails (capture-fidelity guard). The ctest budget bounds the capture
+        # run (five nonlinear iterations) plus the ten replayed coupled
+        # solves, each capped by the production 5000 coupled budget.
+        add_cfdx_test(test_pcd_schur_action_benchmark
+            tests/validation/test_pcd_schur_action_benchmark.cpp)
+        set_tests_properties(test_pcd_schur_action_benchmark PROPERTIES
+            LABELS "n8;schur;benchmark;validation;long"
+            TIMEOUT 1200)
     endif()
     # Merge-gated observed-order tripwire. Three resolutions at 16/32/64 give a
     # Richardson-style order in about 90s, so observed-order evidence now gates

@@ -1257,7 +1257,7 @@ bool write_case_cfdx_h5(const std::string& filename,
 
 hid_t fapl = case_create_file_access_plist();
     if (fapl < 0) return false;
-    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDONLY, fapl);
+    hid_t file = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, fapl);
     H5Pclose(fapl);
     if (file < 0) return false;
 
@@ -1515,9 +1515,10 @@ bool read_vector_fields_hdf5(const std::string& filename,
 bool write_fields_hdf5(const std::string& filename,
                        const std::vector<cfdx::core::ScalarCellField>& scalars,
                        const std::vector<cfdx::core::Vec3CellField>& vectors) {
-hid_t fapl = case_create_file_access_plist();
+    hid_t fapl = case_create_file_access_plist();
     if (fapl < 0) return false;
-    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_TRUNC, fapl);
+    // The case file must already exist: append fields without truncating mesh data.
+    hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, fapl);
     H5Pclose(fapl);
     if (file < 0) return false;
 

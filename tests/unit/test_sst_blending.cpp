@@ -1,5 +1,9 @@
 #include "cfdx/physics/sst_solver.h"
 #include "cfdx/physics/sst_production_coupling.h"
+#include "cfdx/physics/sst_strain_rate.h"
+#include "cfdx/physics/sst_case_contract.h"
+#include "cfdx/io/cfdx_io/case_schema.h"
+#include <array>
 #include "common/test_harness.h"
 #include <cmath>
 #include <algorithm>
@@ -74,8 +78,117 @@ int main()
         EXPECT_NEAR(nu_t(0), 0.02, 0.0);
     });
 
+
+    run_case("sst_strain_rate_magnitude_matches_simple_shear", [] {
+        // Ux = gamma*y, Uy = Uz = 0 gives |S| = |gamma|.
+        const double gamma = 3.25;
+        const std::array<double, 9> grad{
+            0.0, gamma, 0.0,
+            0.0, 0.0, 0.0,
+            0.0, 0.0, 0.0};
+        EXPECT_NEAR(sst_strain_rate_magnitude(grad), gamma, 1e-14);
+    });
+
+    run_case("sst_strain_rate_magnitude_matches_extension", [] {
+        // Ux = a*x and Uy = -a*y gives |S| = 2*|a|.
+        const double a = 1.75;
+        const std::array<double, 9> grad{
+            a, 0.0, 0.0,
+            0.0, -a, 0.0,
+            0.0, 0.0, 0.0};
+        EXPECT_NEAR(sst_strain_rate_magnitude(grad), 2.0 * a, 1e-14);
+    });
+
+    run_case("sst_strain_rate_magnitude_rejects_nonfinite_gradient", [] {
+        const std::array<double, 9> grad{
+            0.0, 0.0, 0.0,
+            0.0, std::numeric_limits<double>::infinity(), 0.0,
+            0.0, 0.0, 0.0};
+        EXPECT_THROW(sst_strain_rate_magnitude(grad), std::invalid_argument);
+    });
+
     run_case("sst_blending_rejects_invalid_distance", [] {
         EXPECT_THROW(compute_sst_blending(0.5, 10.0, 0.0, 1.5e-5, 0.09), std::invalid_argument);
+    });
+
+
+    run_case("sst_inlet_turbulence_state_uses_velocity_intensity_and_length_scale", [] {
+        cfdx::io::BoundarySpec inlet;
+        inlet.patch_name = "inlet";
+        inlet.type = cfdx::io::BCType::INLET;
+        inlet.velocity_vector = {3.0, 4.0, 0.0};
+        inlet.turbulence_intensity = 0.05;
+        inlet.turbulence_length_scale = 0.2;
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        const auto state = derive_sst_inlet_turbulence_state(inlet, controls);
+        const double expected_k = 1.5 * std::pow(5.0 * 0.05, 2);
+        const double expected_omega = std::sqrt(expected_k) /
+            (std::pow(controls.beta_star, 0.25) * 0.2);
+        EXPECT_NEAR(state.k, expected_k, 1e-14);
+        EXPECT_NEAR(state.omega, expected_omega, 1e-14);
+    });
+
+    run_case("sst_inlet_turbulence_state_rejects_percentage_intensity", [] {
+        cfdx::io::BoundarySpec inlet;
+        inlet.type = cfdx::io::BCType::INLET;
+        inlet.velocity_magnitude = 10.0;
+        inlet.turbulence_intensity = 5.0;
+        inlet.turbulence_length_scale = 0.1;
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        EXPECT_THROW(derive_sst_inlet_turbulence_state(inlet, controls),
+                     std::invalid_argument);
+    });
+
+    run_case("sst_case_prerequisites_require_explicit_initial_k_omega", [] {
+        cfdx::io::CaseSetup setup;
+        setup.turbulence_model = "k_omega_sst";
+        setup.has_initial_condition = true;
+        setup.initial_condition.scalar_fields["k"] = 0.01;
+        setup.initial_condition.scalar_fields["omega"] = 2.0;
+        cfdx::io::BoundarySpec inlet;
+        inlet.patch_name = "inlet";
+        inlet.type = cfdx::io::BCType::INLET;
+        inlet.velocity_magnitude = 10.0;
+        inlet.turbulence_intensity = 0.05;
+        inlet.turbulence_length_scale = 0.1;
+        setup.boundary_conditions.push_back(inlet);
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        validate_sst_case_prerequisites(setup, controls);
+
+        setup.initial_condition.scalar_fields.erase("omega");
+        EXPECT_THROW(validate_sst_case_prerequisites(setup, controls),
+                     std::invalid_argument);
+    });
+
+    run_case("sst_case_prerequisites_reject_nonpositive_initial_fields_and_duplicate_patches", [] {
+        cfdx::io::CaseSetup setup;
+        setup.turbulence_model = "SST";
+        setup.has_initial_condition = true;
+        setup.initial_condition.scalar_fields["k"] = 0.01;
+        setup.initial_condition.scalar_fields["omega"] = 2.0;
+        cfdx::io::BoundarySpec wall;
+        wall.patch_name = "wall";
+        wall.type = cfdx::io::BCType::WALL;
+        setup.boundary_conditions.push_back(wall);
+        setup.boundary_conditions.push_back(wall);
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        EXPECT_THROW(validate_sst_case_prerequisites(setup, controls),
+                     std::invalid_argument);
+        setup.boundary_conditions.clear();
+        setup.initial_condition.scalar_fields["k"] = 0.0;
+        EXPECT_THROW(validate_sst_case_prerequisites(setup, controls),
+                     std::invalid_argument);
+        setup.initial_condition.scalar_fields["k"] = 0.01;
+        cfdx::io::BoundarySpec unknown;
+        unknown.patch_name = "mystery";
+        unknown.type = cfdx::io::BCType::UNKNOWN;
+        setup.boundary_conditions.push_back(unknown);
+        EXPECT_THROW(validate_sst_case_prerequisites(setup, controls),
+                     std::invalid_argument);
     });
 
     return run_all();
