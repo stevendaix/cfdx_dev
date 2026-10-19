@@ -434,6 +434,21 @@ static void case_setup_to_json(const CaseSetup& setup, mini_json::value& obj) {
         bc_obj.object["pressure"] = mini_json::value(bc.pressure);
         bc_obj.object["turbulence_intensity"] = mini_json::value(bc.turbulence_intensity);
         bc_obj.object["turbulence_length_scale"] = mini_json::value(bc.turbulence_length_scale);
+        mini_json::array_t sst_scalar_arr;
+        for (const auto& scalar_bc : bc.sst_scalar_conditions) {
+            mini_json::value scalar_obj(mini_json::value_type::object);
+            scalar_obj.object["field"] = scalar_bc.field;
+            switch (scalar_bc.type) {
+                case SSTScalarBoundaryType::FIXED_VALUE: scalar_obj.object["type"] = "fixed_value"; break;
+                case SSTScalarBoundaryType::ZERO_GRADIENT: scalar_obj.object["type"] = "zero_gradient"; break;
+                case SSTScalarBoundaryType::WALL_K_ZERO: scalar_obj.object["type"] = "wall_k_zero"; break;
+                case SSTScalarBoundaryType::WALL_OMEGA_SST: scalar_obj.object["type"] = "wall_omega_sst"; break;
+                default: scalar_obj.object["type"] = "unknown"; break;
+            }
+            scalar_obj.object["value"] = mini_json::value(scalar_bc.value);
+            sst_scalar_arr.push_back(std::move(scalar_obj));
+        }
+        bc_obj.object["sst_scalar_conditions"] = std::move(sst_scalar_arr);
         bc_obj.object["roughness_height"] = mini_json::value(bc.roughness_height);
         bc_obj.object["wall_temperature"] = mini_json::value(bc.wall_temperature);
         bc_obj.object["back_pressure"] = mini_json::value(bc.back_pressure);
@@ -674,6 +689,22 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
             bc.pressure = json_get_number(bc_v, "pressure");
             bc.turbulence_intensity = json_get_number(bc_v, "turbulence_intensity");
             bc.turbulence_length_scale = json_get_number(bc_v, "turbulence_length_scale");
+            const mini_json::value* sst_scalar = mini_json::find(bc_v, "sst_scalar_conditions");
+            if (sst_scalar && sst_scalar->is_array()) {
+                for (const auto& scalar_v : sst_scalar->array) {
+                    if (!scalar_v.is_object()) continue;
+                    SSTScalarBoundarySpec scalar_bc;
+                    scalar_bc.field = json_get_string(scalar_v, "field");
+                    const std::string type = json_get_string(scalar_v, "type");
+                    if (type == "fixed_value") scalar_bc.type = SSTScalarBoundaryType::FIXED_VALUE;
+                    else if (type == "zero_gradient") scalar_bc.type = SSTScalarBoundaryType::ZERO_GRADIENT;
+                    else if (type == "wall_k_zero") scalar_bc.type = SSTScalarBoundaryType::WALL_K_ZERO;
+                    else if (type == "wall_omega_sst") scalar_bc.type = SSTScalarBoundaryType::WALL_OMEGA_SST;
+                    else scalar_bc.type = SSTScalarBoundaryType::UNKNOWN;
+                    scalar_bc.value = json_get_number(scalar_v, "value");
+                    bc.sst_scalar_conditions.push_back(std::move(scalar_bc));
+                }
+            }
             bc.roughness_height = json_get_number(bc_v, "roughness_height");
             bc.wall_temperature = json_get_number(bc_v, "wall_temperature");
             bc.back_pressure = json_get_number(bc_v, "back_pressure");
