@@ -735,11 +735,6 @@ inline double axis_gradient(const AxisNeighbour& m,
 
 } // namespace poisson_stencil_detail
 
-inline double poisson_wall_offset(const WallDistanceBvh& bvh,
-                                      const WallDistanceVec3& p,
-                                      const WallDistanceVec3& q,
-                                      double h);
-
 // Immutable per-grid cache for cut-face offsets used by iterative transport
 // stencils. Geometry, solid mask and spacing are fixed during a solve, so
 // these values need not be recomputed by BVH ray queries on every iteration.
