@@ -63,6 +63,6 @@ Cavité de Ghia : lid Dirichlet $U=(1,0)$, parois sans glissement, pas de pressi
 
 ## 8. Étude de sensibilité à la tolérance imbriquée (PR de suivi)
 
-La grille comprend 14 variantes au total : les six actions historiques non dédiées à la tolérance et, pour chacun des solveurs imbriqués ILU0 et NativeAMG, les niveaux 1e-2, 1e-3, 1e-4, 1e-6 et 1e-8. Les variantes historiques `fp_ilu0` et `fp_amg` représentent le niveau 1e-8 ; les variantes à 1e-4 sont nommées explicitement `fp_ilu0_tol_1e-4` et `fp_amg_tol_1e-4`.
+La grille comprend 14 variantes au total : les six actions historiques non dédiées à la tolérance et, pour chacun des solveurs imbriqués ILU0 et NativeAMG, les niveaux 1e-2, 1e-3, 1e-4, 1e-6 et 1e-8. Les variantes historiques `fp_ilu0` et `fp_amg` représentent le niveau 1e-8 ; les variantes à 1e-4 conservent leurs noms historiques `fp_ilu0_loose` et `fp_amg_loose` pour préserver la compatibilité avec l'analyse des artifacts existants.
 
 Les comparaisons gardent constants le système couplé capturé, son second membre et son état initial, le budget/restart externe, la tolérance externe 1e-10, les budgets imbriqués (200 pour FGMRES) et les gardes de validité. Pour chaque point, exploiter résidu vrai, convergence, itérations internes/externes, applications de Schur, temps imbriqué, temps hors action et temps total. Les variantes non convergées restent des résultats mesurés, pas des PASS implicites. Cette campagne Ghia seule ne qualifie pas un défaut de production.
