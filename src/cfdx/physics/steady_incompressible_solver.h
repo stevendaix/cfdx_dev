@@ -2354,8 +2354,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         controls.initialization, mesh, U, p, restart_fields, restart_path);
 
     const FvGeometry geometry = build_fv_geometry(mesh);
-    const double mu_eff = controls.density *
-        (controls.kinematic_viscosity + controls.turbulent_viscosity);
+    // Authoritative dynamic viscosity used by predictor assembly, nonlinear
+    // acceptance residuals, and the independent momentum conservation audit.
+    std::vector<double> mu_eff(mesh.n_cells());
+    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+        const double nu_t = controls.cell_turbulent_viscosity.empty()
+            ? controls.turbulent_viscosity
+            : controls.cell_turbulent_viscosity[cell];
+        mu_eff[cell] = controls.density * (controls.kinematic_viscosity + nu_t);
+        if (!(mu_eff[cell] >= 0.0) || !std::isfinite(mu_eff[cell]))
+            throw std::invalid_argument(
+                "effective cellwise dynamic viscosity must be finite and non-negative");
+    }
     cfdx::core::ConvergenceMonitorControls monitor_controls;
     monitor_controls.residual.absolute_tolerance = controls.convergence.absolute_tolerance;
     monitor_controls.residual.relative_tolerance = controls.convergence.relative_tolerance;
