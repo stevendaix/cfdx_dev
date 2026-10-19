@@ -1,4 +1,4 @@
-// PCD Schur-action A/B benchmark on the REAL assembled Ghia coupled systems.
+// PCD Schur-action A/B benchmark on the REAL solved Ghia coupled systems.
 //
 // Purpose: measure, on the actual 32x32 Re=100 COUPLED+PCD cavity systems
 // (not synthetic representative matrices), where the per-stage cost goes and
@@ -11,16 +11,52 @@
 //   1. Run the production solver on the 32x32 Re=100 cavity (identical mesh,
 //      BCs and controls to test_ghia_cavity.cpp --pcd) for a few nonlinear
 //      iterations, with the evidence-only coupled_assembly_callback capturing
-//      every assembled coupled system (matrix, RHS, Rhie-Chow Schur diagonal,
-//      linearization velocity).
+//      the EXACT system handed to the Krylov solver. The hook fires at the
+//      Krylov call point - after assembly, gauge treatment, finite checks
+//      and preconditioner setup - so the captured matrix, RHS and initial
+//      guess are the very objects production solves (no reconstruction, no
+//      replication drift). The capture also carries the production PCD
+//      pressure operators (gauge row already imposed) and the Rhie-Chow
+//      Schur diagonal in both raw and gauge-pinned forms.
 //   2. Replay two captured stages (assemblies #2 and #5: the early regime
 //      where the measured production per-stage cost peaks) through the
 //      documented PCD action variants, under identical conditions:
-//      same matrix, same RHS, same initial guess (zero), same outer FGMRES
-//      (restart 4096, budget 5000, tolerance 1e-10, fixed KrylovControls).
+//      same captured matrix, same captured RHS, same captured production
+//      initial guess, same outer FGMRES (restart 4096, budget 5000,
+//      tolerance 1e-10, fixed KrylovControls).
+//
+// Validity guards (what makes this test PASS - they establish that the
+// benchmark replays the production system; they do NOT establish any
+// performance claim):
+//   - at least five coupled assemblies were captured;
+//   - the captured coupled system is gauge-coherent with the captured
+//     state: the reference row is an identity row with reference RHS, and
+//     the captured initial guess carries the reference value on the gauge
+//     row (mirrors the production x0 seeding);
+//   - the captured production PCD operators are reproduced by the
+//     documented assembly path: rebuilding mass/Kp/Fp from the captured
+//     linearization velocity via assemble_pcd_pressure_operators must
+//     match the captured operators to 1e-12 (the replay itself uses the
+//     captured production operators, so this check verifies the assembly
+//     path rather than substituting for it);
+//   - the baseline fp_ilu0 action converges every benchmarked stage to
+//     the production 1e-10 true relative residual from the captured
+//     production initial guess (known production behaviour: every stage
+//     of the 32x32 qualification reaches ~9.8e-11);
+//   - every converged variant agrees on the solution to 1e-6 relative
+//     (a linear-solve consistency guard: no variant may "converge" to a
+//     different solution).
+// A non-baseline variant failing to converge is REPORTED, not failed: the
+// measurement is the point. The test verdict below therefore separates
+// benchmark VALIDITY (the guards above) from the PERFORMANCE report
+// (printed measurements, never gating).
 //
 // Variants (all built from the existing PcdSchurApproximation class; NO
-// production pcd_schur.h change is involved):
+// production pcd_schur.h change is involved). The callback contract is
+// audited at runtime: the laplacian_solve slot receives a callback that
+// throws, so any unexpected invocation of the Kp slot inside the
+// single-inverse action fails the solve loudly instead of silently
+// measuring a different operator:
 //   fp_ilu0   -Fp^-1, nested FGMRES(512)+ILU0, budget 200, tol 1e-8
 //              (exactly the production --pcd configuration = baseline).
 //   fp_amg    -Fp^-1, nested FGMRES(512)+NativeAMG, budget 200, tol 1e-8
@@ -29,36 +65,27 @@
 //   kp_amg    -Kp^-1, nested GMRES(40)+NativeAMG, budget 100, tol 1e-8
 //              (the provisional alternative documented in pcd_schur.h; Kp
 //              defaults used because that is how production would solve it).
-//   fp_rc_scaled  -diag(RC)*Fp^-1 (left scaling by the exact Rhie-Chow
-//              diagonal captured from the assembly, gauge cell pinned to 1.0
-//              exactly like the production assembly pin). Measurement
+//   fp_rc_scaled  -diag(RC)*Fp^-1 (scaling by the exact gauge-pinned
+//              Rhie-Chow diagonal captured from the assembly). Measurement
 //              variant: the algebraic derivation (left vs right scaling,
 //              signs, gauge treatment) is NOT asserted here; the benchmark
 //              measures whether the amplitude correction helps at all.
 //   rc_diag   -diag(RC)^-1 with no nested solve (SIMPLE-style diagonal
-//              Schur). Reference point; the nested counters stay at zero.
+//              Schur). Reference point; nested Krylov counters stay at
+//              zero but Schur applications are counted and timed.
 //
-// Evidence printed (one TSV-ish line per solve, stdout):
+// Evidence printed (one line per solve, plus per-stage summaries):
 //   PCD_ACTION_BENCHMARK stage=... action=... status=... converged=...
 //   coupled_iterations=... true_rel_residual=... solve_wall_ms=...
-//   nested_calls=... nested_iterations=... nested_wall_ms=...
-//   nested_setup_ms=... schur_setup_ms=...
+//   schur_applications=... nested_iterations=... action_wall_ms=...
+//   non_nested_wall_ms=... nested_setup_ms=... schur_setup_ms=...
+//   PCD_ACTION_SUMMARY per-variant aggregates and baseline-relative
+//   speedups follow the per-solve lines; the final verdict line is printed
+//   only after all guards have been evaluated.
 //
-// Acceptance (what makes this test PASS):
-//   - at least five coupled assemblies were captured;
-//   - the baseline fp_ilu0 action converges every benchmarked stage to the
-//     production 1e-10 true relative residual (known production behaviour:
-//     every stage of the 32x32 qualification reaches ~9.8e-11);
-//   - all converged variants agree on the solution to 1e-6 relative
-//     (a linear-solve consistency guard: no variant may "converge" to a
-//     different solution).
-// A non-baseline variant failing to converge is REPORTED, not failed: the
-// measurement is the point. Physical acceptance of the full case remains
-// the exclusive responsibility of test_ghia_cavity_n8_pcd.
-//
-// Cost: bounded and reproducible - five production nonlinear iterations plus
-// ten coupled solves, a few minutes in Release. Registered only under
-// CFDX_ENABLE_LONG_VALIDATION.
+// Cost: bounded and reproducible - five production nonlinear iterations
+// plus ten coupled solves plus two operator-assembly cross-checks, a few
+// minutes in Release. Registered only under CFDX_ENABLE_LONG_VALIDATION.
 
 #include "cfdx/physics/steady_incompressible_solver.h"
 
@@ -85,8 +112,7 @@ namespace {
 
 // Identical to test_ghia_cavity.cpp make_cavity_mesh (32x32 Re=100 cavity).
 // Duplicated rather than shared so this benchmark cannot drift the production
-// qualification test; the baseline-variant convergence assertion below is the
-// fidelity guard.
+// qualification test; the guards below establish replay fidelity instead.
 Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
 {
     if (nx < 4 || ny < 4) throw std::invalid_argument("cavity mesh is too small");
@@ -190,19 +216,43 @@ double true_relative_residual(const SparseMatrix& A, const Vector& b, const Vect
     return std::sqrt(residual_sq) / (rhs_sq > 0.0 ? std::sqrt(rhs_sq) : 1.0);
 }
 
+// Largest elementwise |a-b| over the explicit pattern of two sparse
+// matrices. Patterns are compared first: a pattern mismatch is a capture
+// infidelity regardless of the values.
+double sparse_max_abs_diff(const SparseMatrix& a, const SparseMatrix& b)
+{
+    if (a.n_rows() != b.n_rows() || a.nnz() != b.nnz())
+        return std::numeric_limits<double>::infinity();
+    double diff = 0.0;
+    for (std::size_t k = 0; k < a.nnz(); ++k) {
+        if (a.columns_data()[k] != b.columns_data()[k])
+            return std::numeric_limits<double>::infinity();
+        diff = std::max(diff, std::abs(a.values_data()[k] - b.values_data()[k]));
+    }
+    return diff;
+}
+
+// One captured coupled system: the EXACT objects handed to the production
+// Krylov solver (captured at the Krylov call point), plus the production
+// PCD pressure operators and both forms of the Rhie-Chow diagonal.
 struct CapturedStage {
     SparseMatrix matrix;
     Vector rhs;
-    std::vector<double> rc_diagonal;
+    Vector initial_guess;  // production x0: [U_old; p_old], gauge = reference value
+    std::vector<double> rc_diagonal;       // gauge-pinned (reference cell = 1.0)
+    std::vector<double> rc_diagonal_raw;    // as assembled, before the pin
+    SparseMatrix pcd_mass;                 // production operators, gauge row
+    SparseMatrix pcd_laplacian;            // already imposed by the assembler
+    SparseMatrix pcd_convection_diffusion; //
     std::vector<double> velocity_old;  // component-major: [d*nc + c]
     std::size_t reference_cell = 0;
     bool has_fixed_pressure = false;
 };
 
-struct NestedStats {
-    std::size_t calls = 0;
-    std::size_t iterations = 0;
-    double wall_ms = 0.0;
+struct ActionStats {
+    std::size_t applications = 0;  // Schur actions invoked by the outer Krylov
+    std::size_t nested_iterations = 0;  // nested Krylov iterations (0 for rc_diag)
+    double action_wall_ms = 0.0;    // total wall time inside the action
 };
 
 struct VariantSpec {
@@ -213,7 +263,7 @@ struct VariantSpec {
     std::size_t nested_budget;
     double nested_tolerance;
     bool use_kp_operator;   // solve Kp instead of Fp (documented provisional alternative)
-    bool rc_scale_output;  // left-scale the nested solve output by diag(RC)
+    bool rc_scale_output;  // scale the nested solve output by diag(RC)
     bool diagonal_action;  // no nested solve: action = -diag(RC)^-1
 };
 
@@ -224,7 +274,7 @@ struct VariantResult {
     std::size_t coupled_iterations = 0;
     double true_rel_residual = std::numeric_limits<double>::infinity();
     double solve_wall_ms = 0.0;
-    NestedStats nested;
+    ActionStats action_stats;
     double nested_setup_ms = 0.0;
     double schur_setup_ms = 0.0;
     Vector x;
@@ -294,10 +344,27 @@ int main()
     std::vector<CapturedStage> stages;
     controls.coupled_assembly_callback =
         [&](const CoupledAssemblySnapshot& snapshot) {
+            if (snapshot.matrix == nullptr || snapshot.rhs == nullptr ||
+                snapshot.initial_guess == nullptr ||
+                snapshot.pressure_schur_diagonal == nullptr ||
+                snapshot.pressure_schur_diagonal_raw == nullptr ||
+                snapshot.pcd_pressure_mass == nullptr ||
+                snapshot.pcd_pressure_laplacian == nullptr ||
+                snapshot.pcd_pressure_convection_diffusion == nullptr ||
+                snapshot.velocity_old == nullptr)
+                throw std::runtime_error(
+                    "pcd_schur_action_benchmark: incomplete capture snapshot "
+                    "(non-PCD coupled plan cannot be benchmarked)");
             CapturedStage stage;
             stage.matrix = *snapshot.matrix;
             stage.rhs = *snapshot.rhs;
+            stage.initial_guess = *snapshot.initial_guess;
             stage.rc_diagonal = *snapshot.pressure_schur_diagonal;
+            stage.rc_diagonal_raw = *snapshot.pressure_schur_diagonal_raw;
+            stage.pcd_mass = *snapshot.pcd_pressure_mass;
+            stage.pcd_laplacian = *snapshot.pcd_pressure_laplacian;
+            stage.pcd_convection_diffusion =
+                *snapshot.pcd_pressure_convection_diffusion;
             stage.velocity_old.resize(3 * nc);
             for (std::size_t d = 0; d < 3; ++d)
                 for (std::size_t c = 0; c < nc; ++c)
@@ -311,7 +378,7 @@ int main()
     std::cerr << "PCD_ACTION_CAPTURE start grid=" << nx << "x" << ny
               << " Re=" << reynolds << " nonlinear_iterations=5\n";
     // Non-convergence after five iterations is expected and irrelevant: only
-    // the captured assembled systems are replayed below.
+    // the captured solved systems are replayed below.
     (void)solve_steady_incompressible(mesh, U, p, ubc, pbc, controls);
 
     if (stages.size() < 5)
@@ -336,32 +403,102 @@ int main()
 
     const std::vector<std::size_t> benchmark_stages = {1, 4};  // assemblies #2 and #5
     std::size_t failures = 0;
+    std::map<std::string, std::vector<VariantResult>> results_by_variant;
 
     for (const std::size_t stage_index : benchmark_stages) {
         const CapturedStage& stage = stages[stage_index];
         const std::size_t n = stage.matrix.n_rows();
+        const std::size_t nv = 3 * nc;
+        const std::size_t gauge_row = nv + stage.reference_cell;
 
-        // Rebuild the linearization velocity field and the PCD pressure
-        // operators exactly as the production assembly does for this stage.
+        // ------------------------------------------------------------
+        // Validity guard: gauge coherence of the captured system. With no
+        // fixed pressure the reference row of the production coupled
+        // matrix is an identity row with the reference RHS, and the
+        // production initial guess carries the reference value on the
+        // gauge row. A violation means the capture is NOT the solved
+        // system and every measurement below is meaningless.
+        // ------------------------------------------------------------
+        if (!stage.has_fixed_pressure) {
+            const auto row_begin = stage.matrix.row_offsets_data()[gauge_row];
+            const auto row_end = stage.matrix.row_offsets_data()[gauge_row + 1];
+            bool gauge_ok = (row_end - row_begin == 1) &&
+                stage.matrix.columns_data()[row_begin] == gauge_row &&
+                stage.matrix.values_data()[row_begin] == 1.0 &&
+                stage.rhs(gauge_row) == controls.pressure_reference_value &&
+                stage.initial_guess(gauge_row) == controls.pressure_reference_value;
+            if (!gauge_ok) {
+                std::cerr << "PCD_ACTION_GAUGE stage=" << (stage_index + 1)
+                          << " gauge_row=" << gauge_row
+                          << " row_nnz=" << (row_end - row_begin)
+                          << " rhs=" << stage.rhs(gauge_row)
+                          << " x0=" << stage.initial_guess(gauge_row)
+                          << " - captured system NOT gauge-coherent\n";
+                ++failures;
+            } else {
+                std::cerr << "PCD_ACTION_GAUGE stage=" << (stage_index + 1)
+                          << " gauge_row=" << gauge_row
+                          << " identity_row=1 rhs=reference x0=reference"
+                          << " - gauge coherence OK\n";
+            }
+        }
+
+        // ------------------------------------------------------------
+        // Validity guard: the captured production PCD operators must be
+        // reproducible by the documented assembly path from the captured
+        // linearization velocity. The replay itself uses the CAPTURED
+        // production operators (no reconstruction risk); this check
+        // verifies that the assembly path and the captured production
+        // operators describe the same mathematics. The rebuild wall time
+        // is also the production per-assembly operator cost measurement.
+        // ------------------------------------------------------------
         Field<double, Location::CELL> U_stage(mesh.n_cells(), "U_stage", "m/s", 3);
         for (std::size_t d = 0; d < 3; ++d)
             for (std::size_t c = 0; c < nc; ++c)
                 U_stage.component_data(d)[c] = stage.velocity_old[d * nc + c];
 
-        const auto pcd_ops = assemble_pcd_pressure_operators(
+        const auto rebuild_start = std::chrono::steady_clock::now();
+        const auto rebuilt_ops = assemble_pcd_pressure_operators(
             mesh, geometry, U_stage, controls.density,
             controls.kinematic_viscosity, ubc, pbc, stage.reference_cell,
             ConvectionScheme::UPWIND);
+        const double rebuild_ms = elapsed_ms(rebuild_start);
 
-        // Rhie-Chow diagonal with the production gauge pin.
-        std::vector<double> rc = stage.rc_diagonal;
-        if (rc.size() == nc)
-            rc[stage.reference_cell] = 1.0;
+        const double mass_diff = sparse_max_abs_diff(
+            stage.pcd_mass, rebuilt_ops.mass);
+        const double kp_diff = sparse_max_abs_diff(
+            stage.pcd_laplacian, rebuilt_ops.laplacian);
+        const double fp_diff = sparse_max_abs_diff(
+            stage.pcd_convection_diffusion, rebuilt_ops.convection_diffusion);
+        const double ops_diff = std::max(mass_diff, std::max(kp_diff, fp_diff));
+        std::cerr << "PCD_ACTION_OPERATORS stage=" << (stage_index + 1)
+                  << std::scientific << std::setprecision(6)
+                  << " mass_diff=" << mass_diff
+                  << " kp_diff=" << kp_diff
+                  << " fp_diff=" << fp_diff
+                  << " rebuild_ms=" << rebuild_ms
+                  << " (gate 1e-12) - " << (ops_diff <= 1e-12 ? "OK" : "MISMATCH")
+                  << "\n";
+        if (!(ops_diff <= 1e-12))
+            ++failures;
+
+        // Gauge-pinned Rhie-Chow diagonal for the rc variants (production
+        // form: reference cell pinned to 1.0, gauge component preserved).
+        const std::vector<double>& rc = stage.rc_diagonal;
+        for (const VariantSpec& spec : variants) {
+            if (spec.diagonal_action) {
+                for (std::size_t c = 0; c < nc; ++c)
+                    if (!(rc[c] > 0.0) || !std::isfinite(rc[c]))
+                        throw std::runtime_error(
+                            "pcd_schur_action_benchmark: invalid Rhie-Chow "
+                            "diagonal entry at cell " + std::to_string(c));
+            }
+        }
 
         std::vector<VariantResult> stage_results;
         for (const VariantSpec& spec : variants) {
             const auto nested_setup_start = std::chrono::steady_clock::now();
-            NestedStats nested_stats;
+            ActionStats action_stats;
 
             // Nested single-inverse solver for the PCD action. The production
             // policy (nested_schur_pressure_solve_usable) is reused verbatim:
@@ -369,24 +506,27 @@ int main()
             PcdSchurApproximation::PressureSolve inverse_solve;
             if (spec.diagonal_action) {
                 std::vector<double> rc_inv(nc);
-                for (std::size_t c = 0; c < nc; ++c) {
-                    if (!(rc[c] > 0.0) || !std::isfinite(rc[c]))
-                        throw std::runtime_error(
-                            "pcd_schur_action_benchmark: invalid Rhie-Chow "
-                            "diagonal entry");
+                for (std::size_t c = 0; c < nc; ++c)
                     rc_inv[c] = 1.0 / rc[c];
-                }
-                inverse_solve = [rc_inv](const Vector& rhs, Vector& x) {
+                inverse_solve = [rc_inv, &action_stats](
+                    const Vector& rhs, Vector& x) {
+                    const auto apply_start = std::chrono::steady_clock::now();
                     if (x.size() != rhs.size())
                         x = Vector(rhs.size(), 0.0);
                     for (std::size_t i = 0; i < rhs.size(); ++i)
                         x(i) = rc_inv[i] * rhs(i);
+                    ++action_stats.applications;
+                    action_stats.action_wall_ms += elapsed_ms(apply_start);
                     return true;
                 };
             } else {
+                // The variant's nested operator: Fp (production baseline and
+                // scaling variants) or Kp (documented provisional
+                // alternative). Both come from the CAPTURED production
+                // operators.
                 const SparseMatrix& nested_matrix = spec.use_kp_operator
-                    ? pcd_ops.laplacian
-                    : pcd_ops.convection_diffusion;
+                    ? stage.pcd_laplacian
+                    : stage.pcd_convection_diffusion;
                 auto preconditioner =
                     make_scalar_preconditioner(spec.nested_preconditioner);
                 if (!preconditioner || !preconditioner->setup(nested_matrix))
@@ -403,7 +543,7 @@ int main()
                 const bool scale_output = spec.rc_scale_output;
                 inverse_solve = [nested_preconditioner, &nested_matrix, nested_restart,
                                  budget, tolerance, krylov, scale_output, &rc,
-                                 &nested_stats](const Vector& rhs, Vector& x) {
+                                 &action_stats](const Vector& rhs, Vector& x) {
                     const auto solve_start = std::chrono::steady_clock::now();
                     SolverResult result;
                     if (krylov == KrylovModel::GMRES)
@@ -419,19 +559,37 @@ int main()
                     if (scale_output)
                         for (std::size_t i = 0; i < x.size(); ++i)
                             x(i) *= rc[i];
-                    ++nested_stats.calls;
-                    nested_stats.iterations += result.iterations;
-                    nested_stats.wall_ms += elapsed_ms(solve_start);
+                    ++action_stats.applications;
+                    action_stats.nested_iterations += result.iterations;
+                    action_stats.action_wall_ms += elapsed_ms(solve_start);
                     return nested_schur_pressure_solve_usable(
                         result, x, nested_matrix.n_rows());
                 };
             }
             const double nested_setup_ms = elapsed_ms(nested_setup_start);
 
-            // PCD action with the production gauge policy.
+            // Callback-contract audit: the single-inverse PCD action must
+            // never invoke the laplacian_solve slot (pcd_schur.h documents
+            // apply() as -convection_diffusion_solve_ then a sign flip).
+            // Passing a throwing callback there turns any unexpected
+            // invocation into a loud failure instead of a silent
+            // measurement of the wrong operator. The setup() contract
+            // only requires the slot to be non-null, which a throwing
+            // std::function satisfies.
+            const PcdSchurApproximation::PressureSolve must_not_be_called =
+                [](const Vector&, Vector&) {
+                    throw std::runtime_error(
+                        "pcd_schur_action_benchmark: the single-inverse PCD "
+                        "action invoked the laplacian_solve slot - callback "
+                        "contract violated");
+                };
+
+            // PCD action built from the CAPTURED production operators,
+            // with the production gauge policy.
             auto pcd = std::make_unique<PcdSchurApproximation>(
-                pcd_ops.mass, pcd_ops.laplacian, pcd_ops.convection_diffusion,
-                inverse_solve, inverse_solve, std::nullopt,
+                stage.pcd_mass, stage.pcd_laplacian,
+                stage.pcd_convection_diffusion,
+                must_not_be_called, inverse_solve, std::nullopt,
                 stage.has_fixed_pressure
                     ? std::optional<std::size_t>()
                     : std::optional<std::size_t>(stage.reference_cell));
@@ -454,8 +612,9 @@ int main()
                     "for action " + std::string(spec.action));
             const double schur_setup_ms = elapsed_ms(schur_setup_start);
 
-            // Identical outer coupled solve for every variant: same matrix,
-            // same RHS, same zero initial guess, same fixed restart.
+            // Identical outer coupled solve for every variant: same captured
+            // matrix, same captured RHS, same captured production initial
+            // guess, same fixed restart.
             const int coupled_restart = static_cast<int>(
                 std::min<std::size_t>(4096, n));
             KrylovControls coupled_controls;
@@ -463,7 +622,7 @@ int main()
             coupled_controls.restart_max = coupled_restart;
             coupled_controls.adaptive_restart = false;
 
-            Vector x(n, 0.0);
+            Vector x = stage.initial_guess;
             const auto solve_start = std::chrono::steady_clock::now();
             const SolverResult coupled = solve_fgmres(
                 stage.matrix, stage.rhs, x, coupled_restart,
@@ -479,7 +638,7 @@ int main()
             vr.coupled_iterations = coupled.iterations;
             vr.true_rel_residual = true_relative_residual(stage.matrix, stage.rhs, x);
             vr.solve_wall_ms = solve_wall_ms;
-            vr.nested = nested_stats;
+            vr.action_stats = action_stats;
             vr.nested_setup_ms = nested_setup_ms;
             vr.schur_setup_ms = schur_setup_ms;
             vr.x = x;
@@ -495,18 +654,25 @@ int main()
                       << " coupled_iterations=" << vr.coupled_iterations
                       << " true_rel_residual=" << vr.true_rel_residual
                       << " solve_wall_ms=" << vr.solve_wall_ms
-                      << " nested_calls=" << vr.nested.calls
-                      << " nested_iterations=" << vr.nested.iterations
-                      << " nested_wall_ms=" << vr.nested.wall_ms
+                      << " schur_applications=" << vr.action_stats.applications
+                      << " nested_iterations=" << vr.action_stats.nested_iterations
+                      << " action_wall_ms=" << vr.action_stats.action_wall_ms
+                      << " non_nested_wall_ms="
+                      << (vr.solve_wall_ms - vr.action_stats.action_wall_ms)
                       << " nested_setup_ms=" << vr.nested_setup_ms
                       << " schur_setup_ms=" << vr.schur_setup_ms
                       << "\n";
             std::cout.flush();
 
             // Baseline fidelity guard: the production -Fp^-1 + ILU0 action
-            // must solve the captured system to the production gate. If it
-            // does not, the capture or the operator rebuild diverged from
-            // production and every other number is meaningless.
+            // must solve the captured system - from the captured production
+            // initial guess - to the production gate. If it does not, the
+            // capture diverged from production and every other number is
+            // meaningless. (A wrong capture can still be solved to a tiny
+            // residual; this guard is therefore paired with the gauge and
+            // operator-coherence guards above, which constrain WHAT is
+            // solved, while this guard constrains the replay's ability to
+            // reproduce the production convergence on it.)
             if (vr.action == "fp_ilu0") {
                 if (!vr.converged || !(vr.true_rel_residual <= 1e-10)) {
                     std::cerr << "PCD_ACTION_BASELINE stage=" << (stage_index + 1)
@@ -522,14 +688,16 @@ int main()
                 }
             }
 
-            // Retain the result for the stage-level consistency check.
+            // Retain the result for the stage-level consistency check and
+            // the final performance aggregate.
             stage_results.push_back(vr);
+            results_by_variant[vr.action].push_back(vr);
         }
 
         // Linear-solution consistency guard: every converged variant must
         // agree with every other converged variant on the solution of the
-        // SAME captured system (identical matrix, RHS, zero initial guess
-        // and tolerances). A variant that "converges" to a different
+        // SAME captured system (identical matrix, RHS, production initial
+        // guess and tolerances). A variant that "converges" to a different
         // solution is a broken action, not merely a slower one.
         for (std::size_t i = 0; i < stage_results.size(); ++i) {
             if (!stage_results[i].converged) continue;
@@ -556,8 +724,61 @@ int main()
         }
     }
 
-    std::cout << "PASS: pcd_schur_action_benchmark\n";
-    std::cout << "\nResults: " << (failures == 0 ? 1 : 0) << " passed, "
-              << failures << " failed\n";
-    return failures == 0 ? 0 : 1;
+    // ----------------------------------------------------------------
+    // PERFORMANCE REPORT (never gating): per-variant aggregates over the
+    // benchmarked stages and baseline-relative comparison. A variant that
+    // did not converge on some stage is reported as such, not failed.
+    // ----------------------------------------------------------------
+    double baseline_total_ms = -1.0;
+    const auto baseline_it = results_by_variant.find("fp_ilu0");
+    if (baseline_it != results_by_variant.end()) {
+        baseline_total_ms = 0.0;
+        for (const VariantResult& vr : baseline_it->second)
+            if (vr.converged)
+                baseline_total_ms += vr.solve_wall_ms;
+    }
+    for (const auto& [name, results] : results_by_variant) {
+        std::size_t converged_stages = 0;
+        double total_ms = 0.0;
+        std::size_t coupled_iterations = 0;
+        std::size_t schur_applications = 0;
+        std::size_t nested_iterations = 0;
+        for (const VariantResult& vr : results) {
+            if (vr.converged) {
+                ++converged_stages;
+                total_ms += vr.solve_wall_ms;
+            }
+            coupled_iterations += vr.coupled_iterations;
+            schur_applications += vr.action_stats.applications;
+            nested_iterations += vr.action_stats.nested_iterations;
+        }
+        std::cout << std::scientific << std::setprecision(6)
+                  << "PCD_ACTION_SUMMARY"
+                  << " action=" << name
+                  << " stages_converged=" << converged_stages
+                  << " of " << results.size()
+                  << " total_solve_wall_ms=" << total_ms
+                  << " coupled_iterations=" << coupled_iterations
+                  << " schur_applications=" << schur_applications
+                  << " nested_iterations=" << nested_iterations;
+        if (name != "fp_ilu0" && baseline_total_ms > 0.0 && total_ms > 0.0)
+            std::cout << " speedup_vs_baseline=" << baseline_total_ms / total_ms;
+        std::cout << "\n";
+    }
+    std::cout.flush();
+
+    // Final verdict, printed only after every guard has been evaluated.
+    // VALIDITY is what this test gates: capture fidelity (gauge coherence,
+    // operator coherence, baseline reproduction) and solution consistency.
+    // PERFORMANCE is reported above and never gates the verdict.
+    if (failures == 0) {
+        std::cout << "PCD_ACTION_VALIDITY OK: capture is the solved production "
+                     "system; baseline reproduces the production gate\n";
+        std::cout << "PASS: pcd_schur_action_benchmark\n";
+        return 0;
+    }
+    std::cout << "PCD_ACTION_VALIDITY FAILED: " << failures
+              << " guard failure(s) - measurements must NOT be interpreted\n";
+    std::cout << "FAIL: pcd_schur_action_benchmark\n";
+    return 1;
 }
