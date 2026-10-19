@@ -582,6 +582,8 @@ int main()
                         "pcd_schur_action_benchmark: the single-inverse PCD "
                         "action invoked the laplacian_solve slot - callback "
                         "contract violated");
+                    return false;  // unreachable: gives the audit callback
+                                   // the PressureSolve bool contract
                 };
 
             // PCD action built from the CAPTURED production operators,
