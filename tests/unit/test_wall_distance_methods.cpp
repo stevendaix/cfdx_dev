@@ -100,6 +100,50 @@ int main() {
         godunov_gradient_at(linear,pg,pc)-1.0-0.25*pg.points[pc].x*laplacian_at(linear,pg,pc);
     require(std::abs(hj_linear_residual)<1e-13,
             "Hamilton-Jacobi operator is not exact for the linear planar solution");
+
+    // The cut-face cache must preserve the exact geometry-derived offsets and
+    // the discrete operators used by the uncached implementation.
+    WallSurface shifted_plane;
+    shifted_plane.points={{0.1,-1,-1},{0.1,1,-1},{0.1,1,1},{0.1,-1,1}};
+    shifted_plane.triangles={{{0,1,2}},{{0,2,3}}};
+    const auto cg=make_wall_distance_grid(
+        9,5,5,{0,-1,-1},{0.25,0.5,0.5},
+        [](const WallDistanceVec3& p){ return p.x<0.1; });
+    const WallDistanceBvh cbvh(shifted_plane);
+    const WallDistanceCutFaceOffsetCache cache(cbvh,cg);
+    std::vector<double> test_field(cg.points.size(),0.0);
+    for(std::size_t id=0;id<test_field.size();++id)
+        test_field[id]=cg.points[id].x+0.3*cg.points[id].y-0.2*cg.points[id].z;
+    std::size_t fractional_cut_faces=0;
+    for(std::size_t id=0;id<cg.points.size();++id) {
+        if(cg.solid[id]) continue;
+        const std::size_t k=id/(cg.nx*cg.ny), rem=id%(cg.nx*cg.ny);
+        const std::size_t j=rem/cg.nx, i=rem%cg.nx;
+        const std::array<std::size_t,6> q={{
+            i>0?cg.index(i-1,j,k):0, i+1<cg.nx?cg.index(i+1,j,k):0,
+            j>0?cg.index(i,j-1,k):0, j+1<cg.ny?cg.index(i,j+1,k):0,
+            k>0?cg.index(i,j,k-1):0, k+1<cg.nz?cg.index(i,j,k+1):0}};
+        const std::array<bool,6> exists={{
+            i>0,i+1<cg.nx,j>0,j+1<cg.ny,k>0,k+1<cg.nz}};
+        const std::array<double,3> spacing={{cg.spacing.x,cg.spacing.y,cg.spacing.z}};
+        for(std::size_t face=0;face<6;++face) {
+            if(!exists[face]) continue;
+            const double h=spacing[face/2];
+            const double expected=cg.solid[q[face]]
+                ? poisson_wall_offset(cbvh,cg.points[id],cg.points[q[face]],h) : h;
+            require(cache.delta(id,face)==expected,
+                    "cached cut-face offset differs from direct BVH calculation");
+            if(cg.solid[q[face]] && std::abs(expected-h)>1e-12) ++fractional_cut_faces;
+        }
+        require(std::abs(laplacian_at(cbvh,test_field,cg,id,cache)
+                         -laplacian_at(cbvh,test_field,cg,id))<1e-13,
+                "cached and uncached Laplacian operators differ");
+        require(std::abs(godunov_gradient_at(cbvh,test_field,cg,id,cache)
+                         -godunov_gradient_at(cbvh,test_field,cg,id))<1e-13,
+                "cached and uncached Godunov gradients differ");
+    }
+    require(fractional_cut_faces>0,
+            "cache equivalence test did not exercise a fractional cut-face offset");
     const std::array<WallDistanceMethod,1> plane_methods={{
         WallDistanceMethod::EIKONAL}};
     for(const auto method:plane_methods) {
