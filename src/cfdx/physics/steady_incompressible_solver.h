@@ -140,6 +140,23 @@ struct InitializationControls {
     std::string restart_path;
 };
 
+// Read-only view of one assembled coupled saddle-point system, handed to the
+// optional evidence hook in IncompressibleSolverControls. The references are
+// only valid for the duration of the callback: a consumer that needs the
+// data beyond the call must copy it.
+struct CoupledAssemblySnapshot {
+    const cfdx::core::SparseMatrix* matrix = nullptr;
+    const cfdx::core::Vector* rhs = nullptr;
+    // Exact momentum-weighted Rhie-Chow pressure Schur diagonal as assembled
+    // (before the gauge cell is pinned to 1.0 later in the assembly).
+    // Diagnostic evidence channel; production preconditioning does not
+    // consume it.
+    const std::vector<double>* pressure_schur_diagonal = nullptr;
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* velocity_old = nullptr;
+    std::size_t reference_cell = 0;
+    bool has_fixed_pressure = false;
+};
+
 struct IncompressibleSolverControls {
     InitializationControls initialization;
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE;
@@ -206,6 +223,14 @@ struct IncompressibleSolverControls {
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&)>;
     IterationOutputCallback iteration_output_callback;
+    // Evidence-only hook: invoked by the coupled assembly right after the
+    // assembled matrix/RHS have passed their finite/coherence checks and
+    // before any preconditioner is built. Null by default: no capture, no
+    // overhead, no behavior change. It exists so an isolated benchmark can
+    // replay the REAL assembled system (same matrix, same RHS, same state)
+    // instead of a divergent replica - see
+    // tests/validation/test_pcd_schur_action_benchmark.cpp.
+    std::function<void(const CoupledAssemblySnapshot&)> coupled_assembly_callback;
 };
 
 struct IncompressibleIteration {
@@ -1729,6 +1754,18 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     "solve_coupled_momentum_continuity: non-finite RHS at row " +
                     std::to_string(i));
         }
+    }
+
+    // Evidence-only capture hook (null by default; see
+    // IncompressibleSolverControls::coupled_assembly_callback). The snapshot
+    // aliases live assembly state, so the consumer must copy anything it
+    // wants to keep. It fires before the gauge diagonal pin below, so the
+    // captured Rhie-Chow diagonal is the raw assembled one.
+    if (controls.coupled_assembly_callback) {
+        const CoupledAssemblySnapshot snapshot{
+            &A, &b, &coupled_pressure_schur_diagonal, &U_old,
+            reference_cell, has_fixed_pressure};
+        controls.coupled_assembly_callback(snapshot);
     }
 
     // Optional algebraic microscope. It is deliberately computed from
