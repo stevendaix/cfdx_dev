@@ -69,9 +69,9 @@
 ## Related work
 
 - PR #941 — production guard and audit baseline (merged).
-- PR #970 — rebased SST strain-rate utility (open; exact-HEAD CI pending; not production coupling).
-- PR #971 — rebased explicit boundary-value Gauss gradient API (open; exact-HEAD CI pending; prerequisite, Dirichlet face-value contract only).
-- PRs #958 and #964 are stale branches with failures against an older base; the rebased replacements #970 and #971 are being validated against current `master`.
+- PR #970 — rebased SST strain-rate utility, merged to `master` as `374c8fb414691f7a4e51c51dbccd1559fa109ce9`; exact-HEAD CI passed. Utility only; not production coupling.
+- PR #971 — explicit boundary-value Gauss gradient API, merged to `master` as `257070a624ec5b59390be8c6f6b5f6287a492808`; exact-HEAD CI passed. Dirichlet face-value contract only; not a complete SST wall treatment.
+- Original PRs #958 and #964 were closed as stale-base duplicates; their rebased replacements #970 and #971 are now merged.
 - Issue #943 — end-to-end SST coupling plan (created by the prior work; verify issue state/number if the tracker is moved).
 
 ## Evidence log
