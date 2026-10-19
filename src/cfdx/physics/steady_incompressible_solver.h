@@ -152,6 +152,9 @@ struct IncompressibleSolverControls {
     double density = 1.0;
     double kinematic_viscosity = 1.0e-3;
     double turbulent_viscosity = 0.0;
+    // Optional cellwise kinematic eddy viscosity (m^2/s). Replaces the scalar
+    // value when supplied; the production RANS guard remains active.
+    std::vector<double> cell_turbulent_viscosity;
     cfdx::core::Vec3 body_force{0.0, 0.0, 0.0};
     PressureGaugePolicy pressure_gauge_policy = PressureGaugePolicy::REFERENCE_CELL;
     std::size_t pressure_reference_cell = 0;
