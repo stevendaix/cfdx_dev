@@ -12,6 +12,51 @@
 using namespace cfdx::testing;
 using namespace cfdx::physics;
 
+
+static cfdx::core::Mesh make_sst_transaction_unit_cube()
+{
+    using namespace cfdx::core;
+    Mesh mesh;
+    mesh.points().resize(8);
+    const double points[8][3] = {
+        {0,0,0},{1,0,0},{1,1,0},{0,1,0},
+        {0,0,1},{1,0,1},{1,1,1},{0,1,1}
+    };
+    for (std::size_t i = 0; i < 8; ++i)
+        mesh.points().set(i, points[i][0], points[i][1], points[i][2]);
+
+    mesh.faces().push_face({0,3,2,1});
+    mesh.faces().push_face({4,5,6,7});
+    mesh.faces().push_face({0,1,5,4});
+    mesh.faces().push_face({3,7,6,2});
+    mesh.faces().push_face({0,4,7,3});
+    mesh.faces().push_face({1,2,6,5});
+
+    mesh.ownership().resize(6);
+    for (std::size_t face = 0; face < 6; ++face) {
+        mesh.ownership().set_owner(face, 0);
+        mesh.ownership().set_neighbour(face, FaceOwnership::BOUNDARY);
+    }
+    mesh.cells().push_cell({0,1,2,3,4,5});
+
+    Patch x0;
+    x0.name = "x0";
+    x0.type = PatchType::WALL;
+    x0.face_ids = {0};
+    mesh.boundary().add_patch(x0);
+    Patch x1;
+    x1.name = "x1";
+    x1.type = PatchType::WALL;
+    x1.face_ids = {1};
+    mesh.boundary().add_patch(x1);
+    Patch walls;
+    walls.name = "walls";
+    walls.type = PatchType::WALL;
+    walls.face_ids = {2,3,4,5};
+    mesh.boundary().add_patch(walls);
+    return mesh;
+}
+
 int main()
 {
     run_case("sst_dynamic_blending_diagnostics_accumulate_all_bound_events", [] {
@@ -290,6 +335,49 @@ int main()
         };
         setup.boundary_conditions = {wall};
         EXPECT_THROW(validate_sst_scalar_boundary_contract(setup), std::invalid_argument);
+    });
+
+
+    run_case("sst_transaction_rolls_back_k_omega_after_nonconverged_transport", [] {
+        using namespace cfdx::core;
+        const Mesh mesh = make_sst_transaction_unit_cube();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::FACE> flux(mesh.n_faces(), "phi", "kg/s", 1);
+        Field<double, Location::CELL> k(mesh.n_cells(), "k", "m2/s2", 1);
+        Field<double, Location::CELL> omega(mesh.n_cells(), "omega", "1/s", 1);
+        Field<double, Location::CELL> strain(mesh.n_cells(), "strain", "1/s", 1);
+        Field<double, Location::CELL> wall(mesh.n_cells(), "wall_distance", "m", 1);
+        Field<double, Location::CELL> nu_t(mesh.n_cells(), "nu_t", "m2/s", 1);
+        flux.fill(0.0);
+        k(0) = 0.4;
+        omega(0) = 8.0;
+        strain(0) = 1.0;
+        wall(0) = 0.01;
+        nu_t(0) = 0.02;
+
+        ScalarBoundaryConditions k_bcs{
+            {"x0", {ScalarBoundaryType::FIXED_VALUE, 0.8, 0.0}},
+            {"x1", {ScalarBoundaryType::FIXED_VALUE, 0.2, 0.0}},
+            {"walls", {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0}}
+        };
+        ScalarBoundaryConditions omega_bcs{
+            {"x0", {ScalarBoundaryType::FIXED_VALUE, 16.0, 0.0}},
+            {"x1", {ScalarBoundaryType::FIXED_VALUE, 4.0, 0.0}},
+            {"walls", {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0}}
+        };
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+
+        const auto step = advance_sst_transport_transactionally(
+            mesh, geometry, flux, k, omega, strain, wall, controls, nu_t,
+            k_bcs, omega_bcs, 1, 1e-30);
+
+        EXPECT_TRUE(!step.committed);
+        EXPECT_TRUE(!step.transport.converged);
+        EXPECT_TRUE(step.transport.iterations == 1);
+        EXPECT_NEAR(k(0), 0.4, 0.0);
+        EXPECT_NEAR(omega(0), 8.0, 0.0);
+        EXPECT_NEAR(nu_t(0), 0.02, 0.0);
     });
 
     return run_all();
