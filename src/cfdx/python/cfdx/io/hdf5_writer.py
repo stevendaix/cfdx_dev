@@ -22,8 +22,14 @@ from cfdx.io.schema import CFDX_SCHEMA_VERSION
 
 _ELEMENT_FACES: dict[str, list[list[int]]] = {
     "tetra": [[1, 2, 3], [0, 3, 2], [0, 1, 3], [0, 2, 1]],
-    "hexahedron": [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4],
-                   [1, 2, 6, 5], [2, 3, 7, 6], [0, 4, 7, 3]],
+    "hexahedron": [
+        [0, 3, 2, 1],
+        [4, 5, 6, 7],
+        [0, 1, 5, 4],
+        [1, 2, 6, 5],
+        [2, 3, 7, 6],
+        [0, 4, 7, 3],
+    ],
     "wedge": [[0, 2, 1], [3, 5, 4], [0, 1, 4, 3], [1, 2, 5, 4], [0, 3, 5, 2]],
     "pyramid": [[0, 3, 2, 1], [0, 1, 4], [1, 2, 4], [2, 3, 4], [0, 4, 3]],
     # A 2D triangle is a volumetric element whose faces are its three
@@ -112,10 +118,7 @@ def _integrity_hashes(m: dict) -> tuple[str, str, str]:
     if n_cells > 0:
         topology = _fnv1a_update(topology, m["cell_offsets"])
 
-    coords = [
-        np.ascontiguousarray(points[:, i], dtype=np.float64)
-        for i in range(3)
-    ]
+    coords = [np.ascontiguousarray(points[:, i], dtype=np.float64) for i in range(3)]
 
     geometry = _FNV_OFFSET_BASIS
     for c in coords:
@@ -179,9 +182,7 @@ def _boundary_patch_metadata(m: dict) -> tuple[str | None, np.ndarray, np.ndarra
 
     offsets = np.append(np.zeros(1, dtype=np.uint64), np.uint64(boundary_faces.size))
     start = int(boundary_faces[0])
-    metadata = (
-        f"boundary:{start}:{int(boundary_faces.size)}:{_PATCH_TYPE_WALL}"
-    )
+    metadata = f"boundary:{start}:{int(boundary_faces.size)}:{_PATCH_TYPE_WALL}"
     return metadata, boundary_faces, offsets
 
 
@@ -282,9 +283,7 @@ def _meshio_to_cfdx(mesh: dict) -> dict | None:
                     pa = points[a]
                     pb = points[b]
                     synthetic_points.append(
-                        [0.5 * (pa[0] + pb[0]),
-                         0.5 * (pa[1] + pb[1]),
-                         1e-6 * (k + 1)]
+                        [0.5 * (pa[0] + pb[0]), 0.5 * (pa[1] + pb[1]), 1e-6 * (k + 1)]
                     )
                     mid = n_points + len(synthetic_points) - 1
                     synthetic_index[key] = mid
@@ -371,7 +370,6 @@ def _meshio_to_cfdx(mesh: dict) -> dict | None:
     return csr
 
 
-
 def _numerical_selection_report(setup) -> str:
     """Render the canonical N1 selection deterministically for audit artifacts."""
     lines = ["case=" + (setup.source.case_name or "")]
@@ -381,6 +379,7 @@ def _numerical_selection_report(setup) -> str:
     if not selection.entries:
         lines.append("error: no explicit numerical selections")
     return "\n".join(lines) + "\n"
+
 
 def write_case_cfdx_h5(result: ConversionResult, output_path) -> None:
     """Write a full ConversionResult to a ``case.cfdx.h5`` file.
@@ -401,7 +400,9 @@ def write_case_cfdx_h5(result: ConversionResult, output_path) -> None:
       only when the mesh has unmatched (boundary) faces.
     * ``/fields/scalar/<name>`` and ``/fields/vector/<name>`` datasets.
     """
+
     import pathlib
+
     output_path = pathlib.Path(output_path)
 
     with h5py.File(output_path, "w") as f:
@@ -420,7 +421,9 @@ def write_case_cfdx_h5(result: ConversionResult, output_path) -> None:
         if result.setup is not None:
             setup_json = result.setup.model_dump(mode="json")
             f.attrs["case_setup_json"] = json.dumps(setup_json, default=str)
-            f.attrs["numerical_selection_report"] = _numerical_selection_report(result.setup)
+            f.attrs["numerical_selection_report"] = _numerical_selection_report(
+                result.setup
+            )
 
         gap_json = _gap_report_to_json(result.gap_report)
         f.attrs["gap_report_json"] = gap_json
@@ -474,35 +477,44 @@ def _write_mesh_topology(f: h5py.File, m: dict) -> None:
 
 def _gap_report_to_json(gap) -> str:
     if gap is None:
-        return json.dumps({
-            "has_blocking": False,
-            "summary": {
-                "supported": 0, "approximated": 0,
-                "unsupported_nonblocking": 0, "unsupported_blocking": 0,
-                "unavailable": 0, "total": 0,
-            },
-            "findings": [],
-        })
+        return json.dumps(
+            {
+                "has_blocking": False,
+                "summary": {
+                    "supported": 0,
+                    "approximated": 0,
+                    "unsupported_nonblocking": 0,
+                    "unsupported_blocking": 0,
+                    "unavailable": 0,
+                    "total": 0,
+                },
+                "findings": [],
+            }
+        )
 
     findings = []
     for f in gap.findings:
-        findings.append({
-            "severity": f.severity.value,
-            "category": f.category,
-            "feature": f.feature,
-            "detail": f.detail,
-            "suggestion": f.suggestion,
-        })
+        findings.append(
+            {
+                "severity": f.severity.value,
+                "category": f.category,
+                "feature": f.feature,
+                "detail": f.detail,
+                "suggestion": f.suggestion,
+            }
+        )
 
-    return json.dumps({
-        "has_blocking": gap.has_blocking(),
-        "summary": {
-            "supported": gap.n_supported(),
-            "approximated": gap.n_approximated(),
-            "unsupported_nonblocking": gap.n_unsupported_nonblocking(),
-            "unsupported_blocking": gap.n_unsupported_blocking(),
-            "unavailable": gap.n_unavailable(),
-            "total": len(gap.findings),
-        },
-        "findings": findings,
-    })
+    return json.dumps(
+        {
+            "has_blocking": gap.has_blocking(),
+            "summary": {
+                "supported": gap.n_supported(),
+                "approximated": gap.n_approximated(),
+                "unsupported_nonblocking": gap.n_unsupported_nonblocking(),
+                "unsupported_blocking": gap.n_unsupported_blocking(),
+                "unavailable": gap.n_unavailable(),
+                "total": len(gap.findings),
+            },
+            "findings": findings,
+        }
+    )
