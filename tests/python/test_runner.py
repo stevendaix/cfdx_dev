@@ -17,6 +17,7 @@ def test_runner_streams_stdout_and_stderr() -> None:
     ]
     output: list[tuple[str, bool]] = []
     completed = []
+    # `running` tracks the child process, not completion of the monitor callback.
     completion_event = threading.Event()
 
     def on_complete(result) -> None:
