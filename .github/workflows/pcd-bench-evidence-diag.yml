@@ -1,0 +1,196 @@
+name: PCD action benchmark evidence (master pin, diag)
+
+# Repeatable numeric evidence for the PCD Schur-action decision (#966, #981).
+# Runs the merged test_pcd_schur_action_benchmark on a PINNED master commit,
+# three independent executions, and commits the PCD_ACTION_* lines as
+# evidence to diag-evidence/logs/ so the per-variant numbers are readable
+# WITHOUT authenticated artifact access. Diagnostic only: it measures, it
+# never judges the physical case, and it never modifies a production gate,
+# tolerance, budget or oracle. This diagnostics branch is never merged.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - diag-tools/pcd_bench_evidence_marker.txt
+      - .github/workflows/pcd-bench-evidence-diag.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BUILD_DIR: build-pcd-bench-diag
+  PIN: 4056e249eb7db829704c6eba98a58f8f1f618983
+
+concurrency:
+  group: pcd-bench-evidence-diag
+  cancel-in-progress: false
+
+jobs:
+  benchmark-evidence:
+    name: PCD action benchmark evidence capture
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout diagnostics branch
+        uses: actions/checkout@v4
+
+      - name: Fail-closed pin verification (pinned master commit)
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin master
+          git cat-file -e "${PIN}^{commit}"
+          git merge-base --is-ancestor "${PIN}" FETCH_HEAD
+          echo "pin_ok ${PIN} is reachable from origin/master HEAD $(git rev-parse FETCH_HEAD)"
+
+      - name: Checkout pinned master source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PIN }}
+          path: cfdx-pin
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev
+
+      - name: Configure (production validation configuration)
+        run: |
+          cmake -S cfdx-pin -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
+
+      - name: Build the benchmark target
+        run: |
+          cmake --build "$BUILD_DIR" --target test_pcd_schur_action_benchmark --parallel 2
+
+      - name: Run the benchmark three times and capture evidence
+        run: |
+          set -uo pipefail
+          mkdir -p diag-evidence/logs
+          RUN_ID="${GITHUB_RUN_ID}"
+          ok_reps=0
+          for i in 1 2 3; do
+            echo "=== rep ${i} ==="
+            set +e
+            ctest --test-dir "$BUILD_DIR" \
+              -R '^test_pcd_schur_action_benchmark$' \
+              --output-on-failure -V --timeout 1200 \
+              > "diag-evidence/logs/pcdbench_full_run${RUN_ID}_rep${i}.txt" 2>&1
+            rc=$?
+            set -e
+            echo "ctest_rc_rep${i}=${rc}" >> "diag-evidence/logs/pcdbench_meta_run${RUN_ID}.txt"
+            grep -E 'PCD_ACTION_(SUMMARY|VALIDITY)' \
+              "diag-evidence/logs/pcdbench_full_run${RUN_ID}_rep${i}.txt" \
+              > "diag-evidence/logs/pcdbench_summary_run${RUN_ID}_rep${i}.txt" || true
+            if [ "$rc" -eq 0 ]; then ok_reps=$((ok_reps+1)); fi
+          done
+          {
+            echo "run_id=${RUN_ID}"
+            echo "pin=${PIN}"
+            echo "reps=3"
+            echo "ok_reps=${ok_reps}"
+            echo "diag_head=$(git rev-parse HEAD)"
+          } >> "diag-evidence/logs/pcdbench_meta_run${RUN_ID}.txt"
+          echo "ok_reps=${ok_reps}" >> "$GITHUB_ENV"
+
+      - name: Cross-rep analysis (fail-closed)
+        run: |
+          set -uo pipefail
+          set +e
+          python3 - <<'PY' > "diag-evidence/logs/pcdbench_analysis_run${GITHUB_RUN_ID}.txt" 2>&1
+          import glob, os, re, sys
+
+          run_id = os.environ.get("GITHUB_RUN_ID", "0")
+          files = sorted(glob.glob("diag-evidence/logs/pcdbench_summary_run" + run_id + "_rep*.txt"))
+          if len(files) != 3:
+              print("INCONCLUSIVE_MISSING_SUMMARY expected 3 reps, got", len(files))
+              sys.exit(1)
+
+          kv_re = re.compile(r"([A-Za-z0-9_]+)=([^\s]+)")
+          reps = []
+          for f in files:
+              actions = {}
+              validity_ok = False
+              for line in open(f):
+                  line = line.strip()
+                  if line.startswith("PCD_ACTION_SUMMARY"):
+                      fields = dict(kv_re.findall(line))
+                      actions[fields.get("action", "?")] = fields
+                  elif line.startswith("PCD_ACTION_VALIDITY OK"):
+                      validity_ok = True
+              if not validity_ok:
+                  print("INCONCLUSIVE_VALIDITY", f, "lacks PCD_ACTION_VALIDITY OK")
+                  sys.exit(1)
+              reps.append(actions)
+
+          names = set(reps[0].keys())
+          for i, r in enumerate(reps, 1):
+              if set(r.keys()) != names:
+                  print("INCONCLUSIVE_ACTION_SET rep", i, "actions differ")
+                  sys.exit(1)
+          if "fp_ilu0" not in names:
+              print("INCONCLUSIVE_BASELINE fp_ilu0 missing from", sorted(names))
+              sys.exit(1)
+
+          print("PCD bench evidence analysis run " + run_id)
+          print("actions: " + ", ".join(sorted(names)))
+          all_identical = True
+          for a in sorted(names):
+              iters = [int(r[a].get("coupled_iterations", "-1")) for r in reps]
+              nested = [int(r[a].get("nested_iterations", "-1")) for r in reps]
+              apps = [int(r[a].get("schur_applications", "-1")) for r in reps]
+              wall = [float(r[a].get("total_solve_wall_ms", "nan")) for r in reps]
+              spd = [float(r[a].get("speedup_vs_baseline", "nan")) for r in reps]
+              identical = (len(set(iters)) == 1 and len(set(nested)) == 1 and len(set(apps)) == 1)
+              if not identical:
+                  all_identical = False
+              print("action={} coupled_iterations={} nested_iterations={} schur_applications={} total_solve_wall_ms=[{}] speedup_vs_baseline=[{}] discrete_identical={}".format(
+                  a, iters, nested, apps,
+                  ", ".join("{:.0f}".format(x) for x in wall),
+                  ", ".join("{:.3f}".format(x) for x in spd),
+                  identical))
+          print("all_discrete_counters_identical_across_reps={}".format(all_identical))
+          print("ANALYSIS_OK")
+          PY
+          arc=$?
+          set -e
+          echo "analysis_rc=${arc}" >> "diag-evidence/logs/pcdbench_meta_run${GITHUB_RUN_ID}.txt"
+          if [ "${arc}" -eq 0 ]; then
+            echo "analysis_ok=1" >> "$GITHUB_ENV"
+          else
+            echo "analysis_ok=0" >> "$GITHUB_ENV"
+          fi
+          exit 0
+
+      - name: Commit evidence (bot, ci-skip)
+        if: always()
+        run: |
+          set -euo pipefail
+          ls diag-evidence/logs/pcdbench_*_run"${GITHUB_RUN_ID}"*.txt >/dev/null 2>&1 || { echo "no evidence files"; exit 0; }
+          git config user.name "cfdx-diag-bot"
+          git config user.email "actions@github.com"
+          git add diag-evidence/logs/pcdbench_*_run"${GITHUB_RUN_ID}"*.txt
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "diag: pcd action benchmark evidence run ${GITHUB_RUN_ID} (master pin ${PIN}) [ci skip]"
+            git push
+          fi
+
+      - name: Verdict
+        run: |
+          if [ "${ok_reps:-0}" -eq 3 ] && [ "${analysis_ok:-0}" = "1" ]; then
+            echo "VERDICT: EVIDENCE_COMPLETE (diagnostic verdict - NOT a numerical PASS of the physical case)"
+            exit 0
+          fi
+          echo "VERDICT: INCONCLUSIVE_BENCHMARK (ok_reps=${ok_reps:-unset}, analysis_ok=${analysis_ok:-unset})"
+          exit 1

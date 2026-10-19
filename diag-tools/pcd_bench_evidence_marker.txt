@@ -1,0 +1,15 @@
+PCD bench evidence diag - marker version 1
+
+Workflow: .github/workflows/pcd-bench-evidence-diag.yml
+Purpose: repeatable numeric evidence for the PCD Schur-action decision.
+Run test_pcd_schur_action_benchmark 3 times on a pinned master commit and
+commit the PCD_ACTION_* lines to diag-evidence/logs/ so the per-variant
+numbers (coupled_iterations, nested_iterations, total_solve_wall_ms,
+speedup_vs_baseline) are readable WITHOUT authenticated artifact access.
+
+Pin at push time: 4056e249eb7db829704c6eba98a58f8f1f618983
+(verified at runtime as an existing commit reachable from origin/master,
+fail-closed).
+
+Diagnostic only - this branch is never merged; no production file,
+tolerance, gate, budget or oracle is touched.
