@@ -1,0 +1,7 @@
+pin=406c0ff9e855edcf7baf6b985a77a8a9efabb3fb
+subject=feat(turbulence): make SST transport updates transactional (#957)
+commit_date=2026-10-18 18:14:24 +0200
+outcome=FAIL_DIVERGED
+test_rc=134
+test_duration_s=293
+run_id=39326700774
