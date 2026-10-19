@@ -22,13 +22,13 @@
 **Intent:** Establish one authoritative cellwise dynamic-viscosity vector,
 `mu_eff[c] = rho * (nu + nu_t[c])`, and use it in every momentum equation path.
 
-- [ ] Add an optional cellwise kinematic turbulent-viscosity input to solver controls.
+- [x] Add an optional cellwise kinematic turbulent-viscosity input to solver controls.
 - [x] Reject wrong-sized, negative, or non-finite cell values before mutating the solution (unit regression added).
 - [x] Reject ambiguous simultaneous nonzero scalar and cellwise turbulent-viscosity inputs (unit regression added).
 - [x] Use the same effective-viscosity vector for all three momentum predictors.
 - [x] Use that vector when reconstructing the final momentum equations used for nonlinear acceptance.
 - [x] Use the same vector in the independent post-solve momentum flux/balance audit.
-- [ ] Regression: uniform cellwise viscosity is algebraically equivalent to the legacy scalar-viscosity path.
+- [x] Regression: uniform cellwise viscosity is algebraically equivalent to the legacy scalar-viscosity path (existing assembly regression).
 - [x] Regression: invalid cellwise viscosity is rejected.
 - [ ] Exact-head CI/build/test evidence reviewed.
 
