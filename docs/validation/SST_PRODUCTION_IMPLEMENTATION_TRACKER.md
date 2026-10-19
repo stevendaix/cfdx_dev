@@ -78,6 +78,7 @@
 | Date | Change / evidence | Decision |
 |---|---|---|
 | 2026-10-19 | Source audit: production solver used one scalar `mu_eff` in predictor, final residual, and independent conservation reconstruction; cellwise assembly overload already exists. | T0 first. Do not enable RANS yet. |
+| 2026-10-19 | PR #967 opened. Audit gate first run correctly flagged a missing method-fiche link in the PR description; the description now links `docs/audits/09-turbulence-rans.md`. Re-run the gate on the next exact HEAD. | Keep draft until the gate and all required CI pass. |
 
 ## Merge/promotion rules
 
