@@ -672,8 +672,9 @@ int main(int argc, char** argv)
 
         // Build the cache only after all solver timings for this N so this
         // diagnostic measurement cannot warm the BVH or perturb method times.
+        const WallDistanceBvh cache_bvh(surface);
         const auto cache_t0 = std::chrono::steady_clock::now();
-        const WallDistanceCutFaceOffsetCache cut_offset_cache(bvh, grid);
+        const WallDistanceCutFaceOffsetCache cut_offset_cache(cache_bvh, grid);
         const auto cache_t1 = std::chrono::steady_clock::now();
         const double cut_offset_cache_build_ms =
             std::chrono::duration<double, std::milli>(cache_t1 - cache_t0).count();
