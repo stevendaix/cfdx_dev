@@ -2,7 +2,7 @@
 
 **Status date:** 2026-10-19  
 **Overall status:** IN PROGRESS — RANS production selection remains fail-closed.  
-**Scope:** Track implementation and qualification evidence for end-to-end SST in CFDX. Update this file in each turbulence PR; do not mark a gate complete without exact-HEAD evidence.
+**Scope:** Track implementation and qualification evidence for end-to-end SST in CFDX. Update this file in each turbulence PR; do not mark a gate complete without exact-HEAD evidence. Numerical-core implementation is governed by [the RANS/SST method fiche](../audits/09-turbulence-rans.md).
 
 ## Current baseline
 
