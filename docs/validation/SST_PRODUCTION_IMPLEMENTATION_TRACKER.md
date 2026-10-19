@@ -81,7 +81,9 @@
 | Date | Change / evidence | Decision |
 |---|---|---|
 | 2026-10-19 | Source audit: production solver used one scalar `mu_eff` in predictor, final residual, and independent conservation reconstruction; cellwise assembly overload already exists. | T0 first. Do not enable RANS yet. |
-| 2026-10-19 | PR #967 merged as `03ac6f6c`; cellwise effective-viscosity plumbing is integrated. | T0 complete; no RANS enablement implied. |\n| 2026-10-19 | PRs #970/#971 passed exact-HEAD CI and numerical maturity workflows, then merged as `374c8fb4` and `257070a6`. | Strain-rate and explicit Dirichlet-face-gradient prerequisites integrated; physical and end-to-end SST gates remain open. |\n| 2026-10-19 | Added `sst_case_contract.h` to validate explicit initial k/omega and inlet intensity/length scale, with unit coverage. Wall/outlet scalar BCs and restart semantics remain unrepresented; the production guard remains unchanged. | Component/preflight only. Await exact-head CI before merge. |
+| 2026-10-19 | PR #967 merged as `03ac6f6c`; cellwise effective-viscosity plumbing is integrated. | T0 complete; no RANS enablement implied. |
+| 2026-10-19 | PRs #970/#971 passed exact-HEAD CI and numerical maturity workflows, then merged as `374c8fb4` and `257070a6`. | Strain-rate and explicit Dirichlet-face-gradient prerequisites integrated; physical and end-to-end SST gates remain open. |
+| 2026-10-19 | Added `sst_case_contract.h` to validate explicit initial k/omega and inlet intensity/length scale, with unit coverage. Wall/outlet scalar BCs and restart semantics remain unrepresented; the production guard remains unchanged. | Component/preflight only. Await exact-head CI before merge. |
 
 ## Merge/promotion rules
 
