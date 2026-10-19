@@ -40,6 +40,11 @@ This foundation phase is documentation/configuration only. Code intelligence, MC
 ## Project context
 
 The framework complements the existing CFDX roadmap and numerical maturity work. It does not redefine CFDX qualification levels.
+
 ## Global agent rules
 
 `.ai/AGENTS.md` defines mandatory cross-cutting operating rules for every agent, workflow and MCP. It covers repository-grounded reasoning, scope discipline, engineering/numerical integrity, evidence classification, reproducibility, permissions, security and completion criteria. More restrictive skill- or tool-specific rules may add constraints but must not weaken these rules.
+
+## Detailed implementation roadmap
+
+See [CFDX AI-Agent Roadmap](CFDX_AI_AGENT_ROADMAP.md) for the phased plan, acceptance criteria, delivery order, evidence requirements, and agent evaluation strategy. Tracking and implementation status are maintained in [issue #968](https://github.com/stevendaix/cfdx_dev/issues/968), under the parent epic [#557](https://github.com/stevendaix/cfdx_dev/issues/557).
