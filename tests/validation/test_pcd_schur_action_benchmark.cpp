@@ -73,6 +73,21 @@
 //   rc_diag   -diag(RC)^-1 with no nested solve (SIMPLE-style diagonal
 //              Schur). Reference point; nested Krylov counters stay at
 //              zero but Schur applications are counted and timed.
+//   pcd_full  -Kp^-1*Fp*Mp^-1, the classic literature PCD action (Kay,
+//              Loghin & Wathen; Elman, Silvester & Wathen 2001,
+//              doi:10.1016/S0377-0427(00)00515-4). Composed inside the
+//              convection_diffusion slot: one nested Kp solve
+//              (GMRES(40)+NativeAMG, budget 100, tol 1e-8, mirroring
+//              kp_amg because that is how production would solve Kp)
+//              plus one forward Fp product plus the exact diagonal
+//              Mp^-1 (Mp = diag(cell_volumes) by assembly, verified
+//              fail-closed here instead of assumed). One inner
+//              inverse, the same structural cost as production, NOT
+//              the double-inverse compositions documented as
+//              non-convergent in pcd_schur.h. Measurement variant:
+//              the ordering, signs and gauge behaviour are NOT
+//              asserted - the benchmark measures whether the classic
+//              composition converges the real captured coupled system.
 //
 // Evidence printed (one line per solve, plus per-stage summaries):
 //   PCD_ACTION_BENCHMARK stage=... action=... status=... converged=...
@@ -84,7 +99,7 @@
 //   only after all guards have been evaluated.
 //
 // Cost: bounded and reproducible - five production nonlinear iterations
-// plus ten coupled solves plus two operator-assembly cross-checks, a few
+// plus twelve coupled solves plus two operator-assembly cross-checks, a few
 // minutes in Release. Registered only under CFDX_ENABLE_LONG_VALIDATION.
 
 #include "cfdx/physics/steady_incompressible_solver.h"
@@ -265,6 +280,7 @@ struct VariantSpec {
     bool use_kp_operator;   // solve Kp instead of Fp (documented provisional alternative)
     bool rc_scale_output;  // scale the nested solve output by diag(RC)
     bool diagonal_action;  // no nested solve: action = -diag(RC)^-1
+    bool full_classic_action;  // classic literature composition -Kp^-1*Fp*Mp^-1
 };
 
 struct VariantResult {
@@ -388,17 +404,19 @@ int main()
 
     const FvGeometry geometry = build_fv_geometry(mesh);
 
-    const std::array<VariantSpec, 5> variants = {{
+    const std::array<VariantSpec, 6> variants = {{
         {"fp_ilu0", KrylovModel::FGMRES, PreconditionerModel::ILU0, 512, 200, 1e-8,
-         false, false, false},
+         false, false, false, false},
         {"fp_amg", KrylovModel::FGMRES, PreconditionerModel::NativeAMG, 512, 200, 1e-8,
-         false, false, false},
+         false, false, false, false},
         {"kp_amg", KrylovModel::GMRES, PreconditionerModel::NativeAMG, 40, 100, 1e-8,
-         true, false, false},
+         true, false, false, false},
         {"fp_rc_scaled", KrylovModel::FGMRES, PreconditionerModel::ILU0, 512, 200, 1e-8,
-         false, true, false},
+         false, true, false, false},
         {"rc_diag", KrylovModel::GMRES, PreconditionerModel::ILU0, 40, 100, 1e-8,
-         false, false, true},
+         false, false, true, false},
+        {"pcd_full", KrylovModel::GMRES, PreconditionerModel::NativeAMG, 40, 100, 1e-8,
+         false, false, false, true},
     }};
 
     const std::vector<std::size_t> benchmark_stages = {1, 4};  // assemblies #2 and #5
@@ -518,6 +536,107 @@ int main()
                     ++action_stats.applications;
                     action_stats.action_wall_ms += elapsed_ms(apply_start);
                     return true;
+                };
+            } else if (spec.full_classic_action) {
+                // Classic literature PCD action: S^-1 rhs ~= -Kp^-1 Fp
+                // Mp^-1 rhs (Kay, Loghin & Wathen; Elman, Silvester &
+                // Wathen 2001). apply() in pcd_schur.h provides the
+                // overall negation, so the slot returns +Kp^-1 Fp Mp^-1
+                // rhs - the same overall sign structure as the
+                // production slot (+Fp^-1 rhs for the production action
+                // -Fp^-1). One nested inverse (Kp) plus one forward
+                // product (Fp) plus one diagonal solve (Mp^-1): the same
+                // single-inner-inverse structure as production, NOT the
+                // double-inverse compositions documented as non-convergent
+                // in pcd_schur.h. The ordering, signs and gauge behaviour
+                // are NOT asserted: this is a measurement variant, the
+                // benchmark measures whether the classic composition
+                // converges the real captured coupled system. Mp is
+                // diagonal by construction (assemble_pcd_pressure_operators
+                // builds diag(cell_volumes)); that structure is verified
+                // fail-closed here instead of assumed.
+                std::vector<double> mass_diag(nc);
+                for (std::size_t r = 0; r < nc; ++r) {
+                    bool diag_found = false;
+                    for (std::size_t k = stage.pcd_mass.row_offsets_data()[r];
+                         k < stage.pcd_mass.row_offsets_data()[r + 1]; ++k) {
+                        const std::size_t col = stage.pcd_mass.columns_data()[k];
+                        const double val = stage.pcd_mass.values_data()[k];
+                        if (col != r)
+                            throw std::runtime_error(
+                                "pcd_schur_action_benchmark: the pressure "
+                                "mass operator is not diagonal - the classic "
+                                "PCD composition requires a diagonal Mp "
+                                "(off-diagonal entry at cell " +
+                                std::to_string(r) + ")");
+                        if (!(val > 0.0) || !std::isfinite(val))
+                            throw std::runtime_error(
+                                "pcd_schur_action_benchmark: invalid pressure "
+                                "mass diagonal at cell " + std::to_string(r));
+                        mass_diag[r] = val;
+                        diag_found = true;
+                    }
+                    if (!diag_found)
+                        throw std::runtime_error(
+                            "pcd_schur_action_benchmark: missing pressure "
+                            "mass diagonal at cell " + std::to_string(r));
+                }
+                auto classic_preconditioner =
+                    make_scalar_preconditioner(spec.nested_preconditioner);
+                if (!classic_preconditioner ||
+                    !classic_preconditioner->setup(stage.pcd_laplacian))
+                    throw std::runtime_error(
+                        "pcd_schur_action_benchmark: Kp preconditioner "
+                        "setup failed for action " + std::string(spec.action));
+                const auto nested_preconditioner =
+                    std::shared_ptr<Preconditioner>(std::move(classic_preconditioner));
+                const int nested_restart = std::min<int>(
+                    spec.nested_restart,
+                    static_cast<int>(stage.pcd_laplacian.n_rows()));
+                const KrylovModel krylov = spec.nested_krylov;
+                const std::size_t budget = spec.nested_budget;
+                const double tolerance = spec.nested_tolerance;
+                inverse_solve = [&stage, nested_preconditioner, nested_restart,
+                                 budget, tolerance, krylov,
+                                 mass_diag = std::move(mass_diag),
+                                 &action_stats](const Vector& rhs, Vector& x) {
+                    const auto apply_start = std::chrono::steady_clock::now();
+                    const std::size_t np = rhs.size();
+                    // z = Mp^-1 rhs (exact: Mp is diagonal, verified above)
+                    Vector z(np, 0.0);
+                    for (std::size_t i = 0; i < np; ++i)
+                        z(i) = rhs(i) / mass_diag[i];
+                    // y = Fp z (forward product with the CAPTURED production
+                    // convection-diffusion operator)
+                    Vector y(np, 0.0);
+                    for (std::size_t row = 0; row < np; ++row) {
+                        double ax = 0.0;
+                        const auto rb = stage.pcd_convection_diffusion
+                            .row_offsets_data()[row];
+                        const auto re = stage.pcd_convection_diffusion
+                            .row_offsets_data()[row + 1];
+                        for (std::size_t k = rb; k < re; ++k)
+                            ax += stage.pcd_convection_diffusion.values_data()[k]
+                                * z(stage.pcd_convection_diffusion.columns_data()[k]);
+                        y(row) = ax;
+                    }
+                    // x = Kp^-1 y (nested solve with the CAPTURED production
+                    // laplacian; production nested-usable policy applies)
+                    SolverResult result;
+                    if (krylov == KrylovModel::GMRES)
+                        result = solve_gmres(stage.pcd_laplacian, y, x,
+                                             nested_restart, budget, tolerance,
+                                             nested_preconditioner.get(), {},
+                                             {}, false);
+                    else
+                        result = solve_fgmres(stage.pcd_laplacian, y, x,
+                                              nested_restart, budget, tolerance,
+                                              nested_preconditioner.get(), {},
+                                              {}, false);
+                    ++action_stats.applications;
+                    action_stats.nested_iterations += result.iterations;
+                    action_stats.action_wall_ms += elapsed_ms(apply_start);
+                    return nested_schur_pressure_solve_usable(result, x, np);
                 };
             } else {
                 // The variant's nested operator: Fp (production baseline and

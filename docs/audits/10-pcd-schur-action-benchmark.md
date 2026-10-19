@@ -11,6 +11,8 @@
 Départager, sur les VRAIS systèmes couplés de la production, le **nombre d'applications de l'action de Schur** de leur **coût unitaire** (construction/setup vs application), comme demandé sur #914, sans nouvelle campagne longue.
 
 - Kay, D., Loghin, D., and Wathen, A. J. (2002). « A preconditioner for the steady-state Navier–Stokes equations. » *SIAM Journal on Scientific Computing*, 24(1), 237–256. DOI : 10.1137/S1064827500384937. Référence de fond sur le préconditionnement pressure-convection-diffusion ; elle ne valide ni l'action CFDX particulière ni les résultats mesurés ici.
+- Elman, H., Silvester, D., and Wathen, A. (2001). « Efficient preconditioning of the linearized Navier–Stokes equations. » *Journal of Computational and Applied Mathematics*, 128(1–2), 291–308. DOI : 10.1016/S0377-0427(00)00515-4. Source de l'action PCD classique $S^{-1} \approx K_p^{-1} F_p M_p^{-1}$ (à conventions de signe et d'ordre près) : mesurée ici comme variante `pcd_full`, sans validation a priori — le benchmark mesure si cette composition converge les systèmes capturés.
+- Elman, H. C. and Tuminaro, R. S. (2009). « Boundary conditions in approximate commutator preconditioners for the Navier–Stokes equations. » *Electronic Transactions on Numerical Analysis*, 35, 257–280. Les conditions aux limites des opérateurs auxiliaires ($M_p$, $K_p$, $F_p$) conditionnent l'efficacité du préconditionneur : le benchmark mesure les opérateurs **tels que la production les assemble** (ligne de jauge imposée par l'assembleur) et n'en change ni les CL ni l'assemblage.
 
 ## 2. Formulation continue
 
@@ -18,7 +20,7 @@ Système d'Oseen couplé (linéarisation de Navier–Stokes incompressible stati
 
 $$ \begin{bmatrix} F & B^T \\ B & 0 \end{bmatrix} \begin{bmatrix} u \\ p \end{bmatrix} = \begin{bmatrix} f \\ g \end{bmatrix} $$
 
-Le complément de Schur en pression $S = -B\,F^{-1}B^T$ n'est jamais formé : le préconditionneur applique une approximation de $S^{-1}$. PCD approxime $S \approx -F_p$ où $F_p$ est un opérateur de pression (masse, laplacien et convection-diffusion de pression) construit sur la vitesse de linéarisation ; l'action de production applique $-F_p^{-1}$ (choix **PROVISIONAL** documenté dans `pcd_schur.h`, jamais qualifié sur un flux massique non nul — Ghia est précisément ce cas). Alternatives mesurées : $-\mathrm{diag}(RC)\,F_p^{-1}$ (mise à l'échelle par la diagonale Rhie–Chow), action diagonale $-\mathrm{diag}(RC)^{-1}$ (référence SIMPLE-diag), et substitution de l'opérateur alternatif $K_p$ (variante PROVISIONAL documentée).
+Le complément de Schur en pression $S = -B\,F^{-1}B^T$ n'est jamais formé : le préconditionneur applique une approximation de $S^{-1}$. PCD approxime $S \approx -F_p$ où $F_p$ est un opérateur de pression (masse, laplacien et convection-diffusion de pression) construit sur la vitesse de linéarisation ; l'action de production applique $-F_p^{-1}$ (choix **PROVISIONAL** documenté dans `pcd_schur.h`, jamais qualifié sur un flux massique non nul — Ghia est précisément ce cas). Alternatives mesurées : $-\mathrm{diag}(RC)\,F_p^{-1}$ (mise à l'échelle par la diagonale Rhie–Chow), action diagonale $-\mathrm{diag}(RC)^{-1}$ (référence SIMPLE-diag), et substitution de l'opérateur alternatif $K_p$ (variante PROVISIONAL documentée), et l'action PCD **classique de la littérature** $-K_p^{-1}F_pM_p^{-1}$ (variante `pcd_full` : un solve imbriqué $K_p$ + un produit $F_p$ + l'inverse diagonal exact $M_p^{-1}$, $M_p$ étant diagonal par assemblage — structure vérifiée fail-closed au runtime).
 
 ## 3. Discrétisation Volume Fini
 
@@ -36,6 +38,7 @@ Cavité de Ghia : lid Dirichlet $U=(1,0)$, parois sans glissement, pas de pressi
 - Le point de capture doit être l'appel Krylov exact (après traitement de jauge et setup du préconditionneur) : capturer en amont ne garantit la fidélité que par lecture de code, pas par construction.
 - Une reconstruction indépendante des opérateurs PCD ne suffit pas : le rejeu utilise les opérateurs de production capturés ; la reconstruction n'est qu'une garde (cross-check ≤ 1e-12), jamais une source.
 - Les conventions de jauge doivent être identiques dans la matrice, le second membre, l'état initial, le préconditionneur et l'action de Schur.
+- L'action classique $-K_p^{-1}F_pM_p^{-1}$ (`pcd_full`) est composée avec les conventions de signe des opérateurs stockés de CFDX (apply() fournit la négation globale, comme pour $-F_p^{-1}$) ; son ordre, ses signes et son comportement de jauge ne sont pas affirmés a priori — une non-convergence de `pcd_full` est une mesure à interpréter (convention ou composition), pas un échec des gardes de validité.
 - Aucun résultat de ce benchmark n'autorise une modification de l'action PCD de production : un suivi explicite, une qualification couplée complète et l'absence de régression d'oracle physique sont requis.
 - Le workflow branche-only est une collecte d'évidence, pas destiné au merge en l'état ; l'enregistrement CTest et le hook read-only d'assemblage exigent une revue séparée avant toute intégration.
 
@@ -52,6 +55,6 @@ Cavité de Ghia : lid Dirichlet $U=(1,0)$, parois sans glissement, pas de pressi
 - Sources : `src/cfdx/physics/steady_incompressible_solver.h` (hook `CoupledAssemblySnapshot` + `controls.coupled_assembly_callback`, additif, nul par défaut) ; `src/cfdx/core/linalg/pcd_schur.h` **NON MODIFIÉ**.
 - Test : `tests/validation/test_pcd_schur_action_benchmark.cpp`, enregistré uniquement sous `CFDX_ENABLE_LONG_VALIDATION`, TIMEOUT ctest 1200 s.
 - Workflow : `.github/workflows/pcd-action-benchmark-validation.yml` (branche-only, pas destiné au merge en l'état).
-- Variantes mesurées : `fp_ilu0` (baseline production), `fp_amg` (axe #965), `kp_amg` (PROVISIONAL), `fp_rc_scaled`, `rc_diag` (référence SIMPLE-diag).
+- Variantes mesurées : `fp_ilu0` (baseline production), `fp_amg` (axe #965), `kp_amg` (PROVISIONAL), `fp_rc_scaled`, `rc_diag` (référence SIMPLE-diag), `pcd_full` (action classique $-K_p^{-1}F_pM_p^{-1}$, Elman–Silvester–Wathen 2001).
 - Traçabilité : PR #966, #965, #914, #390 ; consolidation #929.
-- Journal : 2026-10-19 — création (f2207d12/7c2465dd), restructurée au format des fiches méthode lors de la réponse à l'audit de la PR #966.
+- Journal : 2026-10-19 — création (f2207d12/7c2465dd), restructurée au format des fiches méthode lors de la réponse à l'audit de la PR #966 ; ajout de la variante `pcd_full` (action PCD classique de la littérature) et des références Elman–Silvester–Wathen 2001 / Elman–Tuminaro 2009 en réponse à la revue bibliographique PCD.
