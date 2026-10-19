@@ -80,7 +80,7 @@
 |---|---|---|
 | 2026-10-19 | Source audit: production solver used one scalar `mu_eff` in predictor, final residual, and independent conservation reconstruction; cellwise assembly overload already exists. | T0 first. Do not enable RANS yet. |
 | 2026-10-19 | PR #967 opened. Audit gate correctly flagged a missing method-fiche link on its first run; the PR description was fixed. The exact-HEAD audit gate, numerical maturity, CI, GUI, N10, documentation and pre-commit workflows passed before merge. Total validation and N9 physical/qualification campaigns were skipped by workflow configuration. | T0 plumbing merged; do not infer SST production readiness from these checks. |
-| 2026-10-19 | Original PRs #958/#964 failed on stale-base regressions (GUI `WorkflowStatus.CONDITIONAL` handling and case-HDF5 round-trip tests). Their changes have been recreated on current `master` as #970/#971; exact-HEAD workflows are pending. | Do not merge until current-base CI is green; keep SST fail-closed. |
+| 2026-10-19 | Original PRs #958/#964 failed on stale-base regressions (GUI `WorkflowStatus.CONDITIONAL` handling and case-HDF5 round-trip tests). Rebased replacements #970/#971 passed exact-HEAD numerical maturity audit, audit gate, pre-commit, N10, GUI CI, full CFDX CI and numerical maturity workflows, then merged as `374c8fb4` and `257070a6`. | Utilities integrated; this is not SST end-to-end or physical qualification. Keep SST fail-closed. |
 
 ## Merge/promotion rules
 
