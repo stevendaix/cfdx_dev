@@ -1453,9 +1453,10 @@ inline double poisson_diagonal(const WallDistanceBvh& bvh,
 
 
 inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
-                                              std::size_t max_iter,double,
-                                              std::size_t* used_iter=nullptr,
-                                              double* residual_out=nullptr) {
+                                               std::size_t max_iter,double,
+                                               std::size_t* used_iter=nullptr,
+                                               double* residual_out=nullptr,
+                                               const WallDistanceCutFaceOffsetCache* offsets=nullptr) {
     // Solve the actual elliptic boundary-value problem
     //
     //     -laplacian(phi) = 1,    phi = 0 on the wall,
