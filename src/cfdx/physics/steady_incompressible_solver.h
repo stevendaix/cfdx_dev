@@ -2347,13 +2347,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         p.dimension() != 1 || p.size() != mesh.n_cells())
         throw std::invalid_argument("solve_steady_incompressible: invalid fields");
 
-    // Initialization is applied here, before any residual or flux is formed, and
-    // is validated first so an invalid strategy cannot mutate the caller's state.
+    // Validate all controls and derived material properties before initialization
+    // can mutate the caller-provided solution fields.
     validate_incompressible_controls(controls, mesh.n_cells());
-    apply_initialization(
-        controls.initialization, mesh, U, p, restart_fields, restart_path);
-
-    const FvGeometry geometry = build_fv_geometry(mesh);
     // Authoritative dynamic viscosity used by predictor assembly, nonlinear
     // acceptance residuals, and the independent momentum conservation audit.
     std::vector<double> mu_eff(mesh.n_cells());
@@ -2366,6 +2362,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             throw std::invalid_argument(
                 "effective cellwise dynamic viscosity must be finite and non-negative");
     }
+    apply_initialization(
+        controls.initialization, mesh, U, p, restart_fields, restart_path);
+
+    const FvGeometry geometry = build_fv_geometry(mesh);
     cfdx::core::ConvergenceMonitorControls monitor_controls;
     monitor_controls.residual.absolute_tolerance = controls.convergence.absolute_tolerance;
     monitor_controls.residual.relative_tolerance = controls.convergence.relative_tolerance;
