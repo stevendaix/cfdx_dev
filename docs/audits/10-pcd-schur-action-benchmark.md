@@ -24,3 +24,7 @@ Measure the cost and linear-solver behavior of alternative PCD Schur-complement 
 - PR #966: PCD Schur-action A/B benchmark on real Ghia coupled systems.
 - Issue #914: audit of Fp versus Kp Schur actions.
 - Issue #390: convergence robustness.
+
+## Reference
+
+- Kay, D., Loghin, D., and Wathen, A. J. (2002). “A preconditioner for the steady-state Navier–Stokes equations.” *SIAM Journal on Scientific Computing*, 24(1), 237–256. DOI: [10.1137/S1064827500384937](https://doi.org/10.1137/S1064827500384937). This provides background on pressure-convection-diffusion preconditioning; it does not validate the particular CFDX action or this benchmark's measured outcomes.
