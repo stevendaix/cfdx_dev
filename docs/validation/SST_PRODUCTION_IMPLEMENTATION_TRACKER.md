@@ -30,7 +30,7 @@
 - [x] Use the same vector in the independent post-solve momentum flux/balance audit.
 - [x] Regression: uniform cellwise viscosity is algebraically equivalent to the legacy scalar-viscosity path (existing assembly regression).
 - [x] Regression: invalid cellwise viscosity is rejected.
-- [ ] Exact-head CI/build/test evidence reviewed.
+- [x] Exact-head CI/build/test evidence reviewed for the merged #967 candidate; note that total validation and N9 physical/qualification campaigns were skipped by workflow configuration.
 
 **Implementation:** [#967 — cellwise effective viscosity](https://github.com/stevendaix/cfdx_dev/pull/967) merged to `master` as `03ac6f6c0159175e7b576997b91285a5bd021b2c`. Exact-HEAD CI passed for the merge candidate; total validation and N9 campaigns were skipped by workflow configuration.  
 **Known risk:** this plumbing alone does not enable SST and must not bypass the production RANS guard.
