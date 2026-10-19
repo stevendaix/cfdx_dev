@@ -1,5 +1,6 @@
 #include "cfdx/physics/wall_distance.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstddef>
