@@ -2,15 +2,17 @@
 
 **Status date:** 2026-10-19  
 **Overall status:** IN PROGRESS — RANS production selection remains fail-closed.  
-**Scope:** Track implementation and qualification evidence for end-to-end SST in CFDX. Update this file in each turbulence PR; do not mark a gate complete without exact-HEAD evidence.
+**Scope:** Track implementation and qualification evidence for end-to-end SST in CFDX. Update this file in each turbulence PR; do not mark a gate complete without exact-HEAD evidence. Numerical-core implementation is governed by [the RANS/SST method fiche](../audits/09-turbulence-rans.md).
 
 ## Current baseline
 
 - [x] Production driver rejects unsupported non-laminar turbulence selections instead of silently solving laminar equations (merged PR #941).
 - [x] SST transport component APIs and dynamic blending exist; they are not yet coupled to the production outer loop.
 - [x] Cellwise momentum-viscosity assembly overload exists and has uniform-coefficient equivalence coverage.
-- [x] Production solver consumes a cellwise turbulent-viscosity field consistently in predictor, final nonlinear residual, and independent momentum conservation reconstruction (implementation in this PR; CI still pending).
+- [x] Production solver consumes a cellwise turbulent-viscosity field consistently in predictor, final nonlinear residual, and independent momentum conservation reconstruction (PR #967 merged; end-to-end SST remains disabled).
 - [ ] SST state `k`, `omega`, wall distance and turbulence residuals are owned by the production solve and participate in rollback/convergence.
+- [x] Add a non-production SST case preflight for explicit positive initial `k`/`omega` and validated inlet turbulence intensity/length scale; derive the standard inlet estimates without enabling the production selector.
+- [ ] Extend the persistent case contract to represent explicit wall/outlet scalar boundary conditions and define restart semantics.
 - [ ] Production-path transport MMS on three or more meshes.
 - [ ] Frozen DNS channel qualification (Moser–Kim–Mansour), with mesh/y+ sensitivity and independent balance checks.
 - [ ] Flat-plate and NACA0012 turbulent validation after channel qualification.
@@ -30,13 +32,14 @@
 - [x] Use the same vector in the independent post-solve momentum flux/balance audit.
 - [x] Regression: uniform cellwise viscosity is algebraically equivalent to the legacy scalar-viscosity path (existing assembly regression).
 - [x] Regression: invalid cellwise viscosity is rejected.
-- [ ] Exact-head CI/build/test evidence reviewed.
+- [x] Exact-head CI/build/test evidence reviewed for PR #967 before merge.
 
-**Current implementation PR:** [#967 — cellwise effective viscosity](https://github.com/stevendaix/cfdx_dev/pull/967) (draft; exact-HEAD CI pending).  
+**Merged prerequisite:** [#967 — cellwise effective viscosity](https://github.com/stevendaix/cfdx_dev/pull/967) (merged).  
 **Known risk:** this plumbing alone does not enable SST and must not bypass the production RANS guard.
 
 ### T1 — SST fields and boundary contract
 
+- [x] Add preflight validation for explicit initial `k`/`omega` and inlet intensity/length-scale inputs, plus a standard inlet estimate helper (unit tests added; not wired into production selection).
 - [ ] Define persistent production state for `k`, `omega`, and derived `nu_t`.
 - [ ] Define initialization and restart contracts; reject missing/inconsistent fields.
 - [ ] Define physically consistent wall/inlet/outlet boundary values for both transports.
@@ -69,8 +72,9 @@
 ## Related work
 
 - PR #941 — production guard and audit baseline (merged).
-- PR #958 — SST strain-rate utility (open; not production coupling).
-- PR #964 — explicit boundary-value Gauss gradient API (open; prerequisite, Dirichlet face-value contract only).
+- PR #970 — SST strain-rate utility, merged as `374c8fb4` (not production coupling).
+- PR #971 — explicit boundary-value Gauss gradient API, merged as `257070a6` (Dirichlet face-value contract only; not full wall treatment).
+- PR #972 — closed as superseded by #973; its tracker correction is included in this branch.
 - Issue #943 — end-to-end SST coupling plan (created by the prior work; verify issue state/number if the tracker is moved).
 
 ## Evidence log
@@ -78,7 +82,9 @@
 | Date | Change / evidence | Decision |
 |---|---|---|
 | 2026-10-19 | Source audit: production solver used one scalar `mu_eff` in predictor, final residual, and independent conservation reconstruction; cellwise assembly overload already exists. | T0 first. Do not enable RANS yet. |
-| 2026-10-19 | PR #967 opened. Audit gate first run correctly flagged a missing method-fiche link in the PR description; the description now links `docs/audits/09-turbulence-rans.md`. Re-run the gate on the next exact HEAD. | Keep draft until the gate and all required CI pass. |
+| 2026-10-19 | PR #967 merged as `03ac6f6c`; cellwise effective-viscosity plumbing is integrated. | T0 complete; no RANS enablement implied. |
+| 2026-10-19 | PRs #970/#971 passed exact-HEAD CI and numerical maturity workflows, then merged as `374c8fb4` and `257070a6`. | Strain-rate and explicit Dirichlet-face-gradient prerequisites integrated; physical and end-to-end SST gates remain open. |
+| 2026-10-19 | Added `sst_case_contract.h` to validate explicit initial k/omega and inlet intensity/length scale, with unit coverage. Wall/outlet scalar BCs and restart semantics remain unrepresented; the production guard remains unchanged. | Component/preflight only. Await exact-head CI before merge. |
 
 ## Merge/promotion rules
 
