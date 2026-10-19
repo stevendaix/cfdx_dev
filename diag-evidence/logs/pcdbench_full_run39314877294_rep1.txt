@@ -1,0 +1,64 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build-pcd-bench-diag
+UpdateCTestConfiguration  from :/home/runner/work/cfdx_dev/cfdx_dev/build-pcd-bench-diag/DartConfiguration.tcl
+UpdateCTestConfiguration  from :/home/runner/work/cfdx_dev/cfdx_dev/build-pcd-bench-diag/DartConfiguration.tcl
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build-pcd-bench-diag
+Constructing a list of tests
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 102
+    Start 102: test_pcd_schur_action_benchmark
+
+102: Test command: /home/runner/work/cfdx_dev/cfdx_dev/build-pcd-bench-diag/test_pcd_schur_action_benchmark
+102: Working Directory: /home/runner/work/cfdx_dev/cfdx_dev/build-pcd-bench-diag
+102: Test timeout computed to be: 1200
+102: PCD_ACTION_CAPTURE start grid=32x32 Re=100 nonlinear_iterations=5
+102: PCD_ACTION_GAUGE stage=2 gauge_row=3600 identity_row=1 rhs=reference x0=reference - gauge coherence OK
+102: PCD_ACTION_OPERATORS stage=2 mass_diff=0.000000e+00 kp_diff=0.000000e+00 fp_diff=0.000000e+00 rebuild_ms=1.418981e+00 (gate 1e-12) - OK
+102: PCD_ACTION_BENCHMARK stage=2 n=4096 nnz=76991 action=fp_ilu0 status=0 converged=1 coupled_iterations=631 true_rel_residual=9.337596e-11 solve_wall_ms=2.527690e+04 schur_applications=631 nested_iterations=36183 action_wall_ms=1.612978e+04 non_nested_wall_ms=9.147119e+03 nested_setup_ms=6.618400e-02 schur_setup_ms=3.575159e+00
+102: PCD_ACTION_BASELINE stage=2 converged=1 true_rel_residual=9.337596e-11 (gate 1e-10) - capture fidelity OK
+102: PCD_ACTION_BENCHMARK stage=2 n=4096 nnz=76991 action=fp_amg status=0 converged=1 coupled_iterations=634 true_rel_residual=9.559828e-11 solve_wall_ms=1.377149e+04 schur_applications=634 nested_iterations=3940 action_wall_ms=4.560282e+03 non_nested_wall_ms=9.211210e+03 nested_setup_ms=5.667231e+00 schur_setup_ms=3.548225e+00
+102: PCD_ACTION_BENCHMARK stage=2 n=4096 nnz=76991 action=kp_amg status=0 converged=1 coupled_iterations=614 true_rel_residual=8.695598e-11 solve_wall_ms=9.645547e+03 schur_applications=614 nested_iterations=3674 action_wall_ms=9.901267e+02 non_nested_wall_ms=8.655420e+03 nested_setup_ms=5.009297e+00 schur_setup_ms=3.644016e+00
+102: PCD_ACTION_BENCHMARK stage=2 n=4096 nnz=76991 action=fp_rc_scaled status=0 converged=1 coupled_iterations=1033 true_rel_residual=9.687616e-11 solve_wall_ms=5.052909e+04 schur_applications=1033 nested_iterations=59784 action_wall_ms=2.660778e+04 non_nested_wall_ms=2.392131e+04 nested_setup_ms=5.120600e-02 schur_setup_ms=3.701425e+00
+102: PCD_ACTION_BENCHMARK stage=2 n=4096 nnz=76991 action=rc_diag status=0 converged=1 coupled_iterations=939 true_rel_residual=9.954046e-11 solve_wall_ms=1.978870e+04 schur_applications=939 nested_iterations=0 action_wall_ms=1.312738e+00 non_nested_wall_ms=1.978739e+04 nested_setup_ms=5.089000e-03 schur_setup_ms=4.009141e+00
+102: PCD_ACTION_BENCHMARK stage=2 n=4096 nnz=76991 action=pcd_full status=0 converged=1 coupled_iterations=1008 true_rel_residual=9.705124e-11 solve_wall_ms=2.406482e+04 schur_applications=1008 nested_iterations=5042 action_wall_ms=1.352932e+03 non_nested_wall_ms=2.271189e+04 nested_setup_ms=5.042411e+00 schur_setup_ms=3.578856e+00
+102: PCD_ACTION_BENCHMARK stage=2 n=4096 nnz=76991 action=fp_ilu0_loose status=0 converged=1 coupled_iterations=632 true_rel_residual=9.227583e-11 solve_wall_ms=1.943114e+04 schur_applications=632 nested_iterations=26251 action_wall_ms=1.023626e+04 non_nested_wall_ms=9.194885e+03 nested_setup_ms=5.190700e-02 schur_setup_ms=3.649438e+00
+102: PCD_ACTION_BENCHMARK stage=2 n=4096 nnz=76991 action=fp_amg_loose status=0 converged=1 coupled_iterations=634 true_rel_residual=9.600357e-11 solve_wall_ms=1.311628e+04 schur_applications=634 nested_iterations=1922 action_wall_ms=3.902480e+03 non_nested_wall_ms=9.213803e+03 nested_setup_ms=5.599711e+00 schur_setup_ms=3.618169e+00
+102: PCD_ACTION_GAUGE stage=5 gauge_row=3600 identity_row=1 rhs=reference x0=reference - gauge coherence OK
+102: PCD_ACTION_OPERATORS stage=5 mass_diff=0.000000e+00 kp_diff=0.000000e+00 fp_diff=0.000000e+00 rebuild_ms=1.450951e+00 (gate 1e-12) - OK
+102: PCD_ACTION_BENCHMARK stage=5 n=4096 nnz=76991 action=fp_ilu0 status=0 converged=1 coupled_iterations=686 true_rel_residual=9.640566e-11 solve_wall_ms=2.774907e+04 schur_applications=686 nested_iterations=38831 action_wall_ms=1.703184e+04 non_nested_wall_ms=1.071722e+04 nested_setup_ms=4.465300e-02 schur_setup_ms=3.651331e+00
+102: PCD_ACTION_BASELINE stage=5 converged=1 true_rel_residual=9.640566e-11 (gate 1e-10) - capture fidelity OK
+102: PCD_ACTION_BENCHMARK stage=5 n=4096 nnz=76991 action=fp_amg status=0 converged=1 coupled_iterations=689 true_rel_residual=9.369419e-11 solve_wall_ms=1.558632e+04 schur_applications=689 nested_iterations=4292 action_wall_ms=4.799116e+03 non_nested_wall_ms=1.078721e+04 nested_setup_ms=5.856721e+00 schur_setup_ms=3.550974e+00
+102: PCD_ACTION_BENCHMARK stage=5 n=4096 nnz=76991 action=kp_amg status=0 converged=1 coupled_iterations=643 true_rel_residual=9.619161e-11 solve_wall_ms=1.043446e+04 schur_applications=643 nested_iterations=3850 action_wall_ms=1.011045e+03 non_nested_wall_ms=9.423411e+03 nested_setup_ms=4.977658e+00 schur_setup_ms=3.609983e+00
+102: PCD_ACTION_BENCHMARK stage=5 n=4096 nnz=76991 action=fp_rc_scaled status=0 converged=1 coupled_iterations=1159 true_rel_residual=9.110587e-11 solve_wall_ms=5.890513e+04 schur_applications=1159 nested_iterations=66169 action_wall_ms=2.897589e+04 non_nested_wall_ms=2.992924e+04 nested_setup_ms=4.984300e-02 schur_setup_ms=3.659476e+00
+102: PCD_ACTION_BENCHMARK stage=5 n=4096 nnz=76991 action=rc_diag status=0 converged=1 coupled_iterations=963 true_rel_residual=9.568715e-11 solve_wall_ms=2.073889e+04 schur_applications=963 nested_iterations=0 action_wall_ms=1.129755e+00 non_nested_wall_ms=2.073776e+04 nested_setup_ms=4.910000e-03 schur_setup_ms=3.655619e+00
+102: PCD_ACTION_BENCHMARK stage=5 n=4096 nnz=76991 action=pcd_full status=0 converged=1 coupled_iterations=1042 true_rel_residual=9.934390e-11 solve_wall_ms=2.569678e+04 schur_applications=1042 nested_iterations=5212 action_wall_ms=1.403612e+03 non_nested_wall_ms=2.429317e+04 nested_setup_ms=5.060072e+00 schur_setup_ms=3.551815e+00
+102: PCD_ACTION_BENCHMARK stage=5 n=4096 nnz=76991 action=fp_ilu0_loose status=0 converged=1 coupled_iterations=688 true_rel_residual=9.959538e-11 solve_wall_ms=2.161791e+04 schur_applications=688 nested_iterations=27736 action_wall_ms=1.083529e+04 non_nested_wall_ms=1.078262e+04 nested_setup_ms=5.280900e-02 schur_setup_ms=3.676597e+00
+102: PCD_ACTION_BENCHMARK stage=5 n=4096 nnz=76991 action=fp_amg_loose status=0 converged=1 coupled_iterations=690 true_rel_residual=9.472313e-11 solve_wall_ms=1.524644e+04 schur_applications=690 nested_iterations=2107 action_wall_ms=4.316477e+03 non_nested_wall_ms=1.092997e+04 nested_setup_ms=6.673596e+00 schur_setup_ms=3.802874e+00
+102: PCD_ACTION_SUMMARY action=fp_amg stages_converged=2 of 2 total_solve_wall_ms=2.935782e+04 coupled_iterations=1323 schur_applications=1323 nested_iterations=8232 speedup_vs_baseline=1.806196e+00
+102: PCD_ACTION_SUMMARY action=fp_amg_loose stages_converged=2 of 2 total_solve_wall_ms=2.836273e+04 coupled_iterations=1324 schur_applications=1324 nested_iterations=4029 speedup_vs_baseline=1.869565e+00
+102: PCD_ACTION_SUMMARY action=fp_ilu0 stages_converged=2 of 2 total_solve_wall_ms=5.302597e+04 coupled_iterations=1317 schur_applications=1317 nested_iterations=75014
+102: PCD_ACTION_SUMMARY action=fp_ilu0_loose stages_converged=2 of 2 total_solve_wall_ms=4.104905e+04 coupled_iterations=1320 schur_applications=1320 nested_iterations=53987 speedup_vs_baseline=1.291771e+00
+102: PCD_ACTION_SUMMARY action=fp_rc_scaled stages_converged=2 of 2 total_solve_wall_ms=1.094342e+05 coupled_iterations=2192 schur_applications=2192 nested_iterations=125953 speedup_vs_baseline=4.845465e-01
+102: PCD_ACTION_SUMMARY action=kp_amg stages_converged=2 of 2 total_solve_wall_ms=2.008000e+04 coupled_iterations=1257 schur_applications=1257 nested_iterations=7524 speedup_vs_baseline=2.640735e+00
+102: PCD_ACTION_SUMMARY action=pcd_full stages_converged=2 of 2 total_solve_wall_ms=4.976161e+04 coupled_iterations=2050 schur_applications=2050 nested_iterations=10254 speedup_vs_baseline=1.065600e+00
+102: PCD_ACTION_SUMMARY action=rc_diag stages_converged=2 of 2 total_solve_wall_ms=4.052760e+04 coupled_iterations=1902 schur_applications=1902 nested_iterations=0 speedup_vs_baseline=1.308392e+00
+102: PCD_ACTION_VALIDITY OK: capture is the solved production system; baseline reproduces the production gate
+102: PASS: pcd_schur_action_benchmark
+1/1 Test #102: test_pcd_schur_action_benchmark ...   Passed  491.17 sec
+
+The following tests passed:
+	test_pcd_schur_action_benchmark
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+benchmark     = 491.17 sec*proc (1 test)
+long          = 491.17 sec*proc (1 test)
+n8            = 491.17 sec*proc (1 test)
+schur         = 491.17 sec*proc (1 test)
+validation    = 491.17 sec*proc (1 test)
+
+Total Test time (real) = 491.47 sec
