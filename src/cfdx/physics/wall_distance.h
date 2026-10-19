@@ -1964,13 +1964,11 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
                     if(u>=0) {
                         if(i==0) return 0.0;
                         const auto q=g.index(i-1,j,k);
-                        const double hh=g.spacing.x;
                         const double delta=offsets.delta(id,0);
                         return u*(d[id]-value(q))/delta;
                     }
                     if(i+1==g.nx) return 0.0;
                     const auto q=g.index(i+1,j,k);
-                    const double hh=g.spacing.x;
                     const double delta=offsets.delta(id,1);
                     return u*(value(q)-d[id])/delta;
                 }
@@ -1978,26 +1976,22 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
                     if(u>=0) {
                         if(j==0) return 0.0;
                         const auto q=g.index(i,j-1,k);
-                        const double hh=g.spacing.y;
                         const double delta=offsets.delta(id,2);
                         return u*(d[id]-value(q))/delta;
                     }
                     if(j+1==g.ny) return 0.0;
                     const auto q=g.index(i,j+1,k);
-                    const double hh=g.spacing.y;
                     const double delta=offsets.delta(id,3);
                     return u*(value(q)-d[id])/delta;
                 }
                 if(u>=0) {
                     if(k==0) return 0.0;
                     const auto q=g.index(i,j,k-1);
-                    const double hh=g.spacing.z;
                     const double delta=offsets.delta(id,4);
                     return u*(d[id]-value(q))/delta;
                 }
                 if(k+1==g.nz) return 0.0;
                 const auto q=g.index(i,j,k+1);
-                const double hh=g.spacing.z;
                 const double delta=offsets.delta(id,5);
                 return u*(value(q)-d[id])/delta;
             };
@@ -2032,18 +2026,33 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
                 auto upwind=[&](double u,int axis)->double {
                     auto value=[&](std::size_t q)->double { return g.solid[q] ? 0.0 : d[q]; };
                     if(axis==0) {
-                        if(u>=0.0) { if(i==0) return 0.0; return u*(d[id]-value(g.index(i-1,j,k)))/g.spacing.x; }
+                        if(u>=0.0) {
+                            if(i==0) return 0.0;
+                            const auto q=g.index(i-1,j,k);
+                            return u*(d[id]-value(q))/offsets.delta(id,0);
+                        }
                         if(i+1==g.nx) return 0.0;
-                        return u*(value(g.index(i+1,j,k))-d[id])/g.spacing.x;
+                        const auto q=g.index(i+1,j,k);
+                        return u*(value(q)-d[id])/offsets.delta(id,1);
                     }
                     if(axis==1) {
-                        if(u>=0.0) { if(j==0) return 0.0; return u*(d[id]-value(g.index(i,j-1,k)))/g.spacing.y; }
+                        if(u>=0.0) {
+                            if(j==0) return 0.0;
+                            const auto q=g.index(i,j-1,k);
+                            return u*(d[id]-value(q))/offsets.delta(id,2);
+                        }
                         if(j+1==g.ny) return 0.0;
-                        return u*(value(g.index(i,j+1,k))-d[id])/g.spacing.y;
+                        const auto q=g.index(i,j+1,k);
+                        return u*(value(q)-d[id])/offsets.delta(id,3);
                     }
-                    if(u>=0.0) { if(k==0) return 0.0; return u*(d[id]-value(g.index(i,j,k-1)))/g.spacing.z; }
+                    if(u>=0.0) {
+                        if(k==0) return 0.0;
+                        const auto q=g.index(i,j,k-1);
+                        return u*(d[id]-value(q))/offsets.delta(id,4);
+                    }
                     if(k+1==g.nz) return 0.0;
-                    return u*(value(g.index(i,j,k+1))-d[id])/g.spacing.z;
+                    const auto q=g.index(i,j,k+1);
+                    return u*(value(q)-d[id])/offsets.delta(id,5);
                 };
                 const double adv=upwind(ux,0)+upwind(uy,1)+upwind(uz,2);
                 final_residual=std::max(final_residual,
