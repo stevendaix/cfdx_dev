@@ -4,6 +4,7 @@
 #include "cfdx/physics/turbulence_transport.h"
 
 #include <cmath>
+#include <cctype>
 #include <cstddef>
 #include <map>
 #include <stdexcept>
