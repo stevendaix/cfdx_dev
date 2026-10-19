@@ -32,7 +32,7 @@
 - [x] Use the same vector in the independent post-solve momentum flux/balance audit.
 - [x] Regression: uniform cellwise viscosity is algebraically equivalent to the legacy scalar-viscosity path (existing assembly regression).
 - [x] Regression: invalid cellwise viscosity is rejected.
-- [ ] Exact-head CI/build/test evidence reviewed.
+- [x] Exact-head CI/build/test evidence reviewed for PR #967 before merge.
 
 **Merged prerequisite:** [#967 — cellwise effective viscosity](https://github.com/stevendaix/cfdx_dev/pull/967) (merged).  
 **Known risk:** this plumbing alone does not enable SST and must not bypass the production RANS guard.
@@ -74,7 +74,7 @@
 - PR #941 — production guard and audit baseline (merged).
 - PR #970 — SST strain-rate utility, merged as `374c8fb4` (not production coupling).
 - PR #971 — explicit boundary-value Gauss gradient API, merged as `257070a6` (Dirichlet face-value contract only; not full wall treatment).
-- PR #972 — tracker correction and merge evidence (checks were re-triggered after documentation update; do not claim it merged until exact-head checks pass).
+- PR #972 — closed as superseded by #973; its tracker correction is included in this branch.
 - Issue #943 — end-to-end SST coupling plan (created by the prior work; verify issue state/number if the tracker is moved).
 
 ## Evidence log
