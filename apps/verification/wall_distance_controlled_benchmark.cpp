@@ -379,13 +379,6 @@ int main(int argc, char** argv)
         }
 
         const WallDistanceBvh bvh(surface);
-        const auto cache_t0 = std::chrono::steady_clock::now();
-        const WallDistanceCutFaceOffsetCache cut_offset_cache(bvh, grid);
-        const auto cache_t1 = std::chrono::steady_clock::now();
-        const double cut_offset_cache_build_ms =
-            std::chrono::duration<double, std::milli>(cache_t1 - cache_t0).count();
-        const std::size_t cut_offset_cache_nodes = cut_offset_cache.cut_node_count();
-        const std::size_t cut_offset_cache_bytes = cut_offset_cache.storage_bytes();
         const auto op = audit_poisson_operator(bvh, grid);
         const auto offsets = audit_poisson_wall_offsets(bvh, grid);
         const std::size_t max_id=offsets.max_wall_coefficient_cell;
@@ -675,6 +668,22 @@ int main(int argc, char** argv)
                           << ", poisson_distance_Linf=" << result.poisson_distance_linf_error;
             }
             std::cout << "\n";
+        }
+
+        // Build the cache only after all solver timings for this N so this
+        // diagnostic measurement cannot warm the BVH or perturb method times.
+        const auto cache_t0 = std::chrono::steady_clock::now();
+        const WallDistanceCutFaceOffsetCache cut_offset_cache(bvh, grid);
+        const auto cache_t1 = std::chrono::steady_clock::now();
+        const double cut_offset_cache_build_ms =
+            std::chrono::duration<double, std::milli>(cache_t1 - cache_t0).count();
+        const std::size_t cut_offset_cache_nodes = cut_offset_cache.cut_node_count();
+        const std::size_t cut_offset_cache_bytes = cut_offset_cache.storage_bytes();
+        for(auto& row : rows) {
+            if(row.n != n) continue;
+            row.cut_offset_cache_build_ms = cut_offset_cache_build_ms;
+            row.cut_offset_cache_nodes = cut_offset_cache_nodes;
+            row.cut_offset_cache_bytes = cut_offset_cache_bytes;
         }
     }
 
