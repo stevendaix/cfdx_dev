@@ -32,7 +32,7 @@
 - [x] Regression: invalid cellwise viscosity is rejected.
 - [ ] Exact-head CI/build/test evidence reviewed.
 
-**Current implementation PR:** to be linked after PR creation.  
+**Current implementation PR:** [#967 — cellwise effective viscosity](https://github.com/stevendaix/cfdx_dev/pull/967) (draft; exact-HEAD CI pending).  
 **Known risk:** this plumbing alone does not enable SST and must not bypass the production RANS guard.
 
 ### T1 — SST fields and boundary contract
