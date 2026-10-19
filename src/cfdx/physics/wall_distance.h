@@ -636,6 +636,11 @@ inline double poisson_wall_offset(const WallDistanceBvh& bvh,
 //
 // When only one side is present (grid edge), fall back to the one-sided
 // per-face contribution so the outer-boundary treatment is unchanged.
+inline double poisson_wall_offset(const WallDistanceBvh& bvh,
+                                      const WallDistanceVec3& p,
+                                      const WallDistanceVec3& q,
+                                      double h);
+
 namespace poisson_stencil_detail {
 
 struct AxisNeighbour {
