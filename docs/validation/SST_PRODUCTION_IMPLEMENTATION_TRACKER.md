@@ -32,7 +32,7 @@
 - [x] Regression: invalid cellwise viscosity is rejected.
 - [ ] Exact-head CI/build/test evidence reviewed.
 
-**Current implementation PR:** [#967 — cellwise effective viscosity](https://github.com/stevendaix/cfdx_dev/pull/967) (draft; exact-HEAD CI pending).  
+**Implementation:** [#967 — cellwise effective viscosity](https://github.com/stevendaix/cfdx_dev/pull/967) merged to `master` as `03ac6f6c0159175e7b576997b91285a5bd021b2c`. Exact-HEAD CI passed for the merge candidate; total validation and N9 campaigns were skipped by workflow configuration.  
 **Known risk:** this plumbing alone does not enable SST and must not bypass the production RANS guard.
 
 ### T1 — SST fields and boundary contract
@@ -69,8 +69,9 @@
 ## Related work
 
 - PR #941 — production guard and audit baseline (merged).
-- PR #958 — SST strain-rate utility (open; not production coupling).
-- PR #964 — explicit boundary-value Gauss gradient API (open; prerequisite, Dirichlet face-value contract only).
+- PR #970 — rebased SST strain-rate utility (open; exact-HEAD CI pending; not production coupling).
+- PR #971 — rebased explicit boundary-value Gauss gradient API (open; exact-HEAD CI pending; prerequisite, Dirichlet face-value contract only).
+- PRs #958 and #964 are stale branches with failures against an older base; the rebased replacements #970 and #971 are being validated against current `master`.
 - Issue #943 — end-to-end SST coupling plan (created by the prior work; verify issue state/number if the tracker is moved).
 
 ## Evidence log
@@ -78,7 +79,8 @@
 | Date | Change / evidence | Decision |
 |---|---|---|
 | 2026-10-19 | Source audit: production solver used one scalar `mu_eff` in predictor, final residual, and independent conservation reconstruction; cellwise assembly overload already exists. | T0 first. Do not enable RANS yet. |
-| 2026-10-19 | PR #967 opened. Audit gate first run correctly flagged a missing method-fiche link in the PR description; the description now links `docs/audits/09-turbulence-rans.md`. Re-run the gate on the next exact HEAD. | Keep draft until the gate and all required CI pass. |
+| 2026-10-19 | PR #967 opened. Audit gate correctly flagged a missing method-fiche link on its first run; the PR description was fixed. The exact-HEAD audit gate, numerical maturity, CI, GUI, N10, documentation and pre-commit workflows passed before merge. Total validation and N9 physical/qualification campaigns were skipped by workflow configuration. | T0 plumbing merged; do not infer SST production readiness from these checks. |
+| 2026-10-19 | Original PRs #958/#964 failed on stale-base regressions (GUI `WorkflowStatus.CONDITIONAL` handling and case-HDF5 round-trip tests). Their changes have been recreated on current `master` as #970/#971; exact-HEAD workflows are pending. | Do not merge until current-base CI is green; keep SST fail-closed. |
 
 ## Merge/promotion rules
 
