@@ -15,6 +15,7 @@ from .application import (
     WorkflowStatus,
     workflow_children,
 )
+from .mesh_model import read_mesh_catalog
 from .session import CFDXSession
 
 try:
@@ -331,7 +332,7 @@ if QMainWindow is not object:
             if not path:
                 return
             try:
-                self.mesh_browser.set_catalog(self.application.load_mesh(Path(path)))
+                self.mesh_browser.set_catalog(read_mesh_catalog(Path(path)))
                 if self.view3d is not None:
                     self.view3d.load_cfdx_mesh(path)
                 self.statusBar().showMessage(f"Mesh loaded: {path}")
