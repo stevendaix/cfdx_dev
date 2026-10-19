@@ -4278,9 +4278,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // The flux is rebuilt from the accepted final field, independently
             // of the assembled matrix residual. Internal faces therefore have
             // one owner-oriented flux and are audited separately for balance.
-            const double mu_eff =
-                controls.density * (controls.kinematic_viscosity +
-                                    controls.turbulent_viscosity);
             for (std::size_t d = 0; d < 3; ++d) {
                 cfdx::core::Field<double, cfdx::core::Location::CELL> component(
                     mesh.n_cells(), "U_reconstructed", "m/s", 1);
@@ -4304,8 +4301,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     source(cell) = body_component - final_grad_p.component_data(d)[cell];
                 }
                 const auto flux = reconstruct_scalar_transport_flux(
-                    mesh, geometry, mass_flux, component, mu_eff, scalar_bcs,
-                    controls.use_bounded_convection, controls.convection_scheme);
+                    mesh, geometry, mass_flux, component, 0.0, scalar_bcs,
+                    controls.use_bounded_convection, controls.convection_scheme,
+                    nullptr, &mu_eff);
                 const auto balance = cfdx::core::audit_integrated_balance(
                     mesh, flux, source, geometry.cell_volumes);
                 h.momentum_conservation_residual[d] = balance.residual;
