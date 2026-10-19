@@ -1389,6 +1389,15 @@ inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
          + axis_laplacian(zn,zP,g.spacing.z,f[id]);
 }
 
+
+inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
+                                   const std::vector<double>& f,
+                                   const WallDistanceGrid& g,
+                                   std::size_t id,
+                                   const WallDistanceCutFaceOffsetCache& offsets) {
+    return laplacian_at(bvh,f,g,id,offsets);
+}
+
 inline double poisson_diagonal(const WallDistanceBvh& bvh,
                                const WallDistanceGrid& g,
                                std::size_t id) {
@@ -1417,6 +1426,31 @@ inline double poisson_diagonal(const WallDistanceBvh& bvh,
          + axis_diagonal(side(zm,k>0,g.spacing.z),
                          side(zp,k+1<g.nz,g.spacing.z),g.spacing.z);
 }
+
+
+inline double poisson_diagonal(const WallDistanceBvh& bvh,
+                               const WallDistanceGrid& g,
+                               std::size_t id,
+                               const WallDistanceCutFaceOffsetCache& offsets) {
+    using poisson_stencil_detail::AxisNeighbour;
+    using poisson_stencil_detail::axis_diagonal;
+    const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+    const auto side=[&](std::size_t q,bool exists,double h,std::size_t face) {
+        AxisNeighbour out;
+        if(!exists) return out;
+        out.present=true;
+        out.distance=offsets.delta(id,face);
+        return out;
+    };
+    const auto xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
+    const auto ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
+    const auto zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
+    (void)bvh;
+    return axis_diagonal(side(xm,i>0,g.spacing.x,0),side(xp,i+1<g.nx,g.spacing.x,1),g.spacing.x)
+         + axis_diagonal(side(ym,j>0,g.spacing.y,2),side(yp,j+1<g.ny,g.spacing.y,3),g.spacing.y)
+         + axis_diagonal(side(zm,k>0,g.spacing.z,4),side(zp,k+1<g.nz,g.spacing.z,5),g.spacing.z);
+}
+
 
 inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
                                               std::size_t max_iter,double,
@@ -1450,7 +1484,8 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
     };
 
     auto diagonal=[&](std::size_t id) {
-        const double d=poisson_diagonal(bvh,g,id);
+        const double d=offsets ? poisson_diagonal(bvh,g,id,*offsets)
+                               : poisson_diagonal(bvh,g,id);
         return d>0.0 ? d : 1.0;
     };
 
@@ -1459,7 +1494,8 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
         std::fill(y.begin(),y.end(),0.0);
         for(std::size_t id=0;id<n;++id) {
             if(!is_fluid(g,id)) continue;
-            y[id] = -poisson_laplacian_at(bvh,x,g,id);
+            y[id] = offsets ? -poisson_laplacian_at(bvh,x,g,id,*offsets)
+                            : -poisson_laplacian_at(bvh,x,g,id);
         }
     };
 
@@ -1850,7 +1886,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     std::size_t poisson_iter=0; double poisson_residual=0.0;
     const std::size_t poisson_max_iter=std::max<std::size_t>(200,4*max_iter);
     const auto phi=poisson_potential(bvh,g,poisson_max_iter,1.5,
-                                     &poisson_iter,&poisson_residual);
+                                     &poisson_iter,&poisson_residual,&offsets);
     if(poisson_iter_out) *poisson_iter_out=poisson_iter;
     if(poisson_residual_out) *poisson_residual_out=poisson_residual;
 
