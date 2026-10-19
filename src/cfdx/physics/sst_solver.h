@@ -175,7 +175,8 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         result.k_residual = inner.k_residual;
         result.second_residual = inner.second_residual;
         result.iterations = iter;
-        if (inner.converged && std::max(dk, dw) <= tolerance) {
+        if (inner.converged && result.nonfinite_bound_events == 0 &&
+            std::max(dk, dw) <= tolerance) {
             result.converged = true;
             break;
         }
