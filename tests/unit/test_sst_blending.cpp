@@ -182,6 +182,13 @@ int main()
         setup.initial_condition.scalar_fields["k"] = 0.0;
         EXPECT_THROW(validate_sst_case_prerequisites(setup, controls),
                      std::invalid_argument);
+        setup.initial_condition.scalar_fields["k"] = 0.01;
+        cfdx::io::BoundarySpec unknown;
+        unknown.patch_name = "mystery";
+        unknown.type = cfdx::io::BCType::UNKNOWN;
+        setup.boundary_conditions.push_back(unknown);
+        EXPECT_THROW(validate_sst_case_prerequisites(setup, controls),
+                     std::invalid_argument);
     });
 
     return run_all();
