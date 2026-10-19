@@ -747,16 +747,21 @@ class WallDistanceCutFaceOffsetCache {
 public:
     WallDistanceCutFaceOffsetCache(const WallDistanceBvh& bvh,
                                    const WallDistanceGrid& g)
-        : offsets_(g.points.size()) {
+        : node_offset_index_(g.points.size(), invalid_index),
+          spacing_{{g.spacing.x,g.spacing.y,g.spacing.z}} {
         for(std::size_t id=0; id<g.points.size(); ++id) {
-            offsets_[id].fill(0.0);
             if(g.solid[id]) continue;
             const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny);
             const std::size_t j=rem/g.nx, i=rem%g.nx;
             const auto fill=[&](std::size_t slot,std::size_t q,bool exists,double h) {
-                if(!exists) return;
-                offsets_[id][slot]=g.solid[q]
-                    ? poisson_wall_offset(bvh,g.points[id],g.points[q],h) : h;
+                if(!exists || !g.solid[q]) return;
+                if(node_offset_index_[id]==invalid_index) {
+                    node_offset_index_[id]=offsets_.size();
+                    offsets_.push_back({{g.spacing.x,g.spacing.x,g.spacing.y,
+                                         g.spacing.y,g.spacing.z,g.spacing.z}});
+                }
+                offsets_[node_offset_index_[id]][slot]=
+                    poisson_wall_offset(bvh,g.points[id],g.points[q],h);
             };
             fill(0,i>0?g.index(i-1,j,k):0,i>0,g.spacing.x);
             fill(1,i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,g.spacing.x);
@@ -768,11 +773,22 @@ public:
     }
 
     double delta(std::size_t id,std::size_t face) const {
-        return offsets_[id][face];
+        const std::size_t index=node_offset_index_[id];
+        return index==invalid_index ? spacing_[face/2] : offsets_[index][face];
+    }
+
+    std::size_t cut_node_count() const { return offsets_.size(); }
+
+    std::size_t storage_bytes() const {
+        return node_offset_index_.size()*sizeof(std::size_t)
+             + offsets_.size()*sizeof(std::array<double,6>);
     }
 
 private:
+    static constexpr std::size_t invalid_index=std::numeric_limits<std::size_t>::max();
+    std::vector<std::size_t> node_offset_index_;
     std::vector<std::array<double,6>> offsets_;
+    std::array<double,3> spacing_;
 };
 
 
