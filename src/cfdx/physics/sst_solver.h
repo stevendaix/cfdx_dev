@@ -171,8 +171,24 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         const auto inner=solve_sst_transport(mesh,geometry,mass_flux,k,omega,strain_rate,F1,F2,controls,k_bcs,omega_bcs,1,tolerance);
         double dk=0.0,dw=0.0;
         for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-old_k(i)));dw=std::max(dw,std::abs(omega(i)-old_w(i)));}
-        result.k_residual=inner.k_residual; result.second_residual=inner.second_residual; result.iterations=iter;
-        if(inner.converged&&std::max(dk,dw)<=tolerance){result.converged=true;break;}
+        result.k_residual=inner.k_residual;
+        result.second_residual=inner.second_residual;
+        result.iterations=iter;
+        // Preserve all boundedness evidence from the inner transport solve.
+        // The production transaction uses nonfinite_bound_events as a commit gate;
+        // dropping these counters here could turn an invalid inner state into an
+        // apparently clean outer result.
+        result.k_floor_events += inner.k_floor_events;
+        result.second_floor_events += inner.second_floor_events;
+        result.nonfinite_bound_events += inner.nonfinite_bound_events;
+        result.k_total_floor_correction += inner.k_total_floor_correction;
+        result.second_total_floor_correction += inner.second_total_floor_correction;
+        result.k_max_floor_correction = std::max(
+            result.k_max_floor_correction, inner.k_max_floor_correction);
+        result.second_max_floor_correction = std::max(
+            result.second_max_floor_correction, inner.second_max_floor_correction);
+        if(inner.converged && result.nonfinite_bound_events == 0 &&
+           std::max(dk,dw)<=tolerance){result.converged=true;break;}
     }
     return result;
 }
