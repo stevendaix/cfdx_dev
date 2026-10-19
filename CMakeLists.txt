@@ -679,8 +679,11 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_n11_b1_b2_b3_linalg_guards tests/unit/test_n11_b1_b2_b3_linalg_guards.cpp)
     add_cfdx_test(test_n11_b4_b5_amg_footprint tests/unit/test_n11_b4_b5_amg_footprint.cpp)
     add_test(NAME benchmark_wall_distance_complex
-             COMMAND cfdx_wall_distance_complex_benchmark ${CMAKE_BINARY_DIR}/wall_distance_complex_benchmark.csv)
-    set_tests_properties(benchmark_wall_distance_complex PROPERTIES LABELS "phase13;validation;benchmark")
+             COMMAND cfdx_wall_distance_complex_benchmark
+                     ${CMAKE_BINARY_DIR}/wall_distance_complex_benchmark.csv
+                     ${CMAKE_BINARY_DIR}/wall_distance_ray_benchmark.csv)
+    set_tests_properties(benchmark_wall_distance_complex PROPERTIES
+        LABELS "phase13;validation;benchmark;wall-distance")
     add_cfdx_test(test_phase10_sst_limiter tests/validation/test_phase10_sst_limiter.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
     add_cfdx_test(test_vmfl036_reference_case tests/validation/test_vmfl036_reference_case.cpp)
