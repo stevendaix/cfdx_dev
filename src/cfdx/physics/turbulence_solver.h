@@ -41,6 +41,21 @@ inline void record_turbulence_bounds(
         result.second_max_floor_correction, bounds.second_max_correction);
 }
 
+inline void accumulate_turbulence_diagnostics(
+    TurbulenceTransportResult& aggregate,
+    const TurbulenceTransportResult& step)
+{
+    aggregate.k_floor_events += step.k_floor_events;
+    aggregate.second_floor_events += step.second_floor_events;
+    aggregate.nonfinite_bound_events += step.nonfinite_bound_events;
+    aggregate.k_total_floor_correction += step.k_total_floor_correction;
+    aggregate.second_total_floor_correction += step.second_total_floor_correction;
+    aggregate.k_max_floor_correction = std::max(
+        aggregate.k_max_floor_correction, step.k_max_floor_correction);
+    aggregate.second_max_floor_correction = std::max(
+        aggregate.second_max_floor_correction, step.second_max_floor_correction);
+}
+
 inline void compute_kepsilon_production_field(
     const cfdx::core::Mesh& mesh,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& strain_rate,
