@@ -208,16 +208,22 @@ RayBenchmarkResult benchmark_ray_queries(const WallSurface& surface,
     auto t0 = std::chrono::steady_clock::now();
     for (std::size_t repeat = 0; repeat < result.repetitions; ++repeat)
         for (const auto& query : queries)
-            result.brute_checksum += brute_ray_distance(
-                surface, query.origin, query.direction, query.max_distance);
+            {
+                const double value = brute_ray_distance(
+                    surface, query.origin, query.direction, query.max_distance);
+                if (std::isfinite(value)) result.brute_checksum += value;
+            }
     auto t1 = std::chrono::steady_clock::now();
     result.brute_force_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
     t0 = std::chrono::steady_clock::now();
     for (std::size_t repeat = 0; repeat < result.repetitions; ++repeat)
         for (const auto& query : queries)
-            result.bvh_checksum += bvh.ray_distance(
-                query.origin, query.direction, query.max_distance);
+            {
+                const double value = bvh.ray_distance(
+                    query.origin, query.direction, query.max_distance);
+                if (std::isfinite(value)) result.bvh_checksum += value;
+            }
     t1 = std::chrono::steady_clock::now();
     result.bvh_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
