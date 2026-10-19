@@ -799,6 +799,18 @@ int main()
         EXPECT_THROW(
             solve_steady_incompressible(m, U, p, ubc, pbc, controls),
             std::invalid_argument);
+
+        controls.cell_turbulent_viscosity.clear();
+        controls.turbulent_viscosity = 0.0;
+        controls.density = 1.0e308;
+        controls.kinematic_viscosity = 1.0e308;
+        controls.initialization.mode = InitializationMode::Uniform;
+        controls.initialization.uniform_velocity = {2.0, 0.0, 0.0};
+        U.fill(0.0);
+        EXPECT_THROW(
+            solve_steady_incompressible(m, U, p, ubc, pbc, controls),
+            std::invalid_argument);
+        EXPECT_NEAR(U.component_data(0)[0], 0.0, 0.0);
     });
 
     return run_all();
