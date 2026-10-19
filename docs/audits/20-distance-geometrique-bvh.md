@@ -2,11 +2,11 @@
 
 **En-tête d'évidence**
 - Scope : distances exactes point-triangle et intersection rayon-triangle utilisées par les méthodes de distance aux parois. Cette fiche qualifie le contrat géométrique et les optimisations de recherche ; elle ne valide pas à elle seule les EDP de Poisson, Eikonal, Hamilton–Jacobi ou advection-diffusion.
-- Statut : DRAFT (2026-10-19) — contrat géométrique documenté ; validation numérique de la traversée BVH en cours.
+- Statut : DRAFT (2026-10-19) — tests d'équivalence géométrique ajoutés ; benchmark contrôlé rayons BVH/brute-force disponible, mesures et qualification EDP encore requises.
 - Registre autoritaire : `docs/validation/CFDX_QUALIFICATION_REGISTRY.json` (campagnes) et `docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json` (exigences).
 - Issue / PR liées : PR #979 ; backlog wall-distance #34.
-- Dernier commit vérifié : `1c655e9dffc8b4e1cb12c889728766881b2e27bb` (HEAD vérifié lors de la préparation de la campagne CI).
-- Limitations connues : les résultats N=128 antérieurs sont une baseline, pas une preuve du gain de cette modification. Le benchmark complet et la comparaison à la référence exhaustive restent requis.
+- Dernier HEAD analysé avant l'ajout du benchmark : `d7068463ae27d2c5db0fafbd9043986f0b4bcbb4`. Les contrôles CI doivent être relus sur le nouveau HEAD de la branche.
+- Limitations connues : les temps N=128 disponibles sont des mesures de campagnes différentes et ne prouvent pas le gain causal du BVH. Le benchmark rayons synthétique isole le coût d'intersection, mais ne remplace pas une comparaison N=128 appariée sur le même runner.
 
 ## 1. Références sources
 
@@ -51,17 +51,17 @@ La traversée est une accélération de recherche uniquement. Le test rayon-tria
 
 - Exactitude géométrique : écart à la recherche exhaustive inférieur à la tolérance numérique pré-déclarée ; pour les géométries analytiques simples, comparaison aux intersections exactes.
 - Couverture minimale : impact intérieur à un triangle, absence d'impact, clipping par distance maximale, direction non unitaire, impacts sur arêtes/sommets, rayons parallèles aux axes et directions quasi parallèles.
-- Validation de performance : benchmark N=128 des neuf méthodes, CSV individuels et mêmes conditions d'exécution. Rapporter temps mur, nombre d'itérations, résidu final, raison d'arrêt, L1/L2/L∞ et erreur près des parois.
+- Validation de performance : (1) exécuter `benchmark_wall_distance_bvh_rays` pour mesurer BVH vs oracle exhaustif sur les mêmes rayons, avec résultats identiques ; (2) répéter le benchmark N=128 des neuf méthodes sur le même runner et le même HEAD de base, en conservant les CSV et les métriques temps mur, itérations, résidu, raison d'arrêt, L1/L2/L∞ et erreur près des parois.
 - Aucun seuil de convergence, tolérance ou budget ne peut être relâché pour qualifier l'accélération.
 - GCI des méthodes EDP : reste soumis aux fiches et campagnes propres à chaque méthode ; cette fiche géométrique ne remplace pas ces exigences.
 
 ## 7. Statut d'implémentation CFDX
 
 - Fichier source : `src/cfdx/physics/wall_distance.h`, classe `WallDistanceBvh`.
-- Tests exécutables : `tests/unit/test_wall_distance_methods.cpp` ; tests rayons ciblés et oracle exhaustif ajoutés dans PR #979 ; exécution Release et DebugSanitizers encore en attente.
-- Écarts connus code ↔ fiche : la branche #979 introduit une traversée AABB/BVH dans `ray_distance()`, mais son équivalence numérique et son gain de performance ne sont pas encore qualifiés.
-- Prochaines actions : confirmer le gate documentaire après correction de structure, vérifier Release et DebugSanitizers, puis exécuter le benchmark N=128 de référence.
+- Tests exécutables : `tests/unit/test_wall_distance_methods.cpp` couvre les cas géométriques et l'oracle ; `tests/benchmark/benchmark_wall_distance_bvh_rays.cpp` compare le coût BVH et brute-force sur une surface plane triangulée reproductible. La cible est compilée avec les builds de tests, mais reste volontairement hors CTest pour éviter un gate de performance instable.
+- Écarts connus code ↔ fiche : les tests de régression couvrent des cas choisis, et le benchmark mesure une géométrie synthétique ; il faut encore enregistrer les mesures sur runner contrôlé et qualifier le gain end-to-end des méthodes EDP. Le benchmark n'est pas une preuve d'accélération globale.
+- Prochaines actions : (1) vérifier Release et DebugSanitizers sur le nouveau HEAD ; (2) lancer `./build/benchmark_wall_distance_bvh_rays 64 4096` puis `./build/benchmark_wall_distance_bvh_rays 128 8192` et archiver les CSV ; (3) lancer un A/B N=128 apparié, mêmes runner, maillage et options ; (4) traiter séparément les échecs NACA préexistants et le test N9 proche de 1800 s, sans relâcher leurs gates.
 
 ## 8. Journal des modifications
 
-- 2026-10-19 — PR #979 — création de la fiche et ajout de tests de comparaison avec l'oracle exhaustif ; validation de performance toujours requise.
+- 2026-10-19 — PR #979 — création de la fiche, tests rayons comparés à l'oracle exhaustif et ajout d'un benchmark reproductible BVH vs brute-force ; les mesures contrôlées et le benchmark EDP apparié restent à exécuter.
