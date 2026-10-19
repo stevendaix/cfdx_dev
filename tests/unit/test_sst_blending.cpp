@@ -20,6 +20,35 @@ int main()
         EXPECT_TRUE(f2 >= 0.0 && f2 <= 1.0);
     });
 
+    run_case("sst_dynamic_blending_preserves_inner_bound_diagnostics", [] {
+        TurbulenceTransportResult accumulated;
+        TurbulenceTransportResult inner;
+        inner.k_floor_events = 2;
+        inner.second_floor_events = 3;
+        inner.nonfinite_bound_events = 1;
+        inner.k_total_floor_correction = 0.25;
+        inner.second_total_floor_correction = 0.5;
+        inner.k_max_floor_correction = 0.2;
+        inner.second_max_floor_correction = 0.4;
+
+        accumulate_turbulence_transport_diagnostics(accumulated, inner);
+        EXPECT_TRUE(accumulated.k_floor_events == 2);
+        EXPECT_TRUE(accumulated.second_floor_events == 3);
+        EXPECT_TRUE(accumulated.nonfinite_bound_events == 1);
+        EXPECT_NEAR(accumulated.k_total_floor_correction, 0.25, 0.0);
+        EXPECT_NEAR(accumulated.second_total_floor_correction, 0.5, 0.0);
+        EXPECT_NEAR(accumulated.k_max_floor_correction, 0.2, 0.0);
+        EXPECT_NEAR(accumulated.second_max_floor_correction, 0.4, 0.0);
+
+        inner.k_floor_events = 1;
+        inner.k_total_floor_correction = 0.1;
+        inner.k_max_floor_correction = 0.05;
+        accumulate_turbulence_transport_diagnostics(accumulated, inner);
+        EXPECT_TRUE(accumulated.k_floor_events == 3);
+        EXPECT_NEAR(accumulated.k_total_floor_correction, 0.35, 1e-15);
+        EXPECT_NEAR(accumulated.k_max_floor_correction, 0.2, 0.0);
+    });
+
     run_case("sst_blending_responds_to_wall_distance", [] {
         const auto near_wall = compute_sst_blending(0.5, 10.0, 1.0e-3, 1.5e-5, 0.09);
         const auto far_wall = compute_sst_blending(0.5, 10.0, 10.0, 1.5e-5, 0.09);
