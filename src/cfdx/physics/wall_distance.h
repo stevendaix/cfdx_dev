@@ -775,8 +775,8 @@ public:
     std::size_t cut_node_count() const { return offsets_.size(); }
 
     std::size_t storage_bytes() const {
-        return node_offset_index_.size()*sizeof(std::size_t)
-             + offsets_.size()*sizeof(std::array<double,6>);
+        return node_offset_index_.capacity()*sizeof(std::size_t)
+             + offsets_.capacity()*sizeof(std::array<double,6>);
     }
 
 private:
