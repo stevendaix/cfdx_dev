@@ -1034,43 +1034,6 @@ inline double laplacian_at(const WallDistanceBvh& bvh,
          + axis_laplacian(side(zm,k>0,g.spacing.z,4),side(zp,k+1<g.nz,g.spacing.z,5),g.spacing.z,f[id]);
 }
 
-inline double godunov_gradient_at(const WallDistanceBvh& bvh,
-                                  const std::vector<double>& d,const WallDistanceGrid& g,
-                                  std::size_t id,
-                                  const WallDistanceCutFaceOffsetCache& offsets) {
-    const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
-    auto component=[&](int axis)->double {
-        double dm=0.0, dp=0.0;
-        const auto face=[&](std::size_t q,bool minus_side,double hh,std::size_t slot) {
-            if(g.solid[q]) {
-                const double delta=offsets.delta(id,slot);
-                if(delta>0.0 && std::isfinite(delta)) {
-                    if(minus_side) dm=d[id]/delta;
-                    else dp=-d[id]/delta;
-                }
-            } else if(std::isfinite(d[q])) {
-                if(minus_side) dm=(d[id]-d[q])/hh;
-                else dp=(d[q]-d[id])/hh;
-            }
-        };
-        if(axis==0) {
-            if(i>0) face(g.index(i-1,j,k),true,g.spacing.x,0);
-            if(i+1<g.nx) face(g.index(i+1,j,k),false,g.spacing.x,1);
-        } else if(axis==1) {
-            if(j>0) face(g.index(i,j-1,k),true,g.spacing.y,2);
-            if(j+1<g.ny) face(g.index(i,j+1,k),false,g.spacing.y,3);
-        } else {
-            if(k>0) face(g.index(i,j,k-1),true,g.spacing.z,4);
-            if(k+1<g.nz) face(g.index(i,j,k+1),false,g.spacing.z,5);
-        }
-        return std::sqrt(std::max(dm,0.0)*std::max(dm,0.0)
-                       + std::min(dp,0.0)*std::min(dp,0.0));
-    };
-    (void)bvh;
-    const double gx=component(0), gy=component(1), gz=component(2);
-    return std::sqrt(gx*gx+gy*gy+gz*gz);
-}
-
 inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const WallDistanceGrid& g,
                                                      std::size_t max_iter,double epsilon=0.25,
                                                      double relaxation=0.25,
@@ -1101,7 +1064,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
         double max_change=0.0;
         for(std::size_t id=0;id<d.size();++id) {
             if(g.solid[id] || fixed[id] || !std::isfinite(d[id])) continue;
-            const double grad=godunov_gradient_at(bvh,d,g,id,offsets);
+            const double grad=godunov_gradient_at(bvh,d,g,id);
             const double gamma=epsilon*std::max(d[id],0.0);
             const double lap=laplacian_at(bvh,d,g,id,offsets);
             const double residual=grad-1.0-gamma*lap;
@@ -1128,7 +1091,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
             for(std::size_t id=0;id<d.size();++id) {
                 if(g.solid[id] || fixed[id] || !std::isfinite(d[id])) continue;
                 final_residual=std::max(final_residual,std::abs(
-                    godunov_gradient_at(bvh,d,g,id,offsets)-1.0-
+                    godunov_gradient_at(bvh,d,g,id)-1.0-
                     epsilon*std::max(d[id],0.0)*laplacian_at(bvh,d,g,id,offsets)));
             }
             if(final_residual<1e-8 && max_change<1e-9*h) { used=it+1; break; }
