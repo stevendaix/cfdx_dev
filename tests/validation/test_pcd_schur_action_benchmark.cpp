@@ -89,6 +89,19 @@
 //              asserted - the benchmark measures whether the classic
 //              composition converges the real captured coupled system.
 //
+//   fp_ilu0_loose / fp_amg_loose  the NESTED TOLERANCE axis: the same
+//              nested solvers as fp_ilu0 / fp_amg, but the nested
+//              tolerance is 1e-4 instead of 1e-8 - the classic
+//              preconditioner-level tolerance. Measurement question:
+//              the outer coupled FGMRES is flexible precisely to
+//              tolerate loose inner solves, so how many nested
+//              iterations and wall ms does loosening save per
+//              application, and does the coupled solve still converge?
+//              The outer coupled tolerance (1e-10), the validity
+//              guards and the baseline fp_ilu0 are unchanged; a loose
+//              variant that fails to converge the coupled system is
+//              reported, not sanctioned.
+//
 // Evidence printed (one line per solve, plus per-stage summaries):
 //   PCD_ACTION_BENCHMARK stage=... action=... status=... converged=...
 //   coupled_iterations=... true_rel_residual=... solve_wall_ms=...
@@ -99,7 +112,7 @@
 //   only after all guards have been evaluated.
 //
 // Cost: bounded and reproducible - five production nonlinear iterations
-// plus twelve coupled solves plus two operator-assembly cross-checks, a few
+// plus sixteen coupled solves plus two operator-assembly cross-checks, a few
 // minutes in Release. Registered only under CFDX_ENABLE_LONG_VALIDATION.
 
 #include "cfdx/physics/steady_incompressible_solver.h"
@@ -404,7 +417,7 @@ int main()
 
     const FvGeometry geometry = build_fv_geometry(mesh);
 
-    const std::array<VariantSpec, 6> variants = {{
+    const std::array<VariantSpec, 8> variants = {{
         {"fp_ilu0", KrylovModel::FGMRES, PreconditionerModel::ILU0, 512, 200, 1e-8,
          false, false, false, false},
         {"fp_amg", KrylovModel::FGMRES, PreconditionerModel::NativeAMG, 512, 200, 1e-8,
@@ -417,6 +430,10 @@ int main()
          false, false, true, false},
         {"pcd_full", KrylovModel::GMRES, PreconditionerModel::NativeAMG, 40, 100, 1e-8,
          false, false, false, true},
+        {"fp_ilu0_loose", KrylovModel::FGMRES, PreconditionerModel::ILU0, 512, 200, 1e-4,
+         false, false, false, false},
+        {"fp_amg_loose", KrylovModel::FGMRES, PreconditionerModel::NativeAMG, 512, 200, 1e-4,
+         false, false, false, false},
     }};
 
     const std::vector<std::size_t> benchmark_stages = {1, 4};  // assemblies #2 and #5
