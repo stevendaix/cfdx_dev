@@ -660,13 +660,6 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_wall_distance_methods tests/unit/test_wall_distance_methods.cpp)
 
-    # Manual, controlled performance benchmark for BVH ray queries. This is
-    # built by normal test builds but is intentionally not registered with
-    # CTest: timing is evidence, not a noisy pass/fail gate.
-    add_executable(benchmark_wall_distance_bvh_rays
-        tests/benchmark/benchmark_wall_distance_bvh_rays.cpp)
-    target_include_directories(benchmark_wall_distance_bvh_rays
-        PRIVATE ${CMAKE_SOURCE_DIR}/src)
     add_test(NAME benchmark_wall_distance_naca0012
         COMMAND cfdx_naca0012_wall_distance_comparison
                 ${CMAKE_SOURCE_DIR}/tests/data/su2/mesh_NACA0012_inv.su2
