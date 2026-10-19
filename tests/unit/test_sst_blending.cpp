@@ -12,6 +12,41 @@
 using namespace cfdx::testing;
 using namespace cfdx::physics;
 
+
+static cfdx::core::Mesh make_sst_unit_cube_mesh()
+{
+    using namespace cfdx::core;
+    Mesh mesh;
+    mesh.points().resize(8);
+    const double points[8][3] = {
+        {0,0,0},{1,0,0},{1,1,0},{0,1,0},
+        {0,0,1},{1,0,1},{1,1,1},{0,1,1}
+    };
+    for (std::size_t i = 0; i < 8; ++i)
+        mesh.points().set(i, points[i][0], points[i][1], points[i][2]);
+
+    mesh.faces().push_face({0,3,2,1});
+    mesh.faces().push_face({4,5,6,7});
+    mesh.faces().push_face({0,1,5,4});
+    mesh.faces().push_face({3,7,6,2});
+    mesh.faces().push_face({0,4,7,3});
+    mesh.faces().push_face({1,2,6,5});
+
+    mesh.ownership().resize(6);
+    for (std::size_t face = 0; face < 6; ++face) {
+        mesh.ownership().set_owner(face, 0);
+        mesh.ownership().set_neighbour(face, FaceOwnership::BOUNDARY);
+    }
+    mesh.cells().push_cell({0,1,2,3,4,5});
+
+    Patch walls;
+    walls.name = "walls";
+    walls.type = PatchType::WALL;
+    walls.face_ids = {0,1,2,3,4,5};
+    mesh.boundary().add_patch(walls);
+    return mesh;
+}
+
 int main()
 {
     run_case("sst_dynamic_blending_diagnostics_accumulate_all_bound_events", [] {
@@ -90,6 +125,41 @@ int main()
                      std::invalid_argument);
         EXPECT_NEAR(nu_t(0), 3.0, 0.0);
         EXPECT_NEAR(nu_t(1), 4.0, 0.0);
+    });
+
+    run_case("sst_transaction_rolls_back_nonconverged_transport", [] {
+        const auto mesh = make_sst_unit_cube_mesh();
+        const auto geometry = build_fv_geometry(mesh);
+        cfdx::core::Field<double, cfdx::core::Location::FACE> flux(
+            mesh.n_faces(), "phi", "kg/s", 1);
+        cfdx::core::Field<double, cfdx::core::Location::CELL> k(
+            mesh.n_cells(), "k", "m2/s2", 1);
+        cfdx::core::Field<double, cfdx::core::Location::CELL> omega(
+            mesh.n_cells(), "omega", "1/s", 1);
+        cfdx::core::Field<double, cfdx::core::Location::CELL> strain(
+            mesh.n_cells(), "strain", "1/s", 1);
+        cfdx::core::Field<double, cfdx::core::Location::CELL> wall(
+            mesh.n_cells(), "wall", "m", 1);
+        cfdx::core::Field<double, cfdx::core::Location::CELL> nu_t(
+            mesh.n_cells(), "nu_t", "m2/s", 1);
+        flux.fill(0.0);
+        k.fill(0.4);
+        omega.fill(8.0);
+        strain.fill(1.0);
+        wall.fill(0.01);
+        nu_t.fill(0.02);
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+
+        const auto step = advance_sst_transport_transactionally(
+            mesh, geometry, flux, k, omega, strain, wall, controls, nu_t,
+            {}, {}, 1, 1e-30);
+
+        EXPECT_TRUE(!step.committed);
+        EXPECT_TRUE(!step.transport.converged);
+        EXPECT_NEAR(k(0), 0.4, 0.0);
+        EXPECT_NEAR(omega(0), 8.0, 0.0);
+        EXPECT_NEAR(nu_t(0), 0.02, 0.0);
     });
 
     run_case("sst_transaction_preflight_rejects_field_mismatch_without_mutation", [] {
