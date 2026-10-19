@@ -207,6 +207,9 @@ struct Row {
     std::size_t poisson_exact_phi_edge_cells{};
     std::size_t poisson_exact_phi_corner_cells{};
     std::size_t poisson_exact_phi_max_residual_cell{};
+    double cut_offset_cache_build_ms{};
+    std::size_t cut_offset_cache_nodes{};
+    std::size_t cut_offset_cache_bytes{};
 };
 
 std::vector<WallDistanceMethod> methods()
@@ -376,6 +379,13 @@ int main(int argc, char** argv)
         }
 
         const WallDistanceBvh bvh(surface);
+        const auto cache_t0 = std::chrono::steady_clock::now();
+        const WallDistanceCutFaceOffsetCache cut_offset_cache(bvh, grid);
+        const auto cache_t1 = std::chrono::steady_clock::now();
+        const double cut_offset_cache_build_ms =
+            std::chrono::duration<double, std::milli>(cache_t1 - cache_t0).count();
+        const std::size_t cut_offset_cache_nodes = cut_offset_cache.cut_node_count();
+        const std::size_t cut_offset_cache_bytes = cut_offset_cache.storage_bytes();
         const auto op = audit_poisson_operator(bvh, grid);
         const auto offsets = audit_poisson_wall_offsets(bvh, grid);
         const std::size_t max_id=offsets.max_wall_coefficient_cell;
@@ -636,7 +646,10 @@ int main(int argc, char** argv)
                 poisson_exact_phi_face_cells,
                 poisson_exact_phi_edge_cells,
                 poisson_exact_phi_corner_cells,
-                poisson_exact_phi_max_residual_cell
+                poisson_exact_phi_max_residual_cell,
+                cut_offset_cache_build_ms,
+                cut_offset_cache_nodes,
+                cut_offset_cache_bytes
             });
 
             std::cout << result.method << ", "
@@ -687,7 +700,8 @@ int main(int argc, char** argv)
            "poisson_exact_phi_cut_residual_inf,poisson_exact_phi_face_residual_inf,"
            "poisson_exact_phi_edge_residual_inf,poisson_exact_phi_corner_residual_inf,"
            "poisson_exact_phi_cut_cells,poisson_exact_phi_face_cells,poisson_exact_phi_edge_cells,"
-           "poisson_exact_phi_corner_cells,poisson_exact_phi_max_residual_cell\n";
+           "poisson_exact_phi_corner_cells,poisson_exact_phi_max_residual_cell,"
+            "cut_offset_cache_build_ms,cut_offset_cache_nodes,cut_offset_cache_bytes\n";
 
     for (const auto& r : rows) {
         const double h = 2.0 / static_cast<double>(r.n - 1);
@@ -724,7 +738,10 @@ int main(int argc, char** argv)
             << r.poisson_exact_phi_face_cells << ','
             << r.poisson_exact_phi_edge_cells << ','
             << r.poisson_exact_phi_corner_cells << ','
-            << r.poisson_exact_phi_max_residual_cell
+            << r.poisson_exact_phi_max_residual_cell,
+             << r.cut_offset_cache_build_ms << ','
+             << r.cut_offset_cache_nodes << ','
+             << r.cut_offset_cache_bytes
             << '\n';
     }
 
