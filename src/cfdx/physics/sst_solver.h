@@ -171,8 +171,15 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         const auto inner=solve_sst_transport(mesh,geometry,mass_flux,k,omega,strain_rate,F1,F2,controls,k_bcs,omega_bcs,1,tolerance);
         double dk=0.0,dw=0.0;
         for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-old_k(i)));dw=std::max(dw,std::abs(omega(i)-old_w(i)));}
-        result.k_residual=inner.k_residual; result.second_residual=inner.second_residual; result.iterations=iter;
-        if(inner.converged&&std::max(dk,dw)<=tolerance){result.converged=true;break;}
+        accumulate_turbulence_diagnostics(result, inner);
+        result.k_residual = inner.k_residual;
+        result.second_residual = inner.second_residual;
+        result.iterations = iter;
+        if (inner.converged && result.nonfinite_bound_events == 0 &&
+            std::max(dk, dw) <= tolerance) {
+            result.converged = true;
+            break;
+        }
     }
     return result;
 }
