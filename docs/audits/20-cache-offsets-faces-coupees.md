@@ -25,7 +25,7 @@ Les stencils utilisent six slots par nœud fluide : (x^-), (x^+), (y^-), (y^+), 
 
 Le cache est creux : un index par nœud identifie les nœuds ayant au moins une face coupée ; seuls ces nœuds possèdent les six distances. Les nœuds sans face coupée utilisent directement (h_x,h_y,h_z). L'ordre des opérations dans les stencils, les coefficients et les valeurs de frontière ne doivent pas changer du fait de la mise en cache.
 
-Le solveur de Poisson hybride doit employer les mêmes offsets pour l'opérateur et le préconditionneur diagonal. Hamilton–Jacobi et hybride doivent également employer le même stencil géométrique dans la mise à jour et l'évaluation du résidu.
+Le solveur de Poisson hybride doit employer les mêmes offsets pour l'opérateur et le préconditionneur diagonal. Hamilton–Jacobi et hybride doivent également employer le même stencil pour la mise à jour et l'évaluation du résidu. Le gradient Godunov historique d'Hamilton–Jacobi n'utilise pas ces offsets ; ce PR ne le modifie pas.
 
 ## 4. Traitement des frontières
 
@@ -46,7 +46,7 @@ Le solveur de Poisson hybride doit employer les mêmes offsets pour l'opérateur
 ## 6. Ordre de précision attendu et validation exigée
 
 - Équivalence locale : offsets cachés et calcul direct doivent être identiques en double précision pour ray hits, fallback, faces fractionnaires, frontières de grille et voisins fluides.
-- Équivalence opérateur : gradient de Godunov, Laplacien de Shortley–Weller, opérateur de Poisson et diagonale doivent correspondre au chemin non caché à une tolérance absolue pré-déclarée de (10^{-13}) sur les tests déterministes.
+- Équivalence opérateur : Laplacien de Shortley–Weller, opérateur de Poisson et diagonale doivent correspondre au chemin non caché à une tolérance absolue pré-déclarée de 10⁻¹³ sur les tests déterministes. Le gradient Godunov d'Hamilton–Jacobi n'est pas modifié et reste couvert par ses tests existants.
 - Régression : Release et DebugSanitizers, test `test_wall_distance_methods`, puis campagnes wall-distance existantes.
 - Performance : comparer le même benchmark contrôlé N=128, même runner et mêmes budgets, base pré-cache contre HEAD cache ; conserver les neuf CSV, temps par méthode, itérations, résidus, stopping reason, erreurs L1/L2/L∞/near-wall et empreinte mémoire. Présenter médiane ou répétitions si le bruit du runner est significatif.
 - Critère de promotion : aucune régression numérique ; gain mesuré et reproductible sur Hamilton–Jacobi et hybride ; coût de construction et mémoire inclus dans le temps total. Si le gain est négligeable ou négatif, ne pas fusionner l'optimisation.
