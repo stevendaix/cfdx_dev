@@ -199,6 +199,26 @@ CavityResult solve_cavity(
     controls.pcd_convection_diffusion_linear_solver.gmres_restart=
         static_cast<int>(std::min<std::size_t>(
             pressure_unknowns,std::max<std::size_t>(512,pcd_fp_budget)));
+    // (2026-10-19 evidence, diag run 39165057880 pinned at faeb6457): with
+    // the #870 restart fix in place, every nested Fp apply now CONVERGES,
+    // and the 32x32 PCD qualification converges in 51 nonlinear iterations -
+    // but in 874.7 s wall clock, past its unchanged 720 s ctest budget. The
+    // measured per-stage cost is ~17-18 s per nonlinear iteration, each
+    // dominated by the coupled FGMRES solve whose every Krylov iteration
+    // applies the PCD Schur action, i.e. one nested Fp solve of 53-56
+    // FGMRES+ILU0 iterations (the #870 twin evidence). The 16x16 preflight
+    // passes in 34.9 s (54 iterations), so the per-stage cost grows ~26x
+    // for a 4x pressure dimension while ILU0 keeps the same flat local
+    // smoothing quality. The PCD laplacian (Kp) default already solves its
+    // nested pressure operator with NativeAMG, and the N8 LSC/BFBt nested
+    // pressure solve already uses NativeAMG on its nonsymmetric stabilized
+    // convection-diffusion pressure operator. Use the same nested
+    // preconditioner model for Fp here. Only the nested linear
+    // preconditioner model changes: no tolerance, gate, budget, restart or
+    // acceptance criterion is modified, and the SIMPLE paths never read
+    // these PCD controls.
+    controls.pcd_convection_diffusion_linear_solver.preconditioner =
+        PreconditionerModel::NativeAMG;
 
     // Trace the effective coupled preconditioner and restart in future
     // validation-total evidence (COUPLED_PRECONDITIONER stderr line).
