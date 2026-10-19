@@ -1,4 +1,4 @@
-name: NACA0012 divergence bisect (master pins, diag)
+name: NACA0012 divergence bisect (master pins, diag) round 2
 
 # DIAG-ONLY - diagnostics branch ci/long-campaign-diagnostics (NEVER merge).
 #
@@ -11,30 +11,30 @@ name: NACA0012 divergence bisect (master pins, diag)
 #     N128 DIVERGED at 15 iterations (residual_growth_exceeded), geometric
 #     momentum-residual growth localized at airfoil wall cells. Full
 #     microscope: diag-evidence/logs/pr929x_nacastop_*_run39070355557.
-# Regression window: 2026-10-16 -> 2026-10-19.
+# Round 2 (window refined by round 1): f88b3700 (2026-10-16, PASS 3 levels)
+# -> 0c61c51e (2026-10-18, FAIL_DIVERGED). Round 1 (run 39325205592): pins
+# 0c61c51e / 03ac6f6c / 4056e249 ALL FAIL_DIVERGED with bit-identical metrics.
 #
 # Three master pins, test_naca0012_qualification run in isolation with the
 # exact CI configuration (Release + LONG_VALIDATION + MPI + parallel HDF5).
 # NACA meshes are generated per pin by the pin's own script (verified
-# byte-identical at all three pins; standalone h5py+numpy, no cfdx import):
-#   0c61c51e  2026-10-18 "integration(numerics) consolidate pressure-velocity fixes"
-#   03ac6f6c  2026-10-19 cellwise viscosity routed through momentum checks
-#   4056e249  2026-10-19 current master (positive control, expected FAIL:
-#              same solver content as the observed red heads)
+# byte-identical across round-1 pins; standalone h5py+numpy, no cfdx import):
+#   7684119b  2026-10-18 test(turbulence) qualification campaign + fail-closed guard
+#   96b6663d  2026-10-18 feat(physics) cellwise viscosity in momentum assembly
+#   406c0ff9  2026-10-18 SST transactional (#957), direct parent of 0c61c51e
 #
 # Per-pin classification (log content + exit code):
 #   PASS_3_LEVELS / FAIL_DIVERGED / TIMEOUT_3600S / FAIL_OTHER
 #   INCONCLUSIVE_{WORKTREE,CONFIGURE,BUILD,MESHGEN} = upstream stage failed
 #
-# Interpretation guide:
-#   0c61c51e FAIL -> culprit in {96b6663d (cellwise momentum assembly),
-#                                0c61c51e (pressure-velocity consolidation)}
-#   0c61c51e PASS + 03ac6f6c FAIL -> culprit in window e9ac2796..03ac6f6c
-#        (very likely 03ac6f6c: scalar -> cellwise vector mu_eff;
-#         e9ac2796 only touches test_ghia_cavity.cpp)
-#   both PASS -> look at the later window (SST 374c8fb4/257070a6, hook
-#        4fb28173 #966, #973, #978) or campaign interaction
-#   4056e249 PASS -> divergence not reproducible in isolation
+# Interpretation guide (round 2, inside round-1 window f88b3700..0c61c51e):
+#   7684119b FAIL -> culprit at or before 7684119b (round 3 in f88b3700..7684119b:
+#        9ba3d338 CUDA/GPU, merges 120070de, 2b414352, 6282a2bf)
+#   7684119b PASS + 96b6663d FAIL -> culprit in (7684119b..96b6663d] =
+#        {74b13b95 gui, 6cf9a78b wall distance, 96b6663d} -> very likely 96b6663d
+#   96b6663d PASS + 406c0ff9 FAIL -> culprit in (96b6663d..406c0ff9]
+#        (gui cluster or SST 406c0ff9 #957)
+#   406c0ff9 PASS -> culprit = 0c61c51e (pressure-velocity consolidation itself)
 #
 # The verdict is a DIAGNOSTIC, never a numerical PASS/FAIL. No
 # tolerance/oracle/gate/budget is modified; no production code is
@@ -57,7 +57,7 @@ concurrency:
 
 jobs:
   naca-bisect:
-    name: NACA qualification at 3 pinned master commits
+    name: NACA qualification at 3 pinned master commits (round 2)
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
@@ -76,9 +76,9 @@ jobs:
           git fetch --no-tags --unshallow origin master 2>/dev/null \
             || git fetch --no-tags origin master
           for pin in \
-            0c61c51ee8622e8019ff7cdb895f795f647ccecc \
-            03ac6f6c0159175e7b576997b91285a5bd021b2c \
-            4056e249eb7db829704c6eba98a58f8f1f618983; do
+            7684119bcd38a1046bbac1b049abf91da204c65e \
+            96b6663d210df5527fa8c3385ad2492d7a80c439 \
+            406c0ff9e855edcf7baf6b985a77a8a9efabb3fb; do
             git cat-file -e "${pin}^{commit}"
             git merge-base --is-ancestor "${pin}" FETCH_HEAD
             echo "pin_ok ${pin} $(git log -1 --format='%ci %s' "${pin}")"
@@ -95,9 +95,9 @@ jobs:
         timeout-minutes: 225
         env:
           PINS: >-
-            0c61c51ee8622e8019ff7cdb895f795f647ccecc
-            03ac6f6c0159175e7b576997b91285a5bd021b2c
-            4056e249eb7db829704c6eba98a58f8f1f618983
+            7684119bcd38a1046bbac1b049abf91da204c65e
+            96b6663d210df5527fa8c3385ad2492d7a80c439
+            406c0ff9e855edcf7baf6b985a77a8a9efabb3fb
         run: |
           set +e
           set -u
@@ -199,21 +199,21 @@ jobs:
           set -u
           RUN_ID="${GITHUB_RUN_ID}"
           E="diag-evidence/logs"
-          oc_0c61c51e="NOT_RUN"
-          oc_03ac6f6c="NOT_RUN"
-          oc_4056e249="NOT_RUN"
-          for short in 0c61c51e 03ac6f6c 4056e249; do
+          oc_7684119b="NOT_RUN"
+          oc_96b6663d="NOT_RUN"
+          oc_406c0ff9="NOT_RUN"
+          for short in 7684119b 96b6663d 406c0ff9; do
             f="$E/nacabisect_${short}_test_status_run${RUN_ID}.txt"
             [ -s "$f" ] || continue
             oc=$(sed -n 's/^outcome=//p' "$f" | tail -1)
             case "$short" in
-              0c61c51e) oc_0c61c51e="${oc:-MISSING}" ;;
-              03ac6f6c) oc_03ac6f6c="${oc:-MISSING}" ;;
-              4056e249) oc_4056e249="${oc:-MISSING}" ;;
+              7684119b) oc_7684119b="${oc:-MISSING}" ;;
+              96b6663d) oc_96b6663d="${oc:-MISSING}" ;;
+              406c0ff9) oc_406c0ff9="${oc:-MISSING}" ;;
             esac
           done
           complete=1
-          for oc in "$oc_0c61c51e" "$oc_03ac6f6c" "$oc_4056e249"; do
+          for oc in "$oc_7684119b" "$oc_96b6663d" "$oc_406c0ff9"; do
             case "$oc" in
               PASS_3_LEVELS|FAIL_DIVERGED|TIMEOUT_3600S|FAIL_OTHER) ;;
               *) complete=0 ;;
@@ -227,20 +227,21 @@ jobs:
               echo "VERDICT: INCOMPLETE_OR_INCONCLUSIVE"
             fi
             echo "run_id=${RUN_ID}"
-            echo "pin_0c61c51e=${oc_0c61c51e}"
-            echo "pin_03ac6f6c=${oc_03ac6f6c}"
-            echo "pin_4056e249=${oc_4056e249}"
+            echo "pin_7684119b=${oc_7684119b}"
+            echo "pin_96b6663d=${oc_96b6663d}"
+            echo "pin_406c0ff9=${oc_406c0ff9}"
             echo "reference_pass=f88b3700 (2026-10-16, 3 levels converged, 2943 s)"
-            echo "expected_control=4056e249 FAIL (same solver as red heads 979bf93d/d706846)"
+            echo "known_fail=0c61c51e (round-1 run 39325205592: all 3 pins FAIL_DIVERGED, bit-identical metrics)"
+          echo "round2_expected=406c0ff9 FAIL (direct parent of 0c61c51e; if PASS then culprit is 0c61c51e itself)"
             echo ""
-            echo "Interpretation guide:"
-            echo "- 0c61c51e FAIL -> culprit in {96b6663d cellwise momentum assembly, 0c61c51e consolidation}"
-            echo "- 0c61c51e PASS + 03ac6f6c FAIL -> culprit window e9ac2796..03ac6f6c (likely 03ac6f6c cellwise mu_eff)"
-            echo "- both PASS -> later window (SST 374c8fb4/257070a6, hook 4fb28173 #966, #973, #978) or campaign interaction"
-            echo "- 4056e249 PASS -> divergence not reproducible in isolation"
+            echo "Interpretation guide (round 2):"
+            echo "- 7684119b FAIL -> culprit at or before 7684119b (round 3 window f88b3700..7684119b: 9ba3d338 CUDA/GPU, merges 120070de 2b414352 6282a2bf)"
+            echo "- 7684119b PASS + 96b6663d FAIL -> culprit in (7684119b..96b6663d]: {74b13b95 gui, 6cf9a78b wall distance, 96b6663d} -> very likely 96b6663d"
+            echo "- 96b6663d PASS + 406c0ff9 FAIL -> culprit in (96b6663d..406c0ff9] (gui cluster or SST 406c0ff9 #957)"
+            echo "- 406c0ff9 PASS -> culprit = 0c61c51e (pressure-velocity consolidation itself)"
             echo ""
             echo "--- per-pin NACA digest (last markers) ---"
-            for short in 0c61c51e 03ac6f6c 4056e249; do
+            for short in 7684119b 96b6663d 406c0ff9; do
               L="$E/nacabisect_${short}_main_run${RUN_ID}.log"
               [ -s "$L" ] || continue
               echo "### ${short}"
@@ -264,8 +265,8 @@ jobs:
             git reset >/dev/null 2>&1
           fi
           if [ "$complete" = "1" ]; then
-            echo "bisect complete: 0c61c51e=${oc_0c61c51e} 03ac6f6c=${oc_03ac6f6c} 4056e249=${oc_4056e249}"
+            echo "bisect complete: 7684119b=${oc_7684119b} 96b6663d=${oc_96b6663d} 406c0ff9=${oc_406c0ff9}"
           else
-            echo "::error::bisect incomplete: 0c61c51e=${oc_0c61c51e} 03ac6f6c=${oc_03ac6f6c} 4056e249=${oc_4056e249}"
+            echo "::error::bisect incomplete: 7684119b=${oc_7684119b} 96b6663d=${oc_96b6663d} 406c0ff9=${oc_406c0ff9}"
             exit 1
           fi

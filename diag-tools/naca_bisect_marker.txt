@@ -18,3 +18,4 @@ Evidence : diag-evidence/logs/nacabisect_*_run<RUN_ID>.* (commits [ci skip]
 du bot, un commit par pin pour survivre a un timeout). Verdict = diagnostic,
 jamais un PASS/FAIL numerique. Aucune tolerance/oracle/gate/budget modifie,
 aucun code instrumente, branche diag jamais mergee.
+round2: 2026-10-19T21:15Z window f88b3700..0c61c51e pins 7684119b,96b6663d,406c0ff9 (round1 run 39325205592 all FAIL_DIVERGED)
