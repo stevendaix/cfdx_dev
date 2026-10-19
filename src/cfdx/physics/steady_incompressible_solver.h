@@ -140,6 +140,37 @@ struct InitializationControls {
     std::string restart_path;
 };
 
+// Read-only view of the exact coupled saddle-point system handed to the
+// Krylov solver, exposed to the optional evidence hook in
+// IncompressibleSolverControls. The hook fires at the Krylov call point -
+// after assembly, gauge treatment, finite checks and preconditioner setup -
+// so the aliased matrix, RHS and initial guess ARE the exact solve arguments
+// (same objects, no copy, no further mutation). The references are only
+// valid for the duration of the callback: a consumer that needs the data
+// beyond the call must copy it.
+struct CoupledAssemblySnapshot {
+    const cfdx::core::SparseMatrix* matrix = nullptr;
+    const cfdx::core::Vector* rhs = nullptr;
+    // Production initial guess ([U_old; p_old] with the gauge row set to the
+    // reference value), i.e. the x passed to the Krylov solver.
+    const cfdx::core::Vector* initial_guess = nullptr;
+    // Momentum-weighted Rhie-Chow pressure Schur diagonal, in both forms:
+    // pinned (reference cell = 1.0, exactly as production leaves it at solve
+    // time) and raw (as assembled, before the pin). Diagnostic evidence
+    // channels; production preconditioning does not consume them.
+    const std::vector<double>* pressure_schur_diagonal = nullptr;
+    const std::vector<double>* pressure_schur_diagonal_raw = nullptr;
+    // Production PCD pressure operators of this assembly, exactly as passed
+    // to PcdSchurApproximation (reference row already imposed by the
+    // assembler). Null when the resolved coupled plan is not PCD.
+    const cfdx::core::SparseMatrix* pcd_pressure_mass = nullptr;
+    const cfdx::core::SparseMatrix* pcd_pressure_laplacian = nullptr;
+    const cfdx::core::SparseMatrix* pcd_pressure_convection_diffusion = nullptr;
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* velocity_old = nullptr;
+    std::size_t reference_cell = 0;
+    bool has_fixed_pressure = false;
+};
+
 struct IncompressibleSolverControls {
     InitializationControls initialization;
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE;
@@ -209,6 +240,14 @@ struct IncompressibleSolverControls {
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&)>;
     IterationOutputCallback iteration_output_callback;
+    // Evidence-only hook: invoked at the exact Krylov call point of the
+    // coupled solve - after assembly, gauge treatment, finite checks and
+    // preconditioner setup - so the snapshot matrix, RHS and initial guess
+    // are the very objects handed to the solver. Null by default: no
+    // capture, no overhead, no behavior change. It exists so an isolated
+    // benchmark can replay the REAL solved system instead of a divergent
+    // replica - see tests/validation/test_pcd_schur_action_benchmark.cpp.
+    std::function<void(const CoupledAssemblySnapshot&)> coupled_assembly_callback;
 };
 
 struct IncompressibleIteration {
@@ -1748,6 +1787,14 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
     }
 
+    // Evidence-only: preserve the raw (pre-pin) Rhie-Chow diagonal for the
+    // coupled_assembly_callback when one is installed. The pinned form
+    // stored in coupled_pressure_schur_diagonal is diagnostic-only and is
+    // never consumed by production preconditioning.
+    std::vector<double> pressure_schur_diagonal_raw_copy;
+    if (controls.coupled_assembly_callback)
+        pressure_schur_diagonal_raw_copy = coupled_pressure_schur_diagonal;
+
     // Optional algebraic microscope. It is deliberately computed from
     // the exact post-gauge matrix passed to GMRES, so it exposes the actual
     // M/G/D/C blocks rather than reconstructed proxy operators.
@@ -1894,6 +1941,11 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         schur_model == CoupledSchurModel::SIMPLE ||
         schur_model == CoupledSchurModel::SIMPLEC;
     std::unique_ptr<Preconditioner> coupled_preconditioner;
+    // Evidence-only alias of the production PCD pressure operators, kept
+    // alive for the coupled_assembly_callback (the branch-local pcd_ops
+    // shared_ptr goes out of scope below). Assigned only when a callback is
+    // installed and the plan resolves to PCD; null otherwise.
+    std::shared_ptr<PcdPressureOperators> evidence_pcd_ops;
     const auto extract_coupled_block = [&](std::size_t row_block,
                                            std::size_t col_block,
                                            std::size_t row_size,
@@ -2163,6 +2215,11 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             std::nullopt,
             has_fixed_pressure ? std::optional<std::size_t>()
                                : std::optional<std::size_t>(reference_cell));
+        // Evidence-only: expose the production operators to the
+        // coupled_assembly_callback when one is installed (kept alive via
+        // evidence_pcd_ops past this branch scope).
+        if (controls.coupled_assembly_callback)
+            evidence_pcd_ops = pcd_ops;
 
         CoupledBlockSchurOptions options;
         options.factorization = CoupledSchurFactorization::Full;
@@ -2261,6 +2318,29 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << " restart=" << gmres_restart
                   << " adaptive_restart=0\n";
     }
+
+    // Evidence-only capture hook, at the exact Krylov call point (null by
+    // default; see IncompressibleSolverControls::coupled_assembly_callback).
+    // Everything the solver consumes is now final: assembly, gauge
+    // treatment, finite checks and preconditioner setup are done, and no
+    // mutation happens between this hook and the solve calls below. The
+    // snapshot therefore aliases the very A, b and x objects handed to the
+    // Krylov driver - the captured system IS the solved system, by
+    // construction rather than by convention. The consumer must still copy
+    // anything it wants to keep: the references die with this scope, and x
+    // becomes the solution below.
+    if (controls.coupled_assembly_callback) {
+        const CoupledAssemblySnapshot snapshot{
+            &A, &b, &x,
+            &coupled_pressure_schur_diagonal,
+            &pressure_schur_diagonal_raw_copy,
+            evidence_pcd_ops ? &evidence_pcd_ops->mass : nullptr,
+            evidence_pcd_ops ? &evidence_pcd_ops->laplacian : nullptr,
+            evidence_pcd_ops ? &evidence_pcd_ops->convection_diffusion : nullptr,
+            &U_old, reference_cell, has_fixed_pressure};
+        controls.coupled_assembly_callback(snapshot);
+    }
+
     SolverResult result;
     if (solver_plan.krylov == KrylovModel::FGMRES) {
         result = solve_fgmres(
@@ -4382,3 +4462,4 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 }
 
 } // namespace cfdx::physics
+
