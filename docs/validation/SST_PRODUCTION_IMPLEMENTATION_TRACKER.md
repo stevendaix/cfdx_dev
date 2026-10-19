@@ -14,7 +14,6 @@
 - [x] Add a non-production SST case preflight for explicit positive initial `k`/`omega` and validated inlet turbulence intensity/length scale; derive the standard inlet estimates without enabling the production selector.
 - [x] Represent explicit per-patch `k`/`omega` boundary-condition types in the persistent case schema and HDF5 round-trip, with compatibility validation.
 - [ ] Define restart semantics and wire validated scalar boundary contracts into the production transport solve.
-- [ ] Extend the persistent case contract to represent explicit wall/outlet scalar boundary conditions and define restart semantics.
 - [ ] Production-path transport MMS on three or more meshes.
 - [ ] Frozen DNS channel qualification (Moser–Kim–Mansour), with mesh/y+ sensitivity and independent balance checks.
 - [ ] Flat-plate and NACA0012 turbulent validation after channel qualification.
