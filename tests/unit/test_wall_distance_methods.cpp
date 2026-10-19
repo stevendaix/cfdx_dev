@@ -104,6 +104,7 @@ int main() {
     check_ray({2,2,2},{1,0,0},5.0,"BVH ray miss differs from brute force");
     check_ray({0.5,0.5,0.5},{1,1,0},1.0,"BVH ray edge hit differs from brute force");
     check_ray({0.5,0.5,0.5},{1,1,1},1.0,"BVH ray vertex hit differs from brute force");
+    check_ray({-1e-13,0.5,-1.0},{0,0,1},2.0,"BVH pruning rejected a tolerance-level near-edge hit");
     check_ray({0.5,0.5,0.5},{2,0,0},1.0,"BVH ray direction normalization differs");
     check_ray({0.5,0.5,0.5},{0,0,0},1.0,"BVH zero-direction handling differs");
     check_ray({0.5,0.5,0.5},{1,0,0},0.0,"BVH non-positive range handling differs");
