@@ -783,6 +783,11 @@ int main()
             solve_steady_incompressible(m, U, p, ubc, pbc, controls),
             std::invalid_argument);
 
+        controls.cell_turbulent_viscosity = {-1.0e-3};
+        EXPECT_THROW(
+            solve_steady_incompressible(m, U, p, ubc, pbc, controls),
+            std::invalid_argument);
+
         controls.cell_turbulent_viscosity = {
             std::numeric_limits<double>::quiet_NaN()};
         EXPECT_THROW(
