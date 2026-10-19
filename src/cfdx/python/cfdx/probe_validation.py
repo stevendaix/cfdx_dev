@@ -139,9 +139,9 @@ def write_probe_csv(path: str | Path, series: Sequence[ProbeSeries]) -> Path:
     if not series:
         raise ValueError("probe CSV export requires at least one probe series")
     destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
 
     rows: list[tuple[str, int, float, float]] = []
+    seen_names: set[str] = set()
     for probe in series:
         if not probe.name:
             raise ValueError("probe name must not be empty")
@@ -149,12 +149,43 @@ def write_probe_csv(path: str | Path, series: Sequence[ProbeSeries]) -> Path:
             raise ValueError(
                 f"probe name must not contain a comma or newline: {probe.name!r}"
             )
+        if probe.name in seen_names:
+            raise ValueError(f"probe names must be unique: {probe.name!r}")
+        seen_names.add(probe.name)
+        has_metadata = (
+            bool(probe.point) or probe.field is not None or probe.unit is not None
+        )
+        if has_metadata and (
+            len(probe.point) != 3 or not probe.field or not probe.unit
+        ):
+            raise ValueError(
+                f"probe {probe.name!r} has incomplete metadata; expected "
+                "three coordinates, field, and unit"
+            )
+        seen_iterations: set[int] = set()
+        history: list[ProbeSample] = []
         for sample in probe.samples:
             if sample.iteration < 0:
                 raise ValueError("probe iteration must be non-negative")
+            if sample.iteration in seen_iterations:
+                raise ValueError(
+                    f"probe {probe.name!r} has duplicate iteration {sample.iteration}"
+                )
+            seen_iterations.add(sample.iteration)
             if not math.isfinite(sample.time) or not math.isfinite(sample.value):
                 raise ValueError(f"probe {probe.name!r} has a non-finite sample")
+            history.append(sample)
             rows.append((probe.name, sample.iteration, sample.time, sample.value))
+        # Validate the same iteration-ordered history that will be serialized.
+        # Sort a copy so callers may provide samples in arbitrary input order.
+        ordered_history = sorted(history, key=lambda sample: sample.iteration)
+        ProbeSeries(
+            probe.name,
+            probe.point,
+            tuple(ordered_history),
+            field=probe.field,
+            unit=probe.unit,
+        ).validate_monotonic()
     rows.sort(key=lambda row: (row[0], row[1]))
 
     lines = [
@@ -179,6 +210,7 @@ def write_probe_csv(path: str | Path, series: Sequence[ProbeSeries]) -> Path:
             f"{name},{iteration},{_format_probe_csv_value(time_value)},"
             f"{_format_probe_csv_value(value)}"
         )
+    destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return destination
 
