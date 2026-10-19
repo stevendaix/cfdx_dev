@@ -1,0 +1,20 @@
+NACA0012 divergence bisect marker v1 - 2026-10-19
+
+Objet : declencher le workflow .github/workflows/naca-divergence-bisect-diag.yml
+(branche diag ci/long-campaign-diagnostics, jamais mergee).
+
+Le workflow execute test_naca0012_qualification en isole (config CI exacte :
+Release + LONG_VALIDATION + MPI + parallel HDF5) sur 3 pins master :
+  0c61c51ee8622e8019ff7cdb895f795f647ccecc  (2026-10-18, consolidation pressure-velocity)
+  03ac6f6c0159175e7b576997b91285a5bd021b2c  (2026-10-19, mu_eff cellwise scalaire->vecteur)
+  4056e249eb7db829704c6eba98a58f8f1f618983  (2026-10-19, master courant, controle positif attendu FAIL)
+
+Contexte : NACA passait sur master f88b3700 (2026-10-16, 3 niveaux converges,
+2943 s) ; N128 diverge (residual_growth_exceeded, 15 it.) aux heads 979bf93d
+(#962) et d706846 (#979) le 2026-10-19. Fenetre de regression : 2026-10-16 ->
+2026-10-19.
+
+Evidence : diag-evidence/logs/nacabisect_*_run<RUN_ID>.* (commits [ci skip]
+du bot, un commit par pin pour survivre a un timeout). Verdict = diagnostic,
+jamais un PASS/FAIL numerique. Aucune tolerance/oracle/gate/budget modifie,
+aucun code instrumente, branche diag jamais mergee.

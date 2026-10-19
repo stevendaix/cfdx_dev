@@ -1,0 +1,271 @@
+name: NACA0012 divergence bisect (master pins, diag)
+
+# DIAG-ONLY - diagnostics branch ci/long-campaign-diagnostics (NEVER merge).
+#
+# Goal: locate the master commit that introduced the NACA0012 divergence.
+# Reference evidence:
+#   - PASS at master f88b3700 (2026-10-16): all 3 levels converged
+#     (N64 433 it, N128 995 it, N256 3989 it, 2943 s wall).
+#   - FAIL at heads 979bf93d (#962) and d706846 (#979) on 2026-10-19
+#     (job "Long validation campaigns", runs 39296392731 / 39299078514):
+#     N128 DIVERGED at 15 iterations (residual_growth_exceeded), geometric
+#     momentum-residual growth localized at airfoil wall cells. Full
+#     microscope: diag-evidence/logs/pr929x_nacastop_*_run39070355557.
+# Regression window: 2026-10-16 -> 2026-10-19.
+#
+# Three master pins, test_naca0012_qualification run in isolation with the
+# exact CI configuration (Release + LONG_VALIDATION + MPI + parallel HDF5).
+# NACA meshes are generated per pin by the pin's own script (verified
+# byte-identical at all three pins; standalone h5py+numpy, no cfdx import):
+#   0c61c51e  2026-10-18 "integration(numerics) consolidate pressure-velocity fixes"
+#   03ac6f6c  2026-10-19 cellwise viscosity routed through momentum checks
+#   4056e249  2026-10-19 current master (positive control, expected FAIL:
+#              same solver content as the observed red heads)
+#
+# Per-pin classification (log content + exit code):
+#   PASS_3_LEVELS / FAIL_DIVERGED / TIMEOUT_3600S / FAIL_OTHER
+#   INCONCLUSIVE_{WORKTREE,CONFIGURE,BUILD,MESHGEN} = upstream stage failed
+#
+# Interpretation guide:
+#   0c61c51e FAIL -> culprit in {96b6663d (cellwise momentum assembly),
+#                                0c61c51e (pressure-velocity consolidation)}
+#   0c61c51e PASS + 03ac6f6c FAIL -> culprit in window e9ac2796..03ac6f6c
+#        (very likely 03ac6f6c: scalar -> cellwise vector mu_eff;
+#         e9ac2796 only touches test_ghia_cavity.cpp)
+#   both PASS -> look at the later window (SST 374c8fb4/257070a6, hook
+#        4fb28173 #966, #973, #978) or campaign interaction
+#   4056e249 PASS -> divergence not reproducible in isolation
+#
+# The verdict is a DIAGNOSTIC, never a numerical PASS/FAIL. No
+# tolerance/oracle/gate/budget is modified; no production code is
+# instrumented; evidence is committed per pin so a timeout cannot lose it.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - diag-tools/naca_bisect_marker.txt
+      - .github/workflows/naca-divergence-bisect-diag.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: naca-divergence-bisect-diag
+  cancel-in-progress: false
+
+jobs:
+  naca-bisect:
+    name: NACA qualification at 3 pinned master commits
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout diagnostics branch
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Fail-closed pin verification (all pins reachable from origin/master)
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --unshallow origin master 2>/dev/null \
+            || git fetch --no-tags origin master
+          for pin in \
+            0c61c51ee8622e8019ff7cdb895f795f647ccecc \
+            03ac6f6c0159175e7b576997b91285a5bd021b2c \
+            4056e249eb7db829704c6eba98a58f8f1f618983; do
+            git cat-file -e "${pin}^{commit}"
+            git merge-base --is-ancestor "${pin}" FETCH_HEAD
+            echo "pin_ok ${pin} $(git log -1 --format='%ci %s' "${pin}")"
+          done
+
+      - name: Create Python venv for mesh generation
+        run: |
+          set -euo pipefail
+          python3 -m venv .venv-naca-bisect
+          .venv-naca-bisect/bin/python -m pip install --upgrade pip
+          .venv-naca-bisect/bin/python -m pip install h5py numpy
+
+      - name: Bisect loop (configure, build, mesh, run per pin)
+        timeout-minutes: 225
+        env:
+          PINS: >-
+            0c61c51ee8622e8019ff7cdb895f795f647ccecc
+            03ac6f6c0159175e7b576997b91285a5bd021b2c
+            4056e249eb7db829704c6eba98a58f8f1f618983
+        run: |
+          set +e
+          set -u
+          RUN_ID="${GITHUB_RUN_ID}"
+          E="diag-evidence/logs"
+          mkdir -p "$E"
+          git config user.name "cfdx-diag-bot"
+          git config user.email "actions@github.com"
+          for PIN in $PINS; do
+            SHORT="${PIN:0:8}"
+            SRC="cfdx-${SHORT}"
+            BUILD="build-${SHORT}"
+            LOG="$E/nacabisect_${SHORT}_main_run${RUN_ID}.log"
+            STA="$E/nacabisect_${SHORT}_test_status_run${RUN_ID}.txt"
+            echo "=== PIN ${PIN} : $(git log -1 --format='%ci %s' "${PIN}") ===" > "$LOG"
+            outcome=""
+            rc=""
+            t0=0
+            t1=0
+            git worktree add --detach "$SRC" "$PIN" >>"$LOG" 2>&1 \
+              || outcome="INCONCLUSIVE_WORKTREE"
+            if [ -z "$outcome" ]; then
+              cmake -S "$SRC" -B "$BUILD" -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCFDX_BUILD_TESTS=ON \
+                -DCFDX_ENABLE_LONG_VALIDATION=ON \
+                -DCFDX_ENABLE_MPI=ON \
+                -DCFDX_BUILD_PYTHON=OFF \
+                -DCFDX_USE_HDF5_SERIAL=OFF \
+                -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+                -DPython3_EXECUTABLE="$PWD/.venv-naca-bisect/bin/python" >>"$LOG" 2>&1 \
+                || outcome="INCONCLUSIVE_CONFIGURE"
+            fi
+            if [ -z "$outcome" ]; then
+              cmake --build "$BUILD" --target test_naca0012_qualification --parallel 2 >>"$LOG" 2>&1 \
+                || outcome="INCONCLUSIVE_BUILD"
+            fi
+            if [ -z "$outcome" ]; then
+              .venv-naca-bisect/bin/python "$SRC/scripts/generate_2d_validation_meshes.py" \
+                naca0012 --output-dir "$BUILD/validation_meshes" >>"$LOG" 2>&1 \
+                || outcome="INCONCLUSIVE_MESHGEN"
+              for m in naca0012_laminar_n64 naca0012_laminar_n128 naca0012_laminar_n256; do
+                [ -s "$BUILD/validation_meshes/${m}.h5" ] || outcome="INCONCLUSIVE_MESHGEN"
+              done
+            fi
+            if [ -z "$outcome" ]; then
+              echo "=== RUN test_naca0012_qualification at ${SHORT} ===" >>"$LOG"
+              t0=$(date +%s)
+              timeout 3600 "$BUILD/test_naca0012_qualification" \
+                "$BUILD/validation_meshes/naca0012_laminar_n64.h5" \
+                "$BUILD/validation_meshes/naca0012_laminar_n128.h5" \
+                "$BUILD/validation_meshes/naca0012_laminar_n256.h5" >>"$LOG" 2>&1
+              rc=$?
+              t1=$(date +%s)
+              if [ "$rc" = "0" ]; then
+                outcome="PASS_3_LEVELS"
+              elif [ "$rc" = "124" ]; then
+                outcome="TIMEOUT_3600S"
+              elif grep -q "did not converge" "$LOG"; then
+                outcome="FAIL_DIVERGED"
+              else
+                outcome="FAIL_OTHER"
+              fi
+              echo "=== test rc=${rc} outcome=${outcome} duration=$((t1 - t0))s ===" >>"$LOG"
+            fi
+            {
+              echo "pin=${PIN}"
+              echo "subject=$(git log -1 --format='%s' "${PIN}")"
+              echo "commit_date=$(git log -1 --format='%ci' "${PIN}")"
+              echo "outcome=${outcome:-MISSING}"
+              echo "test_rc=${rc:-none}"
+              if [ "$t0" != "0" ] && [ "$t1" != "0" ]; then
+                echo "test_duration_s=$((t1 - t0))"
+              fi
+              echo "run_id=${RUN_ID}"
+            } > "$STA"
+            if [ -s "$LOG" ] && [ "$(stat -c%s "$LOG")" -gt 1500000 ]; then
+              tail -c 1500000 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
+            fi
+            git add "$E"/nacabisect_"${SHORT}"_*_run"${RUN_ID}"* >/dev/null 2>&1
+            if ! git diff --cached --quiet; then
+              if git commit -m "diag: naca bisect ${SHORT} outcome=${outcome:-MISSING} run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
+                if ! git push >/dev/null 2>&1; then
+                  git pull --rebase origin ci/long-campaign-diagnostics >/dev/null 2>&1
+                  git push >/dev/null 2>&1 || echo "push_retry_failed ${SHORT}"
+                fi
+              fi
+            else
+              git reset >/dev/null 2>&1
+            fi
+            git worktree remove --force "$SRC" >/dev/null 2>&1 || rm -rf "$SRC"
+            rm -rf "$BUILD"
+          done
+
+      - name: Compose bisect verdict
+        if: always()
+        run: |
+          set +e
+          set -u
+          RUN_ID="${GITHUB_RUN_ID}"
+          E="diag-evidence/logs"
+          oc_0c61c51e="NOT_RUN"
+          oc_03ac6f6c="NOT_RUN"
+          oc_4056e249="NOT_RUN"
+          for short in 0c61c51e 03ac6f6c 4056e249; do
+            f="$E/nacabisect_${short}_test_status_run${RUN_ID}.txt"
+            [ -s "$f" ] || continue
+            oc=$(sed -n 's/^outcome=//p' "$f" | tail -1)
+            case "$short" in
+              0c61c51e) oc_0c61c51e="${oc:-MISSING}" ;;
+              03ac6f6c) oc_03ac6f6c="${oc:-MISSING}" ;;
+              4056e249) oc_4056e249="${oc:-MISSING}" ;;
+            esac
+          done
+          complete=1
+          for oc in "$oc_0c61c51e" "$oc_03ac6f6c" "$oc_4056e249"; do
+            case "$oc" in
+              PASS_3_LEVELS|FAIL_DIVERGED|TIMEOUT_3600S|FAIL_OTHER) ;;
+              *) complete=0 ;;
+            esac
+          done
+          VER="$E/nacabisect_verdict_run${RUN_ID}.txt"
+          {
+            if [ "$complete" = "1" ]; then
+              echo "VERDICT: EVIDENCE_COMPLETE (diagnostic - NOT a numerical verdict)"
+            else
+              echo "VERDICT: INCOMPLETE_OR_INCONCLUSIVE"
+            fi
+            echo "run_id=${RUN_ID}"
+            echo "pin_0c61c51e=${oc_0c61c51e}"
+            echo "pin_03ac6f6c=${oc_03ac6f6c}"
+            echo "pin_4056e249=${oc_4056e249}"
+            echo "reference_pass=f88b3700 (2026-10-16, 3 levels converged, 2943 s)"
+            echo "expected_control=4056e249 FAIL (same solver as red heads 979bf93d/d706846)"
+            echo ""
+            echo "Interpretation guide:"
+            echo "- 0c61c51e FAIL -> culprit in {96b6663d cellwise momentum assembly, 0c61c51e consolidation}"
+            echo "- 0c61c51e PASS + 03ac6f6c FAIL -> culprit window e9ac2796..03ac6f6c (likely 03ac6f6c cellwise mu_eff)"
+            echo "- both PASS -> later window (SST 374c8fb4/257070a6, hook 4fb28173 #966, #973, #978) or campaign interaction"
+            echo "- 4056e249 PASS -> divergence not reproducible in isolation"
+            echo ""
+            echo "--- per-pin NACA digest (last markers) ---"
+            for short in 0c61c51e 03ac6f6c 4056e249; do
+              L="$E/nacabisect_${short}_main_run${RUN_ID}.log"
+              [ -s "$L" ] || continue
+              echo "### ${short}"
+              grep -E "NACA0012_RE1000_A0|NACA0012_QUALIFICATION|did not converge|Cd=" "$L" | tail -12
+              echo "--- last 5 raw lines ---"
+              tail -5 "$L"
+              echo ""
+            done
+          } > "$VER"
+          git config user.name "cfdx-diag-bot"
+          git config user.email "actions@github.com"
+          git add "$VER" >/dev/null 2>&1
+          if ! git diff --cached --quiet; then
+            if git commit -m "diag: naca bisect verdict run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
+              if ! git push >/dev/null 2>&1; then
+                git pull --rebase origin ci/long-campaign-diagnostics >/dev/null 2>&1
+                git push >/dev/null 2>&1 || echo "push_retry_failed verdict"
+              fi
+            fi
+          else
+            git reset >/dev/null 2>&1
+          fi
+          if [ "$complete" = "1" ]; then
+            echo "bisect complete: 0c61c51e=${oc_0c61c51e} 03ac6f6c=${oc_03ac6f6c} 4056e249=${oc_4056e249}"
+          else
+            echo "::error::bisect incomplete: 0c61c51e=${oc_0c61c51e} 03ac6f6c=${oc_03ac6f6c} 4056e249=${oc_4056e249}"
+            exit 1
+          fi
