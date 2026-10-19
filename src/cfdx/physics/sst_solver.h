@@ -174,19 +174,9 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         result.k_residual=inner.k_residual;
         result.second_residual=inner.second_residual;
         result.iterations=iter;
-        // Preserve all boundedness evidence from the inner transport solve.
-        // The production transaction uses nonfinite_bound_events as a commit gate;
-        // dropping these counters here could turn an invalid inner state into an
-        // apparently clean outer result.
-        result.k_floor_events += inner.k_floor_events;
-        result.second_floor_events += inner.second_floor_events;
-        result.nonfinite_bound_events += inner.nonfinite_bound_events;
-        result.k_total_floor_correction += inner.k_total_floor_correction;
-        result.second_total_floor_correction += inner.second_total_floor_correction;
-        result.k_max_floor_correction = std::max(
-            result.k_max_floor_correction, inner.k_max_floor_correction);
-        result.second_max_floor_correction = std::max(
-            result.second_max_floor_correction, inner.second_max_floor_correction);
+        // Preserve boundedness evidence from each inner transport solve. The
+        // production transaction uses nonfinite_bound_events as a commit gate.
+        accumulate_turbulence_transport_diagnostics(result, inner);
         if(inner.converged && result.nonfinite_bound_events == 0 &&
            std::max(dk,dw)<=tolerance){result.converged=true;break;}
     }
