@@ -1,0 +1,7 @@
+pin=4056e249eb7db829704c6eba98a58f8f1f618983
+subject=fix(probes): make CSV round-trips reject ambiguous histories (#962)
+commit_date=2026-10-19 21:10:45 +0200
+outcome=FAIL_DIVERGED
+test_rc=134
+test_duration_s=20
+run_id=39325205592
