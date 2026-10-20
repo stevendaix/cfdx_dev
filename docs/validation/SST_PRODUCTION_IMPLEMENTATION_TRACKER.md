@@ -116,7 +116,7 @@ This is an enabling contract only. It does not call SST transport from the produ
 - Keep the production turbulence guard until all required coupling and qualification gates pass.
 
 
-### T1 implementation increment — runtime boundary adapter (PR in progress)
+### T1 implementation increment — runtime boundary adapter (merged in PR #998)
 
 - [x] Translate persisted SST fixed-value and zero-gradient conditions into the existing scalar transport boundary API.
 - [x] Translate `WALL_K_ZERO` to a zero fixed-value condition for `k`.
@@ -124,3 +124,14 @@ This is an enabling contract only. It does not call SST transport from the produ
 - [x] Add unit regressions for inlet/outlet mapping and fail-closed wall-omega behavior.
 - [ ] Apply this adapter in the production case path only after a qualified SST wall-omega operator exists.
 - [ ] Couple boundary handling to production transport and restart state; the production RANS selector remains fail-closed.
+
+
+### T2 implementation increment — resolved-wall omega face operator (PR in progress)
+
+- [x] Implement the documented resolved-wall value \(\omega_w=6\nu/(\beta_1 y_1^2)\) with finite-positive validation.
+- [x] Build explicit per-face omega values from wall patch names and owner-cell-to-face normal distances; reject missing patches, degenerate faces, and patches with no faces.
+- [x] Thread the optional face-value contract through SST transport and the transactional update without changing default behavior for existing callers.
+- [x] Add a unit regression for the formula and invalid geometry inputs.
+- [ ] Add a mesh-level integration regression proving only requested wall faces receive finite values and non-wall faces remain unset.
+- [ ] Build and run targeted numerical tests and the required CI checks.
+- [ ] Keep the production RANS selector fail-closed until state initialization/restart, full momentum coupling, MMS and turbulent-channel DNS qualification are complete.
