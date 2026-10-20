@@ -156,8 +156,8 @@ inline S2SResult solve_s2s_radiosity(
     r.net_flux.resize(n,0.0);
     double absorbed=0.0, emitted=0.0;
     for (std::size_t i=0;i<n;++i) {
-        const double Gext=external_irradiation.empty()
-            ? controls.ambient_irradiation : external_irradiation[i];
+        const double Gext=s2s_external_irradiation(
+            view_factors,n,i,controls,external_irradiation);
         for (std::size_t j=0;j<n;++j) r.irradiation[i]+=view_factors[i*n+j]*x[j];
         r.irradiation[i]+=Gext;
         r.net_flux[i]=x[i]-r.irradiation[i];
