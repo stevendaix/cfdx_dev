@@ -1,0 +1,7 @@
+pin=16734e82545c66bf03911ddd3df4cf629ff3436f
+subject=test(harness): asserts vivants en Release — live_assert.hpp fail-closed + 13 fichiers de tests épinglés (#921)
+commit_date=2026-10-16 19:20:57 +0200
+outcome=FAIL_DIVERGED
+test_rc=134
+test_duration_s=293
+run_id=39368995035
