@@ -417,12 +417,23 @@ inline ScalarBoundaryFaceValues make_sst_wall_omega_face_values(
 // condition has a corresponding production-qualified wall operator.
 inline void require_supported_sst_runtime_boundaries(
     const SSTRuntimeBoundaryContract& runtime,
-    bool wall_omega_operator_available = false)
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
 {
-    if (!runtime.wall_omega_sst_patches.empty() && !wall_omega_operator_available)
+    if (runtime.wall_omega_sst_patches.empty())
+        return;
+    if (omega_face_values == nullptr)
         throw std::invalid_argument(
-            "SST production transport is blocked: WALL_OMEGA_SST requires the "
-            "qualified per-face wall operator");
+            "SST production transport is blocked: WALL_OMEGA_SST requires explicit "
+            "per-face wall values");
+    for (const auto& patch : runtime.wall_omega_sst_patches) {
+        const auto it = omega_face_values->values.find(patch);
+        if (it == omega_face_values->values.end() ||
+            std::none_of(it->second.begin(), it->second.end(),
+                         [](double value) { return std::isfinite(value); }))
+            throw std::invalid_argument(
+                "SST production transport is blocked: wall omega values are missing "
+                "for patch '" + patch + "'");
+    }
 }
 
 }  // namespace cfdx::physics
