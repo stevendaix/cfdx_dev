@@ -57,6 +57,20 @@ _UINT64_MASK = 0xFFFFFFFFFFFFFFFF
 
 # Boundary patch types, mirroring cfdx::core::PatchType.
 _PATCH_TYPE_WALL = 0
+_PATCH_TYPE_CODES = {
+    "wall": 0,
+    "inlet": 1,
+    "outlet": 2,
+    "symmetry": 3,
+    "symmetryplane": 3,
+    "cyclic": 4,
+    "cyclicami": 4,
+    "cyclicacmi": 4,
+    "processor": 5,
+    "empty": 6,
+    "patch": 7,
+    "unknown": 7,
+}
 
 _TYPE_ALIASES: dict[str, str] = {
     "tetrahedron": "tetra",
@@ -154,9 +168,12 @@ def _boundary_patch_metadata(m: dict) -> tuple[str | None, np.ndarray, np.ndarra
         # rejects duplicate patch names outright, so faces are collected
         # per-name rather than emitted as contiguous runs.
         face_to_patch = {}
+        patch_types = {}
         for entry in assignment:
+            name = entry.get("name", "boundary")
+            patch_types[name] = str(entry.get("type", "wall")).lower()
             for fid in entry.get("face_ids", []):
-                face_to_patch[int(fid)] = entry.get("name", "boundary")
+                face_to_patch[int(fid)] = name
         by_name: dict[str, list[int]] = {}
         order: list[str] = []
         for fid in boundary_faces.tolist():
@@ -175,7 +192,8 @@ def _boundary_patch_metadata(m: dict) -> tuple[str | None, np.ndarray, np.ndarra
         entries = []
         for i, (name, _) in enumerate(merged):
             entries.append(
-                f"{name}:{int(patch_ids[offsets[i]])}:{int(offsets[i + 1] - offsets[i])}:{_PATCH_TYPE_WALL}"
+                f"{name}:{int(patch_ids[offsets[i]])}:{int(offsets[i + 1] - offsets[i])}:"
+                f"{_PATCH_TYPE_CODES.get(patch_types.get(name, 'wall'), _PATCH_TYPE_WALL)}"
             )
         metadata = ";".join(entries)
         return metadata, patch_ids, offsets
