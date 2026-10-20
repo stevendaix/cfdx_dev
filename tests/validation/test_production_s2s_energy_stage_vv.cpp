@@ -101,18 +101,35 @@ static Mesh box_mesh(std::size_t nx, std::size_t ny, double dx, double dy,
                                static_cast<double>(l));
 
     for (std::size_t i = 0; i <= nx; ++i)
-        for (std::size_t j = 0; j < ny; ++j)
-            m.faces().push_face({pid(i, j, 0), pid(i, j, 1),
-                                 pid(i, j + 1, 1), pid(i, j + 1, 0)});
+        for (std::size_t j = 0; j < ny; ++j) {
+            // Face normals point owner-to-neighbour for internal faces and
+            // outward from the owner for boundary faces.
+            if (i == 0)
+                m.faces().push_face({pid(i, j, 0), pid(i, j, 1),
+                                     pid(i, j + 1, 1), pid(i, j + 1, 0)});
+            else
+                m.faces().push_face({pid(i, j, 0), pid(i, j + 1, 0),
+                                     pid(i, j + 1, 1), pid(i, j, 1)});
+        }
     for (std::size_t i = 0; i < nx; ++i)
-        for (std::size_t j = 0; j <= ny; ++j)
-            m.faces().push_face({pid(i, j, 0), pid(i + 1, j, 0),
-                                 pid(i + 1, j, 1), pid(i, j, 1)});
+        for (std::size_t j = 0; j <= ny; ++j) {
+            if (j == 0)
+                m.faces().push_face({pid(i, j, 0), pid(i + 1, j, 0),
+                                     pid(i + 1, j, 1), pid(i, j, 1)});
+            else
+                m.faces().push_face({pid(i, j, 0), pid(i, j, 1),
+                                     pid(i + 1, j, 1), pid(i + 1, j, 0)});
+        }
     for (std::size_t i = 0; i < nx; ++i)
         for (std::size_t j = 0; j < ny; ++j)
-            for (std::size_t l = 0; l < 2; ++l)
-                m.faces().push_face({pid(i, j, l), pid(i + 1, j, l),
-                                     pid(i + 1, j + 1, l), pid(i, j + 1, l)});
+            for (std::size_t l = 0; l < 2; ++l) {
+                if (l == 0)
+                    m.faces().push_face({pid(i, j, l), pid(i, j + 1, l),
+                                         pid(i + 1, j + 1, l), pid(i + 1, j, l)});
+                else
+                    m.faces().push_face({pid(i, j, l), pid(i + 1, j, l),
+                                         pid(i + 1, j + 1, l), pid(i, j + 1, l)});
+            }
 
     m.ownership().resize(n_faces);
     for (std::size_t j = 0; j < ny; ++j) {
