@@ -19,6 +19,26 @@ struct S2SControls {
     double ambient_irradiation = 0.0;
 };
 
+// Ambient irradiation represents the part of the hemisphere not covered by
+// modeled enclosure surfaces. It must therefore be weighted by the open view
+// fraction; adding it in full to a closed enclosure double-counts incoming
+// radiation. An explicit external_irradiation vector retains the original API
+// contract and replaces the ambient reservoir for each surface.
+inline double s2s_external_irradiation(
+    const std::vector<double>& F, std::size_t n, std::size_t i,
+    const S2SControls& controls,
+    const std::vector<double>& external_irradiation)
+{
+    if (!external_irradiation.empty())
+        return external_irradiation[i];
+
+    double row_sum = 0.0;
+    for (std::size_t j = 0; j < n; ++j)
+        row_sum += F[i*n+j];
+    const double open_fraction = std::max(0.0, 1.0-row_sum);
+    return open_fraction*controls.ambient_irradiation;
+}
+
 struct S2SResult {
     bool converged = false;
     std::vector<double> radiosity;
@@ -92,8 +112,8 @@ inline S2SResult solve_s2s_radiosity(
             !std::isfinite(temperatures[i]) || temperatures[i]<=0.0)
             throw std::invalid_argument("invalid S2S surface state");
         const double E=STEFAN_BOLTZMANN*std::pow(temperatures[i],4);
-        const double Gext=external_irradiation.empty()
-            ? controls.ambient_irradiation : external_irradiation[i];
+        const double Gext=s2s_external_irradiation(
+            view_factors,n,i,controls,external_irradiation);
         if (!std::isfinite(Gext) || Gext<0.0)
             throw std::invalid_argument("invalid S2S external irradiation");
         const double rho=1.0-emissivities[i];
@@ -137,8 +157,8 @@ inline S2SResult solve_s2s_radiosity(
     r.net_flux.resize(n,0.0);
     double absorbed=0.0, emitted=0.0;
     for (std::size_t i=0;i<n;++i) {
-        const double Gext=external_irradiation.empty()
-            ? controls.ambient_irradiation : external_irradiation[i];
+        const double Gext=s2s_external_irradiation(
+            view_factors,n,i,controls,external_irradiation);
         for (std::size_t j=0;j<n;++j) r.irradiation[i]+=view_factors[i*n+j]*x[j];
         r.irradiation[i]+=Gext;
         r.net_flux[i]=x[i]-r.irradiation[i];
@@ -149,6 +169,23 @@ inline S2SResult solve_s2s_radiosity(
     r.energy_balance_error=std::abs(r.total_power)/
         std::max(1.0,std::max(emitted,absorbed));
     return r;
+}
+
+// S2SResult::net_flux is positive when radiosity leaving a surface
+// exceeds irradiation received by it. The production energy boundary contract
+// is the opposite: positive heat_flux enters the fluid. Keep this sign change
+// explicit at the coupling seam rather than duplicating it in each driver.
+inline std::vector<double> s2s_heat_flux_into_fluid(const S2SResult& result)
+{
+    std::vector<double> flux_into_fluid;
+    flux_into_fluid.reserve(result.net_flux.size());
+    for (double net_flux : result.net_flux) {
+        if (!std::isfinite(net_flux))
+            throw std::invalid_argument(
+                "S2S net surface flux must be finite");
+        flux_into_fluid.push_back(-net_flux);
+    }
+    return flux_into_fluid;
 }
 
 struct S2SMonteCarloControls {
@@ -163,14 +200,43 @@ inline std::vector<double> estimate_s2s_view_factors_monte_carlo(
     if (surfaces.empty() || controls.samples==0)
         throw std::invalid_argument("S2S Monte Carlo requires surfaces and samples");
     const std::size_t n=surfaces.size();
+    std::vector<double> areas(n,0.0);
+    for (std::size_t i=0;i<n;++i) {
+        if (surfaces[i].empty())
+            throw std::invalid_argument("S2S Monte Carlo surface is empty");
+        for (const auto& triangle : surfaces[i])
+            areas[i] += radiation_triangle_area(triangle);
+        if (!std::isfinite(areas[i]) || !(areas[i] > 0.0))
+            throw std::invalid_argument("S2S Monte Carlo surface area must be positive");
+    }
+
     std::vector<double> F(n*n,0.0);
     for (std::size_t i=0;i<n;++i) {
-        for (std::size_t j=0;j<n;++j) {
-            if (i==j) continue;
-            F[i*n+j]=estimate_view_factor_ray_traced(
+        for (std::size_t j=i+1;j<n;++j) {
+            const double fij=estimate_view_factor_ray_traced(
                 surfaces[i], surfaces[j], blockers, controls.samples);
+            const double fji=estimate_view_factor_ray_traced(
+                surfaces[j], surfaces[i], blockers, controls.samples);
+            // Enforce reciprocity on area-weighted exchange, not by normalizing
+            // rows independently (which would break reciprocity again).
+            const double exchange=0.5*(areas[i]*fij+areas[j]*fji);
+            F[i*n+j]=exchange/areas[i];
+            F[j*n+i]=exchange/areas[j];
         }
     }
+
+    // Monte-Carlo noise can make a row exceed unity. One global scale keeps
+    // every row conservative while preserving area-weighted reciprocity.
+    double max_row_sum=0.0;
+    for (std::size_t i=0;i<n;++i) {
+        double row_sum=0.0;
+        for (std::size_t j=0;j<n;++j) row_sum+=F[i*n+j];
+        max_row_sum=std::max(max_row_sum,row_sum);
+    }
+    const double scale=1.0/std::max(1.0,max_row_sum);
+    for (double& fij : F) fij*=scale;
+
+    validate_s2s_view_factors(F,areas,1e-10);
     return F;
 }
 

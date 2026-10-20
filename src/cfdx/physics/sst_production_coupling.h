@@ -1,10 +1,13 @@
 #pragma once
 
 #include "cfdx/physics/sst_solver.h"
+#include "cfdx/physics/sst_case_contract.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
+#include <map>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -203,7 +206,8 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
     const ScalarBoundaryConditions& k_bcs = {},
     const ScalarBoundaryConditions& omega_bcs = {},
     std::size_t max_iterations = 100,
-    double tolerance = 1e-8)
+    double tolerance = 1e-8,
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
 {
     const std::size_t n = mesh.n_cells();
     if (controls.model != TurbulenceModel::SST)
@@ -236,7 +240,8 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
     try {
         step.transport = solve_sst_transport_dynamic_blending(
             mesh, geometry, mass_flux, k, omega, strain_rate, wall_distance,
-            controls, k_bcs, omega_bcs, max_iterations, tolerance);
+            controls, k_bcs, omega_bcs, max_iterations, tolerance,
+            omega_face_values);
         if (!step.transport.converged ||
             step.transport.nonfinite_bound_events != 0 ||
             !std::isfinite(step.transport.k_residual) ||
@@ -264,6 +269,221 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
     } catch (...) {
         rollback();
         throw;
+    }
+}
+
+
+// Construct the initial production-owned SST state from explicit case data.
+// Wall distance and strain rate are required inputs from the production mesh and
+// current carrier field; this helper deliberately does not invent either field.
+inline SSTProductionState initialize_sst_production_state(
+    const cfdx::core::Mesh& mesh,
+    const cfdx::io::CaseSetup& setup,
+    const TurbulenceTransportControls& controls,
+    const std::vector<double>& wall_distance,
+    const std::vector<double>& strain_rate)
+{
+    const std::size_t n = mesh.n_cells();
+    if (n == 0 || wall_distance.size() != n || strain_rate.size() != n)
+        throw std::invalid_argument(
+            "SST production initialization requires mesh-sized wall-distance and strain-rate fields");
+
+    validate_sst_case_prerequisites(setup, controls);
+    validate_sst_scalar_boundary_contract(setup);
+
+    const double initial_k = setup.initial_condition.scalar_fields.at("k");
+    const double initial_omega = setup.initial_condition.scalar_fields.at("omega");
+    SSTProductionState state(n);
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        if (!std::isfinite(wall_distance[cell]) || wall_distance[cell] <= 0.0 ||
+            !std::isfinite(strain_rate[cell]) || strain_rate[cell] < 0.0)
+            throw std::invalid_argument(
+                "SST production initialization received invalid wall distance or strain rate");
+        state.k(cell) = initial_k;
+        state.omega(cell) = initial_omega;
+        state.wall_distance(cell) = wall_distance[cell];
+        state.strain_rate(cell) = strain_rate[cell];
+    }
+
+    const auto cross = cell_gradient_dot(state.k, state.omega, mesh);
+    cfdx::core::Field<double, cfdx::core::Location::CELL> F2(
+        n, "sst_F2", "1", 1);
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        const auto blending = compute_sst_blending(
+            state.k(cell), state.omega(cell), state.wall_distance(cell),
+            controls.molecular_viscosity, controls.beta_star, cross[cell],
+            controls.density, controls.sst_sigma_w2);
+        F2(cell) = blending.second;
+    }
+    refresh_sst_production_eddy_viscosity(
+        state.k, state.omega, state.strain_rate, F2, controls, state.nu_t);
+    validate_sst_production_state(state, n);
+    return state;
+}
+
+struct SSTRuntimeBoundaryContract {
+    ScalarBoundaryConditions k;
+    ScalarBoundaryConditions omega;
+    // WALL_OMEGA_SST is retained as an explicit wall-treatment obligation.
+    // It must not be coerced to fixed-value or zero-gradient: the current
+    // scalar assembler has no SST-specific near-wall omega operator.
+    std::vector<std::string> wall_omega_sst_patches;
+};
+
+// Translate persisted case metadata only where the runtime scalar assembler
+// has an equivalent operator. Wall omega remains explicit and unconsumed until
+// a qualified SST wall treatment is implemented.
+inline SSTRuntimeBoundaryContract make_sst_runtime_boundary_contract(
+    const cfdx::io::CaseSetup& setup)
+{
+    cfdx::physics::validate_sst_scalar_boundary_contract(setup);
+    SSTRuntimeBoundaryContract runtime;
+    for (const auto& patch : setup.boundary_conditions) {
+        for (const auto& condition : patch.sst_scalar_conditions) {
+            auto& target = condition.field == "k" ? runtime.k : runtime.omega;
+            switch (condition.type) {
+                case cfdx::io::SSTScalarBoundaryType::FIXED_VALUE:
+                    target.emplace(patch.patch_name, ScalarBoundaryCondition{
+                        ScalarBoundaryType::FIXED_VALUE, condition.value, 0.0});
+                    break;
+                case cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT:
+                    target.emplace(patch.patch_name, ScalarBoundaryCondition{
+                        ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0});
+                    break;
+                case cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO:
+                    if (condition.field != "k")
+                        throw std::invalid_argument(
+                            "WALL_K_ZERO is only valid for the SST k field");
+                    target.emplace(patch.patch_name, ScalarBoundaryCondition{
+                        ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0});
+                    break;
+                case cfdx::io::SSTScalarBoundaryType::WALL_OMEGA_SST:
+                    if (condition.field != "omega")
+                        throw std::invalid_argument(
+                            "WALL_OMEGA_SST is only valid for the SST omega field");
+                    runtime.wall_omega_sst_patches.push_back(patch.patch_name);
+                    break;
+                case cfdx::io::SSTScalarBoundaryType::UNKNOWN:
+                    throw std::invalid_argument(
+                        "unknown SST scalar boundary type reached runtime adapter");
+            }
+        }
+    }
+    return runtime;
+}
+
+
+inline double sst_wall_omega_value(
+    double molecular_kinematic_viscosity, double beta1, double wall_normal_distance)
+{
+    if (!std::isfinite(molecular_kinematic_viscosity) ||
+        molecular_kinematic_viscosity <= 0.0 ||
+        !std::isfinite(beta1) || beta1 <= 0.0 ||
+        !std::isfinite(wall_normal_distance) || wall_normal_distance <= 0.0)
+        throw std::invalid_argument(
+            "SST wall omega requires finite positive viscosity, beta1, and wall distance");
+    const double value = 6.0 * molecular_kinematic_viscosity /
+        (beta1 * wall_normal_distance * wall_normal_distance);
+    if (!std::isfinite(value) || value <= 0.0)
+        throw std::domain_error("SST wall omega value is non-finite or non-positive");
+    return value;
+}
+
+// Construct per-face omega boundary values for resolved-wall SST treatment.
+// The wall distance is the geometric normal distance from the boundary face
+// to its owner-cell centre. No characteristic-length fallback is allowed here:
+// a bad wall geometry must fail closed instead of silently changing the model.
+inline ScalarBoundaryFaceValues make_sst_wall_omega_face_values(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const std::vector<std::string>& wall_omega_sst_patches,
+    const TurbulenceTransportControls& controls)
+{
+    if (controls.model != TurbulenceModel::SST)
+        throw std::invalid_argument("SST wall omega operator requires the SST model");
+    if (!std::isfinite(controls.molecular_viscosity) ||
+        controls.molecular_viscosity <= 0.0 ||
+        !std::isfinite(controls.beta1) || controls.beta1 <= 0.0)
+        throw std::invalid_argument("SST wall omega operator requires positive viscosity and beta1");
+    const std::size_t nf = mesh.n_faces();
+    if (geometry.face_centres.size() != nf ||
+        geometry.face_area_vectors.size() != nf ||
+        geometry.cell_centres.size() != mesh.n_cells() ||
+        geometry.face_patch.size() != nf)
+        throw std::invalid_argument("SST wall omega geometry shape mismatch");
+
+    ScalarBoundaryFaceValues values;
+    const double unset = std::numeric_limits<double>::quiet_NaN();
+    std::map<std::string, bool> requested;
+    for (const auto& name : wall_omega_sst_patches) {
+        if (name.empty() || !requested.emplace(name, true).second)
+            throw std::invalid_argument("SST wall omega patch names must be non-empty and unique");
+        bool found_patch = false;
+        for (std::size_t patch = 0; patch < mesh.boundary().n_patches(); ++patch) {
+            if (mesh.boundary().patch(patch).name == name) {
+                if (mesh.boundary().patch(patch).type != cfdx::core::PatchType::WALL)
+                    throw std::invalid_argument(
+                        "SST wall omega operator requires a WALL patch: " + name);
+                found_patch = true;
+                values.values.emplace(name, std::vector<double>(nf, unset));
+                break;
+            }
+        }
+        if (!found_patch)
+            throw std::invalid_argument("SST wall omega patch is absent from mesh: " + name);
+    }
+
+    std::map<std::string, std::size_t> face_counts;
+    for (std::size_t face = 0; face < nf; ++face) {
+        const std::size_t patch_index = geometry.face_patch[face];
+        if (patch_index >= mesh.boundary().n_patches())
+            continue;
+        const auto& patch_name = mesh.boundary().patch(patch_index).name;
+        const auto it = values.values.find(patch_name);
+        if (it == values.values.end())
+            continue;
+        if (mesh.ownership().neighbour(face) >= 0)
+            throw std::invalid_argument("SST wall omega patch contains an internal face: " + patch_name);
+        const std::size_t owner = mesh.ownership().owner(face);
+        if (owner >= mesh.n_cells())
+            throw std::invalid_argument("SST wall omega face has invalid owner cell");
+        const auto& sf = geometry.face_area_vectors[face];
+        const double area = sf.mag();
+        if (!(area > 0.0) || !std::isfinite(area))
+            throw std::invalid_argument("SST wall omega face has invalid area");
+        const auto delta = geometry.face_centres[face] - geometry.cell_centres[owner];
+        const double distance = std::abs(delta.dot(sf)) / area;
+        it->second[face] = sst_wall_omega_value(
+            controls.molecular_viscosity, controls.beta1, distance);
+        ++face_counts[patch_name];
+    }
+    for (const auto& [name, _] : requested) {
+        if (face_counts[name] == 0)
+            throw std::invalid_argument("SST wall omega patch has no boundary faces in mesh: " + name);
+    }
+    return values;
+}
+
+// Fail closed before transport assembly until every declared wall-omega
+// condition has a corresponding production-qualified wall operator.
+inline void require_supported_sst_runtime_boundaries(
+    const SSTRuntimeBoundaryContract& runtime,
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
+{
+    if (runtime.wall_omega_sst_patches.empty())
+        return;
+    if (omega_face_values == nullptr)
+        throw std::invalid_argument(
+            "SST production transport is blocked: WALL_OMEGA_SST requires explicit "
+            "per-face wall values");
+    for (const auto& patch : runtime.wall_omega_sst_patches) {
+        const auto it = omega_face_values->values.find(patch);
+        if (it == omega_face_values->values.end() ||
+            std::none_of(it->second.begin(), it->second.end(),
+                         [](double value) { return std::isfinite(value); }))
+            throw std::invalid_argument(
+                "SST production transport is blocked: wall omega values are missing "
+                "for patch '" + patch + "'");
     }
 }
 

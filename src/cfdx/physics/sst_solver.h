@@ -80,7 +80,8 @@ inline TurbulenceTransportResult solve_sst_transport(
     const ScalarBoundaryConditions& k_bcs = {},
     const ScalarBoundaryConditions& omega_bcs = {},
     std::size_t max_iterations = 100,
-    double tolerance = 1e-8)
+    double tolerance = 1e-8,
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
 {
     validate_turbulence_controls(controls);
     if(controls.model!=TurbulenceModel::SST)
@@ -108,7 +109,7 @@ inline TurbulenceTransportResult solve_sst_transport(
             nullptr,nullptr,nullptr,&gamma_k);
         auto eqw=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_w);
+            omega_face_values,nullptr,nullptr,&gamma_w);
 
         ScalarSolveControls sc{2000,tolerance,0.7};
         cfdx::core::Vector k_solution(n, 0.0);
@@ -151,7 +152,8 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& strain_rate,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& wall_distance,
     const TurbulenceTransportControls& controls,const ScalarBoundaryConditions& k_bcs={},
-    const ScalarBoundaryConditions& omega_bcs={},std::size_t max_iterations=100,double tolerance=1e-8)
+    const ScalarBoundaryConditions& omega_bcs={},std::size_t max_iterations=100,double tolerance=1e-8,
+    const ScalarBoundaryFaceValues* omega_face_values=nullptr)
 {
     validate_turbulence_controls(controls);
     const std::size_t n=mesh.n_cells();
@@ -168,7 +170,9 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
             const auto b=compute_sst_blending(k(i),omega(i),wall_distance(i),controls.molecular_viscosity,controls.beta_star,cross[i],controls.density,controls.sst_sigma_w2);
             F1(i)=b.first; F2(i)=b.second;
         }
-        const auto inner=solve_sst_transport(mesh,geometry,mass_flux,k,omega,strain_rate,F1,F2,controls,k_bcs,omega_bcs,1,tolerance);
+        const auto inner=solve_sst_transport(
+            mesh,geometry,mass_flux,k,omega,strain_rate,F1,F2,controls,
+            k_bcs,omega_bcs,1,tolerance,omega_face_values);
         double dk=0.0,dw=0.0;
         for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-old_k(i)));dw=std::max(dw,std::abs(omega(i)-old_w(i)));}
         accumulate_turbulence_diagnostics(result, inner);

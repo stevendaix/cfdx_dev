@@ -8,9 +8,49 @@
 #include <cmath>
 #include <algorithm>
 #include <limits>
+#include <utility>
+#include <vector>
 
 using namespace cfdx::testing;
 using namespace cfdx::physics;
+
+static cfdx::core::Mesh make_sst_wall_operator_test_mesh()
+{
+    using namespace cfdx::core;
+    Mesh mesh;
+    mesh.points().resize(8);
+    const double p[8][3] = {
+        {0,0,0},{4,0,0},{4,2,0},{0,2,0},
+        {0,0,2},{4,0,2},{4,2,2},{0,2,2}
+    };
+    for (std::size_t i = 0; i < 8; ++i)
+        mesh.points().set(i, p[i][0], p[i][1], p[i][2]);
+    const std::vector<std::vector<FaceIndex>> faces = {
+        {0,4,7,3}, {1,2,6,5}, {0,1,5,4},
+        {3,7,6,2}, {0,3,2,1}, {4,5,6,7}
+    };
+    for (const auto& face : faces)
+        mesh.faces().push_face(face);
+    mesh.ownership().resize(faces.size());
+    for (std::size_t f = 0; f < faces.size(); ++f) {
+        mesh.ownership().set_owner(f, 0);
+        mesh.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    mesh.cells().push_cell({0,1,2,3,4,5});
+    const std::array<std::pair<const char*, PatchType>, 6> patches{{
+        {"wall", PatchType::WALL}, {"inlet", PatchType::INLET},
+        {"side_low", PatchType::SYMMETRY}, {"side_high", PatchType::SYMMETRY},
+        {"bottom", PatchType::SYMMETRY}, {"top", PatchType::SYMMETRY}
+    }};
+    for (std::size_t f = 0; f < patches.size(); ++f) {
+        Patch patch;
+        patch.name = patches[f].first;
+        patch.type = patches[f].second;
+        patch.face_ids = {static_cast<FaceIndex>(f)};
+        mesh.boundary().add_patch(patch);
+    }
+    return mesh;
+}
 
 int main()
 {
@@ -504,6 +544,129 @@ int main()
         EXPECT_NEAR(phi(0), 6.0, 0.0);
         EXPECT_NEAR(state.k(0), 0.2, 0.0);
         EXPECT_THROW(transaction.rollback(), std::logic_error);
+    });
+
+
+    run_case("sst_runtime_boundary_adapter_preserves_wall_omega_obligation", [] {
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec wall;
+        wall.patch_name = "wall";
+        wall.type = cfdx::io::BCType::WALL;
+        wall.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::WALL_OMEGA_SST, 0.0}
+        };
+        setup.boundary_conditions.push_back(wall);
+
+        const auto runtime = make_sst_runtime_boundary_contract(setup);
+        EXPECT_TRUE(runtime.k.count("wall") == 1);
+        EXPECT_TRUE(runtime.k.at("wall").type == ScalarBoundaryType::FIXED_VALUE);
+        EXPECT_NEAR(runtime.k.at("wall").value, 0.0, 0.0);
+        EXPECT_TRUE(runtime.omega.count("wall") == 0);
+        EXPECT_TRUE(runtime.wall_omega_sst_patches.size() == 1);
+        EXPECT_TRUE(runtime.wall_omega_sst_patches.front() == "wall");
+        EXPECT_THROW(require_supported_sst_runtime_boundaries(runtime),
+                     std::invalid_argument);
+    });
+
+    run_case("sst_runtime_boundary_adapter_maps_fixed_and_zero_gradient", [] {
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec inlet;
+        inlet.patch_name = "inlet";
+        inlet.type = cfdx::io::BCType::INLET;
+        inlet.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 0.4},
+            {"omega", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 8.0}
+        };
+        cfdx::io::BoundarySpec outlet;
+        outlet.patch_name = "outlet";
+        outlet.type = cfdx::io::BCType::OUTLET;
+        outlet.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT, 0.0}
+        };
+        setup.boundary_conditions = {inlet, outlet};
+
+        const auto runtime = make_sst_runtime_boundary_contract(setup);
+        EXPECT_NEAR(runtime.k.at("inlet").value, 0.4, 0.0);
+        EXPECT_NEAR(runtime.omega.at("inlet").value, 8.0, 0.0);
+        EXPECT_TRUE(runtime.k.at("outlet").type == ScalarBoundaryType::ZERO_GRADIENT);
+        EXPECT_TRUE(runtime.omega.at("outlet").type == ScalarBoundaryType::ZERO_GRADIENT);
+        EXPECT_TRUE(runtime.wall_omega_sst_patches.empty());
+        bool supported = true;
+        try {
+            require_supported_sst_runtime_boundaries(runtime);
+        } catch (...) {
+            supported = false;
+        }
+        EXPECT_TRUE(supported);
+    });
+
+    run_case("sst_wall_omega_face_operator_only_populates_requested_wall_faces", [] {
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        const auto geometry = build_fv_geometry(mesh);
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.molecular_viscosity = 1.0e-5;
+        controls.beta1 = 0.075;
+        const auto face_values = make_sst_wall_omega_face_values(
+            mesh, geometry, std::vector<std::string>{"wall"}, controls);
+        EXPECT_TRUE(face_values.values.count("wall") == 1);
+        EXPECT_TRUE(face_values.values.count("inlet") == 0);
+        EXPECT_NEAR(face_values.values.at("wall")[0], 2.0e-4, 1.0e-15);
+        for (std::size_t face = 1; face < mesh.n_faces(); ++face)
+            EXPECT_TRUE(!std::isfinite(face_values.values.at("wall")[face]));
+        const auto runtime = SSTRuntimeBoundaryContract{{}, {}, {"wall"}};
+        EXPECT_THROW(require_supported_sst_runtime_boundaries(runtime),
+                     std::invalid_argument);
+        require_supported_sst_runtime_boundaries(runtime, &face_values);
+    });
+
+    run_case("sst_wall_omega_value_uses_resolved_wall_formula", [] {
+        const double value = sst_wall_omega_value(1.0e-5, 0.075, 2.0e-3);
+        EXPECT_NEAR(value, 200.0, 1.0e-10);
+        EXPECT_THROW(sst_wall_omega_value(1.0e-5, 0.075, 0.0),
+                     std::invalid_argument);
+        EXPECT_THROW(sst_wall_omega_value(0.0, 0.075, 2.0e-3),
+                     std::invalid_argument);
+    });
+
+    run_case("sst_production_state_initializes_from_explicit_case_and_mesh_fields", [] {
+        auto mesh = make_sst_wall_operator_test_mesh();
+        cfdx::io::CaseSetup setup;
+        setup.turbulence_model = "k_omega_sst";
+        setup.has_initial_condition = true;
+        setup.initial_condition.scalar_fields["k"] = 0.12;
+        setup.initial_condition.scalar_fields["omega"] = 18.0;
+        cfdx::io::BoundarySpec wall;
+        wall.patch_name = "wall";
+        wall.type = cfdx::io::BCType::WALL;
+        wall.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::WALL_OMEGA_SST, 0.0}
+        };
+        setup.boundary_conditions = {wall};
+
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.molecular_viscosity = 1.0e-5;
+        const auto state = initialize_sst_production_state(
+            mesh, setup, controls, std::vector<double>{0.01},
+            std::vector<double>{2.0});
+        validate_sst_production_state(state, mesh.n_cells());
+        EXPECT_NEAR(state.k(0), 0.12, 0.0);
+        EXPECT_NEAR(state.omega(0), 18.0, 0.0);
+        EXPECT_NEAR(state.wall_distance(0), 0.01, 0.0);
+        EXPECT_NEAR(state.strain_rate(0), 2.0, 0.0);
+        EXPECT_TRUE(std::isfinite(state.nu_t(0)) && state.nu_t(0) >= 0.0);
+
+        EXPECT_THROW(initialize_sst_production_state(
+            mesh, setup, controls, std::vector<double>{0.0},
+            std::vector<double>{2.0}), std::invalid_argument);
+        EXPECT_THROW(initialize_sst_production_state(
+            mesh, setup, controls, std::vector<double>{0.01},
+            std::vector<double>{std::numeric_limits<double>::quiet_NaN()}),
+            std::invalid_argument);
     });
 
     return run_all();
