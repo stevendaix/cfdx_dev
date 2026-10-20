@@ -2,7 +2,7 @@
 """CFDX I/O converter CLI.
 
 Usage:
-    cfdx-io convert <case_path> [--output DIR] [--solver NAME]
+    cfdx-io convert <case_path> [--output DIR] [--solver NAME] [--results]
     cfdx-io list-adapters
 """
 from __future__ import annotations
@@ -36,6 +36,7 @@ def main(argv: list[str] | None = None) -> int:
         case_path = args[1]
         output_path = None
         solver = None
+        include_results = False
 
         i = 2
         while i < len(args):
@@ -45,6 +46,9 @@ def main(argv: list[str] | None = None) -> int:
             elif args[i] == "--solver" and i + 1 < len(args):
                 solver = args[i + 1]
                 i += 2
+            elif args[i] == "--results":
+                include_results = True
+                i += 1
             else:
                 i += 1
 
@@ -53,7 +57,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Detected solver: {detected}")
 
         try:
-            result = convert(case_path, output_path=output_path, solver=solver)
+            result = convert(
+                case_path,
+                output_path=output_path,
+                solver=solver,
+                include_results=include_results,
+            )
         except ValueError as e:
             print(f"Error: {e}")
             return 1
@@ -71,6 +80,10 @@ def main(argv: list[str] | None = None) -> int:
 
         if result.mesh:
             print(f"  Mesh: {result.mesh['points'].shape[0]} vertices")
+        if result.field_data_source:
+            print(f"  Results: {result.field_data_source}")
+            print(f"  Scalar fields: {len(result.scalar_fields)}")
+            print(f"  Vector fields: {len(result.vec_fields)}")
 
         if output_path:
             print(f"\nReports written to: {output_path}")
