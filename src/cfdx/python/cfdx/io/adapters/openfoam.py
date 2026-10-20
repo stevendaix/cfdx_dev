@@ -107,7 +107,8 @@ class OpenFOAMAdapter(SolverAdapter):
         points, cells = self._parse_mesh(poly_mesh)
         if points is None or cells is None:
             result.gap_report.unsupported_blocking(
-                "mesh", "openfoam_polymesh_parse", "Failed to parse OpenFOAM mesh"
+                "mesh", "openfoam_polymesh_parse",
+                f"Failed to parse OpenFOAM mesh: {getattr(self, '_mesh_parse_error', 'unknown parser error')}"
             )
             return False
 
@@ -201,14 +202,8 @@ class OpenFOAMAdapter(SolverAdapter):
         imported = 0
         # Latest-time data supersedes any initial values parsed from 0/.
         imported_names = set(fields)
-        result.scalar_fields = [
-            (name, values) for name, values in result.scalar_fields
-            if name not in imported_names
-        ]
-        result.vec_fields = [
-            (name, values) for name, values in result.vec_fields
-            if name not in imported_names
-        ]
+        result.scalar_fields = []
+        result.vec_fields = []
         latest_time = next(iter(fields.values()))["time"]
         time_key = f"{latest_time:g}"
         result.available_fields[time_key] = sorted(fields)
@@ -296,6 +291,7 @@ class OpenFOAMAdapter(SolverAdapter):
             return points, cells
 
         except Exception as e:
+            self._mesh_parse_error = str(e)
             return None, None
 
     def _parse_points(self, points_file: Path) -> Optional[np.ndarray]:
