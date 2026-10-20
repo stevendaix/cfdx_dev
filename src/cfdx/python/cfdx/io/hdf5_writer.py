@@ -435,6 +435,10 @@ def write_case_cfdx_h5(result: ConversionResult, output_path) -> None:
         f.attrs["source_version"] = source.version or "unknown"
         f.attrs["source_case_path"] = source.case_path or ""
         f.attrs["source_case_name"] = source.case_name or ""
+        if result.field_data_source:
+            f.attrs["field_data_source"] = result.field_data_source
+        if result.available_fields:
+            f.attrs["available_fields_json"] = json.dumps(result.available_fields)
 
         if result.setup is not None:
             setup_json = result.setup.model_dump(mode="json")
