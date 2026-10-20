@@ -58,3 +58,10 @@ Le solveur de Poisson hybride doit employer les mêmes offsets pour l'opérateur
 - Écarts code ↔ fiche : qualification Release/DebugSanitizers et comparaison de performance exact-HEAD en cours ; aucune conclusion de gain ne doit être publiée avant ces résultats.
 - Gaps et prochaines actions : confirmer les contrôles CI, comparer les neuf CSV N=128 base/cache sur le même runner, examiner les changements d'itérations dus à la cohérence du résidu hybride, puis décider de la fusion.
 
+
+
+## Optimisation du coût par itération (2026-10-20)
+
+- Hamilton–Jacobi et l'hybride construisent maintenant une liste des nœuds fluides, non fixes et de distance finie, dans l'ordre croissant des indices. Les boucles de mise à jour et de résidu réutilisent cette liste : l'ordre Gauss–Seidel en place est conservé, tandis que les tests solide/fixe/infini ne sont plus exécutés pour chaque nœud à chaque itération.
+- Le pas advectif constant et le facteur de relaxation constant de Hamilton–Jacobi sont calculés une fois. Dans l'hybride, la somme inverse des espacements au carré et le facteur de relaxation sont aussi sortis de la boucle interne.
+- Aucun budget d'itérations, seuil de convergence, coefficient PDE ni valeur de relaxation n'est modifié. Les gains et l'équivalence doivent être mesurés sur le HEAD exact avant de conclure.
