@@ -91,6 +91,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - gap_analysis.json")
             print(f"  - case_setup.json")
             print(f"  - mesh.vtk")
+            if result.mesh and result.mesh.get("cfdx_csr") is not None:
+                print(f"  - case.cfdx.h5")
 
         return 0
 
