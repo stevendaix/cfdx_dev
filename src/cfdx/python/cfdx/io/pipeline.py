@@ -110,6 +110,7 @@ def convert(
     output_path: Optional[Union[str, Path]] = None,
     solver: Optional[str] = None,
     write_reports: bool = True,
+    include_results: bool = False,
 ) -> ConversionResult:
     """Convert an external solver case to CFDX IR.
 
@@ -118,6 +119,8 @@ def convert(
         output_path: Optional directory to write GapAnalysis reports and mesh.
         solver: Force a specific solver (auto-detect if None).
         write_reports: Whether to write Markdown/JSON gap reports.
+        include_results: Import cell-centred fields from the latest result time
+            when the adapter supports result import.
 
     Returns:
         ConversionResult with mesh, setup, fields, and gap_report.
@@ -135,7 +138,12 @@ def convert(
     adapter.detect_source(str(path), info)
 
     result = ConversionResult(source=info)
-    success = adapter.convert(str(path), result)
+    adapter.convert(str(path), result)
+    if include_results:
+        importer = getattr(adapter, "import_results", None)
+        if importer is None or not importer(str(path), result):
+            # The adapter records detailed failure/compatibility findings.
+            pass
 
     if output_path is not None:
         out_dir = Path(str(output_path))
