@@ -619,7 +619,7 @@ int main()
         const auto runtime = SSTRuntimeBoundaryContract{{}, {}, {"wall"}};
         EXPECT_THROW(require_supported_sst_runtime_boundaries(runtime),
                      std::invalid_argument);
-        require_supported_sst_runtime_boundaries(runtime, true);
+        require_supported_sst_runtime_boundaries(runtime, &face_values);
     });
 
     run_case("sst_wall_omega_value_uses_resolved_wall_formula", [] {
