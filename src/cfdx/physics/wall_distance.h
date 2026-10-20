@@ -636,6 +636,11 @@ inline double poisson_wall_offset(const WallDistanceBvh& bvh,
 //
 // When only one side is present (grid edge), fall back to the one-sided
 // per-face contribution so the outer-boundary treatment is unchanged.
+inline double poisson_wall_offset(const WallDistanceBvh& bvh,
+                                      const WallDistanceVec3& p,
+                                      const WallDistanceVec3& q,
+                                      double h);
+
 namespace poisson_stencil_detail {
 
 struct AxisNeighbour {
@@ -643,6 +648,7 @@ struct AxisNeighbour {
     double distance{0.0};  // h for fluid, delta for solid, ignored if !present
     double value{0.0};     // f[q] for fluid, 0 for solid (wall Dirichlet)
 };
+
 
 inline AxisNeighbour classify_neighbour(const WallDistanceBvh& bvh,
                                         const std::vector<double>& f,
@@ -728,6 +734,61 @@ inline double axis_gradient(const AxisNeighbour& m,
 }
 
 } // namespace poisson_stencil_detail
+
+// Immutable per-grid cache for cut-face offsets used by iterative transport
+// stencils. Geometry, solid mask and spacing are fixed during a solve, so
+// these values need not be recomputed by BVH ray queries on every iteration.
+class WallDistanceCutFaceOffsetCache {
+public:
+    WallDistanceCutFaceOffsetCache(const WallDistanceBvh& bvh,
+                                   const WallDistanceGrid& g)
+        : node_offset_index_(g.points.size(), invalid_index),
+          spacing_{{g.spacing.x,g.spacing.y,g.spacing.z}} {
+        for(std::size_t id=0; id<g.points.size(); ++id) {
+            if(g.solid[id]) continue;
+            const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny);
+            const std::size_t j=rem/g.nx, i=rem%g.nx;
+            const auto fill=[&](std::size_t slot,std::size_t q,bool exists,double h) {
+                if(!exists || !g.solid[q]) return;
+                if(node_offset_index_[id]==invalid_index) {
+                    node_offset_index_[id]=offsets_.size();
+                    offsets_.push_back({{g.spacing.x,g.spacing.x,g.spacing.y,
+                                         g.spacing.y,g.spacing.z,g.spacing.z}});
+                }
+                offsets_[node_offset_index_[id]][slot]=
+                    poisson_wall_offset(bvh,g.points[id],g.points[q],h);
+            };
+            fill(0,i>0?g.index(i-1,j,k):0,i>0,g.spacing.x);
+            fill(1,i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,g.spacing.x);
+            fill(2,j>0?g.index(i,j-1,k):0,j>0,g.spacing.y);
+            fill(3,j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny,g.spacing.y);
+            fill(4,k>0?g.index(i,j,k-1):0,k>0,g.spacing.z);
+            fill(5,k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,g.spacing.z);
+        }
+    }
+
+    double delta(std::size_t id,std::size_t face) const {
+        const std::size_t index=node_offset_index_[id];
+        return index==invalid_index ? spacing_[face/2] : offsets_[index][face];
+    }
+
+    std::size_t cut_node_count() const { return offsets_.size(); }
+
+    std::size_t storage_bytes() const {
+        return node_offset_index_.capacity()*sizeof(std::size_t)
+             + offsets_.capacity()*sizeof(std::array<double,6>);
+    }
+
+private:
+    static constexpr std::size_t invalid_index=std::numeric_limits<std::size_t>::max();
+    std::vector<std::size_t> node_offset_index_;
+    std::vector<std::array<double,6>> offsets_;
+    std::array<double,3> spacing_;
+};
+
+
+
+
 
 inline double eikonal_update(const std::array<double,3>& a,
                                   const std::array<double,3>& h,
@@ -862,13 +923,15 @@ inline double laplacian_at(const WallDistanceBvh& bvh,
 
 inline double godunov_gradient_at(const WallDistanceBvh& bvh,
                                   const std::vector<double>& d,const WallDistanceGrid& g,
-                                  std::size_t id) {
+                                  std::size_t id,
+                                  const WallDistanceCutFaceOffsetCache* offsets=nullptr) {
     const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
     auto component=[&](int axis)->double {
         double dm=0.0, dp=0.0;
-        auto face=[&](std::size_t q,bool minus_side,double hh) {
+        auto face=[&](std::size_t q,bool minus_side,double hh,std::size_t face_index) {
             if(g.solid[q]) {
-                const double delta=poisson_wall_offset(bvh,g.points[id],g.points[q],hh);
+                const double delta=offsets ? offsets->delta(id,face_index)
+                                           : poisson_wall_offset(bvh,g.points[id],g.points[q],hh);
                 if(delta>0.0 && std::isfinite(delta)) {
                     if(minus_side) dm=d[id]/delta;
                     else dp=-d[id]/delta;
@@ -879,14 +942,14 @@ inline double godunov_gradient_at(const WallDistanceBvh& bvh,
             }
         };
         if(axis==0) {
-            if(i>0) face(g.index(i-1,j,k),true,g.spacing.x);
-            if(i+1<g.nx) face(g.index(i+1,j,k),false,g.spacing.x);
+            if(i>0) face(g.index(i-1,j,k),true,g.spacing.x,0);
+            if(i+1<g.nx) face(g.index(i+1,j,k),false,g.spacing.x,1);
         } else if(axis==1) {
-            if(j>0) face(g.index(i,j-1,k),true,g.spacing.y);
-            if(j+1<g.ny) face(g.index(i,j+1,k),false,g.spacing.y);
+            if(j>0) face(g.index(i,j-1,k),true,g.spacing.y,2);
+            if(j+1<g.ny) face(g.index(i,j+1,k),false,g.spacing.y,3);
         } else {
-            if(k>0) face(g.index(i,j,k-1),true,g.spacing.z);
-            if(k+1<g.nz) face(g.index(i,j,k+1),false,g.spacing.z);
+            if(k>0) face(g.index(i,j,k-1),true,g.spacing.z,4);
+            if(k+1<g.nz) face(g.index(i,j,k+1),false,g.spacing.z,5);
         }
         return std::sqrt(std::max(dm,0.0)*std::max(dm,0.0)
                        + std::min(dp,0.0)*std::min(dp,0.0));
@@ -941,6 +1004,38 @@ inline double godunov_gradient_at(const std::vector<double>& d,const WallDistanc
     return std::sqrt(gx*gx+gy*gy+gz*gz);
 }
 
+
+inline double laplacian_at(const WallDistanceBvh& bvh,
+                           const std::vector<double>& f,
+                           const WallDistanceGrid& g,
+                           std::size_t id,
+                           const WallDistanceCutFaceOffsetCache& offsets) {
+    using poisson_stencil_detail::AxisNeighbour;
+    using poisson_stencil_detail::axis_laplacian;
+    const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+    const auto side=[&](std::size_t q,bool exists,double h,std::size_t face) {
+        AxisNeighbour out;
+        if(!exists) return out;
+        if(g.solid[q]) {
+            out.present=true;
+            out.distance=offsets.delta(id,face);
+            out.value=0.0;
+        } else if(std::isfinite(f[q])) {
+            out.present=true;
+            out.distance=h;
+            out.value=f[q];
+        }
+        return out;
+    };
+    (void)bvh;
+    const auto xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
+    const auto ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
+    const auto zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
+    return axis_laplacian(side(xm,i>0,g.spacing.x,0),side(xp,i+1<g.nx,g.spacing.x,1),g.spacing.x,f[id])
+         + axis_laplacian(side(ym,j>0,g.spacing.y,2),side(yp,j+1<g.ny,g.spacing.y,3),g.spacing.y,f[id])
+         + axis_laplacian(side(zm,k>0,g.spacing.z,4),side(zp,k+1<g.nz,g.spacing.z,5),g.spacing.z,f[id]);
+}
+
 inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const WallDistanceGrid& g,
                                                      std::size_t max_iter,double epsilon=0.25,
                                                      double relaxation=0.25,
@@ -954,11 +1049,23 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
     // and a central Laplacian. The local pseudo-time step is diffusion-limited.
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
     const WallDistanceBvh bvh(s);
+    const WallDistanceCutFaceOffsetCache offsets(bvh,g);
     const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     std::vector<unsigned char> fixed(g.points.size(),0);
+    // eikonal_fast_sweep uses the same seed criterion and already assigns exact
+    // BVH distances to those nodes. Do not repeat the nearest-triangle queries.
     std::vector<double> d=eikonal_fast_sweep(bvh,g,std::max<std::size_t>(8,max_iter));
-    for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
+    for(auto id:seeds) fixed[id]=1;
+    // Preserve the original ascending in-place update order, but avoid scanning
+    // solid, fixed-seed and unreachable nodes on every pseudo-time iteration.
+    std::vector<std::size_t> active_ids;
+    active_ids.reserve(d.size());
+    for(std::size_t id=0;id<d.size();++id)
+        if(!g.solid[id] && !fixed[id] && std::isfinite(d[id])) active_ids.push_back(id);
 
+    const double inverse_spacing_sum=1.0/g.spacing.x+1.0/g.spacing.y+1.0/g.spacing.z;
+    const double dt_adv_constant=0.9/inverse_spacing_sum;
+    const double relaxation_factor=std::clamp(relaxation,0.1,1.0);
     const std::size_t steps=std::max<std::size_t>(20,max_iter);
     std::size_t used=steps;
     std::size_t clamps=0;
@@ -968,11 +1075,10 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
                       +1.0/(g.spacing.z*g.spacing.z);
     for(std::size_t it=0;it<steps;++it) {
         double max_change=0.0;
-        for(std::size_t id=0;id<d.size();++id) {
-            if(g.solid[id] || fixed[id] || !std::isfinite(d[id])) continue;
-            const double grad=godunov_gradient_at(bvh,d,g,id);
+        for(const std::size_t id:active_ids) {
+            const double grad=godunov_gradient_at(bvh,d,g,id,&offsets);
             const double gamma=epsilon*std::max(d[id],0.0);
-            const double lap=laplacian_at(bvh,d,g,id);
+            const double lap=laplacian_at(bvh,d,g,id,offsets);
             const double residual=grad-1.0-gamma*lap;
             // Use the full explicit CFL limits of the upwind advection and
             // central diffusion terms. The previous 0.25 safety factor was
@@ -981,10 +1087,9 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
             // upwind directions.  0.9*h is only a 1-D bound and can violate
             // the monotone explicit stability limit when several components
             // of the Godunov gradient are active.
-            const double dt_adv=0.9/(1.0/g.spacing.x+1.0/g.spacing.y+1.0/g.spacing.z);
             const double dt_diff=gamma>0.0 ? 0.9/(2.0*gamma*inv_h2)
                                            : std::numeric_limits<double>::infinity();
-            const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
+            const double dt=relaxation_factor*std::min(dt_adv_constant,dt_diff);
             const double candidate=d[id]-dt*residual;
             if(candidate<0.0) ++clamps;  // F-W2: observable positivity clamp
             const double nd=std::max(0.0,candidate);
@@ -994,11 +1099,10 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
         // Pure Poisson mode deliberately does not overwrite the PDE solution with BVH seeds.
         if((it&3u)==3u || max_change<1e-10*h) {
             final_residual=0.0;
-            for(std::size_t id=0;id<d.size();++id) {
-                if(g.solid[id] || fixed[id] || !std::isfinite(d[id])) continue;
+            for(const std::size_t id:active_ids) {
                 final_residual=std::max(final_residual,std::abs(
-                    godunov_gradient_at(bvh,d,g,id)-1.0-
-                    epsilon*std::max(d[id],0.0)*laplacian_at(bvh,d,g,id)));
+                    godunov_gradient_at(bvh,d,g,id,&offsets)-1.0-
+                    epsilon*std::max(d[id],0.0)*laplacian_at(bvh,d,g,id,offsets)));
             }
             if(final_residual<1e-8 && max_change<1e-9*h) { used=it+1; break; }
         }
@@ -1251,6 +1355,7 @@ inline double poisson_wall_offset(const WallDistanceBvh& bvh,
     return poisson_wall_offset_diagnostic(bvh,p,q,h).delta;
 }
 
+
 inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
                                    const std::vector<double>& f,
                                    const WallDistanceGrid& g,
@@ -1271,6 +1376,15 @@ inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
     return axis_laplacian(xn,xP,g.spacing.x,f[id])
          + axis_laplacian(yn,yP,g.spacing.y,f[id])
          + axis_laplacian(zn,zP,g.spacing.z,f[id]);
+}
+
+
+inline double poisson_laplacian_at(const WallDistanceBvh& bvh,
+                                   const std::vector<double>& f,
+                                   const WallDistanceGrid& g,
+                                   std::size_t id,
+                                   const WallDistanceCutFaceOffsetCache& offsets) {
+    return laplacian_at(bvh,f,g,id,offsets);
 }
 
 inline double poisson_diagonal(const WallDistanceBvh& bvh,
@@ -1302,10 +1416,33 @@ inline double poisson_diagonal(const WallDistanceBvh& bvh,
                          side(zp,k+1<g.nz,g.spacing.z),g.spacing.z);
 }
 
+
+inline double poisson_diagonal(const WallDistanceBvh& bvh,
+                               const WallDistanceGrid& g,
+                               std::size_t id,
+                               const WallDistanceCutFaceOffsetCache& offsets) {
+    using poisson_stencil_detail::AxisNeighbour;
+    using poisson_stencil_detail::axis_diagonal;
+    const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
+    const auto side=[&](bool exists,std::size_t face) {
+        AxisNeighbour out;
+        if(!exists) return out;
+        out.present=true;
+        out.distance=offsets.delta(id,face);
+        return out;
+    };
+    (void)bvh;
+    return axis_diagonal(side(i>0,0),side(i+1<g.nx,1),g.spacing.x)
+         + axis_diagonal(side(j>0,2),side(j+1<g.ny,3),g.spacing.y)
+         + axis_diagonal(side(k>0,4),side(k+1<g.nz,5),g.spacing.z);
+}
+
+
 inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
-                                              std::size_t max_iter,double,
-                                              std::size_t* used_iter=nullptr,
-                                              double* residual_out=nullptr) {
+                                               std::size_t max_iter,double,
+                                               std::size_t* used_iter=nullptr,
+                                               double* residual_out=nullptr,
+                                               const WallDistanceCutFaceOffsetCache* offsets=nullptr) {
     // Solve the actual elliptic boundary-value problem
     //
     //     -laplacian(phi) = 1,    phi = 0 on the wall,
@@ -1334,7 +1471,8 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
     };
 
     auto diagonal=[&](std::size_t id) {
-        const double d=poisson_diagonal(bvh,g,id);
+        const double d=offsets ? poisson_diagonal(bvh,g,id,*offsets)
+                               : poisson_diagonal(bvh,g,id);
         return d>0.0 ? d : 1.0;
     };
 
@@ -1343,7 +1481,8 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
         std::fill(y.begin(),y.end(),0.0);
         for(std::size_t id=0;id<n;++id) {
             if(!is_fluid(g,id)) continue;
-            y[id] = -poisson_laplacian_at(bvh,x,g,id);
+            y[id] = offsets ? -poisson_laplacian_at(bvh,x,g,id,*offsets)
+                            : -poisson_laplacian_at(bvh,x,g,id);
         }
     };
 
@@ -1726,6 +1865,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     // direction, optionally blended with the evolving Eikonal direction.
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
     const WallDistanceBvh bvh(s);
+    const WallDistanceCutFaceOffsetCache offsets(bvh,g);
     const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     std::vector<unsigned char> fixed(g.points.size(),0);
     for(auto id:seeds) fixed[id]=1;
@@ -1733,7 +1873,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     std::size_t poisson_iter=0; double poisson_residual=0.0;
     const std::size_t poisson_max_iter=std::max<std::size_t>(200,4*max_iter);
     const auto phi=poisson_potential(bvh,g,poisson_max_iter,1.5,
-                                     &poisson_iter,&poisson_residual);
+                                     &poisson_iter,&poisson_residual,&offsets);
     if(poisson_iter_out) *poisson_iter_out=poisson_iter;
     if(poisson_residual_out) *poisson_residual_out=poisson_residual;
 
@@ -1770,16 +1910,39 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
         d[id]=gn>1e-14 ? std::max(0.0,std::sqrt(std::max(0.0,gn*gn+2*phi[id]))-gn) : 0.0;
     }
     for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
+    // The fixed set and finite-distance mask are invariant during transport.
+    // Cache active IDs in ascending order to preserve the in-place Gauss-Seidel sweep.
+    std::vector<std::size_t> active_ids;
+    active_ids.reserve(d.size());
+    for(std::size_t id=0;id<d.size();++id)
+        if(!g.solid[id] && !fixed[id] && std::isfinite(d[id])) active_ids.push_back(id);
 
+    const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
+                       +1.0/(g.spacing.y*g.spacing.y)
+                       +1.0/(g.spacing.z*g.spacing.z);
+    const double relaxation_factor=std::clamp(relaxation,0.1,1.0);
     const double alpha=std::clamp(poisson_weight,0.0,1.0);
     const std::size_t steps=std::max<std::size_t>(20,max_iter);
     std::size_t used=steps; double final_residual=std::numeric_limits<double>::infinity();
     std::size_t clamps=0;
 
-    auto velocity=[&](std::size_t id,double& ux,double& uy,double& uz) {
+    // The Poisson field is immutable during transport. Cache its normalized
+    // gradient once instead of rebuilding three finite-difference components
+    // and a norm for every active node on every pseudo-time iteration.
+    // Keep one entry per active ID to bound storage to the transport domain.
+    std::vector<WallDistanceVec3> phi_direction;
+    phi_direction.reserve(active_ids.size());
+    for(const std::size_t id:active_ids) {
         const double px=grad_comp(phi,id,0),py=grad_comp(phi,id,1),pz=grad_comp(phi,id,2);
         const double pn=std::sqrt(px*px+py*py+pz*pz);
-        ux=pn>1e-14?px/pn:0.0; uy=pn>1e-14?py/pn:0.0; uz=pn>1e-14?pz/pn:0.0;
+        phi_direction.push_back({pn>1e-14?px/pn:0.0,
+                                 pn>1e-14?py/pn:0.0,
+                                 pn>1e-14?pz/pn:0.0});
+    }
+    auto velocity=[&](std::size_t active_index,std::size_t id,
+                      double& ux,double& uy,double& uz) {
+        const auto& base=phi_direction[active_index];
+        ux=base.x; uy=base.y; uz=base.z;
         if(alpha<1.0) {
             const double dx=grad_comp(d,id,0),dy=grad_comp(d,id,1),dz=grad_comp(d,id,2);
             const double dn=std::sqrt(dx*dx+dy*dy+dz*dz);
@@ -1793,10 +1956,10 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
 
     for(std::size_t it=0;it<steps;++it) {
         double max_change=0.0;
-        for(std::size_t id=0;id<d.size();++id) {
-            if(g.solid[id]||fixed[id]||!std::isfinite(d[id])) continue;
+        for(std::size_t active_index=0;active_index<active_ids.size();++active_index) {
+            const std::size_t id=active_ids[active_index];
             const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
-            double ux,uy,uz; velocity(id,ux,uy,uz);
+            double ux,uy,uz; velocity(active_index,id,ux,uy,uz);
             const auto up=[&](double u,int a)->double {
                 auto value=[&](std::size_t q)->double {
                     return g.solid[q] ? 0.0 : d[q];
@@ -1805,47 +1968,40 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
                     if(u>=0) {
                         if(i==0) return 0.0;
                         const auto q=g.index(i-1,j,k);
-                        const double hh=g.spacing.x;
-                        const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                        const double delta=offsets.delta(id,0);
                         return u*(d[id]-value(q))/delta;
                     }
                     if(i+1==g.nx) return 0.0;
                     const auto q=g.index(i+1,j,k);
-                    const double hh=g.spacing.x;
-                    const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                    const double delta=offsets.delta(id,1);
                     return u*(value(q)-d[id])/delta;
                 }
                 if(a==1) {
                     if(u>=0) {
                         if(j==0) return 0.0;
                         const auto q=g.index(i,j-1,k);
-                        const double hh=g.spacing.y;
-                        const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                        const double delta=offsets.delta(id,2);
                         return u*(d[id]-value(q))/delta;
                     }
                     if(j+1==g.ny) return 0.0;
                     const auto q=g.index(i,j+1,k);
-                    const double hh=g.spacing.y;
-                    const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                    const double delta=offsets.delta(id,3);
                     return u*(value(q)-d[id])/delta;
                 }
                 if(u>=0) {
                     if(k==0) return 0.0;
                     const auto q=g.index(i,j,k-1);
-                    const double hh=g.spacing.z;
-                    const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                    const double delta=offsets.delta(id,4);
                     return u*(d[id]-value(q))/delta;
                 }
                 if(k+1==g.nz) return 0.0;
                 const auto q=g.index(i,j,k+1);
-                const double hh=g.spacing.z;
-                const double delta=g.solid[q]?poisson_wall_offset(bvh,g.points[id],g.points[q],hh):hh;
+                const double delta=offsets.delta(id,5);
                 return u*(value(q)-d[id])/delta;
             };
             const double adv=up(ux,0)+up(uy,1)+up(uz,2);
             const double gamma=epsilon*std::max(d[id],0.0);
-            const double residual=adv-1.0-gamma*laplacian_at(bvh,d,g,id);
-            const double inv_h2=1.0/(g.spacing.x*g.spacing.x)+1.0/(g.spacing.y*g.spacing.y)+1.0/(g.spacing.z*g.spacing.z);
+            const double residual=adv-1.0-gamma*laplacian_at(bvh,d,g,id,offsets);
             // The hybrid transport step is also a 3-D explicit upwind
             // update. Use its actual velocity components for the CFL bound.
             const double cfl_rate=std::abs(ux)/g.spacing.x+
@@ -1854,41 +2010,59 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
             const double dt_adv=cfl_rate>1e-14 ? 0.9/cfl_rate :
                                                 std::numeric_limits<double>::infinity();
             const double dt_diff=gamma>0.0?0.9/(2*gamma*inv_h2):std::numeric_limits<double>::infinity();
-            const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
+            const double dt=relaxation_factor*std::min(dt_adv,dt_diff);
             const double candidate=d[id]-dt*residual;
             if(candidate<0.0) ++clamps;  // F-W2: observable positivity clamp
             const double nd=std::max(0.0,candidate);
             max_change=std::max(max_change,std::abs(nd-d[id])); d[id]=nd;
         }
-        for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
+        // Seed IDs are fixed and excluded from active_ids, so their exact
+        // distances cannot change during transport. Re-querying the BVH for
+        // every seed on every iteration was redundant work.
         if((it&3u)==3u||max_change<1e-10*h) {
             // Evaluate exactly the same upwind transport operator used by the
             // pseudo-time update. The previous diagnostic used a central
             // gradient here, so the reported residual could disagree with
             // the nonlinear operator actually being iterated.
             final_residual=0.0;
-            for(std::size_t id=0;id<d.size();++id) if(!g.solid[id]&&!fixed[id]&&std::isfinite(d[id])) {
-                double ux,uy,uz; velocity(id,ux,uy,uz);
+            for(std::size_t active_index=0;active_index<active_ids.size();++active_index) {
+            const std::size_t id=active_ids[active_index];
+                double ux,uy,uz; velocity(active_index,id,ux,uy,uz);
                 const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
                 auto upwind=[&](double u,int axis)->double {
                     auto value=[&](std::size_t q)->double { return g.solid[q] ? 0.0 : d[q]; };
                     if(axis==0) {
-                        if(u>=0.0) { if(i==0) return 0.0; return u*(d[id]-value(g.index(i-1,j,k)))/g.spacing.x; }
+                        if(u>=0.0) {
+                            if(i==0) return 0.0;
+                            const auto q=g.index(i-1,j,k);
+                            return u*(d[id]-value(q))/offsets.delta(id,0);
+                        }
                         if(i+1==g.nx) return 0.0;
-                        return u*(value(g.index(i+1,j,k))-d[id])/g.spacing.x;
+                        const auto q=g.index(i+1,j,k);
+                        return u*(value(q)-d[id])/offsets.delta(id,1);
                     }
                     if(axis==1) {
-                        if(u>=0.0) { if(j==0) return 0.0; return u*(d[id]-value(g.index(i,j-1,k)))/g.spacing.y; }
+                        if(u>=0.0) {
+                            if(j==0) return 0.0;
+                            const auto q=g.index(i,j-1,k);
+                            return u*(d[id]-value(q))/offsets.delta(id,2);
+                        }
                         if(j+1==g.ny) return 0.0;
-                        return u*(value(g.index(i,j+1,k))-d[id])/g.spacing.y;
+                        const auto q=g.index(i,j+1,k);
+                        return u*(value(q)-d[id])/offsets.delta(id,3);
                     }
-                    if(u>=0.0) { if(k==0) return 0.0; return u*(d[id]-value(g.index(i,j,k-1)))/g.spacing.z; }
+                    if(u>=0.0) {
+                        if(k==0) return 0.0;
+                        const auto q=g.index(i,j,k-1);
+                        return u*(d[id]-value(q))/offsets.delta(id,4);
+                    }
                     if(k+1==g.nz) return 0.0;
-                    return u*(value(g.index(i,j,k+1))-d[id])/g.spacing.z;
+                    const auto q=g.index(i,j,k+1);
+                    return u*(value(q)-d[id])/offsets.delta(id,5);
                 };
                 const double adv=upwind(ux,0)+upwind(uy,1)+upwind(uz,2);
                 final_residual=std::max(final_residual,
-                    std::abs(adv-1.0-epsilon*std::max(d[id],0.0)*laplacian_at(bvh,d,g,id)));
+                    std::abs(adv-1.0-epsilon*std::max(d[id],0.0)*laplacian_at(bvh,d,g,id,offsets)));
             }
             if(final_residual<1e-8&&max_change<1e-9*h){used=it+1;break;}
         }
