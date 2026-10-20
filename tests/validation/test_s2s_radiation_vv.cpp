@@ -32,6 +32,32 @@ int main()
         EXPECT_NEAR(r.total_power,0.0,1e-10*std::max(1.0,std::abs(oracle)));
     });
 
+    run_case("s2s_ambient_irradiation_uses_open_view_fraction", [] {
+        const double ambient = 250.0;
+        const std::vector<double> areas{1.0, 1.0};
+        const std::vector<double> eps{1.0, 1.0};
+        const std::vector<double> temperatures{700.0, 400.0};
+        S2SControls controls;
+        controls.ambient_irradiation = ambient;
+
+        // A closed enclosure has no view to ambient: ambient irradiation
+        // must not be added on top of the complete surface-to-surface view.
+        const std::vector<double> closed_F{0.0, 1.0, 1.0, 0.0};
+        const auto closed = solve_s2s_radiosity(
+            areas, eps, temperatures, closed_F, controls);
+        EXPECT_NEAR(closed.irradiation[0], closed.radiosity[1],
+                    1e-12 * std::max(1.0, closed.radiosity[1]));
+
+        // With only half of each hemisphere covered by modeled surfaces,
+        // the remaining half sees the ambient reservoir.
+        const std::vector<double> open_F{0.0, 0.5, 0.5, 0.0};
+        const auto open = solve_s2s_radiosity(
+            areas, eps, temperatures, open_F, controls);
+        const double expected = 0.5 * open.radiosity[1] + 0.5 * ambient;
+        EXPECT_NEAR(open.irradiation[0], expected,
+                    1e-12 * std::max(1.0, expected));
+    });
+
     run_case("s2s_view_factor_validation", [] {
         const std::vector<double> A{2.0,1.0};
         // Reciprocity: A1 F12 = A2 F21 = 1.
@@ -65,6 +91,14 @@ int main()
         EXPECT_TRUE(f12>0.0 && f12<1.0);
         EXPECT_NEAR(f12,f21,0.08);
         EXPECT_NEAR(blocked,0.0,1e-14);
+
+        const auto matrix = estimate_s2s_view_factors_monte_carlo(
+            {s1, s2}, {}, S2SMonteCarloControls{8192});
+        const std::vector<double> areas{
+            radiation_triangle_area(s1.front()),
+            radiation_triangle_area(s2.front())};
+        validate_s2s_view_factors(matrix, areas, 1e-12);
+        EXPECT_NEAR(areas[0] * matrix[1], areas[1] * matrix[2], 1e-12);
     });
 
     run_case("s2s_model_selector", [] {
