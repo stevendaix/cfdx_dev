@@ -655,6 +655,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
     add_cfdx_test(test_turbulence_qualification_equations tests/unit/test_turbulence_qualification_equations.cpp)
     add_cfdx_test(test_production_turbulence_contract tests/unit/test_production_turbulence_contract.cpp)
+    add_cfdx_test(test_production_radiation_contract tests/unit/test_production_radiation_contract.cpp)
     add_cfdx_test(test_n11_sa_negative_nu_tilde_policy tests/unit/test_n11_sa_negative_nu_tilde_policy.cpp)
     add_cfdx_test(test_n11_bound_reporting_hardening tests/unit/test_n11_bound_reporting_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
