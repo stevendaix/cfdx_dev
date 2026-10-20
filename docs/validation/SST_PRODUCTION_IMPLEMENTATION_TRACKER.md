@@ -114,3 +114,13 @@ This is an enabling contract only. It does not call SST transport from the produ
 - No merge while required CI is pending or unclear.
 - Do not widen tolerances, disable tests, silently fall back to laminar, or substitute a laminar case for DNS evidence.
 - Keep the production turbulence guard until all required coupling and qualification gates pass.
+
+
+### T1 implementation increment — runtime boundary adapter (PR in progress)
+
+- [x] Translate persisted SST fixed-value and zero-gradient conditions into the existing scalar transport boundary API.
+- [x] Translate `WALL_K_ZERO` to a zero fixed-value condition for `k`.
+- [x] Preserve `WALL_OMEGA_SST` as an explicit unresolved wall-operator obligation; never silently approximate it as fixed-value or zero-gradient.
+- [x] Add unit regressions for inlet/outlet mapping and fail-closed wall-omega behavior.
+- [ ] Apply this adapter in the production case path only after a qualified SST wall-omega operator exists.
+- [ ] Couple boundary handling to production transport and restart state; the production RANS selector remains fail-closed.

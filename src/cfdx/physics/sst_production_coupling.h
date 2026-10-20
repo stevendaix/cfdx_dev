@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cfdx/physics/sst_solver.h"
+#include "cfdx/physics/sst_case_contract.h"
 
 #include <algorithm>
 #include <cmath>
@@ -265,6 +266,69 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
         rollback();
         throw;
     }
+}
+
+
+struct SSTRuntimeBoundaryContract {
+    ScalarBoundaryConditions k;
+    ScalarBoundaryConditions omega;
+    // WALL_OMEGA_SST is retained as an explicit wall-treatment obligation.
+    // It must not be coerced to fixed-value or zero-gradient: the current
+    // scalar assembler has no SST-specific near-wall omega operator.
+    std::vector<std::string> wall_omega_sst_patches;
+};
+
+// Translate persisted case metadata only where the runtime scalar assembler
+// has an equivalent operator. Wall omega remains explicit and unconsumed until
+// a qualified SST wall treatment is implemented.
+inline SSTRuntimeBoundaryContract make_sst_runtime_boundary_contract(
+    const cfdx::io::CaseSetup& setup)
+{
+    cfdx::physics::validate_sst_scalar_boundary_contract(setup);
+    SSTRuntimeBoundaryContract runtime;
+    for (const auto& patch : setup.boundary_conditions) {
+        for (const auto& condition : patch.sst_scalar_conditions) {
+            auto& target = condition.field == "k" ? runtime.k : runtime.omega;
+            switch (condition.type) {
+                case cfdx::io::SSTScalarBoundaryType::FIXED_VALUE:
+                    target.emplace(patch.patch_name, ScalarBoundaryCondition{
+                        ScalarBoundaryType::FIXED_VALUE, condition.value, 0.0});
+                    break;
+                case cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT:
+                    target.emplace(patch.patch_name, ScalarBoundaryCondition{
+                        ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0});
+                    break;
+                case cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO:
+                    if (condition.field != "k")
+                        throw std::invalid_argument(
+                            "WALL_K_ZERO is only valid for the SST k field");
+                    target.emplace(patch.patch_name, ScalarBoundaryCondition{
+                        ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0});
+                    break;
+                case cfdx::io::SSTScalarBoundaryType::WALL_OMEGA_SST:
+                    if (condition.field != "omega")
+                        throw std::invalid_argument(
+                            "WALL_OMEGA_SST is only valid for the SST omega field");
+                    runtime.wall_omega_sst_patches.push_back(patch.patch_name);
+                    break;
+                case cfdx::io::SSTScalarBoundaryType::UNKNOWN:
+                    throw std::invalid_argument(
+                        "unknown SST scalar boundary type reached runtime adapter");
+            }
+        }
+    }
+    return runtime;
+}
+
+// Fail closed before transport assembly until every declared wall-omega
+// condition has a corresponding production-qualified wall operator.
+inline void require_supported_sst_runtime_boundaries(
+    const SSTRuntimeBoundaryContract& runtime)
+{
+    if (!runtime.wall_omega_sst_patches.empty())
+        throw std::invalid_argument(
+            "SST production transport is blocked: WALL_OMEGA_SST wall treatment "
+            "is not implemented in the scalar equation assembler");
 }
 
 }  // namespace cfdx::physics
