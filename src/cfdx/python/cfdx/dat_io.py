@@ -52,8 +52,10 @@ class DatRestart:
 #   1 — velocity and pressure only.
 #   2 — adds the optional T / k / second turbulence section.
 #   3 — adds the mesh identity the native restart reader validates.
+#   4 — adds the explicit SST omega field; optional fields remain name-based.
 DAT_TEXT_IDENTITY_VERSION = 3
-_SUPPORTED_TEXT_VERSIONS = (1, 2, DAT_TEXT_IDENTITY_VERSION)
+DAT_TEXT_SST_VERSION = 4
+_SUPPORTED_TEXT_VERSIONS = (1, 2, DAT_TEXT_IDENTITY_VERSION, DAT_TEXT_SST_VERSION)
 
 
 def _validate(restart: DatRestart) -> DatRestart:
