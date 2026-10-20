@@ -347,7 +347,7 @@ class OpenFOAMAdapter(SolverAdapter):
                         points.append([float(coords[0]), float(coords[1]), float(coords[2])])
 
             return np.array(points, dtype=np.float64)
-        except Exception:
+        except (OSError, ValueError, TypeError, IndexError, KeyError, UnicodeError):
             return None
 
     def _parse_faces(self, faces_file: Path) -> list | None:
@@ -388,10 +388,10 @@ class OpenFOAMAdapter(SolverAdapter):
             if not faces:
                 return None
             return faces
-        except Exception:
+        except (OSError, ValueError, TypeError, IndexError, KeyError, UnicodeError):
             return None
 
-    def _parse_label_list(self, label_file: Path) -> Optional[list]:
+    def _parse_label_list(self, label_file: Path) -> list | None:
         """Parse OpenFOAM label list (owner, neighbour)."""
         try:
             parsed = _read_foam_main_list(label_file)
@@ -423,7 +423,7 @@ class OpenFOAMAdapter(SolverAdapter):
             if not labels:
                 return []
             return labels
-        except Exception:
+        except (OSError, ValueError, TypeError, IndexError, KeyError, UnicodeError):
             return None
 
     def _parse_boundary_file(self, boundary_file: Path) -> list:
@@ -637,7 +637,7 @@ class OpenFOAMAdapter(SolverAdapter):
 
         return parsed
 
-    def _parse_field_value(self, text: str) -> Optional[np.ndarray]:
+    def _parse_field_value(self, text: str) -> np.ndarray | None:
         """Parse an OpenFOAM internalField value into a numpy array."""
         text = re.sub(r"/\*.*?\*/", " ", text, flags=re.DOTALL)
         text = re.sub(r"//.*$", "", text, flags=re.MULTILINE).strip()
