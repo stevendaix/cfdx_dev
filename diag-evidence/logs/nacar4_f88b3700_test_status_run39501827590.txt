@@ -1,0 +1,8 @@
+pin=f88b3700fdc8b5a2aa6c79ac0f2e9226bca7e5f1
+role=control_pass
+subject=diag(evidence): run 38809298638 [ci skip]
+commit_date=2026-10-16 00:13:42 +0000
+outcome=PASS_3_LEVELS
+test_rc=0
+test_duration_s=2823
+run_id=39501827590
