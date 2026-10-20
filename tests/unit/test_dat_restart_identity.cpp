@@ -287,7 +287,11 @@ void run_cases()
         EXPECT_TRUE(last_newline != std::string::npos);
         const auto previous_newline = contents.find_last_of('\n', last_newline - 1);
         EXPECT_TRUE(previous_newline != std::string::npos);
+        // Keep the omega field header but replace its numeric payload with an
+        // incomplete exponent. This reaches the malformed-value parser path,
+        // rather than merely testing a missing omega record.
         contents.erase(previous_newline + 1);
+        contents += "1e";
         {
             std::ofstream out(dat);
             out << contents;
