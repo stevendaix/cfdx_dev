@@ -27,11 +27,15 @@ dependency.
 
 ## Integration contract
 
-- Keep the existing native C++ polyMesh reader as the topology path until
-  parity tests show the Python path is better for a specific use case.
-- Use foamlib for OpenFOAM dictionary and field parsing; do not copy its parser.
+- The Python adapter now preserves OpenFOAM's native face/owner/neighbour and
+  cell-face CSR topology; it must not infer volume cells from surface triangles.
+- Use foamlib for dictionaries and fields where available; do not copy its parser.
 - Keep the source representation and the CFDX canonical representation separate.
-- Preserve unknown dictionary entries and report unsupported conversions.
+- Preserve parsed setup dictionaries in the case metadata and raw text if the
+  optional parser is unavailable.
+- Map only explicit controls (time controls, transient mode, turbulence model,
+  radiation model); retain fvSchemes/fvSolution and report them as not yet
+  translated to equivalent CFDX numerical registry selections.
 - Keep field data usable for post-processing even if CFDX cannot reproduce the
   source physics model.
 - Never silently claim numerical equivalence after converting a boundary
