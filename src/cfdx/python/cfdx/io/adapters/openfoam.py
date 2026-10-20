@@ -112,7 +112,23 @@ class OpenFOAMAdapter(SolverAdapter):
             return False
 
         result.mesh = {"points": points, **cells}
-        result.gap_report.supported("mesh", "polyMesh topology")
+        cfdx_csr = cells.get("cfdx_csr", {})
+        if cfdx_csr:
+            self.setup.mesh_info.n_vertices = int(cfdx_csr["n_points"])
+            self.setup.mesh_info.n_faces = int(cfdx_csr["n_faces"])
+            self.setup.mesh_info.n_cells = int(cfdx_csr["n_cells"])
+            self.setup.mesh_info.n_boundary_faces = int(
+                np.count_nonzero(np.asarray(cfdx_csr["neighbour"]) < 0)
+            )
+            self.setup.mesh_info.n_internal_faces = (
+                self.setup.mesh_info.n_faces - self.setup.mesh_info.n_boundary_faces
+            )
+            self.setup.mesh_info.n_patches = len(
+                cfdx_csr.get("boundary_patch_assignment", [])
+            )
+            self.setup.mesh_info.has_polyhedral = True
+            self.setup.mesh_info.cell_types = ["polyhedron"]
+        result.gap_report.supported("mesh", "native OpenFOAM polyhedral CSR topology")
 
         # Parse boundary conditions
         self._parse_boundary(poly_mesh, result)
@@ -183,6 +199,16 @@ class OpenFOAMAdapter(SolverAdapter):
             return False
 
         imported = 0
+        # Latest-time data supersedes any initial values parsed from 0/.
+        imported_names = set(fields)
+        result.scalar_fields = [
+            (name, values) for name, values in result.scalar_fields
+            if name not in imported_names
+        ]
+        result.vec_fields = [
+            (name, values) for name, values in result.vec_fields
+            if name not in imported_names
+        ]
         latest_time = next(iter(fields.values()))["time"]
         time_key = f"{latest_time:g}"
         result.available_fields[time_key] = sorted(fields)
