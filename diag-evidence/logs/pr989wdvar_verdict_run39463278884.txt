@@ -1,0 +1,11 @@
+VERDICT: EVIDENCE_COMPLETE
+head_pin=54fd341255ae6166114d098ef0424eec465b34cc
+missing=none
+v0_head: time_ms=1359500.5 iterations=13550 per_iter_ms=100.332 converged=true stopping=converged residual_inf=9.985506088661111e-09 l2_relative=0.1292186982744402
+v2_scan_loop: time_ms=1391991.2 iterations=13550 per_iter_ms=102.730 converged=true stopping=converged residual_inf=9.985506088661111e-09 l2_relative=0.1292186982744402
+v3_bvh_stencils: time_ms=1382283.2 iterations=13550 per_iter_ms=102.014 converged=true stopping=converged residual_inf=9.985506088661111e-09 l2_relative=0.1292186982744402
+v1_hj_base_loop: time_ms=1401558.5 iterations=13550 per_iter_ms=103.436 converged=true stopping=converged residual_inf=9.985506088661111e-09 l2_relative=0.1292186982744402
+v2_scan_loop: per_iter_ratio_to_v0=1.024 class=SAME_AS_V0
+v3_bvh_stencils: per_iter_ratio_to_v0=1.017 class=SAME_AS_V0
+v1_hj_base_loop: per_iter_ratio_to_v0=1.031 class=SLOWER_THAN_V0
+anchors: v0_head ~ AB head 199.91 ms/iter ; v1_hj_base_loop ~ AB base 174.46 ms/iter

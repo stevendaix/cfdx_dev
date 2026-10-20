@@ -1,0 +1,9 @@
+run_id=39463278884
+head_pin=54fd341255ae6166114d098ef0424eec465b34cc
+date=2026-10-20T17:12:27Z
+nproc=4
+Model name:                              AMD EPYC 9V45 96-Core Processor
+4cb7eceec8b46c06cba474d34b891a6e  diag-tools/pr989_wd_variants/v0_head.h.txt
+3526eadd11a8fa167d8d5d3324aa021a  diag-tools/pr989_wd_variants/v1_hj_base_loop.h.txt
+a9862a215c5525402d4d2076bfc950c8  diag-tools/pr989_wd_variants/v2_scan_loop.h.txt
+5505d962e95b1dd5943fb20e0f069fe3  diag-tools/pr989_wd_variants/v3_bvh_stencils.h.txt

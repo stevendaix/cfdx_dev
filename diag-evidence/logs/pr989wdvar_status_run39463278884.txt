@@ -1,0 +1,8 @@
+build_v0_head wall_s=26 exe_present=yes md5_ok=yes
+build_v2_scan_loop wall_s=11 exe_present=yes md5_ok=yes
+build_v3_bvh_stencils wall_s=10 exe_present=yes md5_ok=yes
+build_v1_hj_base_loop wall_s=11 exe_present=yes md5_ok=yes
+run_v0_head rc=0 wall_s=1360.22
+run_v2_scan_loop rc=0 wall_s=1392.61
+run_v3_bvh_stencils rc=0 wall_s=1382.91
+run_v1_hj_base_loop rc=0 wall_s=1402.16
