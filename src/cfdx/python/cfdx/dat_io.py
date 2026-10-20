@@ -28,7 +28,7 @@ class DatField:
     def component(self, index: int) -> list[float]:
         if index < 0 or index >= self.dimension:
             raise IndexError(index)
-        return self.values[index::self.dimension]
+        return self.values[index :: self.dimension]
 
 
 @dataclass(frozen=True)
@@ -70,7 +70,9 @@ def _validate(restart: DatRestart) -> DatRestart:
     if restart.mesh_identity is not None:
         if len(restart.mesh_identity) != 4:
             raise ValueError("DAT checkpoint mesh identity must have four components")
-        if any(isinstance(v, bool) or not isinstance(v, int) for v in restart.mesh_identity):
+        if any(
+            isinstance(v, bool) or not isinstance(v, int) for v in restart.mesh_identity
+        ):
             raise ValueError("DAT checkpoint mesh identity must be integers")
         if any(v < 0 for v in restart.mesh_identity):
             raise ValueError("DAT checkpoint mesh identity must be non-negative")
@@ -143,8 +145,12 @@ def _read_text(path: Path) -> DatRestart:
         if take("identity key") != "identity":
             raise ValueError("expected 'identity'")
         components: list[int] = []
-        for label in ("identity points", "identity faces", "identity cells",
-                      "identity checksum"):
+        for label in (
+            "identity points",
+            "identity faces",
+            "identity cells",
+            "identity checksum",
+        ):
             try:
                 components.append(int(take(label)))
             except ValueError as exc:
@@ -181,7 +187,9 @@ def _read_text(path: Path) -> DatRestart:
                 raise ValueError(f"invalid value in field {name!r}") from exc
         fields[name] = DatField(name, dimension, values)
 
-    return _validate(DatRestart(version, cells, iteration, time, fields, None, mesh_identity))
+    return _validate(
+        DatRestart(version, cells, iteration, time, fields, None, mesh_identity)
+    )
 
 
 def _read_hdf5(path: Path) -> DatRestart:
@@ -251,7 +259,9 @@ def write_dat_hdf5(
         for name, value in (attributes or {}).items():
             h5.attrs[name] = value
         if restart.cell_ids is not None:
-            h5.create_dataset("cell_ids", data=np.asarray(restart.cell_ids, dtype=np.uint64))
+            h5.create_dataset(
+                "cell_ids", data=np.asarray(restart.cell_ids, dtype=np.uint64)
+            )
         group = h5.create_group("fields")
         for name, field in restart.fields.items():
             values = np.asarray(field.values, dtype=np.float64).reshape(
@@ -298,5 +308,12 @@ def remap_dat_restart(
         # reordered onto a different cell set, so the recorded identity no longer
         # describes it and forwarding it would claim a validation that no longer
         # holds.
-        DatRestart(restart.version, len(target), restart.iteration, restart.time, fields, target)
+        DatRestart(
+            restart.version,
+            len(target),
+            restart.iteration,
+            restart.time,
+            fields,
+            target,
+        )
     )
