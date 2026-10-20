@@ -270,7 +270,6 @@ def test_hdf5_checkpoint_persists_global_cell_ids_and_remaps(tmp_path: Path) -> 
 
 
 def test_dat_checkpoint_rejects_duplicate_global_cell_ids(tmp_path: Path) -> None:
-    from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
 
     restart = DatRestart(
         version=2,
