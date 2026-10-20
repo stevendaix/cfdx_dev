@@ -535,6 +535,20 @@ class OpenFOAMAdapter(SolverAdapter):
                 }
             )
 
+        boundary_face_ids = set(np.flatnonzero(neighbour_full < 0).tolist())
+        assigned_face_ids = {
+            face_id
+            for patch in patch_assignment
+            for face_id in patch["face_ids"]
+        }
+        if assigned_face_ids != boundary_face_ids:
+            missing = sorted(boundary_face_ids - assigned_face_ids)
+            extra = sorted(assigned_face_ids - boundary_face_ids)
+            raise ValueError(
+                "OpenFOAM boundary patch ranges do not cover exactly the boundary "
+                f"faces (missing={missing[:8]}, extra={extra[:8]})"
+            )
+
         cfdx_csr = {
             "points": np.asarray(self._mesh_points, dtype=np.float64),
             "face_vertices": np.asarray(face_vertex_ids, dtype=np.uint64),
