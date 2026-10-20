@@ -30,6 +30,12 @@ int main()
         EXPECT_NEAR(r.net_flux[0],oracle,1e-10*std::max(1.0,std::abs(oracle)));
         EXPECT_NEAR(r.net_flux[0],-r.net_flux[1],1e-10*std::max(1.0,std::abs(r.net_flux[0])));
         EXPECT_NEAR(r.total_power,0.0,1e-10*std::max(1.0,std::abs(oracle)));
+
+        const auto q_into_fluid = s2s_heat_flux_into_fluid(r);
+        EXPECT_NEAR(q_into_fluid[0], -oracle,
+                    1e-10*std::max(1.0,std::abs(oracle)));
+        EXPECT_NEAR(q_into_fluid[1], oracle,
+                    1e-10*std::max(1.0,std::abs(oracle)));
     });
 
     run_case("s2s_ambient_irradiation_uses_open_view_fraction", [] {
