@@ -1,0 +1,327 @@
+name: PR 989 HJ variant profile (v0/v2/v3/v1, diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (JAMAIS merger).
+# Contexte : PR #989, A/B run 39397470405 (meme runner EPYC 7763) =
+# hamilton_jacobi HEAD_SLOWER (2364440 -> 2708698 ms, speedup 0.873,
+# +14.6 %/iter) alors que le chemin HJ du head fait MOINS de travail
+# par noeud (lookups de table au lieu de requetes BVH par face solide).
+# Analyse statique epuisee : ce workflow isole EMPIRIQUEMENT le
+# composant responsable en compilant 4 variantes de
+# src/cfdx/physics/wall_distance.h sur l'arbre EXACT du HEAD_PIN, avec
+# le programme de benchmark du head inchangé, N=128, methode
+# hamilton_jacobi uniquement, 4 runs sequentiels sur le MEME runner :
+#   v0_head         = head 54fd3412 inchangé
+#                     (ancre, attendu ~199.9 ms/iter, AB head)
+#   v2_scan_loop    = head avec boucles scan 0..d.size() au lieu
+#                     d'active_ids (stencils offsets conserves)
+#                     - isole l'indirection active_ids
+#   v3_bvh_stencils = head avec stencils BVH 4-args (godunov/laplacian)
+#                     dans la boucle HJ (active_ids + hoists conserves)
+#                     - isole le chemin cache offsets dans HJ
+#   v1_hj_base_loop = head avec boucle HJ revertee aux semantiques du
+#                     master (scan + BVH + dt par noeud, fonction HJ
+#                     byte-identique a la base hors setup des seeds)
+#                     (ancre, attendu ~174.5 ms/iter, AB base)
+# Les variantes ne changent AUCUNE equation : toutes doivent reproduire
+# exactement iterations=13550, converged=true et des residual_inf /
+# l2_relative / stopping_reason identiques entre elles (valeurs
+# bit-identiques base/head de l'A/B run 39397470405 : residual_inf
+# 9.985506088661111e-09, l2_relative 0.1292186982744402). Garde
+# fail-closed MD5 de chaque variante avant build (corruption de
+# transmission => INCONCLUSIVE_MD5 sans perdre 3 h de benchmark).
+# Ordre des runs : v0, v2, v3, v1 (ancres connues en premier et en
+# dernier pour encadrer la derive du runner). Les budgets d'iterations,
+# gates de convergence et tolerances ne sont PAS modifies. Verdicts
+# fail-closed :
+#   EVIDENCE_COMPLETE             = 4 CSV parses + gardes numeriques OK
+#   INCONCLUSIVE_MD5              = variante corrompue a la transmission
+#   INCONCLUSIVE_MISSING_CSV      = CSV absent/vide (build ou run KO)
+#   INCONCLUSIVE_NUMERIC_MISMATCH = garde numerique violee
+# Le head est epingle au SHA ci-dessous ; un nouveau head de PR #989
+# exige de mettre a jour HEAD_PIN et les variantes, puis re-pousser.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - .github/workflows/pr989-hj-variant-profile-diag.yml
+      - diag-tools/pr989_wd_variants/**
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  HEAD_PIN: 54fd341255ae6166114d098ef0424eec465b34cc
+  V0_MD5: 4cb7eceec8b46c06cba474d34b891a6e
+  V1_MD5: 3526eadd11a8fa167d8d5d3324aa021a
+  V2_MD5: a9862a215c5525402d4d2076bfc950c8
+  V3_MD5: 5505d962e95b1dd5943fb20e0f069fe3
+  EXPECTED_ITERATIONS: "13550"
+
+concurrency:
+  group: pr989-hj-variant-profile
+  cancel-in-progress: false
+
+jobs:
+  hj-variant-profile:
+    name: HJ fine benchmark N=128 (4 wall_distance.h variants, same runner)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    steps:
+      - name: Checkout diagnostics branch
+        uses: actions/checkout@v4
+
+      - name: Fail-closed pin verification
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin perf/wall-distance-cut-face-offset-cache
+          git cat-file -e "${HEAD_PIN}^{commit}"
+          git merge-base --is-ancestor "${HEAD_PIN}" FETCH_HEAD
+          echo "pin_ok head=${HEAD_PIN}"
+
+      - name: Checkout pinned head (PR 989)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEAD_PIN }}
+          path: cfdx-head
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev
+
+      - name: Record runner environment and variant checksums
+        run: |
+          set -euo pipefail
+          mkdir -p diag-evidence/logs
+          RUN_ID="${GITHUB_RUN_ID}"
+          {
+            echo "run_id=${RUN_ID}"
+            echo "head_pin=${HEAD_PIN}"
+            echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "nproc=$(nproc)"
+            lscpu | grep -E 'Model name|MHz' || true
+            md5sum diag-tools/pr989_wd_variants/*.h.txt
+          } > "diag-evidence/logs/pr989wdvar_meta_run${RUN_ID}.txt"
+          cat "diag-evidence/logs/pr989wdvar_meta_run${RUN_ID}.txt"
+
+      - name: Build variant benchmarks (v0, v2, v3, v1)
+        id: build_variants
+        run: |
+          set -uo pipefail
+          RUN_ID="${GITHUB_RUN_ID}"
+          E="diag-evidence/logs"
+          build_one() {
+            local v="$1" expected_md5="$2"
+            local src="diag-tools/pr989_wd_variants/${v}.h.txt"
+            local bdir="build-pr989var-${v}"
+            local actual_md5
+            actual_md5=$(md5sum "${src}" | awk '{print $1}')
+            if [ "${actual_md5}" != "${expected_md5}" ]; then
+              echo "MD5_MISMATCH ${v} expected=${expected_md5} actual=${actual_md5}" \
+                >> "${E}/pr989wdvar_status_run${RUN_ID}.txt"
+              return 1
+            fi
+            cp "${src}" cfdx-head/src/cfdx/physics/wall_distance.h
+            local t0 t1
+            t0=$(date +%s)
+            {
+              cmake -S cfdx-head -B "${bdir}" -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DCFDX_BUILD_TESTS=ON \
+                -DCFDX_ENABLE_LONG_VALIDATION=ON \
+                -DCFDX_ENABLE_MPI=ON \
+                -DCFDX_BUILD_PYTHON=OFF \
+                -DCFDX_USE_HDF5_SERIAL=OFF \
+                -DCFDX_ENABLE_PARALLEL_HDF5=ON
+              cmake --build "${bdir}" \
+                --target cfdx_wall_distance_controlled_benchmark --parallel 3
+              ls -la "./${bdir}/cfdx_wall_distance_controlled_benchmark"
+            } > "${E}/pr989wdvar_build_${v}_run${RUN_ID}.log" 2>&1 || return 1
+            t1=$(date +%s)
+            if [ ! -x "./${bdir}/cfdx_wall_distance_controlled_benchmark" ]; then
+              echo "build_${v} exe_missing=yes" >> "${E}/pr989wdvar_status_run${RUN_ID}.txt"
+              return 1
+            fi
+            echo "build_${v} wall_s=$((t1-t0)) exe_present=yes md5_ok=yes" \
+              >> "${E}/pr989wdvar_status_run${RUN_ID}.txt"
+            return 0
+          }
+          build_one v0_head         "${V0_MD5}" || true
+          build_one v2_scan_loop    "${V2_MD5}" || true
+          build_one v3_bvh_stencils "${V3_MD5}" || true
+          build_one v1_hj_base_loop "${V1_MD5}" || true
+          cat "${E}/pr989wdvar_status_run${RUN_ID}.txt"
+
+      - name: Run HJ fine benchmarks (order v0, v2, v3, v1)
+        id: run_benchs
+        run: |
+          set -uo pipefail
+          RUN_ID="${GITHUB_RUN_ID}"
+          E="diag-evidence/logs"
+          run_one() {
+            local v="$1"
+            local exe="./build-pr989var-${v}/cfdx_wall_distance_controlled_benchmark"
+            local rc=0 t0 t1
+            if [ ! -x "${exe}" ]; then
+              {
+                echo "EXE_MISSING ${exe}"
+                echo "--- builddir listing ---"
+                ls -la "./build-pr989var-${v}" 2>&1 | head -30
+              } > "${E}/pr989wdvar_${v}_run${RUN_ID}.log"
+              echo "run_${v} rc=127 wall_s=0.00 exe_missing=yes" \
+                >> "${E}/pr989wdvar_status_run${RUN_ID}.txt"
+              return 0
+            fi
+            t0=$(date +%s.%N)
+            "${exe}" "${E}/pr989wdvar_${v}_run${RUN_ID}.csv" 128 \
+              "--method=hamilton_jacobi" \
+              > "${E}/pr989wdvar_${v}_run${RUN_ID}.log" 2>&1 || rc=$?
+            t1=$(date +%s.%N)
+            echo "run_${v} rc=${rc} wall_s=$(awk -v a="${t0}" -v b="${t1}" 'BEGIN{printf "%.2f", b-a}')" \
+              >> "${E}/pr989wdvar_status_run${RUN_ID}.txt"
+            return 0
+          }
+          run_one v0_head
+          run_one v2_scan_loop
+          run_one v3_bvh_stencils
+          run_one v1_hj_base_loop
+          cat "${E}/pr989wdvar_status_run${RUN_ID}.txt"
+
+      - name: Analyze variant results
+        if: always()
+        run: |
+          set -u
+          RUN_ID="${GITHUB_RUN_ID}"
+          E="diag-evidence/logs"
+          python3 - "${RUN_ID}" "${E}" <<'PY'
+          import csv, os, sys
+          run_id, E = sys.argv[1], sys.argv[2]
+          variants = ["v0_head", "v2_scan_loop", "v3_bvh_stencils", "v1_hj_base_loop"]
+          expected_iter = "13550"
+          ab_res = "9.985506088661111e-09"
+          ab_l2 = "0.1292186982744402"
+          def load(v):
+              path = os.path.join(E, "pr989wdvar_%s_run%s.csv" % (v, run_id))
+              if not os.path.exists(path) or os.path.getsize(path) == 0:
+                  return None
+              with open(path, newline="") as fh:
+                  for row in csv.DictReader(fh):
+                      if row.get("N") == "128":
+                          return row
+              return None
+          data, missing = {}, []
+          for v in variants:
+              row = load(v)
+              if not row or not row.get("time_ms") or not row.get("iterations"):
+                  missing.append(v)
+              else:
+                  data[v] = row
+          md5_bad, numeric_bad, notes = [], [], []
+          status = os.path.join(E, "pr989wdvar_status_run%s.txt" % run_id)
+          if os.path.exists(status):
+              for line in open(status):
+                  if "MD5_MISMATCH" in line:
+                      md5_bad.append(line.strip())
+          for v, row in data.items():
+              if row.get("iterations") != expected_iter:
+                  numeric_bad.append("%s iterations=%s" % (v, row.get("iterations")))
+              if row.get("converged") != "true":
+                  numeric_bad.append("%s converged=%s" % (v, row.get("converged")))
+          ref_res = data.get("v0_head", {}).get("residual_inf")
+          ref_l2 = data.get("v0_head", {}).get("l2_relative")
+          ref_stop = data.get("v0_head", {}).get("stopping_reason")
+          for v, row in data.items():
+              if row.get("residual_inf") != ref_res:
+                  numeric_bad.append("%s residual_inf=%s != v0 %s" % (v, row.get("residual_inf"), ref_res))
+              if row.get("l2_relative") != ref_l2:
+                  numeric_bad.append("%s l2_relative=%s != v0 %s" % (v, row.get("l2_relative"), ref_l2))
+              if row.get("stopping_reason") != ref_stop:
+                  numeric_bad.append("%s stopping=%s != v0 %s" % (v, row.get("stopping_reason"), ref_stop))
+          if ref_res is not None and ref_res != ab_res:
+              notes.append("AB_CONSTANT_NOTE residual_inf=%s vs AB %s (formatting or value)" % (ref_res, ab_res))
+          if ref_l2 is not None and ref_l2 != ab_l2:
+              notes.append("AB_CONSTANT_NOTE l2_relative=%s vs AB %s (formatting or value)" % (ref_l2, ab_l2))
+          if missing:
+              verdict = "INCONCLUSIVE_MISSING_CSV"
+          elif md5_bad:
+              verdict = "INCONCLUSIVE_MD5"
+          elif numeric_bad:
+              verdict = "INCONCLUSIVE_NUMERIC_MISMATCH"
+          else:
+              verdict = "EVIDENCE_COMPLETE"
+          lines = []
+          lines.append("VERDICT: %s" % verdict)
+          lines.append("head_pin=%s" % os.environ.get("HEAD_PIN", "?"))
+          lines.append("missing=%s" % (",".join(missing) if missing else "none"))
+          if md5_bad:
+              lines.append("md5_issues=%s" % "; ".join(md5_bad))
+          if numeric_bad:
+              lines.append("numeric_issues=%s" % "; ".join(numeric_bad))
+          for n in notes:
+              lines.append(n)
+          per_iter = {}
+          for v in variants:
+              row = data.get(v)
+              if not row:
+                  lines.append("%s: SKIPPED (missing csv)" % v)
+                  continue
+              t = float(row["time_ms"])
+              it = int(float(row["iterations"]))
+              per_iter[v] = t / max(it, 1)
+              lines.append("%s: time_ms=%.1f iterations=%s per_iter_ms=%.3f converged=%s stopping=%s residual_inf=%s l2_relative=%s"
+                           % (v, t, row.get("iterations"), per_iter[v],
+                              row.get("converged"), row.get("stopping_reason"),
+                              row.get("residual_inf"), row.get("l2_relative")))
+          ref = per_iter.get("v0_head")
+          if ref:
+              for v in variants:
+                  if v == "v0_head" or v not in per_iter:
+                      continue
+                  r = per_iter[v] / ref
+                  cls = "FASTER_THAN_V0" if r < 0.97 else ("SLOWER_THAN_V0" if r > 1.03 else "SAME_AS_V0")
+                  lines.append("%s: per_iter_ratio_to_v0=%.3f class=%s" % (v, r, cls))
+          lines.append("anchors: v0_head ~ AB head 199.91 ms/iter ; v1_hj_base_loop ~ AB base 174.46 ms/iter")
+          out = os.path.join(E, "pr989wdvar_verdict_run%s.txt" % run_id)
+          with open(out, "w") as fh:
+              fh.write("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          PY
+
+      - name: Commit evidence (bot, ci-skip)
+        if: always()
+        run: |
+          set -euo pipefail
+          ls diag-evidence/logs/pr989wdvar_*_run"${GITHUB_RUN_ID}"* >/dev/null 2>&1 || { echo "no evidence files"; exit 0; }
+          git config user.name "cfdx-diag-bot"
+          git config user.email "actions@github.com"
+          git add diag-evidence/logs/pr989wdvar_*_run"${GITHUB_RUN_ID}"*
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "diag: PR 989 HJ variant profile run ${GITHUB_RUN_ID} (head ${HEAD_PIN}) [ci skip]"
+            for attempt in 1 2 3; do
+              if git pull --rebase origin ci/long-campaign-diagnostics && git push; then
+                break
+              fi
+              echo "push retry ${attempt}"
+              sleep 5
+            done
+          fi
+
+      - name: Final verdict (green only for EVIDENCE_COMPLETE)
+        if: always()
+        run: |
+          V="diag-evidence/logs/pr989wdvar_verdict_run${GITHUB_RUN_ID}.txt"
+          if [ ! -s "$V" ]; then
+            echo "::error::verdict=INCONCLUSIVE_NO_VERDICT_FILE"
+            exit 1
+          fi
+          head -8 "$V"
+          grep -q "^VERDICT: EVIDENCE_COMPLETE" "$V" || {
+            v=$(sed -n 's/^VERDICT: //p' "$V" | head -1)
+            echo "::error::verdict=${v}"
+            exit 1
+          }
