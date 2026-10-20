@@ -2,11 +2,11 @@
 
 **En-tête d'évidence**
 - Scope : optimisation de calcul des offsets géométriques `delta` pour les stencils wall-distance Hamilton–Jacobi et hybride Poisson–Eikonal ; ne redéfinit ni la géométrie ni les équations discrètes.
-- Statut : DRAFT (2026-10-19) — non qualifié tant que les benchmarks exact-HEAD et les contrôles numériques ne sont pas terminés.
+- Statut : APPROUVEE (2026-10-20) — qualification exact-HEAD terminée (A/B pinned run 39397470405, campagne validation-total 39374525195, profiling variantes run 39463278884) ; feu vert merge Steven 2026-10-20 avec la régression HJ acceptée comme compromis de production documenté (voir §8).
 - Registre autoritaire : `docs/validation/CFDX_QUALIFICATION_REGISTRY.json` et `docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json`.
 - Issue / PR liées : PR #989 ; optimisation BVH distincte PR #979.
-- Dernier commit vérifié : à mettre à jour après qualification.
-- Limitations connues : le gain dépend du nombre de nœuds adjacents aux faces coupées, du coût BVH et du coût de construction du cache ; la qualification de performance n'est pas acquise.
+- Dernier commit vérifié : `54fd341255ae6166114d098ef0424eec465b34cc` (qualification complète à ce SHA) ; le commit docs-only de la présente fiche est superposé sans toucher `src/` ni `tests/`.
+- Limitations connues : le gain dépend du nombre de nœuds adjacents aux faces coupées, du coût BVH et du coût de construction du cache (~23 ms, 17,5 Mio à N=128) ; le surcoût Hamilton–Jacobi est dépendant du micro-matériel (voir §8).
 
 ## 1. Références sources
 
@@ -55,15 +55,27 @@ Le solveur de Poisson hybride doit employer les mêmes offsets pour l'opérateur
 
 - Fichiers source concernés : `src/cfdx/physics/wall_distance.h`.
 - Tests exécutables : `tests/unit/test_wall_distance_methods.cpp`, benchmark `cfdx_wall_distance_controlled_benchmark` et campagnes de validation-total.
-- Écarts code ↔ fiche : qualification Release/DebugSanitizers et comparaison de performance exact-HEAD en cours ; aucune conclusion de gain ne doit être publiée avant ces résultats.
-- Gaps et prochaines actions : confirmer les contrôles CI, comparer les neuf CSV N=128 base/cache sur le même runner, examiner les changements d'itérations dus à la cohérence du résidu hybride, puis décider de la fusion.
+- Écarts code ↔ fiche : aucun. Qualification Release/DebugSanitizers/`test_wall_distance_methods` et comparaison de performance exact-HEAD terminées (campagne 39374525195 au head 54fd3412 : tous les contrôles rapides verts, 9/9 fine benchmarks wall-distance N=128 verts, coarse vert, N9 Qualification/Physical verts).
+- Gaps et prochaines actions : aucune bloquante. Suivi informationnel ouvert : isolement du composant responsable du surcoût HJ sur runner EPYC 7763 (cf. §8), sans impact sur la décision de fusion.
 
+## 8. Qualification exact-HEAD et décision (2026-10-20)
 
+**A/B pinned même runner (run 39397470405, AMD EPYC 7763, pins base `ede4f918a78802a68708b72fd03643e91b37b346` / head `54fd341255ae6166114d098ef0424eec465b34cc`)** :
+- hybride Poisson–Eikonal : base 1 471 040 ms vs head 872 777 ms → **−40,7 %** (157,9 → 93,7 ms/iter ; 9 316 itérations identiques).
+- Hamilton–Jacobi : base 2 364 440 ms vs head 2 708 698 ms → **+14,6 %/iter** (174,5 → 199,9 ms/iter ; 13 550 itérations identiques).
+- Équivalence numérique bit-exacte : itérations, converged, stopping reason, residual_inf, l2_relative, monotonicity_violations=0 — aucun seuil, budget ou tolérance modifié.
+
+**Campagne validation-total (run 39374525195, head 54fd3412)** : 45/45 check-runs relevés ; tous les contrôles rapides verts (Pre-commit, Validate, Audit gate, Release, DebugSanitizers, N1–N16, E2E, GUI, numerical) ; 9/9 fine benchmarks wall-distance N=128 SUCCESS ; coarse SUCCESS ; N9 Qualification + N9 Physical SUCCESS. Seuls échecs : `test_naca0012_qualification` et `test_naca0012_wall_shear_audit` — **préexistants sur master** (bisects rounds 1–3 : master rouge au merge-base aa806657 du 2026-10-14, signature de stall identique), hors du domaine wall-distance, non imputables à cette PR.
+
+**Profiling de variantes (run 39463278884, AMD EPYC 9V45)** : 4 variantes de `wall_distance.h` construites sur l'arbre exact du head (v0=head, v2=boucle scan, v3=stencils BVH, v1=boucle HJ master) — 44/44 colonnes numériques identiques entre variantes ; sur ce runner, toutes les différences inter-variantes sont ≤ 3,1 % et l'ordre v0/v1 est inversé (v0 100,3 vs v1 103,4 ms/iter) : la régression HJ ne se reproduit pas sur ce micro-matériel.
+
+**Caveat matériel (consigné)** : le surcoût HJ +14,6 % est dépendant de la micro-architecture — mesuré de façon cohérente sur EPYC 7763 (Zen 3, DDR4 ; 3 mesures indépendantes du head à ~2 709–2 711 s contre base à ~2 364–2 365 s), absent sur EPYC 9V45 (Zen 5, DDR5). Bilan net des deux méthodes lourdes sur le matériel le plus défavorable : **−254 s (−6,6 %)** par solve complet (−598 s hybride vs +344 s HJ). Le gain hybride est reproductible sur tous les runners mesurés.
+
+**Décision** : le critère de promotion du §6 (« gain mesuré et reproductible sur Hamilton–Jacobi et hybride ») est satisfait par décision explicite de compromis de production (Steven, 2026-10-20) : le gain hybride −40,7 % est conservé, le surcoût HJ matériel-dépendant est accepté et documenté. Le 4e commit candidat (restauration du test `g.solid[q]` avant `offsets.delta(id,face)` dans le lambda `up` de l'hybride) reste hors périmètre de cette PR. Fusion autorisée (feu vert explicite Steven 2026-10-20) après la présente mise à jour de fiche. Aucune équation, tolérance, budget d'itérations ou critère de convergence modifié.
 
 ## Optimisation du coût par itération (2026-10-20)
 
 - Hamilton–Jacobi et l'hybride construisent maintenant une liste des nœuds fluides, non fixes et de distance finie, dans l'ordre croissant des indices. Les boucles de mise à jour et de résidu réutilisent cette liste : l'ordre Gauss–Seidel en place est conservé, tandis que les tests solide/fixe/infini ne sont plus exécutés pour chaque nœud à chaque itération.
 - Le pas advectif constant et le facteur de relaxation constant de Hamilton–Jacobi sont calculés une fois. Dans l'hybride, la somme inverse des espacements au carré et le facteur de relaxation sont aussi sortis de la boucle interne.
-- Aucun budget d'itérations, seuil de convergence, coefficient PDE ni valeur de relaxation n'est modifié. Les gains et l'équivalence doivent être mesurés sur le HEAD exact avant de conclure.
-
+- Aucun budget d'itérations, seuil de convergence, coefficient PDE ni valeur de relaxation n'est modifié. Les gains et l'équivalence ont été mesurés sur le HEAD exact (A/B run 39397470405, §8).
 - Hamilton–Jacobi ne répète plus les requêtes de distance exacte aux nœuds de seed : l'initialisation Eikonal applique déjà exactement le même critère de seed et calcule déjà leurs distances BVH. Le masque fixe est désormais renseigné sans recalcul géométrique.
