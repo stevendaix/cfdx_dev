@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cfdx/io/restart/dat_restart.h"
 #include "cfdx/physics/sst_solver.h"
 #include "cfdx/physics/sst_case_contract.h"
 
