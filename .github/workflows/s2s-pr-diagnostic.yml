@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   report-failed-fast-ctest:
@@ -41,29 +42,45 @@ jobs:
           set -e
           echo "ctest exit code: $rc"
 
-      - name: Report failed tests
+      - name: Build failure report
         if: always()
         run: |
-          echo "===== ctest summary ====="
-          tail -n 40 ctest.log || true
-          echo "===== per-test failure report ====="
           python3 - <<'PYEOF'
           import re
           text = open('ctest.log', errors='replace').read()
           m = re.search(r"The following tests FAILED:\n(.*?)\n\s*\n", text, re.S)
           failed = re.findall(r"\d+ - (\S+) \(([^)]*)\)", m.group(1)) if m else []
+          out = []
           if not failed:
-              print("NO FAILED TESTS FOUND IN SUMMARY")
+              out.append("NO FAILED TESTS FOUND IN SUMMARY")
           blocks = re.split(r"(?m)^(?=\s*(Start\s+\d+:|\d+/\d+ Test\s*#?\d+))", text)
           for name, kind in failed:
-              print("=" * 70)
-              print("FAILED: %s (%s)" % (name, kind))
+              out.append("=" * 70)
+              out.append("FAILED: %s (%s)" % (name, kind))
               for b in blocks:
                   if re.search(r"(Start\s+\d+:\s*|#\d+:\s*)%s\b" % re.escape(name), b):
                       lines = b.rstrip().splitlines()
-                      print("---- first lines ----")
-                      print("\n".join(lines[:3]))
-                      print("---- last lines ----")
-                      print("\n".join(lines[-100:]))
+                      out.append("---- first lines ----")
+                      out.extend(lines[:3])
+                      out.append("---- last lines ----")
+                      out.extend(lines[-120:])
                       break
+          with open('report.txt', 'w') as f:
+              f.write("\n".join(out))
+          print("\n".join(out))
           PYEOF
+
+      - name: Post report as PR comment
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "### S2S diagnostic: fast-ctest failures (Release, commit ${GITHUB_SHA})"
+            echo ""
+            echo '```'
+            cat report.txt 2>/dev/null || tail -n 40 ctest.log
+            echo '```'
+          } > report.md
+          gh pr comment "$PR_NUMBER" --body-file report.md
