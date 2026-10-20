@@ -39,15 +39,6 @@ def detect_adapter(path: str | Path) -> str | None:
             return "openfoam"
 
     ext = p.suffix.lower()
-    stem = p.stem.lower()
-
-    # Check for compound extensions like .cas.h5, .dat.h5
-    if stem.endswith((".cas", ".dat")):
-        ext = "." + stem.split(".")[-1] + ext
-        # This will make ext = ".cas.h5" or ".dat.h5", but we want to map to fluent
-        # Actually let's just check the stem
-        pass
-
     # Extension-based detection
     ext_map = {
         ".cas": "fluent",
