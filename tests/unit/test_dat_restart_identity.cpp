@@ -236,6 +236,32 @@ void run_cases()
         std::filesystem::remove(dat);
     });
 
+    run_case("dat_restart_rejects_invalid_requested_omega_shape_before_mutation", [] {
+        const Mesh m = make_cube(1.0);
+        const auto dat = temp_dat("sst_invalid_omega_shape");
+        Field<double,Location::CELL> k(1, "k", "m2/s2", 1);
+        Field<double,Location::CELL> omega(1, "omega", "1/s", 1);
+        k(0) = 0.42;
+        omega(0) = 125.0;
+        DatRestartFields write_fields;
+        write_fields.k = &k;
+        write_fields.omega = &omega;
+        write_dat_restart_fields(dat.string(), m, seeded_u(0.25), seeded_p(37.5),
+                                 write_fields, 23, 4.5);
+
+        Field<double,Location::CELL> u = seeded_u(9.0);
+        Field<double,Location::CELL> p = seeded_p(8.0);
+        Field<double,Location::CELL> bad_omega(1, "omega", "1/s", 3);
+        DatRestartFields read_fields;
+        read_fields.omega = &bad_omega;
+        EXPECT_THROW_WITH(
+            read_dat_restart_fields(dat.string(), m, u, p, read_fields),
+            std::invalid_argument, "invalid omega field");
+        EXPECT_NEAR(u(0,0), 9.0, 1e-14);
+        EXPECT_NEAR(p(0), 8.0, 1e-14);
+        std::filesystem::remove(dat);
+    });
+
     run_case("dat_restart_identity_rejects_non_finite_geometry", [] {
         Mesh broken = make_cube(1.0);
         broken.points().set(0, std::nan(""), 0.0, 0.0);
