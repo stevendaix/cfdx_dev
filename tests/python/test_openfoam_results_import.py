@@ -113,3 +113,55 @@ def test_openfoam_polyhedral_mesh_builds_native_face_cell_csr():
     # The surface triangles are for visualization only; solver topology is
     # represented by the native polyhedral CSR, not by these triangles.
     assert mesh["cells"]["triangle"].shape == (7, 3)
+
+
+
+def test_native_openfoam_csr_is_written_to_cfdx_hdf5(tmp_path):
+    import h5py
+
+    from cfdx.io.hdf5_writer import write_case_cfdx_h5
+
+    adapter = OpenFOAMAdapter()
+    adapter._mesh_points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+        [0, 2, 4],
+        [2, 1, 4],
+        [1, 0, 4],
+    ]
+    mesh = adapter._build_cells_from_faces(
+        faces,
+        [0, 0, 0, 0, 1, 1, 1],
+        [1],
+        [{"name": "walls", "type": "wall", "n_faces": 6, "start_face": 1}],
+    )
+    result = ConversionResult(
+        source=SourceInfo(solver="OpenFOAM", format="openfoam"),
+        mesh={"points": mesh["cfdx_csr"]["points"], **mesh},
+        scalar_fields=[("p", np.array([101325.0, 101300.0]))],
+    )
+    output = tmp_path / "case.cfdx.h5"
+
+    write_case_cfdx_h5(result, output)
+
+    with h5py.File(output, "r") as h5:
+        assert int(h5.attrs["n_points"]) == 5
+        assert int(h5.attrs["n_faces"]) == 7
+        assert int(h5.attrs["n_cells"]) == 2
+        np.testing.assert_array_equal(h5["owner"][:], [0, 0, 0, 0, 1, 1, 1])
+        np.testing.assert_array_equal(h5["neighbour"][:], [1, -1, -1, -1, -1, -1, -1])
+        np.testing.assert_array_equal(h5["cell_offsets"][:], [0, 4, 8])
+        np.testing.assert_array_equal(h5["fields/scalar/p"][:], [101325.0, 101300.0])
+        assert "boundary_patches" in h5.attrs
