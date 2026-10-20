@@ -400,23 +400,44 @@ std::string energy_summary_json(const ProductionEnergyStageResult& energy)
     return out.str();
 }
 
-// JSON summary of the coupled S2S radiation + energy stage (issue #885
-// stage 2): the delayed-Picard verdict, the blocking machine gates and the
-// per-surface radiosity data. The wall-temperature lag is a diagnostic
-// only (the external energy-radiation iteration is integration step 3).
-std::string radiation_s2s_json(const ProductionS2SEnergyStageResult& stage)
+// JSON summary of the external S2S radiation + energy iteration (issue
+// #885 step 3): the coupled fixed-point verdict, its separate blocking
+// criteria (unrelaxed radiative fixed-point residual, wall-temperature
+// stationarity), the per-iteration convergence history, and the
+// per-surface radiosity data of the final radiative response.
+std::string radiation_s2s_json(const ProductionS2SOuterLoopResult& stage)
 {
     std::ostringstream out;
     out << "{\n";
     out << "  \"converged\": " << (stage.converged ? 1 : 0) << ",\n";
-    out << "  \"energy_pass1_converged\": "
-        << (stage.energy_pass1_converged ? 1 : 0) << ",\n";
-    out << "  \"s2s_radiation_converged\": "
-        << (stage.s2s_radiation_converged ? 1 : 0) << ",\n";
-    out << "  \"energy_pass2_converged\": "
-        << (stage.energy_pass2_converged ? 1 : 0) << ",\n";
+    out << "  \"fixed_point_flux_passed\": "
+        << (stage.fixed_point_flux_passed ? 1 : 0) << ",\n";
+    out << "  \"fixed_point_wall_temperature_passed\": "
+        << (stage.fixed_point_wall_temperature_passed ? 1 : 0) << ",\n";
+    out << "  \"outer_iterations\": " << stage.outer_iterations << ",\n";
+    out << "  \"max_flux_fixed_point_normalized\": "
+        << json_number(stage.max_flux_fixed_point_normalized) << ",\n";
+    out << "  \"max_wall_temperature_change_normalized\": "
+        << json_number(stage.max_wall_temperature_change_normalized)
+        << ",\n";
     out << "  \"max_wall_temperature_lag\": "
         << json_number(stage.max_wall_temperature_lag) << ",\n";
+    out << "  \"outer_history\": [\n";
+    for (std::size_t i = 0; i < stage.history.size(); ++i) {
+        const auto& entry = stage.history[i];
+        out << "    {\"iteration\": " << entry.iteration
+            << ", \"energy_converged\": "
+            << (entry.energy_converged ? 1 : 0)
+            << ", \"radiation_converged\": "
+            << (entry.radiation_converged ? 1 : 0)
+            << ", \"max_flux_fixed_point_normalized\": "
+            << json_number(entry.max_flux_fixed_point_normalized)
+            << ", \"max_wall_temperature_change_normalized\": "
+            << json_number(entry.max_wall_temperature_change_normalized)
+            << "}";
+        out << (i + 1 == stage.history.size() ? "\n" : ",\n");
+    }
+    out << "  ],\n";
     const ProductionS2SRadiationResult& radiation = stage.radiation;
     out << "  \"radiation\": {\n";
     out << "    \"balance_passed\": "
@@ -784,7 +805,7 @@ int main(int argc, char** argv)
         bool energy_requested = false;
         bool energy_ran = false;
         ProductionEnergyStageResult energy_result;
-        ProductionS2SEnergyStageResult s2s_energy_result;
+        ProductionS2SOuterLoopResult s2s_outer_result;
         bool s2s_ran = false;
         if (is_case_hdf5)
             energy_requested = production_energy_requested(case_setup);
@@ -811,16 +832,18 @@ int main(int argc, char** argv)
             for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
                 temperature(cell) = initial_temperature;
             if (production_s2s_radiation_requested(case_setup)) {
-                // One delayed-Picard pass (issue #885 stage 2): energy
-                // pass 1 on the frozen flow, S2S radiosity from the
-                // resulting wall temperatures, then a second energy pass
-                // with the net radiative fluxes re-injected. No coupled
-                // fixed-point convergence is claimed here: the external
-                // energy-radiation iteration is integration step 3.
-                s2s_energy_result = run_production_s2s_energy_stage(
+                // External energy-radiation iteration (issue #885 step
+                // 3): energy pass on the frozen flow, S2S radiosity from
+                // the resulting wall temperatures, net radiative fluxes
+                // re-injected with controlled under-relaxation, iterated
+                // until the unrelaxed radiative fixed point and the
+                // wall-temperature stationarity both hold. The verdict
+                // is the coupled fixed point on the frozen flow, never
+                // an intermediate Picard pass.
+                s2s_outer_result = run_production_s2s_energy_outer_loop(
                     mesh, energy_geometry, case_setup,
                     result.authoritative_mass_flux, temperature);
-                energy_result = s2s_energy_result.energy;
+                energy_result = s2s_outer_result.energy;
                 energy_ran = true;
                 s2s_ran = true;
             } else {
@@ -888,24 +911,30 @@ int main(int argc, char** argv)
             if (s2s_ran) {
                 write_text_file_atomic(
                     options.output_dir / "radiation_s2s.json",
-                    radiation_s2s_json(s2s_energy_result));
-                std::cout << "S2S radiation stage "
-                          << (s2s_energy_result.converged
+                    radiation_s2s_json(s2s_outer_result));
+                std::cout << "S2S radiation outer loop "
+                          << (s2s_outer_result.converged
                                   ? "converged"
                                   : "NOT converged")
+                          << " outer iterations "
+                          << s2s_outer_result.outer_iterations
                           << " surfaces "
-                          << s2s_energy_result.radiation.surface_count
+                          << s2s_outer_result.radiation.surface_count
+                          << " flux fixed point "
+                          << s2s_outer_result
+                                 .max_flux_fixed_point_normalized
+                          << " wall temperature stationarity "
+                          << s2s_outer_result
+                                 .max_wall_temperature_change_normalized
                           << " balance_normalized "
-                          << s2s_energy_result.radiation.balance_normalized
+                          << s2s_outer_result.radiation.balance_normalized
                           << " surface_identity_normalized "
-                          << s2s_energy_result.radiation
+                          << s2s_outer_result.radiation
                                  .max_surface_identity_normalized
                           << "\n";
-                std::cout << "S2S wall temperature lag "
-                          << s2s_energy_result.max_wall_temperature_lag
-                          << " K (diagnostic; the external energy-"
-                             "radiation iteration is integration step 3)"
-                          << "\n";
+                std::cout << "S2S last wall temperature lag "
+                          << s2s_outer_result.max_wall_temperature_lag
+                          << " K\n";
                 std::cout << "S2S radiation summary "
                           << (options.output_dir / "radiation_s2s.json")
                                  .string()
@@ -920,7 +949,7 @@ int main(int argc, char** argv)
             result.converged &&
             (!energy_requested ||
              (energy_ran && energy_result.converged &&
-              (!s2s_ran || s2s_energy_result.converged)));
+              (!s2s_ran || s2s_outer_result.converged)));
         const auto solver_exit_code =
             execution_exit_code_for_solver(overall_converged);
 
