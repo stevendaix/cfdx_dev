@@ -171,6 +171,14 @@ def convert(
             with open(out_dir / "case_setup.json", "w") as f:
                 json.dump(setup_dict, f, indent=2)
 
+        # OpenFOAM's native face/owner/neighbour topology is directly
+        # representable in CFDX CSR. Only emit the solver-ready HDF5 artifact
+        # when that topology has been assembled and validated by the adapter.
+        if result.mesh is not None and result.mesh.get("cfdx_csr") is not None:
+            from cfdx.io.hdf5_writer import write_case_cfdx_h5
+
+            write_case_cfdx_h5(result, out_dir / "case.cfdx.h5")
+
     return result
 
 
