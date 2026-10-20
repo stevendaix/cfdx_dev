@@ -126,12 +126,28 @@ This is an enabling contract only. It does not call SST transport from the produ
 - [ ] Couple boundary handling to production transport and restart state; the production RANS selector remains fail-closed.
 
 
-### T2 implementation increment — resolved-wall omega face operator (PR in progress)
+### T2 implementation increment — resolved-wall omega face operator (PR #1000 merged)
 
 - [x] Implement the documented resolved-wall value \(\omega_w=6\nu/(\beta_1 y_1^2)\) with finite-positive validation.
 - [x] Build explicit per-face omega values from wall patch names and owner-cell-to-face normal distances; reject missing patches, degenerate faces, and patches with no faces.
 - [x] Thread the optional face-value contract through SST transport and the transactional update without changing default behavior for existing callers.
 - [x] Add a unit regression for the formula and invalid geometry inputs.
-- [ ] Add a mesh-level integration regression proving only requested wall faces receive finite values and non-wall faces remain unset.
-- [ ] Build and run targeted numerical tests and the required CI checks.
-- [ ] Keep the production RANS selector fail-closed until state initialization/restart, full momentum coupling, MMS and turbulent-channel DNS qualification are complete.
+- [x] Add a mesh-level integration regression proving only requested wall faces receive finite values and non-wall faces remain unset.
+- [x] Build and run targeted numerical tests and the required CI checks on exact HEAD `ff8da5a931e52389e32d777d3a6a9ce2a8f3dcda`.
+- [x] Keep the production RANS selector fail-closed until state initialization/restart, full momentum coupling, MMS and turbulent-channel DNS qualification are complete.
+
+
+### T1 implementation increment — explicit production-state initialization (PR in progress)
+
+- [x] Build uniform initial (k) and (omega) fields only from the explicit case scalar fields validated by the SST case contract.
+- [x] Require mesh-sized, finite positive wall distance and finite non-negative strain rate supplied by the production caller; do not invent either field.
+- [x] Compute initial (F_2) from the initialized fields and refresh (
+u_t) using the SST closure before validating the complete state.
+- [x] Add unit coverage for valid initialization and invalid wall-distance/strain-rate input.
+- [ ] Wire the initializer to production case loading after restart semantics and wall-distance/strain-rate producers are defined.
+- [ ] Add per-cell restart read/write and exact restart-equivalence coverage.
+- [ ] Keep the production RANS selector fail-closed; this helper is not a coupled production solve or physical qualification.
+
+| 2026-10-20 | PR #1000 merged as `62166fec`: resolved wall-(omega) face operator and mesh-level face assignment regression; all applicable required workflows on exact head passed. Long validation, thermal/radiation regression and physical SST campaigns were skipped by path filters. | Wall operator component complete; no RANS enablement. |
+| 2026-10-20 | Began explicit production-state initializer: requires case-declared initial (k,omega), valid SST boundary metadata, and caller-supplied mesh-sized wall-distance/strain-rate fields; initializes closure (
+u_t) and rejects invalid input. | Initialization contract only; production caller/restart/coupled iteration remain open. |
