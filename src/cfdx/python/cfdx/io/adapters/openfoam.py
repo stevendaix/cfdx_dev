@@ -144,6 +144,102 @@ class OpenFOAMAdapter(SolverAdapter):
 
         return result.success
 
+    def import_results(self, results_path: str, result: ConversionResult) -> bool:
+        """Import cell-centred scalar/vector fields from an OpenFOAM time.
+
+        The latest time directory is selected. foamlib is an optional parser
+        dependency, so a missing dependency is reported as a blocking gap for
+        this requested operation rather than silently falling back to the
+        incomplete ASCII-only parser.
+        """
+        path = Path(results_path).expanduser()
+        if not path.is_dir():
+            result.gap_report.unsupported_blocking(
+                "results", "openfoam_results_path",
+                f"OpenFOAM results path must be a case directory: {path}",
+            )
+            return False
+
+        try:
+            from cfdx.io.openfoam_case_reader import (
+                OpenFOAMDependencyError,
+                read_openfoam_time_fields,
+            )
+
+            owner = self._parse_label_list(path / "constant" / "polyMesh" / "owner")
+            cell_count = max(owner) + 1 if owner else None
+            fields = read_openfoam_time_fields(path, "latest", cell_count=cell_count)
+        except (OpenFOAMDependencyError, FileNotFoundError, NotADirectoryError, ValueError) as exc:
+            result.gap_report.unsupported_blocking(
+                "results", "openfoam_results_read", str(exc),
+            )
+            return False
+
+        if not fields:
+            result.gap_report.unavailable(
+                "results", "openfoam_empty_time",
+                f"No readable fields found in the latest time directory of {path}",
+            )
+            return False
+
+        imported = 0
+        latest_time = next(iter(fields.values()))["time"]
+        time_key = f"{latest_time:g}"
+        result.available_fields[time_key] = sorted(fields)
+        result.field_data_source = f"OpenFOAM time {time_key}"
+
+        for name, field_data in fields.items():
+            source_class = field_data["class"]
+            values = np.asarray(field_data["internal"], dtype=np.float64)
+
+            # Surface fields and point fields have different locations and
+            # cannot be placed in CFDX's cell-centred field arrays.
+            if not source_class.startswith("vol"):
+                result.gap_report.unsupported_nonblocking(
+                    "results", name,
+                    f"Field class {source_class} is not a volume field; values were not imported.",
+                )
+                continue
+
+            if source_class.endswith("ScalarField"):
+                if values.ndim != 1:
+                    result.gap_report.unsupported_nonblocking(
+                        "results", name,
+                        f"Expected a cell-centred scalar array; got shape {values.shape}.",
+                    )
+                    continue
+                result.scalar_fields.append((name, values))
+                imported += 1
+            elif source_class.endswith("VectorField"):
+                if values.ndim == 1 and values.size == 3:
+                    values = values.reshape(1, 3)
+                if values.ndim != 2 or values.shape[1] != 3:
+                    result.gap_report.unsupported_nonblocking(
+                        "results", name,
+                        f"Expected a cell-centred 3-component vector array; got shape {values.shape}.",
+                    )
+                    continue
+                result.vec_fields.append((name, values))
+                imported += 1
+            else:
+                result.gap_report.unsupported_nonblocking(
+                    "results", name,
+                    f"Field class {source_class} is not yet representable in ConversionResult.",
+                    "Tensor and other field types remain available in the source OpenFOAM case.",
+                )
+
+        if imported:
+            result.gap_report.supported(
+                "results", "openfoam_time_fields",
+                f"Imported {imported} scalar/vector volume field(s) from time {time_key}.",
+            )
+        else:
+            result.gap_report.unavailable(
+                "results", "openfoam_no_supported_fields",
+                f"No scalar/vector volume fields could be imported from time {time_key}.",
+            )
+        return imported > 0
+
     def _parse_mesh(self, poly_mesh: Path) -> tuple[Optional[np.ndarray], Optional[dict]]:
         """Parse OpenFOAM polyMesh files."""
         try:
