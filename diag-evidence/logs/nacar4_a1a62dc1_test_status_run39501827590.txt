@@ -1,0 +1,8 @@
+pin=a1a62dc10fe253e22a716b3e98d7ca02bc45d6d1
+role=candidate
+subject=diagnostic(#870): cherry-pick fix #904 (dAU = V*rAU) + trace ITER canal (branche de diagnostic — ne jamais merger)
+commit_date=2026-10-15 07:39:15 +0200
+outcome=PASS_3_LEVELS
+test_rc=0
+test_duration_s=2931
+run_id=39501827590
