@@ -273,6 +273,54 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
 }
 
 
+// Construct the initial production-owned SST state from explicit case data.
+// Wall distance and strain rate are required inputs from the production mesh and
+// current carrier field; this helper deliberately does not invent either field.
+inline SSTProductionState initialize_sst_production_state(
+    const cfdx::core::Mesh& mesh,
+    const cfdx::io::CaseSetup& setup,
+    const TurbulenceTransportControls& controls,
+    const std::vector<double>& wall_distance,
+    const std::vector<double>& strain_rate)
+{
+    const std::size_t n = mesh.n_cells();
+    if (n == 0 || wall_distance.size() != n || strain_rate.size() != n)
+        throw std::invalid_argument(
+            "SST production initialization requires mesh-sized wall-distance and strain-rate fields");
+
+    validate_sst_case_prerequisites(setup, controls);
+    validate_sst_scalar_boundary_contract(setup);
+
+    const double initial_k = setup.initial_condition.scalar_fields.at("k");
+    const double initial_omega = setup.initial_condition.scalar_fields.at("omega");
+    SSTProductionState state(n);
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        if (!std::isfinite(wall_distance[cell]) || wall_distance[cell] <= 0.0 ||
+            !std::isfinite(strain_rate[cell]) || strain_rate[cell] < 0.0)
+            throw std::invalid_argument(
+                "SST production initialization received invalid wall distance or strain rate");
+        state.k(cell) = initial_k;
+        state.omega(cell) = initial_omega;
+        state.wall_distance(cell) = wall_distance[cell];
+        state.strain_rate(cell) = strain_rate[cell];
+    }
+
+    const auto cross = cell_gradient_dot(state.k, state.omega, mesh);
+    cfdx::core::Field<double, cfdx::core::Location::CELL> F2(
+        n, "sst_F2", "1", 1);
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        const auto blending = compute_sst_blending(
+            state.k(cell), state.omega(cell), state.wall_distance(cell),
+            controls.molecular_viscosity, controls.beta_star, cross[cell],
+            controls.density, controls.sst_sigma_w2);
+        F2(cell) = blending.second;
+    }
+    refresh_sst_production_eddy_viscosity(
+        state.k, state.omega, state.strain_rate, F2, controls, state.nu_t);
+    validate_sst_production_state(state, n);
+    return state;
+}
+
 struct SSTRuntimeBoundaryContract {
     ScalarBoundaryConditions k;
     ScalarBoundaryConditions omega;
