@@ -168,7 +168,6 @@ inline void write_dat_restart_fields(
     validate_optional_restart_field(mesh, fields.k, "k");
     validate_optional_restart_field(mesh, fields.second_turbulence, "second turbulence");
     validate_optional_restart_field(mesh, fields.omega, "omega");
-    validate_optional_restart_field(mesh, fields.omega, "omega");
 
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
         if (!std::isfinite(U.component_data(0)[c]) || !std::isfinite(U.component_data(1)[c]) ||
@@ -242,6 +241,7 @@ inline DatRestartState read_dat_restart_fields(
     validate_optional_restart_field(mesh, fields.temperature, "temperature");
     validate_optional_restart_field(mesh, fields.k, "k");
     validate_optional_restart_field(mesh, fields.second_turbulence, "second turbulence");
+    validate_optional_restart_field(mesh, fields.omega, "omega");
     std::ifstream in(path);
     if (!in) throw std::runtime_error("read_dat_restart_fields: cannot open " + path);
 
