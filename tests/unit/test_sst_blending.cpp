@@ -624,7 +624,7 @@ int main()
 
     run_case("sst_wall_omega_value_uses_resolved_wall_formula", [] {
         const double value = sst_wall_omega_value(1.0e-5, 0.075, 2.0e-3);
-        EXPECT_NEAR(value, 20000.0, 1.0e-10);
+        EXPECT_NEAR(value, 200.0, 1.0e-10);
         EXPECT_THROW(sst_wall_omega_value(1.0e-5, 0.075, 0.0),
                      std::invalid_argument);
         EXPECT_THROW(sst_wall_omega_value(0.0, 0.075, 2.0e-3),
