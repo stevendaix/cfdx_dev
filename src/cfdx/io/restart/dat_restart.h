@@ -19,9 +19,11 @@ namespace cfdx::io {
 //   1 — velocity and pressure only.
 //   2 — adds an optional T / k / second turbulence section.
 //   3 — adds the mesh identity that a restart reader validates against.
+//   4 — adds a named omega field for production SST restart state.
 enum : int {
     DatRestartVersionFields = 2,
     DatRestartVersionIdentity = 3,
+    DatRestartVersionSST = 4,
 };
 
 // Geometry identity of the mesh a checkpoint belongs to.
@@ -132,6 +134,9 @@ struct DatRestartFields {
     cfdx::core::Field<double, cfdx::core::Location::CELL>* temperature = nullptr;
     cfdx::core::Field<double, cfdx::core::Location::CELL>* k = nullptr;
     cfdx::core::Field<double, cfdx::core::Location::CELL>* second_turbulence = nullptr;
+    // Explicit SST specific dissipation rate. Unlike second_turbulence, this
+    // field has a stable on-disk name and is required when an SST restart is requested.
+    cfdx::core::Field<double, cfdx::core::Location::CELL>* omega = nullptr;
 };
 
 inline void validate_optional_restart_field(
@@ -162,6 +167,8 @@ inline void write_dat_restart_fields(
     validate_optional_restart_field(mesh, fields.temperature, "temperature");
     validate_optional_restart_field(mesh, fields.k, "k");
     validate_optional_restart_field(mesh, fields.second_turbulence, "second turbulence");
+    validate_optional_restart_field(mesh, fields.omega, "omega");
+    validate_optional_restart_field(mesh, fields.omega, "omega");
 
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
         if (!std::isfinite(U.component_data(0)[c]) || !std::isfinite(U.component_data(1)[c]) ||
@@ -182,13 +189,14 @@ inline void write_dat_restart_fields(
     reject_non_finite(fields.temperature, "temperature");
     reject_non_finite(fields.k, "k");
     reject_non_finite(fields.second_turbulence, "second turbulence");
+    reject_non_finite(fields.omega, "omega");
 
     const auto identity = dat_restart_identity(mesh);
     const std::string tmp_path = path + ".tmp";
     std::ofstream out(tmp_path);
     if (!out) throw std::runtime_error("write_dat_restart_fields: cannot open " + path);
     out.precision(std::numeric_limits<double>::max_digits10);
-    out << "CFDX-DAT " << DatRestartVersionIdentity << "\n";
+    out << "CFDX-DAT " << DatRestartVersionSST << "\n";
     out << "cells " << mesh.n_cells() << "\n";
     out << "iteration " << iteration << "\n";
     out << "time " << time << "\n";
@@ -208,6 +216,7 @@ inline void write_dat_restart_fields(
     write_field("T", fields.temperature);
     write_field("k", fields.k);
     write_field("second_turbulence", fields.second_turbulence);
+    write_field("omega", fields.omega);
     if (!out) {
         out.close();
         std::remove(tmp_path.c_str());
@@ -239,7 +248,7 @@ inline DatRestartState read_dat_restart_fields(
     std::string magic; int version = 0;
     if (!(in >> magic >> version) || magic != "CFDX-DAT" ||
         (version != 1 && version != DatRestartVersionFields &&
-         version != DatRestartVersionIdentity))
+         version != DatRestartVersionIdentity && version != DatRestartVersionSST))
         throw std::runtime_error("read_dat_restart_fields: unsupported DAT format");
     std::size_t cells = 0; std::string key;
     if (!(in >> key >> cells) || key != "cells" || cells != mesh.n_cells())
@@ -291,17 +300,19 @@ inline DatRestartState read_dat_restart_fields(
     // the optional-fields section, so the former v1/v2 tails are unreachable.
     if (!(in >> key) || key != "optional_fields")
         throw std::runtime_error("read_dat_restart_fields: missing optional fields section");
-    bool got_t=false, got_k=false, got_second=false;
+    bool got_t=false, got_k=false, got_second=false, got_omega=false;
     while (in >> key) {
         if (key != "field") throw std::runtime_error("read_dat_restart_fields: invalid optional section");
         std::string name; if (!(in >> name >> dimension) || dimension != 1)
             throw std::runtime_error("read_dat_restart_fields: invalid optional field header");
         auto* target = name == "T" ? fields.temperature :
                        name == "k" ? fields.k :
-                       name == "second_turbulence" ? fields.second_turbulence : nullptr;
+                       name == "second_turbulence" ? fields.second_turbulence :
+                       name == "omega" ? fields.omega : nullptr;
         if (name == "T") got_t=true;
         else if (name == "k") got_k=true;
         else if (name == "second_turbulence") got_second=true;
+        else if (name == "omega") got_omega=true;
         else throw std::runtime_error("read_dat_restart_fields: unknown optional field " + name);
         if (!target) {
             for (std::size_t i=0;i<mesh.n_cells();++i) { double ignored; if (!(in>>ignored)) throw std::runtime_error("read_dat_restart_fields: invalid optional values"); }
@@ -315,6 +326,7 @@ inline DatRestartState read_dat_restart_fields(
     if (fields.temperature && !got_t) throw std::runtime_error("read_dat_restart_fields: requested T but DAT has none");
     if (fields.k && !got_k) throw std::runtime_error("read_dat_restart_fields: requested k but DAT has none");
     if (fields.second_turbulence && !got_second) throw std::runtime_error("read_dat_restart_fields: requested turbulence field but DAT has none");
+    if (fields.omega && !got_omega) throw std::runtime_error("read_dat_restart_fields: requested omega but DAT has none");
     return state;
 }
 
