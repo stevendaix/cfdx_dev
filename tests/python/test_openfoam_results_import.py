@@ -151,6 +151,8 @@ def test_native_openfoam_csr_is_written_to_cfdx_hdf5(tmp_path):
         source=SourceInfo(solver="OpenFOAM", format="openfoam"),
         mesh={"points": mesh["cfdx_csr"]["points"], **mesh},
         scalar_fields=[("p", np.array([101325.0, 101300.0]))],
+        available_fields={"10": ["p"]},
+        field_data_source="OpenFOAM time 10",
     )
     output = tmp_path / "case.cfdx.h5"
 
@@ -166,3 +168,5 @@ def test_native_openfoam_csr_is_written_to_cfdx_hdf5(tmp_path):
         np.testing.assert_array_equal(h5["fields/scalar/p"][:], [101325.0, 101300.0])
         assert "boundary_patches" in h5.attrs
         assert "walls:1:6:0" in h5.attrs["boundary_patches"]
+        assert h5.attrs["field_data_source"] == "OpenFOAM time 10"
+        assert h5.attrs["available_fields_json"] == '{"10": ["p"]}'
