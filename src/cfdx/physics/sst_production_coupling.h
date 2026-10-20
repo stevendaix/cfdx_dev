@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -204,7 +205,8 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
     const ScalarBoundaryConditions& k_bcs = {},
     const ScalarBoundaryConditions& omega_bcs = {},
     std::size_t max_iterations = 100,
-    double tolerance = 1e-8)
+    double tolerance = 1e-8,
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
 {
     const std::size_t n = mesh.n_cells();
     if (controls.model != TurbulenceModel::SST)
@@ -237,7 +239,8 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
     try {
         step.transport = solve_sst_transport_dynamic_blending(
             mesh, geometry, mass_flux, k, omega, strain_rate, wall_distance,
-            controls, k_bcs, omega_bcs, max_iterations, tolerance);
+            controls, k_bcs, omega_bcs, max_iterations, tolerance,
+            omega_face_values);
         if (!step.transport.converged ||
             step.transport.nonfinite_bound_events != 0 ||
             !std::isfinite(step.transport.k_residual) ||
@@ -318,6 +321,95 @@ inline SSTRuntimeBoundaryContract make_sst_runtime_boundary_contract(
         }
     }
     return runtime;
+}
+
+
+inline double sst_wall_omega_value(
+    double molecular_kinematic_viscosity, double beta1, double wall_normal_distance)
+{
+    if (!std::isfinite(molecular_kinematic_viscosity) ||
+        molecular_kinematic_viscosity <= 0.0 ||
+        !std::isfinite(beta1) || beta1 <= 0.0 ||
+        !std::isfinite(wall_normal_distance) || wall_normal_distance <= 0.0)
+        throw std::invalid_argument(
+            "SST wall omega requires finite positive viscosity, beta1, and wall distance");
+    const double value = 6.0 * molecular_kinematic_viscosity /
+        (beta1 * wall_normal_distance * wall_normal_distance);
+    if (!std::isfinite(value) || value <= 0.0)
+        throw std::domain_error("SST wall omega value is non-finite or non-positive");
+    return value;
+}
+
+// Construct per-face omega boundary values for resolved-wall SST treatment.
+// The wall distance is the geometric normal distance from the boundary face
+// to its owner-cell centre. No characteristic-length fallback is allowed here:
+// a bad wall geometry must fail closed instead of silently changing the model.
+inline ScalarBoundaryFaceValues make_sst_wall_omega_face_values(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const std::vector<std::string>& wall_omega_sst_patches,
+    const TurbulenceTransportControls& controls)
+{
+    if (controls.model != TurbulenceModel::SST)
+        throw std::invalid_argument("SST wall omega operator requires the SST model");
+    if (!std::isfinite(controls.molecular_viscosity) ||
+        controls.molecular_viscosity <= 0.0 ||
+        !std::isfinite(controls.beta1) || controls.beta1 <= 0.0)
+        throw std::invalid_argument("SST wall omega operator requires positive viscosity and beta1");
+    const std::size_t nf = mesh.n_faces();
+    if (geometry.face_centres.size() != nf ||
+        geometry.face_area_vectors.size() != nf ||
+        geometry.cell_centres.size() != mesh.n_cells() ||
+        geometry.face_patch.size() != nf)
+        throw std::invalid_argument("SST wall omega geometry shape mismatch");
+
+    ScalarBoundaryFaceValues values;
+    const double unset = std::numeric_limits<double>::quiet_NaN();
+    std::map<std::string, bool> requested;
+    for (const auto& name : wall_omega_sst_patches) {
+        if (name.empty() || !requested.emplace(name, true).second)
+            throw std::invalid_argument("SST wall omega patch names must be non-empty and unique");
+        bool found_patch = false;
+        for (std::size_t patch = 0; patch < mesh.boundary().n_patches(); ++patch) {
+            if (mesh.boundary().patch(patch).name == name) {
+                found_patch = true;
+                values.values.emplace(name, std::vector<double>(nf, unset));
+                break;
+            }
+        }
+        if (!found_patch)
+            throw std::invalid_argument("SST wall omega patch is absent from mesh: " + name);
+    }
+
+    std::map<std::string, std::size_t> face_counts;
+    for (std::size_t face = 0; face < nf; ++face) {
+        const std::size_t patch_index = geometry.face_patch[face];
+        if (patch_index >= mesh.boundary().n_patches())
+            continue;
+        const auto& patch_name = mesh.boundary().patch(patch_index).name;
+        const auto it = values.values.find(patch_name);
+        if (it == values.values.end())
+            continue;
+        if (mesh.ownership().neighbour(face) >= 0)
+            throw std::invalid_argument("SST wall omega patch contains an internal face: " + patch_name);
+        const std::size_t owner = mesh.ownership().owner(face);
+        if (owner >= mesh.n_cells())
+            throw std::invalid_argument("SST wall omega face has invalid owner cell");
+        const auto& sf = geometry.face_area_vectors[face];
+        const double area = sf.mag();
+        if (!(area > 0.0) || !std::isfinite(area))
+            throw std::invalid_argument("SST wall omega face has invalid area");
+        const auto delta = geometry.face_centres[face] - geometry.cell_centres[owner];
+        const double distance = std::abs(delta.dot(sf)) / area;
+        it->second[face] = sst_wall_omega_value(
+            controls.molecular_viscosity, controls.beta1, distance);
+        ++face_counts[patch_name];
+    }
+    for (const auto& [name, _] : requested) {
+        if (face_counts[name] == 0)
+            throw std::invalid_argument("SST wall omega patch has no boundary faces in mesh: " + name);
+    }
+    return values;
 }
 
 // Fail closed before transport assembly until every declared wall-omega
