@@ -1,4 +1,4 @@
-name: NACA0012 divergence bisect (master pins, diag) round 2
+name: NACA0012 divergence bisect (master pins, diag) round 3
 
 # DIAG-ONLY - diagnostics branch ci/long-campaign-diagnostics (NEVER merge).
 #
@@ -11,30 +11,40 @@ name: NACA0012 divergence bisect (master pins, diag) round 2
 #     N128 DIVERGED at 15 iterations (residual_growth_exceeded), geometric
 #     momentum-residual growth localized at airfoil wall cells. Full
 #     microscope: diag-evidence/logs/pr929x_nacastop_*_run39070355557.
-# Round 2 (window refined by round 1): f88b3700 (2026-10-16, PASS 3 levels)
-# -> 0c61c51e (2026-10-18, FAIL_DIVERGED). Round 1 (run 39325205592): pins
-# 0c61c51e / 03ac6f6c / 4056e249 ALL FAIL_DIVERGED with bit-identical metrics.
+# Round 3 (true master window): rounds 1+2 showed all 6 master pins
+# 0c61c51e/03ac6f6c/4056e249/7684119b/96b6663d/406c0ff9 FAIL_DIVERGED
+# (runs 39325205592 + 39326700774). TOPOLOGY CORRECTION: the 10-16 PASS
+# reference f88b3700 is a DIAG-branch commit (evidence run 38809298638),
+# NOT master: merge-base(diag line, master) = aa806657 (10-14), and the diag
+# line also carried diag-only cherry-picks/fixes (#904, #895 bring-up, #908).
+# True master window under test: aa806657 (10-14) .. 7684119b (10-18).
 #
 # Three master pins, test_naca0012_qualification run in isolation with the
 # exact CI configuration (Release + LONG_VALIDATION + MPI + parallel HDF5).
 # NACA meshes are generated per pin by the pin's own script (verified
-# byte-identical across round-1 pins; standalone h5py+numpy, no cfdx import):
-#   7684119b  2026-10-18 test(turbulence) qualification campaign + fail-closed guard
-#   96b6663d  2026-10-18 feat(physics) cellwise viscosity in momentum assembly
-#   406c0ff9  2026-10-18 SST transactional (#957), direct parent of 0c61c51e
+# byte-identical across round-1/2 pins; standalone h5py+numpy, no cfdx import):
+#   aa806657  2026-10-14 fix(ci) thermal-radiation dedent (#900) - merge-base
+#              of the diag line; last master commit before the 10-16..10-18 wave
+#   86ef9f2a  2026-10-16 fix(axisym): Rhie-Chow pressure-velocity coupling in
+#              VMFL036 face fluxes (#895) - first production commit after the
+#              merge-base -> prime suspect
+#   16734e82  2026-10-16 test(harness): live_assert fail-closed Release (#921)
+#              - last commit before the CUDA/docs/wall-distance tail
 #
 # Per-pin classification (log content + exit code):
 #   PASS_3_LEVELS / FAIL_DIVERGED / TIMEOUT_3600S / FAIL_OTHER
 #   INCONCLUSIVE_{WORKTREE,CONFIGURE,BUILD,MESHGEN} = upstream stage failed
 #
-# Interpretation guide (round 2, inside round-1 window f88b3700..0c61c51e):
-#   7684119b FAIL -> culprit at or before 7684119b (round 3 in f88b3700..7684119b:
-#        9ba3d338 CUDA/GPU, merges 120070de, 2b414352, 6282a2bf)
-#   7684119b PASS + 96b6663d FAIL -> culprit in (7684119b..96b6663d] =
-#        {74b13b95 gui, 6cf9a78b wall distance, 96b6663d} -> very likely 96b6663d
-#   96b6663d PASS + 406c0ff9 FAIL -> culprit in (96b6663d..406c0ff9]
-#        (gui cluster or SST 406c0ff9 #957)
-#   406c0ff9 PASS -> culprit = 0c61c51e (pressure-velocity consolidation itself)
+# Interpretation guide (round 3, true master window aa806657..7684119b):
+#   aa806657 FAIL -> master was ALREADY red at the 10-14 merge-base: the 10-16
+#        diag-line PASS (f88b3700) came from diag-only fixes/cherry-picks
+#        (#904 dAU=V*rAU, #895 bring-up, #908 ghia Fp, flux fix 42679a5d)
+#        -> next step: identify which diag-line change made NACA green
+#   aa806657 PASS + 86ef9f2a FAIL -> culprit = 86ef9f2a (Rhie-Chow #895)
+#   86ef9f2a PASS + 16734e82 FAIL -> culprit in (86ef9f2a..16734e82] =
+#        {ac79d6bf ci #916, 2e5a9579 test #915, bfaf7107 test #920}
+#   16734e82 PASS -> culprit in (16734e82..7684119b] = CUDA/GPU #930
+#        (bfb4969a/9ba3d338), docs, 2b414352 #940, 6282a2bf, 7684119b
 #
 # The verdict is a DIAGNOSTIC, never a numerical PASS/FAIL. No
 # tolerance/oracle/gate/budget is modified; no production code is
@@ -57,7 +67,7 @@ concurrency:
 
 jobs:
   naca-bisect:
-    name: NACA qualification at 3 pinned master commits (round 2)
+    name: NACA qualification at 3 pinned master commits (round 3)
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
@@ -76,9 +86,9 @@ jobs:
           git fetch --no-tags --unshallow origin master 2>/dev/null \
             || git fetch --no-tags origin master
           for pin in \
-            7684119bcd38a1046bbac1b049abf91da204c65e \
-            96b6663d210df5527fa8c3385ad2492d7a80c439 \
-            406c0ff9e855edcf7baf6b985a77a8a9efabb3fb; do
+            aa8066571a55ac03557148542a43b3cbbdd46371 \
+            86ef9f2a88c50d2abde1d1d9f2ef34165b366d73 \
+            16734e82545c66bf03911ddd3df4cf629ff3436f; do
             git cat-file -e "${pin}^{commit}"
             git merge-base --is-ancestor "${pin}" FETCH_HEAD
             echo "pin_ok ${pin} $(git log -1 --format='%ci %s' "${pin}")"
@@ -95,9 +105,9 @@ jobs:
         timeout-minutes: 225
         env:
           PINS: >-
-            7684119bcd38a1046bbac1b049abf91da204c65e
-            96b6663d210df5527fa8c3385ad2492d7a80c439
-            406c0ff9e855edcf7baf6b985a77a8a9efabb3fb
+            aa8066571a55ac03557148542a43b3cbbdd46371
+            86ef9f2a88c50d2abde1d1d9f2ef34165b366d73
+            16734e82545c66bf03911ddd3df4cf629ff3436f
         run: |
           set +e
           set -u
@@ -199,21 +209,21 @@ jobs:
           set -u
           RUN_ID="${GITHUB_RUN_ID}"
           E="diag-evidence/logs"
-          oc_7684119b="NOT_RUN"
-          oc_96b6663d="NOT_RUN"
-          oc_406c0ff9="NOT_RUN"
-          for short in 7684119b 96b6663d 406c0ff9; do
+          oc_aa806657="NOT_RUN"
+          oc_86ef9f2a="NOT_RUN"
+          oc_16734e82="NOT_RUN"
+          for short in aa806657 86ef9f2a 16734e82; do
             f="$E/nacabisect_${short}_test_status_run${RUN_ID}.txt"
             [ -s "$f" ] || continue
             oc=$(sed -n 's/^outcome=//p' "$f" | tail -1)
             case "$short" in
-              7684119b) oc_7684119b="${oc:-MISSING}" ;;
-              96b6663d) oc_96b6663d="${oc:-MISSING}" ;;
-              406c0ff9) oc_406c0ff9="${oc:-MISSING}" ;;
+              aa806657) oc_aa806657="${oc:-MISSING}" ;;
+              86ef9f2a) oc_86ef9f2a="${oc:-MISSING}" ;;
+              16734e82) oc_16734e82="${oc:-MISSING}" ;;
             esac
           done
           complete=1
-          for oc in "$oc_7684119b" "$oc_96b6663d" "$oc_406c0ff9"; do
+          for oc in "$oc_aa806657" "$oc_86ef9f2a" "$oc_16734e82"; do
             case "$oc" in
               PASS_3_LEVELS|FAIL_DIVERGED|TIMEOUT_3600S|FAIL_OTHER) ;;
               *) complete=0 ;;
@@ -227,21 +237,21 @@ jobs:
               echo "VERDICT: INCOMPLETE_OR_INCONCLUSIVE"
             fi
             echo "run_id=${RUN_ID}"
-            echo "pin_7684119b=${oc_7684119b}"
-            echo "pin_96b6663d=${oc_96b6663d}"
-            echo "pin_406c0ff9=${oc_406c0ff9}"
+            echo "pin_aa806657=${oc_aa806657}"
+            echo "pin_86ef9f2a=${oc_86ef9f2a}"
+            echo "pin_16734e82=${oc_16734e82}"
             echo "reference_pass=f88b3700 (2026-10-16, 3 levels converged, 2943 s)"
-            echo "known_fail=0c61c51e (round-1 run 39325205592: all 3 pins FAIL_DIVERGED, bit-identical metrics)"
-          echo "round2_expected=406c0ff9 FAIL (direct parent of 0c61c51e; if PASS then culprit is 0c61c51e itself)"
+            echo "known_fail=7684119b..406c0ff9 (rounds 1+2: all 6 pins FAIL_DIVERGED, runs 39325205592 + 39326700774)"
+          echo "round3_expected=aa806657 unknown (merge-base, no prior isolated NACA run); 86ef9f2a = prime suspect (Rhie-Chow #895)"
             echo ""
-            echo "Interpretation guide (round 2):"
-            echo "- 7684119b FAIL -> culprit at or before 7684119b (round 3 window f88b3700..7684119b: 9ba3d338 CUDA/GPU, merges 120070de 2b414352 6282a2bf)"
-            echo "- 7684119b PASS + 96b6663d FAIL -> culprit in (7684119b..96b6663d]: {74b13b95 gui, 6cf9a78b wall distance, 96b6663d} -> very likely 96b6663d"
-            echo "- 96b6663d PASS + 406c0ff9 FAIL -> culprit in (96b6663d..406c0ff9] (gui cluster or SST 406c0ff9 #957)"
-            echo "- 406c0ff9 PASS -> culprit = 0c61c51e (pressure-velocity consolidation itself)"
+            echo "Interpretation guide (round 3):"
+            echo "- aa806657 FAIL -> master already red at merge-base (10-14); the 10-16 diag PASS (f88b3700) came from diag-line fixes (#904, #895 bring-up, #908, 42679a5d)"
+            echo "- aa806657 PASS + 86ef9f2a FAIL -> culprit = 86ef9f2a (Rhie-Chow pressure-velocity coupling #895)"
+            echo "- 86ef9f2a PASS + 16734e82 FAIL -> culprit in (86ef9f2a..16734e82]: {ac79d6bf ci #916, 2e5a9579 test #915, bfaf7107 test #920}"
+            echo "- 16734e82 PASS -> culprit in (16734e82..7684119b]: CUDA/GPU #930, docs, 2b414352 #940, 6282a2bf, 7684119b"
             echo ""
             echo "--- per-pin NACA digest (last markers) ---"
-            for short in 7684119b 96b6663d 406c0ff9; do
+            for short in aa806657 86ef9f2a 16734e82; do
               L="$E/nacabisect_${short}_main_run${RUN_ID}.log"
               [ -s "$L" ] || continue
               echo "### ${short}"
@@ -265,8 +275,8 @@ jobs:
             git reset >/dev/null 2>&1
           fi
           if [ "$complete" = "1" ]; then
-            echo "bisect complete: 7684119b=${oc_7684119b} 96b6663d=${oc_96b6663d} 406c0ff9=${oc_406c0ff9}"
+            echo "bisect complete: aa806657=${oc_aa806657} 86ef9f2a=${oc_86ef9f2a} 16734e82=${oc_16734e82}"
           else
-            echo "::error::bisect incomplete: 7684119b=${oc_7684119b} 96b6663d=${oc_96b6663d} 406c0ff9=${oc_406c0ff9}"
+            echo "::error::bisect incomplete: aa806657=${oc_aa806657} 86ef9f2a=${oc_86ef9f2a} 16734e82=${oc_16734e82}"
             exit 1
           fi
