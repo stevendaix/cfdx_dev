@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """CFDX I/O converter CLI.
 
 Usage:
@@ -30,7 +29,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "convert":
         if len(args) < 2:
-            print("Usage: cfdx-io convert <case_path> [--output DIR] [--solver NAME]")
+            print("Usage: cfdx-io convert <case_path> [--output DIR] [--solver NAME] [--results]")
             return 1
 
         case_path = args[1]
@@ -87,12 +86,12 @@ def main(argv: list[str] | None = None) -> int:
 
         if output_path:
             print(f"\nReports written to: {output_path}")
-            print(f"  - gap_analysis.md")
-            print(f"  - gap_analysis.json")
-            print(f"  - case_setup.json")
-            print(f"  - mesh.vtk")
+            print("  - gap_analysis.md")
+            print("  - gap_analysis.json")
+            print("  - case_setup.json")
+            print("  - mesh.vtk")
             if result.mesh and result.mesh.get("cfdx_csr") is not None:
-                print(f"  - case.cfdx.h5")
+                print("  - case.cfdx.h5")
 
         return 0
 
