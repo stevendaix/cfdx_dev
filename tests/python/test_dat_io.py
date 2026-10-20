@@ -1,7 +1,5 @@
 from pathlib import Path
 
-import pytest
-
 from cfdx.dat_io import (
     DatField,
     DatRestart,
@@ -9,6 +7,8 @@ from cfdx.dat_io import (
     remap_dat_restart,
     write_dat_hdf5,
 )
+
+import pytest
 
 
 def test_read_dat_discovers_all_fields(tmp_path: Path) -> None:
