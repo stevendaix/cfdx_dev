@@ -429,7 +429,12 @@ def write_case_cfdx_h5(result: ConversionResult, output_path) -> None:
         f.attrs["gap_report_json"] = gap_json
 
         if result.mesh is not None and result.mesh.get("points") is not None:
-            cfdx_mesh = _meshio_to_cfdx(result.mesh)
+            # OpenFOAM supplies native polyhedral faces/owner/neighbour. Use
+            # that exact CSR topology when available instead of reconstructing
+            # volume cells from a surface-only meshio representation.
+            cfdx_mesh = result.mesh.get("cfdx_csr")
+            if cfdx_mesh is None:
+                cfdx_mesh = _meshio_to_cfdx(result.mesh)
             if cfdx_mesh is not None:
                 _write_mesh_topology(f, cfdx_mesh)
 
