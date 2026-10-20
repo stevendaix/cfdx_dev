@@ -108,7 +108,7 @@ def test_openfoam_polyhedral_mesh_builds_native_face_cell_csr():
     np.testing.assert_array_equal(csr["cell_offsets"], [0, 4, 8])
     assert len(csr["cell_faces"]) == 8
     assert csr["boundary_patch_assignment"] == [
-        {"name": "walls", "face_ids": [1, 2, 3, 4, 5, 6]}
+        {"name": "walls", "type": "wall", "face_ids": [1, 2, 3, 4, 5, 6]}
     ]
     # The surface triangles are for visualization only; solver topology is
     # represented by the native polyhedral CSR, not by these triangles.
@@ -165,3 +165,4 @@ def test_native_openfoam_csr_is_written_to_cfdx_hdf5(tmp_path):
         np.testing.assert_array_equal(h5["cell_offsets"][:], [0, 4, 8])
         np.testing.assert_array_equal(h5["fields/scalar/p"][:], [101325.0, 101300.0])
         assert "boundary_patches" in h5.attrs
+        assert "walls:1:6:0" in h5.attrs["boundary_patches"]
