@@ -170,6 +170,23 @@ inline S2SResult solve_s2s_radiosity(
     return r;
 }
 
+// S2SResult::net_flux is positive when radiosity leaving a surface
+// exceeds irradiation received by it. The production energy boundary contract
+// is the opposite: positive heat_flux enters the fluid. Keep this sign change
+// explicit at the coupling seam rather than duplicating it in each driver.
+inline std::vector<double> s2s_heat_flux_into_fluid(const S2SResult& result)
+{
+    std::vector<double> flux_into_fluid;
+    flux_into_fluid.reserve(result.net_flux.size());
+    for (double net_flux : result.net_flux) {
+        if (!std::isfinite(net_flux))
+            throw std::invalid_argument(
+                "S2S net surface flux must be finite");
+        flux_into_fluid.push_back(-net_flux);
+    }
+    return flux_into_fluid;
+}
+
 struct S2SMonteCarloControls {
     std::size_t samples = 16384;
 };
