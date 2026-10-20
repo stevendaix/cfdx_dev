@@ -8,9 +8,7 @@ runs conversion, and exports GapAnalysis reports.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
-from typing import Optional, Union
 
 from cfdx.io.adapters.fluent import FluentAdapter
 from cfdx.io.adapters.su2 import Su2Adapter
@@ -31,7 +29,7 @@ _ADAPTER_REGISTRY = {
 }
 
 
-def detect_adapter(path: Union[str, Path]) -> Optional[str]:
+def detect_adapter(path: str | Path) -> str | None:
     """Detect solver type from file extension and content."""
     p = Path(str(path))
 
@@ -44,7 +42,7 @@ def detect_adapter(path: Union[str, Path]) -> Optional[str]:
     stem = p.stem.lower()
 
     # Check for compound extensions like .cas.h5, .dat.h5
-    if stem.endswith(".cas") or stem.endswith(".dat"):
+    if stem.endswith((".cas", ".dat")):
         ext = "." + stem.split(".")[-1] + ext
         # This will make ext = ".cas.h5" or ".dat.h5", but we want to map to fluent
         # Actually let's just check the stem
@@ -106,9 +104,9 @@ def create_adapter(solver_name: str):
 
 
 def convert(
-    case_path: Union[str, Path],
-    output_path: Optional[Union[str, Path]] = None,
-    solver: Optional[str] = None,
+    case_path: str | Path,
+    output_path: Optional[str | Path] = None,
+    solver: str | None = None,
     write_reports: bool = True,
     include_results: bool = False,
 ) -> ConversionResult:
@@ -141,9 +139,8 @@ def convert(
     adapter.convert(str(path), result)
     if include_results:
         importer = getattr(adapter, "import_results", None)
-        if importer is None or not importer(str(path), result):
-            # The adapter records detailed failure/compatibility findings.
-            pass
+        if importer is not None:
+            importer(str(path), result)  # The adapter records compatibility findings.
 
     if output_path is not None:
         out_dir = Path(str(output_path))
