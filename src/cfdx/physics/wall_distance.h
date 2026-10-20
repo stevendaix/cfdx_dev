@@ -2016,7 +2016,9 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
             const double nd=std::max(0.0,candidate);
             max_change=std::max(max_change,std::abs(nd-d[id])); d[id]=nd;
         }
-        for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
+        // Seed IDs are fixed and excluded from active_ids, so their exact
+        // distances cannot change during transport. Re-querying the BVH for
+        // every seed on every iteration was redundant work.
         if((it&3u)==3u||max_change<1e-10*h) {
             // Evaluate exactly the same upwind transport operator used by the
             // pseudo-time update. The previous diagnostic used a central
