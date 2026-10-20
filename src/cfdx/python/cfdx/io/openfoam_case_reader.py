@@ -6,6 +6,7 @@ CFDX's canonical case schema remains the responsibility of the I/O adapter.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -235,3 +236,76 @@ def read_openfoam_time_fields(
         }
 
     return fields
+
+
+def _foamfile():
+    try:
+        from foamlib import FoamFile
+    except ImportError as exc:
+        raise OpenFOAMDependencyError(
+            "OpenFOAM dictionary parsing requires the optional 'foamlib' package."
+        ) from exc
+    return FoamFile
+
+
+def _plain_openfoam_value(value: Any) -> Any:
+    """Convert foamlib dictionary values to JSON-compatible Python values."""
+    import numpy as np
+
+    if hasattr(value, "as_dict"):
+        return _plain_openfoam_value(value.as_dict())
+    if isinstance(value, Mapping):
+        return {str(key): _plain_openfoam_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_plain_openfoam_value(item) for item in value]
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if hasattr(value, "value"):
+        return _plain_openfoam_value(value.value)
+    return str(value)
+
+
+def read_openfoam_dictionaries(case_path: str | Path) -> dict[str, Any]:
+    """Read recognised setup dictionaries into JSON-compatible nested mappings.
+
+    The raw parsed dictionaries are retained so CFDX can preserve source
+    settings that do not yet have a semantically equivalent native setting.
+    Mesh files and result fields are deliberately excluded.
+    """
+    path = Path(case_path).expanduser().resolve()
+    if not path.is_dir():
+        raise NotADirectoryError(f"OpenFOAM case directory does not exist: {path}")
+
+    FoamFile = _foamfile()
+    candidates = (
+        "system/controlDict",
+        "system/fvSchemes",
+        "system/fvSolution",
+        "system/fvOptions",
+        "system/fvConstraints",
+        "system/decomposeParDict",
+        "constant/transportProperties",
+        "constant/physicalProperties",
+        "constant/thermophysicalProperties",
+        "constant/turbulenceProperties",
+        "constant/momentumTransport",
+        "constant/radiationProperties",
+        "constant/g",
+    )
+    dictionaries: dict[str, Any] = {}
+    for relative in candidates:
+        file_path = path / relative
+        if not file_path.is_file():
+            continue
+        try:
+            parsed_file = FoamFile(file_path)
+            try:
+                parsed = dict(parsed_file)
+            except (TypeError, ValueError):
+                parsed = parsed_file.as_dict()
+            dictionaries[relative] = _plain_openfoam_value(parsed)
+        except (OSError, ValueError, TypeError, KeyError, UnicodeError) as exc:
+            raise ValueError(f"Cannot parse OpenFOAM dictionary {relative}: {exc}") from exc
+    return dictionaries
