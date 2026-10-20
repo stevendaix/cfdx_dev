@@ -104,6 +104,7 @@ class OpenFOAMAdapter(SolverAdapter):
             return False
 
         # Parse mesh
+        self._mesh_parse_error = "unknown parser error"
         points, cells = self._parse_mesh(poly_mesh)
         if points is None or cells is None:
             result.gap_report.unsupported_blocking(
@@ -201,7 +202,6 @@ class OpenFOAMAdapter(SolverAdapter):
 
         imported = 0
         # Latest-time data supersedes any initial values parsed from 0/.
-        imported_names = set(fields)
         result.scalar_fields = []
         result.vec_fields = []
         latest_time = next(iter(fields.values()))["time"]
