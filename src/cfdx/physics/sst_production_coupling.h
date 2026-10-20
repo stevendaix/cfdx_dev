@@ -11,6 +11,68 @@
 
 namespace cfdx::physics {
 
+
+struct SSTProductionState {
+    cfdx::core::Field<double, cfdx::core::Location::CELL> k;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> omega;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> nu_t;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> wall_distance;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> strain_rate;
+
+    explicit SSTProductionState(std::size_t n_cells)
+        : k(n_cells, "k", "m2/s2", 1),
+          omega(n_cells, "omega", "1/s", 1),
+          nu_t(n_cells, "nu_t", "m2/s", 1),
+          wall_distance(n_cells, "wall_distance", "m", 1),
+          strain_rate(n_cells, "sst_strain_rate", "1/s", 1)
+    {
+        if (n_cells == 0)
+            throw std::invalid_argument("SST production state requires at least one cell");
+    }
+};
+
+// Validate the production-owned fields before a state is used by transport or
+// momentum assembly. Model conventions are governed by docs/audits/09-turbulence-rans.md.
+// No flooring or automatic initialization is performed.
+inline void validate_sst_production_state(const SSTProductionState& state,
+                                          std::size_t expected_cells)
+{
+    const auto valid_shape = [expected_cells](const auto& field) {
+        return field.size() == expected_cells && field.dimension() == 1;
+    };
+    if (expected_cells == 0 ||
+        !valid_shape(state.k) || !valid_shape(state.omega) ||
+        !valid_shape(state.nu_t) || !valid_shape(state.wall_distance) ||
+        !valid_shape(state.strain_rate))
+        throw std::invalid_argument("SST production state has an invalid field shape");
+
+    for (std::size_t cell = 0; cell < expected_cells; ++cell) {
+        if (!std::isfinite(state.k(cell)) || state.k(cell) < 0.0 ||
+            !std::isfinite(state.omega(cell)) || state.omega(cell) <= 0.0 ||
+            !std::isfinite(state.nu_t(cell)) || state.nu_t(cell) < 0.0 ||
+            !std::isfinite(state.wall_distance(cell)) || state.wall_distance(cell) <= 0.0 ||
+            !std::isfinite(state.strain_rate(cell)) || state.strain_rate(cell) < 0.0)
+            throw std::invalid_argument(
+                "SST production state contains a non-finite or physically invalid cell value");
+    }
+}
+
+// A value snapshot is deliberately explicit: the production outer iteration
+// must include this snapshot alongside U, p and face mass flux in its own
+// accept/reject decision. This helper does not claim to provide that coupling.
+inline SSTProductionState snapshot_sst_production_state(
+    const SSTProductionState& state)
+{
+    return state;
+}
+
+inline void restore_sst_production_state(
+    SSTProductionState& state,
+    const SSTProductionState& snapshot)
+{
+    state = snapshot;
+}
+
 struct SSTProductionStepResult {
     TurbulenceTransportResult transport;
     bool committed = false;

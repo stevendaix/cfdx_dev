@@ -79,6 +79,17 @@
 - PR #972 — closed as superseded by #973; its tracker correction is included in this branch.
 - Issue #943 — end-to-end SST coupling plan (created by the prior work; verify issue state/number if the tracker is moved).
 
+### T1 implementation increment — production-owned state contract
+
+- [x] Introduce an explicit `SSTProductionState` bundle for cellwise `k`, `omega`, `nu_t`, wall distance and strain rate.
+- [x] Validate field dimensions and finite/physical value ranges before the bundle is used.
+- [x] Add explicit value snapshot/restore helpers and unit regressions covering every owned field.
+- [ ] Wire this state into `solve_steady_incompressible`; this PR does not claim production-loop ownership yet.
+- [ ] Define initialization and restart semantics from case/HDF5 data; no implicit defaults or guessed values.
+- [ ] Extend the outer nonlinear transaction to include this state and the authoritative face mass flux.
+
+This is an enabling contract only. It does not call SST transport from the production loop, enable the RANS selector, or qualify the physical model.
+
 ## Evidence log
 
 | Date | Change / evidence | Decision |
