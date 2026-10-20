@@ -183,6 +183,30 @@ int main()
         EXPECT_NEAR(k(0), 0.4, 0.0);
         EXPECT_NEAR(omega(0), 8.0, 0.0);
         EXPECT_NEAR(nu_t(0), 0.02, 0.0);
+
+        // The transport solver currently accepts this field's cell count and
+        // reads its first component; the production-closure contract rejects
+        // the non-scalar dimension after transport has converged. This forces
+        // the transactional wrapper's exception rollback path without a
+        // production-only fault-injection hook.
+        cfdx::core::Field<double, cfdx::core::Location::CELL> malformed_strain(
+            mesh.n_cells(), "strain_bad_dimension", "1/s", 2);
+        malformed_strain.fill(1.0);
+        auto exception_direct_k = k;
+        auto exception_direct_omega = omega;
+        const auto exception_direct = solve_sst_transport_dynamic_blending(
+            mesh, geometry, flux, exception_direct_k, exception_direct_omega,
+            malformed_strain, wall_distance, controls, k_bcs, omega_bcs, 100, 1e-4);
+        EXPECT_TRUE(exception_direct.converged);
+        EXPECT_TRUE(exception_direct_k(0) != k(0) ||
+                    exception_direct_omega(0) != omega(0));
+
+        EXPECT_THROW(advance_sst_transport_transactionally(
+            mesh, geometry, flux, k, omega, malformed_strain, wall_distance,
+            controls, nu_t, k_bcs, omega_bcs, 100, 1e-4), std::invalid_argument);
+        EXPECT_NEAR(k(0), 0.4, 0.0);
+        EXPECT_NEAR(omega(0), 8.0, 0.0);
+        EXPECT_NEAR(nu_t(0), 0.02, 0.0);
     });
 
     run_case("sst_strain_rate_magnitude_matches_simple_shear", [] {
