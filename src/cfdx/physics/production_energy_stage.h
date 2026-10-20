@@ -29,8 +29,9 @@
 //   * Temperature boundary conditions from the case: WALL_THERMAL with a
 //     non-zero wall_temperature -> Dirichlet; INLET or FIXED with a non-zero
 //     temperature -> Dirichlet; otherwise raw_params["heat_flux"]
-//     (W/m^2, positive into the domain) on a WALL patch -> fixed gradient
-//     q''/k; otherwise adiabatic. heat_flux is rejected on non-WALL
+//     (W/m^2, positive into the domain) plus the optional
+//     radiative_heat_flux_into_domain patch map -> fixed gradient q''/k;
+//     otherwise adiabatic. Both flux inputs are rejected on non-WALL
 //     patches, and a patch declaring both a retained Dirichlet temperature
 //     and heat_flux is rejected as contradictory: exactly one thermal
 //     boundary condition per patch. Zero means "not declared" (stage-1 /
@@ -65,6 +66,7 @@
 #include <cstddef>
 #include <limits>
 #include <map>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -194,14 +196,28 @@ inline ProductionEnergyCase build_production_energy_case(
 inline ScalarBoundaryConditions build_production_temperature_bcs(
     const cfdx::core::Mesh& mesh,
     const cfdx::io::CaseSetup& setup,
-    const ProductionEnergyCase& energy_case)
+    const ProductionEnergyCase& energy_case,
+    const std::map<std::string, double>& radiative_heat_flux_into_domain = {})
 {
     if (!std::isfinite(energy_case.conductivity) ||
         !(energy_case.conductivity > 0.0))
         throw std::invalid_argument(
             "build_production_temperature_bcs: invalid conductivity");
 
+    // Coupling seam for a radiation outer iteration: values are patch-
+    // averaged net heat fluxes in W/m^2, positive into the fluid. The caller
+    // owns radiosity/temperature iteration; this routine only maps the
+    // already-computed flux into the conservative energy boundary operator.
+    // Reject misspelled/non-wall patch names and invalid values fail-closed.
+    for (const auto& entry : radiative_heat_flux_into_domain) {
+        if (entry.first.empty() || !std::isfinite(entry.second))
+            throw std::invalid_argument(
+                "production energy stage: radiative wall heat flux must have "
+                "a non-empty patch name and finite value");
+    }
+
     ScalarBoundaryConditions bcs;
+    std::set<std::string> applied_radiative_fluxes;
     std::size_t dirichlet_patches = 0;
     for (std::size_t i = 0; i < mesh.boundary().n_patches(); ++i) {
         const auto& patch = mesh.boundary().patch(i);
@@ -241,9 +257,28 @@ inline ScalarBoundaryConditions build_production_temperature_bcs(
                 fixed_value = true;
             }
         }
+        const auto radiative_it =
+            radiative_heat_flux_into_domain.find(patch.name);
+        const bool has_radiative_flux =
+            radiative_it != radiative_heat_flux_into_domain.end();
+        if (has_radiative_flux) {
+            if (spec == nullptr || spec->type != cfdx::io::BCType::WALL)
+                throw std::invalid_argument(
+                    "production energy stage: radiative heat flux is only "
+                    "supported on declared WALL patches, not patch '" +
+                    patch.name + "'");
+            if (fixed_value)
+                throw std::invalid_argument(
+                    "production energy stage: patch '" + patch.name +
+                    "' declares a fixed temperature and a radiative heat "
+                    "flux; a radiating wall must be flux-coupled, not "
+                    "temperature-clamped");
+            applied_radiative_fluxes.insert(patch.name);
+        }
+
         if (spec != nullptr) {
             const auto flux_it = spec->raw_params.find("heat_flux");
-            if (flux_it != spec->raw_params.end()) {
+            if (flux_it != spec->raw_params.end() || has_radiative_flux) {
                 // heat_flux (W/m^2, positive into the domain) is a WALL
                 // boundary condition: fiche 14 defines it as an imposed
                 // wall flux. Declaring it on an inlet or outlet patch is a
@@ -265,11 +300,23 @@ inline ScalarBoundaryConditions build_production_temperature_bcs(
                         "' declares both a fixed temperature and "
                         "heat_flux; exactly one thermal boundary condition "
                         "per patch is required");
-                const double heat_flux = parse_case_double(
-                    flux_it->second,
-                    "heat_flux on patch '" + patch.name + "'");
+                const double imposed_heat_flux =
+                    flux_it == spec->raw_params.end()
+                        ? 0.0
+                        : parse_case_double(
+                              flux_it->second,
+                              "heat_flux on patch '" + patch.name + "'");
+                const double radiative_heat_flux =
+                    has_radiative_flux ? radiative_it->second : 0.0;
+                const double heat_flux =
+                    imposed_heat_flux + radiative_heat_flux;
+                if (!std::isfinite(heat_flux))
+                    throw std::invalid_argument(
+                        "production energy stage: combined wall heat flux "
+                        "on patch '" + patch.name + "' must be finite");
                 // The quotient can overflow even when both operands are
-                // finite; the assembled gradient must itself be finite.
+                // finite; the assembled gradient must itself be finite. Both
+                // flux contributions use the same positive-into-domain sign.
                 const double gradient = heat_flux / energy_case.conductivity;
                 if (!std::isfinite(gradient))
                     throw std::invalid_argument(
@@ -287,6 +334,11 @@ inline ScalarBoundaryConditions build_production_temperature_bcs(
             ++dirichlet_patches;
         bcs[patch.name] = bc;
     }
+    for (const auto& entry : radiative_heat_flux_into_domain)
+        if (applied_radiative_fluxes.count(entry.first) == 0)
+            throw std::invalid_argument(
+                "production energy stage: radiative heat flux references "
+                "unknown boundary patch '" + entry.first + "'");
     if (dirichlet_patches == 0)
         throw std::invalid_argument(
             "production energy stage: no Dirichlet temperature boundary "
@@ -340,7 +392,8 @@ inline ProductionEnergyStageResult run_production_energy_stage(
     const FvGeometry& geometry,
     const cfdx::io::CaseSetup& setup,
     const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
-    cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature)
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature,
+    const std::map<std::string, double>& radiative_heat_flux_into_domain = {})
 {
     validate_production_energy_model(setup);
     if (!production_energy_requested(setup))
@@ -415,7 +468,8 @@ inline ProductionEnergyStageResult run_production_energy_stage(
     }
 
     const auto energy_case = build_production_energy_case(setup);
-    const auto bcs = build_production_temperature_bcs(mesh, setup, energy_case);
+    const auto bcs = build_production_temperature_bcs(
+        mesh, setup, energy_case, radiative_heat_flux_into_domain);
 
     cfdx::core::Field<double, cfdx::core::Location::CELL> source(
         mesh.n_cells(), "volumetric_power", "W/m3", 1);
