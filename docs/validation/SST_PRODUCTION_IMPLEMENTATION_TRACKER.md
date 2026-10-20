@@ -116,6 +116,17 @@ This is an enabling contract only. It does not call SST transport from the produ
 - Keep the production turbulence guard until all required coupling and qualification gates pass.
 
 
+### T1 implementation increment — explicit SST restart scalars
+
+- [x] Extend the native DAT checkpoint format to version 4 with a stable, named `omega` scalar field alongside the existing `k` field.
+- [x] Validate omega field shape and finiteness before writing; reject a requested omega field when the checkpoint does not contain it.
+- [x] Add a round-trip regression for iteration/time, `k`, and `omega` on the same identified mesh.
+- [ ] Wire this format into production SST restart initialization and verify restart-equivalent solution trajectories.
+- [ ] Recompute derived `nu_t`, wall distance and strain rate from validated current fields/mesh after restart; do not treat cached derived values as authoritative.
+- [ ] Add interrupted/corrupt-checkpoint atomicity coverage before declaring the production restart path complete.
+
+This increment defines persistent scalar names only. It does not serialize the full `SSTProductionState`, establish restart-equivalent production behavior, or enable the RANS selector.
+
 ### T1 implementation increment — runtime boundary adapter (merged in PR #998)
 
 - [x] Translate persisted SST fixed-value and zero-gradient conditions into the existing scalar transport boundary API.
