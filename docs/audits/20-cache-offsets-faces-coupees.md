@@ -65,3 +65,5 @@ Le solveur de Poisson hybride doit employer les mêmes offsets pour l'opérateur
 - Hamilton–Jacobi et l'hybride construisent maintenant une liste des nœuds fluides, non fixes et de distance finie, dans l'ordre croissant des indices. Les boucles de mise à jour et de résidu réutilisent cette liste : l'ordre Gauss–Seidel en place est conservé, tandis que les tests solide/fixe/infini ne sont plus exécutés pour chaque nœud à chaque itération.
 - Le pas advectif constant et le facteur de relaxation constant de Hamilton–Jacobi sont calculés une fois. Dans l'hybride, la somme inverse des espacements au carré et le facteur de relaxation sont aussi sortis de la boucle interne.
 - Aucun budget d'itérations, seuil de convergence, coefficient PDE ni valeur de relaxation n'est modifié. Les gains et l'équivalence doivent être mesurés sur le HEAD exact avant de conclure.
+
+- Hamilton–Jacobi ne répète plus les requêtes de distance exacte aux nœuds de seed : l'initialisation Eikonal applique déjà exactement le même critère de seed et calcule déjà leurs distances BVH. Le masque fixe est désormais renseigné sans recalcul géométrique.
