@@ -19,6 +19,25 @@ struct S2SControls {
     double ambient_irradiation = 0.0;
 };
 
+// Ambient irradiation represents the part of the hemisphere not covered by
+// modeled enclosure surfaces. It must therefore be weighted by the open view
+// fraction; adding it in full to a closed enclosure double-counts incoming
+// radiation. Explicit external_irradiation entries are already surface-local
+// irradiation values and remain additive.
+inline double s2s_external_irradiation(
+    const std::vector<double>& F, std::size_t n, std::size_t i,
+    const S2SControls& controls,
+    const std::vector<double>& external_irradiation)
+{
+    double row_sum = 0.0;
+    for (std::size_t j = 0; j < n; ++j)
+        row_sum += F[i*n+j];
+    const double open_fraction = std::max(0.0, 1.0-row_sum);
+    const double explicit_irradiation = external_irradiation.empty()
+        ? 0.0 : external_irradiation[i];
+    return open_fraction*controls.ambient_irradiation + explicit_irradiation;
+}
+
 struct S2SResult {
     bool converged = false;
     std::vector<double> radiosity;
@@ -92,8 +111,8 @@ inline S2SResult solve_s2s_radiosity(
             !std::isfinite(temperatures[i]) || temperatures[i]<=0.0)
             throw std::invalid_argument("invalid S2S surface state");
         const double E=STEFAN_BOLTZMANN*std::pow(temperatures[i],4);
-        const double Gext=external_irradiation.empty()
-            ? controls.ambient_irradiation : external_irradiation[i];
+        const double Gext=s2s_external_irradiation(
+            view_factors,n,i,controls,external_irradiation);
         if (!std::isfinite(Gext) || Gext<0.0)
             throw std::invalid_argument("invalid S2S external irradiation");
         const double rho=1.0-emissivities[i];
@@ -163,14 +182,43 @@ inline std::vector<double> estimate_s2s_view_factors_monte_carlo(
     if (surfaces.empty() || controls.samples==0)
         throw std::invalid_argument("S2S Monte Carlo requires surfaces and samples");
     const std::size_t n=surfaces.size();
+    std::vector<double> areas(n,0.0);
+    for (std::size_t i=0;i<n;++i) {
+        if (surfaces[i].empty())
+            throw std::invalid_argument("S2S Monte Carlo surface is empty");
+        for (const auto& triangle : surfaces[i])
+            areas[i] += radiation_triangle_area(triangle);
+        if (!std::isfinite(areas[i]) || !(areas[i] > 0.0))
+            throw std::invalid_argument("S2S Monte Carlo surface area must be positive");
+    }
+
     std::vector<double> F(n*n,0.0);
     for (std::size_t i=0;i<n;++i) {
-        for (std::size_t j=0;j<n;++j) {
-            if (i==j) continue;
-            F[i*n+j]=estimate_view_factor_ray_traced(
+        for (std::size_t j=i+1;j<n;++j) {
+            const double fij=estimate_view_factor_ray_traced(
                 surfaces[i], surfaces[j], blockers, controls.samples);
+            const double fji=estimate_view_factor_ray_traced(
+                surfaces[j], surfaces[i], blockers, controls.samples);
+            // Enforce reciprocity on area-weighted exchange, not by normalizing
+            // rows independently (which would break reciprocity again).
+            const double exchange=0.5*(areas[i]*fij+areas[j]*fji);
+            F[i*n+j]=exchange/areas[i];
+            F[j*n+i]=exchange/areas[j];
         }
     }
+
+    // Monte-Carlo noise can make a row exceed unity. One global scale keeps
+    // every row conservative while preserving area-weighted reciprocity.
+    double max_row_sum=0.0;
+    for (std::size_t i=0;i<n;++i) {
+        double row_sum=0.0;
+        for (std::size_t j=0;j<n;++j) row_sum+=F[i*n+j];
+        max_row_sum=std::max(max_row_sum,row_sum);
+    }
+    const double scale=1.0/std::max(1.0,max_row_sum);
+    for (double& fij : F) fij*=scale;
+
+    validate_s2s_view_factors(F,areas,1e-10);
     return F;
 }
 
