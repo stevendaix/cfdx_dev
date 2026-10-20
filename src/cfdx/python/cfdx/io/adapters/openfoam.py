@@ -75,6 +75,23 @@ def _extract_foam_list(content: str):
     return lines, count
 
 
+def _read_foam_main_list(path: Path):
+    """Read an OpenFOAM non-dictionary list through foamlib when available.
+
+    foamlib understands OpenFOAM's list encodings, including binary data in
+    supported versions. Returning None means the optional parser is absent or
+    could not decode this file; ASCII parsing remains available as fallback.
+    """
+    try:
+        from foamlib import FoamFile
+    except ImportError:
+        return None
+    try:
+        return FoamFile(path)[None]
+    except (OSError, ValueError, TypeError, KeyError, UnicodeError):
+        return None
+
+
 class OpenFOAMAdapter(SolverAdapter):
     solver_name = "OpenFOAM"
     format_name = "openfoam"
@@ -295,8 +312,14 @@ class OpenFOAMAdapter(SolverAdapter):
             return None, None
 
     def _parse_points(self, points_file: Path) -> Optional[np.ndarray]:
-        """Parse OpenFOAM points file."""
+        """Parse OpenFOAM points file, preferring foamlib for binary support."""
         try:
+            parsed = _read_foam_main_list(points_file)
+            if parsed is not None:
+                points = np.asarray(parsed, dtype=np.float64)
+                if points.ndim == 2 and points.shape[1] >= 3:
+                    return points[:, :3].copy()
+
             content = points_file.read_text()
 
             data_lines, _count = _extract_foam_list(content)
@@ -345,6 +368,15 @@ class OpenFOAMAdapter(SolverAdapter):
         the parenthesised ``(0 1 2 3)`` form.
         """
         try:
+            parsed = _read_foam_main_list(faces_file)
+            if parsed is not None:
+                faces = [
+                    np.asarray(face, dtype=np.int64).reshape(-1).tolist()
+                    for face in parsed
+                ]
+                if faces and all(len(face) >= 3 for face in faces):
+                    return faces
+
             content = faces_file.read_text()
 
             data_lines, _ = _extract_foam_list(content)
@@ -373,6 +405,11 @@ class OpenFOAMAdapter(SolverAdapter):
     def _parse_label_list(self, label_file: Path) -> Optional[list]:
         """Parse OpenFOAM label list (owner, neighbour)."""
         try:
+            parsed = _read_foam_main_list(label_file)
+            if parsed is not None:
+                labels = np.asarray(parsed, dtype=np.int64).reshape(-1).tolist()
+                return labels
+
             content = label_file.read_text()
 
             data_lines, count = _extract_foam_list(content)
