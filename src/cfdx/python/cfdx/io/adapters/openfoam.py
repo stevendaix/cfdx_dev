@@ -10,6 +10,7 @@ Corresponds to the C++ header:
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -162,12 +163,134 @@ class OpenFOAMAdapter(SolverAdapter):
                 "fields", "zero_directory", "0/ directory not found"
             )
 
+        self._translate_setup_dictionaries(path, result)
+        if any(name == "T" for name, _ in result.scalar_fields):
+            self.setup.energy_model = "energy"
+
         result.setup = self.setup
         result.source.case_path = str(path)
         result.source.solver = "OpenFOAM"
         result.source.format = "openfoam"
 
         return result.success
+
+    def _translate_setup_dictionaries(
+        self, case_path: Path, result: ConversionResult
+    ) -> None:
+        """Preserve setup dictionaries and map only explicitly supported controls."""
+        from cfdx.io.openfoam_case_reader import (
+            OpenFOAMDependencyError,
+            read_openfoam_dictionaries,
+        )
+
+        try:
+            dictionaries = read_openfoam_dictionaries(case_path)
+        except (OpenFOAMDependencyError, OSError, ValueError) as exc:
+            # Keep source configuration recoverable even when foamlib is not
+            # installed or a dictionary contains syntax this version cannot parse.
+            raw_dictionaries = {}
+            for relative in (
+                "system/controlDict",
+                "system/fvSchemes",
+                "system/fvSolution",
+                "system/fvOptions",
+                "constant/transportProperties",
+                "constant/physicalProperties",
+                "constant/thermophysicalProperties",
+                "constant/turbulenceProperties",
+                "constant/radiationProperties",
+                "constant/g",
+            ):
+                source_file = case_path / relative
+                if source_file.is_file():
+                    try:
+                        raw_dictionaries[relative] = source_file.read_text()
+                    except OSError:
+                        continue
+            self.setup.source_metadata["openfoam_raw_dictionaries_json"] = json.dumps(
+                raw_dictionaries, sort_keys=True
+            )
+            result.gap_report.unsupported_nonblocking(
+                "configuration",
+                "openfoam_dictionary_parser",
+                f"Setup dictionaries were preserved as raw text but not parsed: {exc}",
+                "Install a compatible optional foamlib version to parse and map setup dictionaries.",
+            )
+            return
+
+        self.setup.source_metadata["openfoam_dictionaries_json"] = json.dumps(
+            dictionaries, sort_keys=True, default=str
+        )
+        control = dictionaries.get("system/controlDict", {})
+        application = str(control.get("application", "")).strip()
+        if application:
+            self.setup.source_metadata["openfoam_application"] = application
+
+        def numeric_setting(mapping: dict, key: str) -> float | None:
+            value = mapping.get(key)
+            if isinstance(value, (int, float)):
+                return float(value)
+            try:
+                return float(str(value))
+            except (TypeError, ValueError):
+                return None
+
+        delta_t = numeric_setting(control, "deltaT")
+        end_time = numeric_setting(control, "endTime")
+        if delta_t is not None and delta_t > 0:
+            self.setup.time_step = delta_t
+        if end_time is not None:
+            self.setup.end_time = end_time
+
+        fv_schemes = dictionaries.get("system/fvSchemes", {})
+        ddt_schemes = fv_schemes.get("ddtSchemes", {})
+        ddt_default = str(ddt_schemes.get("default", "")).strip().lower()
+        if ddt_default:
+            self.setup.transient = ddt_default != "steadystate"
+            self.setup.solver_mode = "transient" if self.setup.transient else "steady"
+        elif application.lower() in {
+            "pimplefoam", "icofoam", "interfoam", "rhoimplefoam",
+            "rhointerfoam", "reactingfoam", "buoyantpimplefoam",
+        }:
+            self.setup.transient = True
+            self.setup.solver_mode = "transient"
+
+        if self.setup.transient and self.setup.time_step > 0 and self.setup.end_time > 0:
+            self.setup.max_time_steps = int(self.setup.end_time / self.setup.time_step)
+
+        turbulence = dictionaries.get("constant/turbulenceProperties", {})
+        simulation_type = str(turbulence.get("simulationType", "")).strip()
+        if simulation_type.lower() == "laminar":
+            self.setup.turbulence_model = "laminar"
+        elif simulation_type in {"RAS", "LES"}:
+            model_dict = turbulence.get(simulation_type, {})
+            model_name = model_dict.get("model", model_dict.get("RASModel", model_dict.get("LESModel", "")))
+            if model_name:
+                self.setup.turbulence_model = str(model_name)
+
+        radiation = dictionaries.get("constant/radiationProperties", {})
+        radiation_model = radiation.get("radiationModel")
+        if radiation_model is not None:
+            self.setup.radiation_model = str(radiation_model)
+
+        for key in ("system/fvSchemes", "system/fvSolution"):
+            if key in dictionaries:
+                self.setup.numerics.raw_settings[f"openfoam.{key}"] = json.dumps(
+                    dictionaries[key], sort_keys=True, default=str
+                )
+
+        if any(key in dictionaries for key in ("system/fvSchemes", "system/fvSolution")):
+            result.gap_report.unsupported_nonblocking(
+                "numerics",
+                "openfoam_numerics_not_fully_mapped",
+                "fvSchemes and fvSolution were preserved, but are not yet translated "
+                "to equivalent CFDX numerical registry selections.",
+            )
+        result.gap_report.supported(
+            "configuration",
+            "openfoam_dictionary_snapshot",
+            f"Preserved {len(dictionaries)} parsed OpenFOAM setup dictionaries.",
+        )
 
     def import_results(self, results_path: str, result: ConversionResult) -> bool:
         """Import cell-centred scalar/vector fields from an OpenFOAM time.
