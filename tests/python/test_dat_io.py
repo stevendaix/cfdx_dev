@@ -1,8 +1,13 @@
 from pathlib import Path
 
 import pytest
-
-from cfdx.dat_io import read_dat_restart
+from cfdx.dat_io import (
+    DatField,
+    DatRestart,
+    read_dat_restart,
+    remap_dat_restart,
+    write_dat_hdf5,
+)
 
 
 def test_read_dat_discovers_all_fields(tmp_path: Path) -> None:
@@ -96,6 +101,38 @@ def test_read_dat_accepts_native_v3_checkpoint_with_identity(tmp_path: Path) -> 
     assert restart.fields["T"].values == [350.0]
 
 
+def test_read_dat_accepts_native_v4_sst_checkpoint_with_explicit_omega(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "sst-v4.dat"
+    path.write_text(
+        "CFDX-DAT 4\n"
+        "cells 2\n"
+        "iteration 23\n"
+        "time 4.5\n"
+        "identity 8 6 2 12345678901234567890\n"
+        "field U 3\n"
+        "0.25 -0.15 0.05 0.5 -0.3 0.1\n"
+        "field p 1\n"
+        "37.5 38.5\n"
+        "optional_fields\n"
+        "field k 1\n"
+        "0.42 0.43\n"
+        "field omega 1\n"
+        "125.0 126.0\n",
+        encoding="utf-8",
+    )
+
+    restart = read_dat_restart(path)
+
+    assert restart.version == 4
+    assert restart.iteration == 23
+    assert restart.time == pytest.approx(4.5)
+    assert restart.mesh_identity == (8, 6, 2, 12345678901234567890)
+    assert restart.fields["k"].values == [0.42, 0.43]
+    assert restart.fields["omega"].values == [125.0, 126.0]
+
+
 def test_read_dat_accepts_v3_checkpoint_without_optional_fields(tmp_path: Path) -> None:
     path = tmp_path / "state.dat"
     path.write_text(
@@ -147,17 +184,25 @@ def test_read_dat_accepts_v2_optional_fields_marker(tmp_path: Path) -> None:
     "payload",
     [
         # Identity cell count disagreeing with the declared cell count.
-        "CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nidentity 8 6 7 42\n"
-        "field U 3\n1 2 3\nfield p 1\n4\noptional_fields\n",
+        (
+            "CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nidentity 8 6 7 42\n"
+            "field U 3\n1 2 3\nfield p 1\n4\noptional_fields\n"
+        ),
         # Missing identity section on a version that requires one.
-        "CFDX-DAT 3\ncells 1\niteration 0\ntime 0\n"
-        "field U 3\n1 2 3\nfield p 1\n4\noptional_fields\n",
+        (
+            "CFDX-DAT 3\ncells 1\niteration 0\ntime 0\n"
+            "field U 3\n1 2 3\nfield p 1\n4\noptional_fields\n"
+        ),
         # Non-integer identity component.
-        "CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nidentity 8 6 1 notanumber\n"
-        "field U 3\n1 2 3\nfield p 1\n4\noptional_fields\n",
+        (
+            "CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nidentity 8 6 1 notanumber\n"
+            "field U 3\n1 2 3\nfield p 1\n4\noptional_fields\n"
+        ),
         # Truncated identity.
-        "CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nidentity 8 6 1\n"
-        "field U 3\n1 2 3\nfield p 1\n4\noptional_fields\n",
+        (
+            "CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nidentity 8 6 1\n"
+            "field U 3\n1 2 3\nfield p 1\n4\noptional_fields\n"
+        ),
     ],
 )
 def test_read_dat_rejects_invalid_v3_identity(tmp_path: Path, payload: str) -> None:
@@ -184,8 +229,6 @@ def test_read_dat_rejects_invalid_checkpoints(tmp_path: Path, payload: str) -> N
 
 
 def test_hdf5_dat_roundtrip_all_fields(tmp_path: Path) -> None:
-    from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
-
     restart = DatRestart(
         version=2,
         cells=2,
@@ -207,8 +250,6 @@ def test_hdf5_dat_roundtrip_all_fields(tmp_path: Path) -> None:
 
 
 def test_hdf5_checkpoint_persists_global_cell_ids_and_remaps(tmp_path: Path) -> None:
-    from cfdx.dat_io import DatField, DatRestart, remap_dat_restart, write_dat_hdf5
-
     restart = DatRestart(
         version=2,
         cells=4,
@@ -234,8 +275,6 @@ def test_hdf5_checkpoint_persists_global_cell_ids_and_remaps(tmp_path: Path) -> 
 
 
 def test_dat_checkpoint_rejects_duplicate_global_cell_ids(tmp_path: Path) -> None:
-    from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
-
     restart = DatRestart(
         version=2,
         cells=2,
