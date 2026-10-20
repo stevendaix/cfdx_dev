@@ -8,9 +8,49 @@
 #include <cmath>
 #include <algorithm>
 #include <limits>
+#include <utility>
+#include <vector>
 
 using namespace cfdx::testing;
 using namespace cfdx::physics;
+
+static cfdx::core::Mesh make_sst_wall_operator_test_mesh()
+{
+    using namespace cfdx::core;
+    Mesh mesh;
+    mesh.points().resize(8);
+    const double p[8][3] = {
+        {0,0,0},{4,0,0},{4,2,0},{0,2,0},
+        {0,0,2},{4,0,2},{4,2,2},{0,2,2}
+    };
+    for (std::size_t i = 0; i < 8; ++i)
+        mesh.points().set(i, p[i][0], p[i][1], p[i][2]);
+    const std::vector<std::vector<FaceIndex>> faces = {
+        {0,4,7,3}, {1,2,6,5}, {0,1,5,4},
+        {3,7,6,2}, {0,3,2,1}, {4,5,6,7}
+    };
+    for (const auto& face : faces)
+        mesh.faces().push_face(face);
+    mesh.ownership().resize(faces.size());
+    for (std::size_t f = 0; f < faces.size(); ++f) {
+        mesh.ownership().set_owner(f, 0);
+        mesh.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    }
+    mesh.cells().push_cell({0,1,2,3,4,5});
+    const std::array<std::pair<const char*, PatchType>, 6> patches{{
+        {"wall", PatchType::WALL}, {"inlet", PatchType::INLET},
+        {"side_low", PatchType::SYMMETRY}, {"side_high", PatchType::SYMMETRY},
+        {"bottom", PatchType::SYMMETRY}, {"top", PatchType::SYMMETRY}
+    }};
+    for (std::size_t f = 0; f < patches.size(); ++f) {
+        Patch patch;
+        patch.name = patches[f].first;
+        patch.type = patches[f].second;
+        patch.face_ids = {static_cast<FaceIndex>(f)};
+        mesh.boundary().add_patch(patch);
+    }
+    return mesh;
+}
 
 int main()
 {
@@ -560,6 +600,26 @@ int main()
             supported = false;
         }
         EXPECT_TRUE(supported);
+    });
+
+    run_case("sst_wall_omega_face_operator_only_populates_requested_wall_faces", [] {
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        const auto geometry = build_fv_geometry(mesh);
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.molecular_viscosity = 1.0e-5;
+        controls.beta1 = 0.075;
+        const auto face_values = make_sst_wall_omega_face_values(
+            mesh, geometry, std::vector<std::string>{"wall"}, controls);
+        EXPECT_TRUE(face_values.values.count("wall") == 1);
+        EXPECT_TRUE(face_values.values.count("inlet") == 0);
+        EXPECT_NEAR(face_values.values.at("wall")[0], 2.0e-4, 1.0e-15);
+        for (std::size_t face = 1; face < mesh.n_faces(); ++face)
+            EXPECT_TRUE(!std::isfinite(face_values.values.at("wall")[face]));
+        const auto runtime = SSTRuntimeBoundaryContract{{}, {}, {"wall"}};
+        EXPECT_THROW(require_supported_sst_runtime_boundaries(runtime),
+                     std::invalid_argument);
+        require_supported_sst_runtime_boundaries(runtime, true);
     });
 
     run_case("sst_wall_omega_value_uses_resolved_wall_formula", [] {
