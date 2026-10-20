@@ -90,6 +90,14 @@
 
 This is an enabling contract only. It does not call SST transport from the production loop, enable the RANS selector, or qualify the physical model.
 
+### T1 implementation increment — atomic carrier/SST transaction primitive
+
+- [x] Add a transaction primitive that snapshots/restores the carrier velocity, pressure, authoritative face mass flux, and all fields in `SSTProductionState` as one unit.
+- [x] Test exact rollback across all state groups and verify commit retains candidate fields.
+- [ ] Connect this primitive to the production nonlinear retry/acceptance loop; the current increment does not call it from `solve_steady_incompressible`.
+- [ ] Define HDF5/restart initialization and construct the state from the actual production mesh.
+- [ ] Keep the production turbulence selector fail-closed until transport, viscosity refresh, and convergence gates are integrated and verified.
+
 ## Evidence log
 
 | Date | Change / evidence | Decision |
