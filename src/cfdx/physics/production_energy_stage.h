@@ -33,7 +33,7 @@
 //     radiative_heat_flux_into_domain patch map -> fixed gradient q''/k;
 //     otherwise adiabatic. Both flux inputs are rejected on non-WALL
 //     patches, and a patch declaring both a retained Dirichlet temperature
-//     and heat_flux is rejected as contradictory: exactly one thermal
+//     and either flux input is rejected as contradictory: exactly one thermal
 //     boundary condition per patch. Zero means "not declared" (stage-1 /
 //     T1 convention), so a Dirichlet at exactly 0 K is not representable
 //     in this API; any declared temperature must be finite and strictly
