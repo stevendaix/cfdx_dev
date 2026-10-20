@@ -437,5 +437,74 @@ int main()
         EXPECT_NEAR(state.strain_rate(1), 2.0, 0.0);
     });
 
+    run_case("sst_coupled_transaction_rolls_back_carrier_flux_and_all_turbulence_fields", [] {
+        using cfdx::core::Field;
+        Field<double, cfdx::core::Location::CELL> U(2, "U", "m/s", 3);
+        Field<double, cfdx::core::Location::CELL> p(2, "p", "Pa", 1);
+        Field<double, cfdx::core::Location::FACE> phi(3, "phi", "kg/s", 1);
+        SSTProductionState state(2);
+        for (std::size_t c = 0; c < 2; ++c) {
+            U.component_data(0)[c] = 1.0 + c;
+            U.component_data(1)[c] = 2.0 + c;
+            U.component_data(2)[c] = 3.0 + c;
+            p(c) = 10.0 + c;
+            state.k(c) = 0.1 + 0.1 * c;
+            state.omega(c) = 10.0 + 10.0 * c;
+            state.nu_t(c) = 0.001 + 0.001 * c;
+            state.wall_distance(c) = 0.01 + 0.01 * c;
+            state.strain_rate(c) = 1.0 + c;
+        }
+        phi(0) = 0.25; phi(1) = -0.5; phi(2) = 0.75;
+
+        SSTCoupledStateTransaction transaction(U, p, phi, state);
+        transaction.begin();
+        U.component_data(0)[0] = -100.0;
+        p(1) = -200.0;
+        phi(2) = 300.0;
+        state.k(0) = 400.0;
+        state.omega(1) = 500.0;
+        state.nu_t(0) = 600.0;
+        state.wall_distance(1) = 700.0;
+        state.strain_rate(0) = 800.0;
+        transaction.rollback();
+
+        EXPECT_TRUE(!transaction.active());
+        EXPECT_NEAR(U.component_data(0)[0], 1.0, 0.0);
+        EXPECT_NEAR(p(1), 11.0, 0.0);
+        EXPECT_NEAR(phi(2), 0.75, 0.0);
+        EXPECT_NEAR(state.k(0), 0.1, 0.0);
+        EXPECT_NEAR(state.omega(1), 20.0, 0.0);
+        EXPECT_NEAR(state.nu_t(0), 0.001, 0.0);
+        EXPECT_NEAR(state.wall_distance(1), 0.02, 0.0);
+        EXPECT_NEAR(state.strain_rate(0), 1.0, 0.0);
+    });
+
+    run_case("sst_coupled_transaction_commit_keeps_all_candidate_fields", [] {
+        using cfdx::core::Field;
+        Field<double, cfdx::core::Location::CELL> U(1, "U", "m/s", 3);
+        Field<double, cfdx::core::Location::CELL> p(1, "p", "Pa", 1);
+        Field<double, cfdx::core::Location::FACE> phi(1, "phi", "kg/s", 1);
+        SSTProductionState state(1);
+        U.fill(1.0); p.fill(2.0); phi.fill(3.0);
+        state.k(0) = 0.1; state.omega(0) = 10.0;
+        state.nu_t(0) = 0.01; state.wall_distance(0) = 0.1;
+        state.strain_rate(0) = 1.0;
+
+        SSTCoupledStateTransaction transaction(U, p, phi, state);
+        transaction.begin();
+        U.component_data(0)[0] = 4.0;
+        p(0) = 5.0;
+        phi(0) = 6.0;
+        state.k(0) = 0.2;
+        transaction.commit();
+
+        EXPECT_TRUE(!transaction.active());
+        EXPECT_NEAR(U.component_data(0)[0], 4.0, 0.0);
+        EXPECT_NEAR(p(0), 5.0, 0.0);
+        EXPECT_NEAR(phi(0), 6.0, 0.0);
+        EXPECT_NEAR(state.k(0), 0.2, 0.0);
+        EXPECT_THROW(transaction.rollback(), std::logic_error);
+    });
+
     return run_all();
 }
