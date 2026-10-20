@@ -139,6 +139,9 @@ int main() {
                     "cached cut-face offset differs from direct BVH calculation");
             if(cg.solid[q[face]] && std::abs(expected-h)>1e-12) ++fractional_cut_faces;
         }
+        require(std::abs(godunov_gradient_at(cbvh,test_field,cg,id,&cache)
+                         -godunov_gradient_at(cbvh,test_field,cg,id))<1e-13,
+                "cached and uncached Godunov gradients differ");
         require(std::abs(laplacian_at(cbvh,test_field,cg,id,cache)
                          -laplacian_at(cbvh,test_field,cg,id))<1e-13,
                 "cached and uncached Laplacian operators differ");
