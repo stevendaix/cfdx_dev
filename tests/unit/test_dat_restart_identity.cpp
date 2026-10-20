@@ -201,6 +201,41 @@ void run_cases()
         std::filesystem::remove(dat);
     });
 
+    run_case("dat_restart_round_trips_explicit_sst_k_and_omega", [] {
+        const Mesh m = make_cube(1.0);
+        const auto dat = temp_dat("sst_fields");
+        Field<double,Location::CELL> k(1, "k", "m2/s2", 1);
+        Field<double,Location::CELL> omega(1, "omega", "1/s", 1);
+        k(0) = 0.42;
+        omega(0) = 125.0;
+        DatRestartFields write_fields;
+        write_fields.k = &k;
+        write_fields.omega = &omega;
+
+        write_dat_restart_fields(dat.string(), m, seeded_u(0.25), seeded_p(37.5),
+                                 write_fields, 23, 4.5);
+
+        Field<double,Location::CELL> u(1, "U", "m/s", 3);
+        Field<double,Location::CELL> p(1, "p", "Pa", 1);
+        Field<double,Location::CELL> restored_k(1, "k", "m2/s2", 1);
+        Field<double,Location::CELL> restored_omega(1, "omega", "1/s", 1);
+        DatRestartFields read_fields;
+        read_fields.k = &restored_k;
+        read_fields.omega = &restored_omega;
+        const auto state = read_dat_restart_fields(
+            dat.string(), m, u, p, read_fields);
+
+        EXPECT_TRUE(state.iteration == std::size_t{23});
+        EXPECT_NEAR(state.time, 4.5, 1e-14);
+        EXPECT_NEAR(restored_k(0), 0.42, 1e-14);
+        EXPECT_NEAR(restored_omega(0), 125.0, 1e-14);
+        std::ifstream in(dat);
+        std::string header;
+        std::getline(in, header);
+        EXPECT_TRUE(header == "CFDX-DAT 4");
+        std::filesystem::remove(dat);
+    });
+
     run_case("dat_restart_identity_rejects_non_finite_geometry", [] {
         Mesh broken = make_cube(1.0);
         broken.points().set(0, std::nan(""), 0.0, 0.0);
