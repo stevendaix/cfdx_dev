@@ -13,7 +13,7 @@ jobs:
     name: Report failed fast-ctest tests (Release)
     if: github.event_name == 'pull_request' && github.event.pull_request.number == 999
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,6 +22,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Install Python mesh/I/O stack
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Configure
         run: |
@@ -34,20 +41,21 @@ jobs:
         run: |
           cmake --build build --parallel 8
 
-      - name: Run fast CTest (sequential, output captured)
+      - name: Run fast CTest (CI-identical: parallel 4)
         run: |
           set +e
-          ctest --test-dir build -LE long --output-on-failure --no-tests=error > ctest.log 2>&1
+          ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4 > ctest.log 2>&1
           rc=$?
           set -e
           echo "CTEST_RC=$rc" | tee rc.txt
 
-      - name: Build failure report
+      - name: Build failure report with per-test rerun output
         if: always()
         run: |
           python3 - <<'PYEOF'
           import os
           import re
+          import subprocess
           out = []
           if os.path.exists('rc.txt'):
               out.append(open('rc.txt').read().strip())
@@ -70,18 +78,20 @@ jobs:
                       else:
                           break
               out.append('FAILED COUNT: %d' % len(failed))
-              blocks = re.split(r'(?m)^(?=\s*(Start\s+\d+:|\d+/\d+ Test\s*#?\d+))', text)
-              for name, kind in failed:
+              for name, kind in failed[:10]:
                   out.append('=' * 70)
                   out.append('FAILED: %s (%s)' % (name, kind))
-                  for b in blocks:
-                      if re.search(r'(Start\s+\d+:\s*|#\d+:\s*)%s\b' % re.escape(name), b):
-                          lines = b.rstrip().splitlines()
-                          out.append('---- first lines ----')
-                          out.extend(lines[:3])
-                          out.append('---- last lines ----')
-                          out.extend(lines[-120:])
-                          break
+                  out.append('---- individual rerun output (tail) ----')
+                  try:
+                      rerun = subprocess.run(
+                          ['ctest', '--test-dir', 'build', '-R', '^%s$' % name,
+                           '--output-on-failure', '--no-tests=error'],
+                          capture_output=True, text=True, timeout=600)
+                      block = rerun.stdout + rerun.stderr
+                      lines = block.rstrip().splitlines()
+                      out.extend(lines[-150:])
+                  except Exception as exc:
+                      out.append('rerun failed: %s' % exc)
           open('report.txt', 'w').write('\n'.join(out))
           print('\n'.join(out))
           PYEOF
@@ -93,7 +103,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           {
-            echo "### S2S diagnostic: fast-ctest failures (Release, commit ${GITHUB_SHA})"
+            echo "### S2S diagnostic v4: fast-ctest failures with CI-identical env (Release, commit ${GITHUB_SHA})"
             echo ""
             echo '```'
             cat report.txt 2>/dev/null || echo "report.txt missing"
