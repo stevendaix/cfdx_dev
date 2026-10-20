@@ -2,7 +2,13 @@ from pathlib import Path
 
 import pytest
 
-from cfdx.dat_io import read_dat_restart
+from cfdx.dat_io import (
+    DatField,
+    DatRestart,
+    read_dat_restart,
+    remap_dat_restart,
+    write_dat_hdf5,
+)
 
 
 def test_read_dat_discovers_all_fields(tmp_path: Path) -> None:
@@ -96,7 +102,9 @@ def test_read_dat_accepts_native_v3_checkpoint_with_identity(tmp_path: Path) -> 
     assert restart.fields["T"].values == [350.0]
 
 
-def test_read_dat_accepts_native_v4_sst_checkpoint_with_explicit_omega(tmp_path: Path) -> None:
+def test_read_dat_accepts_native_v4_sst_checkpoint_with_explicit_omega(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "sst-v4.dat"
     path.write_text(
         "CFDX-DAT 4\\n"
@@ -214,7 +222,6 @@ def test_read_dat_rejects_invalid_checkpoints(tmp_path: Path, payload: str) -> N
 
 
 def test_hdf5_dat_roundtrip_all_fields(tmp_path: Path) -> None:
-    from cfdx.dat_io import DatField, DatRestart, write_dat_hdf5
 
     restart = DatRestart(
         version=2,
@@ -237,7 +244,6 @@ def test_hdf5_dat_roundtrip_all_fields(tmp_path: Path) -> None:
 
 
 def test_hdf5_checkpoint_persists_global_cell_ids_and_remaps(tmp_path: Path) -> None:
-    from cfdx.dat_io import DatField, DatRestart, remap_dat_restart, write_dat_hdf5
 
     restart = DatRestart(
         version=2,
