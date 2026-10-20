@@ -168,3 +168,70 @@ def read_openfoam_field(
         "internal": internal,
         "boundary": boundary,
     }
+
+
+def read_openfoam_time_fields(
+    case_path: str | Path,
+    time: str | float = "latest",
+    *,
+    cell_count: int | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Read scalar and vector volume fields at one time for CFDX import.
+
+    Uniform fields are expanded to cell_count when supplied, so their arrays
+    align with cell-centred fields in CFDX. Tensor fields retain their source
+    class and raw values; callers must not silently coerce them to vectors.
+    """
+    import numpy as np
+
+    path = Path(case_path).expanduser().resolve()
+    if not path.is_dir():
+        raise NotADirectoryError(f"OpenFOAM case directory does not exist: {path}")
+
+    FoamCase = _foamlib()
+    case = FoamCase(path)
+    if time == "latest":
+        if len(case) == 0:
+            raise ValueError(f"No OpenFOAM time directories found in {path}")
+        time_directory = case[-1]
+    else:
+        time_directory = case[time]
+
+    fields: dict[str, dict[str, Any]] = {}
+    for field in time_directory:
+        try:
+            source_class = str(field["FoamFile"]["class"])
+            raw = np.asarray(field.internal_field, dtype=np.float64)
+            dimensions = tuple(int(value) for value in field.dimensions)
+        except (KeyError, TypeError, ValueError, AttributeError) as exc:
+            raise ValueError(
+                f"Cannot decode field {Path(field).name!s} at time "
+                f"{time_directory.name}: {exc}"
+            ) from exc
+
+        is_uniform = raw.ndim == 0 or (
+            raw.ndim == 1 and source_class.endswith("VectorField") and raw.size == 3
+        ) or (
+            raw.ndim == 1 and source_class.endswith("TensorField") and raw.size in (6, 9)
+        )
+        if is_uniform and cell_count is not None:
+            raw = np.broadcast_to(raw, (cell_count,) + raw.shape).copy()
+
+        boundary = {}
+        for patch, condition in field.boundary_field.items():
+            try:
+                boundary[str(patch)] = condition.as_dict()
+            except AttributeError:
+                boundary[str(patch)] = dict(condition)
+
+        fields[Path(field).name] = {
+            "name": Path(field).name,
+            "class": source_class,
+            "time": float(time_directory.time),
+            "dimensions": dimensions,
+            "internal": raw,
+            "boundary": boundary,
+            "uniform": is_uniform,
+        }
+
+    return fields
