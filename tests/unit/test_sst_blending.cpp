@@ -631,5 +631,43 @@ int main()
                      std::invalid_argument);
     });
 
+    run_case("sst_production_state_initializes_from_explicit_case_and_mesh_fields", [] {
+        auto mesh = make_sst_wall_operator_test_mesh();
+        cfdx::io::CaseSetup setup;
+        setup.turbulence_model = "k_omega_sst";
+        setup.has_initial_condition = true;
+        setup.initial_condition.scalar_fields["k"] = 0.12;
+        setup.initial_condition.scalar_fields["omega"] = 18.0;
+        cfdx::io::BoundarySpec wall;
+        wall.patch_name = "wall";
+        wall.type = cfdx::io::BCType::WALL;
+        wall.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::WALL_OMEGA_SST, 0.0}
+        };
+        setup.boundary_conditions = {wall};
+
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.molecular_viscosity = 1.0e-5;
+        const auto state = initialize_sst_production_state(
+            mesh, setup, controls, std::vector<double>{0.01},
+            std::vector<double>{2.0});
+        validate_sst_production_state(state, mesh.n_cells());
+        EXPECT_NEAR(state.k(0), 0.12, 0.0);
+        EXPECT_NEAR(state.omega(0), 18.0, 0.0);
+        EXPECT_NEAR(state.wall_distance(0), 0.01, 0.0);
+        EXPECT_NEAR(state.strain_rate(0), 2.0, 0.0);
+        EXPECT_TRUE(std::isfinite(state.nu_t(0)) && state.nu_t(0) >= 0.0);
+
+        EXPECT_THROW(initialize_sst_production_state(
+            mesh, setup, controls, std::vector<double>{0.0},
+            std::vector<double>{2.0}), std::invalid_argument);
+        EXPECT_THROW(initialize_sst_production_state(
+            mesh, setup, controls, std::vector<double>{0.01},
+            std::vector<double>{std::numeric_limits<double>::quiet_NaN()}),
+            std::invalid_argument);
+    });
+
     return run_all();
 }
