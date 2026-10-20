@@ -5,7 +5,7 @@
 - Statut : DRAFT (2026-10-19) — tests d'équivalence géométrique ajoutés ; benchmark rayons BVH/brute-force intégré au cas complexe, mesures et qualification EDP encore requises.
 - Registre autoritaire : `docs/validation/CFDX_QUALIFICATION_REGISTRY.json` (campagnes) et `docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json` (exigences).
 - Issue / PR liées : PR #979 ; backlog wall-distance #34.
-- Dernier HEAD analysé avant l'ajout du benchmark : `d7068463ae27d2c5db0fafbd9043986f0b4bcbb4`. Les contrôles CI doivent être relus sur le nouveau HEAD de la branche.
+- HEAD de qualification : à renseigner après la prochaine campagne CI exacte ; ne pas réutiliser les résultats d’un HEAD antérieur.
 - Limitations connues : les temps N=128 disponibles sont des mesures de campagnes différentes et ne prouvent pas le gain causal du BVH. Le benchmark rayons synthétique isole le coût d'intersection, mais ne remplace pas une comparaison N=128 appariée sur le même runner.
 
 ## 1. Références sources
@@ -58,15 +58,12 @@ La traversée est une accélération de recherche uniquement. Le test rayon-tria
 ## 7. Statut d'implémentation CFDX
 
 - Fichier source : `src/cfdx/physics/wall_distance.h`, classe `WallDistanceBvh`.
-- Tests exécutables : `tests/unit/test_wall_distance_methods.cpp` couvre les cas géométriques et l'oracle ; `apps/verification/wall_distance_complex_benchmark.cpp` compare le coût BVH et brute-force sur les requêtes réelles de faces fluides/solides du cas complexe, vérifie l'équivalence et écrit `wall_distance_ray_benchmark.csv` en plus du CSV des méthodes. Le test reste un benchmark de validation et ses mesures doivent être archivées.
+- Tests exécutables : `tests/unit/test_wall_distance_methods.cpp` couvre les cas géométriques et l'oracle ; `apps/verification/wall_distance_complex_benchmark.cpp` compare le coût BVH et brute-force sur les requêtes réelles de faces fluides/solides du cas complexe, vérifie l'équivalence et écrit `wall_distance_ray_benchmark.csv` en plus du CSV des méthodes. Le test `benchmark_wall_distance_bvh_rays` exécute uniquement la comparaison géométrique et archive `wall_distance_ray_benchmark_only.csv`. Le test `benchmark_wall_distance_complex` conserve le benchmark des neuf méthodes et archive aussi `wall_distance_ray_benchmark.csv`.
 - Écarts connus code ↔ fiche : les tests de régression couvrent des cas choisis, et le benchmark rayons est représentatif d'un cas complexe synthétique mais borné ; il faut encore enregistrer les mesures sur runner contrôlé et qualifier le gain end-to-end des méthodes EDP. Le benchmark n'est pas une preuve d'accélération globale.
-- Prochaines actions : (1) vérifier Release et DebugSanitizers sur le nouveau HEAD ; (2) lancer `ctest --test-dir build -R '^benchmark_wall_distance_complex (3) lancer un A/B N=128 apparié, mêmes runner, maillage et options ; (4) traiter séparément les échecs NACA préexistants et le test N9 proche de 1800 s, sans relâcher leurs gates.
+- Prochaines actions : (1) exécuter Release et DebugSanitizers sur le HEAD exact ; (2) lancer `ctest --test-dir build -R '^benchmark_wall_distance_bvh_rays$' -V` et archiver `wall_distance_ray_benchmark_only.csv` ; (3) lancer le benchmark N=128 apparié sur le même runner ; (4) comparer les échecs NACA à master, sans relâcher les critères.
+
 
 ## 8. Journal des modifications
 
-- 2026-10-19 — PR #979 — création de la fiche, tests rayons comparés à l'oracle exhaustif et intégration d'une mesure BVH vs brute-force au benchmark géométrique complexe ; les mesures contrôlées et le benchmark EDP apparié restent à exécuter.
- -V` et archiver `wall_distance_complex_benchmark.csv` ainsi que `wall_distance_ray_benchmark.csv` ; (3) lancer un A/B N=128 apparié, mêmes runner, maillage et options ; (4) traiter séparément les échecs NACA préexistants et le test N9 proche de 1800 s, sans relâcher leurs gates.
-
-## 8. Journal des modifications
-
-- 2026-10-19 — PR #979 — création de la fiche, tests rayons comparés à l'oracle exhaustif et ajout d'un benchmark reproductible BVH vs brute-force ; les mesures contrôlées et le benchmark EDP apparié restent à exécuter.
+- 2026-10-19 — PR #979 — fiche créée, tests d’équivalence géométrique et benchmark BVH/brute-force ajoutés.
+- 2026-10-20 — PR #979 — benchmark rayons isolé dans un test CTest rapide ; sortie console corrigée pour produire un vrai saut de ligne ; qualification exacte du HEAD toujours requise.
