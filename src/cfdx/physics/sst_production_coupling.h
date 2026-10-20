@@ -1,7 +1,9 @@
 #pragma once
 
+#include "cfdx/io/restart/dat_restart.h"
 #include "cfdx/physics/sst_solver.h"
 #include "cfdx/physics/sst_case_contract.h"
+#include "cfdx/physics/sst_strain_rate.h"
 
 #include <algorithm>
 #include <cmath>
@@ -272,6 +274,83 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
     }
 }
 
+
+// Restore a DAT checkpoint into a candidate carrier + SST state. The
+// checkpoint must contain explicitly named k and omega fields (DAT v4+).
+// Wall distance is geometric state supplied by the caller for this mesh; it is
+// validated, while strain rate and nu_t are recomputed from the restored U/k/omega.
+// All checkpoint reads and SST closure checks happen on temporaries; validation
+// failures leave U, p, and the production-owned SST state unchanged.
+//
+// This is a reusable restart bridge. The production outer loop must still call
+// it explicitly and remain fail-closed until the complete SST solve is qualified.
+inline cfdx::io::DatRestartState restore_sst_production_state_from_dat(
+    const std::string& path,
+    const cfdx::core::Mesh& mesh,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure,
+    SSTProductionState& state,
+    const std::vector<double>& current_wall_distance,
+    const TurbulenceTransportControls& controls)
+{
+    using cfdx::core::Field;
+    using cfdx::core::Location;
+    if (controls.model != TurbulenceModel::SST)
+        throw std::invalid_argument("SST restart requires the SST turbulence model");
+
+    const std::size_t n = mesh.n_cells();
+    if (n == 0 || velocity.size() != n || velocity.dimension() != 3 ||
+        pressure.size() != n || pressure.dimension() != 1 ||
+        state.k.size() != n || state.k.dimension() != 1 ||
+        state.omega.size() != n || state.omega.dimension() != 1 ||
+        state.nu_t.size() != n || state.nu_t.dimension() != 1 ||
+        state.wall_distance.size() != n || state.wall_distance.dimension() != 1 ||
+        state.strain_rate.size() != n || state.strain_rate.dimension() != 1 ||
+        current_wall_distance.size() != n)
+        throw std::invalid_argument("SST restart state or current wall-distance shape mismatch");
+
+    Field<double, Location::CELL> candidate_velocity = velocity;
+    Field<double, Location::CELL> candidate_pressure = pressure;
+    Field<double, Location::CELL> candidate_k(n, "k", "m2/s2", 1);
+    Field<double, Location::CELL> candidate_omega(n, "omega", "1/s", 1);
+    cfdx::io::DatRestartFields restart_fields{};
+    restart_fields.k = &candidate_k;
+    restart_fields.omega = &candidate_omega;
+    const auto metadata = cfdx::io::read_dat_restart_fields(
+        path, mesh, candidate_velocity, candidate_pressure, restart_fields);
+
+    SSTProductionState candidate(n);
+    candidate.k = candidate_k;
+    candidate.omega = candidate_omega;
+    candidate.strain_rate = compute_sst_strain_rate(candidate_velocity, mesh);
+    for (std::size_t cell = 0; cell < n; ++cell)
+        candidate.wall_distance(cell) = current_wall_distance[cell];
+
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        if (!std::isfinite(candidate.wall_distance(cell)) ||
+            candidate.wall_distance(cell) <= 0.0)
+            throw std::invalid_argument(
+                "SST restart requires finite positive current-mesh wall distance");
+    }
+
+    const auto cross = cell_gradient_dot(candidate.k, candidate.omega, mesh);
+    Field<double, Location::CELL> F2(n, "sst_F2", "1", 1);
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        const auto blending = compute_sst_blending(
+            candidate.k(cell), candidate.omega(cell), candidate.wall_distance(cell),
+            controls.molecular_viscosity, controls.beta_star, cross[cell],
+            controls.density, controls.sst_sigma_w2);
+        F2(cell) = blending.second;
+    }
+    refresh_sst_production_eddy_viscosity(
+        candidate.k, candidate.omega, candidate.strain_rate, F2, controls, candidate.nu_t);
+    validate_sst_production_state(candidate, n);
+
+    velocity = candidate_velocity;
+    pressure = candidate_pressure;
+    state = candidate;
+    return metadata;
+}
 
 // Construct the initial production-owned SST state from explicit case data.
 // Wall distance and strain rate are required inputs from the production mesh and

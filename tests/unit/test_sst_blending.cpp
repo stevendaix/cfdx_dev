@@ -6,6 +6,7 @@
 #include <array>
 #include "common/test_harness.h"
 #include <cmath>
+#include <filesystem>
 #include <algorithm>
 #include <limits>
 #include <utility>
@@ -667,6 +668,115 @@ int main()
             mesh, setup, controls, std::vector<double>{0.01},
             std::vector<double>{std::numeric_limits<double>::quiet_NaN()}),
             std::invalid_argument);
+    });
+
+    run_case("sst_dat_restart_restores_named_scalars_and_rebuilds_derived_state", [] {
+        using cfdx::core::Field;
+        using cfdx::core::Location;
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        const auto path = std::filesystem::temp_directory_path() /
+            "cfdx_sst_restart_hydration.dat";
+        std::filesystem::remove(path);
+        std::filesystem::remove(path.string() + ".tmp");
+
+        Field<double, Location::CELL> saved_u(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> saved_p(mesh.n_cells(), "p", "Pa", 1);
+        Field<double, Location::CELL> saved_k(mesh.n_cells(), "k", "m2/s2", 1);
+        Field<double, Location::CELL> saved_omega(mesh.n_cells(), "omega", "1/s", 1);
+        saved_u.component_data(0)[0] = 0.0;
+        saved_u.component_data(1)[0] = 0.0;
+        saved_u.component_data(2)[0] = 0.0;
+        saved_p(0) = 14.0;
+        saved_k(0) = 0.42;
+        saved_omega(0) = 125.0;
+        cfdx::io::DatRestartFields write_fields{};
+        write_fields.k = &saved_k;
+        write_fields.omega = &saved_omega;
+        cfdx::io::write_dat_restart_fields(
+            path.string(), mesh, saved_u, saved_p, write_fields, 17, 2.5);
+
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        U.component_data(0)[0] = 3.0;
+        U.component_data(1)[0] = -2.0;
+        U.component_data(2)[0] = 1.0;
+        p(0) = -9.0;
+        SSTProductionState state(mesh.n_cells());
+        state.k(0) = 9.0;
+        state.omega(0) = 9.0;
+        state.nu_t(0) = 9.0;
+        state.wall_distance(0) = 0.5;
+
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.molecular_viscosity = 1.5e-5;
+        const auto metadata = restore_sst_production_state_from_dat(
+            path.string(), mesh, U, p, state, std::vector<double>{0.01}, controls);
+
+        EXPECT_TRUE(metadata.iteration == 17);
+        EXPECT_NEAR(metadata.time, 2.5, 0.0);
+        EXPECT_NEAR(U.component_data(0)[0], 0.0, 0.0);
+        EXPECT_NEAR(p(0), 14.0, 0.0);
+        EXPECT_NEAR(state.k(0), 0.42, 0.0);
+        EXPECT_NEAR(state.omega(0), 125.0, 0.0);
+        EXPECT_NEAR(state.wall_distance(0), 0.01, 0.0);
+        EXPECT_NEAR(state.strain_rate(0), 0.0, 1e-14);
+        EXPECT_TRUE(std::isfinite(state.nu_t(0)) && state.nu_t(0) >= 0.0);
+        validate_sst_production_state(state, mesh.n_cells());
+        std::filesystem::remove(path);
+    });
+
+    run_case("sst_dat_restart_missing_omega_leaves_carrier_and_state_unchanged", [] {
+        using cfdx::core::Field;
+        using cfdx::core::Location;
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        const auto path = std::filesystem::temp_directory_path() /
+            "cfdx_sst_restart_missing_omega.dat";
+        std::filesystem::remove(path);
+        std::filesystem::remove(path.string() + ".tmp");
+
+        Field<double, Location::CELL> saved_u(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> saved_p(mesh.n_cells(), "p", "Pa", 1);
+        Field<double, Location::CELL> saved_k(mesh.n_cells(), "k", "m2/s2", 1);
+        saved_u.component_data(0)[0] = 1.0;
+        saved_u.component_data(1)[0] = 2.0;
+        saved_u.component_data(2)[0] = 3.0;
+        saved_p(0) = 4.0;
+        saved_k(0) = 0.2;
+        cfdx::io::DatRestartFields write_fields{};
+        write_fields.k = &saved_k;
+        cfdx::io::write_dat_restart_fields(
+            path.string(), mesh, saved_u, saved_p, write_fields, 4, 1.0);
+
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        U.component_data(0)[0] = 8.0;
+        U.component_data(1)[0] = 7.0;
+        U.component_data(2)[0] = 6.0;
+        p(0) = 5.0;
+        SSTProductionState state(mesh.n_cells());
+        state.k(0) = 0.3;
+        state.omega(0) = 6.0;
+        state.nu_t(0) = 0.04;
+        state.wall_distance(0) = 0.01;
+        state.strain_rate(0) = 2.0;
+        const auto old_state = state;
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+
+        EXPECT_THROW(restore_sst_production_state_from_dat(
+            path.string(), mesh, U, p, state, std::vector<double>{0.01}, controls),
+            std::runtime_error);
+        EXPECT_NEAR(U.component_data(0)[0], 8.0, 0.0);
+        EXPECT_NEAR(U.component_data(1)[0], 7.0, 0.0);
+        EXPECT_NEAR(U.component_data(2)[0], 6.0, 0.0);
+        EXPECT_NEAR(p(0), 5.0, 0.0);
+        EXPECT_NEAR(state.k(0), old_state.k(0), 0.0);
+        EXPECT_NEAR(state.omega(0), old_state.omega(0), 0.0);
+        EXPECT_NEAR(state.nu_t(0), old_state.nu_t(0), 0.0);
+        EXPECT_NEAR(state.wall_distance(0), old_state.wall_distance(0), 0.0);
+        EXPECT_NEAR(state.strain_rate(0), old_state.strain_rate(0), 0.0);
+        std::filesystem::remove(path);
     });
 
     return run_all();

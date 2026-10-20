@@ -116,6 +116,17 @@ This is an enabling contract only. It does not call SST transport from the produ
 - Keep the production turbulence guard until all required coupling and qualification gates pass.
 
 
+### T1 implementation increment — validated DAT state hydration bridge
+
+- [x] Read explicit DAT `k` and `omega` into candidate fields and reject checkpoints without `omega`.
+- [x] Stage carrier `U`/`p` and SST fields on temporaries; malformed/incomplete restart must leave the caller's state unchanged.
+- [x] Recompute strain-rate magnitude from the restored velocity and recompute `nu_t` from restored `k`/`omega`, current-mesh wall distance and SST blending.
+- [ ] Integrate the bridge into the production solve lifecycle and prove continuous-vs-restarted trajectory equivalence.
+- [ ] Recompute wall distance through the production wall-distance provider on restart and validate provider/operator equivalence.
+- [ ] Keep the RANS/SST selector fail-closed until full coupled-loop and physical qualification gates pass.
+
+This helper is a restart-state bridge only; it is not yet called by the production driver and does not qualify end-to-end SST.
+
 ### T1 implementation increment — explicit SST restart scalars
 
 - [x] Extend the native DAT checkpoint format to version 4 with a stable, named `omega` scalar field alongside the existing `k` field.
