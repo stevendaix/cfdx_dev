@@ -12,24 +12,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Optional, Union
+
 
 import numpy as np
 
-from cfdx.io.interfaces import (
-    SolverAdapter,
-    ConversionResult,
-)
-from cfdx.io.schema import (
-    BCType,
-    BCValueType,
-    CaseSetup,
-    MaterialSpec,
-    BoundarySpec,
-    SourceInfo,
-)
+from cfdx.io.interfaces import ConversionResult, SolverAdapter
 from cfdx.io.mapping_rules import MappingRules
-from cfdx.io.gap_analysis import GapAnalysis
+from cfdx.io.schema import BCType, BCValueType, BoundarySpec, CaseSetup, SourceInfo
 
 
 _FIELD_DIMS = {"scalar": 1, "vector": 3, "symmTensor": 6, "tensor": 9}
@@ -96,11 +85,11 @@ class OpenFOAMAdapter(SolverAdapter):
     solver_name = "OpenFOAM"
     format_name = "openfoam"
 
-    def __init__(self, rules: Optional[MappingRules] = None) -> None:
+    def __init__(self, rules: MappingRules | None = None) -> None:
         self.rules = rules or MappingRules.load_default()
         self.setup = CaseSetup(source=SourceInfo(solver="OpenFOAM", format="openfoam"))
 
-    def convert(self, case_path: Union[str, Path], result: ConversionResult) -> bool:
+    def convert(self, case_path: str | Path, result: ConversionResult) -> bool:
         path = Path(str(case_path))
         
         if not path.is_dir():
@@ -278,7 +267,7 @@ class OpenFOAMAdapter(SolverAdapter):
             )
         return imported > 0
 
-    def _parse_mesh(self, poly_mesh: Path) -> tuple[Optional[np.ndarray], Optional[dict]]:
+    def _parse_mesh(self, poly_mesh: Path) -> tuple[np.ndarray | None, dict | None]:
         """Parse OpenFOAM polyMesh files."""
         try:
             # Parse points
@@ -307,11 +296,11 @@ class OpenFOAMAdapter(SolverAdapter):
 
             return points, cells
 
-        except Exception as e:
+        except (OSError, ValueError, TypeError, IndexError, KeyError, UnicodeError) as e:
             self._mesh_parse_error = str(e)
             return None, None
 
-    def _parse_points(self, points_file: Path) -> Optional[np.ndarray]:
+    def _parse_points(self, points_file: Path) -> np.ndarray | None:
         """Parse OpenFOAM points file, preferring foamlib for binary support."""
         try:
             parsed = _read_foam_main_list(points_file)
@@ -340,7 +329,7 @@ class OpenFOAMAdapter(SolverAdapter):
             if not points:
                 return None
             return np.array(points, dtype=np.float64)
-        except Exception:
+        except (OSError, ValueError, TypeError, IndexError, KeyError, UnicodeError):
             return None
 
             data_lines = match.group(1).strip().split('\n')
@@ -361,7 +350,7 @@ class OpenFOAMAdapter(SolverAdapter):
         except Exception:
             return None
 
-    def _parse_faces(self, faces_file: Path) -> Optional[list]:
+    def _parse_faces(self, faces_file: Path) -> list | None:
         """Parse OpenFOAM faces file.
 
         Handles both the compact ``4(0 1 2 3)`` form written by OpenFOAM and
@@ -419,7 +408,7 @@ class OpenFOAMAdapter(SolverAdapter):
             labels = []
             for line in data_lines:
                 token = line.strip().rstrip(';')
-                if not token or token.startswith("/*") or token.startswith("//"):
+                if not token or token.startswith(("/*", "//")):
                     continue
                 try:
                     labels.append(int(token))
@@ -460,8 +449,8 @@ class OpenFOAMAdapter(SolverAdapter):
                     'n_faces': n_faces,
                     'start_face': start_face
                 })
-        except Exception:
-            pass
+        except (OSError, ValueError, TypeError):
+            return []
         return patches
 
     def _build_cells_from_faces(self, faces, owner, neighbour, patches):
@@ -665,7 +654,7 @@ class OpenFOAMAdapter(SolverAdapter):
             if not values:
                 return None
             arr = np.array(values, dtype=np.float64)
-            return arr if arr.size == 1 else arr
+            return arr
 
         nonuniform = re.match(r"^nonuniform\s+(.*)$", text, re.DOTALL)
         body = nonuniform.group(1) if nonuniform else text
