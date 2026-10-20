@@ -283,9 +283,9 @@ void run_cases()
             buffer << in.rdbuf();
             contents = buffer.str();
         }
-        const auto last_newline = contents.find_last_of('\\n');
+        const auto last_newline = contents.find_last_of('\n');
         EXPECT_TRUE(last_newline != std::string::npos);
-        const auto previous_newline = contents.find_last_of('\\n', last_newline - 1);
+        const auto previous_newline = contents.find_last_of('\n', last_newline - 1);
         EXPECT_TRUE(previous_newline != std::string::npos);
         contents.erase(previous_newline + 1);
         {
