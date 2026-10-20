@@ -1,0 +1,266 @@
+name: PR 989 wall-distance fine benchmark A/B (base vs head, diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (JAMAIS merger).
+# Contexte : PR #989 (cache des offsets de faces coupees, wall-distance).
+# Les mesures existantes comparent des runs de jours et de runners
+# differents (reference du 14-10 sur la branche fix/870-planar-mms-flux-
+# closure, head 9d2e8f9 du 20-10) : elles ne peuvent pas trancher une
+# regression ou un gain de performance. Ce workflow produit la comparaison
+# DECISIVE : les deux refs épinglees construites et exécutées
+# séquentiellement sur le MÊME runner, mêmes flags de compilation que
+# cfdx-validation.yml (Release, LONG_VALIDATION, MPI, HDF5 parallele),
+# N=128, methodes hamilton_jacobi et hybrid_poisson_eikonal (les deux
+# methodes lourdes objets de la PR). Ordre des runs : base HJ, head HJ,
+# base hybride, head hybride (paires adjacentes pour limiter la derive du
+# runner). Les CSV base (46 colonnes) et head (49 colonnes, +3 cache)
+# sont parses PAR NOM de colonne. Les budgets d'iterations, gates de
+# convergence et tolerances ne sont PAS modifies : ce workflow mesure, il
+# ne qualifie pas. Un benchmark non converge (exit 4) est capture avec son
+# CSV et son rc. Verdicts fail-closed :
+#   EVIDENCE_COMPLETE        = 4 CSV parses, comparaison base/head produite
+#   INCONCLUSIVE_BUILD       = echec de build d'une ref
+#   INCONCLUSIVE_MISSING_CSV = un CSV absent/vide (pas de comparaison)
+# Le head est épingle au SHA du push ; un nouveau head de PR #989 exige de
+# mettre a jour HEAD_PIN ci-dessous et de re-pousser ce fichier.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - .github/workflows/pr989-wall-fine-ab-diag.yml
+      - diag-tools/pr989_wall_fine_ab_marker.txt
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  BASE_PIN: ede4f918a78802a68708b72fd03643e91b37b346
+  HEAD_PIN: 54fd341255ae6166114d098ef0424eec465b34cc
+  BUILD_DIR_BASE: build-pr989-base
+  BUILD_DIR_HEAD: build-pr989-head
+
+concurrency:
+  group: pr989-wall-fine-ab
+  cancel-in-progress: false
+
+jobs:
+  ab-fine-benchmark:
+    name: Fine benchmark N=128 A/B (pinned base vs pinned head, same runner)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Checkout diagnostics branch
+        uses: actions/checkout@v4
+
+      - name: Fail-closed pin verification
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin master
+          git cat-file -e "${BASE_PIN}^{commit}"
+          git merge-base --is-ancestor "${BASE_PIN}" FETCH_HEAD
+          git fetch --no-tags origin perf/wall-distance-cut-face-offset-cache
+          git cat-file -e "${HEAD_PIN}^{commit}"
+          git merge-base --is-ancestor "${HEAD_PIN}" FETCH_HEAD
+          git merge-base --is-ancestor "${BASE_PIN}" "${HEAD_PIN}"
+          echo "pins_ok base=${BASE_PIN} head=${HEAD_PIN}"
+
+      - name: Checkout pinned base (PR 989 base)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE_PIN }}
+          path: cfdx-base
+
+      - name: Checkout pinned head (PR 989)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEAD_PIN }}
+          path: cfdx-head
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ \
+            libhdf5-openmpi-dev libopenmpi-dev
+
+      - name: Record runner environment
+        run: |
+          mkdir -p diag-evidence/logs
+          {
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "base_pin=${BASE_PIN}"
+            echo "head_pin=${HEAD_PIN}"
+            echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "nproc=$(nproc)"
+            lscpu | grep -E 'Model name|MHz' || true
+          } > "diag-evidence/logs/pr989wdfine_meta_run${GITHUB_RUN_ID}.txt"
+          cat "diag-evidence/logs/pr989wdfine_meta_run${GITHUB_RUN_ID}.txt"
+
+      - name: Configure and build base benchmark
+        id: build_base
+        run: |
+          set -euo pipefail
+          cmake -S cfdx-base -B "${BUILD_DIR_BASE}" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
+          cmake --build "${BUILD_DIR_BASE}" \
+            --target cfdx_wall_distance_controlled_benchmark --parallel 3
+
+      - name: Configure and build head benchmark
+        id: build_head
+        run: |
+          set -euo pipefail
+          cmake -S cfdx-head -B "${BUILD_DIR_HEAD}" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON
+          cmake --build "${BUILD_DIR_HEAD}" \
+            --target cfdx_wall_distance_controlled_benchmark --parallel 3
+
+      - name: Record build failure status
+        if: always() && (steps.build_base.outcome != 'success' || steps.build_head.outcome != 'success')
+        run: |
+          RUN_ID="${GITHUB_RUN_ID}"
+          {
+            echo "VERDICT: INCONCLUSIVE_BUILD"
+            echo "build_base=${{ steps.build_base.outcome }}"
+            echo "build_head=${{ steps.build_head.outcome }}"
+          } > "diag-evidence/logs/pr989wdfine_verdict_run${RUN_ID}.txt"
+
+      - name: Run A/B fine benchmarks (interleaved pairs)
+        id: run_ab
+        if: always() && steps.build_base.outcome == 'success' && steps.build_head.outcome == 'success'
+        run: |
+          set -uo pipefail
+          RUN_ID="${GITHUB_RUN_ID}"
+          E="diag-evidence/logs"
+          run_bench() {
+            local ref="$1" method="$2"
+            local exe="./build-${ref}/cfdx_wall_distance_controlled_benchmark"
+            local tag="${ref}_${method}"
+            local rc=0 t0 t1
+            t0=$(date +%s.%N)
+            "${exe}" "${E}/pr989wdfine_${tag}_run${RUN_ID}.csv" 128 "--method=${method}" \
+              > "${E}/pr989wdfine_${tag}_run${RUN_ID}.log" 2>&1 || rc=$?
+            t1=$(date +%s.%N)
+            echo "${tag} rc=${rc} wall_s=$(awk -v a="${t0}" -v b="${t1}" 'BEGIN{printf "%.2f", b-a}')" \
+              >> "${E}/pr989wdfine_status_run${RUN_ID}.txt"
+          }
+          run_bench base hamilton_jacobi
+          run_bench head hamilton_jacobi
+          run_bench base hybrid_poisson_eikonal
+          run_bench head hybrid_poisson_eikonal
+          cat "${E}/pr989wdfine_status_run${RUN_ID}.txt"
+
+      - name: Analyze A/B results
+        if: always() && steps.run_ab.outcome == 'success'
+        run: |
+          set -u
+          RUN_ID="${GITHUB_RUN_ID}"
+          E="diag-evidence/logs"
+          python3 - "${RUN_ID}" "${E}" <<'PY'
+          import csv, os, sys
+          run_id, E = sys.argv[1], sys.argv[2]
+          methods = ["hamilton_jacobi", "hybrid_poisson_eikonal"]
+          refs = ["base", "head"]
+          def load(ref, method):
+              path = os.path.join(E, "pr989wdfine_%s_%s_run%s.csv" % (ref, method, run_id))
+              if not os.path.exists(path) or os.path.getsize(path) == 0:
+                  return None
+              with open(path, newline="") as fh:
+                  for row in csv.DictReader(fh):
+                      if row.get("N") == "128":
+                          return row
+              return None
+          data = {}
+          missing = []
+          for m in methods:
+              for r in refs:
+                  row = load(r, m)
+                  if not row or not row.get("time_ms") or not row.get("iterations"):
+                      missing.append("%s/%s" % (r, m))
+                  else:
+                      data[(m, r)] = row
+          lines = []
+          verdict = "EVIDENCE_COMPLETE" if not missing else "INCONCLUSIVE_MISSING_CSV"
+          lines.append("VERDICT: %s" % verdict)
+          lines.append("missing=%s" % (",".join(missing) if missing else "none"))
+          for m in methods:
+              b = data.get((m, "base"))
+              h = data.get((m, "head"))
+              if not b or not h:
+                  lines.append("%s: SKIPPED (missing csv)" % m)
+                  continue
+              bt = float(b["time_ms"])
+              ht = float(h["time_ms"])
+              bi = int(float(b["iterations"]))
+              hi = int(float(h["iterations"]))
+              speedup = bt / ht if ht > 0 else float("inf")
+              cls = "HEAD_FASTER" if speedup > 1.05 else ("HEAD_SLOWER" if speedup < 0.952 else "NEGLIGIBLE")
+              lines.append("%s: base_ms=%.1f head_ms=%.1f speedup_base_over_head=%.3f class=%s"
+                           % (m, bt, ht, speedup, cls))
+              lines.append("%s: per_iter_ms base=%.3f head=%.3f iterations base=%d head=%d match=%s"
+                           % (m, bt / max(bi, 1), ht / max(hi, 1), bi, hi,
+                              "yes" if bi == hi else "NO"))
+              lines.append("%s: converged base=%s head=%s stopping base=%s head=%s residual_inf base=%s head=%s l2_relative base=%s head=%s"
+                           % (m, b.get("converged"), h.get("converged"),
+                              b.get("stopping_reason"), h.get("stopping_reason"),
+                              b.get("residual_inf"), h.get("residual_inf"),
+                              b.get("l2_relative"), h.get("l2_relative")))
+              if b.get("converged") != h.get("converged"):
+                  lines.append("%s: CONVERGENCE_MISMATCH" % m)
+              if h.get("cut_offset_cache_nodes"):
+                  lines.append("%s: head cache nodes=%s bytes=%s build_ms=%s"
+                               % (m, h.get("cut_offset_cache_nodes"),
+                                  h.get("cut_offset_cache_bytes"),
+                                  h.get("cut_offset_cache_build_ms")))
+          out = os.path.join(E, "pr989wdfine_verdict_run%s.txt" % run_id)
+          with open(out, "w") as fh:
+              fh.write("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          PY
+
+      - name: Commit evidence (bot, ci-skip)
+        if: always()
+        run: |
+          set -euo pipefail
+          ls diag-evidence/logs/pr989wdfine_*_run"${GITHUB_RUN_ID}"* >/dev/null 2>&1 || { echo "no evidence files"; exit 0; }
+          git config user.name "cfdx-diag-bot"
+          git config user.email "actions@github.com"
+          git add diag-evidence/logs/pr989wdfine_*_run"${GITHUB_RUN_ID}"*
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "diag: PR 989 wall fine A/B run ${GITHUB_RUN_ID} (base ${BASE_PIN} vs head ${HEAD_PIN}) [ci skip]"
+            for attempt in 1 2 3; do
+              if git pull --rebase origin ci/long-campaign-diagnostics && git push; then
+                break
+              fi
+              echo "push retry ${attempt}"
+              sleep 5
+            done
+          fi
+
+      - name: Final verdict (green only for EVIDENCE_COMPLETE)
+        if: always()
+        run: |
+          V="diag-evidence/logs/pr989wdfine_verdict_run${GITHUB_RUN_ID}.txt"
+          if [ ! -s "$V" ]; then
+            echo "::error::verdict=INCONCLUSIVE_NO_VERDICT_FILE"
+            exit 1
+          fi
+          head -5 "$V"
+          grep -q "^VERDICT: EVIDENCE_COMPLETE" "$V" || {
+            v=$(sed -n 's/^VERDICT: //p' "$V" | head -1)
+            echo "::error::verdict=${v}"
+            exit 1
+          }
