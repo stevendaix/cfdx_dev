@@ -539,7 +539,11 @@ class OpenFOAMAdapter(SolverAdapter):
                     f"startFace={first}, nFaces={count}"
                 )
             patch_assignment.append(
-                {"name": patch["name"], "face_ids": list(range(first, stop))}
+                {
+                    "name": patch["name"],
+                    "type": patch["type"],
+                    "face_ids": list(range(first, stop)),
+                }
             )
 
         cfdx_csr = {
