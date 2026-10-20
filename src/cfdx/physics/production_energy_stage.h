@@ -29,8 +29,9 @@
 //   * Temperature boundary conditions from the case: WALL_THERMAL with a
 //     non-zero wall_temperature -> Dirichlet; INLET or FIXED with a non-zero
 //     temperature -> Dirichlet; otherwise raw_params["heat_flux"]
-//     (W/m^2, positive into the domain) on a WALL patch -> fixed gradient
-//     q''/k; otherwise adiabatic. heat_flux is rejected on non-WALL
+//     (W/m^2, positive into the domain) plus the optional
+//     radiative_heat_flux_into_domain patch map -> fixed gradient q''/k;
+//     otherwise adiabatic. Both flux inputs are rejected on non-WALL
 //     patches, and a patch declaring both a retained Dirichlet temperature
 //     and heat_flux is rejected as contradictory: exactly one thermal
 //     boundary condition per patch. Zero means "not declared" (stage-1 /
