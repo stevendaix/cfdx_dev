@@ -705,13 +705,13 @@ int main()
         state.k(0) = 9.0;
         state.omega(0) = 9.0;
         state.nu_t(0) = 9.0;
-        state.wall_distance(0) = 0.01;
+        state.wall_distance(0) = 0.5;
 
         TurbulenceTransportControls controls;
         controls.model = TurbulenceModel::SST;
         controls.molecular_viscosity = 1.5e-5;
         const auto metadata = restore_sst_production_state_from_dat(
-            path.string(), mesh, U, p, state, controls);
+            path.string(), mesh, U, p, state, std::vector<double>{0.01}, controls);
 
         EXPECT_TRUE(metadata.iteration == 17);
         EXPECT_NEAR(metadata.time, 2.5, 0.0);
@@ -719,6 +719,7 @@ int main()
         EXPECT_NEAR(p(0), 14.0, 0.0);
         EXPECT_NEAR(state.k(0), 0.42, 0.0);
         EXPECT_NEAR(state.omega(0), 125.0, 0.0);
+        EXPECT_NEAR(state.wall_distance(0), 0.01, 0.0);
         EXPECT_NEAR(state.strain_rate(0), 0.0, 1e-14);
         EXPECT_TRUE(std::isfinite(state.nu_t(0)) && state.nu_t(0) >= 0.0);
         validate_sst_production_state(state, mesh.n_cells());
@@ -764,7 +765,8 @@ int main()
         controls.model = TurbulenceModel::SST;
 
         EXPECT_THROW(restore_sst_production_state_from_dat(
-            path.string(), mesh, U, p, state, controls), std::runtime_error);
+            path.string(), mesh, U, p, state, std::vector<double>{0.01}, controls),
+            std::runtime_error);
         EXPECT_NEAR(U.component_data(0)[0], 8.0, 0.0);
         EXPECT_NEAR(U.component_data(1)[0], 7.0, 0.0);
         EXPECT_NEAR(U.component_data(2)[0], 6.0, 0.0);
