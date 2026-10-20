@@ -147,7 +147,7 @@ def read_openfoam_field(
 
     FoamCase = _foamlib()
     case = FoamCase(path)
-    time_directory = case[str(time)]
+    time_directory = case[time]
     field = time_directory[field_name]
 
     try:
