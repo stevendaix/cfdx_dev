@@ -105,7 +105,7 @@ def create_adapter(solver_name: str):
 
 def convert(
     case_path: str | Path,
-    output_path: Optional[str | Path] = None,
+    output_path: str | Path | None = None,
     solver: str | None = None,
     write_reports: bool = True,
     include_results: bool = False,
