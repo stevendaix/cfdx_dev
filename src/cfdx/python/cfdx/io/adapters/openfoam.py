@@ -427,30 +427,33 @@ class OpenFOAMAdapter(SolverAdapter):
             return None
 
     def _parse_boundary_file(self, boundary_file: Path) -> list:
-        """Parse OpenFOAM boundary file to get patch info."""
-        patches = []
+        """Parse named OpenFOAM boundary patches and their face ranges."""
         try:
-            with open(boundary_file, 'r') as f:
-                content = f.read()
-
-            # Parse each patch block
-            patch_pattern = re.compile(
-                r'(\w+)\s*\{[^}]*type\s+(\w+)[^}]*nFaces\s+(\d+)[^}]*startFace\s+(\d+)',
-                re.DOTALL
-            )
-            for match in patch_pattern.finditer(content):
-                name = match.group(1)
-                patch_type = match.group(2)
-                n_faces = int(match.group(3))
-                start_face = int(match.group(4))
-                patches.append({
-                    'name': name,
-                    'type': patch_type,
-                    'n_faces': n_faces,
-                    'start_face': start_face
-                })
-        except (OSError, ValueError, TypeError):
+            content = boundary_file.read_text()
+        except OSError:
             return []
+
+        content = re.sub(r"/\\*.*?\\*/", " ", content, flags=re.DOTALL)
+        content = re.sub(r"//[^\\n]*", " ", content)
+        patch_pattern = re.compile(
+            r"([A-Za-z_][A-Za-z0-9_.-]*)\\s*\\{([^}]*)\\}", re.DOTALL
+        )
+        patches = []
+        for match in patch_pattern.finditer(content):
+            name, body = match.groups()
+            type_match = re.search(r"\\btype\\s+([^;]+);", body)
+            faces_match = re.search(r"\\bnFaces\\s+(\\d+)\\s*;", body)
+            start_match = re.search(r"\\bstartFace\\s+(\\d+)\\s*;", body)
+            if type_match is None or faces_match is None or start_match is None:
+                continue
+            patches.append(
+                {
+                    "name": name,
+                    "type": type_match.group(1).strip(),
+                    "n_faces": int(faces_match.group(1)),
+                    "start_face": int(start_match.group(1)),
+                }
+            )
         return patches
 
     def _build_cells_from_faces(self, faces, owner, neighbour, patches):
