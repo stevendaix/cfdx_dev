@@ -249,11 +249,13 @@ void write_ray_benchmark_csv(const std::string& path, const RayBenchmarkResult& 
 }
 
 int main(int argc,char** argv) {
-    std::string output = argc>1 ? argv[1] : "wall_distance_complex_benchmark.csv";
+    const bool ray_only = argc > 1 && std::string(argv[1]) == "--ray-only";
+    const std::string output = ray_only
+        ? (argc > 2 ? argv[2] : "wall_distance_complex_benchmark.csv")
+        : (argc > 1 ? argv[1] : "wall_distance_complex_benchmark.csv");
     const WallSurface surface=make_complex_wing_body_tail();
     const WallDistanceGrid grid=make_wall_distance_grid(
         40,30,22,{-1.5,-5.0,-2.2},{0.30,0.34,0.21},inside_complex);
-    const auto reference=exact_reference(surface,grid);
     const double h=std::min({grid.spacing.x,grid.spacing.y,grid.spacing.z});
     const WallDistanceBvh poisson_bvh(surface);
     const auto ray_benchmark = benchmark_ray_queries(surface, grid, poisson_bvh);
@@ -267,8 +269,11 @@ int main(int argc,char** argv) {
               << ",bvh_ms=" << ray_benchmark.bvh_ms
               << ",speedup=" << (ray_benchmark.bvh_ms > 0.0
                                       ? ray_benchmark.brute_force_ms / ray_benchmark.bvh_ms : 0.0)
-              << "\\n";
-    if (argc > 2) write_ray_benchmark_csv(argv[2], ray_benchmark, surface.triangles.size());
+              << "\n";
+    const std::string ray_csv = argc > 2 ? argv[2] : "wall_distance_ray_benchmark.csv";
+    write_ray_benchmark_csv(ray_csv, ray_benchmark, surface.triangles.size());
+    if (ray_only) return 0;
+    const auto reference=exact_reference(surface,grid);
     const auto poisson_operator_audit=audit_poisson_operator(poisson_bvh,grid);
     const auto poisson_offset_audit=audit_poisson_wall_offsets(poisson_bvh,grid);
     const std::size_t max_id=poisson_offset_audit.max_wall_coefficient_cell;
