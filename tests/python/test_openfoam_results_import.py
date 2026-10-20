@@ -69,3 +69,47 @@ def test_openfoam_adapter_reports_missing_case_for_results(tmp_path):
 
     assert not adapter.import_results(str(tmp_path / "missing"), result)
     assert result.gap_report.has_blocking()
+
+
+
+def test_openfoam_polyhedral_mesh_builds_native_face_cell_csr():
+    adapter = OpenFOAMAdapter()
+    adapter._mesh_points = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    faces = [
+        [0, 1, 2],  # shared internal face
+        [0, 3, 1],
+        [1, 3, 2],
+        [2, 3, 0],
+        [0, 2, 4],
+        [2, 1, 4],
+        [1, 0, 4],
+    ]
+    owner = [0, 0, 0, 0, 1, 1, 1]
+    neighbour = [1]
+    patches = [{"name": "walls", "type": "wall", "n_faces": 6, "start_face": 1}]
+
+    mesh = adapter._build_cells_from_faces(faces, owner, neighbour, patches)
+    csr = mesh["cfdx_csr"]
+
+    assert csr["n_points"] == 5
+    assert csr["n_faces"] == 7
+    assert csr["n_cells"] == 2
+    np.testing.assert_array_equal(csr["owner"], owner)
+    np.testing.assert_array_equal(csr["neighbour"], [1, -1, -1, -1, -1, -1, -1])
+    np.testing.assert_array_equal(csr["cell_offsets"], [0, 4, 8])
+    assert len(csr["cell_faces"]) == 8
+    assert csr["boundary_patch_assignment"] == [
+        {"name": "walls", "face_ids": [1, 2, 3, 4, 5, 6]}
+    ]
+    # The surface triangles are for visualization only; solver topology is
+    # represented by the native polyhedral CSR, not by these triangles.
+    assert mesh["cells"]["triangle"].shape == (7, 3)
