@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from cfdx.dat_io import (
     DatField,
     DatRestart,
