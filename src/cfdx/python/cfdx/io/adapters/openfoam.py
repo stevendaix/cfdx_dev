@@ -111,7 +111,7 @@ class OpenFOAMAdapter(SolverAdapter):
             )
             return False
 
-        result.mesh = {"points": points, "cells": cells}
+        result.mesh = {"points": points, **cells}
         result.gap_report.supported("mesh", "polyMesh topology")
 
         # Parse boundary conditions
@@ -406,35 +406,108 @@ class OpenFOAMAdapter(SolverAdapter):
         return patches
 
     def _build_cells_from_faces(self, faces, owner, neighbour, patches):
-        """Build cell connectivity from face data."""
-        # This is a simplified version - in reality we'd need to reconstruct
-        # the full cell topology. For now, return a minimal structure.
+        """Build native CFDX face/cell CSR topology from OpenFOAM polyMesh.
+
+        OpenFOAM already stores the exact polyhedral topology as faces, owner,
+        neighbour, and boundary patch ranges. Preserve that topology directly;
+        do not pretend boundary surface triangles are volume cells.
+        """
+        if len(owner) != len(faces):
+            raise ValueError(
+                f"owner has {len(owner)} entries but faces has {len(faces)}"
+            )
+        if neighbour is None:
+            raise ValueError("Cannot parse OpenFOAM neighbour list")
+        if len(neighbour) > len(faces):
+            raise ValueError(
+                f"neighbour has {len(neighbour)} entries but faces has {len(faces)}"
+            )
+
         n_faces = len(faces)
-        n_cells = max(owner) + 1 if owner else 0
-        
-        # Create a simple cell->faces mapping (each cell gets its owned faces)
-        cell_faces = {i: [] for i in range(n_cells)}
-        for face_idx, cell_idx in enumerate(owner):
-            if cell_idx < n_cells:
-                cell_faces[cell_idx].append(face_idx)
+        neighbour_full = np.full(n_faces, -1, dtype=np.int64)
+        if neighbour:
+            neighbour_full[: len(neighbour)] = np.asarray(neighbour, dtype=np.int64)
 
-        # For meshio, we'll use a simpler representation - just return the faces
-        # and let meshio handle the cell reconstruction
-        # Return a simple triangle representation of faces for now
-        cells = {}
-        tri_cells = []
+        max_cell = max(
+            max(owner, default=-1),
+            int(np.max(neighbour_full)) if np.any(neighbour_full >= 0) else -1,
+        )
+        n_cells = max_cell + 1
+        if n_cells <= 0:
+            raise ValueError("OpenFOAM mesh contains no cells")
+
+        cell_faces: list[list[int]] = [[] for _ in range(n_cells)]
+        for face_id, owner_cell in enumerate(owner):
+            if owner_cell < 0 or owner_cell >= n_cells:
+                raise ValueError(f"Invalid owner cell {owner_cell} for face {face_id}")
+            cell_faces[owner_cell].append(face_id)
+            neighbour_cell = int(neighbour_full[face_id])
+            if neighbour_cell >= 0:
+                if neighbour_cell >= n_cells:
+                    raise ValueError(
+                        f"Invalid neighbour cell {neighbour_cell} for face {face_id}"
+                    )
+                cell_faces[neighbour_cell].append(face_id)
+
+        face_offsets = np.zeros(n_faces + 1, dtype=np.uint64)
+        face_vertex_ids: list[int] = []
+        for face_id, face in enumerate(faces):
+            if len(face) < 3:
+                raise ValueError(
+                    f"OpenFOAM face {face_id} has fewer than three vertices"
+                )
+            if any(vertex < 0 or vertex >= len(self._mesh_points) for vertex in face):
+                raise ValueError(f"Invalid vertex index in OpenFOAM face {face_id}")
+            face_vertex_ids.extend(int(vertex) for vertex in face)
+            face_offsets[face_id + 1] = len(face_vertex_ids)
+
+        cell_offsets = np.zeros(n_cells + 1, dtype=np.uint64)
+        cell_face_ids: list[int] = []
+        for cell_id, cell_face_list in enumerate(cell_faces):
+            if not cell_face_list:
+                raise ValueError(f"OpenFOAM cell {cell_id} has no faces")
+            cell_face_ids.extend(cell_face_list)
+            cell_offsets[cell_id + 1] = len(cell_face_ids)
+
+        patch_assignment = []
+        for patch in patches:
+            first = int(patch["start_face"])
+            count = int(patch["n_faces"])
+            stop = first + count
+            if first < len(neighbour) or first < 0 or stop > n_faces:
+                raise ValueError(
+                    f"Invalid boundary range for patch {patch['name']!r}: "
+                    f"startFace={first}, nFaces={count}"
+                )
+            patch_assignment.append(
+                {"name": patch["name"], "face_ids": list(range(first, stop))}
+            )
+
+        cfdx_csr = {
+            "points": np.asarray(self._mesh_points, dtype=np.float64),
+            "face_vertices": np.asarray(face_vertex_ids, dtype=np.uint64),
+            "face_offsets": face_offsets,
+            "owner": np.asarray(owner, dtype=np.uint64),
+            "neighbour": neighbour_full,
+            "cell_faces": np.asarray(cell_face_ids, dtype=np.uint64),
+            "cell_offsets": cell_offsets,
+            "n_points": len(self._mesh_points),
+            "n_faces": n_faces,
+            "n_cells": n_cells,
+            "boundary_patch_assignment": patch_assignment,
+        }
+
+        # Keep a surface-only representation for lightweight VTK export. The
+        # HDF5 writer must use cfdx_csr above for actual solver topology.
+        triangles = []
         for face in faces:
-            if len(face) == 3:
-                tri_cells.append(np.array(face, dtype=np.int64))
-            elif len(face) == 4:
-                # Split quad into two triangles
-                tri_cells.append(np.array([face[0], face[1], face[2]], dtype=np.int64))
-                tri_cells.append(np.array([face[0], face[2], face[3]], dtype=np.int64))
+            for index in range(1, len(face) - 1):
+                triangles.append([face[0], face[index], face[index + 1]])
+        surface_cells = {
+            "triangle": np.asarray(triangles, dtype=np.int64)
+        } if triangles else {}
 
-        if tri_cells:
-            cells["triangle"] = np.array(tri_cells, dtype=np.int64)
-
-        return cells
+        return {"cells": surface_cells, "cfdx_csr": cfdx_csr}
 
     def _parse_boundary(self, poly_mesh: Path, result: ConversionResult):
         """Parse boundary patches and add to setup."""
