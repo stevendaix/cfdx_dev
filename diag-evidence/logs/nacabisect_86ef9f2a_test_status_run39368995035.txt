@@ -1,0 +1,7 @@
+pin=86ef9f2a88c50d2abde1d1d9f2ef34165b366d73
+subject=fix(axisym): Rhie-Chow pressure-velocity coupling in VMFL036 face fluxes (#895)
+commit_date=2026-10-16 06:24:11 +0200
+outcome=FAIL_DIVERGED
+test_rc=134
+test_duration_s=296
+run_id=39368995035
