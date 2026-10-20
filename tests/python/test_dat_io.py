@@ -96,6 +96,36 @@ def test_read_dat_accepts_native_v3_checkpoint_with_identity(tmp_path: Path) -> 
     assert restart.fields["T"].values == [350.0]
 
 
+def test_read_dat_accepts_native_v4_sst_checkpoint_with_explicit_omega(tmp_path: Path) -> None:
+    path = tmp_path / "sst-v4.dat"
+    path.write_text(
+        "CFDX-DAT 4\\n"
+        "cells 2\\n"
+        "iteration 23\\n"
+        "time 4.5\\n"
+        "identity 8 6 2 12345678901234567890\\n"
+        "field U 3\\n"
+        "0.25 -0.15 0.05 0.5 -0.3 0.1\\n"
+        "field p 1\\n"
+        "37.5 38.5\\n"
+        "optional_fields\\n"
+        "field k 1\\n"
+        "0.42 0.43\\n"
+        "field omega 1\\n"
+        "125.0 126.0\\n",
+        encoding="utf-8",
+    )
+
+    restart = read_dat_restart(path)
+
+    assert restart.version == 4
+    assert restart.iteration == 23
+    assert restart.time == pytest.approx(4.5)
+    assert restart.mesh_identity == (8, 6, 2, 12345678901234567890)
+    assert restart.fields["k"].values == [0.42, 0.43]
+    assert restart.fields["omega"].values == [125.0, 126.0]
+
+
 def test_read_dat_accepts_v3_checkpoint_without_optional_fields(tmp_path: Path) -> None:
     path = tmp_path / "state.dat"
     path.write_text(
