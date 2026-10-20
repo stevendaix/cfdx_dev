@@ -32,7 +32,8 @@ struct SSTProductionState {
 };
 
 // Validate the production-owned fields before a state is used by transport or
-// momentum assembly. No flooring or automatic initialization is performed.
+// momentum assembly. Model conventions are governed by docs/audits/09-turbulence-rans.md.
+// No flooring or automatic initialization is performed.
 inline void validate_sst_production_state(const SSTProductionState& state,
                                           std::size_t expected_cells)
 {
