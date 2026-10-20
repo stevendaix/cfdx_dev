@@ -1054,7 +1054,16 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
     std::vector<unsigned char> fixed(g.points.size(),0);
     std::vector<double> d=eikonal_fast_sweep(bvh,g,std::max<std::size_t>(8,max_iter));
     for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
+    // Preserve the original ascending in-place update order, but avoid scanning
+    // solid, fixed-seed and unreachable nodes on every pseudo-time iteration.
+    std::vector<std::size_t> active_ids;
+    active_ids.reserve(d.size());
+    for(std::size_t id=0;id<d.size();++id)
+        if(!g.solid[id] && !fixed[id] && std::isfinite(d[id])) active_ids.push_back(id);
 
+    const double inverse_spacing_sum=1.0/g.spacing.x+1.0/g.spacing.y+1.0/g.spacing.z;
+    const double dt_adv_constant=0.9/inverse_spacing_sum;
+    const double relaxation_factor=std::clamp(relaxation,0.1,1.0);
     const std::size_t steps=std::max<std::size_t>(20,max_iter);
     std::size_t used=steps;
     std::size_t clamps=0;
@@ -1064,8 +1073,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
                       +1.0/(g.spacing.z*g.spacing.z);
     for(std::size_t it=0;it<steps;++it) {
         double max_change=0.0;
-        for(std::size_t id=0;id<d.size();++id) {
-            if(g.solid[id] || fixed[id] || !std::isfinite(d[id])) continue;
+        for(const std::size_t id:active_ids) {
             const double grad=godunov_gradient_at(bvh,d,g,id,&offsets);
             const double gamma=epsilon*std::max(d[id],0.0);
             const double lap=laplacian_at(bvh,d,g,id,offsets);
@@ -1077,10 +1085,9 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
             // upwind directions.  0.9*h is only a 1-D bound and can violate
             // the monotone explicit stability limit when several components
             // of the Godunov gradient are active.
-            const double dt_adv=0.9/(1.0/g.spacing.x+1.0/g.spacing.y+1.0/g.spacing.z);
             const double dt_diff=gamma>0.0 ? 0.9/(2.0*gamma*inv_h2)
                                            : std::numeric_limits<double>::infinity();
-            const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
+            const double dt=relaxation_factor*std::min(dt_adv_constant,dt_diff);
             const double candidate=d[id]-dt*residual;
             if(candidate<0.0) ++clamps;  // F-W2: observable positivity clamp
             const double nd=std::max(0.0,candidate);
@@ -1090,8 +1097,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
         // Pure Poisson mode deliberately does not overwrite the PDE solution with BVH seeds.
         if((it&3u)==3u || max_change<1e-10*h) {
             final_residual=0.0;
-            for(std::size_t id=0;id<d.size();++id) {
-                if(g.solid[id] || fixed[id] || !std::isfinite(d[id])) continue;
+            for(const std::size_t id:active_ids) {
                 final_residual=std::max(final_residual,std::abs(
                     godunov_gradient_at(bvh,d,g,id,&offsets)-1.0-
                     epsilon*std::max(d[id],0.0)*laplacian_at(bvh,d,g,id,offsets)));
@@ -1902,7 +1908,17 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
         d[id]=gn>1e-14 ? std::max(0.0,std::sqrt(std::max(0.0,gn*gn+2*phi[id]))-gn) : 0.0;
     }
     for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
+    // The fixed set and finite-distance mask are invariant during transport.
+    // Cache active IDs in ascending order to preserve the in-place Gauss-Seidel sweep.
+    std::vector<std::size_t> active_ids;
+    active_ids.reserve(d.size());
+    for(std::size_t id=0;id<d.size();++id)
+        if(!g.solid[id] && !fixed[id] && std::isfinite(d[id])) active_ids.push_back(id);
 
+    const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
+                       +1.0/(g.spacing.y*g.spacing.y)
+                       +1.0/(g.spacing.z*g.spacing.z);
+    const double relaxation_factor=std::clamp(relaxation,0.1,1.0);
     const double alpha=std::clamp(poisson_weight,0.0,1.0);
     const std::size_t steps=std::max<std::size_t>(20,max_iter);
     std::size_t used=steps; double final_residual=std::numeric_limits<double>::infinity();
@@ -1925,8 +1941,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
 
     for(std::size_t it=0;it<steps;++it) {
         double max_change=0.0;
-        for(std::size_t id=0;id<d.size();++id) {
-            if(g.solid[id]||fixed[id]||!std::isfinite(d[id])) continue;
+        for(const std::size_t id:active_ids) {
             const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
             double ux,uy,uz; velocity(id,ux,uy,uz);
             const auto up=[&](double u,int a)->double {
@@ -1971,7 +1986,6 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
             const double adv=up(ux,0)+up(uy,1)+up(uz,2);
             const double gamma=epsilon*std::max(d[id],0.0);
             const double residual=adv-1.0-gamma*laplacian_at(bvh,d,g,id,offsets);
-            const double inv_h2=1.0/(g.spacing.x*g.spacing.x)+1.0/(g.spacing.y*g.spacing.y)+1.0/(g.spacing.z*g.spacing.z);
             // The hybrid transport step is also a 3-D explicit upwind
             // update. Use its actual velocity components for the CFL bound.
             const double cfl_rate=std::abs(ux)/g.spacing.x+
@@ -1980,7 +1994,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
             const double dt_adv=cfl_rate>1e-14 ? 0.9/cfl_rate :
                                                 std::numeric_limits<double>::infinity();
             const double dt_diff=gamma>0.0?0.9/(2*gamma*inv_h2):std::numeric_limits<double>::infinity();
-            const double dt=std::clamp(relaxation,0.1,1.0)*std::min(dt_adv,dt_diff);
+            const double dt=relaxation_factor*std::min(dt_adv,dt_diff);
             const double candidate=d[id]-dt*residual;
             if(candidate<0.0) ++clamps;  // F-W2: observable positivity clamp
             const double nd=std::max(0.0,candidate);
@@ -1993,7 +2007,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
             // gradient here, so the reported residual could disagree with
             // the nonlinear operator actually being iterated.
             final_residual=0.0;
-            for(std::size_t id=0;id<d.size();++id) if(!g.solid[id]&&!fixed[id]&&std::isfinite(d[id])) {
+            for(const std::size_t id:active_ids) {
                 double ux,uy,uz; velocity(id,ux,uy,uz);
                 const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
                 auto upwind=[&](double u,int axis)->double {
