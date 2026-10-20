@@ -62,6 +62,15 @@ int main()
         const double expected = 0.5 * open.radiosity[1] + 0.5 * ambient;
         EXPECT_NEAR(open.irradiation[0], expected,
                     1e-12 * std::max(1.0, expected));
+
+        // An explicit per-surface external irradiation vector keeps the
+        // established API semantics: it replaces ambient irradiation.
+        const std::vector<double> explicit_external{1000.0, 1000.0};
+        const auto explicit_result = solve_s2s_radiosity(
+            areas, eps, temperatures, closed_F, controls, explicit_external);
+        EXPECT_NEAR(explicit_result.irradiation[0],
+                    explicit_result.radiosity[1] + explicit_external[0],
+                    1e-12 * std::max(1.0, explicit_result.irradiation[0]));
     });
 
     run_case("s2s_view_factor_validation", [] {
