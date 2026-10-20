@@ -7,9 +7,9 @@ checkpoint model while allowing large field arrays to be loaded efficiently.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
-import math
 
 import h5py
 import numpy as np
@@ -150,7 +150,9 @@ def _read_text(path: Path) -> DatRestart:
             except ValueError as exc:
                 raise ValueError("malformed DAT mesh identity") from exc
         if components[2] != cells:
-            raise ValueError("DAT checkpoint mesh identity cell count differs from cells")
+            raise ValueError(
+                "DAT checkpoint mesh identity cell count differs from cells"
+            )
         mesh_identity = (components[0], components[1], components[2], components[3])
 
     fields: dict[str, DatField] = {}
