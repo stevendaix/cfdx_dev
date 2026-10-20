@@ -553,7 +553,13 @@ int main()
         EXPECT_TRUE(runtime.k.at("outlet").type == ScalarBoundaryType::ZERO_GRADIENT);
         EXPECT_TRUE(runtime.omega.at("outlet").type == ScalarBoundaryType::ZERO_GRADIENT);
         EXPECT_TRUE(runtime.wall_omega_sst_patches.empty());
-        EXPECT_NO_THROW(require_supported_sst_runtime_boundaries(runtime));
+        bool supported = true;
+        try {
+            require_supported_sst_runtime_boundaries(runtime);
+        } catch (...) {
+            supported = false;
+        }
+        EXPECT_TRUE(supported);
     });
 
     return run_all();
