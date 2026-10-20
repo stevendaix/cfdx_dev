@@ -115,7 +115,8 @@ class OpenFOAMAdapter(SolverAdapter):
         if points is None or cells is None:
             result.gap_report.unsupported_blocking(
                 "mesh", "openfoam_polymesh_parse",
-                f"Failed to parse OpenFOAM mesh: {getattr(self, '_mesh_parse_error', 'unknown parser error')}"
+                "Failed to parse OpenFOAM mesh: "
+                f"{getattr(self, '_mesh_parse_error', 'unknown parser error')}"
             )
             return False
 
@@ -193,7 +194,12 @@ class OpenFOAMAdapter(SolverAdapter):
             owner = self._parse_label_list(path / "constant" / "polyMesh" / "owner")
             cell_count = max(owner) + 1 if owner else None
             fields = read_openfoam_time_fields(path, "latest", cell_count=cell_count)
-        except (OpenFOAMDependencyError, FileNotFoundError, NotADirectoryError, ValueError) as exc:
+        except (
+            OpenFOAMDependencyError,
+            FileNotFoundError,
+            NotADirectoryError,
+            ValueError,
+        ) as exc:
             result.gap_report.unsupported_blocking(
                 "results", "openfoam_results_read", str(exc),
             )
