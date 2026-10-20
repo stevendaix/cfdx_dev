@@ -290,6 +290,7 @@ inline cfdx::io::DatRestartState restore_sst_production_state_from_dat(
     cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure,
     SSTProductionState& state,
+    const std::vector<double>& current_wall_distance,
     const TurbulenceTransportControls& controls)
 {
     using cfdx::core::Field;
@@ -304,8 +305,9 @@ inline cfdx::io::DatRestartState restore_sst_production_state_from_dat(
         state.omega.size() != n || state.omega.dimension() != 1 ||
         state.nu_t.size() != n || state.nu_t.dimension() != 1 ||
         state.wall_distance.size() != n || state.wall_distance.dimension() != 1 ||
-        state.strain_rate.size() != n || state.strain_rate.dimension() != 1)
-        throw std::invalid_argument("SST restart state has incompatible field shapes");
+        state.strain_rate.size() != n || state.strain_rate.dimension() != 1 ||
+        current_wall_distance.size() != n)
+        throw std::invalid_argument("SST restart state or current wall-distance shape mismatch");
 
     Field<double, Location::CELL> candidate_velocity = velocity;
     Field<double, Location::CELL> candidate_pressure = pressure;
@@ -320,8 +322,9 @@ inline cfdx::io::DatRestartState restore_sst_production_state_from_dat(
     SSTProductionState candidate(n);
     candidate.k = candidate_k;
     candidate.omega = candidate_omega;
-    candidate.wall_distance = state.wall_distance;
     candidate.strain_rate = compute_sst_strain_rate(candidate_velocity, mesh);
+    for (std::size_t cell = 0; cell < n; ++cell)
+        candidate.wall_distance(cell) = current_wall_distance[cell];
 
     for (std::size_t cell = 0; cell < n; ++cell) {
         if (!std::isfinite(candidate.wall_distance(cell)) ||
