@@ -194,8 +194,7 @@ inline ProductionEnergyCase build_production_energy_case(
 inline ScalarBoundaryConditions build_production_temperature_bcs(
     const cfdx::core::Mesh& mesh,
     const cfdx::io::CaseSetup& setup,
-    const ProductionEnergyCase& energy_case,
-    const std::map<std::string, double>& extra_wall_heat_flux = {})
+    const ProductionEnergyCase& energy_case)
 {
     if (!std::isfinite(energy_case.conductivity) ||
         !(energy_case.conductivity > 0.0))
@@ -288,61 +287,6 @@ inline ScalarBoundaryConditions build_production_temperature_bcs(
             ++dirichlet_patches;
         bcs[patch.name] = bc;
     }
-    // Extra wall heat flux (W/m^2, positive into the domain): an additive
-    // contribution summed onto the patch's thermal boundary condition.
-    // This is the re-injection channel of the coupled stages (S2S
-    // radiosity, fiche 11 / fiche 14): the total wall flux is the declared
-    // heat_flux plus the extra contribution, never a replacement. Every
-    // ambiguity is rejected fail-closed: an unknown patch name, a non-WALL
-    // or EMPTY mesh patch, a spec whose type is not WALL, a Dirichlet
-    // patch (the temperature is imposed; a flux on top of it is
-    // contradictory), a non-finite value and a non-finite assembled
-    // gradient.
-    for (const auto& entry : extra_wall_heat_flux) {
-        bool found = false;
-        for (std::size_t i = 0; i < mesh.boundary().n_patches(); ++i) {
-            if (mesh.boundary().patch(i).name != entry.first)
-                continue;
-            found = true;
-            const auto& patch = mesh.boundary().patch(i);
-            const auto* spec = setup.find_boundary(patch.name);
-            if (patch.type == cfdx::core::PatchType::EMPTY ||
-                spec == nullptr || spec->type != cfdx::io::BCType::WALL)
-                throw std::invalid_argument(
-                    "production energy stage: extra wall heat flux is only "
-                    "supported on WALL patches, not on patch '" +
-                    patch.name + "'");
-            auto& bc = bcs.at(patch.name);
-            if (bc.type == ScalarBoundaryType::FIXED_VALUE)
-                throw std::invalid_argument(
-                    "production energy stage: patch '" + patch.name +
-                    "' declares a fixed temperature and cannot carry an "
-                    "extra wall heat flux; exactly one thermal boundary "
-                    "condition per patch is required");
-            if (!std::isfinite(entry.second))
-                throw std::invalid_argument(
-                    "production energy stage: extra wall heat flux on "
-                    "patch '" + patch.name + "' must be finite");
-            // Sum onto the declared heat_flux (the FIXED_GRADIENT carries
-            // declared q''/k) or start from the adiabatic ZERO_GRADIENT.
-            const double gradient =
-                (bc.type == ScalarBoundaryType::FIXED_GRADIENT
-                     ? bc.gradient
-                     : 0.0) +
-                entry.second / energy_case.conductivity;
-            if (!std::isfinite(gradient))
-                throw std::invalid_argument(
-                    "production energy stage: total (declared + extra) wall "
-                    "heat flux / conductivity on patch '" + patch.name +
-                    "' must be finite");
-            bc.type = ScalarBoundaryType::FIXED_GRADIENT;
-            bc.gradient = gradient;
-        }
-        if (!found)
-            throw std::invalid_argument(
-                "production energy stage: extra wall heat flux targets an "
-                "unknown patch '" + entry.first + "'");
-    }
     if (dirichlet_patches == 0)
         throw std::invalid_argument(
             "production energy stage: no Dirichlet temperature boundary "
@@ -396,8 +340,7 @@ inline ProductionEnergyStageResult run_production_energy_stage(
     const FvGeometry& geometry,
     const cfdx::io::CaseSetup& setup,
     const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
-    cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature,
-    const std::map<std::string, double>& extra_wall_heat_flux = {})
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature)
 {
     validate_production_energy_model(setup);
     if (!production_energy_requested(setup))
@@ -472,8 +415,7 @@ inline ProductionEnergyStageResult run_production_energy_stage(
     }
 
     const auto energy_case = build_production_energy_case(setup);
-    const auto bcs = build_production_temperature_bcs(
-        mesh, setup, energy_case, extra_wall_heat_flux);
+    const auto bcs = build_production_temperature_bcs(mesh, setup, energy_case);
 
     cfdx::core::Field<double, cfdx::core::Location::CELL> source(
         mesh.n_cells(), "volumetric_power", "W/m3", 1);
