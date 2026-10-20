@@ -40,34 +40,50 @@ jobs:
           ctest --test-dir build -LE long --output-on-failure --no-tests=error > ctest.log 2>&1
           rc=$?
           set -e
-          echo "ctest exit code: $rc"
+          echo "CTEST_RC=$rc" | tee rc.txt
 
       - name: Build failure report
         if: always()
         run: |
           python3 - <<'PYEOF'
+          import os
           import re
-          text = open('ctest.log', errors='replace').read()
-          m = re.search(r"The following tests FAILED:\n(.*?)\n\s*\n", text, re.S)
-          failed = re.findall(r"\d+ - (\S+) \(([^)]*)\)", m.group(1)) if m else []
           out = []
-          if not failed:
-              out.append("NO FAILED TESTS FOUND IN SUMMARY")
-          blocks = re.split(r"(?m)^(?=\s*(Start\s+\d+:|\d+/\d+ Test\s*#?\d+))", text)
-          for name, kind in failed:
-              out.append("=" * 70)
-              out.append("FAILED: %s (%s)" % (name, kind))
-              for b in blocks:
-                  if re.search(r"(Start\s+\d+:\s*|#\d+:\s*)%s\b" % re.escape(name), b):
-                      lines = b.rstrip().splitlines()
-                      out.append("---- first lines ----")
-                      out.extend(lines[:3])
-                      out.append("---- last lines ----")
-                      out.extend(lines[-120:])
-                      break
-          with open('report.txt', 'w') as f:
-              f.write("\n".join(out))
-          print("\n".join(out))
+          if os.path.exists('rc.txt'):
+              out.append(open('rc.txt').read().strip())
+          if not os.path.exists('ctest.log'):
+              out.append('ctest.log missing')
+          else:
+              text = open('ctest.log', errors='replace').read()
+              for line in text.splitlines():
+                  if re.search(r'\d+% tests passed', line):
+                      out.append(line)
+              marker = text.find('The following tests FAILED:')
+              failed = []
+              if marker >= 0:
+                  for line in text[marker:].splitlines()[1:]:
+                      m = re.match(r'\s*\d+ - (\S+) \(([^)]*)\)', line)
+                      if m:
+                          failed.append((m.group(1), m.group(2)))
+                      elif line.strip() == '':
+                          continue
+                      else:
+                          break
+              out.append('FAILED COUNT: %d' % len(failed))
+              blocks = re.split(r'(?m)^(?=\s*(Start\s+\d+:|\d+/\d+ Test\s*#?\d+))', text)
+              for name, kind in failed:
+                  out.append('=' * 70)
+                  out.append('FAILED: %s (%s)' % (name, kind))
+                  for b in blocks:
+                      if re.search(r'(Start\s+\d+:\s*|#\d+:\s*)%s\b' % re.escape(name), b):
+                          lines = b.rstrip().splitlines()
+                          out.append('---- first lines ----')
+                          out.extend(lines[:3])
+                          out.append('---- last lines ----')
+                          out.extend(lines[-120:])
+                          break
+          open('report.txt', 'w').write('\n'.join(out))
+          print('\n'.join(out))
           PYEOF
 
       - name: Post report as PR comment
@@ -80,7 +96,7 @@ jobs:
             echo "### S2S diagnostic: fast-ctest failures (Release, commit ${GITHUB_SHA})"
             echo ""
             echo '```'
-            cat report.txt 2>/dev/null || tail -n 40 ctest.log
+            cat report.txt 2>/dev/null || echo "report.txt missing"
             echo '```'
           } > report.md
           gh pr comment "$PR_NUMBER" --body-file report.md
