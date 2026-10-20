@@ -1926,10 +1926,23 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     std::size_t used=steps; double final_residual=std::numeric_limits<double>::infinity();
     std::size_t clamps=0;
 
-    auto velocity=[&](std::size_t id,double& ux,double& uy,double& uz) {
+    // The Poisson field is immutable during transport. Cache its normalized
+    // gradient once instead of rebuilding three finite-difference components
+    // and a norm for every active node on every pseudo-time iteration.
+    // Keep one entry per active ID to bound storage to the transport domain.
+    std::vector<WallDistanceVec3> phi_direction;
+    phi_direction.reserve(active_ids.size());
+    for(const std::size_t id:active_ids) {
         const double px=grad_comp(phi,id,0),py=grad_comp(phi,id,1),pz=grad_comp(phi,id,2);
         const double pn=std::sqrt(px*px+py*py+pz*pz);
-        ux=pn>1e-14?px/pn:0.0; uy=pn>1e-14?py/pn:0.0; uz=pn>1e-14?pz/pn:0.0;
+        phi_direction.push_back({pn>1e-14?px/pn:0.0,
+                                 pn>1e-14?py/pn:0.0,
+                                 pn>1e-14?pz/pn:0.0});
+    }
+    auto velocity=[&](std::size_t active_index,std::size_t id,
+                      double& ux,double& uy,double& uz) {
+        const auto& base=phi_direction[active_index];
+        ux=base.x; uy=base.y; uz=base.z;
         if(alpha<1.0) {
             const double dx=grad_comp(d,id,0),dy=grad_comp(d,id,1),dz=grad_comp(d,id,2);
             const double dn=std::sqrt(dx*dx+dy*dy+dz*dz);
@@ -1943,9 +1956,10 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
 
     for(std::size_t it=0;it<steps;++it) {
         double max_change=0.0;
-        for(const std::size_t id:active_ids) {
+        for(std::size_t active_index=0;active_index<active_ids.size();++active_index) {
+            const std::size_t id=active_ids[active_index];
             const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
-            double ux,uy,uz; velocity(id,ux,uy,uz);
+            double ux,uy,uz; velocity(active_index,id,ux,uy,uz);
             const auto up=[&](double u,int a)->double {
                 auto value=[&](std::size_t q)->double {
                     return g.solid[q] ? 0.0 : d[q];
@@ -2009,8 +2023,9 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
             // gradient here, so the reported residual could disagree with
             // the nonlinear operator actually being iterated.
             final_residual=0.0;
-            for(const std::size_t id:active_ids) {
-                double ux,uy,uz; velocity(id,ux,uy,uz);
+            for(std::size_t active_index=0;active_index<active_ids.size();++active_index) {
+            const std::size_t id=active_ids[active_index];
+                double ux,uy,uz; velocity(active_index,id,ux,uy,uz);
                 const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
                 auto upwind=[&](double u,int axis)->double {
                     auto value=[&](std::size_t q)->double { return g.solid[q] ? 0.0 : d[q]; };
