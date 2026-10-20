@@ -1,0 +1,8 @@
+pin=42679a5daf5857219e7d645b580d7aaf6c6efadf
+role=candidate
+subject=fix(validation): opérateur forme-de-flux FV source-consistant pour la closure MMS planaire du second ordre
+commit_date=2026-10-14 18:09:29 +0200
+outcome=FAIL_DIVERGED
+test_rc=134
+test_duration_s=294
+run_id=39501827590
