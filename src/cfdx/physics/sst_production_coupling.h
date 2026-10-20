@@ -373,6 +373,9 @@ inline ScalarBoundaryFaceValues make_sst_wall_omega_face_values(
         bool found_patch = false;
         for (std::size_t patch = 0; patch < mesh.boundary().n_patches(); ++patch) {
             if (mesh.boundary().patch(patch).name == name) {
+                if (mesh.boundary().patch(patch).type != cfdx::core::PatchType::WALL)
+                    throw std::invalid_argument(
+                        "SST wall omega operator requires a WALL patch: " + name);
                 found_patch = true;
                 values.values.emplace(name, std::vector<double>(nf, unset));
                 break;
