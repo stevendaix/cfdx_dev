@@ -22,20 +22,21 @@ struct S2SControls {
 // Ambient irradiation represents the part of the hemisphere not covered by
 // modeled enclosure surfaces. It must therefore be weighted by the open view
 // fraction; adding it in full to a closed enclosure double-counts incoming
-// radiation. Explicit external_irradiation entries are already surface-local
-// irradiation values and remain additive.
+// radiation. An explicit external_irradiation vector retains the original API
+// contract and replaces the ambient reservoir for each surface.
 inline double s2s_external_irradiation(
     const std::vector<double>& F, std::size_t n, std::size_t i,
     const S2SControls& controls,
     const std::vector<double>& external_irradiation)
 {
+    if (!external_irradiation.empty())
+        return external_irradiation[i];
+
     double row_sum = 0.0;
     for (std::size_t j = 0; j < n; ++j)
         row_sum += F[i*n+j];
     const double open_fraction = std::max(0.0, 1.0-row_sum);
-    const double explicit_irradiation = external_irradiation.empty()
-        ? 0.0 : external_irradiation[i];
-    return open_fraction*controls.ambient_irradiation + explicit_irradiation;
+    return open_fraction*controls.ambient_irradiation;
 }
 
 struct S2SResult {
