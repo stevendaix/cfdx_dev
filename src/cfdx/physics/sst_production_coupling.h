@@ -73,6 +73,74 @@ inline void restore_sst_production_state(
     state = snapshot;
 }
 
+// A single accept/reject boundary for the carrier and SST state. This mirrors
+// the production outer-iteration transaction contract: U, p, the authoritative
+// face mass flux, and all SST-owned fields must either be accepted together or
+// restored together. The production loop must explicitly call begin(), then
+// commit() or rollback(); this class does not enable SST by itself.
+class SSTCoupledStateTransaction {
+public:
+    SSTCoupledStateTransaction(
+        cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+        cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure,
+        cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
+        SSTProductionState& sst_state)
+        : velocity_(velocity), pressure_(pressure),
+          mass_flux_(mass_flux), sst_state_(sst_state)
+    {
+        if (velocity_.dimension() != 3 || pressure_.dimension() != 1 ||
+            velocity_.size() == 0 || velocity_.size() != pressure_.size() ||
+            mass_flux_.dimension() != 1)
+            throw std::invalid_argument(
+                "SST coupled transaction received incompatible carrier fields");
+        validate_sst_production_state(sst_state_, velocity_.size());
+    }
+
+    void begin()
+    {
+        if (active_)
+            throw std::logic_error("SST coupled transaction is already active");
+        velocity_snapshot_ = velocity_;
+        pressure_snapshot_ = pressure_;
+        mass_flux_snapshot_ = mass_flux_;
+        sst_snapshot_ = snapshot_sst_production_state(sst_state_);
+        active_ = true;
+    }
+
+    void rollback()
+    {
+        if (!active_)
+            throw std::logic_error(
+                "cannot rollback SST coupled state without an active transaction");
+        velocity_ = velocity_snapshot_;
+        pressure_ = pressure_snapshot_;
+        mass_flux_ = mass_flux_snapshot_;
+        restore_sst_production_state(sst_state_, sst_snapshot_);
+        active_ = false;
+    }
+
+    void commit()
+    {
+        if (!active_)
+            throw std::logic_error(
+                "cannot commit SST coupled state without an active transaction");
+        active_ = false;
+    }
+
+    bool active() const noexcept { return active_; }
+
+private:
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity_;
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure_;
+    cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux_;
+    SSTProductionState& sst_state_;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> velocity_snapshot_;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> pressure_snapshot_;
+    cfdx::core::Field<double, cfdx::core::Location::FACE> mass_flux_snapshot_;
+    SSTProductionState sst_snapshot_{1};
+    bool active_ = false;
+};
+
 struct SSTProductionStepResult {
     TurbulenceTransportResult transport;
     bool committed = false;
