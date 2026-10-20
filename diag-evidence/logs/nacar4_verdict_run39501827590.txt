@@ -1,0 +1,56 @@
+VERDICT: FIRST_GREEN=a1a62dc1 -> window (42679a5d..a1a62dc1] = #904 dAU=V*rAU; 42679a5d alone insufficient (possible combination)
+run_id=39501827590
+pin_aa806657=FAIL_DIVERGED (control, expected FAIL_DIVERGED)
+pin_42679a5d=FAIL_DIVERGED (candidate 1: flux-form FV operator)
+pin_a1a62dc1=PASS_3_LEVELS (candidate 2: #904 dAU=V*rAU)
+pin_a61910a7=NOT_RUN (candidate 3: #895 bring-up)
+pin_611d5c8e=NOT_RUN (candidate 4: #908 ghia Fp)
+pin_f88b3700=PASS_3_LEVELS (control, expected PASS_3_LEVELS)
+first_green=a1a62dc10fe253e22a716b3e98d7ca02bc45d6d1
+fail_fast=pins after the first candidate PASS are NOT_RUN by design
+reference_pass=f88b3700 (2026-10-16, 3 levels converged, 2943 s, run 38809298638)
+reference_fail=aa806657 (round 3: stall iter=8000 cap, rc=134, ~295 s)
+
+--- per-pin NACA digest (last markers) ---
+### aa806657
+  what():  NACA0012 solver did not converge
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=8000 momentum_residual_relative=1.53264e-13 continuity_normalized=1.2828e-05 velocity_change_inf=5.04566e-16 pressure_change_inf=9.05781e-16 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=2.56732e-11 momentum_linear_iterations=0 flux_velocity_mismatch_linf=0.0113323 worst_momentum_cell=2473 worst_momentum_patch=front
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=293s ===
+
+### 42679a5d
+  what():  NACA0012 solver did not converge
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=8000 momentum_residual_relative=1.53264e-13 continuity_normalized=1.2828e-05 velocity_change_inf=5.04566e-16 pressure_change_inf=9.05781e-16 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=2.56732e-11 momentum_linear_iterations=0 flux_velocity_mismatch_linf=0.0113323 worst_momentum_cell=2473 worst_momentum_patch=front
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=294s ===
+
+### a1a62dc1
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.000360333 Cm=0.000977678 Cd_pressure=-0.0343963 Cd_viscous=0.0558505 continuity=1.28083e-10 iterations=433
+NACA0012_RE1000_A0 level=128 Cd=0.0414557 Cl=-0.00079373 Cm=-2.42498e-05 Cd_pressure=-0.0425974 Cd_viscous=0.0840532 continuity=8.28059e-11 iterations=995
+NACA0012_RE1000_A0 level=256 Cd=0.0587257 Cl=-1.41112e-06 Cm=2.19791e-05 Cd_pressure=-0.0363217 Cd_viscous=0.0950475 continuity=1.10968e-11 iterations=3989
+NACA0012_QUALIFICATION: DIAGNOSTIC solver_converged forces_conservation_symmetry_reference_gate_pending
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=3800 momentum_residual_relative=1.40876e-08 continuity_normalized=2.58079e-14 velocity_change_inf=5.87669e-10 pressure_change_inf=2.09808e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.15753e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00736022 worst_momentum_cell=1027 worst_momentum_patch=front
+NACA0012_RE1000_A0 level=256 Cd=0.0587257 Cl=-1.41112e-06 Cm=2.19791e-05 Cd_pressure=-0.0363217 Cd_viscous=0.0950475 continuity=1.10968e-11 iterations=3989
+NACA0012 Cd mesh differences=0.0200016,0.01727 literature Re=1000 alpha=0 Cd~0.12
+NACA0012_QUALIFICATION: DIAGNOSTIC solver_converged forces_conservation_symmetry_reference_gate_pending
+=== test rc=0 outcome=PASS_3_LEVELS duration=2931s ===
+
+### f88b3700
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.000360333 Cm=0.000977678 Cd_pressure=-0.0343963 Cd_viscous=0.0558505 continuity=1.28083e-10 iterations=433
+NACA0012_RE1000_A0 level=128 Cd=0.0414557 Cl=-0.00079373 Cm=-2.42498e-05 Cd_pressure=-0.0425974 Cd_viscous=0.0840532 continuity=8.28059e-11 iterations=995
+NACA0012_RE1000_A0 level=256 Cd=0.0587257 Cl=-1.41112e-06 Cm=2.19791e-05 Cd_pressure=-0.0363217 Cd_viscous=0.0950475 continuity=1.10968e-11 iterations=3989
+NACA0012_QUALIFICATION: DIAGNOSTIC solver_converged forces_conservation_symmetry_reference_gate_pending
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=3800 momentum_residual_relative=1.40876e-08 continuity_normalized=2.58079e-14 velocity_change_inf=5.87669e-10 pressure_change_inf=2.09808e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.15753e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00736022 worst_momentum_cell=1027 worst_momentum_patch=front
+NACA0012_RE1000_A0 level=256 Cd=0.0587257 Cl=-1.41112e-06 Cm=2.19791e-05 Cd_pressure=-0.0363217 Cd_viscous=0.0950475 continuity=1.10968e-11 iterations=3989
+NACA0012 Cd mesh differences=0.0200016,0.01727 literature Re=1000 alpha=0 Cd~0.12
+NACA0012_QUALIFICATION: DIAGNOSTIC solver_converged forces_conservation_symmetry_reference_gate_pending
+=== test rc=0 outcome=PASS_3_LEVELS duration=2823s ===
+
