@@ -173,3 +173,41 @@ def test_native_openfoam_csr_is_written_to_cfdx_hdf5(tmp_path):
         assert "walls:1:6:0" in h5.attrs["boundary_patches"]
         assert h5.attrs["field_data_source"] == "OpenFOAM time 10"
         assert h5.attrs["available_fields_json"] == '{"10": ["p"]}'
+
+
+def test_openfoam_setup_dictionaries_map_supported_controls(tmp_path, monkeypatch):
+    import cfdx.io.openfoam_case_reader as reader
+
+    dictionaries = {
+        "system/controlDict": {
+            "application": "pimpleFoam",
+            "deltaT": 0.005,
+            "endTime": 2.0,
+        },
+        "system/fvSchemes": {"ddtSchemes": {"default": "Euler"}},
+        "system/fvSolution": {"solvers": {"p": {"solver": "GAMG"}}},
+        "constant/turbulenceProperties": {
+            "simulationType": "RAS",
+            "RAS": {"model": "kOmegaSST"},
+        },
+        "constant/radiationProperties": {"radiationModel": "P1"},
+    }
+    monkeypatch.setattr(reader, "read_openfoam_dictionaries", lambda _: dictionaries)
+    adapter = OpenFOAMAdapter()
+    result = ConversionResult(source=SourceInfo())
+
+    adapter._translate_setup_dictionaries(tmp_path, result)
+
+    assert adapter.setup.time_step == 0.005
+    assert adapter.setup.end_time == 2.0
+    assert adapter.setup.transient
+    assert adapter.setup.solver_mode == "transient"
+    assert adapter.setup.turbulence_model == "kOmegaSST"
+    assert adapter.setup.radiation_model == "P1"
+    assert "openfoam_dictionaries_json" in adapter.setup.source_metadata
+    assert "openfoam.system/fvSchemes" in adapter.setup.numerics.raw_settings
+    assert any(
+        finding.category == "numerics"
+        and finding.severity.value == "unsupported_nonblocking"
+        for finding in result.gap_report.findings
+    )
