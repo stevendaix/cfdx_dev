@@ -393,5 +393,49 @@ int main()
         EXPECT_THROW(validate_sst_scalar_boundary_contract(setup), std::invalid_argument);
     });
 
+
+    run_case("sst_production_state_validates_owned_fields", [] {
+        SSTProductionState state(2);
+        state.k(0) = 0.1; state.k(1) = 0.2;
+        state.omega(0) = 10.0; state.omega(1) = 20.0;
+        state.nu_t(0) = 0.001; state.nu_t(1) = 0.002;
+        state.wall_distance(0) = 0.01; state.wall_distance(1) = 0.02;
+        state.strain_rate(0) = 1.0; state.strain_rate(1) = 2.0;
+
+        validate_sst_production_state(state, 2);
+        EXPECT_THROW(validate_sst_production_state(state, 3), std::invalid_argument);
+
+        state.wall_distance(1) = std::numeric_limits<double>::quiet_NaN();
+        EXPECT_THROW(validate_sst_production_state(state, 2), std::invalid_argument);
+    });
+
+    run_case("sst_production_state_snapshot_restores_all_owned_fields", [] {
+        SSTProductionState state(2);
+        state.k(0) = 0.1; state.k(1) = 0.2;
+        state.omega(0) = 10.0; state.omega(1) = 20.0;
+        state.nu_t(0) = 0.001; state.nu_t(1) = 0.002;
+        state.wall_distance(0) = 0.01; state.wall_distance(1) = 0.02;
+        state.strain_rate(0) = 1.0; state.strain_rate(1) = 2.0;
+
+        const auto snapshot = snapshot_sst_production_state(state);
+        state.k(0) = 9.0;
+        state.omega(1) = 99.0;
+        state.nu_t(0) = 0.9;
+        state.wall_distance(1) = 9.0;
+        state.strain_rate(0) = 99.0;
+
+        restore_sst_production_state(state, snapshot);
+        EXPECT_NEAR(state.k(0), 0.1, 0.0);
+        EXPECT_NEAR(state.k(1), 0.2, 0.0);
+        EXPECT_NEAR(state.omega(0), 10.0, 0.0);
+        EXPECT_NEAR(state.omega(1), 20.0, 0.0);
+        EXPECT_NEAR(state.nu_t(0), 0.001, 0.0);
+        EXPECT_NEAR(state.nu_t(1), 0.002, 0.0);
+        EXPECT_NEAR(state.wall_distance(0), 0.01, 0.0);
+        EXPECT_NEAR(state.wall_distance(1), 0.02, 0.0);
+        EXPECT_NEAR(state.strain_rate(0), 1.0, 0.0);
+        EXPECT_NEAR(state.strain_rate(1), 2.0, 0.0);
+    });
+
     return run_all();
 }
