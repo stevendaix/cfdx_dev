@@ -9,7 +9,9 @@ from cfdx.io.interfaces import ConversionResult
 from cfdx.io.schema import SourceInfo
 
 
-def test_openfoam_adapter_imports_latest_scalar_and_vector_fields(tmp_path, monkeypatch):
+def test_openfoam_adapter_imports_latest_scalar_and_vector_fields(
+    tmp_path, monkeypatch
+):
     case = tmp_path / "case"
     mesh = case / "constant" / "polyMesh"
     mesh.mkdir(parents=True)
@@ -58,7 +60,8 @@ def test_openfoam_adapter_imports_latest_scalar_and_vector_fields(tmp_path, monk
         [[1.0, 0.0, 0.0], [0.5, 0.0, 0.0]],
     )
     assert any(
-        finding.category == "results" and finding.severity.value == "unsupported_nonblocking"
+        finding.category == "results"
+        and finding.severity.value == "unsupported_nonblocking"
         for finding in result.gap_report.findings
     )
 
