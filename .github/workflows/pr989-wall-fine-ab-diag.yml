@@ -100,31 +100,51 @@ jobs:
         id: build_base
         run: |
           set -euo pipefail
-          cmake -S cfdx-base -B "${BUILD_DIR_BASE}" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCFDX_BUILD_TESTS=ON \
-            -DCFDX_ENABLE_LONG_VALIDATION=ON \
-            -DCFDX_ENABLE_MPI=ON \
-            -DCFDX_BUILD_PYTHON=OFF \
-            -DCFDX_USE_HDF5_SERIAL=OFF \
-            -DCFDX_ENABLE_PARALLEL_HDF5=ON
-          cmake --build "${BUILD_DIR_BASE}" \
-            --target cfdx_wall_distance_controlled_benchmark --parallel 3
+          RUN_ID="${GITHUB_RUN_ID}"
+          E="diag-evidence/logs"
+          t0=$(date +%s)
+          {
+            cmake -S cfdx-base -B "${BUILD_DIR_BASE}" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCFDX_BUILD_TESTS=ON \
+              -DCFDX_ENABLE_LONG_VALIDATION=ON \
+              -DCFDX_ENABLE_MPI=ON \
+              -DCFDX_BUILD_PYTHON=OFF \
+              -DCFDX_USE_HDF5_SERIAL=OFF \
+              -DCFDX_ENABLE_PARALLEL_HDF5=ON
+            cmake --build "${BUILD_DIR_BASE}" \
+              --target cfdx_wall_distance_controlled_benchmark --parallel 3
+            ls -la "./${BUILD_DIR_BASE}/cfdx_wall_distance_controlled_benchmark"
+          } > "${E}/pr989wdfine_build_base_run${RUN_ID}.log" 2>&1
+          t1=$(date +%s)
+          exe_ok=no
+          [ -x "./${BUILD_DIR_BASE}/cfdx_wall_distance_controlled_benchmark" ] && exe_ok=yes
+          echo "build_base wall_s=$((t1-t0)) exe_present=${exe_ok}" >> "${E}/pr989wdfine_status_run${RUN_ID}.txt"
 
       - name: Configure and build head benchmark
         id: build_head
         run: |
           set -euo pipefail
-          cmake -S cfdx-head -B "${BUILD_DIR_HEAD}" -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCFDX_BUILD_TESTS=ON \
-            -DCFDX_ENABLE_LONG_VALIDATION=ON \
-            -DCFDX_ENABLE_MPI=ON \
-            -DCFDX_BUILD_PYTHON=OFF \
-            -DCFDX_USE_HDF5_SERIAL=OFF \
-            -DCFDX_ENABLE_PARALLEL_HDF5=ON
-          cmake --build "${BUILD_DIR_HEAD}" \
-            --target cfdx_wall_distance_controlled_benchmark --parallel 3
+          RUN_ID="${GITHUB_RUN_ID}"
+          E="diag-evidence/logs"
+          t0=$(date +%s)
+          {
+            cmake -S cfdx-head -B "${BUILD_DIR_HEAD}" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCFDX_BUILD_TESTS=ON \
+              -DCFDX_ENABLE_LONG_VALIDATION=ON \
+              -DCFDX_ENABLE_MPI=ON \
+              -DCFDX_BUILD_PYTHON=OFF \
+              -DCFDX_USE_HDF5_SERIAL=OFF \
+              -DCFDX_ENABLE_PARALLEL_HDF5=ON
+            cmake --build "${BUILD_DIR_HEAD}" \
+              --target cfdx_wall_distance_controlled_benchmark --parallel 3
+            ls -la "./${BUILD_DIR_HEAD}/cfdx_wall_distance_controlled_benchmark"
+          } > "${E}/pr989wdfine_build_head_run${RUN_ID}.log" 2>&1
+          t1=$(date +%s)
+          exe_ok=no
+          [ -x "./${BUILD_DIR_HEAD}/cfdx_wall_distance_controlled_benchmark" ] && exe_ok=yes
+          echo "build_head wall_s=$((t1-t0)) exe_present=${exe_ok}" >> "${E}/pr989wdfine_status_run${RUN_ID}.txt"
 
       - name: Record build failure status
         if: always() && (steps.build_base.outcome != 'success' || steps.build_head.outcome != 'success')
@@ -145,9 +165,21 @@ jobs:
           E="diag-evidence/logs"
           run_bench() {
             local ref="$1" method="$2"
-            local exe="./build-${ref}/cfdx_wall_distance_controlled_benchmark"
+            local bdir="${BUILD_DIR_BASE}"
+            if [ "${ref}" = "head" ]; then bdir="${BUILD_DIR_HEAD}"; fi
+            local exe="./${bdir}/cfdx_wall_distance_controlled_benchmark"
             local tag="${ref}_${method}"
             local rc=0 t0 t1
+            if [ ! -x "${exe}" ]; then
+              {
+                echo "EXE_MISSING ${exe}"
+                echo "--- builddir ${bdir} listing ---"
+                ls -la "./${bdir}" 2>&1 | head -30
+              } > "${E}/pr989wdfine_${tag}_run${RUN_ID}.log"
+              echo "${tag} rc=127 wall_s=0.00 exe_missing=yes" \
+                >> "${E}/pr989wdfine_status_run${RUN_ID}.txt"
+              return 0
+            fi
             t0=$(date +%s.%N)
             "${exe}" "${E}/pr989wdfine_${tag}_run${RUN_ID}.csv" 128 "--method=${method}" \
               > "${E}/pr989wdfine_${tag}_run${RUN_ID}.log" 2>&1 || rc=$?
