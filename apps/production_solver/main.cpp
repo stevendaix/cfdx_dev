@@ -3,6 +3,7 @@
 #include "cfdx/physics/production_energy_stage.h"
 #include "cfdx/physics/production_turbulence_contract.h"
 #include "cfdx/physics/production_radiation_contract.h"
+#include "cfdx/physics/production_radiation_s2s_stage.h"
 #include "cfdx/io/gmsh/gmsh_importer.h"
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/io/hdf5/case_hdf5_io.h"
@@ -399,6 +400,63 @@ std::string energy_summary_json(const ProductionEnergyStageResult& energy)
     return out.str();
 }
 
+// JSON summary of the coupled S2S radiation + energy stage (issue #885
+// stage 2): the delayed-Picard verdict, the blocking machine gates and the
+// per-surface radiosity data. The wall-temperature lag is a diagnostic
+// only (the external energy-radiation iteration is integration step 3).
+std::string radiation_s2s_json(const ProductionS2SEnergyStageResult& stage)
+{
+    std::ostringstream out;
+    out << "{\n";
+    out << "  \"converged\": " << (stage.converged ? 1 : 0) << ",\n";
+    out << "  \"energy_pass1_converged\": "
+        << (stage.energy_pass1_converged ? 1 : 0) << ",\n";
+    out << "  \"s2s_radiation_converged\": "
+        << (stage.s2s_radiation_converged ? 1 : 0) << ",\n";
+    out << "  \"energy_pass2_converged\": "
+        << (stage.energy_pass2_converged ? 1 : 0) << ",\n";
+    out << "  \"max_wall_temperature_lag\": "
+        << json_number(stage.max_wall_temperature_lag) << ",\n";
+    const ProductionS2SRadiationResult& radiation = stage.radiation;
+    out << "  \"radiation\": {\n";
+    out << "    \"balance_passed\": "
+        << (radiation.balance_passed ? 1 : 0) << ",\n";
+    out << "    \"surface_identity_passed\": "
+        << (radiation.surface_identity_passed ? 1 : 0) << ",\n";
+    out << "    \"total_net_power\": "
+        << json_number(radiation.total_net_power) << ",\n";
+    out << "    \"balance_scale\": "
+        << json_number(radiation.balance_scale) << ",\n";
+    out << "    \"balance_normalized\": "
+        << json_number(radiation.balance_normalized) << ",\n";
+    out << "    \"max_surface_identity_normalized\": "
+        << json_number(radiation.max_surface_identity_normalized) << ",\n";
+    out << "    \"surface_count\": " << radiation.surface_count << ",\n";
+    out << "    \"surfaces\": [\n";
+    for (std::size_t index = 0; index < radiation.surface_names.size();
+         ++index) {
+        const std::string& name = radiation.surface_names[index];
+        out << "      {\"name\": \"" << json_escape(name)
+            << "\", \"area\": " << json_number(radiation.areas[index])
+            << ", \"emissivity\": "
+            << json_number(radiation.emissivities[index])
+            << ", \"wall_temperature\": "
+            << json_number(radiation.wall_temperatures[index])
+            << ", \"net_flux\": "
+            << json_number(radiation.net_flux[index])
+            << ", \"net_power\": "
+            << json_number(radiation.net_power[index])
+            << ", \"injected_heat_flux\": "
+            << json_number(radiation.injected_heat_flux.at(name)) << "}";
+        out << (index + 1 == radiation.surface_names.size() ? "\n"
+                                                            : ",\n");
+    }
+    out << "    ]\n";
+    out << "  }\n";
+    out << "}\n";
+    return out.str();
+}
+
 Options parse(int argc, char** argv)
 {
     Options o;
@@ -726,6 +784,8 @@ int main(int argc, char** argv)
         bool energy_requested = false;
         bool energy_ran = false;
         ProductionEnergyStageResult energy_result;
+        ProductionS2SEnergyStageResult s2s_energy_result;
+        bool s2s_ran = false;
         if (is_case_hdf5)
             energy_requested = production_energy_requested(case_setup);
         if (energy_requested && result.converged) {
@@ -750,10 +810,26 @@ int main(int argc, char** argv)
                 mesh.n_cells(), "temperature", "K", 1);
             for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
                 temperature(cell) = initial_temperature;
-            energy_result = run_production_energy_stage(
-                mesh, energy_geometry, case_setup,
-                result.authoritative_mass_flux, temperature);
-            energy_ran = true;
+            if (production_s2s_radiation_requested(case_setup)) {
+                // One delayed-Picard pass (issue #885 stage 2): energy
+                // pass 1 on the frozen flow, S2S radiosity from the
+                // resulting wall temperatures, then a second energy pass
+                // with the net radiative fluxes re-injected. No coupled
+                // fixed-point convergence is claimed here: the external
+                // energy-radiation iteration is integration step 3.
+                s2s_energy_result = run_production_s2s_energy_stage(
+                    mesh, energy_geometry, case_setup,
+                    result.authoritative_mass_flux, temperature);
+                energy_result = s2s_energy_result.energy;
+                energy_ran = true;
+                s2s_ran = true;
+            } else {
+                energy_result = run_production_energy_stage(
+                    mesh, energy_geometry, case_setup,
+                    result.authoritative_mass_flux, temperature);
+                energy_ran = true;
+            }
+
             write_text_file_atomic(
                 options.output_dir / "energy_convergence.json",
                 energy_convergence_json(energy_result));
@@ -809,13 +885,42 @@ int main(int argc, char** argv)
                              .string()
                       << "\n";
             std::cout << "Energy result " << energy_vtu.string() << "\n";
+            if (s2s_ran) {
+                write_text_file_atomic(
+                    options.output_dir / "radiation_s2s.json",
+                    radiation_s2s_json(s2s_energy_result));
+                std::cout << "S2S radiation stage "
+                          << (s2s_energy_result.converged
+                                  ? "converged"
+                                  : "NOT converged")
+                          << " surfaces "
+                          << s2s_energy_result.radiation.surface_count
+                          << " balance_normalized "
+                          << s2s_energy_result.radiation.balance_normalized
+                          << " surface_identity_normalized "
+                          << s2s_energy_result.radiation
+                                 .max_surface_identity_normalized
+                          << "\n";
+                std::cout << "S2S wall temperature lag "
+                          << s2s_energy_result.max_wall_temperature_lag
+                          << " K (diagnostic; the external energy-"
+                             "radiation iteration is integration step 3)"
+                          << "\n";
+                std::cout << "S2S radiation summary "
+                          << (options.output_dir / "radiation_s2s.json")
+                                 .string()
+                          << "\n";
+            }
+
         } else if (energy_requested) {
             std::cout
                 << "Energy stage skipped: carrier flow did not converge\n";
         }
         const bool overall_converged =
             result.converged &&
-            (!energy_requested || (energy_ran && energy_result.converged));
+            (!energy_requested ||
+             (energy_ran && energy_result.converged &&
+              (!s2s_ran || s2s_energy_result.converged)));
         const auto solver_exit_code =
             execution_exit_code_for_solver(overall_converged);
 
