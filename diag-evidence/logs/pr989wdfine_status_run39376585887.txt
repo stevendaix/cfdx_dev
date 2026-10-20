@@ -1,0 +1,4 @@
+base_hamilton_jacobi rc=127 wall_s=0.00
+head_hamilton_jacobi rc=127 wall_s=0.00
+base_hybrid_poisson_eikonal rc=127 wall_s=0.00
+head_hybrid_poisson_eikonal rc=127 wall_s=0.00
