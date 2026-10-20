@@ -1,0 +1,5 @@
+# Optional OpenFOAM dictionary and field parsing backend.
+# Keep separate from the core requirements: foamlib is GPL-3.0-only and
+# recent releases require Python >=3.12. pip resolves the newest compatible
+# release for the active interpreter; verify the chosen version in CI.
+foamlib>=0.9.7
