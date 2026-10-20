@@ -249,7 +249,7 @@ class OpenFOAMAdapter(SolverAdapter):
             self.setup.transient = ddt_default != "steadystate"
             self.setup.solver_mode = "transient" if self.setup.transient else "steady"
         elif application.lower() in {
-            "pimplefoam", "icofoam", "interfoam", "rhoimplefoam",
+            "pimplefoam", "icofoam", "interfoam", "rhopimplefoam",
             "rhointerfoam", "reactingfoam", "buoyantpimplefoam",
         }:
             self.setup.transient = True
