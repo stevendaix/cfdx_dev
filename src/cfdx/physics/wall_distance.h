@@ -1052,8 +1052,10 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
     const WallDistanceCutFaceOffsetCache offsets(bvh,g);
     const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
     std::vector<unsigned char> fixed(g.points.size(),0);
+    // eikonal_fast_sweep uses the same seed criterion and already assigns exact
+    // BVH distances to those nodes. Do not repeat the nearest-triangle queries.
     std::vector<double> d=eikonal_fast_sweep(bvh,g,std::max<std::size_t>(8,max_iter));
-    for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
+    for(auto id:seeds) fixed[id]=1;
     // Preserve the original ascending in-place update order, but avoid scanning
     // solid, fixed-seed and unreachable nodes on every pseudo-time iteration.
     std::vector<std::size_t> active_ids;
