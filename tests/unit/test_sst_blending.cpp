@@ -506,5 +506,55 @@ int main()
         EXPECT_THROW(transaction.rollback(), std::logic_error);
     });
 
+
+    run_case("sst_runtime_boundary_adapter_preserves_wall_omega_obligation", [] {
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec wall;
+        wall.patch_name = "wall";
+        wall.type = cfdx::io::BCType::WALL;
+        wall.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::WALL_OMEGA_SST, 0.0}
+        };
+        setup.boundary_conditions.push_back(wall);
+
+        const auto runtime = make_sst_runtime_boundary_contract(setup);
+        EXPECT_TRUE(runtime.k.count("wall") == 1);
+        EXPECT_TRUE(runtime.k.at("wall").type == ScalarBoundaryType::FIXED_VALUE);
+        EXPECT_NEAR(runtime.k.at("wall").value, 0.0, 0.0);
+        EXPECT_TRUE(runtime.omega.count("wall") == 0);
+        EXPECT_TRUE(runtime.wall_omega_sst_patches.size() == 1);
+        EXPECT_TRUE(runtime.wall_omega_sst_patches.front() == "wall");
+        EXPECT_THROW(require_supported_sst_runtime_boundaries(runtime),
+                     std::invalid_argument);
+    });
+
+    run_case("sst_runtime_boundary_adapter_maps_fixed_and_zero_gradient", [] {
+        cfdx::io::CaseSetup setup;
+        cfdx::io::BoundarySpec inlet;
+        inlet.patch_name = "inlet";
+        inlet.type = cfdx::io::BCType::INLET;
+        inlet.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 0.4},
+            {"omega", cfdx::io::SSTScalarBoundaryType::FIXED_VALUE, 8.0}
+        };
+        cfdx::io::BoundarySpec outlet;
+        outlet.patch_name = "outlet";
+        outlet.type = cfdx::io::BCType::OUTLET;
+        outlet.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT, 0.0}
+        };
+        setup.boundary_conditions = {inlet, outlet};
+
+        const auto runtime = make_sst_runtime_boundary_contract(setup);
+        EXPECT_NEAR(runtime.k.at("inlet").value, 0.4, 0.0);
+        EXPECT_NEAR(runtime.omega.at("inlet").value, 8.0, 0.0);
+        EXPECT_TRUE(runtime.k.at("outlet").type == ScalarBoundaryType::ZERO_GRADIENT);
+        EXPECT_TRUE(runtime.omega.at("outlet").type == ScalarBoundaryType::ZERO_GRADIENT);
+        EXPECT_TRUE(runtime.wall_omega_sst_patches.empty());
+        EXPECT_NO_THROW(require_supported_sst_runtime_boundaries(runtime));
+    });
+
     return run_all();
 }
