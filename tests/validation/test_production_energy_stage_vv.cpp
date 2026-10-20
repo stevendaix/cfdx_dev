@@ -632,6 +632,75 @@ int main()
                   << " max_T=" << stage.max_temperature << "\n";
     });
 
+    run_case("production_energy_radiative_flux_injection", [&] {
+        const double radiative_flux = 500.0;  // W/m^2, positive into fluid
+        auto plug = solve_plug_flow(n, dx, rho, mu, u_in);
+        EXPECT_TRUE(plug.converged);
+        const auto setup = make_setup(
+            rho, mu, k, cp, "",
+            cfdx::io::BCValueType::WALL_NO_SLIP, 0.0, "", t_in);
+        const auto energy_case = build_production_energy_case(setup);
+
+        const std::map<std::string, double> radiative_fluxes{
+            {"walls", radiative_flux}};
+        const auto stage_bcs = build_production_temperature_bcs(
+            plug.mesh, setup, energy_case, radiative_fluxes);
+        EXPECT_TRUE(stage_bcs.at("walls").type ==
+                    ScalarBoundaryType::FIXED_GRADIENT);
+        EXPECT_NEAR(stage_bcs.at("walls").gradient,
+                    radiative_flux / k, 1e-15);
+
+        Field<double, Location::CELL> temperature(
+            n, "temperature", "K", 1);
+        temperature.fill(t_in);
+        const auto stage = run_production_energy_stage(
+            plug.mesh, plug.geometry, setup, plug.mass_flux, temperature,
+            radiative_fluxes);
+        EXPECT_TRUE(stage.converged);
+        const double wall_power = radiative_flux * 4.0 * length;
+        EXPECT_NEAR(stage.patch_flux_out.at("walls"), -wall_power, 1e-6);
+        EXPECT_NEAR(stage.boundary_flux_out, 0.0, 1e-6);
+        EXPECT_TRUE(stage.global_energy_balance_passed);
+        EXPECT_TRUE(stage.local_energy_balance_passed);
+
+        // The external flux is additive to an explicitly imposed wall flux.
+        auto imposed_setup = setup;
+        imposed_setup.boundary_conditions.back().raw_params["heat_flux"] = "100";
+        const auto combined_bcs = build_production_temperature_bcs(
+            plug.mesh, imposed_setup, energy_case, radiative_fluxes);
+        EXPECT_NEAR(combined_bcs.at("walls").gradient,
+                    (radiative_flux + 100.0) / k, 1e-15);
+
+        EXPECT_THROW(
+            build_production_temperature_bcs(
+                plug.mesh, setup, energy_case,
+                std::map<std::string, double>{{"unknown_wall", 100.0}}),
+            std::invalid_argument);
+        EXPECT_THROW(
+            build_production_temperature_bcs(
+                plug.mesh, setup, energy_case,
+                std::map<std::string, double>{{"left", 100.0}}),
+            std::invalid_argument);
+        EXPECT_THROW(
+            build_production_temperature_bcs(
+                plug.mesh, setup, energy_case,
+                std::map<std::string, double>{{"walls",
+                    std::numeric_limits<double>::infinity()}}),
+            std::invalid_argument);
+
+        auto fixed_wall = setup;
+        for (auto& boundary : fixed_wall.boundary_conditions) {
+            if (boundary.patch_name == "walls") {
+                boundary.value_type = cfdx::io::BCValueType::WALL_THERMAL;
+                boundary.wall_temperature = 350.0;
+            }
+        }
+        EXPECT_THROW(
+            build_production_temperature_bcs(
+                plug.mesh, fixed_wall, energy_case, radiative_fluxes),
+            std::invalid_argument);
+    });
+
     run_case("production_energy_fail_closed_declarations", [&] {
         const std::size_t m = 6;
         Mesh mesh = chain_mesh(m, dx);
