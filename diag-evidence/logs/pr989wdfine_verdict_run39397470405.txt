@@ -1,0 +1,10 @@
+VERDICT: EVIDENCE_COMPLETE
+missing=none
+hamilton_jacobi: base_ms=2364439.7 head_ms=2708698.0 speedup_base_over_head=0.873 class=HEAD_SLOWER
+hamilton_jacobi: per_iter_ms base=174.497 head=199.904 iterations base=13550 head=13550 match=yes
+hamilton_jacobi: converged base=true head=true stopping base=converged head=converged residual_inf base=9.985506088661111e-09 head=9.985506088661111e-09 l2_relative base=0.1292186982744402 head=0.1292186982744402
+hamilton_jacobi: head cache nodes=24576 bytes=18350080 build_ms=22.491311
+hybrid_poisson_eikonal: base_ms=1471039.6 head_ms=872777.4 speedup_base_over_head=1.685 class=HEAD_FASTER
+hybrid_poisson_eikonal: per_iter_ms base=157.905 head=93.686 iterations base=9316 head=9316 match=yes
+hybrid_poisson_eikonal: converged base=true head=true stopping base=converged head=converged residual_inf base=9.979368109647169e-09 head=9.979368109647169e-09 l2_relative base=0.1510763443361441 head=0.1510763443361441
+hybrid_poisson_eikonal: head cache nodes=24576 bytes=18350080 build_ms=23.221668

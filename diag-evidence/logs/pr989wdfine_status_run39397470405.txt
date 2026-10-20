@@ -1,0 +1,6 @@
+build_base wall_s=27 exe_present=yes
+build_head wall_s=18 exe_present=yes
+base_hamilton_jacobi rc=0 wall_s=2365.32
+head_hamilton_jacobi rc=0 wall_s=2709.60
+base_hybrid_poisson_eikonal rc=0 wall_s=1471.91
+head_hybrid_poisson_eikonal rc=0 wall_s=873.68

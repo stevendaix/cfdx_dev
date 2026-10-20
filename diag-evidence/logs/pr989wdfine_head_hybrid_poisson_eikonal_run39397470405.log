@@ -1,0 +1,5 @@
+method filter: hybrid_poisson_eikonal
+N=128, h=0.0157480314961, samples=2097152
+Poisson operator: fluid=1835008, fluid_fluid_faces=5443584, solid_faces=24576, outer_faces=98304, diag=[12096.75,26881.6666667], min_diagonal_dominance=0, symmetry_error=0
+Poisson wall offsets: faces=24576, delta=[0.011811023622,0.011811023622], delta_over_h=[0.75,0.75], max_wall_coefficient=5376.33333333, max_wall_coefficient_cell=512032, max_wall_coefficient_ijk=32:32:31, max_wall_coefficient_point=0.00393700787402:0.00393700787402:-0.011811023622, max_wall_coefficient_delta=0.011811023622, max_wall_coefficient_h=0.0157480314961, degenerate=0
+hybrid_poisson_eikonal, L1=0.124097083358, L2=0.151076344336, Linf=0.19434510419, nearL2=0.0684246424545, residual=9.97936810965e-09, violations=0, iterations=9316, converged=true, stopping_reason=converged, ms=872777.449215
