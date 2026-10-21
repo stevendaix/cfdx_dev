@@ -412,6 +412,7 @@ class OpenFOAMAdapter(SolverAdapter):
             points = self._parse_points(poly_mesh / "points")
             if points is None:
                 return None, None
+            self._mesh_points = points
 
             # Parse faces
             faces = self._parse_faces(poly_mesh / "faces")
