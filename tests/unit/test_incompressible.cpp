@@ -100,10 +100,14 @@ int main(){
         const auto geometry = build_fv_geometry(m);
         Field<double, Location::FACE> mass_flux(m.n_faces(), "phi", "kg/s", 1);
         Field<double, Location::CELL> zero(m.n_cells(), "zero", "1", 1);
+        Field<double, Location::CELL> grad_p(m.n_cells(), "grad_p", "Pa/m", 3);
         for (std::size_t f = 0; f < m.n_faces(); ++f)
             mass_flux(f) = 0.0;
-        for (std::size_t c = 0; c < m.n_cells(); ++c)
+        for (std::size_t c = 0; c < m.n_cells(); ++c) {
             zero(c) = 0.0;
+            for (std::size_t d = 0; d < 3; ++d)
+                grad_p.component_data(d)[c] = 0.0;
+        }
 
         // This is the same cellwise-viscosity overload called by all three
         // production momentum component assemblies. Hold convection and
@@ -113,10 +117,10 @@ int main(){
         const std::vector<double> nonuniform_mu{1.0, 10.0};
         const ScalarBoundaryConditions velocity_bcs{};
         const auto uniform = assemble_momentum_component(
-            m, geometry, mass_flux, zero, zero, uniform_mu,
+            m, geometry, mass_flux, grad_p, zero, uniform_mu,
             velocity_bcs, 0, false, ConvectionScheme::UPWIND);
         const auto nonuniform = assemble_momentum_component(
-            m, geometry, mass_flux, zero, zero, nonuniform_mu,
+            m, geometry, mass_flux, grad_p, zero, nonuniform_mu,
             velocity_bcs, 0, false, ConvectionScheme::UPWIND);
 
         EXPECT_TRUE(uniform.matrix.n_rows() == 2);
