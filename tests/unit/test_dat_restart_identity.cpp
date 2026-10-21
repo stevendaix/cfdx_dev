@@ -262,6 +262,59 @@ void run_cases()
         std::filesystem::remove(dat);
     });
 
+    run_case("dat_restart_truncated_optional_field_is_atomic", [] {
+        const Mesh m = make_cube(1.0);
+        const auto dat = temp_dat("truncated_optional");
+        Field<double,Location::CELL> k(1, "k", "m2/s2", 1);
+        Field<double,Location::CELL> omega(1, "omega", "1/s", 1);
+        k(0) = 0.42;
+        omega(0) = 125.0;
+        DatRestartFields write_fields;
+        write_fields.k = &k;
+        write_fields.omega = &omega;
+        write_dat_restart_fields(dat.string(), m, seeded_u(0.25), seeded_p(37.5),
+                                 write_fields, 23, 4.5);
+
+        // Preserve all valid U/p/k records but truncate the final omega value.
+        std::string contents;
+        {
+            std::ifstream in(dat);
+            std::ostringstream buffer;
+            buffer << in.rdbuf();
+            contents = buffer.str();
+        }
+        const auto last_newline = contents.find_last_of('\n');
+        EXPECT_TRUE(last_newline != std::string::npos);
+        const auto previous_newline = contents.find_last_of('\n', last_newline - 1);
+        EXPECT_TRUE(previous_newline != std::string::npos);
+        // Keep the omega field header but replace its numeric payload with an
+        // incomplete exponent. This reaches the malformed-value parser path,
+        // rather than merely testing a missing omega record.
+        contents.erase(previous_newline + 1);
+        contents += "1e";
+        {
+            std::ofstream out(dat);
+            out << contents;
+        }
+
+        Field<double,Location::CELL> u = seeded_u(9.0);
+        Field<double,Location::CELL> p = seeded_p(8.0);
+        Field<double,Location::CELL> restored_k(1, "k", "m2/s2", 1);
+        Field<double,Location::CELL> restored_omega(1, "omega", "1/s", 1);
+        restored_k(0) = 7.0;
+        restored_omega(0) = 6.0;
+        DatRestartFields read_fields;
+        read_fields.k = &restored_k;
+        read_fields.omega = &restored_omega;
+        EXPECT_THROW(read_dat_restart_fields(dat.string(), m, u, p, read_fields),
+                     std::runtime_error);
+        EXPECT_NEAR(u(0,0), 9.0, 0.0);
+        EXPECT_NEAR(p(0), 8.0, 0.0);
+        EXPECT_NEAR(restored_k(0), 7.0, 0.0);
+        EXPECT_NEAR(restored_omega(0), 6.0, 0.0);
+        std::filesystem::remove(dat);
+    });
+
     run_case("dat_restart_identity_rejects_non_finite_geometry", [] {
         Mesh broken = make_cube(1.0);
         broken.points().set(0, std::nan(""), 0.0, 0.0);

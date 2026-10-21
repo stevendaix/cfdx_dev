@@ -230,18 +230,39 @@ inline void write_dat_restart_fields(
 inline DatRestartState read_dat_restart_fields(
     const std::string& path,
     const cfdx::core::Mesh& mesh,
-    cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
-    cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& target_U,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& target_p,
     DatRestartFields fields)
 {
-    if (U.dimension() != 3 || U.size() != mesh.n_cells())
+    if (target_U.dimension() != 3 || target_U.size() != mesh.n_cells())
         throw std::invalid_argument("read_dat_restart_fields: invalid velocity field");
-    if (p.dimension() != 1 || p.size() != mesh.n_cells())
+    if (target_p.dimension() != 1 || target_p.size() != mesh.n_cells())
         throw std::invalid_argument("read_dat_restart_fields: invalid pressure field");
     validate_optional_restart_field(mesh, fields.temperature, "temperature");
     validate_optional_restart_field(mesh, fields.k, "k");
     validate_optional_restart_field(mesh, fields.second_turbulence, "second turbulence");
     validate_optional_restart_field(mesh, fields.omega, "omega");
+
+    // Parse into candidates: malformed/truncated checkpoints must not leave
+    // caller-owned carrier or optional fields partially overwritten.
+    auto candidate_U = target_U;
+    auto candidate_p = target_p;
+    auto candidate_temperature = fields.temperature ? *fields.temperature
+        : cfdx::core::Field<double, cfdx::core::Location::CELL>{};
+    auto candidate_k = fields.k ? *fields.k
+        : cfdx::core::Field<double, cfdx::core::Location::CELL>{};
+    auto candidate_second = fields.second_turbulence ? *fields.second_turbulence
+        : cfdx::core::Field<double, cfdx::core::Location::CELL>{};
+    auto candidate_omega = fields.omega ? *fields.omega
+        : cfdx::core::Field<double, cfdx::core::Location::CELL>{};
+    const auto target_fields = fields;
+    if (fields.temperature) fields.temperature = &candidate_temperature;
+    if (fields.k) fields.k = &candidate_k;
+    if (fields.second_turbulence) fields.second_turbulence = &candidate_second;
+    if (fields.omega) fields.omega = &candidate_omega;
+    auto& U = candidate_U;
+    auto& p = candidate_p;
+
     std::ifstream in(path);
     if (!in) throw std::runtime_error("read_dat_restart_fields: cannot open " + path);
 
@@ -327,6 +348,12 @@ inline DatRestartState read_dat_restart_fields(
     if (fields.k && !got_k) throw std::runtime_error("read_dat_restart_fields: requested k but DAT has none");
     if (fields.second_turbulence && !got_second) throw std::runtime_error("read_dat_restart_fields: requested turbulence field but DAT has none");
     if (fields.omega && !got_omega) throw std::runtime_error("read_dat_restart_fields: requested omega but DAT has none");
+    target_U = candidate_U;
+    target_p = candidate_p;
+    if (target_fields.temperature) *target_fields.temperature = candidate_temperature;
+    if (target_fields.k) *target_fields.k = candidate_k;
+    if (target_fields.second_turbulence) *target_fields.second_turbulence = candidate_second;
+    if (target_fields.omega) *target_fields.omega = candidate_omega;
     return state;
 }
 
