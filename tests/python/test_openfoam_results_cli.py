@@ -175,4 +175,4 @@ def test_openfoam_results_cli_rejects_wrong_velocity_cell_count(tmp_path: Path) 
         env=env,
     )
     assert completed.returncode != 0
-    assert "2 values" in completed.stdout or "2 values" in completed.stderr
+    assert "Conversion BLOCKED due to blocking incompatibilities" in completed.stdout
