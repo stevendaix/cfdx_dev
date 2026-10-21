@@ -1,52 +1,55 @@
-# OpenFOAM Python reader: dependency and integration decision
+# OpenFOAM Python reader: native parser and integration limits
 
-## Finding
+## Decision
 
-CFDX already has two OpenFOAM mesh-import paths: the native C++ reader for
-`constant/polyMesh` and a Python `OpenFOAMAdapter`. The Python adapter also
-contains hand-written list/field parsing. It is therefore not necessary to
-start another parser from scratch, but the current adapter should not be
-mistaken for a complete case/results reader.
+CFDX uses a small native Python parser for the common ASCII OpenFOAM syntax
+needed by case inspection, setup dictionaries, scalar/vector fields, and
+polyMesh lists. It has no runtime dependency on foamlib or another OpenFOAM
+Python package. This avoids a GPL-3.0-only dependency and preserves support for
+the project's Python 3.10 baseline.
 
-The preferred parser candidate is [foamlib](https://github.com/gerlero/foamlib).
-It provides a standalone OpenFOAM file parser, dict-like access to dictionaries
-and fields, ASCII/binary field support, and time-directory traversal. Its
-documented API includes `FoamFile`, `FoamFieldFile`, and `FoamCase`.
-[fluidfoam](https://github.com/fluiddyn/fluidfoam) is a useful alternative for
-post-processing, while pyOFM is primarily a polyMesh reader.
+The parser is deliberately scoped: it handles ordinary dictionaries, nested
+dictionary blocks, quoted strings, comments, numeric values, parenthesized
+lists, dimension bracket lists, uniform fields, and nonuniform scalar/vector
+volume fields. It is not a complete implementation of the OpenFOAM file
+grammar.
 
-## Licensing and runtime constraints
+## Supported import path
 
-Do not make foamlib a mandatory dependency of the CFDX core. Keep it optional
-until the repository's Python-version and licensing policies have been checked.
-The current latest foamlib release declares Python >=3.12; older releases may
-support earlier interpreters, but the chosen version must be resolved and tested
-in CFDX's supported Python matrix. foamlib is GPL-3.0-only, so distribution and
-dependency policy needs explicit review before bundling it as a required
-dependency.
+- The adapter reads ASCII constant/polyMesh/points, faces, owner, neighbour,
+  and boundary files.
+- Native face/owner/neighbour topology is preserved as CFDX CSR. Surface
+  triangles exported to mesh.vtk are for visualization only and are not
+  treated as volume cells.
+- Numeric time directories are sorted numerically; --results imports
+  cell-centred scalar/vector volume fields from the latest time.
+- Common setup dictionaries are parsed and preserved in case metadata.
+  Supported controls are mapped explicitly; fvSchemes and fvSolution
+  remain source metadata until equivalent CFDX numerical registry mappings
+  are qualified.
+- Unparsed setup dictionaries are preserved as raw text and reported as a
+  non-blocking gap. Requested result imports fail clearly when field syntax
+  cannot be decoded; values are never silently coerced.
 
-## Integration contract
+## Explicit limitations
 
-- The Python adapter now preserves OpenFOAM's native face/owner/neighbour and
-  cell-face CSR topology; it must not infer volume cells from surface triangles.
-- Use foamlib for dictionaries and fields where available; do not copy its parser.
-- Keep the source representation and the CFDX canonical representation separate.
-- Preserve parsed setup dictionaries in the case metadata and raw text if the
-  optional parser is unavailable.
-- Map only explicit controls (time controls, transient mode, turbulence model,
-  radiation model); retain fvSchemes/fvSolution and report them as not yet
-  translated to equivalent CFDX numerical registry selections.
-- Keep field data usable for post-processing even if CFDX cannot reproduce the
-  source physics model.
-- Never silently claim numerical equivalence after converting a boundary
-  condition, turbulence model, discretization scheme, radiation model, or
-  thermal model.
+- Binary polyMesh and binary field files are not supported by this native
+  Python parser. They are detected and reported rather than being treated as
+  ASCII. The original case remains unchanged.
+- Tensor, surface, point, and decomposed processor fields are not imported as
+  cell-centred scalar/vector arrays.
+- Boundary-condition values, material properties, turbulence/radiation
+  closure equivalence, and all numerical scheme/solver controls are not yet
+  translated comprehensively into CFDX runtime configuration.
+- The parser is not intended to execute OpenFOAM directives such as arbitrary
+  #include/macro expansion or reproduce every release-specific grammar
+  extension.
 
-## First implementation slice
+## Qualification contract
 
-`cfdx.io.openfoam_case_reader` provides optional, read-only case inspection and
-single-field reading. It is a parser integration boundary, not yet a complete
-case-to-HDF5 converter. Next steps are to connect its result metadata to the
-existing `ConversionResult` / gap-analysis pipeline, add versioned fixture
-cases (including binary fields), and qualify the data mapping against the
-native C++ mesh and the HDF5 writer.
+Keep source metadata separate from the CFDX canonical representation. Never
+claim numerical equivalence merely because a case was parsed. Before relying on
+the importer for production cases, qualify representative ASCII cases against
+the OpenFOAM source mesh/fields and the resulting case.cfdx.h5, including
+cell counts, face ownership, boundary patch ranges, field locations, and
+numeric values. Binary support requires a separate implementation and fixtures.
