@@ -1,0 +1,12 @@
+variant=r4_boundary_operator
+wt_ref=28e4d183b258997c5b923b2e05569263e900f2ff
+pin_subject=fix(sst): preserve velocity boundary data when restoring restart state (#1018)
+outcome=FAIL_DIVERGED
+test_rc=134
+test_duration_s=14
+run_id=39672681948
+
+--- level markers reached ---
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.00036032 Cm=0.00097768 Cd_pressure=-0.0343964 Cd_viscous=0.0558506 continuity=1.45849e-10 iterations=424
+--- failure line (if any) ---
+  what():  NACA0012 solver did not converge
