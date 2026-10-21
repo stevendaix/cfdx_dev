@@ -1,0 +1,7 @@
+run_id=39624273654
+started_utc=2026-10-21T15:17:34Z
+head_sha=e2bacc50bee82bf7de1fcb3e83e33223b9b5ec2e (pinned head of feat/buoyancy-flow-energy-loop, PR #1016, capture-only, no instrumentation)
+context: CI run 39608693065 fails Release+DebugSanitizers at 'Run fast CTest' exit 8; energy-stage vv contract adapted in e2bacc50
+note: pyyaml added to the diag venv (deviation documented in the pr942 diag v2)
+scope: replicate CI Release 'Run fast CTest' (-LE long) + rerun-failed full output
+rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL
