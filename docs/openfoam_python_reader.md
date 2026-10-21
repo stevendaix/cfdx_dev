@@ -4,7 +4,7 @@
 
 CFDX uses a small native Python parser for the common ASCII OpenFOAM syntax
 needed by case inspection, setup dictionaries, scalar/vector fields, and
-polyMesh lists. It has no runtime dependency on foamlib or another OpenFOAM
+polyMesh lists. It has no runtime dependency on an external OpenFOAM
 Python package. This avoids a GPL-3.0-only dependency and preserves support for
 the project's Python 3.10 baseline.
 
