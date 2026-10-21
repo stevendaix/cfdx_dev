@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -92,6 +93,11 @@ def test_openfoam_results_cli_imports_latest_cell_velocity(tmp_path: Path) -> No
     _write_velocity(case, "10", [tuple(expected[0])])
 
     output = tmp_path / "converted"
+    env = os.environ.copy()
+    package_root = str(Path(__file__).resolve().parents[2] / "src" / "cfdx" / "python")
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (package_root, env.get("PYTHONPATH", "")) if part
+    )
     completed = subprocess.run(
         [
             sys.executable,
@@ -107,6 +113,7 @@ def test_openfoam_results_cli_imports_latest_cell_velocity(tmp_path: Path) -> No
         capture_output=True,
         text=True,
         timeout=30,
+        env=env,
     )
     assert completed.returncode == 0, (
         f"OpenFOAM conversion CLI failed (exit {completed.returncode}).\n"
@@ -134,6 +141,11 @@ def test_openfoam_results_cli_rejects_wrong_velocity_cell_count(tmp_path: Path) 
     _write_hex_case(case)
     _write_velocity(case, "10", [(1.0, 2.0, 3.0), (4.0, 5.0, 6.0)])
 
+    env = os.environ.copy()
+    package_root = str(Path(__file__).resolve().parents[2] / "src" / "cfdx" / "python")
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (package_root, env.get("PYTHONPATH", "")) if part
+    )
     completed = subprocess.run(
         [
             sys.executable,
@@ -149,6 +161,7 @@ def test_openfoam_results_cli_rejects_wrong_velocity_cell_count(tmp_path: Path) 
         capture_output=True,
         text=True,
         timeout=30,
+        env=env,
     )
     assert completed.returncode != 0
     assert "2 values" in completed.stdout or "2 values" in completed.stderr
