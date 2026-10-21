@@ -13,13 +13,11 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-
 import numpy as np
 
 from cfdx.io.interfaces import ConversionResult, SolverAdapter
 from cfdx.io.mapping_rules import MappingRules
 from cfdx.io.schema import BCType, BCValueType, BoundarySpec, CaseSetup, SourceInfo
-
 
 _FIELD_DIMS = {"scalar": 1, "vector": 3, "symmTensor": 6, "tensor": 9}
 
@@ -485,7 +483,9 @@ class OpenFOAMAdapter(SolverAdapter):
         try:
             content = faces_file.read_text(encoding="utf-8")
             if re.search(r"\bformat\s+binary\s*;", content):
-                raise ValueError("Binary OpenFOAM polyMesh is not supported by the native Python reader")
+                raise ValueError(
+                    "Binary OpenFOAM polyMesh is not supported by the native Python reader"
+                )
 
             data_lines, _ = _extract_foam_list(content)
             if data_lines is None:
@@ -517,7 +517,9 @@ class OpenFOAMAdapter(SolverAdapter):
         try:
             content = label_file.read_text(encoding="utf-8")
             if re.search(r"\bformat\s+binary\s*;", content):
-                raise ValueError("Binary OpenFOAM polyMesh is not supported by the native Python reader")
+                raise ValueError(
+                    "Binary OpenFOAM polyMesh is not supported by the native Python reader"
+                )
 
             data_lines, count = _extract_foam_list(content)
             if data_lines is None:
