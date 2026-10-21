@@ -629,21 +629,21 @@ int main(int argc, char** argv)
             // case contracts, making import failures distinguishable from later
             // production-solver qualification failures.
             std::ostringstream imported_velocity_json;
-            imported_velocity_json << "{\\n  \\"field\\": \\"U\\",\\n"
-                                   << "  \\"location\\": \\"cell\\",\\n"
-                                   << "  \\"cell_count\\": " << U.size() << ",\\n"
-                                   << "  \\"values\\": [";
+            imported_velocity_json << "{\n  \"field\": \"U\",\n"
+                                   << "  \"location\": \"cell\",\n"
+                                   << "  \"cell_count\": " << U.size() << ",\n"
+                                   << "  \"values\": [";
             for (std::size_t cell = 0; cell < U.size(); ++cell) {
                 const auto value = U(cell);
                 if (cell != 0)
                     imported_velocity_json << ",";
-                imported_velocity_json << "\\n    [" << json_number(value.x)
+                imported_velocity_json << "\n    [" << json_number(value.x)
                                        << ", " << json_number(value.y)
                                        << ", " << json_number(value.z) << "]";
             }
             if (U.size() != 0)
-                imported_velocity_json << "\\n  ";
-            imported_velocity_json << "]\\n}\\n";
+                imported_velocity_json << "\n  ";
+            imported_velocity_json << "]\n}\n";
             write_text_file_atomic(
                 options.output_dir / "imported_velocity_field.json",
                 imported_velocity_json.str());
