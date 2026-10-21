@@ -7,6 +7,7 @@ import shutil
 import numpy as np
 import pytest
 
+# isort: split
 from cfdx.io.converter import (
     ConversionResult,
     SolverConverter,
