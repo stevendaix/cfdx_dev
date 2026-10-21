@@ -147,6 +147,122 @@ def test_openfoam_results_cli_imports_latest_cell_velocity(tmp_path: Path) -> No
         assert "outlet" in h5.attrs["boundary_patches"]
 
 
+
+def _convert_openfoam_case(case: Path, output: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "cfdx.io.cli",
+            "convert",
+            str(case),
+            "--results",
+            "--output",
+            str(output),
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=env,
+    )
+
+
+def _solver_environment() -> dict[str, str]:
+    env = os.environ.copy()
+    package_root = str(Path(__file__).resolve().parents[2] / "src" / "cfdx" / "python")
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (package_root, env.get("PYTHONPATH", "")) if part
+    )
+    return env
+
+
+def _run_production_solver(case_h5: Path, output: Path) -> subprocess.CompletedProcess[str]:
+    solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
+    if not solver:
+        import pytest
+
+        pytest.skip("CFDX_PRODUCTION_SOLVER is not configured for this test run")
+    return subprocess.run(
+        [
+            solver,
+            "--mesh",
+            str(case_h5),
+            "--output-dir",
+            str(output),
+            "--iterations",
+            "1",
+            "--initial-velocity-field",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env=_solver_environment(),
+    )
+
+
+def _converted_case_with_velocity(tmp_path: Path, values: list[tuple[float, float, float]]) -> Path:
+    case = tmp_path / "foam_case"
+    _write_hex_case(case)
+    _write_velocity(case, "10", values)
+    converted = tmp_path / "converted"
+    completed = _convert_openfoam_case(case, converted, _solver_environment())
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    return converted / "case.cfdx.h5"
+
+
+def test_production_solver_emits_exact_imported_velocity_evidence(tmp_path: Path) -> None:
+    expected = [[4.25, -0.5, 8.0]]
+    case_h5 = _converted_case_with_velocity(
+        tmp_path, [(expected[0][0], expected[0][1], expected[0][2])]
+    )
+    output = tmp_path / "solver_output"
+    completed = _run_production_solver(case_h5, output)
+
+    # The converted OpenFOAM fixture deliberately does not claim full CFDX
+    # numerics/BC equivalence. The production executable must nevertheless
+    # read and validate U before any later case-contract rejection.
+    evidence_path = output / "imported_velocity_field.json"
+    assert evidence_path.is_file(), (
+        f"solver did not emit imported-U evidence; exit={completed.returncode}\\n"
+        f"stdout:\\n{completed.stdout}\\nstderr:\\n{completed.stderr}"
+    )
+    import json
+
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    assert evidence["field"] == "U"
+    assert evidence["location"] == "cell"
+    assert evidence["cell_count"] == 1
+    assert evidence["values"] == expected
+    assert "Imported cell-centred velocity field U" in completed.stdout
+
+
+def test_production_solver_rejects_missing_imported_velocity(tmp_path: Path) -> None:
+    import h5py
+
+    case_h5 = _converted_case_with_velocity(tmp_path, [(1.0, 2.0, 3.0)])
+    with h5py.File(case_h5, "r+") as h5:
+        del h5["fields/vector/U"]
+
+    completed = _run_production_solver(case_h5, tmp_path / "solver_output")
+    assert completed.returncode != 0
+    assert "field 'U' is absent" in completed.stderr
+
+
+def test_production_solver_rejects_nonfinite_imported_velocity(tmp_path: Path) -> None:
+    import h5py
+    import numpy as np
+
+    case_h5 = _converted_case_with_velocity(tmp_path, [(1.0, 2.0, 3.0)])
+    with h5py.File(case_h5, "r+") as h5:
+        h5["fields/vector/U"][0, 1] = np.nan
+
+    completed = _run_production_solver(case_h5, tmp_path / "solver_output")
+    assert completed.returncode != 0
+    assert "imported U contains non-finite values" in completed.stderr
+
+
 def test_openfoam_results_cli_rejects_wrong_velocity_cell_count(tmp_path: Path) -> None:
     case = tmp_path / "foam_case"
     _write_hex_case(case)
