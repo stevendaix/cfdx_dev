@@ -4,12 +4,10 @@ from pathlib import Path
 
 import h5py
 import numpy as np
-
 from cfdx.io.adapters.openfoam import OpenFOAMAdapter
 from cfdx.io.hdf5_writer import write_case_cfdx_h5
 from cfdx.io.interfaces import ConversionResult
 from cfdx.io.schema import SourceInfo
-
 
 def test_openfoam_adapter_imports_latest_scalar_and_vector_fields(
     tmp_path, monkeypatch
