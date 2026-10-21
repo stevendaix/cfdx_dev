@@ -1,0 +1,8 @@
+pin=2f5c0dce18f0794ad22b25c68ddea7c19eb5ebc6
+role=current_head
+subject=feat(production): converge the external energy-S2S radiation iteration (#1011)
+commit_date=2026-10-21 07:04:06 +0200
+outcome=FAIL_DIVERGED
+test_rc=134
+test_duration_s=20
+run_id=39547653053
