@@ -63,6 +63,8 @@ def _tokens(text: str) -> list[str]:
     cleaned = _strip_comments(text)
     if re.search(r"\bformat\s+binary\s*;", cleaned):
         raise ValueError("Binary OpenFOAM files are not supported by the native Python reader")
+    if re.search(r"(?m)^\s*#", cleaned):
+        raise ValueError("OpenFOAM preprocessor directives are not supported by the native Python reader")
     return _TOKEN_RE.findall(cleaned)
 
 
