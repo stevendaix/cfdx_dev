@@ -22,6 +22,7 @@ from cfdx.io.schema import BCType, BCValueType, BoundarySpec, CaseSetup, SourceI
 
 _FIELD_DIMS = {"scalar": 1, "vector": 3, "symmTensor": 6, "tensor": 9}
 
+
 def _extract_foam_list(content: str):
     """Extract the first parenthesised list block from a FoamFile ascii file.
 
@@ -62,6 +63,7 @@ def _extract_foam_list(content: str):
         if line:
             lines.append(line)
     return lines, count
+
 
 class OpenFOAMAdapter(SolverAdapter):
     solver_name = "OpenFOAM"
