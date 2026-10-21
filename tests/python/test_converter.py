@@ -1,4 +1,4 @@
-"""Unit tests for the unified CFDX conversion API (cfdx.io.converter)."""
+"""Unit tests for the unified CFDX conversion API and solver converters."""
 
 import json
 import os
