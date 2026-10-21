@@ -95,6 +95,40 @@ int main(){
         const auto pc_rho2 = assemble_pressure_correction(m, ap, r, 2.0);
         EXPECT_NEAR(-pc_rho2.matrix(0,1), 2.0 * expected, 1e-12);
     });
+    run_case("production_momentum_operator_consumes_cellwise_effective_viscosity", []() {
+        Mesh m = make_two_tetra();
+        const auto geometry = build_fv_geometry(m);
+        Field<double, Location::FACE> mass_flux(m.n_faces(), "phi", "kg/s", 1);
+        Field<double, Location::CELL> zero(m.n_cells(), "zero", "1", 1);
+        Field<double, Location::CELL> grad_p(m.n_cells(), "grad_p", "Pa/m", 3);
+        for (std::size_t f = 0; f < m.n_faces(); ++f)
+            mass_flux(f) = 0.0;
+        for (std::size_t c = 0; c < m.n_cells(); ++c) {
+            zero(c) = 0.0;
+            for (std::size_t d = 0; d < 3; ++d)
+                grad_p.component_data(d)[c] = 0.0;
+        }
+
+        // This is the same cellwise-viscosity overload called by all three
+        // production momentum component assemblies. Hold convection and
+        // sources fixed so the internal diffusion coefficient isolates the
+        // effect of the SST-derived effective viscosity.
+        const std::vector<double> uniform_mu{1.0, 1.0};
+        const std::vector<double> nonuniform_mu{1.0, 10.0};
+        const ScalarBoundaryConditions velocity_bcs{};
+        const auto uniform = assemble_momentum_component(
+            m, geometry, mass_flux, grad_p, zero, uniform_mu,
+            velocity_bcs, 0, false, ConvectionScheme::UPWIND);
+        const auto nonuniform = assemble_momentum_component(
+            m, geometry, mass_flux, grad_p, zero, nonuniform_mu,
+            velocity_bcs, 0, false, ConvectionScheme::UPWIND);
+
+        EXPECT_TRUE(uniform.matrix.n_rows() == 2);
+        EXPECT_TRUE(nonuniform.matrix.n_rows() == 2);
+        EXPECT_TRUE(std::abs(uniform.matrix(0, 1) - nonuniform.matrix(0, 1)) > 1e-12);
+        EXPECT_NEAR(uniform.matrix(0, 1), uniform.matrix(1, 0), 1e-12);
+        EXPECT_NEAR(nonuniform.matrix(0, 1), nonuniform.matrix(1, 0), 1e-12);
+    });
     run_case("piso_gain_uses_exact_positive_denominator", []() {
         EXPECT_NEAR(piso_correction_gain(4.0, 1.0), 1.0 / 3.0, 1e-12);
     });
