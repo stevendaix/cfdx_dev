@@ -1,8 +1,11 @@
 #pragma once
 
-// Production S2S radiation stage (capability #885 stage 2, issue #885):
-// couple surface-to-surface radiosity to the production energy stage on a
-// frozen flow, one delayed-Picard pass.
+// Production S2S radiation stage (capability #885, issue #885): couple
+// surface-to-surface radiosity to the production energy stage on a frozen
+// flow. Stage 2 = one delayed-Picard pass (run_production_s2s_energy_stage);
+// stage 3 = the external energy-radiation iteration
+// (run_production_s2s_energy_outer_loop), whose verdict is the converged
+// coupled fixed point.
 //
 // Contract (fiche methode docs/audits/11-rayonnement.md, APPROVED):
 //   * One S2S surface = one boundary patch. A participating patch is a
@@ -556,6 +559,228 @@ inline ProductionS2SEnergyStageResult run_production_s2s_energy_stage(
         result.max_wall_temperature_lag =
             std::max(result.max_wall_temperature_lag,
                      std::abs(wall_t1[i] - radiation.wall_temperatures[i]));
+    return result;
+}
+
+// ---------------------------------------------------------------------------
+// External energy-radiation iteration (capability #885 step 3): replace the
+// single delayed-Picard pass of run_production_s2s_energy_stage with a
+// controlled outer loop whose verdict is the coupled fixed point itself.
+// ---------------------------------------------------------------------------
+//
+// Contract (fiches 11 + 14, both APPROVED; see the stage-2 block above for
+// the shared surface/radiosity contract):
+//   * The loop iterates the two stage-2 primitives UNCHANGED: a production
+//     energy pass on the frozen flow (fiche 14 blocking gates: linear
+//     convergence, independent global and per-cell conservation audits,
+//     finitude) and a production S2S radiosity solve on the resulting wall
+//     temperatures (fiche 11 blocking machine gates: per-surface identity,
+//     closed enclosure balance). No inner gate, tolerance or oracle is
+//     modified by the loop.
+//   * Controlled under-relaxation (fiche 11, section 5: an explicitly
+//     coupled radiative source can oscillate): the radiative flux map
+//     APPLIED to iteration k+1's energy pass is
+//         F(k+1) = F(k) + omega * (R(T(k)) - F(k)),  omega = 0.25 fixed,
+//     where R(T) is the radiative response of the field solved under
+//     F(k). omega is a PATH parameter only. The acceptance criteria below
+//     are evaluated on the UNRELAXED response R(T*), so under-relaxation
+//     can slow the loop but can never fake a converged verdict.
+//   * Separate blocking criteria, ALL required for converged:
+//     (1) every energy pass converged (stage-2 fiche 14 gates),
+//     (2) every radiosity solve green (stage-2 fiche 11 gates),
+//     (3) radiative fixed-point residual
+//             max_i |R_i(T*) - F_i| / scale_i <= 1e-10,
+//         scale_i = max(eps_i * sigma * T*_i^4 + G_i, 1 W/m^2) - the same
+//         gross radiant scale as the per-surface identity gate; F_i is
+//         the map applied to the final energy pass (0 for an absent
+//         entry),
+//     (4) wall-temperature stationarity
+//             max_i |T_i(k) - T_i(k-1)| / max(T_i(k-1), 1 K) <= 1e-10,
+//         measured against the wall temperatures of the previous
+//         iteration's field (the incoming initial field for k = 1).
+//   * Verdict semantics: converged means the final temperature field is
+//     the energy solution for the applied radiative map F AND the
+//     radiative response of that same field reproduces F within the
+//     tolerances above: the exact coupled fixed point on the frozen flow.
+//     If any inner stage fails, or the budget of 200 outer iterations is
+//     exhausted before (3) and (4) hold, converged=false is returned with
+//     the full history and NO claim (INCONCLUSIVE is never PASS).
+//   * The per-iteration history (fixed-point residual and wall-
+//     temperature change) is part of the result so a reader can
+//     reconstruct the coupled convergence from the artifacts without
+//     re-running the loop.
+
+namespace detail_s2s_stage {
+
+// Fixed outer-loop controls, documented and fail-closed (no case-facing
+// knobs invented): omega damps the explicit radiative feedback path
+// (fiche 11 section 5 oscillation lesson), the budget bounds the loop,
+// and the acceptance tolerance matches the machine-grade radiosity gates.
+inline constexpr double kOuterRelaxation = 0.25;
+inline constexpr std::size_t kOuterMaxIterations = 200;
+inline constexpr double kOuterFixedPointTolerance = 1e-10;
+
+}  // namespace detail_s2s_stage
+
+struct ProductionS2SOuterIteration {
+    std::size_t iteration = 0;
+    bool energy_converged = false;
+    bool radiation_converged = false;
+    double max_flux_fixed_point_normalized = 0.0;
+    double max_wall_temperature_change_normalized = 0.0;
+};
+
+struct ProductionS2SOuterLoopResult {
+    // Blocking verdict of the external energy-radiation iteration, see
+    // the contract above: all inner gates green AND the unrelaxed
+    // radiative fixed-point residual AND wall-temperature stationarity
+    // within 1e-10. A red or budget-exhausted loop can never yield
+    // converged.
+    bool converged = false;
+    bool fixed_point_flux_passed = false;
+    bool fixed_point_wall_temperature_passed = false;
+    std::size_t outer_iterations = 0;
+    double max_flux_fixed_point_normalized =
+        std::numeric_limits<double>::infinity();
+    double max_wall_temperature_change_normalized =
+        std::numeric_limits<double>::infinity();
+    double max_wall_temperature_lag = 0.0;  // K, last-iteration diagnostic
+    std::vector<ProductionS2SOuterIteration> history;
+    ProductionEnergyStageResult energy;     // final energy pass
+    ProductionS2SRadiationResult radiation;  // final radiative response
+};
+
+inline ProductionS2SOuterLoopResult run_production_s2s_energy_outer_loop(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::io::CaseSetup& setup,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature)
+{
+    if (!production_s2s_radiation_requested(setup))
+        throw std::invalid_argument(
+            "run_production_s2s_energy_outer_loop: radiation_model 'S2S' is "
+            "not declared; the production S2S outer loop only runs on a "
+            "declared S2S case");
+    if (setup.energy_model != "conjugate")
+        throw std::invalid_argument(
+            "run_production_s2s_energy_outer_loop: S2S radiation is coupled "
+            "into the production energy stage and requires energy_model "
+            "'conjugate' (declared: '" + setup.energy_model + "')");
+
+    ProductionS2SOuterLoopResult result;
+    // The surface system is fixed for the whole loop (case-declared
+    // emissivities and view factors, validated fail-closed by the
+    // builder once, before any solve).
+    const auto radiation_case =
+        build_production_s2s_radiation_case(mesh, geometry, setup);
+    // Wall temperatures of the incoming field: the k = 1 stationarity
+    // reference.
+    auto previous_wall_temperatures = production_s2s_wall_temperatures(
+        mesh, geometry, radiation_case, temperature);
+
+    // F(k): the radiative flux map applied to the energy pass. Empty on
+    // the first pass (no radiative boundary contribution at all), then the
+    // under-relaxed feedback.
+    std::map<std::string, double> applied_flux;
+    const double omega = detail_s2s_stage::kOuterRelaxation;
+    const std::size_t max_outer_iterations =
+        detail_s2s_stage::kOuterMaxIterations;
+    const double tolerance = detail_s2s_stage::kOuterFixedPointTolerance;
+
+    for (std::size_t iteration = 1; iteration <= max_outer_iterations;
+         ++iteration) {
+        ProductionS2SOuterIteration record;
+        record.iteration = iteration;
+
+        const auto energy = run_production_energy_stage(
+            mesh, geometry, setup, mass_flux, temperature, applied_flux);
+        result.energy = energy;
+        record.energy_converged = energy.converged;
+        result.outer_iterations = iteration;
+        if (!energy.converged) {
+            result.history.push_back(record);
+            return result;  // fail-closed: no radiosity solve on a field
+                            // whose energy pass did not converge
+        }
+
+        const auto radiation = solve_production_s2s_radiation(
+            mesh, geometry, setup, temperature);
+        result.radiation = radiation;
+        record.radiation_converged = radiation.converged;
+        if (!radiation.converged) {
+            result.history.push_back(record);
+            return result;  // fail-closed: red radiosity machine gate
+        }
+
+        const auto wall_temperatures = production_s2s_wall_temperatures(
+            mesh, geometry, radiation_case, temperature);
+
+        // (3) Radiative fixed-point residual on the UNRELAXED response:
+        // the map the final field was solved with must be the map the
+        // same field radiates back, surface by surface, normalized by
+        // each surface's own gross radiant scale (the identity gate's).
+        double max_flux_residual = 0.0;
+        for (std::size_t i = 0; i < radiation.surface_count; ++i) {
+            const std::string& name = radiation.surface_names[i];
+            const auto applied_it = applied_flux.find(name);
+            const double applied =
+                applied_it == applied_flux.end() ? 0.0 : applied_it->second;
+            const double black_body_power =
+                STEFAN_BOLTZMANN * std::pow(wall_temperatures[i], 4);
+            const double scale =
+                std::max(radiation.emissivities[i] * black_body_power +
+                             radiation.irradiation[i],
+                         1.0);
+            const double residual =
+                std::abs(radiation.injected_heat_flux.at(name) - applied) /
+                scale;
+            max_flux_residual = std::max(max_flux_residual, residual);
+        }
+        // (4) Wall-temperature stationarity against the previous
+        // iteration's field (the incoming field for k = 1).
+        double max_wall_change = 0.0;
+        double max_wall_lag = 0.0;
+        for (std::size_t i = 0; i < radiation.surface_count; ++i) {
+            const double reference =
+                std::max(previous_wall_temperatures[i], 1.0);
+            const double change = std::abs(
+                wall_temperatures[i] - previous_wall_temperatures[i]);
+            max_wall_lag = std::max(max_wall_lag, change);
+            max_wall_change =
+                std::max(max_wall_change, change / reference);
+        }
+
+        record.max_flux_fixed_point_normalized = max_flux_residual;
+        record.max_wall_temperature_change_normalized = max_wall_change;
+        result.history.push_back(record);
+        result.max_flux_fixed_point_normalized = max_flux_residual;
+        result.max_wall_temperature_change_normalized = max_wall_change;
+        result.max_wall_temperature_lag = max_wall_lag;
+        result.fixed_point_flux_passed =
+            std::isfinite(max_flux_residual) &&
+            max_flux_residual <= tolerance;
+        result.fixed_point_wall_temperature_passed =
+            std::isfinite(max_wall_change) && max_wall_change <= tolerance;
+        if (result.fixed_point_flux_passed &&
+            result.fixed_point_wall_temperature_passed) {
+            result.converged = true;  // exact coupled fixed point
+            return result;
+        }
+
+        // Under-relaxed feedback for the next energy pass (path only):
+        // F(k+1) = F(k) + omega (R(T(k)) - F(k)).
+        for (std::size_t i = 0; i < radiation.surface_count; ++i) {
+            const std::string& name = radiation.surface_names[i];
+            const auto applied_it = applied_flux.find(name);
+            const double current =
+                applied_it == applied_flux.end() ? 0.0 : applied_it->second;
+            const double response = radiation.injected_heat_flux.at(name);
+            applied_flux[name] = current + omega * (response - current);
+        }
+        previous_wall_temperatures = wall_temperatures;
+    }
+    // Budget exhausted: converged=false, full history, no claim.
     return result;
 }
 

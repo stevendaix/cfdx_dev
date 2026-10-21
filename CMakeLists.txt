@@ -871,6 +871,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_thermal_zones_vv tests/validation/test_thermal_zones_vv.cpp)
     add_cfdx_test(test_production_energy_stage_vv tests/validation/test_production_energy_stage_vv.cpp)
     add_cfdx_test(test_production_s2s_energy_stage_vv tests/validation/test_production_s2s_energy_stage_vv.cpp)
+    add_cfdx_test(test_production_s2s_energy_outer_loop_vv tests/validation/test_production_s2s_energy_outer_loop_vv.cpp)
     add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
     add_cfdx_test(test_s2s_radiation_vv tests/validation/test_s2s_radiation_vv.cpp)
     add_cfdx_test(test_thermal_radiation_model_matrix tests/validation/test_thermal_radiation_model_matrix.cpp)
@@ -1175,6 +1176,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     set_tests_properties(test_thermal_zones_vv PROPERTIES LABELS "qualification;validation;phase13")
     set_tests_properties(test_production_energy_stage_vv PROPERTIES LABELS "qualification;validation;phase13")
     set_tests_properties(test_production_s2s_energy_stage_vv PROPERTIES LABELS "qualification;validation;phase13")
+    set_tests_properties(test_production_s2s_energy_outer_loop_vv PROPERTIES LABELS "qualification;validation;phase13")
 
 endif()
 
