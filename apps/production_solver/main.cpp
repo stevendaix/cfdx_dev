@@ -573,17 +573,17 @@ int main(int argc, char** argv)
             if (!is_case_hdf5)
                 throw std::invalid_argument(
                     "production solver: --initial-velocity-field requires a .cfdx.h5 case");
-            std::vector<Vec3CellField> imported_vectors;
+            std::vector<std::pair<std::string, Vec3CellField>> imported_vectors;
             if (!read_vector_fields_hdf5(mesh_path, imported_vectors))
                 throw std::runtime_error(
                     "production solver: failed to read vector fields from case HDF5");
             const Vec3CellField* imported_u = nullptr;
-            for (const auto& field : imported_vectors) {
-                if (field.name() == "U") {
+            for (const auto& entry : imported_vectors) {
+                if (entry.first == "U") {
                     if (imported_u != nullptr)
                         throw std::invalid_argument(
                             "production solver: duplicate imported U fields");
-                    imported_u = &field;
+                    imported_u = &entry.second;
                 }
             }
             if (imported_u == nullptr)
