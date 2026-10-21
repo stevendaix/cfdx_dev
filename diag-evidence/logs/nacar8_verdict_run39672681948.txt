@@ -1,0 +1,134 @@
+VERDICT: COMBINATION_OR_COUPLED: no single-region revert passes; compile-coupled regions [r1_api_fields r3_rhie_chow_coef r6_monitor_controls r7_flux_audit_forms ] could not be tested alone (expected for r1: master conv_history serializes the reverted struct fields) -> round 9 = cumulative reverts including the coupled regions
+run_id=39672681948
+master_pin=28e4d183b258997c5b923b2e05569263e900f2ff
+green_pin=a1a62dc10fe253e22a716b3e98d7ca02bc45d6d1
+round7_context=v1_green_trio PASS_3_LEVELS (N64 433 / N128 995 / N256 3989 it) on this master pin; round6 NOT_THE_BOUNDARY_BLOCK
+v0b_master_greentest=FAIL_DIVERGED (expected FAIL_DIVERGED: test swap is behavior-neutral)
+vC_convhist_neutral=FAIL_DIVERGED (expected FAIL_DIVERGED: conv_history is serialization-only)
+r1_api_fields=INCONCLUSIVE_BUILD
+r2_validation=FAIL_DIVERGED
+r3_rhie_chow_coef=INCONCLUSIVE_BUILD
+r4_boundary_operator=FAIL_DIVERGED
+r5_evidence_aliases=FAIL_DIVERGED
+r6_monitor_controls=INCONCLUSIVE_BUILD
+r7_flux_audit_forms=INCONCLUSIVE_BUILD
+r8_momentum_rhs_scale=FAIL_DIVERGED
+r9_wall_distance_guards=FAIL_DIVERGED
+v3_green_pristine=PASS_3_LEVELS (expected PASS_3_LEVELS)
+sign_note=green test carries the OLD #926 Cd_pressure convention (Fxp+=-pp): compare iterations/convergence, never raw Cd signs
+
+--- per-variant NACA digest (level markers + failure) ---
+### v0b_master_greentest
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.00036032 Cm=0.00097768 Cd_pressure=-0.0343964 Cd_viscous=0.0558506 continuity=1.45849e-10 iterations=424
+  what():  NACA0012 solver did not converge
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0195942 momentum_residual_reference_relative=1 momentum_residual_raw=0.00960235 momentum_rhs_scale=0.490061 momentum_residual_reference=0.00960235 momentum_rhs_scale_components=(0.490061,0.00976876,1e-300) momentum_rhs_relative_components=(0.0137899,0.982965,0) continuity_normalized=5.32493e-05 velocity_change_inf=0.16998 pressure_change_inf=0.568382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=6.10672e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000208786 worst_momentum_cell=403 worst_momentum_patch=
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=13s ===
+
+### vC_convhist_neutral
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.00036032 Cm=0.00097768 Cd_pressure=-0.0343964 Cd_viscous=0.0558506 continuity=1.45849e-10 iterations=424
+  what():  NACA0012 solver did not converge
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0195942 momentum_residual_reference_relative=1 momentum_residual_raw=0.00960235 momentum_rhs_scale=0.490061 momentum_residual_reference=0.00960235 momentum_rhs_scale_components=(0.490061,0.00976876,1e-300) momentum_rhs_relative_components=(0.0137899,0.982965,0) continuity_normalized=5.32493e-05 velocity_change_inf=0.16998 pressure_change_inf=0.568382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=6.10672e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000208786 worst_momentum_cell=403 worst_momentum_patch=
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=15s ===
+
+### r1_api_fields
+--- last 5 raw lines ---
+      |                                                                                                                                         ~^~~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-r1_api_fields/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+ninja: build stopped: subcommand failed.
+
+### r2_validation
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.00036032 Cm=0.00097768 Cd_pressure=-0.0343964 Cd_viscous=0.0558506 continuity=1.45849e-10 iterations=424
+  what():  NACA0012 solver did not converge
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0195942 momentum_residual_reference_relative=1 momentum_residual_raw=0.00960235 momentum_rhs_scale=0.490061 momentum_residual_reference=0.00960235 momentum_rhs_scale_components=(0.490061,0.00976876,1e-300) momentum_rhs_relative_components=(0.0137899,0.982965,0) continuity_normalized=5.32493e-05 velocity_change_inf=0.16998 pressure_change_inf=0.568382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=6.10672e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000208786 worst_momentum_cell=403 worst_momentum_patch=
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=15s ===
+
+### r3_rhie_chow_coef
+--- last 5 raw lines ---
+      |                                                                                                                                         ~^~~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-r3_rhie_chow_coef/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+ninja: build stopped: subcommand failed.
+
+### r4_boundary_operator
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.00036032 Cm=0.00097768 Cd_pressure=-0.0343964 Cd_viscous=0.0558506 continuity=1.45849e-10 iterations=424
+  what():  NACA0012 solver did not converge
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0195942 momentum_residual_reference_relative=1 momentum_residual_raw=0.00960235 momentum_rhs_scale=0.490061 momentum_residual_reference=0.00960235 momentum_rhs_scale_components=(0.490061,0.00976876,1e-300) momentum_rhs_relative_components=(0.0137899,0.982965,0) continuity_normalized=5.32493e-05 velocity_change_inf=0.16998 pressure_change_inf=0.568382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=6.10672e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000208786 worst_momentum_cell=403 worst_momentum_patch=
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=14s ===
+
+### r5_evidence_aliases
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.00036032 Cm=0.00097768 Cd_pressure=-0.0343964 Cd_viscous=0.0558506 continuity=1.45849e-10 iterations=424
+  what():  NACA0012 solver did not converge
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0195942 momentum_residual_reference_relative=1 momentum_residual_raw=0.00960235 momentum_rhs_scale=0.490061 momentum_residual_reference=0.00960235 momentum_rhs_scale_components=(0.490061,0.00976876,1e-300) momentum_rhs_relative_components=(0.0137899,0.982965,0) continuity_normalized=5.32493e-05 velocity_change_inf=0.16998 pressure_change_inf=0.568382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=6.10672e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000208786 worst_momentum_cell=403 worst_momentum_patch=
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=14s ===
+
+### r6_monitor_controls
+--- last 5 raw lines ---
+      |                                                                                                                                         ~^~~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-r6_monitor_controls/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+ninja: build stopped: subcommand failed.
+
+### r7_flux_audit_forms
+--- last 5 raw lines ---
+      |                                                                                                                                         ~^~~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-r7_flux_audit_forms/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+ninja: build stopped: subcommand failed.
+
+### r8_momentum_rhs_scale
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.00036032 Cm=0.00097768 Cd_pressure=-0.0343964 Cd_viscous=0.0558506 continuity=1.45849e-10 iterations=424
+  what():  NACA0012 solver did not converge
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_relative=1 continuity_normalized=5.32493e-05 velocity_change_inf=0.16998 pressure_change_inf=0.568382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=6.10672e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000208786 worst_momentum_cell=403 worst_momentum_patch=
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=14s ===
+
+### r9_wall_distance_guards
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.00036032 Cm=0.00097768 Cd_pressure=-0.0343964 Cd_viscous=0.0558506 continuity=1.45849e-10 iterations=424
+  what():  NACA0012 solver did not converge
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0195942 momentum_residual_reference_relative=1 momentum_residual_raw=0.00960235 momentum_rhs_scale=0.490061 momentum_residual_reference=0.00960235 momentum_rhs_scale_components=(0.490061,0.00976876,1e-300) momentum_rhs_relative_components=(0.0137899,0.982965,0) continuity_normalized=5.32493e-05 velocity_change_inf=0.16998 pressure_change_inf=0.568382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=6.10672e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000208786 worst_momentum_cell=403 worst_momentum_patch=
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  NACA0012 solver did not converge
+timeout: the monitored command dumped core
+=== test rc=134 outcome=FAIL_DIVERGED duration=14s ===
+
+### v3_green_pristine
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.000360333 Cm=0.000977678 Cd_pressure=-0.0343963 Cd_viscous=0.0558505 continuity=1.28083e-10 iterations=433
+NACA0012_RE1000_A0 level=128 Cd=0.0414557 Cl=-0.00079373 Cm=-2.42498e-05 Cd_pressure=-0.0425974 Cd_viscous=0.0840532 continuity=8.28058e-11 iterations=995
+NACA0012_RE1000_A0 level=256 Cd=0.0587257 Cl=-1.41112e-06 Cm=2.19791e-05 Cd_pressure=-0.0363217 Cd_viscous=0.0950475 continuity=1.10968e-11 iterations=3989
+NACA0012_QUALIFICATION: DIAGNOSTIC solver_converged forces_conservation_symmetry_reference_gate_pending
+--- last 5 raw lines ---
+INCOMPRESSIBLE_ITER iter=3800 momentum_residual_relative=1.40876e-08 continuity_normalized=2.58084e-14 velocity_change_inf=5.87669e-10 pressure_change_inf=2.09797e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.15852e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00736022 worst_momentum_cell=1027 worst_momentum_patch=front
+NACA0012_RE1000_A0 level=256 Cd=0.0587257 Cl=-1.41112e-06 Cm=2.19791e-05 Cd_pressure=-0.0363217 Cd_viscous=0.0950475 continuity=1.10968e-11 iterations=3989
+NACA0012 Cd mesh differences=0.0200016,0.01727 literature Re=1000 alpha=0 Cd~0.12
+NACA0012_QUALIFICATION: DIAGNOSTIC solver_converged forces_conservation_symmetry_reference_gate_pending
+=== test rc=0 outcome=PASS_3_LEVELS duration=2081s ===
+
