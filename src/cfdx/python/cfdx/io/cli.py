@@ -4,6 +4,7 @@ Usage:
     cfdx-io convert <case_path> [--output DIR] [--solver NAME] [--results]
     cfdx-io list-adapters
 """
+
 from __future__ import annotations
 
 import sys
@@ -29,7 +30,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "convert":
         if len(args) < 2:
-            print("Usage: cfdx-io convert <case_path> [--output DIR] [--solver NAME] [--results]")
+            print(
+                "Usage: cfdx-io convert <case_path> [--output DIR] [--solver NAME] [--results]"
+            )
             return 1
 
         case_path = args[1]
@@ -74,7 +77,9 @@ def main(argv: list[str] | None = None) -> int:
         print("\nConversion completed successfully.")
         print(f"  Supported features: {result.gap_report.n_supported()}")
         print(f"  Approximated: {result.gap_report.n_approximated()}")
-        print(f"  Unsupported (non-blocking): {result.gap_report.n_unsupported_nonblocking()}")
+        print(
+            f"  Unsupported (non-blocking): {result.gap_report.n_unsupported_nonblocking()}"
+        )
         print(f"  Blocking issues: {result.gap_report.n_unsupported_blocking()}")
 
         if result.mesh:
