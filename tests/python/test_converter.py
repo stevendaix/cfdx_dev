@@ -8,13 +8,13 @@ import numpy as np
 import pytest
 
 from cfdx.io.converter import (
+    ConversionResult,
+    SolverConverter,
     available_converters,
     convert,
     detect_solver,
     get_converter,
     register_converter,
-    ConversionResult,
-    SolverConverter,
 )
 from cfdx.io.gap_analysis import GapAnalysis
 from cfdx.io.schema import CaseSetup, Severity, SourceInfo
