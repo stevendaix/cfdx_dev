@@ -314,6 +314,10 @@ divSchemes
     assert dictionaries["system/controlDict"]["endTime"] == 2
     assert dictionaries["system/fvSchemes"]["ddtSchemes"]["default"] == "Euler"
     assert dictionaries["system/fvSchemes"]["divSchemes"]["default"] == "none"
+    assert (
+        dictionaries["system/fvSchemes"]["divSchemes"]["div(phi,U)"]
+        == "Gauss linearUpwind grad(U)"
+    )
 
 
 def test_native_openfoam_reader_rejects_binary_files_explicitly(tmp_path):
