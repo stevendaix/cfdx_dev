@@ -515,7 +515,6 @@ internalField uniform (0 0 0 0 0 0);
     np.testing.assert_array_equal(result.scalar_fields[0][1], [101325.0, 101325.0])
     np.testing.assert_array_equal(result.vec_fields[0][1], [[1.0, 0.0, 0.0]] * 2)
     assert any(
-        finding.category == "fields"
-        and "volSymmTensorField" in finding.detail
+        finding.category == "fields" and "volSymmTensorField" in finding.detail
         for finding in result.gap_report.findings
     )
