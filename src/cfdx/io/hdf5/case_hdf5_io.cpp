@@ -1508,21 +1508,27 @@ bool read_vector_fields_hdf5(const std::string& filename,
         if (ds < 0) { success = false; continue; }
 
         hid_t space = H5Dget_space(ds);
-        int rank = H5Sget_simple_extent_ndims(space);
+        const int rank = H5Sget_simple_extent_ndims(space);
+        // H5Sget_simple_extent_dims writes one dimension per rank; check rank
+        // first so malformed higher-rank datasets cannot overrun this buffer.
+        if (rank != 2) {
+            H5Sclose(space);
+            H5Dclose(ds);
+            success = false;
+            continue;
+        }
         hsize_t dims[2] = {0, 0};
-        H5Sget_simple_extent_dims(space, dims, nullptr);
-
-        // A vector field in the case interchange schema is cell-centred
-        // three-component data. Reject malformed ranks/dimensions instead of
-        // padding scalar/short arrays with zero components, which would silently
-        // change the imported initial state.
-        if (rank != 2 || dims[1] != 3) {
+        if (H5Sget_simple_extent_dims(space, dims, nullptr) < 0 || dims[1] != 3) {
             H5Sclose(space);
             H5Dclose(ds);
             success = false;
             continue;
         }
 
+        // A vector field in the case interchange schema is cell-centred
+        // three-component data. Reject malformed component counts instead of
+        // padding short arrays with zero components, which would silently
+        // change the imported initial state.
         const std::size_t n_cells = static_cast<std::size_t>(dims[0]);
         cfdx::core::Vec3CellField field(n_cells, name, "m/s", 3);
         if (n_cells > 0) {
