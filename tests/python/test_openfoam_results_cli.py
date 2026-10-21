@@ -27,12 +27,22 @@ def _write_hex_case(case: Path) -> None:
     poly = case / "constant" / "polyMesh"
     poly.mkdir(parents=True)
     points = [
-        (0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
-        (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1),
+        (0, 0, 0),
+        (1, 0, 0),
+        (1, 1, 0),
+        (0, 1, 0),
+        (0, 0, 1),
+        (1, 0, 1),
+        (1, 1, 1),
+        (0, 1, 1),
     ]
     faces = [
-        (0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4),
-        (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7),
+        (0, 1, 2, 3),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (1, 2, 6, 5),
+        (2, 3, 7, 6),
+        (3, 0, 4, 7),
     ]
     (poly / "points").write_text(
         _header("points", "vectorField")
@@ -56,8 +66,7 @@ def _write_hex_case(case: Path) -> None:
         _header("neighbour", "labelList") + "0\n(\n)\n", encoding="utf-8"
     )
     (poly / "boundary").write_text(
-        _header("boundary", "polyBoundaryMesh")
-        + "2\n(\n"
+        _header("boundary", "polyBoundaryMesh") + "2\n(\n"
         "    inlet\n    {\n        type patch;\n"
         "        nFaces 3;\n        startFace 0;\n    }\n"
         "    outlet\n    {\n        type wall;\n"
