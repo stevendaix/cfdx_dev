@@ -43,7 +43,7 @@ class OpenFOAMCaseSummary:
     dictionaries: tuple[str, ...]
 
 
-_TOKEN_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[{}();]|[^\s{}();]+')
+_TOKEN_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[{}();\[\]]|[^\s{}();\[\]]+')
 _COMMENT_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\n]*|/\*.*?\*/', re.DOTALL)
 _NUMERIC_RE = re.compile(r"^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?$")
 
@@ -81,11 +81,12 @@ def _atom(token: str) -> Any:
 
 def _parse_group(tokens: list[str], index: int) -> tuple[list[Any], int]:
     """Parse a parenthesized list and return the next token index."""
-    if index >= len(tokens) or tokens[index] != "(":
-        raise ValueError("Expected '(' while parsing OpenFOAM list")
+    if index >= len(tokens) or tokens[index] not in {"(", "["}:
+        raise ValueError("Expected a list delimiter while parsing OpenFOAM list")
+    closing = ")" if tokens[index] == "(" else "]"
     values: list[Any] = []
     index += 1
-    while index < len(tokens) and tokens[index] != ")":
+    while index < len(tokens) and tokens[index] != closing:
         if tokens[index] == "(":
             nested, index = _parse_group(tokens, index)
             values.append(nested)
@@ -95,7 +96,7 @@ def _parse_group(tokens: list[str], index: int) -> tuple[list[Any], int]:
             values.append(_atom(tokens[index]))
             index += 1
     if index >= len(tokens):
-        raise ValueError("Unterminated parenthesized OpenFOAM list")
+        raise ValueError("Unterminated OpenFOAM list")
     return values, index + 1
 
 
@@ -140,12 +141,12 @@ def _parse_dictionary_tokens(tokens: list[str], index: int = 0, *, nested: bool 
         depth = 0
         while index < len(tokens):
             token = tokens[index]
-            if token == "(":
+            if token in {"(", "["}:
                 depth += 1
-            elif token == ")":
+            elif token in {")", "]"}:
                 depth -= 1
                 if depth < 0:
-                    raise ValueError(f"Unmatched ')' in value for {key!r}")
+                    raise ValueError(f"Unmatched closing list delimiter in value for {key!r}")
             if token == ";" and depth == 0:
                 index += 1
                 break
