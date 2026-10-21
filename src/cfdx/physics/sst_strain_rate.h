@@ -4,7 +4,6 @@
 #include <array>
 #include <cmath>
 #include <map>
-#include <map>
 #include <stdexcept>
 #include <vector>
 
