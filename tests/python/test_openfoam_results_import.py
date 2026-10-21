@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import h5py
 import numpy as np
 
 from cfdx.io.adapters.openfoam import OpenFOAMAdapter
+from cfdx.io.hdf5_writer import write_case_cfdx_h5
 from cfdx.io.interfaces import ConversionResult
 from cfdx.io.schema import SourceInfo
 
@@ -74,7 +76,6 @@ def test_openfoam_adapter_reports_missing_case_for_results(tmp_path):
     assert result.gap_report.has_blocking()
 
 
-
 def test_openfoam_polyhedral_mesh_builds_native_face_cell_csr():
     adapter = OpenFOAMAdapter()
     adapter._mesh_points = np.array(
@@ -120,10 +121,6 @@ def test_openfoam_polyhedral_mesh_builds_native_face_cell_csr():
 
 
 def test_native_openfoam_csr_is_written_to_cfdx_hdf5(tmp_path):
-    import h5py
-
-    from cfdx.io.hdf5_writer import write_case_cfdx_h5
-
     adapter = OpenFOAMAdapter()
     adapter._mesh_points = np.array(
         [
@@ -248,7 +245,9 @@ boundaryField
 """
     )
     (time_dir / "U").write_text(
-        header.replace("volScalarField", "volVectorField").replace("object p", "object U")
+        header.replace("volScalarField", "volVectorField").replace(
+            "object p", "object U"
+        )
         + """dimensions [0 1 -1 0 0 0 0];
 internalField uniform (1 0 0);
 boundaryField
