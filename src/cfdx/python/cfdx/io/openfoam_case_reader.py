@@ -205,7 +205,8 @@ def _read_field_file(path: Path, *, cell_count: int | None = None) -> dict[str, 
     if not tokens or tokens[0] != "FoamFile":
         raise ValueError(f"Missing FoamFile header in {path}")
     header, index = _parse_dictionary_tokens(tokens, 0)
-    source_class = str(header.get("class", ""))
+    foam_header = header.get("FoamFile", {})
+    source_class = str(foam_header.get("class", "")) if isinstance(foam_header, dict) else ""
     if not source_class:
         raise ValueError(f"Missing FoamFile class in {path}")
 
