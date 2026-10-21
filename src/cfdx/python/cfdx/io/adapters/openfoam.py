@@ -800,7 +800,7 @@ class OpenFOAMAdapter(SolverAdapter):
                     continue
                 result.scalar_fields.append((name, parsed_field))
             else:
-                if is_uniform and parsed_field.shape == (3,) and cell_count > 1:
+                if is_uniform and parsed_field.shape == (3,) and cell_count > 0:
                     parsed_field = np.broadcast_to(
                         parsed_field, (cell_count, 3)
                     ).copy()
