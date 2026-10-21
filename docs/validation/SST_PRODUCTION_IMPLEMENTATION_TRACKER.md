@@ -18,6 +18,12 @@
 - [ ] Frozen DNS channel qualification (Moser–Kim–Mansour), with mesh/y+ sensitivity and independent balance checks.
 - [ ] Flat-plate and NACA0012 turbulent validation after channel qualification.
 
+## Latest implementation increment
+
+- [x] Add `initialize_sst_production_state_from_mesh(...)`: production mesh geometry supplies exact BVH wall distance and boundary-aware strain rate to SST state initialization.
+- [x] Add a regression for computed positive wall distance, nonzero strain from fixed inlet data, initialized `k`/`omega`, derived `nu_t`, and invalid velocity-field shape.
+- [ ] This helper is a prerequisite only. The production outer loop still does not own/advance SST state; the RANS selector remains fail-closed pending full coupling and exact-head CI.
+
 ## Work packages
 
 ### T0 — Cellwise effective viscosity plumbing
