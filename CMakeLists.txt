@@ -1147,6 +1147,16 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
 
     if(Python3_Interpreter_FOUND)
         if(CFDX_HAS_HDF5)
+            # End-to-end OpenFOAM result import through the production executable.
+            # This is intentionally bounded: each subprocess has a 30 s timeout.
+            add_test(NAME test_openfoam_results_cli_production_e2e
+                     COMMAND ${Python3_EXECUTABLE} -m pytest -q
+                             ${CMAKE_SOURCE_DIR}/tests/python/test_openfoam_results_cli.py)
+            set_tests_properties(test_openfoam_results_cli_production_e2e PROPERTIES
+                LABELS "openfoam;integration;qualification"
+                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                TIMEOUT 120)
             add_test(NAME test_production_solver_e2e
                      COMMAND ${Python3_EXECUTABLE}
                              ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py)
