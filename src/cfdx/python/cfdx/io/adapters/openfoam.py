@@ -33,6 +33,8 @@ def _extract_foam_list(content: str):
     before the opening parenthesis (``None`` when absent).  Returns
     ``(None, None)`` when no list block is present.
     """
+    content = re.sub(r"/\\*.*?\\*/", " ", content, flags=re.DOTALL)
+    content = re.sub(r"//[^\\n]*", " ", content)
     start = content.find("(")
     if start < 0:
         return None, None
