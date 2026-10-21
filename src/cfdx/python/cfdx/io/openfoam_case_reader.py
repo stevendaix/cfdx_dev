@@ -87,7 +87,7 @@ def _parse_group(tokens: list[str], index: int) -> tuple[list[Any], int]:
     values: list[Any] = []
     index += 1
     while index < len(tokens) and tokens[index] != closing:
-        if tokens[index] == "(":
+        if tokens[index] in {"(", "["}:
             nested, index = _parse_group(tokens, index)
             values.append(nested)
         elif tokens[index] in {"{", "}", ";"}:
@@ -103,7 +103,7 @@ def _parse_group(tokens: list[str], index: int) -> tuple[list[Any], int]:
 def _value(tokens: list[str]) -> Any:
     if not tokens:
         return None
-    if tokens[0] == "(":
+    if tokens[0] in {"(", "["}:
         parsed, next_index = _parse_group(tokens, 0)
         if next_index == len(tokens):
             return parsed
@@ -170,9 +170,6 @@ def _read_dictionary_file(path: Path) -> dict[str, Any]:
     # The FoamFile header is a regular dictionary; remove it before parsing the
     # user entries so callers receive application settings, not file metadata.
     if tokens[:1] == ["FoamFile"]:
-        _, index = _parse_dictionary_tokens(tokens, 0)
-        header, _ = _parse_dictionary_tokens(tokens, 0)
-        del header
         # Parse the body following the balanced FoamFile block.
         brace = tokens.index("{", 1)
         depth = 1
