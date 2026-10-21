@@ -1,0 +1,4 @@
+v0_master_pristine=FAIL_DIVERGED
+v1_green_trio=PASS_3_LEVELS
+v2_green_trio_monitor=PASS_3_LEVELS
+v3_green_pristine=PASS_3_LEVELS
