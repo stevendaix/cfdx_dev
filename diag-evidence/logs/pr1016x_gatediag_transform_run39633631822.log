@@ -1,0 +1,367 @@
+include_anchor=1
+call_anchors=4
+--- original
++++ instrumented
+@@ -48,6 +48,10 @@
+ #include "cfdx/physics/production_buoyancy_stage.h"
+ #include "common/test_harness.h"
+ 
++// [diag v2] Evidence-only gate diagnostics print block.
++#include <iomanip>
++#include <iostream>
++
+ #include <cmath>
+ #include <cstddef>
+ #include <limits>
+@@ -353,6 +357,87 @@
+         auto controls = vv_controls(1000.0, 1e-6);
+         const auto loop = run_production_buoyant_outer_loop(
+             mesh, ubc, pbc, controls, setup, U, p);
++        {
++            std::cout << "[gate-diag] begin case dump\n";
++            std::cout << std::scientific << std::setprecision(17);
++            std::cout << "[gate-diag] loop.converged=" << loop.converged << "\n";
++            std::cout << "[gate-diag] loop.outer_iterations=" << loop.outer_iterations << "\n";
++            std::cout << "[gate-diag] loop.energy_ran=" << loop.energy_ran << "\n";
++            std::cout << "[gate-diag] loop.s2s_ran=" << loop.s2s_ran << "\n";
++            std::cout << "[gate-diag] loop.fixed_point_temperature_passed=" << loop.fixed_point_temperature_passed << "\n";
++            std::cout << "[gate-diag] loop.fixed_point_velocity_passed=" << loop.fixed_point_velocity_passed << "\n";
++            std::cout << "[gate-diag] loop.fixed_point_pressure_passed=" << loop.fixed_point_pressure_passed << "\n";
++            std::cout << "[gate-diag] loop.max_temperature_change_normalized=" << loop.max_temperature_change_normalized << "\n";
++            std::cout << "[gate-diag] loop.max_velocity_change_normalized=" << loop.max_velocity_change_normalized << "\n";
++            std::cout << "[gate-diag] loop.max_pressure_change_normalized=" << loop.max_pressure_change_normalized << "\n";
++            std::cout << "[gate-diag] flow.converged=" << loop.flow.converged << "\n";
++            std::cout << "[gate-diag] flow.convergence_status=" << cfdx::core::to_string(loop.flow.convergence_status) << "\n";
++            std::cout << "[gate-diag] flow.convergence_reason=" << loop.flow.convergence_reason << "\n";
++            std::cout << "[gate-diag] flow.iterations=" << loop.flow.iterations << "\n";
++            std::cout << "[gate-diag] flow.reference_momentum_residual=" << loop.flow.reference_momentum_residual << "\n";
++            if (!loop.flow.history.empty()) {
++                const std::size_t first =
++                    loop.flow.history.size() > 6
++                        ? loop.flow.history.size() - 6 : 0;
++                for (std::size_t k = first; k < loop.flow.history.size(); ++k) {
++                    const auto& fh = loop.flow.history[k];
++                    std::cout << "[gate-diag] flow.hist[" << fh.iteration << "]"
++                              << " momentum_residual=" << fh.momentum_residual
++                              << " pressure_residual=" << fh.pressure_residual
++                              << " continuity_normalized=" << fh.continuity_normalized
++                              << " momentum_equation_residual_relative=" << fh.momentum_equation_residual_relative
++                              << " nonlinear_convergence_metric=" << fh.nonlinear_convergence_metric
++                              << " corrected_flux_continuity_linf=" << fh.corrected_flux_continuity_linf
++                              << "\n";
++                }
++            }
++            std::cout << "[gate-diag] energy.converged=" << loop.energy.converged << "\n";
++            std::cout << "[gate-diag] energy.linear_solver_converged=" << loop.energy.linear_solver_converged << "\n";
++            std::cout << "[gate-diag] energy.global_energy_balance_passed=" << loop.energy.global_energy_balance_passed << "\n";
++            std::cout << "[gate-diag] energy.local_energy_balance_passed=" << loop.energy.local_energy_balance_passed << "\n";
++            std::cout << "[gate-diag] energy.global_balance_normalized=" << loop.energy.global_balance_normalized << "\n";
++            std::cout << "[gate-diag] energy.local_balance_normalized=" << loop.energy.local_balance_normalized << "\n";
++            std::cout << "[gate-diag] energy.max_cell_residual_normalized=" << loop.energy.max_cell_residual_normalized << "\n";
++            std::cout << "[gate-diag] energy.max_cell_residual=" << loop.energy.max_cell_residual << "\n";
++            std::cout << "[gate-diag] energy.worst_cell=" << loop.energy.worst_cell << "\n";
++            std::cout << "[gate-diag] energy.worst_cell_normalized=" << loop.energy.worst_cell_normalized << "\n";
++            std::cout << "[gate-diag] energy.audit_power_scale=" << loop.energy.audit_power_scale << "\n";
++            std::cout << "[gate-diag] energy.independent_conservation_normalized=" << loop.energy.independent_conservation_normalized << "\n";
++            std::cout << "[gate-diag] energy.total_source_power=" << loop.energy.total_source_power << "\n";
++            std::cout << "[gate-diag] energy.boundary_flux_out=" << loop.energy.boundary_flux_out << "\n";
++            std::cout << "[gate-diag] energy.iterations=" << loop.energy.iterations << "\n";
++            std::cout << "[gate-diag] s2s.converged=" << loop.s2s.converged << "\n";
++            std::cout << "[gate-diag] s2s.outer_iterations=" << loop.s2s.outer_iterations << "\n";
++            std::cout << "[gate-diag] s2s.fixed_point_flux_passed=" << loop.s2s.fixed_point_flux_passed << "\n";
++            std::cout << "[gate-diag] s2s.fixed_point_wall_temperature_passed=" << loop.s2s.fixed_point_wall_temperature_passed << "\n";
++            std::cout << "[gate-diag] s2s.max_flux_fixed_point_normalized=" << loop.s2s.max_flux_fixed_point_normalized << "\n";
++            std::cout << "[gate-diag] s2s.max_wall_temperature_change_normalized=" << loop.s2s.max_wall_temperature_change_normalized << "\n";
++            std::cout << "[gate-diag] s2s.max_wall_temperature_lag=" << loop.s2s.max_wall_temperature_lag << "\n";
++            std::cout << "[gate-diag] s2s.energy.converged=" << loop.s2s.energy.converged << "\n";
++            for (const auto& rec : loop.history) {
++                std::cout << "[gate-diag] hist it=" << rec.iteration
++                          << " flow_conv=" << rec.flow_converged
++                          << " flow_it=" << rec.flow_iterations
++                          << " energy_conv=" << rec.energy_converged
++                          << " energy_it=" << rec.energy_iterations
++                          << " s2s_ran=" << rec.s2s_ran
++                          << " s2s_conv=" << rec.s2s_converged
++                          << " s2s_it=" << rec.s2s_outer_iterations
++                          << " dT=" << rec.max_temperature_change_normalized
++                          << " dT=" << rec.max_velocity_change_normalized
++                          << " dP=" << rec.max_pressure_change_normalized
++                          << "\n";
++            }
++            for (const auto& srec : loop.s2s.history) {
++                std::cout << "[gate-diag] s2s.hist it=" << srec.iteration
++                          << " energy_conv=" << srec.energy_converged
++                          << " radiation_conv=" << srec.radiation_converged
++                          << " flux_fp=" << srec.max_flux_fixed_point_normalized
++                          << " dTw=" << srec.max_wall_temperature_change_normalized
++                          << "\n";
++            }
++            std::cout << "[gate-diag] end case dump\n" << std::flush;
++        }
+ 
+         // Coupled fixed point reached on the second outer iteration
+         // (the first can never prove it), with all three separate
+@@ -448,6 +533,87 @@
+         auto controls = vv_controls(1000.0, 1e-6);
+         const auto loop = run_production_buoyant_outer_loop(
+             mesh, ubc, pbc, controls, setup, U, p);
++        {
++            std::cout << "[gate-diag] begin case dump\n";
++            std::cout << std::scientific << std::setprecision(17);
++            std::cout << "[gate-diag] loop.converged=" << loop.converged << "\n";
++            std::cout << "[gate-diag] loop.outer_iterations=" << loop.outer_iterations << "\n";
++            std::cout << "[gate-diag] loop.energy_ran=" << loop.energy_ran << "\n";
++            std::cout << "[gate-diag] loop.s2s_ran=" << loop.s2s_ran << "\n";
++            std::cout << "[gate-diag] loop.fixed_point_temperature_passed=" << loop.fixed_point_temperature_passed << "\n";
++            std::cout << "[gate-diag] loop.fixed_point_velocity_passed=" << loop.fixed_point_velocity_passed << "\n";
++            std::cout << "[gate-diag] loop.fixed_point_pressure_passed=" << loop.fixed_point_pressure_passed << "\n";
++            std::cout << "[gate-diag] loop.max_temperature_change_normalized=" << loop.max_temperature_change_normalized << "\n";
++            std::cout << "[gate-diag] loop.max_velocity_change_normalized=" << loop.max_velocity_change_normalized << "\n";
++            std::cout << "[gate-diag] loop.max_pressure_change_normalized=" << loop.max_pressure_change_normalized << "\n";
++            std::cout << "[gate-diag] flow.converged=" << loop.flow.converged << "\n";
++            std::cout << "[gate-diag] flow.convergence_status=" << cfdx::core::to_string(loop.flow.convergence_status) << "\n";
++            std::cout << "[gate-diag] flow.convergence_reason=" << loop.flow.convergence_reason << "\n";
++            std::cout << "[gate-diag] flow.iterations=" << loop.flow.iterations << "\n";
++            std::cout << "[gate-diag] flow.reference_momentum_residual=" << loop.flow.reference_momentum_residual << "\n";
++            if (!loop.flow.history.empty()) {
++                const std::size_t first =
++                    loop.flow.history.size() > 6
++                        ? loop.flow.history.size() - 6 : 0;
++                for (std::size_t k = first; k < loop.flow.history.size(); ++k) {
++                    const auto& fh = loop.flow.history[k];
++                    std::cout << "[gate-diag] flow.hist[" << fh.iteration << "]"
++                              << " momentum_residual=" << fh.momentum_residual
++                              << " pressure_residual=" << fh.pressure_residual
++                              << " continuity_normalized=" << fh.continuity_normalized
++                              << " momentum_equation_residual_relative=" << fh.momentum_equation_residual_relative
++                              << " nonlinear_convergence_metric=" << fh.nonlinear_convergence_metric
++                              << " corrected_flux_continuity_linf=" << fh.corrected_flux_continuity_linf
++                              << "\n";
++                }
++            }
++            std::cout << "[gate-diag] energy.converged=" << loop.energy.converged << "\n";
++            std::cout << "[gate-diag] energy.linear_solver_converged=" << loop.energy.linear_solver_converged << "\n";
++            std::cout << "[gate-diag] energy.global_energy_balance_passed=" << loop.energy.global_energy_balance_passed << "\n";
++            std::cout << "[gate-diag] energy.local_energy_balance_passed=" << loop.energy.local_energy_balance_passed << "\n";
++            std::cout << "[gate-diag] energy.global_balance_normalized=" << loop.energy.global_balance_normalized << "\n";
++            std::cout << "[gate-diag] energy.local_balance_normalized=" << loop.energy.local_balance_normalized << "\n";
++            std::cout << "[gate-diag] energy.max_cell_residual_normalized=" << loop.energy.max_cell_residual_normalized << "\n";
++            std::cout << "[gate-diag] energy.max_cell_residual=" << loop.energy.max_cell_residual << "\n";
++            std::cout << "[gate-diag] energy.worst_cell=" << loop.energy.worst_cell << "\n";
++            std::cout << "[gate-diag] energy.worst_cell_normalized=" << loop.energy.worst_cell_normalized << "\n";
++            std::cout << "[gate-diag] energy.audit_power_scale=" << loop.energy.audit_power_scale << "\n";
++            std::cout << "[gate-diag] energy.independent_conservation_normalized=" << loop.energy.independent_conservation_normalized << "\n";
++            std::cout << "[gate-diag] energy.total_source_power=" << loop.energy.total_source_power << "\n";
++            std::cout << "[gate-diag] energy.boundary_flux_out=" << loop.energy.boundary_flux_out << "\n";
++            std::cout << "[gate-diag] energy.iterations=" << loop.energy.iterations << "\n";
++            std::cout << "[gate-diag] s2s.converged=" << loop.s2s.converged << "\n";
++            std::cout << "[gate-diag] s2s.outer_iterations=" << loop.s2s.outer_iterations << "\n";
++            std::cout << "[gate-diag] s2s.fixed_point_flux_passed=" << loop.s2s.fixed_point_flux_passed << "\n";
++            std::cout << "[gate-diag] s2s.fixed_point_wall_temperature_passed=" << loop.s2s.fixed_point_wall_temperature_passed << "\n";
++            std::cout << "[gate-diag] s2s.max_flux_fixed_point_normalized=" << loop.s2s.max_flux_fixed_point_normalized << "\n";
++            std::cout << "[gate-diag] s2s.max_wall_temperature_change_normalized=" << loop.s2s.max_wall_temperature_change_normalized << "\n";
++            std::cout << "[gate-diag] s2s.max_wall_temperature_lag=" << loop.s2s.max_wall_temperature_lag << "\n";
++            std::cout << "[gate-diag] s2s.energy.converged=" << loop.s2s.energy.converged << "\n";
++            for (const auto& rec : loop.history) {
++                std::cout << "[gate-diag] hist it=" << rec.iteration
++                          << " flow_conv=" << rec.flow_converged
++                          << " flow_it=" << rec.flow_iterations
++                          << " energy_conv=" << rec.energy_converged
++                          << " energy_it=" << rec.energy_iterations
++                          << " s2s_ran=" << rec.s2s_ran
++                          << " s2s_conv=" << rec.s2s_converged
++                          << " s2s_it=" << rec.s2s_outer_iterations
++                          << " dT=" << rec.max_temperature_change_normalized
++                          << " dT=" << rec.max_velocity_change_normalized
++                          << " dP=" << rec.max_pressure_change_normalized
++                          << "\n";
++            }
++            for (const auto& srec : loop.s2s.history) {
++                std::cout << "[gate-diag] s2s.hist it=" << srec.iteration
++                          << " energy_conv=" << srec.energy_converged
++                          << " radiation_conv=" << srec.radiation_converged
++                          << " flux_fp=" << srec.max_flux_fixed_point_normalized
++                          << " dTw=" << srec.max_wall_temperature_change_normalized
++                          << "\n";
++            }
++            std::cout << "[gate-diag] end case dump\n" << std::flush;
++        }
+ 
+         EXPECT_TRUE(loop.converged);
+         EXPECT_TRUE(loop.outer_iterations == 2);
+@@ -509,6 +675,87 @@
+         auto controls = vv_controls(1000.0, 0.01);
+         const auto loop = run_production_buoyant_outer_loop(
+             mesh, ubc, pbc, controls, setup, U, p);
++        {
++            std::cout << "[gate-diag] begin case dump\n";
++            std::cout << std::scientific << std::setprecision(17);
++            std::cout << "[gate-diag] loop.converged=" << loop.converged << "\n";
++            std::cout << "[gate-diag] loop.outer_iterations=" << loop.outer_iterations << "\n";
++            std::cout << "[gate-diag] loop.energy_ran=" << loop.energy_ran << "\n";
++            std::cout << "[gate-diag] loop.s2s_ran=" << loop.s2s_ran << "\n";
++            std::cout << "[gate-diag] loop.fixed_point_temperature_passed=" << loop.fixed_point_temperature_passed << "\n";
++            std::cout << "[gate-diag] loop.fixed_point_velocity_passed=" << loop.fixed_point_velocity_passed << "\n";
++            std::cout << "[gate-diag] loop.fixed_point_pressure_passed=" << loop.fixed_point_pressure_passed << "\n";
++            std::cout << "[gate-diag] loop.max_temperature_change_normalized=" << loop.max_temperature_change_normalized << "\n";
++            std::cout << "[gate-diag] loop.max_velocity_change_normalized=" << loop.max_velocity_change_normalized << "\n";
++            std::cout << "[gate-diag] loop.max_pressure_change_normalized=" << loop.max_pressure_change_normalized << "\n";
++            std::cout << "[gate-diag] flow.converged=" << loop.flow.converged << "\n";
++            std::cout << "[gate-diag] flow.convergence_status=" << cfdx::core::to_string(loop.flow.convergence_status) << "\n";
++            std::cout << "[gate-diag] flow.convergence_reason=" << loop.flow.convergence_reason << "\n";
++            std::cout << "[gate-diag] flow.iterations=" << loop.flow.iterations << "\n";
++            std::cout << "[gate-diag] flow.reference_momentum_residual=" << loop.flow.reference_momentum_residual << "\n";
++            if (!loop.flow.history.empty()) {
++                const std::size_t first =
++                    loop.flow.history.size() > 6
++                        ? loop.flow.history.size() - 6 : 0;
++                for (std::size_t k = first; k < loop.flow.history.size(); ++k) {
++                    const auto& fh = loop.flow.history[k];
++                    std::cout << "[gate-diag] flow.hist[" << fh.iteration << "]"
++                              << " momentum_residual=" << fh.momentum_residual
++                              << " pressure_residual=" << fh.pressure_residual
++                              << " continuity_normalized=" << fh.continuity_normalized
++                              << " momentum_equation_residual_relative=" << fh.momentum_equation_residual_relative
++                              << " nonlinear_convergence_metric=" << fh.nonlinear_convergence_metric
++                              << " corrected_flux_continuity_linf=" << fh.corrected_flux_continuity_linf
++                              << "\n";
++                }
++            }
++            std::cout << "[gate-diag] energy.converged=" << loop.energy.converged << "\n";
++            std::cout << "[gate-diag] energy.linear_solver_converged=" << loop.energy.linear_solver_converged << "\n";
++            std::cout << "[gate-diag] energy.global_energy_balance_passed=" << loop.energy.global_energy_balance_passed << "\n";
++            std::cout << "[gate-diag] energy.local_energy_balance_passed=" << loop.energy.local_energy_balance_passed << "\n";
++            std::cout << "[gate-diag] energy.global_balance_normalized=" << loop.energy.global_balance_normalized << "\n";
++            std::cout << "[gate-diag] energy.local_balance_normalized=" << loop.energy.local_balance_normalized << "\n";
++            std::cout << "[gate-diag] energy.max_cell_residual_normalized=" << loop.energy.max_cell_residual_normalized << "\n";
++            std::cout << "[gate-diag] energy.max_cell_residual=" << loop.energy.max_cell_residual << "\n";
++            std::cout << "[gate-diag] energy.worst_cell=" << loop.energy.worst_cell << "\n";
++            std::cout << "[gate-diag] energy.worst_cell_normalized=" << loop.energy.worst_cell_normalized << "\n";
++            std::cout << "[gate-diag] energy.audit_power_scale=" << loop.energy.audit_power_scale << "\n";
++            std::cout << "[gate-diag] energy.independent_conservation_normalized=" << loop.energy.independent_conservation_normalized << "\n";
++            std::cout << "[gate-diag] energy.total_source_power=" << loop.energy.total_source_power << "\n";
++            std::cout << "[gate-diag] energy.boundary_flux_out=" << loop.energy.boundary_flux_out << "\n";
++            std::cout << "[gate-diag] energy.iterations=" << loop.energy.iterations << "\n";
++            std::cout << "[gate-diag] s2s.converged=" << loop.s2s.converged << "\n";
++            std::cout << "[gate-diag] s2s.outer_iterations=" << loop.s2s.outer_iterations << "\n";
++            std::cout << "[gate-diag] s2s.fixed_point_flux_passed=" << loop.s2s.fixed_point_flux_passed << "\n";
++            std::cout << "[gate-diag] s2s.fixed_point_wall_temperature_passed=" << loop.s2s.fixed_point_wall_temperature_passed << "\n";
++            std::cout << "[gate-diag] s2s.max_flux_fixed_point_normalized=" << loop.s2s.max_flux_fixed_point_normalized << "\n";
++            std::cout << "[gate-diag] s2s.max_wall_temperature_change_normalized=" << loop.s2s.max_wall_temperature_change_normalized << "\n";
++            std::cout << "[gate-diag] s2s.max_wall_temperature_lag=" << loop.s2s.max_wall_temperature_lag << "\n";
++            std::cout << "[gate-diag] s2s.energy.converged=" << loop.s2s.energy.converged << "\n";
++            for (const auto& rec : loop.history) {
++                std::cout << "[gate-diag] hist it=" << rec.iteration
++                          << " flow_conv=" << rec.flow_converged
++                          << " flow_it=" << rec.flow_iterations
++                          << " energy_conv=" << rec.energy_converged
++                          << " energy_it=" << rec.energy_iterations
++                          << " s2s_ran=" << rec.s2s_ran
++                          << " s2s_conv=" << rec.s2s_converged
++                          << " s2s_it=" << rec.s2s_outer_iterations
++                          << " dT=" << rec.max_temperature_change_normalized
++                          << " dT=" << rec.max_velocity_change_normalized
++                          << " dP=" << rec.max_pressure_change_normalized
++                          << "\n";
++            }
++            for (const auto& srec : loop.s2s.history) {
++                std::cout << "[gate-diag] s2s.hist it=" << srec.iteration
++                          << " energy_conv=" << srec.energy_converged
++                          << " radiation_conv=" << srec.radiation_converged
++                          << " flux_fp=" << srec.max_flux_fixed_point_normalized
++                          << " dTw=" << srec.max_wall_temperature_change_normalized
++                          << "\n";
++            }
++            std::cout << "[gate-diag] end case dump\n" << std::flush;
++        }
+ 
+         EXPECT_TRUE(loop.converged);
+         EXPECT_TRUE(loop.fixed_point_temperature_passed);
+@@ -651,6 +898,87 @@
+         auto controls = vv_controls(1000.0, 0.01);
+         const auto loop = run_production_buoyant_outer_loop(
+             mesh, ubc, pbc, controls, setup, U, p);
++        {
++            std::cout << "[gate-diag] begin case dump\n";
++            std::cout << std::scientific << std::setprecision(17);
++            std::cout << "[gate-diag] loop.converged=" << loop.converged << "\n";
++            std::cout << "[gate-diag] loop.outer_iterations=" << loop.outer_iterations << "\n";
++            std::cout << "[gate-diag] loop.energy_ran=" << loop.energy_ran << "\n";
++            std::cout << "[gate-diag] loop.s2s_ran=" << loop.s2s_ran << "\n";
++            std::cout << "[gate-diag] loop.fixed_point_temperature_passed=" << loop.fixed_point_temperature_passed << "\n";
++            std::cout << "[gate-diag] loop.fixed_point_velocity_passed=" << loop.fixed_point_velocity_passed << "\n";
++            std::cout << "[gate-diag] loop.fixed_point_pressure_passed=" << loop.fixed_point_pressure_passed << "\n";
++            std::cout << "[gate-diag] loop.max_temperature_change_normalized=" << loop.max_temperature_change_normalized << "\n";
++            std::cout << "[gate-diag] loop.max_velocity_change_normalized=" << loop.max_velocity_change_normalized << "\n";
++            std::cout << "[gate-diag] loop.max_pressure_change_normalized=" << loop.max_pressure_change_normalized << "\n";
++            std::cout << "[gate-diag] flow.converged=" << loop.flow.converged << "\n";
++            std::cout << "[gate-diag] flow.convergence_status=" << cfdx::core::to_string(loop.flow.convergence_status) << "\n";
++            std::cout << "[gate-diag] flow.convergence_reason=" << loop.flow.convergence_reason << "\n";
++            std::cout << "[gate-diag] flow.iterations=" << loop.flow.iterations << "\n";
++            std::cout << "[gate-diag] flow.reference_momentum_residual=" << loop.flow.reference_momentum_residual << "\n";
++            if (!loop.flow.history.empty()) {
++                const std::size_t first =
++                    loop.flow.history.size() > 6
++                        ? loop.flow.history.size() - 6 : 0;
++                for (std::size_t k = first; k < loop.flow.history.size(); ++k) {
++                    const auto& fh = loop.flow.history[k];
++                    std::cout << "[gate-diag] flow.hist[" << fh.iteration << "]"
++                              << " momentum_residual=" << fh.momentum_residual
++                              << " pressure_residual=" << fh.pressure_residual
++                              << " continuity_normalized=" << fh.continuity_normalized
++                              << " momentum_equation_residual_relative=" << fh.momentum_equation_residual_relative
++                              << " nonlinear_convergence_metric=" << fh.nonlinear_convergence_metric
++                              << " corrected_flux_continuity_linf=" << fh.corrected_flux_continuity_linf
++                              << "\n";
++                }
++            }
++            std::cout << "[gate-diag] energy.converged=" << loop.energy.converged << "\n";
++            std::cout << "[gate-diag] energy.linear_solver_converged=" << loop.energy.linear_solver_converged << "\n";
++            std::cout << "[gate-diag] energy.global_energy_balance_passed=" << loop.energy.global_energy_balance_passed << "\n";
++            std::cout << "[gate-diag] energy.local_energy_balance_passed=" << loop.energy.local_energy_balance_passed << "\n";
++            std::cout << "[gate-diag] energy.global_balance_normalized=" << loop.energy.global_balance_normalized << "\n";
++            std::cout << "[gate-diag] energy.local_balance_normalized=" << loop.energy.local_balance_normalized << "\n";
++            std::cout << "[gate-diag] energy.max_cell_residual_normalized=" << loop.energy.max_cell_residual_normalized << "\n";
++            std::cout << "[gate-diag] energy.max_cell_residual=" << loop.energy.max_cell_residual << "\n";
++            std::cout << "[gate-diag] energy.worst_cell=" << loop.energy.worst_cell << "\n";
++            std::cout << "[gate-diag] energy.worst_cell_normalized=" << loop.energy.worst_cell_normalized << "\n";
++            std::cout << "[gate-diag] energy.audit_power_scale=" << loop.energy.audit_power_scale << "\n";
++            std::cout << "[gate-diag] energy.independent_conservation_normalized=" << loop.energy.independent_conservation_normalized << "\n";
++            std::cout << "[gate-diag] energy.total_source_power=" << loop.energy.total_source_power << "\n";
++            std::cout << "[gate-diag] energy.boundary_flux_out=" << loop.energy.boundary_flux_out << "\n";
++            std::cout << "[gate-diag] energy.iterations=" << loop.energy.iterations << "\n";
++            std::cout << "[gate-diag] s2s.converged=" << loop.s2s.converged << "\n";
++            std::cout << "[gate-diag] s2s.outer_iterations=" << loop.s2s.outer_iterations << "\n";
++            std::cout << "[gate-diag] s2s.fixed_point_flux_passed=" << loop.s2s.fixed_point_flux_passed << "\n";
++            std::cout << "[gate-diag] s2s.fixed_point_wall_temperature_passed=" << loop.s2s.fixed_point_wall_temperature_passed << "\n";
++            std::cout << "[gate-diag] s2s.max_flux_fixed_point_normalized=" << loop.s2s.max_flux_fixed_point_normalized << "\n";
++            std::cout << "[gate-diag] s2s.max_wall_temperature_change_normalized=" << loop.s2s.max_wall_temperature_change_normalized << "\n";
++            std::cout << "[gate-diag] s2s.max_wall_temperature_lag=" << loop.s2s.max_wall_temperature_lag << "\n";
++            std::cout << "[gate-diag] s2s.energy.converged=" << loop.s2s.energy.converged << "\n";
++            for (const auto& rec : loop.history) {
++                std::cout << "[gate-diag] hist it=" << rec.iteration
++                          << " flow_conv=" << rec.flow_converged
++                          << " flow_it=" << rec.flow_iterations
++                          << " energy_conv=" << rec.energy_converged
++                          << " energy_it=" << rec.energy_iterations
++                          << " s2s_ran=" << rec.s2s_ran
++                          << " s2s_conv=" << rec.s2s_converged
++                          << " s2s_it=" << rec.s2s_outer_iterations
++                          << " dT=" << rec.max_temperature_change_normalized
++                          << " dT=" << rec.max_velocity_change_normalized
++                          << " dP=" << rec.max_pressure_change_normalized
++                          << "\n";
++            }
++            for (const auto& srec : loop.s2s.history) {
++                std::cout << "[gate-diag] s2s.hist it=" << srec.iteration
++                          << " energy_conv=" << srec.energy_converged
++                          << " radiation_conv=" << srec.radiation_converged
++                          << " flux_fp=" << srec.max_flux_fixed_point_normalized
++                          << " dTw=" << srec.max_wall_temperature_change_normalized
++                          << "\n";
++            }
++            std::cout << "[gate-diag] end case dump\n" << std::flush;
++        }
+ 
+         EXPECT_TRUE(loop.converged);
+         EXPECT_TRUE(loop.s2s_ran);

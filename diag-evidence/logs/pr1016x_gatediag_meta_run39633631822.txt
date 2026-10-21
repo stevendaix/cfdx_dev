@@ -1,0 +1,6 @@
+run_id=39633631822
+started_utc=2026-10-21T16:19:04Z
+head_sha=e2bacc50bee82bf7de1fcb3e83e33223b9b5ec2e (pinned head of feat/buoyancy-flow-energy-loop, PR #1016, instrumented COPY only, never committed)
+context: v1 run 39624273654 isolated test_production_buoyancy_outer_loop_vv (3/5 subcases fail on loop.converged: A, C, D; B + fail-closed catalogue PASS)
+scope: print the verified loop/flow/energy/s2s result fields before the EXPECTs, single target build, direct binary run
+rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL

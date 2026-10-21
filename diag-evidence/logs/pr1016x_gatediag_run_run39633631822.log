@@ -1,0 +1,261 @@
+Running 5 test cases...
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0 energy_balance=0 accepted_state=1
+[gate-diag] begin case dump
+[gate-diag] loop.converged=0
+[gate-diag] loop.outer_iterations=3
+[gate-diag] loop.energy_ran=1
+[gate-diag] loop.s2s_ran=0
+[gate-diag] loop.fixed_point_temperature_passed=1
+[gate-diag] loop.fixed_point_velocity_passed=0
+[gate-diag] loop.fixed_point_pressure_passed=1
+[gate-diag] loop.max_temperature_change_normalized=0.00000000000000000e+00
+[gate-diag] loop.max_velocity_change_normalized=4.45832384928057612e-07
+[gate-diag] loop.max_pressure_change_normalized=0.00000000000000000e+00
+[gate-diag] flow.converged=0
+[gate-diag] flow.convergence_status=STAGNATED
+[gate-diag] flow.convergence_reason=flat residual envelope over the configured stagnation window
+[gate-diag] flow.iterations=40
+[gate-diag] flow.reference_momentum_residual=2.65565347490337444e-12
+[gate-diag] flow.hist[35] momentum_residual=7.96734973839052164e-16 pressure_residual=0.00000000000000000e+00 continuity_normalized=0.00000000000000000e+00 momentum_equation_residual_relative=3.67892976588628760e-03 nonlinear_convergence_metric=3.67892976588628760e-03 corrected_flux_continuity_linf=0.00000000000000000e+00
+[gate-diag] flow.hist[36] momentum_residual=7.96734973839052164e-16 pressure_residual=0.00000000000000000e+00 continuity_normalized=0.00000000000000000e+00 momentum_equation_residual_relative=3.67892976588628760e-03 nonlinear_convergence_metric=3.67892976588628760e-03 corrected_flux_continuity_linf=0.00000000000000000e+00
+[gate-diag] flow.hist[37] momentum_residual=7.96734973839052164e-16 pressure_residual=0.00000000000000000e+00 continuity_normalized=0.00000000000000000e+00 momentum_equation_residual_relative=3.67892976588628760e-03 nonlinear_convergence_metric=3.67892976588628760e-03 corrected_flux_continuity_linf=0.00000000000000000e+00
+[gate-diag] flow.hist[38] momentum_residual=7.96734973839052164e-16 pressure_residual=0.00000000000000000e+00 continuity_normalized=0.00000000000000000e+00 momentum_equation_residual_relative=3.67892976588628760e-03 nonlinear_convergence_metric=3.67892976588628760e-03 corrected_flux_continuity_linf=0.00000000000000000e+00
+[gate-diag] flow.hist[39] momentum_residual=7.96734973839052164e-16 pressure_residual=0.00000000000000000e+00 continuity_normalized=0.00000000000000000e+00 momentum_equation_residual_relative=3.67892976588628760e-03 nonlinear_convergence_metric=3.67892976588628760e-03 corrected_flux_continuity_linf=0.00000000000000000e+00
+[gate-diag] flow.hist[40] momentum_residual=7.96734973839052164e-16 pressure_residual=0.00000000000000000e+00 continuity_normalized=0.00000000000000000e+00 momentum_equation_residual_relative=3.67892976588628760e-03 nonlinear_convergence_metric=3.67892976588628760e-03 corrected_flux_continuity_linf=0.00000000000000000e+00
+[gate-diag] energy.converged=1
+[gate-diag] energy.linear_solver_converged=1
+[gate-diag] energy.global_energy_balance_passed=1
+[gate-diag] energy.local_energy_balance_passed=1
+[gate-diag] energy.global_balance_normalized=0.00000000000000000e+00
+[gate-diag] energy.local_balance_normalized=0.00000000000000000e+00
+[gate-diag] energy.max_cell_residual_normalized=0.00000000000000000e+00
+[gate-diag] energy.max_cell_residual=0.00000000000000000e+00
+[gate-diag] energy.worst_cell=15
+[gate-diag] energy.worst_cell_normalized=15
+[gate-diag] energy.audit_power_scale=1.00000000000000000e+00
+[gate-diag] energy.independent_conservation_normalized=0.00000000000000000e+00
+[gate-diag] energy.total_source_power=0.00000000000000000e+00
+[gate-diag] energy.boundary_flux_out=0.00000000000000000e+00
+[gate-diag] energy.iterations=1
+[gate-diag] s2s.converged=0
+[gate-diag] s2s.outer_iterations=0
+[gate-diag] s2s.fixed_point_flux_passed=0
+[gate-diag] s2s.fixed_point_wall_temperature_passed=0
+[gate-diag] s2s.max_flux_fixed_point_normalized=inf
+[gate-diag] s2s.max_wall_temperature_change_normalized=inf
+[gate-diag] s2s.max_wall_temperature_lag=0.00000000000000000e+00
+[gate-diag] s2s.energy.converged=0
+[gate-diag] hist it=1 flow_conv=1 flow_it=27 energy_conv=1 energy_it=1 s2s_ran=0 s2s_conv=0 s2s_it=0 dT=inf dT=inf dP=inf
+[gate-diag] hist it=2 flow_conv=1 flow_it=37 energy_conv=1 energy_it=1 s2s_ran=0 s2s_conv=0 s2s_it=0 dT=0.00000000000000000e+00 dT=4.45832384928057612e-07 dP=0.00000000000000000e+00
+[gate-diag] hist it=3 flow_conv=0 flow_it=40 energy_conv=0 energy_it=0 s2s_ran=0 s2s_conv=0 s2s_it=0 dT=inf dT=inf dP=inf
+[gate-diag] end case dump
+  FAILED: loop.converged in operator() at /home/runner/work/_temp/head/tests/validation/test_production_buoyancy_outer_loop_vv.cpp:445
+  FAIL: production_buoyant_outer_loop_uniform_source_equivalence - Assertion failed: loop.converged
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0 energy_balance=0 accepted_state=1
+[gate-diag] begin case dump
+[gate-diag] loop.converged=1
+[gate-diag] loop.outer_iterations=2
+[gate-diag] loop.energy_ran=1
+[gate-diag] loop.s2s_ran=0
+[gate-diag] loop.fixed_point_temperature_passed=1
+[gate-diag] loop.fixed_point_velocity_passed=1
+[gate-diag] loop.fixed_point_pressure_passed=1
+[gate-diag] loop.max_temperature_change_normalized=0.00000000000000000e+00
+[gate-diag] loop.max_velocity_change_normalized=0.00000000000000000e+00
+[gate-diag] loop.max_pressure_change_normalized=0.00000000000000000e+00
+[gate-diag] flow.converged=1
+[gate-diag] flow.convergence_status=CONVERGED
+[gate-diag] flow.convergence_reason=all configured convergence gates satisfied
+[gate-diag] flow.iterations=2
+[gate-diag] flow.reference_momentum_residual=1.00000000000000003e-300
+[gate-diag] flow.hist[1] momentum_residual=0.00000000000000000e+00 pressure_residual=0.00000000000000000e+00 continuity_normalized=0.00000000000000000e+00 momentum_equation_residual_relative=0.00000000000000000e+00 nonlinear_convergence_metric=0.00000000000000000e+00 corrected_flux_continuity_linf=0.00000000000000000e+00
+[gate-diag] flow.hist[2] momentum_residual=0.00000000000000000e+00 pressure_residual=0.00000000000000000e+00 continuity_normalized=0.00000000000000000e+00 momentum_equation_residual_relative=0.00000000000000000e+00 nonlinear_convergence_metric=0.00000000000000000e+00 corrected_flux_continuity_linf=0.00000000000000000e+00
+[gate-diag] energy.converged=1
+[gate-diag] energy.linear_solver_converged=1
+[gate-diag] energy.global_energy_balance_passed=1
+[gate-diag] energy.local_energy_balance_passed=1
+[gate-diag] energy.global_balance_normalized=0.00000000000000000e+00
+[gate-diag] energy.local_balance_normalized=0.00000000000000000e+00
+[gate-diag] energy.max_cell_residual_normalized=0.00000000000000000e+00
+[gate-diag] energy.max_cell_residual=0.00000000000000000e+00
+[gate-diag] energy.worst_cell=15
+[gate-diag] energy.worst_cell_normalized=15
+[gate-diag] energy.audit_power_scale=1.00000000000000000e+00
+[gate-diag] energy.independent_conservation_normalized=0.00000000000000000e+00
+[gate-diag] energy.total_source_power=0.00000000000000000e+00
+[gate-diag] energy.boundary_flux_out=0.00000000000000000e+00
+[gate-diag] energy.iterations=1
+[gate-diag] s2s.converged=0
+[gate-diag] s2s.outer_iterations=0
+[gate-diag] s2s.fixed_point_flux_passed=0
+[gate-diag] s2s.fixed_point_wall_temperature_passed=0
+[gate-diag] s2s.max_flux_fixed_point_normalized=inf
+[gate-diag] s2s.max_wall_temperature_change_normalized=inf
+[gate-diag] s2s.max_wall_temperature_lag=0.00000000000000000e+00
+[gate-diag] s2s.energy.converged=0
+[gate-diag] hist it=1 flow_conv=1 flow_it=2 energy_conv=1 energy_it=1 s2s_ran=0 s2s_conv=0 s2s_it=0 dT=inf dT=inf dP=inf
+[gate-diag] hist it=2 flow_conv=1 flow_it=2 energy_conv=1 energy_it=1 s2s_ran=0 s2s_conv=0 s2s_it=0 dT=0.00000000000000000e+00 dT=0.00000000000000000e+00 dP=0.00000000000000000e+00
+[gate-diag] end case dump
+  PASS: production_buoyant_outer_loop_reference_temperature_identity
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.047619 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.72937e-11 backward_error=1.59869e-16 linear_relative=4.76847e-16 dT_relative=0.0365372 energy_balance=2.22833e-17 accepted_state=1
+[gate-diag] begin case dump
+[gate-diag] loop.converged=0
+[gate-diag] loop.outer_iterations=2
+[gate-diag] loop.energy_ran=1
+[gate-diag] loop.s2s_ran=0
+[gate-diag] loop.fixed_point_temperature_passed=0
+[gate-diag] loop.fixed_point_velocity_passed=0
+[gate-diag] loop.fixed_point_pressure_passed=0
+[gate-diag] loop.max_temperature_change_normalized=inf
+[gate-diag] loop.max_velocity_change_normalized=inf
+[gate-diag] loop.max_pressure_change_normalized=inf
+[gate-diag] flow.converged=1
+[gate-diag] flow.convergence_status=CONVERGED
+[gate-diag] flow.convergence_reason=all configured convergence gates satisfied
+[gate-diag] flow.iterations=65
+[gate-diag] flow.reference_momentum_residual=4.55508755340114369e-03
+[gate-diag] flow.hist[60] momentum_residual=1.05125766342943069e-12 pressure_residual=1.31902956839926985e-14 continuity_normalized=5.56184698534478016e-12 momentum_equation_residual_relative=2.23100954350551294e-12 nonlinear_convergence_metric=2.23100954350551294e-12 corrected_flux_continuity_linf=1.94788629670483715e-13
+[gate-diag] flow.hist[61] momentum_residual=7.06648106751931257e-13 pressure_residual=3.13568216334859806e-14 continuity_normalized=3.70452505049682348e-12 momentum_equation_residual_relative=1.49966913432027867e-12 nonlinear_convergence_metric=1.49966913432027867e-12 corrected_flux_continuity_linf=1.34245045635417171e-13
+[gate-diag] flow.hist[62] momentum_residual=4.72713779693855339e-13 pressure_residual=4.40399433333308264e-14 continuity_normalized=2.46868443626593384e-12 momentum_equation_residual_relative=1.00320691161684773e-12 nonlinear_convergence_metric=1.00320691161684773e-12 corrected_flux_continuity_linf=9.25856613598341482e-14
+[gate-diag] flow.hist[63] momentum_residual=3.15471509804303184e-13 pressure_residual=2.15927078720721792e-14 continuity_normalized=1.64624910979108414e-12 momentum_equation_residual_relative=6.69502799894625879e-13 nonlinear_convergence_metric=6.69502799894625879e-13 corrected_flux_continuity_linf=6.38881308967498285e-14
+[gate-diag] flow.hist[64] momentum_residual=2.09551681213895098e-13 pressure_residual=4.84028774856802910e-14 continuity_normalized=1.09897133715662500e-12 momentum_equation_residual_relative=4.44716663581882457e-13 nonlinear_convergence_metric=4.44716663581882457e-13 corrected_flux_continuity_linf=4.41192221645181348e-14
+[gate-diag] flow.hist[65] momentum_residual=1.38893599879742520e-13 pressure_residual=6.91207521113776084e-14 continuity_normalized=7.34163410152464981e-13 momentum_equation_residual_relative=2.94764031352924010e-13 nonlinear_convergence_metric=2.94764031352924010e-13 corrected_flux_continuity_linf=3.04782241111745122e-14
+[gate-diag] energy.converged=0
+[gate-diag] energy.linear_solver_converged=1
+[gate-diag] energy.global_energy_balance_passed=1
+[gate-diag] energy.local_energy_balance_passed=0
+[gate-diag] energy.global_balance_normalized=1.22818296765707233e-14
+[gate-diag] energy.local_balance_normalized=1.11234792360569844e-12
+[gate-diag] energy.max_cell_residual_normalized=1.38090308257218931e-12
+[gate-diag] energy.max_cell_residual=9.30799615161959082e-09
+[gate-diag] energy.worst_cell=6
+[gate-diag] energy.worst_cell_normalized=5
+[gate-diag] energy.audit_power_scale=8.36788198556395218e+03
+[gate-diag] energy.independent_conservation_normalized=1.02772901300340891e-10
+[gate-diag] energy.total_source_power=0.00000000000000000e+00
+[gate-diag] energy.boundary_flux_out=1.01863406598567963e-10
+[gate-diag] energy.iterations=1
+[gate-diag] s2s.converged=0
+[gate-diag] s2s.outer_iterations=0
+[gate-diag] s2s.fixed_point_flux_passed=0
+[gate-diag] s2s.fixed_point_wall_temperature_passed=0
+[gate-diag] s2s.max_flux_fixed_point_normalized=inf
+[gate-diag] s2s.max_wall_temperature_change_normalized=inf
+[gate-diag] s2s.max_wall_temperature_lag=0.00000000000000000e+00
+[gate-diag] s2s.energy.converged=0
+[gate-diag] hist it=1 flow_conv=1 flow_it=2 energy_conv=1 energy_it=1 s2s_ran=0 s2s_conv=0 s2s_it=0 dT=inf dT=inf dP=inf
+[gate-diag] hist it=2 flow_conv=1 flow_it=65 energy_conv=0 energy_it=1 s2s_ran=0 s2s_conv=0 s2s_it=0 dT=inf dT=inf dP=inf
+[gate-diag] end case dump
+  FAILED: loop.converged in operator() at /home/runner/work/_temp/head/tests/validation/test_production_buoyancy_outer_loop_vv.cpp:760
+  FAIL: production_buoyant_outer_loop_natural_convection_fixed_point - Assertion failed: loop.converged
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.74623e-10 backward_error=7.35535e-16 linear_relative=2.00352e-15 dT_relative=0.047673 energy_balance=3.60325e-15 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.82077e-11 backward_error=2.46629e-16 linear_relative=6.31116e-16 dT_relative=4.19586e-08 energy_balance=1.10869e-15 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.54659e-11 backward_error=8.93515e-17 linear_relative=2.52906e-16 dT_relative=3.14284e-08 energy_balance=3.69564e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.18279e-11 backward_error=7.6587e-17 linear_relative=3.49721e-16 dT_relative=2.35409e-08 energy_balance=6.92932e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.54659e-11 backward_error=1.04363e-16 linear_relative=1.99364e-16 dT_relative=1.76329e-08 energy_balance=1.0394e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.45519e-11 backward_error=6.38202e-17 linear_relative=1.73686e-16 dT_relative=1.32076e-08 energy_balance=2.30977e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.91038e-11 backward_error=1.02117e-16 linear_relative=2.9515e-16 dT_relative=9.89295e-09 energy_balance=3.46466e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.54659e-11 backward_error=1.23319e-16 linear_relative=3.39218e-16 dT_relative=7.41015e-09 energy_balance=1.73233e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.54659e-11 backward_error=1.43872e-16 linear_relative=2.90053e-16 dT_relative=5.55045e-09 energy_balance=1.15489e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.45519e-11 backward_error=5.9638e-17 linear_relative=2.07197e-16 dT_relative=4.15747e-09 energy_balance=1.15489e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.63798e-11 backward_error=1.27645e-16 linear_relative=2.48958e-16 dT_relative=3.11408e-09 energy_balance=1.84782e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.18279e-11 backward_error=8.22127e-17 linear_relative=3.30088e-16 dT_relative=2.33255e-09 energy_balance=8.0842e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.18279e-11 backward_error=6.9294e-17 linear_relative=2.97761e-16 dT_relative=1.74716e-09 energy_balance=4.61955e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.45519e-11 backward_error=8.22051e-17 linear_relative=2.764e-16 dT_relative=1.30868e-09 energy_balance=9.23909e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.54659e-11 backward_error=1.079e-16 linear_relative=3.1943e-16 dT_relative=9.80245e-10 energy_balance=4.61955e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.45519e-11 backward_error=6.38237e-17 linear_relative=2.20219e-16 dT_relative=7.34236e-10 energy_balance=1.15489e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.45519e-11 backward_error=6.38237e-17 linear_relative=1.95167e-16 dT_relative=5.49967e-10 energy_balance=4.61955e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.36557e-11 backward_error=1.38588e-16 linear_relative=2.59206e-16 dT_relative=4.11944e-10 energy_balance=1.50135e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.91038e-11 backward_error=9.93966e-17 linear_relative=3.27716e-16 dT_relative=3.0856e-10 energy_balance=2.54075e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.18279e-11 backward_error=7.95173e-17 linear_relative=2.74831e-16 dT_relative=2.31122e-10 energy_balance=9.23909e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.18279e-11 backward_error=8.66179e-17 linear_relative=2.09677e-16 dT_relative=1.73118e-10 energy_balance=1.15489e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.36557e-11 backward_error=1.53176e-16 linear_relative=4.18544e-16 dT_relative=1.29671e-10 energy_balance=2.19428e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.54659e-11 backward_error=9.93877e-17 linear_relative=3.14287e-16 dT_relative=9.7128e-11 energy_balance=8.0842e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.54659e-11 backward_error=1.04365e-16 linear_relative=3.41604e-16 dT_relative=7.2752e-11 energy_balance=8.0842e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.91038e-11 backward_error=1.27647e-16 linear_relative=3.06366e-16 dT_relative=5.44937e-11 energy_balance=4.61955e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.81899e-11 backward_error=7.95102e-17 linear_relative=2.73763e-16 dT_relative=4.08176e-11 energy_balance=2.30977e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.91038e-11 backward_error=9.24859e-17 linear_relative=3.58145e-16 dT_relative=3.05737e-11 energy_balance=4.61955e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.91038e-11 backward_error=9.57303e-17 linear_relative=3.56112e-16 dT_relative=2.2901e-11 energy_balance=5.77443e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.18279e-11 backward_error=1.23308e-16 linear_relative=2.65602e-16 dT_relative=1.71535e-11 energy_balance=8.0842e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.81899e-11 backward_error=5.96374e-17 linear_relative=2.09701e-16 dT_relative=1.28484e-11 energy_balance=6.92932e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.18279e-11 backward_error=8.66179e-17 linear_relative=2.71196e-16 dT_relative=9.62404e-12 energy_balance=2.0788e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.45519e-11 backward_error=6.38237e-17 linear_relative=2.1549e-16 dT_relative=7.20842e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.91038e-11 backward_error=1.23318e-16 linear_relative=3.3921e-16 dT_relative=5.39964e-12 energy_balance=1.84782e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.18279e-11 backward_error=1.19276e-16 linear_relative=2.92016e-16 dT_relative=4.04468e-12 energy_balance=2.30977e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.27418e-11 backward_error=1.14882e-16 linear_relative=2.61035e-16 dT_relative=3.02931e-12 energy_balance=3.46466e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.81899e-11 backward_error=7.2178e-17 linear_relative=2.3318e-16 dT_relative=2.26928e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.81899e-11 backward_error=6.38234e-17 linear_relative=2.08576e-16 dT_relative=1.69961e-12 energy_balance=1.27037e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.54659e-11 backward_error=1.02756e-16 linear_relative=3.18727e-16 dT_relative=1.2734e-12 energy_balance=4.61955e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.45519e-11 backward_error=8.22051e-17 linear_relative=2.41435e-16 dT_relative=9.53472e-13 energy_balance=2.30977e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.18279e-11 backward_error=1.19276e-16 linear_relative=2.67645e-16 dT_relative=7.14563e-13 energy_balance=1.84782e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.41881e-10 backward_error=8.01574e-16 linear_relative=1.9311e-15 dT_relative=5.31411e-13 energy_balance=4.61955e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.05501e-10 backward_error=5.96042e-16 linear_relative=1.55167e-15 dT_relative=4.01851e-13 energy_balance=1.84782e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=7.27596e-11 backward_error=3.90474e-16 linear_relative=1.06102e-15 dT_relative=3.00982e-13 energy_balance=4.61955e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.18456e-11 backward_error=3.49372e-16 linear_relative=1.02798e-15 dT_relative=2.25015e-13 energy_balance=4.61955e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.36557e-11 backward_error=2.46615e-16 linear_relative=6.41485e-16 dT_relative=1.69077e-13 energy_balance=1.96331e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.09317e-11 backward_error=2.7831e-16 linear_relative=6.23524e-16 dT_relative=1.26492e-13 energy_balance=1.84782e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.27418e-11 backward_error=1.5902e-16 linear_relative=4.32432e-16 dT_relative=9.47337e-14 energy_balance=1.50135e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.00178e-11 backward_error=1.64425e-16 linear_relative=4.08138e-16 dT_relative=7.10954e-14 energy_balance=1.0394e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.09139e-10 backward_error=3.82935e-16 linear_relative=1.70072e-15 dT_relative=5.28704e-14 energy_balance=8.0842e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.09317e-11 backward_error=1.78912e-16 linear_relative=5.86213e-16 dT_relative=4.06001e-14 energy_balance=1.0394e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=8.00355e-11 backward_error=3.15941e-16 linear_relative=9.56795e-16 dT_relative=0.0365425 energy_balance=4.01098e-16 accepted_state=1
+[gate-diag] begin case dump
+[gate-diag] loop.converged=0
+[gate-diag] loop.outer_iterations=2
+[gate-diag] loop.energy_ran=1
+[gate-diag] loop.s2s_ran=1
+[gate-diag] loop.fixed_point_temperature_passed=0
+[gate-diag] loop.fixed_point_velocity_passed=0
+[gate-diag] loop.fixed_point_pressure_passed=0
+[gate-diag] loop.max_temperature_change_normalized=inf
+[gate-diag] loop.max_velocity_change_normalized=inf
+[gate-diag] loop.max_pressure_change_normalized=inf
+[gate-diag] flow.converged=1
+[gate-diag] flow.convergence_status=CONVERGED
+[gate-diag] flow.convergence_reason=all configured convergence gates satisfied
+[gate-diag] flow.iterations=65
+[gate-diag] flow.reference_momentum_residual=4.55477369812011968e-03
+[gate-diag] flow.hist[60] momentum_residual=1.06543522598159785e-12 pressure_residual=2.50569439023730837e-12 continuity_normalized=5.56175874862845014e-12 momentum_equation_residual_relative=2.26277451630603515e-12 nonlinear_convergence_metric=2.50569439023730837e-12 corrected_flux_continuity_linf=1.94809446352195437e-13
+[gate-diag] flow.hist[61] momentum_residual=7.21909140600818507e-13 pressure_residual=2.31824216757070204e-12 continuity_normalized=3.70453154528678248e-12 momentum_equation_residual_relative=1.53319278976721789e-12 nonlinear_convergence_metric=2.31824216757070204e-12 corrected_flux_continuity_linf=1.34298822063172452e-13
+[gate-diag] flow.hist[62] momentum_residual=4.85240402626657801e-13 pressure_residual=1.59793147837855548e-12 continuity_normalized=2.46874845427455020e-12 momentum_equation_residual_relative=1.03055501692566261e-12 nonlinear_convergence_metric=1.59793147837855548e-12 corrected_flux_continuity_linf=9.27105614501044784e-14
+[gate-diag] flow.hist[63] momentum_residual=3.22791231940935509e-13 pressure_residual=3.46609055636890524e-13 continuity_normalized=1.64629967176199743e-12 momentum_equation_residual_relative=6.85544982848872444e-13 nonlinear_convergence_metric=6.85544982848872444e-13 corrected_flux_continuity_linf=6.40546643504436020e-14
+[gate-diag] flow.hist[64] momentum_residual=2.11988658365684023e-13 pressure_residual=6.52171750712276963e-13 continuity_normalized=1.09885976650376670e-12 momentum_equation_residual_relative=4.50222146027901875e-13 nonlinear_convergence_metric=6.52171750712276963e-13 corrected_flux_continuity_linf=4.42770820008320243e-14
+[gate-diag] flow.hist[65] momentum_residual=1.39562375698938609e-13 pressure_residual=2.02827848237526416e-12 continuity_normalized=7.34247822420889506e-13 momentum_equation_residual_relative=2.96402990501186086e-13 nonlinear_convergence_metric=2.02827848237526416e-12 corrected_flux_continuity_linf=3.06039915631828308e-14
+[gate-diag] energy.converged=0
+[gate-diag] energy.linear_solver_converged=1
+[gate-diag] energy.global_energy_balance_passed=1
+[gate-diag] energy.local_energy_balance_passed=0
+[gate-diag] energy.global_balance_normalized=1.21829327634332588e-14
+[gate-diag] energy.local_balance_normalized=1.12327182748465483e-12
+[gate-diag] energy.max_cell_residual_normalized=1.38292298473215071e-12
+[gate-diag] energy.max_cell_residual=9.41281541599892080e-09
+[gate-diag] energy.worst_cell=6
+[gate-diag] energy.worst_cell_normalized=5
+[gate-diag] energy.audit_power_scale=8.37981972456040239e+03
+[gate-diag] energy.independent_conservation_normalized=1.02090780274011195e-10
+[gate-diag] energy.total_source_power=0.00000000000000000e+00
+[gate-diag] energy.boundary_flux_out=1.01863406598567963e-10
+[gate-diag] energy.iterations=1
+[gate-diag] s2s.converged=0
+[gate-diag] s2s.outer_iterations=1
+[gate-diag] s2s.fixed_point_flux_passed=0
+[gate-diag] s2s.fixed_point_wall_temperature_passed=0
+[gate-diag] s2s.max_flux_fixed_point_normalized=inf
+[gate-diag] s2s.max_wall_temperature_change_normalized=inf
+[gate-diag] s2s.max_wall_temperature_lag=0.00000000000000000e+00
+[gate-diag] s2s.energy.converged=0
+[gate-diag] hist it=1 flow_conv=1 flow_it=2 energy_conv=1 energy_it=1 s2s_ran=1 s2s_conv=1 s2s_it=50 dT=inf dT=inf dP=inf
+[gate-diag] hist it=2 flow_conv=1 flow_it=65 energy_conv=0 energy_it=1 s2s_ran=1 s2s_conv=0 s2s_it=1 dT=inf dT=inf dP=inf
+[gate-diag] s2s.hist it=1 energy_conv=0 radiation_conv=0 flux_fp=0.00000000000000000e+00 dTw=0.00000000000000000e+00
+[gate-diag] end case dump
+  FAILED: loop.converged in operator() at /home/runner/work/_temp/head/tests/validation/test_production_buoyancy_outer_loop_vv.cpp:983
+  FAIL: production_buoyant_outer_loop_nested_s2s_radiation - Assertion failed: loop.converged
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.0322581 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.63798e-11 backward_error=1.46685e-16 linear_relative=4.95152e-16 dT_relative=0.0324044 energy_balance=8.80023e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.91038e-11 backward_error=1.25441e-16 linear_relative=2.4197e-16 dT_relative=2.83518e-07 energy_balance=1.46671e-17 accepted_state=1
+  PASS: production_buoyant_coupling_fail_closed
+
+Results: 2 passed, 3 failed
