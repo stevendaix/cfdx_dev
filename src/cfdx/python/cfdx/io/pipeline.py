@@ -8,19 +8,16 @@ runs conversion, and exports GapAnalysis reports.
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
-from typing import Optional, Union
 
 from cfdx.io.adapters.fluent import FluentAdapter
-from cfdx.io.adapters.su2 import Su2Adapter
-from cfdx.io.adapters.starccm import StarCCMAdapter
-from cfdx.io.adapters.saturne import SaturneAdapter
 from cfdx.io.adapters.openfoam import OpenFOAMAdapter
+from cfdx.io.adapters.saturne import SaturneAdapter
+from cfdx.io.adapters.starccm import StarCCMAdapter
+from cfdx.io.adapters.su2 import Su2Adapter
+from cfdx.io.gap_analysis import GapAnalysisReport
 from cfdx.io.interfaces import ConversionResult
 from cfdx.io.schema import SourceInfo
-from cfdx.io.gap_analysis import GapAnalysisReport
-
 
 _ADAPTER_REGISTRY = {
     "fluent": (FluentAdapter, (".cas",)),
@@ -31,25 +28,15 @@ _ADAPTER_REGISTRY = {
 }
 
 
-def detect_adapter(path: Union[str, Path]) -> Optional[str]:
+def detect_adapter(path: str | Path) -> str | None:
     """Detect solver type from file extension and content."""
     p = Path(str(path))
 
     # Check for OpenFOAM case directory first
-    if p.is_dir():
-        if (p / "constant" / "polyMesh").exists():
-            return "openfoam"
+    if p.is_dir() and (p / "constant" / "polyMesh").exists():
+        return "openfoam"
 
     ext = p.suffix.lower()
-    stem = p.stem.lower()
-
-    # Check for compound extensions like .cas.h5, .dat.h5
-    if stem.endswith(".cas") or stem.endswith(".dat"):
-        ext = "." + stem.split(".")[-1] + ext
-        # This will make ext = ".cas.h5" or ".dat.h5", but we want to map to fluent
-        # Actually let's just check the stem
-        pass
-
     # Extension-based detection
     ext_map = {
         ".cas": "fluent",
@@ -106,10 +93,11 @@ def create_adapter(solver_name: str):
 
 
 def convert(
-    case_path: Union[str, Path],
-    output_path: Optional[Union[str, Path]] = None,
-    solver: Optional[str] = None,
+    case_path: str | Path,
+    output_path: str | Path | None = None,
+    solver: str | None = None,
     write_reports: bool = True,
+    include_results: bool = False,
 ) -> ConversionResult:
     """Convert an external solver case to CFDX IR.
 
@@ -118,6 +106,8 @@ def convert(
         output_path: Optional directory to write GapAnalysis reports and mesh.
         solver: Force a specific solver (auto-detect if None).
         write_reports: Whether to write Markdown/JSON gap reports.
+        include_results: Import cell-centred fields from the latest result time
+            when the adapter supports result import.
 
     Returns:
         ConversionResult with mesh, setup, fields, and gap_report.
@@ -135,7 +125,11 @@ def convert(
     adapter.detect_source(str(path), info)
 
     result = ConversionResult(source=info)
-    success = adapter.convert(str(path), result)
+    adapter.convert(str(path), result)
+    if include_results:
+        importer = getattr(adapter, "import_results", None)
+        if importer is not None:
+            importer(str(path), result)  # The adapter records compatibility findings.
 
     if output_path is not None:
         out_dir = Path(str(output_path))
@@ -162,6 +156,14 @@ def convert(
             setup_dict = result.setup.model_dump(mode="json")
             with open(out_dir / "case_setup.json", "w") as f:
                 json.dump(setup_dict, f, indent=2)
+
+        # OpenFOAM's native face/owner/neighbour topology is directly
+        # representable in CFDX CSR. Only emit the solver-ready HDF5 artifact
+        # when that topology has been assembled and validated by the adapter.
+        if result.mesh is not None and result.mesh.get("cfdx_csr") is not None:
+            from cfdx.io.hdf5_writer import write_case_cfdx_h5
+
+            write_case_cfdx_h5(result, out_dir / "case.cfdx.h5")
 
     return result
 

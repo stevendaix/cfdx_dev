@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <limits>
+#include <map>
 #include <utility>
 #include <vector>
 
@@ -324,6 +325,73 @@ int main()
         EXPECT_THROW(sst_strain_rate_magnitude(grad), std::invalid_argument);
     });
 
+    run_case("sst_strain_rate_uses_explicit_fixed_velocity_boundaries", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        Field<double, Location::CELL> velocity(mesh.n_cells(), "U", "m/s", 3);
+        velocity.fill(0.0);
+
+        const auto zero_gradient = compute_sst_strain_rate(velocity, mesh);
+        const std::map<std::string, std::array<double, 3>> fixed_values{
+            {"inlet", {1.0, 0.0, 0.0}}
+        };
+        const auto boundary_aware =
+            compute_sst_strain_rate_with_boundary_values(velocity, mesh, fixed_values);
+
+        EXPECT_NEAR(zero_gradient(0), 0.0, 1e-14);
+        EXPECT_TRUE(std::isfinite(boundary_aware(0)));
+        EXPECT_TRUE(boundary_aware(0) > 0.0);
+    });
+
+    run_case("sst_strain_rate_reconstructs_affine_field_with_fixed_boundaries", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        Field<double, Location::CELL> velocity(mesh.n_cells(), "U", "m/s", 3);
+        velocity.fill(0.0);
+        velocity.component_data(0)[0] = 2.0;
+
+        // Ux=x is exactly representable on this orthogonal box. Prescribing
+        // the affine field at every boundary face should recover dUx/dx=1.
+        const std::map<std::string, std::array<double, 3>> fixed_values{
+            {"wall", {0.0, 0.0, 0.0}},
+            {"inlet", {4.0, 0.0, 0.0}},
+            {"side_low", {2.0, 0.0, 0.0}},
+            {"side_high", {2.0, 0.0, 0.0}},
+            {"bottom", {2.0, 0.0, 0.0}},
+            {"top", {2.0, 0.0, 0.0}}
+        };
+
+        const auto strain =
+            compute_sst_strain_rate_with_boundary_values(velocity, mesh, fixed_values);
+        EXPECT_NEAR(strain(0), std::sqrt(2.0), 1e-13);
+    });
+
+    run_case("sst_strain_rate_boundary_values_reject_nonfinite_input", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        Field<double, Location::CELL> velocity(mesh.n_cells(), "U", "m/s", 3);
+        velocity.fill(0.0);
+        const std::map<std::string, std::array<double, 3>> fixed_values{
+            {"inlet", {std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0}}
+        };
+        EXPECT_THROW(
+            compute_sst_strain_rate_with_boundary_values(velocity, mesh, fixed_values),
+            std::invalid_argument);
+    });
+
+    run_case("sst_strain_rate_rejects_unknown_fixed_value_patch", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        Field<double, Location::CELL> velocity(mesh.n_cells(), "U", "m/s", 3);
+        velocity.fill(0.0);
+        const std::map<std::string, std::array<double, 3>> fixed_values{
+            {"missing_patch", {1.0, 0.0, 0.0}}
+        };
+        EXPECT_THROW(
+            compute_sst_strain_rate_with_boundary_values(velocity, mesh, fixed_values),
+            std::invalid_argument);
+    });
+
     run_case("sst_blending_rejects_invalid_distance", [] {
         EXPECT_THROW(compute_sst_blending(0.5, 10.0, 0.0, 1.5e-5, 0.09), std::invalid_argument);
     });
@@ -382,7 +450,7 @@ int main()
 
     run_case("sst_case_prerequisites_reject_nonpositive_initial_fields_and_duplicate_patches", [] {
         cfdx::io::CaseSetup setup;
-        setup.turbulence_model = "SST";
+        setup.turbulence_model = "k_omega_sst";
         setup.has_initial_condition = true;
         setup.initial_condition.scalar_fields["k"] = 0.01;
         setup.initial_condition.scalar_fields["omega"] = 2.0;
@@ -716,6 +784,51 @@ int main()
             std::invalid_argument);
     });
 
+    run_case("sst_production_state_builds_wall_distance_and_strain_from_mesh", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        Field<double, Location::CELL> velocity(mesh.n_cells(), "U", "m/s", 3);
+        velocity.fill(0.0);
+
+        cfdx::io::CaseSetup setup;
+        setup.physics_model = "incompressible";
+        setup.turbulence_model = "SST";
+        setup.has_initial_condition = true;
+        setup.initial_condition.scalar_fields["k"] = 0.12;
+        setup.initial_condition.scalar_fields["omega"] = 18.0;
+        cfdx::io::BoundarySpec wall;
+        wall.patch_name = "wall";
+        wall.type = cfdx::io::BCType::WALL;
+        wall.sst_scalar_conditions = {
+            {"k", cfdx::io::SSTScalarBoundaryType::WALL_K_ZERO, 0.0},
+            {"omega", cfdx::io::SSTScalarBoundaryType::WALL_OMEGA_SST, 0.0}
+        };
+        setup.boundary_conditions = {wall};
+
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.molecular_viscosity = 1.0e-5;
+        const std::map<std::string, std::array<double, 3>> fixed_values{
+            {"inlet", {1.0, 0.0, 0.0}}
+        };
+
+        const auto state = initialize_sst_production_state_from_mesh(
+            mesh, setup, controls, velocity, fixed_values);
+        validate_sst_production_state(state, mesh.n_cells());
+        EXPECT_NEAR(state.k(0), 0.12, 0.0);
+        EXPECT_NEAR(state.omega(0), 18.0, 0.0);
+        EXPECT_TRUE(std::isfinite(state.wall_distance(0)) &&
+                    state.wall_distance(0) > 0.0);
+        EXPECT_TRUE(std::isfinite(state.strain_rate(0)) &&
+                    state.strain_rate(0) > 0.0);
+        EXPECT_TRUE(std::isfinite(state.nu_t(0)) && state.nu_t(0) >= 0.0);
+
+        Field<double, Location::CELL> invalid_velocity(mesh.n_cells(), "bad", "m/s", 1);
+        EXPECT_THROW(initialize_sst_production_state_from_mesh(
+            mesh, setup, controls, invalid_velocity, fixed_values),
+            std::invalid_argument);
+    });
+
     run_case("sst_dat_restart_restores_named_scalars_and_rebuilds_derived_state", [] {
         using cfdx::core::Field;
         using cfdx::core::Location;
@@ -756,8 +869,12 @@ int main()
         TurbulenceTransportControls controls;
         controls.model = TurbulenceModel::SST;
         controls.molecular_viscosity = 1.5e-5;
+        const std::map<std::string, std::array<double, 3>> fixed_velocity_boundary_values{
+            {"inlet", {4.0, 0.0, 0.0}}
+        };
         const auto metadata = restore_sst_production_state_from_dat(
-            path.string(), mesh, U, p, state, std::vector<double>{0.01}, controls);
+            path.string(), mesh, U, p, state, std::vector<double>{0.01}, controls,
+            fixed_velocity_boundary_values);
 
         EXPECT_TRUE(metadata.iteration == 17);
         EXPECT_NEAR(metadata.time, 2.5, 0.0);
@@ -766,7 +883,7 @@ int main()
         EXPECT_NEAR(state.k(0), 0.42, 0.0);
         EXPECT_NEAR(state.omega(0), 125.0, 0.0);
         EXPECT_NEAR(state.wall_distance(0), 0.01, 0.0);
-        EXPECT_NEAR(state.strain_rate(0), 0.0, 1e-14);
+        EXPECT_TRUE(std::isfinite(state.strain_rate(0)) && state.strain_rate(0) > 0.0);
         EXPECT_TRUE(std::isfinite(state.nu_t(0)) && state.nu_t(0) >= 0.0);
         validate_sst_production_state(state, mesh.n_cells());
         std::filesystem::remove(path);
@@ -823,6 +940,37 @@ int main()
         EXPECT_NEAR(state.wall_distance(0), old_state.wall_distance(0), 0.0);
         EXPECT_NEAR(state.strain_rate(0), old_state.strain_rate(0), 0.0);
         std::filesystem::remove(path);
+    });
+
+    run_case("sst_transaction_rejects_non_scalar_transport_fields", [] {
+        using namespace cfdx::core;
+        const Mesh mesh = make_sst_transaction_unit_cube();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::FACE> flux(mesh.n_faces(), "phi", "kg/s", 1);
+        Field<double, Location::CELL> k(mesh.n_cells(), "k", "m2/s2", 1);
+        Field<double, Location::CELL> omega(mesh.n_cells(), "omega", "1/s", 1);
+        Field<double, Location::CELL> strain(mesh.n_cells(), "strain", "1/s", 1);
+        Field<double, Location::CELL> wall(mesh.n_cells(), "wall_distance", "m", 1);
+        Field<double, Location::CELL> nu_t(mesh.n_cells(), "nu_t", "m2/s", 1);
+        Field<double, Location::CELL> malformed_k(mesh.n_cells(), "k_bad", "m2/s2", 2);
+        flux.fill(0.0);
+        k(0) = 0.4;
+        omega(0) = 8.0;
+        strain(0) = 1.0;
+        wall(0) = 0.01;
+        nu_t(0) = 0.02;
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+
+        EXPECT_THROW(advance_sst_transport_transactionally(
+            mesh, geometry, flux, malformed_k, omega, strain, wall,
+            controls, nu_t, {}, {}, 1, 1e-8), std::invalid_argument);
+
+        Field<double, Location::FACE> malformed_flux(
+            mesh.n_faces(), "phi_bad", "kg/s", 2);
+        EXPECT_THROW(advance_sst_transport_transactionally(
+            mesh, geometry, malformed_flux, k, omega, strain, wall,
+            controls, nu_t, {}, {}, 1, 1e-8), std::invalid_argument);
     });
 
     run_case("sst_transaction_rolls_back_k_omega_after_nonconverged_transport", [] {

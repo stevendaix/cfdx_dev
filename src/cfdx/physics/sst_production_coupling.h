@@ -4,8 +4,10 @@
 #include "cfdx/physics/sst_solver.h"
 #include "cfdx/physics/sst_case_contract.h"
 #include "cfdx/physics/sst_strain_rate.h"
+#include "cfdx/physics/mesh_wall_distance.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -214,10 +216,14 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
     const std::size_t n = mesh.n_cells();
     if (controls.model != TurbulenceModel::SST)
         throw std::invalid_argument("transactional SST step requires the SST model");
-    if (n == 0 || k.size() != n || omega.size() != n ||
-        strain_rate.size() != n || wall_distance.size() != n ||
-        nu_t.size() != n || mass_flux.size() != mesh.n_faces())
-        throw std::invalid_argument("transactional SST step field size mismatch");
+    if (n == 0 ||
+        k.size() != n || k.dimension() != 1 ||
+        omega.size() != n || omega.dimension() != 1 ||
+        strain_rate.size() != n || strain_rate.dimension() != 1 ||
+        wall_distance.size() != n || wall_distance.dimension() != 1 ||
+        nu_t.size() != n || nu_t.dimension() != 1 ||
+        mass_flux.size() != mesh.n_faces() || mass_flux.dimension() != 1)
+        throw std::invalid_argument("transactional SST step field shape mismatch");
     if (max_iterations == 0 || !(tolerance > 0.0) || !std::isfinite(tolerance))
         throw std::invalid_argument("transactional SST step requires valid iteration controls");
     for (std::size_t i = 0; i < n; ++i) {
@@ -291,7 +297,8 @@ inline cfdx::io::DatRestartState restore_sst_production_state_from_dat(
     cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure,
     SSTProductionState& state,
     const std::vector<double>& current_wall_distance,
-    const TurbulenceTransportControls& controls)
+    const TurbulenceTransportControls& controls,
+    const std::map<std::string, std::array<double, 3>>& fixed_velocity_boundary_values = {})
 {
     using cfdx::core::Field;
     using cfdx::core::Location;
@@ -322,7 +329,8 @@ inline cfdx::io::DatRestartState restore_sst_production_state_from_dat(
     SSTProductionState candidate(n);
     candidate.k = candidate_k;
     candidate.omega = candidate_omega;
-    candidate.strain_rate = compute_sst_strain_rate(candidate_velocity, mesh);
+    candidate.strain_rate = compute_sst_strain_rate_with_boundary_values(
+        candidate_velocity, mesh, fixed_velocity_boundary_values);
     for (std::size_t cell = 0; cell < n; ++cell)
         candidate.wall_distance(cell) = current_wall_distance[cell];
 
@@ -398,6 +406,37 @@ inline SSTProductionState initialize_sst_production_state(
         state.k, state.omega, state.strain_rate, F2, controls, state.nu_t);
     validate_sst_production_state(state, n);
     return state;
+}
+
+
+// Build the production-owned SST state from the actual carrier field and mesh.
+// Wall distance and strain rate are derived here rather than supplied as
+// disconnected caller-created arrays, so both use the current production
+// mesh and explicit fixed-value velocity boundary data.
+inline SSTProductionState initialize_sst_production_state_from_mesh(
+    const cfdx::core::Mesh& mesh,
+    const cfdx::io::CaseSetup& setup,
+    const TurbulenceTransportControls& controls,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+    const std::map<std::string, std::array<double, 3>>& fixed_velocity_boundary_values,
+    const std::vector<std::string>& wall_patch_names = {})
+{
+    if (velocity.size() != mesh.n_cells() || velocity.dimension() != 3)
+        throw std::invalid_argument(
+            "initialize_sst_production_state_from_mesh: velocity field shape mismatch");
+
+    const FvGeometry geometry = build_fv_geometry(mesh);
+    const auto wall_distance =
+        compute_mesh_cell_wall_distance(mesh, geometry, wall_patch_names);
+    const auto strain_field =
+        compute_sst_strain_rate_with_boundary_values(
+            velocity, mesh, fixed_velocity_boundary_values);
+    std::vector<double> strain_rate(mesh.n_cells());
+    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+        strain_rate[cell] = strain_field(cell);
+
+    return initialize_sst_production_state(
+        mesh, setup, controls, wall_distance.distance, strain_rate);
 }
 
 struct SSTRuntimeBoundaryContract {

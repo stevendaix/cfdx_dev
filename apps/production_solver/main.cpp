@@ -44,6 +44,7 @@ struct Options {
     std::filesystem::path restart;
     std::size_t iterations = 2;
     bool adaptive_convergence = false;
+    bool initial_velocity_field = false;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
 };
@@ -493,11 +494,13 @@ Options parse(int argc, char** argv)
         else if (arg == "--restart") o.restart = value("--restart");
         else if (arg == "--iterations") o.iterations = std::stoull(value("--iterations"));
         else if (arg == "--adaptive-convergence") o.adaptive_convergence = true;
+        else if (arg == "--initial-velocity-field") o.initial_velocity_field = true;
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
+                         "  [--initial-velocity-field] (initialize U from /fields/vector/U)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::exit(0);
@@ -593,6 +596,41 @@ int main(int argc, char** argv)
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
         Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
 
+        if (options.initial_velocity_field) {
+            if (!is_case_hdf5)
+                throw std::invalid_argument(
+                    "production solver: --initial-velocity-field requires a .cfdx.h5 case");
+            std::vector<std::pair<std::string, Vec3CellField>> imported_vectors;
+            if (!read_vector_fields_hdf5(mesh_path, imported_vectors))
+                throw std::runtime_error(
+                    "production solver: failed to read vector fields from case HDF5");
+            const Vec3CellField* imported_u = nullptr;
+            for (const auto& entry : imported_vectors) {
+                if (entry.first == "U") {
+                    if (imported_u != nullptr)
+                        throw std::invalid_argument(
+                            "production solver: duplicate imported U fields");
+                    imported_u = &entry.second;
+                }
+            }
+            if (imported_u == nullptr)
+                throw std::invalid_argument(
+                    "production solver: --initial-velocity-field requested but field 'U' is absent");
+            if (imported_u->size() != mesh.n_cells())
+                throw std::invalid_argument(
+                    "production solver: imported U cell count does not match mesh");
+            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                const auto value = (*imported_u)(cell);
+                if (!std::isfinite(value.x) || !std::isfinite(value.y) ||
+                    !std::isfinite(value.z))
+                    throw std::invalid_argument(
+                        "production solver: imported U contains non-finite values");
+                U.set(cell, value.x, value.y, value.z);
+            }
+            std::cout << "Imported cell-centred velocity field U from case HDF5; "
+                         "pressure initialization remains case-declared.\n";
+        }
+
         // The initial state is declared, not inferred. When the case carries an
         // explicit initial_condition block it is mapped onto the fields through
         // the uniform strategy; otherwise the caller-provided state is kept.
@@ -600,7 +638,10 @@ int main(int argc, char** argv)
         InitializationControls initialization;
         if (is_case_hdf5 && case_setup.has_initial_condition) {
             const auto& ic = case_setup.initial_condition;
-            initialization.mode = InitializationMode::Uniform;
+            initialization.mode = options.initial_velocity_field
+                ? InitializationMode::Provided : InitializationMode::Uniform;
+            if (options.initial_velocity_field)
+                p.fill(ic.pressure);
             if (!ic.velocity_vector.empty()) {
                 if (ic.velocity_vector.size() != 3)
                     throw std::runtime_error(
@@ -613,6 +654,8 @@ int main(int argc, char** argv)
             }
             initialization.uniform_pressure = ic.pressure;
         }
+        if (options.initial_velocity_field && !case_setup.has_initial_condition)
+            initialization.mode = InitializationMode::Provided;
 
         VelocityBoundaryConditions ubc;
         ScalarBoundaryConditions pbc;

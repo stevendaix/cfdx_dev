@@ -1508,27 +1508,40 @@ bool read_vector_fields_hdf5(const std::string& filename,
         if (ds < 0) { success = false; continue; }
 
         hid_t space = H5Dget_space(ds);
-        int rank = H5Sget_simple_extent_ndims(space);
+        const int rank = H5Sget_simple_extent_ndims(space);
+        // H5Sget_simple_extent_dims writes one dimension per rank; check rank
+        // first so malformed higher-rank datasets cannot overrun this buffer.
+        if (rank != 2) {
+            H5Sclose(space);
+            H5Dclose(ds);
+            success = false;
+            continue;
+        }
         hsize_t dims[2] = {0, 0};
-        H5Sget_simple_extent_dims(space, dims, nullptr);
+        if (H5Sget_simple_extent_dims(space, dims, nullptr) < 0 || dims[1] != 3) {
+            H5Sclose(space);
+            H5Dclose(ds);
+            success = false;
+            continue;
+        }
 
-        std::size_t n_cells = static_cast<std::size_t>(dims[0]);
-        std::size_t dim = rank == 2 ? static_cast<std::size_t>(dims[1]) : 1;
-
+        // A vector field in the case interchange schema is cell-centred
+        // three-component data. Reject malformed component counts instead of
+        // padding short arrays with zero components, which would silently
+        // change the imported initial state.
+        const std::size_t n_cells = static_cast<std::size_t>(dims[0]);
         cfdx::core::Vec3CellField field(n_cells, name, "m/s", 3);
-
-        if (n_cells > 0 && dim >= 3) {
-            std::vector<double> flat(n_cells * dim);
-            H5Dread(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, flat.data());
-            for (std::size_t c = 0; c < n_cells; ++c) {
-                field.set(c, flat[c * dim], flat[c * dim + 1], flat[c * dim + 2]);
+        if (n_cells > 0) {
+            std::vector<double> flat(n_cells * 3);
+            if (H5Dread(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+                        H5P_DEFAULT, flat.data()) < 0) {
+                H5Sclose(space);
+                H5Dclose(ds);
+                success = false;
+                continue;
             }
-        } else if (n_cells > 0) {
-            std::vector<double> flat(n_cells * dim);
-            H5Dread(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, flat.data());
-            for (std::size_t c = 0; c < n_cells; ++c) {
-                field.set(c, flat[c * dim], 0.0, 0.0);
-            }
+            for (std::size_t c = 0; c < n_cells; ++c)
+                field.set(c, flat[c * 3], flat[c * 3 + 1], flat[c * 3 + 2]);
         }
 
         fields.emplace_back(name, std::move(field));
