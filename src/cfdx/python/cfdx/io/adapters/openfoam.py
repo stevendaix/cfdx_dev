@@ -33,8 +33,8 @@ def _extract_foam_list(content: str):
     before the opening parenthesis (``None`` when absent).  Returns
     ``(None, None)`` when no list block is present.
     """
-    content = re.sub(r"/\\*.*?\\*/", " ", content, flags=re.DOTALL)
-    content = re.sub(r"//[^\\n]*", " ", content)
+    content = re.sub(r"/\*.*?\*/", " ", content, flags=re.DOTALL)
+    content = re.sub(r"//[^\n]*", " ", content)
     start = content.find("(")
     if start < 0:
         return None, None
@@ -516,17 +516,17 @@ class OpenFOAMAdapter(SolverAdapter):
         except OSError:
             return []
 
-        content = re.sub(r"/\\*.*?\\*/", " ", content, flags=re.DOTALL)
-        content = re.sub(r"//[^\\n]*", " ", content)
+        content = re.sub(r"/\*.*?\*/", " ", content, flags=re.DOTALL)
+        content = re.sub(r"//[^\n]*", " ", content)
         patch_pattern = re.compile(
-            r"([A-Za-z_][A-Za-z0-9_.-]*)\\s*\\{([^}]*)\\}", re.DOTALL
+            r"([A-Za-z_][A-Za-z0-9_.-]*)\s*\{([^}]*)\}", re.DOTALL
         )
         patches = []
         for match in patch_pattern.finditer(content):
             name, body = match.groups()
-            type_match = re.search(r"\\btype\\s+([^;]+);", body)
-            faces_match = re.search(r"\\bnFaces\\s+(\\d+)\\s*;", body)
-            start_match = re.search(r"\\bstartFace\\s+(\\d+)\\s*;", body)
+            type_match = re.search(r"\btype\s+([^;]+);", body)
+            faces_match = re.search(r"\bnFaces\s+(\d+)\s*;", body)
+            start_match = re.search(r"\bstartFace\s+(\d+)\s*;", body)
             if type_match is None or faces_match is None or start_match is None:
                 continue
             patches.append(
