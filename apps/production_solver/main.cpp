@@ -4,6 +4,7 @@
 #include "cfdx/physics/production_turbulence_contract.h"
 #include "cfdx/physics/production_radiation_contract.h"
 #include "cfdx/physics/production_radiation_s2s_stage.h"
+#include "cfdx/physics/production_buoyancy_stage.h"
 #include "cfdx/io/gmsh/gmsh_importer.h"
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/io/hdf5/case_hdf5_io.h"
@@ -555,15 +556,19 @@ int main(int argc, char** argv)
         if (!ok || mesh.n_cells() == 0)
             throw std::runtime_error("production solver: mesh import failed");
 
-        // The declared energy model is validated fail-closed as soon as the
-        // case is loaded, before any expensive flow computation: an unknown
-        // declaration (e.g. "buoyant") must fail the run up front instead of
-        // being discovered after the carrier solve, even when the energy
-        // stage itself would not run.
+        // The declared energy and buoyancy models are validated fail-closed
+        // as soon as the case is loaded, before any expensive flow
+        // computation: an unknown declaration must fail the run up front
+        // instead of being discovered after the carrier solve, even when
+        // the energy stage itself would not run. A "buoyant" case needs its
+        // full Boussinesq declaration (gravity vector, thermal expansion
+        // coefficient, reference temperature, no uniform body force) right
+        // here, before the first carrier solve.
         if (is_case_hdf5) {
             validate_production_turbulence_selection(case_setup);
             validate_production_energy_model(case_setup);
             validate_production_radiation_selection(case_setup);
+            validate_production_buoyancy_model(case_setup);
             // Supported-by-this-executable gate: the schema accepts more
             // energy models than this incompressible frozen-flow solver
             // implements. "solid_conduction" needs the dedicated thermal
@@ -774,8 +779,31 @@ int main(int argc, char** argv)
                 return g_stop_requested == 0;
             };
 
-        const auto result = solve_steady_incompressible(
-            mesh, U, p, ubc, pbc, controls, options.restart.string());
+        // Inverse energy->flow coupling (issue #885 step 4): a buoyant case
+        // does not solve a frozen carrier. The flow solve moves inside the
+        // production buoyancy outer loop, which rebuilds the cellwise
+        // Boussinesq momentum source from the relaxed temperature field
+        // each pass, re-solves the carrier (warm-started after the first
+        // pass), then runs the energy stage - with the nested S2S
+        // energy-radiation iteration when declared - on the new
+        // authoritative mass flux, until the coupled T/U/p response is
+        // stationary. The verdict is the coupled fixed point, never an
+        // intermediate pass.
+        const bool buoyancy_requested =
+            is_case_hdf5 && production_buoyancy_requested(case_setup);
+        IncompressibleSolveResult result;
+        bool buoyancy_converged = false;
+        ProductionBuoyancyOuterLoopResult buoyancy_result;
+        if (buoyancy_requested) {
+            buoyancy_result = run_production_buoyant_outer_loop(
+                mesh, ubc, pbc, controls, case_setup, U, p,
+                options.restart.string());
+            result = buoyancy_result.flow;
+            buoyancy_converged = buoyancy_result.converged;
+        } else {
+            result = solve_steady_incompressible(
+                mesh, U, p, ubc, pbc, controls, options.restart.string());
+        }
         execution_result = result;
         const auto execution = options.output_dir / "execution.json";
         const auto flow_exit_code = execution_exit_code_for_solver(result.converged);
@@ -809,7 +837,33 @@ int main(int argc, char** argv)
         bool s2s_ran = false;
         if (is_case_hdf5)
             energy_requested = production_energy_requested(case_setup);
-        if (energy_requested && result.converged) {
+        // Final temperature of the run. Hoisted so the buoyant branch
+        // (which owns its temperature inside the outer loop) and the
+        // frozen-flow branch share the artifact section below.
+        Field<double, Location::CELL> temperature(
+            mesh.n_cells(), "temperature", "K", 1);
+        if (buoyancy_requested) {
+            if (buoyancy_result.energy_ran) {
+                energy_result = buoyancy_result.energy;
+                temperature = buoyancy_result.temperature;
+                energy_ran = true;
+                if (buoyancy_result.s2s_ran) {
+                    s2s_outer_result = buoyancy_result.s2s_outer_result;
+                    s2s_ran = true;
+                }
+            }
+            std::cout << "Buoyancy outer loop "
+                      << (buoyancy_converged ? "converged" : "NOT converged")
+                      << " outer iterations "
+                      << buoyancy_result.outer_iterations
+                      << " temperature stationarity "
+                      << buoyancy_result.max_temperature_change_normalized
+                      << " velocity stationarity "
+                      << buoyancy_result.max_velocity_change_normalized
+                      << " pressure stationarity "
+                      << buoyancy_result.max_pressure_change_normalized
+                      << "\n";
+        } else if (energy_requested && result.converged) {
             const auto energy_geometry = build_fv_geometry(mesh);
             // Initial temperature: the declared initial condition, else
             // the case reference temperature. Zero means "not declared"
@@ -827,8 +881,6 @@ int main(int argc, char** argv)
                 throw std::invalid_argument(
                     "production solver: initial temperature must be finite "
                     "and positive (kelvin)");
-            Field<double, Location::CELL> temperature(
-                mesh.n_cells(), "temperature", "K", 1);
             for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
                 temperature(cell) = initial_temperature;
             if (production_s2s_radiation_requested(case_setup)) {
@@ -852,7 +904,11 @@ int main(int argc, char** argv)
                     result.authoritative_mass_flux, temperature);
                 energy_ran = true;
             }
-
+        } else if (energy_requested) {
+            std::cout
+                << "Energy stage skipped: carrier flow did not converge\n";
+        }
+        if (energy_ran && result.converged) {
             write_text_file_atomic(
                 options.output_dir / "energy_convergence.json",
                 energy_convergence_json(energy_result));
@@ -941,12 +997,10 @@ int main(int argc, char** argv)
                           << "\n";
             }
 
-        } else if (energy_requested) {
-            std::cout
-                << "Energy stage skipped: carrier flow did not converge\n";
         }
         const bool overall_converged =
             result.converged &&
+            (!buoyancy_requested || buoyancy_converged) &&
             (!energy_requested ||
              (energy_ran && energy_result.converged &&
               (!s2s_ran || s2s_outer_result.converged)));

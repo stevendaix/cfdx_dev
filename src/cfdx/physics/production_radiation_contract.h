@@ -56,15 +56,16 @@ inline void validate_production_radiation_selection(
         return;
     }
     if (normalized == "s2s") {
-        if (setup.energy_model == "conjugate") {
+        if (setup.energy_model == "conjugate" ||
+            setup.energy_model == "buoyant") {
             return;
         }
         throw std::invalid_argument(
             "production solver: declared radiation_model '" + model +
-            "' requires energy_model 'conjugate' (declared: '" +
+            "' requires energy_model 'conjugate' or 'buoyant' (declared: '" +
             setup.energy_model + "'); the S2S radiosity stage couples into "
             "the production energy equation, so a radiation declaration "
-            "without the conjugate energy model is rejected instead of "
+            "without a coupled energy model is rejected instead of "
             "silently running radiation-free");
     }
 
@@ -72,8 +73,8 @@ inline void validate_production_radiation_selection(
         "production solver: declared radiation_model '" + model +
         "' is not coupled to the production energy equation yet; "
         "supported declarations are none/off and S2S with energy_model "
-        "'conjugate' (DO/DOM, P1, Rosseland and solar are not silently "
-        "treated as radiation-free)");
+        "'conjugate' or 'buoyant' (DO/DOM, P1, Rosseland and solar are "
+        "not silently treated as radiation-free)");
 }
 
 }  // namespace cfdx::physics

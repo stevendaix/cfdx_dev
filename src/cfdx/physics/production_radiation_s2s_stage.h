@@ -391,11 +391,12 @@ inline ProductionS2SRadiationResult solve_production_s2s_radiation(
             "solve_production_s2s_radiation: radiation_model 'S2S' is not "
             "declared; the production S2S radiation stage only runs on a "
             "declared S2S case");
-    if (setup.energy_model != "conjugate")
+    if (setup.energy_model != "conjugate" && setup.energy_model != "buoyant")
         throw std::invalid_argument(
             "solve_production_s2s_radiation: S2S radiation is coupled into "
             "the production energy stage and requires energy_model "
-            "'conjugate' (declared: '" + setup.energy_model + "')");
+            "'conjugate' or 'buoyant' (declared: '" + setup.energy_model +
+            "')");
     if (temperature.size() != mesh.n_cells() || temperature.dimension() != 1)
         throw std::invalid_argument(
             "solve_production_s2s_radiation: temperature field does not "
@@ -516,11 +517,12 @@ inline ProductionS2SEnergyStageResult run_production_s2s_energy_stage(
             "run_production_s2s_energy_stage: radiation_model 'S2S' is not "
             "declared; the production S2S energy stage only runs on a "
             "declared S2S case");
-    if (setup.energy_model != "conjugate")
+    if (setup.energy_model != "conjugate" && setup.energy_model != "buoyant")
         throw std::invalid_argument(
             "run_production_s2s_energy_stage: S2S radiation is coupled into "
             "the production energy stage and requires energy_model "
-            "'conjugate' (declared: '" + setup.energy_model + "')");
+            "'conjugate' or 'buoyant' (declared: '" + setup.energy_model +
+            "')");
 
     ProductionS2SEnergyStageResult result;
     const auto pass1 =
@@ -662,11 +664,12 @@ inline ProductionS2SOuterLoopResult run_production_s2s_energy_outer_loop(
             "run_production_s2s_energy_outer_loop: radiation_model 'S2S' is "
             "not declared; the production S2S outer loop only runs on a "
             "declared S2S case");
-    if (setup.energy_model != "conjugate")
+    if (setup.energy_model != "conjugate" && setup.energy_model != "buoyant")
         throw std::invalid_argument(
             "run_production_s2s_energy_outer_loop: S2S radiation is coupled "
             "into the production energy stage and requires energy_model "
-            "'conjugate' (declared: '" + setup.energy_model + "')");
+            "'conjugate' or 'buoyant' (declared: '" + setup.energy_model +
+            "')");
 
     ProductionS2SOuterLoopResult result;
     // The surface system is fixed for the whole loop (case-declared
