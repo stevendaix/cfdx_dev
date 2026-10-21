@@ -291,7 +291,8 @@ inline cfdx::io::DatRestartState restore_sst_production_state_from_dat(
     cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure,
     SSTProductionState& state,
     const std::vector<double>& current_wall_distance,
-    const TurbulenceTransportControls& controls)
+    const TurbulenceTransportControls& controls,
+    const std::map<std::string, std::array<double, 3>>& fixed_velocity_boundary_values = {})
 {
     using cfdx::core::Field;
     using cfdx::core::Location;
@@ -322,7 +323,8 @@ inline cfdx::io::DatRestartState restore_sst_production_state_from_dat(
     SSTProductionState candidate(n);
     candidate.k = candidate_k;
     candidate.omega = candidate_omega;
-    candidate.strain_rate = compute_sst_strain_rate(candidate_velocity, mesh);
+    candidate.strain_rate = compute_sst_strain_rate_with_boundary_values(
+        candidate_velocity, mesh, fixed_velocity_boundary_values);
     for (std::size_t cell = 0; cell < n; ++cell)
         candidate.wall_distance(cell) = current_wall_distance[cell];
 
