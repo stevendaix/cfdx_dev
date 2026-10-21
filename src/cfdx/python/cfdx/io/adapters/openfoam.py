@@ -65,23 +65,6 @@ def _extract_foam_list(content: str):
     return lines, count
 
 
-def _read_foam_main_list(path: Path):
-    """Read an OpenFOAM non-dictionary list through foamlib when available.
-
-    foamlib understands OpenFOAM's list encodings, including binary data in
-    supported versions. Returning None means the optional parser is absent or
-    could not decode this file; ASCII parsing remains available as fallback.
-    """
-    try:
-        from foamlib import FoamFile
-    except ImportError:
-        return None
-    try:
-        return FoamFile(path)[None]
-    except (OSError, ValueError, TypeError, KeyError, UnicodeError):
-        return None
-
-
 class OpenFOAMAdapter(SolverAdapter):
     solver_name = "OpenFOAM"
     format_name = "openfoam"
@@ -178,16 +161,13 @@ class OpenFOAMAdapter(SolverAdapter):
         self, case_path: Path, result: ConversionResult
     ) -> None:
         """Preserve setup dictionaries and map only explicitly supported controls."""
-        from cfdx.io.openfoam_case_reader import (
-            OpenFOAMDependencyError,
-            read_openfoam_dictionaries,
-        )
+        from cfdx.io.openfoam_case_reader import read_openfoam_dictionaries
 
         try:
             dictionaries = read_openfoam_dictionaries(case_path)
-        except (OpenFOAMDependencyError, OSError, ValueError) as exc:
-            # Keep source configuration recoverable even when foamlib is not
-            # installed or a dictionary contains syntax this version cannot parse.
+        except (OSError, ValueError) as exc:
+            # Keep source configuration recoverable when a dictionary uses
+            # syntax outside the native parser's supported ASCII subset.
             raw_dictionaries = {}
             for relative in (
                 "system/controlDict",
@@ -214,7 +194,7 @@ class OpenFOAMAdapter(SolverAdapter):
                 "configuration",
                 "openfoam_dictionary_parser",
                 f"Setup dictionaries were preserved as raw text but not parsed: {exc}",
-                "Install a compatible optional foamlib version to parse and map setup dictionaries.",
+                "The native parser supports common ASCII dictionaries; inspect preserved raw text for unsupported syntax.",
             )
             return
 
@@ -295,10 +275,8 @@ class OpenFOAMAdapter(SolverAdapter):
     def import_results(self, results_path: str, result: ConversionResult) -> bool:
         """Import cell-centred scalar/vector fields from an OpenFOAM time.
 
-        The latest time directory is selected. foamlib is an optional parser
-        dependency, so a missing dependency is reported as a blocking gap for
-        this requested operation rather than silently falling back to the
-        incomplete ASCII-only parser.
+        The latest numeric time directory is selected. The native parser supports
+        ASCII OpenFOAM fields and reports binary or unsupported syntax explicitly.
         """
         path = Path(results_path).expanduser()
         if not path.is_dir():
@@ -310,7 +288,6 @@ class OpenFOAMAdapter(SolverAdapter):
 
         try:
             from cfdx.io.openfoam_case_reader import (
-                OpenFOAMDependencyError,
                 read_openfoam_time_fields,
             )
 
@@ -318,7 +295,6 @@ class OpenFOAMAdapter(SolverAdapter):
             cell_count = max(owner) + 1 if owner else None
             fields = read_openfoam_time_fields(path, "latest", cell_count=cell_count)
         except (
-            OpenFOAMDependencyError,
             FileNotFoundError,
             NotADirectoryError,
             ValueError,
@@ -430,15 +406,11 @@ class OpenFOAMAdapter(SolverAdapter):
             return None, None
 
     def _parse_points(self, points_file: Path) -> np.ndarray | None:
-        """Parse OpenFOAM points file, preferring foamlib for binary support."""
+        """Parse an ASCII OpenFOAM points list."""
         try:
-            parsed = _read_foam_main_list(points_file)
-            if parsed is not None:
-                points = np.asarray(parsed, dtype=np.float64)
-                if points.ndim == 2 and points.shape[1] >= 3:
-                    return points[:, :3].copy()
-
-            content = points_file.read_text()
+            content = points_file.read_text(encoding="utf-8")
+            if re.search(r"\\bformat\\s+binary\\s*;", content):
+                raise ValueError("Binary OpenFOAM polyMesh is not supported by the native Python reader")
 
             data_lines, _count = _extract_foam_list(content)
             if not data_lines:
@@ -486,16 +458,9 @@ class OpenFOAMAdapter(SolverAdapter):
         the parenthesised ``(0 1 2 3)`` form.
         """
         try:
-            parsed = _read_foam_main_list(faces_file)
-            if parsed is not None:
-                faces = [
-                    np.asarray(face, dtype=np.int64).reshape(-1).tolist()
-                    for face in parsed
-                ]
-                if faces and all(len(face) >= 3 for face in faces):
-                    return faces
-
-            content = faces_file.read_text()
+            content = faces_file.read_text(encoding="utf-8")
+            if re.search(r"\\bformat\\s+binary\\s*;", content):
+                raise ValueError("Binary OpenFOAM polyMesh is not supported by the native Python reader")
 
             data_lines, _ = _extract_foam_list(content)
             if data_lines is None:
@@ -523,12 +488,9 @@ class OpenFOAMAdapter(SolverAdapter):
     def _parse_label_list(self, label_file: Path) -> list | None:
         """Parse OpenFOAM label list (owner, neighbour)."""
         try:
-            parsed = _read_foam_main_list(label_file)
-            if parsed is not None:
-                labels = np.asarray(parsed, dtype=np.int64).reshape(-1).tolist()
-                return labels
-
-            content = label_file.read_text()
+            content = label_file.read_text(encoding="utf-8")
+            if re.search(r"\\bformat\\s+binary\\s*;", content):
+                raise ValueError("Binary OpenFOAM polyMesh is not supported by the native Python reader")
 
             data_lines, count = _extract_foam_list(content)
             if data_lines is None:
