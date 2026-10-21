@@ -343,6 +343,29 @@ int main()
         EXPECT_TRUE(boundary_aware(0) > 0.0);
     });
 
+    run_case("sst_strain_rate_reconstructs_affine_field_with_fixed_boundaries", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        Field<double, Location::CELL> velocity(mesh.n_cells(), "U", "m/s", 3);
+        velocity.fill(0.0);
+        velocity.component_data(0)[0] = 2.0;
+
+        // Ux=x is exactly representable on this orthogonal box. Prescribing
+        // the affine field at every boundary face should recover dUx/dx=1.
+        const std::map<std::string, std::array<double, 3>> fixed_values{
+            {"wall", {0.0, 0.0, 0.0}},
+            {"inlet", {4.0, 0.0, 0.0}},
+            {"side_low", {2.0, 0.0, 0.0}},
+            {"side_high", {2.0, 0.0, 0.0}},
+            {"bottom", {2.0, 0.0, 0.0}},
+            {"top", {2.0, 0.0, 0.0}}
+        };
+
+        const auto strain =
+            compute_sst_strain_rate_with_boundary_values(velocity, mesh, fixed_values);
+        EXPECT_NEAR(strain(0), std::sqrt(2.0), 1e-13);
+    });
+
     run_case("sst_strain_rate_boundary_values_reject_nonfinite_input", [] {
         using namespace cfdx::core;
         const auto mesh = make_sst_wall_operator_test_mesh();
