@@ -375,6 +375,14 @@ class OpenFOAMAdapter(SolverAdapter):
     def _parse_mesh(self, poly_mesh: Path) -> tuple[np.ndarray | None, dict | None]:
         """Parse OpenFOAM polyMesh files."""
         try:
+            for list_name in ("points", "faces", "owner", "neighbour"):
+                list_path = poly_mesh / list_name
+                if list_path.is_file():
+                    header = list_path.read_bytes()[:4096].decode("ascii", errors="ignore")
+                    if re.search(r"\bformat\s+binary\s*;", header):
+                        raise ValueError(
+                            f"Binary OpenFOAM polyMesh file is not supported: {list_path}"
+                        )
             # Parse points
             points = self._parse_points(poly_mesh / "points")
             if points is None:
@@ -409,7 +417,7 @@ class OpenFOAMAdapter(SolverAdapter):
         """Parse an ASCII OpenFOAM points list."""
         try:
             content = points_file.read_text(encoding="utf-8")
-            if re.search(r"\\bformat\\s+binary\\s*;", content):
+            if re.search(r"\bformat\s+binary\s*;", content):
                 raise ValueError("Binary OpenFOAM polyMesh is not supported by the native Python reader")
 
             data_lines, _count = _extract_foam_list(content)
@@ -459,7 +467,7 @@ class OpenFOAMAdapter(SolverAdapter):
         """
         try:
             content = faces_file.read_text(encoding="utf-8")
-            if re.search(r"\\bformat\\s+binary\\s*;", content):
+            if re.search(r"\bformat\s+binary\s*;", content):
                 raise ValueError("Binary OpenFOAM polyMesh is not supported by the native Python reader")
 
             data_lines, _ = _extract_foam_list(content)
@@ -489,7 +497,7 @@ class OpenFOAMAdapter(SolverAdapter):
         """Parse OpenFOAM label list (owner, neighbour)."""
         try:
             content = label_file.read_text(encoding="utf-8")
-            if re.search(r"\\bformat\\s+binary\\s*;", content):
+            if re.search(r"\bformat\s+binary\s*;", content):
                 raise ValueError("Binary OpenFOAM polyMesh is not supported by the native Python reader")
 
             data_lines, count = _extract_foam_list(content)
