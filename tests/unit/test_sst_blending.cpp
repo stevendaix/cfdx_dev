@@ -84,17 +84,17 @@ static cfdx::core::Mesh make_sst_transaction_unit_cube()
     Patch x0;
     x0.name = "x0";
     x0.type = PatchType::WALL;
-    x0.face_ids = {0};
+    x0.face_ids = {4};
     mesh.boundary().add_patch(x0);
     Patch x1;
     x1.name = "x1";
     x1.type = PatchType::WALL;
-    x1.face_ids = {1};
+    x1.face_ids = {5};
     mesh.boundary().add_patch(x1);
     Patch walls;
     walls.name = "walls";
     walls.type = PatchType::WALL;
-    walls.face_ids = {2,3,4,5};
+    walls.face_ids = {0,1,2,3};
     mesh.boundary().add_patch(walls);
     return mesh;
 }
@@ -825,7 +825,6 @@ int main()
         std::filesystem::remove(path);
     });
 
-
     run_case("sst_transaction_rolls_back_k_omega_after_nonconverged_transport", [] {
         using namespace cfdx::core;
         const Mesh mesh = make_sst_transaction_unit_cube();
@@ -844,12 +843,12 @@ int main()
         nu_t(0) = 0.02;
 
         ScalarBoundaryConditions k_bcs{
-            {"x0", {ScalarBoundaryType::FIXED_VALUE, 0.8, 0.0}},
+            {"x0", {ScalarBoundaryType::FIXED_VALUE, 0.9, 0.0}},
             {"x1", {ScalarBoundaryType::FIXED_VALUE, 0.2, 0.0}},
             {"walls", {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0}}
         };
         ScalarBoundaryConditions omega_bcs{
-            {"x0", {ScalarBoundaryType::FIXED_VALUE, 16.0, 0.0}},
+            {"x0", {ScalarBoundaryType::FIXED_VALUE, 20.0, 0.0}},
             {"x1", {ScalarBoundaryType::FIXED_VALUE, 4.0, 0.0}},
             {"walls", {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0}}
         };
