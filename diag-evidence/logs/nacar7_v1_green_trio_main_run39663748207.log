@@ -1,0 +1,229 @@
+=== VARIANT v1_green_trio at ref 28e4d183b258997c5b923b2e05569263e900f2ff : 2026-10-21 15:38:51 +0200 fix(sst): preserve velocity boundary data when restoring restart state (#1018) ===
+Preparing worktree (detached HEAD 28e4d183)
+HEAD is now at 28e4d183 fix(sst): preserve velocity boundary data when restoring restart state (#1018)
+=== green trio verified (Fxp+=-pp test, no momentum_rhs_scale) ===
+=== worktree delta after green trio checkout ===
+M  src/cfdx/io/runtime/convergence_history.h
+M  src/cfdx/physics/steady_incompressible_solver.h
+M  tests/validation/test_naca0012_geometry.cpp
+ src/cfdx/io/runtime/convergence_history.h       |   8 -
+ src/cfdx/physics/steady_incompressible_solver.h | 832 ++++++------------------
+ tests/validation/test_naca0012_geometry.cpp     |  43 +-
+ 3 files changed, 189 insertions(+), 694 deletions(-)
+-- The CXX compiler identification is GNU 13.3.0
+-- The C compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Using system HDF5 1.10.10
+-- Configuring done (1.3s)
+-- Generating done (0.5s)
+-- Build files have been written to: /home/runner/work/cfdx_dev/cfdx_dev/build-v1_green_trio
+[1/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/point.cpp.o
+[2/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/face.cpp.o
+[3/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/ownership.cpp.o
+[4/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/application/simulation_controller.cpp.o
+[5/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/cell.cpp.o
+[6/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/mesh.cpp.o
+[7/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/boundary.cpp.o
+[8/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/face_geometry.cpp.o
+[9/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/cell_geometry.cpp.o
+[10/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_quality.cpp.o
+[11/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/field.cpp.o
+[12/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_validator.cpp.o
+[13/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/storage.cpp.o
+[14/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::decompose_polyhedra(const cfdx::core::Mesh&, std::vector<std::vector<long unsigned int> >&, std::vector<cfdx::io::VtkCellType>&, std::vector<unsigned int>&, std::vector<long unsigned int>&, std::vector<long unsigned int>&)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/vtu/vtu_writer.cpp:85:49: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   85 |         const std::uint32_t off = cell_offsets[c];
+      |                                   ~~~~~~~~~~~~~~^
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/vtu/vtu_writer.cpp:86:59: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   86 |         const std::uint32_t n_faces = cell_offsets[c + 1] - off;
+      |                                       ~~~~~~~~~~~~~~~~~~~~^~~~~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/vtu/vtu_writer.cpp:91:58: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   91 |             const std::uint32_t face = cell_faces[off + k];
+      |                                        ~~~~~~~~~~~~~~~~~~^
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/vtu/vtu_writer.cpp:92:61: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   92 |             const std::uint32_t fv_begin = face_offsets[face];
+      |                                            ~~~~~~~~~~~~~~~~~^
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/vtu/vtu_writer.cpp:93:63: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   93 |             const std::uint32_t fv_end = face_offsets[face + 1];
+      |                                          ~~~~~~~~~~~~~~~~~~~~~^
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::write_header(std::ofstream&, const cfdx::core::Mesh&, const std::vector<std::vector<long unsigned int> >&, const std::vector<cfdx::io::VtkCellType>&, double, std::size_t, bool)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/vtu/vtu_writer.cpp:118:62: warning: unused parameter ‘vtk_cell_types’ [-Wunused-parameter]
+  118 |                              const std::vector<VtkCellType>& vtk_cell_types,
+      |                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::write_cells(std::ofstream&, const std::vector<std::vector<long unsigned int> >&, const std::vector<cfdx::io::VtkCellType>&, const std::vector<unsigned int>&, const std::vector<long unsigned int>&, const cfdx::core::Mesh&)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/vtu/vtu_writer.cpp:204:40: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+  204 |                 for (std::uint32_t v = fv_begin; v < fv_end; ++v) {
+      |                                        ^~~~~~~~
+[15/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o
+[16/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/mesh/mesh_importer.cpp.o
+[17/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/cfdx_io/gap_analysis.cpp.o
+[18/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o
+[19/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/cfdx_io/mapping_rules.cpp.o
+[20/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o
+[21/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_reader.cpp.o
+[22/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/linalg/hypre_amg.cpp.o
+In file included from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/hypre_amg.h:4,
+                 from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/hypre_amg.cpp:1:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+[23/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/case_hdf5_io.cpp.o
+[24/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/runtime/gpu/gpu_kernels.cpp.o
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/runtime/gpu/gpu_kernels.cpp: In function ‘void cfdx::runtime::gpu::divergence_reference(const double*, const double*, const double*, const double*, const std::size_t*, const int64_t*, std::size_t, std::size_t, double*)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:19: warning: unused parameter ‘sx’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |     ~~~~~~~~~~~~~~^~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:37: warning: unused parameter ‘sy’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |                       ~~~~~~~~~~~~~~^~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:55: warning: unused parameter ‘sz’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |                                         ~~~~~~~~~~~~~~^~
+[25/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o
+[26/28] Linking CXX static library libcfdx_core.a
+[27/28] Building CXX object CMakeFiles/test_naca0012_qualification.dir/tests/validation/test_naca0012_geometry.cpp.o
+In file included from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/krylov_reductions.h:6,
+                 from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/cg_solver.h:16,
+                 from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/bicgstab_solver.h:4,
+                 from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h:4,
+                 from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/tests/validation/test_naca0012_geometry.cpp:2:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/parallel/mpi_utils.h: In function ‘std::string cfdx::core::parallel::mpi_bcast_string(const std::string&, int, MPI_Comm)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/parallel/mpi_utils.h:171:24: warning: conversion to ‘std::__cxx11::basic_string<char>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  171 |     std::string result(len, '\0');
+      |                        ^~~
+In file included from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/cg_solver.h:18:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+In file included from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/linear_solver_context.h:4,
+                 from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h:7:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/gmres_solver.h: In function ‘cfdx::core::SolverResult cfdx::core::solve_gmres(const LinearOperator&, const Vector&, Vector&, int, std::size_t, double, Preconditioner*, KrylovControls, GmresWorkspace*)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/gmres_solver.h:131:66: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  131 |                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
+      |                                                                  ^
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/gmres_solver.h:142:31: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  142 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                               ^
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/linalg/gmres_solver.h:142:39: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  142 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                                       ^
+In file included from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h:14:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/numerics/gradient.h:513:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  513 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/numerics/gradient.h:515:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  515 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+In file included from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h:15:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/restart/dat_restart.h: In function ‘cfdx::io::DatRestartState cfdx::io::read_dat_restart_fields(const std::string&, const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, DatRestartFields)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/restart/dat_restart.h:284:10: warning: variable ‘read_scalar_field’ set but not used [-Wunused-but-set-variable]
+  284 |     auto read_scalar_field = [&](const char* expected,
+      |          ^~~~~~~~~~~~~~~~~
+In file included from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h:17:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_scalar_equation(const ScalarEquation&, cfdx::core::Vector&, const ScalarSolveControls&)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/finite_volume_transport.h:733:13: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+  733 |             };
+      |             ^
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/finite_volume_transport.h:741:9: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+  741 |         };
+      |         ^
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/finite_volume_transport.h:880:17: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+  880 |                 };
+      |                 ^
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::FACE> cfdx::physics::make_rhie_chow_mass_flux(const cfdx::core::Mesh&, const FvGeometry&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const std::array<std::vector<double>, 3>&, double, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h:712:34: warning: unused variable ‘area’ [-Wunused-variable]
+  712 |                     const double area = Sf.mag();
+      |                                  ^~~~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h: In lambda function:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h:1198:23: warning: unused variable ‘old_component’ [-Wunused-variable]
+ 1198 |         const double* old_component = U_old.component_data(component);
+      |                       ^~~~~~~~~~~~~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_coupled_momentum_continuity(const cfdx::core::Mesh&, const FvGeometry&, ScalarEquation, ScalarEquation, ScalarEquation, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, double, double, std::size_t, double, std::size_t, double, const DiagnosticsControls&, CoupledSchurModel, const cfdx::core::LinearSolverRequest&, const IncompressibleSolverControls&, double, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::LinearSolverPlan*)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h:1244:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 1243 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 1244 |                     ? nr
+      |                     ^~~~
+ 1245 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h:1329:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 1328 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 1329 |                     ? nr
+      |                     ^~~~
+ 1330 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::physics::IncompressibleSolveResult cfdx::physics::solve_steady_incompressible(const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, const IncompressibleSolverControls&, const std::string&, cfdx::io::DatRestartFields)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/physics/steady_incompressible_solver.h:3232:44: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+ 3232 |                       std::max<std::size_t>(mesh.n_cells(), 1));
+      |                       ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+In file included from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/tests/validation/test_naca0012_geometry.cpp:3:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/tests/validation/qualification_boundary_helpers.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::FACE> cfdx::validation::make_validation_face_flux(const cfdx::core::Mesh&, const cfdx::physics::FvGeometry&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/tests/validation/qualification_boundary_helpers.h:80:36: warning: conversion from ‘int64_t’ {aka ‘long int’} to ‘int’ may change value [-Wconversion]
+   80 |         const int n = own.neighbour(f);
+      |                       ~~~~~~~~~~~~~^~~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/tests/validation/qualification_boundary_helpers.h: In function ‘void cfdx::validation::exercise_new_velocity_bc_contract(const cfdx::core::Mesh&, const cfdx::physics::FvGeometry&, const cfdx::physics::BoundaryConstraintMap&, const cfdx::core::Field<double, cfdx::core::Location::FACE>&, const std::string&)’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/tests/validation/qualification_boundary_helpers.h:122:53: warning: conversion from ‘int64_t’ {aka ‘long int’} to ‘int’ may change value [-Wconversion]
+  122 |             const int n = mesh.ownership().neighbour(face);
+      |                           ~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~
+In file included from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/io/hdf5/hdf5_reader.h:6,
+                 from /home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/tests/validation/test_naca0012_geometry.cpp:1:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::CELL]’:
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/tests/validation/qualification_boundary_helpers.h:112:16:   required from here
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/home/runner/work/cfdx_dev/cfdx_dev/cfdx-v1_green_trio/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+[28/28] Linking CXX executable test_naca0012_qualification
+validation meshes written to build-v1_green_trio/validation_meshes
+=== RUN test_naca0012_qualification variant=v1_green_trio ===
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_relative=1 continuity_normalized=9.37399e-05 velocity_change_inf=0.0765338 pressure_change_inf=0.648948 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=5.87837e-11 momentum_linear_iterations=4 flux_velocity_mismatch_linf=0.000758774 worst_momentum_cell=179 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=200 momentum_residual_relative=1.99394e-05 continuity_normalized=2.96081e-09 velocity_change_inf=1.91814e-06 pressure_change_inf=2.58262e-07 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=8.9337e-12 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.0101519 worst_momentum_cell=3095 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=400 momentum_residual_relative=1.65654e-08 continuity_normalized=9.14142e-13 velocity_change_inf=2.24542e-10 pressure_change_inf=1.18809e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=6.17853e-12 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.010154 worst_momentum_cell=3095 worst_momentum_patch=front
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.000360333 Cm=0.000977678 Cd_pressure=-0.0343963 Cd_viscous=0.0558505 continuity=1.28083e-10 iterations=433
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_relative=1 continuity_normalized=5.12288e-05 velocity_change_inf=0.139431 pressure_change_inf=0.617687 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=5.87274e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000166359 worst_momentum_cell=367 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=200 momentum_residual_relative=0.00326588 continuity_normalized=1.34518e-07 velocity_change_inf=0.00045797 pressure_change_inf=7.35067e-05 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=5.21411e-12 momentum_linear_iterations=4 flux_velocity_mismatch_linf=0.00865152 worst_momentum_cell=258 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=400 momentum_residual_relative=6.67227e-05 continuity_normalized=3.18658e-09 velocity_change_inf=9.36049e-06 pressure_change_inf=1.40418e-06 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=5.41869e-12 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.00920351 worst_momentum_cell=258 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=600 momentum_residual_relative=1.32776e-06 continuity_normalized=6.23728e-11 velocity_change_inf=1.89537e-07 pressure_change_inf=2.80692e-08 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=5.45961e-12 momentum_linear_iterations=2 flux_velocity_mismatch_linf=0.0092131 worst_momentum_cell=258 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=800 momentum_residual_relative=4.7943e-08 continuity_normalized=9.96837e-13 velocity_change_inf=2.6963e-09 pressure_change_inf=3.79677e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=7.99008e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.0092133 worst_momentum_cell=258 worst_momentum_patch=front
+NACA0012_RE1000_A0 level=128 Cd=0.0414557 Cl=-0.00079373 Cm=-2.42498e-05 Cd_pressure=-0.0425974 Cd_viscous=0.0840532 continuity=8.28058e-11 iterations=995
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_relative=1 continuity_normalized=2.63052e-05 velocity_change_inf=0.23231 pressure_change_inf=0.641951 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=10 pressure_relative_residual=1.85664e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000220192 worst_momentum_cell=790 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=200 momentum_residual_relative=0.0216408 continuity_normalized=1.02895e-07 velocity_change_inf=0.00252875 pressure_change_inf=0.000704687 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=8.52068e-11 momentum_linear_iterations=4 flux_velocity_mismatch_linf=0.00253933 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=400 momentum_residual_relative=0.00613302 continuity_normalized=6.68948e-08 velocity_change_inf=0.000707966 pressure_change_inf=0.000227382 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.16215e-11 momentum_linear_iterations=4 flux_velocity_mismatch_linf=0.0054729 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=600 momentum_residual_relative=0.00217291 continuity_normalized=2.41811e-08 velocity_change_inf=0.000238377 pressure_change_inf=8.0537e-05 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.4205e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.00681309 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=800 momentum_residual_relative=0.000845949 continuity_normalized=7.43608e-09 velocity_change_inf=9.19631e-05 pressure_change_inf=3.06239e-05 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.41378e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.00718834 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=1000 momentum_residual_relative=0.000340961 continuity_normalized=2.37285e-09 velocity_change_inf=3.66393e-05 pressure_change_inf=1.20813e-05 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.35533e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.00730113 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=1200 momentum_residual_relative=0.000138766 continuity_normalized=8.16897e-10 velocity_change_inf=1.47543e-05 pressure_change_inf=4.86457e-06 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.29766e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.0073385 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=1400 momentum_residual_relative=5.65601e-05 continuity_normalized=2.99761e-10 velocity_change_inf=5.97018e-06 pressure_change_inf=1.97511e-06 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.2513e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=0.00735189 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=1600 momentum_residual_relative=2.30407e-05 continuity_normalized=1.14894e-10 velocity_change_inf=2.41921e-06 pressure_change_inf=8.03525e-07 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.22179e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=0.00735695 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=1800 momentum_residual_relative=9.38717e-06 continuity_normalized=4.51431e-11 velocity_change_inf=9.82973e-07 pressure_change_inf=3.27495e-07 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.20449e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=0.00735892 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=2000 momentum_residual_relative=3.82161e-06 continuity_normalized=1.80265e-11 velocity_change_inf=3.99585e-07 pressure_change_inf=1.33432e-07 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.19467e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=0.0073597 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=2200 momentum_residual_relative=1.54167e-06 continuity_normalized=7.2081e-12 velocity_change_inf=1.62899e-07 pressure_change_inf=5.45404e-08 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.18886e-11 momentum_linear_iterations=2 flux_velocity_mismatch_linf=0.00736001 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=2400 momentum_residual_relative=6.26118e-07 continuity_normalized=2.94548e-12 velocity_change_inf=6.61745e-08 pressure_change_inf=2.21081e-08 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.1824e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00736014 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=2600 momentum_residual_relative=2.53801e-07 continuity_normalized=1.20726e-12 velocity_change_inf=2.6822e-08 pressure_change_inf=8.96016e-09 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.19022e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00736019 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=2800 momentum_residual_relative=1.02874e-07 continuity_normalized=4.90998e-13 velocity_change_inf=1.08719e-08 pressure_change_inf=3.63163e-09 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.19159e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00736021 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=3000 momentum_residual_relative=6.069e-08 continuity_normalized=1.36858e-13 velocity_change_inf=2.54978e-09 pressure_change_inf=9.04421e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.38384e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00736022 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=3200 momentum_residual_relative=4.19786e-08 continuity_normalized=7.04427e-14 velocity_change_inf=1.75541e-09 pressure_change_inf=6.22001e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=1.97877e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00736022 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=3400 momentum_residual_relative=2.91549e-08 continuity_normalized=4.97807e-14 velocity_change_inf=1.217e-09 pressure_change_inf=4.33062e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.10974e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00736022 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=3600 momentum_residual_relative=2.02646e-08 continuity_normalized=3.59474e-14 velocity_change_inf=8.45461e-10 pressure_change_inf=3.01461e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.13813e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00736022 worst_momentum_cell=1027 worst_momentum_patch=front
+INCOMPRESSIBLE_ITER iter=3800 momentum_residual_relative=1.40876e-08 continuity_normalized=2.58084e-14 velocity_change_inf=5.87669e-10 pressure_change_inf=2.09797e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=2.15852e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00736022 worst_momentum_cell=1027 worst_momentum_patch=front
+NACA0012_RE1000_A0 level=256 Cd=0.0587257 Cl=-1.41112e-06 Cm=2.19791e-05 Cd_pressure=-0.0363217 Cd_viscous=0.0950475 continuity=1.10968e-11 iterations=3989
+NACA0012 Cd mesh differences=0.0200016,0.01727 literature Re=1000 alpha=0 Cd~0.12
+NACA0012_QUALIFICATION: DIAGNOSTIC solver_converged forces_conservation_symmetry_reference_gate_pending
+=== test rc=0 outcome=PASS_3_LEVELS duration=2445s ===

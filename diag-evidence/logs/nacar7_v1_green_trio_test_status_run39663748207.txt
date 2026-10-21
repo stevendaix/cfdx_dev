@@ -1,0 +1,13 @@
+variant=v1_green_trio
+wt_ref=28e4d183b258997c5b923b2e05569263e900f2ff
+pin_subject=fix(sst): preserve velocity boundary data when restoring restart state (#1018)
+outcome=PASS_3_LEVELS
+test_rc=0
+test_duration_s=2445
+run_id=39663748207
+
+--- level markers reached ---
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.000360333 Cm=0.000977678 Cd_pressure=-0.0343963 Cd_viscous=0.0558505 continuity=1.28083e-10 iterations=433
+NACA0012_RE1000_A0 level=128 Cd=0.0414557 Cl=-0.00079373 Cm=-2.42498e-05 Cd_pressure=-0.0425974 Cd_viscous=0.0840532 continuity=8.28058e-11 iterations=995
+NACA0012_RE1000_A0 level=256 Cd=0.0587257 Cl=-1.41112e-06 Cm=2.19791e-05 Cd_pressure=-0.0363217 Cd_viscous=0.0950475 continuity=1.10968e-11 iterations=3989
+--- failure line (if any) ---
