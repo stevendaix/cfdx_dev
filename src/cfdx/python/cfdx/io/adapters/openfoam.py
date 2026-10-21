@@ -380,7 +380,8 @@ class OpenFOAMAdapter(SolverAdapter):
             for list_name in ("points", "faces", "owner", "neighbour"):
                 list_path = poly_mesh / list_name
                 if list_path.is_file():
-                    header = list_path.read_bytes()[:4096].decode("ascii", errors="ignore")
+                    with list_path.open("rb") as stream:
+                        header = stream.read(4096).decode("ascii", errors="ignore")
                     if re.search(r"\bformat\s+binary\s*;", header):
                         raise ValueError(
                             f"Binary OpenFOAM polyMesh file is not supported: {list_path}"
