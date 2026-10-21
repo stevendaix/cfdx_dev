@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+
 import numpy as np
 
 from cfdx.io.interfaces import ConversionResult, SolverAdapter
@@ -20,7 +21,6 @@ from cfdx.io.mapping_rules import MappingRules
 from cfdx.io.schema import BCType, BCValueType, BoundarySpec, CaseSetup, SourceInfo
 
 _FIELD_DIMS = {"scalar": 1, "vector": 3, "symmTensor": 6, "tensor": 9}
-
 
 def _extract_foam_list(content: str):
     """Extract the first parenthesised list block from a FoamFile ascii file.
@@ -62,7 +62,6 @@ def _extract_foam_list(content: str):
         if line:
             lines.append(line)
     return lines, count
-
 
 class OpenFOAMAdapter(SolverAdapter):
     solver_name = "OpenFOAM"
