@@ -20,3 +20,4 @@ jamais un PASS/FAIL numerique. Aucune tolerance/oracle/gate/budget modifie,
 aucun code instrumente, branche diag jamais mergee.
 round2: 2026-10-19T21:15Z window f88b3700..0c61c51e pins 7684119b,96b6663d,406c0ff9 (round1 run 39325205592 all FAIL_DIVERGED)
 round3: 2026-10-20T04:40Z true master window aa806657..7684119b (f88b3700 = diag-line commit, merge-base aa806657) pins aa806657,86ef9f2a,16734e82 (rounds 1+2: all 6 pins FAIL_DIVERGED, runs 39325205592+39326700774)
+round7: 2026-10-21T19:35Z goal remaining-consolidation culprit isolation pins 28e4d183(master),a1a62dc1(green #904, round4 PASS_3_LEVELS) (round6 verdict NOT_THE_BOUNDARY_BLOCK run 39630570236: v0/v1/v2 all FAIL_DIVERGED) variants v0_master_pristine,v1_green_trio,v2_green_trio_monitor,v3_green_pristine (evidence diag-evidence/logs/nacar7_*_run<RUN_ID>.*, verdict = diagnostic jamais PASS/FAIL numerique)
