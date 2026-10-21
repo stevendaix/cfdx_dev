@@ -478,6 +478,7 @@ Options parse(int argc, char** argv)
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
+                         "  [--initial-velocity-field] (initialize U from /fields/vector/U)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::exit(0);
