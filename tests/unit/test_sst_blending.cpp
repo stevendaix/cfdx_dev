@@ -450,7 +450,7 @@ int main()
 
     run_case("sst_case_prerequisites_reject_nonpositive_initial_fields_and_duplicate_patches", [] {
         cfdx::io::CaseSetup setup;
-        setup.turbulence_model = "SST";
+        setup.turbulence_model = "k_omega_sst";
         setup.has_initial_condition = true;
         setup.initial_condition.scalar_fields["k"] = 0.01;
         setup.initial_condition.scalar_fields["omega"] = 2.0;
