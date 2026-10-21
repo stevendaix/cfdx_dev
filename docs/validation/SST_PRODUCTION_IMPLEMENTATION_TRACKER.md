@@ -1,6 +1,6 @@
 # SST production-solver implementation tracker
 
-**Status date:** 2026-10-19  
+**Status date:** 2026-10-21  
 **Overall status:** IN PROGRESS — RANS production selection remains fail-closed.  
 **Scope:** Track implementation and qualification evidence for end-to-end SST in CFDX. Update this file in each turbulence PR; do not mark a gate complete without exact-HEAD evidence. Numerical-core implementation is governed by [the RANS/SST method fiche](../audits/09-turbulence-rans.md).
 
@@ -42,14 +42,14 @@
 
 - [x] Add preflight validation for explicit initial `k`/`omega` and inlet intensity/length-scale inputs, plus a standard inlet estimate helper (unit tests added; not wired into production selection).
 - [x] Add explicit persisted SST scalar-boundary metadata for fixed values, zero gradients, zero wall `k`, and SST wall `omega`; reject missing, duplicate, and patch-incompatible declarations (component tests; not yet consumed by production transport assembly).
-- [ ] Define persistent production state for `k`, `omega`, and derived `nu_t`.
-- [ ] Define initialization and restart contracts; reject missing/inconsistent fields.
-- [ ] Define physically consistent wall/inlet/outlet boundary values for both transports.
+- [x] Define a validated in-memory production-state bundle for `k`, `omega`, and derived `nu_t` (PR #993); production-loop ownership is still open.
+- [x] Define component-level initialization and DAT restart contracts; reject missing/inconsistent fields (PRs #1006, #1007, #1008, #1009). Production lifecycle wiring and trajectory-equivalence qualification remain open.
+- [x] Define persisted scalar-boundary metadata and runtime adapters, including resolved-wall omega face values (PRs #998, #1000); case-to-live-production transport wiring remains open.
 - [ ] Compute wall distance from the production mesh and validate positivity/finiteness.
 - [x] Provide a boundary-aware SST strain-rate reconstruction using explicit fixed-value velocity patch data; retain the existing zero-gradient overload unchanged.
 - [ ] Wire production velocity BCs into the boundary-aware strain-rate path and qualify gradient accuracy on representative meshes.
 - [ ] Compute `F1`/`F2` from the current accepted state and documented SST equations.
-- [ ] Add state rollback for every turbulence field, not just `U` and `p`.
+- [x] Provide a reusable atomic transaction primitive covering `U`, `p`, authoritative `phi`, and all SST state fields (PR #995); connecting it to the production nonlinear retry loop remains open.
 
 ### T2 — Coupled outer iteration and convergence
 
@@ -160,7 +160,7 @@ This increment defines persistent scalar names only. It does not serialize the f
 - [x] Keep the production RANS selector fail-closed until state initialization/restart, full momentum coupling, MMS and turbulent-channel DNS qualification are complete.
 
 
-### T1 implementation increment — explicit production-state initialization (PR in progress)
+### T1 implementation increment — explicit production-state initialization (PR #1006 merged)
 
 - [x] Build uniform initial (k) and (omega) fields only from the explicit case scalar fields validated by the SST case contract.
 - [x] Require mesh-sized, finite positive wall distance and finite non-negative strain rate supplied by the production caller; do not invent either field.
@@ -199,3 +199,25 @@ This remains a prerequisite utility only. Restart reconstruction now accepts exp
 - [ ] Prove continuous-versus-restarted production trajectory equivalence, including mass flux and all SST-owned fields.
 
 Evidence: PR #1017 merged the affine-field boundary reconstruction test; PR #1018 merged the restart-boundary fix. The production RANS selector remains fail-closed because this work repairs restart reconstruction only; it does not integrate SST into the production outer iteration.
+
+
+### T1 implementation increment — transport-field shape validation (PR #1020 merged)
+
+- [x] Validate scalar dimension as well as cell/face count for `k`, `omega`, strain rate, wall distance, `nu_t`, and authoritative face mass flux before a transactional transport update.
+- [x] Add regressions rejecting vector-valued `k` and vector-valued face mass flux.
+- [x] Exact-HEAD CI passed on PR head `4aaa801a8bbf1133b5c608c2bf13f72aa647a932`: Release, DebugSanitizers, GUI/headless, production solver E2E, numerical maturity suite, N10 public fixtures, audit gate, and all applicable N-jobs succeeded. Path-filtered long validation and total-validation workflows were skipped and are not claimed as evidence.
+- [x] Merge PR #1020 as `a878408494b5b28d22251adb53adfbf710b8aa65`.
+
+**Decision:** the helper now rejects malformed field shapes at its API boundary. This is input-contract hardening only; it does not integrate SST transport into `solve_steady_incompressible` or enable the production RANS selector.
+
+## Next production-coupling increment
+
+The next implementation must be made in the production solve lifecycle, not another isolated helper:
+
+1. Build/restore the SST state from the actual case and current mesh, using the production velocity boundary conditions and current-mesh wall-distance provider.
+2. Establish one coupled accept/reject transaction around the existing nonlinear retry loop; preserve the authoritative `phi` and all SST fields on rejection.
+3. On each accepted carrier iterate, reconstruct boundary-aware strain rate and compute current SST blending/cross-diffusion data; advance `k` and `omega` with the current authoritative mass flux.
+4. Refresh cellwise `nu_t` and rebuild `mu_eff[c] = rho * (nu + nu_t[c])` before every momentum predictor and for final residual/conservation audits. The current solver computes `mu_eff` once before the loop, so merely initializing `controls.cell_turbulent_viscosity` would freeze viscosity and is not sufficient.
+5. Add SST residuals and physical boundedness to convergence acceptance, then prove rollback and restart trajectory equivalence in production E2E tests.
+6. Keep RANS/SST selection fail-closed until transport MMS (at least three mesh levels), frozen DNS channel qualification, mesh/y+ sensitivity, and subsequent flat-plate/NACA qualification pass.
+
