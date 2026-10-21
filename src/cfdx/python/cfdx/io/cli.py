@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
 """CFDX I/O converter CLI.
 
 Usage:
-    cfdx-io convert <case_path> [--output DIR] [--solver NAME]
+    cfdx-io convert <case_path> [--output DIR] [--solver NAME] [--results]
     cfdx-io list-adapters
 """
+
 from __future__ import annotations
 
 import sys
@@ -30,12 +30,15 @@ def main(argv: list[str] | None = None) -> int:
 
     if cmd == "convert":
         if len(args) < 2:
-            print("Usage: cfdx-io convert <case_path> [--output DIR] [--solver NAME]")
+            print(
+                "Usage: cfdx-io convert <case_path> [--output DIR] [--solver NAME] [--results]"
+            )
             return 1
 
         case_path = args[1]
         output_path = None
         solver = None
+        include_results = False
 
         i = 2
         while i < len(args):
@@ -45,6 +48,9 @@ def main(argv: list[str] | None = None) -> int:
             elif args[i] == "--solver" and i + 1 < len(args):
                 solver = args[i + 1]
                 i += 2
+            elif args[i] == "--results":
+                include_results = True
+                i += 1
             else:
                 i += 1
 
@@ -53,7 +59,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Detected solver: {detected}")
 
         try:
-            result = convert(case_path, output_path=output_path, solver=solver)
+            result = convert(
+                case_path,
+                output_path=output_path,
+                solver=solver,
+                include_results=include_results,
+            )
         except ValueError as e:
             print(f"Error: {e}")
             return 1
@@ -66,18 +77,26 @@ def main(argv: list[str] | None = None) -> int:
         print("\nConversion completed successfully.")
         print(f"  Supported features: {result.gap_report.n_supported()}")
         print(f"  Approximated: {result.gap_report.n_approximated()}")
-        print(f"  Unsupported (non-blocking): {result.gap_report.n_unsupported_nonblocking()}")
+        print(
+            f"  Unsupported (non-blocking): {result.gap_report.n_unsupported_nonblocking()}"
+        )
         print(f"  Blocking issues: {result.gap_report.n_unsupported_blocking()}")
 
         if result.mesh:
             print(f"  Mesh: {result.mesh['points'].shape[0]} vertices")
+        if result.field_data_source:
+            print(f"  Results: {result.field_data_source}")
+            print(f"  Scalar fields: {len(result.scalar_fields)}")
+            print(f"  Vector fields: {len(result.vec_fields)}")
 
         if output_path:
             print(f"\nReports written to: {output_path}")
-            print(f"  - gap_analysis.md")
-            print(f"  - gap_analysis.json")
-            print(f"  - case_setup.json")
-            print(f"  - mesh.vtk")
+            print("  - gap_analysis.md")
+            print("  - gap_analysis.json")
+            print("  - case_setup.json")
+            print("  - mesh.vtk")
+            if result.mesh and result.mesh.get("cfdx_csr") is not None:
+                print("  - case.cfdx.h5")
 
         return 0
 

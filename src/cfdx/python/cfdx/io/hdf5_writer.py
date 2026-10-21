@@ -57,6 +57,20 @@ _UINT64_MASK = 0xFFFFFFFFFFFFFFFF
 
 # Boundary patch types, mirroring cfdx::core::PatchType.
 _PATCH_TYPE_WALL = 0
+_PATCH_TYPE_CODES = {
+    "wall": 0,
+    "inlet": 1,
+    "outlet": 2,
+    "symmetry": 3,
+    "symmetryplane": 3,
+    "cyclic": 4,
+    "cyclicami": 4,
+    "cyclicacmi": 4,
+    "processor": 5,
+    "empty": 6,
+    "patch": 7,
+    "unknown": 7,
+}
 
 _TYPE_ALIASES: dict[str, str] = {
     "tetrahedron": "tetra",
@@ -154,9 +168,12 @@ def _boundary_patch_metadata(m: dict) -> tuple[str | None, np.ndarray, np.ndarra
         # rejects duplicate patch names outright, so faces are collected
         # per-name rather than emitted as contiguous runs.
         face_to_patch = {}
+        patch_types = {}
         for entry in assignment:
+            name = entry.get("name", "boundary")
+            patch_types[name] = str(entry.get("type", "wall")).lower()
             for fid in entry.get("face_ids", []):
-                face_to_patch[int(fid)] = entry.get("name", "boundary")
+                face_to_patch[int(fid)] = name
         by_name: dict[str, list[int]] = {}
         order: list[str] = []
         for fid in boundary_faces.tolist():
@@ -175,7 +192,8 @@ def _boundary_patch_metadata(m: dict) -> tuple[str | None, np.ndarray, np.ndarra
         entries = []
         for i, (name, _) in enumerate(merged):
             entries.append(
-                f"{name}:{int(patch_ids[offsets[i]])}:{int(offsets[i + 1] - offsets[i])}:{_PATCH_TYPE_WALL}"
+                f"{name}:{int(patch_ids[offsets[i]])}:{int(offsets[i + 1] - offsets[i])}:"
+                f"{_PATCH_TYPE_CODES.get(patch_types.get(name, 'wall'), _PATCH_TYPE_WALL)}"
             )
         metadata = ";".join(entries)
         return metadata, patch_ids, offsets
@@ -417,6 +435,10 @@ def write_case_cfdx_h5(result: ConversionResult, output_path) -> None:
         f.attrs["source_version"] = source.version or "unknown"
         f.attrs["source_case_path"] = source.case_path or ""
         f.attrs["source_case_name"] = source.case_name or ""
+        if result.field_data_source:
+            f.attrs["field_data_source"] = result.field_data_source
+        if result.available_fields:
+            f.attrs["available_fields_json"] = json.dumps(result.available_fields)
 
         if result.setup is not None:
             setup_json = result.setup.model_dump(mode="json")
@@ -429,7 +451,12 @@ def write_case_cfdx_h5(result: ConversionResult, output_path) -> None:
         f.attrs["gap_report_json"] = gap_json
 
         if result.mesh is not None and result.mesh.get("points") is not None:
-            cfdx_mesh = _meshio_to_cfdx(result.mesh)
+            # OpenFOAM supplies native polyhedral faces/owner/neighbour. Use
+            # that exact CSR topology when available instead of reconstructing
+            # volume cells from a surface-only meshio representation.
+            cfdx_mesh = result.mesh.get("cfdx_csr")
+            if cfdx_mesh is None:
+                cfdx_mesh = _meshio_to_cfdx(result.mesh)
             if cfdx_mesh is not None:
                 _write_mesh_topology(f, cfdx_mesh)
 

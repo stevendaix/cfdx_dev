@@ -666,5 +666,34 @@ int main() {
         std::remove(filename.c_str());
     });
 
+    run_case("case_hdf5_rejects_malformed_vector_dimensions", []() {
+        const std::string filename = "/tmp/cfdx_case_bad_vector_shape.h5";
+        std::remove(filename.c_str());
+        hid_t file = H5Fcreate(filename.c_str(), H5F_ACC_TRUNC, H5P_DEFAULT, H5P_DEFAULT);
+        EXPECT_TRUE(file >= 0);
+        hid_t fields_group = H5Gcreate2(file, "fields", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        EXPECT_TRUE(fields_group >= 0);
+        hid_t vector_group = H5Gcreate2(fields_group, "vector", H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        EXPECT_TRUE(vector_group >= 0);
+        const hsize_t dims[2] = {1, 2};
+        hid_t space = H5Screate_simple(2, dims, nullptr);
+        hid_t dataset = H5Dcreate2(vector_group, "U", H5T_IEEE_F64LE, space,
+                                   H5P_DEFAULT, H5P_DEFAULT, H5P_DEFAULT);
+        EXPECT_TRUE(dataset >= 0);
+        const double values[2] = {1.0, 2.0};
+        EXPECT_TRUE(H5Dwrite(dataset, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL,
+                             H5P_DEFAULT, values) >= 0);
+        H5Dclose(dataset);
+        H5Sclose(space);
+        H5Gclose(vector_group);
+        H5Gclose(fields_group);
+        H5Fclose(file);
+
+        std::vector<std::pair<std::string, Vec3CellField>> loaded;
+        EXPECT_FALSE(read_vector_fields_hdf5(filename, loaded));
+        EXPECT_TRUE(loaded.empty());
+        std::remove(filename.c_str());
+    });
+
     return run_all();
 }
