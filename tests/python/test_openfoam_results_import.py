@@ -9,6 +9,7 @@ from cfdx.io.hdf5_writer import write_case_cfdx_h5
 from cfdx.io.interfaces import ConversionResult
 from cfdx.io.schema import SourceInfo
 
+
 def test_openfoam_adapter_imports_latest_scalar_and_vector_fields(
     tmp_path, monkeypatch
 ):
@@ -65,12 +66,14 @@ def test_openfoam_adapter_imports_latest_scalar_and_vector_fields(
         for finding in result.gap_report.findings
     )
 
+
 def test_openfoam_adapter_reports_missing_case_for_results(tmp_path):
     adapter = OpenFOAMAdapter()
     result = ConversionResult(source=SourceInfo())
 
     assert not adapter.import_results(str(tmp_path / "missing"), result)
     assert result.gap_report.has_blocking()
+
 
 def test_openfoam_polyhedral_mesh_builds_native_face_cell_csr():
     adapter = OpenFOAMAdapter()
@@ -113,6 +116,7 @@ def test_openfoam_polyhedral_mesh_builds_native_face_cell_csr():
     # The surface triangles are for visualization only; solver topology is
     # represented by the native polyhedral CSR, not by these triangles.
     assert mesh["cells"]["triangle"].shape == (7, 3)
+
 
 def test_native_openfoam_csr_is_written_to_cfdx_hdf5(tmp_path):
     adapter = OpenFOAMAdapter()
@@ -165,6 +169,7 @@ def test_native_openfoam_csr_is_written_to_cfdx_hdf5(tmp_path):
         assert h5.attrs["field_data_source"] == "OpenFOAM time 10"
         assert h5.attrs["available_fields_json"] == '{"10": ["p"]}'
 
+
 def test_openfoam_setup_dictionaries_map_supported_controls(tmp_path, monkeypatch):
     import cfdx.io.openfoam_case_reader as reader
 
@@ -201,6 +206,7 @@ def test_openfoam_setup_dictionaries_map_supported_controls(tmp_path, monkeypatc
         and finding.severity.value == "unsupported_nonblocking"
         for finding in result.gap_report.findings
     )
+
 
 def test_native_openfoam_reader_parses_ascii_scalar_and_vector_fields(tmp_path):
     from cfdx.io.openfoam_case_reader import read_openfoam_time_fields
@@ -262,6 +268,7 @@ boundaryField
     assert fields["U"]["class"] == "volVectorField"
     np.testing.assert_array_equal(fields["U"]["internal"], [[1.0, 0.0, 0.0]] * 2)
 
+
 def test_native_openfoam_reader_parses_setup_dictionaries(tmp_path):
     from cfdx.io.openfoam_case_reader import read_openfoam_dictionaries
 
@@ -311,6 +318,7 @@ divSchemes
         dictionaries["system/fvSchemes"]["divSchemes"]["div(phi,U)"]
         == "Gauss linearUpwind grad(U)"
     )
+
 
 def test_native_openfoam_reader_rejects_binary_files_explicitly(tmp_path):
     from cfdx.io.openfoam_case_reader import read_openfoam_time_fields
