@@ -824,8 +824,12 @@ int main()
         TurbulenceTransportControls controls;
         controls.model = TurbulenceModel::SST;
         controls.molecular_viscosity = 1.5e-5;
+        const std::map<std::string, std::array<double, 3>> fixed_velocity_boundary_values{
+            {"inlet", {4.0, 0.0, 0.0}}
+        };
         const auto metadata = restore_sst_production_state_from_dat(
-            path.string(), mesh, U, p, state, std::vector<double>{0.01}, controls);
+            path.string(), mesh, U, p, state, std::vector<double>{0.01}, controls,
+            fixed_velocity_boundary_values);
 
         EXPECT_TRUE(metadata.iteration == 17);
         EXPECT_NEAR(metadata.time, 2.5, 0.0);
@@ -834,7 +838,7 @@ int main()
         EXPECT_NEAR(state.k(0), 0.42, 0.0);
         EXPECT_NEAR(state.omega(0), 125.0, 0.0);
         EXPECT_NEAR(state.wall_distance(0), 0.01, 0.0);
-        EXPECT_NEAR(state.strain_rate(0), 0.0, 1e-14);
+        EXPECT_TRUE(std::isfinite(state.strain_rate(0)) && state.strain_rate(0) > 0.0);
         EXPECT_TRUE(std::isfinite(state.nu_t(0)) && state.nu_t(0) >= 0.0);
         validate_sst_production_state(state, mesh.n_cells());
         std::filesystem::remove(path);
