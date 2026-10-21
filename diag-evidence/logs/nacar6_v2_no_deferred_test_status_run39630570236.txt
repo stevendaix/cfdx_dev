@@ -1,0 +1,12 @@
+variant=v2_no_deferred
+pin=28e4d183b258997c5b923b2e05569263e900f2ff
+pin_subject=fix(sst): preserve velocity boundary data when restoring restart state (#1018)
+outcome=FAIL_DIVERGED
+test_rc=134
+test_duration_s=329
+run_id=39630570236
+
+--- level markers reached ---
+no_level_marker
+--- failure line (if any) ---
+  what():  NACA0012 solver did not converge: status=MAX_ITERATIONS reason=maximum nonlinear iteration count reached without satisfying all gates iterations=8000 momentum_rhs_relative=1.12014e-15 momentum_reference_relative=1.11984e-13 pressure_residual=1.48032e-11 continuity=4.29027e-08 dU=6.0552e-16 dP=8.60751e-16 alpha_u=0.6 alpha_p=0.25
