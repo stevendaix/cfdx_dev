@@ -5,6 +5,7 @@ import os
 import shutil
 
 import numpy as np
+import pytest
 
 from cfdx.io.converter import (
     ConversionResult,
@@ -17,8 +18,6 @@ from cfdx.io.converter import (
 )
 from cfdx.io.gap_analysis import GapAnalysis
 from cfdx.io.schema import CaseSetup, Severity, SourceInfo
-
-import pytest
 
 DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
 
