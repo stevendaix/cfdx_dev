@@ -4,6 +4,7 @@ The reader intentionally supports a documented subset of OpenFOAM syntax. It
 never guesses binary payloads as text: unsupported encodings raise a clear
 error and remain available in the original case directory.
 """
+
 from __future__ import annotations
 
 import math
@@ -43,8 +44,12 @@ class OpenFOAMCaseSummary:
     dictionaries: tuple[str, ...]
 
 
-_TOKEN_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[{}();\[\]]|[^\s{}();\[\]]+')
-_COMMENT_RE = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\n]*|/\*.*?\*/', re.DOTALL)
+_TOKEN_RE = re.compile(
+    r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|[{}();\[\]]|[^\s{}();\[\]]+'
+)
+_COMMENT_RE = re.compile(
+    r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\n]*|/\*.*?\*/', re.DOTALL
+)
 _NUMERIC_RE = re.compile(r"^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?$")
 
 
@@ -62,9 +67,13 @@ def _tokens(text: str) -> list[str]:
     """Tokenize the ASCII subset used by OpenFOAM dictionaries and fields."""
     cleaned = _strip_comments(text)
     if re.search(r"\bformat\s+binary\s*;", cleaned):
-        raise ValueError("Binary OpenFOAM files are not supported by the native Python reader")
+        raise ValueError(
+            "Binary OpenFOAM files are not supported by the native Python reader"
+        )
     if re.search(r"(?m)^\s*#", cleaned):
-        raise ValueError("OpenFOAM preprocessor directives are not supported by the native Python reader")
+        raise ValueError(
+            "OpenFOAM preprocessor directives are not supported by the native Python reader"
+        )
     return _TOKEN_RE.findall(cleaned)
 
 
@@ -73,7 +82,11 @@ def _atom(token: str) -> Any:
         return token[1:-1]
     if _NUMERIC_RE.match(token):
         value = float(token)
-        if math.isfinite(value) and value.is_integer() and not any(c in token.lower() for c in (".", "e")):
+        if (
+            math.isfinite(value)
+            and value.is_integer()
+            and not any(c in token.lower() for c in (".", "e"))
+        ):
             return int(value)
         return value
     if token in {"true", "false"}:
@@ -121,7 +134,9 @@ def _value(tokens: list[str]) -> Any:
     return " ".join(str(_atom(token)) for token in tokens)
 
 
-def _parse_dictionary_tokens(tokens: list[str], index: int = 0, *, nested: bool = False) -> tuple[dict[str, Any], int]:
+def _parse_dictionary_tokens(
+    tokens: list[str], index: int = 0, *, nested: bool = False
+) -> tuple[dict[str, Any], int]:
     result: dict[str, Any] = {}
     while index < len(tokens):
         if tokens[index] == "}":
@@ -129,7 +144,9 @@ def _parse_dictionary_tokens(tokens: list[str], index: int = 0, *, nested: bool 
                 raise ValueError("Unexpected '}' in OpenFOAM dictionary")
             return result, index + 1
         if tokens[index] in {"{", ")", ";"}:
-            raise ValueError(f"Unexpected token {tokens[index]!r} in OpenFOAM dictionary")
+            raise ValueError(
+                f"Unexpected token {tokens[index]!r} in OpenFOAM dictionary"
+            )
         key = str(_atom(tokens[index]))
         index += 1
         if index < len(tokens) and tokens[index] == "{":
@@ -148,7 +165,9 @@ def _parse_dictionary_tokens(tokens: list[str], index: int = 0, *, nested: bool 
             elif token in {")", "]"}:
                 depth -= 1
                 if depth < 0:
-                    raise ValueError(f"Unmatched closing list delimiter in value for {key!r}")
+                    raise ValueError(
+                        f"Unmatched closing list delimiter in value for {key!r}"
+                    )
             if token == ";" and depth == 0:
                 index += 1
                 break
@@ -205,14 +224,18 @@ def _read_field_file(path: Path, *, cell_count: int | None = None) -> dict[str, 
     with path.open("rb") as stream:
         prefix = stream.read(4096).decode("ascii", errors="ignore")
     if re.search(r"\bformat\s+binary\s*;", _strip_comments(prefix)):
-        raise ValueError("Binary OpenFOAM files are not supported by the native Python reader")
+        raise ValueError(
+            "Binary OpenFOAM files are not supported by the native Python reader"
+        )
     text = path.read_text(encoding="utf-8")
     tokens = _tokens(text)
     if not tokens or tokens[0] != "FoamFile":
         raise ValueError(f"Missing FoamFile header in {path}")
     header, _ = _parse_dictionary_tokens(tokens, 0)
     foam_header = header.get("FoamFile", {})
-    source_class = str(foam_header.get("class", "")) if isinstance(foam_header, dict) else ""
+    source_class = (
+        str(foam_header.get("class", "")) if isinstance(foam_header, dict) else ""
+    )
     if not source_class:
         raise ValueError(f"Missing FoamFile class in {path}")
 
@@ -232,7 +255,11 @@ def _read_field_file(path: Path, *, cell_count: int | None = None) -> dict[str, 
     body = tokens[body_start:]
     entries, _ = _parse_dictionary_tokens(body)
     dimensions_raw = entries.get("dimensions")
-    dimensions = tuple(int(v) for v in dimensions_raw) if isinstance(dimensions_raw, list) else ()
+    dimensions = (
+        tuple(int(v) for v in dimensions_raw)
+        if isinstance(dimensions_raw, list)
+        else ()
+    )
 
     internal_tokens: list[str] | None = None
     for i, token in enumerate(body):
@@ -247,7 +274,7 @@ def _read_field_file(path: Path, *, cell_count: int | None = None) -> dict[str, 
                 elif body[end] == ";" and depth == 0:
                     break
                 end += 1
-            internal_tokens = body[i + 1:end]
+            internal_tokens = body[i + 1 : end]
             break
     if internal_tokens is None:
         raise ValueError(f"Missing internalField in {path}")
@@ -265,7 +292,9 @@ def _read_field_file(path: Path, *, cell_count: int | None = None) -> dict[str, 
         if cell_count is not None:
             raw = np.broadcast_to(raw, (cell_count,) + raw.shape).copy()
     else:
-        list_start = next((i for i, token in enumerate(internal_tokens) if token == "("), None)
+        list_start = next(
+            (i for i, token in enumerate(internal_tokens) if token == "("), None
+        )
         if list_start is None:
             raise ValueError(f"Unsupported internalField encoding in {path}")
         parsed_values, _ = _parse_group(internal_tokens, list_start)
@@ -298,7 +327,9 @@ def inspect_openfoam_case(case_path: str | Path) -> OpenFOAMCaseSummary:
     control_path = path / "system" / "controlDict"
     application = None
     if control_path.is_file():
-        application = str(_read_dictionary_file(control_path).get("application", "")) or None
+        application = (
+            str(_read_dictionary_file(control_path).get("application", "")) or None
+        )
 
     dictionary_paths: list[str] = []
     for folder in ("system", "constant"):
@@ -363,9 +394,13 @@ def read_openfoam_field(
         directory = path / str(time)
         if not directory.is_dir():
             # Normalize values such as 1.0 to a directory named "1".
-            matches = [item for value, item in _time_directories(path) if value == time_value]
+            matches = [
+                item for value, item in _time_directories(path) if value == time_value
+            ]
             if not matches:
-                raise FileNotFoundError(f"OpenFOAM time directory {time!r} not found in {path}")
+                raise FileNotFoundError(
+                    f"OpenFOAM time directory {time!r} not found in {path}"
+                )
             directory = matches[0]
     field_path = directory / field_name
     data = _read_field_file(field_path)
@@ -407,7 +442,9 @@ def read_openfoam_time_fields(
         try:
             data = _read_field_file(field_path, cell_count=cell_count)
         except (OSError, ValueError, TypeError, IndexError, UnicodeError) as exc:
-            raise ValueError(f"Cannot decode field {field_path.name} at time {directory.name}: {exc}") from exc
+            raise ValueError(
+                f"Cannot decode field {field_path.name} at time {directory.name}: {exc}"
+            ) from exc
         data["time"] = time_value
         fields[field_path.name] = data
     return fields
@@ -440,5 +477,7 @@ def read_openfoam_dictionaries(case_path: str | Path) -> dict[str, Any]:
             try:
                 dictionaries[relative] = _read_dictionary_file(file_path)
             except (OSError, ValueError, TypeError, UnicodeError) as exc:
-                raise ValueError(f"Cannot parse OpenFOAM dictionary {relative}: {exc}") from exc
+                raise ValueError(
+                    f"Cannot parse OpenFOAM dictionary {relative}: {exc}"
+                ) from exc
     return dictionaries
