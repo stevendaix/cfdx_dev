@@ -4,6 +4,7 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+import pytest
 from cfdx.io.adapters.openfoam import OpenFOAMAdapter
 from cfdx.io.hdf5_writer import write_case_cfdx_h5
 from cfdx.io.interfaces import ConversionResult
