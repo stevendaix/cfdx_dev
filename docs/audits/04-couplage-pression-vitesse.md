@@ -47,6 +47,8 @@ Système discret cible (contrat N9.0) : $[M\\;G \\;;\\;D\\;C]$ — les opérat
 - Tests : `tests/validation/test_n9_common_schur_qualification.cpp’ (à renforcer : cf. projet chat — exiger erreur d'action vs Schur exact, réduction de résidu mesurée), `test_n9_negative_diagnostics’ (#851), fix4b/fix4c.
 - Écarts code ↔ fiche : **à auditer en Phase 1** — équivalence COUPLED/ségrégé non démontrée ; campagne physique non verte sur HEAD exact.
 - Gaps : fermeture #601 conditionnée par la campagne 6 modèles × 4 cas.
+- Étape 4 du plan #885 : canal cellwise `IncompressibleSolverControls::cell_body_force` (trois vecteurs par cellule, accélération par unité de masse multipliée par la masse volumique dans l'assemblage momentum, exactement comme le `body_force` uniforme) — remplace la valeur uniforme aux deux sites d'assemblage (prédicteur et résolution finale) quand il est fourni ; validation fail-closed du porteur (taille exacte du maillage, exclusivité avec un `body_force` uniforme déclaré, composantes finies) sur le pattern établi de `cell_turbulent_viscosity` ; aucune tolérance/gate/oracle/budget du solveur modifié ; consommé par la boucle externe flottabilité de l'étape 4 de #885 (fiche 10 §7) — oracle VV : équivalence bit-exacte source cellwise uniforme ↔ `body_force` uniforme.
 
 ## 8. Journal
 - 2026-10-12 — création ; intègre #821 (SIMPLEC), #851 (N9.7), leçons #419.
+- 2026-10-21 — étape 4 du plan #885 : canal cellwise `cell_body_force` ajouté au porteur (appliqué aux deux sites d'assemblage, validation fail-closed taille/exclusivité/finitude, pattern `cell_turbulent_viscosity`), consommé par la boucle externe flottabilité (fiche 10 §7) ; aucune tolérance/gate/oracle/budget de la fiche modifiée.
