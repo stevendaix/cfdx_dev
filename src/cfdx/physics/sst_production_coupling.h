@@ -215,10 +215,14 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
     const std::size_t n = mesh.n_cells();
     if (controls.model != TurbulenceModel::SST)
         throw std::invalid_argument("transactional SST step requires the SST model");
-    if (n == 0 || k.size() != n || omega.size() != n ||
-        strain_rate.size() != n || wall_distance.size() != n ||
-        nu_t.size() != n || mass_flux.size() != mesh.n_faces())
-        throw std::invalid_argument("transactional SST step field size mismatch");
+    if (n == 0 ||
+        k.size() != n || k.dimension() != 1 ||
+        omega.size() != n || omega.dimension() != 1 ||
+        strain_rate.size() != n || strain_rate.dimension() != 1 ||
+        wall_distance.size() != n || wall_distance.dimension() != 1 ||
+        nu_t.size() != n || nu_t.dimension() != 1 ||
+        mass_flux.size() != mesh.n_faces() || mass_flux.dimension() != 1)
+        throw std::invalid_argument("transactional SST step field shape mismatch");
     if (max_iterations == 0 || !(tolerance > 0.0) || !std::isfinite(tolerance))
         throw std::invalid_argument("transactional SST step requires valid iteration controls");
     for (std::size_t i = 0; i < n; ++i) {

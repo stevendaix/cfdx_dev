@@ -897,6 +897,37 @@ int main()
         std::filesystem::remove(path);
     });
 
+    run_case("sst_transaction_rejects_non_scalar_transport_fields", [] {
+        using namespace cfdx::core;
+        const Mesh mesh = make_sst_transaction_unit_cube();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::FACE> flux(mesh.n_faces(), "phi", "kg/s", 1);
+        Field<double, Location::CELL> k(mesh.n_cells(), "k", "m2/s2", 1);
+        Field<double, Location::CELL> omega(mesh.n_cells(), "omega", "1/s", 1);
+        Field<double, Location::CELL> strain(mesh.n_cells(), "strain", "1/s", 1);
+        Field<double, Location::CELL> wall(mesh.n_cells(), "wall_distance", "m", 1);
+        Field<double, Location::CELL> nu_t(mesh.n_cells(), "nu_t", "m2/s", 1);
+        Field<double, Location::CELL> malformed_k(mesh.n_cells(), "k_bad", "m2/s2", 2);
+        flux.fill(0.0);
+        k(0) = 0.4;
+        omega(0) = 8.0;
+        strain(0) = 1.0;
+        wall(0) = 0.01;
+        nu_t(0) = 0.02;
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+
+        EXPECT_THROW(advance_sst_transport_transactionally(
+            mesh, geometry, flux, malformed_k, omega, strain, wall,
+            controls, nu_t, {}, {}, 1, 1e-8), std::invalid_argument);
+
+        Field<double, Location::FACE> malformed_flux(
+            mesh.n_faces(), "phi_bad", "kg/s", 2);
+        EXPECT_THROW(advance_sst_transport_transactionally(
+            mesh, geometry, malformed_flux, k, omega, strain, wall,
+            controls, nu_t, {}, {}, 1, 1e-8), std::invalid_argument);
+    });
+
     run_case("sst_transaction_rolls_back_k_omega_after_nonconverged_transport", [] {
         using namespace cfdx::core;
         const Mesh mesh = make_sst_transaction_unit_cube();
