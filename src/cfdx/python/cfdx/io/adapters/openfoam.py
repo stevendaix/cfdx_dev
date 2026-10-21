@@ -441,24 +441,6 @@ class OpenFOAMAdapter(SolverAdapter):
         except (OSError, ValueError, TypeError, IndexError, KeyError, UnicodeError):
             return None
 
-            data_lines = match.group(1).strip().split('\n')
-            # First line might be the count
-            first_line = data_lines[0].strip()
-            if first_line.isdigit():
-                data_lines = data_lines[1:]
-
-            points = []
-            for line in data_lines:
-                line = line.strip().rstrip(';')
-                if line.startswith('(') and line.endswith(')'):
-                    coords = line[1:-1].split()
-                    if len(coords) >= 3:
-                        points.append([float(coords[0]), float(coords[1]), float(coords[2])])
-
-            return np.array(points, dtype=np.float64)
-        except (OSError, ValueError, TypeError, IndexError, KeyError, UnicodeError):
-            return None
-
     def _parse_faces(self, faces_file: Path) -> list | None:
         """Parse OpenFOAM faces file.
 
