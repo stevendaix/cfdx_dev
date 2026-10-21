@@ -55,11 +55,13 @@ _NUMERIC_RE = re.compile(r"^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)
 
 def _strip_comments(text: str) -> str:
     """Remove comments without altering comment-like text inside quotes."""
+
     def replace(match: re.Match[str]) -> str:
         token = match.group(0)
         if token.startswith(('"', "'")):
             return token
         return " " * len(token)
+
     return _COMMENT_RE.sub(replace, text)
 
 
@@ -72,7 +74,8 @@ def _tokens(text: str) -> list[str]:
         )
     if re.search(r"(?m)^\s*#", cleaned):
         raise ValueError(
-            "OpenFOAM preprocessor directives are not supported by the native Python reader"
+            "OpenFOAM preprocessor directives are not supported by the native "
+            "Python reader"
         )
     return _TOKEN_RE.findall(cleaned)
 
