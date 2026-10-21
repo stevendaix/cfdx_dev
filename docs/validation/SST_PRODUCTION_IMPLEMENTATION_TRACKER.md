@@ -51,7 +51,7 @@
 - [x] Define a validated in-memory production-state bundle for `k`, `omega`, and derived `nu_t` (PR #993); production-loop ownership is still open.
 - [x] Define component-level initialization and DAT restart contracts; reject missing/inconsistent fields (PRs #1006, #1007, #1008, #1009). Production lifecycle wiring and trajectory-equivalence qualification remain open.
 - [x] Define persisted scalar-boundary metadata and runtime adapters, including resolved-wall omega face values (PRs #998, #1000); case-to-live-production transport wiring remains open.
-- [ ] Compute wall distance from the production mesh and validate positivity/finiteness.
+- [x] Compute wall distance from the production mesh and validate positivity/finiteness (PR #1024; exact-HEAD unit/CI evidence passed).
 - [x] Provide a boundary-aware SST strain-rate reconstruction using explicit fixed-value velocity patch data; retain the existing zero-gradient overload unchanged.
 - [ ] Wire production velocity BCs into the boundary-aware strain-rate path and qualify gradient accuracy on representative meshes.
 - [ ] Compute `F1`/`F2` from the current accepted state and documented SST equations.
@@ -114,6 +114,7 @@ This is an enabling contract only. It does not call SST transport from the produ
 | 2026-10-19 | PRs #970/#971 passed exact-HEAD CI and numerical maturity workflows, then merged as `374c8fb4` and `257070a6`. | Strain-rate and explicit Dirichlet-face-gradient prerequisites integrated; physical and end-to-end SST gates remain open. |
 | 2026-10-19 | Added `sst_case_contract.h` to validate explicit initial k/omega and inlet intensity/length scale, with unit coverage. | Component/preflight only; production guard unchanged. |
 | 2026-10-19 | Added typed per-patch SST scalar BC metadata and HDF5 round-trip coverage for inlet fixed values and wall `k=0`/SST-omega wall treatment. Compatibility validator rejects incomplete/duplicate or patch-incompatible contracts. | Persistent metadata only; restart semantics and production application remain open. |
+| 2026-10-21 | PR #1024 merged as `63e195ac`; mesh-derived SST initializer uses production mesh wall distance and boundary-aware strain rate. Exact-head DebugSanitizers, Release, audit gate, numerical-maturity, and N10 fixture workflows passed. | Mesh-derived initialization prerequisite complete; live production-loop ownership, SST transport coupling, turbulence convergence, and physical qualification remain open. |
 
 ## Merge/promotion rules
 
