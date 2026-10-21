@@ -53,3 +53,31 @@ the importer for production cases, qualify representative ASCII cases against
 the OpenFOAM source mesh/fields and the resulting case.cfdx.h5, including
 cell counts, face ownership, boundary patch ranges, field locations, and
 numeric values. Binary support requires a separate implementation and fixtures.
+
+
+## Running CFDX from an imported result field
+
+The production incompressible solver supports an explicit, opt-in velocity
+initialization from the cell-centred OpenFOAM field stored at
+`/fields/vector/U`:
+
+```bash
+cfdx-io convert /path/to/openfoam-case --results --output /path/to/converted
+cfdx_production_solver --mesh /path/to/converted/case.cfdx.h5 \
+  --output-dir /path/to/run --iterations 500 --initial-velocity-field
+```
+
+The option is intentionally explicit; without it, existing CFDX initialization
+behavior is unchanged. It requires a CFDX case HDF5 file containing a vector
+field named `U`, with exactly one finite three-component value per cell.
+Missing fields, wrong cell counts, non-finite values, or a non-case mesh input
+fail clearly rather than falling back to a uniform velocity.
+
+Only velocity is seeded from the imported result in this first integration
+step. Pressure remains the case-declared initial pressure (or zero when none is
+declared). OpenFOAM pressure is not imported as the production pressure initial
+guess because common incompressible cases store kinematic pressure while CFDX's
+production field is declared in pascals; the current interchange metadata does
+not yet provide a qualified dimensional conversion. The imported field is an
+initial guess, not a claim that OpenFOAM boundary conditions, turbulence,
+thermal/radiation models, or discretization schemes are numerically equivalent.
