@@ -27,6 +27,7 @@ _ADAPTER_REGISTRY = {
     "openfoam": (OpenFOAMAdapter, ()),
 }
 
+
 def detect_adapter(path: str | Path) -> str | None:
     """Detect solver type from file extension and content."""
     p = Path(str(path))
@@ -81,6 +82,7 @@ def detect_adapter(path: str | Path) -> str | None:
 
     return None
 
+
 def create_adapter(solver_name: str):
     """Create an adapter instance by solver name."""
     entry = _ADAPTER_REGISTRY.get(solver_name.lower())
@@ -88,6 +90,7 @@ def create_adapter(solver_name: str):
         raise ValueError(f"Unknown solver: {solver_name}")
     adapter_cls = entry[0]
     return adapter_cls()
+
 
 def convert(
     case_path: str | Path,
@@ -163,6 +166,7 @@ def convert(
             write_case_cfdx_h5(result, out_dir / "case.cfdx.h5")
 
     return result
+
 
 def get_available_adapters() -> list[str]:
     """Return list of available solver adapter names."""
