@@ -11,13 +11,13 @@ import json
 from pathlib import Path
 
 from cfdx.io.adapters.fluent import FluentAdapter
-from cfdx.io.adapters.su2 import Su2Adapter
-from cfdx.io.adapters.starccm import StarCCMAdapter
-from cfdx.io.adapters.saturne import SaturneAdapter
 from cfdx.io.adapters.openfoam import OpenFOAMAdapter
+from cfdx.io.adapters.saturne import SaturneAdapter
+from cfdx.io.adapters.starccm import StarCCMAdapter
+from cfdx.io.adapters.su2 import Su2Adapter
+from cfdx.io.gap_analysis import GapAnalysisReport
 from cfdx.io.interfaces import ConversionResult
 from cfdx.io.schema import SourceInfo
-from cfdx.io.gap_analysis import GapAnalysisReport
 
 
 _ADAPTER_REGISTRY = {
@@ -34,9 +34,8 @@ def detect_adapter(path: str | Path) -> str | None:
     p = Path(str(path))
 
     # Check for OpenFOAM case directory first
-    if p.is_dir():
-        if (p / "constant" / "polyMesh").exists():
-            return "openfoam"
+    if p.is_dir() and (p / "constant" / "polyMesh").exists():
+        return "openfoam"
 
     ext = p.suffix.lower()
     # Extension-based detection
