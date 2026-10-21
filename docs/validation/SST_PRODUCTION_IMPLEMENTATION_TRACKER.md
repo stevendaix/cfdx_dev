@@ -46,7 +46,8 @@
 - [ ] Define initialization and restart contracts; reject missing/inconsistent fields.
 - [ ] Define physically consistent wall/inlet/outlet boundary values for both transports.
 - [ ] Compute wall distance from the production mesh and validate positivity/finiteness.
-- [ ] Compute boundary-aware velocity gradients and SST strain-rate invariants.
+- [x] Provide a boundary-aware SST strain-rate reconstruction using explicit fixed-value velocity patch data; retain the existing zero-gradient overload unchanged.
+- [ ] Wire production velocity BCs into the boundary-aware strain-rate path and qualify gradient accuracy on representative meshes.
 - [ ] Compute `F1`/`F2` from the current accepted state and documented SST equations.
 - [ ] Add state rollback for every turbulence field, not just `U` and `p`.
 
@@ -173,3 +174,15 @@ u_t) using the SST closure before validating the complete state.
 | 2026-10-20 | PR #1000 merged as `62166fec`: resolved wall-(omega) face operator and mesh-level face assignment regression; all applicable required workflows on exact head passed. Long validation, thermal/radiation regression and physical SST campaigns were skipped by path filters. | Wall operator component complete; no RANS enablement. |
 | 2026-10-20 | Began explicit production-state initializer: requires case-declared initial (k,omega), valid SST boundary metadata, and caller-supplied mesh-sized wall-distance/strain-rate fields; initializes closure (
 u_t) and rejects invalid input. | Initialization contract only; production caller/restart/coupled iteration remain open. |
+
+
+### T1 implementation increment — boundary-aware SST strain rate (PR in progress)
+
+- [x] Add an explicit patch-name to fixed velocity-value overload for SST strain-rate reconstruction.
+- [x] Preserve zero-gradient extrapolation for patches without a fixed-value entry and exclude EMPTY extrusion faces from the gradient sum.
+- [x] Reject non-finite velocity and boundary values, invalid face ownership, missing boundary patch assignment and invalid cell volumes.
+- [x] Add regression coverage proving a fixed-value inlet changes the computed strain invariant and non-finite boundary values fail closed.
+- [ ] Connect the production driver's declared velocity BCs to this overload.
+- [ ] Verify gradient accuracy with boundary-aware manufactured fields on representative meshes before using it for SST production coupling.
+
+This is a prerequisite utility only. It does not change production selection, call SST transport from the nonlinear loop, or claim physical qualification.
