@@ -211,3 +211,131 @@ def test_openfoam_setup_dictionaries_map_supported_controls(tmp_path, monkeypatc
         and finding.severity.value == "unsupported_nonblocking"
         for finding in result.gap_report.findings
     )
+
+
+def test_native_openfoam_reader_parses_ascii_scalar_and_vector_fields(tmp_path):
+    from cfdx.io.openfoam_case_reader import read_openfoam_time_fields
+
+    case = tmp_path / "case"
+    time_dir = case / "10"
+    time_dir.mkdir(parents=True)
+    header = """FoamFile
+{
+    version 2.0;
+    format ascii;
+    class volScalarField;
+    location "10";
+    object p;
+}
+"""
+    (time_dir / "p").write_text(
+        header
+        + """dimensions [0 2 -2 0 0 0 0];
+internalField nonuniform List<scalar>
+2
+(
+    101325
+    101300
+);
+boundaryField
+{
+    walls
+    {
+        type fixedValue;
+        value uniform 0;
+    }
+}
+"""
+    )
+    (time_dir / "U").write_text(
+        header.replace("volScalarField", "volVectorField").replace("object p", "object U")
+        + """dimensions [0 1 -1 0 0 0 0];
+internalField uniform (1 0 0);
+boundaryField
+{
+    walls
+    {
+        type fixedValue;
+        value uniform (0 0 0);
+    }
+}
+"""
+    )
+
+    fields = read_openfoam_time_fields(case, "latest", cell_count=2)
+
+    assert fields["p"]["class"] == "volScalarField"
+    assert fields["p"]["dimensions"] == (0, 2, -2, 0, 0, 0, 0)
+    np.testing.assert_array_equal(fields["p"]["internal"], [101325.0, 101300.0])
+    assert fields["p"]["boundary"]["walls"]["type"] == "fixedValue"
+    assert fields["U"]["class"] == "volVectorField"
+    np.testing.assert_array_equal(fields["U"]["internal"], [[1.0, 0.0, 0.0]] * 2)
+
+
+def test_native_openfoam_reader_parses_setup_dictionaries(tmp_path):
+    from cfdx.io.openfoam_case_reader import read_openfoam_dictionaries
+
+    system = tmp_path / "system"
+    system.mkdir()
+    (system / "controlDict").write_text(
+        """FoamFile
+{
+    version 2.0;
+    format ascii;
+    class dictionary;
+    object controlDict;
+}
+application pimpleFoam;
+deltaT 0.005;
+endTime 2;
+"""
+    )
+    (system / "fvSchemes").write_text(
+        """FoamFile
+{
+    version 2.0;
+    format ascii;
+    class dictionary;
+    object fvSchemes;
+}
+ddtSchemes
+{
+    default Euler;
+}
+divSchemes
+{
+    default none;
+    div(phi,U) Gauss linearUpwind grad(U);
+}
+"""
+    )
+
+    dictionaries = read_openfoam_dictionaries(tmp_path)
+
+    assert dictionaries["system/controlDict"]["application"] == "pimpleFoam"
+    assert dictionaries["system/controlDict"]["deltaT"] == 0.005
+    assert dictionaries["system/controlDict"]["endTime"] == 2
+    assert dictionaries["system/fvSchemes"]["ddtSchemes"]["default"] == "Euler"
+    assert dictionaries["system/fvSchemes"]["divSchemes"]["default"] == "none"
+
+
+def test_native_openfoam_reader_rejects_binary_files_explicitly(tmp_path):
+    from cfdx.io.openfoam_case_reader import read_openfoam_time_fields
+
+    time_dir = tmp_path / "0"
+    time_dir.mkdir()
+    (time_dir / "p").write_text(
+        """FoamFile
+{
+    version 2.0;
+    format binary;
+    class volScalarField;
+    object p;
+}
+"""
+    )
+
+    import pytest
+
+    with pytest.raises(ValueError, match="Binary OpenFOAM files"):
+        read_openfoam_time_fields(tmp_path, "latest")
