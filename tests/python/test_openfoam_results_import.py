@@ -441,3 +441,30 @@ def test_native_ascii_polymesh_is_parsed_from_files(tmp_path):
     assert mesh["cfdx_csr"]["boundary_patch_assignment"] == [
         {"name": "walls", "type": "wall", "face_ids": [0, 1, 2, 3]}
     ]
+
+
+def test_native_reader_rejects_volume_field_cell_count_mismatch(tmp_path):
+    from cfdx.io.openfoam_case_reader import read_openfoam_time_fields
+
+    time_dir = tmp_path / "1"
+    time_dir.mkdir()
+    (time_dir / "p").write_text(
+        """FoamFile
+{
+    version 2.0;
+    format ascii;
+    class volScalarField;
+    object p;
+}
+dimensions [0 2 -2 0 0 0 0];
+internalField nonuniform List<scalar>
+2
+(
+    1
+    2
+);
+"""
+    )
+
+    with pytest.raises(ValueError, match="mesh has 3 cells"):
+        read_openfoam_time_fields(tmp_path, "latest", cell_count=3)
