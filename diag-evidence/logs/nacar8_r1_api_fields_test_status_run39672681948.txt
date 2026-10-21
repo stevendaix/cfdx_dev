@@ -1,0 +1,10 @@
+variant=r1_api_fields
+wt_ref=28e4d183b258997c5b923b2e05569263e900f2ff
+pin_subject=fix(sst): preserve velocity boundary data when restoring restart state (#1018)
+outcome=INCONCLUSIVE_BUILD
+test_rc=none
+run_id=39672681948
+
+--- level markers reached ---
+no_level_marker
+--- failure line (if any) ---
