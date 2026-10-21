@@ -1,0 +1,244 @@
+name: PR1016 fast ctest failure capture (diag)
+
+# DIAG-ONLY — branche ci/long-campaign-diagnostics (JAMAIS merger).
+# Capture-only : AUCUNE instrumentation du code. Replique le step "Run fast CTest"
+# du job "Build and test (Release)" de cfdx-ci.yml sur le head epingle de la
+# branche feat/buoyancy-flow-energy-loop e2bacc50bee82bf7de1fcb3e83e33223b9b5ec2e
+# (PR #1016, etape 4 flottabilite, issue #885). La CI de CE head echoue encore sur
+# Release + DebugSanitizers (run 39608693065, step "Run fast CTest" exit 8) alors
+# que le test existant test_production_energy_stage_vv a ete adapte au contrat
+# buoyant dans le commit e2bacc50 lui-meme.
+# But : identifier QUELS tests quick echouent sur ce head epingle, avec la sortie
+# complete des assertions (ctest --rerun-failed --output-on-failure).
+# Suspect prioritaire : le nouveau test test_production_buoyancy_outer_loop_vv
+# (labels qualification;validation;phase13, PAS de label long -> fast CTest),
+# mais AUCUNE conclusion avant la capture.
+# Verdicts fail-closed : EVIDENCE_COMPLETE (seul vert — diagnostic, PAS un
+# PASS/FAIL numerique), INCONCLUSIVE_BUILD / NO_FAILURES_REPRODUCED /
+# INCONCLUSIVE_NO_FAILED_LIST / INCONCLUSIVE_RERUN_NO_OUTPUT.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/pr1016_fastctest_marker.txt'
+      - '.github/workflows/pr1016_fastctest_failure_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: pr1016-fastctest-diag
+  cancel-in-progress: false
+
+env:
+  HEAD_SHA_PIN: e2bacc50bee82bf7de1fcb3e83e33223b9b5ec2e
+  PIN_BRANCH: feat/buoyancy-flow-energy-loop
+  EVID: diag-evidence/logs
+
+jobs:
+  fast-ctest-diag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve pinned ref and create worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin "$PIN_BRANCH"
+          git cat-file -e "$HEAD_SHA_PIN^{commit}" \
+            || { echo "::error::pinned head SHA not resolvable: $HEAD_SHA_PIN"; exit 1; }
+          head_now=$(git rev-parse "origin/$PIN_BRANCH")
+          if [ "$head_now" != "$HEAD_SHA_PIN" ]; then
+            echo "::error::branch head moved: $head_now != $HEAD_SHA_PIN (CI restarted on the new head; this capture would be stale)"
+            exit 1
+          fi
+          git worktree add "$RUNNER_TEMP/head" "$HEAD_SHA_PIN"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "head_sha=$HEAD_SHA_PIN (pinned head of $PIN_BRANCH, PR #1016, capture-only, no instrumentation)"
+            echo "context: CI run 39608693065 fails Release+DebugSanitizers at 'Run fast CTest' exit 8; energy-stage vv contract adapted in e2bacc50"
+            echo "note: pyyaml added to the diag venv (deviation documented in the pr942 diag v2)"
+            echo "scope: replicate CI Release 'Run fast CTest' (-LE long) + rerun-failed full output"
+            echo "rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1016x_fastctest_meta_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Install Python mesh/I/O stack
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core pyyaml > "$GITHUB_WORKSPACE/$EVID/pr1016x_fastctest_pip_run$GITHUB_RUN_ID.log" 2>&1
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+
+      - name: Configure (Release)
+        run: |
+          cmake -S "$RUNNER_TEMP/head" -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Build
+        run: |
+          set -o pipefail
+          cmake --build build --parallel 8 > /tmp/build_raw.log 2>&1
+          rc=$?
+          {
+            echo "build_exit=$rc"
+            echo "--- build log (tail 400) ---"
+            tail -n 400 /tmp/build_raw.log
+            echo "--- build errors (if any) ---"
+            grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' /tmp/build_raw.log | tail -n 120 || true
+          } > "$GITHUB_WORKSPACE/$EVID/pr1016x_fastctest_build_run$GITHUB_RUN_ID.log"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::build failed on pinned head — see evidence log"
+            exit 1
+          fi
+
+      - name: Run fast CTest (replica of the CI step)
+        run: |
+          set +e
+          ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4 \
+            > "$GITHUB_WORKSPACE/$EVID/pr1016x_fastctest_ctest_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "ctest_exit=$rc" > "$GITHUB_WORKSPACE/$EVID/pr1016x_fastctest_status_run$GITHUB_RUN_ID.txt"
+          echo "ctest_exit=$rc"
+          tail -n 40 "$GITHUB_WORKSPACE/$EVID/pr1016x_fastctest_ctest_run$GITHUB_RUN_ID.log"
+
+      - name: Rerun failed tests with full output
+        run: |
+          set +e
+          ctest --test-dir build --rerun-failed --output-on-failure \
+            > "$GITHUB_WORKSPACE/$EVID/pr1016x_fastctest_rerun_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "rerun_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/pr1016x_fastctest_status_run$GITHUB_RUN_ID.txt"
+          echo "rerun_exit=$rc"
+
+      - name: Analyze and classify
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os
+          import sys
+
+          run_id = os.environ["GITHUB_RUN_ID"]
+          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+          ctest_log = os.path.join(evid, "pr1016x_fastctest_ctest_run" + run_id + ".log")
+          rerun_log = os.path.join(evid, "pr1016x_fastctest_rerun_run" + run_id + ".log")
+          status = os.path.join(evid, "pr1016x_fastctest_status_run" + run_id + ".txt")
+
+          def write_verdict(v, lines):
+              path = os.path.join(evid, "pr1016x_fastctest_verdict_run" + run_id + ".txt")
+              with open(path, "w") as fh:
+                  fh.write("verdict=" + v + "\n")
+                  for line in lines:
+                      fh.write(line + "\n")
+              print("verdict=" + v)
+
+          if not os.path.exists(ctest_log):
+              write_verdict("INCONCLUSIVE_BUILD", ["ctest log absent (build or ctest step did not run)"])
+              sys.exit(0)
+
+          with open(ctest_log, errors="replace") as fh:
+              lines = fh.read().splitlines()
+
+          failed = []
+          in_failed = False
+          for line in lines:
+              if line.strip().startswith("The following tests FAILED:"):
+                  in_failed = True
+                  continue
+              if in_failed:
+                  stripped = line.strip()
+                  if not stripped:
+                      if failed:
+                          break
+                      continue
+                  if stripped.startswith("- "):
+                      failed.append(stripped[2:].strip())
+
+          with open(os.path.join(evid, "pr1016x_fastctest_failedlist_run" + run_id + ".txt"), "w") as fh:
+              for t in failed:
+                  fh.write(t + "\n")
+
+          ctest_exit = None
+          if os.path.exists(status):
+              with open(status) as fh:
+                  for line in fh:
+                      if line.startswith("ctest_exit="):
+                          ctest_exit = int(line.split("=", 1)[1].strip())
+                          break
+
+          if ctest_exit == 0 and not failed:
+              write_verdict("NO_FAILURES_REPRODUCED",
+                            ["fast ctest PASSED on the pinned head alone —",
+                             "the CI failure likely involves the merge ref or runner variance; read the raw ctest log before concluding"])
+              sys.exit(0)
+          if not failed:
+              write_verdict("INCONCLUSIVE_NO_FAILED_LIST",
+                            ["ctest_exit=" + str(ctest_exit) + " but failed list not parsed — read the raw ctest log"])
+              sys.exit(0)
+
+          rerun_text = ""
+          if os.path.exists(rerun_log):
+              with open(rerun_log, errors="replace") as fh:
+                  rerun_text = fh.read()
+          if not rerun_text.strip():
+              write_verdict("INCONCLUSIVE_RERUN_NO_OUTPUT", ["rerun log empty"])
+              sys.exit(0)
+
+          write_verdict("EVIDENCE_COMPLETE", ["failed_tests=" + str(len(failed))] + failed)
+          PY
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: fast ctest failure capture on buoyancy branch head e2bacc50 run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Post comment to PR #1016 (best effort)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          {
+            echo "Diagnostic fast-ctest capture-only (head epingle \`$HEAD_SHA_PIN\`) : verdict \`$(cat "$GITHUB_WORKSPACE/$EVID/pr1016x_fastctest_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null | head -n 1 || echo MISSING)\`."
+            echo ""
+            echo "\`\`\`"
+            cat "$GITHUB_WORKSPACE/$EVID/pr1016x_fastctest_failedlist_run$GITHUB_RUN_ID.txt" 2>/dev/null || true
+            echo "\`\`\`"
+            echo ""
+            echo "Evidence : \`diag-evidence/logs/pr1016x_fastctest_*_run$GITHUB_RUN_ID.*\` — tests quick en echec + sortie complete (rerun-failed --output-on-failure) — sur \`ci/long-campaign-diagnostics\`. DIAG-ONLY, pas un verdict numerique."
+          } > /tmp/comment.txt
+          gh pr comment 1016 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.txt || echo "comment post failed (best effort)"
+
+      - name: Final gate
+        if: always()
+        run: |
+          v=$(head -n 1 "$GITHUB_WORKSPACE/$EVID/pr1016x_fastctest_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "verdict=MISSING")
+          echo "Final gate: $v"
+          if [ "$v" != "verdict=EVIDENCE_COMPLETE" ]; then
+            echo "::error::$v — see diag-evidence/logs/pr1016x_fastctest_*_run$GITHUB_RUN_ID.*"
+            exit 1
+          fi
