@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <map>
+#include <map>
 #include <stdexcept>
 #include <vector>
 
@@ -114,13 +115,31 @@ compute_sst_strain_rate_with_boundary_values(
     const std::size_t n_faces = mesh.n_faces();
     const std::size_t n_patches = mesh.boundary().n_patches();
     std::vector<std::size_t> face_patch(n_faces, n_patches);
+    std::map<std::string, PatchType> patch_types;
     for (std::size_t patch = 0; patch < n_patches; ++patch) {
-        for (const auto face : mesh.boundary().patch(patch).face_ids) {
+        const auto& boundary_patch = mesh.boundary().patch(patch);
+        if (!patch_types.emplace(boundary_patch.name, boundary_patch.type).second)
+            throw std::invalid_argument(
+                "compute_sst_strain_rate_with_boundary_values: duplicate boundary patch name");
+        for (const auto face : boundary_patch.face_ids) {
             if (face >= n_faces)
                 throw std::invalid_argument(
                     "compute_sst_strain_rate_with_boundary_values: patch face out of range");
+            if (face_patch[face] != n_patches)
+                throw std::invalid_argument(
+                    "compute_sst_strain_rate_with_boundary_values: face belongs to multiple patches");
             face_patch[face] = patch;
         }
+    }
+    for (const auto& [patch_name, values] : fixed_boundary_values) {
+        (void)values;
+        const auto found = patch_types.find(patch_name);
+        if (found == patch_types.end())
+            throw std::invalid_argument(
+                "compute_sst_strain_rate_with_boundary_values: fixed-value boundary references an unknown patch");
+        if (found->second == PatchType::EMPTY)
+            throw std::invalid_argument(
+                "compute_sst_strain_rate_with_boundary_values: EMPTY patches cannot prescribe velocity values");
     }
 
     const auto gradient_component = [&](std::size_t component) {
