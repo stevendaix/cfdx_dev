@@ -356,6 +356,19 @@ int main()
             std::invalid_argument);
     });
 
+    run_case("sst_strain_rate_rejects_unknown_fixed_value_patch", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        Field<double, Location::CELL> velocity(mesh.n_cells(), "U", "m/s", 3);
+        velocity.fill(0.0);
+        const std::map<std::string, std::array<double, 3>> fixed_values{
+            {"missing_patch", {1.0, 0.0, 0.0}}
+        };
+        EXPECT_THROW(
+            compute_sst_strain_rate_with_boundary_values(velocity, mesh, fixed_values),
+            std::invalid_argument);
+    });
+
     run_case("sst_blending_rejects_invalid_distance", [] {
         EXPECT_THROW(compute_sst_blending(0.5, 10.0, 0.0, 1.5e-5, 0.09), std::invalid_argument);
     });
