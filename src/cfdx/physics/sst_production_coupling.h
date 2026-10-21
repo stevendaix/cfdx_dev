@@ -4,6 +4,7 @@
 #include "cfdx/physics/sst_solver.h"
 #include "cfdx/physics/sst_case_contract.h"
 #include "cfdx/physics/sst_strain_rate.h"
+#include "cfdx/physics/mesh_wall_distance.h"
 
 #include <algorithm>
 #include <array>
@@ -405,6 +406,37 @@ inline SSTProductionState initialize_sst_production_state(
         state.k, state.omega, state.strain_rate, F2, controls, state.nu_t);
     validate_sst_production_state(state, n);
     return state;
+}
+
+
+// Build the production-owned SST state from the actual carrier field and mesh.
+// Wall distance and strain rate are derived here rather than supplied as
+// disconnected caller-created arrays, so both use the current production
+// mesh and explicit fixed-value velocity boundary data.
+inline SSTProductionState initialize_sst_production_state_from_mesh(
+    const cfdx::core::Mesh& mesh,
+    const cfdx::io::CaseSetup& setup,
+    const TurbulenceTransportControls& controls,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+    const std::map<std::string, std::array<double, 3>>& fixed_velocity_boundary_values,
+    const std::vector<std::string>& wall_patch_names = {})
+{
+    if (velocity.size() != mesh.n_cells() || velocity.dimension() != 3)
+        throw std::invalid_argument(
+            "initialize_sst_production_state_from_mesh: velocity field shape mismatch");
+
+    const FvGeometry geometry = build_fv_geometry(mesh);
+    const auto wall_distance =
+        compute_mesh_cell_wall_distance(mesh, geometry, wall_patch_names);
+    const auto strain_field =
+        compute_sst_strain_rate_with_boundary_values(
+            velocity, mesh, fixed_velocity_boundary_values);
+    std::vector<double> strain_rate(mesh.n_cells());
+    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+        strain_rate[cell] = strain_field(cell);
+
+    return initialize_sst_production_state(
+        mesh, setup, controls, wall_distance.distance, strain_rate);
 }
 
 struct SSTRuntimeBoundaryContract {
