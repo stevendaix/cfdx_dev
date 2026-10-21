@@ -1,0 +1,3 @@
+v0_master_pristine=FAIL_DIVERGED
+v1_diag_boundary=FAIL_DIVERGED
+v2_no_deferred=FAIL_DIVERGED
