@@ -6,6 +6,7 @@
 #include "cfdx/physics/sst_strain_rate.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
