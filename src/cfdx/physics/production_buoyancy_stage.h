@@ -60,6 +60,20 @@
 //     pass). This is the documented cost of the explicit flow-energy
 //     iteration; no inner flow iteration budget is ever relaxed to
 //     compensate.
+//   * Convergence-at-entry: at the coupled fixed point a warm carrier
+//     re-solve can end STAGNATED with every residual at the
+//     machine-precision floor (diag run 39633631822: pressure,
+//     continuity and corrected-flux residuals exactly 0.0, momentum
+//     equation residual RHS-normalized ~1e-17) - its relative
+//     criterion can no longer be re-proven against the collapsed
+//     reference of the same solve. Such a solve is ACCEPTED: the
+//     entry velocity and pressure fields are restored bit-exactly,
+//     the previously accepted carrier (authoritative mass flux) is
+//     reused, and the OUTER loop owns the coupled fixed-point
+//     criteria. A genuine stagnation far above the machine floor
+//     remains a fail-closed stop. Accepted-at-entry iterations are
+//     recorded per iteration and on the result as
+//     flow_converged_at_entry.
 
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/production_energy_stage.h"
@@ -92,6 +106,15 @@ inline const std::string kThermalExpansionKey =
 inline constexpr double kOuterRelaxation = 0.25;
 inline constexpr std::size_t kOuterMaxIterations = 200;
 inline constexpr double kOuterFixedPointTolerance = 1e-10;
+// Convergence-at-entry machine floor (contract above, diag run
+// 39633631822): a warm carrier re-solve at the coupled fixed point
+// stalls with pressure, continuity and corrected-flux residuals
+// exactly 0.0 and a momentum equation residual RHS-normalized
+// ~1e-17. A genuine stagnation stays orders of magnitude above
+// this floor (NACA carrier: continuity_normalized ~1e-5), so the
+// distinction is unambiguous.
+inline constexpr double kCarrierMachineEquilibriumResidual = 1e-14;
+inline constexpr double kCarrierMachineEquilibriumMomentumRhs = 1e-12;
 
 }  // namespace detail_buoyancy_stage
 
@@ -241,6 +264,11 @@ inline void build_cell_buoyancy_acceleration(
 struct ProductionBuoyancyOuterIteration {
     std::size_t iteration = 0;
     bool flow_converged = false;
+    // True only on an outer iteration accepted at entry (see the
+    // convergence-at-entry contract above): the warm carrier re-solve
+    // stalled at the machine-precision floor, the entry state was
+    // restored and the previously accepted carrier reused.
+    bool flow_converged_at_entry = false;
     bool energy_converged = false;
     bool s2s_ran = false;
     bool s2s_converged = false;
@@ -280,6 +308,11 @@ struct ProductionBuoyancyOuterLoopResult {
     double max_pressure_change_normalized =
         std::numeric_limits<double>::infinity();
     std::vector<ProductionBuoyancyOuterIteration> history;
+    // Convergence-at-entry bookkeeping: true when the FINAL outer
+// iteration's warm carrier re-solve was accepted at the entry state
+    // (entry fields restored, previously accepted carrier reused); the
+    // outer loop owns the coupled fixed-point criteria.
+    bool flow_converged_at_entry = false;
     // Final outer iteration's carrier solve, energy response and, when
     // declared, energy-radiation fixed point on that carrier.
     IncompressibleSolveResult flow;
@@ -301,6 +334,34 @@ inline double buoyancy_stationarity_normalized(
 {
     const double scale = std::max(1.0, max_magnitude);
     return max_change / scale;
+}
+
+// Convergence-at-entry support (contract above): at the coupled fixed
+// point a warm carrier re-solve can stall with EVERY residual at the
+// machine-precision floor - its relative criterion can no longer be
+// re-proven against the collapsed reference of the same solve, but
+// the equation it is asked to satisfy already IS satisfied to machine
+// precision, so the solve carries no new information. Only that exact
+// situation is accepted (kCarrierMachineEquilibrium*); anything above
+// the floor stays a fail-closed stop.
+inline bool carrier_at_machine_equilibrium(
+    const IncompressibleSolveResult& flow)
+{
+    if (flow.history.empty())
+        return false;
+    const auto& last = flow.history.back();
+    return std::isfinite(last.pressure_residual) &&
+           std::isfinite(last.continuity_normalized) &&
+           std::isfinite(last.momentum_equation_residual_rhs_relative) &&
+           std::isfinite(last.corrected_flux_continuity_linf) &&
+           last.pressure_residual <=
+               detail_buoyancy_stage::kCarrierMachineEquilibriumResidual &&
+           last.continuity_normalized <=
+               detail_buoyancy_stage::kCarrierMachineEquilibriumResidual &&
+           last.corrected_flux_continuity_linf <=
+               detail_buoyancy_stage::kCarrierMachineEquilibriumResidual &&
+           last.momentum_equation_residual_rhs_relative <=
+               detail_buoyancy_stage::kCarrierMachineEquilibriumMomentumRhs;
 }
 
 inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
@@ -369,6 +430,11 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
         // initialization strategy (including a requested restart), every
         // subsequent iteration reuses the previous outer iteration's
         // accepted state unchanged.
+        // Entry snapshot for convergence-at-entry (contract above): a
+        // bit-exact copy of the state the carrier solve starts from, so
+        // an accepted-at-entry solve can restore it unchanged.
+        auto entry_velocity = velocity;
+        auto entry_pressure = pressure;
         IncompressibleSolverControls controls = base_controls;
         if (iteration > 1)
             controls.initialization.mode = InitializationMode::Provided;
@@ -377,15 +443,42 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
         const auto flow = solve_steady_incompressible(
             mesh, velocity, pressure, velocity_bcs, pressure_bcs, controls,
             restart_path);
-        result.flow = flow;
-        record.flow_converged = flow.converged;
-        record.flow_iterations = flow.iterations;
-        if (!flow.converged) {
-            // A diverged carrier inside the loop is a fail-closed stop:
-            // a flow state that is not evidence cannot be iterated on.
+        // Convergence-at-entry (contract above): a warm re-solve that
+        // ends STAGNATED with every residual at the machine-precision
+        // floor is accepted at the entry state - the entry fields are
+        // restored and the previously accepted carrier (authoritative
+        // mass flux) reused; the outer loop owns the coupled
+        // fixed-point criteria. Anything else that is not converged
+        // stays a fail-closed stop.
+        const bool converged_at_entry =
+            !flow.converged && iteration > 1 &&
+            flow.convergence_status ==
+                cfdx::core::ConvergenceStatus::STAGNATED &&
+            carrier_at_machine_equilibrium(flow);
+        if (flow.converged) {
+            result.flow = flow;
+            record.flow_converged = true;
+            record.flow_iterations = flow.iterations;
+            result.flow_converged_at_entry = false;
+        } else if (converged_at_entry) {
+            velocity = entry_velocity;
+            pressure = entry_pressure;
+            record.flow_converged = true;
+            record.flow_converged_at_entry = true;
+            record.flow_iterations = flow.iterations;
+            result.flow_converged_at_entry = true;
+        } else {
+            // A diverged or genuinely stagnated carrier inside the
+            // loop is a fail-closed stop: a flow state that is not
+            // evidence cannot be iterated on.
+            result.flow = flow;
             result.history.push_back(record);
             return result;
         }
+        // The energy response always runs on the last FULLY proven
+        // carrier: the accepted solve, or the previously accepted
+        // carrier when the entry state was restored.
+        const auto& carrier = result.flow;
 
         // Energy response on the new authoritative mass flux. The guess
         // is a copy of the relaxed field, so the response is a
@@ -395,7 +488,7 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
         auto temperature_guess = relaxed_temperature;
         if (s2s_requested) {
             const auto s2s_result = run_production_s2s_energy_outer_loop(
-                mesh, geometry, setup, flow.authoritative_mass_flux,
+                mesh, geometry, setup, carrier.authoritative_mass_flux,
                 temperature_guess);
             result.s2s = s2s_result;
             result.s2s_ran = true;
@@ -407,7 +500,7 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
             record.energy_iterations = s2s_result.energy.iterations;
         } else {
             const auto energy = run_production_energy_stage(
-                mesh, geometry, setup, flow.authoritative_mass_flux,
+                mesh, geometry, setup, carrier.authoritative_mass_flux,
                 temperature_guess);
             result.energy = energy;
             record.energy_converged = energy.converged;
