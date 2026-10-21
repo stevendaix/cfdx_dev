@@ -67,7 +67,9 @@ def _write_hex_case(case: Path) -> None:
     )
 
 
-def _write_velocity(case: Path, time: str, values: list[tuple[float, float, float]]) -> None:
+def _write_velocity(
+    case: Path, time: str, values: list[tuple[float, float, float]]
+) -> None:
     folder = case / time
     folder.mkdir()
     value_list = "\n".join(f"    ({x} {y} {z})" for x, y, z in values)
