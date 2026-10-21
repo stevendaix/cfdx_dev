@@ -469,3 +469,53 @@ internalField nonuniform List<scalar>
 
     with pytest.raises(ValueError, match="mesh has 3 cells"):
         read_openfoam_time_fields(tmp_path, "latest", cell_count=3)
+
+
+def test_initial_fields_expand_uniform_scalars_vectors_and_reject_tensors(tmp_path):
+    zero_dir = tmp_path / "0"
+    zero_dir.mkdir()
+    (zero_dir / "p").write_text(
+        """FoamFile
+{
+    format ascii;
+    class volScalarField;
+    object p;
+}
+internalField uniform 101325;
+"""
+    )
+    (zero_dir / "U").write_text(
+        """FoamFile
+{
+    format ascii;
+    class volVectorField;
+    object U;
+}
+internalField uniform (1 0 0);
+"""
+    )
+    (zero_dir / "R").write_text(
+        """FoamFile
+{
+    format ascii;
+    class volSymmTensorField;
+    object R;
+}
+internalField uniform (0 0 0 0 0 0);
+"""
+    )
+
+    adapter = OpenFOAMAdapter()
+    adapter.setup.mesh_info.n_cells = 2
+    result = ConversionResult(source=SourceInfo())
+
+    assert adapter._parse_fields(zero_dir, result) == 2
+    assert [name for name, _ in result.scalar_fields] == ["p"]
+    assert [name for name, _ in result.vec_fields] == ["U"]
+    np.testing.assert_array_equal(result.scalar_fields[0][1], [101325.0, 101325.0])
+    np.testing.assert_array_equal(result.vec_fields[0][1], [[1.0, 0.0, 0.0]] * 2)
+    assert any(
+        finding.category == "fields"
+        and "volSymmTensorField" in finding.message
+        for finding in result.gap_report.findings
+    )
