@@ -176,13 +176,26 @@ u_t) using the SST closure before validating the complete state.
 u_t) and rejects invalid input. | Initialization contract only; production caller/restart/coupled iteration remain open. |
 
 
-### T1 implementation increment — boundary-aware SST strain rate (PR in progress)
+### T1 implementation increment — boundary-aware SST strain rate (PR #1015 merged)
 
 - [x] Add an explicit patch-name to fixed velocity-value overload for SST strain-rate reconstruction.
 - [x] Preserve zero-gradient extrapolation for patches without a fixed-value entry and exclude EMPTY extrusion faces from the gradient sum.
 - [x] Reject non-finite velocity and boundary values, invalid face ownership, missing boundary patch assignment and invalid cell volumes.
 - [x] Add regression coverage proving a fixed-value inlet changes the computed strain invariant and non-finite boundary values fail closed.
-- [ ] Connect the production driver's declared velocity BCs to this overload.
-- [ ] Verify gradient accuracy with boundary-aware manufactured fields on representative meshes before using it for SST production coupling.
+- [x] Verify an affine velocity field with fixed-value boundary data on an orthogonal box mesh (PR #1017).
+- [x] Preserve fixed velocity boundary values when reconstructing strain rate from a DAT-restored velocity (PR #1018).
+- [ ] Connect the production driver's declared velocity BCs to this overload for the live solve.
+- [ ] Verify gradient accuracy with boundary-aware manufactured fields on representative non-orthogonal meshes before using it for SST production coupling.
 
-This is a prerequisite utility only. It does not change production selection, call SST transport from the nonlinear loop, or claim physical qualification.
+This remains a prerequisite utility only. Restart reconstruction now accepts explicit fixed-value velocity patch data, but the live production nonlinear loop still does not call SST transport or use SST-updated viscosity.
+
+
+### T1 implementation increment — restart boundary-data correctness (PR #1018 merged)
+
+- [x] Expose an explicit fixed-velocity-boundary map on the DAT SST restoration helper.
+- [x] Reconstruct restored strain rate with the boundary-aware gradient overload instead of silently assuming zero-gradient boundaries.
+- [x] Add a DAT restart regression with non-zero inlet velocity and assert finite, positive restored strain rate.
+- [ ] Wire restart restoration into the production driver's actual case/restart lifecycle.
+- [ ] Prove continuous-versus-restarted production trajectory equivalence, including mass flux and all SST-owned fields.
+
+Evidence: PR #1017 merged the affine-field boundary reconstruction test; PR #1018 merged the restart-boundary fix. The production RANS selector remains fail-closed because this work repairs restart reconstruction only; it does not integrate SST into the production outer iteration.
