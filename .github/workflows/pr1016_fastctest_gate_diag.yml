@@ -1,0 +1,390 @@
+name: PR1016 buoyancy outer-loop gate diagnostics (diag v2)
+
+# DIAG-ONLY — branche ci/long-campaign-diagnostics (JAMAIS merger).
+# Instrumentation d'EVIDENCE uniquement sur une COPIE du test dans un worktree
+# epingle : le fichier du pin e2bacc50 n'est jamais committe ni modifié, et le
+# bloc insereé ne fait qu'IMPRIMER les champs verifiés du résultat de la boucle
+# AVANT les EXPECT. Aucune tolérance/oracle/gate/budget n'est modifié ; le
+# verdict de CE workflow est un verdict de preuve (EVIDENCE_COMPLETE), jamais un
+# PASS/FAIL numérique.
+# Contexte (v1, run 39624273654, evidence 75473f0) : sur le pin
+# e2bacc50bee82bf7de1fcb3e83e33223b9b5ec2e (head de feat/buoyancy-flow-energy-loop,
+# PR #1016, étape 4 flottabilité #885), le seul test quick en échec est
+# test_production_buoyancy_outer_loop_vv (3 sous-cas sur 5, tous sur la 1re
+# assertion loop.converged : A uniform_source_equivalence, C
+# natural_convection_fixed_point, D nested_s2s_radiation ; PASS : B
+# reference_temperature_identity + catalogue fail-closed). La boucle s'arrête
+# après exactement 2 itérations externes complètes avec converged=false.
+# But du v2 : identifier, par cas, QUEL gate interne est rouge (porteur
+# STAGNATED ? energy audit fiche 14 ? S2S fiche 11 ?) en imprimant
+# loop.{converged, outer_iterations, energy_ran, s2s_ran, fixed_point_*_passed,
+# max_*_change_normalized}, flow.{converged, convergence_status, reason,
+# iterations, 6 dernières itérations internes}, energy.{verdicts + audits
+# normalisés}, s2s.{verdicts + gates + history} et loop.history complet.
+# Verdicts fail-closed : EVIDENCE_COMPLETE (seul vert — les 4 dumps A/B/C/D
+# capturés), INCONCLUSIVE_RUN_LOG_MISSING, INCONCLUSIVE_NO_DIAG_OUTPUT,
+# INCOMPLETE_PARTIAL_DUMP.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/pr1016_gatediag_marker.txt'
+      - '.github/workflows/pr1016_fastctest_gate_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: pr1016-gatediag
+  cancel-in-progress: false
+
+env:
+  HEAD_SHA_PIN: e2bacc50bee82bf7de1fcb3e83e33223b9b5ec2e
+  PIN_BRANCH: feat/buoyancy-flow-energy-loop
+  EVID: diag-evidence/logs
+  TEST_TARGET: test_production_buoyancy_outer_loop_vv
+  TEST_FILE: tests/validation/test_production_buoyancy_outer_loop_vv.cpp
+
+jobs:
+  gate-diag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve pinned ref and create worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin "$PIN_BRANCH"
+          git cat-file -e "$HEAD_SHA_PIN^{commit}" \
+            || { echo "::error::pinned head SHA not resolvable: $HEAD_SHA_PIN"; exit 1; }
+          head_now=$(git rev-parse "origin/$PIN_BRANCH")
+          if [ "$head_now" != "$HEAD_SHA_PIN" ]; then
+            echo "::error::branch head moved: $head_now != $HEAD_SHA_PIN (CI restarted on the new head; this capture would be stale)"
+            exit 1
+          fi
+          git worktree add "$RUNNER_TEMP/head" "$HEAD_SHA_PIN"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "head_sha=$HEAD_SHA_PIN (pinned head of $PIN_BRANCH, PR #1016, instrumented COPY only, never committed)"
+            echo "context: v1 run 39624273654 isolated test_production_buoyancy_outer_loop_vv (3/5 subcases fail on loop.converged: A, C, D; B + fail-closed catalogue PASS)"
+            echo "scope: print the verified loop/flow/energy/s2s result fields before the EXPECTs, single target build, direct binary run"
+            echo "rule: EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1016x_gatediag_meta_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin
+
+      - name: Instrument the test copy (gate diagnostics print block)
+        run: |
+          python3 - <<'PY'
+          import difflib
+          import os
+          import sys
+
+          run_id = os.environ["GITHUB_RUN_ID"]
+          worktree = os.path.join(os.environ["RUNNER_TEMP"], "head")
+          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+          path = os.path.join(worktree, os.environ["TEST_FILE"])
+
+          with open(path) as fh:
+              original = fh.read()
+
+          anchor = '#include "common/test_harness.h"'
+          if original.count(anchor) != 1:
+              print("FATAL: include anchor count = %d" % original.count(anchor))
+              sys.exit(1)
+          includes = (anchor + "\n\n"
+                      "// [diag v2] Evidence-only gate diagnostics print block.\n"
+                      "#include <iomanip>\n"
+                      "#include <iostream>")
+          src = original.replace(anchor, includes, 1)
+
+          call_line = "            mesh, ubc, pbc, controls, setup, U, p);"
+          n_calls = src.count(call_line)
+          if n_calls != 4:
+              print("FATAL: call-line anchor count = %d" % n_calls)
+              sys.exit(1)
+
+          diag_lines = [
+              '        {',
+              '            std::cout << "[gate-diag] begin case dump\\n";',
+              '            std::cout << std::scientific << std::setprecision(17);',
+              '            std::cout << "[gate-diag] loop.converged=" << loop.converged << "\\n";',
+              '            std::cout << "[gate-diag] loop.outer_iterations=" << loop.outer_iterations << "\\n";',
+              '            std::cout << "[gate-diag] loop.energy_ran=" << loop.energy_ran << "\\n";',
+              '            std::cout << "[gate-diag] loop.s2s_ran=" << loop.s2s_ran << "\\n";',
+              '            std::cout << "[gate-diag] loop.fixed_point_temperature_passed=" << loop.fixed_point_temperature_passed << "\\n";',
+              '            std::cout << "[gate-diag] loop.fixed_point_velocity_passed=" << loop.fixed_point_velocity_passed << "\\n";',
+              '            std::cout << "[gate-diag] loop.fixed_point_pressure_passed=" << loop.fixed_point_pressure_passed << "\\n";',
+              '            std::cout << "[gate-diag] loop.max_temperature_change_normalized=" << loop.max_temperature_change_normalized << "\\n";',
+              '            std::cout << "[gate-diag] loop.max_velocity_change_normalized=" << loop.max_velocity_change_normalized << "\\n";',
+              '            std::cout << "[gate-diag] loop.max_pressure_change_normalized=" << loop.max_pressure_change_normalized << "\\n";',
+              '            std::cout << "[gate-diag] flow.converged=" << loop.flow.converged << "\\n";',
+              '            std::cout << "[gate-diag] flow.convergence_status=" << cfdx::core::to_string(loop.flow.convergence_status) << "\\n";',
+              '            std::cout << "[gate-diag] flow.convergence_reason=" << loop.flow.convergence_reason << "\\n";',
+              '            std::cout << "[gate-diag] flow.iterations=" << loop.flow.iterations << "\\n";',
+              '            std::cout << "[gate-diag] flow.reference_momentum_residual=" << loop.flow.reference_momentum_residual << "\\n";',
+              '            if (!loop.flow.history.empty()) {',
+              '                const std::size_t first =',
+              '                    loop.flow.history.size() > 6',
+              '                        ? loop.flow.history.size() - 6 : 0;',
+              '                for (std::size_t k = first; k < loop.flow.history.size(); ++k) {',
+              '                    const auto& fh = loop.flow.history[k];',
+              '                    std::cout << "[gate-diag] flow.hist[" << fh.iteration << "]"',
+              '                              << " momentum_residual=" << fh.momentum_residual',
+              '                              << " pressure_residual=" << fh.pressure_residual',
+              '                              << " continuity_normalized=" << fh.continuity_normalized',
+              '                              << " momentum_equation_residual_relative=" << fh.momentum_equation_residual_relative',
+              '                              << " nonlinear_convergence_metric=" << fh.nonlinear_convergence_metric',
+              '                              << " corrected_flux_continuity_linf=" << fh.corrected_flux_continuity_linf',
+              '                              << "\\n";',
+              '                }',
+              '            }',
+              '            std::cout << "[gate-diag] energy.converged=" << loop.energy.converged << "\\n";',
+              '            std::cout << "[gate-diag] energy.linear_solver_converged=" << loop.energy.linear_solver_converged << "\\n";',
+              '            std::cout << "[gate-diag] energy.global_energy_balance_passed=" << loop.energy.global_energy_balance_passed << "\\n";',
+              '            std::cout << "[gate-diag] energy.local_energy_balance_passed=" << loop.energy.local_energy_balance_passed << "\\n";',
+              '            std::cout << "[gate-diag] energy.global_balance_normalized=" << loop.energy.global_balance_normalized << "\\n";',
+              '            std::cout << "[gate-diag] energy.local_balance_normalized=" << loop.energy.local_balance_normalized << "\\n";',
+              '            std::cout << "[gate-diag] energy.max_cell_residual_normalized=" << loop.energy.max_cell_residual_normalized << "\\n";',
+              '            std::cout << "[gate-diag] energy.max_cell_residual=" << loop.energy.max_cell_residual << "\\n";',
+              '            std::cout << "[gate-diag] energy.worst_cell=" << loop.energy.worst_cell << "\\n";',
+              '            std::cout << "[gate-diag] energy.worst_cell_normalized=" << loop.energy.worst_cell_normalized << "\\n";',
+              '            std::cout << "[gate-diag] energy.audit_power_scale=" << loop.energy.audit_power_scale << "\\n";',
+              '            std::cout << "[gate-diag] energy.independent_conservation_normalized=" << loop.energy.independent_conservation_normalized << "\\n";',
+              '            std::cout << "[gate-diag] energy.total_source_power=" << loop.energy.total_source_power << "\\n";',
+              '            std::cout << "[gate-diag] energy.boundary_flux_out=" << loop.energy.boundary_flux_out << "\\n";',
+              '            std::cout << "[gate-diag] energy.iterations=" << loop.energy.iterations << "\\n";',
+              '            std::cout << "[gate-diag] s2s.converged=" << loop.s2s.converged << "\\n";',
+              '            std::cout << "[gate-diag] s2s.outer_iterations=" << loop.s2s.outer_iterations << "\\n";',
+              '            std::cout << "[gate-diag] s2s.fixed_point_flux_passed=" << loop.s2s.fixed_point_flux_passed << "\\n";',
+              '            std::cout << "[gate-diag] s2s.fixed_point_wall_temperature_passed=" << loop.s2s.fixed_point_wall_temperature_passed << "\\n";',
+              '            std::cout << "[gate-diag] s2s.max_flux_fixed_point_normalized=" << loop.s2s.max_flux_fixed_point_normalized << "\\n";',
+              '            std::cout << "[gate-diag] s2s.max_wall_temperature_change_normalized=" << loop.s2s.max_wall_temperature_change_normalized << "\\n";',
+              '            std::cout << "[gate-diag] s2s.max_wall_temperature_lag=" << loop.s2s.max_wall_temperature_lag << "\\n";',
+              '            std::cout << "[gate-diag] s2s.energy.converged=" << loop.s2s.energy.converged << "\\n";',
+              '            for (const auto& rec : loop.history) {',
+              '                std::cout << "[gate-diag] hist it=" << rec.iteration',
+              '                          << " flow_conv=" << rec.flow_converged',
+              '                          << " flow_it=" << rec.flow_iterations',
+              '                          << " energy_conv=" << rec.energy_converged',
+              '                          << " energy_it=" << rec.energy_iterations',
+              '                          << " s2s_ran=" << rec.s2s_ran',
+              '                          << " s2s_conv=" << rec.s2s_converged',
+              '                          << " s2s_it=" << rec.s2s_outer_iterations',
+              '                          << " dT=" << rec.max_temperature_change_normalized',
+              '                          << " dT=" << rec.max_velocity_change_normalized',
+              '                          << " dP=" << rec.max_pressure_change_normalized',
+              '                          << "\\n";',
+              '            }',
+              '            for (const auto& srec : loop.s2s.history) {',
+              '                std::cout << "[gate-diag] s2s.hist it=" << srec.iteration',
+              '                          << " energy_conv=" << srec.energy_converged',
+              '                          << " radiation_conv=" << srec.radiation_converged',
+              '                          << " flux_fp=" << srec.max_flux_fixed_point_normalized',
+              '                          << " dTw=" << srec.max_wall_temperature_change_normalized',
+              '                          << "\\n";',
+              '            }',
+              '            std::cout << "[gate-diag] end case dump\\n" << std::flush;',
+              '        }',
+          ]
+          diag = "\n".join(diag_lines)
+          src = src.replace(call_line, call_line + "\n" + diag)
+
+          with open(path, "w") as fh:
+              fh.write(src)
+
+          diff = "\n".join(difflib.unified_diff(
+              original.splitlines(), src.splitlines(),
+              fromfile="original", tofile="instrumented", lineterm=""))
+          with open(os.path.join(
+                  evid, "pr1016x_gatediag_transform_run%s.log" % run_id), "w") as fh:
+              fh.write("include_anchor=1\ncall_anchors=4\n")
+              fh.write(diff)
+              fh.write("\n")
+          with open(os.path.join(
+                  evid, "pr1016x_gatediag_instrumented_run%s.cpp" % run_id), "w") as fh:
+              fh.write(src)
+          print("transform_ok: 1 include anchor, 4 call anchors, "
+                + str(len(diag_lines)) + " diag lines each")
+          PY
+
+      - name: Configure (Release)
+        run: |
+          cmake -S "$RUNNER_TEMP/head" -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Build (single test target)
+        run: |
+          set -o pipefail
+          cmake --build build --target "$TEST_TARGET" --parallel 8 > /tmp/build_raw.log 2>&1
+          rc=$?
+          {
+            echo "build_exit=$rc"
+            echo "target=$TEST_TARGET"
+            echo "--- build log (tail 400) ---"
+            tail -n 400 /tmp/build_raw.log
+            echo "--- build errors (if any) ---"
+            grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' /tmp/build_raw.log | tail -n 120 || true
+          } > "$GITHUB_WORKSPACE/$EVID/pr1016x_gatediag_build_run$GITHUB_RUN_ID.log"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::build failed on the instrumented copy — see evidence log"
+            exit 1
+          fi
+          test -x "build/$TEST_TARGET" || { echo "::error::test binary not found"; exit 1; }
+
+      - name: Run the instrumented test binary
+        run: |
+          set +e
+          "./build/$TEST_TARGET" > "$GITHUB_WORKSPACE/$EVID/pr1016x_gatediag_run_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "test_exit=$rc" > "$GITHUB_WORKSPACE/$EVID/pr1016x_gatediag_status_run$GITHUB_RUN_ID.txt"
+          echo "test_exit=$rc"
+          grep -E '^\[gate-diag\]|^  (PASS|FAIL):|^Results:' \
+            "$GITHUB_WORKSPACE/$EVID/pr1016x_gatediag_run_run$GITHUB_RUN_ID.log" \
+            | tail -n 160 || true
+
+      - name: Analyze and classify
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os
+          import sys
+
+          run_id = os.environ["GITHUB_RUN_ID"]
+          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+          run_log = os.path.join(
+              evid, "pr1016x_gatediag_run_run" + run_id + ".log")
+
+          def write_verdict(v, lines):
+              path = os.path.join(
+                  evid, "pr1016x_gatediag_verdict_run" + run_id + ".txt")
+              with open(path, "w") as fh:
+                  fh.write("verdict=" + v + "\n")
+                  for line in lines:
+                      fh.write(line + "\n")
+              print("verdict=" + v)
+
+          if not os.path.exists(run_log):
+              write_verdict("INCONCLUSIVE_RUN_LOG_MISSING",
+                            ["run log absent (build step did not run or failed)"])
+              sys.exit(0)
+
+          with open(run_log, errors="replace") as fh:
+              text = fh.read()
+
+          begin = text.count("[gate-diag] begin case dump")
+          end = text.count("[gate-diag] end case dump")
+
+          digest_lines = [line for line in text.splitlines()
+                          if line.startswith("[gate-diag]")
+                          or line.startswith("  PASS:")
+                          or line.startswith("  FAIL:")
+                          or line.startswith("Results:")]
+              fh.write("\n".join(digest_lines))
+              fh.write("\n")
+
+          status = os.path.join(
+              evid, "pr1016x_gatediag_status_run" + run_id + ".txt")
+            test_exit = "missing"
+          if os.path.exists(status):
+              with open(status) as fh:
+                  for line in fh:
+                        if line.startswith("test_exit="):
+                          test_exit = line.split("=", 1)[1].strip()
+                           break
+
+          if begin = 0:
+              write_verdict("INCONCLUSIVE_NO_DIAG_OUTPUT",
+                           ["no [gate-diag] dump in the run log — read the raw log",
+                             "test_exit=" + test_exit])
+              sys.exit(0)
+          if begin != end:
+              write_verdict("INCOMPLETE_PARTIAL_DUMP",
+                            ["dump begin/end mismatch: begin=%d end=%d" % (begin, end),
+                             "test_exit=" + test_exit])
+              sys.exit(0)
+          if begin != 4:
+              write_verdict("INCOMPLETE_PARTIAL_DUMP",
+                           ["expected 4 case dumps (A/B/C/D), got %d" % begin,
+                           "test_exit=" + test_exit])
+              sys.exit(0)
+
+          write_verdict("EVIDENCE_COMPLETE",
+                        ["dumps=4/4 (A uniform_source_equivalence, B "
+                         "reference_temperature_identity, C "
+                         "natural_convection_fixed_point, D nested_s2s_radiation)",
+                         "test_exit=" + test_exit,
+                         "note: diagnostic evidence verdict, never a numerical PASS/FAIL"])
+          PY
+
+      - name: Truncate oversized evidence log (keep digest)
+        if: always()
+        run: |
+          log="$GITHUB_WORKSPACE/$EVID/pr1016x_gatediag_run_run$GITHUB_RUN_ID.log"
+          if [ -s "$log" ] && [ "$(stat -c%s "$log")" -gt 4000000 ]; then
+            tail -c 4000000 "$log" > "${log}.tmp" && mv "${log}.tmp" "$log"
+            echo "log truncated to the last 4 MB (digest file keeps all gate-diag lines)"
+          fi
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1016 buoyancy gate diagnostics on pinned e2bacc50 run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Post comment to PR #1016 (best effort, anti-duplicate)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          marker="gatediag run $GITHUB_RUN_ID"
+          if gh pr view 1016 --repo "$GITHUB_REPOSITORY" --json comments --jq '.comments[].body' 2>/dev/null | grep -q "$marker"; then
+            echo "comment already posted for $marker"
+            exit 0
+          fi
+          verdict="verdict=MISSING"
+          if [ -s "$GITHUB_WORKSPACE/$EVID/pr1016x_gatediag_verdict_run$GITHUB_RUN_ID.txt" ]; then
+            verdict=$(head -n 1 "$GITHUB_WORKSPACE/$EVID/pr1016x_gatediag_verdict_run$GITHUB_RUN_ID.txt")
+          fi
+          {
+            echo "Diagnostic gate-diag v2 (instrumentation d'evidence sur COPIE du test, head epingle \`$HEAD_SHA_PIN\`) : \`$verdict\`."
+            echo ""
+            echo "\`\`\`"
+            grep -E '^  (PASS|FAIL):|^Results:' "$GITHUB_WORKSPACE/$EVID/pr1016x_gatediag_run_run$GITHUB_RUN_ID.log" 2>/dev/null | tail -n 12 || true
+            echo "\`\`\`"
+            echo ""
+            echo "Evidence : \`diag-evidence/logs/pr1016x_gatediag]*_run$GITHUB_RUN_ID.*\` — dump complet des gates (flow/energy/s2S/history) par sous-cas — sur \`ci/long-campaign-diagnostics\`. DIAG-ONLY, pas un verdict numerique."
+          } > /tmp/comment.txt
+          gh pr comment 1016 --repo "$GITHUB_REPOSITORY" --body-file /tmp/comment.txt || echo "comment post failed (best effort)"
+
+      - name: Final gate
+        if: always()
+        run: |
+          v=$(head -n 1 "$GITHUB_WORKSPACE/$EVID/pr1016x_gatediag_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "verdict=MISSING")
+          echo "Final gate: $v"
+          if [ "$v" != "verdict=EVIDENCE_COMPLETE" ]; then
+            echo "::error::$v — see diag-evidence/logs/pr1016x_gatediag_*_run$GITHUB_RUN_ID.*"
+            exit 1
+          fi

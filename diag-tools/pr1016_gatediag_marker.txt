@@ -1,0 +1,4 @@
+pr1016 gate-diag v2 marker (2026-10-21)
+Evidence-only instrumentation of tests/validation/test_production_buoyancy_outer_loop_vv.cpp
+on the pinned head e2bacc50bee82bf7de1fcb3e83e33223b9b5ec2e (PR #1016, issue #885 step 4),
+in a throwaway worktree copy, never committed. DIAG branch only - never merge.
