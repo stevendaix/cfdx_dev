@@ -790,7 +790,9 @@ class OpenFOAMAdapter(SolverAdapter):
                     )
                     continue
                 if is_uniform and parsed_field.size == 1 and cell_count > 1:
-                    parsed_field = np.full(cell_count, parsed_field[0], dtype=np.float64)
+                    parsed_field = np.full(
+                        cell_count, parsed_field[0], dtype=np.float64
+                    )
                 elif cell_count and parsed_field.size != cell_count:
                     result.gap_report.unsupported_nonblocking(
                         "fields",
@@ -801,9 +803,7 @@ class OpenFOAMAdapter(SolverAdapter):
                 result.scalar_fields.append((name, parsed_field))
             else:
                 if is_uniform and parsed_field.shape == (3,) and cell_count > 0:
-                    parsed_field = np.broadcast_to(
-                        parsed_field, (cell_count, 3)
-                    ).copy()
+                    parsed_field = np.broadcast_to(parsed_field, (cell_count, 3)).copy()
                 if (
                     parsed_field.ndim != 2
                     or parsed_field.shape[1] != 3
