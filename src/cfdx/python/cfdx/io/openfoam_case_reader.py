@@ -303,6 +303,17 @@ def _read_field_file(path: Path, *, cell_count: int | None = None) -> dict[str, 
         parsed_values, _ = _parse_group(internal_tokens, list_start)
         raw = np.asarray(parsed_values, dtype=np.float64)
 
+    if (
+        cell_count is not None
+        and source_class.startswith("vol")
+        and (raw.ndim == 0 or raw.shape[0] != cell_count)
+    ):
+        actual_count = 1 if raw.ndim == 0 else raw.shape[0]
+        raise ValueError(
+            f"Volume field {path.name} has {actual_count} values, "
+            f"but the mesh has {cell_count} cells"
+        )
+
     boundary: dict[str, Any] = {}
     boundary_fields = entries.get("boundaryField", {})
     if isinstance(boundary_fields, dict):
