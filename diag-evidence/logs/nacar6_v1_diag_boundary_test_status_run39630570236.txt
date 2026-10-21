@@ -1,0 +1,12 @@
+variant=v1_diag_boundary
+pin=28e4d183b258997c5b923b2e05569263e900f2ff
+pin_subject=fix(sst): preserve velocity boundary data when restoring restart state (#1018)
+outcome=FAIL_DIVERGED
+test_rc=134
+test_duration_s=22
+run_id=39630570236
+
+--- level markers reached ---
+NACA0012_RE1000_A0 level=64 Cd=0.0902469 Cl=3.49246e-05 Cm=-0.000939999 Cd_pressure=0.0343963 Cd_viscous=0.0558505 continuity=1.45997e-10 iterations=424
+--- failure line (if any) ---
+  what():  NACA0012 solver did not converge: status=DIVERGED reason=residual growth exceeded the configured divergence criterion iterations=15 momentum_rhs_relative=17217.3 momentum_reference_relative=1.43491e+12 pressure_residual=1.27649e-11 continuity=1.36922 dU=0.984388 dP=0.0143682 alpha_u=0.6 alpha_p=0.25
