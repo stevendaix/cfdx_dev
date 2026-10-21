@@ -19,7 +19,6 @@ from cfdx.io.gap_analysis import GapAnalysisReport
 from cfdx.io.interfaces import ConversionResult
 from cfdx.io.schema import SourceInfo
 
-
 _ADAPTER_REGISTRY = {
     "fluent": (FluentAdapter, (".cas",)),
     "su2": (Su2Adapter, (".su2", ".cfg")),
