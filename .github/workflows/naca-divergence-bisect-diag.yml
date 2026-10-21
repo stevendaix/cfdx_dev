@@ -182,7 +182,13 @@ jobs:
           mm5=$(md5sum diag-hybrids/solver_master.h | awk '{print $1}')
           if [ "${gm5}" != "${GREEN_MD5}" ]; then echo "::error::green solver md5 mismatch: ${gm5} != ${GREEN_MD5}"; exit 1; fi
           if [ "${mm5}" != "${MASTER_MD5}" ]; then echo "::error::master solver md5 mismatch: ${mm5} != ${MASTER_MD5}"; exit 1; fi
+          # diff exits 1 when files differ (expected here); 0 identical-pins or
+          # 2 error are both fail-closed anomalies.
+          set +e
           diff -u diag-hybrids/solver_green.h diag-hybrids/solver_master.h > diag-hybrids/gm.diff
+          drc=$?
+          set -e
+          if [ "$drc" -ne 1 ]; then echo "::error::green-vs-master diff exited ${drc} (expected 1: the pinned solvers must differ)"; exit 1; fi
           echo "solver green-vs-master diff hunks: $(grep -c '^@@' diag-hybrids/gm.diff)"
           REVERT_AWK='
           BEGIN { LO = lo + 0; HI = hi + 0 }
