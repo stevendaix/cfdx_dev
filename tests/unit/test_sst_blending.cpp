@@ -812,7 +812,7 @@ int main()
             {"inlet", {1.0, 0.0, 0.0}}
         };
 
-        const auto state = initialize_sst_production_state_from_mesh(
+        auto state = initialize_sst_production_state_from_mesh(
             mesh, setup, controls, velocity, fixed_values);
         validate_sst_production_state(state, mesh.n_cells());
         EXPECT_NEAR(state.k(0), 0.12, 0.0);
@@ -822,6 +822,23 @@ int main()
         EXPECT_TRUE(std::isfinite(state.strain_rate(0)) &&
                     state.strain_rate(0) > 0.0);
         EXPECT_TRUE(std::isfinite(state.nu_t(0)) && state.nu_t(0) >= 0.0);
+
+        const double initial_strain = state.strain_rate(0);
+        const std::map<std::string, std::array<double, 3>> updated_values{
+            {"inlet", {2.0, 0.0, 0.0}}
+        };
+        refresh_sst_production_derived_state_from_mesh(
+            state, mesh, controls, velocity, updated_values);
+        EXPECT_TRUE(state.strain_rate(0) > initial_strain);
+        validate_sst_production_state(state, mesh.n_cells());
+
+        const double valid_strain = state.strain_rate(0);
+        const std::map<std::string, std::array<double, 3>> invalid_values{
+            {"missing_patch", {1.0, 0.0, 0.0}}
+        };
+        EXPECT_THROW(refresh_sst_production_derived_state_from_mesh(
+            state, mesh, controls, velocity, invalid_values), std::invalid_argument);
+        EXPECT_NEAR(state.strain_rate(0), valid_strain, 0.0);
 
         Field<double, Location::CELL> invalid_velocity(mesh.n_cells(), "bad", "m/s", 1);
         EXPECT_THROW(initialize_sst_production_state_from_mesh(
