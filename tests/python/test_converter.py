@@ -8,20 +8,18 @@ import numpy as np
 import pytest
 
 from cfdx.io.converter import (
-    ConversionResult,
-    SolverConverter,
     available_converters,
     convert,
     detect_solver,
     get_converter,
     register_converter,
+    ConversionResult,
+    SolverConverter,
 )
 from cfdx.io.gap_analysis import GapAnalysis
 from cfdx.io.schema import CaseSetup, Severity, SourceInfo
 
-DATA_DIR = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..", "data")
-)
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
 
 
 # --------------------------------------------------------------------------
@@ -44,12 +42,22 @@ def openfoam_case(tmp_path):
     poly.mkdir(parents=True)
 
     points = [
-        (0, 0, 0), (1, 0, 0), (1, 1, 0), (0, 1, 0),
-        (0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1),
+        (0, 0, 0),
+        (1, 0, 0),
+        (1, 1, 0),
+        (0, 1, 0),
+        (0, 0, 1),
+        (1, 0, 1),
+        (1, 1, 1),
+        (0, 1, 1),
     ]
     faces = [
-        (0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4),
-        (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7),
+        (0, 1, 2, 3),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (1, 2, 6, 5),
+        (2, 3, 7, 6),
+        (3, 0, 4, 7),
     ]
     (poly / "points").write_text(
         _foam_header("points", "vectorField")
@@ -72,8 +80,7 @@ def openfoam_case(tmp_path):
         _foam_header("neighbour", "labelList") + "0\n(\n)\n"
     )
     (poly / "boundary").write_text(
-        _foam_header("boundary", "polyBoundaryMesh")
-        + "2\n(\n"
+        _foam_header("boundary", "polyBoundaryMesh") + "2\n(\n"
         "    inlet\n    {\n        type            patch;\n"
         "        nFaces          3;\n        startFace       0;\n    }\n"
         "    outlet\n    {\n        type            wall;\n"
@@ -339,9 +346,7 @@ class TestConvert:
     def test_directory_rejected_by_file_only_converter(self, tmp_path):
         result = get_converter("starccm").read(tmp_path)
         assert result.success is False
-        assert any(
-            f.category == "source" for f in result.gap_analysis.findings
-        )
+        assert any(f.category == "source" for f in result.gap_analysis.findings)
 
 
 # --------------------------------------------------------------------------
@@ -435,8 +440,7 @@ class TestGapAnalysis:
         result = convert(openfoam_case)
         assert result.fields == []
         assert any(
-            f.severity == Severity.UNAVAILABLE
-            and "field" in f.category + f.feature
+            f.severity == Severity.UNAVAILABLE and "field" in f.category + f.feature
             for f in result.gap_analysis.findings
         )
 
@@ -456,14 +460,10 @@ class TestGapAnalysis:
 
     def test_missing_config_is_reported(self, tmp_path):
         mesh = tmp_path / "case.su2"
-        shutil.copy(
-            os.path.join(DATA_DIR, "su2", "mesh_NACA0012_inv.su2"), mesh
-        )
+        shutil.copy(os.path.join(DATA_DIR, "su2", "mesh_NACA0012_inv.su2"), mesh)
         result = convert(mesh)
         assert result.has_mesh is True
-        assert any(
-            f.category == "config" for f in result.gap_analysis.findings
-        )
+        assert any(f.category == "config" for f in result.gap_analysis.findings)
 
     def test_openfoam_without_polymesh_is_blocking(self, tmp_path):
         case = tmp_path / "case"
