@@ -186,7 +186,7 @@ class OpenFOAMAdapter(SolverAdapter):
                 if source_file.is_file():
                     try:
                         raw_dictionaries[relative] = source_file.read_text()
-                    except OSError:
+                    except (OSError, UnicodeError):
                         continue
             self.setup.source_metadata["openfoam_raw_dictionaries_json"] = json.dumps(
                 raw_dictionaries, sort_keys=True
@@ -742,7 +742,7 @@ class OpenFOAMAdapter(SolverAdapter):
                 continue
             try:
                 content = field_file.read_text(encoding="utf-8")
-            except OSError as exc:
+            except (OSError, UnicodeError) as exc:
                 result.gap_report.unavailable(
                     "fields", field_file.name, f"Cannot read field file: {exc}"
                 )
