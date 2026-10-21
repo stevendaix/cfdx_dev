@@ -198,8 +198,8 @@ compute_sst_strain_rate_with_boundary_values(
                     mesh.boundary().patch(patch).type == PatchType::EMPTY)
                     continue;
                 const Vec3 area = mesh.ownership().owner(face) == cell
-                    ? geometry.face_area_vectors[face]
-                    : geometry.face_area_vectors[face] * -1.0;
+                    ? geometry.face_Sf[face]
+                    : geometry.face_Sf[face] * -1.0;
                 sum += area * face_values[face];
             }
             const double volume = geometry.cell_volumes[cell];
