@@ -148,7 +148,9 @@ def test_openfoam_results_cli_imports_latest_cell_velocity(tmp_path: Path) -> No
 
 
 
-def _convert_openfoam_case(case: Path, output: Path, env: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def _convert_openfoam_case(
+    case: Path, output: Path, env: dict[str, str]
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
             sys.executable,
@@ -177,7 +179,9 @@ def _solver_environment() -> dict[str, str]:
     return env
 
 
-def _run_production_solver(case_h5: Path, output: Path) -> subprocess.CompletedProcess[str]:
+def _run_production_solver(
+    case_h5: Path, output: Path
+) -> subprocess.CompletedProcess[str]:
     solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
     if not solver:
         import pytest
@@ -202,7 +206,9 @@ def _run_production_solver(case_h5: Path, output: Path) -> subprocess.CompletedP
     )
 
 
-def _converted_case_with_velocity(tmp_path: Path, values: list[tuple[float, float, float]]) -> Path:
+def _converted_case_with_velocity(
+    tmp_path: Path, values: list[tuple[float, float, float]]
+) -> Path:
     case = tmp_path / "foam_case"
     _write_hex_case(case)
     _write_velocity(case, "10", values)
@@ -212,7 +218,9 @@ def _converted_case_with_velocity(tmp_path: Path, values: list[tuple[float, floa
     return converted / "case.cfdx.h5"
 
 
-def test_production_solver_emits_exact_imported_velocity_evidence(tmp_path: Path) -> None:
+def test_production_solver_emits_exact_imported_velocity_evidence(
+    tmp_path: Path,
+) -> None:
     expected = [[4.25, -0.5, 8.0]]
     case_h5 = _converted_case_with_velocity(
         tmp_path, [(expected[0][0], expected[0][1], expected[0][2])]
