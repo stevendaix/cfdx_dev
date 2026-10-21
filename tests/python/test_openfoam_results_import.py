@@ -340,3 +340,104 @@ def test_native_openfoam_reader_rejects_binary_files_explicitly(tmp_path):
 
     with pytest.raises(ValueError, match="Binary OpenFOAM files"):
         read_openfoam_time_fields(tmp_path, "latest")
+
+
+def test_native_ascii_polymesh_is_parsed_from_files(tmp_path):
+    poly_mesh = tmp_path / "constant" / "polyMesh"
+    poly_mesh.mkdir(parents=True)
+
+    (poly_mesh / "points").write_text(
+        """FoamFile
+{
+    version 2.0;
+    format ascii;
+    class vectorField;
+    object points;
+}
+4
+(
+    (0 0 0)
+    (1 0 0)
+    (0 1 0)
+    (0 0 1)
+)
+"""
+    )
+    (poly_mesh / "faces").write_text(
+        """FoamFile
+{
+    version 2.0;
+    format ascii;
+    class faceList;
+    object faces;
+}
+4
+(
+    3(0 2 1)
+    3(0 1 3)
+    3(1 2 3)
+    3(2 0 3)
+)
+"""
+    )
+    (poly_mesh / "owner").write_text(
+        """FoamFile
+{
+    version 2.0;
+    format ascii;
+    class labelList;
+    object owner;
+}
+4
+(
+    0
+    0
+    0
+    0
+)
+"""
+    )
+    (poly_mesh / "neighbour").write_text(
+        """FoamFile
+{
+    version 2.0;
+    format ascii;
+    class labelList;
+    object neighbour;
+}
+0
+(
+)
+"""
+    )
+    (poly_mesh / "boundary").write_text(
+        """FoamFile
+{
+    version 2.0;
+    format ascii;
+    class polyBoundaryMesh;
+    object boundary;
+}
+1
+(
+    walls
+    {
+        type wall;
+        nFaces 4;
+        startFace 0;
+    }
+)
+"""
+    )
+
+    points, mesh = OpenFOAMAdapter()._parse_mesh(poly_mesh)
+
+    assert points is not None
+    assert points.shape == (4, 3)
+    assert mesh is not None
+    assert mesh["cfdx_csr"]["n_points"] == 4
+    assert mesh["cfdx_csr"]["n_faces"] == 4
+    assert mesh["cfdx_csr"]["n_cells"] == 1
+    assert mesh["cfdx_csr"]["boundary_patch_assignment"] == [
+        {"name": "walls", "type": "wall", "face_ids": [0, 1, 2, 3]}
+    ]
