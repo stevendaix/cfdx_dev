@@ -437,7 +437,9 @@ def read_openfoam_time_fields(
             item for value, item in _time_directories(path) if value == time_value
         ]
         if not matches:
-            raise FileNotFoundError(f"OpenFOAM time directory {time!r} not found in {path}")
+            raise FileNotFoundError(
+                f"OpenFOAM time directory {time!r} not found in {path}"
+            )
         time_value, directory = matches[0]
 
     fields: dict[str, dict[str, Any]] = {}
