@@ -187,6 +187,13 @@ struct IncompressibleSolverControls {
     // value when supplied; the production RANS guard remains active.
     std::vector<double> cell_turbulent_viscosity;
     cfdx::core::Vec3 body_force{0.0, 0.0, 0.0};
+    // Optional cellwise body force per unit mass (m/s^2), one entry per
+    // cell. Replaces the uniform controls.body_force vector when supplied;
+    // the momentum assembly multiplies it by the constant density exactly
+    // like the uniform channel (fiche methode 10 Boussinesq buoyancy,
+    // issue #885 step 4). Mutually exclusive with a non-zero uniform
+    // body_force.
+    std::vector<cfdx::core::Vec3> cell_body_force;
     PressureGaugePolicy pressure_gauge_policy = PressureGaugePolicy::REFERENCE_CELL;
     std::size_t pressure_reference_cell = 0;
     double pressure_reference_value = 0.0;
@@ -492,6 +499,21 @@ inline void validate_incompressible_controls(
             if (!(nu_t >= 0.0) || !std::isfinite(nu_t))
                 throw std::invalid_argument(
                     "cellwise turbulent viscosity must be finite and non-negative");
+        }
+    }
+    if (!c.cell_body_force.empty()) {
+        if (c.cell_body_force.size() != n_cells)
+            throw std::invalid_argument(
+                "cellwise body force size does not match mesh");
+        if (c.body_force.x != 0.0 || c.body_force.y != 0.0 ||
+            c.body_force.z != 0.0)
+            throw std::invalid_argument(
+                "specify either uniform or cellwise body force, not both");
+        for (const cfdx::core::Vec3& force : c.cell_body_force) {
+            if (!std::isfinite(force.x) || !std::isfinite(force.y) ||
+                !std::isfinite(force.z))
+                throw std::invalid_argument(
+                    "cellwise body force must be finite");
         }
     }
     if (c.pressure_reference_cell >= n_cells)
@@ -2722,9 +2744,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         Field<double, Location::CELL> body_y(mesh.n_cells(), "body_y", "N/m3", 1);
         Field<double, Location::CELL> body_z(mesh.n_cells(), "body_z", "N/m3", 1);
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
-            body_x(c) = controls.density * controls.body_force.x;
-            body_y(c) = controls.density * controls.body_force.y;
-            body_z(c) = controls.density * controls.body_force.z;
+            // The cellwise channel replaces the uniform vector per cell
+            // (Boussinesq buoyancy, fiche methode 10); the density
+            // scaling is identical, so a constant cellwise field
+            // reproduces the uniform assembly bit for bit.
+            const cfdx::core::Vec3& cell_force =
+                controls.cell_body_force.empty()
+                    ? controls.body_force
+                    : controls.cell_body_force[c];
+            body_x(c) = controls.density * cell_force.x;
+            body_y(c) = controls.density * cell_force.y;
+            body_z(c) = controls.density * cell_force.z;
         }
 
         ScalarBoundaryConditions ubc_x, ubc_y, ubc_z;
@@ -4376,8 +4406,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 }
                 for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
                     component(cell) = U.component_data(d)[cell];
-                    const double body_component = d == 0 ? controls.body_force.x
-                        : (d == 1 ? controls.body_force.y : controls.body_force.z);
+                    // Same selection rule as the momentum assembly: the
+                    // cellwise channel replaces the uniform vector per
+                    // cell, keeping this independent audit consistent
+                    // with the equation that was actually solved.
+                    const cfdx::core::Vec3& cell_force =
+                        controls.cell_body_force.empty()
+                            ? controls.body_force
+                            : controls.cell_body_force[cell];
+                    const double body_component = d == 0 ? cell_force.x
+                        : (d == 1 ? cell_force.y : cell_force.z);
                     source(cell) = body_component - final_grad_p.component_data(d)[cell];
                 }
                 const auto flux = reconstruct_scalar_transport_flux(
@@ -4462,4 +4500,5 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 }
 
 } // namespace cfdx::physics
+
 

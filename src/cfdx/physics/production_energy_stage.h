@@ -6,9 +6,15 @@
 //
 // Contract:
 //   * energy_model gate: {"", "none", "isothermal", "solid_conduction",
-//     "conjugate", "compressible"} are accepted declarations; anything else -
-//     including "buoyant" - is rejected fail-closed instead of silently
-//     degrading to an isothermal run. "compressible" and "solid_conduction"
+//     "conjugate", "buoyant", "compressible"} are accepted declarations;
+//     anything else is rejected fail-closed instead of silently degrading
+//     to an isothermal run. "buoyant" is the production buoyancy-coupled
+//     model (fiche methode 10 Boussinesq, issue #885 step 4): this stage
+//     runs once per outer iteration of the flow-energy buoyancy loop
+//     (production_buoyancy_stage.h), whose verdict is the coupled fixed
+//     point; calling this stage directly under "buoyant" computes a
+//     frozen-flow single pass on the supplied flux, not the coupled
+//     verdict. "compressible" and "solid_conduction"
 //     are valid SCHEMA declarations (e.g. "compressible" is produced by the
 //     SU2 conversion of Euler / Navier-Stokes compressible cases,
 //     adapters/su2.py), and they never trigger this stage (only "conjugate"
@@ -83,7 +89,8 @@ struct ProductionEnergyCase {
 
 inline bool production_energy_requested(const cfdx::io::CaseSetup& setup)
 {
-    return setup.energy_model == "conjugate";
+    return setup.energy_model == "conjugate" ||
+           setup.energy_model == "buoyant";
 }
 
 inline void validate_production_energy_model(const cfdx::io::CaseSetup& setup)
@@ -91,13 +98,13 @@ inline void validate_production_energy_model(const cfdx::io::CaseSetup& setup)
     const std::string& model = setup.energy_model;
     if (model.empty() || model == "none" || model == "isothermal" ||
         model == "solid_conduction" || model == "conjugate" ||
-        model == "compressible")
+        model == "buoyant" || model == "compressible")
         return;
     throw std::invalid_argument(
         "production energy stage: unsupported energy_model '" + model +
         "' (accepted: none, isothermal, solid_conduction, conjugate, "
-        "compressible; buoyant coupling is not implemented and is rejected "
-        "instead of silently running an isothermal solve)");
+        "buoyant, compressible; rejected instead of silently running an "
+        "isothermal solve)");
 }
 
 // Strict numeric parsing for case-declared parameters. std::stod alone
@@ -399,8 +406,9 @@ inline ProductionEnergyStageResult run_production_energy_stage(
     if (!production_energy_requested(setup))
         throw std::invalid_argument(
             "run_production_energy_stage: the energy stage only runs for "
-            "energy_model 'conjugate'; running it under another declared "
-            "model is a contract violation, not a silent fallback");
+            "energy_model 'conjugate' or 'buoyant'; running it under "
+            "another declared model is a contract violation, not a silent "
+            "fallback");
     if (mass_flux.size() != mesh.n_faces() || mass_flux.dimension() != 1)
         throw std::invalid_argument(
             "run_production_energy_stage: mass flux field does not match the "
@@ -580,3 +588,4 @@ inline ProductionEnergyStageResult run_production_energy_stage(
 }
 
 } // namespace cfdx::physics
+
