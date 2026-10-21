@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <limits>
+#include <map>
 #include <utility>
 #include <vector>
 
@@ -322,6 +323,50 @@ int main()
             0.0, std::numeric_limits<double>::infinity(), 0.0,
             0.0, 0.0, 0.0};
         EXPECT_THROW(sst_strain_rate_magnitude(grad), std::invalid_argument);
+    });
+
+    run_case("sst_strain_rate_uses_explicit_fixed_velocity_boundaries", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        Field<double, Location::CELL> velocity(mesh.n_cells(), "U", "m/s", 3);
+        velocity.fill(0.0);
+
+        const auto zero_gradient = compute_sst_strain_rate(velocity, mesh);
+        const std::map<std::string, std::array<double, 3>> fixed_values{
+            {"inlet", {1.0, 0.0, 0.0}}
+        };
+        const auto boundary_aware =
+            compute_sst_strain_rate_with_boundary_values(velocity, mesh, fixed_values);
+
+        EXPECT_NEAR(zero_gradient(0), 0.0, 1e-14);
+        EXPECT_TRUE(std::isfinite(boundary_aware(0)));
+        EXPECT_TRUE(boundary_aware(0) > 0.0);
+    });
+
+    run_case("sst_strain_rate_boundary_values_reject_nonfinite_input", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        Field<double, Location::CELL> velocity(mesh.n_cells(), "U", "m/s", 3);
+        velocity.fill(0.0);
+        const std::map<std::string, std::array<double, 3>> fixed_values{
+            {"inlet", {std::numeric_limits<double>::quiet_NaN(), 0.0, 0.0}}
+        };
+        EXPECT_THROW(
+            compute_sst_strain_rate_with_boundary_values(velocity, mesh, fixed_values),
+            std::invalid_argument);
+    });
+
+    run_case("sst_strain_rate_rejects_unknown_fixed_value_patch", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        Field<double, Location::CELL> velocity(mesh.n_cells(), "U", "m/s", 3);
+        velocity.fill(0.0);
+        const std::map<std::string, std::array<double, 3>> fixed_values{
+            {"missing_patch", {1.0, 0.0, 0.0}}
+        };
+        EXPECT_THROW(
+            compute_sst_strain_rate_with_boundary_values(velocity, mesh, fixed_values),
+            std::invalid_argument);
     });
 
     run_case("sst_blending_rejects_invalid_distance", [] {
