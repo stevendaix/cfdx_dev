@@ -63,19 +63,21 @@ def openfoam_case(tmp_path):
         + "".join(f"{len(f)}({' '.join(map(str, f))})\n" for f in faces)
         + ")\n"
     )
+    # This fixture is one hexahedral cell: all six faces belong to cell 0,
+    # there are no internal faces, and the two boundary patches cover all faces.
     (poly / "owner").write_text(
-        _foam_header("owner", "labelList") + "6\n(\n0\n1\n0\n0\n0\n0\n)\n"
+        _foam_header("owner", "labelList") + "6\n(\n0\n0\n0\n0\n0\n0\n)\n"
     )
     (poly / "neighbour").write_text(
-        _foam_header("neighbour", "labelList") + "4\n(\n1\n2\n3\n4\n)\n"
+        _foam_header("neighbour", "labelList") + "0\n(\n)\n"
     )
     (poly / "boundary").write_text(
         _foam_header("boundary", "polyBoundaryMesh")
         + "2\n(\n"
         "    inlet\n    {\n        type            patch;\n"
-        "        nFaces          1;\n        startFace       0;\n    }\n"
+        "        nFaces          3;\n        startFace       0;\n    }\n"
         "    outlet\n    {\n        type            wall;\n"
-        "        nFaces          1;\n        startFace       1;\n    }\n"
+        "        nFaces          3;\n        startFace       3;\n    }\n"
         ")\n"
     )
     return case
