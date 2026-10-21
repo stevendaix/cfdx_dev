@@ -14,7 +14,6 @@ import json
 import re
 from pathlib import Path
 
-
 import numpy as np
 
 from cfdx.io.interfaces import ConversionResult, SolverAdapter
@@ -59,7 +58,7 @@ def _extract_foam_list(content: str):
         count = int(prefix_match.group(1))
 
     lines = []
-    for raw in content[start + 1:end].splitlines():
+    for raw in content[start + 1 : end].splitlines():
         line = re.sub(r"/\*.*?\*/", " ", raw)
         line = re.sub(r"//.*$", "", line).strip()
         if line:
@@ -77,7 +76,7 @@ class OpenFOAMAdapter(SolverAdapter):
 
     def convert(self, case_path: str | Path, result: ConversionResult) -> bool:
         path = Path(str(case_path))
-        
+
         if not path.is_dir():
             result.gap_report.unsupported_blocking(
                 "case_path",
@@ -100,9 +99,10 @@ class OpenFOAMAdapter(SolverAdapter):
         points, cells = self._parse_mesh(poly_mesh)
         if points is None or cells is None:
             result.gap_report.unsupported_blocking(
-                "mesh", "openfoam_polymesh_parse",
+                "mesh",
+                "openfoam_polymesh_parse",
                 "Failed to parse OpenFOAM mesh: "
-                f"{getattr(self, '_mesh_parse_error', 'unknown parser error')}"
+                f"{getattr(self, '_mesh_parse_error', 'unknown parser error')}",
             )
             return False
 
@@ -231,13 +231,22 @@ class OpenFOAMAdapter(SolverAdapter):
             self.setup.transient = ddt_default != "steadystate"
             self.setup.solver_mode = "transient" if self.setup.transient else "steady"
         elif application.lower() in {
-            "pimplefoam", "icofoam", "interfoam", "rhopimplefoam",
-            "rhointerfoam", "reactingfoam", "buoyantpimplefoam",
+            "pimplefoam",
+            "icofoam",
+            "interfoam",
+            "rhopimplefoam",
+            "rhointerfoam",
+            "reactingfoam",
+            "buoyantpimplefoam",
         }:
             self.setup.transient = True
             self.setup.solver_mode = "transient"
 
-        if self.setup.transient and self.setup.time_step > 0 and self.setup.end_time > 0:
+        if (
+            self.setup.transient
+            and self.setup.time_step > 0
+            and self.setup.end_time > 0
+        ):
             self.setup.max_time_steps = int(self.setup.end_time / self.setup.time_step)
 
         turbulence = dictionaries.get("constant/turbulenceProperties", {})
@@ -246,7 +255,9 @@ class OpenFOAMAdapter(SolverAdapter):
             self.setup.turbulence_model = "laminar"
         elif simulation_type in {"RAS", "LES"}:
             model_dict = turbulence.get(simulation_type, {})
-            model_name = model_dict.get("model", model_dict.get("RASModel", model_dict.get("LESModel", "")))
+            model_name = model_dict.get(
+                "model", model_dict.get("RASModel", model_dict.get("LESModel", ""))
+            )
             if model_name:
                 self.setup.turbulence_model = str(model_name)
 
@@ -261,7 +272,9 @@ class OpenFOAMAdapter(SolverAdapter):
                     dictionaries[key], sort_keys=True, default=str
                 )
 
-        if any(key in dictionaries for key in ("system/fvSchemes", "system/fvSolution")):
+        if any(
+            key in dictionaries for key in ("system/fvSchemes", "system/fvSolution")
+        ):
             result.gap_report.unsupported_nonblocking(
                 "numerics",
                 "openfoam_numerics_not_fully_mapped",
@@ -283,7 +296,8 @@ class OpenFOAMAdapter(SolverAdapter):
         path = Path(results_path).expanduser()
         if not path.is_dir():
             result.gap_report.unsupported_blocking(
-                "results", "openfoam_results_path",
+                "results",
+                "openfoam_results_path",
                 f"OpenFOAM results path must be a case directory: {path}",
             )
             return False
@@ -302,13 +316,16 @@ class OpenFOAMAdapter(SolverAdapter):
             ValueError,
         ) as exc:
             result.gap_report.unsupported_blocking(
-                "results", "openfoam_results_read", str(exc),
+                "results",
+                "openfoam_results_read",
+                str(exc),
             )
             return False
 
         if not fields:
             result.gap_report.unavailable(
-                "results", "openfoam_empty_time",
+                "results",
+                "openfoam_empty_time",
                 f"No readable fields found in the latest time directory of {path}",
             )
             return False
@@ -330,7 +347,8 @@ class OpenFOAMAdapter(SolverAdapter):
             # cannot be placed in CFDX's cell-centred field arrays.
             if not source_class.startswith("vol"):
                 result.gap_report.unsupported_nonblocking(
-                    "results", name,
+                    "results",
+                    name,
                     f"Field class {source_class} is not a volume field; values were not imported.",
                 )
                 continue
@@ -338,7 +356,8 @@ class OpenFOAMAdapter(SolverAdapter):
             if source_class.endswith("ScalarField"):
                 if values.ndim != 1:
                     result.gap_report.unsupported_nonblocking(
-                        "results", name,
+                        "results",
+                        name,
                         f"Expected a cell-centred scalar array; got shape {values.shape}.",
                     )
                     continue
@@ -349,7 +368,8 @@ class OpenFOAMAdapter(SolverAdapter):
                     values = values.reshape(1, 3)
                 if values.ndim != 2 or values.shape[1] != 3:
                     result.gap_report.unsupported_nonblocking(
-                        "results", name,
+                        "results",
+                        name,
                         f"Expected a cell-centred 3-component vector array; got shape {values.shape}.",
                     )
                     continue
@@ -357,19 +377,22 @@ class OpenFOAMAdapter(SolverAdapter):
                 imported += 1
             else:
                 result.gap_report.unsupported_nonblocking(
-                    "results", name,
+                    "results",
+                    name,
                     f"Field class {source_class} is not yet representable in ConversionResult.",
                     "Tensor and other field types remain available in the source OpenFOAM case.",
                 )
 
         if imported:
             result.gap_report.supported(
-                "results", "openfoam_time_fields",
+                "results",
+                "openfoam_time_fields",
                 f"Imported {imported} scalar/vector volume field(s) from time {time_key}.",
             )
         else:
             result.gap_report.unavailable(
-                "results", "openfoam_no_supported_fields",
+                "results",
+                "openfoam_no_supported_fields",
                 f"No scalar/vector volume fields could be imported from time {time_key}.",
             )
         return imported > 0
@@ -412,7 +435,14 @@ class OpenFOAMAdapter(SolverAdapter):
 
             return points, cells
 
-        except (OSError, ValueError, TypeError, IndexError, KeyError, UnicodeError) as e:
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            IndexError,
+            KeyError,
+            UnicodeError,
+        ) as e:
             self._mesh_parse_error = str(e)
             return None, None
 
@@ -421,7 +451,9 @@ class OpenFOAMAdapter(SolverAdapter):
         try:
             content = points_file.read_text(encoding="utf-8")
             if re.search(r"\bformat\s+binary\s*;", content):
-                raise ValueError("Binary OpenFOAM polyMesh is not supported by the native Python reader")
+                raise ValueError(
+                    "Binary OpenFOAM polyMesh is not supported by the native Python reader"
+                )
 
             data_lines, _count = _extract_foam_list(content)
             if not data_lines:
@@ -461,7 +493,9 @@ class OpenFOAMAdapter(SolverAdapter):
 
             faces = []
             for line in data_lines:
-                match = re.match(r"^\s*(\d*)\s*\(?\s*([-\d.eE+,\s]+?)\s*\)?\s*;?\s*$", line)
+                match = re.match(
+                    r"^\s*(\d*)\s*\(?\s*([-\d.eE+,\s]+?)\s*\)?\s*;?\s*$", line
+                )
                 if not match:
                     continue
                 n_declared = int(match.group(1)) if match.group(1) else None
@@ -491,7 +525,7 @@ class OpenFOAMAdapter(SolverAdapter):
 
             labels = []
             for line in data_lines:
-                token = line.strip().rstrip(';')
+                token = line.strip().rstrip(";")
                 if not token or token.startswith(("/*", "//")):
                     continue
                 try:
@@ -624,9 +658,7 @@ class OpenFOAMAdapter(SolverAdapter):
 
         boundary_face_ids = set(np.flatnonzero(neighbour_full < 0).tolist())
         assigned_face_ids = {
-            face_id
-            for patch in patch_assignment
-            for face_id in patch["face_ids"]
+            face_id for patch in patch_assignment for face_id in patch["face_ids"]
         }
         if assigned_face_ids != boundary_face_ids:
             missing = sorted(boundary_face_ids - assigned_face_ids)
@@ -656,9 +688,9 @@ class OpenFOAMAdapter(SolverAdapter):
         for face in faces:
             for index in range(1, len(face) - 1):
                 triangles.append([face[0], face[index], face[index + 1]])
-        surface_cells = {
-            "triangle": np.asarray(triangles, dtype=np.int64)
-        } if triangles else {}
+        surface_cells = (
+            {"triangle": np.asarray(triangles, dtype=np.int64)} if triangles else {}
+        )
 
         return {"cells": surface_cells, "cfdx_csr": cfdx_csr}
 
@@ -666,28 +698,34 @@ class OpenFOAMAdapter(SolverAdapter):
         """Parse boundary patches and add to setup."""
         patches = self._parse_boundary_file(poly_mesh / "boundary")
         for patch in patches:
-            bc_type = self._map_patch_type(patch['type'])
-            bc_value = BCValueType.FIXED if bc_type in (BCType.INLET, BCType.OUTLET) else BCValueType.ZERO_GRADIENT
-            
-            self.setup.boundary_conditions.append(BoundarySpec(
-                patch_name=patch['name'],
-                type=bc_type,
-                value_type=bc_value,
-            ))
+            bc_type = self._map_patch_type(patch["type"])
+            bc_value = (
+                BCValueType.FIXED
+                if bc_type in (BCType.INLET, BCType.OUTLET)
+                else BCValueType.ZERO_GRADIENT
+            )
+
+            self.setup.boundary_conditions.append(
+                BoundarySpec(
+                    patch_name=patch["name"],
+                    type=bc_type,
+                    value_type=bc_value,
+                )
+            )
 
     def _map_patch_type(self, of_type: str) -> BCType:
         """Map OpenFOAM patch type to CFDX BCType."""
         mapping = {
-            'patch': BCType.WALL,
-            'wall': BCType.WALL,
-            'inlet': BCType.INLET,
-            'outlet': BCType.OUTLET,
-            'pressureInletOutletVelocity': BCType.PRESSURE_OUTLET,
-            'pressureOutlet': BCType.PRESSURE_OUTLET,
-            'symmetry': BCType.SYMMETRY,
-            'symmetryPlane': BCType.SYMMETRY,
-            'cyclic': BCType.PERIODIC,
-            'empty': BCType.EMPTY,
+            "patch": BCType.WALL,
+            "wall": BCType.WALL,
+            "inlet": BCType.INLET,
+            "outlet": BCType.OUTLET,
+            "pressureInletOutletVelocity": BCType.PRESSURE_OUTLET,
+            "pressureOutlet": BCType.PRESSURE_OUTLET,
+            "symmetry": BCType.SYMMETRY,
+            "symmetryPlane": BCType.SYMMETRY,
+            "cyclic": BCType.PERIODIC,
+            "empty": BCType.EMPTY,
         }
         return mapping.get(of_type.lower(), BCType.UNKNOWN)
 
@@ -700,7 +738,7 @@ class OpenFOAMAdapter(SolverAdapter):
         """
         parsed = 0
         for field_file in sorted(zero_dir.iterdir()):
-            if not field_file.is_file() or field_file.name.startswith('.'):
+            if not field_file.is_file() or field_file.name.startswith("."):
                 continue
             try:
                 content = field_file.read_text()
