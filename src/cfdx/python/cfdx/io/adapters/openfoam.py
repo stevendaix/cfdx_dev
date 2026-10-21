@@ -734,21 +734,29 @@ class OpenFOAMAdapter(SolverAdapter):
         return mapping.get(of_type.lower(), BCType.UNKNOWN)
 
     def _parse_fields(self, zero_dir: Path, result: ConversionResult) -> int:
-        """Parse field files from the 0/ directory.
-
-        Reads ``internalField`` only (uniform and nonuniform List<...>). Files
-        whose internal field cannot be read are recorded in the gap report
-        rather than dropped. Returns the number of fields parsed.
-        """
+        """Import supported scalar/vector volume fields from the initial time."""
         parsed = 0
+        cell_count = self.setup.mesh_info.n_cells
         for field_file in sorted(zero_dir.iterdir()):
             if not field_file.is_file() or field_file.name.startswith("."):
                 continue
             try:
-                content = field_file.read_text()
+                content = field_file.read_text(encoding="utf-8")
             except OSError as exc:
                 result.gap_report.unavailable(
                     "fields", field_file.name, f"Cannot read field file: {exc}"
+                )
+                continue
+
+            class_match = re.search(r"\bclass\s+([A-Za-z0-9_]+)\s*;", content)
+            source_class = class_match.group(1) if class_match else ""
+            if source_class not in {"volScalarField", "volVectorField"}:
+                result.gap_report.unsupported_nonblocking(
+                    "fields",
+                    field_file.name,
+                    f"Field class {source_class or 'unknown'} is not imported as a "
+                    "cell-centred scalar/vector field.",
+                    "Only volScalarField and volVectorField are currently supported.",
                 )
                 continue
 
@@ -768,13 +776,46 @@ class OpenFOAMAdapter(SolverAdapter):
                     "fields",
                     name,
                     f"Unsupported internalField syntax: {' '.join(match.group(1).split())[:80]}",
-                    "Re-export the field with a uniform or nonuniform List<scalar/vector> internalField",
+                    "Use a uniform or nonuniform List<scalar/vector> internalField.",
                 )
                 continue
 
-            if parsed_field.ndim == 1:
+            is_uniform = match.group(1).lstrip().startswith("uniform")
+            if source_class == "volScalarField":
+                if parsed_field.ndim != 1:
+                    result.gap_report.unsupported_nonblocking(
+                        "fields",
+                        name,
+                        f"Expected scalar values; got shape {parsed_field.shape}.",
+                    )
+                    continue
+                if is_uniform and parsed_field.size == 1 and cell_count > 1:
+                    parsed_field = np.full(cell_count, parsed_field[0], dtype=np.float64)
+                elif cell_count and parsed_field.size != cell_count:
+                    result.gap_report.unsupported_nonblocking(
+                        "fields",
+                        name,
+                        f"Field has {parsed_field.size} values but mesh has {cell_count} cells.",
+                    )
+                    continue
                 result.scalar_fields.append((name, parsed_field))
             else:
+                if is_uniform and parsed_field.shape == (3,) and cell_count > 1:
+                    parsed_field = np.broadcast_to(
+                        parsed_field, (cell_count, 3)
+                    ).copy()
+                if (
+                    parsed_field.ndim != 2
+                    or parsed_field.shape[1] != 3
+                    or (cell_count and parsed_field.shape[0] != cell_count)
+                ):
+                    result.gap_report.unsupported_nonblocking(
+                        "fields",
+                        name,
+                        f"Expected {cell_count} three-component vectors; got shape "
+                        f"{parsed_field.shape}.",
+                    )
+                    continue
                 result.vec_fields.append((name, parsed_field))
             parsed += 1
 
