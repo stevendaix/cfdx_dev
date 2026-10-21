@@ -202,14 +202,15 @@ def _time_directories(path: Path) -> list[tuple[float, Path]]:
 
 
 def _read_field_file(path: Path, *, cell_count: int | None = None) -> dict[str, Any]:
-    prefix = path.read_bytes()[:4096].decode("ascii", errors="ignore")
+    with path.open("rb") as stream:
+        prefix = stream.read(4096).decode("ascii", errors="ignore")
     if re.search(r"\bformat\s+binary\s*;", _strip_comments(prefix)):
         raise ValueError("Binary OpenFOAM files are not supported by the native Python reader")
     text = path.read_text(encoding="utf-8")
     tokens = _tokens(text)
     if not tokens or tokens[0] != "FoamFile":
         raise ValueError(f"Missing FoamFile header in {path}")
-    header, index = _parse_dictionary_tokens(tokens, 0)
+    header, _ = _parse_dictionary_tokens(tokens, 0)
     foam_header = header.get("FoamFile", {})
     source_class = str(foam_header.get("class", "")) if isinstance(foam_header, dict) else ""
     if not source_class:
