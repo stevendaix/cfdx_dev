@@ -623,6 +623,30 @@ int main(int argc, char** argv)
             }
             std::cout << "Imported cell-centred velocity field U from case HDF5; "
                          "pressure initialization remains case-declared.\n";
+
+            // Preserve machine-readable evidence of the exact imported field.
+            // This artifact is written before solver setup can reject unrelated
+            // case contracts, making import failures distinguishable from later
+            // production-solver qualification failures.
+            std::ostringstream imported_velocity_json;
+            imported_velocity_json << "{\\n  \\"field\\": \\"U\\",\\n"
+                                   << "  \\"location\\": \\"cell\\",\\n"
+                                   << "  \\"cell_count\\": " << U.size() << ",\\n"
+                                   << "  \\"values\\": [";
+            for (std::size_t cell = 0; cell < U.size(); ++cell) {
+                const auto value = U(cell);
+                if (cell != 0)
+                    imported_velocity_json << ",";
+                imported_velocity_json << "\\n    [" << json_number(value.x)
+                                       << ", " << json_number(value.y)
+                                       << ", " << json_number(value.z) << "]";
+            }
+            if (U.size() != 0)
+                imported_velocity_json << "\\n  ";
+            imported_velocity_json << "]\\n}\\n";
+            write_text_file_atomic(
+                options.output_dir / "imported_velocity_field.json",
+                imported_velocity_json.str());
         }
 
         // The initial state is declared, not inferred. When the case carries an
