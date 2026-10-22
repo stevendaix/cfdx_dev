@@ -1,6 +1,6 @@
 # SST production-solver implementation tracker
 
-**Status date:** 2026-10-21  
+**Status date:** 2026-10-22  
 **Overall status:** IN PROGRESS — RANS production selection remains fail-closed.  
 **Scope:** Track implementation and qualification evidence for end-to-end SST in CFDX. Update this file in each turbulence PR; do not mark a gate complete without exact-HEAD evidence. Numerical-core implementation is governed by [the RANS/SST method fiche](../audits/09-turbulence-rans.md).
 
@@ -95,7 +95,7 @@
 - [ ] Wire the existing initialization/DAT restore helpers into application case/HDF5 lifecycle and prove continuous-versus-restarted production trajectory equivalence; no implicit defaults or guessed values.
 - [x] Extend outer retry/rejection handling to restore SST state alongside carrier rollback and authoritative face mass flux (PR #1032; nested regression in #1030).
 
-This is an enabling contract only. It does not call SST transport from the production loop, enable the RANS selector, or qualify the physical model.
+This section records the state before PR #1032 and is superseded for production-loop ownership by the latest increment below. PR #1032 now calls SST transport from the opt-in production loop and couples its state to retry/acceptance. The general RANS selector remains fail-closed, and physical qualification is still outstanding.
 
 ### T1 implementation increment — atomic carrier/SST transaction primitive
 
@@ -194,7 +194,7 @@ u_t) and rejects invalid input. | Initialization contract only; production calle
 - [ ] Connect the production driver's declared velocity BCs to this overload for the live solve.
 - [ ] Verify gradient accuracy with boundary-aware manufactured fields on representative non-orthogonal meshes before using it for SST production coupling.
 
-This remains a prerequisite utility only. Restart reconstruction now accepts explicit fixed-value velocity patch data, but the live production nonlinear loop still does not call SST transport or use SST-updated viscosity.
+This paragraph records the state before PR #1032 and is superseded for live-loop coupling by that PR. The boundary-aware reconstruction utility still has an open accuracy gate on representative non-orthogonal meshes; PR #1032 wires the utility into the opt-in SST path, but application case/restart construction and production E2E assertions remain open.
 
 
 ### T1 implementation increment — restart boundary-data correctness (PR #1018 merged)
@@ -205,7 +205,7 @@ This remains a prerequisite utility only. Restart reconstruction now accepts exp
 - [ ] Wire restart restoration into the production driver's actual case/restart lifecycle.
 - [ ] Prove continuous-versus-restarted production trajectory equivalence, including mass flux and all SST-owned fields.
 
-Evidence: PR #1017 merged the affine-field boundary reconstruction test; PR #1018 merged the restart-boundary fix. The production RANS selector remains fail-closed because this work repairs restart reconstruction only; it does not integrate SST into the production outer iteration.
+Evidence: PR #1017 merged the affine-field boundary reconstruction test; PR #1018 merged the restart-boundary fix. At the time those PRs landed, the work repaired restart reconstruction only. PR #1032 subsequently added opt-in outer-loop coupling; production case/restart lifecycle and physical qualification remain open.
 
 
 ### T1 implementation increment — transport-field shape validation (PR #1020 merged)
