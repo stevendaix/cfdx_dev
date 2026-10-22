@@ -2494,20 +2494,28 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // Validate all controls and derived material properties before initialization
     // can mutate the caller-provided solution fields.
     validate_incompressible_controls(controls, mesh.n_cells());
+    // Validate the caller-owned SST bundle before initialization can mutate
+    // the carrier fields. Derived SST quantities must be refreshed only after
+    // initialization/restart has established the actual velocity field.
+    if (controls.sst_runtime)
+        validate_sst_production_state(*controls.sst_runtime->state, mesh.n_cells());
+
+    apply_initialization(
+        controls.initialization, mesh, U, p, restart_fields, restart_path);
+
     // Authoritative dynamic viscosity used by predictor assembly, nonlinear
     // acceptance residuals, and the independent momentum conservation audit.
     std::vector<double> mu_eff(mesh.n_cells());
     if (controls.sst_runtime) {
-        validate_sst_production_state(*controls.sst_runtime->state, mesh.n_cells());
         std::map<std::string, std::array<double, 3>> fixed_velocity_values;
         for (const auto& [patch, bc] : velocity_bcs) {
             if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
                 fixed_velocity_values.emplace(
                     patch, std::array<double, 3>{bc.value.x, bc.value.y, bc.value.z});
         }
-        // The first momentum assembly must use viscosity derived from the
-        // actual initialized/restarted carrier field, not a caller's stale
-        // pre-solve estimate of strain rate.
+        // Initialization may replace U (uniform, profile, or DAT restart).
+        // Refresh wall distance, strain and nu_t against that final field so
+        // the very first momentum predictor cannot use stale SST viscosity.
         refresh_sst_production_derived_state_from_mesh(
             *controls.sst_runtime->state, mesh, controls.sst_runtime->transport,
             U, fixed_velocity_values, controls.sst_runtime->wall_patch_names);
@@ -2523,8 +2531,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             throw std::invalid_argument(
                 "effective cellwise dynamic viscosity must be finite and non-negative");
     }
-    apply_initialization(
-        controls.initialization, mesh, U, p, restart_fields, restart_path);
 
     const FvGeometry geometry = build_fv_geometry(mesh);
     cfdx::core::ConvergenceMonitorControls monitor_controls;
