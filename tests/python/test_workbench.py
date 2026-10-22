@@ -49,6 +49,15 @@ def test_workbench_has_stable_docks() -> None:
         == "Your simulation workspace"
     )
     assert window.workflow_tree.topLevelItem(0).font(0).bold()
+    assert window._workspace == "setup"
+    assert not window.findChild(QDockWidget, "workbench.dock.mesh").isHidden()
+    assert window.findChild(QDockWidget, "workbench.dock.results").isHidden()
+    window.workspace_actions["analyze"].trigger()
+    assert window._workspace == "analyze"
+    assert not window.findChild(QDockWidget, "workbench.dock.results").isHidden()
+    assert not window.findChild(QDockWidget, "workbench.dock.probes").isHidden()
+    assert window.findChild(QDockWidget, "workbench.dock.mesh").isHidden()
+    window.workspace_actions["setup"].trigger()
     assert (
         window.viewport_placeholder.findChild(
             QPushButton, "workbench.empty_state.open_mesh"
