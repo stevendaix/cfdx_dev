@@ -54,7 +54,6 @@ the OpenFOAM source mesh/fields and the resulting case.cfdx.h5, including
 cell counts, face ownership, boundary patch ranges, field locations, and
 numeric values. Binary support requires a separate implementation and fixtures.
 
-
 ## Running CFDX from an imported result field
 
 The production incompressible solver supports an explicit, opt-in velocity
@@ -82,58 +81,64 @@ not yet provide a qualified dimensional conversion. The imported field is an
 initial guess, not a claim that OpenFOAM boundary conditions, turbulence,
 thermal/radiation models, or discretization schemes are numerically equivalent.
 
+## First real-case qualification: icoFoam lid-driven cavity
 
-## First real-case qualification: VOF dam-break
+Use the official OpenFOAM **icoFoam/cavity** tutorial as the first real-case
+qualification. This is a deliberately small, transient, incompressible,
+laminar, Newtonian, single-phase flow solved with PISO. It exercises the
+standard polyMesh topology and cell-centred `U` and kinematic pressure `p`
+without introducing multiphase or turbulence-model requirements. It is not a
+VOF case.
 
-For VOF qualification, use the official OpenFOAM **damBreak** tutorial with
-`interFoam`, not the `icoFoam/cavity` tutorial. `icoFoam` is a transient,
-incompressible, laminar, single-phase solver; it has no transported phase
-fraction. `interFoam` solves two incompressible, isothermal immiscible fluids
-using VOF and therefore exercises the phase-fraction field `alpha.water`
-(or the phase name used by that OpenFOAM distribution), in addition to
-velocity and pressure fields.
+The OpenCFD tutorial guide lists the path as
+`$FOAM_TUTORIALS/incompressible/icoFoam/cavity/cavity`; layouts may vary by
+distribution/version. Record the OpenFOAM distribution/version and actual
+source path in the qualification evidence. See the [official lid-driven cavity
+tutorial](https://www.openfoam.com/documentation/tutorial-guide/2-incompressible-flow/2.1-lid-driven-cavity-flow).
 
-The canonical tutorial is commonly located at
-`$FOAM_TUTORIALS/multiphase/interFoam/laminar/damBreak/damBreak` in OpenCFD
-distributions. Tutorial directory layouts vary by distribution/version; locate
-the installed tutorial instead of assuming the path exists. Record the exact
-OpenFOAM distribution/version and source path in the evidence.
-
-### Reproducible acquisition and conversion
+### Reproducible acquisition and run
 
 Run in a shell with the OpenFOAM environment sourced:
 
 ```bash
 printf 'OpenFOAM version: '; foamVersion
-printf 'Tutorial root: %s\\n' "$FOAM_TUTORIALS"
-find "$FOAM_TUTORIALS" -type d -path '*/interFoam/*/damBreak' -print
+printf 'Tutorial root: %s\n' "$FOAM_TUTORIALS"
+find "$FOAM_TUTORIALS" -type d -path '*/icoFoam/cavity/cavity' -print
 ```
 
-Select the installed laminar dam-break tutorial path found above, copy it to a
-working directory, and run its documented meshing and solver commands
-(e.g. `blockMesh` and `setFields`, then `interFoam`, where required by that
-tutorial's README/scripts). Do not assume the exact command sequence across
-OpenFOAM distributions. Then run:
+Copy the discovered tutorial to a working directory; do not run in or modify
+the installation's source tree. Follow the tutorial's own instructions and
+run `blockMesh` then `icoFoam` (or its provided `Allrun` script, after
+reviewing what it executes). Preserve the original case and record the selected
+numeric time directory. Then convert:
 
 ```bash
-cfdx-io convert ./openfoam-dambreak --results --output ./converted
+cfdx-io convert ./openfoam-cavity --results --output ./converted
 ```
 
-This is a **VOF reader qualification**, so the acceptance checks must explicitly
-include the phase-fraction field and not only `U`: confirm that the importer
-recognizes the scalar volume field `alpha.water` (or the actual phase field
-name), preserves its cell-centred values and dimensions, and checks values are
-finite and lie within the expected physical interval [0, 1] up to the source
-solver's documented numerical tolerances. Also verify mesh counts, owner/
-neighbour consistency, boundary patch ranges, and selected time. The current
-reader's generic scalar/vector field support does not itself establish VOF
-solver equivalence or validate alpha transport.
+### Acceptance checks
 
-Keep the original tutorial's provenance and license information. Do not commit
-generated solver output by default; only add a small redistributable fixture
-after checking upstream licensing and preserving attribution.
+The case qualifies the **reader and velocity-initialization boundary**, not
+OpenFOAM numerical equivalence. Verify and retain evidence for:
 
-### Required-vs-optional production solver check
+- OpenFOAM distribution/version, tutorial provenance, and selected time;
+- points, faces, cells, owner/neighbour topology, and boundary patch ranges;
+- imported `U` field dimensions `[0 1 -1 0 0 0 0]`, cell-centred location,
+  shape `(n_cells, 3)`, finite values, and exact comparison with the source;
+- imported `p` dimensions `[0 2 -2 0 0 0 0]` if the reader imports it as a
+  scalar field; do not map it to CFDX pressure in Pa without a qualified
+  dimensional conversion;
+- when the production solver is available, exact preservation of imported
+  `U` in evidence captured after initialization and before the first residual.
+
+The standard tutorial's mesh and time-directory contents depend on the
+installed OpenFOAM distribution/version and whether the case was run. Record
+actual values from the selected source case; do not hard-code unverified counts
+or claim a run passed without retained output. Keep generated solver output out
+of the repository by default. Any committed fixture must have verified
+redistribution terms and preserve upstream attribution.
+
+## Required-vs-optional production solver check
 
 The production-solver integration tests skip when
 `CFDX_PRODUCTION_SOLVER` is absent during ordinary Python test runs. A
@@ -148,9 +153,8 @@ pytest -q tests/python/test_openfoam_results_cli.py
 
 With the strict flag enabled, a missing solver executable configuration raises
 a test failure instead of skipping. This fail-closed check prevents a false
-green qualification status; it does not itself qualify VOF. The current
-production integration flag `--initial-velocity-field` initializes only `U`.
-It does not initialize or solve `alpha.water`, and must not be presented as
-end-to-end VOF support. Issue #1048 should therefore remain open until CFDX has
-a qualified alpha-field import path and the intended solver-side VOF workflow
-is explicitly tested.
+green qualification status; it does not establish equivalence with OpenFOAM.
+The current production integration flag `--initial-velocity-field` initializes
+only `U`. Pressure, boundary-condition mapping, solver/discretization
+equivalence, turbulence, thermal/radiation, and VOF remain outside this
+qualification.
