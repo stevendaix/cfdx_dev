@@ -153,3 +153,36 @@ the post-initialization velocity evidence. It does not establish equivalence
 with OpenFOAM. The current integration initializes only `U`; pressure,
 boundary-condition mapping, discretization equivalence, turbulence,
 thermal/radiation, and VOF remain outside this qualification.
+
+
+### Public reproducible case: yushan-lab/openfoam-cfd-minilab
+
+A second, lightweight source is the public
+[yushan-lab/openfoam-cfd-minilab](https://github.com/yushan-lab/openfoam-cfd-minilab)
+repository. Its tracked base case is a 40 × 40 × 1 lid-driven cavity at
+Re = 100. The repository keeps public residual/profile summaries, while the
+full run fields are generated and are not tracked as permanent result files.
+This makes it useful for reproducibly generating native `U` and `p` fields.
+
+With OpenFOAM sourced, dependencies installed, and the command run from the
+CFDX repository root:
+
+```bash
+bash scripts/qualify_openfoam_cfd_minilab.sh /tmp/cfdx-minilab-qualification
+```
+
+The script pins the external source to the resolved `main` commit for that run,
+runs the upstream `scripts/run_cavity.sh` at 40 × 40 × 1 with final-field
+retention enabled, imports the generated case using the in-tree
+`python -m cfdx.io.cli convert` entry point, and compares the source cell-centred
+ASCII `U` and `p` arrays against HDF5 with exact array equality (zero
+tolerance). It also checks field dimensions and basic owner/neighbour array
+bounds. Evidence is written to
+`evidence/source_import_comparison.json`, alongside `provenance.txt`.
+
+This procedure is not yet a production-solver qualification: it does not
+establish boundary-condition equivalence, patch-range semantics, or numerical
+equivalence between CFDX and OpenFOAM. OpenFOAM `p` remains kinematic pressure
+and must not be mapped to CFDX pressure in Pa without a separate dimensional
+qualification. Run in a fresh output directory; the script deliberately refuses
+to overwrite previous run evidence.
