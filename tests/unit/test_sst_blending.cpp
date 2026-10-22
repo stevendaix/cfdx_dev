@@ -1094,5 +1094,66 @@ int main()
             EXPECT_NEAR(phi(f), original_phi(f), 0.0);
     });
 
+
+    run_case("sst_outer_iteration_transaction_rolls_back_after_inner_sst_commit", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_transaction_unit_cube();
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        Field<double, Location::FACE> phi(mesh.n_faces(), "phi", "kg/s", 1);
+        U.fill(0.0);
+        U.component_data(0)[0] = 0.25;
+        p.fill(3.0);
+        phi.fill(0.0);
+
+        SSTProductionState state(mesh.n_cells());
+        state.k.fill(0.4);
+        state.omega.fill(8.0);
+        state.nu_t.fill(0.02);
+        state.wall_distance.fill(0.1);
+        state.strain_rate.fill(1.0);
+
+        const auto original_U = U;
+        const auto original_p = p;
+        const auto original_phi = phi;
+        const auto original_sst = snapshot_sst_production_state(state);
+
+        // The outer transaction remains active across a successfully committed
+        // inner SST transaction. A later carrier rejection must still restore
+        // the entire coupled iterate to the pre-outer-iteration snapshot.
+        SSTCoupledStateTransaction outer(U, p, phi, state);
+        outer.begin();
+        {
+            SSTCoupledStateTransaction inner(U, p, phi, state);
+            inner.begin();
+            U.component_data(0)[0] = 1.25;
+            p(0) = 9.0;
+            phi(0) = 2.0;
+            state.k(0) = 0.8;
+            state.omega(0) = 12.0;
+            state.nu_t(0) = 0.05;
+            state.wall_distance(0) = 0.2;
+            state.strain_rate(0) = 4.0;
+            inner.commit();
+        }
+
+        EXPECT_NEAR(U.component_data(0)[0], 1.25, 0.0);
+        EXPECT_NEAR(state.k(0), 0.8, 0.0);
+        outer.rollback();
+
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            for (std::size_t d = 0; d < 3; ++d)
+                EXPECT_NEAR(U.component_data(d)[c], original_U.component_data(d)[c], 0.0);
+            EXPECT_NEAR(p(c), original_p(c), 0.0);
+            EXPECT_NEAR(state.k(c), original_sst.k(c), 0.0);
+            EXPECT_NEAR(state.omega(c), original_sst.omega(c), 0.0);
+            EXPECT_NEAR(state.nu_t(c), original_sst.nu_t(c), 0.0);
+            EXPECT_NEAR(state.wall_distance(c), original_sst.wall_distance(c), 0.0);
+            EXPECT_NEAR(state.strain_rate(c), original_sst.strain_rate(c), 0.0);
+        }
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+            EXPECT_NEAR(phi(f), original_phi(f), 0.0);
+    });
+
     return run_all();
 }
