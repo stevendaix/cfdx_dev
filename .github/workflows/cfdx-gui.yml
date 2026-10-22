@@ -66,6 +66,32 @@ jobs:
           print("GUI runtime imports: OK")
           PY
 
+      - name: Verify Workbench import resolution outside repository
+        run: |
+          cd /tmp
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          import cfdx
+          from cfdx.workbench import CFDXWorkbenchWindow
+
+          expected_package_root = (
+              Path(os.environ["GITHUB_WORKSPACE"]) / "src" / "cfdx" / "python" / "cfdx"
+          ).resolve()
+          actual_package_file = Path(cfdx.__file__).resolve()
+          try:
+              actual_package_file.relative_to(expected_package_root)
+          except ValueError as exc:
+              raise AssertionError(
+                  "Imported cfdx from an unexpected location: "
+                  f"{actual_package_file}; expected package under {expected_package_root}"
+              ) from exc
+
+          assert callable(CFDXWorkbenchWindow), "Workbench class is not importable"
+          print(f"Workbench import resolution: OK ({actual_package_file})")
+          PY
+
       - name: Run Qt/PyVista headless regression
         env:
           QT_QPA_PLATFORM: xcb
