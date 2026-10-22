@@ -32,9 +32,9 @@ try:
         QStackedLayout,
         QStatusBar,
         QToolBar,
-        QVBoxLayout,
         QTreeWidget,
         QTreeWidgetItem,
+        QVBoxLayout,
         QWidget,
     )
 except ImportError:  # pragma: no cover
@@ -291,25 +291,29 @@ if QMainWindow is not object:
 
             self.viewport_placeholder = QWidget()
             self.viewport_placeholder.setObjectName("workbench.viewport.empty_state")
-            self.viewport_placeholder.setStyleSheet(
-                "QWidget#workbench.viewport.empty_state { background: #f4f7fb; }"
-            )
+            self.viewport_placeholder.setStyleSheet("background: #f4f7fb;")
             empty_layout = QVBoxLayout(self.viewport_placeholder)
             empty_layout.setContentsMargins(32, 32, 32, 32)
             empty_layout.addStretch(1)
-            empty_title = QLabel(
-                "3D renderer unavailable" if self.view3d is None else "Your simulation workspace"
+            empty_title_text = (
+                "3D renderer unavailable"
+                if self.view3d is None
+                else "Your simulation workspace"
             )
+            empty_title = QLabel(empty_title_text)
             empty_title.setObjectName("workbench.viewport.empty_title")
             empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty_title.setStyleSheet(
-                "font-size: 22px; font-weight: 600; color: #1f2937; background: transparent;"
+                "font-size: 22px; font-weight: 600; color: #1f2937; "
+                "background: transparent;"
             )
             empty_layout.addWidget(empty_title)
-            empty_message = QLabel(
-                str(renderer.text()) if self.view3d is None else
-                "Open a mesh or load a result to explore your CFD case in 3D."
+            empty_message_text = (
+                str(renderer.text())
+                if self.view3d is None
+                else "Open a mesh or load a result to explore your CFD case in 3D."
             )
+            empty_message = QLabel(empty_message_text)
             empty_message.setObjectName("workbench.viewport.empty_message")
             empty_message.setWordWrap(True)
             empty_message.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -333,9 +337,6 @@ if QMainWindow is not object:
             self.viewport_stack.addWidget(renderer)
             viewport = QWidget()
             viewport.setObjectName("workbench.viewport")
-            viewport.setStyleSheet(
-                "QWidget#workbench.viewport { background: #f4f7fb; }"
-            )
             viewport.setLayout(self.viewport_stack)
             self.setCentralWidget(viewport)
 
