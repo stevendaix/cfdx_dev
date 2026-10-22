@@ -504,7 +504,7 @@ inline ProductionEnergyStageResult run_production_energy_stage(
         energy_case.controls, bcs);
 
     ProductionEnergyStageResult result;
-    result.linear_solver_converged = solve.converged;
+    result.linear_solver_converged = solve.linear_solver_converged;
     result.iterations = solve.iterations;
     result.history = solve.history;
     result.controls = energy_case.controls;
