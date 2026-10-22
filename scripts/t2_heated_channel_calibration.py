@@ -755,7 +755,6 @@ def main() -> int:
         p, c = _fit_order(dxs, errs)
         campaign["order_fit"] = {"dx": dxs, "err": errs, "p": p, "C": c}
         finest = campaign["meshes"][-1]
-        within = finest["err_rel"] <= ERR_TARGET
         campaign["verdict"] = (
             "physics_qualified" if campaign["qualification_passed"]
             else "execution_complete_physics_not_qualified"
