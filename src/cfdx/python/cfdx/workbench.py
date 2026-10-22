@@ -20,7 +20,7 @@ from .session import CFDXSession
 
 try:
     from PySide6.QtCore import QSettings, Qt, Signal
-    from PySide6.QtGui import QAction, QBrush, QColor
+    from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor
     from PySide6.QtWidgets import (
         QDockWidget,
         QFileDialog,
@@ -84,10 +84,13 @@ if QMainWindow is not object:
             self._settings = QSettings(
                 self.SETTINGS_ORGANIZATION, self.SETTINGS_APPLICATION
             )
+            self._docks: dict[str, QDockWidget] = {}
+            self._workspace = "setup"
             self._build_toolbar()
             self._build_docks()
             self._build_status_bar()
             self._restore_layout()
+            self._set_workspace(str(self._settings.value("workspace", "setup")))
 
         def _build_toolbar(self) -> None:
             toolbar = QToolBar("Workbench", self)
@@ -161,6 +164,69 @@ if QMainWindow is not object:
             search.setEnabled(False)
             toolbar.addAction(search)
             self.toolbar = toolbar
+            self._build_workspace_toolbar()
+
+        def _build_workspace_toolbar(self) -> None:
+            """Expose task-oriented layouts without duplicating domain actions."""
+            self.addToolBarBreak(Qt.ToolBarArea.TopToolBarArea)
+            toolbar = QToolBar("Workspace", self)
+            toolbar.setObjectName("workbench.workspace_toolbar")
+            toolbar.setMovable(False)
+            group = QActionGroup(self)
+            group.setExclusive(True)
+            self.workspace_actions: dict[str, QAction] = {}
+            for workspace, label in (
+                ("setup", "Setup"),
+                ("mesh", "Mesh"),
+                ("run", "Run"),
+                ("analyze", "Analyze"),
+            ):
+                action = QAction(label, self)
+                action.setObjectName(f"workbench.workspace.{workspace}")
+                action.setCheckable(True)
+                group.addAction(action)
+                toolbar.addAction(action)
+                action.triggered.connect(
+                    lambda _checked=False, key=workspace: self._set_workspace(key)
+                )
+                self.workspace_actions[workspace] = action
+            self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
+            self.workspace_toolbar = toolbar
+
+        def _set_workspace(self, workspace: str) -> None:
+            """Apply a named dock layout while preserving all panel instances."""
+            layouts = {
+                "setup": {
+                    "workbench.dock.workflow",
+                    "workbench.dock.setup",
+                    "workbench.dock.properties",
+                },
+                "mesh": {
+                    "workbench.dock.workflow",
+                    "workbench.dock.mesh",
+                    "workbench.dock.properties",
+                },
+                "run": {
+                    "workbench.dock.workflow",
+                    "workbench.dock.setup",
+                    "workbench.dock.properties",
+                    "workbench.dock.monitor",
+                },
+                "analyze": {
+                    "workbench.dock.results",
+                    "workbench.dock.probes",
+                    "workbench.dock.properties",
+                    "workbench.dock.monitor",
+                },
+            }
+            if workspace not in layouts:
+                workspace = "setup"
+            visible_docks = layouts[workspace]
+            for object_name, dock in self._docks.items():
+                dock.setVisible(object_name in visible_docks)
+            self._workspace = workspace
+            for key, action in self.workspace_actions.items():
+                action.setChecked(key == workspace)
 
         def _new_project(self) -> None:
             self.application.new_project()
@@ -560,6 +626,7 @@ if QMainWindow is not object:
             dock.setWidget(widget)
             dock.setAllowedAreas(Qt.DockWidgetArea.AllDockWidgetAreas)
             self.addDockWidget(area, dock)
+            self._docks[object_name] = dock
             return dock
 
         def _build_status_bar(self) -> None:
@@ -660,6 +727,7 @@ if QMainWindow is not object:
         def closeEvent(self, event) -> None:
             self._settings.setValue("geometry", self.saveGeometry())
             self._settings.setValue("dock_state", self.saveState())
+            self._settings.setValue("workspace", self._workspace)
             super().closeEvent(event)
 
 else:
