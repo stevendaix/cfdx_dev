@@ -17,6 +17,7 @@ from .application import (
 )
 from .mesh_model import read_mesh_catalog
 from .session import CFDXSession
+from .theme import TOKENS, apply_workbench_theme
 
 try:
     from PySide6.QtCore import QSettings, Qt, Signal
@@ -92,6 +93,7 @@ if QMainWindow is not object:
             self._build_toolbar()
             self._build_docks()
             self._build_status_bar()
+            apply_workbench_theme(self)
             self._restore_layout()
             self._set_workspace(str(self._settings.value("workspace", "setup")))
 
@@ -420,7 +422,6 @@ if QMainWindow is not object:
 
             self.viewport_placeholder = QWidget()
             self.viewport_placeholder.setObjectName("workbench.viewport.empty_state")
-            self.viewport_placeholder.setStyleSheet("background: #f4f7fb;")
             empty_layout = QVBoxLayout(self.viewport_placeholder)
             empty_layout.setContentsMargins(32, 32, 32, 32)
             empty_layout.addStretch(1)
@@ -432,10 +433,11 @@ if QMainWindow is not object:
             empty_title = QLabel(empty_title_text)
             empty_title.setObjectName("workbench.viewport.empty_title")
             empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty_title.setStyleSheet(
-                "font-size: 22px; font-weight: 600; color: #1f2937; "
-                "background: transparent;"
-            )
+            title_font = empty_title.font()
+            title_font.setPointSize(18)
+            title_font.setBold(True)
+            empty_title.setFont(title_font)
+            empty_title.setAutoFillBackground(False)
             empty_layout.addWidget(empty_title)
             empty_message_text = (
                 str(renderer.text())
@@ -446,9 +448,8 @@ if QMainWindow is not object:
             empty_message.setObjectName("workbench.viewport.empty_message")
             empty_message.setWordWrap(True)
             empty_message.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty_message.setStyleSheet(
-                "font-size: 13px; color: #64748b; background: transparent;"
-            )
+            empty_message.setProperty("role", "secondary")
+            empty_message.setAutoFillBackground(False)
             empty_layout.addWidget(empty_message)
             empty_actions = QWidget()
             empty_actions.setObjectName("workbench.viewport.empty_actions")
@@ -474,18 +475,7 @@ if QMainWindow is not object:
                 button.setObjectName(f"workbench.empty_state.{object_name}")
                 button.setMinimumHeight(38)
                 button.setCursor(Qt.CursorShape.PointingHandCursor)
-                button.setStyleSheet(
-                    "QPushButton { padding: 8px 16px; border: 1px solid #cbd5e1; "
-                    "border-radius: 6px; background: white; color: #334155; } "
-                    "QPushButton:hover { background: #e2e8f0; } "
-                    + (
-                        "QPushButton { background: #2563eb; color: white; "
-                        "border-color: #2563eb; font-weight: 600; } "
-                        "QPushButton:hover { background: #1d4ed8; }"
-                        if primary
-                        else ""
-                    )
-                )
+                button.setProperty("emphasis", "primary" if primary else "secondary")
                 button.clicked.connect(callback)
                 actions_layout.addWidget(button)
             empty_layout.addWidget(empty_actions)
@@ -702,11 +692,11 @@ if QMainWindow is not object:
         @staticmethod
         def _status_color(status: WorkflowStatus) -> str:
             return {
-                WorkflowStatus.COMPLETE: "#15803d",
-                WorkflowStatus.WARNING: "#b45309",
-                WorkflowStatus.ERROR: "#b91c1c",
-                WorkflowStatus.NOT_CONFIGURED: "#64748b",
-                WorkflowStatus.CONDITIONAL: "#7c3aed",
+                WorkflowStatus.COMPLETE: TOKENS["status.success"],
+                WorkflowStatus.WARNING: TOKENS["status.warning"],
+                WorkflowStatus.ERROR: TOKENS["status.error"],
+                WorkflowStatus.NOT_CONFIGURED: TOKENS["text.muted"],
+                WorkflowStatus.CONDITIONAL: TOKENS["status.info"],
             }[status]
 
         @staticmethod
