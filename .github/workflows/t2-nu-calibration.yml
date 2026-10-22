@@ -1,0 +1,83 @@
+name: T2 heated-channel Nu calibration (diag)
+
+on:
+  push:
+    branches: [diag/t2-heated-channel-calibration]
+    paths:
+      - scripts/t2_heated_channel_calibration.py
+      - .github/workflows/t2-nu-calibration.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: t2-nu-calibration
+  cancel-in-progress: false
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev \
+            python3 python3-venv
+
+      - name: Create Python venv
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install h5py numpy pydantic
+
+      - name: Configure (Release, MPI, parallel HDF5)
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=OFF \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DPython3_EXECUTABLE=$PWD/.venv/bin/python
+
+      - name: Build production solver
+        run: cmake --build build --target cfdx_production_solver
+
+      - name: Run T2 Nu calibration campaign
+        run: |
+          E="diag-evidence/logs"
+          mkdir -p "$E"
+          set +e
+          PYTHONPATH=$PWD/src/cfdx/python .venv/bin/python \
+            scripts/t2_heated_channel_calibration.py \
+            --solver build/cfdx_production_solver \
+            --output-dir "$E" \
+            --run-id "$GITHUB_RUN_ID" 2>&1 | tee "$E/t2_run_run$GITHUB_RUN_ID.log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "t2_rc=$rc" > "$E/t2_status_run$GITHUB_RUN_ID.txt"
+          if [ "$rc" -ne 0 ]; then
+            echo "T2 campaign failed (rc=$rc); evidence is committed by the next step"
+            exit 1
+          fi
+
+      - name: Commit campaign evidence
+        if: always()
+        run: |
+          E="diag-evidence/logs"
+          git config user.name "cfdx-diag-bot"
+          git config user.email "actions@github.com"
+          git add "$E"/t2_nu_calibration_* "$E"/t2_status_run* "$E"/t2_run_run* 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "no evidence to commit"
+          else
+            git commit -m "diag(t2): heated-channel Nu calibration evidence run ${GITHUB_RUN_ID} [ci skip]"
+            git push || (git pull --rebase origin diag/t2-heated-channel-calibration && git push)
+          fi
