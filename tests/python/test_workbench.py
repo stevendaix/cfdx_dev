@@ -52,6 +52,11 @@ def test_workbench_has_stable_docks() -> None:
     assert window._workspace == "setup"
     assert not window.findChild(QDockWidget, "workbench.dock.mesh").isHidden()
     assert window.findChild(QDockWidget, "workbench.dock.results").isHidden()
+    assert window.findChild(QDockWidget, "workbench.dock.visualization_pipeline") is not None
+    assert window.visualization_operations.objectName() == "workbench.visualization.operations"
+    assert window.visualization_operations.count() == 0
+    assert not window.remove_visualization_operation_button.isEnabled()
+    assert not window.reset_visualization_button.isEnabled()
     window.workspace_actions["analyze"].trigger()
     assert window._workspace == "analyze"
     assert not window.findChild(QDockWidget, "workbench.dock.results").isHidden()
