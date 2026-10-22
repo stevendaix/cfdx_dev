@@ -1032,5 +1032,67 @@ int main()
         EXPECT_NEAR(nu_t(0), 0.02, 0.0);
     });
 
+
+    run_case("sst_production_iterate_transaction_rolls_back_derived_and_carrier_state", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_transaction_unit_cube();
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        Field<double, Location::FACE> phi(mesh.n_faces(), "phi", "kg/s", 1);
+        U.fill(0.0);
+        U.component_data(0)[0] = 0.5;
+        p.fill(2.0);
+        phi.fill(0.0);
+
+        SSTProductionState state(mesh.n_cells());
+        state.k(0) = 0.4;
+        state.omega(0) = 8.0;
+        state.nu_t(0) = 0.02;
+        state.wall_distance(0) = 0.25;
+        state.strain_rate(0) = 3.0;
+        const auto original_state = snapshot_sst_production_state(state);
+        const auto original_U = U;
+        const auto original_p = p;
+        const auto original_phi = phi;
+
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.molecular_viscosity = 1.0e-5;
+        const std::map<std::string, std::array<double, 3>> fixed_values{
+            {"x0", {1.0, 0.0, 0.0}}
+        };
+        const ScalarBoundaryConditions k_bcs{
+            {"x0", {ScalarBoundaryType::FIXED_VALUE, 0.9, 0.0}},
+            {"x1", {ScalarBoundaryType::FIXED_VALUE, 0.2, 0.0}},
+            {"walls", {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0}}
+        };
+        const ScalarBoundaryConditions omega_bcs{
+            {"x0", {ScalarBoundaryType::FIXED_VALUE, 20.0, 0.0}},
+            {"x1", {ScalarBoundaryType::FIXED_VALUE, 4.0, 0.0}},
+            {"walls", {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0}}
+        };
+
+        const auto result = advance_sst_production_iterate_transactionally(
+            mesh, U, p, phi, state, controls, fixed_values, {}, k_bcs,
+            omega_bcs, 1, 1e-30);
+
+        EXPECT_TRUE(!result.committed);
+        EXPECT_TRUE(!result.transport.converged);
+        EXPECT_TRUE(result.reason.find("fully rolled back") != std::string::npos);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            EXPECT_NEAR(U.component_data(0)[c], original_U.component_data(0)[c], 0.0);
+            EXPECT_NEAR(U.component_data(1)[c], original_U.component_data(1)[c], 0.0);
+            EXPECT_NEAR(U.component_data(2)[c], original_U.component_data(2)[c], 0.0);
+            EXPECT_NEAR(p(c), original_p(c), 0.0);
+            EXPECT_NEAR(state.k(c), original_state.k(c), 0.0);
+            EXPECT_NEAR(state.omega(c), original_state.omega(c), 0.0);
+            EXPECT_NEAR(state.nu_t(c), original_state.nu_t(c), 0.0);
+            EXPECT_NEAR(state.wall_distance(c), original_state.wall_distance(c), 0.0);
+            EXPECT_NEAR(state.strain_rate(c), original_state.strain_rate(c), 0.0);
+        }
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+            EXPECT_NEAR(phi(f), original_phi(f), 0.0);
+    });
+
     return run_all();
 }
