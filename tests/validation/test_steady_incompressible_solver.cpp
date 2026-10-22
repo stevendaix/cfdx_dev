@@ -499,6 +499,7 @@ int main()
         const auto result = solve_steady_incompressible(m, U, p, ubc, pbc, controls);
         EXPECT_TRUE(callback_calls == 2);
         EXPECT_TRUE(result.iterations == 1);
+        EXPECT_TRUE(result.history.size() == 1);
         EXPECT_NEAR(state.k(0), first_candidate[0], 1e-12);
         EXPECT_NEAR(state.omega(0), first_candidate[1], 1e-12);
         EXPECT_NEAR(state.nu_t(0), first_candidate[2], 1e-12);
