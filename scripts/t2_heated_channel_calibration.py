@@ -756,7 +756,8 @@ def main() -> int:
         campaign["order_fit"] = {"dx": dxs, "err": errs, "p": p, "C": c}
         finest = campaign["meshes"][-1]
         campaign["verdict"] = (
-            "physics_qualified" if campaign["qualification_passed"]
+            "physics_qualified"
+            if campaign["qualification_passed"]
             else "execution_complete_physics_not_qualified"
         )
         print(f"T2NU_ORDER p={p:.3f} C={c:.6f}")
