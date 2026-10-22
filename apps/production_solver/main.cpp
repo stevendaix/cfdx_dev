@@ -634,12 +634,11 @@ int main(int argc, char** argv)
                                    << "  \"cell_count\": " << U.size() << ",\n"
                                    << "  \"values\": [";
             for (std::size_t cell = 0; cell < U.size(); ++cell) {
-                const auto value = U(cell);
                 if (cell != 0)
                     imported_velocity_json << ",";
-                imported_velocity_json << "\n    [" << json_number(value.x)
-                                       << ", " << json_number(value.y)
-                                       << ", " << json_number(value.z) << "]";
+                imported_velocity_json << "\n    [" << json_number(U(cell, 0))
+                                       << ", " << json_number(U(cell, 1))
+                                       << ", " << json_number(U(cell, 2)) << "]";
             }
             if (U.size() != 0)
                 imported_velocity_json << "\n  ";
