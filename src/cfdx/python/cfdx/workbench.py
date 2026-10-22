@@ -198,6 +198,7 @@ if QMainWindow is not object:
             layouts = {
                 "setup": {
                     "workbench.dock.workflow",
+                    "workbench.dock.mesh",
                     "workbench.dock.setup",
                     "workbench.dock.properties",
                 },
