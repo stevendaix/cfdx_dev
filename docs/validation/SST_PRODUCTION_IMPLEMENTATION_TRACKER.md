@@ -10,10 +10,10 @@
 - [x] SST transport component APIs and dynamic blending exist; they are not yet coupled to the production outer loop.
 - [x] Cellwise momentum-viscosity assembly overload exists and has uniform-coefficient equivalence coverage.
 - [x] Production solver consumes a cellwise turbulent-viscosity field consistently in predictor, final nonlinear residual, and independent momentum conservation reconstruction (PR #967 merged; end-to-end SST remains disabled).
-- [ ] SST state `k`, `omega`, wall distance and turbulence residuals are owned by the production solve and participate in rollback/convergence.
+- [x] The solve accepts an explicit opt-in `SSTProductionRuntime`; SST state is validated and snapshotted per outer attempt, transport is called with the current pressure-corrected mass flux, and `nu_t` refreshes `mu_eff` for the next predictor (PR #1032 pending merge; exact-head CI green).
 - [x] Add a non-production SST case preflight for explicit positive initial `k`/`omega` and validated inlet turbulence intensity/length scale; derive the standard inlet estimates without enabling the production selector.
 - [x] Represent explicit per-patch `k`/`omega` boundary-condition types in the persistent case schema and HDF5 round-trip, with compatibility validation.
-- [ ] Define restart semantics and wire validated scalar boundary contracts into the production transport solve.
+- [ ] Connect persisted case scalar-boundary metadata and DAT state restoration to the application driver's runtime construction; the current runtime requires the caller to supply validated state and boundary contracts explicitly.
 - [ ] Production-path transport MMS on three or more meshes.
 - [ ] Frozen DNS channel qualification (Moser–Kim–Mansour), with mesh/y+ sensitivity and independent balance checks.
 - [ ] Flat-plate and NACA0012 turbulent validation after channel qualification.
@@ -59,13 +59,13 @@
 
 ### T2 — Coupled outer iteration and convergence
 
-- [ ] Assemble/solve `k` and `omega` using the current authoritative mass flux.
+- [x] The opt-in production path calls the transactional `k`/`omega` transport update with the current authoritative mass flux (PR #1032); production E2E and physical qualification remain open.
 - [ ] Apply declared under-relaxation and positivity/boundedness handling without clipping away failures.
-- [ ] Recompute `nu_t` from accepted `k`, `omega`, strain and wall-distance fields.
-- [ ] Reassemble momentum using the updated cellwise `nu_t`.
-- [ ] Include normalized turbulence residuals and physical boundedness checks in convergence acceptance.
-- [ ] Ensure rejected iterations roll back `U,p,k,omega,nu_t,phi` atomically.
-- [ ] Add production E2E test proving SST selection invokes the coupled path and emits model/iteration evidence.
+- [x] Refresh wall distance, boundary-aware strain rate, blending and `nu_t` from the current carrier field before the first predictor and during each SST transport step (PR #1032).
+- [x] Rebuild `mu_eff[c] = rho * (nu + nu_t[c])` after an accepted coupled iteration for the next momentum predictor (PR #1032).
+- [x] Add an independent SST convergence/boundedness hard gate without mixing dimensional transport residuals into the normalized carrier metric (PR #1032).
+- [x] Per-attempt SST snapshot/restore is connected to carrier retry/rejection and unexpected-exception paths; nested rollback regression is covered by PR #1030.
+- [ ] Add production E2E coverage proving the opt-in runtime executes transport, refreshes viscosity, and restores all coupled fields on a real solve rejection. Current PR adds runtime contract coverage only; do not mark this gate complete yet.
 - [ ] Keep unsupported models fail-closed.
 
 ### T3 — Transport verification and physical qualification
