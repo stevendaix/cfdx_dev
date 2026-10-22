@@ -234,9 +234,17 @@ def _converted_case_with_velocity(
         "solver_mode": "steady",
         "units": "SI",
         "boundary_conditions": [
-            {"patch_name": "inlet", "type": "inlet", "value_type": "fixed",
-             "velocity_vector": [0.0, 0.0, 0.0]},
-            {"patch_name": "outlet", "type": "outlet", "value_type": "zero_gradient"}
+            {
+                "patch_name": "inlet",
+                "type": "inlet",
+                "value_type": "fixed",
+                "velocity_vector": [0.0, 0.0, 0.0],
+            },
+            {
+                "patch_name": "outlet",
+                "type": "outlet",
+                "value_type": "zero_gradient",
+            },
         ],
         "numerics": {
             "momentum_scheme": "first_order",
