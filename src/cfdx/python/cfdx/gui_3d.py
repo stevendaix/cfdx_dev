@@ -1,4 +1,5 @@
 """Optional PyVistaQt 3D view for the CFDX GUI."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,7 +24,9 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             import pyvista as pv
             from pyvistaqt import QtInteractor
         except ImportError as exc:
-            raise RuntimeError("PyVista and pyvistaqt are required for the 3D GUI") from exc
+            raise RuntimeError(
+                "PyVista and pyvistaqt are required for the 3D GUI"
+            ) from exc
         self._pv = pv
         self.plotter = QtInteractor(self)
         self._actors: dict[str, object] = {}
@@ -56,7 +59,12 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self._dat_dataset = None
         self._dat_fields = []
         dataset = self._dataset()
-        self.plotter.add_mesh(dataset, scalars=self._selected_field if self._selected_field in self._available_fields(dataset) else None)
+        self.plotter.add_mesh(
+            dataset,
+            scalars=self._selected_field
+            if self._selected_field in self._available_fields(dataset)
+            else None,
+        )
         self.plotter.reset_camera()
         self.plotter.render()
 
@@ -141,9 +149,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                 cells.append(len(vertices))
                 cells.extend(int(v) for v in vertices)
 
-        celltypes = np.full(
-            mesh_cells, self._pv.CellType.POLYHEDRON, dtype=np.uint8
-        )
+        celltypes = np.full(mesh_cells, self._pv.CellType.POLYHEDRON, dtype=np.uint8)
         dataset = self._pv.UnstructuredGrid(
             np.asarray(cells, dtype=np.int64), celltypes, points
         )
