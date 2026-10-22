@@ -89,18 +89,14 @@
 //              asserted - the benchmark measures whether the classic
 //              composition converges the real captured coupled system.
 //
-//   fp_ilu0_loose / fp_amg_loose  the NESTED TOLERANCE axis: the same
-//              nested solvers as fp_ilu0 / fp_amg, but the nested
-//              tolerance is 1e-4 instead of 1e-8 - the classic
-//              preconditioner-level tolerance. Measurement question:
-//              the outer coupled FGMRES is flexible precisely to
-//              tolerate loose inner solves, so how many nested
-//              iterations and wall ms does loosening save per
-//              application, and does the coupled solve still converge?
-//              The outer coupled tolerance (1e-10), the validity
-//              guards and the baseline fp_ilu0 are unchanged; a loose
-//              variant that fails to converge the coupled system is
-//              reported, not sanctioned.
+//   fp_ilu0_tol_1e-2 / fp_amg_tol_1e-2, ... tol_1e-3, tol_1e-4,
+//   tol_1e-6 / tol_1e-8: tolerance sweep for both nested Fp solvers.
+//              The nested solver, restart, budget, captured systems and
+//              outer FGMRES tolerance (1e-10) are held fixed; only the
+//              inner stopping tolerance varies. This separates inner-work
+//              savings from changes in outer iterations and total wall time.
+//              Every tolerance is measurement-only. Non-converged outer
+//              variants are reported, never substituted or promoted.
 //
 // Evidence printed (one line per solve, plus per-stage summaries):
 //   PCD_ACTION_BENCHMARK stage=... action=... status=... converged=...
@@ -417,7 +413,12 @@ int main()
 
     const FvGeometry geometry = build_fv_geometry(mesh);
 
-    const std::array<VariantSpec, 8> variants = {{
+    // Eight original action variants plus a tolerance sweep for both Fp
+    // nested preconditioners. The baseline and existing 1e-4 variants retain
+    // their historical names so existing artifact analysis remains usable.
+    // Only nested_tolerance changes across each family; the outer solve and
+    // all validity guards are invariant.
+    const std::array<VariantSpec, 14> variants = {{
         {"fp_ilu0", KrylovModel::FGMRES, PreconditionerModel::ILU0, 512, 200, 1e-8,
          false, false, false, false},
         {"fp_amg", KrylovModel::FGMRES, PreconditionerModel::NativeAMG, 512, 200, 1e-8,
@@ -433,6 +434,18 @@ int main()
         {"fp_ilu0_loose", KrylovModel::FGMRES, PreconditionerModel::ILU0, 512, 200, 1e-4,
          false, false, false, false},
         {"fp_amg_loose", KrylovModel::FGMRES, PreconditionerModel::NativeAMG, 512, 200, 1e-4,
+         false, false, false, false},
+        {"fp_ilu0_tol_1e-2", KrylovModel::FGMRES, PreconditionerModel::ILU0, 512, 200, 1e-2,
+         false, false, false, false},
+        {"fp_amg_tol_1e-2", KrylovModel::FGMRES, PreconditionerModel::NativeAMG, 512, 200, 1e-2,
+         false, false, false, false},
+        {"fp_ilu0_tol_1e-3", KrylovModel::FGMRES, PreconditionerModel::ILU0, 512, 200, 1e-3,
+         false, false, false, false},
+        {"fp_amg_tol_1e-3", KrylovModel::FGMRES, PreconditionerModel::NativeAMG, 512, 200, 1e-3,
+         false, false, false, false},
+        {"fp_ilu0_tol_1e-6", KrylovModel::FGMRES, PreconditionerModel::ILU0, 512, 200, 1e-6,
+         false, false, false, false},
+        {"fp_amg_tol_1e-6", KrylovModel::FGMRES, PreconditionerModel::NativeAMG, 512, 200, 1e-6,
          false, false, false, false},
     }};
 
