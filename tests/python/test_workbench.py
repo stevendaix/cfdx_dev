@@ -20,7 +20,7 @@ def test_workbench_is_importable_without_qt() -> None:
 def test_workbench_has_stable_docks() -> None:
     from cfdx.gui import create_application
     from cfdx.session import SimulationState
-    from PySide6.QtWidgets import QDockWidget, QLabel
+    from PySide6.QtWidgets import QDockWidget, QLabel, QPushButton
 
     app = create_application(["cfdx-workbench-test"])
     session = CFDXSession()
@@ -49,6 +49,24 @@ def test_workbench_has_stable_docks() -> None:
         == "Your simulation workspace"
     )
     assert window.workflow_tree.topLevelItem(0).font(0).bold()
+    assert (
+        window.viewport_placeholder.findChild(
+            QPushButton, "workbench.empty_state.open_mesh"
+        ).text()
+        == "Open Mesh"
+    )
+    assert (
+        window.viewport_placeholder.findChild(
+            QPushButton, "workbench.empty_state.open_dat_result"
+        ).text()
+        == "Load DAT Result"
+    )
+    assert (
+        window.viewport_placeholder.findChild(
+            QPushButton, "workbench.empty_state.open_results"
+        ).text()
+        == "Open Results Folder"
+    )
     window.workflow_tree.setCurrentItem(window.workflow_tree.topLevelItem(0).child(4))
     assert window.application.state.selection.stable_id == "boundaries"
     window.close()
