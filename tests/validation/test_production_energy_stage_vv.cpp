@@ -29,7 +29,7 @@
 //     (adiabatic walls exactly zero, imposed wall flux = q'' * area).
 //   * Discrete maximum principle with Dirichlet walls; bulk temperature
 //     rise q'''*V/(mdot*cp) as a physical sanity gate.
-//   * Fail-closed: unsupported energy models (including "buoyant"), wrong
+//   * Fail-closed: unsupported energy models, wrong
 //     material counts, invalid properties (density, dynamic viscosity,
 //     conductivity, specific heat - the carrier flow solves the same
 //     declared fluid), non-numeric / partially numeric ("500abc") / empty /
@@ -732,9 +732,14 @@ int main()
         }
         {
             auto s = base;
+            // "buoyant" (issue #885 step 4) is an accepted coupled
+            // declaration: the frozen-flow energy stage runs under it,
+            // re-solved per outer iteration of the flow-energy buoyancy
+            // loop (production_buoyancy_stage.h), so the declaration is
+            // valid and energy-requested instead of rejected.
             s.energy_model = "buoyant";
-            EXPECT_THROW(validate_production_energy_model(s),
-                         std::invalid_argument);
+            EXPECT_TRUE(production_energy_requested(s));
+            validate_production_energy_model(s);
             s.energy_model = "not_a_model";
             EXPECT_THROW(validate_production_energy_model(s),
                          std::invalid_argument);
