@@ -183,6 +183,11 @@ def _run_production_solver(
 ) -> subprocess.CompletedProcess[str]:
     solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
     if not solver:
+        if os.environ.get("CFDX_REQUIRE_OPENFOAM_SOLVER_QUALIFICATION") == "1":
+            raise RuntimeError(
+                "CFDX_REQUIRE_OPENFOAM_SOLVER_QUALIFICATION=1 but "
+                "CFDX_PRODUCTION_SOLVER is not configured; qualification must not skip"
+            )
         import pytest
 
         pytest.skip("CFDX_PRODUCTION_SOLVER is not configured for this test run")
@@ -320,6 +325,17 @@ def test_production_solver_emits_exact_imported_velocity_evidence(
     assert initialized["cell_count"] == 1
     assert initialized["values"] == expected
     assert "Initialization strategy provided" in completed.stdout
+
+
+def test_required_solver_qualification_fails_if_solver_is_unconfigured(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.delenv("CFDX_PRODUCTION_SOLVER", raising=False)
+    monkeypatch.setenv("CFDX_REQUIRE_OPENFOAM_SOLVER_QUALIFICATION", "1")
+    import pytest
+
+    with pytest.raises(RuntimeError, match="qualification must not skip"):
+        _run_production_solver(tmp_path / "case.cfdx.h5", tmp_path / "solver_output")
 
 
 def test_production_solver_rejects_missing_imported_velocity(tmp_path: Path) -> None:
