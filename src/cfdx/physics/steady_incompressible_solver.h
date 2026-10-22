@@ -4048,10 +4048,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 sst_step.transport.nonfinite_bound_events != 0)
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: SST residual/boundedness gate failed");
-            nonlinear_metric = std::max(
-                nonlinear_metric,
-                std::max(sst_step.transport.k_residual,
-                         sst_step.transport.second_residual));
+            // The transport solver's converged flag is based on its linear
+            // solver status, bound audit, and field-update criterion. Its raw
+            // equation residuals have dimensional scales and must not be mixed
+            // directly with the normalized carrier convergence metric.
         }
         const auto convergence_report = convergence_monitor.update({
             iter,
@@ -4059,9 +4059,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             h.continuity_normalized,
             std::move(qoi_values)});
         const bool sst_residual_gate = !controls.sst_runtime ||
-            (sst_step.committed &&
-             sst_step.transport.k_residual <= controls.sst_runtime->transport_tolerance &&
-             sst_step.transport.second_residual <= controls.sst_runtime->transport_tolerance);
+            (sst_step.committed && sst_step.transport.converged &&
+             std::isfinite(sst_step.transport.k_residual) &&
+             std::isfinite(sst_step.transport.second_residual) &&
+             sst_step.transport.nonfinite_bound_events == 0);
         const bool converged_now =
             iter >= minimum_outer_correctors &&
             convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
