@@ -1,0 +1,11 @@
+variant=a9_all9_anchor
+levels=128
+outcome=FAIL_OTHER
+test_rc=134
+test_duration_s=0
+run_id=39722433948
+
+--- level markers reached ---
+no_level_marker
+--- failure line (if any) ---
+  what():  usage: test_naca0012_qualification mesh_n64.h5 mesh_n128.h5 mesh_n256.h5
