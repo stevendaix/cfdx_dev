@@ -18,6 +18,7 @@
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/pressure_velocity_system.h"
 #include "cfdx/physics/solver_control.h"
+#include "cfdx/physics/sst_production_coupling.h"
 #include "cfdx/physics/timestep_control.h"
 #include "cfdx/core/numerics/conservation.h"
 #include "cfdx/core/numerics/temporal.h"
@@ -30,6 +31,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <numeric>
 #include <stdexcept>
 #include <iomanip>
@@ -171,8 +173,28 @@ struct CoupledAssemblySnapshot {
     bool has_fixed_pressure = false;
 };
 
+struct SSTProductionRuntime {
+    // State must be explicitly initialized from case data or restored from a
+    // DAT checkpoint with the helpers in sst_production_coupling.h. The
+    // production solver advances this state transactionally when non-null.
+    SSTProductionState* state = nullptr;
+    TurbulenceTransportControls transport;
+    ScalarBoundaryConditions k_boundary_conditions;
+    ScalarBoundaryConditions omega_boundary_conditions;
+    // Optional per-face omega data, including the existing geometric wall-omega
+    // contract. Kept owned by the runtime so the pointer passed to transport
+    // remains valid for the duration of the update.
+    ScalarBoundaryFaceValues omega_face_values;
+    std::vector<std::string> wall_patch_names;
+    std::size_t max_transport_iterations = 100;
+    double transport_tolerance = 1e-8;
+};
+
 struct IncompressibleSolverControls {
     InitializationControls initialization;
+    // Opt-in only. The production RANS selector remains fail-closed; supplying
+    // this runtime explicitly opts the caller into the SST-coupled path.
+    SSTProductionRuntime* sst_runtime = nullptr;
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE;
     IncompressibleTransientControls transient;
     CouplingControls coupling;
@@ -464,6 +486,24 @@ inline void validate_incompressible_controls(
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
     validate_nonlinear_retry_controls(c.nonlinear_retry);
+    if (c.sst_runtime) {
+        if (!c.sst_runtime->state)
+            throw std::invalid_argument("SST production runtime requires an initialized state");
+        if (c.sst_runtime->transport.model != TurbulenceModel::SST)
+            throw std::invalid_argument("SST production runtime requires SST transport controls");
+        if (c.sst_runtime->transport.density != c.density ||
+            c.sst_runtime->transport.molecular_viscosity != c.kinematic_viscosity)
+            throw std::invalid_argument(
+                "SST transport density and molecular viscosity must match the carrier material properties");
+        if (c.sst_runtime->max_transport_iterations == 0 ||
+            !(c.sst_runtime->transport_tolerance > 0.0) ||
+            !std::isfinite(c.sst_runtime->transport_tolerance))
+            throw std::invalid_argument("SST production runtime has invalid transport controls");
+        validate_sst_production_state(*c.sst_runtime->state, n_cells);
+        if (!c.cell_turbulent_viscosity.empty() || c.turbulent_viscosity != 0.0)
+            throw std::invalid_argument(
+                "SST production runtime cannot be combined with prescribed turbulent viscosity");
+    }
     if (!c.qoi_gates.empty()) {
         validate_convergence_monitor_controls(cfdx::core::ConvergenceMonitorControls{
             cfdx::core::ConvergenceGate{}, 1.0, 1, 1000, 1, 1.0, 1, 10.0, c.qoi_gates});
@@ -2462,22 +2502,45 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // Validate all controls and derived material properties before initialization
     // can mutate the caller-provided solution fields.
     validate_incompressible_controls(controls, mesh.n_cells());
+    // Validate the caller-owned SST bundle before initialization can mutate
+    // the carrier fields. Derived SST quantities must be refreshed only after
+    // initialization/restart has established the actual velocity field.
+    if (controls.sst_runtime)
+        validate_sst_production_state(*controls.sst_runtime->state, mesh.n_cells());
+
+    apply_initialization(
+        controls.initialization, mesh, U, p, restart_fields, restart_path);
+    if (controls.initialized_state_callback)
+        controls.initialized_state_callback(mesh, U, p);
+
     // Authoritative dynamic viscosity used by predictor assembly, nonlinear
     // acceptance residuals, and the independent momentum conservation audit.
     std::vector<double> mu_eff(mesh.n_cells());
+    if (controls.sst_runtime) {
+        std::map<std::string, std::array<double, 3>> fixed_velocity_values;
+        for (const auto& [patch, bc] : velocity_bcs) {
+            if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                fixed_velocity_values.emplace(
+                    patch, std::array<double, 3>{bc.value.x, bc.value.y, bc.value.z});
+        }
+        // Initialization may replace U (uniform, profile, or DAT restart).
+        // Refresh wall distance, strain and nu_t against that final field so
+        // the very first momentum predictor cannot use stale SST viscosity.
+        refresh_sst_production_derived_state_from_mesh(
+            *controls.sst_runtime->state, mesh, controls.sst_runtime->transport,
+            U, fixed_velocity_values, controls.sst_runtime->wall_patch_names);
+    }
     for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
-        const double nu_t = controls.cell_turbulent_viscosity.empty()
-            ? controls.turbulent_viscosity
-            : controls.cell_turbulent_viscosity[cell];
+        const double nu_t = controls.sst_runtime
+            ? controls.sst_runtime->state->nu_t(cell)
+            : (controls.cell_turbulent_viscosity.empty()
+                ? controls.turbulent_viscosity
+                : controls.cell_turbulent_viscosity[cell]);
         mu_eff[cell] = controls.density * (controls.kinematic_viscosity + nu_t);
         if (!(mu_eff[cell] >= 0.0) || !std::isfinite(mu_eff[cell]))
             throw std::invalid_argument(
                 "effective cellwise dynamic viscosity must be finite and non-negative");
     }
-    apply_initialization(
-        controls.initialization, mesh, U, p, restart_fields, restart_path);
-    if (controls.initialized_state_callback)
-        controls.initialized_state_callback(mesh, U, p);
 
     const FvGeometry geometry = build_fv_geometry(mesh);
     cfdx::core::ConvergenceMonitorControls monitor_controls;
@@ -2653,6 +2716,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         bool iteration_completed = false;
         while (!iteration_completed) {
             transaction.begin();
+            const auto sst_attempt_snapshot = controls.sst_runtime
+                ? std::optional<SSTProductionState>(
+                    snapshot_sst_production_state(*controls.sst_runtime->state))
+                : std::nullopt;
             try {
         double linear_tolerance = controls.linear_tolerance;
         if (controls.acceleration.adaptive_linear_tolerance) {
@@ -3851,7 +3918,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             std::max(h.momentum_rhs_scale, tiny);
         const bool momentum_reference_ill_conditioned =
             h.momentum_equation_residual_reference <= momentum_reference_roundoff;
-        const double nonlinear_metric = momentum_reference_ill_conditioned
+        double nonlinear_metric = momentum_reference_ill_conditioned
             ? std::max({
                   h.momentum_residual,
                   h.pressure_residual,
@@ -3970,6 +4037,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 }
                 transaction.reject();
                 mass_flux = mass_flux_snapshot;
+                if (controls.sst_runtime && sst_attempt_snapshot)
+                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
                 frozen_state_valid = false;
                 // The severe guard has already reduced the responsible effective
                 // relaxation factor. Count the retry without applying the generic
@@ -3990,15 +4059,52 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             }),
                         mesh, geometry, U, p);
         }
+        SSTProductionStepResult sst_step;
+        if (controls.sst_runtime) {
+            std::map<std::string, std::array<double, 3>> fixed_velocity_values;
+            for (const auto& [patch, bc] : velocity_bcs) {
+                if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                    fixed_velocity_values.emplace(
+                        patch, std::array<double, 3>{bc.value.x, bc.value.y, bc.value.z});
+            }
+            sst_step = advance_sst_production_iterate_transactionally(
+                mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                controls.sst_runtime->transport, fixed_velocity_values,
+                controls.sst_runtime->wall_patch_names,
+                controls.sst_runtime->k_boundary_conditions,
+                controls.sst_runtime->omega_boundary_conditions,
+                controls.sst_runtime->max_transport_iterations,
+                controls.sst_runtime->transport_tolerance,
+                &controls.sst_runtime->omega_face_values);
+            if (!sst_step.committed)
+                throw NonlinearRetryableFailure(
+                    "solve_steady_incompressible: SST update rejected: " + sst_step.reason);
+            // Turbulence convergence is an additional gate; it never relaxes
+            // the existing carrier residual, continuity, or QoI criteria.
+            if (!std::isfinite(sst_step.transport.k_residual) ||
+                !std::isfinite(sst_step.transport.second_residual) ||
+                sst_step.transport.nonfinite_bound_events != 0)
+                throw NonlinearRetryableFailure(
+                    "solve_steady_incompressible: SST residual/boundedness gate failed");
+            // The transport solver's converged flag is based on its linear
+            // solver status, bound audit, and field-update criterion. Its raw
+            // equation residuals have dimensional scales and must not be mixed
+            // directly with the normalized carrier convergence metric.
+        }
         const auto convergence_report = convergence_monitor.update({
             iter,
             nonlinear_metric,
             h.continuity_normalized,
             std::move(qoi_values)});
+        const bool sst_residual_gate = !controls.sst_runtime ||
+            (sst_step.committed && sst_step.transport.converged &&
+             std::isfinite(sst_step.transport.k_residual) &&
+             std::isfinite(sst_step.transport.second_residual) &&
+             sst_step.transport.nonfinite_bound_events == 0);
         const bool converged_now =
             iter >= minimum_outer_correctors &&
             convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
-            per_criterion_gates_ok;
+            per_criterion_gates_ok && sst_residual_gate;
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
             std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
                       << " cell_source=" << (debug_cell_auto ? "auto_worst" : "explicit")
@@ -4482,6 +4588,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         result.iterations = iter;
             transaction.commit();
+            if (controls.sst_runtime) {
+                for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                    mu_eff[cell] = controls.density *
+                        (controls.kinematic_viscosity +
+                         controls.sst_runtime->state->nu_t(cell));
+            }
             // Only publish a face flux after the nonlinear transaction has
             // accepted the corresponding U/p state. mass_flux is mutable during
             // a tentative iteration and is not part of NonlinearStateRollback;
@@ -4492,6 +4604,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             } catch (const NonlinearRetryableFailure& error) {
                 transaction.reject();
                 mass_flux = mass_flux_snapshot;
+                if (controls.sst_runtime && sst_attempt_snapshot)
+                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                if (controls.sst_runtime) {
+                    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                        mu_eff[cell] = controls.density *
+                            (controls.kinematic_viscosity +
+                             controls.sst_runtime->state->nu_t(cell));
+                }
                 frozen_state_valid = false;
                 if (!retry_controller.can_retry())
                     throw;
@@ -4501,6 +4621,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " alpha_u=" << retry_controller.alpha_u(effective_alpha_u)
                           << " alpha_p=" << retry_controller.alpha_p(effective_alpha_p)
                           << " reason=" << error.what() << "\n";
+            } catch (...) {
+                transaction.reject();
+                mass_flux = mass_flux_snapshot;
+                if (controls.sst_runtime && sst_attempt_snapshot)
+                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                throw;
             }
         }
         if (stop_after_iteration)
