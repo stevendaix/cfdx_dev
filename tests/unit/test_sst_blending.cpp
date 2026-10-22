@@ -1115,6 +1115,10 @@ int main()
         runtime.transport.molecular_viscosity = controls.kinematic_viscosity;
         validate_incompressible_controls(controls, 1);
 
+        runtime.transport.density *= 2.0;
+        EXPECT_THROW(validate_incompressible_controls(controls, 1), std::invalid_argument);
+        runtime.transport.density = controls.density;
+
         controls.turbulent_viscosity = 1.0e-5;
         EXPECT_THROW(validate_incompressible_controls(controls, 1), std::invalid_argument);
     });
