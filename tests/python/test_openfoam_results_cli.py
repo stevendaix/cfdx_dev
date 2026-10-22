@@ -105,7 +105,9 @@ def test_openfoam_results_cli_imports_latest_cell_velocity(tmp_path: Path) -> No
 
     output = tmp_path / "converted"
     env = os.environ.copy()
-    package_root = str(Path(__file__).resolve().parents[2] / "src" / "cfdx" / "python")
+    package_root = str(
+        Path(__file__).resolve().parents[2] / "src" / "cfdx" / "python"
+    )
     env["PYTHONPATH"] = os.pathsep.join(
         part for part in (package_root, env.get("PYTHONPATH", "")) if part
     )
@@ -215,7 +217,64 @@ def _converted_case_with_velocity(
     converted = tmp_path / "converted"
     completed = _convert_openfoam_case(case, converted, _solver_environment())
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    return converted / "case.cfdx.h5"
+
+    # The OpenFOAM reader intentionally imports mesh/results without guessing
+    # CFDX numerical choices. Supply a valid, explicit CFDX selection for this
+    # production-solver boundary test rather than weakening the solver contract.
+    import json
+
+    setup = {
+        "schema_version": 1,
+        "source": {
+            "solver": "openfoam",
+            "version": "test-fixture",
+            "case_name": "openfoam_velocity_import",
+            "format": "openfoam",
+        },
+        "physics_model": "incompressible_laminar",
+        "turbulence_model": "laminar",
+        "energy_model": "isothermal",
+        "solver_mode": "steady",
+        "units": "SI",
+        "numerics": {
+            "momentum_scheme": "first_order",
+            "pressure_scheme": "standard",
+            "momentum_interpolation": "linear",
+            "transient_scheme": "steady",
+            "gradient_operator": "green_gauss_cell",
+            "coupled_solver": "SIMPLE",
+            "max_iterations": 1,
+            "selection": {
+                "entries": [
+                    {
+                        "family": "gradient",
+                        "configuration_key": "numerics.gradient.gauss",
+                    },
+                    {
+                        "family": "convection",
+                        "configuration_key": "numerics.convection.upwind",
+                    },
+                    {
+                        "family": "pressure_velocity",
+                        "configuration_key": "pressure_velocity.simple",
+                    },
+                    {
+                        "family": "linear_solver",
+                        "configuration_key": "linear.fgmres",
+                    },
+                ],
+                "required_families": [
+                    "gradient",
+                    "convection",
+                    "pressure_velocity",
+                ],
+            },
+        },
+    }
+    case_h5 = converted / "case.cfdx.h5"
+    with h5py.File(case_h5, "r+") as h5:
+        h5.attrs["case_setup_json"] = json.dumps(setup, separators=(",", ":"))
+    return case_h5
 
 
 def test_production_solver_emits_exact_imported_velocity_evidence(
