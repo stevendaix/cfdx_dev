@@ -6,6 +6,13 @@ import argparse
 from pathlib import Path
 import sys
 
+# Resolve the repository's packaged Python tree explicitly. Executing a script
+# from scripts/ puts that directory first on sys.path and can otherwise allow
+# an unrelated installed module named "cfdx" to shadow the project package.
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+PYTHON_PACKAGE_ROOT = REPOSITORY_ROOT / "src" / "cfdx" / "python"
+sys.path.insert(0, str(PYTHON_PACKAGE_ROOT))
+
 from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication
 
