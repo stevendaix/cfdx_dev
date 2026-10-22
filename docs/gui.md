@@ -5,7 +5,7 @@ orchestration state; numerical kernels remain in C++.
 
 The Workbench migration target and the incremental GUI PR plan are documented
 in [GUI architecture](gui/ARCHITECTURE.md). The current `cfdx.gui` entry point
-remains supported while the dockable Workbench is introduced incrementally.
+launches the dockable Workbench.
 
 ## Headless
 
@@ -60,25 +60,25 @@ PyVistaRenderer is an optional adapter for VTU and other formats understood by
 PyVista. The renderer contract is also implemented by NullRenderer so
 post-processing code can be tested without a display server.
 
-## CI/headless use
+## CI, screenshots and headless use
 
-All core orchestration and renderer-contract tests are designed to run without
-a graphical display. Optional Qt/PyVista tests are skipped when those
-dependencies are not installed. The documented Xvfb command is the reference
-for local and CI runners. The corresponding job is prepared for the canonical
-`.github/workflows/cfdx-ci.yml`; publishing that workflow change requires the
-GitHub `workflow` permission. The job installs the `.[gui]` extra, verifies the
-Qt/PyVista/PyVistaQt imports, and runs the stable Qt and renderer-contract
-tests under Xvfb.
+The `.github/workflows/cfdx-gui.yml` workflow installs the optional GUI stack
+and runs the Qt/PyVista regression suite under Xvfb. It also captures the
+actual `CFDXWorkbenchWindow` into `artifacts/cfdx-workbench.png` and publishes
+it as the `cfdx-workbench-screenshot` GitHub Actions artifact for 14 days.
+Download that artifact from the workflow run to inspect the interface without
+launching CFDX locally.
 
-The OpenGL widget smoke test remains opt-in because VTK can abort the process
-when a runner exposes an incomplete OpenGL implementation. To run it locally,
-use a real or known-good virtual display and set:
+The screenshot is a UI smoke-test artifact, not a numerical validation result.
+It confirms that the Workbench can be constructed, shown and captured in the
+CI display; it does not by itself prove that every control or OpenGL rendering
+path works. The controlled PyVistaQt/OpenGL smoke test remains opt-in because
+VTK can abort the process when a runner exposes an incomplete OpenGL
+implementation. To run it locally, use a real or known-good virtual display:
 
     CFDX_RUN_PYVISTA_QT_SMOKE=1 \
       QT_QPA_PLATFORM=xcb xvfb-run -a -s "-screen 0 1280x1024x24" \
       .venv-gui/bin/python -m pytest -q tests/python/test_gui_3d.py
-
 
 ## Case files
 
