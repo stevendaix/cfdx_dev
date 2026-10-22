@@ -1,0 +1,11 @@
+variant=k3
+levels=128
+outcome=FAIL_DIVERGED_64
+test_rc=134
+test_duration_s=194
+run_id=39787161380
+
+--- level markers reached ---
+no_level_marker
+--- failure line (if any) ---
+  what():  NACA0012 solver did not converge
