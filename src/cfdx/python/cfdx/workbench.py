@@ -29,8 +29,8 @@ try:
         QFormLayout,
         QHBoxLayout,
         QLabel,
-        QLineEdit,
         QInputDialog,
+        QLineEdit,
         QListWidget,
         QListWidgetItem,
         QMainWindow,
@@ -649,14 +649,25 @@ if QMainWindow is not object:
                         return
                     if mode == "contour":
                         isosurfaces, accepted = QInputDialog.getInt(
-                            self, "Contour settings", "Number of isosurfaces:", 10, 2, 100
+                            self,
+                            "Contour settings",
+                            "Number of isosurfaces:",
+                            10,
+                            2,
+                            100,
                         )
                         if not accepted:
                             return
                         self.view3d.contour(field, isosurfaces=isosurfaces)
                     else:
                         factor, accepted = QInputDialog.getDouble(
-                            self, "Glyph settings", "Scale factor:", 1.0, 0.001, 1000.0, 3
+                            self,
+                            "Glyph settings",
+                            "Scale factor:",
+                            1.0,
+                            0.001,
+                            1000.0,
+                            3,
                         )
                         if not accepted:
                             return
@@ -668,7 +679,11 @@ if QMainWindow is not object:
                     )
                     if not accepted:
                         return
-                    normals = {"X": (1.0, 0.0, 0.0), "Y": (0.0, 1.0, 0.0), "Z": (0.0, 0.0, 1.0)}
+                    normals = {
+                        "X": (1.0, 0.0, 0.0),
+                        "Y": (0.0, 1.0, 0.0),
+                        "Z": (0.0, 0.0, 1.0),
+                    }
                     self.view3d.slice(normal=normals[axis])
                 else:
                     raise ValueError(f"unsupported visualization operation: {mode}")
