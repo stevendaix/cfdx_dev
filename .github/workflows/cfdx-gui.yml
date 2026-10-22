@@ -50,6 +50,7 @@ jobs:
           cache: pip
 
       - name: Install CFDX with GUI dependencies
+        id: install_gui
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[gui]"
@@ -79,6 +80,24 @@ jobs:
               tests/python/test_renderer_pyvista.py \
               tests/python/test_gui_3d.py
 
+      - name: Capture Workbench screenshot
+        if: always() && steps.install_gui.outcome == 'success'
+        env:
+          QT_QPA_PLATFORM: xcb
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+        run: |
+          xvfb-run -a -s "-screen 0 1280x1024x24" \
+            python scripts/capture_workbench_screenshot.py \
+              --output artifacts/cfdx-workbench.png
+
+      - name: Upload Workbench screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-workbench-screenshot
+          path: artifacts/cfdx-workbench.png
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Run controlled OpenGL smoke
         if: github.event_name == 'workflow_dispatch' && inputs.run_opengl_smoke == true
@@ -86,7 +105,9 @@ jobs:
           QT_QPA_PLATFORM: xcb
           CFDX_RUN_PYVISTA_QT_SMOKE: "1"
         run: |
-          xvfb-run -a -s "-screen 0 1280x1024x24"             python -m pytest -q tests/python/test_gui_3d.py -k smoke
+          xvfb-run -a -s "-screen 0 1280x1024x24" \
+            python -m pytest -q tests/python/test_gui_3d.py -k smoke
+
   production-e2e:
     name: Production solver / Workbench E2E
     runs-on: ubuntu-24.04
@@ -134,4 +155,3 @@ jobs:
           test -f "$CFDX_PRODUCTION_MESH"
           xvfb-run -a -s "-screen 0 1280x1024x24" \
             python -m pytest -q tests/python/test_gui_production_solver_e2e.py
-
