@@ -28,8 +28,8 @@ try:
         QFileDialog,
         QFormLayout,
         QHBoxLayout,
-        QLabel,
         QInputDialog,
+        QLabel,
         QLineEdit,
         QListWidget,
         QListWidgetItem,
@@ -614,7 +614,7 @@ if QMainWindow is not object:
             dataset = self.view3d._dataset()
             names: set[str] = set()
             for attributes in (dataset.point_data, dataset.cell_data):
-                for name in attributes.keys():
+                for name in attributes:
                     values = attributes[name]
                     shape = getattr(values, "shape", ())
                     is_vector = len(shape) == 2 and shape[1] == 3
