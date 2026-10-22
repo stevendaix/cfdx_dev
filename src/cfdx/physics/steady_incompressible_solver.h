@@ -4598,6 +4598,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         result.convergence_status = convergence_report.status;
         result.convergence_reason = convergence_report.reason;
+        if (convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
+            !sst_residual_gate) {
+            // The carrier monitor does not know about the additional SST
+            // closure/transport gate. Do not publish a converged status while
+            // the accepted momentum residual still corresponds to an earlier
+            // effective-viscosity field.
+            result.convergence_status =
+                iter == controls.convergence.max_iterations
+                    ? cfdx::core::ConvergenceStatus::MAX_ITERATIONS
+                    : cfdx::core::ConvergenceStatus::CONTINUE;
+            result.convergence_reason =
+                "carrier criteria satisfied but SST transport/closure convergence gate is not satisfied";
+        }
         if (converged_now) {
             result.converged = true;
             result.iterations = iter;
