@@ -538,6 +538,19 @@ inline void validate_incompressible_controls(
         !(c.kinematic_viscosity >= 0.0) || !std::isfinite(c.kinematic_viscosity) ||
         !(c.turbulent_viscosity >= 0.0) || !std::isfinite(c.turbulent_viscosity))
         throw std::invalid_argument("invalid incompressible material properties");
+    // Reject overflow in the effective dynamic viscosity before applying
+    // initialization. Otherwise an invalid material combination can mutate
+    // caller-owned U/p fields before assembly discovers non-finite coefficients.
+    const auto validate_effective_viscosity = [&](double nu_t) {
+        const double total_kinematic_viscosity = c.kinematic_viscosity + nu_t;
+        const double effective_dynamic_viscosity =
+            c.density * total_kinematic_viscosity;
+        if (!std::isfinite(total_kinematic_viscosity) ||
+            !std::isfinite(effective_dynamic_viscosity))
+            throw std::invalid_argument(
+                "effective dynamic viscosity must be finite");
+    };
+    validate_effective_viscosity(c.turbulent_viscosity);
     if (!c.cell_turbulent_viscosity.empty()) {
         if (c.cell_turbulent_viscosity.size() != n_cells)
             throw std::invalid_argument(
@@ -549,6 +562,7 @@ inline void validate_incompressible_controls(
             if (!(nu_t >= 0.0) || !std::isfinite(nu_t))
                 throw std::invalid_argument(
                     "cellwise turbulent viscosity must be finite and non-negative");
+            validate_effective_viscosity(nu_t);
         }
     }
     if (!c.cell_body_force.empty()) {
