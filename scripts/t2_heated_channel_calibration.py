@@ -411,7 +411,17 @@ def _parse_temperature_vtu(path: Path) -> np.ndarray:
     return np.asarray([float(tok) for tok in text.split()], dtype=np.float64)
 
 
-def _run_mesh(solver: Path, nx: int, ny: int, run_dir: Path) -> dict:
+def _clip_error(text: str, head: int = 600, tail: int = 3000) -> str:
+    """Keep head AND tail of a long message; never drop the stop reason."""
+    if len(text) <= head + tail:
+        return text
+    middle = len(text) - head - tail
+    return f"{text[:head]}\n...[{middle} chars truncated]...\n{text[-tail:]}"
+
+
+def _run_mesh(
+    solver: Path, nx: int, ny: int, run_dir: Path, evidence_dir: Path
+) -> dict:
     """One production solve at (nx, ny); raises on any execution failure."""
     run_dir.mkdir(parents=True, exist_ok=True)
     case_name = f"t2_heated_channel_{nx}x{ny}"
@@ -447,10 +457,19 @@ def _run_mesh(solver: Path, nx: int, ny: int, run_dir: Path) -> dict:
         check=False,
     )
     diagnostics = completed.stdout + completed.stderr
+    # Archive the full solver log and commit its tail as evidence so the
+    # exact stop reason (STAGNATED/DIVERGED/MAX_ITERATIONS, energy stage)
+    # is never lost again: run 39731617121 clipped str(exc)[:2000] and cut
+    # the end of the diagnostics tail together with the stop reason.
+    (run_dir / f"solver_{nx}x{ny}.log").write_text(diagnostics, encoding="utf-8")
+    (evidence_dir / f"t2_solver_tail_{nx}x{ny}.log").write_text(
+        diagnostics[-200000:], encoding="utf-8"
+    )
     if completed.returncode != 0:
         raise RuntimeError(
-            f"solver rc={completed.returncode}; diagnostics tail:\n"
-            f"{diagnostics[-4000:]}"
+            f"solver rc={completed.returncode}; diagnostics head:\n"
+            f"{diagnostics[:600]}\n...[truncated]...\n"
+            f"diagnostics tail:\n{diagnostics[-4000:]}"
         )
     for marker in ("Resolved numerical selections:", "Converged YES"):
         if marker not in diagnostics:
@@ -683,7 +702,7 @@ def main() -> int:
         for nx, ny in MESHES:
             entry: dict = {"nx": nx, "ny": ny}
             try:
-                result = _run_mesh(solver, nx, ny, work / f"mesh_{nx}x{ny}")
+                result = _run_mesh(solver, nx, ny, work / f"mesh_{nx}x{ny}", out_dir)
                 entry.update(result)
                 entry["status"] = "PASS"
                 print(
@@ -696,10 +715,11 @@ def main() -> int:
                     f"l2={result['l2_poiseuille']:.3e}"
                 )
             except Exception as exc:  # noqa: BLE001 - evidence-first reporting
+                message = _clip_error(str(exc))
                 entry["status"] = "FAIL"
-                entry["error"] = str(exc)[:2000]
+                entry["error"] = message
                 ok = False
-                print(f"T2NU_MESH nx={nx} ny={ny} FAILED error={str(exc)[:400]}")
+                print(f"T2NU_MESH nx={nx} ny={ny} FAILED error={message}")
             campaign["meshes"].append(entry)
 
     if ok:
