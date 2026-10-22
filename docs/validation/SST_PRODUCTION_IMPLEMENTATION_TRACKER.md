@@ -7,10 +7,10 @@
 ## Current baseline
 
 - [x] Production driver rejects unsupported non-laminar turbulence selections instead of silently solving laminar equations (merged PR #941).
-- [x] SST transport APIs, dynamic blending, and explicit opt-in production outer-loop coupling are present in PR #1032; production E2E and physical qualification remain open.
+- [x] SST transport APIs, dynamic blending, and explicit opt-in production outer-loop coupling originally developed in #1032 are carried forward in synchronized PR #1047; production E2E and physical qualification remain open.
 - [x] Cellwise momentum-viscosity assembly overload exists and has uniform-coefficient equivalence coverage.
 - [x] Production solver consumes a cellwise turbulent-viscosity field consistently in predictor, final nonlinear residual, and independent momentum conservation reconstruction (PR #967 merged; end-to-end SST remains disabled).
-- [x] The solve accepts an explicit opt-in `SSTProductionRuntime`; SST state is validated and snapshotted per outer attempt, transport is called with the current pressure-corrected mass flux, and `nu_t` refreshes `mu_eff` for the next predictor (PR #1032 pending merge; exact-head CI NOT VERIFIED; synchronized branch requires exact-head checks and decisive production E2E tests).
+- [x] The solve accepts an explicit opt-in `SSTProductionRuntime`; SST state is validated and snapshotted per outer attempt, transport is called with the current pressure-corrected mass flux, and `nu_t` refreshes `mu_eff` for the next predictor (synchronized PR #1047, head pending final CI; exact-head checks are running and decisive production E2E tests remain open).
 - [x] Add a non-production SST case preflight for explicit positive initial `k`/`omega` and validated inlet turbulence intensity/length scale; derive the standard inlet estimates without enabling the production selector.
 - [x] Represent explicit per-patch `k`/`omega` boundary-condition types in the persistent case schema and HDF5 round-trip, with compatibility validation.
 - [ ] Connect persisted case scalar-boundary metadata and DAT state restoration to the application driver's runtime construction; the current runtime requires the caller to supply validated state and boundary contracts explicitly.
@@ -22,7 +22,7 @@
 
 - [x] Add `initialize_sst_production_state_from_mesh(...)`: production mesh geometry supplies exact BVH wall distance and boundary-aware strain rate to SST state initialization.
 - [x] Add a regression for computed positive wall distance, nonzero strain from fixed inlet data, initialized `k`/`omega`, derived `nu_t`, and invalid velocity-field shape.
-- [x] Production outer-loop ownership/advance is wired through opt-in SSTProductionRuntime in PR #1032. Production E2E and application case/restart wiring remain open.
+- [x] Production outer-loop ownership/advance is wired through opt-in SSTProductionRuntime (original implementation #1032, synchronized in PR #1047). Production E2E and application case/restart wiring remain open.
 
 ## Work packages
 
@@ -226,7 +226,7 @@ Evidence: PR #1017 merged the affine-field boundary reconstruction test; PR #101
 
 ## Next increment — production E2E and case/restart lifecycle
 
-PR #1032 adds the opt-in production outer-loop coupling: it refreshes mesh/carrier-derived state, advances SST transport using the current authoritative mass flux, restores SST on retry/rejection, gates convergence on transport status and boundedness, and refreshes `mu_eff` for the next momentum predictor. Remaining work:
+Synchronized PR #1047 carries the opt-in production outer-loop coupling originally developed in #1032: it refreshes mesh/carrier-derived state, advances SST transport using the current authoritative mass flux, restores SST on retry/rejection, gates convergence on transport status and boundedness, and refreshes `mu_eff` for the next momentum predictor. Remaining work:
 
 1. Expand the production-solver SST smoke test into decisive E2E assertions for transport invocation, `nu_t`/`mu_eff` refresh timing, and exact restoration after a real retry/rejection.
 2. Construct `SSTProductionRuntime` from persisted case boundary metadata and initialized or DAT-restored state in the application driver; resolve geometric `WALL_OMEGA_SST` face values explicitly and fail closed when unsupported.
