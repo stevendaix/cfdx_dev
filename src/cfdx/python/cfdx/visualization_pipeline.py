@@ -28,9 +28,11 @@ class VisualizationOperation:
             raise ValueError("isosurfaces must be positive")
         if self.kind == "glyph" and self.factor <= 0:
             raise ValueError("glyph factor must be positive")
-        if len(self.normal) != 3 or not any(float(value) != 0.0 for value in self.normal):
-            if self.kind == "slice":
-                raise ValueError("slice normal must be a non-zero 3-vector")
+        if self.kind == "slice" and (
+            len(self.normal) != 3
+            or not any(float(value) != 0.0 for value in self.normal)
+        ):
+            raise ValueError("slice normal must be a non-zero 3-vector")
 
     @classmethod
     def contour(cls, scalars: str, isosurfaces: int = 10) -> VisualizationOperation:
