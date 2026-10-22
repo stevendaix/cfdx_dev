@@ -108,3 +108,11 @@ def test_focus_indicator_has_nontext_contrast(surface_token: str) -> None:
         "contrast threshold"
     )
 
+def test_focus_styles_cover_multiline_editors_and_table_widgets() -> None:
+    focus_rule = WORKBENCH_STYLESHEET.split("QPushButton:focus", maxsplit=1)[1].split(
+        "{", maxsplit=1
+    )[0]
+    for selector in ("QPlainTextEdit:focus", "QTextEdit:focus", "QTableWidget:focus"):
+        assert selector in focus_rule
+    assert "border: 1px solid " + TOKENS["accent.primary"] in WORKBENCH_STYLESHEET
+
