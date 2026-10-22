@@ -31,6 +31,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <optional>
 #include <numeric>
 #include <stdexcept>
 #include <iomanip>
@@ -3880,7 +3881,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             std::max(h.momentum_rhs_scale, tiny);
         const bool momentum_reference_ill_conditioned =
             h.momentum_equation_residual_reference <= momentum_reference_roundoff;
-        const double nonlinear_metric = momentum_reference_ill_conditioned
+        double nonlinear_metric = momentum_reference_ill_conditioned
             ? std::max({
                   h.momentum_residual,
                   h.pressure_residual,
@@ -4057,10 +4058,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             nonlinear_metric,
             h.continuity_normalized,
             std::move(qoi_values)});
+        const bool sst_residual_gate = !controls.sst_runtime ||
+            (sst_step.committed &&
+             sst_step.transport.k_residual <= controls.sst_runtime->transport_tolerance &&
+             sst_step.transport.second_residual <= controls.sst_runtime->transport_tolerance);
         const bool converged_now =
             iter >= minimum_outer_correctors &&
             convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
-            per_criterion_gates_ok;
+            per_criterion_gates_ok && sst_residual_gate;
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
             std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
                       << " cell_source=" << (debug_cell_auto ? "auto_worst" : "explicit")
