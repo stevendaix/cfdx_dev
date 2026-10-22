@@ -194,7 +194,8 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
     def contour(self, scalars: str, isosurfaces: int = 10) -> None:
         """Append a contour operation to the current visualization pipeline."""
         operation = VisualizationOperation.contour(scalars, isosurfaces)
-        operation.apply(self._dataset())
+        if scalars not in self._available_fields(self._dataset()):
+            raise KeyError(scalars)
         self._visualization_pipeline = self._visualization_pipeline.append(operation)
         self._render_visualization()
 
@@ -207,7 +208,8 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
     def glyph(self, scalars: str, factor: float = 1.0) -> None:
         """Append a glyph operation to the current visualization pipeline."""
         operation = VisualizationOperation.glyph(scalars, factor)
-        operation.apply(self._dataset())
+        if scalars not in self._available_fields(self._dataset()):
+            raise KeyError(scalars)
         self._visualization_pipeline = self._visualization_pipeline.append(operation)
         self._render_visualization()
 
