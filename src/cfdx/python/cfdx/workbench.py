@@ -745,7 +745,9 @@ if QMainWindow is not object:
             for index, operation in enumerate(operations, start=1):
                 details = operation.kind
                 if operation.kind == "contour":
-                    details += f" — {operation.scalars}, {operation.isosurfaces} isosurfaces"
+                    details += (
+                        f" — {operation.scalars}, {operation.isosurfaces} isosurfaces"
+                    )
                 elif operation.kind == "glyph":
                     details += f" — {operation.scalars}, scale {operation.factor:g}"
                 elif operation.kind == "slice":
