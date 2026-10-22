@@ -439,6 +439,38 @@ inline SSTProductionState initialize_sst_production_state_from_mesh(
         mesh, setup, controls, wall_distance.distance, strain_rate);
 }
 
+// Refresh mesh- and carrier-derived SST quantities atomically from an accepted iterate.
+inline void refresh_sst_production_derived_state_from_mesh(
+    SSTProductionState& state,
+    const cfdx::core::Mesh& mesh,
+    const TurbulenceTransportControls& controls,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+    const std::map<std::string, std::array<double, 3>>& fixed_velocity_boundary_values,
+    const std::vector<std::string>& wall_patch_names = {})
+{
+    const std::size_t n = mesh.n_cells();
+    if (n == 0 || velocity.size() != n || velocity.dimension() != 3)
+        throw std::invalid_argument("refresh_sst_production_derived_state_from_mesh: velocity field shape mismatch");
+    validate_sst_production_state(state, n);
+    const FvGeometry geometry = build_fv_geometry(mesh);
+    const auto wall_distance = compute_mesh_cell_wall_distance(mesh, geometry, wall_patch_names);
+    const auto strain_field = compute_sst_strain_rate_with_boundary_values(velocity, mesh, fixed_velocity_boundary_values);
+    SSTProductionState candidate = state;
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        candidate.wall_distance(cell) = wall_distance.distance[cell];
+        candidate.strain_rate(cell) = strain_field(cell);
+    }
+    const auto cross = cell_gradient_dot(candidate.k, candidate.omega, mesh);
+    cfdx::core::Field<double, cfdx::core::Location::CELL> F2(n, "sst_F2", "1", 1);
+    for (std::size_t cell = 0; cell < n; ++cell) {
+        const auto blending = compute_sst_blending(candidate.k(cell), candidate.omega(cell), candidate.wall_distance(cell), controls.molecular_viscosity, controls.beta_star, cross[cell], controls.density, controls.sst_sigma_w2);
+        F2(cell) = blending.second;
+    }
+    refresh_sst_production_eddy_viscosity(candidate.k, candidate.omega, candidate.strain_rate, F2, controls, candidate.nu_t);
+    validate_sst_production_state(candidate, n);
+    state = candidate;
+}
+
 struct SSTRuntimeBoundaryContract {
     ScalarBoundaryConditions k;
     ScalarBoundaryConditions omega;
