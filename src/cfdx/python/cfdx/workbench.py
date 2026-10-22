@@ -538,6 +538,7 @@ if QMainWindow is not object:
                 if self.view3d is not None:
                     self.view3d.load_cfdx_mesh(path)
                     self._show_viewport()
+                    self._refresh_postprocess_actions(self._application_state)
                 self.statusBar().showMessage(f"Mesh loaded: {path}")
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Mesh error: {exc}")
@@ -566,6 +567,7 @@ if QMainWindow is not object:
                         str(self.application.project_path), path
                     )
                     self._show_viewport()
+                    self._refresh_postprocess_actions(self._application_state)
                 self.statusBar().showMessage(
                     f"DAT loaded: {Path(path).name} | iteration={loaded.iteration} | "
                     f"time={loaded.time:g} | fields={len(fields or loaded.fields)}"
