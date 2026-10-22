@@ -2729,7 +2729,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const auto mass_flux_snapshot = mass_flux;
         bool iteration_completed = false;
         while (!iteration_completed) {
+            // A retry must restore not only physical fields but also any
+            // convergence/history state tentatively updated before the outer
+            // transaction commits.
+            stop_after_iteration = false;
             transaction.begin();
+            const auto convergence_monitor_snapshot = convergence_monitor;
+            const auto result_history_size = result.history.size();
+            const auto probe_samples_size = result.probe_samples.size();
+            const auto previous_result_converged = result.converged;
+            const auto previous_result_status = result.convergence_status;
+            const auto previous_result_reason = result.convergence_reason;
+            const auto previous_result_iterations = result.iterations;
             const auto sst_attempt_snapshot = controls.sst_runtime
                 ? std::optional<SSTProductionState>(
                     snapshot_sst_production_state(*controls.sst_runtime->state))
@@ -4648,6 +4659,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             (controls.kinematic_viscosity +
                              controls.sst_runtime->state->nu_t(cell));
                 }
+                // The monitor and exported iteration evidence are tentative
+                // until the carrier/SST transaction commits. Replaying a retry
+                // with the same iteration index must not see stale samples or
+                // a previously published converged flag.
+                convergence_monitor = convergence_monitor_snapshot;
+                result.history.resize(result_history_size);
+                result.probe_samples.resize(probe_samples_size);
+                result.converged = previous_result_converged;
+                result.convergence_status = previous_result_status;
+                result.convergence_reason = previous_result_reason;
+                result.iterations = previous_result_iterations;
+                stop_after_iteration = false;
                 frozen_state_valid = false;
                 if (!retry_controller.can_retry())
                     throw;
