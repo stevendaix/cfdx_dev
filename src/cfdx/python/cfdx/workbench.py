@@ -659,7 +659,7 @@ if QMainWindow is not object:
 
         def _postprocess(self, mode: str) -> None:
             """Collect operation-specific inputs before applying a visualization filter."""
-            if self.view3d is None:
+            if getattr(self, "view3d", None) is None:
                 return
             try:
                 if mode in {"contour", "glyph"}:
@@ -729,7 +729,7 @@ if QMainWindow is not object:
 
         def _visualization_operation_selection_changed(self, row: int) -> None:
             self.remove_visualization_operation_button.setEnabled(
-                row >= 0 and self.view3d is not None
+                row >= 0 and getattr(self, "view3d", None) is not None
             )
 
         def _refresh_visualization_operations(self) -> None:
@@ -737,10 +737,9 @@ if QMainWindow is not object:
             if not hasattr(self, "visualization_operations"):
                 return
             self.visualization_operations.clear()
+            view3d = getattr(self, "view3d", None)
             operations = (
-                self.view3d._visualization_pipeline.operations
-                if self.view3d is not None
-                else ()
+                view3d._visualization_pipeline.operations if view3d is not None else ()
             )
             for index, operation in enumerate(operations, start=1):
                 details = operation.kind
