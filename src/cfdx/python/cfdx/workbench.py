@@ -595,13 +595,10 @@ if QMainWindow is not object:
                 self.viewport_stack.setCurrentWidget(self.view3d)
 
         def _refresh_postprocess_actions(self, state) -> None:
-            enabled = (
-                self.view3d is not None
-                and (
-                    state.results.selected_frame is not None
-                    or self.view3d._dat_dataset is not None
-                    or self.view3d._current_result is not None
-                )
+            enabled = self.view3d is not None and (
+                state.results.selected_frame is not None
+                or self.view3d._dat_dataset is not None
+                or self.view3d._current_result is not None
             )
             for name in ("contour_action", "slice_action", "glyph_action"):
                 if hasattr(self, name):
