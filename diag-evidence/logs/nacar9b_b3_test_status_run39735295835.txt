@@ -1,0 +1,9 @@
+variant=b3
+levels=128
+outcome=INCONCLUSIVE_BUILD
+test_rc=none
+run_id=39735295835
+
+--- level markers reached ---
+no_level_marker
+--- failure line (if any) ---
