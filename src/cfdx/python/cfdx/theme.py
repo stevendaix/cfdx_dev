@@ -26,104 +26,108 @@ TOKENS: dict[str, str] = {
 
 WORKBENCH_STYLESHEET = """
 QMainWindow, QWidget {
-    background-color: %(surface.canvas)s;
-    color: %(text.primary)s;
+    background-color: @surface.canvas@;
+    color: @text.primary@;
 }
 QToolBar {
-    background-color: %(surface.panel)s;
+    background-color: @surface.panel@;
     border: 0;
-    border-bottom: 1px solid %(border.subtle)s;
+    border-bottom: 1px solid @border.subtle@;
     spacing: 6px;
     padding: 5px;
 }
 QToolBar QToolButton {
     background: transparent;
-    color: %(text.primary)s;
+    color: @text.primary@;
     border: 1px solid transparent;
     border-radius: 5px;
     padding: 6px 9px;
 }
 QToolBar QToolButton:hover {
-    background: %(surface.raised)s;
-    border-color: %(border.subtle)s;
+    background: @surface.raised@;
+    border-color: @border.subtle@;
 }
 QToolBar QToolButton:checked {
-    background: %(surface.raised)s;
-    border-color: %(accent.primary)s;
+    background: @surface.raised@;
+    border-color: @accent.primary@;
 }
 QDockWidget {
-    color: %(text.primary)s;
+    color: @text.primary@;
     font-weight: 600;
 }
 QDockWidget::title {
-    background: %(surface.panel)s;
-    border-bottom: 1px solid %(border.subtle)s;
+    background: @surface.panel@;
+    border-bottom: 1px solid @border.subtle@;
     padding: 7px 9px;
 }
 QStatusBar {
-    background: %(surface.panel)s;
-    color: %(text.secondary)s;
-    border-top: 1px solid %(border.subtle)s;
+    background: @surface.panel@;
+    color: @text.secondary@;
+    border-top: 1px solid @border.subtle@;
 }
 QTreeWidget, QTableView, QTableWidget, QPlainTextEdit, QTextEdit, QLineEdit,
 QComboBox, QSpinBox, QDoubleSpinBox {
-    background: %(surface.input)s;
-    color: %(text.primary)s;
-    border: 1px solid %(border.subtle)s;
+    background: @surface.input@;
+    color: @text.primary@;
+    border: 1px solid @border.subtle@;
     border-radius: 4px;
-    selection-background-color: %(accent.primary)s;
-    selection-color: %(surface.canvas)s;
+    selection-background-color: @accent.primary@;
+    selection-color: @surface.canvas@;
 }
 QTreeWidget::item, QTableView::item, QTableWidget::item {
     padding: 4px;
 }
 QPushButton {
-    background: %(surface.raised)s;
-    color: %(text.primary)s;
-    border: 1px solid %(border.subtle)s;
+    background: @surface.raised@;
+    color: @text.primary@;
+    border: 1px solid @border.subtle@;
     border-radius: 5px;
     padding: 7px 12px;
 }
 QPushButton:hover {
-    border-color: %(accent.primary)s;
+    border-color: @accent.primary@;
 }
 QPushButton:focus, QLineEdit:focus, QComboBox:focus, QSpinBox:focus,
 QDoubleSpinBox:focus, QTreeWidget:focus, QTableView:focus {
-    border: 1px solid %(accent.primary)s;
+    border: 1px solid @accent.primary@;
 }
 QPushButton:disabled {
-    color: %(text.muted)s;
-    background: %(surface.panel)s;
+    color: @text.muted@;
+    background: @surface.panel@;
 }
 QPushButton[emphasis="primary"] {
-    background: %(accent.primary)s;
-    color: %(surface.canvas)s;
-    border-color: %(accent.primary)s;
+    background: @accent.primary@;
+    color: @surface.canvas@;
+    border-color: @accent.primary@;
     font-weight: 600;
 }
 QPushButton[emphasis="primary"]:hover {
-    background: %(accent.secondary)s;
-    border-color: %(accent.secondary)s;
+    background: @accent.secondary@;
+    border-color: @accent.secondary@;
 }
 QLabel[role="secondary"] {
-    color: %(text.secondary)s;
+    color: @text.secondary@;
 }
 QMenu {
-    background: %(surface.raised)s;
-    color: %(text.primary)s;
-    border: 1px solid %(border.subtle)s;
+    background: @surface.raised@;
+    color: @text.primary@;
+    border: 1px solid @border.subtle@;
 }
 QMenu::item:selected {
-    background: %(accent.primary)s;
-    color: %(surface.canvas)s;
+    background: @accent.primary@;
+    color: @surface.canvas@;
 }
 QToolTip {
-    background: %(surface.raised)s;
-    color: %(text.primary)s;
-    border: 1px solid %(border.subtle)s;
+    background: @surface.raised@;
+    color: @text.primary@;
+    border: 1px solid @border.subtle@;
     padding: 4px;
 }
-""" % TOKENS
+"""
+for _token_name, _token_value in TOKENS.items():
+    WORKBENCH_STYLESHEET = WORKBENCH_STYLESHEET.replace(
+        f"@{_token_name}@", _token_value
+    )
 
 
 def apply_workbench_theme(window: object) -> None:
