@@ -374,6 +374,51 @@ int main()
         std::filesystem::remove(csv_path);
     });
 
+    run_case("steady_incompressible_opt_in_sst_runtime_executes_coupled_path", [] {
+        const Mesh m = make_unit_cube();
+        Field<double, Location::CELL> U(1, "U", "m/s", 3);
+        Field<double, Location::CELL> p(1, "p", "Pa", 1);
+        U.fill(0.0);
+        p.fill(0.0);
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        controls.convergence.max_iterations = 5;
+        controls.convergence.continuity_tolerance = 1e-12;
+        controls.linear_tolerance = 1e-12;
+        controls.pressure_reference_cell = 0;
+        controls.pressure_reference_value = 0.0;
+
+        SSTProductionState state(1);
+        state.k(0) = 0.1;
+        state.omega(0) = 1.0;
+        state.nu_t(0) = 0.01;
+        state.wall_distance(0) = 0.5;
+        state.strain_rate(0) = 0.0;
+        SSTProductionRuntime runtime;
+        runtime.state = &state;
+        runtime.transport.model = TurbulenceModel::SST;
+        runtime.transport.density = controls.density;
+        runtime.transport.molecular_viscosity = controls.kinematic_viscosity;
+        runtime.k_boundary_conditions["wall"] =
+            {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        runtime.omega_boundary_conditions["wall"] =
+            {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        runtime.wall_patch_names = {"wall"};
+        controls.sst_runtime = &runtime;
+
+        const auto result = solve_steady_incompressible(m, U, p, ubc, pbc, controls);
+        EXPECT_TRUE(!result.history.empty());
+        EXPECT_TRUE(std::isfinite(state.k(0)) && state.k(0) > 0.0);
+        EXPECT_TRUE(std::isfinite(state.omega(0)) && state.omega(0) > 0.0);
+        EXPECT_TRUE(std::isfinite(state.nu_t(0)) && state.nu_t(0) >= 0.0);
+    });
+
     run_case("steady_incompressible_zero_state_is_fixed_point", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> U(1,"U","m/s",3);
