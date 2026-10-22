@@ -457,19 +457,29 @@ def _run_mesh(
         check=False,
     )
     diagnostics = completed.stdout + completed.stderr
-    # Archive the full solver log and commit its tail as evidence so the
-    # exact stop reason (STAGNATED/DIVERGED/MAX_ITERATIONS, energy stage)
-    # is never lost again: run 39731617121 clipped str(exc)[:2000] and cut
-    # the end of the diagnostics tail together with the stop reason.
+    # stdout carries the run summary (carrier verdict, energy-stage trace,
+    # "Converged YES/NO Iterations N", "Energy stage skipped ..."). In run
+    # 39778029174 the 200k combined tail was 100% stderr and hid the coarse
+    # meshes' stdout summaries entirely. Archive both streams separately,
+    # plus every machine-readable json artifact the solver wrote
+    # (execution.json / convergence.json carry the exact per-stage status
+    # and stop reason).
     (run_dir / f"solver_{nx}x{ny}.log").write_text(diagnostics, encoding="utf-8")
     (evidence_dir / f"t2_solver_tail_{nx}x{ny}.log").write_text(
         diagnostics[-200000:], encoding="utf-8"
     )
+    (evidence_dir / f"t2_solver_stdout_{nx}x{ny}.log").write_text(
+        completed.stdout[-400000:], encoding="utf-8"
+    )
+    for artifact in sorted(run_dir.glob("*.json")):
+        (evidence_dir / f"t2_{artifact.stem}_{nx}x{ny}.json").write_text(
+            artifact.read_text(encoding="utf-8"), encoding="utf-8"
+        )
     if completed.returncode != 0:
         raise RuntimeError(
-            f"solver rc={completed.returncode}; diagnostics head:\n"
-            f"{diagnostics[:600]}\n...[truncated]...\n"
-            f"diagnostics tail:\n{diagnostics[-4000:]}"
+            f"solver rc={completed.returncode}; stdout tail:\n"
+            f"{completed.stdout[-1500:]}\n...[truncated]...\n"
+            f"stderr tail:\n{completed.stderr[-2500:]}"
         )
     for marker in ("Resolved numerical selections:", "Converged YES"):
         if marker not in diagnostics:

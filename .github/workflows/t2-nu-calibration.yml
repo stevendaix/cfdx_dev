@@ -74,7 +74,9 @@ jobs:
           E="diag-evidence/logs"
           git config user.name "cfdx-diag-bot"
           git config user.email "actions@github.com"
-          git add "$E"/t2_nu_calibration_* "$E"/t2_status_run* "$E"/t2_run_run* "$E"/t2_solver_tail_* 2>/dev/null || true
+          git add "$E"/t2_nu_calibration_* "$E"/t2_status_run* "$E"/t2_run_run* \
+            "$E"/t2_solver_tail_* "$E"/t2_solver_stdout_* "$E"/t2_execution_* \
+            "$E"/t2_convergence_* "$E"/t2_energy_convergence_* 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "no evidence to commit"
           else
