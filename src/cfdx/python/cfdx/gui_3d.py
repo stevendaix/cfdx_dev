@@ -220,6 +220,11 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self._visualization_pipeline = self._visualization_pipeline.append(operation)
         self._render_visualization()
 
+    def remove_visualization_operation(self, index: int) -> None:
+        """Remove one pipeline operation and replay the remaining operations."""
+        self._visualization_pipeline = self._visualization_pipeline.remove(index)
+        self._render_visualization()
+
     def reset_visualization(self) -> None:
         """Remove all derived operations and show the original dataset again."""
         self._visualization_pipeline = self._visualization_pipeline.clear()
