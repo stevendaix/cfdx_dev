@@ -625,6 +625,7 @@ if QMainWindow is not object:
             except (OSError, RuntimeError, ValueError, KeyError) as exc:
                 self.statusBar().showMessage(f"Renderer error: {exc}")
             self._refresh_postprocess_actions(event.state)
+            self._refresh_visualization_operations()
 
         def _show_viewport(self) -> None:
             """Reveal the renderer after a dataset has loaded successfully."""
