@@ -274,25 +274,70 @@ public:
         double best=std::numeric_limits<double>::infinity();
         const double eps=1e-12*std::max(1.0,max_distance);
 
-        for(const auto& tri:surface_.triangles) {
-            const auto& v0=surface_.points[tri.v[0]];
-            const auto& v1=surface_.points[tri.v[1]];
-            const auto& v2=surface_.points[tri.v[2]];
-            const auto e1=v1-v0;
-            const auto e2=v2-v0;
-            const auto h=cross(d,e2);
-            const double a=wd_dot(e1,h);
-            if(std::abs(a)<1e-14) continue;
-            const double inv_a=1.0/a;
-            const auto s=p-v0;
-            const double u=inv_a*wd_dot(s,h);
-            if(u < -1e-12 || u > 1.0+1e-12) continue;
-            const auto q=cross(s,e1);
-            const double v=inv_a*wd_dot(d,q);
-            if(v < -1e-12 || u+v > 1.0+1e-12) continue;
-            const double t=inv_a*wd_dot(e2,q);
-            if(t>=-eps && t<=max_distance+eps) best=std::min(best,std::max(0.0,t));
-        }
+        // Traverse the existing BVH rather than testing every triangle for
+        // every cut-face ray. Wall offsets are queried repeatedly during the
+        // pseudo-time iterations, so the former O(n_triangles) scan dominated
+        // the inner stencil work on refined meshes.
+        const auto intersects_box=[&](const WallDistanceAabb& box) {
+            double tmin=0.0, tmax=std::min(max_distance,best);
+            // The triangle test deliberately accepts barycentric coordinates
+            // within 1e-12 of an edge. Expand AABBs by a scale-aware spatial
+            // tolerance too, otherwise a near-edge hit accepted by the exact
+            // test could be pruned first (especially for axis-parallel rays).
+            const double spatial_eps=1e-12*std::max({
+                1.0,std::abs(p.x),std::abs(p.y),std::abs(p.z),
+                std::abs(box.lo.x),std::abs(box.lo.y),std::abs(box.lo.z),
+                std::abs(box.hi.x),std::abs(box.hi.y),std::abs(box.hi.z),
+                max_distance
+            });
+            const auto slab=[&](double origin,double direction,double lo,double hi) {
+                lo-=spatial_eps;
+                hi+=spatial_eps;
+                if(std::abs(direction)<1e-30) return origin>=lo && origin<=hi;
+                double a=(lo-origin)/direction, b=(hi-origin)/direction;
+                if(a>b) std::swap(a,b);
+                tmin=std::max(tmin,a);
+                tmax=std::min(tmax,b);
+                return tmin<=tmax+eps;
+            };
+            return slab(p.x,d.x,box.lo.x,box.hi.x)
+                && slab(p.y,d.y,box.lo.y,box.hi.y)
+                && slab(p.z,d.z,box.lo.z,box.hi.z)
+                && tmax>=-eps && tmin<=max_distance+eps;
+        };
+        const auto visit=[&](auto&& self,std::size_t node_id)->void {
+            const Node& node=nodes_[node_id];
+            if(!intersects_box(node.box)) return;
+            if(node.leaf) {
+                for(std::size_t i=node.begin;i<node.end;++i) {
+                    const auto& tri=surface_.triangles[indices_[i]];
+                    const auto& v0=surface_.points[tri.v[0]];
+                    const auto& v1=surface_.points[tri.v[1]];
+                    const auto& v2=surface_.points[tri.v[2]];
+                    const auto e1=v1-v0;
+                    const auto e2=v2-v0;
+                    const auto h=cross(d,e2);
+                    const double a=wd_dot(e1,h);
+                    if(std::abs(a)<1e-14) continue;
+                    const double inv_a=1.0/a;
+                    const auto offset=p-v0;
+                    const double u=inv_a*wd_dot(offset,h);
+                    if(u < -1e-12 || u > 1.0+1e-12) continue;
+                    const auto q=cross(offset,e1);
+                    const double v=inv_a*wd_dot(d,q);
+                    if(v < -1e-12 || u+v > 1.0+1e-12) continue;
+                    const double t=inv_a*wd_dot(e2,q);
+                    if(t>=-eps && t<=max_distance+eps)
+                        best=std::min(best,std::max(0.0,t));
+                }
+                return;
+            }
+            const double dl=wall_distance_aabb_distance2(nodes_[node.left].box,p);
+            const double dr=wall_distance_aabb_distance2(nodes_[node.right].box,p);
+            if(dl<dr) { self(self,node.left); self(self,node.right); }
+            else { self(self,node.right); self(self,node.left); }
+        };
+        visit(visit,0);
         return best;
     }
 

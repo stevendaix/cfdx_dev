@@ -46,6 +46,7 @@ Ce dossier **ne duplique aucun registre existant** (cf. `docs/validation/CFDX_VV
 | [10-thermique-cht.md](10-thermique-cht.md) | Énergie ρ·cp, CHT multi-régions, Boussinesq | APPROUVÉE (2026-10-12, PR #861) ; reste requis (Phase 3, audit du code Phase 11) |
 | [11-rayonnement.md](11-rayonnement.md) | Rayonnement : Rosseland, P1, S2S, DOM | APPROUVÉE (2026-10-12, PR #861) ; reste requis (Phase 3, audit du code Phase 12) |
 | [12-parallelisme-gpu-ooc.md](12-parallelisme-gpu-ooc.md) | Parité CPU/MPI/GPU/OOC (Règle d’Or 4) | APPROUVÉE (2026-10-12, PR #861) ; reste requis (Phases 6–7, N13) |
+| [20-distance-geometrique-bvh.md](20-distance-geometrique-bvh.md) | Distance géométrique aux parois, intersections rayon-triangle et accélération BVH | DRAFT (2026-10-19, PR #979) ; équivalence exhaustive et benchmark à qualifier |
 
 Les fiches à venir (VOF/PLIC, maillage dynamique, FSI, GUI) seront créées **avant** toute implémentation correspondante (Phase 4 de la roadmap). Les fiches 09–12 couvrant les Phases 1–3 du Plan Directeur sont approuvées (2026-10-12, PR #861) : l'audit du code contre chaque fiche reste requis avant toute promotion multiphysique (statuts BLOCKED du registre de qualification).
 
