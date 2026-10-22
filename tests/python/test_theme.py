@@ -117,3 +117,18 @@ def test_focus_styles_cover_multiline_editors_and_table_widgets() -> None:
     for selector in ("QPlainTextEdit:focus", "QTextEdit:focus", "QTableWidget:focus"):
         assert selector in focus_rule
     assert "border: 1px solid " + TOKENS["accent.primary"] in WORKBENCH_STYLESHEET
+
+
+@pytest.mark.parametrize(
+    "status_token",
+    ["status.success", "status.warning", "status.error", "status.info"],
+)
+@pytest.mark.parametrize("surface_token", ["surface.canvas", "surface.panel"])
+def test_status_text_meets_wcag_aa_for_normal_text(
+    status_token: str, surface_token: str
+) -> None:
+    # Validation labels use status colors as text, so the stricter text threshold applies.
+    assert _contrast_ratio(TOKENS[status_token], TOKENS[surface_token]) >= 4.5, (
+        f"{status_token} on {surface_token} does not meet the 4.5:1 WCAG AA "
+        "contrast threshold for normal text"
+    )
