@@ -6,7 +6,7 @@ set -euo pipefail
 # Requires a sourced OpenFOAM environment, git, Python, h5py and numpy.
 
 repo_url="https://github.com/yushan-lab/openfoam-cfd-minilab.git"
-root="\${1:-$PWD/openfoam-cfd-minilab-qualification}"
+root="${1:-$PWD/openfoam-cfd-minilab-qualification}"
 mkdir -p "$root"
 root="$(cd "$root" && pwd)"
 source_dir="$root/source"
@@ -77,7 +77,7 @@ if [[ ! -d "$package_root/cfdx/io" ]]; then
   echo "ERROR: run this script from the CFDX repository root; package path not found: $package_root" >&2
   exit 2
 fi
-export PYTHONPATH="$package_root\${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH="$package_root${PYTHONPATH:+:$PYTHONPATH}"
 python -m cfdx.io.cli convert "$case_dir" --results --output "$converted"
 
 mkdir -p "$evidence"
