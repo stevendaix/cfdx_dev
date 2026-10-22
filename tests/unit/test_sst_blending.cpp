@@ -1111,6 +1111,8 @@ int main()
         state.strain_rate(0) = 0.2;
         runtime.state = &state;
         runtime.transport.model = TurbulenceModel::SST;
+        runtime.transport.density = controls.density;
+        runtime.transport.molecular_viscosity = controls.kinematic_viscosity;
         validate_incompressible_controls(controls, 1);
 
         controls.turbulent_viscosity = 1.0e-5;
