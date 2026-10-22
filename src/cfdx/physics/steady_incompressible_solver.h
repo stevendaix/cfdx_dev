@@ -4598,7 +4598,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         result.convergence_status = convergence_report.status;
         result.convergence_reason = convergence_report.reason;
-        if (convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
+        if ((convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED ||
+             convergence_report.status == cfdx::core::ConvergenceStatus::MAX_ITERATIONS) &&
             !sst_residual_gate) {
             // The carrier monitor does not know about the additional SST
             // closure/transport gate. Do not publish a converged status while
