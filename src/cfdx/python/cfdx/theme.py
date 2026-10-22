@@ -108,6 +108,18 @@ QPushButton[emphasis="primary"]:hover {
 QLabel[role="secondary"] {
     color: @text.secondary@;
 }
+QLabel[validationState="error"] {
+    color: @status.error@;
+}
+QLabel[validationState="warning"] {
+    color: @status.warning@;
+}
+*[validationState="error"] {
+    border: 1px solid @status.error@;
+}
+*[validationState="warning"] {
+    border: 1px solid @status.warning@;
+}
 QMenu {
     background: @surface.raised@;
     color: @text.primary@;
