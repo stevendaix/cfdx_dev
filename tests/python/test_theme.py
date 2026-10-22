@@ -116,4 +116,3 @@ def test_focus_styles_cover_multiline_editors_and_table_widgets() -> None:
     for selector in ("QPlainTextEdit:focus", "QTextEdit:focus", "QTableWidget:focus"):
         assert selector in focus_rule
     assert "border: 1px solid " + TOKENS["accent.primary"] in WORKBENCH_STYLESHEET
-
