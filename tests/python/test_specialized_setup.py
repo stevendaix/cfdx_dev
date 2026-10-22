@@ -71,7 +71,29 @@ def test_setup_panel_routes_physics_diagnostic_to_field_widget():
     )
 
     assert "1 error(s)" in panel.validation_summary.text()
+    assert panel.validation_summary.property("validationState") == "error"
+    assert panel.physics_fields["density"].property("validationState") == "error"
     assert "density is invalid" in panel.physics_fields["density"].toolTip()
+
+    panel.set_diagnostics(
+        [
+            SetupDiagnostic(
+                "warning",
+                "PHYSICS_VALUE",
+                "density should be reviewed",
+                "physics.incompressible.density",
+            )
+        ]
+    )
+    assert "0 error(s)" in panel.validation_summary.text()
+    assert panel.validation_summary.property("validationState") == "warning"
+    assert panel.physics_fields["density"].property("validationState") == "warning"
+
+    panel.set_diagnostics([])
+    assert panel.validation_summary.text() == "No validation diagnostics"
+    assert panel.validation_summary.property("validationState") == ""
+    assert panel.physics_fields["density"].property("validationState") == ""
+    assert panel.physics_fields["density"].toolTip() == ""
     panel.close()
     app.processEvents()
 
