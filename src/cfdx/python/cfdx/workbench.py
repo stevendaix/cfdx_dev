@@ -321,9 +321,7 @@ if QMainWindow is not object:
                 "font-size: 13px; color: #64748b; background: transparent;"
             )
             empty_layout.addWidget(empty_message)
-            empty_actions = QLabel(
-                "Open Mesh   •   Open DAT Result   •   Run a case"
-            )
+            empty_actions = QLabel("Open Mesh   •   Open DAT Result   •   Run a case")
             empty_actions.setObjectName("workbench.viewport.empty_actions")
             empty_actions.setAlignment(Qt.AlignmentFlag.AlignCenter)
             empty_actions.setStyleSheet(
