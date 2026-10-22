@@ -105,9 +105,7 @@ def test_openfoam_results_cli_imports_latest_cell_velocity(tmp_path: Path) -> No
 
     output = tmp_path / "converted"
     env = os.environ.copy()
-    package_root = str(
-        Path(__file__).resolve().parents[2] / "src" / "cfdx" / "python"
-    )
+    package_root = str(Path(__file__).resolve().parents[2] / "src" / "cfdx" / "python")
     env["PYTHONPATH"] = os.pathsep.join(
         part for part in (package_root, env.get("PYTHONPATH", "")) if part
     )
