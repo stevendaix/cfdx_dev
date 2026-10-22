@@ -1,76 +1,78 @@
-name: NACA0012 solver-diff region attribution (round 8)
+name: NACA0012 region-necessity leave-one-out (round 9)
 
 # DIAG-ONLY - diagnostics branch ci/long-campaign-diagnostics (NEVER merge).
 #
-# Goal (round 8): attribute the N128 hard-divergence culprit to ONE REGION of
-# the green-vs-master solver diff. Round 7 (run 39663748207) proved
-# v0_master_pristine FAIL_DIVERGED and v1_green_trio PASS_3_LEVELS (N64 433 it
-# / N128 995 it / N256 3989 it, identical to the green reference) on master pin
-# 28e4d183: swapping the green trio (steady_incompressible_solver.h +
-# convergence_history.h + test_naca0012_geometry.cpp) restores the pass, so the
-# culprit lives in that trio. Round 6 (run 39630570236) proved the boundary
-# block alone is NOT it. Compile coupling (verified 2026-10-21): the history
-# entry struct IncompressibleIteration (with the momentum_rhs_scale fields) is
-# defined IN THE SOLVER HEADER, so master convergence_history.h cannot compile
-# against the green solver (and the master test cannot either). The
-# convergence_history.h file is serialization-only I/O and is compile-entangled
-# with the solver, so this round keeps master convergence_history.h everywhere
-# (except the green control) and attributes inside the solver.
+# Goal (round 9): identify the MINIMAL set of solver-diff regions whose
+# revert to green restores the N128 pass, i.e. the culprit set at region
+# granularity. Locked context: round 7 (run 39663748207) IN_TRIO_CULPRIT
+# (v1_green_trio + v2_green_trio_monitor PASS_3_LEVELS with green-identical
+# iterations, v0 FAIL_DIVERGED); round 8 (run 39672681948)
+# COMBINATION_OR_COUPLED: test exonerated (v0b FAIL as expected),
+# convergence_history exonerated (vC FAIL as expected), the 5 individually
+# testable regions r2/r4/r5/r8/r9 each still FAIL when reverted alone, and
+# the 4 compile-coupled regions r1/r3/r6/r7 could not be tested alone
+# (INCONCLUSIVE_BUILD: their green forms remove symbols that OTHER master
+# regions of the same solver consume - intra-file coupling: r1 struct fields
+# used by validation/assembly master code, r3 pressure_face_* functions used
+# by boundary/assembly master code, r6 mu_eff form used by the audit call,
+# r7 rhie_chow_identity_* declarations used by master code at 3680).
 #
-# The solver diff green(a1a62dc1) <-> master(28e4d183) has 51 hunks (~832
-# lines). This round partitions them into 9 REGIONS by green-file line ranges
-# and builds, for each region, a HYBRID solver = master solver with that one
-# region reverted to the green form (whole-file generation, fail-closed:
-# the reverse-apply algorithm is validated at run time by reverting ALL
-# hunks and byte-comparing to the green solver; each region hybrid is
-# md5-verified against the expected hash recorded in this workflow).
+# Method: LEAVE-ONE-OUT. The green solver is self-consistent, so a hybrid
+# keeping exactly ONE region in master form (all 8 others reverted to green)
+# compiles (master-region symbols are not referenced by green code) unless
+# that one master region itself references master-only symbols from reverted
+# regions. For each region i:
+#   k_i = master tree + hybrid solver (all regions reverted EXCEPT i)
+#         + green convergence_history.h + green test.
+#   k_i FAIL_DIVERGED  -> region i's master form is NECESSARY for the defect
+#   k_i PASS_128       -> region i is NOT necessary (exonerated)
+#   k_i INCONCLUSIVE_* -> necessity unknown (compile/other failure)
+# Necessity logic: the full revert (all 9) passes (round 7 v1), the full
+# master fails (v0). M = {i : k_i FAIL} is the set of necessary regions;
+# reverting exactly M must restore the pass if the culprit is exactly M.
 #
-# Variants (all always run, worktree of the pinned master commit unless
-# stated; the GREEN TEST is swapped in everywhere because the master test
-# does not compile against green-region-reverted solvers - the green test
-# uses only the old API and carries the OLD #926 Cd sign convention):
-#   v0b_master_greentest   : master tree + green test ONLY. Expected
-#                            FAIL_DIVERGED like round-7 v0 (the test swap is
-#                            behavior-neutral: identical solver controls).
-#                            Canary: proves the green test compiles against
-#                            the master solver for all region variants.
-#   vC_convhist_neutral    : master tree + green convergence_history.h +
-#                            green test. Expected FAIL_DIVERGED (green conv
-#                            compiles against the master entry struct; it is
-#                            serialization-only and nothing here consumes
-#                            it) -> conv_history exonerated as inert.
-#   r1_api_fields          : region green 140-224 (struct/API/evidence-hook
-#   r2_validation            fields, 6 hunks). WARNING: r1 reverts the
-#   r3_rhie_chow_coef        IncompressibleIteration fields that master
-#   r4_boundary_operator     convergence_history.h serializes -> r1 is
-#   r5_evidence_aliases      expected INCONCLUSIVE_BUILD (compile-coupled,
-#   r6_monitor_controls       informative, not a behavior verdict).
-#   r7_flux_audit_forms    : ... each region reverted to green, see the
-#   r8_momentum_rhs_scale    generation step for the exact ranges.
-#   r9_wall_distance_guards
-#   v3_green_pristine      : the green tree itself (control, expected
-#                            PASS_3_LEVELS; round-7 v3 covers the same pin
-#                            pair, this re-runs it for self-containment).
+# Levels: N128 ONLY (the discriminating level: master diverges at N128 it 15,
+# green converges 995 it - N64 passes on both). PASS_128 ~6 min vs
+# PASS_3_LEVELS ~41 min. The final culprit confirmation (mm3/mmu3) re-runs
+# the FULL 3 levels (N64/N128/N256) for production-grade evidence.
 #
-# Interpretation guide (round 8) - region attribution is valid only if
-# v0b FAIL_DIVERGED and v3 PASS_3_LEVELS:
-#   exactly one r* PASS_3_LEVELS -> REGION_CULPRIT: that region's master
-#        form is the defect -> round 9 = bisect hunks within the region,
-#        then production PR (decision Steven)
-#   two or more r* PASS_3_LEVELS -> MULTIPLE_INDEPENDENT_CULPRITS (list)
-#   no r* PASS and no INCONCLUSIVE_BUILD -> COMBINATION_REQUIRED: the
-#        failure needs >= 2 regions green jointly -> round 9 = cumulative
-#   no r* PASS with some INCONCLUSIVE_BUILD -> COMBINATION_OR_COUPLED:
-#        compile-coupled regions could not be tested alone -> round 9 =
-#        cumulative reverts including the coupled regions
-#   v0b PASS_3_LEVELS -> TEST_CULPRIT_ANOMALY: the green test swap alone
-#        would restore the pass (not expected - the solve controls are
-#        identical) -> repeat before concluding
-#   vC PASS_3_LEVELS -> CONV_HIST_ANOMALY (serialization-only file cannot
-#        change the solve) -> repeat before concluding
-#   v3 not PASS_3_LEVELS -> GREEN_ANCHOR_ANOMALY -> repeat
-#   INCONCLUSIVE_{WORKTREE,VARIANT_COPY,CONFIGURE,MESHGEN} -> incomplete,
-#        re-run
+# Variants (all on the master-pin worktree; green convergence_history.h +
+# green test swapped everywhere - both proven behavior-neutral in round 8:
+# v0b and vC both FAIL_DIVERGED exactly like pristine master):
+#   a0_master_anchor : pristine master solver (md5 MASTER_MD5) + green conv
+#                      + green test. N128-only. Expected FAIL_DIVERGED.
+#   a9_all9_anchor   : all-9-regions reverted (byte-identical green solver,
+#                      md5 GREEN_MD5) + green conv + green test = the round-7
+#                      green trio. N128-only. Expected PASS_128.
+#   k1..k9           : leave-one-out hybrids (md5-pinned MC1..MC9). N128-only.
+#   mm_minimal_set   : revert exactly M = necessary set (runtime-generated,
+#                      deterministic from the validated 9-range table).
+#                      N128-only. PASS_128 expected if M is the culprit set.
+#   mm3_minimal_set_3levels : same hybrid, full 3 levels. PASS_3_LEVELS
+#                      expected - the production-grade confirmation.
+#   mmu_set_plus_unknown / mmu3_... : only if mm FAILs and some k_i were
+#                      INCONCLUSIVE: revert M + unknown regions.
+#
+# Interpretation guide (round 9) - valid only if a0 FAIL_DIVERGED and
+# a9 PASS_128:
+#   mm PASS_128 + mm3 PASS_3_LEVELS -> REGION_SET_CULPRIT: M is the culprit
+#        set (every region in M necessary, M sufficient) -> production PR
+#        reverting exactly those regions (decision Steven); unknown regions
+#        (k_i INCONCLUSIVE) are proven unnecessary by mm PASS without them.
+#   mmu PASS_128 + mmu3 PASS_3_LEVELS -> SET_PLUS_UNKNOWN: culprit within
+#        M + unknown; exact if exactly one unknown, otherwise conservative
+#        (prune candidates in round 10 if wanted).
+#   mm FAIL_DIVERGED (+ mmu FAIL if run) -> COMBINATION_ESCAPE: no
+#        region-granularity set explains the defect -> round 10 = hunk-level
+#        bisect inside the coupled regions.
+#   no k_i FAIL (all PASS_128) -> JOINT_INTERACTION: every single region's
+#        master form is harmless alone, yet full master diverges -> defect
+#        emerges from >= 2 master regions jointly -> round 10 = pair hunt.
+#   a0 PASS_128 -> A0_ANCHOR_ANOMALY (master no longer diverges under this
+#        configuration) -> repeat before concluding.
+#   a9 not PASS_128 -> A9_ANCHOR_ANOMALY -> repeat before concluding.
+#   INCONCLUSIVE_{WORKTREE,VARIANT_COPY,CONFIGURE,MESHGEN} anywhere ->
+#        incomplete, re-run.
 #
 # NOTE: the green test has the OLD #926 Cd_pressure sign convention
 # (Fxp+=-pp): compare iterations/convergence behaviour, NEVER raw Cd signs.
@@ -92,12 +94,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: naca-r8-region-attribution
+  group: naca-r9-leave-one-out
   cancel-in-progress: false
 
 jobs:
-  naca-r8-variants:
-    name: NACA solver-diff region-attribution variants at pinned master commit (round 8)
+  naca-r9-variants:
+    name: NACA leave-one-out necessity at pinned master commit (round 9)
     runs-on: ubuntu-24.04
     timeout-minutes: 250
     env:
@@ -105,15 +107,15 @@ jobs:
       GREEN_PIN: a1a62dc10fe253e22a716b3e98d7ca02bc45d6d1
       GREEN_MD5: 63db7905347576beec20993919d6015e
       MASTER_MD5: af085014acfc35a0e9ab4946c3f46381
-      M_R1: 3ae10ec46395555273025dad2045acee
-      M_R2: 2078d7d48157c557d381b968794b70f9
-      M_R3: f9ceb08451af889c4b3c8e0dc56d1cdf
-      M_R4: 70fb192898db0240cc3c238c826d864e
-      M_R5: 357ad9221d0232bf94eef779c05ec22d
-      M_R6: 7c9b20ff8ef00d0671d9252246508e46
-      M_R7: 5a23d069719768ad429a2e48d2f4bac9
-      M_R8: dabdfc6179dfeb20a86cc482d3b69f29
-      M_R9: e9b268054338aeff45f82fb43ce33dcf
+      MC1: 24f2a8ec8cd6d89245732e49b094e917
+      MC2: be5bbc99cd5b35c6a3efee59ce6abd02
+      MC3: 58c8c3aa54723f1676ff088fb16e9877
+      MC4: 32dc48057cef821149eff9d0f6cbe11e
+      MC5: f01d9116e571b3e7493bd546fa9e112c
+      MC6: ad45bea815d0a05ddb3efa6069019512
+      MC7: db8b079541221a1be2c8321ab3761b2e
+      MC8: 05ea8c8177e73e6e327a4778551ae2ca
+      MC9: e442535a8d2eddebe88ce0b7912eb90f
     steps:
       - name: Checkout diagnostics branch
         uses: actions/checkout@v4
@@ -145,7 +147,6 @@ jobs:
       - name: Fail-closed green-reference guards
         run: |
           set -euo pipefail
-          # Trio files exist at the green pin with the expected green content.
           git cat-file -e "${GREEN_PIN}:src/cfdx/physics/steady_incompressible_solver.h"
           git cat-file -e "${GREEN_PIN}:src/cfdx/io/runtime/convergence_history.h"
           git cat-file -e "${GREEN_PIN}:tests/validation/test_naca0012_geometry.cpp"
@@ -162,17 +163,14 @@ jobs:
             echo "::error::green solver unexpectedly contains dAU_boundary"
             exit 1
           fi
-          # The same trio files exist at the master pin (swap targets).
           git cat-file -e "${MASTER_PIN}:src/cfdx/physics/steady_incompressible_solver.h"
           git cat-file -e "${MASTER_PIN}:src/cfdx/io/runtime/convergence_history.h"
           git cat-file -e "${MASTER_PIN}:tests/validation/test_naca0012_geometry.cpp"
-          # Mesh generator must be identical between the pins (round 6: blob 29c737fc207a).
           git diff --quiet "${GREEN_PIN}" "${MASTER_PIN}" -- scripts/generate_2d_validation_meshes.py
-          # Test-local helper must be identical between the pins (verified 2026-10-21).
           git diff --quiet "${GREEN_PIN}" "${MASTER_PIN}" -- tests/validation/qualification_boundary_helpers.h
           echo "green_guards_ok"
 
-      - name: Generate region-revert hybrids (fail-closed, md5-verified)
+      - name: Generate leave-one-out hybrids (fail-closed, md5-verified)
         run: |
           set -euo pipefail
           mkdir -p diag-hybrids
@@ -190,8 +188,15 @@ jobs:
           set -e
           if [ "$drc" -ne 1 ]; then echo "::error::green-vs-master diff exited ${drc} (expected 1: the pinned solvers must differ)"; exit 1; fi
           echo "solver green-vs-master diff hunks: $(grep -c '^@@' diag-hybrids/gm.diff)"
-          REVERT_AWK='
-          BEGIN { LO = lo + 0; HI = hi + 0 }
+          cat > diag-hybrids/revert9.awk <<'AWKEOF'
+          BEGIN {
+            nr = split(ranges, RG, ",")
+            for (i = 1; i <= nr; i++) {
+              split(RG[i], E, "-")
+              LO[i] = E[1] + 0
+              HI[i] = E[2] + 0
+            }
+          }
           FNR == NR {
             if ($0 ~ /^@@/) {
               h++
@@ -206,7 +211,10 @@ jobs:
               pc = index(prest, ",")
               if (pc > 0) ps = substr(prest, 1, pc - 1); else ps = prest
               start_master[h] = ps + 0
-              sel[h] = (gstart[h] >= LO && gstart[h] <= HI) ? 1 : 0
+              sel[h] = 0
+              for (i = 1; i <= nr; i++) {
+                if (gstart[h] >= LO[i] && gstart[h] <= HI[i]) { sel[h] = 1; break }
+              }
               j = 0
               next
             }
@@ -243,34 +251,65 @@ jobs:
             }
             while (p <= m) { print ml[p]; p++ }
           }
-          '
-          # Validation: reverting ALL hunks must reproduce the green solver byte-identically.
-          awk -v lo=0 -v hi=999999 "${REVERT_AWK}" diag-hybrids/gm.diff diag-hybrids/solver_master.h > diag-hybrids/all_revert.h
-          cmp -s diag-hybrids/all_revert.h diag-hybrids/solver_green.h \
-            || { echo "::error::all-revert validation failed (algorithm or pin content changed)"; exit 1; }
-          echo "all-revert validation OK (byte-identical to green solver)"
-          # Validation: selecting nothing must reproduce the master solver byte-identically.
-          awk -v lo=0 -v hi=0 "${REVERT_AWK}" diag-hybrids/gm.diff diag-hybrids/solver_master.h > diag-hybrids/none_revert.h
-          cmp -s diag-hybrids/none_revert.h diag-hybrids/solver_master.h \
-            || { echo "::error::empty-range validation failed"; exit 1; }
-          echo "empty-range validation OK (byte-identical to master solver)"
-          gen_region() {
-            awk -v lo="$2" -v hi="$3" "${REVERT_AWK}" diag-hybrids/gm.diff diag-hybrids/solver_master.h > "diag-hybrids/$1.h" \
-              || { echo "::error::hybrid generation failed for $1"; exit 1; }
-            actual=$(md5sum "diag-hybrids/$1.h" | awk '{print $1}')
-            if [ "${actual}" != "$4" ]; then echo "::error::$1 md5 mismatch: ${actual} != $4"; exit 1; fi
-            echo "hybrid $1 OK md5=${actual} bytes=$(stat -c%s "diag-hybrids/$1.h")"
+          AWKEOF
+          # Region table (green-file line ranges, disjoint, covering ALL hunks:
+          # r1=6 r2=1 r3=7 r4=7 r5=4 r6=2 r7=12 r8=8 r9=4 of 51 hunks).
+          declare -a RANGES
+          RANGES[1]="140-224"
+          RANGES[2]="399-399"
+          RANGES[3]="548-773"
+          RANGES[4]="1345-1499"
+          RANGES[5]="1582-2095"
+          RANGES[6]="2181-2200"
+          RANGES[7]="2322-3205"
+          RANGES[8]="3276-3411"
+          RANGES[9]="3731-3918"
+          ALL9="140-224,399-399,548-773,1345-1499,1582-2095,2181-2200,2322-3205,3276-3411,3731-3918"
+          # Validation 1: reverting ALL 9 regions must reproduce the green solver.
+          awk -v ranges="${ALL9}" -f diag-hybrids/revert9.awk \
+            diag-hybrids/gm.diff diag-hybrids/solver_master.h > diag-hybrids/all9.h
+          cmp -s diag-hybrids/all9.h diag-hybrids/solver_green.h \
+            || { echo "::error::all-9-regions revert is not byte-identical to the green solver"; exit 1; }
+          echo "all-9-regions validation OK (byte-identical to green solver)"
+          # Validation 2: an empty ranges string selects no hunk and must
+          # reproduce the master solver byte-identically.
+          awk -v ranges="" -f diag-hybrids/revert9.awk \
+            diag-hybrids/gm.diff diag-hybrids/solver_master.h > diag-hybrids/empty9.h
+          cmp -s diag-hybrids/empty9.h diag-hybrids/solver_master.h \
+            || { echo "::error::empty-ranges generation is not byte-identical to the master solver"; exit 1; }
+          echo "empty-ranges validation OK (byte-identical to master solver)"
+          # Leave-one-out hybrids k_i: revert 8 regions, keep region i master.
+          gen_loo() {
+            local idx="$1"
+            local ranges=""
+            local j
+            for j in 1 2 3 4 5 6 7 8 9; do
+              if [ "$j" = "$idx" ]; then continue; fi
+              if [ -z "$ranges" ]; then ranges="${RANGES[$j]}"; else ranges="${ranges},${RANGES[$j]}"; fi
+            done
+            awk -v ranges="${ranges}" -f diag-hybrids/revert9.awk \
+              diag-hybrids/gm.diff diag-hybrids/solver_master.h > "diag-hybrids/k${idx}.h" \
+              || { echo "::error::generation failed for k${idx}"; exit 1; }
+            local actual
+            local expected
+            actual=$(md5sum "diag-hybrids/k${idx}.h" | awk '{print $1}')
+            eval "expected=\${MC${idx}}"
+            if [ "${actual}" != "${expected}" ]; then
+              echo "::error::k${idx} md5 mismatch: ${actual} != ${expected}"
+              exit 1
+            fi
+            echo "hybrid k${idx} OK md5=${actual} bytes=$(stat -c%s "diag-hybrids/k${idx}.h")"
           }
-          gen_region r1_api_fields 140 224 "${M_R1}"
-          gen_region r2_validation 399 399 "${M_R2}"
-          gen_region r3_rhie_chow_coef 548 773 "${M_R3}"
-          gen_region r4_boundary_operator 1345 1499 "${M_R4}"
-          gen_region r5_evidence_aliases 1582 2095 "${M_R5}"
-          gen_region r6_monitor_controls 2181 2200 "${M_R6}"
-          gen_region r7_flux_audit_forms 2322 3205 "${M_R7}"
-          gen_region r8_momentum_rhs_scale 3276 3411 "${M_R8}"
-          gen_region r9_wall_distance_guards 3731 3918 "${M_R9}"
-          echo "region_hybrids_ok"
+          gen_loo 1
+          gen_loo 2
+          gen_loo 3
+          gen_loo 4
+          gen_loo 5
+          gen_loo 6
+          gen_loo 7
+          gen_loo 8
+          gen_loo 9
+          echo "leave_one_out_hybrids_ok"
 
       - name: Create Python venv for mesh generation
         run: |
@@ -279,7 +318,7 @@ jobs:
           .venv-naca-bisect/bin/python -m pip install --upgrade pip
           .venv-naca-bisect/bin/python -m pip install h5py numpy
 
-      - name: Variant loop (v0b, vC, r1-r9 region hybrids, v3 green control - all always run)
+      - name: Variant loop (a0/a9 anchors, k1-k9 leave-one-out, mm/mm3 minimal-set confirmation)
         timeout-minutes: 235
         run: |
           set +e
@@ -291,89 +330,116 @@ jobs:
           git config user.email "actions@github.com"
           declare -A RAN
           LAST_OUTCOME=""
-
+          declare -a RANGES
+          RANGES[1]="140-224"
+          RANGES[2]="399-399"
+          RANGES[3]="548-773"
+          RANGES[4]="1345-1499"
+          RANGES[5]="1582-2095"
+          RANGES[6]="2181-2200"
+          RANGES[7]="2322-3205"
+          RANGES[8]="3276-3411"
+          RANGES[9]="3731-3918"
+          declare -a RNAMES
+          RNAMES[1]="r1_api_fields"
+          RNAMES[2]="r2_validation"
+          RNAMES[3]="r3_rhie_chow_coef"
+          RNAMES[4]="r4_boundary_operator"
+          RNAMES[5]="r5_evidence_aliases"
+          RNAMES[6]="r6_monitor_controls"
+          RNAMES[7]="r7_flux_audit_forms"
+          RNAMES[8]="r8_momentum_rhs_scale"
+          RNAMES[9]="r9_wall_distance_guards"
+          build_ranges() {
+            out=""
+            for i in "$@"; do
+              if [ -z "$out" ]; then out="${RANGES[$i]}"; else out="${out},${RANGES[$i]}"; fi
+            done
+            echo "$out"
+          }
+          EXTRA_INFO=""
+          record_skipped() {
+            local V="$1"
+            local REASON="$2"
+            local STA="$E/nacar9_${V}_test_status_run${RUN_ID}.txt"
+            {
+              echo "variant=${V}"
+              echo "outcome=SKIPPED_${REASON}"
+              echo "run_id=${RUN_ID}"
+            } > "$STA"
+            RAN["$V"]="SKIPPED_${REASON}"
+            LAST_OUTCOME="SKIPPED_${REASON}"
+          }
           run_variant() {
             local VARIANT="$1"
-            local SHORT="$VARIANT"
+            local LEVELS="$2"
             local WT_REF="${MASTER_PIN}"
-            if [ "$VARIANT" = "v3_green_pristine" ]; then
-              WT_REF="${GREEN_PIN}"
-            fi
+            local SHORT="$VARIANT"
             local SRC="cfdx-${SHORT}"
             local BUILD="build-${SHORT}"
-            local LOG="$E/nacar8_${SHORT}_main_run${RUN_ID}.log"
-            local STA="$E/nacar8_${SHORT}_test_status_run${RUN_ID}.txt"
-            echo "=== VARIANT ${VARIANT} at ref ${WT_REF} : $(git log -1 --format='%ci %s' "${WT_REF}") ===" > "$LOG"
+            local LOG="$E/nacar9_${SHORT}_main_run${RUN_ID}.log"
+            local STA="$E/nacar9_${SHORT}_test_status_run${RUN_ID}.txt"
+            echo "=== VARIANT ${VARIANT} levels=${LEVELS} at ${WT_REF} : $(git log -1 --format='%ci %s' "${WT_REF}") ===" > "$LOG"
             local outcome=""
             local rc=""
             local t0=0
             local t1=0
+            local HYB="none"
+            local EXPECT_MD5=""
+            case "$VARIANT" in
+              a0_master_anchor)
+                HYB="none"
+                EXPECT_MD5="${MASTER_MD5}"
+                ;;
+              a9_all9_anchor)
+                HYB="diag-hybrids/all9.h"
+                EXPECT_MD5="${GREEN_MD5}"
+                ;;
+              k1|k2|k3|k4|k5|k6|k7|k8|k9)
+                HYB="diag-hybrids/${VARIANT}.h"
+                eval "EXPECT_MD5=\${MC${VARIANT#k}}"
+                ;;
+              mm_minimal_set|mm3_minimal_set_3levels)
+                HYB="diag-hybrids/mm.h"
+                EXPECT_MD5="${MM_MD5}"
+                ;;
+              mmu_set_plus_unknown|mmu3_set_plus_unknown_3levels)
+                HYB="diag-hybrids/mmu.h"
+                EXPECT_MD5="${MMU_MD5}"
+                ;;
+            esac
             git worktree add --detach "$SRC" "$WT_REF" >>"$LOG" 2>&1 \
               || outcome="INCONCLUSIVE_WORKTREE"
             if [ -z "$outcome" ]; then
-              case "$VARIANT" in
-                v0b_master_greentest)
-                  git -C "$SRC" checkout "${GREEN_PIN}" -- \
-                    tests/validation/test_naca0012_geometry.cpp >>"$LOG" 2>&1 \
-                    || outcome="INCONCLUSIVE_VARIANT_COPY"
-                  if [ -z "$outcome" ]; then
-                    grep -q "Fxp+=-pp" "$SRC/tests/validation/test_naca0012_geometry.cpp" \
-                      || outcome="INCONCLUSIVE_VARIANT_COPY"
-                    diff -q "$SRC/src/cfdx/physics/steady_incompressible_solver.h" diag-hybrids/solver_master.h >/dev/null \
-                      || outcome="INCONCLUSIVE_PRISTINE_GUARD"
-                    echo "=== pristine master solver + green test verified ===" >> "$LOG"
-                    git -C "$SRC" status --porcelain >> "$LOG" 2>&1
-                  fi
-                  ;;
-                vC_convhist_neutral)
-                  git -C "$SRC" checkout "${GREEN_PIN}" -- \
-                    src/cfdx/io/runtime/convergence_history.h \
-                    tests/validation/test_naca0012_geometry.cpp >>"$LOG" 2>&1 \
-                    || outcome="INCONCLUSIVE_VARIANT_COPY"
-                  if [ -z "$outcome" ]; then
-                    grep -q "Fxp+=-pp" "$SRC/tests/validation/test_naca0012_geometry.cpp" \
-                      || outcome="INCONCLUSIVE_VARIANT_COPY"
-                    if grep -q "momentum_rhs_scale" "$SRC/src/cfdx/io/runtime/convergence_history.h"; then
-                      outcome="INCONCLUSIVE_VARIANT_COPY"
-                    fi
-                    diff -q "$SRC/src/cfdx/physics/steady_incompressible_solver.h" diag-hybrids/solver_master.h >/dev/null \
-                      || outcome="INCONCLUSIVE_PRISTINE_GUARD"
-                    echo "=== pristine master solver + green conv_history + green test verified ===" >> "$LOG"
-                    git -C "$SRC" status --porcelain >> "$LOG" 2>&1
-                  fi
-                  ;;
-                r1_api_fields|r2_validation|r3_rhie_chow_coef|r4_boundary_operator|r5_evidence_aliases|r6_monitor_controls|r7_flux_audit_forms|r8_momentum_rhs_scale|r9_wall_distance_guards)
-                  cp "diag-hybrids/${VARIANT}.h" \
-                    "$SRC/src/cfdx/physics/steady_incompressible_solver.h" \
-                    || outcome="INCONCLUSIVE_VARIANT_COPY"
-                  git -C "$SRC" checkout "${GREEN_PIN}" -- \
-                    tests/validation/test_naca0012_geometry.cpp >>"$LOG" 2>&1 \
-                    || outcome="INCONCLUSIVE_VARIANT_COPY"
-                  if [ -z "$outcome" ]; then
-                    local actual_md5=$(md5sum "$SRC/src/cfdx/physics/steady_incompressible_solver.h" | awk '{print $1}')
-                    local expect_md5=$(md5sum "diag-hybrids/${VARIANT}.h" | awk '{print $1}')
-                    [ "${actual_md5}" = "${expect_md5}" ] \
-                      || outcome="INCONCLUSIVE_VARIANT_COPY"
-                    grep -q "Fxp+=-pp" "$SRC/tests/validation/test_naca0012_geometry.cpp" \
-                      || outcome="INCONCLUSIVE_VARIANT_COPY"
-                    echo "=== hybrid ${VARIANT} (md5 ${actual_md5}) + green test verified ===" >> "$LOG"
-                    echo "=== worktree delta ===" >> "$LOG"
-                    git -C "$SRC" status --porcelain >> "$LOG" 2>&1
-                    git -C "$SRC" diff HEAD --stat >> "$LOG" 2>&1
-                  fi
-                  ;;
-                v3_green_pristine)
-                  grep -q "Fxp+=-pp" "$SRC/tests/validation/test_naca0012_geometry.cpp" \
-                    || outcome="INCONCLUSIVE_PRISTINE_GUARD"
-                  if grep -q "momentum_rhs_scale" "$SRC/src/cfdx/io/runtime/convergence_history.h"; then
-                    outcome="INCONCLUSIVE_PRISTINE_GUARD"
-                  fi
-                  if grep -q "deferred_boundary" "$SRC/src/cfdx/physics/steady_incompressible_solver.h"; then
-                    outcome="INCONCLUSIVE_PRISTINE_GUARD"
-                  fi
-                  echo "=== pristine green tree verified (old #926 test convention, no momentum_rhs_scale, no deferred_boundary) ===" >> "$LOG"
-                  ;;
-              esac
+              git -C "$SRC" checkout "${GREEN_PIN}" -- \
+                src/cfdx/io/runtime/convergence_history.h \
+                tests/validation/test_naca0012_geometry.cpp >>"$LOG" 2>&1 \
+                || outcome="INCONCLUSIVE_VARIANT_COPY"
+            fi
+            if [ -z "$outcome" ] && [ "$HYB" != "none" ]; then
+              cp "$HYB" "$SRC/src/cfdx/physics/steady_incompressible_solver.h" >>"$LOG" 2>&1 \
+                || outcome="INCONCLUSIVE_VARIANT_COPY"
+            fi
+            if [ -z "$outcome" ]; then
+              grep -q "Fxp+=-pp" "$SRC/tests/validation/test_naca0012_geometry.cpp" \
+                || outcome="INCONCLUSIVE_VARIANT_COPY"
+            fi
+            if [ -z "$outcome" ]; then
+              if grep -q "momentum_rhs_scale" "$SRC/src/cfdx/io/runtime/convergence_history.h"; then
+                outcome="INCONCLUSIVE_VARIANT_COPY"
+              fi
+            fi
+            if [ -z "$outcome" ]; then
+              local actual_md5
+              actual_md5=$(md5sum "$SRC/src/cfdx/physics/steady_incompressible_solver.h" | awk '{print $1}')
+              if [ "$actual_md5" != "$EXPECT_MD5" ]; then
+                echo "=== solver md5 mismatch: ${actual_md5} != ${EXPECT_MD5} ===" >> "$LOG"
+                outcome="INCONCLUSIVE_VARIANT_COPY"
+              fi
+              echo "=== solver md5=${actual_md5} (expected ${EXPECT_MD5}) ===" >> "$LOG"
+              if [ -n "$EXTRA_INFO" ]; then echo "$EXTRA_INFO" >> "$LOG"; fi
+              echo "=== worktree delta ===" >> "$LOG"
+              git -C "$SRC" status --porcelain >> "$LOG" 2>&1
             fi
             if [ -z "$outcome" ]; then
               cmake -S "$SRC" -B "$BUILD" -G Ninja \
@@ -396,20 +462,26 @@ jobs:
                 naca0012 --output-dir "$BUILD/validation_meshes" >>"$LOG" 2>&1 \
                 || outcome="INCONCLUSIVE_MESHGEN"
               for m in naca0012_laminar_n64 naca0012_laminar_n128 naca0012_laminar_n256; do
-                [ -s "$BUILD/validation_meshes/${m}.h5" ] || outcome="INCONCLUSIVE_MESHGEN"
+                if [ ! -s "$BUILD/validation_meshes/${m}.h5" ]; then outcome="INCONCLUSIVE_MESHGEN"; fi
               done
             fi
             if [ -z "$outcome" ]; then
-              echo "=== RUN test_naca0012_qualification variant=${VARIANT} ===" >> "$LOG"
+              echo "=== RUN test_naca0012_qualification variant=${VARIANT} levels=${LEVELS} ===" >> "$LOG"
               t0=$(date +%s)
-              timeout 3600 "$BUILD/test_naca0012_qualification" \
-                "$BUILD/validation_meshes/naca0012_laminar_n64.h5" \
-                "$BUILD/validation_meshes/naca0012_laminar_n128.h5" \
-                "$BUILD/validation_meshes/naca0012_laminar_n256.h5" >>"$LOG" 2>&1
-              rc=$?
+              if [ "$LEVELS" = "3" ]; then
+                timeout 3600 "$BUILD/test_naca0012_qualification" \
+                  "$BUILD/validation_meshes/naca0012_laminar_n64.h5" \
+                  "$BUILD/validation_meshes/naca0012_laminar_n128.h5" \
+                  "$BUILD/validation_meshes/naca0012_laminar_n256.h5" >>"$LOG" 2>&1
+                rc=$?
+              else
+                timeout 3600 "$BUILD/test_naca0012_qualification" \
+                  "$BUILD/validation_meshes/naca0012_laminar_n128.h5" >>"$LOG" 2>&1
+                rc=$?
+              fi
               t1=$(date +%s)
               if [ "$rc" = "0" ]; then
-                outcome="PASS_3_LEVELS"
+                if [ "$LEVELS" = "3" ]; then outcome="PASS_3_LEVELS"; else outcome="PASS_128"; fi
               elif [ "$rc" = "124" ]; then
                 outcome="TIMEOUT_3600S"
               elif grep -q "did not converge" "$LOG"; then
@@ -421,14 +493,14 @@ jobs:
             fi
             {
               echo "variant=${VARIANT}"
-              echo "wt_ref=${WT_REF}"
-              echo "pin_subject=$(git log -1 --format='%s' "${WT_REF}")"
+              echo "levels=${LEVELS}"
               echo "outcome=${outcome:-MISSING}"
               echo "test_rc=${rc:-none}"
               if [ "$t0" != "0" ] && [ "$t1" != "0" ]; then
                 echo "test_duration_s=$((t1 - t0))"
               fi
               echo "run_id=${RUN_ID}"
+              if [ -n "${EXTRA_INFO:-}" ]; then echo "$EXTRA_INFO"; fi
               echo ""
               echo "--- level markers reached ---"
               grep -E "NACA0012_RE1000_A0 level=" "$LOG" || echo "no_level_marker"
@@ -438,9 +510,9 @@ jobs:
             if [ -s "$LOG" ] && [ "$(stat -c%s "$LOG")" -gt 1500000 ]; then
               tail -c 1500000 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
             fi
-            git add "$E"/nacar8_"${SHORT}"_*_run"${RUN_ID}"* >/dev/null 2>&1
+            git add "$E"/nacar9_"${SHORT}"_*_run"${RUN_ID}"* >/dev/null 2>&1
             if ! git diff --cached --quiet; then
-              if git commit -m "diag: naca r8 ${SHORT} outcome=${outcome:-MISSING} run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
+              if git commit -m "diag: naca r9 ${SHORT} outcome=${outcome:-MISSING} run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
                 if ! git push >/dev/null 2>&1; then
                   git pull --rebase origin ci/long-campaign-diagnostics >/dev/null 2>&1
                   git push >/dev/null 2>&1 || echo "push_retry_failed ${SHORT}"
@@ -453,37 +525,108 @@ jobs:
             rm -rf "$BUILD"
             RAN["$VARIANT"]="${outcome:-MISSING}"
             LAST_OUTCOME="${outcome:-MISSING}"
+            EXTRA_INFO=""
           }
 
           {
-            run_variant "v0b_master_greentest"
-            echo "v0b_master_greentest=${LAST_OUTCOME}"
-            run_variant "vC_convhist_neutral"
-            echo "vC_convhist_neutral=${LAST_OUTCOME}"
-            run_variant "r8_momentum_rhs_scale"
-            echo "r8_momentum_rhs_scale=${LAST_OUTCOME}"
-            run_variant "r7_flux_audit_forms"
-            echo "r7_flux_audit_forms=${LAST_OUTCOME}"
-            run_variant "r3_rhie_chow_coef"
-            echo "r3_rhie_chow_coef=${LAST_OUTCOME}"
-            run_variant "r4_boundary_operator"
-            echo "r4_boundary_operator=${LAST_OUTCOME}"
-            run_variant "r9_wall_distance_guards"
-            echo "r9_wall_distance_guards=${LAST_OUTCOME}"
-            run_variant "r6_monitor_controls"
-            echo "r6_monitor_controls=${LAST_OUTCOME}"
-            run_variant "r1_api_fields"
-            echo "r1_api_fields=${LAST_OUTCOME}"
-            run_variant "r2_validation"
-            echo "r2_validation=${LAST_OUTCOME}"
-            run_variant "r5_evidence_aliases"
-            echo "r5_evidence_aliases=${LAST_OUTCOME}"
-            run_variant "v3_green_pristine"
-            echo "v3_green_pristine=${LAST_OUTCOME}"
-          } >> "$E/nacar8_sequence_run${RUN_ID}.txt"
-          git add "$E"/nacar8_sequence_run"${RUN_ID}".txt >/dev/null 2>&1
+            run_variant a0_master_anchor 128
+            echo "a0_master_anchor=${LAST_OUTCOME}"
+            run_variant a9_all9_anchor 128
+            echo "a9_all9_anchor=${LAST_OUTCOME}"
+            for i in 1 2 3 4 5 6 7 8 9; do
+              run_variant "k$i" 128
+              echo "k$i=${LAST_OUTCOME}"
+            done
+            M_IDX=""
+            UNK_IDX=""
+            for i in 1 2 3 4 5 6 7 8 9; do
+              case "${RAN[k$i]}" in
+                FAIL_DIVERGED) M_IDX="$M_IDX $i" ;;
+                INCONCLUSIVE_*) UNK_IDX="$UNK_IDX $i" ;;
+              esac
+            done
+            echo "necessary_region_indices=[${M_IDX}]"
+            echo "unknown_region_indices=[${UNK_IDX}]"
+            if [ -z "${M_IDX// /}" ]; then
+              echo "NO_NECESSARY_REGION: every k_i passed or was inconclusive -> joint interaction"
+              record_skipped mm_minimal_set NO_NECESSARY_REGION
+              echo "mm_minimal_set=${LAST_OUTCOME}"
+              record_skipped mm3_minimal_set_3levels NO_NECESSARY_REGION
+              echo "mm3_minimal_set_3levels=${LAST_OUTCOME}"
+              record_skipped mmu_set_plus_unknown NO_NECESSARY_REGION
+              echo "mmu_set_plus_unknown=${LAST_OUTCOME}"
+              record_skipped mmu3_set_plus_unknown_3levels NO_NECESSARY_REGION
+              echo "mmu3_set_plus_unknown_3levels=${LAST_OUTCOME}"
+            else
+              MREG=""
+              for i in $M_IDX; do
+                if [ -z "$MREG" ]; then MREG="${RNAMES[$i]}"; else MREG="$MREG,${RNAMES[$i]}"; fi
+              done
+              MR=$(build_ranges $M_IDX)
+              awk -v ranges="${MR}" -f diag-hybrids/revert9.awk \
+                diag-hybrids/gm.diff diag-hybrids/solver_master.h > diag-hybrids/mm.h
+              if [ -s diag-hybrids/mm.h ]; then
+                MM_MD5=$(md5sum diag-hybrids/mm.h | awk '{print $1}')
+                EXTRA_INFO="mm_regions=${MREG}"
+                EXTRA_INFO="${EXTRA_INFO} mm_indices=[${M_IDX}]"
+                EXTRA_INFO="${EXTRA_INFO} mm_ranges=${MR}"
+                run_variant mm_minimal_set 128
+                echo "mm_minimal_set=${LAST_OUTCOME}"
+              else
+                record_skipped mm_minimal_set MM_GENERATION_EMPTY
+                echo "mm_minimal_set=${LAST_OUTCOME}"
+              fi
+              if [ "${RAN[mm_minimal_set]}" = "PASS_128" ]; then
+                EXTRA_INFO="mm_regions=${MREG}"
+                EXTRA_INFO="${EXTRA_INFO} mm_indices=[${M_IDX}]"
+                EXTRA_INFO="${EXTRA_INFO} mm_ranges=${MR}"
+                run_variant mm3_minimal_set_3levels 3
+                echo "mm3_minimal_set_3levels=${LAST_OUTCOME}"
+              else
+                record_skipped mm3_minimal_set_3levels MM_NOT_PASS
+                echo "mm3_minimal_set_3levels=${LAST_OUTCOME}"
+              fi
+              if [ "${RAN[mm_minimal_set]}" != "PASS_128" ] && [ -n "${UNK_IDX// /}" ]; then
+                ALLIDX="$M_IDX $UNK_IDX"
+                UREG=""
+                for i in $ALLIDX; do
+                  if [ -z "$UREG" ]; then UREG="${RNAMES[$i]}"; else UREG="$UREG,${RNAMES[$i]}"; fi
+                done
+                UR=$(build_ranges $ALLIDX)
+                awk -v ranges="${UR}" -f diag-hybrids/revert9.awk \
+                  diag-hybrids/gm.diff diag-hybrids/solver_master.h > diag-hybrids/mmu.h
+                if [ -s diag-hybrids/mmu.h ]; then
+                  MMU_MD5=$(md5sum diag-hybrids/mmu.h | awk '{print $1}')
+                  EXTRA_INFO="mmu_regions=${UREG}"
+                  EXTRA_INFO="${EXTRA_INFO} mmu_indices=[${ALLIDX}]"
+                  EXTRA_INFO="${EXTRA_INFO} mmu_ranges=${UR}"
+                  run_variant mmu_set_plus_unknown 128
+                  echo "mmu_set_plus_unknown=${LAST_OUTCOME}"
+                else
+                  record_skipped mmu_set_plus_unknown MMU_GENERATION_EMPTY
+                  echo "mmu_set_plus_unknown=${LAST_OUTCOME}"
+                fi
+                if [ "${RAN[mmu_set_plus_unknown]}" = "PASS_128" ]; then
+                  EXTRA_INFO="mmu_regions=${UREG}"
+                  EXTRA_INFO="${EXTRA_INFO} mmu_indices=[${ALLIDX}]"
+                  EXTRA_INFO="${EXTRA_INFO} mmu_ranges=${UR}"
+                  run_variant mmu3_set_plus_unknown_3levels 3
+                  echo "mmu3_set_plus_unknown_3levels=${LAST_OUTCOME}"
+                else
+                  record_skipped mmu3_set_plus_unknown_3levels MMU_NOT_PASS
+                  echo "mmu3_set_plus_unknown_3levels=${LAST_OUTCOME}"
+                fi
+              else
+                record_skipped mmu_set_plus_unknown NOT_NEEDED
+                echo "mmu_set_plus_unknown=${LAST_OUTCOME}"
+                record_skipped mmu3_set_plus_unknown_3levels NOT_NEEDED
+                echo "mmu3_set_plus_unknown_3levels=${LAST_OUTCOME}"
+              fi
+            fi
+          } >> "$E/nacar9_sequence_run${RUN_ID}.txt"
+          git add "$E"/nacar9_sequence_run"${RUN_ID}".txt >/dev/null 2>&1
           if ! git diff --cached --quiet; then
-            if git commit -m "diag: naca r8 sequence run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
+            if git commit -m "diag: naca r9 sequence run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
               if ! git push >/dev/null 2>&1; then
                 git pull --rebase origin ci/long-campaign-diagnostics >/dev/null 2>&1
                 git push >/dev/null 2>&1 || echo "push_retry_failed sequence"
@@ -493,99 +636,112 @@ jobs:
             git reset >/dev/null 2>&1
           fi
 
-      - name: Compose round-8 verdict
+      - name: Compose round-9 verdict
         if: always()
         run: |
           set +e
           set -u
           RUN_ID="${GITHUB_RUN_ID}"
           E="diag-evidence/logs"
-          ALL_VARIANTS="v0b_master_greentest vC_convhist_neutral r1_api_fields r2_validation r3_rhie_chow_coef r4_boundary_operator r5_evidence_aliases r6_monitor_controls r7_flux_audit_forms r8_momentum_rhs_scale r9_wall_distance_guards v3_green_pristine"
+          ALL_VARIANTS="a0_master_anchor a9_all9_anchor k1 k2 k3 k4 k5 k6 k7 k8 k9 mm_minimal_set mm3_minimal_set_3levels mmu_set_plus_unknown mmu3_set_plus_unknown_3levels"
           for short in $ALL_VARIANTS; do
             eval "oc_${short}=NOT_RUN"
           done
           for short in $ALL_VARIANTS; do
-            f="$E/nacar8_${short}_test_status_run${RUN_ID}.txt"
+            f="$E/nacar9_${short}_test_status_run${RUN_ID}.txt"
             [ -s "$f" ] || continue
             oc=$(sed -n 's/^outcome=//p' "$f" | tail -1)
             eval "oc_${short}=\"\${oc:-MISSING}\""
           done
-          is_final() {
-            case "$1" in
-              PASS_3_LEVELS|FAIL_DIVERGED|TIMEOUT_3600S|FAIL_OTHER|INCONCLUSIVE_BUILD) return 0 ;;
-              *) return 1 ;;
+          declare -a RNAMES
+          RNAMES[1]="r1_api_fields"
+          RNAMES[2]="r2_validation"
+          RNAMES[3]="r3_rhie_chow_coef"
+          RNAMES[4]="r4_boundary_operator"
+          RNAMES[5]="r5_evidence_aliases"
+          RNAMES[6]="r6_monitor_controls"
+          RNAMES[7]="r7_flux_audit_forms"
+          RNAMES[8]="r8_momentum_rhs_scale"
+          RNAMES[9]="r9_wall_distance_guards"
+          necessary=""
+          unknown=""
+          exon=""
+          for i in 1 2 3 4 5 6 7 8 9; do
+            eval "v=\${oc_k${i}}"
+            case "$v" in
+              FAIL_DIVERGED) necessary="${necessary}${RNAMES[$i]} " ;;
+              INCONCLUSIVE_*) unknown="${unknown}${RNAMES[$i]} " ;;
+              PASS_128) exon="${exon}${RNAMES[$i]} " ;;
             esac
-          }
-          verdict_line="INCOMPLETE"
-          complete=0
-          all_final=1
+          done
+          complete=1
           for short in $ALL_VARIANTS; do
             eval "v=\${oc_${short}}"
-            is_final "$v" || all_final=0
+            case "$v" in
+              NOT_RUN|MISSING) complete=0 ;;
+            esac
           done
-          if [ "$all_final" = "1" ]; then
-            complete=1
+          verdict_line="INCOMPLETE: some variants have no recorded outcome -> re-run"
+          if [ "$complete" = "1" ]; then
             valid=1
-            if [ "${oc_v3_green_pristine}" != "PASS_3_LEVELS" ]; then
-              verdict_line="GREEN_ANCHOR_ANOMALY: green pristine tree expected PASS_3_LEVELS (round 4/7: N64 433 / N128 995 / N256 3989 it), got ${oc_v3_green_pristine} -> runner/build drift, repeat before concluding"
+            if [ "${oc_a0_master_anchor}" != "FAIL_DIVERGED" ]; then
+              verdict_line="A0_ANCHOR_ANOMALY: master + green conv + green test expected FAIL_DIVERGED at N128, got ${oc_a0_master_anchor} -> repeat before concluding"
               valid=0
             fi
-            if [ "${oc_v0b_master_greentest}" = "PASS_3_LEVELS" ]; then
-              verdict_line="TEST_CULPRIT_ANOMALY: the green test swap ALONE restores the 3-level pass on the pristine master tree (not expected - solve controls are identical) -> repeat before concluding"
-              valid=0
-            elif [ "${oc_v0b_master_greentest}" != "FAIL_DIVERGED" ]; then
-              verdict_line="V0B_ANCHOR_ANOMALY: master + green test expected FAIL_DIVERGED, got ${oc_v0b_master_greentest} -> repeat before concluding"
-              valid=0
-            fi
-            if [ "${oc_vC_convhist_neutral}" = "PASS_3_LEVELS" ]; then
-              verdict_line="CONV_HIST_ANOMALY: green convergence_history.h swap alone restores the pass (serialization-only file cannot change the solve) -> repeat before concluding"
+            if [ "${oc_a9_all9_anchor}" != "PASS_128" ]; then
+              verdict_line="A9_ANCHOR_ANOMALY: all-9-regions revert (= green trio) expected PASS_128, got ${oc_a9_all9_anchor} -> repeat before concluding"
               valid=0
             fi
             if [ "$valid" = "1" ]; then
-              pass_regions=""
-              npass=0
-              coupled_regions=""
-              for short in r1_api_fields r2_validation r3_rhie_chow_coef r4_boundary_operator r5_evidence_aliases r6_monitor_controls r7_flux_audit_forms r8_momentum_rhs_scale r9_wall_distance_guards; do
-                eval "v=\${oc_${short}}"
-                if [ "$v" = "PASS_3_LEVELS" ]; then
-                  pass_regions="${pass_regions}${short} "
-                  npass=$((npass + 1))
+              mmr=$(sed -n 's/^mm_ranges=//p' "$E/nacar9_mm_minimal_set_test_status_run${RUN_ID}.txt" 2>/dev/null | tail -1)
+              if [ "${oc_mm_minimal_set}" = "SKIPPED_NO_NECESSARY_REGION" ]; then
+                verdict_line="JOINT_INTERACTION: no single region is necessary (every k_i PASS_128${unknown:+; unknown: ${unknown}}) yet full master diverges -> the defect emerges from >= 2 master regions jointly -> round 10 = pair hunt at N128"
+              elif [ "${oc_mm_minimal_set}" = "PASS_128" ] && [ "${oc_mm3_minimal_set_3levels}" = "PASS_3_LEVELS" ]; then
+                verdict_line="REGION_SET_CULPRIT: [${necessary}] is the culprit set (every member necessary, the set sufficient; N64/N128/N256 all pass on the mm hybrid${unknown:+; unknown regions proven unnecessary: ${unknown}}) mm_ranges=${mmr} -> production PR reverting exactly these regions (decision Steven)"
+              elif [ "${oc_mm_minimal_set}" = "PASS_128" ]; then
+                verdict_line="N128_ONLY_FIX: mm passes N128 but the 3-level confirmation got ${oc_mm3_minimal_set_3levels} -> escalate before any production change"
+              elif [ "${oc_mmu_set_plus_unknown}" = "PASS_128" ] && [ "${oc_mmu3_set_plus_unknown_3levels}" = "PASS_3_LEVELS" ]; then
+                if [ "$(echo ${unknown} | wc -w)" = "1" ]; then
+                  verdict_line="REGION_SET_CULPRIT_PLUS_ONE: culprit set = [${necessary}] + [${unknown}] (the single inconclusive region is required; all three levels pass) -> production PR (decision Steven)"
+                else
+                  verdict_line="SET_PLUS_UNKNOWN: [${necessary}] + [${unknown}] passes all levels; the set is conservative (some unknown members may be unnecessary) -> prune in round 10 if exactness matters"
                 fi
-                if [ "$v" = "INCONCLUSIVE_BUILD" ]; then
-                  coupled_regions="${coupled_regions}${short} "
-                fi
-              done
-              if [ "$npass" = "1" ]; then
-                verdict_line="REGION_CULPRIT: ${pass_regions} is the region whose master form breaks N128 (reverting it to green restores the 3-level pass on the master tree) -> round 9 = bisect hunks within the region; production PR only once the exact culprit is proven (decision Steven)"
-              elif [ "$npass" -ge 2 ]; then
-                verdict_line="MULTIPLE_INDEPENDENT_CULPRITS: ${pass_regions}-> round 9 = bisect each region independently"
-              elif [ -z "${coupled_regions// /}" ]; then
-                verdict_line="COMBINATION_REQUIRED: every single-region revert still FAILS like v0 while the full trio swap passes (round 7 v1) -> the defect needs >= 2 regions green jointly -> round 9 = cumulative-prefix reverts"
+              elif [ "${oc_mm_minimal_set}" = "FAIL_DIVERGED" ] && [ "${oc_mmu_set_plus_unknown}" = "FAIL_DIVERGED" ]; then
+                verdict_line="COMBINATION_ESCAPE: reverting the necessary set${unknown:+ plus the unknown set} still diverges -> region-granularity attribution exhausted -> round 10 = hunk-level bisect inside the coupled regions"
+              elif [ "${oc_mm_minimal_set}" = "FAIL_DIVERGED" ] && [ "${oc_mmu_set_plus_unknown}" = "SKIPPED_NOT_NEEDED" ]; then
+                verdict_line="COMBINATION_ESCAPE: reverting the necessary set still diverges and no unknown regions exist -> round 10 = hunk-level bisect inside the coupled regions"
+              elif [ "${oc_mm_minimal_set}" = "FAIL_DIVERGED" ]; then
+                verdict_line="INCOMPLETE: mm failed and the mmu branch outcome is ${oc_mmu_set_plus_unknown} -> re-run"
               else
-                verdict_line="COMBINATION_OR_COUPLED: no single-region revert passes; compile-coupled regions [${coupled_regions}] could not be tested alone (expected for r1: master conv_history serializes the reverted struct fields) -> round 9 = cumulative reverts including the coupled regions"
+                verdict_line="MM_ANOMALY: mm outcome ${oc_mm_minimal_set} is not interpretable -> repeat before concluding"
               fi
             fi
-          else
-            verdict_line="INCOMPLETE: some variants did not reach a final outcome (NOT_RUN/INCONCLUSIVE upstream stages) -> re-run"
           fi
-          VER="$E/nacar8_verdict_run${RUN_ID}.txt"
+          VER="$E/nacar9_verdict_run${RUN_ID}.txt"
           {
             echo "VERDICT: ${verdict_line}"
             echo "run_id=${RUN_ID}"
             echo "master_pin=${MASTER_PIN}"
             echo "green_pin=${GREEN_PIN}"
-            echo "round7_context=v1_green_trio PASS_3_LEVELS (N64 433 / N128 995 / N256 3989 it) on this master pin; round6 NOT_THE_BOUNDARY_BLOCK"
-            echo "v0b_master_greentest=${oc_v0b_master_greentest} (expected FAIL_DIVERGED: test swap is behavior-neutral)"
-            echo "vC_convhist_neutral=${oc_vC_convhist_neutral} (expected FAIL_DIVERGED: conv_history is serialization-only)"
-            for short in r1_api_fields r2_validation r3_rhie_chow_coef r4_boundary_operator r5_evidence_aliases r6_monitor_controls r7_flux_audit_forms r8_momentum_rhs_scale r9_wall_distance_guards; do
-              eval "echo \"${short}=\${oc_${short}}\""
+            echo "round7_context=IN_TRIO_CULPRIT (run 39663748207: v1+v2 PASS_3_LEVELS green-identical, v0 FAIL)"
+            echo "round8_context=COMBINATION_OR_COUPLED (run 39672681948: v0b/vC FAIL as expected, r2/r4/r5/r8/r9 not sufficient alone, r1/r3/r6/r7 INCONCLUSIVE_BUILD)"
+            echo "a0_master_anchor=${oc_a0_master_anchor} (expected FAIL_DIVERGED)"
+            echo "a9_all9_anchor=${oc_a9_all9_anchor} (expected PASS_128)"
+            for i in 1 2 3 4 5 6 7 8 9; do
+              eval "echo \"k${i}=${RNAMES[$i]}: \${oc_k${i}}\""
             done
-            echo "v3_green_pristine=${oc_v3_green_pristine} (expected PASS_3_LEVELS)"
+            echo "necessary_regions=${necessary:-none}"
+            echo "unknown_regions=${unknown:-none}"
+            echo "exonerated_regions=${exon:-none}"
+            echo "mm_minimal_set=${oc_mm_minimal_set}"
+            echo "mm3_minimal_set_3levels=${oc_mm3_minimal_set_3levels}"
+            echo "mmu_set_plus_unknown=${oc_mmu_set_plus_unknown}"
+            echo "mmu3_set_plus_unknown_3levels=${oc_mmu3_set_plus_unknown_3levels}"
             echo "sign_note=green test carries the OLD #926 Cd_pressure convention (Fxp+=-pp): compare iterations/convergence, never raw Cd signs"
             echo ""
             echo "--- per-variant NACA digest (level markers + failure) ---"
             for short in $ALL_VARIANTS; do
-              L="$E/nacar8_${short}_main_run${RUN_ID}.log"
+              L="$E/nacar9_${short}_main_run${RUN_ID}.log"
               [ -s "$L" ] || continue
               echo "### ${short}"
               grep -E "NACA0012_RE1000_A0 level=|NACA0012_QUALIFICATION|did not converge|what\(\):|Cd=" "$L" | tail -14
@@ -598,7 +754,7 @@ jobs:
           git config user.email "actions@github.com"
           git add "$VER" >/dev/null 2>&1
           if ! git diff --cached --quiet; then
-            if git commit -m "diag: naca r8 verdict run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
+            if git commit -m "diag: naca r9 verdict run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
               if ! git push >/dev/null 2>&1; then
                 git pull --rebase origin ci/long-campaign-diagnostics >/dev/null 2>&1
                 git push >/dev/null 2>&1 || echo "push_retry_failed verdict"
@@ -608,8 +764,8 @@ jobs:
             git reset >/dev/null 2>&1
           fi
           if [ "$complete" = "1" ]; then
-            echo "round-8 variant campaign: ${verdict_line}"
+            echo "round-9 leave-one-out campaign: ${verdict_line}"
           else
-            echo "::error::round-8 incomplete: ${verdict_line}"
+            echo "::error::round-9 incomplete: ${verdict_line}"
             exit 1
           fi
