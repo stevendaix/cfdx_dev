@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """T2 heated-channel Nusselt calibration campaign (N9 fine-gap audit, T2).
 
 Standalone Python driver (no C++ test-tree dependency): it builds the
@@ -207,6 +206,7 @@ def _ensure_cfdx_package() -> None:
     pkg_root = here.parent / "src" / "cfdx" / "python"
     if (pkg_root / "cfdx" / "io" / "schema.py").is_file():
         sys.path.insert(0, str(pkg_root))
+
 
 def _case_setup_json(nx: int, ny: int) -> str:
     from cfdx.io.schema import (
