@@ -830,6 +830,31 @@ int main(int argc, char** argv)
         std::cout << "Initialization strategy "
                   << cfdx::physics::to_string(controls.initialization.mode) << "\n";
 
+        controls.initialized_state_callback =
+            [&](const Mesh& initialized_mesh,
+                const Field<double, Location::CELL>& initialized_u,
+                const Field<double, Location::CELL>& initialized_p) {
+                (void)initialized_p;
+                std::ostringstream initialized_json;
+                initialized_json << "{\n  \"field\": \"U\",\n"
+                                << "  \"location\": \"cell\",\n"
+                                << "  \"stage\": \"after_initialization_before_first_residual\",\n"
+                                << "  \"cell_count\": " << initialized_mesh.n_cells() << ",\n"
+                                << "  \"values\": [";
+                for (std::size_t cell = 0; cell < initialized_u.size(); ++cell) {
+                    if (cell != 0) initialized_json << ",";
+                    initialized_json << "\n    ["
+                                    << json_number(initialized_u(cell, 0)) << ", "
+                                    << json_number(initialized_u(cell, 1)) << ", "
+                                    << json_number(initialized_u(cell, 2)) << "]";
+                }
+                if (initialized_u.size() != 0) initialized_json << "\n  ";
+                initialized_json << "]\n}\n";
+                write_text_file_atomic(
+                    options.output_dir / "initialized_velocity_field.json",
+                    initialized_json.str());
+            };
+
         controls.iteration_output_callback =
             [&](std::size_t iteration, double time, const Mesh& state_mesh,
                 const Field<double, Location::CELL>&,

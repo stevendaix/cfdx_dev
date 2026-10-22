@@ -233,6 +233,19 @@ def _converted_case_with_velocity(
         "energy_model": "isothermal",
         "solver_mode": "steady",
         "units": "SI",
+        "boundary_conditions": [
+            {
+                "patch_name": "inlet",
+                "type": "inlet",
+                "value_type": "fixed",
+                "velocity_vector": values[0],
+            },
+            {
+                "patch_name": "outlet",
+                "type": "outlet",
+                "value_type": "zero_gradient",
+            },
+        ],
         "numerics": {
             "momentum_scheme": "first_order",
             "pressure_scheme": "standard",
@@ -284,22 +297,29 @@ def test_production_solver_emits_exact_imported_velocity_evidence(
     output = tmp_path / "solver_output"
     completed = _run_production_solver(case_h5, output)
 
-    # The converted OpenFOAM fixture deliberately does not claim full CFDX
-    # numerics/BC equivalence. The production executable must nevertheless
-    # read and validate U before any later case-contract rejection.
-    evidence_path = output / "imported_velocity_field.json"
-    assert evidence_path.is_file(), (
-        f"solver did not emit imported-U evidence; exit={completed.returncode}\\n"
+    assert completed.returncode == 0, (
+        f"production solver failed (exit {completed.returncode})\\n"
         f"stdout:\\n{completed.stdout}\\nstderr:\\n{completed.stderr}"
     )
     import json
 
-    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
-    assert evidence["field"] == "U"
-    assert evidence["location"] == "cell"
-    assert evidence["cell_count"] == 1
-    assert evidence["values"] == expected
-    assert "Imported cell-centred velocity field U" in completed.stdout
+    imported = json.loads(
+        (output / "imported_velocity_field.json").read_text(encoding="utf-8")
+    )
+    assert imported["field"] == "U"
+    assert imported["location"] == "cell"
+    assert imported["cell_count"] == 1
+    assert imported["values"] == expected
+
+    initialized_path = output / "initialized_velocity_field.json"
+    assert initialized_path.is_file(), "solver did not emit post-initialization U"
+    initialized = json.loads(initialized_path.read_text(encoding="utf-8"))
+    assert initialized["field"] == "U"
+    assert initialized["location"] == "cell"
+    assert initialized["stage"] == "after_initialization_before_first_residual"
+    assert initialized["cell_count"] == 1
+    assert initialized["values"] == expected
+    assert "Initialization strategy provided" in completed.stdout
 
 
 def test_production_solver_rejects_missing_imported_velocity(tmp_path: Path) -> None:
