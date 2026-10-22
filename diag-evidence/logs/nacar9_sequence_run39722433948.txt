@@ -1,0 +1,18 @@
+a0_master_anchor=FAIL_OTHER
+a9_all9_anchor=FAIL_OTHER
+k1=FAIL_OTHER
+k2=INCONCLUSIVE_BUILD
+k3=FAIL_OTHER
+k4=INCONCLUSIVE_BUILD
+k5=INCONCLUSIVE_BUILD
+k6=INCONCLUSIVE_BUILD
+k7=INCONCLUSIVE_BUILD
+k8=INCONCLUSIVE_BUILD
+k9=INCONCLUSIVE_BUILD
+necessary_region_indices=[]
+unknown_region_indices=[ 2 4 5 6 7 8 9]
+NO_NECESSARY_REGION: every k_i passed or was inconclusive -> joint interaction
+mm_minimal_set=SKIPPED_NO_NECESSARY_REGION
+mm3_minimal_set_3levels=SKIPPED_NO_NECESSARY_REGION
+mmu_set_plus_unknown=SKIPPED_NO_NECESSARY_REGION
+mmu3_set_plus_unknown_3levels=SKIPPED_NO_NECESSARY_REGION
