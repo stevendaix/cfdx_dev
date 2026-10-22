@@ -90,3 +90,8 @@ $$a_P\phi_P=\sum_{nb}a_{nb}\phi_{nb}+b,\qquad a_P=\sum_{nb}a_{nb}+\frac{\rho V_P
 
 ## 10. Journal des modifications de la fiche
 - 2026-10-22 — contrat d'itération SST transactionnelle documenté pour la PR #1028 ; la vérification du code et les tests exact-head restent obligatoires.
+
+
+## 11. Outer-iteration rollback regression (PR pending)
+- A regression now exercises a nested transaction: the inner SST/carrier transaction commits, then a later outer-iteration rejection rolls back `U`, `p`, authoritative `phi`, and all SST fields to the original outer snapshot.
+- This verifies the rollback primitive needed by the production outer loop; it does **not** itself wire the transaction into `solve_steady_incompressible`, refresh `mu_eff` per iteration, or qualify SST.
