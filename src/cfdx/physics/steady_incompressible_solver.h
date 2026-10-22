@@ -4060,6 +4060,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         mesh, geometry, U, p);
         }
         SSTProductionStepResult sst_step;
+        double sst_nu_t_relative_change = 0.0;
         if (controls.sst_runtime) {
             std::map<std::string, std::array<double, 3>> fixed_velocity_values;
             for (const auto& [patch, bc] : velocity_bcs) {
@@ -4090,6 +4091,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // solver status, bound audit, and field-update criterion. Its raw
             // equation residuals have dimensional scales and must not be mixed
             // directly with the normalized carrier convergence metric.
+            if (!sst_attempt_snapshot)
+                throw std::logic_error("SST production attempt is missing its state snapshot");
+            sst_nu_t_relative_change = sst_relative_eddy_viscosity_change(
+                *sst_attempt_snapshot, *controls.sst_runtime->state,
+                controls.kinematic_viscosity);
         }
         const auto convergence_report = convergence_monitor.update({
             iter,
@@ -4100,7 +4106,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             (sst_step.committed && sst_step.transport.converged &&
              std::isfinite(sst_step.transport.k_residual) &&
              std::isfinite(sst_step.transport.second_residual) &&
-             sst_step.transport.nonfinite_bound_events == 0);
+             sst_step.transport.nonfinite_bound_events == 0 &&
+             std::isfinite(sst_nu_t_relative_change) &&
+             sst_nu_t_relative_change <= controls.convergence.relative_tolerance);
         const bool converged_now =
             iter >= minimum_outer_correctors &&
             convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&

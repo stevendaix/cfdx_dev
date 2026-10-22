@@ -1096,6 +1096,30 @@ int main()
     });
 
 
+    run_case("sst_relative_eddy_viscosity_change_is_dimensionless", [] {
+        SSTProductionState previous(2);
+        SSTProductionState current(2);
+        for (std::size_t cell = 0; cell < 2; ++cell) {
+            previous.k(cell) = current.k(cell) = 0.1;
+            previous.omega(cell) = current.omega(cell) = 1.0;
+            previous.wall_distance(cell) = current.wall_distance(cell) = 0.5;
+            previous.strain_rate(cell) = current.strain_rate(cell) = 0.0;
+        }
+        previous.nu_t(0) = 1e-5;
+        current.nu_t(0) = 2e-5;
+        previous.nu_t(1) = current.nu_t(1) = 1e-3;
+
+        EXPECT_NEAR(
+            sst_relative_eddy_viscosity_change(previous, current, 1e-5),
+            0.5, 1e-14);
+        EXPECT_NEAR(
+            sst_relative_eddy_viscosity_change(current, current, 1e-5),
+            0.0, 0.0);
+        EXPECT_THROW(
+            sst_relative_eddy_viscosity_change(previous, current, 0.0),
+            std::invalid_argument);
+    });
+
     run_case("sst_production_runtime_requires_explicit_valid_state_and_excludes_prescribed_nu_t", [] {
         IncompressibleSolverControls controls;
         SSTProductionRuntime runtime;

@@ -63,7 +63,7 @@
 - [ ] Apply declared under-relaxation and positivity/boundedness handling without clipping away failures.
 - [x] Refresh wall distance, boundary-aware strain rate, blending and `nu_t` from the current carrier field before the first predictor and during each SST transport step (PR #1032).
 - [x] Rebuild `mu_eff[c] = rho * (nu + nu_t[c])` after an accepted coupled iteration for the next momentum predictor (PR #1032).
-- [x] Add an independent SST convergence/boundedness hard gate without mixing dimensional transport residuals into the normalized carrier metric (PR #1032).
+- [x] Add independent SST convergence/boundedness and dimensionless relative `nu_t`-change gates without mixing dimensional transport residuals into the normalized carrier metric (PR #1047).
 - [x] Per-attempt SST snapshot/restore is connected to carrier retry/rejection and unexpected-exception paths; nested rollback regression is covered by PR #1030.
 - [ ] Expand the production-solver SST smoke test into decisive E2E assertions for transport invocation, `nu_t`/`mu_eff` refresh timing, and exact restoration after a real retry/rejection. The current smoke test proves the opt-in path is exercised but does not yet prove all three behaviors.
 - [ ] Keep unsupported models fail-closed.
