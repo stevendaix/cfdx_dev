@@ -217,6 +217,13 @@ Evidence: PR #1017 merged the affine-field boundary reconstruction test; PR #101
 
 **Decision:** the helper now rejects malformed field shapes at its API boundary. This is input-contract hardening only; it does not integrate SST transport into `solve_steady_incompressible` or enable the production RANS selector.
 
+## Follow-up correction — initialization ordering
+
+- [x] Move the production SST derived-state refresh after `apply_initialization(...)` so uniform/profile/DAT carrier initialization is reflected in wall-aware strain rate and `nu_t` before the first momentum predictor.
+- [x] Validate the caller-provided SST state before initialization; derive mesh/carrier-dependent fields only after the initialized velocity is authoritative.
+- [ ] Add a focused regression that observes the first predictor's effective viscosity after nontrivial initialization/restart. The existing smoke test does not expose that internal timing directly.
+- [ ] Run exact-HEAD Release and DebugSanitizers plus the numerical-maturity and audit workflows before merge.
+
 ## Next increment — production E2E and case/restart lifecycle
 
 PR #1032 adds the opt-in production outer-loop coupling: it refreshes mesh/carrier-derived state, advances SST transport using the current authoritative mass flux, restores SST on retry/rejection, gates convergence on transport status and boundedness, and refreshes `mu_eff` for the next momentum predictor. Remaining work:
