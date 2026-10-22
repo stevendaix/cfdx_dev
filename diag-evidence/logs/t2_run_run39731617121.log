@@ -1,0 +1,10 @@
+T2NU_MESH nx=80 ny=16 FAILED error=solver rc=1; diagnostics tail:
+3 momentum_linear_iterations=9 flux_velocity_mismatch_linf=1.19323e-11 worst_momentum_cell=561 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=531 momentum_residual_rhs_relative=1.49797e-08 momentum_residual_reference_relative=1.38924e-08 momentum_residual_raw=1.17029e-10 momentum_rhs_scale=0.0078125 momentum_residual_reference=0.00842396 momentum_rhs_scale_components
+T2NU_MESH nx=160 ny=32 FAILED error=solver rc=1; diagnostics tail:
+ns=8 flux_velocity_mismatch_linf=2.13303e-11 worst_momentum_cell=2441 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=1669 momentum_residual_rhs_relative=2.22619e-07 momentum_residual_reference_relative=2.04868e-07 momentum_residual_raw=4.34803e-10 momentum_rhs_scale=0.00195313 momentum_residual_reference=0.00212236 momentum_rhs_scale_components=(0.00195313,3.14683e-1
+T2NU_MESH nx=320 ny=64 FAILED error=solver rc=1; diagnostics tail:
+ons=10 pressure_relative_residual=5.99595e-12 momentum_linear_iterations=8 flux_velocity_mismatch_linf=5.36838e-07 worst_momentum_cell=10561 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=17 momentum_residual_rhs_relative=0.993132 momentum_residual_reference_relative=1.05038 momentum_residual_raw=0.000558933 momentum_rhs_scale=0.000562799 momentum_residual_reference=
+T2NU_CAMPAIGN FAIL execution_failure
