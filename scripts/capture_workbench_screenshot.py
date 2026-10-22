@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 # Resolve the repository's packaged Python tree explicitly. Executing a script
 # from scripts/ puts that directory first on sys.path and can otherwise allow
@@ -13,10 +13,9 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 PYTHON_PACKAGE_ROOT = REPOSITORY_ROOT / "src" / "cfdx" / "python"
 sys.path.insert(0, str(PYTHON_PACKAGE_ROOT))
 
+from cfdx.workbench import CFDXWorkbenchWindow
 from PySide6.QtCore import QEventLoop, QTimer
 from PySide6.QtWidgets import QApplication
-
-from cfdx.workbench import CFDXWorkbenchWindow
 
 
 def main() -> int:
@@ -35,7 +34,10 @@ def main() -> int:
     window.setWindowTitle("CFDX Workbench")
     screen = app.primaryScreen()
     if screen is None:
-        print("No Qt screen available; run under Xvfb or a desktop session.", file=sys.stderr)
+        print(
+            "No Qt screen available; run under Xvfb or a desktop session.",
+            file=sys.stderr,
+        )
         window.close()
         return 2
 
@@ -66,7 +68,10 @@ def main() -> int:
         app.quit()
         return 1
 
-    print(f"Workbench screenshot saved: {args.output} ({screenshot.width()}x{screenshot.height()})")
+    print(
+        f"Workbench screenshot saved: {args.output} "
+        f"({screenshot.width()}x{screenshot.height()})"
+    )
     window.close()
     app.quit()
     return 0
