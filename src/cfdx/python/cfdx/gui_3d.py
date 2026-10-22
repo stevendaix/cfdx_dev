@@ -112,6 +112,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         """Load a CFDX HDF5 mesh and a generic DAT checkpoint into one dataset."""
         import h5py
         import numpy as np
+
         from .dat_io import read_dat_restart
 
         restart = read_dat_restart(dat_path)
