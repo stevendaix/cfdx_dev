@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import FrozenInstanceError
-
 import pytest
 
 from cfdx.visualization_pipeline import (
@@ -13,7 +11,8 @@ from cfdx.visualization_pipeline import (
 class FakeDataset:
     def __init__(self, history=(), fields=("p", "U")):
         self.history = tuple(history)
-        self.point_data = {"p": object(), "U": type("Vector", (), {"ndim": 2, "shape": (4, 3)})()}
+        vector = type("Vector", (), {"ndim": 2, "shape": (4, 3)})()
+        self.point_data = {"p": object(), "U": vector}
         self.cell_data = {}
         self.fields = fields
 
