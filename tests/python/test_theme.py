@@ -40,13 +40,14 @@ def test_theme_module_imports_without_qt() -> None:
     importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
 )
 def test_theme_application_sets_palette_and_stylesheet() -> None:
+    from PySide6.QtGui import QPalette
     from PySide6.QtWidgets import QApplication, QMainWindow
 
     app = QApplication.instance() or QApplication(["cfdx-theme-test"])
     window = QMainWindow()
     apply_workbench_theme(window)
     assert window.styleSheet() == WORKBENCH_STYLESHEET
-    assert window.palette().color(window.palette().ColorRole.Window).name() == TOKENS[
+    assert window.palette().color(QPalette.ColorRole.Window).name() == TOKENS[
         "surface.canvas"
     ]
     window.close()
