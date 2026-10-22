@@ -191,6 +191,23 @@ def _build_channel(nx: int, ny: int) -> dict:
     }
 
 
+def _ensure_cfdx_package() -> None:
+    """Import the repo cfdx package, never scripts/cfdx.py (the CLI).
+
+    Python prepends this script's directory (scripts/) to sys.path when
+    running this file, and the repo keeps its cfdx.py CLI entry point
+    in scripts/, which shadows the cfdx package: "from cfdx.io.schema
+    import ..." then fails with "'cfdx' is not a package" (CI pytest
+    never sees this because it runs from the repo root). Drop the
+    script directory from sys.path and prepend the in-repo package root
+    (src/cfdx/python) so the import resolves to the real package.
+    """
+    here = Path(__file__).resolve().parent
+    sys.path[:] = [p for p in sys.path if p and Path(p).resolve() != here]
+    pkg_root = here.parent / "src" / "cfdx" / "python"
+    if (pkg_root / "cfdx" / "io" / "schema.py").is_file():
+        sys.path.insert(0, str(pkg_root))
+
 def _case_setup_json(nx: int, ny: int) -> str:
     from cfdx.io.schema import (
         BCType,
@@ -619,6 +636,7 @@ def _write_evidence(out_dir: Path, campaign: dict) -> None:
 
 
 def main() -> int:
+    _ensure_cfdx_package()
     parser = argparse.ArgumentParser(
         description="T2 heated-channel Nu calibration campaign"
     )

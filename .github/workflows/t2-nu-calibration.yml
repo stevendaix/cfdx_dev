@@ -34,7 +34,7 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install h5py numpy pydantic
+          .venv/bin/pip install "meshio[all]" h5py pydantic ansys-fluent-core
 
       - name: Configure (Release, MPI, parallel HDF5)
         run: |
@@ -55,7 +55,7 @@ jobs:
           E="diag-evidence/logs"
           mkdir -p "$E"
           set +e
-          PYTHONPATH=$PWD/src/cfdx/python .venv/bin/python \
+          PYTHONSAFEPATH=1 PYTHONPATH=$PWD/src/cfdx/python .venv/bin/python \
             scripts/t2_heated_channel_calibration.py \
             --solver build/cfdx_production_solver \
             --output-dir "$E" \
