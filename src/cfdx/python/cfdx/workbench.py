@@ -20,7 +20,7 @@ from .session import CFDXSession
 
 try:
     from PySide6.QtCore import QSettings, Qt, Signal
-    from PySide6.QtGui import QAction, QBrush, QColor, QFont
+    from PySide6.QtGui import QAction, QBrush, QColor
     from PySide6.QtWidgets import (
         QDockWidget,
         QFileDialog,
