@@ -48,11 +48,11 @@ grammar.
 ## Qualification contract
 
 Keep source metadata separate from the CFDX canonical representation. Never
-claim numerical equivalence merely because a case was parsed. Before relying on
-the importer for production cases, qualify representative ASCII cases against
-the OpenFOAM source mesh/fields and the resulting case.cfdx.h5, including
-cell counts, face ownership, boundary patch ranges, field locations, and
-numeric values. Binary support requires a separate implementation and fixtures.
+claim numerical equivalence merely because a case was parsed. Qualify
+representative ASCII cases against source mesh/fields and the resulting
+case.cfdx.h5, including cell counts, face ownership, boundary patch ranges,
+field locations, dimensions, and numeric values. Binary support requires a
+separate implementation and fixtures.
 
 ## Running CFDX from an imported result field
 
@@ -84,11 +84,9 @@ thermal/radiation models, or discretization schemes are numerically equivalent.
 ## First real-case qualification: icoFoam lid-driven cavity
 
 Use the official OpenFOAM **icoFoam/cavity** tutorial as the first real-case
-qualification. This is a deliberately small, transient, incompressible,
-laminar, Newtonian, single-phase flow solved with PISO. It exercises the
-standard polyMesh topology and cell-centred `U` and kinematic pressure `p`
-without introducing multiphase or turbulence-model requirements. It is not a
-VOF case.
+qualification. This is a transient, incompressible, laminar, Newtonian,
+single-phase flow solved with PISO. It exercises standard polyMesh topology
+and cell-centred `U` and kinematic pressure `p`. It is not a VOF case.
 
 The OpenCFD tutorial guide lists the path as
 `$FOAM_TUTORIALS/incompressible/icoFoam/cavity/cavity`; layouts may vary by
@@ -96,54 +94,53 @@ distribution/version. Record the OpenFOAM distribution/version and actual
 source path in the qualification evidence. See the [official lid-driven cavity
 tutorial](https://www.openfoam.com/documentation/tutorial-guide/2-incompressible-flow/2.1-lid-driven-cavity-flow).
 
-### Reproducible acquisition and run
+### Reproducible end-to-end reader procedure
 
-Run in a shell with the OpenFOAM environment sourced:
-
-```bash
-printf 'OpenFOAM version: '; foamVersion
-printf 'Tutorial root: %s\n' "$FOAM_TUTORIALS"
-find "$FOAM_TUTORIALS" -type d -path '*/icoFoam/cavity/cavity' -print
-```
-
-Copy the discovered tutorial to a working directory; do not run in or modify
-the installation's source tree. Follow the tutorial's own instructions and
-run `blockMesh` then `icoFoam` (or its provided `Allrun` script, after
-reviewing what it executes). Preserve the original case and record the selected
-numeric time directory. Then convert:
+With the OpenFOAM environment sourced and CFDX Python I/O installed, run from
+the CFDX repository root:
 
 ```bash
-cfdx-io convert ./openfoam-cavity --results --output ./converted
+bash scripts/qualify_openfoam_icofoam_cavity.sh /tmp/cfdx-icofoam-qualification
 ```
+
+The script locates the installed tutorial instead of assuming a version-specific
+path, copies it to a clean working directory, runs the tutorial's `Allrun`
+when available (otherwise `blockMesh` and `icoFoam`), selects the latest
+numeric time containing both `U` and `p`, converts it through `cfdx-io`,
+and checks mesh counts, topology array sizes/index ranges, field shapes, and
+finite values. It writes provenance to `provenance.txt` and machine-readable
+reader evidence to `evidence/reader_import_evidence.json`. Use a fresh output
+directory for each run.
+
+This script is a reproducible structural/import check, not the whole solver
+qualification: it does not yet compare every imported value bit-for-bit against
+the OpenFOAM source, validate patch-range semantics independently, or execute
+the CFDX production solver. Do not mark the issue complete based on this script
+alone. Keep generated cases and evidence outside the repository unless
+redistribution/licensing has been checked.
 
 ### Acceptance checks
 
-The case qualifies the **reader and velocity-initialization boundary**, not
-OpenFOAM numerical equivalence. Verify and retain evidence for:
+For full qualification, retain evidence for:
 
 - OpenFOAM distribution/version, tutorial provenance, and selected time;
 - points, faces, cells, owner/neighbour topology, and boundary patch ranges;
-- imported `U` field dimensions `[0 1 -1 0 0 0 0]`, cell-centred location,
-  shape `(n_cells, 3)`, finite values, and exact comparison with the source;
-- imported `p` dimensions `[0 2 -2 0 0 0 0]` if the reader imports it as a
-  scalar field; do not map it to CFDX pressure in Pa without a qualified
-  dimensional conversion;
-- when the production solver is available, exact preservation of imported
-  `U` in evidence captured after initialization and before the first residual.
+- imported `U` dimensions `[0 1 -1 0 0 0 0]`, cell-centred location,
+  shape `(n_cells, 3)`, finite values, and exact comparison with source values;
+- imported `p` dimensions `[0 2 -2 0 0 0 0]` if it is imported as a scalar;
+  do not map it to CFDX pressure in Pa without qualified dimensional conversion;
+- exact preservation of imported `U` after production-solver initialization
+  and before the first residual.
 
-The standard tutorial's mesh and time-directory contents depend on the
-installed OpenFOAM distribution/version and whether the case was run. Record
-actual values from the selected source case; do not hard-code unverified counts
-or claim a run passed without retained output. Keep generated solver output out
-of the repository by default. Any committed fixture must have verified
-redistribution terms and preserve upstream attribution.
+The tutorial's mesh and time-directory contents depend on the installed
+OpenFOAM distribution/version and run configuration. Record actual values;
+never hard-code unverified counts or claim a run passed without retained output.
 
 ## Required-vs-optional production solver check
 
-The production-solver integration tests skip when
-`CFDX_PRODUCTION_SOLVER` is absent during ordinary Python test runs. A
-dedicated qualification run must not count that skip as a pass. Set both
-environment variables in that job:
+Ordinary Python runs may skip solver-backed tests when
+`CFDX_PRODUCTION_SOLVER` is absent. A dedicated qualification must fail rather
+than skip in that situation. Configure both variables and run:
 
 ```bash
 export CFDX_PRODUCTION_SOLVER=/absolute/path/to/cfdx_production_solver
@@ -151,10 +148,8 @@ export CFDX_REQUIRE_OPENFOAM_SOLVER_QUALIFICATION=1
 pytest -q tests/python/test_openfoam_results_cli.py
 ```
 
-With the strict flag enabled, a missing solver executable configuration raises
-a test failure instead of skipping. This fail-closed check prevents a false
-green qualification status; it does not establish equivalence with OpenFOAM.
-The current production integration flag `--initial-velocity-field` initializes
-only `U`. Pressure, boundary-condition mapping, solver/discretization
-equivalence, turbulence, thermal/radiation, and VOF remain outside this
-qualification.
+This validates the fail-closed configuration and, when the solver is available,
+the post-initialization velocity evidence. It does not establish equivalence
+with OpenFOAM. The current integration initializes only `U`; pressure,
+boundary-condition mapping, discretization equivalence, turbulence,
+thermal/radiation, and VOF remain outside this qualification.
