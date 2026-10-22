@@ -85,3 +85,26 @@ def test_text_token_contrast_meets_wcag_aa_for_normal_text(
         f"{text_token} on {surface_token} does not meet the 4.5:1 WCAG AA "
         "contrast threshold for normal text"
     )
+
+
+@pytest.mark.parametrize(
+    "status_token",
+    ["status.success", "status.warning", "status.error", "status.info"],
+)
+def test_status_colors_have_nontext_contrast_on_panel(status_token: str) -> None:
+    # WCAG 2.2 non-text contrast: meaningful status indicators need 3:1.
+    assert _contrast_ratio(TOKENS[status_token], TOKENS["surface.panel"]) >= 3.0, (
+        f"{status_token} on surface.panel does not meet the 3:1 non-text "
+        "contrast threshold"
+    )
+
+
+@pytest.mark.parametrize(
+    "surface_token", ["surface.canvas", "surface.panel", "surface.input"]
+)
+def test_focus_indicator_has_nontext_contrast(surface_token: str) -> None:
+    # The primary accent is used for keyboard focus borders and must remain visible.
+    assert _contrast_ratio(TOKENS["accent.primary"], TOKENS[surface_token]) >= 3.0, (
+        f"accent.primary on {surface_token} does not meet the 3:1 non-text "
+        "contrast threshold"
+    )
