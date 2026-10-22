@@ -249,6 +249,14 @@ struct IncompressibleSolverControls {
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&)>;
     IterationOutputCallback iteration_output_callback;
+    // Evidence hook called after the declared initialization strategy has been
+    // applied and before geometry assembly or the first residual is formed.
+    // References are valid only for the duration of the callback.
+    using InitializedStateCallback = std::function<void(
+        const cfdx::core::Mesh&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&)>;
+    InitializedStateCallback initialized_state_callback;
     // Evidence-only hook: invoked at the exact Krylov call point of the
     // coupled solve - after assembly, gauge treatment, finite checks and
     // preconditioner setup - so the snapshot matrix, RHS and initial guess
@@ -2468,6 +2476,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     }
     apply_initialization(
         controls.initialization, mesh, U, p, restart_fields, restart_path);
+    if (controls.initialized_state_callback)
+        controls.initialized_state_callback(mesh, U, p);
 
     const FvGeometry geometry = build_fv_geometry(mesh);
     cfdx::core::ConvergenceMonitorControls monitor_controls;
