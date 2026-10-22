@@ -108,4 +108,3 @@ def test_focus_indicator_has_nontext_contrast(surface_token: str) -> None:
         f"accent.primary on {surface_token} does not meet the 3:1 non-text "
         "contrast threshold"
     )
-
