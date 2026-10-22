@@ -1,102 +1,98 @@
-name: NACA0012 additive-region culprit probes (round 9b)
+name: NACA0012 minimal-buildable-revert probes (round 9c)
 
 # DIAG-ONLY - diagnostics branch ci/long-campaign-diagnostics (NEVER merge).
 #
-# Goal (round 9b): identify the culprit set of solver-diff regions at the
-# finest BUILDABLE region granularity, with a production-grade 3-level
-# confirmation of a fixing revert. Locked context:
+# Goal (round 9c): complete the region-level attribution left INCOMPLETE by
+# round 9b, using the corrected compile-coupling map. Locked context:
 #   round 7 (run 39663748207) IN_TRIO_CULPRIT: v1_green_trio PASS_3_LEVELS
 #     (N64 433 / N128 995 / N256 3989 it), v0 FAIL_DIVERGED.
 #   round 8 (run 39672681948) COMBINATION_OR_COUPLED: test (v0b) and
-#     convergence_history (vC) proven behavior-neutral; each of the 5
-#     individually-revertable regions r2/r4/r5/r8/r9 still FAIL_DIVERGED
-#     when reverted ALONE (no single one is the culprit); the 4 coupled
-#     regions r1/r3/r6/r7 are INCONCLUSIVE_BUILD when reverted alone.
-#   round 9 (run 39722433948) A9_ANCHOR_ANOMALY - INVALID, mechanical:
-#     the N128-only invocation passed ONE mesh file to a binary that
-#     requires THREE (usage: ... mesh_n64.h5 mesh_n128.h5 mesh_n256.h5),
-#     so every built variant died in 0 s with FAIL_OTHER. Additionally
-#     its leave-one-out hybrids k2/k4..k9 do not compile.
+#     convergence_history (vC) behavior-neutral; r2/r4/r5/r8/r9 single
+#     reverts all FAIL_DIVERGED; r1/r3/r6/r7 single reverts INCONCLUSIVE_BUILD.
+#   round 9 (run 39722433948) A9_ANCHOR_ANOMALY - INVALID, mechanical
+#     (1-mesh invocation to a 3-mesh binary); repeated with fixed invocation.
+#   round 9b (run 39735295835) INCOMPLETE_WITH_UNKNOWNS, anchors VALID
+#     (a0 FAIL_DIVERGED, a9 PASS_128): k1 PASS_128 (only r1 in master form
+#     is green-like: N64 433 / N128 995 it, identical to the green anchor),
+#     k3 FAIL_DIVERGED_64 (only r3 in master form diverges at N64, 8000 it),
+#     d4 FAIL_DIVERGED, b1 FAIL_DIVERGED_64, b3 INCONCLUSIVE_BUILD.
 #
-# Compile-coupling map (proven by the round-9 build logs, same pins):
+# NEW coupling edge (proven by the round-9b b3 build log, same pins):
+#   master r8 -> r7 (rhie_chow_identity_evaluated and
+#   rhie_chow_identity_audit_linf are declared in r7's master form at
+#   master lines 2808-2809 and consumed by r8's master form at master line
+#   3767; the symbols do not exist in green). The round-9 map missed it.
+#
+# Corrected compile-coupling map (round-9 logs + round-9b b3 log):
 #   master r2 -> r1 (cell_turbulent_viscosity)
 #   master r4 -> r3 (pressure_face_orthogonal_coefficient / _nonorthogonal_flux)
 #   master r5 -> r1 (coupled_assembly_callback / CoupledAssemblySnapshot)
 #   master r6 -> r1 (cell_turbulent_viscosity)
 #   master r7 -> r3 (pressure_face_orthogonal_coefficient / _nonorthogonal_flux)
 #   master r8 -> r1 (IncompressibleIteration momentum_rhs_scale* members)
+#   master r8 -> r7 (rhie_chow_identity_* ; round-9b b3 build failure)
 #   master r9 -> r3 and -> r6 (pressure_face_* ; mu_eff double* vs vector*)
 #   green  r7 -> green r6 (assemble_momentum_component signature)
 #   r1 and r3 are self-contained (k1 and k3 built cleanly in round 9).
-# A revert set S is buildable iff every KEPT master region has all its
-# dependencies kept master, and no green-form region needs a green-only
-# symbol from a kept-master region.
+# STRUCTURAL CONSEQUENCE (closure over the corrected map): any buildable
+# revert containing r3 must also revert r4 (r4->r3), r7 (r7->r3), r9
+# (r9->r3), r6 (green r7 needs green r6) and r8 (r8->r7). The MINIMAL
+# buildable region-granularity revert containing r3 is therefore
+#   b3x = revert {r3,r4,r6,r7,r8,r9}  (keeps r1,r2,r5 master).
+# The round-9b b3 branch (b3, s149, b679) is NOT buildable on this map:
+# each keeps r8 master while reverting r7.
 #
-# Method: ADDITIVE probes over buildable revert sets. Revert S to green
-# fixes the N128 divergence iff culprit C is a subset of S (monotone).
-# Phase A (fixed): a0 (master anchor, expect FAIL_DIVERGED), a9 (all-9
-# revert = green, expect PASS), k1/k3 (leave-one-out roots, buildable),
-# d4 = revert {r2,r4,r5,r8}, b1 = revert {r1,r2,r5,r6,r7,r8,r9} (keep
-# r3,r4), b3 = revert {r3,r4,r6,r7,r9} (keep r1,r2,r5,r8).
-# Phase B (adaptive, pre-coded):
-#   k1 FAIL -> culprit = {r1} exactly (r1 alone reproduces); confirm
-#     with c_b1 (3 levels).
-#   k3 FAIL -> culprit = {r3} exactly; confirm with c_b3.
-#   d4 PASS -> culprit within {r2,r4,r5,r8}: pair hunt p24/p25/p28/
-#     p45/p48/p58 then triple hunt t245/t248/t258/t458; the first
-#     passing set is EXACTLY the culprit (each single already FAIL in
-#     round 8, so no strict subset can contain C); 3-level confirm.
-#   b1+b3 PASS -> culprit within b1 ∩ b3 = {r6,r7,r9}; these are
-#     mutually compile-coupled, so the trio is the finest region
-#     resolution; confirm c_b679 (3 levels).
-#   b1 PASS + b3 FAIL -> culprit intersects {r2,r5,r8}: sr1 = revert
-#     {r2,r5,r6,r7,r8,r9} tests r1; PASS -> pair hunt p25/p28/p58 then
-#     t258 then conservative sr1; FAIL -> r1 necessary -> conservative
-#     b1, 3-level confirm.
-#   b1 FAIL + b3 PASS -> culprit intersects {r3,r4}: s149 = revert
-#     {r4,r6,r7,r9} tests r3; PASS -> b679 narrows to the trio or r4 is
-#     necessary (conservative s149); FAIL -> r3 necessary -> b679-free
-#     conservative b3, 3-level confirm.
-#   b1 FAIL + b3 FAIL -> joint culprit across both sides; sr1 adds the
-#     r1/r3/r4-side information; region granularity exhausted.
-# All Phase B sets were build-verified against the coupling map above;
-# a build failure is still recorded fail-closed as INCONCLUSIVE_BUILD
-# and never interpreted as behavior.
+# Method (round 9c): probes over buildable revert sets, monotone (revert S
+# fixes iff culprit C is a subset of S). Fixed phase: a0 (master anchor,
+# expect FAIL_DIVERGED), a9 (all-9 revert = green, expect PASS_128), k3
+# (repro context: expect FAIL_DIVERGED_64 exactly as in round 9b at the
+# same pins; deterministic), b3x (the minimal buildable r3-revert).
+# Adaptive phase (pre-coded, fail-closed):
+#   b3x PASS_128 -> 3-level confirm c_b3x; if the confirm is not
+#     PASS_3_LEVELS, fall back to c_k1 (k1 set = revert r2..r9, proven
+#     PASS_128 in round 9b).
+#   b3x not passing (FAIL_DIVERGED* or INCONCLUSIVE_BUILD) -> b3x2 =
+#     revert {r2,r3,r4,r6,r7,r8,r9} (keeps r1,r5; reverts r2):
+#     b3x2 PASS_128 -> confirm c_b3x2 (+ c_k1 fallback on confirm failure);
+#     b3x2 definite FAIL (r5 kept master: r5 implicated) or INCONCLUSIVE ->
+#     b3x3 = revert {r3,r4,r5,r6,r7,r8,r9} (keeps r1,r2; reverts r5):
+#     b3x3 PASS_128 -> confirm c_b3x3 (+ c_k1 fallback); b3x3 definite FAIL
+#     (r2 kept master: r2 implicated) or INCONCLUSIVE -> conservative c_k1.
+# A build failure is recorded fail-closed as INCONCLUSIVE_BUILD and never
+# interpreted as behavior.
 #
 # Levels: every variant runs the SAME binary with ALL THREE meshes
-# (the round-9 lesson: the test requires 3 mesh arguments). The N128
+# (round-9 lesson: the test requires 3 mesh arguments). The N128
 # discriminator uses timeout 600 s: green reaches the N128 level marker
 # (~995 it) well inside the window, then the run is killed inside N256;
-# rc=124 + "level=128 Cd=" marker => PASS_128. Divergence at N128
-# after a completed N64 marker => FAIL_DIVERGED (the known signature).
-# Divergence before N64 (FAIL_DIVERGED_64), at N256 (FAIL_DIVERGED_256),
-# timeouts without the N128 marker (INCONCLUSIVE_TIMEOUT) and any other
-# failure (FAIL_OTHER) are recorded but never interpreted as behavior.
-# Confirmations (c_*) run the full 3 levels with timeout 3600 s and
-# require rc=0 => PASS_3_LEVELS for a production-grade verdict.
+# rc=124 + "level=128 Cd=" marker => PASS_128. Divergence at N128 after a
+# completed N64 marker => FAIL_DIVERGED (the known master signature).
+# Divergence before N64 (FAIL_DIVERGED_64, the k3/b1 signature in 9b), at
+# N256 (FAIL_DIVERGED_256), timeouts without the N128 marker
+# (INCONCLUSIVE_TIMEOUT) and any other failure (FAIL_OTHER) are recorded
+# but never interpreted as the master signature. Confirmations (c_*) run
+# the full 3 levels with timeout 3600 s and require rc=0 =>
+# PASS_3_LEVELS for a production-grade verdict.
 #
-# Interpretation guide (round 9b) - valid only if a0 FAIL_DIVERGED and
-# a9 PASS (else A0_/A9_ANCHOR_ANOMALY, repeat):
-#   REGION_CULPRIT_R1 / _R3: single-region culprit proven (k_i FAIL =
-#     only region i in master form already diverges at N128), plus the
-#     3-level pass of the closure revert -> production PR = revert the
-#     culprit region's hunks AND the dependent hunks that consume their
-#     master-only symbols (decision Steven); round 10 hunk-level can
-#     narrow inside the region if wanted.
-#   REGION_SET_CULPRIT <set>: exact set (first passing pair/triple in
-#     {r2,r4,r5,r8} with all singles FAIL in round 8, or {r2,r5,8}
-#     variants, or the d4 quad) + 3-level confirmation.
-#   REGION_SET_CULPRIT_TRIO {r6,r7,r9}: finest region resolution for a
-#     culprit inside the mutually-coupled trio.
-#   REGION_SET_CULPRIT_CONSERVATIVE <set> with proven-necessary members:
-#     the set provably fixes (3-level), but the exact subset needs
-#     hunk-level analysis (round 10) - production can revert the whole
-#     conservative set as-is (decision Steven).
-#   JOINT_CROSS_BLOCK: culprit members on both sides of the block;
-#     production fallback = full green solver swap (proven PASS_3_LEVELS
-#     in round 7 v1 at these pins) or round 10 hunk-level bisect.
-#   MONOTONICITY_VIOLATION / CONFIRM_ANOMALY / INCOMPLETE_* / unknown
-#     outcomes -> repeat before concluding; never interpret.
+# Interpretation guide (round 9c) - valid only if a0 FAIL_DIVERGED,
+# a9 PASS and k3 NOT passing (else anchor/repro anomaly, repeat):
+#   REGION_SET_CULPRIT_B3X  : production revert = {r3,r4,r6,r7,r8,r9}
+#     (keep r1,r2,r5), 3-level confirmed. Minimal buildable r3-revert.
+#   REGION_SET_CULPRIT_B3X2 : production revert = {r2,r3,r4,r6,r7,r8,r9}
+#     (keep r1,r5), 3-level confirmed; b3x implicated r2 (definite FAIL)
+#     or r2 blocked the b3x build.
+#   REGION_SET_CULPRIT_B3X3 : production revert = {r3,r4,r5,r6,r7,r8,r9}
+#     (keep r1,r2), 3-level confirmed; r5 implicated or build-blocking.
+#   REGION_SET_CULPRIT_K1SET: production revert = {r2,...,r9} (keep r1),
+#     3-level confirmed; r2 and/or r5 are confirmed culprit members
+#     (definite FAILs of the b3x2/b3x3 probes).
+#   REGION_SET_CULPRIT_K1SET_BUILD_FALLBACK: the finer candidates do not
+#     build (coupling map still incomplete) - k1 set is the conservative
+#     production revert.
+#   Round 10 (optional, decision Steven): hunk-level bisect INSIDE the
+#     confirmed set to narrow the revert further.
+#   CONFIRM_ANOMALY / INCOMPLETE_* / anchor anomalies -> repeat before
+#   concluding; never interpret.
 #
 # NOTE: the green test has the OLD #926 Cd_pressure sign convention
 # (Fxp+=-pp): compare iterations/convergence behaviour, NEVER raw Cd
@@ -119,12 +115,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: naca-r9b-additive
+  group: naca-r9c-additive
   cancel-in-progress: false
 
 jobs:
-  naca-r9b-variants:
-    name: NACA additive-region probes at pinned master commit (round 9b)
+  naca-r9c-variants:
+    name: NACA minimal-buildable-revert probes at pinned master commit (round 9c)
     runs-on: ubuntu-24.04
     timeout-minutes: 250
     env:
@@ -133,23 +129,9 @@ jobs:
       GREEN_MD5: 63db7905347576beec20993919d6015e
       MASTER_MD5: af085014acfc35a0e9ab4946c3f46381
       MD5_K1: 24f2a8ec8cd6d89245732e49b094e917
-      MD5_K3: 58c8c3aa54723f1676ff088fb16e9877
-      MD5_D4: e7a7ee2ce2a0e964f9bfedbec27f6206
-      MD5_B1: ab94ccd5a05cf77c9af17865be46bfcc
-      MD5_B3: 8017990b8e187232a9f4995f0d7e6cec
-      MD5_B679: 630a0dedb4cb77e0ff68a9c3a6c7eeca
-      MD5_SR1: 59fcd2d5f94034f86620716212a89613
-      MD5_S149: e8832b24ab49de703162137ab75d96f2
-      MD5_P24: 9d85d5b47d3dc40e65ce262e2a997350
-      MD5_P25: dd76bd608cb58c160fe290f23dee4e93
-      MD5_P28: 25c70898b67d24f39680bf343ef349aa
-      MD5_P45: 0c99172f8b8563ae577bd310818c1ef2
-      MD5_P48: bcd6afaa4e52b8520c466e57336b68d7
-      MD5_P58: f01c363e00d2bef4e0a1d7d94f44bfa6
-      MD5_T245: bb2a3c250e103ddb23c81cf67ed85b64
-      MD5_T248: 5dd72beead6e75d88330921ec5cfca98
-      MD5_T258: a11cd4880561bc1b38d7f1f2c307c166
-      MD5_T458: 3a242af84fe39f1b911963b68ef242d9
+      MD5_B3X: b9b1eb5632fe7177e0fdda391d863d40
+      MD5_B3X2: 21e34eee9f55202f0abf0ad2b5ca87cc
+      MD5_B3X3: bbd58cda93d63185115f18763efa7795
     steps:
       - name: Checkout diagnostics branch
         uses: actions/checkout@v4
@@ -204,7 +186,7 @@ jobs:
           git diff --quiet "${GREEN_PIN}" "${MASTER_PIN}" -- tests/validation/qualification_boundary_helpers.h
           echo "green_guards_ok"
 
-      - name: Generate additive-region hybrids (fail-closed, md5-verified)
+      - name: Generate minimal-buildable-revert hybrids (fail-closed, md5-verified)
         run: |
           set -euo pipefail
           mkdir -p diag-hybrids
@@ -313,45 +295,17 @@ jobs:
             || { echo "::error::empty-ranges generation is not byte-identical to the master solver"; exit 1; }
           echo "empty-ranges validation OK (byte-identical to master solver)"
           # Hybrid table: name -> reverted region indices (buildable sets,
-          # verified against the compile-coupling map in the header).
+          # verified against the CORRECTED compile-coupling map above).
           declare -A HSET
           HSET[k1]="2 3 4 5 6 7 8 9"
-          HSET[k3]="1 2 4 5 6 7 8 9"
-          HSET[d4]="2 4 5 8"
-          HSET[b1]="1 2 5 6 7 8 9"
-          HSET[b3]="3 4 6 7 9"
-          HSET[b679]="6 7 9"
-          HSET[sr1]="2 5 6 7 8 9"
-          HSET[s149]="4 6 7 9"
-          HSET[p24]="2 4"
-          HSET[p25]="2 5"
-          HSET[p28]="2 8"
-          HSET[p45]="4 5"
-          HSET[p48]="4 8"
-          HSET[p58]="5 8"
-          HSET[t245]="2 4 5"
-          HSET[t248]="2 4 8"
-          HSET[t258]="2 5 8"
-          HSET[t458]="4 5 8"
+          HSET[b3x]="3 4 6 7 8 9"
+          HSET[b3x2]="2 3 4 6 7 8 9"
+          HSET[b3x3]="3 4 5 6 7 8 9"
           declare -A HMD5
           HMD5[k1]="${MD5_K1}"
-          HMD5[k3]="${MD5_K3}"
-          HMD5[d4]="${MD5_D4}"
-          HMD5[b1]="${MD5_B1}"
-          HMD5[b3]="${MD5_B3}"
-          HMD5[b679]="${MD5_B679}"
-          HMD5[sr1]="${MD5_SR1}"
-          HMD5[s149]="${MD5_S149}"
-          HMD5[p24]="${MD5_P24}"
-          HMD5[p25]="${MD5_P25}"
-          HMD5[p28]="${MD5_P28}"
-          HMD5[p45]="${MD5_P45}"
-          HMD5[p48]="${MD5_P48}"
-          HMD5[p58]="${MD5_P58}"
-          HMD5[t245]="${MD5_T245}"
-          HMD5[t248]="${MD5_T248}"
-          HMD5[t258]="${MD5_T258}"
-          HMD5[t458]="${MD5_T458}"
+          HMD5[b3x]="${MD5_B3X}"
+          HMD5[b3x2]="${MD5_B3X2}"
+          HMD5[b3x3]="${MD5_B3X3}"
           gen_h() {
             local name="$1"
             local ranges=""
@@ -372,7 +326,7 @@ jobs:
             fi
             echo "hybrid ${name} OK md5=${actual} bytes=$(stat -c%s "diag-hybrids/${name}.h")"
           }
-          for h in k1 k3 d4 b1 b3 b679 sr1 s149 p24 p25 p28 p45 p48 p58 t245 t248 t258 t458; do
+          for h in k1 b3x b3x2 b3x3; do
             gen_h "$h"
           done
           echo "additive_hybrids_ok"
@@ -384,7 +338,7 @@ jobs:
           .venv-naca-bisect/bin/python -m pip install --upgrade pip
           .venv-naca-bisect/bin/python -m pip install h5py numpy
 
-      - name: Variant loop (anchors, roots, additive probes, adaptive refinement)
+      - name: Variant loop (anchors, k3 repro, minimal buildable revert probes)
         timeout-minutes: 235
         run: |
           set +e
@@ -397,23 +351,9 @@ jobs:
           declare -A RAN
           declare -A HMD5
           HMD5[k1]="${MD5_K1}"
-          HMD5[k3]="${MD5_K3}"
-          HMD5[d4]="${MD5_D4}"
-          HMD5[b1]="${MD5_B1}"
-          HMD5[b3]="${MD5_B3}"
-          HMD5[b679]="${MD5_B679}"
-          HMD5[sr1]="${MD5_SR1}"
-          HMD5[s149]="${MD5_S149}"
-          HMD5[p24]="${MD5_P24}"
-          HMD5[p25]="${MD5_P25}"
-          HMD5[p28]="${MD5_P28}"
-          HMD5[p45]="${MD5_P45}"
-          HMD5[p48]="${MD5_P48}"
-          HMD5[p58]="${MD5_P58}"
-          HMD5[t245]="${MD5_T245}"
-          HMD5[t248]="${MD5_T248}"
-          HMD5[t258]="${MD5_T258}"
-          HMD5[t458]="${MD5_T458}"
+          HMD5[b3x]="${MD5_B3X}"
+          HMD5[b3x2]="${MD5_B3X2}"
+          HMD5[b3x3]="${MD5_B3X3}"
           is_pass() {
             case "$1" in
               PASS_128|PASS_3_LEVELS) return 0 ;;
@@ -431,8 +371,8 @@ jobs:
             esac
             local SRC="cfdx-${SHORT}"
             local BUILD="build-${SHORT}"
-            local LOG="$E/nacar9b_${SHORT}_main_run${RUN_ID}.log"
-            local STA="$E/nacar9b_${SHORT}_test_status_run${RUN_ID}.txt"
+            local LOG="$E/nacar9c_${SHORT}_main_run${RUN_ID}.log"
+            local STA="$E/nacar9c_${SHORT}_test_status_run${RUN_ID}.txt"
             echo "=== VARIANT ${VARIANT} levels=${LEVELS} at ${WT_REF} : $(git log -1 --format='%ci %s' "${WT_REF}") ===" > "$LOG"
             local outcome=""
             local rc=""
@@ -568,9 +508,9 @@ jobs:
             if [ -s "$LOG" ] && [ "$(stat -c%s "$LOG")" -gt 1500000 ]; then
               tail -c 1500000 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
             fi
-            git add "$E"/nacar9b_"${SHORT}"_*_run"${RUN_ID}"* >/dev/null 2>&1
+            git add "$E"/nacar9c_"${SHORT}"_*_run"${RUN_ID}"* >/dev/null 2>&1
             if ! git diff --cached --quiet; then
-              if git commit -m "diag: naca r9b ${SHORT} outcome=${outcome:-MISSING} run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
+              if git commit -m "diag: naca r9c ${SHORT} outcome=${outcome:-MISSING} run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
                 if ! git push >/dev/null 2>&1; then
                   git pull --rebase origin ci/long-campaign-diagnostics >/dev/null 2>&1
                   git push >/dev/null 2>&1 || echo "push_retry_failed ${SHORT}"
@@ -589,117 +529,47 @@ jobs:
             echo "a0_master_anchor=${RAN[a0_master_anchor]}"
             run_variant a9_all9_anchor 128
             echo "a9_all9_anchor=${RAN[a9_all9_anchor]}"
-            run_variant k1 128
-            echo "k1=${RAN[k1]}"
             run_variant k3 128
             echo "k3=${RAN[k3]}"
-            run_variant d4 128
-            echo "d4=${RAN[d4]}"
-            run_variant b1 128
-            echo "b1=${RAN[b1]}"
-            run_variant b3 128
-            echo "b3=${RAN[b3]}"
-            K1F=0
-            if [ "${RAN[k1]}" = "FAIL_DIVERGED" ]; then K1F=1; fi
-            K3F=0
-            if [ "${RAN[k3]}" = "FAIL_DIVERGED" ]; then K3F=1; fi
-            D4P=0
-            if is_pass "${RAN[d4]}"; then D4P=1; fi
-            B1P=0
-            if is_pass "${RAN[b1]}"; then B1P=1; fi
-            B1F=0
-            if [ "${RAN[b1]}" = "FAIL_DIVERGED" ]; then B1F=1; fi
-            B3P=0
-            if is_pass "${RAN[b3]}"; then B3P=1; fi
-            B3F=0
-            if [ "${RAN[b3]}" = "FAIL_DIVERGED" ]; then B3F=1; fi
-            FOUND=""
-            if [ "$K1F" = "1" ]; then
-              run_variant c_b1 3
-              echo "branch=R1_CULPRIT c_b1=${RAN[c_b1]}"
-            elif [ "$K3F" = "1" ]; then
-              run_variant c_b3 3
-              echo "branch=R3_CULPRIT c_b3=${RAN[c_b3]}"
-            elif [ "$D4P" = "1" ]; then
-              for pair in p24 p25 p28 p45 p48 p58; do
-                run_variant "$pair" 128
-                echo "pair_${pair}=${RAN[$pair]}"
-                if is_pass "${RAN[$pair]}"; then FOUND="$pair"; break; fi
-              done
-              if [ -z "$FOUND" ]; then
-                for tri in t245 t248 t258 t458; do
-                  run_variant "$tri" 128
-                  echo "tri_${tri}=${RAN[$tri]}"
-                  if is_pass "${RAN[$tri]}"; then FOUND="$tri"; break; fi
-                done
+            run_variant b3x 128
+            echo "b3x=${RAN[b3x]}"
+            if is_pass "${RAN[b3x]}"; then
+              run_variant c_b3x 3
+              echo "branch=B3X_DIRECT confirm=${RAN[c_b3x]}"
+              if [ "${RAN[c_b3x]}" != "PASS_3_LEVELS" ]; then
+                run_variant c_k1 3
+                echo "branch=B3X_CONFIRM_FALLBACK c_k1=${RAN[c_k1]}"
               fi
-              if [ -n "$FOUND" ]; then
-                run_variant "c_${FOUND}" 3
-                CONFVAR="c_${FOUND}"
-                echo "branch=D4_SET found=$FOUND confirm=${RAN[$CONFVAR]}"
-              else
-                run_variant c_d4 3
-                echo "branch=D4_QUAD confirm_d4=${RAN[c_d4]}"
-              fi
-            elif [ "$B1P" = "1" ] && [ "$B3P" = "1" ]; then
-              run_variant c_b679 3
-              echo "branch=TRIO_679 c_b679=${RAN[c_b679]}"
-            elif [ "$B1P" = "1" ] && [ "$B3F" = "1" ]; then
-              run_variant sr1 128
-              echo "sr1=${RAN[sr1]}"
-              if is_pass "${RAN[sr1]}"; then
-                for pair in p25 p28 p58; do
-                  run_variant "$pair" 128
-                  echo "pair_${pair}=${RAN[$pair]}"
-                  if is_pass "${RAN[$pair]}"; then FOUND="$pair"; break; fi
-                done
-                if [ -n "$FOUND" ]; then
-                  run_variant "c_${FOUND}" 3
-                  CONFVAR="c_${FOUND}"
-                  echo "branch=SR1_PAIR found=$FOUND confirm=${RAN[$CONFVAR]}"
-                else
-                  run_variant t258 128
-                  echo "t258=${RAN[t258]}"
-                  if is_pass "${RAN[t258]}"; then
-                    run_variant c_t258 3
-                    echo "branch=SR1_TRIPLE confirm=${RAN[c_t258]}"
-                  else
-                    run_variant c_sr1 3
-                    echo "branch=SR1_CONSERVATIVE confirm=${RAN[c_sr1]}"
-                  fi
-                fi
-              else
-                run_variant c_b1 3
-                echo "branch=B1_CONSERVATIVE_R1NEC c_b1=${RAN[c_b1]}"
-              fi
-            elif [ "$B1F" = "1" ] && [ "$B3P" = "1" ]; then
-              run_variant s149 128
-              echo "s149=${RAN[s149]}"
-              if is_pass "${RAN[s149]}"; then
-                run_variant b679 128
-                echo "b679=${RAN[b679]}"
-                if is_pass "${RAN[b679]}"; then
-                  run_variant c_b679 3
-                  echo "branch=TRIO_679_VIA_S149 c_b679=${RAN[c_b679]}"
-                else
-                  run_variant c_s149 3
-                  echo "branch=S149_CONSERVATIVE_R4NEC c_s149=${RAN[c_s149]}"
-                fi
-              else
-                run_variant c_b3 3
-                echo "branch=B3_CONSERVATIVE_R3NEC c_b3=${RAN[c_b3]}"
-              fi
-            elif [ "$B1F" = "1" ] && [ "$B3F" = "1" ]; then
-              run_variant sr1 128
-              echo "sr1_joint=${RAN[sr1]}"
-              echo "branch=JOINT_CROSS_BLOCK"
             else
-              echo "branch=NO_DEFINITE_BRANCH k1=${RAN[k1]} k3=${RAN[k3]} d4=${RAN[d4]} b1=${RAN[b1]} b3=${RAN[b3]}"
+              run_variant b3x2 128
+              echo "b3x2=${RAN[b3x2]}"
+              if is_pass "${RAN[b3x2]}"; then
+                run_variant c_b3x2 3
+                echo "branch=B3X2_DIRECT confirm=${RAN[c_b3x2]}"
+                if [ "${RAN[c_b3x2]}" != "PASS_3_LEVELS" ]; then
+                  run_variant c_k1 3
+                  echo "branch=B3X2_CONFIRM_FALLBACK c_k1=${RAN[c_k1]}"
+                fi
+              else
+                run_variant b3x3 128
+                echo "b3x3=${RAN[b3x3]}"
+                if is_pass "${RAN[b3x3]}"; then
+                  run_variant c_b3x3 3
+                  echo "branch=B3X3_DIRECT confirm=${RAN[c_b3x3]}"
+                  if [ "${RAN[c_b3x3]}" != "PASS_3_LEVELS" ]; then
+                    run_variant c_k1 3
+                    echo "branch=B3X3_CONFIRM_FALLBACK c_k1=${RAN[c_k1]}"
+                  fi
+                else
+                  run_variant c_k1 3
+                  echo "branch=K1_CONSERVATIVE c_k1=${RAN[c_k1]}"
+                fi
+              fi
             fi
-          } >> "$E/nacar9b_sequence_run${RUN_ID}.txt"
-          git add "$E"/nacar9b_sequence_run"${RUN_ID}".txt >/dev/null 2>&1
+          } >> "$E/nacar9c_sequence_run${RUN_ID}.txt"
+          git add "$E"/nacar9c_sequence_run"${RUN_ID}".txt >/dev/null 2>&1
           if ! git diff --cached --quiet; then
-            if git commit -m "diag: naca r9b sequence run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
+            if git commit -m "diag: naca r9c sequence run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
               if ! git push >/dev/null 2>&1; then
                 git pull --rebase origin ci/long-campaign-diagnostics >/dev/null 2>&1
                 git push >/dev/null 2>&1 || echo "push_retry_failed sequence"
@@ -709,19 +579,19 @@ jobs:
             git reset >/dev/null 2>&1
           fi
 
-      - name: Compose round-9b verdict
+      - name: Compose round-9c verdict
         if: always()
         run: |
           set +e
           set -u
           RUN_ID="${GITHUB_RUN_ID}"
           E="diag-evidence/logs"
-          ALL_VARIANTS="a0_master_anchor a9_all9_anchor k1 k3 d4 b1 b3 b679 sr1 s149 p24 p25 p28 p45 p48 p58 t245 t248 t258 t458 c_b1 c_b3 c_b679 c_d4 c_sr1 c_s149 c_t258 c_p24 c_p25 c_p28 c_p45 c_p48 c_p58 c_t245 c_t248 c_t458"
+          ALL_VARIANTS="a0_master_anchor a9_all9_anchor k3 b3x b3x2 b3x3 c_b3x c_b3x2 c_b3x3 c_k1"
           for short in $ALL_VARIANTS; do
             eval "oc_${short}=NOT_RUN"
           done
           for short in $ALL_VARIANTS; do
-            f="$E/nacar9b_${short}_test_status_run${RUN_ID}.txt"
+            f="$E/nacar9c_${short}_test_status_run${RUN_ID}.txt"
             [ -s "$f" ] || continue
             oc=$(sed -n 's/^outcome=//p' "$f" | tail -1)
             eval "oc_${short}=\"\${oc:-MISSING}\""
@@ -735,157 +605,66 @@ jobs:
           faild() {
             [ "$1" = "FAIL_DIVERGED" ]
           }
-          K1F=0
-          if faild "${oc_k1}"; then K1F=1; fi
-          K3F=0
-          if faild "${oc_k3}"; then K3F=1; fi
-          D4P=0
-          if passp "${oc_d4}"; then D4P=1; fi
-          B1P=0
-          if passp "${oc_b1}"; then B1P=1; fi
-          B1F=0
-          if faild "${oc_b1}"; then B1F=1; fi
-          B3P=0
-          if passp "${oc_b3}"; then B3P=1; fi
-          B3F=0
-          if faild "${oc_b3}"; then B3F=1; fi
+          faildx() {
+            case "$1" in
+              FAIL_DIVERGED|FAIL_DIVERGED_64|FAIL_DIVERGED_256) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
           verdict_line=""
-          verdict_extra=""
           ok=0
           if [ "${oc_a0_master_anchor}" != "FAIL_DIVERGED" ]; then
             verdict_line="A0_ANCHOR_ANOMALY: master + green conv + green test expected FAIL_DIVERGED at N128, got ${oc_a0_master_anchor} -> repeat before concluding"
           elif ! passp "${oc_a9_all9_anchor}"; then
             verdict_line="A9_ANCHOR_ANOMALY: all-9-regions revert (= green trio) expected PASS at N128, got ${oc_a9_all9_anchor} -> repeat before concluding"
-          elif [ "$K1F" = "1" ]; then
-            if ! passp "${oc_b1}"; then
-              verdict_line="MONOTONICITY_VIOLATION: k1 FAIL_DIVERGED (culprit within {r1}) but b1=${oc_b1} (the closure revert must pass) -> repeat before concluding"
-            elif [ "${oc_c_b1}" = "PASS_3_LEVELS" ]; then
-              verdict_line="REGION_CULPRIT_R1: r1_api_fields alone reproduces the N128 divergence (k1: only r1 in master form, everything else green, FAIL_DIVERGED at N128); reverting the r1-closure {r1,r2,r5,r6,r7,r8,r9} (b1) restores N128 and the full 3-level run passes (c_b1) -> production PR = revert r1_api_fields hunks AND the dependent hunks that consume its master-only symbols (decision Steven); optional round 10 hunk-level inside r1"
+          elif passp "${oc_k3}"; then
+            verdict_line="REPRO_ANOMALY_K3: k3 (only r3 in master form) PASSED here (${oc_k3}) but FAIL_DIVERGED_64 in round 9b run 39735295835 at the same md5 pins; deterministic reproducibility broken -> repeat before concluding"
+          elif [ "${oc_k3}" != "FAIL_DIVERGED_64" ]; then
+            verdict_line="INCOMPLETE_K3: k3=${oc_k3} is neither the round-9b FAIL_DIVERGED_64 nor a pass (expected FAIL_DIVERGED_64 repro) -> re-run"
+          elif passp "${oc_b3x}"; then
+            if [ "${oc_c_b3x}" = "PASS_3_LEVELS" ]; then
+              verdict_line="REGION_SET_CULPRIT_B3X: reverting {r3,r4,r6,r7,r8,r9} to green (keeping r1,r2,r5 master) restores N128 AND the full 3-level run passes (c_b3x PASS_3_LEVELS); this is the MINIMAL buildable region-granularity revert containing r3 (any r3 revert forces r4/r7/r9/r6/r8 by the corrected coupling map: r4->r3, r7->r3, r9->r3, green r7->green r6, r8->r7); culprit intersects r3 (k3 FAIL_DIVERGED_64) and is disjoint from r1 (k1 PASS_128 round 9b) -> production PR = revert exactly {r3,r4,r6,r7,r8,r9} on master (CI verte exact-HEAD, requals N64/N128/N256 + wall-shear, fiche a jour); optional round 10 hunk-level inside the set (decision Steven)"
+              ok=1
+            elif [ "${oc_c_k1}" = "PASS_3_LEVELS" ]; then
+              verdict_line="REGION_SET_CULPRIT_K1SET_B3X_INSUF: b3x passes at N128 but the 3-level confirm c_b3x=${oc_c_b3x} fails, while the k1 set (revert r2..r9, keep r1) passes the full 3 levels (c_k1 PASS_3_LEVELS) -> culprit has a member in {r2,r5} (or an N256-only member outside {r3,r4,r6,r7,r8,r9}); production PR = revert {r2,r3,r4,r5,r6,r7,r8,r9} on master (decision Steven); round 10 hunk-level narrows inside (decision Steven)"
               ok=1
             else
-              verdict_line="CONFIRM_ANOMALY: k1 FAIL and b1 PASS but the 3-level confirmation c_b1=${oc_c_b1} -> escalate, do not conclude production"
+              verdict_line="CONFIRM_ANOMALY: b3x PASS_128 but the 3-level confirmation c_b3x=${oc_c_b3x} and the fallback c_k1=${oc_c_k1} both failed -> escalate, do not conclude production"
             fi
-          elif [ "$K3F" = "1" ]; then
-            if ! passp "${oc_b3}"; then
-              verdict_line="MONOTONICITY_VIOLATION: k3 FAIL_DIVERGED (culprit within {r3}) but b3=${oc_b3} (the closure revert must pass) -> repeat before concluding"
-            elif [ "${oc_c_b3}" = "PASS_3_LEVELS" ]; then
-              verdict_line="REGION_CULPRIT_R3: r3_rhie_chow_coef alone reproduces the N128 divergence (k3: only r3 in master form, everything else green, FAIL_DIVERGED at N128); reverting the r3-closure {r3,r4,r6,r7,r9} (b3) restores N128 and the full 3-level run passes (c_b3) -> production PR = revert r3_rhie_chow_coef hunks AND the dependent hunks that consume its master-only symbols (decision Steven); optional round 10 hunk-level inside r3"
+          elif passp "${oc_b3x2}"; then
+            if [ "${oc_c_b3x2}" = "PASS_3_LEVELS" ]; then
+              verdict_line="REGION_SET_CULPRIT_B3X2: reverting {r2,r3,r4,r6,r7,r8,r9} to green (keeping r1,r5 master) restores N128 AND the full 3-level run passes (c_b3x2 PASS_3_LEVELS); b3x (keep r1,r2,r5) did not pass (${oc_b3x}): r2 is implicated (definite divergence) or r2's master form blocks the b3x build -> production PR = revert exactly {r2,r3,r4,r6,r7,r8,r9} on master (CI verte exact-HEAD, requals, fiche a jour); optional round 10 hunk-level inside the set (decision Steven)"
+              ok=1
+            elif [ "${oc_c_k1}" = "PASS_3_LEVELS" ]; then
+              verdict_line="REGION_SET_CULPRIT_K1SET_B3X2_INSUF: b3x2 passes at N128 but the 3-level confirm c_b3x2=${oc_c_b3x2} fails while the k1 set passes fully (c_k1 PASS_3_LEVELS) -> production PR = revert {r2,...,r9} on master (decision Steven); round 10 hunk-level narrows inside (decision Steven)"
               ok=1
             else
-              verdict_line="CONFIRM_ANOMALY: k3 FAIL and b3 PASS but the 3-level confirmation c_b3=${oc_c_b3} -> escalate, do not conclude production"
+              verdict_line="CONFIRM_ANOMALY: b3x2 PASS_128 but the 3-level confirmation c_b3x2=${oc_c_b3x2} and the fallback c_k1=${oc_c_k1} both failed -> escalate, do not conclude production"
             fi
-          elif [ "$D4P" = "1" ]; then
-            FOUNDC=""
-            for pair in p24 p25 p28 p45 p48 p58; do
-              if passp "$(eval echo \${oc_${pair}})"; then FOUNDC="$pair"; break; fi
-            done
-            if [ -z "$FOUNDC" ]; then
-              for tri in t245 t248 t258 t458; do
-                if passp "$(eval echo \${oc_${tri}})"; then FOUNDC="$tri"; break; fi
-              done
-            fi
-            if [ -n "$FOUNDC" ]; then
-              CONF="c_${FOUNDC}"
-              if [ "$(eval echo \${oc_${CONF}})" = "PASS_3_LEVELS" ]; then
-                verdict_line="REGION_SET_CULPRIT_D4: culprit set = ${FOUNDC} within {r2_validation,r4_boundary_operator,r5_evidence_aliases,r8_momentum_rhs_scale} (the set reverts to green and passes at N128; every single-region revert already FAIL_DIVERGED in round 8, so no strict subset contains the culprit; 3-level confirmation ${CONF} PASS_3_LEVELS) -> production PR = revert exactly these regions (buildable on master; decision Steven)"
-                ok=1
-              else
-                verdict_line="CONFIRM_ANOMALY: found ${FOUNDC} but the 3-level confirmation ${CONF}=$(eval echo \${oc_${CONF}}) -> escalate, do not conclude production"
-              fi
-            elif [ "${oc_c_d4}" = "PASS_3_LEVELS" ]; then
-              verdict_line="REGION_SET_CULPRIT_D4_QUAD: culprit set = {r2_validation,r4_boundary_operator,r5_evidence_aliases,r8_momentum_rhs_scale} (d4 revert passes at N128, no pair and no triple passes, singles already FAIL in round 8; 3-level confirmation c_d4 PASS_3_LEVELS) -> production PR = revert exactly these four regions (decision Steven)"
+          elif passp "${oc_b3x3}"; then
+            if [ "${oc_c_b3x3}" = "PASS_3_LEVELS" ]; then
+              verdict_line="REGION_SET_CULPRIT_B3X3: reverting {r3,r4,r5,r6,r7,r8,r9} to green (keeping r1,r2 master) restores N128 AND the full 3-level run passes (c_b3x3 PASS_3_LEVELS); b3x (keep r1,r2,r5) did not pass (${oc_b3x}): r5 is implicated (definite divergence) or r5's master form blocks the b3x build -> production PR = revert exactly {r3,r4,r5,r6,r7,r8,r9} on master (CI verte exact-HEAD, requals, fiche a jour); optional round 10 hunk-level inside the set (decision Steven)"
+              ok=1
+            elif [ "${oc_c_k1}" = "PASS_3_LEVELS" ]; then
+              verdict_line="REGION_SET_CULPRIT_K1SET_B3X3_INSUF: b3x3 passes at N128 but the 3-level confirm c_b3x3=${oc_c_b3x3} fails while the k1 set passes fully (c_k1 PASS_3_LEVELS) -> production PR = revert {r2,...,r9} on master (decision Steven); round 10 hunk-level narrows inside (decision Steven)"
               ok=1
             else
-              verdict_line="INCOMPLETE_D4: d4 PASS but no pair/triple passed and c_d4=${oc_c_d4}; unknown outcomes: $(for s in p24 p25 p28 p45 p48 p58 t245 t248 t258 t458; do eval "v=\${oc_${s}}"; case "$v" in PASS_128|PASS_3_LEVELS|FAIL_DIVERGED|NOT_RUN) ;; *) echo -n "$s=$v " ;; esac; done) -> re-run"
-            fi
-          elif [ "$B1P" = "1" ] && [ "$B3P" = "1" ]; then
-            if [ "${oc_c_b679}" = "PASS_3_LEVELS" ]; then
-              verdict_line="REGION_SET_CULPRIT_TRIO: culprit within {r6_monitor_controls,r7_flux_audit_forms,r9_wall_distance_guards} (b1 and b3 both pass, so the culprit lies in their intersection; these three regions are mutually compile-coupled, this is the finest region-granularity resolution; 3-level confirmation c_b679 PASS_3_LEVELS) -> production PR = revert the trio (decision Steven); optional round 10 hunk-level inside the trio"
-              ok=1
-            else
-              verdict_line="CONFIRM_ANOMALY: b1+b3 PASS but the 3-level confirmation c_b679=${oc_c_b679} -> escalate, do not conclude production"
-            fi
-          elif [ "$B1P" = "1" ] && [ "$B3F" = "1" ]; then
-            if passp "${oc_sr1}"; then
-              FOUNDC=""
-              for pair in p25 p28 p58; do
-                if passp "$(eval echo \${oc_${pair}})"; then FOUNDC="$pair"; break; fi
-              done
-              if [ -n "$FOUNDC" ]; then
-                CONF="c_${FOUNDC}"
-                if [ "$(eval echo \${oc_${CONF}})" = "PASS_3_LEVELS" ]; then
-                  verdict_line="REGION_SET_CULPRIT_258: culprit set = ${FOUNDC} within {r2_validation,r5_evidence_aliases,r8_momentum_rhs_scale} (b3 FAIL: culprit intersects {r1,r2,r5,r8}; sr1 PASS: r1 exonerated; singles already FAIL in round 8; 3-level confirmation ${CONF} PASS_3_LEVELS) -> production PR = revert exactly these regions (decision Steven)"
-                  ok=1
-                else
-                  verdict_line="CONFIRM_ANOMALY: found ${FOUNDC} but the 3-level confirmation ${CONF}=$(eval echo \${oc_${CONF}}) -> escalate, do not conclude production"
-                fi
-              elif passp "${oc_t258}"; then
-                if [ "${oc_c_t258}" = "PASS_3_LEVELS" ]; then
-                  verdict_line="REGION_SET_CULPRIT_258_TRIPLE: culprit set = {r2_validation,r5_evidence_aliases,r8_momentum_rhs_scale} (no pair passes, the triple does; singles already FAIL in round 8; 3-level confirmation c_t258 PASS_3_LEVELS) -> production PR = revert exactly these three regions (decision Steven)"
-                  ok=1
-                else
-                  verdict_line="CONFIRM_ANOMALY: t258 PASS but c_t258=${oc_c_t258} -> escalate, do not conclude production"
-                fi
-              elif [ "${oc_c_sr1}" = "PASS_3_LEVELS" ]; then
-                verdict_line="REGION_SET_CULPRIT_CONSERVATIVE_SR1: reverting {r2,r5,r6,r7,r8,r9} (sr1) fixes N128 and the full 3-level run passes (c_sr1), but the exact subset is joint across {r2,r5,r8} x {r6,r7,r9} at region granularity -> production PR can revert the whole sr1 set as-is, or round 10 hunk-level narrows it (decision Steven)"
-                ok=1
-              else
-                verdict_line="INCOMPLETE_SR1: sr1 PASS but no pair/triple passed and c_sr1=${oc_c_sr1} -> re-run"
-              fi
-            elif ! passp "${oc_sr1}"; then
-              if [ "${oc_sr1}" = "FAIL_DIVERGED" ]; then
-                if [ "${oc_c_b1}" = "PASS_3_LEVELS" ]; then
-                  verdict_line="REGION_SET_CULPRIT_CONSERVATIVE_B1_R1NEC: r1_api_fields is NECESSARY (sr1 = b1 minus r1 reverts FAIL_DIVERGED) but not sufficient alone (k1 PASS_128 in this branch means r1 alone does not reproduce, or k1=${oc_k1}); the conservative fixing set is b1 = {r1,r2,r5,r6,r7,r8,r9} with 3-level confirmation c_b1 PASS_3_LEVELS -> production PR can revert b1 as-is, or round 10 hunk-level identifies the partner(s) of r1 (decision Steven)"
-                  ok=1
-                else
-                  verdict_line="CONFIRM_ANOMALY: sr1 FAIL (r1 necessary) but c_b1=${oc_c_b1} -> escalate, do not conclude production"
-                fi
-              else
-                verdict_line="INCOMPLETE_SR1: sr1=${oc_sr1} is neither a pass nor a divergence -> re-run"
-              fi
-            fi
-          elif [ "$B1F" = "1" ] && [ "$B3P" = "1" ]; then
-            if passp "${oc_s149}"; then
-              if passp "${oc_b679}"; then
-                if [ "${oc_c_b679}" = "PASS_3_LEVELS" ]; then
-                  verdict_line="REGION_SET_CULPRIT_TRIO_VIA_S149: culprit within {r6_monitor_controls,r7_flux_audit_forms,r9_wall_distance_guards} (b3 PASS + s149 PASS + b679 PASS; mutually compile-coupled trio, finest region resolution; 3-level confirmation c_b679 PASS_3_LEVELS) -> production PR = revert the trio (decision Steven); optional round 10 hunk-level"
-                  ok=1
-                else
-                  verdict_line="CONFIRM_ANOMALY: trio identified via s149/b679 but c_b679=${oc_c_b679} -> escalate, do not conclude production"
-                fi
-              elif faild "${oc_b679}"; then
-                if [ "${oc_c_s149}" = "PASS_3_LEVELS" ]; then
-                  verdict_line="REGION_SET_CULPRIT_CONSERVATIVE_S149_R4NEC: r4_boundary_operator is NECESSARY (b679 = s149 minus r4 FAIL_DIVERGED) and the culprit lies within s149 = {r4,r6,r7,r9} (b3 PASS: outside {r1,r2,r5,r8}; s149 PASS); r4 is not sufficient alone (round-8 single revert FAIL) -> conservative fixing set {r4,r6,r7,r9} with 3-level confirmation c_s149 PASS_3_LEVELS -> production PR can revert s149 as-is, or round 10 hunk-level narrows the partner(s) of r4 (decision Steven)"
-                  ok=1
-                else
-                  verdict_line="CONFIRM_ANOMALY: b679 FAIL (r4 necessary) but c_s149=${oc_c_s149} -> escalate, do not conclude production"
-                fi
-              else
-                verdict_line="INCOMPLETE_S149: b679=${oc_b679} is neither a pass nor a divergence -> re-run"
-              fi
-            elif faild "${oc_s149}"; then
-              if [ "${oc_c_b3}" = "PASS_3_LEVELS" ]; then
-                verdict_line="REGION_SET_CULPRIT_CONSERVATIVE_B3_R3NEC: r3_rhie_chow_coef is NECESSARY (s149 = b3 minus r3 FAIL_DIVERGED) and the culprit lies within b3 = {r3,r4,r6,r7,r9} (b3 PASS); r3 is not sufficient alone (k3=${oc_k3} in this branch) -> conservative fixing set b3 with 3-level confirmation c_b3 PASS_3_LEVELS -> production PR can revert b3 as-is, or round 10 hunk-level identifies the partner(s) of r3 (decision Steven)"
-                ok=1
-              else
-                verdict_line="CONFIRM_ANOMALY: s149 FAIL (r3 necessary) but c_b3=${oc_c_b3} -> escalate, do not conclude production"
-              fi
-            else
-              verdict_line="INCOMPLETE_S149: s149=${oc_s149} is neither a pass nor a divergence -> re-run"
-            fi
-          elif [ "$B1F" = "1" ] && [ "$B3F" = "1" ]; then
-            if passp "${oc_sr1}"; then
-              verdict_line="MONOTONICITY_VIOLATION: b1 FAIL (culprit intersects {r3,r4}) yet sr1 PASS (culprit within {r2,r5,r6,r7,r8,r9}) -> repeat before concluding"
-            elif faild "${oc_sr1}"; then
-              verdict_line="JOINT_CROSS_BLOCK: the culprit has members on both sides (b1 FAIL: intersects {r3,r4}; b3 FAIL: intersects {r1,r2,r5,r8}; sr1 FAIL: intersects {r1,r3,r4}) -> region-granularity attribution exhausted; production fallback = full green solver swap (proven PASS_3_LEVELS in round 7 v1 at these pins) or round 10 hunk-level bisect (decision Steven)"
-              ok=1
-            else
-              verdict_line="INCOMPLETE_JOINT: sr1=${oc_sr1} is neither a pass nor a divergence -> re-run"
+              verdict_line="CONFIRM_ANOMALY: b3x3 PASS_128 but the 3-level confirmation c_b3x3=${oc_c_b3x3} and the fallback c_k1=${oc_c_k1} both failed -> escalate, do not conclude production"
             fi
           else
-            verdict_line="INCOMPLETE_WITH_UNKNOWNS: k1=${oc_k1} k3=${oc_k3} d4=${oc_d4} b1=${oc_b1} b3=${oc_b3} -> definite outcomes missing, re-run"
+            if [ "${oc_c_k1}" = "PASS_3_LEVELS" ]; then
+              if [ "${oc_b3x}" = "INCONCLUSIVE_BUILD" ] && [ "${oc_b3x2}" = "INCONCLUSIVE_BUILD" ] && [ "${oc_b3x3}" = "INCONCLUSIVE_BUILD" ]; then
+                verdict_line="REGION_SET_CULPRIT_K1SET_BUILD_FALLBACK: none of the finer buildable-candidate probes compiled (b3x/b3x2/b3x3 INCONCLUSIVE_BUILD: the coupling map is still incomplete), but the k1 set (revert r2..r9, keep r1) passes the full 3-level run (c_k1 PASS_3_LEVELS) -> conservative production PR = revert {r2,...,r9} on master (decision Steven); round 10 must first complete the coupling map (compile-error triage) before hunk-level bisect"
+                ok=1
+              else
+                verdict_line="REGION_SET_CULPRIT_K1SET: no finer probe passed (b3x=${oc_b3x} keep r1,r2,r5; b3x2=${oc_b3x2} keep r1,r5, so a definite divergence implicates r5; b3x3=${oc_b3x3} keep r1,r2, so a definite divergence implicates r2), and the k1 set (revert r2..r9, keep r1) passes the full 3-level run (c_k1 PASS_3_LEVELS) -> every implicated member (r2 and/or r5) is inside {r2,...,r9}; production PR = revert {r2,...,r9} on master (CI verte exact-HEAD, requals N64/N128/N256 + wall-shear, fiche a jour); round 10 hunk-level narrows inside the set (decision Steven)"
+                ok=1
+              fi
+            else
+              verdict_line="INCOMPLETE_WITH_UNKNOWNS: a0=${oc_a0_master_anchor} a9=${oc_a9_all9_anchor} k3=${oc_k3} b3x=${oc_b3x} b3x2=${oc_b3x2} b3x3=${oc_b3x3} c_b3x=${oc_c_b3x} c_b3x2=${oc_c_b3x2} c_b3x3=${oc_c_b3x3} c_k1=${oc_c_k1} -> definite outcomes missing, re-run"
+            fi
           fi
-          VER="$E/nacar9b_verdict_run${RUN_ID}.txt"
+          VER="$E/nacar9c_verdict_run${RUN_ID}.txt"
           {
             echo "VERDICT: ${verdict_line}"
             echo "run_id=${RUN_ID}"
@@ -893,37 +672,25 @@ jobs:
             echo "green_pin=${GREEN_PIN}"
             echo "round7_context=IN_TRIO_CULPRIT (run 39663748207: v1+v2 PASS_3_LEVELS green-identical, v0 FAIL)"
             echo "round8_context=COMBINATION_OR_COUPLED (run 39672681948: v0b/vC FAIL as expected = test+conv neutral, r2/r4/r5/r8/r9 single reverts all FAIL_DIVERGED, r1/r3/r6/r7 INCONCLUSIVE_BUILD)"
-            echo "round9_context=A9_ANCHOR_ANOMALY (run 39722433948: N128-only invocation passed 1 mesh to a 3-mesh binary; invalid, repeated here with fixed invocation)"
-            echo "compile_coupling=master r2->r1, r4->r3, r5->r1, r6->r1, r7->r3, r8->r1, r9->r3+r6; green r7->green r6 (round-9 build logs)"
+            echo "round9_context=A9_ANCHOR_ANOMALY (run 39722433948: N128-only invocation passed 1 mesh to a 3-mesh binary; invalid, fixed since)"
+            echo "round9b_context=INCOMPLETE_WITH_UNKNOWNS (run 39735295835: a0 FAIL_DIVERGED, a9 PASS_128, k1 PASS_128 (r1 exonerated), k3 FAIL_DIVERGED_64 (r3 implicated), d4 FAIL_DIVERGED, b1 FAIL_DIVERGED_64, b3 INCONCLUSIVE_BUILD)"
+            echo "compile_coupling=master r2->r1, r4->r3, r5->r1, r6->r1, r7->r3, r8->r1, r8->r7 (NEW: rhie_chow_identity_* declared in r7 master, consumed by r8 master; proven by round-9b b3 build log), r9->r3+r6; green r7->green r6"
+            echo "minimal_buildable_r3_revert={r3,r4,r6,r7,r8,r9} (closure over the corrected map)"
             echo "a0_master_anchor=${oc_a0_master_anchor} (expected FAIL_DIVERGED)"
             echo "a9_all9_anchor=${oc_a9_all9_anchor} (expected PASS at N128)"
-            echo "k1(r1 only)=${oc_k1}"
-            echo "k3(r3 only)=${oc_k3}"
-            echo "d4(revert r2,r4,r5,r8)=${oc_d4}"
-            echo "b1(revert r1,r2,r5,r6,r7,r8,r9)=${oc_b1}"
-            echo "b3(revert r3,r4,r6,r7,r9)=${oc_b3}"
-            echo "b679(revert r6,r7,r9)=${oc_b679}"
-            echo "sr1(revert r2,r5,r6,r7,r8,r9)=${oc_sr1}"
-            echo "s149(revert r4,r6,r7,r9)=${oc_s149}"
-            for s in p24 p25 p28 p45 p48 p58; do
-              eval "echo \"${s}=\${oc_${s}}\""
-            done
-            for s in t245 t248 t258 t458; do
-              eval "echo \"${s}=\${oc_${s}}\""
-            done
-            echo "t258_in_sr1_branch=${oc_t258}"
-            echo "c_b1=${oc_c_b1}"
-            echo "c_b3=${oc_c_b3}"
-            echo "c_b679=${oc_c_b679}"
-            echo "c_d4=${oc_c_d4}"
-            echo "c_sr1=${oc_c_sr1}"
-            echo "c_s149=${oc_c_s149}"
-            echo "c_t258=${oc_c_t258}"
+            echo "k3(r3 only)=${oc_k3} (round-9b repro: expected FAIL_DIVERGED_64)"
+            echo "b3x(revert r3,r4,r6,r7,r8,r9)=${oc_b3x}"
+            echo "b3x2(revert r2,r3,r4,r6,r7,r8,r9)=${oc_b3x2}"
+            echo "b3x3(revert r3,r4,r5,r6,r7,r8,r9)=${oc_b3x3}"
+            echo "c_b3x=${oc_c_b3x}"
+            echo "c_b3x2=${oc_c_b3x2}"
+            echo "c_b3x3=${oc_c_b3x3}"
+            echo "c_k1=${oc_c_k1}"
             echo "sign_note=green test carries the OLD #926 Cd_pressure convention (Fxp+=-pp): compare iterations/convergence, never raw Cd signs"
             echo ""
             echo "--- per-variant NACA digest (level markers + failure) ---"
             for short in $ALL_VARIANTS; do
-              L="$E/nacar9b_${short}_main_run${RUN_ID}.log"
+              L="$E/nacar9c_${short}_main_run${RUN_ID}.log"
               [ -s "$L" ] || continue
               echo "### ${short}"
               grep -E "NACA0012_RE1000_A0 level=|NACA0012_QUALIFICATION|did not converge|what\(\):|Cd=" "$L" | tail -14
@@ -936,7 +703,7 @@ jobs:
           git config user.email "actions@github.com"
           git add "$VER" >/dev/null 2>&1
           if ! git diff --cached --quiet; then
-            if git commit -m "diag: naca r9b verdict run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
+            if git commit -m "diag: naca r9c verdict run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
               if ! git push >/dev/null 2>&1; then
                 git pull --rebase origin ci/long-campaign-diagnostics >/dev/null 2>&1
                 git push >/dev/null 2>&1 || echo "push_retry_failed verdict"
@@ -946,8 +713,8 @@ jobs:
             git reset >/dev/null 2>&1
           fi
           if [ "$ok" = "1" ]; then
-            echo "round-9b additive-region campaign: ${verdict_line}"
+            echo "round-9c minimal-buildable-revert campaign: ${verdict_line}"
           else
-            echo "::error::round-9b not conclusive: ${verdict_line}"
+            echo "::error::round-9c not conclusive: ${verdict_line}"
             exit 1
           fi
