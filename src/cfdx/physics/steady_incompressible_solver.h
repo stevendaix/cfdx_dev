@@ -483,6 +483,10 @@ inline void validate_incompressible_controls(
             throw std::invalid_argument("SST production runtime requires an initialized state");
         if (c.sst_runtime->transport.model != TurbulenceModel::SST)
             throw std::invalid_argument("SST production runtime requires SST transport controls");
+        if (c.sst_runtime->transport.density != c.density ||
+            c.sst_runtime->transport.molecular_viscosity != c.kinematic_viscosity)
+            throw std::invalid_argument(
+                "SST transport density and molecular viscosity must match the carrier material properties");
         if (c.sst_runtime->max_transport_iterations == 0 ||
             !(c.sst_runtime->transport_tolerance > 0.0) ||
             !std::isfinite(c.sst_runtime->transport_tolerance))
@@ -2493,8 +2497,21 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // Authoritative dynamic viscosity used by predictor assembly, nonlinear
     // acceptance residuals, and the independent momentum conservation audit.
     std::vector<double> mu_eff(mesh.n_cells());
-    if (controls.sst_runtime)
+    if (controls.sst_runtime) {
         validate_sst_production_state(*controls.sst_runtime->state, mesh.n_cells());
+        std::map<std::string, std::array<double, 3>> fixed_velocity_values;
+        for (const auto& [patch, bc] : velocity_bcs) {
+            if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                fixed_velocity_values.emplace(
+                    patch, std::array<double, 3>{bc.value.x, bc.value.y, bc.value.z});
+        }
+        // The first momentum assembly must use viscosity derived from the
+        // actual initialized/restarted carrier field, not a caller's stale
+        // pre-solve estimate of strain rate.
+        refresh_sst_production_derived_state_from_mesh(
+            *controls.sst_runtime->state, mesh, controls.sst_runtime->transport,
+            U, fixed_velocity_values, controls.sst_runtime->wall_patch_names);
+    }
     for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
         const double nu_t = controls.sst_runtime
             ? controls.sst_runtime->state->nu_t(cell)
