@@ -65,7 +65,7 @@
 - [x] Rebuild `mu_eff[c] = rho * (nu + nu_t[c])` after an accepted coupled iteration for the next momentum predictor (PR #1032).
 - [x] Add an independent SST convergence/boundedness hard gate without mixing dimensional transport residuals into the normalized carrier metric (PR #1032).
 - [x] Per-attempt SST snapshot/restore is connected to carrier retry/rejection and unexpected-exception paths; nested rollback regression is covered by PR #1030.
-- [ ] Add production E2E coverage proving the opt-in runtime executes transport, refreshes viscosity, and restores all coupled fields on a real solve rejection. Current PR adds runtime contract coverage only; do not mark this gate complete yet.
+- [ ] Expand the production-solver SST smoke test into decisive E2E assertions for transport invocation, `nu_t`/`mu_eff` refresh timing, and exact restoration after a real retry/rejection. The current smoke test proves the opt-in path is exercised but does not yet prove all three behaviors.
 - [ ] Keep unsupported models fail-closed.
 
 ### T3 — Transport verification and physical qualification
@@ -221,7 +221,7 @@ Evidence: PR #1017 merged the affine-field boundary reconstruction test; PR #101
 
 PR #1032 adds the opt-in production outer-loop coupling: it refreshes mesh/carrier-derived state, advances SST transport using the current authoritative mass flux, restores SST on retry/rejection, gates convergence on transport status and boundedness, and refreshes `mu_eff` for the next momentum predictor. Remaining work:
 
-1. Add production E2E coverage proving transport executes, viscosity refreshes, and coupled fields restore on a real solver retry/rejection.
+1. Expand the production-solver SST smoke test into decisive E2E assertions for transport invocation, `nu_t`/`mu_eff` refresh timing, and exact restoration after a real retry/rejection.
 2. Construct `SSTProductionRuntime` from persisted case boundary metadata and initialized or DAT-restored state in the application driver; resolve geometric `WALL_OMEGA_SST` face values explicitly and fail closed when unsupported.
 3. Prove continuous-versus-restarted production trajectory equivalence, including authoritative mass flux and all SST-owned fields.
 4. Complete transport MMS on at least three mesh levels, frozen DNS channel qualification and mesh/y+ sensitivity, then flat-plate and NACA0012 validation.
