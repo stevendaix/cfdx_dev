@@ -4,6 +4,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .visualization_pipeline import VisualizationOperation, VisualizationPipeline
+
 try:
     from PySide6.QtWidgets import QVBoxLayout, QWidget
 except ImportError:
@@ -29,6 +31,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self._selected_field: str | None = None
         self._dat_dataset = None
         self._dat_fields: list[str] = []
+        self._visualization_pipeline = VisualizationPipeline()
         layout = QVBoxLayout(self)
         layout.addWidget(self.plotter)
 
@@ -48,6 +51,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             raise FileNotFoundError(source)
         self.plotter.clear()
         self._actors.clear()
+        self._visualization_pipeline = VisualizationPipeline()
         self._current_result = path
         self._dat_dataset = None
         self._dat_fields = []
@@ -85,6 +89,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                 raise ValueError("boundary patch metadata/offset count mismatch")
             self.plotter.clear()
             self._actors.clear()
+            self._visualization_pipeline = VisualizationPipeline()
             for index, item in enumerate(metadata):
                 fields = item.split(":")
                 if len(fields) < 4:
@@ -149,6 +154,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
 
         self.plotter.clear()
         self._actors.clear()
+        self._visualization_pipeline = VisualizationPipeline()
         self._current_result = None
         self._selected_field = None
         self._dat_dataset = dataset
@@ -160,45 +166,55 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self.plotter.render()
         return list(self._dat_fields)
 
+    def _render_visualization(self) -> None:
+        """Render the replayed pipeline without replacing its source dataset."""
+        source = self._dataset()
+        derived = self._visualization_pipeline.evaluate(source)
+        self.plotter.clear()
+        self.plotter.add_mesh(
+            derived,
+            scalars=(
+                self._selected_field
+                if not self._visualization_pipeline.operations
+                and self._selected_field in self._available_fields(derived)
+                else None
+            ),
+        )
+        self.plotter.render()
+
     def set_field(self, field: str) -> None:
-        """Display a selected result field on the current dataset."""
+        """Display a selected result field on the current source dataset."""
         dataset = self._dataset()
         if field not in self._available_fields(dataset):
             raise KeyError(field)
         self._selected_field = field
-        self.plotter.clear()
-        self.plotter.add_mesh(dataset, scalars=field)
-        self.plotter.render()
+        self._visualization_pipeline = VisualizationPipeline()
+        self._render_visualization()
 
     def contour(self, scalars: str, isosurfaces: int = 10) -> None:
-        dataset = self._dataset()
-        if scalars not in self._available_fields(dataset):
-            raise KeyError(scalars)
-        self.plotter.clear()
-        self.plotter.add_mesh(dataset.contour(isosurfaces=isosurfaces, scalars=scalars))
-        self.plotter.render()
+        """Append a contour operation to the current visualization pipeline."""
+        operation = VisualizationOperation.contour(scalars, isosurfaces)
+        operation.apply(self._dataset())
+        self._visualization_pipeline = self._visualization_pipeline.append(operation)
+        self._render_visualization()
 
     def slice(self, normal: tuple[float, float, float] = (1.0, 0.0, 0.0)) -> None:
-        dataset = self._dataset()
-        self.plotter.clear()
-        self.plotter.add_mesh(dataset.slice(normal=normal))
-        self.plotter.render()
+        """Append a slice operation to the current visualization pipeline."""
+        operation = VisualizationOperation.slice(normal)
+        self._visualization_pipeline = self._visualization_pipeline.append(operation)
+        self._render_visualization()
 
     def glyph(self, scalars: str, factor: float = 1.0) -> None:
-        dataset = self._dataset()
-        if scalars not in self._available_fields(dataset):
-            raise KeyError(scalars)
-        array = dataset.point_data.get(scalars)
-        if array is None:
-            array = dataset.cell_data.get(scalars)
-        if array is None:
-            raise KeyError(scalars)
-        self.plotter.clear()
-        kwargs = {"scale": scalars, "factor": factor}
-        if getattr(array, "ndim", 1) == 2 and array.shape[1] == 3:
-            kwargs["orient"] = scalars
-        self.plotter.add_mesh(dataset.glyph(**kwargs))
-        self.plotter.render()
+        """Append a glyph operation to the current visualization pipeline."""
+        operation = VisualizationOperation.glyph(scalars, factor)
+        operation.apply(self._dataset())
+        self._visualization_pipeline = self._visualization_pipeline.append(operation)
+        self._render_visualization()
+
+    def reset_visualization(self) -> None:
+        """Remove all derived operations and show the original dataset again."""
+        self._visualization_pipeline = self._visualization_pipeline.clear()
+        self._render_visualization()
 
     def select(self, object_id: str) -> None:
         """Highlight a stable patch actor by application selection ID."""
@@ -215,6 +231,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self._selected_field = None
         self._dat_dataset = None
         self._dat_fields = []
+        self._visualization_pipeline = VisualizationPipeline()
 
     def closeEvent(self, event) -> None:
         self.plotter.close()
