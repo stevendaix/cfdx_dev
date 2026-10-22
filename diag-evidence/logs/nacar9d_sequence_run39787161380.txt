@@ -1,0 +1,5 @@
+a0_master_anchor=FAIL_DIVERGED
+a9_all9_anchor=PASS_128
+k3=FAIL_DIVERGED_64
+b3x=PASS_128
+branch=B3X_DIRECT confirm=PASS_3_LEVELS
