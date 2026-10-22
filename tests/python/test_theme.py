@@ -86,6 +86,7 @@ def test_text_token_contrast_meets_wcag_aa_for_normal_text(
         "contrast threshold for normal text"
     )
 
+
 @pytest.mark.parametrize(
     "status_token",
     ["status.success", "status.warning", "status.error", "status.info"],
