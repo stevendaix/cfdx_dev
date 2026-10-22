@@ -422,7 +422,7 @@ int main()
         // using the caller's stale eddy viscosity. For this one-cell, zero-strain
         // state, the SST limiter gives nu_t = k / omega = 0.1 m^2/s.
         EXPECT_NEAR(state.nu_t(0), state.k(0) / state.omega(0), 1e-10);
-        EXPECT_GT(state.nu_t(0), 0.05);
+        EXPECT_TRUE(state.nu_t(0) > 0.05);
     });
 
     run_case("steady_incompressible_zero_state_is_fixed_point", [] {
