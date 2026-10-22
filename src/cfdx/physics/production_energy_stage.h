@@ -373,6 +373,8 @@ struct ProductionEnergyStageResult {
     // results finite. A red independent audit can never yield converged.
     bool converged = false;
     bool linear_solver_converged = false;
+    int linear_solver_status = -1;
+    double linear_residual_relative = std::numeric_limits<double>::infinity();
     bool global_energy_balance_passed = false;
     bool local_energy_balance_passed = false;
     std::size_t iterations = 0;
@@ -504,7 +506,9 @@ inline ProductionEnergyStageResult run_production_energy_stage(
         energy_case.controls, bcs);
 
     ProductionEnergyStageResult result;
-    result.linear_solver_converged = solve.converged;
+    result.linear_solver_converged = solve.linear_solver_converged;
+    result.linear_solver_status = solve.linear_solver_status;
+    result.linear_residual_relative = solve.linear_residual_relative;
     result.iterations = solve.iterations;
     result.history = solve.history;
     result.controls = energy_case.controls;
