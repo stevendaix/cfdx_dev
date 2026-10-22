@@ -181,6 +181,10 @@ struct SSTProductionRuntime {
     TurbulenceTransportControls transport;
     ScalarBoundaryConditions k_boundary_conditions;
     ScalarBoundaryConditions omega_boundary_conditions;
+    // Optional per-face omega data, including the existing geometric wall-omega
+    // contract. Kept owned by the runtime so the pointer passed to transport
+    // remains valid for the duration of the update.
+    ScalarBoundaryFaceValues omega_face_values;
     std::vector<std::string> wall_patch_names;
     std::size_t max_transport_iterations = 100;
     double transport_tolerance = 1e-8;
@@ -4037,7 +4041,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.sst_runtime->k_boundary_conditions,
                 controls.sst_runtime->omega_boundary_conditions,
                 controls.sst_runtime->max_transport_iterations,
-                controls.sst_runtime->transport_tolerance);
+                controls.sst_runtime->transport_tolerance,
+                &controls.sst_runtime->omega_face_values);
             if (!sst_step.committed)
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: SST update rejected: " + sst_step.reason);
