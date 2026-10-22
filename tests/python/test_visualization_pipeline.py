@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from cfdx.visualization_pipeline import (
     VisualizationOperation,
     VisualizationPipeline,
@@ -28,9 +27,11 @@ class FakeDataset:
 
 def test_pipeline_replays_ordered_operations_without_mutating_source():
     source = FakeDataset()
-    pipeline = VisualizationPipeline().append(
-        VisualizationOperation.contour("p", 7)
-    ).append(VisualizationOperation.slice((0.0, 1.0, 0.0)))
+    pipeline = (
+        VisualizationPipeline()
+        .append(VisualizationOperation.contour("p", 7))
+        .append(VisualizationOperation.slice((0.0, 1.0, 0.0)))
+    )
 
     result = pipeline.evaluate(source)
 
@@ -78,6 +79,4 @@ def test_operation_checks_field_availability_and_supports_vector_glyphs():
         VisualizationOperation.contour("temperature").apply(source)
 
     result = VisualizationOperation.glyph("U", factor=2.0).apply(source)
-    assert result.history == (
-        ("glyph", {"scale": "U", "factor": 2.0, "orient": "U"}),
-    )
+    assert result.history == (("glyph", {"scale": "U", "factor": 2.0, "orient": "U"}),)
