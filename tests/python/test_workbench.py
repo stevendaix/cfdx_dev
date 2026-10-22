@@ -49,15 +49,24 @@ def test_workbench_has_stable_docks() -> None:
         == "Your simulation workspace"
     )
     assert window.workflow_tree.topLevelItem(0).font(0).bold()
-    assert window.viewport_placeholder.findChild(
-        QPushButton, "workbench.empty_state.open_mesh"
-    ).text() == "Open Mesh"
-    assert window.viewport_placeholder.findChild(
-        QPushButton, "workbench.empty_state.open_dat_result"
-    ).text() == "Load DAT Result"
-    assert window.viewport_placeholder.findChild(
-        QPushButton, "workbench.empty_state.open_results"
-    ).text() == "Open Results Folder"
+    assert (
+        window.viewport_placeholder.findChild(
+            QPushButton, "workbench.empty_state.open_mesh"
+        ).text()
+        == "Open Mesh"
+    )
+    assert (
+        window.viewport_placeholder.findChild(
+            QPushButton, "workbench.empty_state.open_dat_result"
+        ).text()
+        == "Load DAT Result"
+    )
+    assert (
+        window.viewport_placeholder.findChild(
+            QPushButton, "workbench.empty_state.open_results"
+        ).text()
+        == "Open Results Folder"
+    )
     window.workflow_tree.setCurrentItem(window.workflow_tree.topLevelItem(0).child(4))
     assert window.application.state.selection.stable_id == "boundaries"
     window.close()
