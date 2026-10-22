@@ -24,8 +24,8 @@ try:
     from PySide6.QtWidgets import (
         QDockWidget,
         QFileDialog,
-        QHBoxLayout,
         QFormLayout,
+        QHBoxLayout,
         QLabel,
         QLineEdit,
         QMainWindow,
