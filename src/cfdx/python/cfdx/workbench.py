@@ -22,12 +22,15 @@ try:
     from PySide6.QtCore import QSettings, Qt, Signal
     from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor
     from PySide6.QtWidgets import (
+        QDialog,
         QDockWidget,
         QFileDialog,
         QFormLayout,
         QHBoxLayout,
         QLabel,
         QLineEdit,
+        QListWidget,
+        QListWidgetItem,
         QMainWindow,
         QPushButton,
         QStackedLayout,
@@ -161,8 +164,11 @@ if QMainWindow is not object:
             toolbar.addSeparator()
             search = QAction("Search", self)
             search.setObjectName("workbench.action.search")
-            search.setEnabled(False)
+            search.setShortcut("Ctrl+K")
+            search.setToolTip("Search commands and workspaces (Ctrl+K)")
+            search.triggered.connect(self._show_command_palette)
             toolbar.addAction(search)
+            self.search_action = search
             self.toolbar = toolbar
             self._build_workspace_toolbar()
 
@@ -192,6 +198,61 @@ if QMainWindow is not object:
                 self.workspace_actions[workspace] = action
             self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
             self.workspace_toolbar = toolbar
+
+        def _show_command_palette(self) -> None:
+            """Open a keyboard-first palette over existing application actions."""
+            dialog = QDialog(self)
+            dialog.setObjectName("workbench.command_palette")
+            dialog.setWindowTitle("Command Palette")
+            dialog.setMinimumWidth(520)
+            layout = QVBoxLayout(dialog)
+            query = QLineEdit(dialog)
+            query.setObjectName("workbench.command_palette.query")
+            query.setPlaceholderText("Search commands and workspaces...")
+            results = QListWidget(dialog)
+            results.setObjectName("workbench.command_palette.results")
+            layout.addWidget(query)
+            layout.addWidget(results)
+
+            commands: list[tuple[str, QAction]] = []
+            for action in self.findChildren(QAction):
+                if action is self.search_action or not action.isEnabled():
+                    continue
+                label = action.text().replace("&", "").strip()
+                if label:
+                    commands.append((label, action))
+            commands.sort(key=lambda item: item[0].casefold())
+
+            def refresh_results(text: str = "") -> None:
+                results.clear()
+                needle = text.casefold().strip()
+                for label, action in commands:
+                    if needle and needle not in label.casefold():
+                        continue
+                    item = QListWidgetItem(label)
+                    item.setData(Qt.ItemDataRole.UserRole, action)
+                    results.addItem(item)
+                if results.count():
+                    results.setCurrentRow(0)
+
+            def activate_current() -> None:
+                item = results.currentItem()
+                if item is None:
+                    return
+                action = item.data(Qt.ItemDataRole.UserRole)
+                dialog.accept()
+                if isinstance(action, QAction) and action.isEnabled():
+                    action.trigger()
+
+            query.textChanged.connect(refresh_results)
+            results.itemActivated.connect(lambda _item: activate_current())
+            query.returnPressed.connect(activate_current)
+            refresh_results()
+            dialog.show()
+            query.setFocus()
+            self.command_palette_dialog = dialog
+            self.command_palette_query = query
+            self.command_palette_results = results
 
         def _set_workspace(self, workspace: str) -> None:
             """Apply a named dock layout while preserving all panel instances."""

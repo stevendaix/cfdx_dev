@@ -77,6 +77,14 @@ def test_workbench_has_stable_docks() -> None:
         == "Open Results Folder"
     )
     window.workflow_tree.setCurrentItem(window.workflow_tree.topLevelItem(0).child(4))
+    assert window.search_action.isEnabled()
+    assert window.search_action.shortcut().toString() == "Ctrl+K"
+    window._show_command_palette()
+    assert window.command_palette_dialog.objectName() == "workbench.command_palette"
+    window.command_palette_query.setText("Analyze")
+    assert window.command_palette_results.count() == 1
+    assert window.command_palette_results.item(0).text() == "Analyze"
+    window.command_palette_dialog.close()
     assert window.application.state.selection.stable_id == "boundaries"
     window.close()
     app.quit()
