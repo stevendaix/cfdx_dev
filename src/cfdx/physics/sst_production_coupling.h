@@ -471,6 +471,67 @@ inline void refresh_sst_production_derived_state_from_mesh(
     state = candidate;
 }
 
+
+// Execute the production-side SST state update as one accept/reject unit.
+// Derived wall distance and strain are refreshed from the current carrier
+// iterate before transport; a rejected transport step restores U, p, phi and
+// every SST field, including the derived fields refreshed above. This is a
+// reusable orchestration seam only: the production outer loop must call it
+// explicitly and retain the fail-closed turbulence selector until qualified.
+inline SSTProductionStepResult advance_sst_production_iterate_transactionally(
+    const cfdx::core::Mesh& mesh,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure,
+    cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
+    SSTProductionState& state,
+    const TurbulenceTransportControls& controls,
+    const std::map<std::string, std::array<double, 3>>& fixed_velocity_boundary_values,
+    const std::vector<std::string>& wall_patch_names = {},
+    const ScalarBoundaryConditions& k_bcs = {},
+    const ScalarBoundaryConditions& omega_bcs = {},
+    std::size_t max_iterations = 100,
+    double tolerance = 1e-8,
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
+{
+    if (velocity.size() != mesh.n_cells() || velocity.dimension() != 3 ||
+        pressure.size() != mesh.n_cells() || pressure.dimension() != 1 ||
+        mass_flux.size() != mesh.n_faces() || mass_flux.dimension() != 1)
+        throw std::invalid_argument(
+            "advance_sst_production_iterate_transactionally: carrier field shape mismatch");
+    if (controls.model != TurbulenceModel::SST)
+        throw std::invalid_argument(
+            "advance_sst_production_iterate_transactionally requires SST controls");
+
+    SSTCoupledStateTransaction transaction(velocity, pressure, mass_flux, state);
+    transaction.begin();
+    try {
+        refresh_sst_production_derived_state_from_mesh(
+            state, mesh, controls, velocity, fixed_velocity_boundary_values,
+            wall_patch_names);
+        const FvGeometry geometry = build_fv_geometry(mesh);
+        auto result = advance_sst_transport_transactionally(
+            mesh, geometry, mass_flux, state.k, state.omega, state.strain_rate,
+            state.wall_distance, controls, state.nu_t, k_bcs, omega_bcs,
+            max_iterations, tolerance, omega_face_values);
+        if (!result.committed) {
+            transaction.rollback();
+            result.reason =
+                "coupled SST production iterate rejected and fully rolled back: " +
+                result.reason;
+            return result;
+        }
+        validate_sst_production_state(state, mesh.n_cells());
+        transaction.commit();
+        result.reason =
+            "coupled SST production iterate committed: derived state and transport converged";
+        return result;
+    } catch (...) {
+        if (transaction.active())
+            transaction.rollback();
+        throw;
+    }
+}
+
 struct SSTRuntimeBoundaryContract {
     ScalarBoundaryConditions k;
     ScalarBoundaryConditions omega;

@@ -79,3 +79,14 @@ $$a_P\phi_P=\sum_{nb}a_{nb}\phi_{nb}+b,\qquad a_P=\sum_{nb}a_{nb}+\frac{\rho V_P
 ## 8. Journal des modifications de la fiche
 - 2026-10-12 — création (Phase 3 du Plan Directeur, PR empilée sur governance/constitution-technique).
 - 2026-10-12 — approbation du contrat (PR d'approbation #861) ; l'audit du code contre cette fiche reste requis avant toute promotion (Règle d'Or 1).
+
+
+## 9. Contrat d'itération couplée SST en production (PR #1028)
+- `advance_sst_production_iterate_transactionally` orchestre un pas de transport SST sans activer à lui seul le modèle RANS dans le solveur de production.
+- Avant le transport, la distance à la paroi et le taux de déformation sont recalculés depuis le maillage et l'itéré courant de vitesse, avec reconstruction tenant compte des conditions aux limites de vitesse fixes.
+- Le contrat d'acceptation est atomique pour les champs porteurs `U`, `p`, `phi` et l'état SST (`k`, `omega`, `nu_t`, distance à la paroi et taux de déformation). Un rejet du transport restaure l'état antérieur exact ; une exception restaure l'état avant propagation.
+- Le commit n'est autorisé qu'après convergence du transport et validation de l'état SST. Ce helper est une couture d'orchestration, pas encore l'intégration dans la boucle externe de `solve_steady_incompressible` et ne constitue pas une qualification physique.
+- Le sélecteur RANS de production doit rester fail-closed jusqu'à l'intégration complète, aux tests de transport MMS sur au moins trois maillages et à la qualification des cas DNS/couche limite/NACA déclarés en section 6.
+
+## 10. Journal des modifications de la fiche
+- 2026-10-22 — contrat d'itération SST transactionnelle documenté pour la PR #1028 ; la vérification du code et les tests exact-head restent obligatoires.
