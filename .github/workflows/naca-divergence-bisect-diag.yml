@@ -1,8 +1,8 @@
-name: NACA0012 minimal-buildable-revert probes (round 9c)
+name: NACA0012 minimal-buildable-revert probes (round 9d)
 
 # DIAG-ONLY - diagnostics branch ci/long-campaign-diagnostics (NEVER merge).
 #
-# Goal (round 9c): complete the region-level attribution left INCOMPLETE by
+# Goal (round 9d): complete the region-level attribution left INCOMPLETE by
 # round 9b, using the corrected compile-coupling map. Locked context:
 #   round 7 (run 39663748207) IN_TRIO_CULPRIT: v1_green_trio PASS_3_LEVELS
 #     (N64 433 / N128 995 / N256 3989 it), v0 FAIL_DIVERGED.
@@ -16,6 +16,15 @@ name: NACA0012 minimal-buildable-revert probes (round 9c)
 #     is green-like: N64 433 / N128 995 it, identical to the green anchor),
 #     k3 FAIL_DIVERGED_64 (only r3 in master form diverges at N64, 8000 it),
 #     d4 FAIL_DIVERGED, b1 FAIL_DIVERGED_64, b3 INCONCLUSIVE_BUILD.
+#   round 9c (run 39781608766) INCOMPLETE_K3 - MECHANICAL ABORT: the k3
+#     pin (MD5_K3) was omitted from BOTH the hybrid-generation step and the
+#     variant-loop HMD5 map; under set -u the first k3 invocation hit an
+#     unbound HMD5[k3] and killed the loop step right after the VALID
+#     anchors (a0 FAIL_DIVERGED at 13:09Z, a9 PASS_128 at 13:20Z). No
+#     behavior probe was ever run. Round 9d = same design with the k3 pin
+#     restored (58c8c3aa54723f1676ff088fb16e9877, the pin proven by round
+#     9b at these commits) plus a fail-fast pre-flight check (pins AND
+#     hybrid files) that aborts BEFORE spending any anchor build time.
 #
 # NEW coupling edge (proven by the round-9b b3 build log, same pins):
 #   master r8 -> r7 (rhie_chow_identity_evaluated and
@@ -42,7 +51,7 @@ name: NACA0012 minimal-buildable-revert probes (round 9c)
 # The round-9b b3 branch (b3, s149, b679) is NOT buildable on this map:
 # each keeps r8 master while reverting r7.
 #
-# Method (round 9c): probes over buildable revert sets, monotone (revert S
+# Method (round 9d): probes over buildable revert sets, monotone (revert S
 # fixes iff culprit C is a subset of S). Fixed phase: a0 (master anchor,
 # expect FAIL_DIVERGED), a9 (all-9 revert = green, expect PASS_128), k3
 # (repro context: expect FAIL_DIVERGED_64 exactly as in round 9b at the
@@ -74,7 +83,7 @@ name: NACA0012 minimal-buildable-revert probes (round 9c)
 # the full 3 levels with timeout 3600 s and require rc=0 =>
 # PASS_3_LEVELS for a production-grade verdict.
 #
-# Interpretation guide (round 9c) - valid only if a0 FAIL_DIVERGED,
+# Interpretation guide (round 9d) - valid only if a0 FAIL_DIVERGED,
 # a9 PASS and k3 NOT passing (else anchor/repro anomaly, repeat):
 #   REGION_SET_CULPRIT_B3X  : production revert = {r3,r4,r6,r7,r8,r9}
 #     (keep r1,r2,r5), 3-level confirmed. Minimal buildable r3-revert.
@@ -115,12 +124,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: naca-r9c-additive
+  group: naca-r9d-additive
   cancel-in-progress: false
 
 jobs:
-  naca-r9c-variants:
-    name: NACA minimal-buildable-revert probes at pinned master commit (round 9c)
+  naca-r9d-variants:
+    name: NACA minimal-buildable-revert probes at pinned master commit (round 9d)
     runs-on: ubuntu-24.04
     timeout-minutes: 250
     env:
@@ -129,6 +138,7 @@ jobs:
       GREEN_MD5: 63db7905347576beec20993919d6015e
       MASTER_MD5: af085014acfc35a0e9ab4946c3f46381
       MD5_K1: 24f2a8ec8cd6d89245732e49b094e917
+      MD5_K3: 58c8c3aa54723f1676ff088fb16e9877
       MD5_B3X: b9b1eb5632fe7177e0fdda391d863d40
       MD5_B3X2: 21e34eee9f55202f0abf0ad2b5ca87cc
       MD5_B3X3: bbd58cda93d63185115f18763efa7795
@@ -298,11 +308,13 @@ jobs:
           # verified against the CORRECTED compile-coupling map above).
           declare -A HSET
           HSET[k1]="2 3 4 5 6 7 8 9"
+          HSET[k3]="1 2 4 5 6 7 8 9"
           HSET[b3x]="3 4 6 7 8 9"
           HSET[b3x2]="2 3 4 6 7 8 9"
           HSET[b3x3]="3 4 5 6 7 8 9"
           declare -A HMD5
           HMD5[k1]="${MD5_K1}"
+          HMD5[k3]="${MD5_K3}"
           HMD5[b3x]="${MD5_B3X}"
           HMD5[b3x2]="${MD5_B3X2}"
           HMD5[b3x3]="${MD5_B3X3}"
@@ -326,7 +338,7 @@ jobs:
             fi
             echo "hybrid ${name} OK md5=${actual} bytes=$(stat -c%s "diag-hybrids/${name}.h")"
           }
-          for h in k1 b3x b3x2 b3x3; do
+          for h in k1 k3 b3x b3x2 b3x3; do
             gen_h "$h"
           done
           echo "additive_hybrids_ok"
@@ -351,9 +363,25 @@ jobs:
           declare -A RAN
           declare -A HMD5
           HMD5[k1]="${MD5_K1}"
+          HMD5[k3]="${MD5_K3}"
           HMD5[b3x]="${MD5_B3X}"
           HMD5[b3x2]="${MD5_B3X2}"
           HMD5[b3x3]="${MD5_B3X3}"
+          # Fail-fast pre-flight (round-9c lesson, run 39781608766): every
+          # hybrid base used by the adaptive tree MUST have a pin AND a
+          # generated hybrid file. Abort BEFORE any build instead of dying
+          # mid-campaign on an unbound HMD5[...] under set -u.
+          for v in k1 k3 b3x b3x2 b3x3; do
+            if [ -z "${HMD5[$v]+set}" ]; then
+              echo "::error::HMD5 pin missing for ${v}"
+              exit 1
+            fi
+            if [ ! -s "diag-hybrids/${v}.h" ]; then
+              echo "::error::hybrid file missing: diag-hybrids/${v}.h"
+              exit 1
+            fi
+          done
+          echo "pre_flight_ok: 5 hybrid pins present, 5 hybrid files present"
           is_pass() {
             case "$1" in
               PASS_128|PASS_3_LEVELS) return 0 ;;
@@ -371,8 +399,8 @@ jobs:
             esac
             local SRC="cfdx-${SHORT}"
             local BUILD="build-${SHORT}"
-            local LOG="$E/nacar9c_${SHORT}_main_run${RUN_ID}.log"
-            local STA="$E/nacar9c_${SHORT}_test_status_run${RUN_ID}.txt"
+            local LOG="$E/nacar9d_${SHORT}_main_run${RUN_ID}.log"
+            local STA="$E/nacar9d_${SHORT}_test_status_run${RUN_ID}.txt"
             echo "=== VARIANT ${VARIANT} levels=${LEVELS} at ${WT_REF} : $(git log -1 --format='%ci %s' "${WT_REF}") ===" > "$LOG"
             local outcome=""
             local rc=""
@@ -508,9 +536,9 @@ jobs:
             if [ -s "$LOG" ] && [ "$(stat -c%s "$LOG")" -gt 1500000 ]; then
               tail -c 1500000 "$LOG" > "${LOG}.tmp" && mv "${LOG}.tmp" "$LOG"
             fi
-            git add "$E"/nacar9c_"${SHORT}"_*_run"${RUN_ID}"* >/dev/null 2>&1
+            git add "$E"/nacar9d_"${SHORT}"_*_run"${RUN_ID}"* >/dev/null 2>&1
             if ! git diff --cached --quiet; then
-              if git commit -m "diag: naca r9c ${SHORT} outcome=${outcome:-MISSING} run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
+              if git commit -m "diag: naca r9d ${SHORT} outcome=${outcome:-MISSING} run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
                 if ! git push >/dev/null 2>&1; then
                   git pull --rebase origin ci/long-campaign-diagnostics >/dev/null 2>&1
                   git push >/dev/null 2>&1 || echo "push_retry_failed ${SHORT}"
@@ -566,10 +594,10 @@ jobs:
                 fi
               fi
             fi
-          } >> "$E/nacar9c_sequence_run${RUN_ID}.txt"
-          git add "$E"/nacar9c_sequence_run"${RUN_ID}".txt >/dev/null 2>&1
+          } >> "$E/nacar9d_sequence_run${RUN_ID}.txt"
+          git add "$E"/nacar9d_sequence_run"${RUN_ID}".txt >/dev/null 2>&1
           if ! git diff --cached --quiet; then
-            if git commit -m "diag: naca r9c sequence run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
+            if git commit -m "diag: naca r9d sequence run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
               if ! git push >/dev/null 2>&1; then
                 git pull --rebase origin ci/long-campaign-diagnostics >/dev/null 2>&1
                 git push >/dev/null 2>&1 || echo "push_retry_failed sequence"
@@ -579,7 +607,7 @@ jobs:
             git reset >/dev/null 2>&1
           fi
 
-      - name: Compose round-9c verdict
+      - name: Compose round-9d verdict
         if: always()
         run: |
           set +e
@@ -591,7 +619,7 @@ jobs:
             eval "oc_${short}=NOT_RUN"
           done
           for short in $ALL_VARIANTS; do
-            f="$E/nacar9c_${short}_test_status_run${RUN_ID}.txt"
+            f="$E/nacar9d_${short}_test_status_run${RUN_ID}.txt"
             [ -s "$f" ] || continue
             oc=$(sed -n 's/^outcome=//p' "$f" | tail -1)
             eval "oc_${short}=\"\${oc:-MISSING}\""
@@ -664,7 +692,7 @@ jobs:
               verdict_line="INCOMPLETE_WITH_UNKNOWNS: a0=${oc_a0_master_anchor} a9=${oc_a9_all9_anchor} k3=${oc_k3} b3x=${oc_b3x} b3x2=${oc_b3x2} b3x3=${oc_b3x3} c_b3x=${oc_c_b3x} c_b3x2=${oc_c_b3x2} c_b3x3=${oc_c_b3x3} c_k1=${oc_c_k1} -> definite outcomes missing, re-run"
             fi
           fi
-          VER="$E/nacar9c_verdict_run${RUN_ID}.txt"
+          VER="$E/nacar9d_verdict_run${RUN_ID}.txt"
           {
             echo "VERDICT: ${verdict_line}"
             echo "run_id=${RUN_ID}"
@@ -690,7 +718,7 @@ jobs:
             echo ""
             echo "--- per-variant NACA digest (level markers + failure) ---"
             for short in $ALL_VARIANTS; do
-              L="$E/nacar9c_${short}_main_run${RUN_ID}.log"
+              L="$E/nacar9d_${short}_main_run${RUN_ID}.log"
               [ -s "$L" ] || continue
               echo "### ${short}"
               grep -E "NACA0012_RE1000_A0 level=|NACA0012_QUALIFICATION|did not converge|what\(\):|Cd=" "$L" | tail -14
@@ -703,7 +731,7 @@ jobs:
           git config user.email "actions@github.com"
           git add "$VER" >/dev/null 2>&1
           if ! git diff --cached --quiet; then
-            if git commit -m "diag: naca r9c verdict run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
+            if git commit -m "diag: naca r9d verdict run ${RUN_ID} [ci skip]" >/dev/null 2>&1; then
               if ! git push >/dev/null 2>&1; then
                 git pull --rebase origin ci/long-campaign-diagnostics >/dev/null 2>&1
                 git push >/dev/null 2>&1 || echo "push_retry_failed verdict"
@@ -713,8 +741,9 @@ jobs:
             git reset >/dev/null 2>&1
           fi
           if [ "$ok" = "1" ]; then
-            echo "round-9c minimal-buildable-revert campaign: ${verdict_line}"
+            echo "round-9d minimal-buildable-revert campaign: ${verdict_line}"
           else
-            echo "::error::round-9c not conclusive: ${verdict_line}"
+            echo "::error::round-9d not conclusive: ${verdict_line}"
             exit 1
           fi
+
