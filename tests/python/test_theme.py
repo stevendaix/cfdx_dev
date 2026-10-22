@@ -75,7 +75,9 @@ def _contrast_ratio(foreground: str, background: str) -> float:
 
 
 @pytest.mark.parametrize("text_token", ["text.primary", "text.secondary", "text.muted"])
-@pytest.mark.parametrize("surface_token", ["surface.canvas", "surface.panel", "surface.input"])
+@pytest.mark.parametrize(
+    "surface_token", ["surface.canvas", "surface.panel", "surface.input"]
+)
 def test_text_token_contrast_meets_wcag_aa_for_normal_text(
     text_token: str, surface_token: str
 ) -> None:
