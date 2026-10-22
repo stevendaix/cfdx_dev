@@ -388,7 +388,10 @@ int main()
 
         IncompressibleSolverControls controls;
         controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
-        controls.convergence.max_iterations = 5;
+        // One outer iteration is enough for the carrier zero-state monitor,
+        // but not enough to reassemble momentum with the refreshed SST closure.
+        // The public result must therefore not claim coupled convergence.
+        controls.convergence.max_iterations = 1;
         controls.convergence.continuity_tolerance = 1e-12;
         controls.linear_tolerance = 1e-12;
         controls.pressure_reference_cell = 0;
@@ -414,6 +417,10 @@ int main()
 
         const auto result = solve_steady_incompressible(m, U, p, ubc, pbc, controls);
         EXPECT_TRUE(!result.history.empty());
+        EXPECT_TRUE(!result.converged);
+        EXPECT_TRUE(result.convergence_status ==
+                    cfdx::core::ConvergenceStatus::MAX_ITERATIONS);
+        EXPECT_TRUE(result.convergence_reason.find("SST transport/closure") != std::string::npos);
         EXPECT_TRUE(std::isfinite(state.k(0)) && state.k(0) > 0.0);
         EXPECT_TRUE(std::isfinite(state.omega(0)) && state.omega(0) > 0.0);
         EXPECT_TRUE(std::isfinite(state.nu_t(0)) && state.nu_t(0) >= 0.0);
