@@ -46,8 +46,9 @@ def test_theme_application_sets_palette_and_stylesheet() -> None:
     window = QMainWindow()
     apply_workbench_theme(window)
     assert window.styleSheet() == WORKBENCH_STYLESHEET
-    assert window.palette().color(QPalette.ColorRole.Window).name() == TOKENS[
-        "surface.canvas"
-    ]
+    assert (
+        window.palette().color(QPalette.ColorRole.Window).name()
+        == TOKENS["surface.canvas"]
+    )
     window.close()
     app.quit()
