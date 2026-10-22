@@ -1,0 +1,4 @@
+T2NU_MESH nx=80 ny=16 FAILED error=No module named 'cfdx.io'; 'cfdx' is not a package
+T2NU_MESH nx=160 ny=32 FAILED error=No module named 'cfdx.io'; 'cfdx' is not a package
+T2NU_MESH nx=320 ny=64 FAILED error=No module named 'cfdx.io'; 'cfdx' is not a package
+T2NU_CAMPAIGN FAIL execution_failure

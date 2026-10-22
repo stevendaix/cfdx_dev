@@ -1,0 +1,61 @@
+{
+  "run_id": "39729037047",
+  "solver": "build/cfdx_production_solver",
+  "case": {
+    "L": 10.0,
+    "H": 1.0,
+    "body_force": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "density": 1.0,
+    "dynamic_viscosity": 0.1,
+    "thermal_conductivity": 0.1,
+    "specific_heat": 1.0,
+    "heat_flux": 1.0,
+    "t_in": 300.0,
+    "energy_model": "conjugate",
+    "max_iterations": 3000,
+    "meshes": [
+      [
+        80,
+        16
+      ],
+      [
+        160,
+        32
+      ],
+      [
+        320,
+        64
+      ]
+    ],
+    "l2_gate": 0.005,
+    "dh": 2.0,
+    "x_dev": 7.5
+  },
+  "nu_ref": 8.235294117647058,
+  "err_target": 0.05,
+  "meshes": [
+    {
+      "nx": 80,
+      "ny": 16,
+      "status": "FAIL",
+      "error": "No module named 'cfdx.io'; 'cfdx' is not a package"
+    },
+    {
+      "nx": 160,
+      "ny": 32,
+      "status": "FAIL",
+      "error": "No module named 'cfdx.io'; 'cfdx' is not a package"
+    },
+    {
+      "nx": 320,
+      "ny": 64,
+      "status": "FAIL",
+      "error": "No module named 'cfdx.io'; 'cfdx' is not a package"
+    }
+  ],
+  "verdict": "execution_failure"
+}
