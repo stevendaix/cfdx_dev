@@ -4582,6 +4582,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " alpha_u=" << retry_controller.alpha_u(effective_alpha_u)
                           << " alpha_p=" << retry_controller.alpha_p(effective_alpha_p)
                           << " reason=" << error.what() << "\n";
+            } catch (...) {
+                transaction.reject();
+                mass_flux = mass_flux_snapshot;
+                if (controls.sst_runtime && sst_attempt_snapshot)
+                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                throw;
             }
         }
         if (stop_after_iteration)
