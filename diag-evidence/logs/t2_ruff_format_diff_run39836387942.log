@@ -1,0 +1,12 @@
+--- scripts/t2_heated_channel_calibration.py
++++ scripts/t2_heated_channel_calibration.py
+@@ -208,6 +208,7 @@
+     if (pkg_root / "cfdx" / "io" / "schema.py").is_file():
+         sys.path.insert(0, str(pkg_root))
+ 
++
+ def _case_setup_json(nx: int, ny: int) -> str:
+     from cfdx.io.schema import (
+         BCType,
+
+1 file would be reformatted

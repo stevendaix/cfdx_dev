@@ -1,0 +1,16 @@
+{
+  "min_temperature": 300,
+  "max_temperature": 300,
+  "total_source_power": 0,
+  "boundary_flux_out": -20.000000017510231,
+  "nonfinite_temperature": 0,
+  "volumetric_power": 0,
+  "patches": [
+    {"name": "back", "flux_out": 0},
+    {"name": "bottom", "flux_out": -10},
+    {"name": "front", "flux_out": 0},
+    {"name": "inlet", "flux_out": -251.95312291680256},
+    {"name": "outlet", "flux_out": 251.95312289929225},
+    {"name": "top", "flux_out": -10}
+  ]
+}

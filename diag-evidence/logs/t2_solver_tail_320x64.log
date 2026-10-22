@@ -28,10 +28,10 @@ Iteration 20 Time = 0
 Iteration 21 Time = 0
 Iteration 22 Time = 0
 Energy stage skipped: carrier flow did not converge
-Checkpoint /tmp/t2_nu_o268s_yd/mesh_320x64/restart.dat
-Convergence history /tmp/t2_nu_o268s_yd/mesh_320x64/convergence.json
-Execution summary /tmp/t2_nu_o268s_yd/mesh_320x64/execution.json
-Probe CSV /tmp/t2_nu_o268s_yd/mesh_320x64/probes.csv (1408 samples)
+Checkpoint /tmp/t2_nu_6tgn_oq8/mesh_320x64/restart.dat
+Convergence history /tmp/t2_nu_6tgn_oq8/mesh_320x64/convergence.json
+Execution summary /tmp/t2_nu_6tgn_oq8/mesh_320x64/execution.json
+Probe CSV /tmp/t2_nu_6tgn_oq8/mesh_320x64/probes.csv (1408 samples)
 Converged NO Iterations 22
 INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=1.00002 momentum_residual_reference_relative=1 momentum_residual_raw=0.000532125 momentum_rhs_scale=0.000532113 momentum_residual_reference=0.000532125 momentum_rhs_scale_components=(0.000532113,5.58447e-06,1e-300) momentum_rhs_relative_components=(1.00002,0.961734,0) continuity_normalized=0.000381156 velocity_change_inf=1 pressure_change_inf=0.997585 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=9 pressure_relative_residual=6.80909e-12 momentum_linear_iterations=9 flux_velocity_mismatch_linf=1.04559e-07 worst_momentum_cell=10244 worst_momentum_patch=
 INCOMPRESSIBLE_ITER iter=2 momentum_residual_rhs_relative=0.999603 momentum_residual_reference_relative=1.07274 momentum_residual_raw=0.000570832 momentum_rhs_scale=0.000571058 momentum_residual_reference=0.000532125 momentum_rhs_scale_components=(0.000571058,1.06249e-05,1e-300) momentum_rhs_relative_components=(0.999603,0.897465,0) continuity_normalized=0.000168989 velocity_change_inf=0.503671 pressure_change_inf=0.465804 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=10 pressure_relative_residual=6.31857e-12 momentum_linear_iterations=9 flux_velocity_mismatch_linf=2.19616e-07 worst_momentum_cell=10243 worst_momentum_patch=

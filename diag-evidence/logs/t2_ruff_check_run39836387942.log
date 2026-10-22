@@ -1,0 +1,9 @@
+EXE001 Shebang is present but file is not executable
+ --> scripts/t2_heated_channel_calibration.py:1:1
+  |
+1 | #!/usr/bin/env python3
+  | ^^^^^^^^^^^^^^^^^^^^^^
+2 | """T2 heated-channel Nusselt calibration campaign (N9 fine-gap audit, T2).
+  |
+
+Found 1 error.
