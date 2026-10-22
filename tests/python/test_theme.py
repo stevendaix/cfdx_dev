@@ -25,6 +25,9 @@ def test_theme_tokens_are_semantic_and_complete() -> None:
     assert all(value.startswith("#") and len(value) == 7 for value in TOKENS.values())
     assert "%(" not in WORKBENCH_STYLESHEET
     assert TOKENS["accent.primary"] in WORKBENCH_STYLESHEET
+    assert TOKENS["status.error"] in WORKBENCH_STYLESHEET
+    assert 'QLabel[validationState="error"]' in WORKBENCH_STYLESHEET
+    assert '*[validationState="warning"]' in WORKBENCH_STYLESHEET
 
 
 def test_theme_module_imports_without_qt() -> None:
