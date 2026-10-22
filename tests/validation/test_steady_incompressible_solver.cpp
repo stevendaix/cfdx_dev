@@ -864,5 +864,28 @@ int main()
         EXPECT_NEAR(U.component_data(0)[0], 0.0, 0.0);
     });
 
+    run_case("cellwise_effective_viscosity_overflow_is_rejected_before_initialization", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3), p(1,"p","Pa",1);
+        U.fill(0.0);
+        p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls controls;
+        controls.density = 1.0e308;
+        controls.kinematic_viscosity = 0.0;
+        controls.cell_turbulent_viscosity = {1.0e308};
+        controls.initialization.mode = InitializationMode::Uniform;
+        controls.initialization.uniform_velocity = {2.0, 0.0, 0.0};
+
+        EXPECT_THROW(
+            solve_steady_incompressible(m, U, p, ubc, pbc, controls),
+            std::invalid_argument);
+        EXPECT_NEAR(U.component_data(0)[0], 0.0, 0.0);
+    });
+
     return run_all();
 }
