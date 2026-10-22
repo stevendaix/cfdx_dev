@@ -280,6 +280,7 @@ if QMainWindow is not object:
                 "analyze": {
                     "workbench.dock.results",
                     "workbench.dock.probes",
+                    "workbench.dock.visualization_pipeline",
                     "workbench.dock.properties",
                     "workbench.dock.monitor",
                 },
@@ -392,6 +393,42 @@ if QMainWindow is not object:
                 self.results_panel,
                 Qt.DockWidgetArea.LeftDockWidgetArea,
             )
+
+            self.visualization_operations = QListWidget()
+            self.visualization_operations.setObjectName(
+                "workbench.visualization.operations"
+            )
+            self.remove_visualization_operation_button = QPushButton("Remove selected")
+            self.remove_visualization_operation_button.setObjectName(
+                "workbench.visualization.remove"
+            )
+            self.remove_visualization_operation_button.setEnabled(False)
+            self.remove_visualization_operation_button.clicked.connect(
+                self._remove_visualization_operation
+            )
+            self.reset_visualization_button = QPushButton("Reset pipeline")
+            self.reset_visualization_button.setObjectName(
+                "workbench.visualization.reset"
+            )
+            self.reset_visualization_button.setEnabled(False)
+            self.reset_visualization_button.clicked.connect(
+                self._reset_visualization_pipeline
+            )
+            visualization_panel = QWidget()
+            visualization_layout = QVBoxLayout(visualization_panel)
+            visualization_layout.addWidget(self.visualization_operations)
+            visualization_layout.addWidget(self.remove_visualization_operation_button)
+            visualization_layout.addWidget(self.reset_visualization_button)
+            self.visualization_operations.currentRowChanged.connect(
+                self._visualization_operation_selection_changed
+            )
+            self._add_dock(
+                "Visualization Pipeline",
+                "workbench.dock.visualization_pipeline",
+                visualization_panel,
+                Qt.DockWidgetArea.RightDockWidgetArea,
+            )
+            self._refresh_visualization_operations()
 
             self.probes_panel = ProbesPanel(self.application)
             self.probes_panel.setObjectName("workbench.probes_panel")
@@ -588,6 +625,7 @@ if QMainWindow is not object:
             except (OSError, RuntimeError, ValueError, KeyError) as exc:
                 self.statusBar().showMessage(f"Renderer error: {exc}")
             self._refresh_postprocess_actions(event.state)
+            self._refresh_visualization_operations()
 
         def _show_viewport(self) -> None:
             """Reveal the renderer after a dataset has loaded successfully."""
@@ -621,7 +659,7 @@ if QMainWindow is not object:
 
         def _postprocess(self, mode: str) -> None:
             """Collect operation-specific inputs before applying a visualization filter."""
-            if self.view3d is None:
+            if getattr(self, "view3d", None) is None:
                 return
             try:
                 if mode in {"contour", "glyph"}:
@@ -685,8 +723,67 @@ if QMainWindow is not object:
                 else:
                     raise ValueError(f"unsupported visualization operation: {mode}")
                 self.statusBar().showMessage(f"Post-processing: {mode}")
+                self._refresh_visualization_operations()
             except (KeyError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Post-processing error: {exc}")
+
+        def _visualization_operation_selection_changed(self, row: int) -> None:
+            self.remove_visualization_operation_button.setEnabled(
+                row >= 0 and getattr(self, "view3d", None) is not None
+            )
+
+        def _refresh_visualization_operations(self) -> None:
+            """Reflect the renderer pipeline in the Workbench operation list."""
+            if not hasattr(self, "visualization_operations"):
+                return
+            self.visualization_operations.clear()
+            view3d = getattr(self, "view3d", None)
+            operations = (
+                view3d._visualization_pipeline.operations if view3d is not None else ()
+            )
+            for index, operation in enumerate(operations, start=1):
+                details = operation.kind
+                if operation.kind == "contour":
+                    details += (
+                        f" — {operation.scalars}, {operation.isosurfaces} isosurfaces"
+                    )
+                elif operation.kind == "glyph":
+                    details += f" — {operation.scalars}, scale {operation.factor:g}"
+                elif operation.kind == "slice":
+                    details += f" — normal {operation.normal}"
+                item = QListWidgetItem(f"{index}. {details}")
+                item.setData(Qt.ItemDataRole.UserRole, index - 1)
+                self.visualization_operations.addItem(item)
+            self.remove_visualization_operation_button.setEnabled(False)
+            self.reset_visualization_button.setEnabled(bool(operations))
+
+        def _remove_visualization_operation(self) -> None:
+            """Remove the selected operation and replay the remaining pipeline."""
+            if self.view3d is None:
+                return
+            item = self.visualization_operations.currentItem()
+            if item is None:
+                return
+            index = item.data(Qt.ItemDataRole.UserRole)
+            try:
+                self.view3d.remove_visualization_operation(index)
+            except (IndexError, RuntimeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Visualization update failed: {exc}")
+                return
+            self._refresh_visualization_operations()
+            self.statusBar().showMessage("Visualization operation removed")
+
+        def _reset_visualization_pipeline(self) -> None:
+            """Clear all derived operations and return to the original dataset."""
+            if self.view3d is None:
+                return
+            try:
+                self.view3d.reset_visualization()
+            except (RuntimeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Visualization reset failed: {exc}")
+                return
+            self._refresh_visualization_operations()
+            self.statusBar().showMessage("Visualization pipeline reset")
 
         def _mesh_selection_changed(self, selection) -> None:
             if self.view3d is not None and selection.kind == "patch":

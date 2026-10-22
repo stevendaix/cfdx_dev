@@ -15,7 +15,7 @@ TOKENS: dict[str, str] = {
     "border.subtle": "#2B3744",
     "text.primary": "#E7EDF3",
     "text.secondary": "#A7B4C2",
-    "text.muted": "#758495",
+    "text.muted": "#7A8999",
     "accent.primary": "#39C6D8",
     "accent.secondary": "#65D6B0",
     "status.success": "#65C995",
@@ -88,7 +88,8 @@ QPushButton:hover {
     border-color: @accent.primary@;
 }
 QPushButton:focus, QLineEdit:focus, QComboBox:focus, QSpinBox:focus,
-QDoubleSpinBox:focus, QTreeWidget:focus, QTableView:focus {
+QDoubleSpinBox:focus, QPlainTextEdit:focus, QTextEdit:focus,
+QTreeWidget:focus, QTableView:focus, QTableWidget:focus {
     border: 1px solid @accent.primary@;
 }
 QPushButton:disabled {
