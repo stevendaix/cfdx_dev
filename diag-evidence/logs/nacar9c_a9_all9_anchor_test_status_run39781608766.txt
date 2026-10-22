@@ -1,0 +1,11 @@
+variant=a9_all9_anchor
+levels=128
+outcome=PASS_128
+test_rc=124
+test_duration_s=600
+run_id=39781608766
+
+--- level markers reached ---
+NACA0012_RE1000_A0 level=64 Cd=0.0214542 Cl=-0.000360333 Cm=0.000977678 Cd_pressure=-0.0343963 Cd_viscous=0.0558505 continuity=1.28083e-10 iterations=433
+NACA0012_RE1000_A0 level=128 Cd=0.0414557 Cl=-0.00079373 Cm=-2.42498e-05 Cd_pressure=-0.0425974 Cd_viscous=0.0840532 continuity=8.28058e-11 iterations=995
+--- failure line (if any) ---
