@@ -20,7 +20,7 @@ from .session import CFDXSession
 
 try:
     from PySide6.QtCore import QSettings, Qt, Signal
-    from PySide6.QtGui import QAction
+    from PySide6.QtGui import QAction, QBrush, QColor
     from PySide6.QtWidgets import (
         QDockWidget,
         QFileDialog,
@@ -29,10 +29,12 @@ try:
         QLineEdit,
         QMainWindow,
         QPushButton,
+        QStackedLayout,
         QStatusBar,
         QToolBar,
         QTreeWidget,
         QTreeWidgetItem,
+        QVBoxLayout,
         QWidget,
     )
 except ImportError:  # pragma: no cover
@@ -279,13 +281,61 @@ if QMainWindow is not object:
             )
 
             try:
-                viewport = PyVistaQtView()
-                self.view3d = viewport
+                renderer = PyVistaQtView()
+                self.view3d = renderer
             except RuntimeError as exc:
-                viewport = QLabel(f"3D renderer unavailable\n\n{exc}")
+                renderer = QLabel(f"3D renderer unavailable\n\n{exc}")
                 self.view3d = None
+            renderer.setObjectName("workbench.renderer")
+            renderer.setMinimumSize(480, 320)
+
+            self.viewport_placeholder = QWidget()
+            self.viewport_placeholder.setObjectName("workbench.viewport.empty_state")
+            self.viewport_placeholder.setStyleSheet("background: #f4f7fb;")
+            empty_layout = QVBoxLayout(self.viewport_placeholder)
+            empty_layout.setContentsMargins(32, 32, 32, 32)
+            empty_layout.addStretch(1)
+            empty_title_text = (
+                "3D renderer unavailable"
+                if self.view3d is None
+                else "Your simulation workspace"
+            )
+            empty_title = QLabel(empty_title_text)
+            empty_title.setObjectName("workbench.viewport.empty_title")
+            empty_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_title.setStyleSheet(
+                "font-size: 22px; font-weight: 600; color: #1f2937; "
+                "background: transparent;"
+            )
+            empty_layout.addWidget(empty_title)
+            empty_message_text = (
+                str(renderer.text())
+                if self.view3d is None
+                else "Open a mesh or load a result to explore your CFD case in 3D."
+            )
+            empty_message = QLabel(empty_message_text)
+            empty_message.setObjectName("workbench.viewport.empty_message")
+            empty_message.setWordWrap(True)
+            empty_message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_message.setStyleSheet(
+                "font-size: 13px; color: #64748b; background: transparent;"
+            )
+            empty_layout.addWidget(empty_message)
+            empty_actions = QLabel("Open Mesh   •   Open DAT Result   •   Run a case")
+            empty_actions.setObjectName("workbench.viewport.empty_actions")
+            empty_actions.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_actions.setStyleSheet(
+                "font-size: 12px; color: #475569; background: transparent;"
+            )
+            empty_layout.addWidget(empty_actions)
+            empty_layout.addStretch(1)
+
+            self.viewport_stack = QStackedLayout()
+            self.viewport_stack.addWidget(self.viewport_placeholder)
+            self.viewport_stack.addWidget(renderer)
+            viewport = QWidget()
             viewport.setObjectName("workbench.viewport")
-            viewport.setMinimumSize(480, 320)
+            viewport.setLayout(self.viewport_stack)
             self.setCentralWidget(viewport)
 
             properties = self._build_properties_panel()
@@ -335,6 +385,7 @@ if QMainWindow is not object:
                 self.mesh_browser.set_catalog(read_mesh_catalog(Path(path)))
                 if self.view3d is not None:
                     self.view3d.load_cfdx_mesh(path)
+                    self._show_viewport()
                 self.statusBar().showMessage(f"Mesh loaded: {path}")
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Mesh error: {exc}")
@@ -362,6 +413,7 @@ if QMainWindow is not object:
                     fields = self.view3d.load_cfdx_dat(
                         str(self.application.project_path), path
                     )
+                    self._show_viewport()
                 self.statusBar().showMessage(
                     f"DAT loaded: {Path(path).name} | iteration={loaded.iteration} | "
                     f"time={loaded.time:g} | fields={len(fields or loaded.fields)}"
@@ -378,9 +430,15 @@ if QMainWindow is not object:
                 self.view3d.load(result.path)
                 if event.state.results.selected_field:
                     self.view3d.set_field(event.state.results.selected_field)
+                self._show_viewport()
             except (OSError, RuntimeError, ValueError, KeyError) as exc:
                 self.statusBar().showMessage(f"Renderer error: {exc}")
             self._refresh_postprocess_actions(event.state)
+
+        def _show_viewport(self) -> None:
+            """Reveal the renderer after a dataset has loaded successfully."""
+            if self.view3d is not None:
+                self.viewport_stack.setCurrentWidget(self.view3d)
 
         def _refresh_postprocess_actions(self, state) -> None:
             enabled = (
@@ -480,6 +538,16 @@ if QMainWindow is not object:
             self.setStatusBar(status)
 
         @staticmethod
+        def _status_color(status: WorkflowStatus) -> str:
+            return {
+                WorkflowStatus.COMPLETE: "#15803d",
+                WorkflowStatus.WARNING: "#b45309",
+                WorkflowStatus.ERROR: "#b91c1c",
+                WorkflowStatus.NOT_CONFIGURED: "#64748b",
+                WorkflowStatus.CONDITIONAL: "#7c3aed",
+            }[status]
+
+        @staticmethod
         def _status_marker(status: WorkflowStatus) -> str:
             return {
                 WorkflowStatus.COMPLETE: "[OK]",
@@ -501,6 +569,10 @@ if QMainWindow is not object:
                 root.setData(0, Qt.ItemDataRole.UserRole, step.id)
                 root.setData(0, Qt.ItemDataRole.UserRole + 1, step.kind)
                 root.setToolTip(0, step.message or step.status.value)
+                root.setForeground(0, QBrush(QColor(self._status_color(step.status))))
+                root_font = root.font(0)
+                root_font.setBold(True)
+                root.setFont(0, root_font)
                 self.workflow_tree.addTopLevelItem(root)
                 for child in workflow_children(state.workflow, step.id):
                     item = QTreeWidgetItem(
@@ -509,6 +581,9 @@ if QMainWindow is not object:
                     item.setData(0, Qt.ItemDataRole.UserRole, child.id)
                     item.setData(0, Qt.ItemDataRole.UserRole + 1, child.kind)
                     item.setToolTip(0, child.message or child.status.value)
+                    item.setForeground(
+                        0, QBrush(QColor(self._status_color(child.status)))
+                    )
                     root.addChild(item)
                 root.setExpanded(True)
 
