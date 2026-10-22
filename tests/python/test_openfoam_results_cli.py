@@ -147,7 +147,6 @@ def test_openfoam_results_cli_imports_latest_cell_velocity(tmp_path: Path) -> No
         assert "outlet" in h5.attrs["boundary_patches"]
 
 
-
 def _convert_openfoam_case(
     case: Path, output: Path, env: dict[str, str]
 ) -> subprocess.CompletedProcess[str]:
