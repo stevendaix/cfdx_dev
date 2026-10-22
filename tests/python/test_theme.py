@@ -1,7 +1,6 @@
 import importlib.util
 
 import pytest
-
 from cfdx.theme import TOKENS, WORKBENCH_STYLESHEET, apply_workbench_theme
 
 
