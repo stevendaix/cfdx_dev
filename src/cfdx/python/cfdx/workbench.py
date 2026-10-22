@@ -30,6 +30,7 @@ try:
         QHBoxLayout,
         QLabel,
         QLineEdit,
+        QInputDialog,
         QListWidget,
         QListWidgetItem,
         QMainWindow,
@@ -593,27 +594,82 @@ if QMainWindow is not object:
 
         def _refresh_postprocess_actions(self, state) -> None:
             enabled = (
-                self.view3d is not None and state.results.selected_frame is not None
+                self.view3d is not None
+                and (
+                    state.results.selected_frame is not None
+                    or self.view3d._dat_dataset is not None
+                    or self.view3d._current_result is not None
+                )
             )
             for name in ("contour_action", "slice_action", "glyph_action"):
                 if hasattr(self, name):
                     getattr(self, name).setEnabled(enabled)
 
+        def _postprocess_fields(self, *, vector: bool) -> list[str]:
+            """Return fields compatible with the requested visualization operation."""
+            if self.view3d is None:
+                return []
+            dataset = self.view3d._dataset()
+            names: set[str] = set()
+            for attributes in (dataset.point_data, dataset.cell_data):
+                for name in attributes.keys():
+                    values = attributes[name]
+                    shape = getattr(values, "shape", ())
+                    is_vector = len(shape) == 2 and shape[1] == 3
+                    if is_vector == vector:
+                        names.add(str(name))
+            return sorted(names, key=str.casefold)
+
         def _postprocess(self, mode: str) -> None:
+            """Collect operation-specific inputs before applying a visualization filter."""
             if self.view3d is None:
                 return
-            field = self._application_state.results.selected_field
             try:
-                if mode == "contour":
-                    if not field:
-                        raise ValueError("select a scalar result field before Contour")
-                    self.view3d.contour(field)
+                if mode in {"contour", "glyph"}:
+                    fields = self._postprocess_fields(vector=mode == "glyph")
+                    if not fields:
+                        kind = "vector" if mode == "glyph" else "scalar"
+                        self.statusBar().showMessage(
+                            f"No compatible {kind} fields are available for {mode.title()}"
+                        )
+                        return
+                    selected = self._application_state.results.selected_field
+                    default_index = fields.index(selected) if selected in fields else 0
+                    field, accepted = QInputDialog.getItem(
+                        self,
+                        f"{mode.title()} field",
+                        "Vector field" if mode == "glyph" else "Scalar field",
+                        fields,
+                        default_index,
+                        False,
+                    )
+                    if not accepted:
+                        return
+                    if mode == "contour":
+                        isosurfaces, accepted = QInputDialog.getInt(
+                            self, "Contour settings", "Number of isosurfaces:", 10, 2, 100
+                        )
+                        if not accepted:
+                            return
+                        self.view3d.contour(field, isosurfaces=isosurfaces)
+                    else:
+                        factor, accepted = QInputDialog.getDouble(
+                            self, "Glyph settings", "Scale factor:", 1.0, 0.001, 1000.0, 3
+                        )
+                        if not accepted:
+                            return
+                        self.view3d.glyph(field, factor=factor)
                 elif mode == "slice":
-                    self.view3d.slice()
-                elif mode == "glyph":
-                    if not field:
-                        raise ValueError("select a vector result field before Glyph")
-                    self.view3d.glyph(field)
+                    axes = ["X", "Y", "Z"]
+                    axis, accepted = QInputDialog.getItem(
+                        self, "Slice orientation", "Normal axis:", axes, 0, False
+                    )
+                    if not accepted:
+                        return
+                    normals = {"X": (1.0, 0.0, 0.0), "Y": (0.0, 1.0, 0.0), "Z": (0.0, 0.0, 1.0)}
+                    self.view3d.slice(normal=normals[axis])
+                else:
+                    raise ValueError(f"unsupported visualization operation: {mode}")
                 self.statusBar().showMessage(f"Post-processing: {mode}")
             except (KeyError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Post-processing error: {exc}")
