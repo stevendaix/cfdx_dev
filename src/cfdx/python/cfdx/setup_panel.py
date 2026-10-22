@@ -293,22 +293,18 @@ class CaseSetupPanel(QWidget):
         self._rebuild_physics_fields(self.physics_model.currentText())
         self._refresh_boundaries()
 
+    @staticmethod
+    def _set_validation_state(widget: QWidget, state: str) -> None:
+        """Apply a semantic validation state through the shared Qt stylesheet."""
+        widget.setProperty("validationState", state)
+        style = widget.style()
+        style.unpolish(widget)
+        style.polish(widget)
+        widget.update()
+
     def set_diagnostics(self, diagnostics) -> None:
         """Show feedback, select the relevant tab, and highlight its editor."""
         diagnostics = tuple(diagnostics)
-        if not diagnostics:
-            self.validation_summary.setText("No validation diagnostics")
-            self.validation_summary.setStyleSheet("")
-            return
-        errors = sum(item.severity == "error" for item in diagnostics)
-        self.validation_summary.setText(
-            f"Validation: {errors} error(s), {len(diagnostics) - errors} warning(s)"
-            + " — "
-            + "; ".join(item.message for item in diagnostics[:3])
-        )
-        self.validation_summary.setStyleSheet(
-            "color: #a40000;" if errors else "color: #8a5a00;"
-        )
         widgets = (
             *self.physics_fields.values(),
             self.material_name,
@@ -329,18 +325,31 @@ class CaseSetupPanel(QWidget):
             self.initialization_field,
             self.initialization_value,
         )
+        self._set_validation_state(self.validation_summary, "")
         for widget in widgets:
-            widget.setStyleSheet("")
+            self._set_validation_state(widget, "")
             widget.setToolTip("")
+
+        if not diagnostics:
+            self.validation_summary.setText("No validation diagnostics")
+            return
+
+        errors = sum(item.severity == "error" for item in diagnostics)
+        self.validation_summary.setText(
+            f"Validation: {errors} error(s), {len(diagnostics) - errors} warning(s)"
+            + " — "
+            + "; ".join(item.message for item in diagnostics[:3])
+        )
+        self._set_validation_state(
+            self.validation_summary, "error" if errors else "warning"
+        )
         for item in diagnostics:
             target, tab_index = self._diagnostic_target(item.path)
             if target is not None:
                 self.tabs.setCurrentIndex(tab_index)
                 target.setToolTip(f"{item.code}: {item.message}")
-                target.setStyleSheet(
-                    "border: 1px solid #a40000;"
-                    if item.severity == "error"
-                    else "border: 1px solid #c58a00;"
+                self._set_validation_state(
+                    target, "error" if item.severity == "error" else "warning"
                 )
 
     def _diagnostic_target(self, path: str):

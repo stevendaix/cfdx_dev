@@ -15,7 +15,7 @@ TOKENS: dict[str, str] = {
     "border.subtle": "#2B3744",
     "text.primary": "#E7EDF3",
     "text.secondary": "#A7B4C2",
-    "text.muted": "#758495",
+    "text.muted": "#7A8999",
     "accent.primary": "#39C6D8",
     "accent.secondary": "#65D6B0",
     "status.success": "#65C995",
@@ -107,6 +107,18 @@ QPushButton[emphasis="primary"]:hover {
 }
 QLabel[role="secondary"] {
     color: @text.secondary@;
+}
+QLabel[validationState="error"] {
+    color: @status.error@;
+}
+QLabel[validationState="warning"] {
+    color: @status.warning@;
+}
+*[validationState="error"] {
+    border: 1px solid @status.error@;
+}
+*[validationState="warning"] {
+    border: 1px solid @status.warning@;
 }
 QMenu {
     background: @surface.raised@;
