@@ -24,6 +24,7 @@ try:
     from PySide6.QtWidgets import (
         QDockWidget,
         QFileDialog,
+        QHBoxLayout,
         QFormLayout,
         QLabel,
         QLineEdit,
@@ -321,12 +322,44 @@ if QMainWindow is not object:
                 "font-size: 13px; color: #64748b; background: transparent;"
             )
             empty_layout.addWidget(empty_message)
-            empty_actions = QLabel("Open Mesh   •   Open DAT Result   •   Run a case")
+            empty_actions = QWidget()
             empty_actions.setObjectName("workbench.viewport.empty_actions")
-            empty_actions.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty_actions.setStyleSheet(
-                "font-size: 12px; color: #475569; background: transparent;"
-            )
+            actions_layout = QHBoxLayout(empty_actions)
+            actions_layout.setContentsMargins(0, 12, 0, 0)
+            actions_layout.setSpacing(12)
+            for label, object_name, callback, primary in (
+                ("Open Mesh", "open_mesh", self._open_mesh, True),
+                (
+                    "Load DAT Result",
+                    "open_dat_result",
+                    lambda: self._open_dat(use_for_restart=False),
+                    False,
+                ),
+                (
+                    "Open Results Folder",
+                    "open_results",
+                    self._open_results_directory,
+                    False,
+                ),
+            ):
+                button = QPushButton(label)
+                button.setObjectName(f"workbench.empty_state.{object_name}")
+                button.setMinimumHeight(38)
+                button.setCursor(Qt.CursorShape.PointingHandCursor)
+                button.setStyleSheet(
+                    "QPushButton { padding: 8px 16px; border: 1px solid #cbd5e1; "
+                    "border-radius: 6px; background: white; color: #334155; } "
+                    "QPushButton:hover { background: #e2e8f0; } "
+                    + (
+                        "QPushButton { background: #2563eb; color: white; "
+                        "border-color: #2563eb; font-weight: 600; } "
+                        "QPushButton:hover { background: #1d4ed8; }"
+                        if primary
+                        else ""
+                    )
+                )
+                button.clicked.connect(callback)
+                actions_layout.addWidget(button)
             empty_layout.addWidget(empty_actions)
             empty_layout.addStretch(1)
 
