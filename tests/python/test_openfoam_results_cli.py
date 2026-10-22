@@ -238,7 +238,7 @@ def _converted_case_with_velocity(
                 "patch_name": "inlet",
                 "type": "inlet",
                 "value_type": "fixed",
-                "velocity_vector": [0.0, 0.0, 0.0],
+                "velocity_vector": values[0],
             },
             {
                 "patch_name": "outlet",
