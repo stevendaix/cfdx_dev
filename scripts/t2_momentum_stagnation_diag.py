@@ -5,7 +5,7 @@ Reproduces the momentum stagnation of the finest T2 heated-channel mesh
 the rhs scale, worst cell 10561) with the solver's in-code forensic
 momentum microscope enabled, and archives the dump for the audit.
 
-Five solves are run with the SAME case, tolerances and stop criteria as the
+Seven solves are run with the SAME case, tolerances and stop criteria as the
 calibration campaign (module t2_heated_channel_calibration is imported,
 never duplicated):
 
@@ -29,6 +29,17 @@ never duplicated):
     the actual assembled row coefficient) and prints the effective
     relaxation factor.
 
+Two additional A/B arms then rerun the traced solve with a controlled
+momentum relaxation: alpha_u=0.4 through the diagnostic --alpha-u option,
+and the solver default alpha_u=0.7 re-executed on the same binary as a
+re-baseline. Mesh, boundary conditions, tolerances, gates and stop
+criteria stay strictly identical; the ONLY variable is alpha_u. The
+measurement is the near-wall shear-layer propagation speed: if the wall
+front and the core increment scale with alpha_u per iteration, the
+observed transient is a relaxation-controlled pseudo-time; if the front
+arrives at the same iteration regardless of alpha_u, it follows a
+physical clock independent of the relaxation.
+
 The microscope dump (exact matrix row, Rhie-Chow face reconstruction,
 pressure-correction fluxes, per-face authoritative vs reconstructed flux)
 is emitted by the solver itself at the stagnation exit. The solver state,
@@ -38,13 +49,16 @@ through its natural stagnation path (rc=1, convergence.json/execution.json
 written) instead of the projection-guard exception (rc=2) that masked the
 stagnation state in run 39910523455.
 
-Success for this driver means: the stagnation is reproduced AND all five
-microscope dumps are present in the archived stderr, and the per-iteration
-momentum trace of the fifth solve is non-empty. It fails if the
-solve converges (the symptom disappeared) or a dump is missing
-(instrumentation gap). A green run is diagnostic evidence only, never a
-T2 qualification verdict; the official campaign remains
-scripts/t2_heated_channel_calibration.py.
+Success for this driver means: the stagnation is reproduced by the five
+forensic solves AND all five microscope dumps are present in the archived
+stderr, and the per-iteration momentum trace of the fifth solve is
+non-empty. The two alpha_u A/B arms are measurements, not gates: their
+trajectories are the evidence, so an arm running past the stagnation
+window or stopping earlier is a result, not an instrumentation failure.
+It fails if a forensic solve converges (the symptom disappeared) or a
+dump is missing (instrumentation gap). A green run is diagnostic
+evidence only, never a T2 qualification verdict; the official campaign
+remains scripts/t2_heated_channel_calibration.py.
 """
 
 from __future__ import annotations
@@ -226,6 +240,7 @@ def _write_evidence(out_dir: Path, report: dict) -> None:
         lines.append(f"  json_artifacts: {', '.join(entry['json_artifacts'])}")
         lines.append(f"  momtrace_lines: {entry.get('momtrace_lines', 0)}")
     lines.append("")
+    lines.append(f"alpha A/B arms: {report.get('alpha_ab', {})}")
     lines.append(f"verdict: {report['verdict']}")
     lines.append(
         "interpretation: a green run captures forensic evidence only; it"
@@ -255,21 +270,20 @@ def main() -> int:
     solves: list[dict] = []
     with tempfile.TemporaryDirectory(prefix="t2_momdiag_") as tmp:
         work = Path(tmp)
+        trace_args = [
+            "--momentum-trace-cells",
+            ",".join(str(c) for c in TRACE_CELLS),
+            "--momentum-trace-iterations",
+            "24",
+        ]
         for slug, debug_arg, extra_args in (
             ("auto", "auto", None),
             ("cell0", "0", None),
             ("cell10241", "10241", None),
             ("cell10240", "10240", None),
-            (
-                "trace",
-                "10561",
-                [
-                    "--momentum-trace-cells",
-                    ",".join(str(c) for c in TRACE_CELLS),
-                    "--momentum-trace-iterations",
-                    "24",
-                ],
-            ),
+            ("trace", "10561", trace_args),
+            ("trace_alpha0p4", "10561", ["--alpha-u", "0.4", *trace_args]),
+            ("trace_alpha0p7", "10561", trace_args),
         ):
             solves.append(
                 _run_solve(
@@ -284,13 +298,16 @@ def main() -> int:
                 )
             )
 
-    trace_entry = solves[-1] if solves else {}
+    forensic = solves[:5]
+    arms = solves[5:]
+    trace_entry = forensic[-1] if forensic else {}
     if (
-        all(entry["stagnation_reproduced"] for entry in solves)
+        all(entry["stagnation_reproduced"] for entry in forensic)
         and trace_entry.get("momtrace_lines", 0) > 0
+        and all(entry.get("momtrace_lines", 0) > 0 for entry in arms)
     ):
         verdict = "stagnation_captured"
-    elif any(entry["converged_marker"] for entry in solves):
+    elif any(entry["converged_marker"] for entry in forensic):
         verdict = "unexpected_convergence"
     else:
         verdict = "capture_failure"
@@ -300,6 +317,10 @@ def main() -> int:
         "mesh": [NX, NY],
         "max_iterations": calib.MAX_ITERATIONS,
         "momentum_trace_cells": TRACE_CELLS,
+        "alpha_ab": {
+            "arm_alpha_u": {"trace_alpha0p4": 0.4, "trace_alpha0p7": "default"},
+            "only_variable": "alpha_u",
+        },
         "solves": solves,
         "verdict": verdict,
     }

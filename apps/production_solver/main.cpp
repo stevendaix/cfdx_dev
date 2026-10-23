@@ -60,6 +60,11 @@ struct Options {
     bool momentum_trace = false;
     long momentum_trace_iterations = 50;
     std::vector<std::size_t> momentum_trace_cells;
+    // T2 momentum diagnostic (#1059, diag branch): A/B momentum
+    // relaxation override for controlled diagnostic runs. Zero (unset)
+    // leaves the solver relaxation untouched; evidence-only, no
+    // production default or criterion changes.
+    double alpha_u_override = 0.0;
 };
 
 
@@ -601,6 +606,20 @@ Options parse(int argc, char** argv)
                     "--momentum-trace-iterations expects a positive integer: " + count);
             }
         }
+        else if (arg == "--alpha-u") {
+            const std::string relaxation = value("--alpha-u");
+            double parsed = 0.0;
+            try {
+                parsed = std::stod(relaxation);
+            } catch (const std::exception&) {
+                throw std::invalid_argument(
+                    "--alpha-u expects a number in (0, 1]: " + relaxation);
+            }
+            if (!std::isfinite(parsed) || parsed <= 0.0 || parsed > 1.0)
+                throw std::invalid_argument(
+                    "--alpha-u expects a number in (0, 1]: " + relaxation);
+            o.alpha_u_override = parsed;
+        }
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
@@ -610,6 +629,7 @@ Options parse(int argc, char** argv)
                          "  [--debug-cell auto|INDEX] (diag: forensic momentum microscope)\n"
                          "  [--momentum-trace-cells C0,C1,...] (diag: per-iteration momentum trace)\n"
                          "  [--momentum-trace-iterations N] (diag: cap traced outer iterations)\n"
+                         "  [--alpha-u V] (diag: override momentum relaxation, in (0,1])\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::exit(0);
         } else {
@@ -927,6 +947,11 @@ int main(int argc, char** argv)
             controls.diagnostics.momentum_iteration_trace_max_iterations =
                 static_cast<std::size_t>(options.momentum_trace_iterations);
         }
+        // T2 momentum diagnostic (#1059, diag branch): controlled A/B
+        // momentum relaxation for diagnostic runs only. Unset (0.0)
+        // leaves the solver-declared relaxation untouched.
+        if (options.alpha_u_override > 0.0)
+            controls.coupling.alpha_u = options.alpha_u_override;
 
         // The declared initialization strategy is applied by the solver, before
         // the first residual is formed. An explicit --restart request therefore
