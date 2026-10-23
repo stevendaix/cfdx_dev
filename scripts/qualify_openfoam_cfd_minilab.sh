@@ -44,7 +44,7 @@ if [[ ! -f "$source_dir/scripts/run_cavity.sh" || ! -f "$case_dir/system/control
   exit 2
 fi
 
-mkdir -p "$run_output"
+# Leave OUTPUT_ROOT absent: upstream run_cavity.sh rejects an existing non-empty output directory.
 {
   echo "Repository: $repo_url"
   echo "Repository commit: $repo_commit"
