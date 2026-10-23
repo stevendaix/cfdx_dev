@@ -1,0 +1,6 @@
+pr=1063
+pr_head=23664c79dc742d5ba50336c614f464acf8389dc5
+pr_base=9e05370ade533632874b37d8418ea0e0aeeb502a
+ci_failure_run=39980441047
+ci_failure_job=120506027475
+ci_failure_step=Run Ruff/pre-commit on changed Python files
