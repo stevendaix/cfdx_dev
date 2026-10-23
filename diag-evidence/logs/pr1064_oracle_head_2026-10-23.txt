@@ -1,0 +1,1 @@
+d76b2538efdecc6648b49dabcb158e61c034cf9a feat(gui): drive the command palette from the capability registry (Lot 2, G3)

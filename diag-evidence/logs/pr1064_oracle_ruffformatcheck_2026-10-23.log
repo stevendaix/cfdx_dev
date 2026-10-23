@@ -1,0 +1,16 @@
+unformatted: File would be reformatted
+   --> tests/python/test_capabilities.py:133:1
+    |
+132 |
+133 +
+134 | def test_registry_covers_every_workbench_command() -> None:
+--------------------------------------------------------------------------------
+192 |     assert results.count() == len(CAPABILITIES)
+    -     labels = [
+    -         results.item(i).text().split(" — ")[0] for i in range(results.count())
+    -     ]
+193 +     labels = [results.item(i).text().split(" — ")[0] for i in range(results.count())]
+194 |     expected_labels = {capability.label for capability in CAPABILITIES.values()}
+    |
+
+1 file would be reformatted, 2 files already formatted
