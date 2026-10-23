@@ -825,7 +825,18 @@ int main(int argc, char** argv)
         // requires the authoritative convergence gates below.
         controls.diagnostics.iteration_trace = true;
         controls.diagnostics.iteration_trace_frequency = 1;
+        // Diagnostic A/B experiment for the T2 heated-channel calibration:
+        // the gauge row removes the reference cell's continuity equation. The
+        // T2 mesh is row-major (cell = j * nx + i), so its final cell is on the
+        // outlet boundary. Pinning cell 0 removes an inlet continuity equation
+        // and can prevent the imposed inlet mass flux from being balanced.
+        // Keep the existing default for every other case; this is an experiment,
+        // not a general mesh-ordering assumption for production cases.
         controls.pressure_reference_cell = 0;
+        if (is_case_hdf5 &&
+            case_setup.source.case_name.rfind("t2_heated_channel_", 0) == 0) {
+            controls.pressure_reference_cell = mesh.n_cells() - 1;
+        }
         controls.pressure_reference_value = 0.0;
         controls.probes = options.probes;
 
