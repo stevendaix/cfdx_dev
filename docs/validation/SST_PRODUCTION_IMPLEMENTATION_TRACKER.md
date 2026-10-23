@@ -107,7 +107,7 @@ This section records the state before PR #1032 and is superseded for production-
 
 ## Evidence log
 
-| 2026-10-23 | PR #1047 head `b1b8ca98654f29818e0b3d8de0b257be211e6a67`: Release/DebugSanitizers, numerical maturity, numerical maturity audit, audit gate, docs, GUI CI, N10 fixture verification and pre-commit guards passed. Total validation and N9 qualification/physical workflows were skipped, not passed. Branch compare reports 18 commits ahead and 8 behind master; mergeability must be rechecked after reconciliation. | Software integration checks pass; no physical qualification claim. Production E2E, application restart wiring and trajectory equivalence remain blockers. |
+| 2026-10-23 | On code head `b1b8ca98654f29818e0b3d8de0b257be211e6a67`, Release/DebugSanitizers, numerical maturity, numerical maturity audit, audit gate, docs, GUI CI, N10 fixture verification and pre-commit passed; total validation and N9 qualification/physical workflows were skipped. Branch was then reconciled with `master` at `1a411dc24312338b39cce30693e8c5ab9b8e9ebc` by merge commit `c14104192dd3d602a289e8ad4d054b474942297e`. The merge commit's exact-head checks are running; no result is claimed yet. Compare reports 20 commits ahead and 0 behind master. | Main synchronization is complete; merge remains blocked on exact-head CI and production E2E, application restart wiring, and trajectory equivalence. No physical qualification claim. |
 
 | Date | Change / evidence | Decision |
 |---|---|---|
