@@ -1,0 +1,1 @@
+Oracle trigger for PR 1066 (feat/gui-lot2-fine-selection, head 38638dbebea4e1b1ed197579b061f83ae9c9e5de).
