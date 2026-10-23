@@ -1,0 +1,14 @@
+--- scripts/t2_momentum_stagnation_diag.py
++++ scripts/t2_momentum_stagnation_diag.py
+@@ -190,8 +190,7 @@
+             f"stagnation_reproduced={entry['stagnation_reproduced']}"
+         )
+         lines.append(
+-            f"  status={entry['convergence_status']} "
+-            f"iterations={entry['iterations']}"
++            f"  status={entry['convergence_status']} iterations={entry['iterations']}"
+         )
+         lines.append(f"  stop_reason: {entry['stop_reason']}")
+         lines.append(f"  json_artifacts: {', '.join(entry['json_artifacts'])}")
+
+1 file would be reformatted
