@@ -5,7 +5,7 @@ Reproduces the momentum stagnation of the finest T2 heated-channel mesh
 the rhs scale, worst cell 10561) with the solver's in-code forensic
 momentum microscope enabled, and archives the dump for the audit.
 
-Four solves are run with the SAME case, tolerances and stop criteria as the
+Five solves are run with the SAME case, tolerances and stop criteria as the
 calibration campaign (module t2_heated_channel_calibration is imported,
 never duplicated):
 
@@ -18,6 +18,11 @@ never duplicated):
   * --debug-cell 10240 : cell (i=0, j=32), the inlet column at
     mid-height, adjacent to the boundary faces that dominate the
     boundary-driven share of the pinned momentum residual.
+  * --debug-cell 10561 --momentum-trace-cells
+    10240,10241,10242,10243,10244,10560,10561,10562,10563,10564
+    --momentum-trace-iterations 24 : the auto worst cell, plus the
+    per-iteration momentum microscope trace over the inlet columns
+    (i=0..4, j=32/33), bounded to the first 24 outer iterations.
 
 The microscope dump (exact matrix row, Rhie-Chow face reconstruction,
 pressure-correction fluxes, per-face authoritative vs reconstructed flux)
@@ -28,8 +33,9 @@ through its natural stagnation path (rc=1, convergence.json/execution.json
 written) instead of the projection-guard exception (rc=2) that masked the
 stagnation state in run 39910523455.
 
-Success for this driver means: the stagnation is reproduced AND all four
-microscope dumps are present in the archived stderr. It fails if the
+Success for this driver means: the stagnation is reproduced AND all five
+microscope dumps are present in the archived stderr, and the per-iteration
+momentum trace of the fifth solve is non-empty. It fails if the
 solve converges (the symptom disappeared) or a dump is missing
 (instrumentation gap). A green run is diagnostic evidence only, never a
 T2 qualification verdict; the official campaign remains
@@ -85,6 +91,7 @@ def _run_solve(
     run_dir: Path,
     evidence_dir: Path,
     run_id: str,
+    extra_args: list[str] | None = None,
 ) -> dict:
     """One 320x64 forensic solve; never raises, evidence always archived."""
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -101,6 +108,7 @@ def _run_solve(
             str(calib.MAX_ITERATIONS),
             "--debug-cell",
             debug_arg,
+            *(extra_args or []),
         ],
         capture_output=True,
         text=True,
@@ -108,6 +116,15 @@ def _run_solve(
         check=False,
     )
     diagnostics = completed.stdout + completed.stderr
+    momtrace_lines = [
+        line
+        for line in diagnostics.splitlines()
+        if line.startswith("INCOMPRESSIBLE_MOMTRACE ")
+    ]
+    if momtrace_lines:
+        (evidence_dir / f"t2_momtrace_{NX}x{NY}_dbg{slug}_run{run_id}.log").write_text(
+            "\n".join(momtrace_lines) + "\n", encoding="utf-8"
+        )
     (run_dir / f"solver_{slug}.log").write_text(diagnostics, encoding="utf-8")
     (evidence_dir / f"t2_solver_tail_{NX}x{NY}_dbg{slug}_run{run_id}.log").write_text(
         diagnostics[-200000:], encoding="utf-8"
@@ -151,6 +168,7 @@ def _run_solve(
         "iterations": iterations,
         "stop_reason": reason,
         "json_artifacts": sorted(artifacts),
+        "momtrace_lines": len(momtrace_lines),
     }
     entry["stagnation_reproduced"] = (
         completed.returncode == 1
@@ -195,6 +213,7 @@ def _write_evidence(out_dir: Path, report: dict) -> None:
         )
         lines.append(f"  stop_reason: {entry['stop_reason']}")
         lines.append(f"  json_artifacts: {', '.join(entry['json_artifacts'])}")
+        lines.append(f"  momtrace_lines: {entry.get('momtrace_lines', 0)}")
     lines.append("")
     lines.append(f"verdict: {report['verdict']}")
     lines.append(
@@ -225,11 +244,21 @@ def main() -> int:
     solves: list[dict] = []
     with tempfile.TemporaryDirectory(prefix="t2_momdiag_") as tmp:
         work = Path(tmp)
-        for slug, debug_arg in (
-            ("auto", "auto"),
-            ("cell0", "0"),
-            ("cell10241", "10241"),
-            ("cell10240", "10240"),
+        for slug, debug_arg, extra_args in (
+            ("auto", "auto", None),
+            ("cell0", "0", None),
+            ("cell10241", "10241", None),
+            ("cell10240", "10240", None),
+            (
+                "trace",
+                "10561",
+                [
+                    "--momentum-trace-cells",
+                    "10240,10241,10242,10243,10244,10560,10561,10562,10563,10564",
+                    "--momentum-trace-iterations",
+                    "24",
+                ],
+            ),
         ):
             solves.append(
                 _run_solve(
@@ -240,10 +269,15 @@ def main() -> int:
                     work / f"solve_{slug}",
                     out_dir,
                     args.run_id,
+                    extra_args,
                 )
             )
 
-    if all(entry["stagnation_reproduced"] for entry in solves):
+    trace_entry = solves[-1] if solves else {}
+    if (
+        all(entry["stagnation_reproduced"] for entry in solves)
+        and trace_entry.get("momtrace_lines", 0) > 0
+    ):
         verdict = "stagnation_captured"
     elif any(entry["converged_marker"] for entry in solves):
         verdict = "unexpected_convergence"
@@ -254,6 +288,18 @@ def main() -> int:
         "solver": str(solver),
         "mesh": [NX, NY],
         "max_iterations": calib.MAX_ITERATIONS,
+        "momentum_trace_cells": [
+            10240,
+            10241,
+            10242,
+            10243,
+            10244,
+            10560,
+            10561,
+            10562,
+            10563,
+            10564,
+        ],
         "solves": solves,
         "verdict": verdict,
     }

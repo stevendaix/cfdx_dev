@@ -54,6 +54,12 @@ struct Options {
     // cell selection. Evidence-only; no solver physics or gate changes.
     bool debug_cell_auto = false;
     long debug_cell = -1;
+    // T2 momentum diagnostic (#1059, diag branch): per-iteration momentum
+    // microscope trace cells. Evidence-only; the trace stays disabled
+    // unless cells are declared on the command line.
+    bool momentum_trace = false;
+    long momentum_trace_iterations = 50;
+    std::vector<std::size_t> momentum_trace_cells;
 };
 
 
@@ -549,6 +555,52 @@ Options parse(int argc, char** argv)
                         "--debug-cell expects a nonnegative cell index: " + cell);
             }
         }
+        else if (arg == "--momentum-trace-cells") {
+            const std::string spec = value("--momentum-trace-cells");
+            std::size_t pos = 0;
+            while (pos <= spec.size()) {
+                const std::size_t comma = spec.find(',', pos);
+                const std::string token = spec.substr(
+                    pos, comma == std::string::npos ? std::string::npos : comma - pos);
+                if (!token.empty()) {
+                    try {
+                        const unsigned long cell = std::stoul(token);
+                        bool duplicate = false;
+                        for (const std::size_t known : o.momentum_trace_cells)
+                            if (known == static_cast<std::size_t>(cell))
+                                duplicate = true;
+                        if (duplicate)
+                            throw std::invalid_argument("duplicate cell index");
+                        o.momentum_trace_cells.push_back(static_cast<std::size_t>(cell));
+                    } catch (const std::invalid_argument&) {
+                        throw std::invalid_argument(
+                            "--momentum-trace-cells expects comma-separated cell indices: " + spec);
+                    } catch (const std::out_of_range&) {
+                        throw std::invalid_argument(
+                            "--momentum-trace-cells cell index out of range: " + spec);
+                    }
+                }
+                if (comma == std::string::npos)
+                    break;
+                pos = comma + 1;
+            }
+            if (o.momentum_trace_cells.empty())
+                throw std::invalid_argument(
+                    "--momentum-trace-cells expects at least one cell index");
+            o.momentum_trace = true;
+        }
+        else if (arg == "--momentum-trace-iterations") {
+            const std::string count = value("--momentum-trace-iterations");
+            try {
+                const long parsed = std::stol(count);
+                if (parsed <= 0)
+                    throw std::invalid_argument("non-positive iteration count");
+                o.momentum_trace_iterations = parsed;
+            } catch (const std::exception&) {
+                throw std::invalid_argument(
+                    "--momentum-trace-iterations expects a positive integer: " + count);
+            }
+        }
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
@@ -556,6 +608,8 @@ Options parse(int argc, char** argv)
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
                          "  [--project-final-flux] (diag: close + project the final face flux)\n"
                          "  [--debug-cell auto|INDEX] (diag: forensic momentum microscope)\n"
+                         "  [--momentum-trace-cells C0,C1,...] (diag: per-iteration momentum trace)\n"
+                         "  [--momentum-trace-iterations N] (diag: cap traced outer iterations)\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::exit(0);
         } else {
@@ -862,6 +916,17 @@ int main(int argc, char** argv)
         controls.diagnostics.debug_cell_auto = options.debug_cell_auto;
         if (options.debug_cell >= 0)
             controls.diagnostics.debug_cell = options.debug_cell;
+        // T2 momentum diagnostic (#1059, diag branch): per-iteration
+        // momentum microscope trace, evidence-only. Enabled only when
+        // --momentum-trace-cells declared cells; no tolerance, gate or
+        // stop criterion is affected.
+        if (options.momentum_trace) {
+            controls.diagnostics.momentum_iteration_trace = true;
+            controls.diagnostics.momentum_iteration_trace_cells =
+                options.momentum_trace_cells;
+            controls.diagnostics.momentum_iteration_trace_max_iterations =
+                static_cast<std::size_t>(options.momentum_trace_iterations);
+        }
 
         // The declared initialization strategy is applied by the solver, before
         // the first residual is formed. An explicit --restart request therefore

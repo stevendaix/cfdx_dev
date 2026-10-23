@@ -77,6 +77,13 @@ struct DiagnosticsControls {
     // Bounded progress trace for long validation solves. Disabled by default.
     bool iteration_trace = false;
     std::size_t iteration_trace_frequency = 50;
+    // T2 momentum diagnostic (#1059, diag branch): per-iteration momentum
+    // microscope trace for a declared, bounded set of cells. Disabled by
+    // default; evidence-only, no criterion, tolerance or stop condition
+    // consumes it.
+    bool momentum_iteration_trace = false;
+    std::vector<std::size_t> momentum_iteration_trace_cells;
+    std::size_t momentum_iteration_trace_max_iterations = 50;
 };
 
 struct IncompressibleTransientControls {
@@ -3869,6 +3876,127 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                   h.velocity_change_inf,
                   h.pressure_change_inf});
         h.nonlinear_convergence_metric = nonlinear_metric;
+
+        // T2 momentum diagnostic (#1059, diag branch): per-iteration momentum
+        // microscope trace for a declared, bounded set of cells. Evidence
+        // only: it reads the accepted state at the end of the outer
+        // iteration and reuses the production operators on the production
+        // data (make_hbya_field + make_mass_flux for the predictor flux,
+        // rhie_chow_pressure_flux_internal for the pressure correction), so
+        // the printed quantities are the ones the solver actually consumes.
+        // For SIMPLE this reproduces the exact production predictor flux; the
+        // SIMPLEC over-relaxation term is intentionally not re-derived here
+        // (the T2 audit case runs SIMPLE). Disabled by default; no
+        // criterion, tolerance, relaxation, scheme or stop condition is
+        // changed, and the trace covers only the first
+        // momentum_iteration_trace_max_iterations outer iterations, which
+        // bounds the emitted volume.
+        if (controls.diagnostics.momentum_iteration_trace &&
+            controls.algorithm != PressureVelocityAlgorithm::COUPLED &&
+            iter <= controls.diagnostics.momentum_iteration_trace_max_iterations &&
+            !controls.diagnostics.momentum_iteration_trace_cells.empty()) {
+            const auto trace_HbyA = make_hbya_field(hbya);
+            const auto trace_phi_pred = make_mass_flux(
+                mesh, geometry, trace_HbyA, controls.density, velocity_bcs);
+            const auto* trace_faces = mesh.cells().faces_data();
+            const auto* trace_offsets = mesh.cells().offsets_data();
+            for (const std::size_t trace_cell :
+                 controls.diagnostics.momentum_iteration_trace_cells) {
+                if (trace_cell >= mesh.n_cells())
+                    continue;
+                double trace_ax = 0.0;
+                {
+                    const auto trace_begin =
+                        final_ex.matrix.row_offsets_data()[trace_cell];
+                    const auto trace_end =
+                        final_ex.matrix.row_offsets_data()[trace_cell + 1];
+                    for (std::uint32_t k = trace_begin; k < trace_end; ++k)
+                        trace_ax += final_ex.matrix.values_data()[k] *
+                            final_ux(final_ex.matrix.columns_data()[k]);
+                }
+                double trace_continuity_pred = 0.0;
+                double trace_flux_divergence = 0.0;
+                std::ostringstream trace_face_records;
+                const Offset trace_off = trace_offsets[trace_cell];
+                const Offset trace_count = trace_offsets[trace_cell + 1] - trace_off;
+                for (Offset k = 0; k < trace_count; ++k) {
+                    const std::size_t f = trace_faces[trace_off + k];
+                    const auto trace_nr = mesh.ownership().neighbour(f);
+                    const std::size_t trace_o = mesh.ownership().owner(f);
+                    const double trace_phi_rc = rhie_chow_pressure_flux_internal(
+                        mesh, geometry, f, p, final_grad_p,
+                        controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                            ? rAtU : rAU,
+                        controls.density);
+                    double trace_po = p(trace_o);
+                    double trace_pn = std::numeric_limits<double>::quiet_NaN();
+                    double trace_gcompact = std::numeric_limits<double>::quiet_NaN();
+                    double trace_gaussface = std::numeric_limits<double>::quiet_NaN();
+                    if (trace_nr >= 0) {
+                        const std::size_t trace_n = static_cast<std::size_t>(trace_nr);
+                        const Vec3 trace_dvec = geometry.cell_centres[trace_n] -
+                                                geometry.cell_centres[trace_o];
+                        const double trace_d = trace_dvec.mag();
+                        trace_pn = p(trace_n);
+                        trace_gcompact = (trace_pn - trace_po) / trace_d;
+                        const Vec3 trace_e{
+                            trace_dvec.x / trace_d,
+                            trace_dvec.y / trace_d,
+                            trace_dvec.z / trace_d};
+                        const double trace_gp_x = 0.5 * (
+                            final_grad_p.component_data(0)[trace_o] +
+                            final_grad_p.component_data(0)[trace_n]);
+                        const double trace_gp_y = 0.5 * (
+                            final_grad_p.component_data(1)[trace_o] +
+                            final_grad_p.component_data(1)[trace_n]);
+                        const double trace_gp_z = 0.5 * (
+                            final_grad_p.component_data(2)[trace_o] +
+                            final_grad_p.component_data(2)[trace_n]);
+                        trace_gaussface = trace_gp_x * trace_e.x +
+                                          trace_gp_y * trace_e.y +
+                                          trace_gp_z * trace_e.z;
+                    }
+                    trace_face_records
+                        << f << ":" << trace_nr << ":"
+                        << trace_po << ":" << trace_pn << ":"
+                        << trace_phi_pred(f) << ":" << trace_phi_rc << ":"
+                        << trace_gcompact << ":" << trace_gaussface << ":"
+                        << mass_flux(f) << ";";
+                    const double trace_sign =
+                        trace_o == trace_cell ? 1.0 : -1.0;
+                    trace_continuity_pred += trace_sign * trace_phi_pred(f);
+                    trace_flux_divergence += trace_sign * mass_flux(f);
+                }
+                const double trace_rhs = final_ex.rhs(trace_cell);
+                const double trace_residual = std::abs(trace_ax - trace_rhs);
+                std::cerr << "INCOMPRESSIBLE_MOMTRACE iter=" << iter
+                          << " cell=" << trace_cell
+                          << " p=" << p(trace_cell)
+                          << " p_increment=" << p(trace_cell) - p_old(trace_cell)
+                          << " ux=" << U.component_data(0)[trace_cell]
+                          << " uy=" << U.component_data(1)[trace_cell]
+                          << " ux_increment="
+                          << U.component_data(0)[trace_cell] -
+                             U_old.component_data(0)[trace_cell]
+                          << " uy_increment="
+                          << U.component_data(1)[trace_cell] -
+                             U_old.component_data(1)[trace_cell]
+                          << " gradp_gauss_x="
+                          << final_grad_p.component_data(0)[trace_cell]
+                          << " gradp_gauss_y="
+                          << final_grad_p.component_data(1)[trace_cell]
+                          << " momentum_diag=" << final_ex.diagonal[trace_cell]
+                          << " momentum_rhs=" << trace_rhs
+                          << " momentum_ax=" << trace_ax
+                          << " momentum_residual=" << trace_residual
+                          << " momentum_residual_rhs_relative="
+                          << trace_residual / std::max(momentum_rhs_scale, tiny)
+                          << " faces=" << trace_face_records.str()
+                          << " continuity_pred=" << trace_continuity_pred
+                          << " flux_divergence=" << trace_flux_divergence
+                          << "\n";
+            }
+        }
 
         if (controls.diagnostics.iteration_trace &&
             (iter == 1 ||
