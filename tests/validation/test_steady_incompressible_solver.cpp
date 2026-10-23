@@ -475,6 +475,8 @@ int main()
 
         std::size_t callback_calls = 0;
         std::array<double, 3> first_candidate{};
+        std::array<double, 3> accepted_velocity{};
+        double accepted_pressure = 0.0;
         controls.body_force = {1.0, 0.0, 0.0};
         controls.iteration_output_callback =
             [&](std::size_t, double, const Mesh&,
@@ -496,6 +498,9 @@ int main()
                 EXPECT_NEAR(state.k(0), first_candidate[0], 1e-12);
                 EXPECT_NEAR(state.omega(0), first_candidate[1], 1e-12);
                 EXPECT_NEAR(state.nu_t(0), first_candidate[2], 1e-12);
+                for (std::size_t d = 0; d < 3; ++d)
+                    accepted_velocity[d] = velocity.component_data(d)[0];
+                accepted_pressure = pressure(0);
                 return false;
             };
 
@@ -507,15 +512,35 @@ int main()
         EXPECT_NEAR(state.omega(0), first_candidate[1], 1e-12);
         EXPECT_NEAR(state.nu_t(0), first_candidate[2], 1e-12);
 
-        // The accepted carrier solution and conservative face flux must
-        // remain finite after rollback/retry. Their values need not match the
-        // rejected candidate because the retry controller reduces relaxation.
+        // Compare the accepted retry against a clean solve using the exact
+        // relaxation factors recorded for the accepted iteration. The retry
+        // controller deliberately lowers alpha, so comparing against the
+        // rejected first-attempt carrier candidate would be incorrect.
         for (std::size_t d = 0; d < 3; ++d)
-            EXPECT_TRUE(std::isfinite(U.component_data(d)[0]));
-        EXPECT_TRUE(std::isfinite(p(0)));
+            EXPECT_NEAR(U.component_data(d)[0], accepted_velocity[d], 1e-12);
+        EXPECT_NEAR(p(0), accepted_pressure, 1e-12);
         EXPECT_TRUE(result.authoritative_mass_flux.size() == m.faces().size());
         for (std::size_t face = 0; face < result.authoritative_mass_flux.size(); ++face)
             EXPECT_TRUE(std::isfinite(result.authoritative_mass_flux(face)));
+
+        U.fill(0.0);
+        p.fill(0.0);
+        restore_sst_production_state(state, original);
+        auto reference_controls = controls;
+        reference_controls.coupling.alpha_u = result.history[0].effective_alpha_u;
+        reference_controls.coupling.alpha_p = result.history[0].effective_alpha_p;
+        reference_controls.iteration_output_callback = {};
+        const auto reference =
+            solve_steady_incompressible(m, U, p, ubc, pbc, reference_controls);
+        EXPECT_TRUE(reference.iterations == 1);
+        for (std::size_t d = 0; d < 3; ++d)
+            EXPECT_NEAR(U.component_data(d)[0], accepted_velocity[d], 1e-12);
+        EXPECT_NEAR(p(0), accepted_pressure, 1e-12);
+        EXPECT_TRUE(result.authoritative_mass_flux.size() ==
+                    reference.authoritative_mass_flux.size());
+        for (std::size_t face = 0; face < result.authoritative_mass_flux.size(); ++face)
+            EXPECT_NEAR(result.authoritative_mass_flux(face),
+                        reference.authoritative_mass_flux(face), 1e-12);
         EXPECT_NEAR(state.k(0), first_candidate[0], 1e-12);
         EXPECT_NEAR(state.omega(0), first_candidate[1], 1e-12);
         EXPECT_NEAR(state.nu_t(0), first_candidate[2], 1e-12);
