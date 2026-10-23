@@ -480,8 +480,8 @@ int main()
         controls.body_force = {1.0, 0.0, 0.0};
         controls.iteration_output_callback =
             [&](std::size_t, double, const Mesh&,
-                const Field<double, Location::CELL>&,
-                const Field<double, Location::CELL>&) {
+                const Field<double, Location::CELL>& velocity,
+                const Field<double, Location::CELL>& pressure) {
                 ++callback_calls;
                 if (callback_calls == 1) {
                     // Reject after SST transport committed, before the outer
