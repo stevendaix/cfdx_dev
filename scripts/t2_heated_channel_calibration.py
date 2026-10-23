@@ -21,7 +21,9 @@ Locked case decisions (N9/T2 audit, heated-channel campaign #884):
   * external energy check: mdot*cp*(Tb_out - Tb_in) vs q''*2*L, with mdot
     measured from the u_x probes (not an oracle)
 
-The script never modifies the solver. Evidence (JSON + TXT) is always
+The script never modifies solver physics. The convergence artifact records raw
+linear-solver status and residual separately from the full energy-stage verdict.
+Evidence (JSON + TXT) is always
 written to --output-dir before exiting; the exit code is 1 only when a
 mesh fails to run/converge (the err_rel measurement itself is not gated).
 """

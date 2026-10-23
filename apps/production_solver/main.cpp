@@ -330,6 +330,9 @@ std::string energy_convergence_json(
         << ",\n";
     out << "  \"linear_solver_converged\": "
         << (energy.linear_solver_converged ? "true" : "false") << ",\n";
+    out << "  \"linear_solver_status\": " << energy.linear_solver_status << ",\n";
+    out << "  \"linear_residual_relative\": "
+        << json_number(energy.linear_residual_relative) << ",\n";
     out << "  \"global_energy_balance_passed\": "
         << (energy.global_energy_balance_passed ? "true" : "false") << ",\n";
     out << "  \"local_energy_balance_passed\": "
@@ -361,6 +364,11 @@ std::string energy_convergence_json(
             << ", \"residual\": " << json_number(entry.residual)
             << ", \"backward_error\": "
             << json_number(entry.backward_error)
+            << ", \"linear_residual_relative\": "
+            << json_number(entry.linear_residual_relative)
+            << ", \"linear_solver_status\": " << entry.linear_solver_status
+            << ", \"linear_solver_converged\": "
+            << (entry.linear_solver_converged ? "true" : "false")
             << ", \"independent_conservation_normalized\": "
             << json_number(entry.independent_conservation_normalized)
             << "}";
