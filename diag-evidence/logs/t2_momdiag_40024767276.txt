@@ -1,0 +1,34 @@
+T2 320x64 momentum-stagnation forensic diagnostic (level 1)
+run_id: 40024767276
+solver: build/cfdx_production_solver
+mesh: 320x64, max_iterations=3000 (calibration module reused)
+no gate, tolerance, or stop criterion modified; no flux projection
+
+solve --debug-cell auto: rc=1 microscope_present=True microscope_complete=True microscope_cell=10561 stagnation_reproduced=True
+  status=2 iterations=22
+  stop_reason: flat residual envelope over the configured stagnation window
+  json_artifacts: convergence, execution
+  momtrace_lines: 0
+solve --debug-cell 0: rc=1 microscope_present=True microscope_complete=True microscope_cell=0 stagnation_reproduced=True
+  status=2 iterations=22
+  stop_reason: flat residual envelope over the configured stagnation window
+  json_artifacts: convergence, execution
+  momtrace_lines: 0
+solve --debug-cell 10241: rc=1 microscope_present=True microscope_complete=True microscope_cell=10241 stagnation_reproduced=True
+  status=2 iterations=22
+  stop_reason: flat residual envelope over the configured stagnation window
+  json_artifacts: convergence, execution
+  momtrace_lines: 0
+solve --debug-cell 10240: rc=1 microscope_present=True microscope_complete=True microscope_cell=10240 stagnation_reproduced=True
+  status=2 iterations=22
+  stop_reason: flat residual envelope over the configured stagnation window
+  json_artifacts: convergence, execution
+  momtrace_lines: 0
+solve --debug-cell 10561: rc=1 microscope_present=True microscope_complete=True microscope_cell=10561 stagnation_reproduced=True
+  status=2 iterations=22
+  stop_reason: flat residual envelope over the configured stagnation window
+  json_artifacts: convergence, execution
+  momtrace_lines: 660
+
+verdict: stagnation_captured
+interpretation: a green run captures forensic evidence only; it is never a T2 qualification verdict.
