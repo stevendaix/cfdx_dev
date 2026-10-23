@@ -23,6 +23,8 @@ Locked case decisions (N9/T2 audit, heated-channel campaign #884):
 
 The script never modifies solver physics. The convergence artifact records raw
 linear-solver status and residual separately from the full energy-stage verdict.
+The energy Krylov tolerance is relative and is applied once by the solver; the
+campaign keeps all configured residual and conservation gates unchanged.
 Evidence (JSON + TXT) is always
 written to --output-dir before exiting; the exit code is 1 only when a
 mesh fails to run/converge (the err_rel measurement itself is not gated).
