@@ -94,7 +94,7 @@ def test_workbench_has_stable_docks() -> None:
     assert window.command_palette_dialog.objectName() == "workbench.command_palette"
     window.command_palette_query.setText("Analyze")
     assert window.command_palette_results.count() == 1
-    assert window.command_palette_results.item(0).text() == "Analyze"
+    assert window.command_palette_results.item(0).text() == "Analyze workspace"
     window.command_palette_dialog.close()
     assert window.application.state.selection.stable_id == "boundaries"
     window.close()
