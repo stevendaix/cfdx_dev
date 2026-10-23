@@ -1,0 +1,3 @@
+T2MOMDIAG_SOLVE slug=auto debug_cell=auto rc=1 microscope=True cell=10561 stagnation=True
+T2MOMDIAG_SOLVE slug=cell0 debug_cell=0 rc=1 microscope=True cell=0 stagnation=True
+T2MOMDIAG verdict=stagnation_captured
