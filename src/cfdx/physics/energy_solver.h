@@ -33,6 +33,9 @@ struct EnergyIteration {
     std::size_t iteration = 0;
     double residual = 0.0;
     double backward_error = 0.0;
+    double linear_residual_relative = std::numeric_limits<double>::infinity();
+    int linear_solver_status = -1;
+    bool linear_solver_converged = false;
     double energy_imbalance = 0.0;
     double independent_conservation_residual = 0.0;
     double independent_conservation_normalized = 0.0;
@@ -44,6 +47,10 @@ struct EnergyIteration {
 
 struct EnergySolveResult {
     bool converged = false;
+    // Raw linear solve status is separate from the complete energy-stage verdict.
+    bool linear_solver_converged = false;
+    int linear_solver_status = -1;
+    double linear_residual_relative = std::numeric_limits<double>::infinity();
     std::size_t iterations = 0;
     std::vector<EnergyIteration> history;
 };
@@ -440,8 +447,12 @@ inline EnergySolveResult solve_energy(
                 linear_backward_error,
                 std::abs(row_residual) / std::max(1.0, row_scale));
         }
+        result.linear_solver_status = static_cast<int>(linear.status);
+        result.linear_solver_converged =
+            linear.status == cfdx::core::SolverStatus::CONVERGED;
+        result.linear_residual_relative = linear.residual_relative;
         const bool linear_converged =
-            linear.status == cfdx::core::SolverStatus::CONVERGED &&
+            result.linear_solver_converged &&
             std::isfinite(res) && std::isfinite(linear_backward_error) &&
             std::isfinite(linear.residual_relative) &&
             linear.residual_relative<=linear_tolerance &&
@@ -462,6 +473,10 @@ inline EnergySolveResult solve_energy(
         iteration_report.iteration = iter;
         iteration_report.residual = res;
         iteration_report.backward_error = linear_backward_error;
+        iteration_report.linear_residual_relative = linear.residual_relative;
+        iteration_report.linear_solver_status = static_cast<int>(linear.status);
+        iteration_report.linear_solver_converged =
+            linear.status == cfdx::core::SolverStatus::CONVERGED;
         iteration_report.energy_imbalance = imbalance;
         iteration_report.independent_conservation_residual = independent_energy.residual;
         iteration_report.independent_conservation_normalized = independent_energy.normalized_residual;
