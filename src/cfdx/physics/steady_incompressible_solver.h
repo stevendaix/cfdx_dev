@@ -3916,6 +3916,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 }
                 double trace_continuity_pred = 0.0;
                 double trace_flux_divergence = 0.0;
+                // x-momentum balance decomposition, evidence only: the
+                // per-face and per-cell totals below reconstruct the exact
+                // assemble_scalar_equation contract from production data
+                // (harmonic face viscosity, D = gamma*A/d, upwind
+                // convection, bounded -div(phi)*u_P correction,
+                // FIXED_VALUE and ZERO_GRADIENT boundary faces) so each
+                // term can be compared against the assembled row in the
+                // evidence itself. No criterion or tolerance consumes it.
+                double trace_conv_net = 0.0;
+                double trace_diff_net = 0.0;
+                double trace_div_phi = 0.0;
+                double trace_bnd_rhs = 0.0;
                 std::ostringstream trace_face_records;
                 const Offset trace_off = trace_offsets[trace_cell];
                 const Offset trace_count = trace_offsets[trace_cell + 1] - trace_off;
@@ -3956,17 +3968,134 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                           trace_gp_y * trace_e.y +
                                           trace_gp_z * trace_e.z;
                     }
+                    // Per-face x-momentum balance decomposition (see
+                    // the comment at the accumulators above): conv/diff are
+                    // the reconstructed convection/diffusion efflux out of
+                    // the traced cell through this face; acf is the ACTUAL
+                    // assembled row coefficient toward the neighbour so
+                    // every face validates the reconstruction. EMPTY faces
+                    // keep NaN and are excluded from the per-cell totals,
+                    // exactly as the assembly skips them.
+                    const double trace_u_o = U.component_data(0)[trace_o];
+                    const Vec3 trace_Sf = geometry.face_area_vectors[f];
+                    const double trace_area = trace_Sf.mag();
+                    const double trace_F_face = mass_flux(f);
+                    double trace_conv = std::numeric_limits<double>::quiet_NaN();
+                    double trace_diff = std::numeric_limits<double>::quiet_NaN();
+                    double trace_acf = std::numeric_limits<double>::quiet_NaN();
+                    if (trace_nr >= 0) {
+                        const std::size_t trace_n =
+                            static_cast<std::size_t>(trace_nr);
+                        const Vec3 trace_dvec_bal =
+                            geometry.cell_centres[trace_n] -
+                            geometry.cell_centres[trace_o];
+                        const double trace_d_bal = trace_dvec_bal.mag();
+                        const double trace_gamma_face =
+                            (mu_eff[trace_o] > 0.0 && mu_eff[trace_n] > 0.0)
+                                ? 2.0 * mu_eff[trace_o] * mu_eff[trace_n] /
+                                      (mu_eff[trace_o] + mu_eff[trace_n])
+                                : 0.0;
+                        const double trace_D_face =
+                            trace_gamma_face * trace_area / trace_d_bal;
+                        const double trace_u_nb =
+                            U.component_data(0)[trace_n];
+                        const double trace_sign_c =
+                            trace_o == trace_cell ? 1.0 : -1.0;
+                        const double trace_u_up =
+                            trace_F_face >= 0.0 ? trace_u_o : trace_u_nb;
+                        trace_conv =
+                            trace_sign_c * trace_F_face * trace_u_up;
+                        trace_diff =
+                            trace_sign_c * trace_D_face *
+                            (trace_u_o - trace_u_nb);
+                        const auto trace_row_begin =
+                            final_ex.matrix.row_offsets_data()[trace_cell];
+                        const auto trace_row_end =
+                            final_ex.matrix.row_offsets_data()[trace_cell + 1];
+                        for (auto tk = trace_row_begin;
+                             tk < trace_row_end; ++tk) {
+                            if (final_ex.matrix.columns_data()[tk] ==
+                                trace_n) {
+                                trace_acf =
+                                    final_ex.matrix.values_data()[tk];
+                                break;
+                            }
+                        }
+                        trace_div_phi += trace_sign_c * trace_F_face;
+                        trace_conv_net += trace_conv;
+                        trace_diff_net += trace_diff;
+                    } else {
+                        const std::size_t trace_patch_idx =
+                            geometry.face_patch[f];
+                        bool trace_skip_face =
+                            trace_patch_idx >= mesh.boundary().n_patches();
+                        if (!trace_skip_face)
+                            trace_skip_face =
+                                mesh.boundary().patch(trace_patch_idx).type ==
+                                PatchType::EMPTY;
+                        if (!trace_skip_face) {
+                            const std::string trace_patch_name =
+                                mesh.boundary().patch(trace_patch_idx).name;
+                            ScalarBoundaryCondition trace_bc;
+                            const auto trace_bc_it =
+                                ubc_x.find(trace_patch_name);
+                            if (trace_bc_it != ubc_x.end())
+                                trace_bc = trace_bc_it->second;
+                            const double trace_d_bc =
+                                boundary_normal_distance(geometry, f, trace_o);
+                            if (trace_bc.type ==
+                                ScalarBoundaryType::FIXED_VALUE) {
+                                const double trace_D_bc =
+                                    mu_eff[trace_o] * trace_area / trace_d_bc;
+                                const double trace_u_up_bc =
+                                    trace_F_face >= 0.0
+                                        ? trace_u_o
+                                        : trace_bc.value;
+                                trace_conv = trace_F_face * trace_u_up_bc;
+                                trace_diff =
+                                    trace_D_bc * (trace_u_o - trace_bc.value);
+                                trace_bnd_rhs +=
+                                    (trace_D_bc +
+                                     std::max(-trace_F_face, 0.0)) *
+                                    trace_bc.value;
+                            } else {
+                                trace_conv = trace_F_face * trace_u_o;
+                                trace_diff = 0.0;
+                            }
+                            trace_div_phi += trace_F_face;
+                            trace_conv_net += trace_conv;
+                            trace_diff_net += trace_diff;
+                        }
+                    }
                     trace_face_records
                         << f << ":" << trace_nr << ":"
                         << trace_po << ":" << trace_pn << ":"
                         << trace_phi_pred(f) << ":" << trace_phi_rc << ":"
                         << trace_gcompact << ":" << trace_gaussface << ":"
-                        << mass_flux(f) << ";";
+                        << mass_flux(f) << ":"
+                        << trace_conv << ":" << trace_diff << ":"
+                        << trace_acf << ";";
                     const double trace_sign =
                         trace_o == trace_cell ? 1.0 : -1.0;
                     trace_continuity_pred += trace_sign * trace_phi_pred(f);
                     trace_flux_divergence += trace_sign * mass_flux(f);
                 }
+                const double trace_u_cell = U.component_data(0)[trace_cell];
+                if (controls.use_bounded_convection)
+                    trace_conv_net -= trace_div_phi * trace_u_cell;
+                const double trace_volume =
+                    geometry.cell_volumes[trace_cell];
+                const double trace_body_force =
+                    body_x(trace_cell) * trace_volume;
+                const double trace_press_force =
+                    -final_grad_p.component_data(0)[trace_cell] *
+                    trace_volume;
+                // Predicted A*x - rhs from the reconstructed balance; it
+                // must reproduce the assembled momentum_residual to
+                // round-off unless reconstruction and assembly disagree.
+                const double trace_balance_residual =
+                    trace_conv_net + trace_diff_net -
+                    trace_body_force - trace_press_force - trace_bnd_rhs;
                 const double trace_rhs = final_ex.rhs(trace_cell);
                 const double trace_residual = std::abs(trace_ax - trace_rhs);
                 std::cerr << "INCOMPRESSIBLE_MOMTRACE iter=" << iter
@@ -3991,6 +4120,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " momentum_residual=" << trace_residual
                           << " momentum_residual_rhs_relative="
                           << trace_residual / std::max(momentum_rhs_scale, tiny)
+                          << " conv_net=" << trace_conv_net
+                          << " diff_net=" << trace_diff_net
+                          << " div_phi=" << trace_div_phi
+                          << " press_force=" << trace_press_force
+                          << " body_force=" << trace_body_force
+                          << " bnd_rhs=" << trace_bnd_rhs
+                          << " balance_residual=" << trace_balance_residual
+                          << " alpha_u=" << h.effective_alpha_u
                           << " faces=" << trace_face_records.str()
                           << " continuity_pred=" << trace_continuity_pred
                           << " flux_divergence=" << trace_flux_divergence

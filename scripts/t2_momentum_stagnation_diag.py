@@ -18,11 +18,16 @@ never duplicated):
   * --debug-cell 10240 : cell (i=0, j=32), the inlet column at
     mid-height, adjacent to the boundary faces that dominate the
     boundary-driven share of the pinned momentum residual.
-  * --debug-cell 10561 --momentum-trace-cells
-    10240,10241,10242,10243,10244,10560,10561,10562,10563,10564
+  * --debug-cell 10561 --momentum-trace-cells <see TRACE_CELLS>
     --momentum-trace-iterations 24 : the auto worst cell, plus the
     per-iteration momentum microscope trace over the inlet columns
-    (i=0..4, j=32/33), bounded to the first 24 outer iterations.
+    (i=0..4) at mid-height (j=32/33) and at the walls (j=0/63
+    wall-adjacent, j=2/61 near-wall; cell id = j*320+i), bounded to
+    the first 24 outer iterations. The trace also decomposes the
+    x-momentum balance per face and per cell (convection, diffusion,
+    pressure and body forces, boundary rhs, algebraic residual with
+    the actual assembled row coefficient) and prints the effective
+    relaxation factor.
 
 The microscope dump (exact matrix row, Rhie-Chow face reconstruction,
 pressure-correction fluxes, per-face authoritative vs reconstructed flux)
@@ -54,6 +59,12 @@ import tempfile
 from pathlib import Path
 
 NX, NY = 320, 64
+# Traced inlet columns (i=0..4): mid-height rows j=32/33 reproduce the
+# run #4 center-column trace; j=0/63 are wall-adjacent and j=2/61
+# near-wall, to follow the birth of the wall shear layer (cell id =
+# j*NX + i).
+TRACE_CELL_ROWS = (0, 2, 32, 33, 61, 63)
+TRACE_CELLS = [row * NX + i for row in TRACE_CELL_ROWS for i in range(5)]
 SOLVE_TIMEOUT_S = 3600
 MICROSCOPE_BEGIN = "=== CFDX MOMENTUM MICROSCOPE cell="
 MICROSCOPE_END = "=== END CFDX MOMENTUM MICROSCOPE ==="
@@ -254,7 +265,7 @@ def main() -> int:
                 "10561",
                 [
                     "--momentum-trace-cells",
-                    "10240,10241,10242,10243,10244,10560,10561,10562,10563,10564",
+                    ",".join(str(c) for c in TRACE_CELLS),
                     "--momentum-trace-iterations",
                     "24",
                 ],
@@ -288,18 +299,7 @@ def main() -> int:
         "solver": str(solver),
         "mesh": [NX, NY],
         "max_iterations": calib.MAX_ITERATIONS,
-        "momentum_trace_cells": [
-            10240,
-            10241,
-            10242,
-            10243,
-            10244,
-            10560,
-            10561,
-            10562,
-            10563,
-            10564,
-        ],
+        "momentum_trace_cells": TRACE_CELLS,
         "solves": solves,
         "verdict": verdict,
     }
