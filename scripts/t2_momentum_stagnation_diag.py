@@ -134,7 +134,7 @@ def _run_solve(
     if reason_value is None:
         reason_value = _scalar(execution, "convergence_reason", "reason")
     reason = str(reason_value) if reason_value is not None else ""
-    match = re.search(re.escape(MICROSCOPE_BEGIN) + r"(d+)", diagnostics)
+    match = re.search(re.escape(MICROSCOPE_BEGIN) + r"(\d+)", diagnostics)
     entry: dict = {
         "debug_cell_arg": debug_arg,
         "returncode": completed.returncode,
@@ -166,8 +166,7 @@ def _write_evidence(out_dir: Path, report: dict) -> None:
     run_id = report["run_id"]
     json_path = out_dir / f"t2_momdiag_{run_id}.json"
     txt_path = out_dir / f"t2_momdiag_{run_id}.txt"
-    json_path.write_text(json.dumps(report, indent=2) + "
-", encoding="utf-8")
+    json_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
 
     lines: list[str] = []
     lines.append("T2 320x64 momentum-stagnation forensic diagnostic (level 1)")
@@ -197,9 +196,7 @@ def _write_evidence(out_dir: Path, report: dict) -> None:
         "interpretation: a green run captures forensic evidence only; it"
         " is never a T2 qualification verdict."
     )
-    txt_path.write_text("
-".join(lines) + "
-", encoding="utf-8")
+    txt_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> int:
