@@ -1,6 +1,6 @@
 # SST production-solver implementation tracker
 
-**Status date:** 2026-10-22  
+**Status date:** 2026-10-23  
 **Overall status:** IN PROGRESS — RANS production selection remains fail-closed.  
 **Scope:** Track implementation and qualification evidence for end-to-end SST in CFDX. Update this file in each turbulence PR; do not mark a gate complete without exact-HEAD evidence. Numerical-core implementation is governed by [the RANS/SST method fiche](../audits/09-turbulence-rans.md).
 
@@ -10,7 +10,7 @@
 - [x] SST transport APIs, dynamic blending, and explicit opt-in production outer-loop coupling originally developed in #1032 are carried forward in synchronized PR #1047; production E2E and physical qualification remain open.
 - [x] Cellwise momentum-viscosity assembly overload exists and has uniform-coefficient equivalence coverage.
 - [x] Production solver consumes a cellwise turbulent-viscosity field consistently in predictor, final nonlinear residual, and independent momentum conservation reconstruction (PR #967 merged; end-to-end SST remains disabled).
-- [x] The solve accepts an explicit opt-in `SSTProductionRuntime`; SST state is validated and snapshotted per outer attempt, transport is called with the current pressure-corrected mass flux, and `nu_t` refreshes `mu_eff` for the next predictor (synchronized PR #1047, head pending final CI; exact-head checks are running and decisive production E2E tests remain open).
+- [x] The solve accepts an explicit opt-in `SSTProductionRuntime`; SST state is validated and snapshotted per outer attempt, transport is called with the current pressure-corrected mass flux, and `nu_t` refreshes `mu_eff` for the next predictor (synchronized PR #1047, exact-head main CI passed at b1b8ca9; decisive production E2E tests remain open).
 - [x] Add a non-production SST case preflight for explicit positive initial `k`/`omega` and validated inlet turbulence intensity/length scale; derive the standard inlet estimates without enabling the production selector.
 - [x] Represent explicit per-patch `k`/`omega` boundary-condition types in the persistent case schema and HDF5 round-trip, with compatibility validation.
 - [ ] Connect persisted case scalar-boundary metadata and DAT state restoration to the application driver's runtime construction; the current runtime requires the caller to supply validated state and boundary contracts explicitly.
@@ -106,6 +106,8 @@ This section records the state before PR #1032 and is superseded for production-
 - [x] Keep the general production turbulence selector fail-closed. The opt-in runtime does not enable the general RANS selector or imply physical qualification.
 
 ## Evidence log
+
+| 2026-10-23 | PR #1047 head `b1b8ca98654f29818e0b3d8de0b257be211e6a67`: Release/DebugSanitizers, numerical maturity, numerical maturity audit, audit gate, docs, GUI CI, N10 fixture verification and pre-commit guards passed. Total validation and N9 qualification/physical workflows were skipped, not passed. Branch compare reports 18 commits ahead and 8 behind master; mergeability must be rechecked after reconciliation. | Software integration checks pass; no physical qualification claim. Production E2E, application restart wiring and trajectory equivalence remain blockers. |
 
 | Date | Change / evidence | Decision |
 |---|---|---|
