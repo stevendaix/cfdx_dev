@@ -3797,8 +3797,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             final_momentum_residual / h.momentum_equation_residual_reference;
         h.velocity_change_inf = velocity_change_inf;
         h.pressure_change_inf = pressure_change_inf;
-        h.effective_alpha_u = effective_alpha_u;
-        h.effective_alpha_p = effective_alpha_p;
+        // Report the relaxation factors actually used on this attempt, including
+        // any retry-controller scaling. These are the values needed to replay
+        // an accepted iteration deterministically from its history record.
+        h.effective_alpha_u = retry_controller.alpha_u(effective_alpha_u);
+        h.effective_alpha_p = retry_controller.alpha_p(effective_alpha_p);
         h.simplec_signed_offdiag_sum_linf = simplec_signed_offdiag_sum_audit;
         h.simplec_abs_offdiag_sum_linf = simplec_abs_offdiag_sum_audit;
         h.simplec_denominator_signed_linf = simplec_denominator_signed_audit;
