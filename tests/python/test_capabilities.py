@@ -7,7 +7,6 @@ the P0 solver-state review requirement (RUNNING is never convergence).
 import importlib.util
 
 import pytest
-from cfdx import CFDXSession
 from cfdx.capabilities import (
     CAPABILITIES,
     CapabilityContext,
@@ -21,6 +20,8 @@ from cfdx.solver_states import (
     unknown_state_view,
 )
 from cfdx.workbench import CFDXWorkbenchWindow
+
+from cfdx import CFDXSession
 
 
 def test_capability_ids_are_stable_and_unique() -> None:
