@@ -1,19 +1,19 @@
 # SST production-solver implementation tracker
 
-**Status date:** 2026-10-21  
+**Status date:** 2026-10-22  
 **Overall status:** IN PROGRESS — RANS production selection remains fail-closed.  
 **Scope:** Track implementation and qualification evidence for end-to-end SST in CFDX. Update this file in each turbulence PR; do not mark a gate complete without exact-HEAD evidence. Numerical-core implementation is governed by [the RANS/SST method fiche](../audits/09-turbulence-rans.md).
 
 ## Current baseline
 
 - [x] Production driver rejects unsupported non-laminar turbulence selections instead of silently solving laminar equations (merged PR #941).
-- [x] SST transport component APIs and dynamic blending exist; they are not yet coupled to the production outer loop.
+- [x] SST transport APIs, dynamic blending, and explicit opt-in production outer-loop coupling are present in PR #1032; production E2E and physical qualification remain open.
 - [x] Cellwise momentum-viscosity assembly overload exists and has uniform-coefficient equivalence coverage.
 - [x] Production solver consumes a cellwise turbulent-viscosity field consistently in predictor, final nonlinear residual, and independent momentum conservation reconstruction (PR #967 merged; end-to-end SST remains disabled).
-- [ ] SST state `k`, `omega`, wall distance and turbulence residuals are owned by the production solve and participate in rollback/convergence.
+- [x] The solve accepts an explicit opt-in `SSTProductionRuntime`; SST state is validated and snapshotted per outer attempt, transport is called with the current pressure-corrected mass flux, and `nu_t` refreshes `mu_eff` for the next predictor (PR #1032 pending merge; exact-head CI NOT VERIFIED; branch requires synchronization with current `master` and decisive production E2E tests).
 - [x] Add a non-production SST case preflight for explicit positive initial `k`/`omega` and validated inlet turbulence intensity/length scale; derive the standard inlet estimates without enabling the production selector.
 - [x] Represent explicit per-patch `k`/`omega` boundary-condition types in the persistent case schema and HDF5 round-trip, with compatibility validation.
-- [ ] Define restart semantics and wire validated scalar boundary contracts into the production transport solve.
+- [ ] Connect persisted case scalar-boundary metadata and DAT state restoration to the application driver's runtime construction; the current runtime requires the caller to supply validated state and boundary contracts explicitly.
 - [ ] Production-path transport MMS on three or more meshes.
 - [ ] Frozen DNS channel qualification (Moser–Kim–Mansour), with mesh/y+ sensitivity and independent balance checks.
 - [ ] Flat-plate and NACA0012 turbulent validation after channel qualification.
@@ -22,7 +22,7 @@
 
 - [x] Add `initialize_sst_production_state_from_mesh(...)`: production mesh geometry supplies exact BVH wall distance and boundary-aware strain rate to SST state initialization.
 - [x] Add a regression for computed positive wall distance, nonzero strain from fixed inlet data, initialized `k`/`omega`, derived `nu_t`, and invalid velocity-field shape.
-- [ ] This helper is a prerequisite only. The production outer loop still does not own/advance SST state; the RANS selector remains fail-closed pending full coupling and exact-head CI.
+- [x] Production outer-loop ownership/advance is wired through opt-in SSTProductionRuntime in PR #1032. Production E2E and application case/restart wiring remain open.
 
 ## Work packages
 
@@ -59,13 +59,13 @@
 
 ### T2 — Coupled outer iteration and convergence
 
-- [ ] Assemble/solve `k` and `omega` using the current authoritative mass flux.
+- [x] The opt-in production path calls the transactional `k`/`omega` transport update with the current authoritative mass flux (PR #1032); production E2E and physical qualification remain open.
 - [ ] Apply declared under-relaxation and positivity/boundedness handling without clipping away failures.
-- [ ] Recompute `nu_t` from accepted `k`, `omega`, strain and wall-distance fields.
-- [ ] Reassemble momentum using the updated cellwise `nu_t`.
-- [ ] Include normalized turbulence residuals and physical boundedness checks in convergence acceptance.
-- [ ] Ensure rejected iterations roll back `U,p,k,omega,nu_t,phi` atomically.
-- [ ] Add production E2E test proving SST selection invokes the coupled path and emits model/iteration evidence.
+- [x] Refresh wall distance, boundary-aware strain rate, blending and `nu_t` from the current carrier field before the first predictor and during each SST transport step (PR #1032).
+- [x] Rebuild `mu_eff[c] = rho * (nu + nu_t[c])` after an accepted coupled iteration for the next momentum predictor (PR #1032).
+- [x] Add an independent SST convergence/boundedness hard gate without mixing dimensional transport residuals into the normalized carrier metric (PR #1032).
+- [x] Per-attempt SST snapshot/restore is connected to carrier retry/rejection and unexpected-exception paths; nested rollback regression is covered by PR #1030.
+- [ ] Expand the production-solver SST smoke test into decisive E2E assertions for transport invocation, `nu_t`/`mu_eff` refresh timing, and exact restoration after a real retry/rejection. The current smoke test proves the opt-in path is exercised but does not yet prove all three behaviors.
 - [ ] Keep unsupported models fail-closed.
 
 ### T3 — Transport verification and physical qualification
@@ -91,19 +91,19 @@
 - [x] Introduce an explicit `SSTProductionState` bundle for cellwise `k`, `omega`, `nu_t`, wall distance and strain rate.
 - [x] Validate field dimensions and finite/physical value ranges before the bundle is used.
 - [x] Add explicit value snapshot/restore helpers and unit regressions covering every owned field.
-- [ ] Wire this state into `solve_steady_incompressible`; this PR does not claim production-loop ownership yet.
-- [ ] Define initialization and restart semantics from case/HDF5 data; no implicit defaults or guessed values.
-- [ ] Extend the outer nonlinear transaction to include this state and the authoritative face mass flux.
+- [x] Wire the validated state into `solve_steady_incompressible` through the explicit opt-in runtime (PR #1032); case/restart construction and production E2E tests remain open.
+- [ ] Wire the existing initialization/DAT restore helpers into application case/HDF5 lifecycle and prove continuous-versus-restarted production trajectory equivalence; no implicit defaults or guessed values.
+- [x] Extend outer retry/rejection handling to restore SST state alongside carrier rollback and authoritative face mass flux (PR #1032; nested regression in #1030).
 
-This is an enabling contract only. It does not call SST transport from the production loop, enable the RANS selector, or qualify the physical model.
+This section records the state before PR #1032 and is superseded for production-loop ownership by the latest increment below. PR #1032 now calls SST transport from the opt-in production loop and couples its state to retry/acceptance. The general RANS selector remains fail-closed, and physical qualification is still outstanding.
 
 ### T1 implementation increment — atomic carrier/SST transaction primitive
 
 - [x] Add a transaction primitive that snapshots/restores the carrier velocity, pressure, authoritative face mass flux, and all fields in `SSTProductionState` as one unit.
 - [x] Test exact rollback across all state groups and verify commit retains candidate fields.
-- [ ] Connect this primitive to the production nonlinear retry/acceptance loop; the current increment does not call it from `solve_steady_incompressible`.
+- [x] Connect SST snapshot/restore to production retry/acceptance in PR #1032; nested commit-then-outer-reject regression is in #1030.
 - [ ] Define HDF5/restart initialization and construct the state from the actual production mesh.
-- [ ] Keep the production turbulence selector fail-closed until transport, viscosity refresh, and convergence gates are integrated and verified.
+- [x] Keep the general production turbulence selector fail-closed. The opt-in runtime does not enable the general RANS selector or imply physical qualification.
 
 ## Evidence log
 
@@ -194,7 +194,7 @@ u_t) and rejects invalid input. | Initialization contract only; production calle
 - [ ] Connect the production driver's declared velocity BCs to this overload for the live solve.
 - [ ] Verify gradient accuracy with boundary-aware manufactured fields on representative non-orthogonal meshes before using it for SST production coupling.
 
-This remains a prerequisite utility only. Restart reconstruction now accepts explicit fixed-value velocity patch data, but the live production nonlinear loop still does not call SST transport or use SST-updated viscosity.
+This paragraph records the state before PR #1032 and is superseded for live-loop coupling by that PR. The boundary-aware reconstruction utility still has an open accuracy gate on representative non-orthogonal meshes; PR #1032 wires the utility into the opt-in SST path, but application case/restart construction and production E2E assertions remain open.
 
 
 ### T1 implementation increment — restart boundary-data correctness (PR #1018 merged)
@@ -205,7 +205,7 @@ This remains a prerequisite utility only. Restart reconstruction now accepts exp
 - [ ] Wire restart restoration into the production driver's actual case/restart lifecycle.
 - [ ] Prove continuous-versus-restarted production trajectory equivalence, including mass flux and all SST-owned fields.
 
-Evidence: PR #1017 merged the affine-field boundary reconstruction test; PR #1018 merged the restart-boundary fix. The production RANS selector remains fail-closed because this work repairs restart reconstruction only; it does not integrate SST into the production outer iteration.
+Evidence: PR #1017 merged the affine-field boundary reconstruction test; PR #1018 merged the restart-boundary fix. At the time those PRs landed, the work repaired restart reconstruction only. PR #1032 subsequently added opt-in outer-loop coupling; production case/restart lifecycle and physical qualification remain open.
 
 
 ### T1 implementation increment — transport-field shape validation (PR #1020 merged)
@@ -217,14 +217,20 @@ Evidence: PR #1017 merged the affine-field boundary reconstruction test; PR #101
 
 **Decision:** the helper now rejects malformed field shapes at its API boundary. This is input-contract hardening only; it does not integrate SST transport into `solve_steady_incompressible` or enable the production RANS selector.
 
-## Next production-coupling increment
+## Follow-up correction — initialization ordering
 
-The next implementation must be made in the production solve lifecycle, not another isolated helper:
+- [x] Move the production SST derived-state refresh after `apply_initialization(...)` so uniform/profile/DAT carrier initialization is reflected in wall-aware strain rate and `nu_t` before the first momentum predictor.
+- [x] Validate the caller-provided SST state before initialization; derive mesh/carrier-dependent fields only after the initialized velocity is authoritative.
+- [ ] Add a focused regression that observes the first predictor's effective viscosity after nontrivial initialization/restart. The existing smoke test does not expose that internal timing directly.
+- [ ] Run exact-HEAD Release and DebugSanitizers plus the numerical-maturity and audit workflows before merge.
 
-1. Build/restore the SST state from the actual case and current mesh, using the production velocity boundary conditions and current-mesh wall-distance provider.
-2. Establish one coupled accept/reject transaction around the existing nonlinear retry loop; preserve the authoritative `phi` and all SST fields on rejection.
-3. On each accepted carrier iterate, reconstruct boundary-aware strain rate and compute current SST blending/cross-diffusion data; advance `k` and `omega` with the current authoritative mass flux.
-4. Refresh cellwise `nu_t` and rebuild `mu_eff[c] = rho * (nu + nu_t[c])` before every momentum predictor and for final residual/conservation audits. The current solver computes `mu_eff` once before the loop, so merely initializing `controls.cell_turbulent_viscosity` would freeze viscosity and is not sufficient.
-5. Add SST residuals and physical boundedness to convergence acceptance, then prove rollback and restart trajectory equivalence in production E2E tests.
-6. Keep RANS/SST selection fail-closed until transport MMS (at least three mesh levels), frozen DNS channel qualification, mesh/y+ sensitivity, and subsequent flat-plate/NACA qualification pass.
+## Next increment — production E2E and case/restart lifecycle
+
+PR #1032 adds the opt-in production outer-loop coupling: it refreshes mesh/carrier-derived state, advances SST transport using the current authoritative mass flux, restores SST on retry/rejection, gates convergence on transport status and boundedness, and refreshes `mu_eff` for the next momentum predictor. Remaining work:
+
+1. Expand the production-solver SST smoke test into decisive E2E assertions for transport invocation, `nu_t`/`mu_eff` refresh timing, and exact restoration after a real retry/rejection.
+2. Construct `SSTProductionRuntime` from persisted case boundary metadata and initialized or DAT-restored state in the application driver; resolve geometric `WALL_OMEGA_SST` face values explicitly and fail closed when unsupported.
+3. Prove continuous-versus-restarted production trajectory equivalence, including authoritative mass flux and all SST-owned fields.
+4. Complete transport MMS on at least three mesh levels, frozen DNS channel qualification and mesh/y+ sensitivity, then flat-plate and NACA0012 validation.
+5. Keep the general RANS/SST selector fail-closed until physical qualification gates pass.
 
