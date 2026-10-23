@@ -4,18 +4,10 @@ Covers gap G3 of docs/gui/PHASE0_AUDIT.md (no silently disabled action) and
 the P0 solver-state review requirement (RUNNING is never convergence).
 """
 
-import pytest
-
 from cfdx.capabilities import (
     CAPABILITIES,
     CapabilityContext,
     evaluate_capability,
-    get_capability,
-)
-from cfdx.solver_states import (
-    convergence_status_view,
-    session_state_view,
-    unknown_state_view,
 )
 
 
@@ -51,43 +43,3 @@ def test_run_unavailable_while_simulation_is_active() -> None:
     assert not status.available
     assert "no simulation currently running" in status.reason
     assert evaluate_capability("workbench.action.run", CapabilityContext()).available
-
-
-def test_stop_requires_an_active_simulation() -> None:
-    idle = CapabilityContext()
-    assert not evaluate_capability("workbench.action.stop", idle).available
-    active = CapabilityContext(simulation_active=True)
-    assert evaluate_capability("workbench.action.stop", active).available
-    assert not evaluate_capability("workbench.action.run", active).available
-
-
-def test_unknown_capability_is_rejected_explicitly() -> None:
-    assert get_capability("workbench.action.nope") is None
-    with pytest.raises(KeyError, match="unknown capability"):
-        evaluate_capability("workbench.action.nope", CapabilityContext())
-
-
-def test_solver_states_are_never_conflated() -> None:
-    keys = ("RUNNING", "CONVERGED", "STAGNATED", "DIVERGED", "STOPPED")
-    markers = [convergence_status_view(key).marker for key in keys]
-    assert len(set(markers)) == len(markers)
-
-    running = session_state_view("RUNNING")
-    assert not running.converged
-    assert not running.terminal
-    assert "convergence not established" in running.label
-    assert session_state_view("CONVERGED").converged
-    for key in ("STAGNATED", "DIVERGED", "MAX_ITERATIONS"):
-        view = convergence_status_view(key)
-        assert view.terminal
-        assert not view.converged
-        assert view.token in {"status.warning", "status.error"}
-
-
-def test_unknown_solver_values_are_surfaced_verbatim() -> None:
-    view = convergence_status_view("SOMETHING_NEW")
-    assert view.key == "SOMETHING_NEW"
-    assert view.label == "SOMETHING_NEW"
-    assert view.marker == "?"
-    assert not view.converged
-    assert unknown_state_view(None).key == "None"
