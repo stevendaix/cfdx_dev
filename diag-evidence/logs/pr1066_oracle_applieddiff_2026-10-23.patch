@@ -1,0 +1,87 @@
+diff --git a/src/cfdx/python/cfdx/selection.py b/src/cfdx/python/cfdx/selection.py
+index 95c5daba..40e296e7 100644
+--- a/src/cfdx/python/cfdx/selection.py
++++ b/src/cfdx/python/cfdx/selection.py
+@@ -19,13 +19,13 @@ REGION_KIND = "region"
+ _INVALID_ID = "invalid selection stable id"
+ 
+ _FACE_PATTERN = (
+-    rf"^(?:(?P<region_kind>region):(?P<region>[^/:]+)/)?"
+-    rf"(?P<patch_kind>patch):(?P<patch>[^/:]+)/"
+-    rf"(?P<face_kind>face):(?P<face_index>(0|[1-9][0-9]*))$"
++    r"^(?:(?P<region_kind>region):(?P<region>[^/:]+)/)?"
++    r"(?P<patch_kind>patch):(?P<patch>[^/:]+)/"
++    r"(?P<face_kind>face):(?P<face_index>(0|[1-9][0-9]*))$"
+ )
+ _PATCH_PATTERN = (
+-    rf"^(?:(?P<region_kind>region):(?P<region>[^/:]+)/)?"
+-    rf"(?P<patch_kind>patch):(?P<patch>[^/:]+)$"
++    r"^(?:(?P<region_kind>region):(?P<region>[^/:]+)/)?"
++    r"(?P<patch_kind>patch):(?P<patch>[^/:]+)$"
+ )
+ _REGION_PATTERN = r"^region:(?P<region>[^/:]+)$"
+ 
+diff --git a/tests/python/test_gui_browser_widgets.py b/tests/python/test_gui_browser_widgets.py
+index 8421c097..a20504fe 100644
+--- a/tests/python/test_gui_browser_widgets.py
++++ b/tests/python/test_gui_browser_widgets.py
+@@ -10,6 +10,7 @@ import pytest
+ def test_browser_widgets_import():
+     from cfdx.mesh_browser_panel import MeshBrowserPanel
+     from cfdx.results_series_panel import ResultsSeriesPanel
++
+     assert MeshBrowserPanel is not None and ResultsSeriesPanel is not None
+ 
+ 
+@@ -17,16 +18,19 @@ def test_browser_widgets_import():
+     importlib.util.find_spec("PySide6") is None, reason="optional Qt stack"
+ )
+ def test_results_series_panel_exposes_field_and_playback_controls():
+-    from cfdx import create_application
+     from cfdx.results_series import ResultFrame, ResultSeries
+     from cfdx.results_series_panel import ResultsSeriesPanel
+ 
++    from cfdx import create_application
++
+     app = create_application(["cfdx-results-panel-test"])
+     panel = ResultsSeriesPanel()
+-    series = ResultSeries((
+-        ResultFrame(Path("step_0.vtu"), 0, 0.0, True, ("U", "p")),
+-        ResultFrame(Path("step_1.vtu"), 1, 1.0, True, ("U", "p")),
+-    ))
++    series = ResultSeries(
++        (
++            ResultFrame(Path("step_0.vtu"), 0, 0.0, True, ("U", "p")),
++            ResultFrame(Path("step_1.vtu"), 1, 1.0, True, ("U", "p")),
++        )
++    )
+     fields = []
+     frames = []
+     panel.field_changed.connect(fields.append)
+@@ -58,11 +62,12 @@ def test_3d_patch_actor_id_uses_stable_identity():
+     importlib.util.find_spec("PySide6") is None, reason="optional Qt stack"
+ )
+ def test_mesh_browser_drills_into_regions_patches_and_faces():
+-    from cfdx import create_application
+     from cfdx.mesh_browser_panel import MeshBrowserPanel
+     from cfdx.mesh_model import MeshCatalog, MeshPatch, MeshRegion
+     from cfdx.setup_model import MeshSelection
+ 
++    from cfdx import create_application
++
+     app = create_application(["cfdx-browser-tree-test"])
+     panel = MeshBrowserPanel()
+     emitted = []
+@@ -104,10 +109,11 @@ def test_mesh_browser_drills_into_regions_patches_and_faces():
+     importlib.util.find_spec("PySide6") is None, reason="optional Qt stack"
+ )
+ def test_mesh_browser_keeps_flat_patch_list_for_default_region():
+-    from cfdx import create_application
+     from cfdx.mesh_browser_panel import MeshBrowserPanel
+     from cfdx.mesh_model import MeshCatalog, MeshPatch
+ 
++    from cfdx import create_application
++
+     app = create_application(["cfdx-browser-flat-test"])
+     panel = MeshBrowserPanel()
+     emitted = []

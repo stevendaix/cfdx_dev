@@ -1,0 +1,12 @@
+TRY004 Prefer `TypeError` exception for invalid type
+   --> src/cfdx/python/cfdx/selection.py:106:9
+    |
+104 |         raise ValueError(_INVALID_ID)
+105 |     if isinstance(face_index, bool) or not isinstance(face_index, int):
+106 |         raise ValueError(_INVALID_ID)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+107 |     if face_index < 0:
+108 |         raise ValueError(_INVALID_ID)
+    |
+
+Found 9 errors (8 fixed, 1 remaining).

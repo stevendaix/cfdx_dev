@@ -1,0 +1,39 @@
+== ruff check (after fix) ==
+TRY004 Prefer `TypeError` exception for invalid type
+   --> src/cfdx/python/cfdx/selection.py:106:9
+    |
+104 |         raise ValueError(_INVALID_ID)
+105 |     if isinstance(face_index, bool) or not isinstance(face_index, int):
+106 |         raise ValueError(_INVALID_ID)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+107 |     if face_index < 0:
+108 |         raise ValueError(_INVALID_ID)
+    |
+
+Found 1 error.
+RUFF_CHECK_RED
+== ruff format --check (after fix) ==
+6 files already formatted
+RUFF_FORMAT_GREEN
+== full pre-commit run (after fix) ==
+Ruff check...............................................................Failed
+- hook id: ruff-check
+- exit code: 1
+
+TRY004 Prefer `TypeError` exception for invalid type
+   --> src/cfdx/python/cfdx/selection.py:106:9
+    |
+104 |         raise ValueError(_INVALID_ID)
+105 |     if isinstance(face_index, bool) or not isinstance(face_index, int):
+106 |         raise ValueError(_INVALID_ID)
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+107 |     if face_index < 0:
+108 |         raise ValueError(_INVALID_ID)
+    |
+
+Found 1 error.
+All checks passed!
+
+Ruff format check........................................................Passed
+CFDX fast build/test guards..............................................Passed
+PRECOMMIT_RED

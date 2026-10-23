@@ -1,0 +1,6 @@
+src/cfdx/python/cfdx/gui_3d.py
+src/cfdx/python/cfdx/mesh_browser_panel.py
+src/cfdx/python/cfdx/selection.py
+src/cfdx/python/cfdx/workbench.py
+tests/python/test_gui_browser_widgets.py
+tests/python/test_selection.py
