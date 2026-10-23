@@ -519,7 +519,7 @@ int main()
         for (std::size_t d = 0; d < 3; ++d)
             EXPECT_NEAR(U.component_data(d)[0], accepted_velocity[d], 1e-12);
         EXPECT_NEAR(p(0), accepted_pressure, 1e-12);
-        EXPECT_TRUE(result.authoritative_mass_flux.size() == m.faces().size());
+        EXPECT_TRUE(result.authoritative_mass_flux.size() == m.n_faces());
         for (std::size_t face = 0; face < result.authoritative_mass_flux.size(); ++face)
             EXPECT_TRUE(std::isfinite(result.authoritative_mass_flux(face)));
 
