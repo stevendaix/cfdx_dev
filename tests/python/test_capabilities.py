@@ -4,10 +4,13 @@ Covers gap G3 of docs/gui/PHASE0_AUDIT.md (no silently disabled action) and
 the P0 solver-state review requirement (RUNNING is never convergence).
 """
 
+import pytest
+
 from cfdx.capabilities import (
     CAPABILITIES,
     CapabilityContext,
     evaluate_capability,
+    get_capability,
 )
 
 
@@ -43,3 +46,17 @@ def test_run_unavailable_while_simulation_is_active() -> None:
     assert not status.available
     assert "no simulation currently running" in status.reason
     assert evaluate_capability("workbench.action.run", CapabilityContext()).available
+
+
+def test_stop_requires_an_active_simulation() -> None:
+    idle = CapabilityContext()
+    assert not evaluate_capability("workbench.action.stop", idle).available
+    active = CapabilityContext(simulation_active=True)
+    assert evaluate_capability("workbench.action.stop", active).available
+    assert not evaluate_capability("workbench.action.run", active).available
+
+
+def test_unknown_capability_is_rejected_explicitly() -> None:
+    assert get_capability("workbench.action.nope") is None
+    with pytest.raises(KeyError, match="unknown capability"):
+        evaluate_capability("workbench.action.nope", CapabilityContext())
