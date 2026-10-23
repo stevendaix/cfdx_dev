@@ -143,3 +143,16 @@ def test_semantic_border_has_nontext_contrast(surface_token: str) -> None:
         f"border.subtle on {surface_token} does not meet the 3:1 non-text "
         "contrast threshold"
     )
+
+
+def test_dense_data_views_use_semantic_table_chrome() -> None:
+    # Keep data navigation readable without changing scientific field colormaps.
+    alternate_rows = "alternate-background-color: " + TOKENS["surface.panel"]
+    assert alternate_rows in WORKBENCH_STYLESHEET
+    assert "QHeaderView::section" in WORKBENCH_STYLESHEET
+    assert "color: " + TOKENS["text.secondary"] in WORKBENCH_STYLESHEET
+    assert "QTreeView::item:hover" in WORKBENCH_STYLESHEET
+    assert "QTableView::item:hover" in WORKBENCH_STYLESHEET
+    assert "QAbstractItemView:disabled" in WORKBENCH_STYLESHEET
+    assert "show-decoration-selected: 1" in WORKBENCH_STYLESHEET
+    assert "QTreeView:focus" in WORKBENCH_STYLESHEET
