@@ -130,6 +130,7 @@ def test_disabled_actions_explain_their_prerequisites() -> None:
     window.close()
     app.quit()
 
+
 def test_registry_covers_every_workbench_command() -> None:
     assert set(CAPABILITIES) == {
         "workbench.action.contour",
@@ -189,9 +190,7 @@ def test_palette_lists_the_registry_and_only_the_registry() -> None:
     window._show_command_palette()
     results = window.command_palette_results
     assert results.count() == len(CAPABILITIES)
-    labels = [
-        results.item(i).text().split(" — ")[0] for i in range(results.count())
-    ]
+    labels = [results.item(i).text().split(" — ")[0] for i in range(results.count())]
     expected_labels = {capability.label for capability in CAPABILITIES.values()}
     assert set(labels) == expected_labels
     assert labels == sorted(labels, key=str.casefold)
