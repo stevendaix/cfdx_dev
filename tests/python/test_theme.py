@@ -132,3 +132,14 @@ def test_status_text_meets_wcag_aa_for_normal_text(
         f"{status_token} on {surface_token} does not meet the 4.5:1 WCAG AA "
         "contrast threshold for normal text"
     )
+
+
+@pytest.mark.parametrize(
+    "surface_token", ["surface.canvas", "surface.panel", "surface.input"]
+)
+def test_semantic_border_has_nontext_contrast(surface_token: str) -> None:
+    # Shared control boundaries must remain distinguishable from adjacent surfaces.
+    assert _contrast_ratio(TOKENS["border.subtle"], TOKENS[surface_token]) >= 3.0, (
+        f"border.subtle on {surface_token} does not meet the 3:1 non-text "
+        "contrast threshold"
+    )
