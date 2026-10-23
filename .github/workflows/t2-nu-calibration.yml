@@ -94,5 +94,13 @@ jobs:
             echo "no evidence to commit"
           else
             git commit -m "diag(t2): heated-channel Nu calibration evidence run ${GITHUB_RUN_ID} [ci skip]"
-            git push || (git pull --rebase origin diag/t2-heated-channel-calibration && git push)
+            pushed=false
+            for attempt in 1 2 3; do
+              if git push; then pushed=true; break; fi
+              git pull --rebase origin diag/t2-heated-channel-calibration || break
+            done
+            if [ "$pushed" = "false" ]; then
+              echo "evidence push failed after rebase retries"
+              exit 1
+            fi
           fi

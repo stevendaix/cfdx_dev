@@ -424,7 +424,7 @@ def _clip_error(text: str, head: int = 600, tail: int = 3000) -> str:
 
 
 def _run_mesh(
-    solver: Path, nx: int, ny: int, run_dir: Path, evidence_dir: Path
+    solver: Path, nx: int, ny: int, run_dir: Path, evidence_dir: Path, run_id: str
 ) -> dict:
     """One production solve at (nx, ny); raises on any execution failure."""
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -469,14 +469,14 @@ def _run_mesh(
     # (execution.json / convergence.json carry the exact per-stage status
     # and stop reason).
     (run_dir / f"solver_{nx}x{ny}.log").write_text(diagnostics, encoding="utf-8")
-    (evidence_dir / f"t2_solver_tail_{nx}x{ny}.log").write_text(
+    (evidence_dir / f"t2_solver_tail_{nx}x{ny}_run{run_id}.log").write_text(
         diagnostics[-200000:], encoding="utf-8"
     )
-    (evidence_dir / f"t2_solver_stdout_{nx}x{ny}.log").write_text(
+    (evidence_dir / f"t2_solver_stdout_{nx}x{ny}_run{run_id}.log").write_text(
         completed.stdout[-400000:], encoding="utf-8"
     )
     for artifact in sorted(run_dir.glob("*.json")):
-        (evidence_dir / f"t2_{artifact.stem}_{nx}x{ny}.json").write_text(
+        (evidence_dir / f"t2_{artifact.stem}_{nx}x{ny}_run{run_id}.json").write_text(
             artifact.read_text(encoding="utf-8"), encoding="utf-8"
         )
     if completed.returncode != 0:
@@ -716,7 +716,9 @@ def main() -> int:
         for nx, ny in MESHES:
             entry: dict = {"nx": nx, "ny": ny}
             try:
-                result = _run_mesh(solver, nx, ny, work / f"mesh_{nx}x{ny}", out_dir)
+                result = _run_mesh(
+                    solver, nx, ny, work / f"mesh_{nx}x{ny}", out_dir, args.run_id
+                )
                 entry.update(result)
                 entry["status"] = "PASS"
                 print(
