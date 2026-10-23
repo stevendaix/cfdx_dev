@@ -15,8 +15,14 @@ from .application import (
     WorkflowStatus,
     workflow_children,
 )
+from .capabilities import (
+    CapabilityContext,
+    evaluate_capability,
+    get_capability,
+)
 from .mesh_model import read_mesh_catalog
 from .session import CFDXSession
+from .solver_states import session_state_view
 from .theme import TOKENS, apply_workbench_theme
 
 try:
@@ -158,6 +164,9 @@ if QMainWindow is not object:
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.action.{label.lower()}")
                 action.setEnabled(False)
+                capability = get_capability(action.objectName())
+                if capability is not None:
+                    action.setStatusTip(capability.prerequisites_tip)
                 mode = label.lower()
                 action.triggered.connect(
                     lambda _checked=False, mode=mode: self._postprocess(mode)
@@ -219,7 +228,7 @@ if QMainWindow is not object:
 
             commands: list[tuple[str, QAction]] = []
             for action in self.findChildren(QAction):
-                if action is self.search_action or not action.isEnabled():
+                if action is self.search_action:
                     continue
                 label = action.text().replace("&", "").strip()
                 if label:
@@ -232,7 +241,19 @@ if QMainWindow is not object:
                 for label, action in commands:
                     if needle and needle not in label.casefold():
                         continue
-                    item = QListWidgetItem(label)
+                    if action.isEnabled():
+                        item = QListWidgetItem(label)
+                    else:
+                        # P0 (Phase 0 audit, G3): never hide a disabled
+                        # command silently; show why it is unavailable.
+                        capability = get_capability(action.objectName())
+                        reason = (
+                            capability.prerequisites_tip
+                            if capability is not None
+                            else "not available in the current state"
+                        )
+                        item = QListWidgetItem(f"{label} — {reason}")
+                        item.setToolTip(reason)
                     item.setData(Qt.ItemDataRole.UserRole, action)
                     results.addItem(item)
                 if results.count():
@@ -632,15 +653,39 @@ if QMainWindow is not object:
             if self.view3d is not None:
                 self.viewport_stack.setCurrentWidget(self.view3d)
 
-        def _refresh_postprocess_actions(self, state) -> None:
-            enabled = self.view3d is not None and (
+        def _capability_context(self) -> CapabilityContext:
+            """Snapshot the facts capability availability is computed from."""
+            state = self._application_state
+            dataset_loaded = bool(
                 state.results.selected_frame is not None
-                or self.view3d._dat_dataset is not None
-                or self.view3d._current_result is not None
+                or (
+                    self.view3d is not None
+                    and (
+                        self.view3d._dat_dataset is not None
+                        or self.view3d._current_result is not None
+                    )
+                )
             )
-            for name in ("contour_action", "slice_action", "glyph_action"):
-                if hasattr(self, name):
-                    getattr(self, name).setEnabled(enabled)
+            return CapabilityContext(
+                renderer_ready=self.view3d is not None,
+                dataset_loaded=dataset_loaded,
+                simulation_active=state.simulation_state.value
+                in {"RUNNING", "PAUSED"},
+            )
+
+        def _refresh_postprocess_actions(self, state) -> None:
+            context = self._capability_context()
+            for capability_id, attribute in (
+                ("workbench.action.contour", "contour_action"),
+                ("workbench.action.slice", "slice_action"),
+                ("workbench.action.glyph", "glyph_action"),
+            ):
+                action = getattr(self, attribute, None)
+                if action is None:
+                    continue
+                status = evaluate_capability(capability_id, context)
+                action.setEnabled(status.available)
+                action.setStatusTip(status.tip)
 
         def _postprocess_fields(self, *, vector: bool) -> list[str]:
             """Return fields compatible with the requested visualization operation."""
@@ -851,8 +896,11 @@ if QMainWindow is not object:
         def _build_status_bar(self) -> None:
             status = QStatusBar(self)
             status.setObjectName("workbench.status_bar")
+            initial_view = session_state_view(self.session.state.value)
             status.showMessage(
-                f"State: {self.session.state.value} | Iteration: {self.session.iteration} | Time: {self.session.time:g}"
+                f"State: {initial_view.marker} {initial_view.label} | "
+                f"Iteration: {self.session.iteration} | "
+                f"Time: {self.session.time:g}"
             )
             self.setStatusBar(status)
 
@@ -910,8 +958,10 @@ if QMainWindow is not object:
             state = event.state
             self._application_state = state
             self._refresh_workflow(state)
+            view = session_state_view(state.simulation_state.value)
             self.statusBar().showMessage(
-                f"State: {state.simulation_state.value} | Iteration: {state.execution.iteration} | "
+                f"State: {view.marker} {view.label} | "
+                f"Iteration: {state.execution.iteration} | "
                 f"Time: {state.execution.time:g}"
             )
             self._refresh_properties()
