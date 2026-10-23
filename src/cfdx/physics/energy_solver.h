@@ -386,15 +386,17 @@ inline EnergySolveResult solve_energy(
             candidate(i)=temperature(i);
         ScalarSolveControls sc;
         sc.max_iterations=2000;
-        // Leave margin between the Krylov stopping criterion and the
-        // componentwise backward-error gate below. This is deliberately
-        // local to energy solves: ScalarSolveControls::tolerance remains a
-        // relative Krylov tolerance for the shared momentum/pressure paths.
-        sc.tolerance=temperature.size()==1
-            ? linear_tolerance
-            : std::max(
-                10.0*std::numeric_limits<double>::epsilon(),
-                0.001*linear_tolerance);
+        // The Krylov implementations accept an ABSOLUTE L2 residual
+        // tolerance, while EnergySolverControls::linear_tolerance and the
+        // acceptance gate below are relative. Convert the relative tolerance
+        // to the scale of this assembled right-hand side; passing the raw
+        // relative value (or a smaller fraction of it) as an absolute
+        // threshold can make a valid solve unattainable in physical units.
+        double rhs_l2_norm = 0.0;
+        for (std::size_t i = 0; i < eq.rhs.size(); ++i)
+            rhs_l2_norm = std::hypot(rhs_l2_norm, eq.rhs(i));
+        sc.tolerance = linear_tolerance *
+            (rhs_l2_norm > 0.0 ? rhs_l2_norm : 1.0);
         // solve_scalar_equation returns the fully solved linear predictor;
         // nonlinear temperature relaxation is applied exactly once below.
         sc.relaxation=1.0;
@@ -509,6 +511,14 @@ inline EnergySolveResult solve_energy(
             result.converged=true;
             break;
         }
+        // The assembled energy operator is linear for the current frozen
+        // mass flux, conductivity, source and physical time level. If its
+        // linear solve failed, solve_scalar_equation deliberately preserves
+        // the last accepted state; retrying the identical system up to 500
+        // times cannot improve it. Preserve the failure diagnostics and fail
+        // fast instead of recording hundreds of duplicate nonlinear states.
+        if (linear.status != cfdx::core::SolverStatus::CONVERGED)
+            break;
         // T_previous_time remains fixed for transient physics. T_iterate is
         // updated above and is the state used for nonlinear/Picard relaxation.
     }
