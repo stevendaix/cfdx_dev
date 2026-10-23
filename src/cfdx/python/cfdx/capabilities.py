@@ -80,53 +80,32 @@ _EVALUATORS = {
 }
 
 
-CAPABILITIES: dict[str, Capability] = {
-    capability.id: capability
-    for capability in (
-        Capability(
-            "workbench.action.contour",
-            "Contour",
-            3,
-            (PREREQUISITES["renderer"], PREREQUISITES["dataset"]),
-        ),
-        Capability(
-            "workbench.action.slice",
-            "Slice",
-            3,
-            (PREREQUISITES["renderer"], PREREQUISITES["dataset"]),
-        ),
-        Capability(
-            "workbench.action.glyph",
-            "Glyph",
-            3,
-            (PREREQUISITES["renderer"], PREREQUISITES["dataset"]),
-        ),
-        Capability(
-            "workbench.action.run",
-            "Run",
-            1,
-            (PREREQUISITES["idle"],),
-        ),
-        Capability(
-            "workbench.action.check",
-            "Check",
-            1,
-            (PREREQUISITES["idle"],),
-        ),
-        Capability(
-            "workbench.action.save",
-            "Save",
-            1,
-            (PREREQUISITES["idle"],),
-        ),
-        Capability(
-            "workbench.action.stop",
-            "Stop",
-            1,
-            (PREREQUISITES["active"],),
-        ),
-    )
-}
+_CAPABILITY_DEFS = (
+    Capability(
+        "workbench.action.contour",
+        "Contour",
+        3,
+        (PREREQUISITES["renderer"], PREREQUISITES["dataset"]),
+    ),
+    Capability(
+        "workbench.action.slice",
+        "Slice",
+        3,
+        (PREREQUISITES["renderer"], PREREQUISITES["dataset"]),
+    ),
+    Capability(
+        "workbench.action.glyph",
+        "Glyph",
+        3,
+        (PREREQUISITES["renderer"], PREREQUISITES["dataset"]),
+    ),
+    Capability("workbench.action.run", "Run", 1, (PREREQUISITES["idle"],)),
+    Capability("workbench.action.check", "Check", 1, (PREREQUISITES["idle"],)),
+    Capability("workbench.action.save", "Save", 1, (PREREQUISITES["idle"],)),
+    Capability("workbench.action.stop", "Stop", 1, (PREREQUISITES["active"],)),
+)
+
+CAPABILITIES: dict[str, Capability] = {c.id: c for c in _CAPABILITY_DEFS}
 
 
 def get_capability(capability_id: str) -> Capability | None:

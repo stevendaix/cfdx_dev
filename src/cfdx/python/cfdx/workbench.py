@@ -656,11 +656,15 @@ if QMainWindow is not object:
             """Snapshot the facts capability availability is computed from."""
             state = self._application_state
             view3d = getattr(self, "view3d", None)
-            has_frame = state.results.selected_frame is not None
             has_renderer = view3d is not None
-            has_dataset = has_renderer and (
-                view3d._dat_dataset is not None or view3d._current_result is not None
-            )
+            has_frame = state.results.selected_frame is not None
+            if view3d is None:
+                has_dataset = False
+            else:
+                has_dataset = (
+                    view3d._dat_dataset is not None
+                    or view3d._current_result is not None
+                )
             simulation_active = state.simulation_state.value in ("RUNNING", "PAUSED")
             return CapabilityContext(
                 renderer_ready=has_renderer,
@@ -898,9 +902,7 @@ if QMainWindow is not object:
             status.setObjectName("workbench.status_bar")
             initial_view = session_state_view(self.session.state.value)
             status.showMessage(
-                f"State: {initial_view.marker} {initial_view.label} | "
-                f"Iteration: {self.session.iteration} | "
-                f"Time: {self.session.time:g}"
+                f"State: {initial_view.marker} {initial_view.label} | Iteration: {self.session.iteration} | Time: {self.session.time:g}"
             )
             self.setStatusBar(status)
 
@@ -960,9 +962,7 @@ if QMainWindow is not object:
             self._refresh_workflow(state)
             view = session_state_view(state.simulation_state.value)
             self.statusBar().showMessage(
-                f"State: {view.marker} {view.label} | "
-                f"Iteration: {state.execution.iteration} | "
-                f"Time: {state.execution.time:g}"
+                f"State: {view.marker} {view.label} | Iteration: {state.execution.iteration} | Time: {state.execution.time:g}"
             )
             self._refresh_properties()
             if hasattr(self, "setup_panel"):
