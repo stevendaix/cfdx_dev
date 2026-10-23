@@ -1,0 +1,23 @@
+{
+  "converged": false,
+  "linear_solver_converged": true,
+  "linear_solver_status": 0,
+  "linear_residual_relative": 4.4398582272548175e-15,
+  "global_energy_balance_passed": false,
+  "local_energy_balance_passed": false,
+  "iterations": 1,
+  "independent_conservation_residual": -1.7577849842353999e-08,
+  "independent_conservation_normalized": 1.7577849842353999e-08,
+  "audit_power_scale": 543.05225342540643,
+  "global_balance_normalized": 3.2368615969233776e-11,
+  "max_cell_residual": 1.8251871125585239e-08,
+  "worst_cell": 0,
+  "local_balance_normalized": 3.3609788027686202e-11,
+  "max_cell_residual_normalized": 3.075031876882482e-09,
+  "worst_cell_normalized": 0,
+  "nonfinite_faces": 0,
+  "nonfinite_cells": 0,
+  "history": [
+    {"iteration": 1, "residual": 8.5265128291212022e-14, "backward_error": 2.4417687325655816e-16, "linear_residual_relative": 4.4398582272548175e-15, "linear_solver_status": 0, "linear_solver_converged": true, "independent_conservation_normalized": 1.7577849842353999e-08}
+  ]
+}
