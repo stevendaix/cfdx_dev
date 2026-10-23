@@ -1,0 +1,15 @@
+pr1063 pre-commit ruff evidence oracle marker
+=============================================
+
+Purpose: capture the exact ruff violations that make the Pre-commit check
+fail on PR #1063 (head 23664c79dc742d5ba50336c614f464acf8389dc5), by
+replicating the CI Pre-commit job (precommit.yml) steps 1:1 on the pinned
+PR head: same Python 3.10, same "pip install --upgrade pre-commit ruff",
+same CFDX_PRECOMMIT_RANGE file set (base 9e05370ade533632874b37d8418ea0e0aeeb502a).
+
+- Workflow: .github/workflows/pr1063-precommit-oracle.yml
+- Evidence: diag-evidence/logs/pr1063_oracle_*_2026-10-23.*
+- CI failure: run 39980441047, job 120506027475, step
+  "Run Ruff/pre-commit on changed Python files" (fast ruff failure ~14 s)
+- Branch: ci/long-campaign-diagnostics (NEVER MERGE)
+- Date: 2026-10-23
