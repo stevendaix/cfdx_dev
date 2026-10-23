@@ -69,6 +69,8 @@
 
 #include <cmath>
 #include <cstddef>
+#include <iomanip>
+#include <iostream>
 #include <limits>
 #include <map>
 #include <set>
@@ -401,6 +403,20 @@ struct ProductionEnergyStageResult {
     // large domain-wide scale. Blocking gate, see local_energy_balance.
     double max_cell_residual_normalized = 0.0;
     std::size_t worst_cell_normalized = 0;
+    // T2 energy-audit option C (#1059, diag branch): independent discrete
+    // mass-flux divergence per cell and the split of the audited residual
+    // into the carrier coupling term T_c*div(F)_c and the pure transport
+    // remainder. Evidence only; the blocking gates above are unchanged.
+    double max_cell_flux_divergence = 0.0;      // kg/s
+    std::size_t worst_flux_divergence_cell = 0;
+    double coupling_residual_total = 0.0;        // W
+    double max_cell_coupling_residual = 0.0;     // W
+    double max_cell_coupling_residual_normalized = 0.0;
+    std::size_t worst_coupling_cell = 0;
+    double max_cell_pure_energy_residual = 0.0;  // W
+    double max_cell_pure_energy_residual_normalized = 0.0;
+    std::size_t worst_pure_cell = 0;
+    bool pure_energy_balance_passed = false;  // parallel verdict, evidence only
     std::size_t nonfinite_temperature = 0;
     std::size_t nonfinite_faces = 0;
     std::size_t nonfinite_cells = 0;
@@ -538,6 +554,18 @@ inline ProductionEnergyStageResult run_production_energy_stage(
     result.worst_cell = audit.worst_cell;
     result.max_cell_residual_normalized = audit.max_cell_residual_normalized;
     result.worst_cell_normalized = audit.worst_cell_normalized;
+    result.max_cell_flux_divergence = audit.max_cell_flux_divergence;
+    result.worst_flux_divergence_cell = audit.worst_flux_divergence_cell;
+    result.coupling_residual_total = audit.coupling_residual_total;
+    result.max_cell_coupling_residual = audit.max_cell_coupling_residual;
+    result.max_cell_coupling_residual_normalized =
+        audit.max_cell_coupling_residual_normalized;
+    result.worst_coupling_cell = audit.worst_coupling_cell;
+    result.max_cell_pure_energy_residual =
+        audit.max_cell_pure_energy_residual;
+    result.max_cell_pure_energy_residual_normalized =
+        audit.max_cell_pure_energy_residual_normalized;
+    result.worst_pure_cell = audit.worst_pure_cell;
     result.nonfinite_faces = audit.nonfinite_faces;
     result.nonfinite_cells = audit.nonfinite_cells;
 
@@ -592,6 +620,61 @@ inline ProductionEnergyStageResult run_production_energy_stage(
         // scale. Both forms must pass.
         std::isfinite(audit.max_cell_residual_normalized) &&
         audit.max_cell_residual_normalized <= balance_tolerance;
+
+    // T2 energy-audit option C (#1059, diag branch): parallel verdict on
+    // the pure energy transport residual (audited cell residual minus the
+    // carrier coupling term T_c*div(F)_c). Evidence only: it is reported
+    // and never folded into the blocking gates above.
+    result.pure_energy_balance_passed =
+        std::isfinite(audit.max_cell_pure_energy_residual) &&
+        audit.max_cell_pure_energy_residual / audit_power_scale <=
+            balance_tolerance &&
+        std::isfinite(audit.max_cell_pure_energy_residual_normalized) &&
+        audit.max_cell_pure_energy_residual_normalized <=
+            balance_tolerance;
+
+    // Worst-cell face dump (T2 energy-audit option A, #1059): every face
+    // flow of the cell that drives the blocking local gate, so a defect
+    // can be attributed to one face/patch without re-running anything.
+    {
+        const std::size_t probe_cell = audit.worst_cell_normalized;
+        const auto* cell_faces = mesh.cells().faces_data();
+        const auto* cell_offsets = mesh.cells().offsets_data();
+        const auto faces_begin = cell_offsets[probe_cell];
+        const auto faces_end = cell_offsets[probe_cell + 1];
+        std::cerr << std::scientific << std::setprecision(17);
+        std::cerr << "ENERGY_WORST_CELL cell=" << probe_cell
+                  << " faces=" << (faces_end - faces_begin)
+                  << " audit_power_scale=" << audit_power_scale
+                  << " max_cell_residual=" << audit.max_cell_residual
+                  << " max_cell_residual_normalized="
+                  << audit.max_cell_residual_normalized
+                  << " pure_residual=" << audit.max_cell_pure_energy_residual
+                  << " flux_divergence=" << audit.max_cell_flux_divergence
+                  << " coupling=" << audit.max_cell_coupling_residual
+                  << '\n';
+        for (auto k = faces_begin; k < faces_end; ++k) {
+            const std::size_t f = cell_faces[k];
+            const auto nr = own.neighbour(f);
+            std::cerr << "ENERGY_WORST_CELL_FACE cell=" << probe_cell
+                      << " face=" << f
+                      << (nr >= 0 ? " internal" : " boundary");
+            if (nr < 0) {
+                const std::size_t patch = geometry.face_patch[f];
+                if (patch < mesh.boundary().n_patches())
+                    std::cerr << " patch="
+                              << mesh.boundary().patch(patch).name;
+            }
+            std::cerr << " owner=" << own.owner(f);
+            if (nr >= 0)
+                std::cerr << " neighbour=" << nr
+                          << " T_owner=" << temperature(own.owner(f))
+                          << " T_neighbour="
+                          << temperature(static_cast<std::size_t>(nr));
+            std::cerr << " mass_flux=" << mass_flux(f)
+                      << " energy_flux=" << energy_flux(f) << '\n';
+        }
+    }
 
     result.converged =
         result.linear_solver_converged &&

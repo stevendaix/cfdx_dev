@@ -258,6 +258,23 @@ struct IndependentEnergyBalance {
     double accumulation = 0.0;
     std::size_t nonfinite_faces = 0;
     std::size_t nonfinite_cells = 0;
+    // T2 energy-audit option C (#1059, diag branch): independent discrete
+    // divergence of the mass flux, and the split of the audited cell
+    // residual rc into the carrier coupling term T_c*div(F)_c and the pure
+    // energy transport remainder rc - T_c*div(F)_c. The assembled
+    // bounded-convection operator carries div(F*T) = T*div(F) + F.grad(T);
+    // a large coupling residual next to a small pure residual isolates a
+    // carrier continuity defect rather than an energy discretisation
+    // error. Evidence only: no gate consumes these fields.
+    double max_cell_flux_divergence = 0.0;
+    std::size_t worst_flux_divergence_cell = 0;
+    double coupling_residual_total = 0.0;
+    double max_cell_coupling_residual = 0.0;
+    double max_cell_coupling_residual_normalized = 0.0;
+    std::size_t worst_coupling_cell = 0;
+    double max_cell_pure_energy_residual = 0.0;
+    double max_cell_pure_energy_residual_normalized = 0.0;
+    std::size_t worst_pure_cell = 0;
 };
 
 inline IndependentEnergyBalance reconstruct_energy_balance(
@@ -307,6 +324,19 @@ inline IndependentEnergyBalance reconstruct_energy_balance(
         }
     }
 
+    // Independent discrete divergence of the authoritative mass flux
+    // (T2 energy-audit option C, #1059): the assembled bounded-convection
+    // operator carries div(F*T) = T*div(F) + F.grad(T), so an exactly
+    // divergence-free carrier flux isolates the pure transport residual.
+    std::vector<double> mass_divergence(mesh.n_cells(),0.0);
+    for(std::size_t f=0; f<mesh.n_faces(); ++f) {
+        const double m=mass_flux(f);
+        const std::size_t o=own.owner(f);
+        mass_divergence[o]+=m;
+        const auto n=own.neighbour(f);
+        if(n>=0)
+            mass_divergence[static_cast<std::size_t>(n)]-=m;
+    }
     double sum2=0.0;
     for(std::size_t c=0;c<mesh.n_cells();++c) {
         const double s=source(c);
@@ -335,6 +365,40 @@ inline IndependentEnergyBalance reconstruct_energy_balance(
         if(rc_normalized >= r.max_cell_residual_normalized) {
             r.max_cell_residual_normalized=rc_normalized;
             r.worst_cell_normalized=c;
+        }
+        // Coupling split (option C): div(F)_c is accumulated independently
+        // above; coupling_c = div(F)_c*T_c is the term the assembled
+        // bounded-convection operator carries for the non-solenoidal part
+        // of the flux, and pure_c = rc - coupling_c is the pure energy
+        // transport remainder. A large |coupling| next to a small |pure|
+        // residual points at a carrier continuity defect, not an energy
+        // discretisation error.
+        const double divergence_c=mass_divergence[c];
+        if(std::abs(divergence_c) >= r.max_cell_flux_divergence) {
+            r.max_cell_flux_divergence=std::abs(divergence_c);
+            r.worst_flux_divergence_cell=c;
+        }
+        const double coupling_c=divergence_c*temperature(c);
+        r.coupling_residual_total+=coupling_c;
+        const double coupling_abs=std::abs(coupling_c);
+        if(coupling_abs >= r.max_cell_coupling_residual) {
+            r.max_cell_coupling_residual=coupling_abs;
+            r.worst_coupling_cell=c;
+        }
+        const double coupling_normalized=coupling_abs/cell_scale;
+        if(coupling_normalized >= r.max_cell_coupling_residual_normalized) {
+            r.max_cell_coupling_residual_normalized=coupling_normalized;
+            r.worst_coupling_cell=c;
+        }
+        const double pure_c=rc-coupling_c;
+        if(std::abs(pure_c) >= r.max_cell_pure_energy_residual) {
+            r.max_cell_pure_energy_residual=std::abs(pure_c);
+            r.worst_pure_cell=c;
+        }
+        const double pure_normalized=std::abs(pure_c)/cell_scale;
+        if(pure_normalized >= r.max_cell_pure_energy_residual_normalized) {
+            r.max_cell_pure_energy_residual_normalized=pure_normalized;
+            r.worst_pure_cell=c;
         }
         sum2+=rc*rc;
     }

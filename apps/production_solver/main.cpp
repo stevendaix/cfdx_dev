@@ -47,6 +47,9 @@ struct Options {
     bool initial_velocity_field = false;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
+    // T2 energy-audit option B (#1059, diag branch): diagnostic-only
+    // post-convergence flux closure + projection.
+    bool project_final_flux = false;
 };
 
 
@@ -355,6 +358,26 @@ std::string energy_convergence_json(
         << json_number(energy.max_cell_residual_normalized) << ",\n";
     out << "  \"worst_cell_normalized\": "
         << energy.worst_cell_normalized << ",\n";
+    out << "  \"max_cell_flux_divergence\": "
+        << json_number(energy.max_cell_flux_divergence) << ",\n";
+    out << "  \"worst_flux_divergence_cell\": "
+        << energy.worst_flux_divergence_cell << ",\n";
+    out << "  \"coupling_residual_total\": "
+        << json_number(energy.coupling_residual_total) << ",\n";
+    out << "  \"max_cell_coupling_residual\": "
+        << json_number(energy.max_cell_coupling_residual) << ",\n";
+    out << "  \"max_cell_coupling_residual_normalized\": "
+        << json_number(energy.max_cell_coupling_residual_normalized) << ",\n";
+    out << "  \"worst_coupling_cell\": "
+        << energy.worst_coupling_cell << ",\n";
+    out << "  \"max_cell_pure_energy_residual\": "
+        << json_number(energy.max_cell_pure_energy_residual) << ",\n";
+    out << "  \"max_cell_pure_energy_residual_normalized\": "
+        << json_number(energy.max_cell_pure_energy_residual_normalized) << ",\n";
+    out << "  \"worst_pure_cell\": "
+        << energy.worst_pure_cell << ",\n";
+    out << "  \"pure_energy_balance_passed\": "
+        << (energy.pure_energy_balance_passed ? "true" : "false") << ",\n";
     out << "  \"nonfinite_faces\": " << energy.nonfinite_faces << ",\n";
     out << "  \"nonfinite_cells\": " << energy.nonfinite_cells << ",\n";
     out << "  \"history\": [\n";
@@ -505,11 +528,13 @@ Options parse(int argc, char** argv)
         else if (arg == "--initial-velocity-field") o.initial_velocity_field = true;
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
+        else if (arg == "--project-final-flux") o.project_final_flux = true;
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
                          "  [--initial-velocity-field] (initialize U from /fields/vector/U)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
+                         "  [--project-final-flux] (diag: close + project the final face flux)\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::exit(0);
         } else {
@@ -805,6 +830,11 @@ int main(int argc, char** argv)
         controls.pressure_reference_cell = 0;
         controls.pressure_reference_value = 0.0;
         controls.probes = options.probes;
+        // T2 energy-audit option B (#1059, diag branch): diagnostic-only
+        // post-convergence closure + projection of the published face
+        // flux. The convergence gates are evaluated before it and no
+        // tolerance is relaxed.
+        controls.project_final_flux = options.project_final_flux;
 
         // The declared initialization strategy is applied by the solver, before
         // the first residual is formed. An explicit --restart request therefore

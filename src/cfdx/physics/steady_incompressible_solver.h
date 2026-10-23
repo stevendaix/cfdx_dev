@@ -229,6 +229,13 @@ struct IncompressibleSolverControls {
     std::size_t pcd_convection_diffusion_max_iterations = 100;
     double pcd_laplacian_tolerance = 1e-8;
     double pcd_convection_diffusion_tolerance = 1e-8;
+    // T2 energy-audit option B (#1059, diag branch): after the final accepted
+    // nonlinear iteration, close the residual net boundary mass-flux defect
+    // on free outlet faces and project the published face flux onto the
+    // discrete divergence-free space of the pressure operator. Diagnostic
+    // only: every convergence gate is evaluated before the projection, no
+    // tolerance is relaxed, and U/p are left untouched.
+    bool project_final_flux = false;
     bool use_bounded_convection = true;
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND;
     DiagnosticsControls diagnostics;
@@ -2625,6 +2632,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     std::array<std::vector<double>, 3> frozen_hbyA;
     Field<double, Location::CELL> frozen_grad_p;
     bool frozen_state_valid = false;
+    // Inverse momentum diagonals of the last accepted nonlinear iteration,
+    // published at function scope for the optional final flux projection
+    // (controls.project_final_flux). The loop below re-fills them on every
+    // attempt; after a completed iteration they are consistent with the
+    // accepted U/p state.
+    std::array<std::vector<double>, 3> rAU;
+    std::array<std::vector<double>, 3> rAtU;
+    std::array<std::vector<double>, 3> hbya;
 
     double effective_alpha_u = controls.coupling.alpha_u;
     double effective_alpha_p = controls.coupling.alpha_p;
@@ -2983,7 +2998,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             U.component_data(2)[c] = uz(c);
         }
 
-        std::array<std::vector<double>,3> rAU, rAtU, hbya;
         for (std::size_t d = 0; d < 3; ++d) {
             rAU[d].resize(mesh.n_cells());
             rAtU[d].resize(mesh.n_cells());
@@ -4500,6 +4514,254 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // authoritative_mass_flux is updated only after an accepted nonlinear
     // transaction above. In particular, a rejected retry cannot overwrite the
     // evidence for the last accepted U/p state. Do not reconstruct it from U.
+    if (controls.project_final_flux) {
+        // T2 energy-audit option B (#1059, diag branch). The frozen-flow
+        // energy audit reconstructs div(F*T) from the published flux; a
+        // residual net boundary mass flux (pure-Neumann pressure gauge)
+        // leaves a T_c*div(F)_c coupling term in the audited cell
+        // residuals, concentrated at the pressure reference cell. Steps:
+        //   1. close the net boundary mass-flux defect with a uniform
+        //      additive correction on free (non-prescribed, non-EMPTY,
+        //      non-fixed-pressure) boundary faces, fail-closed when the
+        //      defect is too large to be roundoff;
+        //   2. solve one pressure-Poisson projection with the final
+        //      rAU/rAtU operator and apply the matching face-flux delta so
+        //      the published flux is discrete-divergence-free for the
+        //      assembled energy operator. U and p are left untouched and
+        //      no convergence gate is re-evaluated.
+        const std::size_t nc = mesh.n_cells();
+        if (nc == 0 || rAU[0].size() != nc || rAtU[0].size() != nc)
+            throw std::runtime_error(
+                "project_final_flux: no accepted nonlinear state available");
+        const auto& own = mesh.ownership();
+        std::vector<std::size_t> free_faces;
+        double boundary_flux_magnitude = 0.0;
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            if (own.neighbour(f) >= 0)
+                continue;
+            boundary_flux_magnitude += std::abs(mass_flux(f));
+            const std::size_t patch = geometry.face_patch[f];
+            if (patch >= mesh.boundary().n_patches())
+                continue;
+            const auto patch_name = mesh.boundary().patch(patch).name;
+            const auto ubc = velocity_bcs.find(patch_name);
+            const bool prescribed_velocity =
+                mesh.boundary().patch(patch).type == PatchType::EMPTY ||
+                (ubc != velocity_bcs.end() &&
+                 ubc->second.type ==
+                     VelocityBoundaryCondition::Type::FIXED_VALUE);
+            const auto pbc = pressure_bcs.find(patch_name);
+            const bool fixed_pressure =
+                pbc != pressure_bcs.end() &&
+                pbc->second.type == ScalarBoundaryType::FIXED_VALUE;
+            if (!prescribed_velocity && !fixed_pressure)
+                free_faces.push_back(f);
+        }
+        if (free_faces.empty())
+            throw std::runtime_error(
+                "project_final_flux: no free boundary face available for "
+                "the net-flux closure");
+        const auto cell_divergence = [&]() {
+            std::vector<double> divergence(nc, 0.0);
+            const auto* cell_faces = mesh.cells().faces_data();
+            const auto* cell_offsets = mesh.cells().offsets_data();
+            for (std::size_t c = 0; c < nc; ++c) {
+                const auto faces_begin = cell_offsets[c];
+                const auto faces_end = cell_offsets[c + 1];
+                for (auto k = faces_begin; k < faces_end; ++k) {
+                    const std::size_t f = cell_faces[k];
+                    divergence[c] += own.owner(f) == c
+                        ? mass_flux(f) : -mass_flux(f);
+                }
+            }
+            return divergence;
+        };
+        auto divergence = cell_divergence();
+        double net_divergence = 0.0;
+        double max_abs_divergence = 0.0;
+        for (std::size_t c = 0; c < nc; ++c) {
+            net_divergence += divergence[c];
+            max_abs_divergence =
+                std::max(max_abs_divergence, std::abs(divergence[c]));
+        }
+        if (!(std::abs(net_divergence) <=
+              1e-6 * std::max(boundary_flux_magnitude, 1.0)))
+            throw std::runtime_error(
+                "project_final_flux: net boundary mass flux defect too "
+                "large for a roundoff-level closure");
+        const double closure_delta =
+            net_divergence / static_cast<double>(free_faces.size());
+        for (const std::size_t f : free_faces)
+            mass_flux(f) -= closure_delta;
+        divergence = cell_divergence();
+        double divergence_sum = 0.0;
+        for (std::size_t c = 0; c < nc; ++c)
+            divergence_sum += divergence[c];
+        const double divergence_mean =
+            divergence_sum / static_cast<double>(nc);
+
+        const auto& pressure_coeff =
+            controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                ? rAtU : rAU;
+        SparseMatrix projection_matrix(nc, nc);
+        std::vector<std::map<std::size_t, double>> rows(nc);
+        std::vector<double> diag(nc, 0.0);
+        Vector projection_rhs(nc, 0.0);
+        std::vector<double> internal_coefficient(mesh.n_faces(), 0.0);
+        std::vector<double> fixed_pressure_coefficient(mesh.n_faces(), 0.0);
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            const auto nr = own.neighbour(f);
+            if (nr < 0)
+                continue;
+            const std::size_t o = own.owner(f);
+            const std::size_t n = static_cast<std::size_t>(nr);
+            const Vec3 Sf = geometry.face_area_vectors[f];
+            const Vec3 dvec =
+                geometry.cell_centres[n] - geometry.cell_centres[o];
+            const double coeff = controls.density *
+                directional_face_coefficient(pressure_coeff, o, n, Sf, dvec);
+            internal_coefficient[f] = coeff;
+            diag[o] += coeff;
+            diag[n] += coeff;
+            rows[o][n] -= coeff;
+            rows[n][o] -= coeff;
+        }
+        for (std::size_t c = 0; c < nc; ++c)
+            rows[c][c] += diag[c];
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            if (own.neighbour(f) >= 0)
+                continue;
+            const std::size_t patch = geometry.face_patch[f];
+            if (patch >= mesh.boundary().n_patches())
+                continue;
+            const auto it = pressure_bcs.find(
+                mesh.boundary().patch(patch).name);
+            if (it == pressure_bcs.end() ||
+                it->second.type != ScalarBoundaryType::FIXED_VALUE)
+                continue;
+            const std::size_t o = own.owner(f);
+            const Vec3 dvec =
+                geometry.face_centres[f] - geometry.cell_centres[o];
+            const Vec3 Sf = geometry.face_area_vectors[f];
+            const Vec3 dAU_boundary{
+                geometry.cell_volumes[o] * pressure_coeff[0][o],
+                geometry.cell_volumes[o] * pressure_coeff[1][o],
+                geometry.cell_volumes[o] * pressure_coeff[2][o]};
+            const double boundary_coeff =
+                pressure_face_orthogonal_coefficient(Sf, dvec, dAU_boundary);
+            fixed_pressure_coefficient[f] =
+                controls.density * boundary_coeff;
+            rows[o][o] += controls.density * boundary_coeff;
+        }
+        for (std::size_t c = 0; c < nc; ++c)
+            projection_rhs(c) = -(divergence[c] - divergence_mean);
+        Vector dp(nc, 0.0);
+        cfdx::core::SolverResult projection_solve;
+        const auto solve_projection_system =
+            [&](const SparseMatrix& matrix,
+                const Vector& rhs,
+                Vector& correction) {
+                if (pressure_context) {
+                    return pressure_context->solve(
+                        matrix, rhs, correction,
+                        controls.linear_max_iterations,
+                        controls.linear_tolerance, {}, {},
+                        pressure_null_space.get());
+                }
+                return solve_linear_system(
+                    matrix, rhs, correction,
+                    LinearProblemKind::PressurePoisson,
+                    controls.pressure_linear_solver,
+                    controls.linear_max_iterations,
+                    controls.linear_tolerance).result;
+            };
+        if (has_fixed_pressure_boundary ||
+            use_projected_pressure_null_space) {
+            for (std::size_t row = 0; row < nc; ++row)
+                for (const auto& [col, value] : rows[row])
+                    projection_matrix.push_back(row, col, value);
+            projection_matrix.finalize();
+            projection_solve =
+                solve_projection_system(projection_matrix, projection_rhs, dp);
+        } else if (nc == 1) {
+            projection_matrix.push_back(0, 0, 1.0);
+            projection_matrix.finalize();
+            projection_rhs(0) = 0.0;
+            projection_solve =
+                solve_projection_system(projection_matrix, projection_rhs, dp);
+        } else {
+            // Same reference-DOF elimination as the in-loop pressure solve:
+            // pure-Neumann pressure has one gauge mode and the re-centred
+            // rhs is compatible with it.
+            const std::size_t ref = controls.pressure_reference_cell;
+            SparseMatrix reduced(nc - 1, nc - 1);
+            Vector reduced_rhs(nc - 1, 0.0);
+            const auto reduced_index = [ref](std::size_t cell) {
+                return cell < ref ? cell : cell - 1;
+            };
+            for (std::size_t row = 0; row < nc; ++row) {
+                if (row == ref)
+                    continue;
+                const std::size_t rr = reduced_index(row);
+                reduced_rhs(rr) = projection_rhs(row);
+                for (const auto& [col, value] : rows[row]) {
+                    if (col == ref)
+                        continue;
+                    reduced.push_back(rr, reduced_index(col), value);
+                }
+            }
+            reduced.finalize();
+            Vector reduced_correction(nc - 1, 0.0);
+            projection_solve = solve_projection_system(
+                reduced, reduced_rhs, reduced_correction);
+            if (projection_solve.status ==
+                cfdx::core::SolverStatus::CONVERGED) {
+                for (std::size_t cell = 0; cell < nc; ++cell)
+                    if (cell != ref)
+                        dp(cell) =
+                            reduced_correction(reduced_index(cell));
+                dp(ref) = 0.0;
+            }
+        }
+        if (projection_solve.status != cfdx::core::SolverStatus::CONVERGED)
+            throw std::runtime_error(
+                "project_final_flux: projection solve did not converge");
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            const auto nr = own.neighbour(f);
+            if (nr >= 0) {
+                const std::size_t o = own.owner(f);
+                const std::size_t n = static_cast<std::size_t>(nr);
+                mass_flux(f) +=
+                    internal_coefficient[f] * (dp(o) - dp(n));
+            } else if (fixed_pressure_coefficient[f] != 0.0) {
+                mass_flux(f) +=
+                    fixed_pressure_coefficient[f] * dp(own.owner(f));
+            }
+        }
+        // Deferred non-orthogonal pressure fluxes vanish on orthogonal
+        // meshes (the T2 channel); the orthogonal projection above is
+        // exact there. Re-publish the projected flux as authoritative.
+        const auto divergence_after = cell_divergence();
+        double net_after = 0.0;
+        double max_abs_after = 0.0;
+        for (std::size_t c = 0; c < nc; ++c) {
+            net_after += divergence_after[c];
+            max_abs_after =
+                std::max(max_abs_after, std::abs(divergence_after[c]));
+        }
+        std::cerr << "CFDX final flux projection:"
+                  << " cells=" << nc
+                  << " free_faces=" << free_faces.size()
+                  << " closure_delta=" << closure_delta
+                  << " net_before=" << net_divergence
+                  << " net_after=" << net_after
+                  << " div_max_before=" << max_abs_divergence
+                  << " div_max_after=" << max_abs_after
+                  << " linear_iterations=" << projection_solve.iterations
+                  << " linear_residual_relative="
+                  << projection_solve.residual_relative << '\n';
+        result.authoritative_mass_flux = mass_flux;
+    }
     if (pressure_context)
         result.pressure_linear_context = pressure_context->stats();
     return result;

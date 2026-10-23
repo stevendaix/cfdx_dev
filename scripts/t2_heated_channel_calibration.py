@@ -21,7 +21,11 @@ Locked case decisions (N9/T2 audit, heated-channel campaign #884):
   * external energy check: mdot*cp*(Tb_out - Tb_in) vs q''*2*L, with mdot
     measured from the u_x probes (not an oracle)
 
-The script never modifies solver physics. The convergence artifact records raw
+The script passes --project-final-flux (diag option B, #1059): after the
+accepted convergence gates the solver closes the residual net boundary
+mass-flux defect on free outlet faces and projects the published face flux
+onto the discrete divergence-free space of its pressure operator. The gates
+themselves are unchanged. The convergence artifact records raw
 linear-solver status and residual separately from the full energy-stage verdict.
 The energy Krylov tolerance is relative and is applied once by the solver; the
 campaign keeps all configured residual and conservation gates unchanged.
@@ -451,6 +455,7 @@ def _run_mesh(
             str(run_dir),
             "--iterations",
             str(MAX_ITERATIONS),
+            "--project-final-flux",
             *[item for probe in probes for item in ("--probe", probe)],
             "--probe-csv",
             str(probe_csv),
