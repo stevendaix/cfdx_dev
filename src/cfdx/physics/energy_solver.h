@@ -386,15 +386,13 @@ inline EnergySolveResult solve_energy(
             candidate(i)=temperature(i);
         ScalarSolveControls sc;
         sc.max_iterations=2000;
-        // Leave margin between the Krylov stopping criterion and the
-        // componentwise backward-error gate below. This is deliberately
-        // local to energy solves: ScalarSolveControls::tolerance remains a
-        // relative Krylov tolerance for the shared momentum/pressure paths.
-        sc.tolerance=temperature.size()==1
-            ? linear_tolerance
-            : std::max(
-                10.0*std::numeric_limits<double>::epsilon(),
-                0.001*linear_tolerance);
+        // Scalar Krylov solvers interpret this as a RELATIVE L2 residual
+        // tolerance (they scale it by ||rhs|| internally). The previous
+        // 0.001*linear_tolerance multiplier demanded a tolerance three orders
+        // tighter than the independent backward-error gate and could make
+        // the solve numerically unattainable. Use the configured tolerance
+        // consistently with the post-solve relative-residual check below.
+        sc.tolerance = linear_tolerance;
         // solve_scalar_equation returns the fully solved linear predictor;
         // nonlinear temperature relaxation is applied exactly once below.
         sc.relaxation=1.0;
@@ -509,6 +507,14 @@ inline EnergySolveResult solve_energy(
             result.converged=true;
             break;
         }
+        // The assembled energy operator is linear for the current frozen
+        // mass flux, conductivity, source and physical time level. If its
+        // linear solve failed, solve_scalar_equation deliberately preserves
+        // the last accepted state; retrying the identical system up to 500
+        // times cannot improve it. Preserve the failure diagnostics and fail
+        // fast instead of recording hundreds of duplicate nonlinear states.
+        if (linear.status != cfdx::core::SolverStatus::CONVERGED)
+            break;
         // T_previous_time remains fixed for transient physics. T_iterate is
         // updated above and is the state used for nonlinear/Picard relaxation.
     }
