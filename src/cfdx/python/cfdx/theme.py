@@ -12,7 +12,7 @@ TOKENS: dict[str, str] = {
     "surface.panel": "#171E26",
     "surface.raised": "#202A35",
     "surface.input": "#0D1217",
-    "border.subtle": "#2B3744",
+    "border.subtle": "#5B6B7B",
     "text.primary": "#E7EDF3",
     "text.secondary": "#A7B4C2",
     "text.muted": "#7A8999",
