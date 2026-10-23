@@ -1,0 +1,76 @@
+name: T2 pressure-gauge A/B experiment
+
+on:
+  push:
+    branches: [experiment/t2-outlet-pressure-gauge]
+    paths:
+      - apps/production_solver/main.cpp
+      - scripts/t2_heated_channel_calibration.py
+      - .github/workflows/t2-pressure-gauge-experiment.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: t2-pressure-gauge-experiment
+  cancel-in-progress: false
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout experimental commit
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev \
+            python3 python3-venv
+
+      - name: Create Python environment
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install "meshio[all]" h5py pydantic ansys-fluent-core
+
+      - name: Configure production solver
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=OFF \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DPython3_EXECUTABLE=$PWD/.venv/bin/python
+
+      - name: Build production solver
+        run: cmake --build build --target cfdx_production_solver
+
+      - name: Run unchanged T2 calibration gates
+        run: |
+          mkdir -p diag-evidence/t2-gauge-experiment
+          set +e
+          PYTHONSAFEPATH=1 PYTHONPATH=$PWD/src/cfdx/python .venv/bin/python \
+            scripts/t2_heated_channel_calibration.py \
+            --solver build/cfdx_production_solver \
+            --output-dir diag-evidence/t2-gauge-experiment \
+            --run-id "$GITHUB_RUN_ID" 2>&1 | \
+            tee diag-evidence/t2-gauge-experiment/t2_run.log
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" > diag-evidence/t2-gauge-experiment/exit_code.txt
+          exit "$rc"
+
+      - name: Upload T2 diagnostics even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: t2-pressure-gauge-experiment-${{ github.run_id }}
+          path: diag-evidence/t2-gauge-experiment/
+          if-no-files-found: warn
+          retention-days: 30
