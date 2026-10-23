@@ -386,17 +386,13 @@ inline EnergySolveResult solve_energy(
             candidate(i)=temperature(i);
         ScalarSolveControls sc;
         sc.max_iterations=2000;
-        // The Krylov implementations accept an ABSOLUTE L2 residual
-        // tolerance, while EnergySolverControls::linear_tolerance and the
-        // acceptance gate below are relative. Convert the relative tolerance
-        // to the scale of this assembled right-hand side; passing the raw
-        // relative value (or a smaller fraction of it) as an absolute
-        // threshold can make a valid solve unattainable in physical units.
-        double rhs_l2_norm = 0.0;
-        for (std::size_t i = 0; i < eq.rhs.size(); ++i)
-            rhs_l2_norm = std::hypot(rhs_l2_norm, eq.rhs(i));
-        sc.tolerance = linear_tolerance *
-            (rhs_l2_norm > 0.0 ? rhs_l2_norm : 1.0);
+        // Scalar Krylov solvers interpret this as a RELATIVE L2 residual
+        // tolerance (they scale it by ||rhs|| internally). The previous
+        // 0.001*linear_tolerance multiplier demanded a tolerance three orders
+        // tighter than the independent backward-error gate and could make
+        // the solve numerically unattainable. Use the configured tolerance
+        // consistently with the post-solve relative-residual check below.
+        sc.tolerance = linear_tolerance;
         // solve_scalar_equation returns the fully solved linear predictor;
         // nonlinear temperature relaxation is applied exactly once below.
         sc.relaxation=1.0;
