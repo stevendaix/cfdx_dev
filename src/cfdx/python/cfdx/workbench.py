@@ -16,6 +16,7 @@ from .application import (
     workflow_children,
 )
 from .capabilities import (
+    Capability,
     CapabilityContext,
     evaluate_capability,
     get_capability,
@@ -184,6 +185,7 @@ if QMainWindow is not object:
             self.search_action = search
             self.toolbar = toolbar
             self._build_workspace_toolbar()
+            self._register_capability_actions()
 
         def _build_workspace_toolbar(self) -> None:
             """Expose task-oriented layouts without duplicating domain actions."""
@@ -212,8 +214,21 @@ if QMainWindow is not object:
             self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
             self.workspace_toolbar = toolbar
 
+        def _register_capability_actions(self) -> None:
+            """Bind every registered capability id to its Qt action.
+
+            The stable capability id equals the Qt action objectName, so the
+            binding stays declarative: an action outside the registry never
+            enters the palette, and tests guard the bijection.
+            """
+            self._capability_actions = {
+                action.objectName(): action
+                for action in self.findChildren(QAction)
+                if get_capability(action.objectName()) is not None
+            }
+
         def _show_command_palette(self) -> None:
-            """Open a keyboard-first palette over existing application actions."""
+            """Open a keyboard-first palette over the capability registry."""
             dialog = QDialog(self)
             dialog.setObjectName("workbench.command_palette")
             dialog.setWindowTitle("Command Palette")
@@ -227,30 +242,28 @@ if QMainWindow is not object:
             layout.addWidget(query)
             layout.addWidget(results)
 
-            commands: list[tuple[str, QAction]] = []
-            for action in self.findChildren(QAction):
-                if action is self.search_action:
-                    continue
-                label = action.text().replace("&", "").strip()
-                if label:
-                    commands.append((label, action))
-            commands.sort(key=lambda item: item[0].casefold())
+            commands: list[tuple[Capability, QAction]] = []
+            for capability_id, action in self._capability_actions.items():
+                capability = get_capability(capability_id)
+                if capability is not None:
+                    commands.append((capability, action))
+            commands.sort(key=lambda item: item[0].label.casefold())
 
             def refresh_results(text: str = "") -> None:
                 results.clear()
                 needle = text.casefold().strip()
-                for label, action in commands:
-                    if needle and needle not in label.casefold():
+                context = self._capability_context()
+                for capability, action in commands:
+                    if needle and needle not in capability.label.casefold():
                         continue
-                    if action.isEnabled():
-                        item = QListWidgetItem(label)
+                    status = evaluate_capability(capability.id, context)
+                    if status.available:
+                        item = QListWidgetItem(capability.label)
                     else:
                         # P0 (Phase 0 audit, G3): never hide a disabled
                         # command silently; show why it is unavailable.
-                        reason = (
-                            action.statusTip() or "not available in the current state"
-                        )
-                        item = QListWidgetItem(f"{label} — {reason}")
+                        reason = status.tip or "not available in the current state"
+                        item = QListWidgetItem(f"{capability.label} — {reason}")
                         item.setToolTip(reason)
                     item.setData(Qt.ItemDataRole.UserRole, action)
                     results.addItem(item)
@@ -675,18 +688,7 @@ if QMainWindow is not object:
         def _refresh_action_availability(self) -> None:
             """Compute every registered action's availability from the registry."""
             context = self._capability_context()
-            for capability_id, attribute in (
-                ("workbench.action.contour", "contour_action"),
-                ("workbench.action.slice", "slice_action"),
-                ("workbench.action.glyph", "glyph_action"),
-                ("workbench.action.run", "run_action"),
-                ("workbench.action.check", "check_action"),
-                ("workbench.action.save", "save_case_action"),
-                ("workbench.action.stop", "stop_action"),
-            ):
-                action = getattr(self, attribute, None)
-                if action is None:
-                    continue
+            for capability_id, action in self._capability_actions.items():
                 status = evaluate_capability(capability_id, context)
                 action.setEnabled(status.available)
                 action.setStatusTip(status.tip)

@@ -34,6 +34,8 @@
 
 **Rejet explicite** (décision produit 2026-10-23) : G5/Run Center ne remonte pas dans le Lot 1 malgré sa rentabilité — l'ordre des lots est non négociable. Il faut d'abord une expérience cohérente centrée viewport.
 
+**Mise à jour G3 (Lot 2 — palette pilotée par le registre, 2026-10-23)** : le registre de capacités couvre désormais toutes les commandes du Workbench (actions fichier, Check/Run/Stop, contour/slice/glyph, workspaces — 16 entrées, labels « X workspace » pour désambiguïser). La palette Ctrl+K énumère le registre — plus aucun `findChildren(QAction)` pour l'énumération — et évalue les prérequis en direct à chaque rafraîchissement ; `_refresh_action_availability` est piloté par la même évaluation. G3 est clos (Lot 1 + Lot 2). Les actions DAT gardent leur garde au déclenchement ; un prérequis « case ouvert » reste envisageable en suivi.
+
 ## 3. Décisions de réutilisation vs prototypage
 
 **Réutiliser sans réécrire** : état applicatif central, docks/workspaces, cœur du pipeline non destructif, arbre workflow, sélecteur de patch.
