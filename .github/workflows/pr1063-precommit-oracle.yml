@@ -33,7 +33,6 @@ jobs:
           git worktree add "$RUNNER_TEMP/ref" "$PR_HEAD"
           cd "$RUNNER_TEMP/ref"
           git log -1 --format='%H %s' | tee "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_head_$STAMP.txt"
-          git log --oneline -1 "$PR_BASE" | tee "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_base_$STAMP.txt"
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -54,51 +53,35 @@ jobs:
           cd "$RUNNER_TEMP/ref"
           git diff --name-only "$PR_BASE...$PR_HEAD" -- '*.py' | tee "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_files_$STAMP.txt"
 
-      - name: Replicate CI pre-commit run (full hook output)
-        id: precommit
-        continue-on-error: true
+      - name: Apply ruff check --fix then ruff format (canonicalize)
         run: |
-          set -uo pipefail
           cd "$RUNNER_TEMP/ref"
           python_files=$(git diff --name-only "$PR_BASE...$PR_HEAD" -- '*.py')
-          status=0
-          pre-commit run --files $python_files --show-diff-on-failure 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_precommit_$STAMP.log" || status=$?
-          echo "precommit_exit=$status" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_precommit_$STAMP.log"
-          exit "$status"
+          ruff check --fix --no-cache $python_files 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_rufffix_$STAMP.log" || echo "RUFF_FIX_PIPELINE_FAILED" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_rufffix_$STAMP.log"
+          ruff format --no-cache $python_files 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_ruffformatwrite_$STAMP.log" || echo "RUFF_FORMAT_WRITE_PIPELINE_FAILED" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_ruffformatwrite_$STAMP.log"
 
-      - name: ruff check raw output (rule codes, lines, messages)
-        continue-on-error: true
+      - name: Capture canonical fixed files and applied diff
         run: |
-          set -uo pipefail
           cd "$RUNNER_TEMP/ref"
+          git --no-pager diff | tee "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_applieddiff_$STAMP.patch"
           python_files=$(git diff --name-only "$PR_BASE...$PR_HEAD" -- '*.py')
-          status=0
-          ruff check --no-cache $python_files 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_ruffcheck_$STAMP.log" || status=$?
-          echo "ruff_check_exit=$status" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_ruffcheck_$STAMP.log"
-          exit "$status"
+          for f in $python_files; do
+            cp "$f" "$GITHUB_WORKSPACE/$EVID/pr1063_fixed_$(basename "$f")"
+          done
 
-      - name: ruff format --diff (exact reformat diff)
+      - name: Verify canonical content passes all Pre-commit hooks
         continue-on-error: true
-        run: |
-          set -uo pipefail
-          cd "$RUNNER_TEMP/ref"
-          python_files=$(git diff --name-only "$PR_BASE...$PR_HEAD" -- '*.py')
-          status=0
-          ruff format --diff --no-cache $python_files 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_ruffformatdiff_$STAMP.log" || status=$?
-          echo "ruff_format_diff_exit=$status" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_ruffformatdiff_$STAMP.log"
-          exit "$status"
-
-      - name: Per-hook isolation (which hook is red)
-        if: always()
         run: |
           cd "$RUNNER_TEMP/ref"
           python_files=$(git diff --name-only "$PR_BASE...$PR_HEAD" -- '*.py')
           {
-            echo "== hook ruff-check =="
-            pre-commit run ruff-check --files $python_files 2>&1 || echo "HOOK_RUFF_CHECK_FAILED"
-            echo "== hook ruff-format =="
-            pre-commit run ruff-format --files $python_files 2>&1 || echo "HOOK_RUFF_FORMAT_FAILED"
-          } | tee "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_perhook_$STAMP.log"
+            echo "== ruff check (after fix) =="
+            ruff check --no-cache $python_files 2>&1 && echo "RUFF_CHECK_GREEN" || echo "RUFF_CHECK_RED"
+            echo "== ruff format --check (after fix) =="
+            ruff format --check --no-cache $python_files 2>&1 && echo "RUFF_FORMAT_GREEN" || echo "RUFF_FORMAT_RED"
+            echo "== full pre-commit run (after fix) =="
+            pre-commit run --files $python_files 2>&1 && echo "PRECOMMIT_GREEN" || echo "PRECOMMIT_RED"
+          } | tee "$GITHUB_WORKSPACE/$EVID/pr1063_oracle_postfix_verify_$STAMP.log"
 
       - name: Write meta
         if: always()
@@ -108,10 +91,9 @@ jobs:
             echo "pr=1063"
             echo "pr_head=$PR_HEAD"
             echo "pr_base=$PR_BASE"
+            echo "phase=2-canonical-fix"
             echo "ci_failure_run=39980441047"
-            echo "ci_failure_job=120506027475"
-            echo "ci_failure_step=Run Ruff/pre-commit on changed Python files"
-          } > "$E/pr1063_oracle_meta_$STAMP.txt"
+          } > "$E/pr1063_oracle_meta2_$STAMP.txt"
 
       - name: Commit evidence
         if: always()
@@ -122,6 +104,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: PR 1063 pre-commit ruff oracle evidence (2026-10-23) [ci skip]"
+            git commit -m "diag: PR 1063 ruff canonical fix capture (2026-10-23) [ci skip]"
             (git push || (git pull --rebase && git push))
           fi
