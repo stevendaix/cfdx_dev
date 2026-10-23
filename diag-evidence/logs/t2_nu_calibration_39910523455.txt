@@ -1,0 +1,56 @@
+T2 heated-channel Nu calibration campaign
+run_id: 39910523455
+solver: build/cfdx_production_solver
+case: L=10 H=1 G=1 nu=0.1 rho=1 k=0.1 cp=1 q''=1 T_in=300 energy=conjugate iterations=3000 meshes=80x16,160x32,320x64
+Nu_ref = 140/17 = 8.2352941176 ; err_rel target <= 0.05
+Poiseuille L2 gate: 0.005 ; developed region: x_c >= 7.5
+
+mesh 80x16: PASS l2=4.883e-03 Nu_dev=8.308773 err_rel=0.008922 (bottom 8.308773, top 8.308773)
+  mdot=0.839844 tb_in=300.151 tb_out=323.306 balance_rel=2.770e-02 n_dev_columns=20
+mesh 160x32: PASS l2=1.221e-03 Nu_dev=8.291956 err_rel=0.006880 (bottom 8.291956, top 8.291956)
+  mdot=0.834961 tb_in=300.062 tb_out=323.470 balance_rel=2.275e-02 n_dev_columns=40
+mesh 320x64: FAIL
+  error: solver rc=2; stdout tail:
+Resolved numerical selections:
+case=t2_heated_channel_320x64
+scheme[gradient]=numerics.gradient.gauss->gradient.gauss_cell(implemented)
+scheme[convection]=numerics.convection.upwind->convection.upwind(implemented)
+scheme[pressure_velocity]=pressure_velocity.simple->pressure_velocity.simple(implemented)
+scheme[linear_solver]=linear.fgmres->linear.fgmres(implemented)
+Initialization strategy uniform
+Iteration 1 Time = 0
+Iteration 2 Time = 0
+Iteration 3 Time = 0
+Iteration 4 Time = 0
+Iteration 5 Time = 0
+Iteration 6 Time = 0
+Iteration 7 Time = 0
+Iteration 8 Time = 0
+Iteration 9 Time = 0
+Iteration 10 Time = 0
+Iteration 11 Time = 0
+Iteration 12 Time = 0
+Iteration 13 Time = 0
+Iteration 14 Time = 0
+Iteration 15 Time = 0
+Iteration 16 Time = 0
+Iteration 17 Time = 0
+Iteration 18 Time = 0
+Iteration 19 Time = 0
+Iteration 20 Time = 0
+Iteration 21 Time = 0
+Iteration 22 Time = 0
+
+...[truncated]...
+stderr tail:
+ momentum_residual_reference=0.000532125 momentum_rhs_scale_components=(0.000562227,2.34568e-05,1e-300) momentum_rhs_relative_components=(0.992877,0.176973,0) continuity_normalized=9.72195e-07 velocity_change_inf=0.0525751 pressure_change_inf=0.00121258 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=10 pressure_relative_residual=8.32403e-13 momentum_linear_iterations=8 flux_velocity_mismatch_linf=6.5891e-07 worst_momentum_cell=10561 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=20 momentum_residual_rhs_relative=0.992755 momentum_residual_reference_relative=1.04845 momentum_residual_raw=0.000557906 momentum_rhs_scale=0.000561977 momentum_residual_reference=0.000532125 momentum_rhs_scale_components=(0.000561977,2.45884e-05,1e-300) momentum_rhs_relative_components=(0.992755,0.158772,0) continuity_normalized=8.41394e-07 velocity_change_inf=0.0499145 pressure_change_inf=0.00459997 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=9 pressure_relative_residual=6.28372e-12 momentum_linear_iterations=8 flux_velocity_mismatch_linf=6.99275e-07 worst_momentum_cell=10561 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=21 momentum_residual_rhs_relative=0.992754 momentum_residual_reference_relative=1.0478 momentum_residual_raw=0.000557558 momentum_rhs_scale=0.000561628 momentum_residual_reference=0.000532125 momentum_rhs_scale_components=(0.000561628,2.56392e-05,1e-300) momentum_rhs_relative_components=(0.992754,0.142858,0) continuity_normalized=8.20669e-07 velocity_change_inf=0.0475094 pressure_change_inf=0.00870506 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=9 pressure_relative_residual=8.08526e-12 momentum_linear_iterations=8 flux_velocity_mismatch_linf=7.39027e-07 worst_momentum_cell=10561 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=22 momentum_residual_rhs_relative=0.992793 momentum_residual_reference_relative=1.04711 momentum_residual_raw=0.000557194 momentum_rhs_scale=0.000561239 momentum_residual_reference=0.000532125 momentum_rhs_scale_components=(0.000561239,2.67192e-05,1e-300) momentum_rhs_relative_components=(0.992793,0.133579,0) continuity_normalized=7.44548e-07 velocity_change_inf=0.0453236 pressure_change_inf=0.00771217 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=9 pressure_relative_residual=7.3085e-12 momentum_linear_iterations=8 flux_velocity_mismatch_linf=7.78368e-07 worst_momentum_cell=10561 worst_momentum_patch=
+CFDX production solver error: project_final_flux: net boundary mass flux defect too large for a roundoff-level closure
+
+
+verdict: execution_failure
+interpretation (locked protocol):
+- err_rel <= 0.05 on the finest mesh -> wall-treatment defect dominates the fine-gap budget; no convective-scheme correction required for the +9.93% audit (T2 closes with this evidence).
+- err_rel > 0.05 and/or apparent order p ~ 1 -> upwind artificial diffusion dominates; T3 = repeat the campaign with a higher-order convective scheme.

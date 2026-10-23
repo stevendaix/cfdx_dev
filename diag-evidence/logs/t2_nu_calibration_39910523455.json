@@ -1,0 +1,161 @@
+{
+  "run_id": "39910523455",
+  "solver": "build/cfdx_production_solver",
+  "case": {
+    "L": 10.0,
+    "H": 1.0,
+    "body_force": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "density": 1.0,
+    "dynamic_viscosity": 0.1,
+    "thermal_conductivity": 0.1,
+    "specific_heat": 1.0,
+    "heat_flux": 1.0,
+    "t_in": 300.0,
+    "energy_model": "conjugate",
+    "max_iterations": 3000,
+    "meshes": [
+      [
+        80,
+        16
+      ],
+      [
+        160,
+        32
+      ],
+      [
+        320,
+        64
+      ]
+    ],
+    "l2_gate": 0.005,
+    "dh": 2.0,
+    "x_dev": 7.5
+  },
+  "nu_ref": 8.235294117647058,
+  "err_target": 0.05,
+  "meshes": [
+    {
+      "nx": 80,
+      "ny": 16,
+      "l2_poiseuille": 0.004882805498527169,
+      "probe_x": 5.0625,
+      "mdot": 0.8398437429985259,
+      "tb_in": 300.1511644109622,
+      "tb_out": 323.30553030512397,
+      "q_wall_per_unit_depth": 20.0,
+      "enthalpy_rise_per_unit_depth": 19.44604931931021,
+      "balance_rel": 0.027697534034489556,
+      "nu_dev": 8.308773073539209,
+      "nu_bottom_dev": 8.308773073409608,
+      "nu_top_dev": 8.30877307366881,
+      "nu_local_min": 8.257491884213291,
+      "nu_local_max": 8.658130316636036,
+      "n_dev_columns": 20,
+      "dx": 0.125,
+      "dy": 0.0625,
+      "err_rel": 0.008922444644046899,
+      "energy_summary": {
+        "min_temperature": 300.0404254913811,
+        "max_temperature": 325.3029978465265,
+        "total_source_power": 0,
+        "boundary_flux_out": -1.0240697179142444e-12,
+        "nonfinite_temperature": 0,
+        "volumetric_power": 0,
+        "patches": [
+          {
+            "name": "back",
+            "flux_out": 0
+          },
+          {
+            "name": "bottom",
+            "flux_out": -10
+          },
+          {
+            "name": "front",
+            "flux_out": 0
+          },
+          {
+            "name": "inlet",
+            "flux_out": -251.52612671271933
+          },
+          {
+            "name": "outlet",
+            "flux_out": 271.52612671271834
+          },
+          {
+            "name": "top",
+            "flux_out": -10
+          }
+        ]
+      },
+      "status": "PASS"
+    },
+    {
+      "nx": 160,
+      "ny": 32,
+      "l2_poiseuille": 0.0012205821538166129,
+      "probe_x": 5.03125,
+      "mdot": 0.8349608165273843,
+      "tb_in": 300.0620702757276,
+      "tb_out": 323.4703463659211,
+      "q_wall_per_unit_depth": 20.0,
+      "enthalpy_rise_per_unit_depth": 19.54499331776642,
+      "balance_rel": 0.022750334111679038,
+      "nu_dev": 8.291955515924005,
+      "nu_bottom_dev": 8.291955515821144,
+      "nu_top_dev": 8.29195551602687,
+      "nu_local_min": 8.240939759550626,
+      "nu_local_max": 8.70970370446384,
+      "n_dev_columns": 40,
+      "dx": 0.0625,
+      "dy": 0.03125,
+      "err_rel": 0.006880312647915054,
+      "energy_summary": {
+        "min_temperature": 300.0126290029395,
+        "max_temperature": 325.6103857322366,
+        "total_source_power": 0,
+        "boundary_flux_out": -5.364597654988756e-13,
+        "nonfinite_temperature": 0,
+        "volumetric_power": 0,
+        "patches": [
+          {
+            "name": "back",
+            "flux_out": 0
+          },
+          {
+            "name": "bottom",
+            "flux_out": -10
+          },
+          {
+            "name": "front",
+            "flux_out": 0
+          },
+          {
+            "name": "inlet",
+            "flux_out": -250.08506454438904
+          },
+          {
+            "name": "outlet",
+            "flux_out": 270.0850645443885
+          },
+          {
+            "name": "top",
+            "flux_out": -10
+          }
+        ]
+      },
+      "status": "PASS"
+    },
+    {
+      "nx": 320,
+      "ny": 64,
+      "status": "FAIL",
+      "error": "solver rc=2; stdout tail:\nResolved numerical selections:\ncase=t2_heated_channel_320x64\nscheme[gradient]=numerics.gradient.gauss->gradient.gauss_cell(implemented)\nscheme[convection]=numerics.convection.upwind->convection.upwind(implemented)\nscheme[pressure_velocity]=pressure_velocity.simple->pressure_velocity.simple(implemented)\nscheme[linear_solver]=linear.fgmres->linear.fgmres(implemented)\nInitialization strategy uniform\nIteration 1 Time = 0\nIteration 2 Time = 0\nIteration 3 Time = 0\nIteration 4 Time = 0\nIteration 5 Time = 0\nIteration 6 Time = 0\nIteration 7 Time = 0\nIteration 8 Time = 0\nIteration 9 Time = 0\nIteration 10 Time = 0\nIteration 11 Time = 0\nIteration 12 Time = 0\nIteration 13 Time = 0\nIteration 14 Time = 0\nIteration 15 Time = 0\nIteration 16 Time = 0\nIteration 17 Time = 0\nIteration 18 Time = 0\nIteration 19 Time = 0\nIteration 20 Time = 0\nIteration 21 Time = 0\nIteration 22 Time = 0\n\n...[truncated]...\nstderr tail:\n momentum_residual_reference=0.000532125 momentum_rhs_scale_components=(0.000562227,2.34568e-05,1e-300) momentum_rhs_relative_components=(0.992877,0.176973,0) continuity_normalized=9.72195e-07 velocity_change_inf=0.0525751 pressure_change_inf=0.00121258 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=10 pressure_relative_residual=8.32403e-13 momentum_linear_iterations=8 flux_velocity_mismatch_linf=6.5891e-07 worst_momentum_cell=10561 worst_momentum_patch=\nINCOMPRESSIBLE_ITER iter=20 momentum_residual_rhs_relative=0.992755 momentum_residual_reference_relative=1.04845 momentum_residual_raw=0.000557906 momentum_rhs_scale=0.000561977 momentum_residual_reference=0.000532125 momentum_rhs_scale_components=(0.000561977,2.45884e-05,1e-300) momentum_rhs_relative_components=(0.992755,0.158772,0) continuity_normalized=8.41394e-07 velocity_change_inf=0.0499145 pressure_change_inf=0.00459997 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=9 pressure_relative_residual=6.28372e-12 momentum_linear_iterations=8 flux_velocity_mismatch_linf=6.99275e-07 worst_momentum_cell=10561 worst_momentum_patch=\nINCOMPRESSIBLE_ITER iter=21 momentum_residual_rhs_relative=0.992754 momentum_residual_reference_relative=1.0478 momentum_residual_raw=0.000557558 momentum_rhs_scale=0.000561628 momentum_residual_reference=0.000532125 momentum_rhs_scale_components=(0.000561628,2.56392e-05,1e-300) momentum_rhs_relative_components=(0.992754,0.142858,0) continuity_normalized=8.20669e-07 velocity_change_inf=0.0475094 pressure_change_inf=0.00870506 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=9 pressure_relative_residual=8.08526e-12 momentum_linear_iterations=8 flux_velocity_mismatch_linf=7.39027e-07 worst_momentum_cell=10561 worst_momentum_patch=\nINCOMPRESSIBLE_ITER iter=22 momentum_residual_rhs_relative=0.992793 momentum_residual_reference_relative=1.04711 momentum_residual_raw=0.000557194 momentum_rhs_scale=0.000561239 momentum_residual_reference=0.000532125 momentum_rhs_scale_components=(0.000561239,2.67192e-05,1e-300) momentum_rhs_relative_components=(0.992793,0.133579,0) continuity_normalized=7.44548e-07 velocity_change_inf=0.0453236 pressure_change_inf=0.00771217 alpha_u=0.7 alpha_p=0.3 pressure_linear_iterations=9 pressure_relative_residual=7.3085e-12 momentum_linear_iterations=8 flux_velocity_mismatch_linf=7.78368e-07 worst_momentum_cell=10561 worst_momentum_patch=\nCFDX production solver error: project_final_flux: net boundary mass flux defect too large for a roundoff-level closure\n"
+    }
+  ],
+  "verdict": "execution_failure"
+}
