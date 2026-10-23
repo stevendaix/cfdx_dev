@@ -5,7 +5,7 @@ Reproduces the momentum stagnation of the finest T2 heated-channel mesh
 the rhs scale, worst cell 10561) with the solver's in-code forensic
 momentum microscope enabled, and archives the dump for the audit.
 
-Two solves are run with the SAME case, tolerances and stop criteria as the
+Four solves are run with the SAME case, tolerances and stop criteria as the
 calibration campaign (module t2_heated_channel_calibration is imported,
 never duplicated):
 
@@ -13,6 +13,11 @@ never duplicated):
     residual cell (10561 in runs #8-#10),
   * --debug-cell 0 : the pressure-gauge cell at the inlet/bottom corner,
     the worst mass-continuity cell since iteration 3.
+  * --debug-cell 10241 : cell (i=1, j=32), one column past the inlet at
+    mid-height, a member of the worst-cell cluster of run 39939509005,
+  * --debug-cell 10240 : cell (i=0, j=32), the inlet column at
+    mid-height, adjacent to the boundary faces that dominate the
+    boundary-driven share of the pinned momentum residual.
 
 The microscope dump (exact matrix row, Rhie-Chow face reconstruction,
 pressure-correction fluxes, per-face authoritative vs reconstructed flux)
@@ -23,7 +28,7 @@ through its natural stagnation path (rc=1, convergence.json/execution.json
 written) instead of the projection-guard exception (rc=2) that masked the
 stagnation state in run 39910523455.
 
-Success for this driver means: the stagnation is reproduced AND both
+Success for this driver means: the stagnation is reproduced AND all four
 microscope dumps are present in the archived stderr. It fails if the
 solve converges (the symptom disappeared) or a dump is missing
 (instrumentation gap). A green run is diagnostic evidence only, never a
@@ -220,7 +225,12 @@ def main() -> int:
     solves: list[dict] = []
     with tempfile.TemporaryDirectory(prefix="t2_momdiag_") as tmp:
         work = Path(tmp)
-        for slug, debug_arg in (("auto", "auto"), ("cell0", "0")):
+        for slug, debug_arg in (
+            ("auto", "auto"),
+            ("cell0", "0"),
+            ("cell10241", "10241"),
+            ("cell10240", "10240"),
+        ):
             solves.append(
                 _run_solve(
                     calib,
