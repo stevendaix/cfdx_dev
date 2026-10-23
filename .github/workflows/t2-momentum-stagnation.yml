@@ -1,0 +1,108 @@
+name: T2 320x64 momentum stagnation diagnostic (diag)
+
+on:
+  push:
+    branches: [diag/t2-heated-channel-calibration]
+    paths:
+      - src/cfdx/physics/steady_incompressible_solver.h
+      - apps/production_solver/main.cpp
+      - scripts/t2_momentum_stagnation_diag.py
+      - .github/workflows/t2-momentum-stagnation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: t2-momentum-stagnation-diag
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev \
+            python3 python3-venv
+
+      - name: Create Python venv
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install "meshio[all]" h5py pydantic ansys-fluent-core
+
+      - name: Ruff evidence oracle (exact lint/format findings)
+        run: |
+          E="diag-evidence/logs"
+          mkdir -p "$E"
+          .venv/bin/pip install --quiet ruff
+          .venv/bin/ruff check scripts/t2_momentum_stagnation_diag.py \
+            > "$E/t2_momdiag_ruff_check_run$GITHUB_RUN_ID.log" 2>&1 || true
+          .venv/bin/ruff format --diff scripts/t2_momentum_stagnation_diag.py \
+            > "$E/t2_momdiag_ruff_format_diff_run$GITHUB_RUN_ID.log" 2>&1 || true
+          cp scripts/t2_momentum_stagnation_diag.py \
+            "$E/t2_momdiag_ruff_candidate_run$GITHUB_RUN_ID.py"
+          .venv/bin/ruff format scripts/t2_momentum_stagnation_diag.py
+          cp scripts/t2_momentum_stagnation_diag.py \
+            "$E/t2_momdiag_ruff_formatted_run$GITHUB_RUN_ID.py"
+
+      - name: Configure (Release, MPI, parallel HDF5)
+        run: |
+          cmake -S . -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=OFF \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DPython3_EXECUTABLE=$PWD/.venv/bin/python
+
+      - name: Build production solver
+        run: cmake --build build --target cfdx_production_solver
+
+      - name: Run 320x64 momentum stagnation diagnostic
+        run: |
+          E="diag-evidence/logs"
+          mkdir -p "$E"
+          set +e
+          PYTHONSAFEPATH=1 PYTHONPATH=$PWD/src/cfdx/python .venv/bin/python \
+            scripts/t2_momentum_stagnation_diag.py \
+            --solver build/cfdx_production_solver \
+            --output-dir "$E" \
+            --run-id "$GITHUB_RUN_ID" 2>&1 | tee "$E/t2_momdiag_run_run$GITHUB_RUN_ID.log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "t2_momdiag_rc=$rc" > "$E/t2_momdiag_status_run$GITHUB_RUN_ID.txt"
+          if [ "$rc" -ne 0 ]; then
+            echo "T2 momentum diagnostic failed (rc=$rc); evidence is committed by the next step"
+            exit 1
+          fi
+
+      - name: Commit diagnostic evidence
+        if: always()
+        run: |
+          E="diag-evidence/logs"
+          git config user.name "cfdx-diag-bot"
+          git config user.email "actions@github.com"
+          git add "$E"/t2_* 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo "no evidence to commit"
+          else
+            git commit -m "diag(t2): 320x64 momentum stagnation forensic evidence run ${GITHUB_RUN_ID} [ci skip]"
+            pushed=false
+            for attempt in 1 2 3; do
+              if git push; then pushed=true; break; fi
+              git pull --rebase origin diag/t2-heated-channel-calibration || break
+            done
+            if [ "$pushed" = "false" ]; then
+              echo "evidence push failed after rebase retries"
+              exit 1
+            fi
+          fi

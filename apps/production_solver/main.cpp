@@ -50,6 +50,10 @@ struct Options {
     // T2 energy-audit option B (#1059, diag branch): diagnostic-only
     // post-convergence flux closure + projection.
     bool project_final_flux = false;
+    // T2 momentum diagnostic (#1059, diag branch): forensic microscope
+    // cell selection. Evidence-only; no solver physics or gate changes.
+    bool debug_cell_auto = false;
+    long debug_cell = -1;
 };
 
 
@@ -529,12 +533,29 @@ Options parse(int argc, char** argv)
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
         else if (arg == "--project-final-flux") o.project_final_flux = true;
+        else if (arg == "--debug-cell") {
+            const std::string cell = value("--debug-cell");
+            if (cell == "auto") {
+                o.debug_cell_auto = true;
+            } else {
+                try {
+                    o.debug_cell = std::stol(cell);
+                } catch (const std::exception&) {
+                    throw std::invalid_argument(
+                        "--debug-cell expects 'auto' or a cell index: " + cell);
+                }
+                if (o.debug_cell < 0)
+                    throw std::invalid_argument(
+                        "--debug-cell expects a nonnegative cell index: " + cell);
+            }
+        }
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
                          "  [--initial-velocity-field] (initialize U from /fields/vector/U)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
                          "  [--project-final-flux] (diag: close + project the final face flux)\n"
+                         "  [--debug-cell auto|INDEX] (diag: forensic momentum microscope)\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::exit(0);
         } else {
@@ -835,6 +856,12 @@ int main(int argc, char** argv)
         // flux. The convergence gates are evaluated before it and no
         // tolerance is relaxed.
         controls.project_final_flux = options.project_final_flux;
+        // T2 momentum diagnostic (#1059, diag branch): forensic microscope
+        // cell selection, evidence-only. The dump triggers at convergence,
+        // at the iteration limit, or at the stagnation/divergence exit.
+        controls.diagnostics.debug_cell_auto = options.debug_cell_auto;
+        if (options.debug_cell >= 0)
+            controls.diagnostics.debug_cell = options.debug_cell;
 
         // The declared initialization strategy is applied by the solver, before
         // the first residual is formed. An explicit --restart request therefore

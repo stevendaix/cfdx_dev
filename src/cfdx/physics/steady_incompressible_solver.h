@@ -3823,12 +3823,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.momentum_pressure_contribution = worst_diag->pressure_contribution;
         h.momentum_residual_patch = worst_diag->patch;
 
-        // Optional forensic microscope for one cell. This is deliberately
-        // disabled unless CFDX_DEBUG_CELL is set, so production/CI output is
-        // unchanged. Use CFDX_DEBUG_CELL=<index> for a fixed cell or
-        // CFDX_DEBUG_CELL=auto to inspect the independently reassembled
-        // worst-residual cell. The dump is emitted once per algorithm at
-        // convergence or at the configured iteration limit.
+        // Optional forensic microscope for one cell. It is enabled by the
+        // production solver's --debug-cell <INDEX>|auto option (wired to
+        // controls.diagnostics.debug_cell / debug_cell_auto); default runs
+        // and CI output are unchanged. The dump is emitted once per
+        // algorithm at convergence, at the configured iteration limit, or
+        // on the early stagnation/divergence exit so the failing state can
+        // be inspected exactly as it was accepted.
         const bool debug_cell_auto = controls.diagnostics.debug_cell_auto;
         std::size_t debug_cell = 0;
         const bool debug_cell_enabled =
@@ -4003,7 +4004,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             iter >= minimum_outer_correctors &&
             convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
             per_criterion_gates_ok;
-        if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
+        if (debug_cell_enabled &&
+            (converged_now || iter == controls.convergence.max_iterations ||
+             convergence_report.status == cfdx::core::ConvergenceStatus::STAGNATED ||
+             convergence_report.status == cfdx::core::ConvergenceStatus::DIVERGED)) {
             std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
                       << " cell_source=" << (debug_cell_auto ? "auto_worst" : "explicit")
                       << " algorithm=" << static_cast<int>(controls.algorithm)
