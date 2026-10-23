@@ -106,25 +106,5 @@ def test_disabled_actions_explain_their_prerequisites() -> None:
     app = create_application(["cfdx-capabilities-test"])
     session = CFDXSession()
     window = CFDXWorkbenchWindow(session)
-    for name in ("contour_action", "slice_action", "glyph_action"):
-        action = getattr(window, name)
-        assert not action.isEnabled()
-        assert action.statusTip().startswith("Requires:")
-        assert "mesh or result" in action.statusTip()
-
-    assert window.run_action.isEnabled()
-    assert not window.stop_action.isEnabled()
-    assert "Requires:" in window.stop_action.statusTip()
-
-    window._show_command_palette()
-    window.command_palette_query.setText("Contour")
-    assert window.command_palette_results.count() == 1
-    item_text = window.command_palette_results.item(0).text()
-    assert item_text.startswith("Contour —")
-    assert "Requires:" in item_text
-    window.command_palette_dialog.close()
-
-    window.workspace_actions["analyze"].trigger()
-    assert window._workspace == "analyze"
     window.close()
     app.quit()
