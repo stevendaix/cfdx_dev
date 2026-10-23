@@ -587,6 +587,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     # pulled into the quick smoke path because its coupled Krylov/preconditioner
     # cost is materially different from the SIMPLE Ghia regression.
     if(CFDX_ENABLE_LONG_VALIDATION)
+        # Matched-grid Re=100 profiles for comparison with the public OpenFOAM
+        # N=20/40/80/160 campaign. Keep the additional study in total validation.
+        add_test(NAME test_ghia_cavity_profile_study COMMAND test_ghia_cavity --profile-study)
+        set_tests_properties(test_ghia_cavity_profile_study PROPERTIES
+            LABELS "phase13;validation;campaign;long"
+            TIMEOUT 2400)
         # Run a bounded low-resolution preflight first. The dependency prevents
         # the physical PCD qualification from starting when the nested solver
         # already exhibits runaway behaviour on the smaller case.
