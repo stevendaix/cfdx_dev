@@ -129,3 +129,79 @@ def test_disabled_actions_explain_their_prerequisites() -> None:
     assert window._workspace == "analyze"
     window.close()
     app.quit()
+
+
+def test_registry_covers_every_workbench_command() -> None:
+    assert set(CAPABILITIES) == {
+        "workbench.action.contour",
+        "workbench.action.slice",
+        "workbench.action.glyph",
+        "workbench.action.run",
+        "workbench.action.check",
+        "workbench.action.save",
+        "workbench.action.stop",
+        "workbench.action.new_project",
+        "workbench.action.open",
+        "workbench.action.open_mesh",
+        "workbench.action.open_dat_result",
+        "workbench.action.open_dat_checkpoint",
+        "workbench.workspace.setup",
+        "workbench.workspace.mesh",
+        "workbench.workspace.run",
+        "workbench.workspace.analyze",
+    }
+
+
+def test_file_and_workspace_commands_are_always_available() -> None:
+    context = CapabilityContext()
+    for capability_id in (
+        "workbench.action.new_project",
+        "workbench.action.open",
+        "workbench.action.open_mesh",
+        "workbench.action.open_dat_result",
+        "workbench.action.open_dat_checkpoint",
+        "workbench.workspace.setup",
+        "workbench.workspace.mesh",
+        "workbench.workspace.run",
+        "workbench.workspace.analyze",
+    ):
+        status = evaluate_capability(capability_id, context)
+        assert status.available
+        assert status.tip == ""
+
+
+def test_capability_labels_are_unique() -> None:
+    labels = [capability.label for capability in CAPABILITIES.values()]
+    assert len(labels) == len(set(labels))
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_palette_lists_the_registry_and_only_the_registry() -> None:
+    from PySide6.QtGui import QAction
+
+    app = create_application(["cfdx-palette-test"])
+    window = CFDXWorkbenchWindow(CFDXSession())
+    assert set(window._capability_actions) == set(CAPABILITIES)
+    action_names = {action.objectName() for action in window.findChildren(QAction)}
+    assert action_names - set(CAPABILITIES) == {"workbench.action.search"}
+
+    window._show_command_palette()
+    results = window.command_palette_results
+    assert results.count() == len(CAPABILITIES)
+    labels = [results.item(i).text().split(" — ")[0] for i in range(results.count())]
+    expected_labels = {capability.label for capability in CAPABILITIES.values()}
+    assert set(labels) == expected_labels
+    assert labels == sorted(labels, key=str.casefold)
+
+    contour_text = results.item(labels.index("Contour")).text()
+    assert "Requires:" in contour_text
+
+    window.command_palette_query.setText("Mesh workspace")
+    assert results.count() == 1
+    window.command_palette_query.returnPressed.emit()
+    assert window._workspace == "mesh"
+    window.command_palette_dialog.close()
+    window.close()
+    app.quit()

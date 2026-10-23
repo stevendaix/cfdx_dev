@@ -103,6 +103,15 @@ _CAPABILITY_DEFS = (
     Capability("workbench.action.check", "Check", 1, (PREREQUISITES["idle"],)),
     Capability("workbench.action.save", "Save", 1, (PREREQUISITES["idle"],)),
     Capability("workbench.action.stop", "Stop", 1, (PREREQUISITES["active"],)),
+    Capability("workbench.action.new_project", "New Project", 1, ()),
+    Capability("workbench.action.open", "Open", 1, ()),
+    Capability("workbench.action.open_mesh", "Open Mesh", 1, ()),
+    Capability("workbench.action.open_dat_result", "Open DAT Result", 1, ()),
+    Capability("workbench.action.open_dat_checkpoint", "Open DAT Checkpoint", 1, ()),
+    Capability("workbench.workspace.setup", "Setup workspace", 1, ()),
+    Capability("workbench.workspace.mesh", "Mesh workspace", 1, ()),
+    Capability("workbench.workspace.run", "Run workspace", 1, ()),
+    Capability("workbench.workspace.analyze", "Analyze workspace", 1, ()),
 )
 
 CAPABILITIES: dict[str, Capability] = {c.id: c for c in _CAPABILITY_DEFS}
