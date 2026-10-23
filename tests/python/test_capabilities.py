@@ -56,6 +56,14 @@ def test_run_unavailable_while_simulation_is_active() -> None:
     assert evaluate_capability("workbench.action.run", CapabilityContext()).available
 
 
+def test_stop_requires_an_active_simulation() -> None:
+    idle = CapabilityContext()
+    assert not evaluate_capability("workbench.action.stop", idle).available
+    active = CapabilityContext(simulation_active=True)
+    assert evaluate_capability("workbench.action.stop", active).available
+    assert not evaluate_capability("workbench.action.run", active).available
+
+
 def test_unknown_capability_is_rejected_explicitly() -> None:
     assert get_capability("workbench.action.nope") is None
     with pytest.raises(KeyError, match="unknown capability"):
@@ -63,11 +71,8 @@ def test_unknown_capability_is_rejected_explicitly() -> None:
 
 
 def test_solver_states_are_never_conflated() -> None:
-    views = [session_state_view(key) for key in ("RUNNING", "CONVERGED", "STOPPED")]
-    views += [
-        convergence_status_view(key) for key in ("STAGNATED", "DIVERGED", "STOPPED")
-    ]
-    markers = [view.marker for view in views]
+    keys = ("RUNNING", "CONVERGED", "STAGNATED", "DIVERGED", "STOPPED")
+    markers = [convergence_status_view(key).marker for key in keys]
     assert len(set(markers)) == len(markers)
 
     running = session_state_view("RUNNING")
@@ -95,8 +100,6 @@ def test_unknown_solver_values_are_surfaced_verbatim() -> None:
     importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
 )
 def test_disabled_actions_explain_their_prerequisites() -> None:
-    from PySide6.QtWidgets import QDockWidget  # noqa: F401
-
     from cfdx import CFDXSession
     from cfdx.gui import create_application
     from cfdx.workbench import CFDXWorkbenchWindow
@@ -107,8 +110,12 @@ def test_disabled_actions_explain_their_prerequisites() -> None:
     for name in ("contour_action", "slice_action", "glyph_action"):
         action = getattr(window, name)
         assert not action.isEnabled()
-        assert "Requires:" in action.statusTip()
+        assert action.statusTip().startswith("Requires:")
         assert "mesh or result" in action.statusTip()
+
+    assert window.run_action.isEnabled()
+    assert not window.stop_action.isEnabled()
+    assert "Requires:" in window.stop_action.statusTip()
 
     window._show_command_palette()
     window.command_palette_query.setText("Contour")

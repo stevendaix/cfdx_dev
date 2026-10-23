@@ -25,24 +25,16 @@ class SolverStateView:
 
 
 SESSION_STATE_VIEWS: dict[str, SolverStateView] = {
-    "CREATED": SolverStateView(
-        "CREATED", "Created", "○", "text.muted"
-    ),
-    "VALIDATING": SolverStateView(
-        "VALIDATING", "Validating", "◌", "status.info"
-    ),
-    "READY": SolverStateView(
-        "READY", "Ready", "✓", "status.success"
-    ),
+    "CREATED": SolverStateView("CREATED", "Created", "○", "text.muted"),
+    "VALIDATING": SolverStateView("VALIDATING", "Validating", "◌", "status.info"),
+    "READY": SolverStateView("READY", "Ready", "✓", "status.success"),
     "RUNNING": SolverStateView(
         "RUNNING",
         "Running — convergence not established",
         "●",
         "accent.primary",
     ),
-    "PAUSED": SolverStateView(
-        "PAUSED", "Paused", "⏸", "status.warning"
-    ),
+    "PAUSED": SolverStateView("PAUSED", "Paused", "⏸", "status.warning"),
     "STOPPED": SolverStateView(
         "STOPPED", "Stopped by user", "■", "status.warning", terminal=True
     ),
@@ -54,9 +46,7 @@ SESSION_STATE_VIEWS: dict[str, SolverStateView] = {
         converged=True,
         terminal=True,
     ),
-    "FAILED": SolverStateView(
-        "FAILED", "Failed", "✕", "status.error", terminal=True
-    ),
+    "FAILED": SolverStateView("FAILED", "Failed", "✕", "status.error", terminal=True),
 }
 
 CONVERGENCE_STATUS_VIEWS: dict[str, SolverStateView] = {

@@ -20,12 +20,9 @@ class Prerequisite:
 
 PREREQUISITES = {
     "renderer": Prerequisite("renderer", "a 3D renderer"),
-    "dataset": Prerequisite(
-        "dataset", "a mesh or result loaded in the 3D viewport"
-    ),
-    "idle": Prerequisite(
-        "idle", "no simulation currently running or paused"
-    ),
+    "dataset": Prerequisite("dataset", "a mesh or result loaded in the 3D viewport"),
+    "idle": Prerequisite("idle", "no simulation currently running or paused"),
+    "active": Prerequisite("active", "a running or paused simulation"),
 }
 
 
@@ -68,16 +65,18 @@ class CapabilityStatus:
 
     @property
     def tip(self) -> str:
-        """Status-bar/tool-tip text; empty means no prerequisite to state."""
+        """Clear-text tip naming only the currently missing prerequisites."""
         if self.available:
             return ""
-        return self.capability.prerequisites_tip
+        names = " and ".join(p.description for p in self.missing)
+        return f"Requires: {names}"
 
 
 _EVALUATORS = {
     "renderer": lambda context: context.renderer_ready,
     "dataset": lambda context: context.dataset_loaded,
     "idle": lambda context: not context.simulation_active,
+    "active": lambda context: context.simulation_active,
 }
 
 
@@ -124,7 +123,7 @@ CAPABILITIES: dict[str, Capability] = {
             "workbench.action.stop",
             "Stop",
             1,
-            (),
+            (PREREQUISITES["active"],),
         ),
     )
 }

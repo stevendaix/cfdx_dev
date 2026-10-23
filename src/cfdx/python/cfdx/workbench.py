@@ -103,6 +103,7 @@ if QMainWindow is not object:
             apply_workbench_theme(self)
             self._restore_layout()
             self._set_workspace(str(self._settings.value("workspace", "setup")))
+            self._refresh_action_availability()
 
         def _build_toolbar(self) -> None:
             toolbar = QToolBar("Workbench", self)
@@ -246,11 +247,8 @@ if QMainWindow is not object:
                     else:
                         # P0 (Phase 0 audit, G3): never hide a disabled
                         # command silently; show why it is unavailable.
-                        capability = get_capability(action.objectName())
                         reason = (
-                            capability.prerequisites_tip
-                            if capability is not None
-                            else "not available in the current state"
+                            action.statusTip() or "not available in the current state"
                         )
                         item = QListWidgetItem(f"{label} — {reason}")
                         item.setToolTip(reason)
@@ -596,7 +594,7 @@ if QMainWindow is not object:
                 if self.view3d is not None:
                     self.view3d.load_cfdx_mesh(path)
                     self._show_viewport()
-                    self._refresh_postprocess_actions(self._application_state)
+                    self._refresh_action_availability()
                 self.statusBar().showMessage(f"Mesh loaded: {path}")
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Mesh error: {exc}")
@@ -625,7 +623,7 @@ if QMainWindow is not object:
                         str(self.application.project_path), path
                     )
                     self._show_viewport()
-                    self._refresh_postprocess_actions(self._application_state)
+                    self._refresh_action_availability()
                 self.statusBar().showMessage(
                     f"DAT loaded: {Path(path).name} | iteration={loaded.iteration} | "
                     f"time={loaded.time:g} | fields={len(fields or loaded.fields)}"
@@ -645,7 +643,8 @@ if QMainWindow is not object:
                 self._show_viewport()
             except (OSError, RuntimeError, ValueError, KeyError) as exc:
                 self.statusBar().showMessage(f"Renderer error: {exc}")
-            self._refresh_postprocess_actions(event.state)
+            self._application_state = event.state
+            self._refresh_action_availability()
             self._refresh_visualization_operations()
 
         def _show_viewport(self) -> None:
@@ -656,29 +655,30 @@ if QMainWindow is not object:
         def _capability_context(self) -> CapabilityContext:
             """Snapshot the facts capability availability is computed from."""
             state = self._application_state
-            dataset_loaded = bool(
-                state.results.selected_frame is not None
-                or (
-                    self.view3d is not None
-                    and (
-                        self.view3d._dat_dataset is not None
-                        or self.view3d._current_result is not None
-                    )
-                )
+            view3d = getattr(self, "view3d", None)
+            has_frame = state.results.selected_frame is not None
+            has_renderer = view3d is not None
+            has_dataset = has_renderer and (
+                view3d._dat_dataset is not None or view3d._current_result is not None
             )
+            simulation_active = state.simulation_state.value in ("RUNNING", "PAUSED")
             return CapabilityContext(
-                renderer_ready=self.view3d is not None,
-                dataset_loaded=dataset_loaded,
-                simulation_active=state.simulation_state.value
-                in {"RUNNING", "PAUSED"},
+                renderer_ready=has_renderer,
+                dataset_loaded=has_frame or has_dataset,
+                simulation_active=simulation_active,
             )
 
-        def _refresh_postprocess_actions(self, state) -> None:
+        def _refresh_action_availability(self) -> None:
+            """Compute every registered action's availability from the registry."""
             context = self._capability_context()
             for capability_id, attribute in (
                 ("workbench.action.contour", "contour_action"),
                 ("workbench.action.slice", "slice_action"),
                 ("workbench.action.glyph", "glyph_action"),
+                ("workbench.action.run", "run_action"),
+                ("workbench.action.check", "check_action"),
+                ("workbench.action.save", "save_case_action"),
+                ("workbench.action.stop", "stop_action"),
             ):
                 action = getattr(self, attribute, None)
                 if action is None:
@@ -967,13 +967,7 @@ if QMainWindow is not object:
             self._refresh_properties()
             if hasattr(self, "setup_panel"):
                 self.setup_panel.set_diagnostics(state.diagnostics)
-            if hasattr(self, "run_action"):
-                running = state.simulation_state.value == "RUNNING"
-                paused = state.simulation_state.value == "PAUSED"
-                self.run_action.setEnabled(not running and not paused)
-                self.stop_action.setEnabled(running or paused)
-                self.check_action.setEnabled(not running and not paused)
-                self.save_case_action.setEnabled(not running and not paused)
+            self._refresh_action_availability()
 
         def _selection_changed(self) -> None:
             items = self.workflow_tree.selectedItems()
