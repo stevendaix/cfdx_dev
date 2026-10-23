@@ -147,7 +147,8 @@ def test_semantic_border_has_nontext_contrast(surface_token: str) -> None:
 
 def test_dense_data_views_use_semantic_table_chrome() -> None:
     # Keep data navigation readable without changing scientific field colormaps.
-    assert "alternate-background-color: " + TOKENS["surface.panel"] in WORKBENCH_STYLESHEET
+    alternate_rows = "alternate-background-color: " + TOKENS["surface.panel"]
+    assert alternate_rows in WORKBENCH_STYLESHEET
     assert "QHeaderView::section" in WORKBENCH_STYLESHEET
     assert "color: " + TOKENS["text.secondary"] in WORKBENCH_STYLESHEET
     assert "QTreeView::item:hover" in WORKBENCH_STYLESHEET
