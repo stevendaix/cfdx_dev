@@ -544,11 +544,11 @@ Iteration 536 Time = 0
 Energy stage NOT converged iterations 500 conservation global=0.0381748 local=0.000238592 local_cell=0.0208877
 Energy gates linear=0 global_balance=0 local_balance=0 audit_scale=523.906
 Energy temperatures [300, 300] K
-Energy convergence history /tmp/t2_nu_yx6wo3nl/mesh_80x16/energy_convergence.json
-Energy summary /tmp/t2_nu_yx6wo3nl/mesh_80x16/energy_summary.json
-Energy result /tmp/t2_nu_yx6wo3nl/mesh_80x16/energy_result_0.vtu
-Checkpoint /tmp/t2_nu_yx6wo3nl/mesh_80x16/restart.dat
-Convergence history /tmp/t2_nu_yx6wo3nl/mesh_80x16/convergence.json
-Execution summary /tmp/t2_nu_yx6wo3nl/mesh_80x16/execution.json
-Probe CSV /tmp/t2_nu_yx6wo3nl/mesh_80x16/probes.csv (8576 samples)
+Energy convergence history /tmp/t2_nu_cducwme_/mesh_80x16/energy_convergence.json
+Energy summary /tmp/t2_nu_cducwme_/mesh_80x16/energy_summary.json
+Energy result /tmp/t2_nu_cducwme_/mesh_80x16/energy_result_0.vtu
+Checkpoint /tmp/t2_nu_cducwme_/mesh_80x16/restart.dat
+Convergence history /tmp/t2_nu_cducwme_/mesh_80x16/convergence.json
+Execution summary /tmp/t2_nu_cducwme_/mesh_80x16/execution.json
+Probe CSV /tmp/t2_nu_cducwme_/mesh_80x16/probes.csv (8576 samples)
 Converged NO Iterations 536
