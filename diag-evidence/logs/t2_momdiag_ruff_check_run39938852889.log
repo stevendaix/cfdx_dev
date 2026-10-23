@@ -1,0 +1,303 @@
+invalid-syntax: missing closing quote in string literal
+   --> scripts/t2_momentum_stagnation_diag.py:169:57
+    |
+167 |     json_path = out_dir / f"t2_momdiag_{run_id}.json"
+168 |     txt_path = out_dir / f"t2_momdiag_{run_id}.txt"
+169 |     json_path.write_text(json.dumps(report, indent=2) + "
+    |                                                         ^
+170 | ", encoding="utf-8")
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:170:14
+    |
+168 |     txt_path = out_dir / f"t2_momdiag_{run_id}.txt"
+169 |     json_path.write_text(json.dumps(report, indent=2) + "
+170 | ", encoding="utf-8")
+    |              ^^^
+171 |
+172 |     lines: list[str] = []
+    |
+
+invalid-syntax: missing closing quote in string literal
+   --> scripts/t2_momentum_stagnation_diag.py:170:19
+    |
+168 |     txt_path = out_dir / f"t2_momdiag_{run_id}.txt"
+169 |     json_path.write_text(json.dumps(report, indent=2) + "
+170 | ", encoding="utf-8")
+    |                   ^^
+171 |
+172 |     lines: list[str] = []
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:172:5
+    |
+170 | ", encoding="utf-8")
+171 |
+172 |     lines: list[str] = []
+    |     ^^^^^
+173 |     lines.append("T2 320x64 momentum-stagnation forensic diagnostic (level 1)")
+174 |     lines.append(f"run_id: {run_id}")
+    |
+
+invalid-syntax: Expected `,`, found `:`
+   --> scripts/t2_momentum_stagnation_diag.py:172:10
+    |
+170 | ", encoding="utf-8")
+171 |
+172 |     lines: list[str] = []
+    |          ^
+173 |     lines.append("T2 320x64 momentum-stagnation forensic diagnostic (level 1)")
+174 |     lines.append(f"run_id: {run_id}")
+    |
+
+invalid-syntax: Expected a parameter name
+   --> scripts/t2_momentum_stagnation_diag.py:172:12
+    |
+170 | ", encoding="utf-8")
+171 |
+172 |     lines: list[str] = []
+    |            ^^^^^^^^^
+173 |     lines.append("T2 320x64 momentum-stagnation forensic diagnostic (level 1)")
+174 |     lines.append(f"run_id: {run_id}")
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:173:5
+    |
+172 |     lines: list[str] = []
+173 |     lines.append("T2 320x64 momentum-stagnation forensic diagnostic (level 1)")
+    |     ^^^^^
+174 |     lines.append(f"run_id: {run_id}")
+175 |     lines.append(f"solver: {report['solver']}")
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:174:5
+    |
+172 |     lines: list[str] = []
+173 |     lines.append("T2 320x64 momentum-stagnation forensic diagnostic (level 1)")
+174 |     lines.append(f"run_id: {run_id}")
+    |     ^^^^^
+175 |     lines.append(f"solver: {report['solver']}")
+176 |     lines.append("mesh: 320x64, max_iterations=3000 (calibration module reused)")
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:175:5
+    |
+173 |     lines.append("T2 320x64 momentum-stagnation forensic diagnostic (level 1)")
+174 |     lines.append(f"run_id: {run_id}")
+175 |     lines.append(f"solver: {report['solver']}")
+    |     ^^^^^
+176 |     lines.append("mesh: 320x64, max_iterations=3000 (calibration module reused)")
+177 |     lines.append("no gate, tolerance, or stop criterion modified; no flux projection")
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:176:5
+    |
+174 |     lines.append(f"run_id: {run_id}")
+175 |     lines.append(f"solver: {report['solver']}")
+176 |     lines.append("mesh: 320x64, max_iterations=3000 (calibration module reused)")
+    |     ^^^^^
+177 |     lines.append("no gate, tolerance, or stop criterion modified; no flux projection")
+178 |     lines.append("")
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:177:5
+    |
+175 |     lines.append(f"solver: {report['solver']}")
+176 |     lines.append("mesh: 320x64, max_iterations=3000 (calibration module reused)")
+177 |     lines.append("no gate, tolerance, or stop criterion modified; no flux projection")
+    |     ^^^^^
+178 |     lines.append("")
+179 |     for entry in report["solves"]:
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:178:5
+    |
+176 |     lines.append("mesh: 320x64, max_iterations=3000 (calibration module reused)")
+177 |     lines.append("no gate, tolerance, or stop criterion modified; no flux projection")
+178 |     lines.append("")
+    |     ^^^^^
+179 |     for entry in report["solves"]:
+180 |         lines.append(
+    |
+
+invalid-syntax: Unparenthesized generator expression cannot be used here
+   --> scripts/t2_momentum_stagnation_diag.py:178:5
+    |
+176 |       lines.append("mesh: 320x64, max_iterations=3000 (calibration module reused)")
+177 |       lines.append("no gate, tolerance, or stop criterion modified; no flux projection")
+178 | /     lines.append("")
+179 | |     for entry in report["solves"]:
+    | |_________________________________^
+180 |           lines.append(
+181 |               f"solve --debug-cell {entry['debug_cell_arg']}: "
+    |
+
+invalid-syntax: Expected `,`, found `:`
+   --> scripts/t2_momentum_stagnation_diag.py:179:34
+    |
+177 |     lines.append("no gate, tolerance, or stop criterion modified; no flux projection")
+178 |     lines.append("")
+179 |     for entry in report["solves"]:
+    |                                  ^
+180 |         lines.append(
+181 |             f"solve --debug-cell {entry['debug_cell_arg']}: "
+    |
+
+invalid-syntax: Positional argument cannot follow keyword argument
+   --> scripts/t2_momentum_stagnation_diag.py:180:9
+    |
+178 |       lines.append("")
+179 |       for entry in report["solves"]:
+180 | /         lines.append(
+181 | |             f"solve --debug-cell {entry['debug_cell_arg']}: "
+182 | |             f"rc={entry['returncode']} "
+183 | |             f"microscope_present={entry['microscope_present']} "
+184 | |             f"microscope_complete={entry['microscope_complete']} "
+185 | |             f"microscope_cell={entry['microscope_cell']} "
+186 | |             f"stagnation_reproduced={entry['stagnation_reproduced']}"
+187 | |         )
+    | |_________^
+188 |           lines.append(
+189 |               f"  status={entry['convergence_status']} "
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:188:9
+    |
+186 |             f"stagnation_reproduced={entry['stagnation_reproduced']}"
+187 |         )
+188 |         lines.append(
+    |         ^^^^^
+189 |             f"  status={entry['convergence_status']} "
+190 |             f"iterations={entry['iterations']}"
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:192:9
+    |
+190 |             f"iterations={entry['iterations']}"
+191 |         )
+192 |         lines.append(f"  stop_reason: {entry['stop_reason']}")
+    |         ^^^^^
+193 |         lines.append(f"  json_artifacts: {', '.join(entry['json_artifacts'])}")
+194 |     lines.append("")
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:193:9
+    |
+191 |         )
+192 |         lines.append(f"  stop_reason: {entry['stop_reason']}")
+193 |         lines.append(f"  json_artifacts: {', '.join(entry['json_artifacts'])}")
+    |         ^^^^^
+194 |     lines.append("")
+195 |     lines.append(f"verdict: {report['verdict']}")
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:194:5
+    |
+192 |         lines.append(f"  stop_reason: {entry['stop_reason']}")
+193 |         lines.append(f"  json_artifacts: {', '.join(entry['json_artifacts'])}")
+194 |     lines.append("")
+    |     ^^^^^
+195 |     lines.append(f"verdict: {report['verdict']}")
+196 |     lines.append(
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:195:5
+    |
+193 |         lines.append(f"  json_artifacts: {', '.join(entry['json_artifacts'])}")
+194 |     lines.append("")
+195 |     lines.append(f"verdict: {report['verdict']}")
+    |     ^^^^^
+196 |     lines.append(
+197 |         "interpretation: a green run captures forensic evidence only; it"
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:196:5
+    |
+194 |     lines.append("")
+195 |     lines.append(f"verdict: {report['verdict']}")
+196 |     lines.append(
+    |     ^^^^^
+197 |         "interpretation: a green run captures forensic evidence only; it"
+198 |         " is never a T2 qualification verdict."
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:200:5
+    |
+198 |         " is never a T2 qualification verdict."
+199 |     )
+200 |     txt_path.write_text("
+    |     ^^^^^^^^
+201 | ".join(lines) + "
+202 | ", encoding="utf-8")
+    |
+
+invalid-syntax: Positional argument cannot follow keyword argument
+   --> scripts/t2_momentum_stagnation_diag.py:200:5
+    |
+198 |           " is never a T2 qualification verdict."
+199 |       )
+200 | /     txt_path.write_text("
+201 | | ".join(lines) + "
+202 | | ", encoding="utf-8")
+    | |____________________^
+
+invalid-syntax: missing closing quote in string literal
+   --> scripts/t2_momentum_stagnation_diag.py:200:25
+    |
+198 |         " is never a T2 qualification verdict."
+199 |     )
+200 |     txt_path.write_text("
+    |                         ^
+201 | ".join(lines) + "
+202 | ", encoding="utf-8")
+    |
+
+invalid-syntax: Expected `,`, found identifier
+   --> scripts/t2_momentum_stagnation_diag.py:202:14
+    |
+200 |     txt_path.write_text("
+201 | ".join(lines) + "
+202 | ", encoding="utf-8")
+    |              ^^^
+
+invalid-syntax: missing closing quote in string literal
+   --> scripts/t2_momentum_stagnation_diag.py:202:19
+    |
+200 |     txt_path.write_text("
+201 | ".join(lines) + "
+202 | ", encoding="utf-8")
+    |                   ^^
+
+invalid-syntax: Expected `)`, found newline
+   --> scripts/t2_momentum_stagnation_diag.py:202:21
+    |
+200 |     txt_path.write_text("
+201 | ".join(lines) + "
+202 | ", encoding="utf-8")
+    |                     ^
+
+invalid-syntax: Expected `)`, found `def`
+   --> scripts/t2_momentum_stagnation_diag.py:205:1
+    |
+205 | def main() -> int:
+    | ^^^
+206 |     calib = _load_calibration_module()
+207 |     calib._ensure_cfdx_package()
+    |
+
+Found 28 errors.
