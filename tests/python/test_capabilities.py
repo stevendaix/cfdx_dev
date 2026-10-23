@@ -51,3 +51,11 @@ def test_stop_requires_an_active_simulation() -> None:
     active = CapabilityContext(simulation_active=True)
     assert evaluate_capability("workbench.action.stop", active).available
     assert not evaluate_capability("workbench.action.run", active).available
+
+
+def test_unknown_capability_is_rejected_explicitly() -> None:
+    import pytest
+
+    assert CAPABILITIES.get("workbench.action.nope") is None
+    with pytest.raises(KeyError, match="unknown capability"):
+        evaluate_capability("workbench.action.nope", CapabilityContext())
