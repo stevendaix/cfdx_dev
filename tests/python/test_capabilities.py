@@ -4,9 +4,6 @@ Covers gap G3 of docs/gui/PHASE0_AUDIT.md (no silently disabled action) and
 the P0 solver-state review requirement (RUNNING is never convergence).
 """
 
-import importlib.util
-
-import pytest
 from cfdx.capabilities import (
     CAPABILITIES,
     CapabilityContext,
@@ -94,14 +91,16 @@ def test_unknown_solver_values_are_surfaced_verbatim() -> None:
     assert unknown_state_view(None).key == "None"
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
-)
 def test_disabled_actions_explain_their_prerequisites() -> None:
+    import importlib.util
+
+    import pytest
     from cfdx import CFDXSession
     from cfdx.gui import create_application
     from cfdx.workbench import CFDXWorkbenchWindow
 
+    if importlib.util.find_spec("PySide6") is None:
+        pytest.skip("PySide6 optional")
     app = create_application(["cfdx-capabilities-test"])
     session = CFDXSession()
     window = CFDXWorkbenchWindow(session)
