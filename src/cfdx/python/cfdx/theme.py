@@ -114,7 +114,7 @@ QPushButton:hover {
 }
 QPushButton:focus, QLineEdit:focus, QComboBox:focus, QSpinBox:focus,
 QDoubleSpinBox:focus, QPlainTextEdit:focus, QTextEdit:focus,
-QTreeWidget:focus, QTableView:focus, QTableWidget:focus {
+QTreeWidget:focus, QTreeView:focus, QTableView:focus, QTableWidget:focus {
     border: 1px solid @accent.primary@;
 }
 QPushButton:disabled {
