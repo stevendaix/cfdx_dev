@@ -205,7 +205,7 @@ inline double energy_balance_relative(
         const double sign=(Sf0.dot(dvec)>=0.0)?1.0:-1.0;
         const auto Sf=Sf0*sign;
         const double area=Sf.mag();
-        const double d=dvec.mag();
+        const double d=boundary_normal_distance(geometry,f,o);
         const double F=mass_flux(f);
         double Tf=temperature(o);
         bool face_override_valid=false;
