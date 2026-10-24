@@ -61,6 +61,11 @@ struct SolverResult {
     double min_true_residual = std::numeric_limits<double>::infinity();
     std::size_t first_residual_replacement = 0;
     std::size_t last_residual_replacement = 0;
+    // For solvers that relax the returned field after solving the linear
+    // system, distinguish the linear candidate residual from the residual
+    // of the actual returned field. NaN means not measured/not applicable.
+    double residual_before_relaxation = std::numeric_limits<double>::quiet_NaN();
+    double residual_after_relaxation = std::numeric_limits<double>::quiet_NaN();
 };
 
 }  // namespace core
