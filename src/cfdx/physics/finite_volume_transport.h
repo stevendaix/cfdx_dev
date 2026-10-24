@@ -151,6 +151,7 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
     return g;
 }
 
+// Method contract: docs/audits/01-diffusion-laplacien.md
 struct FluxImbalanceMetrics {
     double signed_global = 0.0;
     double global_l1 = 0.0;
