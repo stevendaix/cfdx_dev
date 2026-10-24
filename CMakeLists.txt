@@ -432,10 +432,16 @@ if(CFDX_BUILD_TESTS)
     # fail-closed interface-contract rejections depend on the CHT conductance
     # coherence work carried by PR #1095; register it when that work lands.
     add_cfdx_test(test_audit_energy_boundary_metric tests/audit/test_audit_energy_boundary_metric.cpp)
+    # F12/F13: evaluate_momentum_terms / evaluate_energy_terms must return
+    # homogeneous per-unit-volume terms (m/s^2, K/s); the rescaling checks
+    # catch an integrated flux-sum convection term (scales s^2, not 1/s).
+    add_cfdx_test(test_audit_helper_terms tests/audit/test_audit_helper_terms.cpp)
     set_tests_properties(test_audit_flux_contract test_audit_cht_time PROPERTIES
         LABELS "audit;regression" TIMEOUT 60)
     set_tests_properties(test_audit_energy_boundary_metric PROPERTIES
         LABELS "audit;regression;thermal" TIMEOUT 60)
+    set_tests_properties(test_audit_helper_terms PROPERTIES
+        LABELS "audit;regression" TIMEOUT 60)
 
     # N8 physical/production qualification reuses the existing validation
     # executables and records a machine-readable campaign report. It is
@@ -1075,8 +1081,3 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
             # OpenMPI/hwloc allocates process-global state during MPI_Init which
             # is reported as a leak after MPI_Finalize by LeakSanitizer. Keep
             # ASan/UBSan active for the MPI regression, but exclude those
-            # external-library teardown allocations from the leak check.
-            # N13 has the same external OpenMPI/hwloc teardown behavior as the
-            # other MPI sanitizer tests. Its numerical equivalence and reduction
-            # assertions remain active; only LeakSanitizer's process-global
-            # external-library teardown check is disabled for these MPI tests.

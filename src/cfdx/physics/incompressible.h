@@ -6,6 +6,7 @@
 #include "cfdx/core/numerics/flux.h"
 #include "cfdx/core/numerics/gradient.h"
 #include "cfdx/core/numerics/laplacian.h"
+#include <cmath>
 #include <stdexcept>
 
 namespace cfdx::physics {
@@ -36,6 +37,24 @@ inline IncompressibleMomentumTerms evaluate_momentum_terms(
 
     auto convection = cfdx::core::compute_vector_convection(
         velocity, face_flux, mesh, convection_scheme);
+    // F12 (audit 2026-10-24): the three returned terms must be homogeneous.
+    // compute_convection returns an integrated face-flux divergence while
+    // the laplacian and the gradient are already per-unit-volume operators,
+    // so adding the three fields mixed m^4/s^2 with m/s^2. Divide the
+    // convective divergence by the cell volume: every term below is now a
+    // body term in m/s^2 for the local equation
+    //   dU/dt = -convection + diffusion - pressure_gradient/rho
+    // with pressure a dynamic pressure in Pa (gradient in Pa/m).
+    const auto f12_geometry = cfdx::core::make_geometry_cache(mesh);
+    for (std::size_t d = 0; d < 3; ++d) {
+        double* data = convection.component_data(d);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            const double volume = f12_geometry.cell_volumes[c];
+            if (!(volume > 0.0) || !std::isfinite(volume))
+                throw std::runtime_error("evaluate_momentum_terms: invalid cell volume");
+            data[c] /= volume;
+        }
+    }
 
     cfdx::core::Field<double, cfdx::core::Location::CELL> diffusion(
         mesh.n_cells(), "U_diffusion", velocity.metadata().unit + "/s", 3);
