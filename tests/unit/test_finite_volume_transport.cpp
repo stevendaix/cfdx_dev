@@ -168,6 +168,13 @@ static Mesh make_unit_cube()
 
 int main()
 {
+    run_case("flux_imbalance_metrics_do_not_hide_local_cancellation", [] {
+        const auto metrics = flux_imbalance_metrics({10.0, -10.0});
+        EXPECT_NEAR(metrics.signed_global, 0.0, 1e-14);
+        EXPECT_NEAR(metrics.global_l1, 20.0, 1e-14);
+        EXPECT_NEAR(metrics.local_linf, 10.0, 1e-14);
+    });
+
     run_case("geometric_interpolation_weight_uses_longitudinal_projection", [] {
         const Vec3 owner(0.0,0.0,0.0);
         const Vec3 neighbour(1.0,0.0,0.0);
