@@ -644,9 +644,12 @@ reconstruct_scalar_transport_flux(
                         const double ratio=std::abs(delta)>1e-14 ? (2.0*full-delta)/delta : 0.0;
                         high=field(u)+limiter_psi(ratio, LimiterType::MINMOD)*increment;
                     }
-                    psi_face=bounded_convection
-                        ? std::clamp(high,std::min(field(u),field(dcell)),std::max(field(u),field(dcell)))
-                        : high;
+                    // The scheme's face boundedness is part of the
+                    // reconstruction contract, independent of the separate
+                    // bounded_convection source correction used by assembly.
+                    psi_face = std::clamp(
+                        high, std::min(field(u), field(dcell)),
+                        std::max(field(u), field(dcell)));
                 } else {
                     psi_face = reconstructed_face(f);
                 }
