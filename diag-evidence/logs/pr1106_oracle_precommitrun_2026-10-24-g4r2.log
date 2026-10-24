@@ -1,0 +1,38 @@
+files: src/cfdx/python/cfdx/application/application.py
+src/cfdx/python/cfdx/application/history.py
+src/cfdx/python/cfdx/application/properties.py
+src/cfdx/python/cfdx/capabilities.py
+src/cfdx/python/cfdx/workbench.py
+tests/python/test_capabilities.py
+tests/python/test_edit_history.py
+tests/python/test_workbench.py
+Ruff check...............................................................Passed
+Ruff format check........................................................Failed
+- hook id: ruff-format
+- exit code: 1
+
+unformatted: File would be reformatted
+   --> src/cfdx/python/cfdx/application/application.py:453:1
+    |
+452 |         return snapshot
+    -
+    |
+
+1 file would be reformatted, 3 files already formatted
+unformatted: File would be reformatted
+   --> src/cfdx/python/cfdx/application/properties.py:210:1
+    |
+209 |     raise KeyError(f"mesh patch not found: {target.stable_id}")
+    -
+    |
+
+unformatted: File would be reformatted
+   --> tests/python/test_workbench.py:275:1
+    |
+274 |     app.quit()
+    -
+    |
+
+2 files would be reformatted, 2 files already formatted
+
+CFDX fast build/test guards..............................................Passed

@@ -1,0 +1,27 @@
+diff --git a/src/cfdx/python/cfdx/application/application.py b/src/cfdx/python/cfdx/application/application.py
+index 1cc9f8b0..9a91f3b8 100644
+--- a/src/cfdx/python/cfdx/application/application.py
++++ b/src/cfdx/python/cfdx/application/application.py
+@@ -450,4 +450,3 @@ class Application:
+         snapshot = self.state
+         self.events.publish(SelectionChanged(snapshot))
+         return snapshot
+-
+diff --git a/src/cfdx/python/cfdx/application/properties.py b/src/cfdx/python/cfdx/application/properties.py
+index 22d2442f..dff473c4 100644
+--- a/src/cfdx/python/cfdx/application/properties.py
++++ b/src/cfdx/python/cfdx/application/properties.py
+@@ -207,4 +207,3 @@ def _patch_in_catalog(catalog: MeshCatalog, target: SelectionTarget) -> MeshPatc
+         if patch.name == target.name and patch.region == region:
+             return patch
+     raise KeyError(f"mesh patch not found: {target.stable_id}")
+-
+diff --git a/tests/python/test_workbench.py b/tests/python/test_workbench.py
+index d2db9dc5..7c7e48ff 100644
+--- a/tests/python/test_workbench.py
++++ b/tests/python/test_workbench.py
+@@ -272,4 +272,3 @@ def test_undo_and_redo_actions_have_stable_ids_and_shortcuts() -> None:
+     ]
+     window.close()
+     app.quit()
+-

@@ -1,0 +1,22 @@
+unformatted: File would be reformatted
+   --> src/cfdx/python/cfdx/application/application.py:453:1
+    |
+452 |         return snapshot
+    -
+    |
+
+unformatted: File would be reformatted
+   --> src/cfdx/python/cfdx/application/properties.py:210:1
+    |
+209 |     raise KeyError(f"mesh patch not found: {target.stable_id}")
+    -
+    |
+
+unformatted: File would be reformatted
+   --> tests/python/test_workbench.py:275:1
+    |
+274 |     app.quit()
+    -
+    |
+
+3 files would be reformatted, 5 files already formatted
