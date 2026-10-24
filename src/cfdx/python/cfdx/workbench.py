@@ -837,13 +837,21 @@ if QMainWindow is not object:
             self.statusBar().showMessage("Visualization pipeline reset")
 
         def _mesh_selection_changed(self, selection) -> None:
-            if self.view3d is not None and selection.kind == "patch":
-                try:
-                    self.view3d.select(
-                        selection.stable_id or f"patch:{selection.index}"
-                    )
-                except KeyError:
-                    pass
+            if self.view3d is None:
+                return
+            if selection.kind not in {"patch", "face", "region"}:
+                return
+            stable_id = selection.stable_id
+            if stable_id is None and selection.kind == "patch":
+                stable_id = f"patch:{selection.index}"
+            if stable_id is None:
+                return
+            try:
+                self.view3d.select(stable_id)
+            except (KeyError, ValueError):
+                return
+            summary = self.view3d.selection_summary()
+            self.statusBar().showMessage(f"Selected: {summary}")
 
         def _refresh_properties(self) -> None:
             if not hasattr(self, "properties_panel"):
