@@ -539,5 +539,50 @@ int main() {
             phi, m, geometry, face_values), std::invalid_argument);
     });
 
+    run_case("least_squares_boundary_policies_are_distinct", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 0.5;
+        EXPECT_THROW(
+            compute_gradient_least_squares(
+                phi, m, BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL),
+            std::runtime_error);
+        const auto excluded = compute_gradient_least_squares(
+            phi, m, BoundaryGradientPolicy::EXCLUDE_BOUNDARY);
+        EXPECT_NEAR(excluded(0, 0), 0.0, 1e-12);
+        const auto ghost = compute_gradient_least_squares(
+            phi, m, BoundaryGradientPolicy::ZERO_GRADIENT_GHOST);
+        EXPECT_TRUE(std::isfinite(ghost(0, 0)));
+    });
+
+    run_case("least_squares_dirichlet_ghost_reconstructs_affine_gradient", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 0.5;
+        std::vector<BoundaryGradientCondition> bc(m.n_faces());
+        for (auto& condition : bc)
+            condition = {BoundaryGradientConditionType::DIRICHLET, 0.5};
+        bc[4].value = 0.0; // x=0
+        bc[5].value = 1.0; // x=1
+        const auto grad = compute_gradient_least_squares(
+            phi, m, BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, &bc);
+        EXPECT_NEAR(grad(0, 0), 1.0, 1e-12);
+        EXPECT_NEAR(grad(0, 1), 0.0, 1e-12);
+        EXPECT_NEAR(grad(0, 2), 0.0, 1e-12);
+    });
+
+    run_case("wls_exclude_boundary_does_not_insert_implicit_ghosts", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 0.5;
+        const auto grad = compute_gradient_weighted_least_squares(
+            phi, m, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+            std::numeric_limits<double>::infinity(),
+            BoundaryGradientPolicy::EXCLUDE_BOUNDARY);
+        EXPECT_NEAR(grad(0, 0), 0.0, 1e-12);
+        EXPECT_NEAR(grad(0, 1), 0.0, 1e-12);
+        EXPECT_NEAR(grad(0, 2), 0.0, 1e-12);
+    });
+
     return run_all();
 }
