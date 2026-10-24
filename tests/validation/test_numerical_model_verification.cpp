@@ -127,6 +127,12 @@ int main() {
             close(zz(1),2.0/3.0,2e-7,"mixed-precision Jacobi component 1");
             close(zz(2),1.5,2e-6,"mixed-precision Jacobi component 2");
             ok(rm.status==SolverStatus::CONVERGED,"mixed-precision CG did not converge");
+            ok(rm.residual <= 1e-10,
+               "mixed-precision CG reported convergence without meeting the FP64 residual tolerance");
+            Vector rr64(3);
+            const double true_residual64=mixed_precision_true_residual(A,bb,xm,rr64);
+            close(rm.residual,true_residual64,1e-14,
+                  "mixed-precision CG reported residual must match independent FP64 residual");
             close((xm-xref).norm_inf(),0.0,2e-5,"mixed-precision CG solution error");
             Vector rr(3); const double tr=mixed_precision_residual(A,bb,xm,rr,SolverPrecision::FP32);
             close(tr,0.0,2e-5,"mixed-precision true residual");
