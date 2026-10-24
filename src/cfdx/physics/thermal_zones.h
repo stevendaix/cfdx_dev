@@ -17,13 +17,14 @@
 //     singular (its constant null space leaves the temperature level
 //     unpinned) and is rejected at assembly time.
 //
-// Discretization: standard two-point finite volumes. Internal faces use the
-// exact series-resistance conductance
-//     G = A / ( d/(2*k_owner) + R_c + d/(2*k_neighbour) )
-// which reduces to the harmonic mean when R_c = 0 and is exact for linear
-// temperature profiles in uniform cells. Boundary Dirichlet faces use
-// G_b = k_owner * A / d_bc. Boundary fixed-gradient faces inject
-// rhs += k_owner * A * g (positive g = heat flowing into the domain).
+// Discretization: standard two-point finite volumes on orthogonal meshes.
+// Internal faces use the series-resistance conductance
+//     G = A / ( d_owner_face/k_owner + R_c + d_face_neighbour/k_neighbour )
+// where both distances are projections onto the face normal. The symmetric
+// d/(2*k) form is valid only for equal cell-centre-to-face distances.
+// Boundary Dirichlet faces use G_b = k_owner * A / d_bc. Boundary
+// fixed-gradient faces inject rhs += k_owner * A * g (positive g = heat
+// flowing into the domain).
 #pragma once
 
 #include "cfdx/core/field/field.h"
