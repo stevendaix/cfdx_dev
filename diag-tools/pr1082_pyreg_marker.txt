@@ -1,0 +1,4 @@
+pr1082 pyreg oracle trigger marker
+pr=1082
+pr_head=651b4271e02692af9b054d1666d793a5ca7639a9
+stamp=2026-10-24

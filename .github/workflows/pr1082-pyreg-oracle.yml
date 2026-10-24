@@ -1,0 +1,94 @@
+name: PR1082 Python regression oracle (diag)
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/pr1082_pyreg_marker.txt'
+      - '.github/workflows/pr1082-pyreg-oracle.yml'
+      - 'diag-tools/pr1082_pyreg_candidate_workbench.py'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  oracle:
+    name: no-qt-python-regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EVID: diag-evidence/logs
+      PR_HEAD: 651b4271e02692af9b054d1666d793a5ca7639a9
+      STAMP: 2026-10-24
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch pinned PR head and create worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin "$PR_HEAD"
+          git worktree add "$RUNNER_TEMP/ref" "$PR_HEAD"
+          cd "$RUNNER_TEMP/ref"
+          git log -1 --format='%H %s' | tee "$GITHUB_WORKSPACE/$EVID/pr1082_pyreg_head_$STAMP.txt"
+
+      - name: Set up Python (no PySide6, like the Release Python regression)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install h5py pytest
+          "$RUNNER_TEMP/venv/bin/python" -c "import importlib.util as u; print('PySide6 installed:', u.find_spec('PySide6') is not None)" | tee "$GITHUB_WORKSPACE/$EVID/pr1082_pyreg_env_$STAMP.txt"
+
+      - name: Control - pinned head must fail without PySide6
+        continue-on-error: true
+        run: |
+          cd "$RUNNER_TEMP/ref"
+          export PYTHONPATH="$RUNNER_TEMP/ref/src/cfdx/python"
+          VP="$RUNNER_TEMP/venv/bin/python"
+          {
+            echo "== import smoke =="
+            "$VP" -c "from cfdx.workbench import CFDXWorkbenchWindow" && echo "IMPORT_OK" || echo "IMPORT_FAILED"
+            echo "== pytest test_workbench.py + test_application_properties.py =="
+            "$VP" -m pytest -q tests/python/test_workbench.py tests/python/test_application_properties.py && echo "CONTROL_TESTS_GREEN" || echo "CONTROL_TESTS_RED"
+          } | tee "$GITHUB_WORKSPACE/$EVID/pr1082_pyreg_control_$STAMP.log"
+
+      - name: Overlay candidate workbench.py and re-run
+        run: |
+          cp "$GITHUB_WORKSPACE/diag-tools/pr1082_pyreg_candidate_workbench.py" "$RUNNER_TEMP/ref/src/cfdx/python/cfdx/workbench.py"
+          cd "$RUNNER_TEMP/ref"
+          git --no-pager diff | tee "$GITHUB_WORKSPACE/$EVID/pr1082_pyreg_overlay_$STAMP.patch"
+          export PYTHONPATH="$RUNNER_TEMP/ref/src/cfdx/python"
+          VP="$RUNNER_TEMP/venv/bin/python"
+          {
+            echo "== import smoke (overlay) =="
+            "$VP" -c "from cfdx.workbench import CFDXWorkbenchWindow" && echo "IMPORT_OK" || echo "IMPORT_FAILED"
+            echo "== pytest (overlay) =="
+            "$VP" -m pytest -q tests/python/test_workbench.py tests/python/test_application_properties.py && echo "OVERLAY_TESTS_GREEN" || echo "OVERLAY_TESTS_RED"
+          } | tee "$GITHUB_WORKSPACE/$EVID/pr1082_pyreg_overlay_$STAMP.log"
+
+      - name: Write meta
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "pr=1082"
+            echo "pr_head=$PR_HEAD"
+            echo "phase=2-no-qt-python-regression"
+            echo "ci_failure_run=40088288085"
+            echo "candidate=diag-tools/pr1082_pyreg_candidate_workbench.py"
+          } > "$E/pr1082_pyreg_meta_$STAMP.txt"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: PR 1082 no-Qt Python regression oracle evidence (2026-10-24) [ci skip]"
+            (git push || (git pull --rebase && git push))
+          fi
