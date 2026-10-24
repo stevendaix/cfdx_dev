@@ -93,6 +93,10 @@ inline SolverResult solve_cg_impl(
     if (null_space) null_space->remove(x);
     const double* Av = A.values_data();
     const bool mp32 = precision.enabled && precision.operator_precision == SolverPrecision::FP32;
+    // Mixed precision is opportunistic: promote the operator to FP64 if the
+    // recursive low-precision residual separates materially from the certified
+    // FP64 residual, so the requested tolerance remains an actual-residual gate.
+    bool promoted_to_fp64 = false;
     const SolverPrecision redp = precision.enabled ? precision.reduction_precision : SolverPrecision::FP64;
     const auto* Ac = A.columns_data();
     const auto* Ar = A.row_offsets_data();
@@ -195,7 +199,9 @@ inline SolverResult solve_cg_impl(
         for (std::size_t i = 0; i < n; ++i) {
             double sum = 0.0;
             for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
-                sum += mp32 ? static_cast<double>(static_cast<float>(Av[k])*static_cast<float>(p[Ac[k]])) : Av[k]*p[Ac[k]];
+                sum += (mp32 && !promoted_to_fp64)
+                    ? static_cast<double>(static_cast<float>(Av[k]) * static_cast<float>(p[Ac[k]]))
+                    : Av[k] * p[Ac[k]];
             }
             Ap[i] = sum;
         }
@@ -270,6 +276,46 @@ inline SolverResult solve_cg_impl(
             result.residual = res;
             result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
             return result;
+        }
+
+        // If FP32 operator rounding makes the recursive residual materially
+        // disagree with the independently recomputed FP64 residual, restart
+        // from the true residual and promote the operator. This is mixed-
+        // precision iterative refinement, not a relaxed convergence test.
+        if (!preconditioner && mp32 && !promoted_to_fp64 && res > tol_abs) {
+            double recursive_r2 = 0.0;
+            for (double value : r) recursive_r2 += value * value;
+            const double recursive_res = std::sqrt(recursive_r2);
+            const double gap = std::abs(res - recursive_res);
+            const double scale = std::max(res, recursive_res);
+            if (std::isfinite(recursive_res) && scale > 0.0 &&
+                gap > 0.25 * scale) {
+                promoted_to_fp64 = true;
+                ++result.residual_replacements;
+                result.first_residual_replacement = iter;
+                result.last_residual_replacement = iter;
+                residual_at_last_replacement = res;
+                for (std::size_t i = 0; i < n; ++i) r[i] = rv(i);
+                if (!apply_preconditioner()) {
+                    result.status = SolverStatus::NOT_APPLICABLE;
+                    result.iterations = iter;
+                    return result;
+                }
+                for (std::size_t i = 0; i < n; ++i) {
+                    r_vector(i) = r[i];
+                    z_vector(i) = z[i];
+                }
+                const double replaced_rsnew =
+                    krylov_dot(r_vector, z_vector, redp, reduction);
+                if (!std::isfinite(replaced_rsnew) || !(replaced_rsnew > 0.0)) {
+                    result.status = SolverStatus::NOT_APPLICABLE;
+                    result.iterations = iter;
+                    return result;
+                }
+                p = z;
+                rsold = replaced_rsnew;
+                continue;
+            }
         }
 
         // The recursive CG residual can drift away from b-Ax in finite
