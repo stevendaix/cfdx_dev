@@ -73,7 +73,7 @@ Added regression coverage on the COUPLED physical-velocity flux contract:
 - pressure-gauge invariance on the COUPLED path for zero-gradient walls and a separate fixed-pressure-boundary test where the boundary pressure is shifted consistently.
 
 Still required before promotion:
-- compare the assembled coupled continuity block residual against the independently reconstructed cellwise flux divergence after an actual block solve;
+- the exact production matrix/RHS evidence hook now supports a cellwise comparison of the assembled continuity block residual against independently reconstructed authoritative flux divergence after an actual block solve;
 - a manufactured coupled velocity-pressure solution on a nonuniform mesh;
 - a quantitative checkerboard comparison with and without Rhie–Chow compensation;
 - explicit regression that SIMPLE/SIMPLEC retain the H/A predictor contract. The call sites now use named APIs (make_rhie_chow_flux_from_hbya / make_rhie_chow_flux_from_physical_velocity), and the nonuniform affine test compares the two contracts directly.
