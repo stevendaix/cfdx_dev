@@ -1080,8 +1080,8 @@ inline ScalarEquation assemble_momentum_component(
 }
 
 // Conservative explicit contribution of div(mu_eff * grad(U)^T) to one
-// momentum component. The returned vector is the face-flux divergence, with
-// equal-and-opposite contributions on every internal face.
+// momentum component. The returned vector contains the integrated face flux;
+ // internal-face fluxes are oriented outward from the owner cell.
 inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -1099,11 +1099,11 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
         geometry.cell_centres.size() != nc || geometry.face_centres.size() != nf ||
         geometry.face_area_vectors.size() != nf)
         throw std::invalid_argument(
-            "momentum_transpose_diffusion_rhs: field/geometry shape mismatch");
+            "momentum_transpose_diffusion_face_fluxes: field/geometry shape mismatch");
     for (const double mu : cell_effective_dynamic_viscosity) {
         if (!std::isfinite(mu) || mu < 0.0)
             throw std::invalid_argument(
-                "momentum_transpose_diffusion_rhs: viscosity must be finite and non-negative");
+                "momentum_transpose_diffusion_face_fluxes: viscosity must be finite and non-negative");
     }
 
     std::array<std::vector<std::array<double, 3>>, 3> gradient;
@@ -1133,7 +1133,7 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                 const double value = grad.component_data(direction)[cell];
                 if (!std::isfinite(value))
                     throw std::runtime_error(
-                        "momentum_transpose_diffusion_rhs: non-finite velocity gradient");
+                        "momentum_transpose_diffusion_face_fluxes: non-finite velocity gradient");
                 gradient[component][cell][direction] = value;
             }
         }
@@ -1144,20 +1144,20 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
         const std::size_t owner = mesh.ownership().owner(face);
         if (owner >= nc)
             throw std::runtime_error(
-                "momentum_transpose_diffusion_rhs: invalid face owner");
-        const int neighbour_index = mesh.ownership().neighbour(face);
+                "momentum_transpose_diffusion_face_fluxes: invalid face owner");
+        const auto neighbour_index = mesh.ownership().neighbour(face);
         const auto& sf = geometry.face_area_vectors[face];
         const double area = sf.mag();
         if (!(area > 0.0) || !std::isfinite(area))
             throw std::runtime_error(
-                "momentum_transpose_diffusion_rhs: invalid face area");
+                "momentum_transpose_diffusion_face_fluxes: invalid face area");
         double mu_face = cell_effective_dynamic_viscosity[owner];
         std::array<double, 3> grad_face{};
         if (neighbour_index >= 0) {
             const std::size_t neighbour = static_cast<std::size_t>(neighbour_index);
             if (neighbour >= nc || neighbour == owner)
                 throw std::runtime_error(
-                    "momentum_transpose_diffusion_rhs: invalid face neighbour");
+                    "momentum_transpose_diffusion_face_fluxes: invalid face neighbour");
             const auto d_owner_vec = geometry.face_centres[face] -
                                      geometry.cell_centres[owner];
             const auto d_neighbour_vec = geometry.cell_centres[neighbour] -
@@ -1168,7 +1168,7 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
             if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
                 !(d_sum > 0.0) || !std::isfinite(d_sum))
                 throw std::runtime_error(
-                    "momentum_transpose_diffusion_rhs: invalid face interpolation distance");
+                    "momentum_transpose_diffusion_face_fluxes: invalid face interpolation distance");
             const double w_owner = d_neighbour / d_sum;
             const double w_neighbour = d_owner / d_sum;
             mu_face = w_owner * cell_effective_dynamic_viscosity[owner] +
@@ -1184,7 +1184,7 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                 grad_face[2] * sf.z);
             if (!std::isfinite(flux))
                 throw std::runtime_error(
-                    "momentum_transpose_diffusion_rhs: non-finite internal stress flux");
+                    "momentum_transpose_diffusion_face_fluxes: non-finite internal stress flux");
             face_fluxes[face] = flux;
         } else {
             for (std::size_t velocity_component = 0; velocity_component < 3;
@@ -1196,7 +1196,7 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                 grad_face[2] * sf.z);
             if (!std::isfinite(flux))
                 throw std::runtime_error(
-                    "momentum_transpose_diffusion_rhs: non-finite boundary stress flux");
+                    "momentum_transpose_diffusion_face_fluxes: non-finite boundary stress flux");
             face_fluxes[face] = flux;
         }
     }
@@ -1218,7 +1218,7 @@ inline std::vector<double> momentum_transpose_diffusion_rhs(
     for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
         const std::size_t owner = mesh.ownership().owner(face);
         rhs[owner] += face_fluxes[face];
-        const int neighbour = mesh.ownership().neighbour(face);
+        const auto neighbour = mesh.ownership().neighbour(face);
         if (neighbour >= 0)
             rhs[static_cast<std::size_t>(neighbour)] -= face_fluxes[face];
     }
