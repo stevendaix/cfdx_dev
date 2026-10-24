@@ -1,0 +1,86 @@
+name: PR1106 Release python-regression diagnosis oracle (diag)
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/pr1106_release_marker.txt'
+      - '.github/workflows/pr1106-release-oracle.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  oracle:
+    name: release-evidence
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      EVID: diag-evidence/logs
+      PR_HEAD: d590de860c5cc5b4388b66686ff4e14b39fdd82d
+      STAMP: 2026-10-24-g4r3rel
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch pinned PR ref and create worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
+          git worktree add "$RUNNER_TEMP/ref" "$PR_HEAD"
+          cd "$RUNNER_TEMP/ref"
+          git log -1 --format='%H %s' | tee "$GITHUB_WORKSPACE/$EVID/pr1106_release_head_$STAMP.txt"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the Release job Python stack (no PySide6)
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install "meshio[All]" h5py pytest gmsh pydantic ansys-fluent-core
+
+      - name: Run Python regression exactly as the Release job
+        continue-on-error: true
+        env:
+          PYTHONPATH: ${{ runner.temp }}/ref/src/cfdx/python
+        run: |
+          cd "$RUNNER_TEMP/ref"
+          "$RUNNER_TEMP/venv/bin/python" -m pytest -q --tb=long -rA tests/python \
+            > "$GITHUB_WORKSPACE/$EVID/pr1106_release_pytest_$STAMP.log" 2>&1
+          echo "pytest exit code: $?" >> "$GITHUB_WORKSPACE/$EVID/pr1106_release_pytest_$STAMP.log"
+
+      - name: Confirm PySide6 is absent
+        if: always()
+        run: |
+          "$RUNNER_TEMP/venv/bin/python" -c "import importlib.util; print('pyside6 installed:', importlib.util.find_spec('PySide6') is not None)" \
+            >> "$GITHUB_WORKSPACE/$EVID/pr1106_release_pytest_$STAMP.log" 2>&1 || true
+
+      - name: Write meta
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "pr=1106"
+            echo "pr_head=$PR_HEAD"
+            echo "phase=g4-release-diagnose-round3"
+            echo "ci_failure_step=Run Python regression (Build and test (Release))"
+            echo "mirror=python3.12 venv, meshio/h5py/pytest/gmsh/pydantic/ansys-fluent-core, no PySide6"
+          } > "$E/pr1106_release_meta_$STAMP.txt"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: PR 1106 Release python-regression evidence round 3 (2026-10-24) [ci skip]"
+            (git push || (git pull --rebase && git push))
+          fi

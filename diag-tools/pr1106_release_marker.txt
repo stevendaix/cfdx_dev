@@ -1,0 +1,6 @@
+pr1106 release oracle trigger marker round 3
+pr=1106
+pr_head=d590de860c5cc5b4388b66686ff4e14b39fdd82d
+stamp=2026-10-24-g4r3rel
+phase=g4-release-diagnose-round3
+trigger=push-without-ci-skip
