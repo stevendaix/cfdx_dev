@@ -319,6 +319,45 @@ int main()
         EXPECT_NEAR(net_flux, 0.0, 1e-12);
     });
 
+    run_case("high_resolution_flux_boundedness_is_independent_of_source_correction", [] {
+        const Mesh m = make_1d_chain(3);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"mass_flux","kg/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0) = 0.0; phi(1) = 1.0; phi(2) = 1.01;
+        std::size_t target = m.n_faces();
+        for (std::size_t f = 0; f < m.n_faces(); ++f) {
+            if (m.ownership().owner(f) == 1 && m.ownership().neighbour(f) == 2) {
+                flux(f) = 1.0;
+                target = f;
+                break;
+            }
+        }
+        EXPECT_TRUE(target < m.n_faces());
+        ScalarBoundaryConditions bc;
+        bc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.01, 0.0};
+        bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        for (const auto scheme : {ConvectionScheme::SECOND_ORDER_UPWIND, ConvectionScheme::TVD}) {
+            const auto equation = assemble_scalar_equation(
+                m, g, flux, 0.0, su, sp, bc, false, nullptr, nullptr, nullptr,
+                nullptr, scheme, &phi);
+            const auto reconstructed = reconstruct_scalar_transport_flux(
+                m, g, flux, phi, 0.0, bc, false, scheme);
+            // The upwind-cell extrapolation overshoots phi_N=1.01. Both
+            // assembly and reconstructed flux must retain the scheme's
+            // neighbour-bounded face value even with bounded_convection=false.
+            EXPECT_NEAR(reconstructed(target), 1.01, 1e-12);
+            EXPECT_NEAR(equation.rhs(1) - assemble_scalar_equation(
+                m, g, flux, 0.0, su, sp, bc, false, nullptr, nullptr, nullptr,
+                nullptr, ConvectionScheme::UPWIND, &phi).rhs(1), -0.01, 1e-10);
+        }
+    });
+
     run_case("tvd_requires_convected_field", [] {
         const Mesh m = make_unit_cube();
         const auto g = build_fv_geometry(m);
