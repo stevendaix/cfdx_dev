@@ -374,6 +374,178 @@ int main()
         std::filesystem::remove(csv_path);
     });
 
+    run_case("steady_incompressible_opt_in_sst_runtime_executes_coupled_path", [] {
+        const Mesh m = make_unit_cube();
+        Field<double, Location::CELL> U(1, "U", "m/s", 3);
+        Field<double, Location::CELL> p(1, "p", "Pa", 1);
+        U.fill(0.0);
+        p.fill(0.0);
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        // One outer iteration is enough for the carrier zero-state monitor,
+        // but not enough to reassemble momentum with the refreshed SST closure.
+        // The public result must therefore not claim coupled convergence.
+        controls.convergence.max_iterations = 1;
+        controls.convergence.continuity_tolerance = 1e-12;
+        controls.linear_tolerance = 1e-12;
+        controls.pressure_reference_cell = 0;
+        controls.pressure_reference_value = 0.0;
+
+        SSTProductionState state(1);
+        state.k(0) = 0.1;
+        state.omega(0) = 1.0;
+        state.nu_t(0) = 0.01;
+        state.wall_distance(0) = 0.5;
+        state.strain_rate(0) = 0.0;
+        SSTProductionRuntime runtime;
+        runtime.state = &state;
+        runtime.transport.model = TurbulenceModel::SST;
+        runtime.transport.density = controls.density;
+        runtime.transport.molecular_viscosity = controls.kinematic_viscosity;
+        runtime.k_boundary_conditions["wall"] =
+            {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        runtime.omega_boundary_conditions["wall"] =
+            {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        runtime.wall_patch_names = {"wall"};
+        controls.sst_runtime = &runtime;
+
+        const auto result = solve_steady_incompressible(m, U, p, ubc, pbc, controls);
+        EXPECT_TRUE(!result.history.empty());
+        EXPECT_TRUE(!result.converged);
+        EXPECT_TRUE(result.convergence_status ==
+                    cfdx::core::ConvergenceStatus::MAX_ITERATIONS);
+        EXPECT_TRUE(result.convergence_reason.find("SST transport/closure") != std::string::npos);
+        EXPECT_TRUE(std::isfinite(state.k(0)) && state.k(0) > 0.0);
+        EXPECT_TRUE(std::isfinite(state.omega(0)) && state.omega(0) > 0.0);
+        EXPECT_TRUE(std::isfinite(state.nu_t(0)) && state.nu_t(0) >= 0.0);
+        // The supplied nu_t is intentionally inconsistent with k/omega. The
+        // opt-in production path must refresh the closure rather than silently
+        // using the caller's stale eddy viscosity. For this one-cell, zero-strain
+        // state, the SST limiter gives nu_t = k / omega = 0.1 m^2/s.
+        EXPECT_NEAR(state.nu_t(0), state.k(0) / state.omega(0), 1e-10);
+        EXPECT_TRUE(state.nu_t(0) > 0.05);
+    });
+
+    run_case("steady_incompressible_sst_state_rolls_back_after_post_transport_retry", [] {
+        const Mesh m = make_unit_cube();
+        Field<double, Location::CELL> U(1, "U", "m/s", 3);
+        Field<double, Location::CELL> p(1, "p", "Pa", 1);
+        U.fill(0.0);
+        p.fill(0.0);
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        controls.convergence.max_iterations = 1;
+        controls.convergence.continuity_tolerance = 1e-12;
+        controls.linear_tolerance = 1e-12;
+        controls.pressure_reference_cell = 0;
+        controls.pressure_reference_value = 0.0;
+        controls.nonlinear_retry.max_retries = 1;
+
+        SSTProductionState state(1);
+        state.k(0) = 0.1;
+        state.omega(0) = 1.0;
+        state.nu_t(0) = 0.01;
+        state.wall_distance(0) = 0.5;
+        state.strain_rate(0) = 0.0;
+        const auto original = snapshot_sst_production_state(state);
+
+        SSTProductionRuntime runtime;
+        runtime.state = &state;
+        runtime.transport.model = TurbulenceModel::SST;
+        runtime.transport.density = controls.density;
+        runtime.transport.molecular_viscosity = controls.kinematic_viscosity;
+        runtime.k_boundary_conditions["wall"] =
+            {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        runtime.omega_boundary_conditions["wall"] =
+            {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        runtime.wall_patch_names = {"wall"};
+        controls.sst_runtime = &runtime;
+
+        std::size_t callback_calls = 0;
+        std::array<double, 3> first_candidate{};
+        std::array<double, 3> accepted_velocity{};
+        double accepted_pressure = 0.0;
+        controls.body_force = {1.0, 0.0, 0.0};
+        controls.iteration_output_callback =
+            [&](std::size_t, double, const Mesh&,
+                const Field<double, Location::CELL>& velocity,
+                const Field<double, Location::CELL>& pressure) {
+                ++callback_calls;
+                if (callback_calls == 1) {
+                    // Reject after SST transport committed, before the outer
+                    // transaction commits. Retry relaxation intentionally
+                    // differs, so carrier fields are not expected to match
+                    // this rejected candidate.
+                    first_candidate = {state.k(0), state.omega(0), state.nu_t(0)};
+                    EXPECT_TRUE(first_candidate[0] != original.k(0) ||
+                                first_candidate[1] != original.omega(0) ||
+                                first_candidate[2] != original.nu_t(0));
+                    throw NonlinearRetryableFailure(
+                        "test-only rejection after committed SST transport");
+                }
+                EXPECT_NEAR(state.k(0), first_candidate[0], 1e-12);
+                EXPECT_NEAR(state.omega(0), first_candidate[1], 1e-12);
+                EXPECT_NEAR(state.nu_t(0), first_candidate[2], 1e-12);
+                for (std::size_t d = 0; d < 3; ++d)
+                    accepted_velocity[d] = velocity.component_data(d)[0];
+                accepted_pressure = pressure(0);
+                return false;
+            };
+
+        const auto result = solve_steady_incompressible(m, U, p, ubc, pbc, controls);
+        EXPECT_TRUE(callback_calls == 2);
+        EXPECT_TRUE(result.iterations == 1);
+        EXPECT_TRUE(result.history.size() == 1);
+        EXPECT_NEAR(state.k(0), first_candidate[0], 1e-12);
+        EXPECT_NEAR(state.omega(0), first_candidate[1], 1e-12);
+        EXPECT_NEAR(state.nu_t(0), first_candidate[2], 1e-12);
+
+        // Compare the accepted retry against a clean solve using the exact
+        // relaxation factors recorded for the accepted iteration. The retry
+        // controller deliberately lowers alpha, so comparing against the
+        // rejected first-attempt carrier candidate would be incorrect.
+        for (std::size_t d = 0; d < 3; ++d)
+            EXPECT_NEAR(U.component_data(d)[0], accepted_velocity[d], 1e-12);
+        EXPECT_NEAR(p(0), accepted_pressure, 1e-12);
+        EXPECT_TRUE(result.authoritative_mass_flux.size() == m.n_faces());
+        for (std::size_t face = 0; face < result.authoritative_mass_flux.size(); ++face)
+            EXPECT_TRUE(std::isfinite(result.authoritative_mass_flux(face)));
+
+        U.fill(0.0);
+        p.fill(0.0);
+        restore_sst_production_state(state, original);
+        auto reference_controls = controls;
+        reference_controls.coupling.alpha_u = result.history[0].effective_alpha_u;
+        reference_controls.coupling.alpha_p = result.history[0].effective_alpha_p;
+        reference_controls.iteration_output_callback = {};
+        const auto reference =
+            solve_steady_incompressible(m, U, p, ubc, pbc, reference_controls);
+        EXPECT_TRUE(reference.iterations == 1);
+        for (std::size_t d = 0; d < 3; ++d)
+            EXPECT_NEAR(U.component_data(d)[0], accepted_velocity[d], 1e-12);
+        EXPECT_NEAR(p(0), accepted_pressure, 1e-12);
+        EXPECT_TRUE(result.authoritative_mass_flux.size() ==
+                    reference.authoritative_mass_flux.size());
+        for (std::size_t face = 0; face < result.authoritative_mass_flux.size(); ++face)
+            EXPECT_NEAR(result.authoritative_mass_flux(face),
+                        reference.authoritative_mass_flux(face), 1e-12);
+        EXPECT_NEAR(state.k(0), first_candidate[0], 1e-12);
+        EXPECT_NEAR(state.omega(0), first_candidate[1], 1e-12);
+        EXPECT_NEAR(state.nu_t(0), first_candidate[2], 1e-12);
+    });
+
     run_case("steady_incompressible_zero_state_is_fixed_point", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> U(1,"U","m/s",3);
@@ -807,6 +979,29 @@ int main()
         controls.initialization.mode = InitializationMode::Uniform;
         controls.initialization.uniform_velocity = {2.0, 0.0, 0.0};
         U.fill(0.0);
+        EXPECT_THROW(
+            solve_steady_incompressible(m, U, p, ubc, pbc, controls),
+            std::invalid_argument);
+        EXPECT_NEAR(U.component_data(0)[0], 0.0, 0.0);
+    });
+
+    run_case("cellwise_effective_viscosity_overflow_is_rejected_before_initialization", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3), p(1,"p","Pa",1);
+        U.fill(0.0);
+        p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+
+        IncompressibleSolverControls controls;
+        controls.density = 1.0e308;
+        controls.kinematic_viscosity = 0.0;
+        controls.cell_turbulent_viscosity = {1.0e308};
+        controls.initialization.mode = InitializationMode::Uniform;
+        controls.initialization.uniform_velocity = {2.0, 0.0, 0.0};
+
         EXPECT_THROW(
             solve_steady_incompressible(m, U, p, ubc, pbc, controls),
             std::invalid_argument);
