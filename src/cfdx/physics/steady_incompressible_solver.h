@@ -1080,8 +1080,8 @@ inline ScalarEquation assemble_momentum_component(
 }
 
 // Conservative explicit contribution of div(mu_eff * grad(U)^T) to one
-// momentum component. The returned vector contains the integrated face flux;
- // internal-face fluxes are oriented outward from the owner cell.
+// momentum component. The returned vector contains integrated face fluxes;
+// internal-face fluxes are oriented outward from the owner cell.
 inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
