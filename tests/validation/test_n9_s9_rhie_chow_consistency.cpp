@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <vector>
 
@@ -188,6 +189,67 @@ static Mesh make_two_cell_channel_oblique()
     return m;
 }
 
+// Four-cell channel so an alternating pressure mode is distinguishable
+// from a genuinely affine pressure field. Interior cells have a centred
+// zero gradient for p = (+1,-1,+1,-1), while adjacent-cell jumps remain nonzero.
+static Mesh make_four_cell_channel()
+{
+    Mesh m;
+    constexpr std::size_t nx = 4;
+    m.points().resize((nx + 1) * 4);
+    for (std::size_t i = 0; i <= nx; ++i) {
+        const double x = static_cast<double>(i);
+        const double xyz[4][3] = {
+            {x,0,0}, {x,1,0}, {x,1,1}, {x,0,1}};
+        for (std::size_t j = 0; j < 4; ++j)
+            m.points().set(4*i+j, xyz[j][0], xyz[j][1], xyz[j][2]);
+    }
+
+    std::vector<std::size_t> x_faces(nx + 1);
+    std::vector<std::vector<std::size_t>> side_faces(nx);
+    for (std::size_t i = 0; i <= nx; ++i) {
+        const std::size_t b = 4*i;
+        m.faces().push_face({b, b+1, b+2, b+3});
+        x_faces[i] = i;
+    }
+    for (std::size_t i = 0; i < nx; ++i) {
+        const std::size_t l = 4*i, r = 4*(i+1);
+        const std::size_t first = nx + 1 + 4 * i;
+        m.faces().push_face({l, r, r+3, l+3});       // y = 0
+        m.faces().push_face({l+1, l+2, r+2, r+1});   // y = 1
+        m.faces().push_face({l, l+1, r+1, r});       // z = 0
+        m.faces().push_face({l+3, r+3, r+2, l+2});   // z = 1
+        side_faces[i] = {first, first+1, first+2, first+3};
+    }
+
+    constexpr std::size_t n_faces = (nx + 1) + 4 * nx;
+    m.ownership().resize(n_faces);
+    for (std::size_t f = 0; f < n_faces; ++f)
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    for (std::size_t i = 0; i <= nx; ++i) {
+        if (i == 0) m.ownership().set_owner(x_faces[i], 0);
+        else m.ownership().set_owner(x_faces[i], i-1);
+        if (i > 0 && i < nx)
+            m.ownership().set_neighbour(x_faces[i], static_cast<std::int64_t>(i));
+    }
+
+    Patch wall;
+    wall.name = "wall";
+    wall.type = PatchType::WALL;
+    wall.face_ids = {x_faces.front(), x_faces.back()};
+    for (std::size_t i = 0; i < nx; ++i) {
+        const auto l = x_faces[i], r = x_faces[i+1];
+        m.cells().push_cell({l, r, side_faces[i][0], side_faces[i][1],
+                             side_faces[i][2], side_faces[i][3]});
+        for (const auto f : side_faces[i]) {
+            m.ownership().set_owner(f, i);
+            wall.face_ids.push_back(f);
+        }
+    }
+    m.boundary().add_patch(wall);
+    return m;
+}
+
 int main()
 {
     run_case("n9_s9_rhie_chow_linear_pressure_consistency", [] {
@@ -196,15 +258,14 @@ int main()
 
         Field<double, Location::CELL> U(2, "U", "m/s", 3);
         Field<double, Location::CELL> p(2, "p", "Pa", 1);
-        Field<double, Location::CELL> grad_p(2, "grad_p", "Pa/m", 3);
         U.set(0, 2.0, 0.0, 0.0);
         U.set(1, 2.0, 0.0, 0.0);
         p(0) = 1.0;
         p(1) = 3.0;
 
-        // Exact linear pressure field: dp/dx = 2 Pa/m.
-        grad_p.set(0, 2.0, 0.0, 0.0);
-        grad_p.set(1, 2.0, 0.0, 0.0);
+        // The internal pressure jump is 2 Pa across a unit centre distance.
+        // The zero-gradient boundary condition intentionally defines the
+        // discrete cell gradient used by the compensation term.
 
         VelocityBoundaryConditions ubc;
         ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
@@ -213,12 +274,27 @@ int main()
 
         const auto rAU = unit_rAU(mesh.n_cells());
         const auto phi = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc, true);
         const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+        const auto grad_p_discrete = gauss_gradient_with_boundary(
+            p, mesh, geometry, pbc);
 
-        // The Rhie-Chow pressure correction must vanish for a pressure field
-        // whose cell gradient is exactly the same as its face pressure jump.
-        EXPECT_NEAR(phi(1), phi_linear(1), 1e-12);
+        // COUPLED supplies physical U, unlike the segregated H/A predictor.
+        // Its flux therefore includes interp(dAU*grad(p)) before subtracting
+        // the implicit pressure response. On this orthogonal internal face,
+        // the response is dAU_f * (p_N-p_O) / d * Sf.x; this direct expression
+        // is independent of the production Rhie-Chow flux routine.
+        const double grad_face_x = 0.5 * (
+            grad_p_discrete.component_data(0)[0] +
+            grad_p_discrete.component_data(0)[1]);
+        const double dAU_face_x = 0.5 * (
+            geometry.cell_volumes[0] * rAU[0][0] +
+            geometry.cell_volumes[1] * rAU[0][1]);
+        const double pressure_jump_response =
+            dAU_face_x * (p(1) - p(0));
+        const double expected = phi_linear(1) +
+            dAU_face_x * grad_face_x - pressure_jump_response;
+        EXPECT_NEAR(phi(1), expected, 1e-12);
     });
 
     run_case("n9_s9_rhie_chow_pressure_offset_invariance", [] {
@@ -250,14 +326,14 @@ int main()
     });
 
     run_case("n9_s9_rhie_chow_alternating_pressure_mode_is_coupled", [] {
-        const Mesh mesh = make_two_cell_channel();
+        const Mesh mesh = make_four_cell_channel();
         const auto geometry = build_fv_geometry(mesh);
 
-        Field<double, Location::CELL> U(2, "U", "m/s", 3);
-        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
         U.fill(0.0);
-        p(0) = 1.0;
-        p(1) = -1.0;
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+            p(c) = (c % 2 == 0) ? 1.0 : -1.0;
 
         VelocityBoundaryConditions ubc;
         ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
@@ -266,14 +342,37 @@ int main()
 
         const auto rAU = unit_rAU(mesh.n_cells());
         const auto phi = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc, true);
+        const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+        const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
 
-        // A collocated cell-centred velocity interpolation alone would produce
-        // zero mass flux. Rhie-Chow must couple this alternating pressure mode
-        // to the face flux instead of allowing a checkerboard pressure mode to
-        // become invisible to continuity.
-        EXPECT_TRUE(std::abs(phi(1)) > 1e-12);
-        EXPECT_NEAR(phi(1), 2.0, 1e-12);
+        // Independent face-level oracle: on the central orthogonal face the
+        // alternating mode has a nonzero pressure jump but a zero interpolated
+        // cell-gradient contribution. The expected flux is the physical
+        // velocity flux plus dAU_f*grad(p)_f.Sf minus the orthogonal pressure
+        // jump response. Do not merely assert nonzero flux: that would also
+        // pass for an incorrectly signed or incorrectly scaled correction.
+        constexpr std::size_t f = 2;
+        constexpr std::size_t owner = 1;
+        constexpr std::size_t neighbour = 2;
+        const double dAU_face_x = 0.5 * (
+            geometry.cell_volumes[owner] * rAU[0][owner] +
+            geometry.cell_volumes[neighbour] * rAU[0][neighbour]);
+        const double grad_face_x = 0.5 * (
+            grad_p.component_data(0)[owner] +
+            grad_p.component_data(0)[neighbour]);
+        const double dx = geometry.cell_centres[neighbour].x -
+                          geometry.cell_centres[owner].x;
+        const double sf_x = geometry.face_area_vectors[f].x;
+        const double pressure_jump_response =
+            dAU_face_x * (p(neighbour) - p(owner)) / dx * sf_x;
+        const double compensation =
+            dAU_face_x * grad_face_x * sf_x;
+        const double expected = phi_linear(f) + compensation -
+                                pressure_jump_response;
+        EXPECT_NEAR(grad_face_x, 0.0, 1e-12);
+        EXPECT_NEAR(phi(f), expected, 1e-12);
+        EXPECT_NEAR(phi(f), -2.0, 1e-12);
     });
 
 
