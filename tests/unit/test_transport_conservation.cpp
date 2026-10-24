@@ -85,8 +85,8 @@ int main() {
         const auto reconstructed =
             reconstruct_scalar_transport_flux(
                 m,g,phi,q,0.0,bc,true,ConvectionScheme::UPWIND);
-        // Positive boundary flux is outflow, so the upwind state is q_P=2,
-        // not the prescribed Dirichlet value (which only sets diffusion).
+        // Positive outward flux uses the owner-cell value q=2; the prescribed
+        // fixed value is the convective state on inflow only.
         EXPECT_NEAR(reconstructed(0),6.0,1e-15);
         const auto audit=audit_face_flux_conservation(m,reconstructed);
         EXPECT_NEAR(audit.global_boundary_flux,6.0,1e-15);
