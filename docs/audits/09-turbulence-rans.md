@@ -30,7 +30,15 @@ k-omega (Wilcox 1988) : $\nu_t=k/\omega$, même équation k avec $\sigma_k=0.5$,
 $$\frac{\partial \omega}{\partial t}+\nabla\cdot(\mathbf{u}\omega)=\alpha\frac{\omega}{k}P_k-\beta\omega^2+\nabla\cdot\left[\left(\nu+\frac{\nu_t}{\sigma_\omega}\right)\nabla \omega\right]$$
 
 SST (Menter 1994) : mélange de k-omega près de la paroi et k-epsilon transformé à distance via $F_1$ ; limiteur :
-$$\nu_t=\frac{a_1 k}{\max(a_1\omega,\; S\,F_2)},\qquad a_1=0.31$$
+$\nu_t=\frac{a_1 k}{\max(a_1\omega,\; S\,F_2)},\qquad a_1=0.31$
+
+**Variante de transport retenue dans CFDX : SST-2003** (NASA Turbulence Modeling Resource, *Menter Shear Stress Transport Model*). La production de $k$ est limitée,
+$\widetilde P_k=\min\left(\rho\nu_t S^2,\;10\beta^*\rho k\omega\right),$
+et la production de $\omega$ doit utiliser cette même production limitée :
+$P_\omega=\gamma\frac{\widetilde P_k}{\nu_t}.$
+Le terme de cross-diffusion reste séparé et conserve son traitement par signe. Utiliser $\gamma\rho S^2$ pour $\omega$ tout en limitant $P_k$ dans l'équation de $k$ mélange deux contrats de source et ne correspond pas à cette variante. Le choix SST-2003 est explicite ; la citation historique de Menter (1994) n'est pas à elle seule une qualification de variante.
+
+Référence de définition : https://tmbwg.github.io/turbmodels/sst.html
 
 Spalart-Allmaras (variable de travail $\tilde{\nu}$, $\nu_t=\tilde{\nu} f_{v1}$, $f_{v1}=\chi^3/(\chi^3+C_{v1}^3)$, $\chi=\tilde{\nu}/\nu$) :
 $$\frac{\partial \tilde{\nu}}{\partial t}+\nabla\cdot(\mathbf{u}\tilde{\nu})=c_{b1}\tilde{S}\tilde{\nu}+\nabla\cdot\left[(\nu+\tilde{\nu})\nabla\tilde{\nu}\right]+c_{b2}|\nabla\tilde{\nu}|^2-c_{w1}f_w\left(\frac{\tilde{\nu}}{d}\right)^2$$
