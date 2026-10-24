@@ -1,66 +1,65 @@
-# 13 — Solveurs Krylov, certification du résidu et précision mixte
+# FICHE MÉTHODE — Solveurs Krylov, certification du résidu et précision mixte
 
-**Statut :** fiche d'audit des implémentations existantes — correction G02–G06/G09 en cours.  
-**Périmètre :** CG préconditionné, GMRES/FGMRES, BiCGStab, réduction MPI, arithmétique mixte et oracle ExactSchur. Cette fiche ne qualifie pas à elle seule un solveur de production.
+**En-tête d'évidence (gouvernance §16.5)**
+- Scope : CG préconditionné, GMRES/FGMRES, BiCGStab, réductions Krylov/MPI, précision mixte et oracle ExactSchur. Ne couvre pas la qualification complète des solveurs de production.
+- Statut : DRAFT (2026-10-24)
+- Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json + docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
+- Issue / PR liées : audit G01–G09, PR #1092
+- Dernier commit vérifié : en cours sur la branche fix/numerical-audit-g01-g09
+- Limitations connues : la validation multi-rang MPI et la campagne QUICK quadratique multi-échelle doivent être exécutées sur le HEAD exact ; les opérateurs matrix-free sans callback FP64 ne peuvent être certifiés que dans la précision de leur callback.
 
-## 1. Problème algébrique
-
-On résout le système linéaire
-\[
-A x=b
-\]
-avec une méthode itérative. L'itéré (x_k) n'est convergé que si le résidu du système demandé
-\[
-r_k=b-Ax_k
-\]
-satisfait le contrat de tolérance. Une norme de résidu préconditionnée, une estimation de Hessenberg ou un résidu récursif ne constitue pas à elle seule une certification de (r_k).
-
-## 2. Critère d'arrêt
-
-Le contrat de référence est
-\[
-\|b-Ax_k\|_2 \le \max(\mathrm{atol},\mathrm{rtol}\,\|b\|_2).
-\]
-Quand (b=0), un itéré initial non nul n'implique pas une divergence : il faut réduire le résidu ( -Ax_k) jusqu'au seuil absolu, ou jusqu'à un seuil explicitement défini par le contrat de l'API. Les valeurs non finies doivent être rejetées avant les branches « second membre nul ».
-
-Le résidu final doit être recalculé avec l'opérateur original en FP64 lorsque cet opérateur est disponible. Si une API matrix-free ne fournit pas d'application haute précision, le résultat doit indiquer que cette certification est indisponible ; il ne faut pas annoncer une certification FP64 non réalisée.
-
-## 3. Préconditionnement et invariance d'échelle
-
-Pour CG avec préconditionneur (M), le produit (r^T M^{-1}r) sert à la récurrence, mais sa racine n'est pas interchangeable avec \(\|r\|_2\). Les tests de convergence doivent employer le résidu du système original.
-
-Pour toute échelle commune (s>0), le système (sAx=sb) possède la même solution. La classification de convergence et l'erreur de solution doivent donc rester invariantes à l'échelle, dans les limites de la précision flottante et du conditionnement. Les tests de rupture de BiCGStab doivent comparer les produits scalaires à des échelles relatives construites à partir des normes des vecteurs concernés, non à une constante absolue indépendante des unités.
-
-## 4. Arnoldi et réduction distribuée
-
-Les normes, projections d'Arnoldi et passes de réorthogonalisation doivent partager le même domaine owned et la même politique de réduction globale. Les valeurs ghost peuvent être mises à jour dans les vecteurs, mais ne doivent pas être comptées plusieurs fois dans les produits scalaires. Une validation CPU monoprocessus ne suffit pas à certifier MPI : la campagne distribuée doit inclure partitions différentes, rafraîchissement des halos et collectives.
-
-## 5. Précision mixte
-
-L'application de l'opérateur d'itération peut être FP32, mais le calcul du résidu de certification doit employer les coefficients FP64 d'origine. La norme calculée en double d'un produit matrice-vecteur FP32 ne restaure pas les bits perdus. Si le résidu certifié dépasse le seuil, le solveur doit poursuivre, raffiner ou retourner un statut non convergé ; il ne doit pas déclarer CONVERGED sur le seul résidu de travail.
-
-## 6. Contrats de panne et oracle
-
-Les statuts de rupture doivent conserver un diagnostic de résidu réel ou une valeur non finie explicite. Un zéro par défaut ne doit jamais être interprété comme une solution. Les oracles comme ExactSchur doivent rejeter NaN/Inf avant toute reconnaissance d'un second membre nul, puis vérifier le résidu final avant de retourner le succès.
-
-## 7. Cas de régression obligatoires
-
-- Résolution exacte connue avec (A,b) multipliés par plusieurs puissances de dix.
-- (b=0) et (x_0\ne0), avec solution atteignable.
-- Matrice FP64 dont un coefficient diffère de moins d'un ulp FP32 de sa valeur arrondie ; certification contre l'opérateur FP64.
-- Ruptures algébriques réelles et systèmes bien conditionnés mais de petite/grande échelle.
-- Plage owned distincte des ghosts, projections Arnoldi et réorthogonalisation.
-- Entrées NaN/Inf dans les oracles et diagnostic de résidu renseigné sur chaque sortie.
-- Validation Release et DebugSanitizers sur le même HEAD ; test MPI multi-rang lorsque le chemin distribué est activé.
-
-Aucune tolérance ne doit être élargie pour faire passer ces tests. Les campagnes doivent distinguer les tests effectivement exécutés de ceux qui sont indisponibles ou ignorés.
-
-## 8. Références
+## 1. Références sources (obligatoire : DOI ou ISBN)
 
 - Y. Saad, *Iterative Methods for Sparse Linear Systems*, 2nd ed., SIAM, 2003. DOI: [10.1137/1.9780898718003](https://doi.org/10.1137/1.9780898718003).
 - H. A. van der Vorst, *Iterative Krylov Methods for Large Linear Systems*, Cambridge University Press, 2003. ISBN: 978-0-521-81828-5.
 - R. Barrett et al., *Templates for the Solution of Linear Systems: Building Blocks for Iterative Methods*, SIAM, 1994. ISBN: 978-0-89871-328-2.
 
-## 9. Statut CFDX / G01–G09
+## 2. Formulation continue
 
-Cette fiche est un contrat mathématique et une liste d'essais. La présence du code ou d'un test unitaire ne vaut pas qualification complète. Les constats G01–G09 restent à confirmer sur le HEAD exact par les tests de régression et CI ; toute portée non exécutée (notamment MPI multi-rang ou opérateur matrix-free sans FP64) doit rester explicitement limitée.
+Le problème algébrique est (Ax=b), obtenu après discrétisation des équations physiques. Pour un itéré (x_k), le résidu vrai est
+\[
+r_k=b-Ax_k.
+\]
+Une norme préconditionnée ou une estimation de Hessenberg est un outil de récurrence, pas une preuve de convergence du système original.
+
+## 3. Discrétisation Volume Fini
+
+Après assemblage FV, le système creux (A x=b) est résolu par CG (matrice SPD), GMRES/FGMRES (opérateur général) ou BiCGStab (opérateur non symétrique). Le critère d'acceptation doit porter sur
+\[
+\|b-Ax_k\|_2 \le \max(\mathrm{atol},\mathrm{rtol}\,\|b\|_2).
+\]
+Le résidu de certification doit être recalculé avec l'opérateur d'origine en FP64 lorsque celui-ci est disponible. Pour les vecteurs distribués, les normes et produits scalaires utilisent exclusivement le domaine owned, puis une réduction globale ; les ghosts sont actualisés mais ne sont pas recomptés.
+
+## 4. Traitement des frontières
+
+Les conditions aux limites physiques sont incorporées lors de l'assemblage FV dans (A) et (b), avant l'appel au solveur. Cette fiche traite le système assemblé et ne redéfinit pas les contributions Dirichlet/Neumann de chaque équation. Les lignes de jauge et espaces nuls doivent respecter le contrat propre à chaque système ; un second membre nul ne justifie pas de remplacer arbitrairement une solution appartenant au noyau par zéro.
+
+## 5. Pièges connus (Gotchas)
+
+- CG : (sqrt{r^T M^{-1}r}) n'est pas (|r|_2) ; un seuil de convergence doit rester invariant sous la multiplication commune de (A) et (b).
+- BiCGStab : les seuils absolus appliqués aux produits scalaires dépendent des unités et de l'échelle ; les ruptures doivent être évaluées relativement aux normes des vecteurs concernés.
+- GMRES/FGMRES : si (b=0) et (x_0\ne0), le solveur doit essayer de réduire (Ax_0), pas déclarer immédiatement une divergence.
+- Précision mixte : calculer une norme FP64 d'un résidu obtenu avec un matvec FP32 ne restaure pas les bits perdus ; le résidu vrai doit utiliser l'opérateur FP64 d'origine.
+- Arnoldi : projections et réorthogonalisation doivent partager la même politique owned/MPI que les normes.
+- NaN/Inf : les valeurs non finies sont rejetées avant les chemins de second membre nul ; le résidu de sortie ne doit pas rester à zéro par défaut après échec.
+- Matrice-free : sans application FP64 séparée, la certification de l'opérateur original n'est pas disponible et doit être signalée comme telle.
+
+## 6. Ordre de précision attendu et validation exigée
+
+- Ordre attendu : les solveurs linéaires ne sont pas une discrétisation spatiale ; ils doivent satisfaire le contrat de résidu pré-déclaré et résoudre la même solution sous changement d'échelle, dans les limites du conditionnement et de FP64.
+- Oracles quantitatifs : solutions exactes de petits systèmes SPD et non symétriques ; comparaison de (\|b-Ax\|_2/\|b\|_2) avec la tolérance déclarée.
+- GCI : non applicable au noyau linéaire isolé ; les études de convergence FV doivent être conduites au niveau de l'équation discrétisée et de ses maillages.
+- Conservation : le résidu linéaire ne remplace pas les bilans indépendants de masse, quantité de mouvement, énergie ou scalaire.
+- Parallèle : Release et DebugSanitizers ; pour les chemins MPI, partitions différentes, rafraîchissement des halos, réductions collectives et comparaison CPU/MPI à tolérance déclarée. La qualification multi-rang n'est pas encore attestée par cette PR.
+- Régressions requises : (sA x=s b) pour plusieurs (s), (b=0,x_0\ne0), coefficient FP64 non représentable en FP32, plage owned excluant un ghost, et RHS NaN/Inf pour l'oracle.
+
+## 7. Statut d'implémentation CFDX
+
+- Fichiers source concernés : src/cfdx/core/linalg/cg_solver.h, bicgstab_solver.h, gmres_solver.h, mixed_precision.h, exact_schur.h, krylov_reductions.h, src/cfdx/core/numerics/gradient.h, interpolation.h.
+- Tests exécutables : tests/unit/test_cg_solver.cpp, test_bicgstab_solver.cpp, test_gmres_solver.cpp, test_exact_schur.cpp, test_gradient.cpp, test_interpolation.cpp.
+- Écarts connus code ↔ fiche : l'API GMRES matrix-free sans callback FP64 ne peut certifier que son opérateur fourni ; le test MPI multi-rang et la campagne quadratique QUICK sur plusieurs échelles doivent encore être exécutés sur le HEAD exact.
+- Gaps et prochaines actions : attendre les résultats CI Release/DebugSanitizers ; corriger tout échec ; lancer une qualification multi-rang pour les réductions distribuées ; exécuter le test QUICK quadratique sur plusieurs tailles géométriques et documenter l'erreur L2/L∞.
+
+## 8. Journal des modifications de la fiche
+
+- 2026-10-24 — PR #1092 — création de la fiche pour l'audit G01–G09 ; statut DRAFT jusqu'à la qualification sur HEAD exact.
