@@ -130,6 +130,13 @@ int main()
         // is d/dx(mu*a)=a; side-wall stress flux has S_x=0.
         EXPECT_NEAR(rhs[1], a*geometry.cell_volumes[1], 1e-12);
         EXPECT_NEAR(rhs[2], a*geometry.cell_volumes[2], 1e-12);
+        double rhs_sum = 0.0;
+        double boundary_flux_sum = 0.0;
+        for (const double value : rhs) rhs_sum += value;
+        for (std::size_t face = 0; face < mesh.n_faces(); ++face)
+            if (mesh.ownership().neighbour(face) < 0)
+                boundary_flux_sum += face_flux[face];
+        EXPECT_NEAR(rhs_sum, boundary_flux_sum, 1e-12);
     });
 
     run_case("variable_viscosity_transpose_stress_enters_momentum_rhs", [] {
