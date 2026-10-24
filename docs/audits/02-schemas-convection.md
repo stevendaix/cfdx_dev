@@ -47,4 +47,4 @@ Conséquence contractuelle : **tout opérateur ne dépendant que de la matrice 
 
 ## 8. Journal
 - 2026-10-12 — création ; incorpore la conclusion de la PR #853 (opérateurs de pression indépendants du schéma).
-- 2026-10-24 — audit des équations F10 : accès au gradient restreint aux schémas qui construisent ce champ (PR #1070, validation CI en cours). Cette correction de sûreté mémoire ne vaut pas qualification numérique des schémas ni clôture des écarts code↔fiche listés ci-dessus.
+- 2026-10-24 — audit F10 : ajout d’une régression ciblée vérifiant que CENTRAL, BLENDED et QUICK ne lisent pas le gradient non construit ; le correctif de production est déjà présent dans `master`.

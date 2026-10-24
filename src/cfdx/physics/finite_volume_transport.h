@@ -314,17 +314,31 @@ inline ScalarEquation assemble_scalar_equation(
             max_face_area = std::max(max_face_area, area);
             if (!(distance > 0.0) || !(area > 0.0))
                 throw std::runtime_error("assemble_scalar_equation: degenerate internal face");
-            double gamma_face = diffusion_coefficient;
+            const auto& Sf = geometry.face_area_vectors[f];
+            const auto& Cf = geometry.face_centres[f];
+            const auto& Co = geometry.cell_centres[o];
+            const auto& Cn = geometry.cell_centres[n];
+            // The implicit orthogonal conductance is a series resistance:
+            // A / (d_Pf/Gamma_P + d_Nf/Gamma_N). Euclidean centre distance
+            // and an unweighted harmonic mean are only equivalent on a
+            // uniform orthogonal mesh.
+            const double d_owner = std::abs((Cf - Co).dot(Sf)) / area;
+            const double d_neighbour = std::abs((Cn - Cf).dot(Sf)) / area;
+            if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
+                !std::isfinite(d_owner) || !std::isfinite(d_neighbour))
+                throw std::runtime_error("assemble_scalar_equation: degenerate normal half-distance");
+            double D = 0.0;
             if (cell_diffusion) {
                 const double go = (*cell_diffusion)[o];
                 const double gn = (*cell_diffusion)[n];
-                if (go < 0.0 || gn < 0.0)
-                    throw std::invalid_argument("assemble_scalar_equation: negative cell diffusion");
-                gamma_face = (go > 0.0 && gn > 0.0)
-                    ? 2.0 * go * gn / (go + gn)
-                    : 0.0;
+                if (!(go >= 0.0) || !(gn >= 0.0) ||
+                    !std::isfinite(go) || !std::isfinite(gn))
+                    throw std::invalid_argument("assemble_scalar_equation: invalid cell diffusion");
+                if (go > 0.0 && gn > 0.0)
+                    D = area / (d_owner / go + d_neighbour / gn);
+            } else {
+                D = diffusion_coefficient * area / (d_owner + d_neighbour);
             }
-            const double D = gamma_face * area / distance;
 
             const double a_on = D + std::max(F, 0.0);
             const double a_no = D + std::max(-F, 0.0);
@@ -574,6 +588,8 @@ reconstruct_scalar_transport_flux(
     Field<double, Location::FACE> result(nf, field.name()+"_flux", "", 1);
     Field<double, Location::CELL> grad;
     Field<double, Location::FACE> reconstructed_face;
+    // Only SECOND_ORDER_UPWIND and TVD consume the cell gradient below.
+    // CENTRAL/BLENDED/QUICK variants use reconstructed_face directly.
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
         convection_scheme == ConvectionScheme::TVD)
         grad = compute_gradient_gauss(field, mesh);
@@ -610,11 +626,33 @@ reconstruct_scalar_transport_flux(
             const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
             if (!(area > 0.0) || !(d > 0.0))
                 throw std::runtime_error("reconstruct_scalar_transport_flux: degenerate internal face");
+            double diffusion_conductance = diffusion_coefficient * area / d;
             if (cell_diffusion) {
                 const double go=(*cell_diffusion)[o], gn=(*cell_diffusion)[n];
-                if (!(go >= 0.0) || !(gn >= 0.0) || !std::isfinite(go) || !std::isfinite(gn))
+                if (!(go >= 0.0) || !(gn >= 0.0) ||
+                    !std::isfinite(go) || !std::isfinite(gn))
                     throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid cell diffusion");
-                gamma = (go > 0.0 && gn > 0.0) ? 2.0*go*gn/(go+gn) : 0.0;
+                const auto& Sf=geometry.face_area_vectors[f];
+                const auto& Cf=geometry.face_centres[f];
+                const double d_owner=std::abs((Cf-geometry.cell_centres[o]).dot(Sf))/area;
+                const double d_neighbour=std::abs((geometry.cell_centres[n]-Cf).dot(Sf))/area;
+                if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
+                    !std::isfinite(d_owner) || !std::isfinite(d_neighbour))
+                    throw std::runtime_error(
+                        "reconstruct_scalar_transport_flux: degenerate normal half-distance");
+                diffusion_conductance = (go > 0.0 && gn > 0.0)
+                    ? area / (d_owner / go + d_neighbour / gn)
+                    : 0.0;
+            } else {
+                const auto& Sf=geometry.face_area_vectors[f];
+                const auto& Cf=geometry.face_centres[f];
+                const double d_owner=std::abs((Cf-geometry.cell_centres[o]).dot(Sf))/area;
+                const double d_neighbour=std::abs((geometry.cell_centres[n]-Cf).dot(Sf))/area;
+                if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
+                    !std::isfinite(d_owner) || !std::isfinite(d_neighbour))
+                    throw std::runtime_error(
+                        "reconstruct_scalar_transport_flux: degenerate normal half-distance");
+                diffusion_conductance = diffusion_coefficient * area / (d_owner+d_neighbour);
             }
             const double up = F >= 0.0 ? field(o) : field(n);
             psi_face = up;
@@ -628,8 +666,6 @@ reconstruct_scalar_transport_flux(
                 const std::size_t dcell = F >= 0.0 ? n : o;
                 if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
                     convection_scheme == ConvectionScheme::TVD) {
-                    // Only gradient-based schemes may access grad: CENTRAL,
-                    // BLENDED and QUICK variants use reconstructed_face instead.
                     const double gx=grad.component_data(0)[u];
                     const double gy=grad.component_data(1)[u];
                     const double gz=grad.component_data(2)[u];
@@ -644,14 +680,17 @@ reconstruct_scalar_transport_flux(
                         const double ratio=std::abs(delta)>1e-14 ? (2.0*full-delta)/delta : 0.0;
                         high=field(u)+limiter_psi(ratio, LimiterType::MINMOD)*increment;
                     }
-                    psi_face=bounded_convection
-                        ? std::clamp(high,std::min(field(u),field(dcell)),std::max(field(u),field(dcell)))
-                        : high;
+                    // SECOND_ORDER_UPWIND and TVD face states are bounded by
+                    // scheme contract, independently of bounded_convection.
+                    // That option controls a separate bounded-divergence term.
+                    psi_face = std::clamp(
+                        high, std::min(field(u), field(dcell)),
+                        std::max(field(u), field(dcell)));
                 } else {
                     psi_face = reconstructed_face(f);
                 }
             }
-            result(f)=F*psi_face - gamma*area/d*(field(n)-field(o));
+            result(f)=F*psi_face - diffusion_conductance*(field(n)-field(o));
         } else {
             const std::size_t patch=geometry.face_patch[f];
             if (patch < mesh.boundary().n_patches() &&
@@ -686,8 +725,14 @@ reconstruct_scalar_transport_flux(
             if (!(gamma >= 0.0) || !std::isfinite(gamma))
                 throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid boundary diffusion");
             if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
-                psi_face=bc.value;
-                result(f)=F*psi_face - gamma*area/d*(psi_face-field(o));
+                // For a fixed-value boundary, the prescribed value enters the
+                // convective flux only on inflow. On outflow the upwind state
+                // is the owner-cell value, exactly as in matrix assembly.
+                // Diffusion still uses the prescribed boundary value in both
+                // flow directions.
+                const double convective_face_value = F < 0.0 ? bc.value : field(o);
+                result(f) = F * convective_face_value
+                    - gamma * area / d * (bc.value - field(o));
             } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
                 psi_face=field(o)+bc.gradient*d;
                 result(f)=F*psi_face - gamma*area*bc.gradient;

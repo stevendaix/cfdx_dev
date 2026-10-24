@@ -139,20 +139,19 @@ int main() {
     });
 
     run_case("interpolate_linear_scalar", []() {
-        Mesh m = make_two_cell_mesh();
+        // Use a valid two-hexahedron mesh: the internal face centroid is
+        // exactly halfway between the two cell centres. The older synthetic
+        // two-triangle fixture does not have a geometrically valid cell-centre
+        // line, so a 0.5 interpolation weight is not a valid oracle there.
+        Mesh m = make_two_cell_unit_cubes();
         ScalarCellField f(2, "p", "Pa", 1);
         f(0) = 10.0;
         f(1) = 30.0;
 
         auto face_field = interpolate_cell_to_face(f, m, InterpScheme::LINEAR);
-        // face 0 : owner=0, boundary → 10.0
-        EXPECT_TRUE(face_field(0) == 10.0);
-        // face 1 : 0.5*(10+30) = 20.0
-        EXPECT_TRUE(face_field(1) == 20.0);
-        // face 2 : 0.5*(30+10) = 20.0
-        EXPECT_TRUE(face_field(2) == 20.0);
-        // face 3 : owner=1, boundary → 30.0
-        EXPECT_TRUE(face_field(3) == 30.0);
+        EXPECT_NEAR(face_field(0), 10.0, 1e-12);
+        EXPECT_NEAR(face_field(5), 20.0, 1e-12);
+        EXPECT_NEAR(face_field(6), 30.0, 1e-12);
     });
 
     run_case("tvd_mc_limiter_contract", []() {
@@ -263,7 +262,7 @@ int main() {
     });
 
     run_case("interpolate_vector_dim3", []() {
-        Mesh m = make_two_cell_mesh();
+        Mesh m = make_two_cell_unit_cubes();
         Field<double, Location::CELL> f(2, "U", "m/s", 3);
         f.set(0, 1.0, 2.0, 3.0);
         f.set(1, 7.0, 8.0, 9.0);
@@ -271,10 +270,10 @@ int main() {
         auto face_field = interpolate_cell_to_face(f, m, InterpScheme::LINEAR);
         EXPECT_TRUE(face_field.dimension() == 3);
         double x, y, z;
-        face_field.get(1, x, y, z);
-        EXPECT_TRUE(x == 4.0);
-        EXPECT_TRUE(y == 5.0);
-        EXPECT_TRUE(z == 6.0);
+        face_field.get(5, x, y, z);
+        EXPECT_NEAR(x, 4.0, 1e-12);
+        EXPECT_NEAR(y, 5.0, 1e-12);
+        EXPECT_NEAR(z, 6.0, 1e-12);
     });
 
     run_case("interpolate_metadata", []() {
