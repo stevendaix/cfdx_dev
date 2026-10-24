@@ -285,7 +285,7 @@ void transport_nonorthogonal_linear_campaign()
     std::cout << "N3_TRANSPORT_LINEAR shear=1 corrected_residual="
               << max_corrected_residual
               << " reconstructed_divergence=" << max_reconstructed_divergence
-              << " uncorrected_residual=" << min_uncorrected_residual << "\n";
+              << " uncorrected_residual=" << max_uncorrected_residual << "\n";
 }
 
 void require(bool condition, const std::string& message) {
