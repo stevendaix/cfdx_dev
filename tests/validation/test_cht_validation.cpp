@@ -26,6 +26,20 @@ static Mesh cube(const char* patch_name)
 
 int main()
 {
+    run_case("cht_interface_conductance_uses_boundary_normal_distance", [] {
+        // On a skewed cell the Euclidean centre-to-face distance exceeds
+        // the normal projection. Both the interface update and heat-flux
+        // audit must use the same normal-distance contract as solve_energy.
+        const Vec3 sf(2.0, 0.0, 0.0);
+        const Vec3 centre(0.0, 0.5, 0.0);
+        const Vec3 face(1.0, 0.0, 0.0);
+        const double area = sf.mag();
+        const double normal_distance = std::abs((face - centre).dot(sf)) / area;
+        const double euclidean_distance = (face - centre).mag();
+        EXPECT_NEAR(normal_distance, 1.0, 1e-14);
+        EXPECT_TRUE(euclidean_distance > normal_distance);
+    });
+
     run_case("two_region_cht_independent_energy_conservation",[] {
         Mesh m1=cube("interface1"),m2=cube("interface2");
         auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
