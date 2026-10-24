@@ -238,6 +238,9 @@ inline ScalarEquation assemble_thermal_conduction(
                 throw std::runtime_error(
                     "assemble_thermal_conduction: invalid face neighbour");
             const double area = geometry.face_area_vectors[f].mag();
+            if (!(area > 0.0) || !std::isfinite(area))
+                throw std::runtime_error(
+                    "assemble_thermal_conduction: degenerate internal face area");
             const auto& sf = geometry.face_area_vectors[f];
             const auto& cf = geometry.face_centres[f];
             const double d_owner =
