@@ -343,11 +343,36 @@ int main()
         const auto rAU = unit_rAU(mesh.n_cells());
         const auto phi = make_rhie_chow_mass_flux(
             mesh, geometry, U, p, rAU, 1.0, ubc, pbc, true);
+        const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+        const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
 
-        // The central face lies between cells whose centred pressure gradients
-        // cancel, but whose pressure jump is nonzero. The coupled flux must
-        // therefore retain a nonzero Rhie-Chow response on that face.
-        EXPECT_TRUE(std::abs(phi(2)) > 1e-12);
+        // Independent face-level oracle: on the central orthogonal face the
+        // alternating mode has a nonzero pressure jump but a zero interpolated
+        // cell-gradient contribution. The expected flux is the physical
+        // velocity flux plus dAU_f*grad(p)_f.Sf minus the orthogonal pressure
+        // jump response. Do not merely assert nonzero flux: that would also
+        // pass for an incorrectly signed or incorrectly scaled correction.
+        constexpr std::size_t f = 2;
+        constexpr std::size_t owner = 1;
+        constexpr std::size_t neighbour = 2;
+        const double dAU_face_x = 0.5 * (
+            geometry.cell_volumes[owner] * rAU[0][owner] +
+            geometry.cell_volumes[neighbour] * rAU[0][neighbour]);
+        const double grad_face_x = 0.5 * (
+            grad_p.component_data(0)[owner] +
+            grad_p.component_data(0)[neighbour]);
+        const double dx = geometry.cell_centres[neighbour].x -
+                          geometry.cell_centres[owner].x;
+        const double sf_x = geometry.face_area_vectors[f].x;
+        const double pressure_jump_response =
+            dAU_face_x * (p(neighbour) - p(owner)) / dx * sf_x;
+        const double compensation =
+            dAU_face_x * grad_face_x * sf_x;
+        const double expected = phi_linear(f) + compensation -
+                                pressure_jump_response;
+        EXPECT_NEAR(grad_face_x, 0.0, 1e-12);
+        EXPECT_NEAR(phi(f), expected, 1e-12);
+        EXPECT_NEAR(phi(f), -2.0, 1e-12);
     });
 
 
