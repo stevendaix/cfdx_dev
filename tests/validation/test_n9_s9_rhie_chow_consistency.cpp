@@ -414,6 +414,87 @@ int main()
             EXPECT_NEAR(divergence, 0.0, 1e-12);
     });
 
+    run_case("n9_s9_coupled_block_continuity_matches_flux_divergence", [] {
+        const Mesh mesh = make_four_cell_channel(
+            {0.0, 0.5, 2.0, 4.0, 7.0}, true);
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+            U.set(cell, 1.8, 0.0, 0.0);
+            p(cell) = 1.0 + 2.0 * geometry.cell_centres[cell].x;
+        }
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {2.0, 0.0, 0.0}};
+        ubc["inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {2.0, 0.0, 0.0}};
+        ubc["outlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {2.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        pbc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
+        pbc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 15.0, 0.0};
+
+        SparseMatrix captured_matrix;
+        Vector captured_rhs;
+        bool captured = false;
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::COUPLED;
+        controls.pressure_gauge_policy = PressureGaugePolicy::NONE;
+        controls.body_force = {2.0, 0.0, 0.0};
+        controls.kinematic_viscosity = 1e-2;
+        controls.coupling.alpha_u = 1.0;
+        controls.coupling.alpha_p = 1.0;
+        controls.coupling.n_outer_correctors = 1;
+        controls.coupling.schur_model = CoupledSchurModel::BlockLocal;
+        controls.coupling.coupled_linear_tolerance = 1e-12;
+        controls.convergence.max_iterations = 1;
+        controls.coupled_assembly_callback = [&](const CoupledAssemblySnapshot& snapshot) {
+            if (snapshot.matrix == nullptr || snapshot.rhs == nullptr)
+                throw std::runtime_error("coupled assembly evidence was incomplete");
+            captured_matrix = *snapshot.matrix;
+            captured_rhs = *snapshot.rhs;
+            captured = true;
+        };
+
+        const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, controls);
+        EXPECT_TRUE(captured);
+        EXPECT_TRUE(result.authoritative_mass_flux.size() == mesh.n_faces());
+
+        const std::size_t nc = mesh.n_cells();
+        Vector x(4 * nc, 0.0);
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            x(cell) = U.component_data(0)[cell];
+            x(nc + cell) = U.component_data(1)[cell];
+            x(2 * nc + cell) = U.component_data(2)[cell];
+            x(3 * nc + cell) = p(cell);
+        }
+        std::vector<double> cell_divergence(nc, 0.0);
+        for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+            const auto owner = mesh.ownership().owner(face);
+            cell_divergence[owner] += result.authoritative_mass_flux(face);
+            const auto neighbour = mesh.ownership().neighbour(face);
+            if (neighbour >= 0)
+                cell_divergence[static_cast<std::size_t>(neighbour)] -=
+                    result.authoritative_mass_flux(face);
+        }
+
+        // The post-solve continuity row is the exact algebraic residual of
+        // the captured production block system. Its sign is opposite to
+        // b-Ax, so it must equal the negative independently reconstructed
+        // divergence of the authoritative face flux, cell by cell.
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            const std::size_t row = 3 * nc + cell;
+            double ax = 0.0;
+            const auto rb = captured_matrix.row_offsets_data()[row];
+            const auto re = captured_matrix.row_offsets_data()[row + 1];
+            for (std::size_t k = rb; k < re; ++k)
+                ax += captured_matrix.values_data()[k] *
+                      x(captured_matrix.columns_data()[k]);
+            const double block_residual = ax - captured_rhs(row);
+            EXPECT_NEAR(block_residual, cell_divergence[cell], 1e-8);
+        }
+    });
+
     run_case("n9_s9_rhie_chow_fixed_pressure_boundary_gauge_invariance", [] {
         const Mesh mesh = make_two_cell_channel();
         const auto geometry = build_fv_geometry(mesh);
