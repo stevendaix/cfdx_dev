@@ -42,6 +42,32 @@ int main()
         EXPECT_TRUE(euclidean_distance > normal_distance);
     });
 
+    run_case("cht_rejects_interface_energy_conductivity_mismatch", [] {
+        Mesh m1=cube("interface1"),m2=cube("interface2");
+        auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
+        Field<double,Location::FACE> phi1(m1.n_faces(),"phi1","kg/s",1);
+        Field<double,Location::FACE> phi2(m2.n_faces(),"phi2","kg/s",1);
+        phi1.fill(0.0); phi2.fill(0.0);
+        Field<double,Location::CELL> T1(1,"T1","K",1),T2(1,"T2","K",1);
+        Field<double,Location::CELL> q1(1,"q1","W/m3",1),q2(1,"q2","W/m3",1);
+        T1(0)=400.0; T2(0)=300.0; q1.fill(0.0); q2.fill(0.0);
+        EnergySolverControls e1; e1.conductivity=1.0;
+        EnergySolverControls e2=e1; e2.conductivity=2.0;
+        ChtInterfaceControls c;
+        c.region1_patch="interface1"; c.region2_patch="interface2";
+        c.conductivity1=1.0; c.conductivity2=1.0;
+        bool rejected=false;
+        try {
+            (void)solve_two_region_cht(
+                m1,g1,m2,g2,phi1,phi2,T1,T2,q1,q2,e1,e2,c);
+        } catch (const std::invalid_argument&) {
+            rejected=true;
+        }
+        EXPECT_TRUE(rejected);
+        EXPECT_NEAR(T1(0),400.0,0.0);
+        EXPECT_NEAR(T2(0),300.0,0.0);
+    });
+
     run_case("two_region_cht_independent_energy_conservation",[] {
         Mesh m1=cube("interface1"),m2=cube("interface2");
         auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
