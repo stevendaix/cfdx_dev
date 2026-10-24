@@ -5,7 +5,7 @@ Reproduces the momentum stagnation of the finest T2 heated-channel mesh
 the rhs scale, worst cell 10561) with the solver's in-code forensic
 momentum microscope enabled, and archives the dump for the audit.
 
-Seven solves are run with the SAME case, tolerances and stop criteria as the
+Eight solves are run with the SAME case, tolerances and stop criteria as the
 calibration campaign (module t2_heated_channel_calibration is imported,
 never duplicated):
 
@@ -40,6 +40,15 @@ observed transient is a relaxation-controlled pseudo-time; if the front
 arrives at the same iteration regardless of alpha_u, it follows a
 physical clock independent of the relaxation.
 
+An eighth prolonged solve then reruns the traced configuration with the
+default alpha_u=0.7 and a diagnostic --stagnation-window override large
+enough to disable the stagnation exit, so the run continues up to the
+configured budget of 3000 iterations. The five core cells (i=0..4,
+j=32) are traced over the first 300 outer iterations, and the full
+residual trajectory is archived in convergence.json. The override is
+diag-only and one-shot: the production stagnation window stays 10, and
+the prolonged run is a measurement, never a gate on the verdict.
+
 The microscope dump (exact matrix row, Rhie-Chow face reconstruction,
 pressure-correction fluxes, per-face authoritative vs reconstructed flux)
 is emitted by the solver itself at the stagnation exit. The solver state,
@@ -52,9 +61,11 @@ stagnation state in run 39910523455.
 Success for this driver means: the stagnation is reproduced by the five
 forensic solves AND all five microscope dumps are present in the archived
 stderr, and the per-iteration momentum trace of the fifth solve is
-non-empty. The two alpha_u A/B arms are measurements, not gates: their
-trajectories are the evidence, so an arm running past the stagnation
-window or stopping earlier is a result, not an instrumentation failure.
+non-empty. The two alpha_u A/B arms and the prolonged solve are
+measurements, not gates: their trajectories are the evidence, so an arm
+running past the stagnation window or stopping earlier is a result, not
+an instrumentation failure. The prolonged solve is only gated on its
+momentum trace being present.
 It fails if a forensic solve converges (the symptom disappeared) or a
 dump is missing (instrumentation gap). A green run is diagnostic
 evidence only, never a T2 qualification verdict; the official campaign
@@ -79,7 +90,7 @@ NX, NY = 320, 64
 # j*NX + i).
 TRACE_CELL_ROWS = (0, 2, 32, 33, 61, 63)
 TRACE_CELLS = [row * NX + i for row in TRACE_CELL_ROWS for i in range(5)]
-SOLVE_TIMEOUT_S = 3600
+SOLVE_TIMEOUT_S = 5400
 MICROSCOPE_BEGIN = "=== CFDX MOMENTUM MICROSCOPE cell="
 MICROSCOPE_END = "=== END CFDX MOMENTUM MICROSCOPE ==="
 STAGNATION_REASON_SNIPPET = "stagnation window"
@@ -241,6 +252,7 @@ def _write_evidence(out_dir: Path, report: dict) -> None:
         lines.append(f"  momtrace_lines: {entry.get('momtrace_lines', 0)}")
     lines.append("")
     lines.append(f"alpha A/B arms: {report.get('alpha_ab', {})}")
+    lines.append(f"prolonged solve: {report.get('prolonged', {})}")
     lines.append(f"verdict: {report['verdict']}")
     lines.append(
         "interpretation: a green run captures forensic evidence only; it"
@@ -276,6 +288,14 @@ def main() -> int:
             "--momentum-trace-iterations",
             "24",
         ]
+        prolonged_args = [
+            "--stagnation-window",
+            "100000",
+            "--momentum-trace-cells",
+            "10240,10241,10242,10243,10244",
+            "--momentum-trace-iterations",
+            "300",
+        ]
         for slug, debug_arg, extra_args in (
             ("auto", "auto", None),
             ("cell0", "0", None),
@@ -284,6 +304,7 @@ def main() -> int:
             ("trace", "10561", trace_args),
             ("trace_alpha0p4", "10561", ["--alpha-u", "0.4", *trace_args]),
             ("trace_alpha0p7", "10561", trace_args),
+            ("trace_prolonged", "10561", prolonged_args),
         ):
             solves.append(
                 _run_solve(
@@ -299,12 +320,14 @@ def main() -> int:
             )
 
     forensic = solves[:5]
-    arms = solves[5:]
+    arms = solves[5:7]
+    prolonged = solves[7] if len(solves) > 7 else {}
     trace_entry = forensic[-1] if forensic else {}
     if (
         all(entry["stagnation_reproduced"] for entry in forensic)
         and trace_entry.get("momtrace_lines", 0) > 0
         and all(entry.get("momtrace_lines", 0) > 0 for entry in arms)
+        and prolonged.get("momtrace_lines", 0) > 0
     ):
         verdict = "stagnation_captured"
     elif any(entry["converged_marker"] for entry in forensic):
@@ -320,6 +343,13 @@ def main() -> int:
         "alpha_ab": {
             "arm_alpha_u": {"trace_alpha0p4": 0.4, "trace_alpha0p7": "default"},
             "only_variable": "alpha_u",
+        },
+        "prolonged": {
+            "debug_cell_arg": prolonged.get("debug_cell_arg"),
+            "iterations": prolonged.get("iterations"),
+            "stop_reason": prolonged.get("stop_reason"),
+            "converged_marker": prolonged.get("converged_marker"),
+            "stagnation_window_override": 100000,
         },
         "solves": solves,
         "verdict": verdict,

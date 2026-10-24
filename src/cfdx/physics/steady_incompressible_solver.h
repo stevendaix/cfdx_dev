@@ -84,6 +84,12 @@ struct DiagnosticsControls {
     bool momentum_iteration_trace = false;
     std::vector<std::size_t> momentum_iteration_trace_cells;
     std::size_t momentum_iteration_trace_max_iterations = 50;
+    // T2 momentum diagnostic (#1059, diag branch): one-shot override of the
+    // convergence monitor stagnation window for controlled prolonged runs.
+    // Zero (unset) keeps the production default of 10; a value above the
+    // iteration budget disables the stagnation exit for that run only.
+    // Evidence-only; no production default or gate consumes it by default.
+    std::size_t stagnation_window_override = 0;
 };
 
 struct IncompressibleTransientControls {
@@ -2492,8 +2498,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     monitor_controls.max_iterations = controls.convergence.max_iterations;
     // Conservative defaults: stagnation is diagnostic, not a shortcut around
     // the configured residual/conservation gates. Divergence is detected only
-    // after repeated growth and never by relaxing a tolerance.
-    monitor_controls.stagnation_window = 10;
+    // after repeated growth and never by relaxing a tolerance. The
+    // diagnostics override (#1059, diag branch) is one-shot and diag-only:
+    // unset (0) keeps the production default window of 10.
+    monitor_controls.stagnation_window =
+        controls.diagnostics.stagnation_window_override > 0
+            ? controls.diagnostics.stagnation_window_override
+            : std::size_t{10};
     monitor_controls.stagnation_relative_improvement =
         controls.convergence.stagnation_relative_improvement;
     monitor_controls.divergence_window = 3;

@@ -65,6 +65,11 @@ struct Options {
     // leaves the solver relaxation untouched; evidence-only, no
     // production default or criterion changes.
     double alpha_u_override = 0.0;
+    // T2 momentum diagnostic (#1059, diag branch): one-shot diagnostic
+    // override of the convergence stagnation window for controlled
+    // prolonged runs. Zero (unset) keeps the production default of 10;
+    // evidence-only, no production default or stop criterion changes.
+    unsigned long long stagnation_window_override = 0;
 };
 
 
@@ -620,6 +625,20 @@ Options parse(int argc, char** argv)
                     "--alpha-u expects a number in (0, 1]: " + relaxation);
             o.alpha_u_override = parsed;
         }
+        else if (arg == "--stagnation-window") {
+            const std::string window = value("--stagnation-window");
+            long long parsed = 0;
+            try {
+                parsed = std::stoll(window);
+            } catch (const std::exception&) {
+                throw std::invalid_argument(
+                    "--stagnation-window expects a positive integer <= 1000000: " + window);
+            }
+            if (parsed < 1 || parsed > 1000000)
+                throw std::invalid_argument(
+                    "--stagnation-window expects a positive integer <= 1000000: " + window);
+            o.stagnation_window_override = static_cast<unsigned long long>(parsed);
+        }
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
@@ -630,6 +649,7 @@ Options parse(int argc, char** argv)
                          "  [--momentum-trace-cells C0,C1,...] (diag: per-iteration momentum trace)\n"
                          "  [--momentum-trace-iterations N] (diag: cap traced outer iterations)\n"
                          "  [--alpha-u V] (diag: override momentum relaxation, in (0,1])\n"
+                         "  [--stagnation-window N] (diag: override stagnation window)\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::exit(0);
         } else {
@@ -952,6 +972,13 @@ int main(int argc, char** argv)
         // leaves the solver-declared relaxation untouched.
         if (options.alpha_u_override > 0.0)
             controls.coupling.alpha_u = options.alpha_u_override;
+        // T2 momentum diagnostic (#1059, diag branch): one-shot diagnostic
+        // override of the convergence stagnation window for prolonged
+        // diagnostic runs only. Unset (0) keeps the production default
+        // window of 10; no tolerance, gate or stop criterion is affected.
+        if (options.stagnation_window_override > 0)
+            controls.diagnostics.stagnation_window_override =
+                static_cast<std::size_t>(options.stagnation_window_override);
 
         // The declared initialization strategy is applied by the solver, before
         // the first residual is formed. An explicit --restart request therefore
