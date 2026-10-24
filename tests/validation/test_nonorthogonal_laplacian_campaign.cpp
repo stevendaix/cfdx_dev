@@ -230,6 +230,18 @@ void transport_nonorthogonal_linear_campaign()
     }
     mass_flux.fill(0.0);
 
+    bool missing_field_rejected = false;
+    try {
+        (void)assemble_scalar_equation(
+            grid.mesh, geometry, mass_flux, 1.0, source, implicit_source,
+            {}, false, nullptr, nullptr, nullptr, nullptr,
+            ConvectionScheme::UPWIND, nullptr);
+    } catch (const std::invalid_argument&) {
+        missing_field_rejected = true;
+    }
+    require(missing_field_rejected,
+            "non-orthogonal diffusion must reject a missing current scalar field");
+
     const auto equation = assemble_scalar_equation(
         grid.mesh, geometry, mass_flux, 1.0, source, implicit_source,
         {}, false, nullptr, nullptr, nullptr, nullptr,
