@@ -485,7 +485,7 @@ inline Field<double, Location::CELL> compute_quadratic_fit_least_squares(
             if (!(r2 > 0.0) || !std::isfinite(r2)) return;
             sample_centres.push_back(geometry.cell_centres[nb]);
             sample_values.push_back(values[nb]);
-            const Vec3 ds = d / length_scale;
+            const Vec3 ds = d * (1.0 / length_scale);
             const double r2s = ds.mag2();
             const double w = 1.0 / r2s;
             const double basis[9] = {ds.x, ds.y, ds.z,
