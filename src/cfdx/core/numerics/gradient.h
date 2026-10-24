@@ -38,9 +38,11 @@
 namespace cfdx {
 namespace core {
 
-// Calcule le poids d'interpolation géométrique pour une face.
-// w = |Cf - C_owner| / |C_neighbour - C_owner|
-// Pour face frontière : w = 0 (zero gradient)
+// Calcule le poids d'interpolation géométrique par projection longitudinale.
+// w = (Cf - C_owner)·(C_neighbour - C_owner) / |C_neighbour - C_owner|²
+// Pour face frontière : w = 0 (zero gradient). This corrects stretched-grid
+// weighting; a separate skewness correction is still required for affine
+// exactness when Cf is not on the owner-neighbour centre line.
 inline double geometric_interpolation_weight(
     const Vec3& face_centre,
     const Vec3& owner_centre,
@@ -50,12 +52,14 @@ inline double geometric_interpolation_weight(
 
     const Vec3 d_owner = face_centre - owner_centre;
     const Vec3 d_neigh = *neighbour_centre - owner_centre;
-    const double dist_owner = d_owner.mag();
-    const double dist_total = d_neigh.mag();
+    const double distance_squared = d_neigh.dot(d_neigh);
 
-    if (!std::isfinite(dist_total) || dist_total < 1e-15)
+    if (!std::isfinite(distance_squared) || distance_squared < 1e-30)
         throw std::runtime_error("geometric_interpolation_weight: degenerate cell-centre distance");
-    return std::min(1.0, std::max(0.0, dist_owner / dist_total));
+    const double projection = d_owner.dot(d_neigh) / distance_squared;
+    if (!std::isfinite(projection))
+        throw std::runtime_error("geometric_interpolation_weight: non-finite projection");
+    return std::min(1.0, std::max(0.0, projection));
 }
 
 // Calcule le gradient d'un champ scalaire cellulaire par la méthode Gauss.
