@@ -380,6 +380,7 @@ inline ScalarEquation assemble_scalar_equation(
     std::vector<double> div_phi(nc, 0.0);
     std::vector<double> deferred_rhs(nc, 0.0);
     cfdx::core::Field<double, cfdx::core::Location::CELL> reconstructed_gradient;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> diffusion_gradient;
     cfdx::core::Field<double, cfdx::core::Location::FACE> reconstructed_face;
     const bool needs_field_reconstruction =
         convection_scheme != ConvectionScheme::UPWIND;
@@ -460,7 +461,7 @@ inline ScalarEquation assemble_scalar_equation(
         throw std::invalid_argument(
             "assemble_scalar_equation: invalid scalar field for non-orthogonal diffusion");
     if (needs_nonorthogonal_gradient) {
-        reconstructed_gradient = compute_scalar_gradient_with_boundary(
+        diffusion_gradient = compute_scalar_gradient_with_boundary(
             *convected_field, mesh, geometry, boundary_conditions,
             face_values, face_conditions);
     }
@@ -537,13 +538,13 @@ inline ScalarEquation assemble_scalar_equation(
                             "assemble_scalar_equation: invalid non-orthogonal face gradient distance");
                     const double w = dn / (dc + dn);
                     const Vec3 grad_owner{
-                        reconstructed_gradient.component_data(0)[o],
-                        reconstructed_gradient.component_data(1)[o],
-                        reconstructed_gradient.component_data(2)[o]};
+                        diffusion_gradient.component_data(0)[o],
+                        diffusion_gradient.component_data(1)[o],
+                        diffusion_gradient.component_data(2)[o]};
                     const Vec3 grad_neighbour{
-                        reconstructed_gradient.component_data(0)[n],
-                        reconstructed_gradient.component_data(1)[n],
-                        reconstructed_gradient.component_data(2)[n]};
+                        diffusion_gradient.component_data(0)[n],
+                        diffusion_gradient.component_data(1)[n],
+                        diffusion_gradient.component_data(2)[n]};
                     const Vec3 grad_face = grad_owner * w + grad_neighbour * (1.0 - w);
                     const double gamma_face = D / alpha;
                     const double correction = gamma_face * grad_face.dot(tangential);
@@ -674,9 +675,9 @@ inline ScalarEquation assemble_scalar_equation(
                 const auto tangential = Sf - d * alpha;
                 if (tangential.mag() > 1e-12 * area) {
                     const Vec3 grad_owner{
-                        reconstructed_gradient.component_data(0)[o],
-                        reconstructed_gradient.component_data(1)[o],
-                        reconstructed_gradient.component_data(2)[o]};
+                        diffusion_gradient.component_data(0)[o],
+                        diffusion_gradient.component_data(1)[o],
+                        diffusion_gradient.component_data(2)[o]};
                     const double gamma_owner = cell_diffusion
                         ? (*cell_diffusion)[o] : diffusion_coefficient;
                     const double correction = gamma_owner * grad_owner.dot(tangential);
