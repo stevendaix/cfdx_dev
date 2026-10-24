@@ -85,7 +85,7 @@ inline SolverResult solve_bicgstab(
 
     const double bnorm=krylov_norm2(b, SolverPrecision::FP64, reduction),tol=tolerance*std::max(bnorm,1e-300);
     if(!std::isfinite(bnorm)||!std::isfinite(tol)){result.status=SolverStatus::DIVERGED;return result;}
-    Vector true_r(n); mixed_precision_true_residual(A,b,x,true_r); double res=krylov_norm2(true_r, redp, reduction);
+    Vector true_r(n); mixed_precision_true_residual(A,b,x,true_r); double res=krylov_norm2(true_r, SolverPrecision::FP64, reduction);
     if(res<=tol){
         result.status=SolverStatus::CONVERGED;result.residual=res;
         result.residual_relative=bnorm>0?res/bnorm:0.0;return result;
@@ -95,14 +95,15 @@ inline SolverResult solve_bicgstab(
     for(std::size_t i=0;i<n;++i){w.v(i)=0.0;w.p(i)=0.0;}
 
     auto true_residual = [&]() {
-        matvec(x, Ax);
-        if (!finite_vector(Ax)) return std::numeric_limits<double>::infinity();
+        // Recompute b-Ax with the original sparse operator in FP64, even
+        // when the iterative matvec is configured for FP32.
+        const double residual = mixed_precision_true_residual(A, b, x, true_r);
+        if (!std::isfinite(residual)) return std::numeric_limits<double>::infinity();
         for (std::size_t i = 0; i < n; ++i) {
-            const double ri = b(i) - Ax(i);
-            if (!std::isfinite(ri)) return std::numeric_limits<double>::infinity();
-            w.r(i) = ri;
+            if (!std::isfinite(true_r(i))) return std::numeric_limits<double>::infinity();
+            w.r(i) = true_r(i);
         }
-        return krylov_norm2(w.r, redp, reduction);
+        return krylov_norm2(w.r, SolverPrecision::FP64, reduction);
     };
 
     const double breakdown_factor = 64.0 * std::numeric_limits<double>::epsilon();
