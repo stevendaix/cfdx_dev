@@ -6,10 +6,22 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace {
-void expect_close(const char* label,double a,double b,double tol=1e-12) {    if(std::abs(a-b)>tol*std::max({1.0,std::abs(a),std::abs(b)})) {        std::cerr << "FAIL " << label << ": actual=" << a << " reference=" << b << " abs_error=" << std::abs(a-b) << "\n";
+void expect_close(const char* label, double a, double b, double tol = 1e-12) {
+    if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(tol) || tol < 0.0) {
+        std::cerr << "FAIL " << label
+                  << ": non-finite operand or invalid tolerance; actual=" << a
+                  << " reference=" << b << " tolerance=" << tol << "\n";
+        throw std::runtime_error("turbulence equation reference is non-finite or tolerance invalid");
+    }
+    const double error = std::abs(a - b);
+    const double limit = tol * std::max({1.0, std::abs(a), std::abs(b)});
+    if (!std::isfinite(error) || error > limit) {
+        std::cerr << "FAIL " << label << ": actual=" << a << " reference=" << b
+                  << " abs_error=" << error << " tolerance_limit=" << limit << "\n";
         throw std::runtime_error("turbulence equation reference mismatch");
     }
 }
@@ -17,6 +29,22 @@ void expect_close(const char* label,double a,double b,double tol=1e-12) {    if(
 }
 
 int main() {
+    // Prove the qualification comparator rejects non-finite values and invalid tolerances.
+    const auto expect_comparator_rejects = [](double actual, double reference, double tolerance) {
+        bool rejected = false;
+        try {
+            expect_close("comparator self-test", actual, reference, tolerance);
+        } catch (const std::runtime_error&) {
+            rejected = true;
+        }
+        if (!rejected)
+            throw std::runtime_error("numeric comparator accepted invalid input");
+    };
+    expect_comparator_rejects(std::numeric_limits<double>::quiet_NaN(), 1.0, 1e-12);
+    expect_comparator_rejects(std::numeric_limits<double>::infinity(), 1.0, 1e-12);
+    expect_comparator_rejects(1.0, 1.0, std::numeric_limits<double>::quiet_NaN());
+    expect_comparator_rejects(1.0, 1.0, -1.0);
+
     using namespace cfdx::physics;
     TurbulenceTransportControls c;
     const double k=2.0, eps=4.0, omega=5.0, S=3.0, delta=0.2, volume=delta*delta*delta, y=0.05;
