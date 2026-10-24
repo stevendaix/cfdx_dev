@@ -82,6 +82,12 @@ inline std::vector<ChtInterfaceFacePair> match_cht_interface(
     if(f1.size()!=f2.size())
         throw std::invalid_argument("CHT interface face count mismatch");
 
+    for (std::size_t j = 0; j < f2.size(); ++j) {
+        for (std::size_t i = 0; i < j; ++i) {
+            if (f2[i] == f2[j])
+                throw std::invalid_argument("CHT region-2 interface face IDs must be unique");
+        }
+    }
     std::vector<bool> used(f2.size(),false);
     std::vector<ChtInterfaceFacePair> pairs;
     pairs.reserve(f1.size());
