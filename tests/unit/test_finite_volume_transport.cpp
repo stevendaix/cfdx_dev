@@ -168,6 +168,37 @@ static Mesh make_unit_cube()
 
 int main()
 {
+    run_case("flux_imbalance_metrics_do_not_hide_local_cancellation", [] {
+        const auto metrics = flux_imbalance_metrics({10.0, -10.0});
+        EXPECT_NEAR(metrics.signed_global, 0.0, 1e-14);
+        EXPECT_NEAR(metrics.global_l1, 20.0, 1e-14);
+        EXPECT_NEAR(metrics.local_linf, 10.0, 1e-14);
+    });
+
+    run_case("assembled_flux_imbalance_exposes_local_cancellation", [] {
+        const Mesh m = make_1d_chain(2);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"Su","K/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"Sp","1/s",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        std::size_t internal = m.n_faces();
+        for (std::size_t face = 0; face < m.n_faces(); ++face) {
+            if (m.ownership().neighbour(face) >= 0) {
+                internal = face;
+                break;
+            }
+        }
+        EXPECT_TRUE(internal < m.n_faces());
+        flux(internal) = 1.0;
+        ScalarBoundaryConditions bc;
+        const auto eq = assemble_scalar_equation(m,g,flux,1.0,su,sp,bc);
+        EXPECT_NEAR(eq.signed_global_imbalance, 0.0, 1e-14);
+        EXPECT_NEAR(eq.global_l1_imbalance, 2.0, 1e-14);
+        EXPECT_NEAR(eq.max_local_imbalance, 1.0, 1e-14);
+        EXPECT_NEAR(eq.max_imbalance, 1.0, 1e-14);
+    });
+
     run_case("geometric_interpolation_weight_uses_longitudinal_projection", [] {
         const Vec3 owner(0.0,0.0,0.0);
         const Vec3 neighbour(1.0,0.0,0.0);
