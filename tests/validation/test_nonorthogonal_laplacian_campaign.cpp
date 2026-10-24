@@ -13,6 +13,7 @@
 //     -> measured observed order on interior cells for each scheme.
 
 #include "cfdx/core/numerics/laplacian.h"
+#include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/geometry/geometry_cache.h"
 #include "cfdx/core/field/field.h"
@@ -31,6 +32,7 @@
 #include <vector>
 
 using namespace cfdx::core;
+using namespace cfdx::physics;
 using namespace cfdx::verification;
 
 namespace {
@@ -204,6 +206,84 @@ Field<double, Location::CELL> laplacian_of(const Grid& grid, const std::vector<d
     return compute_laplacian(f, grid.mesh, grid.geometry, scheme, 0.5);
 }
 
+void transport_nonorthogonal_linear_campaign()
+{
+    const Grid grid = make_affine_cube(8, 1.0);
+    const FvGeometry geometry = build_fv_geometry(grid.mesh);
+    const std::size_t nc = grid.mesh.n_cells();
+    const std::size_t nf = grid.mesh.n_faces();
+    Field<double, Location::CELL> phi(nc, "phi", "1", 1);
+    Field<double, Location::CELL> source(nc, "source", "1/s", 1);
+    Field<double, Location::CELL> implicit_source(nc, "Sp", "1/s", 1);
+    Field<double, Location::FACE> mass_flux(nf, "phi_mass", "kg/s", 1);
+    for (std::size_t cell = 0; cell < nc; ++cell) {
+        const auto& p = geometry.cell_centres[cell];
+        phi(cell) = 2.0*p.x - 3.0*p.y + 0.5*p.z;
+        source(cell) = 0.0;
+        implicit_source(cell) = 0.0;
+    }
+    mass_flux.fill(0.0);
+
+    const auto equation = assemble_scalar_equation(
+        grid.mesh, geometry, mass_flux, 1.0, source, implicit_source,
+        {}, false, nullptr, nullptr, nullptr, nullptr,
+        ConvectionScheme::UPWIND, &phi);
+    const auto correction_flux = compute_nonorthogonal_diffusion_face_fluxes(
+        grid.mesh, geometry, phi, 1.0, {});
+    const auto reconstructed_flux = reconstruct_scalar_transport_flux(
+        grid.mesh, geometry, mass_flux, phi, 1.0, {}, false,
+        ConvectionScheme::UPWIND);
+
+    std::vector<double> correction_divergence(nc, 0.0);
+    std::vector<double> reconstructed_divergence(nc, 0.0);
+    for (std::size_t face = 0; face < nf; ++face) {
+        const std::size_t owner = grid.mesh.ownership().owner(face);
+        const auto neighbour = grid.mesh.ownership().neighbour(face);
+        correction_divergence[owner] += correction_flux[face];
+        reconstructed_divergence[owner] += reconstructed_flux(face);
+        if (neighbour >= 0) {
+            const auto n = static_cast<std::size_t>(neighbour);
+            correction_divergence[n] -= correction_flux[face];
+            reconstructed_divergence[n] -= reconstructed_flux(face);
+        }
+    }
+
+    double max_corrected_residual = 0.0;
+    double max_reconstructed_divergence = 0.0;
+    double min_uncorrected_residual = std::numeric_limits<double>::infinity();
+    for (const std::size_t cell : grid.interior) {
+        double ax = 0.0;
+        const auto begin = equation.matrix.row_offsets_data()[cell];
+        const auto end = equation.matrix.row_offsets_data()[cell + 1];
+        for (auto k = begin; k < end; ++k)
+            ax += equation.matrix.values_data()[k] *
+                  phi(equation.matrix.columns_data()[k]);
+        const double corrected_residual = ax - equation.rhs(cell);
+        max_corrected_residual = std::max(
+            max_corrected_residual, std::abs(corrected_residual));
+        max_reconstructed_divergence = std::max(
+            max_reconstructed_divergence,
+            std::abs(reconstructed_divergence[cell]));
+        // Remove the explicit tangential RHS contribution to recover the
+        // uncorrected two-point residual for the same assembled matrix.
+        const double uncorrected_residual =
+            corrected_residual + correction_divergence[cell];
+        min_uncorrected_residual = std::min(
+            min_uncorrected_residual, std::abs(uncorrected_residual));
+    }
+
+    require(max_corrected_residual < 1e-10,
+            "transport corrected diffusion must annihilate an affine field on skew mesh");
+    require(max_reconstructed_divergence < 1e-10,
+            "reconstructed transport flux must share the corrected diffusion operator");
+    require(min_uncorrected_residual > 1e-3,
+            "uncorrected two-point transport diffusion must expose the skew residual");
+    std::cout << "N3_TRANSPORT_LINEAR shear=1 corrected_residual="
+              << max_corrected_residual
+              << " reconstructed_divergence=" << max_reconstructed_divergence
+              << " uncorrected_residual=" << min_uncorrected_residual << "\n";
+}
+
 void require(bool condition, const std::string& message) {
     if (!condition) throw std::runtime_error(message);
 }
@@ -289,6 +369,7 @@ int main()
     try {
         std::cout << std::setprecision(12);
         linear_campaign();
+        transport_nonorthogonal_linear_campaign();
         smooth_campaign();
         std::cout << "NONORTHOGONAL_LAPLACIAN_CAMPAIGN: PASS\n";
         return 0;
