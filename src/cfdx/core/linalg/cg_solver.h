@@ -252,7 +252,8 @@ inline SolverResult solve_cg_impl(
         // internal Jacobi and externally supplied preconditioners. The
         // preconditioned recurrence norm is not a residual norm and changes
         // under a common scaling of A and b.
-        const double res = mixed_precision_true_residual(A, b, x, rv);
+        mixed_precision_true_residual(A, b, x, rv);
+        const double res = krylov_norm2(rv, SolverPrecision::FP64, reduction);
         if (preconditioner &&
             (iter == 1 || iter % 100 == 0 || iter == max_iter)) {
             const double recursive_residual =
@@ -398,8 +399,9 @@ inline SolverResult solve_cg_impl(
 
     result.status = SolverStatus::MAX_ITER_REACHED;
     result.iterations = max_iter;
-    result.residual = mixed_precision_true_residual(A,b,x,rv);
-    result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
+    mixed_precision_true_residual(A, b, x, rv);
+    result.residual = krylov_norm2(rv, SolverPrecision::FP64, reduction);
+    result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : result.residual;
     return result;
 }
 } // namespace detail
