@@ -6,21 +6,38 @@ using namespace cfdx::core;
 using namespace cfdx::physics;
 using namespace cfdx::testing;
 
-static Mesh cube(const char* patch_name)
+static Mesh cube(const char* patch_name, double x_offset = 0.0,
+                  int interface_face = -1)
 {
     Mesh m;
     m.points().resize(8);
     const double p[8][3]={{0,0,0},{1,0,0},{1,1,0},{0,1,0},
                           {0,0,1},{1,0,1},{1,1,1},{0,1,1}};
-    for(std::size_t i=0;i<8;++i)m.points().set(i,p[i][0],p[i][1],p[i][2]);
+    for(std::size_t i=0;i<8;++i)
+        m.points().set(i,p[i][0]+x_offset,p[i][1],p[i][2]);
     m.faces().push_face({0,3,2,1});m.faces().push_face({4,5,6,7});
     m.faces().push_face({0,1,5,4});m.faces().push_face({3,7,6,2});
     m.faces().push_face({0,4,7,3});m.faces().push_face({1,2,6,5});
     m.ownership().resize(6);
     for(std::size_t f=0;f<6;++f){m.ownership().set_owner(f,0);m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);}
     m.cells().push_cell({0,1,2,3,4,5});
-    Patch patch;patch.name=patch_name;patch.type=PatchType::WALL;patch.face_ids={0,1,2,3,4,5};
-    m.boundary().add_patch(patch);
+    if (interface_face < 0) {
+        Patch patch;patch.name=patch_name;patch.type=PatchType::WALL;
+        patch.face_ids={0,1,2,3,4,5};
+        m.boundary().add_patch(patch);
+    } else {
+        Patch interface_patch;
+        interface_patch.name=patch_name;
+        interface_patch.type=PatchType::INTERFACE;
+        interface_patch.face_ids={static_cast<std::size_t>(interface_face)};
+        m.boundary().add_patch(interface_patch);
+        Patch walls;
+        walls.name=std::string(patch_name)+"_walls";
+        walls.type=PatchType::WALL;
+        for (std::size_t f=0; f<6; ++f)
+            if (static_cast<int>(f)!=interface_face) walls.face_ids.push_back(f);
+        m.boundary().add_patch(walls);
+    }
     return m;
 }
 
@@ -43,7 +60,9 @@ int main()
     });
 
     run_case("two_region_cht_independent_energy_conservation",[] {
-        Mesh m1=cube("interface1"),m2=cube("interface2");
+        // Two solids share exactly one conformal face at x=1, with
+        // opposing outward normals; the remaining faces are impermeable walls.
+        Mesh m1=cube("interface1",0.0,5),m2=cube("interface2",1.0,4);
         auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
         Field<double,Location::FACE> phi1(m1.n_faces(),"phi1","kg/s",1);
         Field<double,Location::FACE> phi2(m2.n_faces(),"phi2","kg/s",1);
@@ -65,8 +84,8 @@ int main()
 
         // Reconstruct the interface state from the accepted temperatures and
         // independently rebuild each region's physical energy flux.
-        const double d1=(g1.face_centres[0]-g1.cell_centres[0]).mag();
-        const double d2=(g2.face_centres[0]-g2.cell_centres[0]).mag();
+        const double d1=boundary_normal_distance(g1,5,0);
+        const double d2=boundary_normal_distance(g2,4,0);
         const double h1=c.conductivity1/d1;
         const double h2=c.conductivity2/d2;
         const double tint=(h1*T1(0)+h2*T2(0))/(h1+h2);
@@ -91,7 +110,7 @@ int main()
 
         // Independent interface heat-flow equality: each side must carry the
         // same physical heat rate, with opposite outward signs.
-        const double interface_area=g1.face_area_vectors[0].mag()*static_cast<double>(m1.boundary().patch(0).face_ids.size());
+        const double interface_area=g1.face_area_vectors[5].mag();
         const double qflux1=c.conductivity1*(T1(0)-tint)/d1;
         const double qflux2=c.conductivity2*(tint-T2(0))/d2;
         EXPECT_TRUE(std::isfinite(qflux1) && std::isfinite(qflux2));
@@ -110,6 +129,21 @@ int main()
             mismatch_rejected=true;
         }
         EXPECT_TRUE(mismatch_rejected);
+
+        // Both regions must use the same physical time step in a coupled
+        // interface iteration; mixing transient levels is not conservative.
+        c.conductivity2=1.0;
+        EnergySolverControls e2_different_dt=e2;
+        e1.dt=0.1;
+        e2_different_dt.dt=0.2;
+        bool dt_mismatch_rejected=false;
+        try {
+            (void)solve_two_region_cht(
+                m1,g1,m2,g2,phi1,phi2,T1,T2,q1,q2,e1,e2_different_dt,c);
+        } catch (const std::invalid_argument&) {
+            dt_mismatch_rejected=true;
+        }
+        EXPECT_TRUE(dt_mismatch_rejected);
         std::cout << "N11_ENERGY_RESULT converged=" << (r.converged ? "true" : "false")
                   << " T1=" << T1(0) << " T2=" << T2(0)
                   << " qflux=" << qflux1
