@@ -64,18 +64,26 @@ advect_volume_fraction_1d(
     return next;
 }
 
+// Method contract: docs/audits/06-gradients-reconstruction.md
+// Curvature is -div(n). Derivatives must be evaluated along their own
+// coordinate axes by the caller; a single 1-D index stencil cannot recover
+// the multidimensional divergence from normal components.
+inline double interface_curvature_from_normal_divergence(
+    double dnx_dx, double dny_dy, double dnz_dz = 0.0)
+{
+    if (!std::isfinite(dnx_dx) || !std::isfinite(dny_dy) ||
+        !std::isfinite(dnz_dz))
+        throw std::invalid_argument("normal divergence derivatives must be finite");
+    return -(dnx_dx + dny_dy + dnz_dz);
+}
+
+// The old signature cannot distinguish derivatives in x, y, and z and is
+// therefore intentionally unavailable rather than returning a false curvature.
 inline double interface_curvature_from_normals(
     const std::vector<double>& normal_x,
     const std::vector<double>& normal_y,
     std::size_t i,
-    double dx)
-{
-    if (dx <= 0.0 || i == 0 || i + 1 >= normal_x.size() ||
-        normal_x.size() != normal_y.size())
-        throw std::invalid_argument("invalid normal stencil");
-    return -((normal_x[i + 1] - normal_x[i - 1]) +
-             (normal_y[i + 1] - normal_y[i - 1])) / (2.0 * dx);
-}
+    double dx) = delete;
 
 inline double continuum_surface_force(double sigma, double curvature, double grad_alpha)
 {
