@@ -141,5 +141,37 @@ int main() {
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
     });
 
+    run_case("bicgstab_breakdown_criteria_are_scale_invariant", []() {
+        for (const double scale : {1.0, 1e-16, 1e16}) {
+            SparseMatrix A(2, 2);
+            A.push_back(0, 0, 4.0 * scale); A.push_back(0, 1, 1.0 * scale);
+            A.push_back(1, 0, -2.0 * scale); A.push_back(1, 1, 5.0 * scale);
+            A.finalize();
+            Vector b(2); b(0) = 2.0 * scale; b(1) = 3.0 * scale;
+            Vector x(2, 0.0);
+            const auto result = solve_bicgstab(A, b, x, 20, 1e-10);
+            EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+            EXPECT_NEAR(x(0), 1.0 / 3.0, 1e-8);
+            EXPECT_NEAR(x(1), 11.0 / 15.0, 1e-8);
+            EXPECT_TRUE(result.residual_relative < 1e-10);
+        }
+    });
+
+    run_case("bicgstab_mixed_precision_does_not_certify_fp32_residual", []() {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 1.0 + 1e-8);
+        A.finalize();
+        Vector b(1, 1.0);
+        Vector x(1, 0.0);
+        PrecisionPolicy precision;
+        precision.enabled = true;
+        precision.operator_precision = SolverPrecision::FP32;
+        precision.reduction_precision = SolverPrecision::FP64;
+        const auto result = solve_bicgstab(A, b, x, 10, 1e-12, nullptr, precision);
+        EXPECT_TRUE(result.status != SolverStatus::CONVERGED ||
+                    result.residual > 1e-12);
+        EXPECT_TRUE(!std::isfinite(result.residual) || result.residual > 1e-12);
+    });
+
     return run_all();
 }
