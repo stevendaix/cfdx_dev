@@ -111,6 +111,8 @@ inline ChtSolveResult solve_two_region_cht(
     const ScalarBoundaryConditions& bcs1 = {},
     const ScalarBoundaryConditions& bcs2 = {})
 {
+    // Method contract: docs/audits/10-thermique-cht.md. Interface conductance
+    // must use the same material properties as the region energy operator.
     const auto pairs=match_cht_interface(mesh1,g1,mesh2,g2,controls);
     validate_energy_controls(energy1);
     validate_energy_controls(energy2);
