@@ -410,6 +410,61 @@ inline ScalarEquation assemble_scalar_equation(
     const auto& own = mesh.ownership();
     const double* phi = face_flux.component_data(0);
 
+    bool diffusion_active = diffusion_coefficient > 0.0;
+    if (cell_diffusion) {
+        diffusion_active = false;
+        for (const double gamma : *cell_diffusion) {
+            if (!(gamma >= 0.0) || !std::isfinite(gamma))
+                throw std::invalid_argument(
+                    "assemble_scalar_equation: invalid cell diffusion");
+            diffusion_active = diffusion_active || gamma > 0.0;
+        }
+    }
+    bool needs_nonorthogonal_gradient = false;
+    if (diffusion_active) {
+        for (std::size_t face = 0; face < nf; ++face) {
+            const auto nraw = own.neighbour(face);
+            if (nraw < 0) {
+                const std::size_t patch = geometry.face_patch[face];
+                if (patch < mesh.boundary().n_patches() &&
+                    mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                    continue;
+            }
+            const std::size_t owner = own.owner(face);
+            if (owner >= nc)
+                throw std::runtime_error(
+                    "assemble_scalar_equation: invalid diffusion face owner");
+            const Vec3 sf = geometry.face_area_vectors[face];
+            const double area = sf.mag();
+            const Vec3 d = nraw >= 0
+                ? geometry.cell_centres[static_cast<std::size_t>(nraw)] -
+                      geometry.cell_centres[owner]
+                : geometry.face_centres[face] - geometry.cell_centres[owner];
+            const double sd = sf.dot(d);
+            const double d2 = d.dot(d);
+            if (!(area > 0.0) || !(sd > 0.0) || !(d2 > 0.0) ||
+                !std::isfinite(area) || !std::isfinite(sd) || !std::isfinite(d2))
+                throw std::runtime_error(
+                    "assemble_scalar_equation: invalid diffusion decomposition");
+            const double alpha = area * area / sd;
+            const Vec3 tangential = sf - d * alpha;
+            if (tangential.mag() > 1e-12 * area)
+                needs_nonorthogonal_gradient = true;
+        }
+    }
+    if (needs_nonorthogonal_gradient && convected_field == nullptr)
+        throw std::invalid_argument(
+            "assemble_scalar_equation: non-orthogonal diffusion requires the current scalar field");
+    if (needs_nonorthogonal_gradient &&
+        (convected_field->size() != nc || convected_field->dimension() != 1))
+        throw std::invalid_argument(
+            "assemble_scalar_equation: invalid scalar field for non-orthogonal diffusion");
+    if (needs_nonorthogonal_gradient) {
+        reconstructed_gradient = compute_scalar_gradient_with_boundary(
+            *convected_field, mesh, geometry, boundary_conditions,
+            face_values, face_conditions);
+    }
+
     double max_abs_face_flux = 0.0;
     double min_internal_distance = std::numeric_limits<double>::infinity();
     double max_internal_distance = 0.0;
@@ -468,6 +523,40 @@ inline ScalarEquation assemble_scalar_equation(
 
             div_phi[o] += F;
             div_phi[n] -= F;
+
+            if (needs_nonorthogonal_gradient) {
+                const Vec3 d = Cn - Co;
+                const double sd = Sf.dot(d);
+                const double alpha = area * area / sd;
+                const Vec3 tangential = Sf - d * alpha;
+                if (tangential.mag() > 1e-12 * area) {
+                    const double dc = (Cf - Co).mag();
+                    const double dn = (Cn - Cf).mag();
+                    if (!(dc + dn > 0.0) || !std::isfinite(dc + dn))
+                        throw std::runtime_error(
+                            "assemble_scalar_equation: invalid non-orthogonal face gradient distance");
+                    const double w = dn / (dc + dn);
+                    const Vec3 grad_owner{
+                        reconstructed_gradient.component_data(0)[o],
+                        reconstructed_gradient.component_data(1)[o],
+                        reconstructed_gradient.component_data(2)[o]};
+                    const Vec3 grad_neighbour{
+                        reconstructed_gradient.component_data(0)[n],
+                        reconstructed_gradient.component_data(1)[n],
+                        reconstructed_gradient.component_data(2)[n]};
+                    const Vec3 grad_face = grad_owner * w + grad_neighbour * (1.0 - w);
+                    const double gamma_face = D / alpha;
+                    const double correction = gamma_face * grad_face.dot(tangential);
+                    if (!std::isfinite(correction))
+                        throw std::runtime_error(
+                            "assemble_scalar_equation: non-finite non-orthogonal diffusion correction");
+                    // The implicit matrix represents -div(F_orth); moving
+                    // the tangential diffusion flux to the RHS contributes
+                    // +div(F_tangent), with conservative owner/neighbour signs.
+                    deferred_rhs[o] += correction;
+                    deferred_rhs[n] -= correction;
+                }
+            }
 
             if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
                 convection_scheme == ConvectionScheme::TVD ||
@@ -576,6 +665,27 @@ inline ScalarEquation assemble_scalar_equation(
             max_face_area = std::max(max_face_area, area);
             if (!(distance > 0.0) || !(area > 0.0))
                 throw std::runtime_error("assemble_scalar_equation: degenerate boundary face");
+
+            if (needs_nonorthogonal_gradient) {
+                const auto& Sf = geometry.face_area_vectors[f];
+                const auto d = geometry.face_centres[f] - geometry.cell_centres[o];
+                const double sd = Sf.dot(d);
+                const double alpha = area * area / sd;
+                const auto tangential = Sf - d * alpha;
+                if (tangential.mag() > 1e-12 * area) {
+                    const Vec3 grad_owner{
+                        reconstructed_gradient.component_data(0)[o],
+                        reconstructed_gradient.component_data(1)[o],
+                        reconstructed_gradient.component_data(2)[o]};
+                    const double gamma_owner = cell_diffusion
+                        ? (*cell_diffusion)[o] : diffusion_coefficient;
+                    const double correction = gamma_owner * grad_owner.dot(tangential);
+                    if (!std::isfinite(correction))
+                        throw std::runtime_error(
+                            "assemble_scalar_equation: non-finite boundary non-orthogonal correction");
+                    deferred_rhs[o] += correction;
+                }
+            }
 
             if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
                 const double gamma_owner = cell_diffusion
