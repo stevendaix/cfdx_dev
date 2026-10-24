@@ -261,6 +261,10 @@ int main()
             if (m.ownership().neighbour(f) >= 0)
                 flux(f) = 1.0;
         }
+        // Keep the downstream cell diagonally anchored: a positive outlet
+        // flux is required for a well-posed pure-convection matrix.
+        for (const auto f : m.boundary().patch(0).face_ids) flux(f) = -1.0;
+        for (const auto f : m.boundary().patch(1).face_ids) flux(f) = 1.0;
         ScalarBoundaryConditions bc;
         bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
         bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
@@ -338,6 +342,10 @@ int main()
             }
         }
         EXPECT_TRUE(target < m.n_faces());
+        // The local high-order correction is tested on the internal face;
+        // a positive diagonal keeps the unrelated pure-convection matrix
+        // nonsingular in every cell.
+        const std::vector<double> extra_diagonal{1.0, 1.0, 1.0};
         ScalarBoundaryConditions bc;
         bc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
         bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.01, 0.0};
@@ -345,17 +353,18 @@ int main()
 
         for (const auto scheme : {ConvectionScheme::SECOND_ORDER_UPWIND, ConvectionScheme::TVD}) {
             const auto equation = assemble_scalar_equation(
-                m, g, flux, 0.0, su, sp, bc, false, nullptr, nullptr, nullptr,
-                nullptr, scheme, &phi);
+                m, g, flux, 0.0, su, sp, bc, false, nullptr, &extra_diagonal,
+                nullptr, nullptr, scheme, &phi);
             const auto reconstructed = reconstruct_scalar_transport_flux(
                 m, g, flux, phi, 0.0, bc, false, scheme);
             // The upwind-cell extrapolation overshoots phi_N=1.01. Both
             // assembly and reconstructed flux must retain the scheme's
             // neighbour-bounded face value even with bounded_convection=false.
             EXPECT_NEAR(reconstructed(target), 1.01, 1e-12);
-            EXPECT_NEAR(equation.rhs(1) - assemble_scalar_equation(
-                m, g, flux, 0.0, su, sp, bc, false, nullptr, nullptr, nullptr,
-                nullptr, ConvectionScheme::UPWIND, &phi).rhs(1), -0.01, 1e-10);
+            const auto upwind = assemble_scalar_equation(
+                m, g, flux, 0.0, su, sp, bc, false, nullptr, &extra_diagonal,
+                nullptr, nullptr, ConvectionScheme::UPWIND, &phi);
+            EXPECT_NEAR(equation.rhs(1) - upwind.rhs(1), -0.01, 1e-10);
         }
     });
 
