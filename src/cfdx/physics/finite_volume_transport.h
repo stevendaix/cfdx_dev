@@ -765,31 +765,8 @@ inline ScalarEquation assemble_scalar_equation(
                 mesh.boundary().patch(patch).type == PatchType::EMPTY)
                 continue;
 
-            ScalarBoundaryCondition bc;
-            if (face_conditions && face_conditions->has(f)) {
-                const auto& resolved = face_conditions->conditions[f];
-                bc.type = resolved.type == ScalarBoundaryFaceCondition::Type::FIXED_VALUE
-                    ? ScalarBoundaryType::FIXED_VALUE
-                    : ScalarBoundaryType::FIXED_GRADIENT;
-                if (!std::isfinite(resolved.value))
-                    throw std::invalid_argument("assemble_scalar_equation: non-finite resolved boundary condition");
-                if (bc.type == ScalarBoundaryType::FIXED_VALUE)
-                    bc.value = resolved.value;
-                else
-                    bc.gradient = resolved.value;
-            } else if (patch < mesh.boundary().n_patches()) {
-                const auto& patch_name = mesh.boundary().patch(patch).name;
-                const auto it = boundary_conditions.find(patch_name);
-                if (it != boundary_conditions.end()) bc = it->second;
-                if (face_values) {
-                    const auto fv = face_values->values.find(patch_name);
-                    if (fv != face_values->values.end() && f < fv->second.size() &&
-                    std::isfinite(fv->second[f])) {
-                        bc.type = ScalarBoundaryType::FIXED_VALUE;
-                        bc.value = fv->second[f];
-                    }
-                }
-            }
+            const ScalarBoundaryCondition bc = resolve_scalar_boundary_condition(
+                mesh, geometry, f, boundary_conditions, face_values, face_conditions);
 
             const double area = geometry.face_area_vectors[f].mag();
             const double distance = boundary_normal_distance(geometry, f, o);
@@ -1041,25 +1018,8 @@ reconstruct_scalar_transport_flux(
                 result(f)=0.0;
                 continue;
             }
-            ScalarBoundaryCondition bc;
-            if (face_conditions && face_conditions->has(f)) {
-                const auto& r=face_conditions->conditions[f];
-                bc.type = r.type == ScalarBoundaryFaceCondition::Type::FIXED_VALUE
-                    ? ScalarBoundaryType::FIXED_VALUE : ScalarBoundaryType::FIXED_GRADIENT;
-                bc.value = r.value;
-                bc.gradient = r.value;
-            } else if (patch < mesh.boundary().n_patches()) {
-                const auto it=boundary_conditions.find(mesh.boundary().patch(patch).name);
-                if (it != boundary_conditions.end()) bc=it->second;
-                if (face_values) {
-                    const auto fv=face_values->values.find(mesh.boundary().patch(patch).name);
-                    if (fv != face_values->values.end() && f < fv->second.size() &&
-                        std::isfinite(fv->second[f])) {
-                        bc.type=ScalarBoundaryType::FIXED_VALUE;
-                        bc.value=fv->second[f];
-                    }
-                }
-            }
+            const ScalarBoundaryCondition bc = resolve_scalar_boundary_condition(
+                mesh, geometry, f, boundary_conditions, face_values, face_conditions);
             const double area=geometry.face_area_vectors[f].mag();
             const double d=boundary_normal_distance(geometry,f,o);
             if (!(area > 0.0) || !(d > 0.0))
