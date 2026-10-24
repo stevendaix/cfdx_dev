@@ -13,7 +13,7 @@ using namespace cfdx::physics;
 
 namespace {
 
-Mesh cube_with_patches()
+Mesh cube_with_patches(double y_offset = 0.0, bool interface_on_y_min = false)
 {
     Mesh m;
     m.points().resize(8);
@@ -22,7 +22,7 @@ Mesh cube_with_patches()
         {0,0,1},{1,0,1},{1,1,1},{0,1,1}
     };
     for (std::size_t i=0; i<8; ++i)
-        m.points().set(i,p[i][0],p[i][1],p[i][2]);
+        m.points().set(i,p[i][0],p[i][1]+y_offset,p[i][2]);
 
     m.faces().push_face({0,3,2,1}); // x-
     m.faces().push_face({4,5,6,7}); // x+
@@ -38,7 +38,11 @@ Mesh cube_with_patches()
     }
     m.cells().push_cell({0,1,2,3,4,5});
 
-    const char* names[6] = {"x_min","x_max","y_min","interface","z_min","z_max"};
+    const char* names[6] = {
+        "x_min", "x_max",
+        interface_on_y_min ? "interface" : "y_min",
+        interface_on_y_min ? "y_max" : "interface",
+        "z_min", "z_max"};
     for (std::size_t f=0; f<6; ++f) {
         Patch patch;
         patch.name=names[f];
@@ -62,10 +66,10 @@ ScalarBoundaryConditions fixed_wall_conditions(
     double value, const std::string& interface_name)
 {
     ScalarBoundaryConditions bc;
-    for (const char* name : {"x_min","x_max","y_min","z_min","z_max"})
-        bc[name] = {ScalarBoundaryType::FIXED_VALUE,value,0.0};
+    for (const char* name : {"x_min","x_max","y_min","y_max","z_min","z_max"})
+        if (name != interface_name)
+            bc[name] = {ScalarBoundaryType::FIXED_VALUE,value,0.0};
     // The interface value is supplied by the CHT coupling itself.
-    (void)interface_name;
     return bc;
 }
 
@@ -166,8 +170,11 @@ int main()
         // Level C-03: two-region CHT uses a single matched interface with
         // independent hot/cold boundaries and verifies flux continuity.
         {
-            Mesh m1=cube_with_patches();
-            Mesh m2=cube_with_patches();
+            // Region 1 uses its y+ face; region 2 is translated by one
+            // unit and uses its y- face. The interface is conformal and the
+            // two outward normals are opposite by construction.
+            Mesh m1=cube_with_patches(0.0, false);
+            Mesh m2=cube_with_patches(1.0, true);
             auto g1=build_fv_geometry(m1);
             auto g2=build_fv_geometry(m2);
 
