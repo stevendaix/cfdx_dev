@@ -419,6 +419,15 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endmacro()
 
+    # Audit counterexamples: active checks in Release as well as Debug.
+    # test_audit_numerics is deliberately not registered yet: its Krylov/QUICK/WLS
+    # sections exercise the G01-G09 fixes carried by PR #1092; register it when
+    # that work lands (file already present in tests/audit/).
+    add_cfdx_test(test_audit_flux_contract tests/audit/test_audit_flux_contract.cpp)
+    add_cfdx_test(test_audit_cht_time tests/audit/test_audit_cht_time.cpp)
+    set_tests_properties(test_audit_flux_contract test_audit_cht_time PROPERTIES
+        LABELS "audit;regression" TIMEOUT 60)
+
     # N8 physical/production qualification reuses the existing validation
     # executables and records a machine-readable campaign report. It is
     # intentionally a separate CTest entry so the individual physical or

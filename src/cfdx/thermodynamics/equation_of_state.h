@@ -187,8 +187,8 @@ public:
         return params_.gamma * p / density(p, T);
     }
 
-    double dp_dT_rho(double /*p*/, double T) const override {
-        return density(0, T) * R;
+    double dp_dT_rho(double p, double T) const override {
+        return density(p, T) * R;
     }
 
     double drho_dp_T(double p, double T) const override {

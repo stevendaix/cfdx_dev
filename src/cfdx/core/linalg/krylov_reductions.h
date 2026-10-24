@@ -77,16 +77,32 @@ inline double krylov_norm2(const Vector& a,
                            const KrylovReductionPolicy& policy = {}) {
     const std::size_t begin = std::min(policy.local_begin, a.size());
     const std::size_t end = policy.end_for(a.size());
+    double scale = 0.0;
+    double invalid = 0.0;
+    for (std::size_t i = begin; i < end; ++i) {
+        if (!std::isfinite(a(i))) invalid = 1.0;
+        scale = std::max(scale, std::abs(a(i)));
+    }
+    if (krylov_sum(invalid, policy) > 0.0)
+        return std::numeric_limits<double>::quiet_NaN();
+#if CFDX_HAS_MPI
+    if (policy.mpi_enabled) {
+        double global_scale = 0.0;
+        MPI_Allreduce(&scale, &global_scale, 1, MPI_DOUBLE, MPI_MAX, policy.comm);
+        scale = global_scale;
+    }
+#endif
+    if (scale == 0.0) return 0.0;
     double local = 0.0;
     for (std::size_t i = begin; i < end; ++i) {
+        const double q = a(i) / scale;
         local += reduction_precision == SolverPrecision::FP32
-            ? static_cast<double>(static_cast<float>(a(i)) * static_cast<float>(a(i)))
-            : a(i) * a(i);
+            ? static_cast<double>(static_cast<float>(q) * static_cast<float>(q))
+            : q * q;
     }
     const double sum = krylov_sum(local, policy);
-    if (!std::isfinite(sum))
-        return std::numeric_limits<double>::quiet_NaN();
-    return std::sqrt(std::max(0.0, sum));
+    if (!std::isfinite(sum)) return std::numeric_limits<double>::quiet_NaN();
+    return scale * std::sqrt(std::max(0.0, sum));
 }
 
 } // namespace cfdx::core

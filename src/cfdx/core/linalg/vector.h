@@ -62,12 +62,15 @@ public:
     }
     Value norm2() const {
         Value s = 0.0;
-        for (const auto v : data_) s += v * v;
-        return std::sqrt(s);
+        for (const auto v : data_) s = std::hypot(s, v);
+        return s;
     }
     Value norm_inf() const {
         Value s = 0.0;
-        for (const auto v : data_) s = std::max(s, std::abs(v));
+        for (const auto v : data_) {
+            if (std::isnan(v)) return v;
+            s = std::max(s, std::abs(v));
+        }
         return s;
     }
 

@@ -768,24 +768,27 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         const double candidate_value = equation.rhs(0) / diagonal;
         const double candidate_residual =
             std::abs(diagonal * candidate_value - equation.rhs(0));
-        if (candidate_residual <= controls.tolerance) {
-            // A scalar 1x1 system has an exact closed-form solution. Do not
-            // under-relax an already converged linear solve: doing so makes
-            // the returned state fail the requested residual even though the
-            // reported linear residual is zero.
-            solution(0) = candidate_value;
-            return {
-                cfdx::core::SolverStatus::CONVERGED,
-                1, candidate_residual, candidate_residual
-            };
+        // This tolerance has the same relative meaning as the Krylov paths.
+        // An absolute comparison rejected correctly rounded large systems.
+        const double rhs_scale = std::abs(equation.rhs(0));
+        const double relative = rhs_scale > 0.0
+            ? candidate_residual / rhs_scale : candidate_residual;
+        if (!std::isfinite(candidate_value) || !std::isfinite(candidate_residual) ||
+            !std::isfinite(relative)) {
+            return {cfdx::core::SolverStatus::DIVERGED, 1,
+                    candidate_residual, relative};
         }
-        solution(0) += controls.relaxation * (candidate_value - solution(0));
+        if (relative <= controls.tolerance) {
+            // Preserve the established exact 1x1 predictor contract.
+            solution(0) = candidate_value;
+            return {cfdx::core::SolverStatus::CONVERGED, 1,
+                    candidate_residual, relative};
+        }
+        // A rejected predictor must not replace the accepted iterate.
         const double residual =
             std::abs(diagonal * solution(0) - equation.rhs(0));
-        return {
-            cfdx::core::SolverStatus::MAX_ITER_REACHED,
-            controls.max_iterations, residual, residual
-        };
+        return {cfdx::core::SolverStatus::MAX_ITER_REACHED, 1,
+                residual, rhs_scale > 0.0 ? residual / rhs_scale : residual};
     }
 
     cfdx::core::Vector candidate = solution;

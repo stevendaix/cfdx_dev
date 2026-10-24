@@ -277,8 +277,8 @@ inline double p1_source(double absorption, double mean_intensity, double T)
 {
     if (absorption < 0.0 || mean_intensity < 0.0 || T < 0.0)
         throw std::invalid_argument("invalid P1 source input");
-    // P1 source convention: S_r = 4*kappa*(I_b - J).
-    return 4.0 * absorption * (p1_blackbody_intensity(T) - mean_intensity);
+    // J is mean intensity; G=4*pi*J, so emission-absorption is 4*pi*kappa*(Ib-J).
+    return 4.0 * M_PI * absorption * (p1_blackbody_intensity(T) - mean_intensity);
 }
 
 struct Direction {

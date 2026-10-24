@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <functional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -114,80 +115,76 @@ struct ThermophysicalProperties {
     double enthalpy(double T,double Tref=300,double intervals=64) const {
         if(!std::isfinite(T)||!std::isfinite(Tref)||T<=0||Tref<=0||intervals<=0)
             throw std::invalid_argument("enthalpy: invalid inputs");
+        if (!std::isfinite(intervals) || intervals<1.0 || intervals>1000000.0)
+            throw std::invalid_argument("enthalpy: invalid quadrature interval count");
         const double a=std::min(T,Tref), b=std::max(T,Tref);
+        (void)cp(a); (void)cp(b); // Validate property and table extrapolation.
+        if (a==b) return 0.0;
         double integral=0.0;
-        if (heat_capacity.model == ScalarPropertyModel::CONSTANT) {
-            integral=heat_capacity.reference_value*(b-a);
-        } else if (heat_capacity.model == ScalarPropertyModel::LINEAR) {
-            const double c0=heat_capacity.reference_value;
-            const double c1=heat_capacity.coefficients.empty()?0.0:heat_capacity.coefficients[0];
-            const double xa=a-heat_capacity.reference_temperature, xb=b-heat_capacity.reference_temperature;
-            integral=c0*(b-a)+0.5*c1*(xb*xb-xa*xa);
-        } else if (heat_capacity.model == ScalarPropertyModel::POLYNOMIAL) {
-            if (heat_capacity.coefficients.empty())
-                throw std::invalid_argument("enthalpy: polynomial heat capacity requires coefficients");
-                integral=0.0;
-            for (std::size_t i=0;i<heat_capacity.coefficients.size();++i) {
-                const double ai=heat_capacity.coefficients[i];
-                if(!std::isfinite(ai)) throw std::invalid_argument("enthalpy: non-finite heat-capacity coefficient");
-                const double power=static_cast<double>(i+1);
-                integral += ai*(std::pow(b-heat_capacity.reference_temperature,power)
-                              - std::pow(a-heat_capacity.reference_temperature,power))/power;
+        const auto model=heat_capacity.model;
+        if (model==ScalarPropertyModel::CONSTANT) {
+            integral=cp(a)*(b-a);
+        } else if (model==ScalarPropertyModel::TABLE || model==ScalarPropertyModel::LINEAR) {
+            // Every segment is affine. Insert table knots and each bound
+            // crossing; trapezoids then integrate the ACTUAL cp exactly.
+            std::vector<double> knots{a,b};
+            if(model==ScalarPropertyModel::TABLE) {
+                heat_capacity.table.validate("heat capacity table");
+                for(double x:heat_capacity.table.temperature)
+                    if(x>a && x<b) knots.push_back(x);
             }
-        } else if (heat_capacity.model == ScalarPropertyModel::TABLE) {
-            heat_capacity.table.validate("heat capacity table");
-            const auto& tab=heat_capacity.table;
-            auto integrate_in_range = [&](double lo,double hi) {
-                if (hi<=lo) return 0.0;
-                double result=0.0;
-                double x0=lo, y0=tab.evaluate(lo,"heat capacity table");
-                for (std::size_t i=0;i+1<tab.temperature.size();++i) {
-                    const double l=std::max(lo,tab.temperature[i]);
-                    const double r=std::min(hi,tab.temperature[i+1]);
-                    if (r<=l) continue;
-                    const double yl=tab.value[i] + (l-tab.temperature[i]) *
-                        (tab.value[i+1]-tab.value[i])/(tab.temperature[i+1]-tab.temperature[i]);
-                    const double yr=tab.value[i] + (r-tab.temperature[i]) *
-                        (tab.value[i+1]-tab.value[i])/(tab.temperature[i+1]-tab.temperature[i]);
-                    result += 0.5*(yl+yr)*(r-l);
-                    x0=r; y0=yr;
-                }
-                return result;
+            std::sort(knots.begin(),knots.end());
+            const auto raw=[&](double x) {
+                if(model==ScalarPropertyModel::TABLE)
+                    return heat_capacity.table.evaluate(x,"heat capacity table");
+                return heat_capacity.reference_value+
+                    (heat_capacity.coefficients.empty()?0.0:heat_capacity.coefficients[0])*
+                    (x-heat_capacity.reference_temperature);
             };
-            if (a < tab.temperature.front() || b > tab.temperature.back()) {
-                if (tab.extrapolation == ExtrapolationPolicy::REJECT)
-                    throw std::out_of_range("enthalpy: heat-capacity table outside range");
-                const double lo=tab.temperature.front(), hi=tab.temperature.back();
-                integral=integrate_in_range(std::max(a,lo),std::min(b,hi));
-                if (a<lo) {
-                    if (tab.extrapolation == ExtrapolationPolicy::CLAMP)
-                        integral += tab.value.front()*(lo-a);
-                    else {
-                        const double slope=(tab.value[1]-tab.value[0])/(tab.temperature[1]-tab.temperature[0]);
-                        const double d=lo-a;
-                        integral += tab.value.front()*d - 0.5*slope*d*d;
+            for(std::size_t i=1;i<knots.size();++i) {
+                const double l=knots[i-1],r=knots[i],vl=raw(l),vr=raw(r);
+                std::vector<double> cuts{l,r};
+                if(heat_capacity.enforce_bounds && vr!=vl) {
+                    for(double bound:{heat_capacity.minimum,heat_capacity.maximum}) {
+                        const double w=(bound-vl)/(vr-vl);
+                        if(w>0.0 && w<1.0) cuts.push_back(l+w*(r-l));
                     }
                 }
-                if (b>hi) {
-                    if (tab.extrapolation == ExtrapolationPolicy::CLAMP)
-                        integral += tab.value.back()*(b-hi);
-                    else {
-                        const double slope=(tab.value.back()-tab.value[tab.value.size()-2])/
-                                           (tab.temperature.back()-tab.temperature[tab.temperature.size()-2]);
-                        const double d=b-hi;
-                        integral += tab.value.back()*d + 0.5*slope*d*d;
-                    }
-                }
-            } else {
-                integral=integrate_in_range(a,b);
+                std::sort(cuts.begin(),cuts.end());
+                for(std::size_t j=1;j<cuts.size();++j)
+                    integral+=0.5*(cp(cuts[j-1])+cp(cuts[j]))*(cuts[j]-cuts[j-1]);
+            }
+        } else if(model==ScalarPropertyModel::POLYNOMIAL && !heat_capacity.enforce_bounds) {
+            for(std::size_t i=0;i<heat_capacity.coefficients.size();++i) {
+                const double power=static_cast<double>(i+1);
+                integral+=heat_capacity.coefficients[i]*
+                    (std::pow(b-heat_capacity.reference_temperature,power)-
+                     std::pow(a-heat_capacity.reference_temperature,power))/power;
             }
         } else {
+            // Nonlinear/bounded laws: adaptive Simpson integration of cp(),
+            // not of the unbounded raw polynomial. Exhaustion is an error.
+            std::function<double(double,double,double,double,double,double,double,int)> adapt;
+            adapt=[&](double l,double r,double fl,double fm,double fr,double whole,double tol,int depth) {
+                const double m=(l+r)*0.5;
+                const double f1=cp((l+m)*0.5), f2=cp((m+r)*0.5);
+                const double left=(m-l)*(fl+4*f1+fm)/6;
+                const double right=(r-m)*(fm+4*f2+fr)/6;
+                const double delta=left+right-whole;
+                if(std::abs(delta)<=15*tol) return left+right+delta/15;
+                if(depth==0) throw std::runtime_error("enthalpy quadrature did not converge");
+                return adapt(l,m,fl,f1,fm,left,tol/2,depth-1)+
+                       adapt(m,r,fm,f2,fr,right,tol/2,depth-1);
+            };
             const std::size_t n=static_cast<std::size_t>(intervals);
-            const double h=(b-a)/n;
-            double s=cp(a)+cp(b);
-            for(std::size_t i=1;i<n;++i) s+=2*cp(a+h*i);
-            integral=0.5*h*s;
+            for(std::size_t i=0;i<n;++i) {
+                const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+                const double fl=cp(l),fm=cp((l+r)*0.5),fr=cp(r);
+                const double whole=(r-l)*(fl+4*fm+fr)/6;
+                integral+=adapt(l,r,fl,fm,fr,whole,1e-11*std::max(1.0,std::abs(whole)),20);
+            }
         }
+        if (!std::isfinite(integral)) throw std::runtime_error("enthalpy integral non-finite");
         return T>=Tref?integral:-integral;
     }
 };

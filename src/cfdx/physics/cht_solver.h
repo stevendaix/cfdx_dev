@@ -113,6 +113,8 @@ inline ChtSolveResult solve_two_region_cht(
 {
     const auto pairs=match_cht_interface(mesh1,g1,mesh2,g2,controls);
     ChtSolveResult result;
+    const auto T1_previous_time=T1;
+    const auto T2_previous_time=T2;
     std::vector<double> previous_interface_temperature(pairs.size(), std::numeric_limits<double>::quiet_NaN());
 
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
@@ -144,8 +146,8 @@ inline ChtSolveResult solve_two_region_cht(
             values2[p.face2]=Tint;
         }
 
-        auto r1=solve_energy(mesh1,g1,flux1,T1,source1,energy1,bcs1,&fv1);
-        auto r2=solve_energy(mesh2,g2,flux2,T2,source2,energy2,bcs2,&fv2);
+        auto r1=solve_energy(mesh1,g1,flux1,T1,source1,energy1,bcs1,&fv1,nullptr,&T1_previous_time);
+        auto r2=solve_energy(mesh2,g2,flux2,T2,source2,energy2,bcs2,&fv2,nullptr,&T2_previous_time);
         if(!r1.converged || !r2.converged)
             throw std::runtime_error("CHT region energy solve did not converge");
 
