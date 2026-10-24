@@ -1,0 +1,9 @@
+T2MOMDIAG_SOLVE slug=auto debug_cell=auto rc=1 microscope=True cell=10561 stagnation=True
+T2MOMDIAG_SOLVE slug=cell0 debug_cell=0 rc=1 microscope=True cell=0 stagnation=True
+T2MOMDIAG_SOLVE slug=cell10241 debug_cell=10241 rc=1 microscope=True cell=10241 stagnation=True
+T2MOMDIAG_SOLVE slug=cell10240 debug_cell=10240 rc=1 microscope=True cell=10240 stagnation=True
+T2MOMDIAG_SOLVE slug=trace debug_cell=10561 rc=1 microscope=True cell=10561 stagnation=True
+T2MOMDIAG_SOLVE slug=trace_alpha0p4 debug_cell=10561 rc=1 microscope=True cell=10561 stagnation=True
+T2MOMDIAG_SOLVE slug=trace_alpha0p7 debug_cell=10561 rc=1 microscope=True cell=10561 stagnation=True
+T2MOMDIAG_SOLVE slug=trace_prolonged debug_cell=10561 rc=1 microscope=True cell=10561 stagnation=False
+T2MOMDIAG verdict=stagnation_captured

@@ -1,0 +1,194 @@
+{
+  "run_id": "40083901101",
+  "solver": "build/cfdx_production_solver",
+  "mesh": [
+    320,
+    64
+  ],
+  "max_iterations": 3000,
+  "momentum_trace_cells": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    640,
+    641,
+    642,
+    643,
+    644,
+    10240,
+    10241,
+    10242,
+    10243,
+    10244,
+    10560,
+    10561,
+    10562,
+    10563,
+    10564,
+    19520,
+    19521,
+    19522,
+    19523,
+    19524,
+    20160,
+    20161,
+    20162,
+    20163,
+    20164
+  ],
+  "alpha_ab": {
+    "arm_alpha_u": {
+      "trace_alpha0p4": 0.4,
+      "trace_alpha0p7": "default"
+    },
+    "only_variable": "alpha_u"
+  },
+  "prolonged": {
+    "debug_cell_arg": "10561",
+    "iterations": 3000,
+    "stop_reason": "maximum nonlinear iteration count reached without satisfying all gates",
+    "converged_marker": false,
+    "stagnation_window_override": 100000
+  },
+  "solves": [
+    {
+      "debug_cell_arg": "auto",
+      "returncode": 1,
+      "converged_marker": false,
+      "microscope_present": true,
+      "microscope_complete": true,
+      "microscope_cell": 10561,
+      "convergence_status": 2,
+      "iterations": 22,
+      "stop_reason": "flat residual envelope over the configured stagnation window",
+      "json_artifacts": [
+        "convergence",
+        "execution"
+      ],
+      "momtrace_lines": 0,
+      "stagnation_reproduced": true
+    },
+    {
+      "debug_cell_arg": "0",
+      "returncode": 1,
+      "converged_marker": false,
+      "microscope_present": true,
+      "microscope_complete": true,
+      "microscope_cell": 0,
+      "convergence_status": 2,
+      "iterations": 22,
+      "stop_reason": "flat residual envelope over the configured stagnation window",
+      "json_artifacts": [
+        "convergence",
+        "execution"
+      ],
+      "momtrace_lines": 0,
+      "stagnation_reproduced": true
+    },
+    {
+      "debug_cell_arg": "10241",
+      "returncode": 1,
+      "converged_marker": false,
+      "microscope_present": true,
+      "microscope_complete": true,
+      "microscope_cell": 10241,
+      "convergence_status": 2,
+      "iterations": 22,
+      "stop_reason": "flat residual envelope over the configured stagnation window",
+      "json_artifacts": [
+        "convergence",
+        "execution"
+      ],
+      "momtrace_lines": 0,
+      "stagnation_reproduced": true
+    },
+    {
+      "debug_cell_arg": "10240",
+      "returncode": 1,
+      "converged_marker": false,
+      "microscope_present": true,
+      "microscope_complete": true,
+      "microscope_cell": 10240,
+      "convergence_status": 2,
+      "iterations": 22,
+      "stop_reason": "flat residual envelope over the configured stagnation window",
+      "json_artifacts": [
+        "convergence",
+        "execution"
+      ],
+      "momtrace_lines": 0,
+      "stagnation_reproduced": true
+    },
+    {
+      "debug_cell_arg": "10561",
+      "returncode": 1,
+      "converged_marker": false,
+      "microscope_present": true,
+      "microscope_complete": true,
+      "microscope_cell": 10561,
+      "convergence_status": 2,
+      "iterations": 22,
+      "stop_reason": "flat residual envelope over the configured stagnation window",
+      "json_artifacts": [
+        "convergence",
+        "execution"
+      ],
+      "momtrace_lines": 660,
+      "stagnation_reproduced": true
+    },
+    {
+      "debug_cell_arg": "10561",
+      "returncode": 1,
+      "converged_marker": false,
+      "microscope_present": true,
+      "microscope_complete": true,
+      "microscope_cell": 10561,
+      "convergence_status": 2,
+      "iterations": 25,
+      "stop_reason": "flat residual envelope over the configured stagnation window",
+      "json_artifacts": [
+        "convergence",
+        "execution"
+      ],
+      "momtrace_lines": 720,
+      "stagnation_reproduced": true
+    },
+    {
+      "debug_cell_arg": "10561",
+      "returncode": 1,
+      "converged_marker": false,
+      "microscope_present": true,
+      "microscope_complete": true,
+      "microscope_cell": 10561,
+      "convergence_status": 2,
+      "iterations": 22,
+      "stop_reason": "flat residual envelope over the configured stagnation window",
+      "json_artifacts": [
+        "convergence",
+        "execution"
+      ],
+      "momtrace_lines": 660,
+      "stagnation_reproduced": true
+    },
+    {
+      "debug_cell_arg": "10561",
+      "returncode": 1,
+      "converged_marker": false,
+      "microscope_present": true,
+      "microscope_complete": true,
+      "microscope_cell": 10561,
+      "convergence_status": 4,
+      "iterations": 3000,
+      "stop_reason": "maximum nonlinear iteration count reached without satisfying all gates",
+      "json_artifacts": [
+        "convergence",
+        "execution"
+      ],
+      "momtrace_lines": 1500,
+      "stagnation_reproduced": false
+    }
+  ],
+  "verdict": "stagnation_captured"
+}

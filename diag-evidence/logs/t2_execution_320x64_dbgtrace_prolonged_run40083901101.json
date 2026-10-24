@@ -1,0 +1,13 @@
+{
+  "format": "CFDX-EXECUTION",
+  "schema_version": 1,
+  "process_exit_code": 1,
+  "converged": false,
+  "iterations": 3000,
+  "convergence_status": 4,
+  "convergence_reason": "maximum nonlinear iteration count reached without satisfying all gates",
+  "artifacts": {
+    "restart_dat": true,
+    "convergence_json": true
+  }
+}
