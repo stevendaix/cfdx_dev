@@ -270,6 +270,7 @@ int main()
             Vector x(2);
             x(0)=x0; x(1)=x1;
             ScalarSolveControls controls{20,1e-3,1.0};
+            controls.problem=cfdx::core::LinearProblemKind::Diffusion;
             controls.linear_solver.krylov=cfdx::core::KrylovModel::CG;
             controls.linear_solver.preconditioner=cfdx::core::PreconditionerModel::Jacobi;
             controls.linear_solver.scaling=scaling;
@@ -302,6 +303,7 @@ int main()
         eq.rhs=Vector(2); eq.rhs(0)=0.5; eq.rhs(1)=0.5;
         Vector x(2,0.0);
         ScalarSolveControls controls{20,1e-12,0.25};
+        controls.problem=cfdx::core::LinearProblemKind::Diffusion;
         controls.linear_solver.krylov=cfdx::core::KrylovModel::CG;
         controls.linear_solver.preconditioner=cfdx::core::PreconditionerModel::Jacobi;
         const auto result=solve_scalar_equation(eq,x,controls);
