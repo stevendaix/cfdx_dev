@@ -111,6 +111,8 @@ Le noyau SST, certains chemins transactionnels de production, les stages énergi
 
 | `8a4accbf2eb846449463a16db174c6d6f0b12330` | `tests/unit/test_turbulence_qualification_equations.cpp` | Corrigée une erreur de portée détectée par le premier Fast Guard : le test du cas νt=0 utilise maintenant sa propre valeur de strain. | Fast Guard initial en échec sur ce défaut de compilation ; correction poussée, CI relancée sur le HEAD courant. | CORRIGÉ — revalidation en cours |
 
+| `6ef95ee36b3870498f366429f71c483dbf500aa4` | `tests/validation/test_cht_validation.cpp` | Étendu le test négatif aux conductivités NaN, infinie, nulles et contradictoires ; chaque rejet vérifie que T1/T2 restent inchangées. | Revue statique faite ; exécution CTest sur le HEAD final encore attendue. | EN COURS |
+
 **Décision TR-01 :** correction proposée dans une branche fondée sur le `master` courant. Les PR #1094 et #1099 sont des variantes historiques concurrentes ; leurs HEAD ne sont pas utilisés directement car ils ont divergé du `master`. Cette implémentation doit passer CI avant d'être considérée intégrée.
 
 **État des preuves :** aucune preuve physique SST n'est revendiquée par ces deux tests algébriques. N9/qualification physique ne doivent pas être considérés comme réussis du seul fait que le test d'équation passe.
