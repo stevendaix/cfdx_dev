@@ -1,6 +1,7 @@
 // M0.7-T01 — Tests for Gauss gradient
 
 #include "cfdx/core/numerics/gradient.h"
+#include "cfdx/core/numerics/laplacian.h"
 #include "cfdx/core/numerics/gradient_boundary.h"
 #include "cfdx/core/fvm/least_squares_gradient.h"
 #include "cfdx/core/mesh/mesh.h"
@@ -590,6 +591,29 @@ int main() {
                 phi, m, GradientWeighting::INVERSE_DISTANCE_SQUARED,
                 std::numeric_limits<double>::infinity(),
                 BoundaryGradientPolicy::EXCLUDE_BOUNDARY),
+            std::runtime_error);
+    });
+
+    run_case("cell_gradient_propagates_explicit_wls_boundary_policy", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 3.0;
+        const auto geometry = make_geometry_cache(m);
+        EXPECT_THROW(
+            cell_gradient(phi, m, geometry, GradientScheme::WEIGHTED_LEAST_SQUARES,
+                          BoundaryGradientPolicy::EXCLUDE_BOUNDARY),
+            std::runtime_error);
+    });
+
+    run_case("corrected_laplacian_propagates_explicit_wls_boundary_policy", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 3.0;
+        const auto geometry = make_geometry_cache(m);
+        EXPECT_THROW(
+            compute_laplacian(phi, m, geometry, LaplacianScheme::CORRECTED, 0.5,
+                              GradientScheme::WEIGHTED_LEAST_SQUARES,
+                              BoundaryGradientPolicy::EXCLUDE_BOUNDARY),
             std::runtime_error);
     });
 
