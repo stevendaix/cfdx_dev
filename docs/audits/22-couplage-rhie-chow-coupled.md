@@ -67,15 +67,17 @@ Le bloc de continuité doit assembler la même compensation, ici différée au n
 ## 9. Evidence update — 2026-10-24
 
 Added regression coverage on the COUPLED physical-velocity flux contract:
-- affine pressure with constant velocity on a rectilinear but nonuniform four-cell mesh, with compatible fixed-pressure inlet/outlet and zero-gradient walls;
-- independent face-level pressure-jump/gradient-compensation oracle on every internal face;
-- cellwise divergence of the authoritative reconstructed flux for the constant-velocity manufactured state;
-- pressure-gauge invariance on the COUPLED path for zero-gradient walls and a separate fixed-pressure-boundary test where the boundary pressure is shifted consistently.
+- affine pressure / constant velocity on a nonuniform four-cell mesh, with compatible fixed-pressure inlet/outlet and zero-gradient walls;
+- independent face-level pressure-jump/gradient-compensation oracle on each internal face;
+- cellwise divergence of the authoritative reconstructed flux;
+- pressure-gauge invariance on the COUPLED path, for both zero-gradient walls and fixed-pressure boundaries with consistently shifted boundary values;
+- explicit H/A and physical-velocity APIs, with a direct comparison showing their difference equals the specified compensation;
+- an actual coupled block solve on the nonuniform mesh, capturing the production matrix/RHS and comparing every continuity-row residual against the independently reconstructed authoritative flux divergence;
+- a manufactured recovery gate starting from exact constant velocity and incorrect pressure, checking recovery of \(\mathbf U=(2,0,0)\) and \(p=1+2x\);
+- a quantitative checkerboard central-face test comparing naive interpolated flux (0) with pressure-jump-corrected flux (-2).
 
-Still required before promotion:
-- the exact production matrix/RHS evidence hook now supports a cellwise comparison of the assembled continuity block residual against independently reconstructed authoritative flux divergence after an actual block solve;
-- the nonuniform-mesh block test now starts from exact constant velocity and incorrect pressure, then checks recovery of the manufactured solution U=(2,0,0), p=1+2x after one coupled solve; this new recovery gate is awaiting exact-HEAD CI.
-- the checkerboard central-face test now quantifies the naive interpolated flux (0) versus the pressure-jump-corrected flux (-2) and checks both named contracts; a grid-level pressure-mode amplitude/suppression metric remains to be added;
-- explicit regression that SIMPLE/SIMPLEC retain the H/A predictor contract. The call sites now use named APIs (make_rhie_chow_flux_from_hbya / make_rhie_chow_flux_from_physical_velocity), and the nonuniform affine test compares the two contracts directly.
+Remaining before promotion:
+- a grid-level checkerboard pressure-mode amplitude/suppression metric rather than a single-face response;
+- an explicit end-to-end regression proving the production SIMPLE/SIMPLEC solver continues to call the H/A predictor API and COUPLED calls the physical-velocity API.
 
-These additions improve the operator-level evidence but do not yet establish the complete coupled block contract or physical qualification. Keep the PR draft until the remaining independent checks and exact-HEAD CI pass.
+These additions strengthen the operator-level and block-level evidence, but the exact-HEAD Release/DebugSanitizers and numerical maturity campaigns must pass before promotion. Keep the PR draft until those results are green.
