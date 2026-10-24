@@ -421,8 +421,11 @@ int main()
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
         Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
         for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
-            U.set(cell, 1.8, 0.0, 0.0);
-            p(cell) = 1.0 + 2.0 * geometry.cell_centres[cell].x;
+            // Manufactured solution: U=(2,0,0), p=1+2x, body force=(2,0,0).
+            // Start with the exact velocity but a deliberately incorrect
+            // pressure field so the coupled block must recover the pressure.
+            U.set(cell, 2.0, 0.0, 0.0);
+            p(cell) = 0.0;
         }
 
         VelocityBoundaryConditions ubc;
@@ -459,6 +462,12 @@ int main()
         const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, controls);
         EXPECT_TRUE(captured);
         EXPECT_TRUE(result.authoritative_mass_flux.size() == mesh.n_faces());
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+            EXPECT_NEAR(U.component_data(0)[cell], 2.0, 1e-8);
+            EXPECT_NEAR(U.component_data(1)[cell], 0.0, 1e-8);
+            EXPECT_NEAR(U.component_data(2)[cell], 0.0, 1e-8);
+            EXPECT_NEAR(p(cell), 1.0 + 2.0 * geometry.cell_centres[cell].x, 1e-8);
+        }
 
         const std::size_t nc = mesh.n_cells();
         Vector x(4 * nc, 0.0);
