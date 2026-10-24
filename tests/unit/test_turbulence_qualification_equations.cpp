@@ -85,6 +85,32 @@ int main() {
         EXPECT_CLOSE(q.nut,nut); EXPECT_CLOSE(q.sk,P);        EXPECT_CLOSE(q.spk,-c.density*c.beta_star*omega);        EXPECT_CLOSE(q.sw,blend(c.gamma1,c.gamma2)*c.density*S*S+std::max(cross_term,0.0));        EXPECT_CLOSE(q.spw,-c.density*blend(c.beta1,c.beta2)*omega+std::min(cross_term,0.0)/omega);        EXPECT_CLOSE(q.gamma_k,c.density*(c.molecular_viscosity+blend(c.sst_sigma_k1,c.sst_sigma_k2)*nut));        EXPECT_CLOSE(q.gamma_w,c.density*(c.molecular_viscosity+blend(c.sst_sigma_w1,c.sst_sigma_w2)*nut));
     }
 
+    // SST-2003 active-limiter oracle: the same limited production must be
+    // used by both k and omega transport, not the unbounded rho*S^2 term.
+    {
+        const double active_strain=100.0;
+        const auto limited=sst_cell_sources(k,omega,active_strain,0.3,0.8,0.0,c);
+        const double expected_nut=c.a1*k/std::max(c.a1*omega,active_strain*0.8);
+        const double expected_pk=std::min(
+            c.density*expected_nut*active_strain*active_strain,
+            c.sst_production_limiter*c.beta_star*c.density*k*omega);
+        const double gamma=0.3*c.gamma1+0.7*c.gamma2;
+        EXPECT_CLOSE(limited.nut,expected_nut);
+        EXPECT_CLOSE(limited.sk,expected_pk);
+        EXPECT_CLOSE(limited.sw,gamma*expected_pk/expected_nut);
+        EXPECT_CLOSE(limited.sw,551.2258064516129);
+        if(!std::isfinite(limited.sw))
+            throw std::runtime_error("SST limited omega production is non-finite");
+    }
+    {
+        auto zero_controls=c;
+        zero_controls.k_min=0.0;
+        const auto zero=sst_cell_sources(0.0,omega,active_strain,0.3,0.8,0.0,zero_controls);
+        EXPECT_CLOSE(zero.nut,0.0);
+        EXPECT_CLOSE(zero.sk,0.0);
+        EXPECT_CLOSE(zero.sw,0.0);
+    }
+
     c.model=TurbulenceModel::SPALART_ALLMARAS;
     {
         SpalartAllmarasModel sa;
