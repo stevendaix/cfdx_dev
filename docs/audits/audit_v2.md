@@ -68,6 +68,8 @@ Cette section est le journal vivant de reprise. Elle complète les statuts histo
 | #1111 | F26 — normalisation du terme source P1, porté sur master courant | CI en cours sur HEAD `e68b2056ec910d2fbc757dbc05137e11766136c7`. Oracle indépendant : source sans irradiation égale à (4\sigma T^4), et source nulle lorsque (J=I_b). Aucune fusion avant CI verte. |
 
 
+
+| #1115 | F30 — estimateur de facteurs de forme S2S | Port courant : diagonale strictement nulle, réciprocité surfacique conservée, tests sur surfaces d'aires égales/inégales et validation par le consommateur S2S. CI en attente sur le HEAD final ; les rangées non fermées sont interprétées comme échange avec l'espace ouvert non modélisé, pas comme une qualification d'enceinte fermée. |
 | #1114 | F27 — contrat de courbure VOF | Port courant de la correction : l'API accepte explicitement les dérivées (\partial_x n_x,\partial_y n_y,\partial_z n_z), supprime l'ancien stencil ambigu et teste les cas plan/cercle/sphère. CI en attente sur HEAD `4c42092a8bdb9e3871ace2ce8a1aa06b78e6f8c3`. Limite déclarée : ne qualifie pas une chaîne de reconstruction VOF multidimensionnelle complète. |
 | #1113 | F25 — suppression de la surcharge SST ambiguë | Correctif porté sur master courant : surcharge historique supprimée au niveau compilation, appels tests/benchmarks migrés vers l'API avec strain-rate explicite, oracle numérique indépendant. CI exacte en attente sur HEAD `6f23e7dbd42d2b91d3d19b47d95ba43e0910625f`. |
 | #1112 | Gate d'audit — rapports vs fiches méthode | PR créée sur master courant ; liste d'exclusion explicite limitée aux rapports `audit_v2.md` et `turbulence.md`, sans relâcher les exigences des fiches méthode. CI en attente sur HEAD `9dceab6781871e70a5fcd69c126e85e26c47648b`. |
