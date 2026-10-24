@@ -112,6 +112,18 @@ inline ChtSolveResult solve_two_region_cht(
     const ScalarBoundaryConditions& bcs2 = {})
 {
     const auto pairs=match_cht_interface(mesh1,g1,mesh2,g2,controls);
+    validate_energy_controls(energy1);
+    validate_energy_controls(energy2);
+    const auto conductivity_matches = [](double interface_k, double region_k) {
+        if (!std::isfinite(interface_k) || !std::isfinite(region_k))
+            return false;
+        const double scale = std::max({1.0, std::abs(interface_k), std::abs(region_k)});
+        return std::abs(interface_k-region_k) <= 1e-12*scale;
+    };
+    if (!conductivity_matches(controls.conductivity1, energy1.conductivity) ||
+        !conductivity_matches(controls.conductivity2, energy2.conductivity))
+        throw std::invalid_argument(
+            "CHT interface conductivity must match the conductivity used by each energy region");
     ChtSolveResult result;
     std::vector<double> previous_interface_temperature(pairs.size(), std::numeric_limits<double>::quiet_NaN());
 
