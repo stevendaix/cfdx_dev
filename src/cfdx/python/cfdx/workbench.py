@@ -57,8 +57,8 @@ except ImportError:  # pragma: no cover
 if QMainWindow is not object:
     from .gui_3d import PyVistaQtView
     from .mesh_browser_panel import MeshBrowserPanel
-    from .properties_panel import PropertiesPanel
     from .probes_panel import ProbesPanel
+    from .properties_panel import PropertiesPanel
     from .results_panel import ResultsPanel
     from .run_center_panel import RunCenterPanel
     from .setup_panel import CaseSetupPanel
