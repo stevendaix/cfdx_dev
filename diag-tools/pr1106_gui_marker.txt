@@ -1,5 +1,7 @@
-pr1106 gui oracle trigger marker round 1b
+pr1106 gui oracle trigger marker round 2
 pr=1106
-pr_head=aa06b7a45dae39c9c7533c5612ccb5cc009c19e9
-stamp=2026-10-24-g4r1
-retrigger=marker-only push (workflow file already on branch)
+pr_head=d60a9d9a48e033d8bf481cc1bc0de0d13640a464
+pr_base=09be5d1bfc913bf2b73571b965d55c2bf9fabce1
+stamp=2026-10-24-g4r2
+phase=g4-gui-diagnose-round2
+trigger=push-without-ci-skip

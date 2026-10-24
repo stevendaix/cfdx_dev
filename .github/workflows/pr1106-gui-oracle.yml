@@ -18,9 +18,9 @@ jobs:
     timeout-minutes: 25
     env:
       EVID: diag-evidence/logs
-      PR_BASE: e9ed6f3317b90a88cfbfbb356a0cedc35c3b6d3d
-      PR_HEAD: aa06b7a45dae39c9c7533c5612ccb5cc009c19e9
-      STAMP: 2026-10-24-g4r1
+      PR_BASE: 09be5d1bfc913bf2b73571b965d55c2bf9fabce1
+      PR_HEAD: d60a9d9a48e033d8bf481cc1bc0de0d13640a464
+      STAMP: 2026-10-24-g4r2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,7 +29,7 @@ jobs:
       - name: Fetch pinned PR refs and create worktree
         run: |
           mkdir -p "$GITHUB_WORKSPACE/$EVID"
-          git fetch origin "$PR_BASE" "$PR_HEAD"
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
           git worktree add "$RUNNER_TEMP/ref" "$PR_HEAD"
           cd "$RUNNER_TEMP/ref"
           git log -1 --format='%H %s' | tee "$GITHUB_WORKSPACE/$EVID/pr1106_gui_head_$STAMP.txt"
@@ -91,7 +91,7 @@ jobs:
             echo "pr=1106"
             echo "pr_head=$PR_HEAD"
             echo "pr_base=$PR_BASE"
-            echo "phase=g4-gui-diagnose-round1"
+            echo "phase=g4-gui-diagnose-round2"
             echo "ci_failure_job=GUI / Qt / PyVista (headless)"
           } > "$E/pr1106_gui_meta_$STAMP.txt"
 
@@ -104,6 +104,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: PR 1106 GUI diagnosis evidence (2026-10-24) [ci skip]"
+            git commit -m "diag: PR 1106 GUI diagnosis evidence round 2 (2026-10-24) [ci skip]"
             (git push || (git pull --rebase && git push))
           fi
