@@ -296,6 +296,7 @@ inline SolverResult solve_cg_impl(
                 result.last_residual_replacement = iter;
                 residual_at_last_replacement = res;
                 for (std::size_t i = 0; i < n; ++i) r[i] = rv(i);
+                if (null_space) null_space->remove(r);
                 if (!apply_preconditioner()) {
                     result.status = SolverStatus::NOT_APPLICABLE;
                     result.iterations = iter;
