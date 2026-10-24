@@ -125,6 +125,8 @@ Le noyau SST, certains chemins transactionnels de production, les stages énergi
 
 | `5a8c290107c3ea3910f014014d088371ab155daa` | `src/cfdx/physics/cht_solver.h` | La détection des IDs dupliqués de région 2 est linéaire en nombre de faces (vecteur de présence), et rejette aussi les IDs hors limites avant indexation. | Revue statique ; CI sur le HEAD final en attente. | EN COURS |
 
+| `bd5022f9f635fd0f18fa1b1e71c474b5a3acdcef` | `tests/validation/test_level_c_coupled_verification.cpp` | Le test CHT de niveau C utilise deux régions adjacentes et des normales opposées au lieu de deux cubes superposés ; les conditions aux limites couvrent désormais aussi `y_max`. | Revue statique ; CI sur le HEAD final attendue. | EN COURS |
+
 **Décision TR-01 :** correction proposée dans une branche fondée sur le `master` courant. Les PR #1094 et #1099 sont des variantes historiques concurrentes ; leurs HEAD ne sont pas utilisés directement car ils ont divergé du `master`. Cette implémentation doit passer CI avant d'être considérée intégrée.
 
 **État des preuves :** aucune preuve physique SST n'est revendiquée par ces deux tests algébriques. N9/qualification physique ne doivent pas être considérés comme réussis du seul fait que le test d'équation passe.
