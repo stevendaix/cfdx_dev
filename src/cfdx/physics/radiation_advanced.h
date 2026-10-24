@@ -852,7 +852,8 @@ inline RosselandSolveResult solve_rosseland_energy(
             enthalpy_face_flux(mass_flux,energy_controls.cp);
         auto eq=assemble_scalar_equation(
             mesh,geometry,enthalpy_flux,0.0,su,sp,bcs,true,nullptr,
-            &transient_diag,&transient_rhs,&conductivity_values);
+            &transient_diag,&transient_rhs,&conductivity_values,
+            ConvectionScheme::UPWIND,&temperature);
 
         cfdx::core::Vector candidate(mesh.n_cells(),0.0);
         for(std::size_t c=0;c<mesh.n_cells();++c) candidate(c)=temperature(c);
@@ -1008,8 +1009,9 @@ inline RadiationSolveResult solve_participating_radiation_variable_properties(
                       p.scattering*G[c]/(4.0*M_PI);
                 sp(c)=-(p.absorption+p.scattering);
             }
-            auto eq=assemble_scalar_equation(mesh,geometry,directional_flux,0.0,
-                                             su,sp,wall_intensity_bcs,true);
+            auto eq=assemble_scalar_equation(
+                mesh,geometry,directional_flux,0.0,su,sp,wall_intensity_bcs,true,
+                nullptr,nullptr,nullptr,nullptr,ConvectionScheme::UPWIND,&I[m]);
             cfdx::core::Vector candidate(nc,0.0);
             for(std::size_t c=0;c<nc;++c) candidate(c)=I[m](c);
             ScalarSolveControls sc;
