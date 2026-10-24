@@ -841,6 +841,11 @@ inline double rhie_chow_pressure_flux_internal(
         non_orthogonal_flux);
 }
 
+enum class RhieChowVelocityContract {
+    HBYA_PREDICTOR,
+    PHYSICAL_VELOCITY
+};
+
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
 make_rhie_chow_mass_flux(
     const cfdx::core::Mesh& mesh,
@@ -851,7 +856,8 @@ make_rhie_chow_mass_flux(
     double rho,
     const VelocityBoundaryConditions& bcs,
     const ScalarBoundaryConditions& pressure_bcs = {},
-    bool coupled_physical_velocity = false)
+    RhieChowVelocityContract velocity_contract =
+        RhieChowVelocityContract::HBYA_PREDICTOR)
 ;
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
@@ -879,9 +885,11 @@ make_rhie_chow_mass_flux(
     double rho,
     const VelocityBoundaryConditions& bcs,
     const ScalarBoundaryConditions& pressure_bcs,
-    bool coupled_physical_velocity)
+    RhieChowVelocityContract velocity_contract)
 {
     using namespace cfdx::core;
+    const bool coupled_physical_velocity =
+        velocity_contract == RhieChowVelocityContract::PHYSICAL_VELOCITY;
     const auto& own = mesh.ownership();
     if (p.size() != mesh.n_cells())
         throw std::invalid_argument("make_rhie_chow_mass_flux: field size mismatch");
@@ -1005,6 +1013,38 @@ make_rhie_chow_mass_flux(
         flux(f) = rho * Hf.dot(geometry.face_area_vectors[f]) - correction;
     }
     return flux;
+}
+
+inline cfdx::core::Field<double, cfdx::core::Location::FACE>
+make_rhie_chow_flux_from_hbya(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& h_by_a,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
+    const std::array<std::vector<double>, 3>& rAU,
+    double rho,
+    const VelocityBoundaryConditions& bcs,
+    const ScalarBoundaryConditions& pressure_bcs = {})
+{
+    return make_rhie_chow_mass_flux(
+        mesh, geometry, h_by_a, p, rAU, rho, bcs, pressure_bcs,
+        RhieChowVelocityContract::HBYA_PREDICTOR);
+}
+
+inline cfdx::core::Field<double, cfdx::core::Location::FACE>
+make_rhie_chow_flux_from_physical_velocity(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& physical_velocity,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
+    const std::array<std::vector<double>, 3>& rAU,
+    double rho,
+    const VelocityBoundaryConditions& bcs,
+    const ScalarBoundaryConditions& pressure_bcs = {})
+{
+    return make_rhie_chow_mass_flux(
+        mesh, geometry, physical_velocity, p, rAU, rho, bcs, pressure_bcs,
+        RhieChowVelocityContract::PHYSICAL_VELOCITY);
 }
 
 inline ScalarEquation assemble_momentum_component(
@@ -3063,18 +3103,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 coupled_rAU[1][c] = 1.0 / ey.diagonal[c];
                 coupled_rAU[2][c] = 1.0 / ez.diagonal[c];
             }
-            mass_flux = make_rhie_chow_mass_flux(
+            mass_flux = make_rhie_chow_flux_from_physical_velocity(
                 mesh, geometry, U, p, coupled_rAU,
-                controls.density, velocity_bcs, pressure_bcs, true);
+                controls.density, velocity_bcs, pressure_bcs);
 
             // Operator identity audit: re-derive the authoritative flux from
             // the same state through the same production call and compare
             // against the stored field. Zero unless the stored flux was
             // mutated after the rebuild.
             {
-                const auto rederived_flux = make_rhie_chow_mass_flux(
+                const auto rederived_flux = make_rhie_chow_flux_from_physical_velocity(
                     mesh, geometry, U, p, coupled_rAU,
-                    controls.density, velocity_bcs, pressure_bcs, true);
+                    controls.density, velocity_bcs, pressure_bcs);
                 for (std::size_t f = 0; f < mesh.n_faces(); ++f)
                     rhie_chow_identity_audit_linf = std::max(
                         rhie_chow_identity_audit_linf,
