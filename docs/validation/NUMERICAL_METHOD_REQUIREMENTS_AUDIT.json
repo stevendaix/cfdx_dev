@@ -162,10 +162,13 @@
     {
       "package_id": "N3",
       "requirement": "corrected non-orthogonal diffusion",
-      "status": "qualified",
+      "status": "partial",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
-        "src/cfdx/core/numerics/laplacian.h"
+        "src/cfdx/core/numerics/laplacian.h",
+        "src/cfdx/physics/finite_volume_transport.h",
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
+        "docs/audits/24-nonorthogonal-transport-diffusion.md"
       ]
     },
     {
@@ -189,11 +192,13 @@
     {
       "package_id": "N3",
       "requirement": "skewness correction contract",
-      "status": "qualified",
+      "status": "partial",
       "evidence": [
         "src/cfdx/core/numerics/laplacian.h",
         "tests/unit/test_laplacian.cpp",
-        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp"
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
+        "src/cfdx/physics/finite_volume_transport.h",
+        "docs/audits/24-nonorthogonal-transport-diffusion.md"
       ]
     },
     {
@@ -1309,6 +1314,16 @@
       "status": "planned",
       "evidence": [],
       "note": "No distinct production implementation evidenced on the current tree; classification/implementation is deferred pending N9 Schur-family integration review."
+    },
+    {
+      "package_id": "N3",
+      "requirement": "transport diffusion flux assembly/reconstruction parity",
+      "status": "partial",
+      "evidence": [
+        "src/cfdx/physics/finite_volume_transport.h",
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
+        "docs/audits/24-nonorthogonal-transport-diffusion.md"
+      ]
     }
   ]
 }
