@@ -1,0 +1,47 @@
+PIE810 Call `startswith` once with a `tuple`
+  --> src/cfdx/python/cfdx/application/properties.py:43:8
+   |
+41 |     if stable_id is None:
+42 |         return ()
+43 |     if stable_id.startswith("region:") or stable_id.startswith("patch:"):
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+44 |         if catalog is None:
+45 |             return ()
+   |
+help: Merge into a single `startswith` call
+   |
+42 |         return ()
+   -     if stable_id.startswith("region:") or stable_id.startswith("patch:"):
+43 +     if stable_id.startswith(("region:", "patch:")):
+44 |         if catalog is None:
+   |
+note: This is an unsafe fix and may change runtime behavior
+
+I001 [*] Import block is un-sorted or un-formatted
+ --> tests/python/test_application_properties.py:1:1
+  |
+1 | / import pytest
+2 | |
+3 | | from cfdx import CFDXSession
+4 | | from cfdx.application import Application, WorkflowStatus
+5 | | from cfdx.mesh_model import MeshCatalog, MeshPatch, MeshRegion
+6 | | from cfdx.selection import face_selection_id, patch_selection_id
+7 | | from cfdx.setup_model import ParameterType, SetupDiagnostic
+  | |___________________________________________________________^
+help: Organize imports
+  |
+1 | import pytest
+2 + from cfdx.mesh_model import MeshCatalog, MeshPatch, MeshRegion
+3 + from cfdx.selection import face_selection_id, patch_selection_id
+4 + from cfdx.setup_model import ParameterType, SetupDiagnostic
+5 |
+6 | from cfdx import CFDXSession
+7 | from cfdx.application import Application, WorkflowStatus
+  - from cfdx.mesh_model import MeshCatalog, MeshPatch, MeshRegion
+  - from cfdx.selection import face_selection_id, patch_selection_id
+  - from cfdx.setup_model import ParameterType, SetupDiagnostic
+8 |
+  |
+
+Found 2 errors.
+[*] 1 fixable with `--fix` (1 unsafe fix available with `--fix --unsafe-fixes`).

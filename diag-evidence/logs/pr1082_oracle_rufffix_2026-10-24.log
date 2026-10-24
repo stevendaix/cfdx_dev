@@ -1,0 +1,21 @@
+PIE810 Call `startswith` once with a `tuple`
+  --> src/cfdx/python/cfdx/application/properties.py:43:8
+   |
+41 |     if stable_id is None:
+42 |         return ()
+43 |     if stable_id.startswith("region:") or stable_id.startswith("patch:"):
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+44 |         if catalog is None:
+45 |             return ()
+   |
+help: Merge into a single `startswith` call
+   |
+42 |         return ()
+   -     if stable_id.startswith("region:") or stable_id.startswith("patch:"):
+43 +     if stable_id.startswith(("region:", "patch:")):
+44 |         if catalog is None:
+   |
+note: This is an unsafe fix and may change runtime behavior
+
+Found 2 errors (1 fixed, 1 remaining).
+1 unsafe fix available with `--fix --unsafe-fixes`.

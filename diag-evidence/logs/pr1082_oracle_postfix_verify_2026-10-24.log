@@ -1,0 +1,57 @@
+== ruff check (after fix) ==
+PIE810 Call `startswith` once with a `tuple`
+  --> src/cfdx/python/cfdx/application/properties.py:43:8
+   |
+41 |     if stable_id is None:
+42 |         return ()
+43 |     if stable_id.startswith("region:") or stable_id.startswith("patch:"):
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+44 |         if catalog is None:
+45 |             return ()
+   |
+help: Merge into a single `startswith` call
+   |
+42 |         return ()
+   -     if stable_id.startswith("region:") or stable_id.startswith("patch:"):
+43 +     if stable_id.startswith(("region:", "patch:")):
+44 |         if catalog is None:
+   |
+note: This is an unsafe fix and may change runtime behavior
+
+Found 1 error.
+1 unsafe fix available with `--fix --unsafe-fixes`.
+RUFF_CHECK_RED
+== ruff format --check (after fix) ==
+6 files already formatted
+RUFF_FORMAT_GREEN
+== full pre-commit run (after fix) ==
+Ruff check...............................................................Failed
+- hook id: ruff-check
+- exit code: 1
+
+PIE810 Call `startswith` once with a `tuple`
+  --> src/cfdx/python/cfdx/application/properties.py:43:8
+   |
+41 |     if stable_id is None:
+42 |         return ()
+43 |     if stable_id.startswith("region:") or stable_id.startswith("patch:"):
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+44 |         if catalog is None:
+45 |             return ()
+   |
+help: Merge into a single `startswith` call
+   |
+42 |         return ()
+   -     if stable_id.startswith("region:") or stable_id.startswith("patch:"):
+43 +     if stable_id.startswith(("region:", "patch:")):
+44 |         if catalog is None:
+   |
+note: This is an unsafe fix and may change runtime behavior
+
+Found 1 error.
+1 unsafe fix available with `--fix --unsafe-fixes`.
+All checks passed!
+
+Ruff format check........................................................Passed
+CFDX fast build/test guards..............................................Passed
+PRECOMMIT_RED

@@ -1,0 +1,1 @@
+133a7b477a4dd72a4da91dea8a68e467ae877e39 feat(gui): typed contextual property inspector (Lot 2, G2)
