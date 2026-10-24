@@ -4,6 +4,7 @@
 #include "cfdx/physics/thermal.h"
 #include "cfdx/physics/radiation.h"
 #include "cfdx/physics/radiation_advanced.h"
+#include "cfdx/physics/m1_m4_models.h"
 #include "common/test_harness.h"
 #include <cmath>
 #include <limits>
