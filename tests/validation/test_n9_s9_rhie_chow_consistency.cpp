@@ -290,8 +290,8 @@ int main()
         pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
 
         const auto rAU = unit_rAU(mesh.n_cells());
-        const auto phi = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p, rAU, 1.0, ubc, pbc, true);
+        const auto phi = make_rhie_chow_flux_from_physical_velocity(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
         const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
         const auto grad_p_discrete = gauss_gradient_with_boundary(
             p, mesh, geometry, pbc);
@@ -335,10 +335,10 @@ int main()
         const auto rAU = unit_rAU(mesh.n_cells());
         // Exercise the COUPLED physical-velocity contract, not the default
         // segregated H/A contract, for this pressure-gauge invariance check.
-        const auto phi0 = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p0, rAU, 1.0, ubc, pbc, true);
-        const auto phi1 = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p1, rAU, 1.0, ubc, pbc, true);
+        const auto phi0 = make_rhie_chow_flux_from_physical_velocity(
+            mesh, geometry, U, p0, rAU, 1.0, ubc, pbc);
+        const auto phi1 = make_rhie_chow_flux_from_physical_velocity(
+            mesh, geometry, U, p1, rAU, 1.0, ubc, pbc);
 
         for (std::size_t f = 0; f < mesh.n_faces(); ++f)
             EXPECT_NEAR(phi0(f), phi1(f), 1e-12);
@@ -429,10 +429,10 @@ int main()
         pbc1["wall"] = {ScalarBoundaryType::FIXED_VALUE, gauge_shift, 0.0};
 
         const auto rAU = unit_rAU(mesh.n_cells());
-        const auto phi0 = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p0, rAU, 1.0, ubc, pbc0, true);
-        const auto phi1 = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p1, rAU, 1.0, ubc, pbc1, true);
+        const auto phi0 = make_rhie_chow_flux_from_physical_velocity(
+            mesh, geometry, U, p0, rAU, 1.0, ubc, pbc0);
+        const auto phi1 = make_rhie_chow_flux_from_physical_velocity(
+            mesh, geometry, U, p1, rAU, 1.0, ubc, pbc1);
         for (std::size_t f = 0; f < mesh.n_faces(); ++f)
             EXPECT_NEAR(phi0(f), phi1(f), 1e-12);
     });
