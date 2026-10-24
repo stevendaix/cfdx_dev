@@ -1,0 +1,4 @@
+pr1106 gui oracle trigger marker round 1
+pr=1106
+pr_head=aa06b7a45dae39c9c7533c5612ccb5cc009c19e9
+stamp=2026-10-24-g4r1
