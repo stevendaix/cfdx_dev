@@ -113,7 +113,7 @@ def test_face_selection_id_rejects_invalid_inputs() -> None:
 
     with pytest.raises(ValueError, match="invalid selection stable id"):
         face_selection_id("patch:inlet", -1)
-    with pytest.raises(ValueError, match="invalid selection stable id"):
+    with pytest.raises(TypeError, match="invalid selection stable id"):
         face_selection_id("patch:inlet", True)
     with pytest.raises(ValueError, match="invalid selection stable id"):
         face_selection_id("region:fluid", 0)

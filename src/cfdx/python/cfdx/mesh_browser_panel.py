@@ -65,6 +65,7 @@ class MeshBrowserPanel(QWidget):
         label = f"{region.name}  [{region.n_cells} cells]"
         item = QTreeWidgetItem(self.patches, [label])
         item.setData(
+            0,
             Qt.ItemDataRole.UserRole,
             MeshSelection("region", index, region.name, region.stable_id),
         )
@@ -78,8 +79,8 @@ class MeshBrowserPanel(QWidget):
         item = QTreeWidgetItem(
             parent, [f"{patch.name}  [{patch.type}]  faces={patch.face_count}"]
         )
-        item.setData(Qt.ItemDataRole.UserRole, patch.selection)
-        item.setData(Qt.ItemDataRole.UserRole + 1, patch)
+        item.setData(0, Qt.ItemDataRole.UserRole, patch.selection)
+        item.setData(0, Qt.ItemDataRole.UserRole + 1, patch)
         if patch.face_count:
             item.setChildIndicatorPolicy(
                 QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator
@@ -87,13 +88,14 @@ class MeshBrowserPanel(QWidget):
 
     def _populate_item_children(self, item: QTreeWidgetItem) -> None:
         """Create the face children of one patch node lazily."""
-        patch = item.data(Qt.ItemDataRole.UserRole + 1)
+        patch = item.data(0, Qt.ItemDataRole.UserRole + 1)
         if patch is None or item.childCount():
             return
         for face_index in range(patch.face_count):
             face_id = face_selection_id(patch.stable_id, face_index)
             child = QTreeWidgetItem(item, [f"Face {face_index}"])
             child.setData(
+                0,
                 Qt.ItemDataRole.UserRole,
                 MeshSelection("face", face_index, patch.name, face_id),
             )
@@ -102,6 +104,6 @@ class MeshBrowserPanel(QWidget):
         items = self.patches.selectedItems()
         if not items:
             return
-        selection = items[0].data(Qt.ItemDataRole.UserRole)
+        selection = items[0].data(0, Qt.ItemDataRole.UserRole)
         if selection is not None:
             self.selection_changed.emit(selection)

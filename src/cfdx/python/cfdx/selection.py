@@ -19,13 +19,13 @@ REGION_KIND = "region"
 _INVALID_ID = "invalid selection stable id"
 
 _FACE_PATTERN = (
-    rf"^(?:(?P<region_kind>region):(?P<region>[^/:]+)/)?"
-    rf"(?P<patch_kind>patch):(?P<patch>[^/:]+)/"
-    rf"(?P<face_kind>face):(?P<face_index>(0|[1-9][0-9]*))$"
+    r"^(?:(?P<region_kind>region):(?P<region>[^/:]+)/)?"
+    r"(?P<patch_kind>patch):(?P<patch>[^/:]+)/"
+    r"(?P<face_kind>face):(?P<face_index>(0|[1-9][0-9]*))$"
 )
 _PATCH_PATTERN = (
-    rf"^(?:(?P<region_kind>region):(?P<region>[^/:]+)/)?"
-    rf"(?P<patch_kind>patch):(?P<patch>[^/:]+)$"
+    r"^(?:(?P<region_kind>region):(?P<region>[^/:]+)/)?"
+    r"(?P<patch_kind>patch):(?P<patch>[^/:]+)$"
 )
 _REGION_PATTERN = r"^region:(?P<region>[^/:]+)$"
 
@@ -103,7 +103,7 @@ def face_selection_id(patch_id: str, face_index: int) -> str:
     if parse_selection_id(patch_id).kind != PATCH_KIND:
         raise ValueError(_INVALID_ID)
     if isinstance(face_index, bool) or not isinstance(face_index, int):
-        raise ValueError(_INVALID_ID)
+        raise TypeError(_INVALID_ID)
     if face_index < 0:
         raise ValueError(_INVALID_ID)
     return f"{patch_id}/face:{face_index}"
