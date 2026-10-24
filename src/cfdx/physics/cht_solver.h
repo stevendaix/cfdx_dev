@@ -77,6 +77,8 @@ inline std::vector<ChtInterfaceFacePair> match_cht_interface(
 
     const auto& f1=mesh1.boundary().patch(p1).face_ids;
     const auto& f2=mesh2.boundary().patch(p2).face_ids;
+    if(f1.empty())
+        throw std::invalid_argument("CHT interface patches must not be empty");
     if(f1.size()!=f2.size())
         throw std::invalid_argument("CHT interface face count mismatch");
 
