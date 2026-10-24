@@ -540,6 +540,8 @@ int main()
         const auto rAU = unit_rAU(mesh.n_cells());
         const auto phi = make_rhie_chow_flux_from_physical_velocity(
             mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+        const auto phi_hbya = make_rhie_chow_flux_from_hbya(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
         const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
         const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
 
@@ -568,8 +570,11 @@ int main()
         const double expected = phi_linear(f) + compensation -
                                 pressure_jump_response;
         EXPECT_NEAR(grad_face_x, 0.0, 1e-12);
+        EXPECT_NEAR(phi_linear(f), 0.0, 1e-12);
+        EXPECT_NEAR(phi_hbya(f), expected, 1e-12);
         EXPECT_NEAR(phi(f), expected, 1e-12);
-        EXPECT_NEAR(phi(f), -2.0, 1e-12);
+        EXPECT_NEAR(phi(f) - phi_linear(f), -2.0, 1e-12);
+        EXPECT_TRUE(std::abs(phi(f) - phi_linear(f)) > 1.0);
     });
 
 
