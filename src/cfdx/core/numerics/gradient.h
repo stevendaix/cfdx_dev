@@ -143,7 +143,7 @@ inline Field<double, Location::CELL> compute_gradient_gauss(
 inline Field<double, Location::CELL> compute_gradient_least_squares(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
-    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::EXCLUDE_BOUNDARY,
+    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::ZERO_GRADIENT_GHOST,
     const std::vector<BoundaryGradientCondition>* boundary_conditions = nullptr)
 {
     const std::size_t n_cells = mesh.n_cells();
@@ -1069,7 +1069,9 @@ inline Field<double, Location::CELL> cell_gradient(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
     const GeometryCache& geometry,
-    GradientScheme scheme)
+    GradientScheme scheme,
+    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::ZERO_GRADIENT_GHOST,
+    const std::vector<BoundaryGradientCondition>* boundary_conditions = nullptr)
 {
     switch (scheme) {
         case GradientScheme::GAUSS_TWO_POINT:
@@ -1079,7 +1081,9 @@ inline Field<double, Location::CELL> cell_gradient(
         case GradientScheme::LEAST_SQUARES:
             return compute_gradient_least_squares(cell_field, mesh);
         case GradientScheme::WEIGHTED_LEAST_SQUARES:
-            return compute_gradient_weighted_least_squares(cell_field, mesh);
+            return compute_gradient_weighted_least_squares(
+                cell_field, mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+                std::numeric_limits<double>::infinity(), boundary_policy, boundary_conditions);
         case GradientScheme::LEAST_SQUARES_QUADRATIC:
             return compute_gradient_least_squares_quadratic(cell_field, mesh);
     }
