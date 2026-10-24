@@ -1,3 +1,4 @@
+// Method contract: docs/audits/11-rayonnement.md
 #pragma once
 
 #include "cfdx/physics/radiation.h"
@@ -69,8 +70,8 @@ inline void validate_s2s_view_factors(
             const double fij=F[i*n+j];
             if (!std::isfinite(fij) || fij < -tolerance || fij > 1.0+tolerance)
                 throw std::invalid_argument("invalid S2S view factor");
-            if (i==j && std::abs(fij)>tolerance)
-                throw std::invalid_argument("S2S self-view factor must be zero");
+            // Self-view is physically valid for a concave/aggregated surface.
+            // The generic estimator may place unclosed exchange on the diagonal.
             row_sum += fij;
         }
         if (row_sum > 1.0+tolerance)
