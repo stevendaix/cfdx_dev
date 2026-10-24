@@ -8,6 +8,73 @@
 - **Règles de travail :** pas de tolérance élargie, pas de tests désactivés, pas de fallback silencieux, pas d'activation générale de RANS sur la seule base de tests unitaires. Avant tout changement, inspecter `master`, le diff et les PR qui se chevauchent. Après tout changement, exécuter les contrôles applicables sur le HEAD exact, documenter les échecs et distinguer vérification logicielle, convergence numérique et validation physique.
 - **État de ce commit :** mise à jour documentaire de suivi ; ne prétend pas que les chantiers ouverts sont implémentés. Les résultats de la révision 2 plus bas restent des résultats historiques du checkout et des campagnes qui y sont décrites, pas une preuve automatique du HEAD actuel.
 
+## 1. Objet et domaine de validité
+
+Cette fiche suit l'intégration du transport SST, de l'énergie turbulente, du rayonnement de surface à surface (S2S) et du transfert conjugué (CHT) dans CFDX. Elle distingue explicitement : (a) une équation ou un opérateur présent, (b) son raccordement au solveur de production, et (c) sa qualification par vérification numérique et validation physique. Les résultats d'un test unitaire ne suffisent pas à affirmer qu'une simulation industrielle est qualifiée.
+
+**Statut :** intégration partielle. Les sections détaillées et la matrice TR-00 à TR-16 ci-dessous font foi pour les travaux restants ; les résultats du dossier v2 plus bas sont historiques et doivent être rattachés à leur SHA exact avant réutilisation.
+
+## 2. Formulation continue
+
+Pour un fluide incompressible à propriétés constantes, le système porteur comprend la continuité et la quantité de mouvement :
+
+\[
+\nabla\cdot\mathbf{U}=0,\qquad
+\rho\left(\frac{\partial\mathbf{U}}{\partial t}
++\nabla\cdot(\mathbf{U}\otimes\mathbf{U})\right)
+=-\nabla p^*+\nabla\cdot\boldsymbol{\tau}_{eff}+\mathbf{S}.
+\]
+
+Pour la variante SST-2003, les transports de l'énergie cinétique turbulente \(k\) et de la fréquence spécifique \(\omega\) utilisent une production limitée cohérente :
+
+\[
+\widetilde P_k=\min\!\left(\rho\nu_t S^2,\;10\beta^*\rho k\omega\right),\qquad
+P_\omega=\begin{cases}\gamma\widetilde P_k/\nu_t,&\nu_t>0,\\0,&\nu_t=0.\end{cases}
+\]
+
+Le flux de chaleur turbulent est modélisé par \(\lambda_{eff}=\lambda+\rho c_p\nu_t/Pr_t\), avec \(\nu_t\ge0\) et \(Pr_t>0\). Le couplage doit consommer l'état SST accepté et le flux massique autoritaire, et ne doit pas annoncer de convergence globale lorsque seule une sous-étape a convergé.
+
+Pour deux surfaces grises diffuses, le S2S utilise les radiosités et facteurs de forme qui doivent respecter la fermeture des lignes et la réciprocité pondérée par l'aire. En CHT, les puissances transférées de part et d'autre d'une interface imperméable doivent être égales et opposées ; une résistance de contact impose un saut de température explicite.
+
+Référence de formulation SST : F. R. Menter, « Two-equation eddy-viscosity turbulence models for engineering applications », *AIAA Journal*, 32(8), 1598–1605 (1994), DOI 10.2514/3.12149. La variante SST-2003 et ses limiteurs doivent être comparés à la référence NASA TMR avant qualification : https://tmbwg.github.io/turbmodels/sst.html.
+
+## 3. Discrétisation Volume Fini
+
+Les flux convectifs et diffusifs sont assemblés par face sur volumes de contrôle. Le bilan de conservation est calculé séparément de la matrice et du second membre, à partir des flux effectivement appliqués et de l'état retourné. La correction non orthogonale, les gradients de face et les flux aux frontières doivent être partagés ou comparés explicitement entre l'assemblage et l'audit indépendant.
+
+Pour la chaleur, le flux diffusif interne avec conductivité discontinue doit employer une résistance série, et non une moyenne arithmétique non justifiée. Pour les résidus SST, il faut distinguer le résidu du système linéaire candidat, le résidu non linéaire avant relaxation et celui de l'état effectivement retourné après relaxation/bornage.
+
+Les preuves de fermeture attendues comprennent des oracles analytiques, des MMS sur plusieurs maillages avec ordre observé, des bilans locaux et globaux indépendants, ainsi que des tests négatifs qui montrent que les portes rejettent un état physiquement invalide même si le solveur linéaire annonce une convergence.
+
+## 4. Traitement des frontières
+
+Les conditions de paroi SST doivent valider avant mutation les patches non vides, les identifiants de faces frontières valides, l'absence de doublons, les propriétaires géométriques et la finitude des valeurs imposées ; la condition de paroi sur \(\omega\) exige des valeurs strictement positives. Les gradients de face doivent respecter les conditions scalaires utilisées par le transport.
+
+En thermique, les flux imposés ou radiatifs doivent conserver leurs unités et leur signe en W/m², indépendamment de la conductivité de la cellule adjacente. Les interfaces CHT doivent vérifier la correspondance géométrique, l'opposition des normales, l'absence de fuite massique pour une interface imperméable et la cohérence entre la conductivité de l'opérateur énergie et celle utilisée pour l'interface.
+
+Les validations d'entrée doivent précéder tout appel de solveur ou mutation d'état ; une entrée invalide doit être rejetée sans écrêtage silencieux ni changement partiel des champs.
+
+## 5. Pièges connus
+
+- Une valeur \(\Delta k\) ou \(\Delta\omega\) faible ne prouve pas que le résidu de l'équation évalué sur l'état borné soit faible.
+- Utiliser une production brute dans l'équation de \(\omega\) alors que celle de \(k\) est limitée mélange deux contrats de fermeture.
+- Un bilan global fermé peut cacher deux erreurs locales qui se compensent ; publier les deux métriques.
+- Une conductivité de contact différente de celle de l'opérateur énergie crée un flux incohérent même si chaque sous-solveur converge.
+- Une température de cellule n'est pas automatiquement la température radiative de face ; reconstruire la température physique cohérente avec la condition thermique appliquée.
+- Une exécution locale avec un binaire lié à MPI ne constitue pas une preuve de parallélisme multi-rang.
+- Un checkpoint sans flux massique de face autoritaire et sans historique requis ne prouve pas l'équivalence de trajectoire après reprise.
+- Une campagne ciblée ne qualifie pas les maillages skew/non orthogonaux, les géométries radiatives générales, les propriétés variables ou les autres modèles RANS non testés.
+
+## 6. Vérification, validation et reproductibilité
+
+Pour chaque changement, consigner le commit exact, les versions d'outils, la configuration de build, les commandes complètes, les codes de retour, les nombres de tests, les journaux bruts et leurs empreintes SHA-256. Les tests de contrat et les oracles analytiques établissent la vérification de code ; les études de raffinement et d'erreur itérative établissent la vérification de solution ; la comparaison aux données DNS/expérimentales avec conditions comparables est nécessaire à la validation physique.
+
+Les références de qualification SST doivent inclure des cas adaptés au modèle et au régime étudié, par exemple les données de canal turbulent de Moser, Kim et Mansour et les cas de la NASA Turbulence Modeling Resource. Toute différence de conditions, de convention de pression, de définition de coefficient ou de traitement de paroi doit être consignée plutôt que masquée par une tolérance élargie.
+
+## 7. Statut d'implémentation
+
+Le noyau SST, certains chemins transactionnels de production, les stages énergie/S2S et les contrats CHT ont des implémentations et des tests ciblés décrits dans le dossier détaillé ci-dessous. L'intégration complète du schéma de régions, du pilote multi-régions, du contact par interface, du restart global et de la qualification physique n'est pas considérée comme terminée tant que les critères de fermeture du registre TR-00 à TR-16 ne sont pas satisfaits sur le code fusionné dans `master`.
+
 ## Registre d'avancement (à maintenir en premier)
 
 ### Contrôles d'intégration à chaque reprise
