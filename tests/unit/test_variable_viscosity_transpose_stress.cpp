@@ -169,5 +169,5 @@ int main()
         EXPECT_NEAR(equation.rhs(2), a*geometry.cell_volumes[2], 1e-12);
     });
 
-    return test_summary();
+    return run_all();
 }
