@@ -20,6 +20,9 @@ namespace cfdx::core {
 struct LinearOperator {
     std::size_t size = 0;
     std::function<void(const Vector&, Vector&)> apply;
+    // Optional original-precision application used only for certification.
+    // Matrix-free callers that omit it are certified against apply() itself.
+    std::function<void(const Vector&, Vector&)> apply_fp64;
 };
 
 inline SolverResult solve_gmres(
@@ -56,8 +59,7 @@ inline SolverResult solve_gmres(
     // Scale the stopping criterion with the actual RHS norm. Using max(||b||,1)
     // makes physically small systems appear converged at x=0 and is incorrect
     // for nondimensionalized or otherwise small-scale operators.
-    const double rhs_scale = std::max(b_norm, 1e-300);
-    const double tol = tolerance * b_norm;
+    double tol = 0.0;
 
     // Diagnostic: track the gauge-row value of the initial solution vector.
     // The gauge row is conventionally the last pressure unknown (index n-1),
@@ -80,24 +82,30 @@ inline SolverResult solve_gmres(
         op.apply(w.vin, out);
     };
     auto true_residual = [&]() {
-        apply_operator(x.data(), w.ax);
+        for (std::size_t i = 0; i < n; ++i) w.vin(i) = x(i);
+        if (op.apply_fp64) op.apply_fp64(w.vin, w.ax);
+        else op.apply(w.vin, w.ax);
         for (std::size_t i = 0; i < n; ++i) w.r(i) = b(i) - w.ax(i);
         return krylov_norm2(w.r, SolverPrecision::FP64, controls.reduction);
     };
 
     double beta = true_residual();
-    if (b_norm == 0.0) {
-        result.status = beta == 0.0 ? SolverStatus::CONVERGED : SolverStatus::DIVERGED;
-        result.iterations = 0;
+    if (!std::isfinite(beta)) {
+        result.status = SolverStatus::DIVERGED;
         result.residual = beta;
-        result.residual_relative = beta;
         return result;
     }
+    // Preserve RHS-relative convergence whenever b is nonzero. Only the
+    // zero-RHS case uses the initial residual as its reference scale.
+    const double convergence_reference = b_norm > 0.0 ? b_norm : beta;
+    const double rhs_scale_for_diagnostics =
+        std::max(convergence_reference, 1e-300);
+    tol = tolerance * convergence_reference;
     if (beta <= tol) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
         result.residual = beta;
-        result.residual_relative = beta / rhs_scale;
+        result.residual_relative = beta / rhs_scale_for_diagnostics;
         return result;
     }
 
@@ -149,17 +157,22 @@ inline SolverResult solve_gmres(
             // orthogonality on nonsymmetric saddle-point systems. A second
             // orthogonalization pass is inexpensive for the small acceptance
             // systems and substantially improves the Hessenberg relation.
+            // Use the same owned-entry/MPI reduction contract as Krylov norms.
+            // Ghost copies are updated, but never double-counted in projections.
+            Vector arnoldi_basis(n);
             for (int i = 0; i <= j; ++i) {
                 const double* vi = w.v(static_cast<std::size_t>(i));
-                double h = 0.0;
-                for (std::size_t k = 0; k < n; ++k) h += vi[k] * w.w(k);
+                for (std::size_t k = 0; k < n; ++k) arnoldi_basis(k) = vi[k];
+                const double h = krylov_dot(
+                    arnoldi_basis, w.w, SolverPrecision::FP64, controls.reduction);
                 w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = h;
                 for (std::size_t k = 0; k < n; ++k) w.w(k) -= h * vi[k];
             }
             for (int i = 0; i <= j; ++i) {
                 const double* vi = w.v(static_cast<std::size_t>(i));
-                double correction = 0.0;
-                for (std::size_t k = 0; k < n; ++k) correction += vi[k] * w.w(k);
+                for (std::size_t k = 0; k < n; ++k) arnoldi_basis(k) = vi[k];
+                const double correction = krylov_dot(
+                    arnoldi_basis, w.w, SolverPrecision::FP64, controls.reduction);
                 w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) += correction;
                 for (std::size_t k = 0; k < n; ++k) w.w(k) -= correction * vi[k];
             }
@@ -226,7 +239,7 @@ inline SolverResult solve_gmres(
                     result.status = SolverStatus::CONVERGED;
                     result.iterations = iterations;
                     result.residual = exact;
-                    result.residual_relative = exact / rhs_scale;
+                    result.residual_relative = exact / rhs_scale_for_diagnostics;
                     return result;
                 }
             }
@@ -286,7 +299,7 @@ inline SolverResult solve_gmres(
                 result.iterations = iterations;
                 result.residual = breakdown_residual;
                 result.residual_relative =
-                    breakdown_residual / rhs_scale;
+                    breakdown_residual / rhs_scale_for_diagnostics;
                 return result;
             }
             w.y[static_cast<std::size_t>(i)] = sum / diag;
@@ -307,7 +320,7 @@ inline SolverResult solve_gmres(
             result.status = SolverStatus::CONVERGED;
             result.iterations = iterations;
             result.residual = beta;
-            result.residual_relative = beta / rhs_scale;
+            result.residual_relative = beta / rhs_scale_for_diagnostics;
             return result;
         }
 
@@ -324,7 +337,7 @@ inline SolverResult solve_gmres(
             result.status = SolverStatus::DIVERGED;
             result.iterations = iterations;
             result.residual = beta;
-            result.residual_relative = beta / rhs_scale;
+            result.residual_relative = beta / rhs_scale_for_diagnostics;
             return result;
         }
 
@@ -341,7 +354,7 @@ inline SolverResult solve_gmres(
     result.status = SolverStatus::MAX_ITER_REACHED;
     result.iterations = iterations;
     result.residual = beta;
-    result.residual_relative = beta / rhs_scale;
+    result.residual_relative = beta / rhs_scale_for_diagnostics;
     return result;
 }
 
@@ -384,6 +397,18 @@ inline SolverResult solve_fgmres(
     bool setup_preconditioner = true) {
     LinearOperator op;
     op.size = A.n_rows();
+    op.apply_fp64 = [&A](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
     op.apply = [&A, precision](const Vector& in, Vector& out) {
         if (out.size() != A.n_rows()) out.resize(A.n_rows());
         if (precision.enabled && precision.operator_precision == SolverPrecision::FP32) {
@@ -439,6 +464,20 @@ inline SolverResult solve_gmres(
     bool setup_preconditioner = true) {
     LinearOperator op;
     op.size = A.n_rows();
+    // Certification always uses the original sparse matrix in FP64,
+    // independently of the iterative operator precision.
+    op.apply_fp64 = [&A](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
     op.apply = [&A, precision](const Vector& in, Vector& out) {
         if (out.size() != A.n_rows()) out.resize(A.n_rows());
         if (precision.enabled && precision.operator_precision == SolverPrecision::FP32) { mixed_precision_matvec(A, in, out, SolverPrecision::FP32); return; }

@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <initializer_list>
+#include <limits>
 #include <stdexcept>
 #include <tuple>
 #include <vector>
@@ -267,6 +268,15 @@ int main() {
         const Vector operator_ref = dense_matvec(S_dense, rhs_p);
         EXPECT_TRUE(std::abs(operator_ref(0) - inverse_ref(0)) > 1e-6 ||
                     std::abs(operator_ref(1) - inverse_ref(1)) > 1e-6);
+    });
+
+    run_case("exact_schur_rejects_nan_rhs_instead_of_treating_it_as_zero", [&] {
+        ExactSchurApproximation exact(auu_solve);
+        EXPECT_TRUE(exact.setup(blocks));
+        Vector rhs_p(2, 0.0);
+        rhs_p(0) = std::numeric_limits<double>::quiet_NaN();
+        Vector pressure(2, 0.0);
+        EXPECT_TRUE(!exact.apply(rhs_p, pressure));
     });
 
     return run_all();

@@ -143,7 +143,8 @@ inline Field<double, Location::CELL> compute_gradient_gauss(
 inline Field<double, Location::CELL> compute_gradient_least_squares(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
-    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::EXCLUDE_BOUNDARY)
+    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::ZERO_GRADIENT_GHOST,
+    const std::vector<BoundaryGradientCondition>* boundary_conditions = nullptr)
 {
     const std::size_t n_cells = mesh.n_cells();
     if (cell_field.size() != n_cells)
@@ -181,6 +182,27 @@ inline Field<double, Location::CELL> compute_gradient_least_squares(
                 if (boundary_policy == BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL)
                     throw std::runtime_error("compute_gradient_least_squares: boundary face in rejected stencil at cell "
                                              + std::to_string(c));
+                if (boundary_policy == BoundaryGradientPolicy::EXCLUDE_BOUNDARY)
+                    continue;
+                BoundaryGradientCondition bc{BoundaryGradientConditionType::ZERO_GRADIENT, 0.0};
+                if (boundary_conditions && f < boundary_conditions->size())
+                    bc = (*boundary_conditions)[f];
+                const Vec3 n = geometry.face_normals[f];
+                const Vec3 dface = geometry.face_centres[f] - geometry.cell_centres[c];
+                const double dn = dface.dot(n);
+                if (!(dn > 0.0) || !std::isfinite(dn))
+                    throw std::runtime_error("compute_gradient_least_squares: invalid boundary distance at face "
+                                             + std::to_string(f));
+                if (bc.type == BoundaryGradientConditionType::DIRICHLET) {
+                    neighbours.push_back(geometry.face_centres[f] * 2.0 - geometry.cell_centres[c]);
+                    neighbour_values.push_back(2.0 * bc.value - values[c]);
+                } else if (bc.type == BoundaryGradientConditionType::NEUMANN) {
+                    neighbours.push_back(geometry.cell_centres[c] + n * (2.0 * dn));
+                    neighbour_values.push_back(values[c] + 2.0 * dn * bc.value);
+                } else {
+                    neighbours.push_back(geometry.cell_centres[c] + n * (2.0 * dn));
+                    neighbour_values.push_back(values[c]);
+                }
                 continue;
             }
             if (nb >= n_cells || nb == c)
@@ -436,6 +458,22 @@ inline Field<double, Location::CELL> compute_quadratic_fit_least_squares(
         const Vec3 P = geometry.cell_centres[c];
         const double phi_c = values[c];
 
+        // Build the affine fallback from the same real stencil samples;
+        // never pass an empty stencil to least_squares_gradient.
+        std::vector<Vec3> sample_centres;
+        std::vector<double> sample_values;
+        double length_scale = 0.0;
+        const auto measure = [&](std::size_t nb) {
+            if (nb == c) return;
+            const double r = (geometry.cell_centres[nb] - P).mag();
+            if (std::isfinite(r)) length_scale = std::max(length_scale, r);
+        };
+        for (const std::size_t nb : ring1[c]) measure(nb);
+        for (const std::size_t nb : ring1[c])
+            for (const std::size_t nb2 : ring1[nb]) measure(nb2);
+        if (!(length_scale > 0.0) || !std::isfinite(length_scale))
+            length_scale = 1.0;
+
         double a[9][9] = {};
         double b[9] = {};
         int npts = 0;
@@ -445,10 +483,14 @@ inline Field<double, Location::CELL> compute_quadratic_fit_least_squares(
             const Vec3 d = geometry.cell_centres[nb] - P;
             const double r2 = d.mag2();
             if (!(r2 > 0.0) || !std::isfinite(r2)) return;
-            const double w = 1.0 / r2;
-            const double basis[9] = {d.x, d.y, d.z,
-                                     d.x*d.x, d.y*d.y, d.z*d.z,
-                                     d.x*d.y, d.x*d.z, d.y*d.z};
+            sample_centres.push_back(geometry.cell_centres[nb]);
+            sample_values.push_back(values[nb]);
+            const Vec3 ds = d * (1.0 / length_scale);
+            const double r2s = ds.mag2();
+            const double w = 1.0 / r2s;
+            const double basis[9] = {ds.x, ds.y, ds.z,
+                                     ds.x*ds.x, ds.y*ds.y, ds.z*ds.z,
+                                     ds.x*ds.y, ds.x*ds.z, ds.y*ds.z};
             const double dv = values[nb] - phi_c;
             for (int i = 0; i < 9; ++i) {
                 b[i] += w * basis[i] * dv;
@@ -502,11 +544,19 @@ inline Field<double, Location::CELL> compute_quadratic_fit_least_squares(
                 for (int j = i + 1; j < 9; ++j) rhs -= m[i][j] * x[j];
                 if (std::abs(m[i][i]) > rank_tol) x[i] = rhs / m[i][i];
             }
-            g = {x[0], x[1], x[2]};
-            have_quad = true;
+            // Coefficients were fitted in dimensionless coordinates.
+            // Restore physical dimensions before exposing the fit to QUICK.
+            g = {x[0] / length_scale, x[1] / length_scale, x[2] / length_scale};
+            for (int d = 3; d < 9; ++d) x[d] /= (length_scale * length_scale);
+            // A deficient pivot pattern is not a quadratic solution. Require
+            // all nine pivots; otherwise use the real affine stencil.
+            bool full_rank = true;
+            for (bool pivot : pivoted) full_rank = full_rank && pivot;
+            have_quad = full_rank;
+            if (!have_quad)
+                g = least_squares_gradient(P, phi_c, sample_centres, sample_values);
         } else {
-            g = least_squares_gradient(P, phi_c,
-                std::vector<Vec3>{}, std::vector<double>{});
+            g = least_squares_gradient(P, phi_c, sample_centres, sample_values);
         }
         if (!std::isfinite(g.x) || !std::isfinite(g.y) || !std::isfinite(g.z))
             throw std::runtime_error("compute_quadratic_fit_least_squares: non-finite gradient");
@@ -843,6 +893,8 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
                 if (boundary_policy == BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL)
                     throw std::runtime_error("compute_gradient_weighted_least_squares: boundary face in rejected stencil at cell "
                                              + std::to_string(c));
+                if (boundary_policy == BoundaryGradientPolicy::EXCLUDE_BOUNDARY)
+                    continue;
 
                 // ZERO_GRADIENT_GHOST is a real policy even when no explicit
                 // boundary-condition vector is supplied. In that case the
@@ -1017,7 +1069,9 @@ inline Field<double, Location::CELL> cell_gradient(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
     const GeometryCache& geometry,
-    GradientScheme scheme)
+    GradientScheme scheme,
+    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::ZERO_GRADIENT_GHOST,
+    const std::vector<BoundaryGradientCondition>* boundary_conditions = nullptr)
 {
     switch (scheme) {
         case GradientScheme::GAUSS_TWO_POINT:
@@ -1025,9 +1079,12 @@ inline Field<double, Location::CELL> cell_gradient(
         case GradientScheme::GAUSS_POINT:
             return compute_gradient_gauss_point(cell_field, mesh, geometry);
         case GradientScheme::LEAST_SQUARES:
-            return compute_gradient_least_squares(cell_field, mesh);
+            return compute_gradient_least_squares(
+                cell_field, mesh, boundary_policy, boundary_conditions);
         case GradientScheme::WEIGHTED_LEAST_SQUARES:
-            return compute_gradient_weighted_least_squares(cell_field, mesh);
+            return compute_gradient_weighted_least_squares(
+                cell_field, mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+                std::numeric_limits<double>::infinity(), boundary_policy, boundary_conditions);
         case GradientScheme::LEAST_SQUARES_QUADRATIC:
             return compute_gradient_least_squares_quadratic(cell_field, mesh);
     }

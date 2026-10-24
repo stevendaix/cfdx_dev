@@ -94,9 +94,15 @@ public:
         for (std::size_t i = 0; i < n; ++i) r(i) = rhs_p(i);
         if (pressure_null_space_) pressure_null_space_->remove(r);
         for (std::size_t i = 0; i < n; ++i) p(i) = r(i);
+        // Reject non-finite inputs before interpreting a zero norm. In
+        // particular, !(r0 > 0) also matches NaN and used to accept invalid RHS.
+        for (std::size_t i = 0; i < n; ++i)
+            if (!std::isfinite(rhs_p(i)) || !std::isfinite(r(i))) return false;
         double r_dot_r = r.dot(r);
+        if (!std::isfinite(r_dot_r) || r_dot_r < 0.0) return false;
         const double r0 = std::sqrt(r_dot_r);
-        if (!(r0 > 0.0)) return true;  // rhs is zero, pressure=0 is the solution
+        if (!std::isfinite(r0)) return false;
+        if (r0 == 0.0) return true;  // finite zero RHS, pressure=0 is the solution
 
         const double abs_tol = controls_.tolerance * r0;
 

@@ -156,7 +156,7 @@ inline SolverResult solve_cg_impl(
     double rsold = krylov_dot(r_vector, z_vector, redp, reduction);
 
     const double b_norm = krylov_norm2(b, SolverPrecision::FP64, reduction);
-    const double tol_abs = tolerance * std::max(b_norm, 1e-15);
+    const double tol_abs = tolerance * std::max(b_norm, 1e-300);
 
     if (!std::isfinite(rsold)) { result.status=SolverStatus::DIVERGED; return result; }
 
@@ -167,13 +167,12 @@ inline SolverResult solve_cg_impl(
             {0, initial_true_residual, initial_true_residual,
              rsold, 0.0, 0.0, 0.0});
     }
-    if ((preconditioner && initial_true_residual <= tol_abs) ||
-        (!preconditioner && rsold < tol_abs * tol_abs)) {
+    if (initial_true_residual <= tol_abs) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
         result.residual = preconditioner
             ? initial_true_residual
-            : krylov_norm2(rv, redp, reduction);
+            : krylov_norm2(rv, SolverPrecision::FP64, reduction);
         result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
         return result;
     }
@@ -249,9 +248,12 @@ inline SolverResult solve_cg_impl(
         // A preconditioned norm is not a true residual norm. Re-evaluate
         // b-A*x in FP64 for the external-preconditioner path before deciding
         // convergence, just as the reported final residual is evaluated.
-        const double res = preconditioner
-            ? mixed_precision_true_residual(A, b, x, rv)
-            : std::sqrt(std::abs(rsnew));
+        // Certify convergence against the original FP64 operator for both
+        // internal Jacobi and externally supplied preconditioners. The
+        // preconditioned recurrence norm is not a residual norm and changes
+        // under a common scaling of A and b.
+        mixed_precision_true_residual(A, b, x, rv);
+        const double res = krylov_norm2(rv, SolverPrecision::FP64, reduction);
         if (preconditioner &&
             (iter == 1 || iter % 100 == 0 || iter == max_iter)) {
             const double recursive_residual =
@@ -397,8 +399,9 @@ inline SolverResult solve_cg_impl(
 
     result.status = SolverStatus::MAX_ITER_REACHED;
     result.iterations = max_iter;
-    result.residual = mixed_precision_true_residual(A,b,x,rv);
-    result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
+    mixed_precision_true_residual(A, b, x, rv);
+    result.residual = krylov_norm2(rv, SolverPrecision::FP64, reduction);
+    result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : result.residual;
     return result;
 }
 } // namespace detail

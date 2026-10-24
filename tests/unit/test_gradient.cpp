@@ -1,6 +1,7 @@
 // M0.7-T01 — Tests for Gauss gradient
 
 #include "cfdx/core/numerics/gradient.h"
+#include "cfdx/core/numerics/laplacian.h"
 #include "cfdx/core/numerics/gradient_boundary.h"
 #include "cfdx/core/fvm/least_squares_gradient.h"
 #include "cfdx/core/mesh/mesh.h"
@@ -537,6 +538,83 @@ int main() {
         std::vector<double> face_values(m.n_faces(), 1.0);
         EXPECT_THROW(compute_gradient_gauss_boundary_values(
             phi, m, geometry, face_values), std::invalid_argument);
+    });
+
+    run_case("least_squares_boundary_policies_are_distinct", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 0.5;
+        EXPECT_THROW(
+            compute_gradient_least_squares(
+                phi, m, BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL),
+            std::runtime_error);
+        const auto excluded = compute_gradient_least_squares(
+            phi, m, BoundaryGradientPolicy::EXCLUDE_BOUNDARY);
+        EXPECT_NEAR(excluded(0, 0), 0.0, 1e-12);
+        const auto ghost = compute_gradient_least_squares(
+            phi, m, BoundaryGradientPolicy::ZERO_GRADIENT_GHOST);
+        EXPECT_TRUE(std::isfinite(ghost(0, 0)));
+    });
+
+    run_case("least_squares_dirichlet_ghost_reconstructs_affine_gradient", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 0.5;
+        std::vector<BoundaryGradientCondition> bc(m.n_faces());
+        for (auto& condition : bc)
+            condition = {BoundaryGradientConditionType::DIRICHLET, 0.5};
+        bc[4].value = 0.0; // x=0
+        bc[5].value = 1.0; // x=1
+        const auto grad = compute_gradient_least_squares(
+            phi, m, BoundaryGradientPolicy::ZERO_GRADIENT_GHOST, &bc);
+        EXPECT_NEAR(grad(0, 0), 1.0, 1e-12);
+        EXPECT_NEAR(grad(0, 1), 0.0, 1e-12);
+        EXPECT_NEAR(grad(0, 2), 0.0, 1e-12);
+    });
+
+    run_case("wls_default_boundary_policy_preserves_zero_gradient_ghosts", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 3.0;
+        const auto grad = compute_gradient_weighted_least_squares(phi, m);
+        EXPECT_NEAR(grad(0, 0), 0.0, 1e-12);
+        EXPECT_NEAR(grad(0, 1), 0.0, 1e-12);
+        EXPECT_NEAR(grad(0, 2), 0.0, 1e-12);
+    });
+
+    run_case("wls_exclude_boundary_rejects_rank_deficient_isolated_cell", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 3.0;
+        EXPECT_THROW(
+            compute_gradient_weighted_least_squares(
+                phi, m, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+                std::numeric_limits<double>::infinity(),
+                BoundaryGradientPolicy::EXCLUDE_BOUNDARY),
+            std::runtime_error);
+    });
+
+    run_case("cell_gradient_propagates_explicit_wls_boundary_policy", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 3.0;
+        const auto geometry = make_geometry_cache(m);
+        EXPECT_THROW(
+            cell_gradient(phi, m, geometry, GradientScheme::WEIGHTED_LEAST_SQUARES,
+                          BoundaryGradientPolicy::EXCLUDE_BOUNDARY),
+            std::runtime_error);
+    });
+
+    run_case("corrected_laplacian_propagates_explicit_wls_boundary_policy", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 3.0;
+        const auto geometry = make_geometry_cache(m);
+        EXPECT_THROW(
+            compute_laplacian(phi, m, geometry, LaplacianScheme::CORRECTED, 0.5,
+                              GradientScheme::WEIGHTED_LEAST_SQUARES,
+                              BoundaryGradientPolicy::EXCLUDE_BOUNDARY),
+            std::runtime_error);
     });
 
     return run_all();
