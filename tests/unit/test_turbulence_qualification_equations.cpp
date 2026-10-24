@@ -3,11 +3,13 @@
 #include "cfdx/physics/turbulence_solver.h"
 #include "cfdx/physics/sst_solver.h"
 #include "cfdx/physics/spalart_allmaras.h"
+#include "common/test_harness.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <sstream>
 
 namespace {
 void expect_close(const char* label, double a, double b, double tol = 1e-12) {
@@ -46,6 +48,24 @@ int main() {
     expect_comparator_rejects(1.0, 1.0, -1.0);
     expect_comparator_rejects(
         2.0, 0.0, std::numeric_limits<double>::max());
+
+    const auto expect_near_rejects = [](double actual, double reference, double tolerance) {
+        bool rejected = false;
+        std::ostringstream suppressed_diagnostic;
+        auto* previous_buffer = std::cerr.rdbuf(suppressed_diagnostic.rdbuf());
+        try {
+            EXPECT_NEAR(actual, reference, tolerance);
+        } catch (const std::runtime_error&) {
+            rejected = true;
+        }
+        std::cerr.rdbuf(previous_buffer);
+        if (!rejected)
+            throw std::runtime_error("EXPECT_NEAR accepted invalid numeric input");
+    };
+    expect_near_rejects(std::numeric_limits<double>::quiet_NaN(), 1.0, 1e-12);
+    expect_near_rejects(1.0, std::numeric_limits<double>::infinity(), 1e-12);
+    expect_near_rejects(1.0, 1.0, std::numeric_limits<double>::quiet_NaN());
+    expect_near_rejects(1.0, 1.0, -1.0);
 
     using namespace cfdx::physics;
     TurbulenceTransportControls c;
