@@ -64,6 +64,55 @@ int main()
         EXPECT_TRUE(euclidean_distance > normal_distance);
     });
 
+    run_case("cht_rejects_nonconformal_interface_vertices_with_matching_centres", [] {
+        Mesh m1=cube("interface1",0.0,5),m2=cube("interface2",1.0,4);
+        // Narrow the second interface symmetrically so its centroid remains
+        // at the same location while its vertices no longer conform.
+        m2.points().set(0,1.0,0.1,0.0);
+        m2.points().set(4,1.0,0.1,1.0);
+        m2.points().set(7,1.0,0.9,1.0);
+        m2.points().set(3,1.0,0.9,0.0);
+        const auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
+        ChtInterfaceControls c;
+        c.region1_patch="interface1"; c.region2_patch="interface2";
+        bool rejected=false;
+        try {
+            (void)match_cht_interface(m1,g1,m2,g2,c);
+        } catch(const std::runtime_error&) {
+            rejected=true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
+    run_case("cht_rejects_cooriented_interface_normals", [] {
+        Mesh m1=cube("interface1",0.0,5),m2=cube("interface2",0.0,5);
+        const auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
+        ChtInterfaceControls c;
+        c.region1_patch="interface1"; c.region2_patch="interface2";
+        bool rejected=false;
+        try {
+            (void)match_cht_interface(m1,g1,m2,g2,c);
+        } catch(const std::runtime_error&) {
+            rejected=true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
+    run_case("cht_rejects_permeable_interface_patch", [] {
+        Mesh m1=cube("interface1",0.0,5),m2=cube("interface2",1.0,4);
+        m1.boundary().patch(0).type=PatchType::INLET;
+        const auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
+        ChtInterfaceControls c;
+        c.region1_patch="interface1"; c.region2_patch="interface2";
+        bool rejected=false;
+        try {
+            (void)match_cht_interface(m1,g1,m2,g2,c);
+        } catch(const std::invalid_argument&) {
+            rejected=true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
     run_case("cht_rejects_interface_energy_conductivity_mismatch", [] {
         Mesh m1=cube("interface1"),m2=cube("interface2");
         auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
