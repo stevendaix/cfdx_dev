@@ -255,6 +255,63 @@ int main()
         EXPECT_NEAR(scalar_equation_residual_inf(eq,x),0.0,1e-12);
     });
 
+    run_case("scalar_residual_pair_uses_same_physical_norm_and_scale", [] {
+        const auto check_identity_case = [](double a0, double a1, double b0,
+                                            double b1, double x0, double x1,
+                                            double expected_inf, double expected_relative,
+                                            cfdx::core::LinearScalingModel scaling) {
+            ScalarEquation eq;
+            eq.matrix = SparseMatrix(2,2);
+            eq.matrix.push_back(0,0,a0);
+            eq.matrix.push_back(1,1,a1);
+            eq.matrix.finalize();
+            eq.rhs = Vector(2);
+            eq.rhs(0)=b0; eq.rhs(1)=b1;
+            Vector x(2);
+            x(0)=x0; x(1)=x1;
+            ScalarSolveControls controls{20,1e-3,1.0};
+            controls.linear_solver.krylov=cfdx::core::KrylovModel::CG;
+            controls.linear_solver.preconditioner=cfdx::core::PreconditionerModel::Jacobi;
+            controls.linear_solver.scaling=scaling;
+            const auto result=solve_scalar_equation(eq,x,controls);
+            EXPECT_TRUE(result.status==SolverStatus::CONVERGED);
+            EXPECT_NEAR(result.residual_before_relaxation,expected_inf,1e-10);
+            EXPECT_NEAR(result.residual_after_relaxation,expected_inf,1e-10);
+            EXPECT_NEAR(result.residual_relative_before_relaxation,expected_relative,1e-12);
+            EXPECT_NEAR(result.residual_relative_after_relaxation,expected_relative,1e-12);
+        };
+
+        // Initial candidate is already admissible under the solver tolerance,
+        // so alpha=1 leaves it unchanged. Both diagnostics must report the
+        // same physical L-infinity residual, not a Krylov L2 residual.
+        check_identity_case(1.0,1.0,3.0,4.0,2.9996,3.9996,
+                            0.0004,0.0001,cfdx::core::LinearScalingModel::None);
+
+        // Row scaling makes the algebraic system well-scaled but does not
+        // change the physical residual contract of the returned field.
+        check_identity_case(1.0e6,1.0,3.0e6,4.0,2.9996,3.9996,
+                            400.0,400.0/3.0e6,cfdx::core::LinearScalingModel::Row);
+    });
+
+    run_case("scalar_relaxation_residual_matches_closed_form_oracle", [] {
+        ScalarEquation eq;
+        eq.matrix=SparseMatrix(2,2);
+        eq.matrix.push_back(0,0,6.0); eq.matrix.push_back(0,1,-2.0);
+        eq.matrix.push_back(1,0,-2.0); eq.matrix.push_back(1,1,6.0);
+        eq.matrix.finalize();
+        eq.rhs=Vector(2); eq.rhs(0)=0.5; eq.rhs(1)=0.5;
+        Vector x(2,0.0);
+        ScalarSolveControls controls{20,1e-12,0.25};
+        controls.linear_solver.krylov=cfdx::core::KrylovModel::CG;
+        controls.linear_solver.preconditioner=cfdx::core::PreconditionerModel::Jacobi;
+        const auto result=solve_scalar_equation(eq,x,controls);
+        EXPECT_TRUE(result.status==SolverStatus::CONVERGED);
+        EXPECT_NEAR(x(0),1.0/32.0,1e-14);
+        EXPECT_NEAR(x(1),1.0/32.0,1e-14);
+        EXPECT_NEAR(result.residual_after_relaxation,3.0/8.0,1e-14);
+        EXPECT_NEAR(result.residual_relative_after_relaxation,3.0/4.0,1e-14);
+    });
+
     run_case("relaxed_scalar_solve_reports_returned_field_residual", [] {
         const Mesh m = make_1d_chain(2);
         const FvGeometry g = build_fv_geometry(m);
