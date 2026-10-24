@@ -61,6 +61,7 @@ struct SolverResult {
     double min_true_residual = std::numeric_limits<double>::infinity();
     std::size_t first_residual_replacement = 0;
     std::size_t last_residual_replacement = 0;
+    // Contract reference: docs/audits/11-solveur-energie-et-convergence-lineaire.md.
     // For solvers that relax the returned field after solving the linear
     // system, distinguish the linear candidate residual from the residual
     // of the actual returned field. NaN means not measured/not applicable.
