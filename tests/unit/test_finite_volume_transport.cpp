@@ -289,6 +289,36 @@ int main()
         }
     });
 
+    run_case("dirichlet_outflow_flux_matches_upwind_matrix", [] {
+        const Mesh m = make_1d_chain(1);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"mass_flux","kg/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0); phi(0) = 2.0;
+        for (const auto f : m.boundary().patch(0).face_ids) flux(f) = -1.0;
+        for (const auto f : m.boundary().patch(1).face_ids) flux(f) = 1.0;
+
+        ScalarBoundaryConditions bc;
+        bc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 2.0, 0.0};
+        bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 5.0, 0.0};
+        bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        const auto equation = assemble_scalar_equation(
+            m, g, flux, 0.0, su, sp, bc, false);
+        EXPECT_NEAR(scalar_equation_residual_inf(equation, phi), 0.0, 1e-12);
+
+        const auto reconstructed = reconstruct_scalar_transport_flux(
+            m, g, flux, phi, 0.0, bc, false, ConvectionScheme::UPWIND);
+        double net_flux = 0.0;
+        for (std::size_t f = 0; f < m.n_faces(); ++f) {
+            net_flux += reconstructed(f);
+            if (g.face_patch[f] == 0) EXPECT_NEAR(reconstructed(f), -2.0, 1e-12);
+            if (g.face_patch[f] == 1) EXPECT_NEAR(reconstructed(f), 2.0, 1e-12);
+        }
+        EXPECT_NEAR(net_flux, 0.0, 1e-12);
+    });
+
     run_case("tvd_requires_convected_field", [] {
         const Mesh m = make_unit_cube();
         const auto g = build_fv_geometry(m);
