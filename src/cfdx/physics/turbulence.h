@@ -37,6 +37,7 @@ inline double turbulent_kinematic_viscosity_komega_sst(
     return a1 * k / std::max(a1 * omega, strain_rate * F2);
 }
 
+// Method contract: docs/audits/09-turbulence-rans.md
 // The historical overload omitted strain_rate and silently substituted
 // omega in its place. That is only correct for the special case S == omega.
 // Reject it at compile time so callers must provide the physical invariant.
