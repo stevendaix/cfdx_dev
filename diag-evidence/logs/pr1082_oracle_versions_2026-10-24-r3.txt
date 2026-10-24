@@ -1,0 +1,2 @@
+ruff: ruff 0.17.2
+pre-commit: pre-commit 4.6.2

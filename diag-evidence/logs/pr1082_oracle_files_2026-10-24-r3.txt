@@ -1,0 +1,6 @@
+src/cfdx/python/cfdx/application/application.py
+src/cfdx/python/cfdx/application/properties.py
+src/cfdx/python/cfdx/properties_panel.py
+src/cfdx/python/cfdx/workbench.py
+tests/python/test_application_properties.py
+tests/python/test_workbench.py

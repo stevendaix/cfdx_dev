@@ -40,7 +40,7 @@ def properties_for_selection(
     """
     if stable_id is None:
         return ()
-    if stable_id.startswith("region:") or stable_id.startswith("patch:"):
+    if stable_id.startswith(("region:", "patch:")):
         if catalog is None:
             return ()
         return mesh_selection_properties(catalog, stable_id)

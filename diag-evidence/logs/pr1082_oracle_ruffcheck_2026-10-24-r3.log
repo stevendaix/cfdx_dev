@@ -1,0 +1,26 @@
+I001 [*] Import block is un-sorted or un-formatted
+  --> src/cfdx/python/cfdx/workbench.py:58:5
+   |
+57 |   if QMainWindow is not object:
+58 | /     from .gui_3d import PyVistaQtView
+59 | |     from .mesh_browser_panel import MeshBrowserPanel
+60 | |     from .properties_panel import PropertiesPanel
+61 | |     from .probes_panel import ProbesPanel
+62 | |     from .results_panel import ResultsPanel
+63 | |     from .run_center_panel import RunCenterPanel
+64 | |     from .setup_panel import CaseSetupPanel
+   | |___________________________________________^
+65 |
+66 |       class CFDXWorkbenchWindow(QMainWindow):
+   |
+help: Organize imports
+   |
+59 |     from .mesh_browser_panel import MeshBrowserPanel
+60 +     from .probes_panel import ProbesPanel
+61 |     from .properties_panel import PropertiesPanel
+   -     from .probes_panel import ProbesPanel
+62 |     from .results_panel import ResultsPanel
+   |
+
+Found 1 error.
+[*] 1 fixable with `--fix`.
