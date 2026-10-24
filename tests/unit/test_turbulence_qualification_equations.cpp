@@ -34,7 +34,26 @@ int main() {
         const double nut=Cmu*k*k/eps, P=rho*nut*S*S, eta=S*k/eps;
         const double C1star=C1-eta*(1.0-eta/eta0)/(1.0+beta*eta*eta*eta);
         const auto q=rng_kepsilon_cell_sources(k,eps,S,c);
-        EXPECT_CLOSE(q.nut,nut); EXPECT_CLOSE(q.sk,P);        EXPECT_CLOSE(q.spk,-rho*eps/k);        EXPECT_CLOSE(q.se,C1star*P*eps/k);        EXPECT_CLOSE(q.spe,-rho*C2*eps/k);        EXPECT_CLOSE(q.gamma_k,rho*(nu+nut/sigk));        EXPECT_CLOSE(q.gamma_epsilon,rho*(nu+nut/sige));
+        EXPECT_CLOSE(q.nut,nut);
+        EXPECT_CLOSE(q.sk,P);
+        EXPECT_CLOSE(q.spk,-c.density*c.beta_star*omega);
+        const double expected_omega_production = blend(c.gamma1,c.gamma2)*P/nut;
+        EXPECT_TRUE(std::isfinite(q.sw));
+        EXPECT_CLOSE(q.sw,4.272);
+        EXPECT_CLOSE(q.sw,expected_omega_production+std::max(cross_term,0.0));
+        EXPECT_CLOSE(q.spw,-c.density*blend(c.beta1,c.beta2)*omega+std::min(cross_term,0.0)/omega);
+        EXPECT_CLOSE(q.gamma_k,c.density*(c.molecular_viscosity+blend(c.sst_sigma_k1,c.sst_sigma_k2)*nut));
+        EXPECT_CLOSE(q.gamma_w,c.density*(c.molecular_viscosity+blend(c.sst_sigma_w1,c.sst_sigma_w2)*nut));
+
+        // Independent SST-2003 oracle with active production limiter:
+        // nu_t=0.00775, P_tilde_k=9, gamma=0.474666..., hence
+        // P_omega=gamma*P_tilde_k/nu_t=551.2258064516129.
+        const auto limited = sst_cell_sources(k,omega,100.0,F1,F2,0.0,c);
+        EXPECT_TRUE(std::isfinite(limited.nut) && std::isfinite(limited.sk) &&
+                    std::isfinite(limited.sw));
+        EXPECT_CLOSE(limited.nut,0.00775);
+        EXPECT_CLOSE(limited.sk,9.0);
+        EXPECT_CLOSE(limited.sw,551.2258064516129);
     }
 
     c.model=TurbulenceModel::REALIZABLE_KEPSILON;
