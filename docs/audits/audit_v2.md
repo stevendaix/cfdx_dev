@@ -19,7 +19,7 @@ Cette section est le journal vivant de reprise. Elle complète les statuts histo
 | F32 | PR #1088 ouverte | Recalculer le résidu du champ effectivement retourné après relaxation et auditer le gate thermique R3. |
 | F34 | PR #1100 ouverte, avec variantes historiques #1093/#1098 encore ouvertes | Éviter les doublons ; vérifier le comparateur courant, puis compléter les oracles indépendants manquants sans compter plusieurs sorties d'un même défaut comme plusieurs bugs. |
 | F02 | PR #1096 ouverte ; limiteur documenté comme partiel | Distinguer la correction du limiteur de diffusivité de la qualification du modèle k-omega 2006. |
-| F28 | PR #1107 ouverte, empilée sur #1105 ; #1095/#1097/#1101 sont aussi ouverts | Ne pas fusionner les branches concurrentes en bloc. Choisir une seule correction après comparaison des diffs et CI exact-HEAD ; vérifier l'atomicité avant mutation des champs. |
+| F28 | PR #1110 créée depuis le master courant ; anciennes #1095/#1097/#1107 restent des branches candidates périmées/concurrentes | Auditer la CI de #1110 sur son HEAD exact ; fusionner uniquement si verte et mergeable, puis fermer/annoter les variantes obsolètes sans perdre les tests uniques. |
 | F26 | PR #1079 ouverte | Le correctif local R2 n'est pas une preuve de la PR ; vérifier formule, oracle et CI exact-HEAD. |
 | F01 / SST production | PR #1105 ouverte ; intégration de boucle/restart distincte (#1045/#1068) | Séparer source omega, intégration de production, persistance/restart et qualification physique ; aucune promotion globale SST sans les quatre gates. |
 
@@ -38,7 +38,7 @@ Cette section est le journal vivant de reprise. Elle complète les statuts histo
 |---|---|---|
 | #1100 — comparateur de qualification F34 | Correctif ciblé : rejet explicite NaN/Inf, tolérance non finie/négative ; CFDX CI, maturité numérique, Fast Guards et audit maturité verts sur HEAD `e0b4ca94a7292189e2bdf9eca6153cb34402a374`. Les campagnes N9/total étaient ignorées, pas réussies. | **Fusionnée** par squash, commit `a30c95b7248cb86dbcd3142a41830798e294d201`. La validation physique reste hors portée de ce test de comparateur. |
 | #1103 — diffusion non orthogonale F06 | **Échec reproductible** sur HEAD `6fbf8be1e490f4e0c361462d91b311277d3b2ad8`. `test_nonorthogonal_laplacian_campaign` échoue dans `transport_nonorthogonal_linear_campaign` : le résidu corrigé ne satisfait pas l'oracle affine sur le maillage shear + warp non uniforme. | **Ne pas fusionner.** Corriger la reconstruction du gradient/flux sur maillage déformé ; maintenir l'oracle strict, ajouter preuve locale de gradient affine et relancer Release + DebugSanitizers + N3 sur le HEAD corrigé. |
-| #1097 — contrat de conductivité CHT F28 | Le diff vérifié rejette les conductivités non finies, non positives ou incohérentes avant mutation des températures ; test négatif vérifie T1/T2 inchangées. CI historique sur HEAD `a74c75cf0f079d589c006b9cf4748a0bb404a975` : CFDX CI, audit gate, maturité numérique, Fast Guards, documentation et N10 verts. Après passage en ready, GitHub signale `mergeable=false`. | **Pas de fusion tant que le conflit/base périmée n'est pas résolu**. Réconcilier sur le master courant, re-exécuter CI exact-HEAD et intégrer ensuite le test plus complet des entrées invalides depuis #1107 sans conserver deux implémentations concurrentes. |
+| #1097 / #1110 — contrat de conductivité CHT F28 | #1097 a des checks verts sur un ancien HEAD mais n'est plus mergeable. J'ai porté le correctif audité sur le master courant dans #1110 : validation finie/positive/cohérente avant mutation, test négatif sans mutation, fixture thermique cohérente et mise à jour de la fiche. CI #1110 en attente sur HEAD `963fb7d745de44a9064b77f625c4c1291f26481b`. | **#1110 en validation** ; ne pas fusionner avant CI exacte. Éviter de fusionner #1097/#1107 en parallèle. |
 | #1107 — contrat CHT empilé | Head `25b6d58c536e920ea676d2f1d49fb6253d1f1653`, PR draft et `mergeable=false`; aucun run CI PR déclenché trouvé sur ce SHA lors de la revue. Diff empile les changements CHT avec des modifications SST et de gate documentaire. | **Ne pas fusionner en bloc.** Rebaser/extraire uniquement les tests CHT supplémentaires sur la correction retenue ; séparer le SST et la classification de rapport si ces changements ne sont pas strictement nécessaires. |
 | #1098 — comparateur F34 / régression F08 | Variante ouverte qui chevauche #1100 sur les comparateurs non finis, mais ajoute également des changements de test transport/F08. CI verte sur son ancien HEAD, pas une preuve de compatibilité avec le master après #1100. | Garder uniquement les tests F08 encore utiles ; supprimer la duplication du comparateur déjà fusionné, puis rebaser et relancer la CI. Ne pas fermer avant d'avoir isolé le delta non redondant. |
 | #1099 / #1094 — source omega SST | Variantes historiques concurrentes ; #1099 présente des échecs CFDX CI, maturité numérique et Fast Guards sur son HEAD `7ad610f9e3d189c6db8912c0098d12318982523d`. #1094 est une variante plus ancienne avec CI verte mais campagnes physiques ignorées. | Ne pas fusionner ces branches. Auditer #1105 comme candidat consolidé, attendre tous les runs en cours, et qualifier l'intégration de production séparément de la formule de source. |
@@ -50,6 +50,14 @@ Cette section est le journal vivant de reprise. Elle complète les statuts histo
 **Règle ajoutée à la clôture :** un statut vert sur un ancien SHA n'autorise pas une fusion après déplacement de `master`. La base, le diff et les checks doivent être vérifiés de nouveau sur le HEAD candidat final. « skipped » pour N9, validation totale ou campagne physique ne signifie jamais « passed ».
 
 ---
+
+
+### Reprise après création de #1110
+
+- #1100 a été fusionnée dans `master` (commit `a30c95b7248cb86dbcd3142a41830798e294d201`).
+- #1110 porte le correctif F28 sur la base courante et attend CI ; ne pas conclure avant résultats sur `963fb7d745de44a9064b77f625c4c1291f26481b`.
+- #1103 reste bloquée par un contre-exemple N3 sur le maillage transformé shear+warp ; l'erreur ne doit pas être masquée en modifiant le seuil.
+- Les PR #1078, #1079, #1081, #1083, #1086 et #1088 ont des CI historiques majoritairement vertes, mais leur base est ancienne et GitHub signale `mergeable=false`. La reprise doit réconcilier chaque delta sur le master courant avant toute fusion.
 
 ### Garde-fous de reprise
 
