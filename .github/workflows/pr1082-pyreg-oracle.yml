@@ -20,7 +20,7 @@ jobs:
     env:
       EVID: diag-evidence/logs
       PR_HEAD: 651b4271e02692af9b054d1666d793a5ca7639a9
-      STAMP: 2026-10-24
+      STAMP: 2026-10-24-r2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,11 +34,11 @@ jobs:
           cd "$RUNNER_TEMP/ref"
           git log -1 --format='%H %s' | tee "$GITHUB_WORKSPACE/$EVID/pr1082_pyreg_head_$STAMP.txt"
 
-      - name: Set up Python (no PySide6, like the Release Python regression)
+      - name: Set up Python stack (identical to CI Release Python regression)
         run: |
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
-          "$RUNNER_TEMP/venv/bin/python" -m pip install h5py pytest
+          "$RUNNER_TEMP/venv/bin/python" -m pip install "meshio[all]" h5py pytest gmsh pydantic
           "$RUNNER_TEMP/venv/bin/python" -c "import importlib.util as u; print('PySide6 installed:', u.find_spec('PySide6') is not None)" | tee "$GITHUB_WORKSPACE/$EVID/pr1082_pyreg_env_$STAMP.txt"
 
       - name: Control - pinned head must fail without PySide6
@@ -75,7 +75,7 @@ jobs:
           {
             echo "pr=1082"
             echo "pr_head=$PR_HEAD"
-            echo "phase=2-no-qt-python-regression"
+            echo "phase=2-no-qt-python-regression-round2"
             echo "ci_failure_run=40088288085"
             echo "candidate=diag-tools/pr1082_pyreg_candidate_workbench.py"
           } > "$E/pr1082_pyreg_meta_$STAMP.txt"
@@ -89,6 +89,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: PR 1082 no-Qt Python regression oracle evidence (2026-10-24) [ci skip]"
+            git commit -m "diag: PR 1082 no-Qt Python regression oracle round 2 evidence (2026-10-24) [ci skip]"
             (git push || (git pull --rebase && git push))
           fi
