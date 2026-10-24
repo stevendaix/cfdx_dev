@@ -248,6 +248,45 @@ int main()
         EXPECT_NEAR(tvd.rhs(1)+tvd.rhs(2),upwind.rhs(1)+upwind.rhs(2),1e-12);
     });
 
+    run_case("high_order_flux_schemes_do_not_read_unconstructed_gradient", [] {
+        const Mesh m = make_1d_chain(3);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"mass_flux","kg/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0)=0.25; phi(1)=0.50; phi(2)=0.75;
+        for (std::size_t f = 0; f < m.n_faces(); ++f) {
+            if (m.ownership().neighbour(f) >= 0)
+                flux(f) = 1.0;
+        }
+        ScalarBoundaryConditions bc;
+        bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
+        bc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        const ConvectionScheme schemes[] = {
+            ConvectionScheme::CENTRAL,
+            ConvectionScheme::BLENDED,
+            ConvectionScheme::QUICK,
+            ConvectionScheme::QUICK_BOUNDED
+        };
+        for (const auto scheme : schemes) {
+            const auto reconstructed = reconstruct_scalar_transport_flux(
+                m,g,flux,phi,0.0,bc,true,scheme);
+            for (std::size_t f = 0; f < m.n_faces(); ++f)
+                EXPECT_TRUE(std::isfinite(reconstructed(f)));
+
+            const auto equation = assemble_scalar_equation(
+                m,g,flux,0.0,su,sp,bc,true,nullptr,nullptr,nullptr,nullptr,
+                scheme,&phi);
+            for (std::size_t c = 0; c < m.n_cells(); ++c)
+                EXPECT_TRUE(std::isfinite(equation.rhs(c)));
+            for (const double value : equation.matrix.values())
+                EXPECT_TRUE(std::isfinite(value));
+        }
+    });
+
     run_case("tvd_requires_convected_field", [] {
         const Mesh m = make_unit_cube();
         const auto g = build_fv_geometry(m);
