@@ -38,7 +38,7 @@ Les conditions aux limites physiques sont incorporées lors de l'assemblage FV d
 
 - CG : (sqrt{r^T M^{-1}r}) n'est pas (|r|_2) ; un seuil de convergence doit rester invariant sous la multiplication commune de (A) et (b).
 - BiCGStab : les seuils absolus appliqués aux produits scalaires dépendent des unités et de l'échelle ; les ruptures doivent être évaluées relativement aux normes des vecteurs concernés.
-- GMRES/FGMRES : si (b=0) et (x_0\ne0), le solveur doit essayer de réduire (Ax_0), pas déclarer immédiatement une divergence.
+- GMRES/FGMRES : si (b=0) et (x_0\ne0), le solveur doit essayer de réduire (Ax_0), pas déclarer immédiatement une divergence. Si (b\ne0), la référence reste (||b||₂), même lorsque (||r₀||₂) est très supérieur ; employer le résidu initial dans ce cas relâcherait silencieusement la tolérance.
 - Précision mixte : calculer une norme FP64 d'un résidu obtenu avec un matvec FP32 ne restaure pas les bits perdus ; le résidu vrai doit utiliser l'opérateur FP64 d'origine.
 - Arnoldi : projections et réorthogonalisation doivent partager la même politique owned/MPI que les normes.
 - NaN/Inf : les valeurs non finies sont rejetées avant les chemins de second membre nul ; le résidu de sortie ne doit pas rester à zéro par défaut après échec.
