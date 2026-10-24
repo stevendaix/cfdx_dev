@@ -259,6 +259,8 @@ int main() {
         EXPECT_TRUE(result.iterations > 0);
         EXPECT_NEAR(x(0), 0.0, 1e-12);
         EXPECT_TRUE(result.residual < 1e-12);
+        EXPECT_TRUE(std::isfinite(result.residual_relative));
+        EXPECT_TRUE(result.residual_relative < 1e-12);
     });
 
     run_case("gmres_arnoldi_uses_owned_range_for_projections", []() {
