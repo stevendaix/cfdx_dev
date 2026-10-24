@@ -906,6 +906,9 @@ reconstruct_scalar_transport_flux(
         throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid cell diffusion");
 
     Field<double, Location::FACE> result(nf, field.name()+"_flux", "", 1);
+    const auto nonorthogonal_diffusion_flux = compute_nonorthogonal_diffusion_face_fluxes(
+        mesh, geometry, field, diffusion_coefficient, boundary_conditions,
+        cell_diffusion, face_values, face_conditions);
     Field<double, Location::CELL> grad;
     Field<double, Location::FACE> reconstructed_face;
     // Only SECOND_ORDER_UPWIND and TVD consume the cell gradient below.
@@ -943,36 +946,30 @@ reconstruct_scalar_transport_flux(
             const std::size_t n = static_cast<std::size_t>(nraw);
             if (n >= nc) throw std::runtime_error("reconstruct_scalar_transport_flux: invalid neighbour");
             const double area = geometry.face_area_vectors[f].mag();
-            const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
-            if (!(area > 0.0) || !(d > 0.0))
+            if (!(area > 0.0) || !std::isfinite(area))
                 throw std::runtime_error("reconstruct_scalar_transport_flux: degenerate internal face");
-            double diffusion_conductance = diffusion_coefficient * area / d;
+            const auto& Sf = geometry.face_area_vectors[f];
+            const auto& Cf = geometry.face_centres[f];
+            const double d_owner =
+                std::abs((Cf - geometry.cell_centres[o]).dot(Sf)) / area;
+            const double d_neighbour =
+                std::abs((geometry.cell_centres[n] - Cf).dot(Sf)) / area;
+            if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
+                !std::isfinite(d_owner) || !std::isfinite(d_neighbour))
+                throw std::runtime_error(
+                    "reconstruct_scalar_transport_flux: degenerate normal half-distance");
+            double diffusion_conductance = 0.0;
             if (cell_diffusion) {
-                const double go=(*cell_diffusion)[o], gn=(*cell_diffusion)[n];
+                const double go = (*cell_diffusion)[o], gn = (*cell_diffusion)[n];
                 if (!(go >= 0.0) || !(gn >= 0.0) ||
                     !std::isfinite(go) || !std::isfinite(gn))
-                    throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid cell diffusion");
-                const auto& Sf=geometry.face_area_vectors[f];
-                const auto& Cf=geometry.face_centres[f];
-                const double d_owner=std::abs((Cf-geometry.cell_centres[o]).dot(Sf))/area;
-                const double d_neighbour=std::abs((geometry.cell_centres[n]-Cf).dot(Sf))/area;
-                if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
-                    !std::isfinite(d_owner) || !std::isfinite(d_neighbour))
-                    throw std::runtime_error(
-                        "reconstruct_scalar_transport_flux: degenerate normal half-distance");
-                diffusion_conductance = (go > 0.0 && gn > 0.0)
-                    ? area / (d_owner / go + d_neighbour / gn)
-                    : 0.0;
+                    throw std::invalid_argument(
+                        "reconstruct_scalar_transport_flux: invalid cell diffusion");
+                if (go > 0.0 && gn > 0.0)
+                    diffusion_conductance = area / (d_owner / go + d_neighbour / gn);
             } else {
-                const auto& Sf=geometry.face_area_vectors[f];
-                const auto& Cf=geometry.face_centres[f];
-                const double d_owner=std::abs((Cf-geometry.cell_centres[o]).dot(Sf))/area;
-                const double d_neighbour=std::abs((geometry.cell_centres[n]-Cf).dot(Sf))/area;
-                if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
-                    !std::isfinite(d_owner) || !std::isfinite(d_neighbour))
-                    throw std::runtime_error(
-                        "reconstruct_scalar_transport_flux: degenerate normal half-distance");
-                diffusion_conductance = diffusion_coefficient * area / (d_owner+d_neighbour);
+                diffusion_conductance =
+                    diffusion_coefficient * area / (d_owner + d_neighbour);
             }
             const double up = F >= 0.0 ? field(o) : field(n);
             psi_face = up;
@@ -1010,7 +1007,8 @@ reconstruct_scalar_transport_flux(
                     psi_face = reconstructed_face(f);
                 }
             }
-            result(f)=F*psi_face - diffusion_conductance*(field(n)-field(o));
+            result(f)=F*psi_face - diffusion_conductance*(field(n)-field(o))
+                - nonorthogonal_diffusion_flux[f];
         } else {
             const std::size_t patch=geometry.face_patch[f];
             if (patch < mesh.boundary().n_patches() &&
@@ -1035,10 +1033,12 @@ reconstruct_scalar_transport_flux(
                 // flow directions.
                 const double convective_face_value = F < 0.0 ? bc.value : field(o);
                 result(f) = F * convective_face_value
-                    - gamma * area / d * (bc.value - field(o));
+                    - gamma * area / d * (bc.value - field(o))
+                    - nonorthogonal_diffusion_flux[f];
             } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
                 psi_face=field(o)+bc.gradient*d;
-                result(f)=F*psi_face - gamma*area*bc.gradient;
+                result(f)=F*psi_face - gamma*area*bc.gradient
+                    - nonorthogonal_diffusion_flux[f];
             } else {
                 // Zero-gradient: no diffusive boundary flux and psi_f=psi_P.
                 psi_face=field(o);
