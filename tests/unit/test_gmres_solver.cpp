@@ -344,5 +344,26 @@ int main() {
         EXPECT_NEAR(result.residual_relative, independent_relative, 1e-12);
     });
 
+    run_case("fgmres_nonzero_rhs_uses_rhs_relative_tolerance", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 2.0);
+        A.finalize();
+        Vector b(2, 1.0);
+        Vector x(2, 1e6);
+        const auto result = solve_fgmres(A, b, x, 1, 100, 1e-8);
+        const auto Ax = A.matvec(x);
+        double r2 = 0.0, b2 = 0.0;
+        for (std::size_t i = 0; i < 2; ++i) {
+            const double r = b(i) - Ax[i];
+            r2 += r * r;
+            b2 += b(i) * b(i);
+        }
+        const double independent_relative = std::sqrt(r2 / b2);
+        EXPECT_TRUE(result.status != SolverStatus::CONVERGED);
+        EXPECT_TRUE(independent_relative > 1e-8);
+        EXPECT_NEAR(result.residual_relative, independent_relative, 1e-12);
+    });
+
     return run_all();
 }
