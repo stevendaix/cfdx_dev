@@ -168,7 +168,8 @@ int main()
     });
 
     run_case("two_region_cht_independent_energy_conservation",[] {
-        Mesh m1=cube("interface1"),m2=cube("interface2");
+        // Two adjacent cubes share one conformal interface face at x=1.
+        Mesh m1=cube("interface1",0.0,5),m2=cube("interface2",1.0,4);
         auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
         Field<double,Location::FACE> phi1(m1.n_faces(),"phi1","kg/s",1);
         Field<double,Location::FACE> phi2(m2.n_faces(),"phi2","kg/s",1);
@@ -190,8 +191,8 @@ int main()
 
         // Reconstruct the interface state from the accepted temperatures and
         // independently rebuild each region's physical energy flux.
-        const double d1=(g1.face_centres[0]-g1.cell_centres[0]).mag();
-        const double d2=(g2.face_centres[0]-g2.cell_centres[0]).mag();
+        const double d1=boundary_normal_distance(g1,5,0);
+        const double d2=boundary_normal_distance(g2,4,0);
         const double h1=c.conductivity1/d1;
         const double h2=c.conductivity2/d2;
         const double tint=(h1*T1(0)+h2*T2(0))/(h1+h2);
@@ -216,7 +217,7 @@ int main()
 
         // Independent interface heat-flow equality: each side must carry the
         // same physical heat rate, with opposite outward signs.
-        const double interface_area=g1.face_area_vectors[0].mag()*static_cast<double>(m1.boundary().patch(0).face_ids.size());
+        const double interface_area=g1.face_area_vectors[5].mag();
         const double qflux1=c.conductivity1*(T1(0)-tint)/d1;
         const double qflux2=c.conductivity2*(tint-T2(0))/d2;
         EXPECT_TRUE(std::isfinite(qflux1) && std::isfinite(qflux2));
