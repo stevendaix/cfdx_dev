@@ -184,6 +184,21 @@ inline ThermalZoneModel build_thermal_zones(
 // with per-zone k, per-zone volumetric power and per-interface contact
 // resistance. Boundary conditions follow ScalarBoundaryConditions semantics
 // keyed by patch name.
+inline double thermal_interface_conductance(
+    double area, double d_owner, double d_neighbour,
+    double k_owner, double k_neighbour, double contact_resistance)
+{
+    if (!std::isfinite(area) || area <= 0.0 ||
+        !std::isfinite(d_owner) || d_owner <= 0.0 ||
+        !std::isfinite(d_neighbour) || d_neighbour <= 0.0 ||
+        !std::isfinite(k_owner) || k_owner <= 0.0 ||
+        !std::isfinite(k_neighbour) || k_neighbour <= 0.0 ||
+        !std::isfinite(contact_resistance) || contact_resistance < 0.0)
+        throw std::invalid_argument("thermal_interface_conductance: invalid interface data");
+    return area / (d_owner / k_owner + contact_resistance +
+                   d_neighbour / k_neighbour);
+}
+
 inline ScalarEquation assemble_thermal_conduction(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -221,23 +236,29 @@ inline ScalarEquation assemble_thermal_conduction(
             if (n >= nc)
                 throw std::runtime_error(
                     "assemble_thermal_conduction: invalid face neighbour");
-            const double distance =
-                (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
             const double area = geometry.face_area_vectors[f].mag();
+            const auto& sf = geometry.face_area_vectors[f];
+            const auto& cf = geometry.face_centres[f];
+            const double d_owner =
+                std::abs((cf - geometry.cell_centres[o]).dot(sf)) / area;
+            const double d_neighbour =
+                std::abs((geometry.cell_centres[n] - cf).dot(sf)) / area;
+            const double distance = d_owner + d_neighbour;
             min_internal_distance = std::min(min_internal_distance, distance);
             max_internal_distance = std::max(max_internal_distance, distance);
             min_face_area = std::min(min_face_area, area);
             max_face_area = std::max(max_face_area, area);
-            if (!(distance > 0.0) || !(area > 0.0) || !std::isfinite(distance) ||
-                !std::isfinite(area))
+            if (!(area > 0.0) || !std::isfinite(area) ||
+                !(d_owner > 0.0) || !std::isfinite(d_owner) ||
+                !(d_neighbour > 0.0) || !std::isfinite(d_neighbour))
                 throw std::runtime_error(
                     "assemble_thermal_conduction: degenerate internal face");
 
             const double k_o = zones.cell_conductivity[o];
             const double k_n = zones.cell_conductivity[n];
             const double r_c = zones.face_contact_resistance[f];
-            const double g = area /
-                (distance / (2.0 * k_o) + r_c + distance / (2.0 * k_n));
+            const double g = thermal_interface_conductance(
+                area, d_owner, d_neighbour, k_o, k_n, r_c);
             if (!(g > 0.0) || !std::isfinite(g))
                 throw std::runtime_error(
                     "assemble_thermal_conduction: non-positive face conductance");
