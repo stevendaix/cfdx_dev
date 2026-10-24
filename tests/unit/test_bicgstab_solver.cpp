@@ -157,7 +157,7 @@ int main() {
         }
     });
 
-    run_case("bicgstab_mixed_precision_does_not_certify_fp32_residual", []() {
+    run_case("bicgstab_mixed_precision_certifies_independent_fp64_residual", []() {
         SparseMatrix A(1, 1);
         A.push_back(0, 0, 1.0 + 1e-8);
         A.finalize();
@@ -168,9 +168,11 @@ int main() {
         precision.operator_precision = SolverPrecision::FP32;
         precision.reduction_precision = SolverPrecision::FP64;
         const auto result = solve_bicgstab(A, b, x, 10, 1e-12, nullptr, precision);
-        EXPECT_TRUE(result.status != SolverStatus::CONVERGED ||
-                    result.residual > 1e-12);
-        EXPECT_TRUE(!std::isfinite(result.residual) || result.residual > 1e-12);
+        const auto Ax64 = A.matvec(x);
+        const double independent_residual = std::abs(b(0) - Ax64[0]);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(independent_residual <= 1e-12);
+        EXPECT_NEAR(result.residual, independent_residual, 1e-14);
     });
 
     return run_all();
