@@ -299,6 +299,35 @@ int main()
                      std::runtime_error);
     });
 
+    run_case("reconstructed_fixed_value_boundary_flux_matches_upwind_matrix", [] {
+        const Mesh m = make_unit_cube();
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"Su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"Sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0)=2.0;
+        flux(0)=-1.0;  // inflow: prescribed boundary value is upwind
+        flux(1)= 1.0;  // outflow: owner-cell value is upwind
+
+        ScalarBoundaryConditions bc;
+        bc["wall"]={ScalarBoundaryType::FIXED_VALUE,5.0,0.0};
+        const auto eq = assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,false);
+        const auto reconstructed = reconstruct_scalar_transport_flux(
+            m,g,flux,phi,0.0,bc,false,ConvectionScheme::UPWIND);
+
+        double net_reconstructed_flux = 0.0;
+        for (std::size_t f=0; f<m.n_faces(); ++f)
+            net_reconstructed_flux += reconstructed(f);
+        const double matrix_residual = eq.matrix(0,0)*phi(0)-eq.rhs(0);
+
+        // Independent balance: (-1)*5 + (+1)*2 = -3.
+        EXPECT_NEAR(net_reconstructed_flux,-3.0,1e-12);
+        EXPECT_NEAR(matrix_residual,-3.0,1e-12);
+        EXPECT_NEAR(net_reconstructed_flux,matrix_residual,1e-12);
+    });
+
     run_case("all_reconstruction_schemes_have_initialized_gradients", [] {
         const Mesh m = make_1d_chain(3);
         const FvGeometry g = build_fv_geometry(m);
