@@ -686,8 +686,14 @@ reconstruct_scalar_transport_flux(
             if (!(gamma >= 0.0) || !std::isfinite(gamma))
                 throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid boundary diffusion");
             if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
-                psi_face=bc.value;
-                result(f)=F*psi_face - gamma*area/d*(psi_face-field(o));
+                // Dirichlet fixes the diffusive face state, but convection
+                // remains upwind: outflow uses the owner-cell value and
+                // inflow uses the prescribed boundary value. This must match
+                // the coefficients assembled by assemble_scalar_equation.
+                const double convective_value = F >= 0.0 ? field(o) : bc.value;
+                psi_face = convective_value;
+                result(f) = F * convective_value -
+                    gamma * area / d * (bc.value - field(o));
             } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
                 psi_face=field(o)+bc.gradient*d;
                 result(f)=F*psi_face - gamma*area*bc.gradient;
