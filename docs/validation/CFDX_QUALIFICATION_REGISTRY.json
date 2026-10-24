@@ -1,4 +1,3 @@
-
 {
   "schema_version": "1.0",
   "campaign": "CFDX Engineering Qualification Campaign",
@@ -407,8 +406,27 @@
       "observed_order": "The oracle is the exact discrete solution on a frozen first-order upwind flux, so no refinement order is claimed; refinement series deferred to the physical campaign",
       "runtime": "Milliseconds per chain (unit test runs in fast CTest, labels qualification;validation;phase13)",
       "regression_status": "test_production_energy_stage_vv in CI; READY is not PASS: physical promotion requires the real-solver campaign (cfdx_production_solver on a .cfdx.h5 case) executed on an exact merged HEAD with retained evidence (governance #118); post-merge fix branch: root cause of the red CI (pressure gauge anchor on the inlet cell - the eliminated continuity row cannot balance the injected inlet mass) fixed by anchoring on the outlet cell, plus stage-contract hardening (heat_flux on WALL patches only, Dirichlet+heat_flux contradiction rejected, dynamic_viscosity required, per-cell normalized local gate, explicit solid_conduction/compressible routing, complete geometry contract)"
+    },
+    {
+      "id": "SCALAR-TRANSPORT-NONORTH-AFFINE",
+      "domain": "Scalar transport / diffusion",
+      "case": "Affine scalar field on a skewed nonuniform mesh",
+      "status": "DIAGNOSTIC",
+      "reference": "Analytical Laplacian of phi=2x-3y+0.5z is zero; independent assembled residual and reconstructed-flux divergence",
+      "parameters": "Diffusion coefficient 1; shear=1; nonuniform coordinate map q -> q+0.2q^2; zero mass flux",
+      "mesh": "8x8x8 affine-sheared, nonuniform hexahedral mesh; interior-cell residual gate",
+      "boundary_conditions": "Default zero-gradient boundaries; only interior cells are used for the affine exactness gate",
+      "numerical_schemes": "Implicit normal diffusion conductance plus explicit conservative non-orthogonal tangential flux; shared flux reconstruction",
+      "solver_settings": "Operator-level assembly and flux reconstruction; no production case solve",
+      "convergence_criteria": "Corrected interior residual and reconstructed flux divergence < 1e-10; uncorrected residual must exceed 1e-3 to prove the correction is active",
+      "conservation_criteria": "Equal-and-opposite internal-face correction fluxes; reconstructed face flux matches the assembled diffusion operator",
+      "qoi": "Cellwise diffusion residual and reconstructed total flux divergence",
+      "reference_value": "Laplacian(phi)=0 for affine phi; reconstructed diffusion flux divergence is zero in interior cells",
+      "error": "Absolute cellwise residual and flux-divergence error",
+      "observed_order": "Not measured; single-mesh operator exactness only",
+      "runtime": "Not measured",
+      "regression_status": "Added to tests/validation/test_nonorthogonal_laplacian_campaign.cpp; exact-HEAD CI pending. Polyhedral MMS and mesh-refinement/GCI remain open.",
+      "method_fiche": "docs/audits/24-nonorthogonal-transport-diffusion.md"
     }
   ]
 }
-
-
