@@ -168,6 +168,16 @@ static Mesh make_unit_cube()
 
 int main()
 {
+    run_case("geometric_interpolation_weight_uses_longitudinal_projection", [] {
+        const Vec3 owner(0.0,0.0,0.0);
+        const Vec3 neighbour(1.0,0.0,0.0);
+        const Vec3 skew_face(0.5,0.5,0.0);
+        // The face is halfway along the centre line but has a transverse
+        // offset. Euclidean distance gives sqrt(0.5), projection gives 0.5.
+        EXPECT_NEAR(geometric_interpolation_weight(
+            skew_face,owner,&neighbour),0.5,1e-12);
+    });
+
     run_case("linear_and_blended_interpolation_are_exact_on_stretched_orthogonal_mesh", [] {
         const Mesh m=make_two_cell_stretched_chain();
         const FvGeometry g=build_fv_geometry(m);
