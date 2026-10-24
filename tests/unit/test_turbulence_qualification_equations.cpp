@@ -9,14 +9,47 @@
 #include <stdexcept>
 
 namespace {
-void expect_close(const char* label,double a,double b,double tol=1e-12) {    if(std::abs(a-b)>tol*std::max({1.0,std::abs(a),std::abs(b)})) {        std::cerr << "FAIL " << label << ": actual=" << a << " reference=" << b << " abs_error=" << std::abs(a-b) << "\n";
+void expect_close(const char* label, double a, double b, double tol=1e-12)
+{
+    if (!std::isfinite(a) || !std::isfinite(b) ||
+        !std::isfinite(tol) || tol < 0.0) {
+        std::cerr << "FAIL " << label
+                  << ": non-finite comparison operand or invalid tolerance"
+                  << " actual=" << a << " reference=" << b
+                  << " tolerance=" << tol << "\n";
+        throw std::runtime_error("turbulence equation reference is non-finite");
+    }
+    if (std::abs(a-b) > tol*std::max({1.0,std::abs(a),std::abs(b)})) {
+        std::cerr << "FAIL " << label << ": actual=" << a
+                  << " reference=" << b
+                  << " abs_error=" << std::abs(a-b) << "\n";
         throw std::runtime_error("turbulence equation reference mismatch");
     }
+}
+
+void test_expect_close_rejects_nonfinite_values()
+{
+    const auto must_reject = [](double actual, double reference, double tol) {
+        bool rejected = false;
+        try {
+            expect_close("comparator self-test", actual, reference, tol);
+        } catch (const std::runtime_error&) {
+            rejected = true;
+        }
+        if (!rejected)
+            throw std::runtime_error("expect_close accepted invalid numeric input");
+    };
+    must_reject(std::numeric_limits<double>::quiet_NaN(), 1.0, 1e-12);
+    must_reject(1.0, std::numeric_limits<double>::quiet_NaN(), 1e-12);
+    must_reject(std::numeric_limits<double>::infinity(), 1.0, 1e-12);
+    must_reject(1.0, 1.0, std::numeric_limits<double>::quiet_NaN());
+    must_reject(1.0, 1.0, -1.0);
 }
 #define EXPECT_CLOSE(a,b) expect_close(__func__,a,b)
 }
 
 int main() {
+    test_expect_close_rejects_nonfinite_values();
     using namespace cfdx::physics;
     TurbulenceTransportControls c;
     const double k=2.0, eps=4.0, omega=5.0, S=3.0, delta=0.2, volume=delta*delta*delta, y=0.05;
