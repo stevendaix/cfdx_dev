@@ -85,10 +85,12 @@ int main() {
         const auto reconstructed =
             reconstruct_scalar_transport_flux(
                 m,g,phi,q,0.0,bc,true,ConvectionScheme::UPWIND);
-        EXPECT_NEAR(reconstructed(0),3.0,1e-15);
+        // Fixed-value boundary data supplies the convective state on inflow;
+        // for this positive outward flux, upwinding selects the owner value q=2.
+        EXPECT_NEAR(reconstructed(0),6.0,1e-15);
         const auto audit=audit_face_flux_conservation(m,reconstructed);
-        EXPECT_NEAR(audit.global_boundary_flux,3.0,1e-15);
-        EXPECT_NEAR(audit.global_cell_balance,3.0,1e-15);
+        EXPECT_NEAR(audit.global_boundary_flux,6.0,1e-15);
+        EXPECT_NEAR(audit.global_cell_balance,6.0,1e-15);
     });
 
 
