@@ -1,0 +1,1 @@
+GUI oracle trigger for PR 1066: run Qt/PyVista headless regression with full tracebacks on pinned head + candidates.
