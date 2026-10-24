@@ -172,7 +172,7 @@ inline SolverResult solve_cg_impl(
         result.iterations = 0;
         result.residual = preconditioner
             ? initial_true_residual
-            : krylov_norm2(rv, redp, reduction);
+            : krylov_norm2(rv, SolverPrecision::FP64, reduction);
         result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
         return result;
     }
