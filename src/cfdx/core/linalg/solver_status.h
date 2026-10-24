@@ -47,11 +47,6 @@ struct SolverResult {
     std::size_t iterations = 0;
     double residual = 0.0;
     double residual_relative = 0.0;
-    // Residual of the state actually returned to the caller after any
-    // physics-level under-relaxation. Generic linear solvers leave these
-    // diagnostic-only fields as NaN when they do not own the returned state.
-    double returned_state_residual = std::numeric_limits<double>::quiet_NaN();
-    double returned_state_residual_relative = std::numeric_limits<double>::quiet_NaN();
     // Diagnostic evidence sampled during the iteration. This is intentionally
     // observational: it does not alter stopping criteria or Krylov updates.
     std::vector<SolverDiagnosticSample> diagnostics;
@@ -66,6 +61,11 @@ struct SolverResult {
     double min_true_residual = std::numeric_limits<double>::infinity();
     std::size_t first_residual_replacement = 0;
     std::size_t last_residual_replacement = 0;
+    // Residual of the state actually returned to the caller after any
+    // physics-level under-relaxation. Generic linear solvers leave these
+    // diagnostic-only fields as NaN when they do not own the returned state.
+    double returned_state_residual = std::numeric_limits<double>::quiet_NaN();
+    double returned_state_residual_relative = std::numeric_limits<double>::quiet_NaN();
 };
 
 }  // namespace core
