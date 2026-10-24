@@ -1,0 +1,769 @@
+.......s........ssss..ss.........s...............................s...s.. [ 10%]
+.................................F...................................... [ 20%]
+........................................................................ [ 30%]
+................................ssssssssssssss.......................... [ 40%]
+....s................................................................ss. [ 50%]
+..............s.ss...................................................... [ 60%]
+............................ssssss..........s........................... [ 70%]
+........................................................................ [ 81%]
+.s....................................................s................. [ 91%]
+..................................sssssssssssssssssss..ssssssss          [100%]
+=================================== FAILURES ===================================
+__ ValidateFichesContractTests.test_repository_fiches_are_structurally_valid ___
+
+self = <test_check_audit_gate.ValidateFichesContractTests testMethod=test_repository_fiches_are_structurally_valid>
+
+    def test_repository_fiches_are_structurally_valid(self):
+>       self.assertEqual(GATE.validate_fiches(ROOT), [])
+E       AssertionError: Lists differ: ["turbulence.md: missing numbered section [72 chars]ue'"] != []
+E       
+E       First list contains 2 additional elements.
+E       First extra element 0:
+E       "turbulence.md: missing numbered section '## 2.'"
+E       
+E       + []
+E       - ["turbulence.md: missing numbered section '## 2.'",
+E       -  "turbulence.md: missing math section '## 2. Formulation continue'"]
+
+tests/python/test_check_audit_gate.py:73: AssertionError
+=============================== warnings summary ===============================
+tests/python/test_fluent_adapter.py::TestFluentAdapter::test_convert_cas_h5_full
+tests/python/test_fluent_adapter.py::TestFluentAdapter::test_import_dat_h5
+  /home/runner/work/_temp/venv/lib/python3.12/site-packages/ansys/fluent/core/execution/session/file.py:1123: PyFluentDeprecationWarning: This usage is deprecated and will be removed in a future release. Please use 'field_data.scalar_fields()' instead
+    warnings.warn(
+
+tests/python/test_fluent_adapter.py::TestFluentAdapter::test_convert_cas_h5_full
+tests/python/test_fluent_adapter.py::TestFluentAdapter::test_import_dat_h5
+  /home/runner/work/_temp/venv/lib/python3.12/site-packages/ansys/fluent/core/execution/session/file.py:1166: PyFluentDeprecationWarning: This usage is deprecated and will be removed in a future release. Please use 'field_data.vector_fields()' instead
+    warnings.warn(
+
+tests/python/test_vm2025r2_fluent.py::TestVM2025R2FluentCases::test_cas_h5_detection
+  /home/runner/work/_temp/venv/lib/python3.12/site-packages/_pytest/fixtures.py:1313: PytestRemovedIn10Warning: Class-scoped fixture defined as instance method is deprecated.
+  Instance attributes set in this fixture will NOT be visible to test methods,
+  as each test gets a new instance while the fixture runs only once per class.
+  Use @classmethod decorator and set attributes on cls instead.
+  See https://docs.pytest.org/en/stable/deprecations.html#class-scoped-fixture-as-instance-method
+    fixturefunc = resolve_fixture_function(fixturedef, request)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+==================================== PASSES ====================================
+_____ TestSaturneAdapter.test_import_results_unreadable_file_returns_false _____
+----------------------------- Captured stdout call -----------------------------
+Illegal VTK header
+----------------------------- Captured stderr call -----------------------------
+Error: Couldn't read file 
+/tmp/pytest-of-runner/pytest-0/test_import_results_unreadable0/results.vtk as 
+vtk
+=========================== short test summary info ============================
+PASSED tests/python/test_application_cli.py::test_cli_status_uses_headless_application
+PASSED tests/python/test_application_cli.py::test_cli_info_exposes_application_state
+PASSED tests/python/test_application_cli.py::test_cli_results_uses_application_results_contract
+PASSED tests/python/test_application_commands.py::test_application_routes_configuration_through_a_command
+PASSED tests/python/test_application_commands.py::test_application_routes_execution_to_controller_and_publishes_state
+PASSED tests/python/test_application_commands.py::test_application_run_requires_a_saved_project
+PASSED tests/python/test_application_e2e.py::test_full_application_workflow_quantitative
+PASSED tests/python/test_application_postprocessing.py::test_post_processing_registry_exposes_existing_capabilities
+PASSED tests/python/test_application_postprocessing.py::test_mesh_quality_computation_is_owned_by_the_cpp_kernel_not_python
+PASSED tests/python/test_application_postprocessing.py::test_post_processing_registry_marks_unavailable_fields
+PASSED tests/python/test_application_postprocessing.py::test_post_processing_registry_has_no_duplicate_ids
+PASSED tests/python/test_application_postprocessing.py::test_registry_rejects_duplicate_and_unknown_capabilities
+PASSED tests/python/test_application_postprocessing.py::test_post_processing_spec_round_trips_as_metadata
+PASSED tests/python/test_application_postprocessing.py::test_registry_filters_categories_and_availability
+PASSED tests/python/test_application_postprocessing.py::test_execute_derived_is_gated_by_registry
+PASSED tests/python/test_application_probe_production_e2e.py::test_application_probe_csv_rejects_solver_emitted_ambiguous_history
+PASSED tests/python/test_application_probe_production_e2e.py::test_application_probe_csv_rejects_solver_emitted_non_monotonic_history
+PASSED tests/python/test_application_project.py::test_application_project_lifecycle_uses_shared_case_boundary
+PASSED tests/python/test_application_project.py::test_application_requires_project_path_for_save
+PASSED tests/python/test_application_properties.py::test_selection_resolves_properties_and_edit_updates_authoritative_case
+PASSED tests/python/test_application_properties.py::test_validation_diagnostics_map_paths_to_workflow_status
+PASSED tests/python/test_application_properties.py::test_solver_property_marks_restart_required
+PASSED tests/python/test_application_properties.py::test_mesh_selection_resolves_read_only_typed_properties
+PASSED tests/python/test_application_properties.py::test_mesh_selection_properties_fail_closed_on_unknown_objects
+PASSED tests/python/test_application_properties.py::test_mesh_selection_without_catalog_has_no_properties
+PASSED tests/python/test_application_properties.py::test_set_property_rejects_untyped_values
+PASSED tests/python/test_application_results.py::test_results_snapshot_exposes_stable_frames_and_fields
+PASSED tests/python/test_application_results.py::test_application_routes_result_selection_as_results_changed
+PASSED tests/python/test_application_results.py::test_result_dataset_is_renderer_independent
+PASSED tests/python/test_application_results.py::test_display_object_round_trips_without_gui_dependencies
+PASSED tests/python/test_application_results.py::test_display_object_rejects_unknown_renderer_kind
+PASSED tests/python/test_application_results.py::test_application_probe_csv_contract_round_trips_solver_history
+PASSED tests/python/test_application_state.py::test_application_state_is_a_read_only_snapshot
+PASSED tests/python/test_application_state.py::test_application_state_reads_execution_controller_without_owning_it
+PASSED tests/python/test_application_state.py::test_event_bus_delivers_specific_and_general_state_events
+PASSED tests/python/test_application_wiring.py::test_application_can_attach_controller_after_project_save
+PASSED tests/python/test_application_wiring.py::test_application_replaces_session_and_clears_project_context
+PASSED tests/python/test_application_wiring.py::test_application_owns_controller_construction_and_restart_selection
+PASSED tests/python/test_application_wiring.py::test_application_new_project_clears_restart_and_controller
+PASSED tests/python/test_application_wiring.py::test_application_open_project_with_dat_preserves_restart_identity
+PASSED tests/python/test_application_wiring.py::test_application_open_dat_restart_round_trip_keeps_controller_contract
+PASSED tests/python/test_application_workflow.py::test_post_processing_availability_maps_registry_to_workflow_status
+PASSED tests/python/test_application_workflow.py::test_build_workflow_state_renders_fields_as_conditional
+PASSED tests/python/test_application_workflow.py::test_build_workflow_state_propagates_diagnostics_over_availability
+PASSED tests/python/test_application_workflow.py::test_workflow_children_filters_by_parent
+PASSED tests/python/test_boundary_setup.py::test_velocity_boundary_has_typed_components
+PASSED tests/python/test_boundary_setup.py::test_unknown_boundary_type_is_rejected
+PASSED tests/python/test_boundary_setup.py::test_velocity_boundary_rejects_unknown_mode
+PASSED tests/python/test_capabilities.py::test_capability_ids_are_stable_and_unique
+PASSED tests/python/test_capabilities.py::test_contour_reports_missing_prerequisites_in_clear_text
+PASSED tests/python/test_capabilities.py::test_contour_available_once_renderer_and_dataset_are_ready
+PASSED tests/python/test_capabilities.py::test_run_unavailable_while_simulation_is_active
+PASSED tests/python/test_capabilities.py::test_stop_requires_an_active_simulation
+PASSED tests/python/test_capabilities.py::test_undo_and_redo_report_their_history_prerequisites
+PASSED tests/python/test_capabilities.py::test_unknown_capability_is_rejected_explicitly
+PASSED tests/python/test_capabilities.py::test_solver_states_are_never_conflated
+PASSED tests/python/test_capabilities.py::test_unknown_solver_values_are_surfaced_verbatim
+PASSED tests/python/test_capabilities.py::test_registry_covers_every_workbench_command
+PASSED tests/python/test_capabilities.py::test_file_and_workspace_commands_are_always_available
+PASSED tests/python/test_capabilities.py::test_capability_labels_are_unique
+PASSED tests/python/test_case_bundle.py::test_case_bundle_is_single_self_contained_hdf5_artifact
+PASSED tests/python/test_case_bundle.py::test_case_bundle_rejects_missing_mesh
+PASSED tests/python/test_case_bundle.py::test_case_bundle_rejects_missing_field_data
+PASSED tests/python/test_case_bundle.py::test_runtime_state_parasites_are_reported_as_not_separated[checkpoint]
+PASSED tests/python/test_case_bundle.py::test_runtime_state_parasites_are_reported_as_not_separated[restart]
+PASSED tests/python/test_case_bundle.py::test_runtime_state_parasites_are_reported_as_not_separated[arbitrary-runtime-group]
+PASSED tests/python/test_case_bundle.py::test_runtime_state_parasites_are_reported_as_not_separated[top-level-iteration]
+PASSED tests/python/test_case_bundle.py::test_runtime_state_parasites_are_reported_as_not_separated[top-level-time]
+PASSED tests/python/test_case_bundle.py::test_runtime_state_parasites_are_reported_as_not_separated[top-level-solution]
+PASSED tests/python/test_case_bundle.py::test_case_layout_members_are_not_mistaken_for_runtime_state
+PASSED tests/python/test_case_io.py::test_case_hdf5_roundtrip_preserves_configuration_without_numerical_state
+PASSED tests/python/test_case_io.py::test_case_hdf5_roundtrip_preserves_probe_catalogue
+PASSED tests/python/test_case_io.py::test_read_case_without_probe_catalogue_defaults_to_empty
+PASSED tests/python/test_case_io.py::test_case_hdf5_contains_no_separate_checkpoint_file
+PASSED tests/python/test_case_io.py::test_save_and_read_case_with_dat
+PASSED tests/python/test_case_io.py::test_read_case_with_dat_is_independent_of_case_state
+PASSED tests/python/test_case_io.py::test_read_case_with_dat_requires_paired_dat
+PASSED tests/python/test_case_io.py::test_save_case_preserves_existing_hdf5_mesh_data
+PASSED tests/python/test_case_io.py::test_read_case_with_dat_remaps_fields_to_case_cell_order
+PASSED tests/python/test_case_io.py::test_read_case_with_dat_rejects_idless_dat_for_identified_mesh
+PASSED tests/python/test_case_io.py::test_read_case_with_dat_rejects_different_cell_id_sets
+PASSED tests/python/test_case_io.py::test_read_case_with_dat_rejects_extra_checkpoint_cell_ids
+PASSED tests/python/test_case_io.py::test_read_case_with_dat_rejects_unbound_checkpoint
+PASSED tests/python/test_case_io.py::test_read_case_with_dat_rejects_missing_revision_metadata
+PASSED tests/python/test_case_io.py::test_read_case_with_dat_rejects_non_integer_revision_metadata
+PASSED tests/python/test_case_io.py::test_read_case_with_dat_rejects_incompatible_revisions
+PASSED tests/python/test_case_io.py::test_read_case_with_dat_rejects_revision_before_reading_numerical_state
+PASSED tests/python/test_case_io.py::test_read_case_with_dat_rejects_unsupported_checkpoint_schema
+PASSED tests/python/test_check_audit_gate.py::ValidateFichesContractTests::test_empty_audit_directory_is_an_error
+PASSED tests/python/test_check_audit_gate.py::ValidateFichesContractTests::test_fiche_without_reference_is_rejected
+PASSED tests/python/test_check_audit_gate.py::ValidateFichesContractTests::test_fiche_without_statut_header_is_rejected
+PASSED tests/python/test_check_audit_gate.py::ValidateFichesContractTests::test_missing_math_title_is_rejected_on_method_fiche
+PASSED tests/python/test_check_audit_gate.py::ValidateFichesContractTests::test_missing_numbered_section_is_rejected
+PASSED tests/python/test_check_audit_gate.py::ValidateFichesContractTests::test_missing_section7_is_rejected
+PASSED tests/python/test_check_audit_gate.py::ValidateFichesContractTests::test_non_method_fiche_is_exempt_from_math_titles_only
+PASSED tests/python/test_check_audit_gate.py::ValidateFichesContractTests::test_typographic_section7_variant_is_accepted
+PASSED tests/python/test_check_audit_gate.py::ValidateFichesContractTests::test_valid_fiche_is_accepted
+PASSED tests/python/test_check_audit_gate.py::RuleOfGoldOneContractTests::test_all_numeric_source_extensions_are_gated
+PASSED tests/python/test_check_audit_gate.py::RuleOfGoldOneContractTests::test_invalid_fiche_reference_in_body_is_rejected
+PASSED tests/python/test_check_audit_gate.py::RuleOfGoldOneContractTests::test_non_numeric_change_does_not_require_a_fiche
+PASSED tests/python/test_check_audit_gate.py::RuleOfGoldOneContractTests::test_non_source_files_under_numeric_prefixes_are_not_gated
+PASSED tests/python/test_check_audit_gate.py::RuleOfGoldOneContractTests::test_numeric_change_with_changed_fiche_is_accepted
+PASSED tests/python/test_check_audit_gate.py::RuleOfGoldOneContractTests::test_numeric_change_with_fiche_reference_in_body_is_accepted
+PASSED tests/python/test_check_audit_gate.py::RuleOfGoldOneContractTests::test_numeric_change_without_fiche_reference_is_rejected
+PASSED tests/python/test_check_audit_gate.py::CliExitCodeContractTests::test_cli_fails_when_a_fiche_is_structurally_invalid
+PASSED tests/python/test_check_audit_gate.py::CliExitCodeContractTests::test_cli_fails_when_numerical_core_has_no_fiche
+PASSED tests/python/test_check_audit_gate.py::CliExitCodeContractTests::test_cli_passes_on_a_well_formed_pr
+PASSED tests/python/test_checkpoint.py::test_checkpoint_roundtrip
+PASSED tests/python/test_checkpoint.py::test_checkpoint_schema_is_strict
+PASSED tests/python/test_checkpoint.py::test_checkpoint_rejects_unsupported_schema_version
+PASSED tests/python/test_checkpoint.py::test_checkpoint_rejects_negative_integer_metadata[case_revision]
+PASSED tests/python/test_checkpoint.py::test_checkpoint_rejects_negative_integer_metadata[mesh_revision]
+PASSED tests/python/test_checkpoint.py::test_checkpoint_rejects_negative_integer_metadata[physics_revision]
+PASSED tests/python/test_checkpoint.py::test_checkpoint_rejects_negative_integer_metadata[numerics_revision]
+PASSED tests/python/test_checkpoint.py::test_checkpoint_rejects_negative_integer_metadata[iteration]
+PASSED tests/python/test_checkpoint.py::test_checkpoint_rejects_non_finite_time[nan]
+PASSED tests/python/test_checkpoint.py::test_checkpoint_rejects_non_finite_time[inf]
+PASSED tests/python/test_checkpoint.py::test_checkpoint_rejects_non_finite_time[-inf]
+PASSED tests/python/test_checkpoint.py::test_checkpoint_publish_failure_preserves_previous_checkpoint
+PASSED tests/python/test_converter.py::TestRegistry::test_get_converter_fluent
+PASSED tests/python/test_converter.py::TestRegistry::test_get_converter_all[fluent-Fluent]
+PASSED tests/python/test_converter.py::TestRegistry::test_get_converter_all[openfoam-OpenFOAM]
+PASSED tests/python/test_converter.py::TestRegistry::test_get_converter_all[su2-SU2]
+PASSED tests/python/test_converter.py::TestRegistry::test_get_converter_all[starccm-STAR-CCM+]
+PASSED tests/python/test_converter.py::TestRegistry::test_get_converter_all[saturne-Code_Saturne]
+PASSED tests/python/test_converter.py::TestRegistry::test_get_converter_all[cfdx-CFDX]
+PASSED tests/python/test_converter.py::TestRegistry::test_get_converter_is_case_insensitive
+PASSED tests/python/test_converter.py::TestRegistry::test_get_converter_returns_fresh_instance
+PASSED tests/python/test_converter.py::TestRegistry::test_unknown_solver_raises
+PASSED tests/python/test_converter.py::TestRegistry::test_available_converters_lists_all
+PASSED tests/python/test_converter.py::TestRegistry::test_register_converter
+PASSED tests/python/test_converter.py::TestDetection::test_extension_detection[case.cas-fluent]
+PASSED tests/python/test_converter.py::TestDetection::test_extension_detection[case.dat-fluent]
+PASSED tests/python/test_converter.py::TestDetection::test_extension_detection[case.cas.h5-fluent]
+PASSED tests/python/test_converter.py::TestDetection::test_extension_detection[case.dat.h5-fluent]
+PASSED tests/python/test_converter.py::TestDetection::test_extension_detection[case.su2-su2]
+PASSED tests/python/test_converter.py::TestDetection::test_extension_detection[case.cfg-su2]
+PASSED tests/python/test_converter.py::TestDetection::test_extension_detection[case.sim-starccm]
+PASSED tests/python/test_converter.py::TestDetection::test_extension_detection[case.xml-saturne]
+PASSED tests/python/test_converter.py::TestDetection::test_extension_detection[case.py-saturne]
+PASSED tests/python/test_converter.py::TestDetection::test_extension_detection[mesh.med-saturne]
+PASSED tests/python/test_converter.py::TestDetection::test_extension_detection[mesh.cgns-saturne]
+PASSED tests/python/test_converter.py::TestDetection::test_extension_detection[case.cfdx.h5-cfdx]
+PASSED tests/python/test_converter.py::TestDetection::test_directory_with_polymesh_is_openfoam
+PASSED tests/python/test_converter.py::TestDetection::test_directory_with_su2_mesh
+PASSED tests/python/test_converter.py::TestDetection::test_plain_directory_defaults_to_openfoam
+PASSED tests/python/test_converter.py::TestDetection::test_unknown_extension_raises_on_convert
+PASSED tests/python/test_converter.py::TestDetection::test_explicit_solver_overrides_detection
+PASSED tests/python/test_converter.py::TestConversionResult::test_default_result_has_all_attributes
+PASSED tests/python/test_converter.py::TestConversionResult::test_success_reflects_blocking_findings
+PASSED tests/python/test_converter.py::TestConversionResult::test_nonblocking_findings_keep_success
+PASSED tests/python/test_converter.py::TestConversionResult::test_helpers
+PASSED tests/python/test_converter.py::TestConversionResult::test_summary_is_json_serialisable
+PASSED tests/python/test_converter.py::TestConvert::test_convert_su2_autodetect
+PASSED tests/python/test_converter.py::TestConvert::test_convert_openfoam_autodetect
+PASSED tests/python/test_converter.py::TestConvert::test_convert_fluent_autodetect
+PASSED tests/python/test_converter.py::TestConvert::test_starccm_records_blocking_gap
+PASSED tests/python/test_converter.py::TestConvert::test_get_converter_convert_signature
+PASSED tests/python/test_converter.py::TestConvert::test_missing_source_path_is_blocking
+PASSED tests/python/test_converter.py::TestConvert::test_adapter_exception_is_recorded_not_raised
+PASSED tests/python/test_converter.py::TestConvert::test_directory_rejected_by_file_only_converter
+PASSED tests/python/test_converter.py::TestOutput::test_writes_hdf5_and_reports
+PASSED tests/python/test_converter.py::TestOutput::test_hdf5_contains_expected_datasets
+PASSED tests/python/test_converter.py::TestOutput::test_cfdx_file_is_normalized
+PASSED tests/python/test_converter.py::TestOutput::test_get_converter_cfdx_reads_back
+PASSED tests/python/test_converter.py::TestOutput::test_cfdx_writer_without_mesh_still_writes_setup
+PASSED tests/python/test_converter.py::TestGapAnalysis::test_missing_mesh_is_recorded
+PASSED tests/python/test_converter.py::TestGapAnalysis::test_missing_materials_are_recorded
+PASSED tests/python/test_converter.py::TestGapAnalysis::test_missing_fields_are_recorded
+PASSED tests/python/test_converter.py::TestGapAnalysis::test_unreadable_openfoam_field_is_reported
+PASSED tests/python/test_converter.py::TestGapAnalysis::test_missing_config_is_reported
+PASSED tests/python/test_converter.py::TestGapAnalysis::test_openfoam_without_polymesh_is_blocking
+PASSED tests/python/test_converter.py::TestGapAnalysis::test_result_without_any_data_records_all_gaps
+PASSED tests/python/test_converter.py::TestGapAnalysis::test_findings_are_not_duplicated
+PASSED tests/python/test_dat_io.py::test_read_dat_discovers_all_fields
+PASSED tests/python/test_dat_io.py::test_read_dat_accepts_current_v1_format
+PASSED tests/python/test_dat_io.py::test_read_dat_accepts_native_v3_checkpoint_with_identity
+PASSED tests/python/test_dat_io.py::test_read_dat_accepts_native_v4_sst_checkpoint_with_explicit_omega
+PASSED tests/python/test_dat_io.py::test_read_dat_accepts_v3_checkpoint_without_optional_fields
+PASSED tests/python/test_dat_io.py::test_read_dat_accepts_v2_optional_fields_marker
+PASSED tests/python/test_dat_io.py::test_read_dat_rejects_invalid_v3_identity[CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nidentity 8 6 7 42\nfield U 3\n1 2 3\nfield p 1\n4\noptional_fields\n]
+PASSED tests/python/test_dat_io.py::test_read_dat_rejects_invalid_v3_identity[CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nfield U 3\n1 2 3\nfield p 1\n4\noptional_fields\n]
+PASSED tests/python/test_dat_io.py::test_read_dat_rejects_invalid_v3_identity[CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nidentity 8 6 1 notanumber\nfield U 3\n1 2 3\nfield p 1\n4\noptional_fields\n]
+PASSED tests/python/test_dat_io.py::test_read_dat_rejects_invalid_v3_identity[CFDX-DAT 3\ncells 1\niteration 0\ntime 0\nidentity 8 6 1\nfield U 3\n1 2 3\nfield p 1\n4\noptional_fields\n]
+PASSED tests/python/test_dat_io.py::test_read_dat_rejects_invalid_checkpoints[CFDX-DAT 2\ncells 1\niteration 0\ntime 0\n]
+PASSED tests/python/test_dat_io.py::test_read_dat_rejects_invalid_checkpoints[CFDX-DAT 2\ncells 1\niteration 0\ntime nan\nfield T 1\n1\n]
+PASSED tests/python/test_dat_io.py::test_read_dat_rejects_invalid_checkpoints[CFDX-DAT 2\ncells 1\niteration 0\ntime 0\nfield T 0\n1\n]
+PASSED tests/python/test_dat_io.py::test_read_dat_rejects_invalid_checkpoints[CFDX-DAT 2\ncells 1\niteration 0\ntime 0\nfield T 1\n1\nfield T 1\n2\n]
+PASSED tests/python/test_dat_io.py::test_hdf5_dat_roundtrip_all_fields
+PASSED tests/python/test_dat_io.py::test_hdf5_checkpoint_persists_global_cell_ids_and_remaps
+PASSED tests/python/test_dat_io.py::test_dat_checkpoint_rejects_duplicate_global_cell_ids
+PASSED tests/python/test_derived.py::test_vector_magnitude
+PASSED tests/python/test_derived.py::test_vector_field_magnitude_per_cell
+PASSED tests/python/test_derived.py::test_vector_field_magnitude_rejects_empty
+PASSED tests/python/test_derived.py::test_vector_field_magnitude_rejects_mismatched_components
+PASSED tests/python/test_derived.py::test_derived_sum
+PASSED tests/python/test_derived.py::test_mismatched_fields_are_rejected
+PASSED tests/python/test_e2e_case.py::test_short_headless_case
+PASSED tests/python/test_edit_history.py::test_undo_reverts_entries_in_reverse_order
+PASSED tests/python/test_edit_history.py::test_redo_replays_the_last_undone_entry
+PASSED tests/python/test_edit_history.py::test_new_edit_clears_the_redo_branch
+PASSED tests/python/test_edit_history.py::test_undo_depth_stays_bounded
+PASSED tests/python/test_edit_history.py::test_clear_forgets_every_entry
+PASSED tests/python/test_edit_history.py::test_empty_history_fails_closed
+PASSED tests/python/test_edit_history.py::test_get_property_mirrors_the_routed_surface
+PASSED tests/python/test_edit_history.py::test_undo_restores_the_previous_cfl_value
+PASSED tests/python/test_edit_history.py::test_successive_edits_undo_in_reverse_order
+PASSED tests/python/test_edit_history.py::test_application_edit_clears_the_redo_branch
+PASSED tests/python/test_edit_history.py::test_unchanged_value_is_not_recorded
+PASSED tests/python/test_edit_history.py::test_undo_restores_a_physics_toggle
+PASSED tests/python/test_edit_history.py::test_new_project_clears_the_history
+PASSED tests/python/test_edit_history.py::test_undo_publishes_the_application_state
+PASSED tests/python/test_execution.py::test_controller_propagates_metrics_and_success
+PASSED tests/python/test_execution.py::test_controller_propagates_failure
+PASSED tests/python/test_execution.py::test_controller_stop_reports_stopped
+PASSED tests/python/test_execution.py::test_controller_pause_resume
+PASSED tests/python/test_execution.py::test_controller_restart_uses_configured_option
+PASSED tests/python/test_execution.py::test_controller_builds_monitor_series_from_solver_metrics
+PASSED tests/python/test_execution.py::test_controller_merges_metrics_emitted_on_separate_lines
+PASSED tests/python/test_execution_backend.py::test_slurm_command_is_explicit
+PASSED tests/python/test_execution_backend.py::test_empty_slurm_command_rejected
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_adapter_metadata
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_detect_source
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_parse_cas
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_parse_cas_materials
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_parse_cas_boundary_zones
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_convert_full
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_boundary_conditions_mapped
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_model_settings_parsed
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_s_expression_parser
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_gap_report_supported_findings
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_detect_cas_h5
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_parse_cas_h5
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_convert_cas_h5_full
+PASSED tests/python/test_fluent_adapter.py::TestFluentAdapter::test_import_dat_h5
+PASSED tests/python/test_gui.py::test_gui_module_is_importable
+PASSED tests/python/test_gui.py::test_gui_without_qt_has_clear_error
+PASSED tests/python/test_initialization.py::test_supported_initialization_modes_are_explicit
+PASSED tests/python/test_initialization.py::test_uniform_initialization_requires_field_and_value
+PASSED tests/python/test_initialization.py::test_field_initialization_requires_source
+PASSED tests/python/test_initialization.py::test_initialization_requires_restart
+PASSED tests/python/test_materials.py::test_material_properties_have_physical_units
+PASSED tests/python/test_materials.py::test_material_rejects_nonphysical_values
+PASSED tests/python/test_mesh_model.py::test_catalog_reads_real_hdf5_patch_metadata
+PASSED tests/python/test_mesh_model.py::test_catalog_rejects_missing_topology
+PASSED tests/python/test_mesh_model.py::test_patch_selection_has_stable_identity_independent_of_index
+PASSED tests/python/test_mesh_model.py::test_catalog_rejects_duplicate_patch_names
+PASSED tests/python/test_mesh_model.py::test_cell_selection_has_stable_identity
+PASSED tests/python/test_mesh_model.py::test_catalog_reads_multi_region_hdf5
+PASSED tests/python/test_metrics.py::test_parse_iteration_time_and_cfl
+PASSED tests/python/test_metrics.py::test_parse_completion_iteration_count
+PASSED tests/python/test_metrics.py::test_parse_multiple_residuals
+PASSED tests/python/test_metrics.py::test_parse_common_parenthesized_residual
+PASSED tests/python/test_metrics.py::test_ignore_unrelated_output
+PASSED tests/python/test_metrics.py::test_parse_production_solver_trace
+PASSED tests/python/test_metrics.py::test_parse_production_trace_does_not_capture_non_convergence_tokens
+PASSED tests/python/test_monitors.py::test_monitor_series_is_iteration_synchronized
+PASSED tests/python/test_monitors.py::test_monitor_series_upsert_merges_values_for_same_timestep
+PASSED tests/python/test_monitors.py::test_monitor_series_upsert_reorders_out_of_order_callbacks
+PASSED tests/python/test_monitors.py::test_monitor_series_json_roundtrip_preserves_iteration_time_and_values
+PASSED tests/python/test_monitors.py::test_monitor_series_rejects_non_finite_persisted_values
+PASSED tests/python/test_monitors.py::test_monitor_series_rejects_non_monotonic_persisted_samples
+PASSED tests/python/test_n10_campaign_evidence.py::CampaignEvidenceTests::test_accepts_complete_report_for_exact_head
+PASSED tests/python/test_n10_campaign_evidence.py::CampaignEvidenceTests::test_rejects_failed_test_even_if_report_claims_pass
+PASSED tests/python/test_n10_campaign_evidence.py::CampaignEvidenceTests::test_rejects_incomplete_evidence
+PASSED tests/python/test_n10_campaign_evidence.py::CampaignEvidenceTests::test_rejects_missing_tests_and_policy_regressions
+PASSED tests/python/test_n10_campaign_evidence.py::CampaignEvidenceTests::test_rejects_wrong_head
+PASSED tests/python/test_n10_mesh_fixture_acquisition.py::test_manifest_parsers_preserve_sections
+PASSED tests/python/test_n10_mesh_fixture_acquisition.py::test_sha256_is_byte_exact
+PASSED tests/python/test_n10_mesh_fixture_acquisition.py::test_sha256_mismatch_is_rejected
+PASSED tests/python/test_n10_mesh_fixture_acquisition.py::test_sha256_tree_is_path_and_content_deterministic
+PASSED tests/python/test_n10_mesh_fixture_acquisition.py::test_public_fixture_provenance_is_fully_verified
+PASSED tests/python/test_n10_mesh_fixture_acquisition.py::test_independent_verifier_checks_directory_digest
+PASSED tests/python/test_n10_mesh_fixture_verification.py::test_lfs_pointer_is_not_payload
+PASSED tests/python/test_n10_mesh_fixture_verification.py::test_real_payload_is_not_lfs_pointer
+PASSED tests/python/test_n10_mesh_fixture_verification.py::test_github_lfs_media_url_is_pinned_to_ref
+PASSED tests/python/test_n10_mesh_fixture_verification.py::test_tree_digest_changes_when_payload_changes
+PASSED tests/python/test_n10_mesh_fixture_verification.py::test_directory_fixture_uses_tree_digest
+PASSED tests/python/test_n11_campaign_integrity.py::N11CampaignIntegrityTests::test_different_sha_is_rejected
+PASSED tests/python/test_n11_campaign_integrity.py::N11CampaignIntegrityTests::test_empty_expected_sha_allows_local_run
+PASSED tests/python/test_n11_campaign_integrity.py::N11CampaignIntegrityTests::test_matching_full_sha_is_accepted
+PASSED tests/python/test_n11_campaign_integrity.py::N11CampaignIntegrityTests::test_missing_expected_sha_allows_local_run
+PASSED tests/python/test_n11_campaign_integrity.py::ParseQuantitativeRecordsTests::test_ctest_verbose_prefix_is_stripped
+PASSED tests/python/test_n11_campaign_integrity.py::ParseQuantitativeRecordsTests::test_plain_record_line_is_parsed
+PASSED tests/python/test_n11_campaign_integrity.py::ParseQuantitativeRecordsTests::test_prefix_stripping_preserves_record_content
+PASSED tests/python/test_n11_campaign_integrity.py::ParseQuantitativeRecordsTests::test_prefixed_non_record_lines_are_ignored
+PASSED tests/python/test_n15_benchmark.py::N15Tests::test_regression
+PASSED tests/python/test_n15_benchmark.py::N15Tests::test_run_and_metadata
+PASSED tests/python/test_n8_qualification_evidence.py::test_model_results_keep_distinct_pipe_prefixed_keys
+PASSED tests/python/test_n8_qualification_evidence.py::test_model_failures_retain_reported_gate_names
+PASSED tests/python/test_n8_qualification_evidence.py::test_records_without_a_payload_are_ignored
+PASSED tests/python/test_n8_qualification_evidence.py::test_run_configuration_names_the_requested_preconditioner
+PASSED tests/python/test_n8_qualification_evidence.py::test_evidence_routes_each_emitter_to_its_own_list
+PASSED tests/python/test_n8_qualification_evidence.py::test_model_resolution_accepts_a_fully_accounted_campaign
+PASSED tests/python/test_n8_qualification_evidence.py::test_model_resolution_flags_a_configured_model_without_a_verdict
+PASSED tests/python/test_n8_qualification_evidence.py::test_model_resolution_detects_a_truncated_capture
+PASSED tests/python/test_n8_qualification_evidence.py::test_model_resolution_is_complete_without_a_reported_tally
+PASSED tests/python/test_n8_qualification_evidence.py::test_plain_output_without_the_ctest_prefix_is_parsed
+PASSED tests/python/test_n8_qualification_evidence.py::test_free_form_values_absorb_the_rest_of_the_line
+PASSED tests/python/test_n8_qualification_evidence.py::test_non_numeric_values_stay_strings_when_records_follow
+PASSED tests/python/test_n8_qualification_evidence.py::test_evidence_coverage_accepts_complete_structured_records
+PASSED tests/python/test_n8_qualification_evidence.py::test_evidence_coverage_separates_the_two_schur_quantitative_shapes
+PASSED tests/python/test_n8_qualification_evidence.py::test_evidence_coverage_reports_missing_fields_without_reinterpreting_results
+PASSED tests/python/test_n8_qualification_evidence.py::test_evidence_coverage_flags_categories_without_records
+PASSED tests/python/test_n8_qualification_evidence.py::test_evidence_coverage_reports_a_truncated_campaign
+PASSED tests/python/test_n8_qualification_evidence.py::test_evidence_coverage_accounts_for_malformed_records
+PASSED tests/python/test_n8_qualification_evidence.py::test_evidence_coverage_tolerates_a_non_list_evidence_section
+PASSED tests/python/test_n8_qualification_evidence.py::test_evidence_coverage_is_complete_on_a_captured_campaign
+PASSED tests/python/test_n8_qualification_evidence.py::test_resolved_plans_carry_resolution_only
+PASSED tests/python/test_n8_qualification_evidence.py::test_both_requests_are_announced_before_the_run
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_accepts_explicit_requests_that_were_honored
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_records_an_automatic_resolution_instead_of_hiding_it
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_flags_an_explicit_request_that_was_substituted
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_flags_a_configured_model_without_a_resolved_plan
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_flags_a_resolution_without_an_announced_request
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_is_complete_when_an_explicit_request_is_honored
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_never_trusts_a_request_restated_by_the_resolution_record
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_rejects_an_unannounced_pressure_request_in_the_plan
+PASSED tests/python/test_n8_qualification_evidence.py::test_expected_resolved_structure_follows_the_declared_algorithm
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_flags_a_coupled_model_that_also_resolved_pressure
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_flags_a_segmented_model_that_resolved_coupled
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_flags_a_substituted_krylov_method
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_flags_a_substituted_pressure_krylov_method
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_records_an_automatic_krylov_resolution
+PASSED tests/python/test_n8_qualification_evidence.py::test_linear_plan_reports_each_structure_mismatch_once_per_subproblem
+PASSED tests/python/test_n8_qualification_evidence.py::test_run_test_refuses_to_match_nothing
+PASSED tests/python/test_n8_qualification_evidence.py::test_run_test_records_a_genuine_pass_as_pass
+PASSED tests/python/test_n8_qualification_evidence.py::test_run_test_reports_a_real_failure_as_fail
+PASSED tests/python/test_n8_qualification_evidence.py::test_preconditioner_identity_accepts_ordinals_matching_the_enum
+PASSED tests/python/test_n8_qualification_evidence.py::test_preconditioner_identity_reports_an_ordinal_that_no_longer_matches
+PASSED tests/python/test_n8_qualification_evidence.py::test_preconditioner_identity_flags_a_name_outside_the_catalogue
+PASSED tests/python/test_numerical_selection.py::test_build_numerical_selection_uses_registry_keys
+PASSED tests/python/test_numerical_selection.py::test_coupled_schur_is_a_distinct_canonical_family
+PASSED tests/python/test_numerical_selection.py::test_unmapped_source_value_is_not_silently_rewritten
+PASSED tests/python/test_numerical_selection.py::test_known_source_values_have_no_mapping_gaps
+PASSED tests/python/test_numerical_selection.py::test_adapter_recorded_unmapped_setting_is_reported
+PASSED tests/python/test_numerical_selection.py::test_converted_case_with_unmappable_scheme_is_blocking
+PASSED tests/python/test_numerical_selection.py::test_converted_case_contains_canonical_selection
+PASSED tests/python/test_numerical_selection.py::test_coupled_schur_registry_covers_all_production_models
+PASSED tests/python/test_numerical_selection.py::test_coupled_case_without_schur_is_blocking
+PASSED tests/python/test_openfoam_case_reader.py::test_inspect_openfoam_case_reports_numeric_times_and_fields
+PASSED tests/python/test_openfoam_case_reader.py::test_read_openfoam_field_returns_internal_and_boundary_values
+PASSED tests/python/test_openfoam_case_reader.py::test_read_openfoam_field_expands_uniform_value_when_requested
+PASSED tests/python/test_openfoam_case_reader.py::test_inspect_rejects_missing_case_directory
+PASSED tests/python/test_openfoam_case_reader.py::test_native_reader_rejects_binary_field
+PASSED tests/python/test_openfoam_results_cli.py::test_openfoam_results_cli_imports_latest_cell_velocity
+PASSED tests/python/test_openfoam_results_cli.py::test_required_solver_qualification_fails_if_solver_is_unconfigured
+PASSED tests/python/test_openfoam_results_cli.py::test_openfoam_results_cli_rejects_wrong_velocity_cell_count
+PASSED tests/python/test_openfoam_results_import.py::test_openfoam_adapter_imports_latest_scalar_and_vector_fields
+PASSED tests/python/test_openfoam_results_import.py::test_openfoam_adapter_reports_missing_case_for_results
+PASSED tests/python/test_openfoam_results_import.py::test_openfoam_polyhedral_mesh_builds_native_face_cell_csr
+PASSED tests/python/test_openfoam_results_import.py::test_native_openfoam_csr_is_written_to_cfdx_hdf5
+PASSED tests/python/test_openfoam_results_import.py::test_openfoam_setup_dictionaries_map_supported_controls
+PASSED tests/python/test_openfoam_results_import.py::test_native_openfoam_reader_parses_ascii_scalar_and_vector_fields
+PASSED tests/python/test_openfoam_results_import.py::test_native_openfoam_reader_parses_setup_dictionaries
+PASSED tests/python/test_openfoam_results_import.py::test_native_openfoam_reader_rejects_binary_files_explicitly
+PASSED tests/python/test_openfoam_results_import.py::test_native_ascii_polymesh_is_parsed_from_files
+PASSED tests/python/test_openfoam_results_import.py::test_native_reader_rejects_volume_field_cell_count_mismatch
+PASSED tests/python/test_openfoam_results_import.py::test_initial_fields_expand_uniform_scalars_vectors_and_reject_tensors
+PASSED tests/python/test_output.py::test_throttle_batches_and_preserves_stream
+PASSED tests/python/test_output.py::test_throttle_validates_limits
+PASSED tests/python/test_packaging.py::test_package_builds
+PASSED tests/python/test_physics_setup.py::test_turbulence_catalog_exposes_all_current_model_states
+PASSED tests/python/test_physics_setup.py::test_turbulence_dropdown_contains_only_solver_ready_models
+PASSED tests/python/test_physics_setup.py::test_turbulence_recommendations_are_explicit_and_non_mutating
+PASSED tests/python/test_physics_setup.py::test_turbulence_selection_rejects_invalid_context
+PASSED tests/python/test_physics_setup.py::test_legacy_turbulence_settings_normalize_to_structured_schema
+PASSED tests/python/test_physics_setup.py::test_legacy_turbulence_settings_default_to_laminar
+PASSED tests/python/test_physics_setup.py::test_non_solver_ready_turbulence_models_are_rejected_for_production_cases
+PASSED tests/python/test_physics_setup.py::test_all_component_ready_rans_models_fail_closed_in_production
+PASSED tests/python/test_physics_setup.py::test_steady_scale_resolving_models_are_rejected_explicitly
+PASSED tests/python/test_physics_setup.py::test_transient_hybrid_guard_is_independent_of_gui_filtering
+PASSED tests/python/test_physics_setup.py::test_every_turbulence_model_has_explicit_requirements_and_gaps
+PASSED tests/python/test_physics_setup.py::test_python_selectability_matches_canonical_qualification_matrix
+PASSED tests/python/test_plot.py::test_metrics_history_is_bounded
+PASSED tests/python/test_plot.py::test_plot_has_clear_optional_dependency_error
+PASSED tests/python/test_post.py::test_read_monitor_csv
+PASSED tests/python/test_post.py::test_read_monitor_csv_requires_time
+PASSED tests/python/test_post.py::test_reduce_values
+PASSED tests/python/test_probe.py::test_nearest_probe
+PASSED tests/python/test_probe.py::test_probe_validates_alignment
+PASSED tests/python/test_probe.py::test_probe_field_cli_matches_solver_option
+PASSED tests/python/test_probe.py::test_probe_spec_matches_solver_cli_format
+PASSED tests/python/test_probe.py::test_probe_rejects_empty_name_and_non_finite_coords
+PASSED tests/python/test_probe.py::test_probe_rejects_name_with_comma
+PASSED tests/python/test_probe.py::test_probe_catalog_specs_and_csv_path
+PASSED tests/python/test_probe.py::test_probe_catalog_rejects_duplicate_names
+PASSED tests/python/test_probe.py::test_probe_catalog_remove
+PASSED tests/python/test_probe_commands.py::test_configure_probes_command_attaches_probes_to_case
+PASSED tests/python/test_probe_commands.py::test_configure_probes_replaces_existing_catalogue
+PASSED tests/python/test_probe_commands.py::test_configure_probes_does_not_require_solver_restart
+PASSED tests/python/test_probe_validation.py::test_probe_series_validates_quantitatively
+PASSED tests/python/test_probe_validation.py::test_probe_series_rejects_out_of_tolerance
+PASSED tests/python/test_probe_validation.py::test_probe_series_rejects_non_monotonic_samples
+PASSED tests/python/test_probe_validation.py::test_write_probe_csv_emits_native_schema
+PASSED tests/python/test_probe_validation.py::test_canonical_float_format_matches_cpp
+PASSED tests/python/test_probe_validation.py::test_write_probe_csv_value_encoding_is_canonical
+PASSED tests/python/test_probe_validation.py::test_write_probe_csv_byte_stable
+PASSED tests/python/test_probe_validation.py::test_write_probe_csv_overwrites_existing_file
+PASSED tests/python/test_probe_validation.py::test_write_probe_csv_orders_by_name_then_iteration
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_round_trips
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_parses_native_c_format
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_rejects_bad_row[pressure]
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_rejects_bad_row[pressure,1,0,0.1,x]
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_rejects_missing_magic
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_rejects_unsupported_version
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_rejects_non_numeric_value
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_rejects_no_samples
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_rejects_non_monotonic_samples
+PASSED tests/python/test_probe_validation.py::test_write_probe_csv_rejects_bad_name[]
+PASSED tests/python/test_probe_validation.py::test_write_probe_csv_rejects_bad_name[has,comma]
+PASSED tests/python/test_probe_validation.py::test_write_probe_csv_rejects_bad_name[has\nnewline]
+PASSED tests/python/test_probe_validation.py::test_write_probe_csv_rejects_empty_series
+PASSED tests/python/test_probe_validation.py::test_write_probe_csv_rejects_nonfinite_value
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_rejects_bad_columns_header
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_rejects_missing_columns_header
+PASSED tests/python/test_probe_validation.py::test_probe_metadata_line_matches_native_writer_format
+PASSED tests/python/test_probe_validation.py::test_write_probe_csv_emits_probe_metadata
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_round_trips_metadata
+PASSED tests/python/test_probe_validation.py::test_read_probe_csv_ignores_metadata_when_unavailable
+PASSED tests/python/test_probe_validation_roundtrip_guards.py::test_write_probe_csv_rejects_partial_metadata
+PASSED tests/python/test_probe_validation_roundtrip_guards.py::test_write_probe_csv_rejects_duplicate_iterations
+PASSED tests/python/test_probe_validation_roundtrip_guards.py::test_read_probe_csv_rejects_duplicate_iterations
+PASSED tests/python/test_probe_validation_roundtrip_guards.py::test_write_probe_csv_rejects_duplicate_probe_names
+PASSED tests/python/test_probe_validation_roundtrip_guards.py::test_write_probe_csv_creates_parent_directory
+PASSED tests/python/test_probe_validation_roundtrip_guards.py::test_write_probe_csv_rejects_decreasing_time_in_iteration_order
+PASSED tests/python/test_probe_validation_roundtrip_guards.py::test_write_probe_csv_accepts_constant_time
+PASSED tests/python/test_probe_validation_roundtrip_guards.py::test_write_probe_csv_allows_shared_iterations_across_probes
+PASSED tests/python/test_probe_validation_roundtrip_guards.py::test_write_probe_csv_invalid_history_does_not_create_parent
+PASSED tests/python/test_project.py::test_project_normalizes_path_and_pairs_dat
+PASSED tests/python/test_project.py::test_project_rejects_non_cfdx_case
+PASSED tests/python/test_project.py::test_project_save_load_is_setup_only
+PASSED tests/python/test_project.py::test_project_validate_delegates_to_case_bundle
+PASSED tests/python/test_renderer.py::test_null_renderer_is_headless_and_selectable
+PASSED tests/python/test_renderer.py::test_null_renderer_rejects_unknown_selection
+PASSED tests/python/test_renderer.py::test_null_renderer_clear_removes_selection
+PASSED tests/python/test_renderer.py::test_null_renderer_rejects_empty_source
+PASSED tests/python/test_renderer_headless_contract.py::test_renderer_contract_import_does_not_load_optional_gui_stack
+PASSED tests/python/test_renderer_headless_contract.py::test_renderer_contract_symbols_are_headless
+PASSED tests/python/test_renderer_pyvista.py::test_pyvista_renderer_has_clear_dependency_error
+PASSED tests/python/test_report.py::test_report_is_deterministic
+PASSED tests/python/test_results_series.py::test_result_series_discovers_and_orders_vtk_files
+PASSED tests/python/test_results_series.py::test_result_series_ignores_unsupported_files
+PASSED tests/python/test_results_series.py::test_empty_result_files_are_retained_as_incomplete
+PASSED tests/python/test_results_series.py::test_structurally_invalid_file_is_incomplete_without_inspection
+PASSED tests/python/test_results_series.py::test_truncated_legacy_vtk_is_incomplete_without_inspection
+PASSED tests/python/test_results_series.py::test_legacy_vtk_header_is_accepted
+PASSED tests/python/test_results_series.py::test_unreadable_latest_frame_is_marked_incomplete
+PASSED tests/python/test_results_series.py::test_header_only_vtu_is_incomplete_once_a_reader_inspects_it
+PASSED tests/python/test_results_series.py::test_zero_length_result_is_reported_as_incomplete
+PASSED tests/python/test_results_series.py::test_filename_number_is_explicit_fallback_time
+PASSED tests/python/test_results_series.py::test_vtk_metadata_overrides_filename_time
+PASSED tests/python/test_results_series.py::test_physical_time_acceptance_rejects_filename_fallback
+PASSED tests/python/test_results_series.py::test_physical_time_acceptance_can_be_requested_during_discovery
+PASSED tests/python/test_run_center.py::test_run_center_tracks_output_metrics_and_completion
+PASSED tests/python/test_runner.py::test_runner_streams_stdout_and_stderr
+PASSED tests/python/test_runner.py::test_runner_rejects_empty_command
+PASSED tests/python/test_runner.py::test_runner_rejects_concurrent_start
+PASSED tests/python/test_runner.py::test_runner_stop_terminates_process
+PASSED tests/python/test_runner.py::test_runner_pause_and_resume
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_adapter_metadata
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_detect_source_xml
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_parse_xml_setup
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_parse_xml_boundary_conditions
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_parse_xml_materials
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_parse_xml_physics
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_parse_python_setup
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_convert_blocks_without_neutral_mesh
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_convert_with_synthetic_py
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_import_results_neutral_formats
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_import_results_unreadable_file_returns_false
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_import_results_detect_only_format_returns_false
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_import_results_missing_file_returns_false
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_python_partial_extraction_reported
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_python_literal_only_extraction
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_gap_report_marks_python_as_approximated_not_supported
+PASSED tests/python/test_saturne_adapter.py::TestSaturneAdapter::test_import_results_unsupported_format
+PASSED tests/python/test_schema.py::TestSchema::test_schema_version
+PASSED tests/python/test_schema.py::TestSchema::test_case_setup_defaults
+PASSED tests/python/test_schema.py::TestSchema::test_bc_types
+PASSED tests/python/test_schema.py::TestSchema::test_bc_value_types
+PASSED tests/python/test_schema.py::TestSchema::test_find_boundary
+PASSED tests/python/test_schema.py::TestSchema::test_find_material
+PASSED tests/python/test_schema.py::TestMappingRules::test_load_default
+PASSED tests/python/test_schema.py::TestMappingRules::test_map_boundary_type
+PASSED tests/python/test_schema.py::TestMappingRules::test_map_bc_value_type
+PASSED tests/python/test_schema.py::TestMappingRules::test_map_turbulence
+PASSED tests/python/test_schema.py::TestMappingRules::test_map_scheme
+PASSED tests/python/test_schema.py::TestMappingRules::test_custom_mapping
+PASSED tests/python/test_schema.py::TestGapAnalysis::test_finding_creation
+PASSED tests/python/test_schema.py::TestGapAnalysis::test_gap_analysis_no_findings
+PASSED tests/python/test_schema.py::TestGapAnalysis::test_add_supported
+PASSED tests/python/test_schema.py::TestGapAnalysis::test_add_blocking
+PASSED tests/python/test_schema.py::TestGapAnalysis::test_add_nonblocking
+PASSED tests/python/test_schema.py::TestGapAnalysis::test_add_approximated
+PASSED tests/python/test_schema.py::TestGapAnalysis::test_add_unavailable
+PASSED tests/python/test_schema.py::TestGapAnalysis::test_json_report
+PASSED tests/python/test_schema.py::TestGapAnalysis::test_markdown_report
+PASSED tests/python/test_schema.py::TestConversionResult::test_defaults
+PASSED tests/python/test_selection.py::test_patch_selection_round_trip
+PASSED tests/python/test_selection.py::test_region_scoped_patch_selection_round_trip
+PASSED tests/python/test_selection.py::test_region_selection_round_trip
+PASSED tests/python/test_selection.py::test_face_selection_round_trip
+PASSED tests/python/test_selection.py::test_default_region_patch_has_no_prefix
+PASSED tests/python/test_selection.py::test_mesh_model_contract_ids_match_the_selection_scheme
+PASSED tests/python/test_selection.py::test_selection_labels_are_human_readable
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[ patch:inlet]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[patch:inlet ]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[patch:]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[region:]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[cell:12]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[patch:inlet/face:03]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[patch:inlet/face:-1]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[patch:inlet/face:1/face:2]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[region:fluid/region:solid]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[region:fluid/patch:wall/face:]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[patch:inlet/patch:wall]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[region:fluid/]
+PASSED tests/python/test_selection.py::test_parse_selection_id_rejects_invalid_ids[face:3]
+PASSED tests/python/test_selection.py::test_face_selection_id_rejects_invalid_inputs
+PASSED tests/python/test_selection.py::test_builders_reject_non_canonical_names
+PASSED tests/python/test_session.py::test_session_lifecycle_and_checkpoint
+PASSED tests/python/test_session.py::test_hot_and_restart_edits_are_explicit
+PASSED tests/python/test_session.py::test_invalid_running_edit_is_rejected
+PASSED tests/python/test_session.py::test_case_tree_is_stable
+PASSED tests/python/test_session.py::test_tui_is_headless_and_reflects_state
+PASSED tests/python/test_setup_contracts.py::test_typed_parameter_validates_type_unit_and_choices
+PASSED tests/python/test_setup_contracts.py::test_mesh_selection_is_stable_and_validated
+PASSED tests/python/test_setup_contracts.py::test_case_validation_reports_errors_and_warnings_without_qt
+PASSED tests/python/test_setup_contracts.py::test_valid_case_has_no_errors
+PASSED tests/python/test_setup_contracts.py::test_case_validation_reports_missing_physics_and_materials
+PASSED tests/python/test_setup_contracts.py::test_case_validation_reports_dependency_and_material_errors
+PASSED tests/python/test_setup_contracts.py::test_case_validation_rejects_invalid_boundary_schema
+PASSED tests/python/test_setup_model.py::test_parameter_carries_change_impact
+PASSED tests/python/test_setup_model.py::test_parameter_rejects_nonfinite_real
+PASSED tests/python/test_setup_model.py::test_setup_diagnostic_supports_shared_application_contract
+PASSED tests/python/test_setup_model.py::test_setup_diagnostic_rejects_invalid_severity
+PASSED tests/python/test_setup_model.py::test_setup_diagnostic_serializes_shared_fields
+PASSED tests/python/test_setup_schema.py::test_setup_schema_exposes_representative_domains_from_one_contract
+PASSED tests/python/test_setup_schema.py::test_setup_schema_reuses_existing_boundary_and_physics_capabilities
+PASSED tests/python/test_setup_schema.py::test_setup_fields_for_selection_is_headless_and_value_based
+PASSED tests/python/test_starccm_adapter.py::TestStarCCMAdapter::test_adapter_metadata
+PASSED tests/python/test_starccm_adapter.py::TestStarCCMAdapter::test_detect_source
+PASSED tests/python/test_starccm_adapter.py::TestStarCCMAdapter::test_convert_blocks_on_no_binary_topology
+PASSED tests/python/test_starccm_adapter.py::TestStarCCMAdapter::test_boundary_zones_detected
+PASSED tests/python/test_starccm_adapter.py::TestStarCCMAdapter::test_materials_detected
+PASSED tests/python/test_starccm_adapter.py::TestStarCCMAdapter::test_physics_detected
+PASSED tests/python/test_starccm_adapter.py::TestStarCCMAdapter::test_import_results_unsupported
+PASSED tests/python/test_starccm_adapter.py::TestStarCCMAdapter::test_extract_ascii_strings
+PASSED tests/python/test_starccm_adapter.py::TestStarCCMAdapter::test_gap_report_documents_limitations
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_adapter_metadata
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_detect_source
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_parse_mesh
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_parse_config
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_parse_incompressible_naca0012_config
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_convert_full
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_convert_mesh_only
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_element_type_lookup
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_to_meshio_type
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_gap_report_has_supported_entries
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_gap_report_documents_unsupported
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_parse_solution_csv
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_import_results
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_import_results_missing_file
+PASSED tests/python/test_su2_adapter.py::TestSu2Adapter::test_convert_with_solution
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_representable_families_map_to_registry_keys[params0-upwind]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_representable_families_map_to_registry_keys[params1-upwind]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_representable_families_map_to_registry_keys[params2-upwind]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_representable_families_map_to_registry_keys[params3-central]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_representable_families_map_to_registry_keys[params4-central]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_representable_families_map_to_registry_keys[params5-tvd_vanalbada]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_representable_families_map_to_registry_keys[params6-tvd_minmod]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_representable_families_map_to_registry_keys[params7-tvd_vanleer]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_representable_families_map_to_registry_keys[params8-tvd_superbee]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_representable_families_map_to_registry_keys[params9-tvd_mc]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_unrepresentable_families_stay_unresolved[params0-centre-based JST reconstruction]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_unrepresentable_families_stay_unresolved[params1-sensor-based AUSM limiting]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_unrepresentable_families_stay_unresolved[params2-sensor-based SLAU2 limiting]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_unrepresentable_families_stay_unresolved[params3-unbounded MUSCL, while every CFDX second-order key claims boundedness]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_unrepresentable_families_stay_unresolved[params4-limiter absent from the CFDX registry]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_unrepresentable_families_stay_unresolved[params5-no convection setting at all]
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_plumbing_config_maps_to_van_albada
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_real_naca0012_config_records_unmapped_scheme
+PASSED tests/python/test_su2_adapter.py::TestSu2ConvectionMapping::test_adapter_convert_still_reads_the_unmappable_case
+PASSED tests/python/test_su2_naca0012_validation.py::test_read_su2_naca0012_validation_case
+PASSED tests/python/test_surface.py::test_surface_integral
+PASSED tests/python/test_surface.py::test_vector_surface_integral
+PASSED tests/python/test_surface.py::test_surface_shape_is_validated
+PASSED tests/python/test_theme.py::test_theme_tokens_are_semantic_and_complete
+PASSED tests/python/test_theme.py::test_theme_module_imports_without_qt
+PASSED tests/python/test_theme.py::test_text_token_contrast_meets_wcag_aa_for_normal_text[surface.canvas-text.primary]
+PASSED tests/python/test_theme.py::test_text_token_contrast_meets_wcag_aa_for_normal_text[surface.canvas-text.secondary]
+PASSED tests/python/test_theme.py::test_text_token_contrast_meets_wcag_aa_for_normal_text[surface.canvas-text.muted]
+PASSED tests/python/test_theme.py::test_text_token_contrast_meets_wcag_aa_for_normal_text[surface.panel-text.primary]
+PASSED tests/python/test_theme.py::test_text_token_contrast_meets_wcag_aa_for_normal_text[surface.panel-text.secondary]
+PASSED tests/python/test_theme.py::test_text_token_contrast_meets_wcag_aa_for_normal_text[surface.panel-text.muted]
+PASSED tests/python/test_theme.py::test_text_token_contrast_meets_wcag_aa_for_normal_text[surface.input-text.primary]
+PASSED tests/python/test_theme.py::test_text_token_contrast_meets_wcag_aa_for_normal_text[surface.input-text.secondary]
+PASSED tests/python/test_theme.py::test_text_token_contrast_meets_wcag_aa_for_normal_text[surface.input-text.muted]
+PASSED tests/python/test_theme.py::test_status_colors_have_nontext_contrast_on_panel[status.success]
+PASSED tests/python/test_theme.py::test_status_colors_have_nontext_contrast_on_panel[status.warning]
+PASSED tests/python/test_theme.py::test_status_colors_have_nontext_contrast_on_panel[status.error]
+PASSED tests/python/test_theme.py::test_status_colors_have_nontext_contrast_on_panel[status.info]
+PASSED tests/python/test_theme.py::test_focus_indicator_has_nontext_contrast[surface.canvas]
+PASSED tests/python/test_theme.py::test_focus_indicator_has_nontext_contrast[surface.panel]
+PASSED tests/python/test_theme.py::test_focus_indicator_has_nontext_contrast[surface.input]
+PASSED tests/python/test_theme.py::test_focus_styles_cover_multiline_editors_and_table_widgets
+PASSED tests/python/test_theme.py::test_status_text_meets_wcag_aa_for_normal_text[surface.canvas-status.success]
+PASSED tests/python/test_theme.py::test_status_text_meets_wcag_aa_for_normal_text[surface.canvas-status.warning]
+PASSED tests/python/test_theme.py::test_status_text_meets_wcag_aa_for_normal_text[surface.canvas-status.error]
+PASSED tests/python/test_theme.py::test_status_text_meets_wcag_aa_for_normal_text[surface.canvas-status.info]
+PASSED tests/python/test_theme.py::test_status_text_meets_wcag_aa_for_normal_text[surface.panel-status.success]
+PASSED tests/python/test_theme.py::test_status_text_meets_wcag_aa_for_normal_text[surface.panel-status.warning]
+PASSED tests/python/test_theme.py::test_status_text_meets_wcag_aa_for_normal_text[surface.panel-status.error]
+PASSED tests/python/test_theme.py::test_status_text_meets_wcag_aa_for_normal_text[surface.panel-status.info]
+PASSED tests/python/test_theme.py::test_semantic_border_has_nontext_contrast[surface.canvas]
+PASSED tests/python/test_theme.py::test_semantic_border_has_nontext_contrast[surface.panel]
+PASSED tests/python/test_theme.py::test_semantic_border_has_nontext_contrast[surface.input]
+PASSED tests/python/test_theme.py::test_dense_data_views_use_semantic_table_chrome
+PASSED tests/python/test_validation_report.py::test_validation_gate_passes_only_when_every_executable_passes
+PASSED tests/python/test_validation_report.py::test_validation_gate_distinguishes_missing_executables
+PASSED tests/python/test_validation_report.py::test_reference_oracle_is_not_a_solver_pass
+PASSED tests/python/test_validation_report.py::test_generated_dynamic_table_rows_are_valid_latex
+PASSED tests/python/test_validation_report.py::test_every_dynamic_injection_point_is_escaped
+PASSED tests/python/test_validation_report.py::test_actual_vmfl_matrix_escapes_technical_unicode
+PASSED tests/python/test_validation_report.py::test_latex_escape_does_not_reescape_generated_commands
+PASSED tests/python/test_validation_report.py::test_parse_vmfl036_reads_named_groups_and_last_result
+PASSED tests/python/test_validation_report.py::test_parse_vmfl036_returns_none_without_result_record
+PASSED tests/python/test_validation_tools.py::test_comparator_success_zero_reference_and_json
+PASSED tests/python/test_validation_tools.py::test_comparator_rejects_missing_case_and_qoi
+PASSED tests/python/test_validation_tools.py::test_comparator_rejects_nonfinite_and_duplicate_cases
+PASSED tests/python/test_validation_tools.py::test_aggregator_is_deterministic_and_preserves_provenance
+PASSED tests/python/test_validation_tools.py::test_aggregator_rejects_duplicate_keys
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_replays_ordered_operations_without_mutating_source
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_remove_and_clear_return_new_pipelines
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs0]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs1]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs2]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs3]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs4]
+PASSED tests/python/test_visualization_pipeline.py::test_operation_checks_field_availability_and_supports_vector_glyphs
+PASSED tests/python/test_watcher.py::test_result_watcher_detects_file_change
+PASSED tests/python/test_workbench.py::test_workbench_is_importable_without_qt
+SKIPPED [1] tests/python/test_specialized_setup.py:5: GUI tests require the optional [gui] dependencies
+SKIPPED [1] tests/python/test_application_monitor_production_e2e.py:31: CFDX_PRODUCTION_SOLVER/CFDX_PRODUCTION_MESH are provided by ctest
+SKIPPED [3] tests/python/test_application_postprocessing_contract.py:34: CFDX_PRODUCTION_SOLVER is provided by ctest
+SKIPPED [1] tests/python/test_application_probe_production_e2e.py:38: CFDX_PRODUCTION_SOLVER/CFDX_PRODUCTION_MESH are provided by ctest
+SKIPPED [2] tests/python/test_application_production_workflow_e2e.py:40: CFDX_PRODUCTION_SOLVER is provided by ctest
+SKIPPED [1] tests/python/test_application_restart_production_e2e.py:31: CFDX_PRODUCTION_SOLVER/CFDX_PRODUCTION_MESH are provided by ctest
+SKIPPED [1] tests/python/test_capabilities.py:116: PySide6 optional
+SKIPPED [1] tests/python/test_capabilities.py:193: PySide6 optional
+SKIPPED [1] tests/python/test_gui.py:22: PySide6 optional
+SKIPPED [1] tests/python/test_gui.py:92: PySide6 optional
+SKIPPED [1] tests/python/test_gui.py:127: PySide6 optional
+SKIPPED [1] tests/python/test_gui.py:160: PySide6 optional
+SKIPPED [1] tests/python/test_gui.py:184: PySide6 optional
+SKIPPED [1] tests/python/test_gui.py:234: PySide6 optional
+SKIPPED [1] tests/python/test_gui.py:284: PySide6 optional
+SKIPPED [1] tests/python/test_gui_3d.py:7: PyVistaQt OpenGL smoke test is opt-in and requires a stable display
+SKIPPED [1] tests/python/test_gui_browser_widgets.py:7: optional Qt stack
+SKIPPED [1] tests/python/test_gui_browser_widgets.py:17: optional Qt stack
+SKIPPED [1] tests/python/test_gui_browser_widgets.py:50: optional Qt stack
+SKIPPED [1] tests/python/test_gui_browser_widgets.py:61: optional Qt stack
+SKIPPED [1] tests/python/test_gui_browser_widgets.py:108: optional Qt stack
+SKIPPED [1] tests/python/test_gui_production_solver_e2e.py:57: PySide6 optional
+SKIPPED [1] tests/python/test_n10_fixture_production_solver.py:44: N10 production-solver fixture environment is provided by the dedicated workflow
+SKIPPED [1] tests/python/test_n9_coupled_schur_case_selection.py:25: CFDX_PRODUCTION_SOLVER is provided by ctest
+SKIPPED [1] tests/python/test_n9_poiseuille_body_force_production.py:353: CFDX_PRODUCTION_SOLVER is provided by ctest
+SKIPPED [3] tests/python/test_openfoam_results_cli.py:193: CFDX_PRODUCTION_SOLVER is not configured for this test run
+SKIPPED [1] tests/python/test_production_solver_e2e.py:70: CFDX_PRODUCTION_SOLVER/CFDX_PRODUCTION_MESH are provided by ctest
+SKIPPED [1] tests/python/test_production_solver_e2e.py:86: CFDX_PRODUCTION_SOLVER is provided by ctest
+SKIPPED [1] tests/python/test_production_solver_e2e.py:110: CFDX_PRODUCTION_SOLVER/CFDX_PRODUCTION_MESH are provided by ctest
+SKIPPED [1] tests/python/test_production_solver_e2e.py:131: CFDX_PRODUCTION_SOLVER/CFDX_PRODUCTION_MESH are provided by ctest
+SKIPPED [1] tests/python/test_production_solver_e2e.py:217: CFDX_PRODUCTION_SOLVER/CFDX_PRODUCTION_MESH are provided by ctest
+SKIPPED [1] tests/python/test_production_solver_numerics_e2e.py:14: CFDX_PRODUCTION_SOLVER is provided by ctest
+SKIPPED [1] tests/python/test_renderer_pyvista.py:6: PyVista optional
+SKIPPED [1] tests/python/test_setup_panel.py:4: optional Qt stack
+SKIPPED [1] tests/python/test_theme.py:41: PySide6 optional
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:104: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:115: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:125: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:134: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:142: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:169: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:176: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [6] tests/python/test_vm2025r2_fluent.py:190: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:212: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:233: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:244: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:262: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:279: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_vm2025r2_fluent.py:313: VM2025R2 Fluent cases are not available; set CFDX_VM2025R2_FLUENT_DIR to the directory holding them
+SKIPPED [1] tests/python/test_workbench.py:17: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:104: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:127: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:153: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:190: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:237: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:257: PySide6 optional
+SKIPPED [1] tests/python/test_workbench_restart_bundle.py:7: PySide6 optional
+FAILED tests/python/test_check_audit_gate.py::ValidateFichesContractTests::test_repository_fiches_are_structurally_valid - AssertionError: Lists differ: ["turbulence.md: missing numbered section [72 chars]ue'"] != []
+
+First list contains 2 additional elements.
+First extra element 0:
+"turbulence.md: missing numbered section '## 2.'"
+
++ []
+- ["turbulence.md: missing numbered section '## 2.'",
+-  "turbulence.md: missing math section '## 2. Formulation continue'"]
+1 failed, 644 passed, 67 skipped, 5 warnings in 15.61s
+pyside6 installed: False

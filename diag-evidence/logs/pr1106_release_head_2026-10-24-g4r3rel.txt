@@ -1,0 +1,1 @@
+d590de860c5cc5b4388b66686ff4e14b39fdd82d fix(gui): ruff format EOF lines and undo test determinism (Lot 2, G4 round 3)

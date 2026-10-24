@@ -1,0 +1,5 @@
+pr=1106
+pr_head=d590de860c5cc5b4388b66686ff4e14b39fdd82d
+phase=g4-release-diagnose-round3
+ci_failure_step=Run Python regression (Build and test (Release))
+mirror=python3.12 venv, meshio/h5py/pytest/gmsh/pydantic/ansys-fluent-core, no PySide6
