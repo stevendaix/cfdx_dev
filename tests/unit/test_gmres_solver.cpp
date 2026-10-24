@@ -330,7 +330,7 @@ int main() {
         A.finalize();
         Vector b(2, 1.0);
         Vector x(2, 1e6);
-        const auto result = solve_gmres(A, b, x, 1, 100, 1e-8);
+        const auto result = solve_gmres(A, b, x, 1, 1, 1e-8);
         const auto Ax = A.matvec(x);
         double r2 = 0.0, b2 = 0.0;
         for (std::size_t i = 0; i < 2; ++i) {
@@ -351,7 +351,7 @@ int main() {
         A.finalize();
         Vector b(2, 1.0);
         Vector x(2, 1e6);
-        const auto result = solve_fgmres(A, b, x, 1, 100, 1e-8);
+        const auto result = solve_fgmres(A, b, x, 1, 1, 1e-8);
         const auto Ax = A.matvec(x);
         double r2 = 0.0, b2 = 0.0;
         for (std::size_t i = 0; i < 2; ++i) {
