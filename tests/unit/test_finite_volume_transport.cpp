@@ -304,7 +304,9 @@ int main()
         const FvGeometry g = build_fv_geometry(m);
         Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
         Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
-        flux.fill(0.0);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
         phi(0)=0.25; phi(1)=0.50; phi(2)=0.75;
         for (std::size_t f=0; f<m.n_faces(); ++f) {
             if (m.ownership().neighbour(f) >= 0) {
@@ -325,12 +327,17 @@ int main()
             ConvectionScheme::QUICK,
             ConvectionScheme::QUICK_BOUNDED
         };
+        std::vector<double> extra_diagonal{1.0,1.0,1.0};
         for (const auto scheme : schemes) {
             const auto reconstructed = reconstruct_scalar_transport_flux(
                 m,g,flux,phi,0.0,bc,true,scheme);
             EXPECT_TRUE(reconstructed.size() == m.n_faces());
             for (std::size_t f=0; f<m.n_faces(); ++f)
                 EXPECT_TRUE(std::isfinite(reconstructed(f)));
+            const auto assembled = assemble_scalar_equation(
+                m,g,flux,0.0,su,sp,bc,true,nullptr,&extra_diagonal,nullptr,nullptr,
+                scheme,&phi);
+            EXPECT_TRUE(assembled.rhs.size() == m.n_cells());
         }
     });
 
