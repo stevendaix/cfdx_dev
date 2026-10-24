@@ -1,3 +1,44 @@
+## Suivi d'exécution courant — 24 octobre 2026 (mise à jour depuis R2)
+
+Cette section est le journal vivant de reprise. Elle complète les statuts historiques R2 ci-dessous sans réécrire les preuves anciennes. Un PR ouvert signifie « correction candidate à auditer », jamais « problème corrigé ». Un item n'est clos qu'après lecture du diff actuel, vérification de l'absence de doublon sur `master`, tests ciblés et CI sur le HEAD exact.
+
+### État des reprises sur GitHub
+
+| ID de l'audit | État constaté à la reprise | Action / gate suivante |
+|---|---|---|
+| F03 | PR #1078 ouverte ; contrat Rhie–Chow/COUPLED à qualifier | Auditer le flux de face, le RHS de continuité, la jauge et les cas pression affine ; exiger CI exact-HEAD et comparaison COUPLED/ségrégé indépendante. |
+| F06 | PR draft #1103 ouverte | Auditer intégration réelle dans tous les appelants de transport, reconstruction et diffusion ; ajouter MMS polyédrique et vérifier Release/DebugSanitizers avant promotion. |
+| F08 | Aucun PR dédié visible dans l'inventaire ouvert consulté | Prochaine tâche d'implémentation : corriger le poids du gradient de Gauss (distance normale vs projection), avec maillage étiré/skewed et oracle affine/quadratique ; ne pas modifier les seuils. |
+| F11 | PR draft #1102 ouverte | Vérifier les trois prédicteurs, le résidu final indépendant, le signe et les flux opposés ; compléter MMS non orthogonal/polyédrique avant qualification. |
+| F12/F13 | Aucun PR dédié visible dans l'inventaire ouvert consulté | Auditer les contrats dimensionnels des helpers momentum/énergie et leurs appelants de production avant de proposer un patch. |
+| F18 | Aucun PR dédié visible dans l'inventaire ouvert consulté | Établir les identités thermodynamiques attendues pour `beta != 0`, puis tester dérivées et invariants dimensionnels. |
+| F22–F24 | Aucun PR dédié visible dans l'inventaire ouvert consulté | Séparer les variantes physiques nommées (WALE, compressibilité, Kato–Launder) ; pas de correction générique sans formule et variables nécessaires. |
+| F25 | PR #1081 ouverte | Auditer le diff et les appels de l'API supprimée ; vérifier les builds/CI avant clôture. |
+| F27 | PR #1083 ouverte | Vérifier les dérivées par axe et les oracles plan/cercle/sphère ; garder la qualification VOF/Laplace distincte. |
+| F30 | PR #1086 ouverte | Vérifier producteur→consommateur S2S, réciprocité, fermeture et fraction ouverte ; la cohérence algébrique seule ne qualifie pas la géométrie. |
+| F32 | PR #1088 ouverte | Recalculer le résidu du champ effectivement retourné après relaxation et auditer le gate thermique R3. |
+| F34 | PR #1100 ouverte, avec variantes historiques #1093/#1098 encore ouvertes | Éviter les doublons ; vérifier le comparateur courant, puis compléter les oracles indépendants manquants sans compter plusieurs sorties d'un même défaut comme plusieurs bugs. |
+| F02 | PR #1096 ouverte ; limiteur documenté comme partiel | Distinguer la correction du limiteur de diffusivité de la qualification du modèle k-omega 2006. |
+| F28 | PR #1107 ouverte, empilée sur #1105 ; #1095/#1097/#1101 sont aussi ouverts | Ne pas fusionner les branches concurrentes en bloc. Choisir une seule correction après comparaison des diffs et CI exact-HEAD ; vérifier l'atomicité avant mutation des champs. |
+| F26 | PR #1079 ouverte | Le correctif local R2 n'est pas une preuve de la PR ; vérifier formule, oracle et CI exact-HEAD. |
+| F01 / SST production | PR #1105 ouverte ; intégration de boucle/restart distincte (#1045/#1068) | Séparer source omega, intégration de production, persistance/restart et qualification physique ; aucune promotion globale SST sans les quatre gates. |
+
+### Ordre d'exécution maintenu
+
+1. **F08** : pas de PR dédiée visible, donc prochain correctif à préparer après audit du code courant et des appels.
+2. **F03 / F06 / F11** : auditer les PR existantes avant toute réimplémentation ; pas de cherry-pick aveugle depuis les branches historiques.
+3. **F12 / F13 / F18 / F22–F24** : spécifier d'abord les contrats physiques et dimensionnels, puis ajouter des oracles indépendants.
+4. **F25 / F27 / F30 / F32 / F34 / F02 / F26 / F28** : examiner les PR existantes et leur CI exact-HEAD, éliminer les doublons et ne fermer que sur preuve.
+5. Après chaque étape, actualiser la ligne correspondante du registre de la section 5 et cette table ; garder les limitations de validation explicites.
+
+### Garde-fous de reprise
+
+- L'état R2 est fondé sur une archive ZIP figée et un patch cumulatif ; il ne doit pas être appliqué tel quel à `master` ou empilé sur une PR sans comparaison exacte des sources.
+- L'inventaire GitHub courant montre des PR candidates, mais la liste des PR ouvertes ne suffit pas à établir leur diff, leur base/head ou leur CI. Aucune correction n'est déclarée fusionnée par cette section.
+- Aucun seuil de convergence, budget, oracle ou test ne doit être affaibli pour obtenir un vert. Les validations longues restent séparées et explicitement étiquetées.
+
+---
+
 CFDX — Audit consolidé, correctifs appliqués et tests — R2
 24 octobre 2026. Fichier de travail unique, révision R2.
 0. Lire, appliquer et prolonger ce document
