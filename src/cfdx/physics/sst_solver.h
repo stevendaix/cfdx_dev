@@ -106,10 +106,10 @@ inline TurbulenceTransportResult solve_sst_transport(
 
         auto eqk=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_k);
+            nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k);
         auto eqw=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
-            omega_face_values,nullptr,nullptr,&gamma_w);
+            omega_face_values,nullptr,nullptr,&gamma_w, ConvectionScheme::UPWIND, &omega);
 
         ScalarSolveControls sc{2000,tolerance,0.7};
         cfdx::core::Vector k_solution(n, 0.0);
