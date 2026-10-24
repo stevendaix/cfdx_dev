@@ -686,8 +686,14 @@ reconstruct_scalar_transport_flux(
             if (!(gamma >= 0.0) || !std::isfinite(gamma))
                 throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid boundary diffusion");
             if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
-                psi_face=bc.value;
-                result(f)=F*psi_face - gamma*area/d*(psi_face-field(o));
+                // For a fixed-value boundary, the prescribed value enters the
+                // convective flux only on inflow. On outflow the upwind state
+                // is the owner-cell value, exactly as in matrix assembly.
+                // Diffusion still uses the prescribed boundary value in both
+                // flow directions.
+                const double convective_face_value = F < 0.0 ? bc.value : field(o);
+                result(f) = F * convective_face_value
+                    - gamma * area / d * (bc.value - field(o));
             } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
                 psi_face=field(o)+bc.gradient*d;
                 result(f)=F*psi_face - gamma*area*bc.gradient;
