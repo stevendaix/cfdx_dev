@@ -746,6 +746,7 @@ reconstruct_scalar_transport_flux(
     return result;
 }
 
+// Method contract: docs/audits/01-diffusion-laplacien.md
 inline cfdx::core::SolverResult solve_scalar_equation(
     const ScalarEquation& equation,
     cfdx::core::Vector& solution,
