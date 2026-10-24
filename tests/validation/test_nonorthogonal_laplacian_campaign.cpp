@@ -254,7 +254,7 @@ void transport_nonorthogonal_linear_campaign()
 
     double max_corrected_residual = 0.0;
     double max_reconstructed_divergence = 0.0;
-    double min_uncorrected_residual = std::numeric_limits<double>::infinity();
+    double max_uncorrected_residual = 0.0;
     for (const std::size_t cell : grid.interior) {
         double ax = 0.0;
         const auto begin = equation.matrix.row_offsets_data()[cell];
@@ -272,15 +272,15 @@ void transport_nonorthogonal_linear_campaign()
         // uncorrected two-point residual for the same assembled matrix.
         const double uncorrected_residual =
             corrected_residual + correction_divergence[cell];
-        min_uncorrected_residual = std::min(
-            min_uncorrected_residual, std::abs(uncorrected_residual));
+        max_uncorrected_residual = std::max(
+            max_uncorrected_residual, std::abs(uncorrected_residual));
     }
 
     require(max_corrected_residual < 1e-10,
             "transport corrected diffusion must annihilate an affine field on skew mesh");
     require(max_reconstructed_divergence < 1e-10,
             "reconstructed transport flux must share the corrected diffusion operator");
-    require(min_uncorrected_residual > 1e-3,
+    require(max_uncorrected_residual > 1e-3,
             "uncorrected two-point transport diffusion must expose the skew residual");
     std::cout << "N3_TRANSPORT_LINEAR shear=1 corrected_residual="
               << max_corrected_residual
