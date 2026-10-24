@@ -15,12 +15,12 @@ jobs:
   oracle:
     name: ruff-evidence
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     env:
       EVID: diag-evidence/logs
-      PR_BASE: e9ed6f3317b90a88cfbfbb356a0cedc35c3b6d3d
-      PR_HEAD: aa06b7a45dae39c9c7533c5612ccb5cc009c19e9
-      STAMP: 2026-10-24-g4r1
+      PR_BASE: 09be5d1bfc913bf2b73571b965d55c2bf9fabce1
+      PR_HEAD: d60a9d9a48e033d8bf481cc1bc0de0d13640a464
+      STAMP: 2026-10-24-g4r2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,7 +29,7 @@ jobs:
       - name: Fetch pinned PR refs and create worktree
         run: |
           mkdir -p "$GITHUB_WORKSPACE/$EVID"
-          git fetch origin "$PR_BASE" "$PR_HEAD"
+          git fetch origin '+refs/heads/*:refs/remotes/origin/*'
           git worktree add "$RUNNER_TEMP/ref" "$PR_HEAD"
           cd "$RUNNER_TEMP/ref"
           git log -1 --format='%H %s' | tee "$GITHUB_WORKSPACE/$EVID/pr1106_oracle_head_$STAMP.txt"
@@ -51,6 +51,24 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/ref"
           git diff --name-only "$PR_BASE...$PR_HEAD" -- '*.py' | tee "$GITHUB_WORKSPACE/$EVID/pr1106_oracle_files_$STAMP.txt"
+
+      - name: Run exact CI pre-commit command (verbatim capture)
+        continue-on-error: true
+        run: |
+          cd "$RUNNER_TEMP/ref"
+          python_files=$(git diff --name-only "$PR_BASE...$PR_HEAD" -- '*.py')
+          {
+            echo "files: $python_files"
+            pre-commit run --files $python_files --show-diff-on-failure
+            echo "pre-commit exit code: $?"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1106_oracle_precommitrun_$STAMP.log" 2>&1
+
+      - name: Run cfdx-fast guard on pinned head (preempt CI step 7)
+        continue-on-error: true
+        run: |
+          cd "$RUNNER_TEMP/ref"
+          pre-commit run cfdx-fast --all-files > "$GITHUB_WORKSPACE/$EVID/pr1106_oracle_cfdxfast_$STAMP.log" 2>&1
+          echo "cfdx-fast exit code: $?" >> "$GITHUB_WORKSPACE/$EVID/pr1106_oracle_cfdxfast_$STAMP.log"
 
       - name: Diagnose ruff findings on pinned PR head (no fix)
         continue-on-error: true
@@ -100,7 +118,7 @@ jobs:
             echo "pr=1106"
             echo "pr_head=$PR_HEAD"
             echo "pr_base=$PR_BASE"
-            echo "phase=g4-precommit-round1"
+            echo "phase=g4-precommit-round2"
           } > "$E/pr1106_oracle_meta_$STAMP.txt"
 
       - name: Commit evidence
@@ -112,6 +130,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: PR 1106 pre-commit ruff oracle round 1 evidence (2026-10-24) [ci skip]"
+            git commit -m "diag: PR 1106 pre-commit ruff oracle round 2 evidence (2026-10-24) [ci skip]"
             (git push || (git pull --rebase && git push))
           fi
