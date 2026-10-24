@@ -96,16 +96,17 @@ inline SolverResult solve_gmres(
         result.residual = beta;
         return result;
     }
-    // For b=0, use a relative tolerance against the initial residual rather
-    // than declaring every nonzero initial residual a divergence. This lets
-    // a warm-started iterate converge to the zero solution while preserving
-    // the usual RHS-relative criterion when ||b|| is nonzero.
-    tol = tolerance * std::max(b_norm, beta);
+    // Preserve RHS-relative convergence whenever b is nonzero. Only the
+    // zero-RHS case uses the initial residual as its reference scale.
+    const double convergence_reference = b_norm > 0.0 ? b_norm : beta;
+    const double rhs_scale_for_diagnostics =
+        std::max(convergence_reference, 1e-300);
+    tol = tolerance * convergence_reference;
     if (beta <= tol) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
         result.residual = beta;
-        result.residual_relative = beta / rhs_scale;
+        result.residual_relative = beta / rhs_scale_for_diagnostics;
         return result;
     }
 
@@ -239,7 +240,7 @@ inline SolverResult solve_gmres(
                     result.status = SolverStatus::CONVERGED;
                     result.iterations = iterations;
                     result.residual = exact;
-                    result.residual_relative = exact / rhs_scale;
+                    result.residual_relative = exact / rhs_scale_for_diagnostics;
                     return result;
                 }
             }
@@ -299,7 +300,7 @@ inline SolverResult solve_gmres(
                 result.iterations = iterations;
                 result.residual = breakdown_residual;
                 result.residual_relative =
-                    breakdown_residual / rhs_scale;
+                    breakdown_residual / rhs_scale_for_diagnostics;
                 return result;
             }
             w.y[static_cast<std::size_t>(i)] = sum / diag;
@@ -320,7 +321,7 @@ inline SolverResult solve_gmres(
             result.status = SolverStatus::CONVERGED;
             result.iterations = iterations;
             result.residual = beta;
-            result.residual_relative = beta / rhs_scale;
+            result.residual_relative = beta / rhs_scale_for_diagnostics;
             return result;
         }
 
@@ -464,6 +465,20 @@ inline SolverResult solve_gmres(
     bool setup_preconditioner = true) {
     LinearOperator op;
     op.size = A.n_rows();
+    // Certification always uses the original sparse matrix in FP64,
+    // independently of the iterative operator precision.
+    op.apply_fp64 = [&A](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
     op.apply = [&A, precision](const Vector& in, Vector& out) {
         if (out.size() != A.n_rows()) out.resize(A.n_rows());
         if (precision.enabled && precision.operator_precision == SolverPrecision::FP32) { mixed_precision_matvec(A, in, out, SolverPrecision::FP32); return; }
