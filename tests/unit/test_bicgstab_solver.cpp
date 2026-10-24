@@ -147,12 +147,12 @@ int main() {
             A.push_back(0, 0, 4.0 * scale); A.push_back(0, 1, 1.0 * scale);
             A.push_back(1, 0, -2.0 * scale); A.push_back(1, 1, 5.0 * scale);
             A.finalize();
-            Vector b(2); b(0) = 2.0 * scale; b(1) = 3.0 * scale;
+            Vector b(2); b(0) = 6.0 * scale; b(1) = 8.0 * scale;
             Vector x(2, 0.0);
             const auto result = solve_bicgstab(A, b, x, 20, 1e-10);
             EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
-            EXPECT_NEAR(x(0), 1.0 / 3.0, 1e-8);
-            EXPECT_NEAR(x(1), 11.0 / 15.0, 1e-8);
+            EXPECT_NEAR(x(0), 1.0, 1e-8);
+            EXPECT_NEAR(x(1), 2.0, 1e-8);
             EXPECT_TRUE(result.residual_relative < 1e-10);
         }
     });
