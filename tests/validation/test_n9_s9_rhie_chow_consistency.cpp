@@ -213,12 +213,27 @@ int main()
 
         const auto rAU = unit_rAU(mesh.n_cells());
         const auto phi = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc, true);
         const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+        const auto grad_p_discrete = gauss_gradient_with_boundary(
+            p, mesh, geometry, pbc);
 
-        // The Rhie-Chow pressure correction must vanish for a pressure field
-        // whose cell gradient is exactly the same as its face pressure jump.
-        EXPECT_NEAR(phi(1), phi_linear(1), 1e-12);
+        // COUPLED supplies physical U, unlike the segregated H/A predictor.
+        // Its flux therefore includes interp(dAU*grad(p)) before subtracting
+        // the implicit pressure response. On this orthogonal internal face,
+        // the response is exactly (p_N-p_O)/d * Sf.x; this direct expression
+        // is independent of the production Rhie-Chow flux routine.
+        const double grad_face_x = 0.5 * (
+            grad_p_discrete.component_data(0)[0] +
+            grad_p_discrete.component_data(0)[1]);
+        const double dAU_face_x = 0.5 * (
+            geometry.cell_volumes[0] * rAU[0][0] +
+            geometry.cell_volumes[1] * rAU[0][1]);
+        const double pressure_jump_response =
+            dAU_face_x * (p(1) - p(0));
+        const double expected = phi_linear(1) +
+            dAU_face_x * grad_face_x - pressure_jump_response;
+        EXPECT_NEAR(phi(1), expected, 1e-12);
     });
 
     run_case("n9_s9_rhie_chow_pressure_offset_invariance", [] {
