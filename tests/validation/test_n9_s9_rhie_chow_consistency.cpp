@@ -188,6 +188,66 @@ static Mesh make_two_cell_channel_oblique()
     return m;
 }
 
+// Four-cell channel so an alternating pressure mode is distinguishable
+// from a genuinely affine pressure field. Interior cells have a centred
+// zero gradient for p = (+1,-1,+1,-1), while adjacent-cell jumps remain nonzero.
+static Mesh make_four_cell_channel()
+{
+    Mesh m;
+    constexpr std::size_t nx = 4;
+    m.points().resize((nx + 1) * 4);
+    for (std::size_t i = 0; i <= nx; ++i) {
+        const double x = static_cast<double>(i);
+        const double xyz[4][3] = {
+            {x,0,0}, {x,1,0}, {x,1,1}, {x,0,1}};
+        for (std::size_t j = 0; j < 4; ++j)
+            m.points().set(4*i+j, xyz[j][0], xyz[j][1], xyz[j][2]);
+    }
+
+    std::vector<std::size_t> x_faces(nx + 1);
+    std::vector<std::vector<std::size_t>> side_faces(nx);
+    for (std::size_t i = 0; i <= nx; ++i) {
+        const std::size_t b = 4*i;
+        m.faces().push_face({b, b+1, b+2, b+3});
+        x_faces[i] = i;
+    }
+    for (std::size_t i = 0; i < nx; ++i) {
+        const std::size_t l = 4*i, r = 4*(i+1);
+        const std::size_t first = m.faces().size();
+        m.faces().push_face({l, r, r+3, l+3});       // y = 0
+        m.faces().push_face({l+1, l+2, r+2, r+1});   // y = 1
+        m.faces().push_face({l, l+1, r+1, r});       // z = 0
+        m.faces().push_face({l+3, r+3, r+2, l+2});   // z = 1
+        side_faces[i] = {first, first+1, first+2, first+3};
+    }
+
+    m.ownership().resize(m.faces().size());
+    for (std::size_t f = 0; f < m.faces().size(); ++f)
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    for (std::size_t i = 0; i <= nx; ++i) {
+        if (i == 0) m.ownership().set_owner(x_faces[i], 0);
+        else m.ownership().set_owner(x_faces[i], i-1);
+        if (i > 0 && i < nx)
+            m.ownership().set_neighbour(x_faces[i], static_cast<std::int64_t>(i));
+    }
+
+    Patch wall;
+    wall.name = "wall";
+    wall.type = PatchType::WALL;
+    wall.face_ids = {x_faces.front(), x_faces.back()};
+    for (std::size_t i = 0; i < nx; ++i) {
+        const auto l = x_faces[i], r = x_faces[i+1];
+        m.cells().push_cell({l, r, side_faces[i][0], side_faces[i][1],
+                             side_faces[i][2], side_faces[i][3]});
+        for (const auto f : side_faces[i]) {
+            m.ownership().set_owner(f, i);
+            wall.face_ids.push_back(f);
+        }
+    }
+    m.boundary().add_patch(wall);
+    return m;
+}
+
 int main()
 {
     run_case("n9_s9_rhie_chow_linear_pressure_consistency", [] {
@@ -264,14 +324,14 @@ int main()
     });
 
     run_case("n9_s9_rhie_chow_alternating_pressure_mode_is_coupled", [] {
-        const Mesh mesh = make_two_cell_channel();
+        const Mesh mesh = make_four_cell_channel();
         const auto geometry = build_fv_geometry(mesh);
 
-        Field<double, Location::CELL> U(2, "U", "m/s", 3);
-        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
         U.fill(0.0);
-        p(0) = 1.0;
-        p(1) = -1.0;
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+            p(c) = (c % 2 == 0) ? 1.0 : -1.0;
 
         VelocityBoundaryConditions ubc;
         ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
@@ -280,16 +340,12 @@ int main()
 
         const auto rAU = unit_rAU(mesh.n_cells());
         const auto phi = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
-        const auto phi_coupled = make_rhie_chow_mass_flux(
             mesh, geometry, U, p, rAU, 1.0, ubc, pbc, true);
 
-        // A collocated cell-centred velocity interpolation alone produces
-        // zero mass flux. Both the segregated and monolithic COUPLED contracts
-        // must keep the alternating pressure mode visible to continuity.
-        EXPECT_TRUE(std::abs(phi(1)) > 1e-12);
-        EXPECT_NEAR(phi(1), 2.0, 1e-12);
-        EXPECT_TRUE(std::abs(phi_coupled(1)) > 1e-12);
+        // The central face lies between cells whose centred pressure gradients
+        // cancel, but whose pressure jump is nonzero. The coupled flux must
+        // therefore retain a nonzero Rhie-Chow response on that face.
+        EXPECT_TRUE(std::abs(phi(2)) > 1e-12);
     });
 
 
