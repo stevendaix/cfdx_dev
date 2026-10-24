@@ -8,7 +8,7 @@ Cette section est le journal vivant de reprise. Elle complète les statuts histo
 |---|---|---|
 | F03 | PR #1078 ouverte ; contrat Rhie–Chow/COUPLED à qualifier | Auditer le flux de face, le RHS de continuité, la jauge et les cas pression affine ; exiger CI exact-HEAD et comparaison COUPLED/ségrégé indépendante. |
 | F06 | PR draft #1103 ouverte | Auditer intégration réelle dans tous les appelants de transport, reconstruction et diffusion ; ajouter MMS polyédrique et vérifier Release/DebugSanitizers avant promotion. |
-| F08 | Aucun PR dédié visible dans l'inventaire ouvert consulté | Prochaine tâche d'implémentation : corriger le poids du gradient de Gauss (distance normale vs projection), avec maillage étiré/skewed et oracle affine/quadratique ; ne pas modifier les seuils. |
+| F08 | **Code candidat déjà présent sur master** : `geometric_interpolation_weight` calcule une projection longitudinale et `test_finite_volume_transport.cpp` contient un contre-exemple distance euclidienne vs projection | Pas de nouveau correctif avant vérification ciblée : confirmer le test est enregistré/exécuté en CI et que le chemin `compute_gradient_gauss` consomme bien ce helper ; si oui, passer à F12/F13. |
 | F11 | PR draft #1102 ouverte | Vérifier les trois prédicteurs, le résidu final indépendant, le signe et les flux opposés ; compléter MMS non orthogonal/polyédrique avant qualification. |
 | F12/F13 | Aucun PR dédié visible dans l'inventaire ouvert consulté | Auditer les contrats dimensionnels des helpers momentum/énergie et leurs appelants de production avant de proposer un patch. |
 | F18 | Aucun PR dédié visible dans l'inventaire ouvert consulté | Établir les identités thermodynamiques attendues pour `beta != 0`, puis tester dérivées et invariants dimensionnels. |
@@ -25,7 +25,7 @@ Cette section est le journal vivant de reprise. Elle complète les statuts histo
 
 ### Ordre d'exécution maintenu
 
-1. **F08** : pas de PR dédiée visible, donc prochain correctif à préparer après audit du code courant et des appels.
+1. **F08** : audit initial du code courant effectué. Le helper utilise déjà la projection longitudinale et un test compare explicitement projection et distance euclidienne. Vérifier l'enregistrement/CI du test et les appelants ; si la preuve est complète, marquer F08 comme corrigé dans le périmètre démontré et passer à F12/F13.
 2. **F03 / F06 / F11** : auditer les PR existantes avant toute réimplémentation ; pas de cherry-pick aveugle depuis les branches historiques.
 3. **F12 / F13 / F18 / F22–F24** : spécifier d'abord les contrats physiques et dimensionnels, puis ajouter des oracles indépendants.
 4. **F25 / F27 / F30 / F32 / F34 / F02 / F26 / F28** : examiner les PR existantes et leur CI exact-HEAD, éliminer les doublons et ne fermer que sur preuve.
