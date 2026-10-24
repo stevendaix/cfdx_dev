@@ -138,6 +138,9 @@ int main()
             {{0,0,0},{0,0,1},1.0},
             {{0,0,1},{0,0,-1},1.0}};
         auto F=estimate_view_factor_matrix(patches);
+        EXPECT_NEAR(F[0], 0.0, 1e-14);
+        EXPECT_NEAR(F[3], 0.0, 1e-14);
+        validate_s2s_view_factors(F, std::vector<double>{1.0, 1.0}, 1e-10);
         EXPECT_TRUE(F[1] >= 0.0 && F[1] <= 1.0);
         EXPECT_TRUE(F[0] >= 0.0 && F[0] <= 1.0);
         EXPECT_TRUE(F[1] >= 0.0 && F[1] <= 1.0);
