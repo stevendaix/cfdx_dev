@@ -3118,15 +3118,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // Momentum predictor uses the conservative corrected flux from the
         // previous outer iteration. This preserves the SIMPLE phi state.
 
-        auto ex = assemble_momentum_component(
-            mesh, geometry, mass_flux, grad_p, body_x, mu_eff, ubc_x, 0,
-            controls.use_bounded_convection, controls.convection_scheme, &u_x_field);
-        auto ey = assemble_momentum_component(
-            mesh, geometry, mass_flux, grad_p, body_y, mu_eff, ubc_y, 1,
-            controls.use_bounded_convection, controls.convection_scheme, &u_y_field);
-        auto ez = assemble_momentum_component(
-            mesh, geometry, mass_flux, grad_p, body_z, mu_eff, ubc_z, 2,
-            controls.use_bounded_convection, controls.convection_scheme, &u_z_field);
+        auto ex = assemble_momentum_component_with_transpose_diffusion(
+            mesh, geometry, mass_flux, grad_p, body_x, mu_eff, ubc_x,
+            U, velocity_bcs, 0, controls.use_bounded_convection,
+            controls.convection_scheme, &u_x_field);
+        auto ey = assemble_momentum_component_with_transpose_diffusion(
+            mesh, geometry, mass_flux, grad_p, body_y, mu_eff, ubc_y,
+            U, velocity_bcs, 1, controls.use_bounded_convection,
+            controls.convection_scheme, &u_y_field);
+        auto ez = assemble_momentum_component_with_transpose_diffusion(
+            mesh, geometry, mass_flux, grad_p, body_z, mu_eff, ubc_z,
+            U, velocity_bcs, 2, controls.use_bounded_convection,
+            controls.convection_scheme, &u_z_field);
 
         if (controls.transient.enabled) {
             const auto& u_n = *controls.transient.previous;
@@ -3788,15 +3791,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             final_uz_field(c) = U.component_data(2)[c];
         }
         auto final_grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
-        auto final_ex = assemble_momentum_component(
-            mesh, geometry, mass_flux, final_grad_p, body_x, mu_eff, ubc_x, 0,
-            controls.use_bounded_convection, controls.convection_scheme, &final_ux_field);
-        auto final_ey = assemble_momentum_component(
-            mesh, geometry, mass_flux, final_grad_p, body_y, mu_eff, ubc_y, 1,
-            controls.use_bounded_convection, controls.convection_scheme, &final_uy_field);
-        auto final_ez = assemble_momentum_component(
-            mesh, geometry, mass_flux, final_grad_p, body_z, mu_eff, ubc_z, 2,
-            controls.use_bounded_convection, controls.convection_scheme, &final_uz_field);
+        auto final_ex = assemble_momentum_component_with_transpose_diffusion(
+            mesh, geometry, mass_flux, final_grad_p, body_x, mu_eff, ubc_x,
+            U, velocity_bcs, 0, controls.use_bounded_convection,
+            controls.convection_scheme, &final_ux_field);
+        auto final_ey = assemble_momentum_component_with_transpose_diffusion(
+            mesh, geometry, mass_flux, final_grad_p, body_y, mu_eff, ubc_y,
+            U, velocity_bcs, 1, controls.use_bounded_convection,
+            controls.convection_scheme, &final_uy_field);
+        auto final_ez = assemble_momentum_component_with_transpose_diffusion(
+            mesh, geometry, mass_flux, final_grad_p, body_z, mu_eff, ubc_z,
+            U, velocity_bcs, 2, controls.use_bounded_convection,
+            controls.convection_scheme, &final_uz_field);
 
         // The final nonlinear acceptance residual must represent the same
         // production equation that was solved. For transient runs the
