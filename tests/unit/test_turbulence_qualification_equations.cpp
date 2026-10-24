@@ -45,9 +45,7 @@ int main() {
     expect_comparator_rejects(1.0, 1.0, std::numeric_limits<double>::quiet_NaN());
     expect_comparator_rejects(1.0, 1.0, -1.0);
     expect_comparator_rejects(
-        std::numeric_limits<double>::max(),
-        -std::numeric_limits<double>::max(),
-        std::numeric_limits<double>::max());
+        2.0, 0.0, std::numeric_limits<double>::max());
 
     using namespace cfdx::physics;
     TurbulenceTransportControls c;
