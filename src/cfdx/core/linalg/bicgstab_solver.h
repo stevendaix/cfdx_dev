@@ -83,7 +83,7 @@ inline SolverResult solve_bicgstab(
     if(!finite_vector(w.r)){result.status=SolverStatus::DIVERGED;return result;}
     for(std::size_t i=0;i<n;++i)w.r_hat(i)=w.r(i);
 
-    const double bnorm=krylov_norm2(b, SolverPrecision::FP64, reduction),tol=tolerance*std::max(bnorm,1e-15);
+    const double bnorm=krylov_norm2(b, SolverPrecision::FP64, reduction),tol=tolerance*std::max(bnorm,1e-300);
     if(!std::isfinite(bnorm)||!std::isfinite(tol)){result.status=SolverStatus::DIVERGED;return result;}
     Vector true_r(n); mixed_precision_true_residual(A,b,x,true_r); double res=krylov_norm2(true_r, redp, reduction);
     if(res<=tol){
@@ -105,9 +105,22 @@ inline SolverResult solve_bicgstab(
         return krylov_norm2(w.r, redp, reduction);
     };
 
+    const double breakdown_factor = 64.0 * std::numeric_limits<double>::epsilon();
+    auto fail_with_true_residual = [&](std::size_t iterations) {
+        result.status = SolverStatus::DIVERGED;
+        result.iterations = iterations;
+        result.residual = true_residual();
+        result.residual_relative = bnorm > 0.0 ? result.residual / bnorm : result.residual;
+        return result;
+    };
+
     for(std::size_t iter=1;iter<=max_iter;++iter){
         const double rho_new=krylov_dot(w.r_hat, w.r, redp, reduction);
-        if(!std::isfinite(rho_new)||std::abs(rho_new)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter-1;return result;}
+        const double rho_scale = krylov_norm2(w.r_hat, redp, reduction)
+                               * krylov_norm2(w.r, redp, reduction);
+        if(!std::isfinite(rho_new)||!std::isfinite(rho_scale)||
+           !(rho_scale > 0.0)||std::abs(rho_new)<=breakdown_factor*rho_scale)
+            return fail_with_true_residual(iter-1);
         const double beta=(rho!=0.0)?(rho_new/rho)*(alpha/omega):0.0;
         if(!std::isfinite(beta)){result.status=SolverStatus::DIVERGED;result.iterations=iter-1;return result;}
         for(std::size_t i=0;i<n;++i)w.p(i)=w.r(i)+beta*(w.p(i)-omega*w.v(i));
@@ -121,7 +134,11 @@ inline SolverResult solve_bicgstab(
         if(!finite_vector(w.v)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
 
         const double rv=krylov_dot(w.r_hat, w.v, redp, reduction);
-        if(!std::isfinite(rv)||std::abs(rv)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
+        const double rv_scale = krylov_norm2(w.r_hat, redp, reduction)
+                              * krylov_norm2(w.v, redp, reduction);
+        if(!std::isfinite(rv)||!std::isfinite(rv_scale)||!(rv_scale > 0.0)||
+           std::abs(rv)<=breakdown_factor*rv_scale)
+            return fail_with_true_residual(iter);
         alpha=rho_new/rv;
         if(!std::isfinite(alpha)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
         for(std::size_t i=0;i<n;++i)w.s(i)=w.r(i)-alpha*w.v(i);
@@ -164,8 +181,11 @@ inline SolverResult solve_bicgstab(
 
         const double ts=krylov_dot(w.t, w.s, redp, reduction);
         const double tt=krylov_dot(w.t, w.t, redp, reduction);
-        if(!std::isfinite(ts)||!std::isfinite(tt)||tt<=1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
-        omega=ts/tt;if(!std::isfinite(omega)||std::abs(omega)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
+        if(!std::isfinite(ts)||!std::isfinite(tt)||!(tt>0.0))
+            return fail_with_true_residual(iter);
+        omega=ts/tt;
+        if(!std::isfinite(omega)||omega==0.0)
+            return fail_with_true_residual(iter);
         for(std::size_t i=0;i<n;++i){x(i)+=alpha*w.z(i)+omega*w.z_s(i);w.r(i)=w.s(i)-omega*w.t(i);}
         if(!finite_vector(x)||!finite_vector(w.r)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
 
