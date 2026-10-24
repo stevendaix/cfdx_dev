@@ -66,3 +66,19 @@ $$a_P T_P=\sum_{nb}a_{nb}T_{nb}+b,\qquad \sum_f \dot m_f c_p (\rho)_f \ldots$$
 - 2026-10-12 — approbation du contrat (PR d'approbation #861) ; l'audit du code contre cette fiche reste requis avant toute promotion (Règle d'Or 1).
 - 2026-10-21 — étape 4 du plan #885 : stage de production flottabilité `production_buoyancy_stage.h` + routage `buoyant` dans `cfdx_production_solver` — le contrat Boussinesq de §2 (source a = −β(T−T_ref)·g_vec per-cellule, part constante absorbée dans la pression modifiée, valide βΔT ≪ 1) est implémenté via le canal cellwise du porteur (fiche 04 §7) dans une boucle externe flow-énergie (ω = 0,25 sur la température vue par la source, budget 200 fail-closed, critères bloquants séparés sur la réponse non relaxée ≤ 1e-10 : stationnarité T/U/p normalisée ; verdict = point fixe couplé exact, INCONCLUSIVE n'est jamais PASS) ; oracles : équivalence bit-exacte avec le `body_force` uniforme équivalent, identité T = T_ref, signes, replay du point fixe, catalogue fail-closed (test `test_production_buoyancy_outer_loop_vv`) ; aucune tolérance/gate/oracle/budget de la fiche modifiée ; la flottabilité pleine ρ variable reste hors validité documentée (§5) et exigerait une nouvelle fiche.
 - 2026-10-21 — correctif de la PR #1016 (échecs A/C/D de `test_production_buoyancy_outer_loop_vv`) : convergence-at-entry ajoutée à la boucle externe flottabilité — acceptation du porteur warm classé `STAGNATED` au plancher machine (résidus pression/continuité/flux corrigé ≤ 1e-14, momentum RHS-normalisé ≤ 1e-12), restauration U/p d'entrée, conservation du porteur précédemment accepté, comptabilité `flow_converged_at_entry` ; cas A à la 3e itération (itérations 1-2 sans at-entry, itération 3 at-entry, porteur inchangé vs itération 2) ; échecs C/D relèvent de la calibration de la gate locale de l'étage énergie (fiche 14 §7/§8) ; aucune tolérance/gate/oracle/budget de la fiche modifiée.
+
+## R2 — Geometric and temporal interface contract (2026-10-24)
+
+Before a two-region CHT iteration, the paired interface must satisfy all of the following fail-closed conditions:
+
+- **Conformity:** one-to-one face-centre matching is only the candidate pairing. The vertex count must agree and each vertex coordinate must match one unused vertex on the opposing face within `vertex_matching_tolerance`.
+- **Orientation:** the outward area vectors must oppose each other. With (n_1=S_1/|S_1|) and (n_2=S_2/|S_2|), require (n_1\cdot n_2\le -1+\varepsilon_n), where `normal_opposition_tolerance` is explicit and finite.
+- **Area:** paired face areas must agree within `area_relative_tolerance`.
+- **Impermeability:** the paired thermal patches must be classified as `WALL` or `INTERFACE`; inlet/outlet, periodic, empty, and unknown patch types are rejected.
+- **Material consistency:** the interface conductivities must match the conductivity used by each region energy operator.
+- **Time consistency:** both regions must use the same finite physical time step (\Delta t). A steady/transient mismatch or unequal transient steps is rejected.
+- **Finite controls:** all tolerances, conductivities, and relaxation controls must be finite and in their valid ranges.
+
+The validation fixture uses two adjacent cubes sharing exactly one face, with opposite outward normals. Negative tests cover a face whose centroid is unchanged but whose vertices do not conform, co-oriented normals, a permeable inlet patch, conductivity mismatch, and unequal time steps.
+
+This contract validates the interface pairing and the coupled time/material inputs. It does **not** by itself qualify non-orthogonal multi-face CHT, the full production thermal outer loop, or independent energy-flux reconstruction on general polyhedral meshes.
