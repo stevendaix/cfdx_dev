@@ -1,6 +1,8 @@
 #pragma once
 #include "cfdx/core/linalg/vector.h"
+#if defined(CFDX_HAS_MPI) && CFDX_HAS_MPI
 #include "cfdx/core/parallel/mpi_utils.h"
+#endif
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -25,6 +27,7 @@ inline ReductionPacket fused_reduction(const Vector& a, const Vector& b) {
     return r;
 }
 
+#if defined(CFDX_HAS_MPI) && CFDX_HAS_MPI
 // Batch the two additive Krylov reductions into one MPI collective.
 // max_abs is reduced separately because it requires MPI_MAX rather than SUM.
 // This API is deliberately independent of a solver so distributed Krylov
@@ -71,5 +74,7 @@ inline ReductionPacket fused_reduction(const Vector& a, const Vector& b,
                                        MPI_Comm comm) {
     return mpi_fused_reduction(fused_reduction(a, b), comm);
 }
+
+#endif // CFDX_HAS_MPI
 
 } // namespace cfdx::core
