@@ -357,6 +357,138 @@ compute_scalar_gradient_with_boundary(
     return gradient;
 }
 
+// Integrated tangential diffusion flux per global face, shared by matrix
+// assembly and post-solve flux reconstruction. Positive flux is outward from
+// the owner cell. The implicit orthogonal coefficient and this correction use
+// the same over-relaxed decomposition and variable-diffusion face conductance.
+inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
+    double diffusion_coefficient,
+    const ScalarBoundaryConditions& boundary_conditions,
+    const std::vector<double>* cell_diffusion = nullptr,
+    const ScalarBoundaryFaceValues* face_values = nullptr,
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
+{
+    using namespace cfdx::core;
+    const std::size_t nc = mesh.n_cells(), nf = mesh.n_faces();
+    if (field.dimension() != 1 || field.size() != nc ||
+        geometry.cell_centres.size() != nc || geometry.cell_volumes.size() != nc ||
+        geometry.face_centres.size() != nf || geometry.face_area_vectors.size() != nf ||
+        geometry.face_patch.size() != nf ||
+        (cell_diffusion && cell_diffusion->size() != nc))
+        throw std::invalid_argument(
+            "compute_nonorthogonal_diffusion_face_fluxes: shape mismatch");
+    if (!(diffusion_coefficient >= 0.0) || !std::isfinite(diffusion_coefficient))
+        throw std::invalid_argument(
+            "compute_nonorthogonal_diffusion_face_fluxes: invalid diffusion coefficient");
+    bool active = diffusion_coefficient > 0.0;
+    if (cell_diffusion) {
+        active = false;
+        for (double gamma : *cell_diffusion) {
+            if (!(gamma >= 0.0) || !std::isfinite(gamma))
+                throw std::invalid_argument(
+                    "compute_nonorthogonal_diffusion_face_fluxes: invalid cell diffusion");
+            active = active || gamma > 0.0;
+        }
+    }
+    std::vector<double> flux(nf, 0.0);
+    if (!active) return flux;
+
+    const auto gradient = compute_scalar_gradient_with_boundary(
+        field, mesh, geometry, boundary_conditions, face_values, face_conditions);
+    const auto& ownership = mesh.ownership();
+    for (std::size_t face = 0; face < nf; ++face) {
+        const std::size_t owner = ownership.owner(face);
+        if (owner >= nc)
+            throw std::runtime_error(
+                "compute_nonorthogonal_diffusion_face_fluxes: invalid owner");
+        const auto neighbour_raw = ownership.neighbour(face);
+        if (neighbour_raw < 0) {
+            const std::size_t patch = geometry.face_patch[face];
+            if (patch < mesh.boundary().n_patches() &&
+                mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                continue;
+            const auto bc = resolve_scalar_boundary_condition(
+                mesh, geometry, face, boundary_conditions, face_values, face_conditions);
+            if (bc.type == ScalarBoundaryType::ZERO_GRADIENT)
+                continue;
+        }
+
+        const Vec3 sf = geometry.face_area_vectors[face];
+        const double area = sf.mag();
+        const Vec3 d = neighbour_raw >= 0
+            ? geometry.cell_centres[static_cast<std::size_t>(neighbour_raw)] -
+                  geometry.cell_centres[owner]
+            : geometry.face_centres[face] - geometry.cell_centres[owner];
+        const double sd = sf.dot(d);
+        const double d2 = d.dot(d);
+        if (!(area > 0.0) || !(sd > 0.0) || !(d2 > 0.0) ||
+            !std::isfinite(area) || !std::isfinite(sd) || !std::isfinite(d2))
+            throw std::runtime_error(
+                "compute_nonorthogonal_diffusion_face_fluxes: invalid face geometry");
+        const double alpha = area * area / sd;
+        const Vec3 tangential = sf - d * alpha;
+        if (tangential.mag() <= 1e-12 * area) continue;
+
+        double gamma_face = cell_diffusion
+            ? (*cell_diffusion)[owner] : diffusion_coefficient;
+        Vec3 grad_face{
+            gradient.component_data(0)[owner],
+            gradient.component_data(1)[owner],
+            gradient.component_data(2)[owner]};
+        if (neighbour_raw >= 0) {
+            const std::size_t neighbour = static_cast<std::size_t>(neighbour_raw);
+            if (neighbour >= nc)
+                throw std::runtime_error(
+                    "compute_nonorthogonal_diffusion_face_fluxes: invalid neighbour");
+            const double area_projection = std::abs(sf.dot(d)) / area;
+            const double d_owner =
+                std::abs((geometry.face_centres[face] -
+                          geometry.cell_centres[owner]).dot(sf)) / area;
+            const double d_neighbour =
+                std::abs((geometry.cell_centres[neighbour] -
+                          geometry.face_centres[face]).dot(sf)) / area;
+            if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
+                !std::isfinite(d_owner) || !std::isfinite(d_neighbour) ||
+                !(area_projection > 0.0))
+                throw std::runtime_error(
+                    "compute_nonorthogonal_diffusion_face_fluxes: invalid normal distances");
+            double conductance = 0.0;
+            if (cell_diffusion) {
+                const double go = (*cell_diffusion)[owner];
+                const double gn = (*cell_diffusion)[neighbour];
+                if (go > 0.0 && gn > 0.0)
+                    conductance = area / (d_owner / go + d_neighbour / gn);
+            } else {
+                conductance = diffusion_coefficient * area / (d_owner + d_neighbour);
+            }
+            gamma_face = conductance / alpha;
+            const double dc = (geometry.face_centres[face] -
+                               geometry.cell_centres[owner]).mag();
+            const double dn = (geometry.cell_centres[neighbour] -
+                               geometry.face_centres[face]).mag();
+            if (!(dc + dn > 0.0) || !std::isfinite(dc + dn))
+                throw std::runtime_error(
+                    "compute_nonorthogonal_diffusion_face_fluxes: invalid gradient interpolation distance");
+            const double w = dn / (dc + dn);
+            const Vec3 grad_neighbour{
+                gradient.component_data(0)[neighbour],
+                gradient.component_data(1)[neighbour],
+                gradient.component_data(2)[neighbour]};
+            grad_face = grad_face * w + grad_neighbour * (1.0 - w);
+        }
+
+        const double correction = gamma_face * grad_face.dot(tangential);
+        if (!std::isfinite(correction))
+            throw std::runtime_error(
+                "compute_nonorthogonal_diffusion_face_fluxes: non-finite correction");
+        flux[face] = correction;
+    }
+    return flux;
+}
+
 // Assemble:
 //     div(phi*psi) - div(gamma grad(psi)) = Su + Sp*psi
 // with first-order upwind convection and two-point orthogonal diffusion.
