@@ -574,8 +574,16 @@ reconstruct_scalar_transport_flux(
     Field<double, Location::FACE> result(nf, field.name()+"_flux", "", 1);
     Field<double, Location::CELL> grad;
     Field<double, Location::FACE> reconstructed_face;
+    // The common internal-face reconstruction path evaluates a gradient
+    // before selecting the final face value. Construct it for every scheme
+    // that enters that path; leaving it default-constructed causes a null
+    // component read for CENTRAL/BLENDED/QUICK/QUICK_BOUNDED.
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
-        convection_scheme == ConvectionScheme::TVD)
+        convection_scheme == ConvectionScheme::TVD ||
+        convection_scheme == ConvectionScheme::CENTRAL ||
+        convection_scheme == ConvectionScheme::BLENDED ||
+        convection_scheme == ConvectionScheme::QUICK ||
+        convection_scheme == ConvectionScheme::QUICK_BOUNDED)
         grad = compute_gradient_gauss(field, mesh);
     if (convection_scheme == ConvectionScheme::CENTRAL ||
         convection_scheme == ConvectionScheme::BLENDED ||
