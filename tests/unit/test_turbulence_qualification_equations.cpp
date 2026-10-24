@@ -6,10 +6,22 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace {
-void expect_close(const char* label,double a,double b,double tol=1e-12) {    if(std::abs(a-b)>tol*std::max({1.0,std::abs(a),std::abs(b)})) {        std::cerr << "FAIL " << label << ": actual=" << a << " reference=" << b << " abs_error=" << std::abs(a-b) << "\n";
+void expect_close(const char* label,double a,double b,double tol=1e-12) {
+    if (!std::isfinite(a) || !std::isfinite(b) ||
+        !std::isfinite(tol) || tol < 0.0) {
+        std::cerr << "FAIL " << label
+                  << ": non-finite operand or invalid tolerance"
+                  << " actual=" << a << " reference=" << b
+                  << " tolerance=" << tol << "\\n";
+        throw std::runtime_error("invalid turbulence equation comparison");
+    }
+    if(std::abs(a-b)>tol*std::max({1.0,std::abs(a),std::abs(b)})) {
+        std::cerr << "FAIL " << label << ": actual=" << a << " reference=" << b
+                  << " abs_error=" << std::abs(a-b) << "\\n";
         throw std::runtime_error("turbulence equation reference mismatch");
     }
 }
@@ -18,6 +30,22 @@ void expect_close(const char* label,double a,double b,double tol=1e-12) {    if(
 
 int main() {
     using namespace cfdx::physics;
+    // Comparator sensitivity: NaN/Inf and invalid tolerances must never pass
+    // merely because IEEE comparisons with NaN are false.
+    const auto comparison_rejected = [](double actual, double reference, double tolerance) {
+        try {
+            expect_close("comparator_sensitivity", actual, reference, tolerance);
+        } catch (const std::runtime_error&) {
+            return true;
+        }
+        return false;
+    };
+    if (!comparison_rejected(std::numeric_limits<double>::quiet_NaN(), 1.0, 1e-12) ||
+        !comparison_rejected(std::numeric_limits<double>::infinity(), 1.0, 1e-12) ||
+        !comparison_rejected(1.0, std::numeric_limits<double>::quiet_NaN(), 1e-12) ||
+        !comparison_rejected(1.0, 1.0, std::numeric_limits<double>::infinity()) ||
+        !comparison_rejected(1.0, 1.0, -1.0))
+        throw std::runtime_error("turbulence comparator accepted invalid comparison inputs");
     TurbulenceTransportControls c;
     const double k=2.0, eps=4.0, omega=5.0, S=3.0, delta=0.2, volume=delta*delta*delta, y=0.05;
 
