@@ -206,7 +206,9 @@ int main()
         Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
         Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
         Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
         flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0)=0.0; phi(1)=1.0;
         ScalarBoundaryConditions bc;
         bc["inlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
         bc["outlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
@@ -220,6 +222,13 @@ int main()
         EXPECT_NEAR(eq.matrix(0,0),expected,1e-12);
         EXPECT_NEAR(eq.matrix(1,1),expected,1e-12);
         EXPECT_NEAR(expected,32.0/7.0,1e-12);
+        const auto reconstructed=reconstruct_scalar_transport_flux(
+            m,g,flux,phi,0.0,bc,false,ConvectionScheme::UPWIND,nullptr,&gamma);
+        std::size_t internal=m.n_faces();
+        for (std::size_t f=0;f<m.n_faces();++f)
+            if (m.ownership().neighbour(f)>=0) { internal=f; break; }
+        EXPECT_TRUE(internal<m.n_faces());
+        EXPECT_NEAR(reconstructed(internal),-expected,1e-12);
     });
 
     run_case("scalar_dirichlet_diffusion_matches_one_cell_oracle", [] {
