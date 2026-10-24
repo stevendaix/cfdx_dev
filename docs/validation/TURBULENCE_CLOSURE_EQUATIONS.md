@@ -121,8 +121,16 @@ X=F_1X_1+(1-F_1)X_2
 \]
 for \(\sigma_k,\sigma_\omega,\beta,\gamma\).
 
+The CFDX transport contract is the SST-2003 variant. Production is
+\[
+\widetilde P_k=\min\left(\rho\nu_t S^2,\;10\beta^*\rho k\omega\right),
+\qquad
+P_\omega=\gamma\frac{\widetilde P_k}{\nu_t}.
+\]
+The same limited production must feed the (k) and (omega) equations; the (omega) source must not revert to the unbounded (\gamma\rho S^2) term when the (k)-production limiter is active. See the [NASA TMR SST-2003 definition](https://tmbwg.github.io/turbmodels/sst.html).
+
 The current transport implementation includes:
-- k production with the explicit production limiter;
+- k production with the explicit production limiter, reused in omega production;
 - \(-\beta^*\rho k\omega\) destruction;
 - cross diffusion proportional to
   \[
