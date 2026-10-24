@@ -282,8 +282,10 @@ int main()
                 scheme,&phi);
             for (std::size_t c = 0; c < m.n_cells(); ++c)
                 EXPECT_TRUE(std::isfinite(equation.rhs(c)));
-            for (const double value : equation.matrix.values())
-                EXPECT_TRUE(std::isfinite(value));
+            const auto* row_offsets = equation.matrix.row_offsets_data();
+            const auto* matrix_values = equation.matrix.values_data();
+            for (std::uint32_t k = 0; k < row_offsets[m.n_cells()]; ++k)
+                EXPECT_TRUE(std::isfinite(matrix_values[k]));
         }
     });
 
