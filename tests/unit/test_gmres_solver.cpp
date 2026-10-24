@@ -281,5 +281,30 @@ int main() {
         EXPECT_TRUE(result.residual_relative < 1e-12);
     });
 
+    run_case("gmres_and_fgmres_certify_mixed_precision_with_fp64_operator", []() {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 1.0 + 1e-8);
+        A.finalize();
+        Vector b(1, 1.0);
+        PrecisionPolicy precision;
+        precision.enabled = true;
+        precision.operator_precision = SolverPrecision::FP32;
+        precision.reduction_precision = SolverPrecision::FP64;
+
+        Vector xg(1, 0.0);
+        const auto gmres = solve_gmres(
+            A, b, xg, 1, 4, 1e-12, nullptr, KrylovControls{}, precision);
+        EXPECT_TRUE(gmres.status != SolverStatus::CONVERGED ||
+                    gmres.residual > 1e-12);
+        EXPECT_TRUE(!std::isfinite(gmres.residual) || gmres.residual > 1e-12);
+
+        Vector xf(1, 0.0);
+        const auto fgmres = solve_fgmres(
+            A, b, xf, 1, 4, 1e-12, nullptr, KrylovControls{}, precision);
+        EXPECT_TRUE(fgmres.status != SolverStatus::CONVERGED ||
+                    fgmres.residual > 1e-12);
+        EXPECT_TRUE(!std::isfinite(fgmres.residual) || fgmres.residual > 1e-12);
+    });
+
     return run_all();
 }
