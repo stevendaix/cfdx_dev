@@ -366,8 +366,8 @@ int main()
         pbc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 15.0, 0.0};
 
         const auto rAU = unit_rAU(mesh.n_cells());
-        const auto phi = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p, rAU, 1.0, ubc, pbc, true);
+        const auto phi = make_rhie_chow_flux_from_physical_velocity(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
         const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
         const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
 
@@ -453,8 +453,8 @@ int main()
         pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
 
         const auto rAU = unit_rAU(mesh.n_cells());
-        const auto phi = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p, rAU, 1.0, ubc, pbc, true);
+        const auto phi = make_rhie_chow_flux_from_physical_velocity(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
         const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
         const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
 
