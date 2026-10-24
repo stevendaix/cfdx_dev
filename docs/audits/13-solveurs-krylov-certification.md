@@ -5,7 +5,7 @@
 - Statut : DRAFT (2026-10-24)
 - Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json + docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
 - Issue / PR liées : audit G01–G09, PR #1092
-- Dernier commit vérifié : en cours sur la branche fix/numerical-audit-g01-g09
+- Dernier commit vérifié : correctifs post-audit en cours ; aucune qualification complète n'est revendiquée
 - Limitations connues : la validation multi-rang MPI et la campagne QUICK quadratique multi-échelle doivent être exécutées sur le HEAD exact ; les opérateurs matrix-free sans callback FP64 ne peuvent être certifiés que dans la précision de leur callback.
 
 ## 1. Références sources (obligatoire : DOI ou ISBN)
@@ -28,7 +28,7 @@ Après assemblage FV, le système creux (A x=b) est résolu par CG (matrice SPD)
 \[
 \|b-Ax_k\|_2 \le \max(\mathrm{atol},\mathrm{rtol}\,\|b\|_2).
 \]
-Le résidu de certification doit être recalculé avec l'opérateur d'origine en FP64 lorsque celui-ci est disponible. Pour les vecteurs distribués, les normes et produits scalaires utilisent exclusivement le domaine owned, puis une réduction globale ; les ghosts sont actualisés mais ne sont pas recomptés.
+Le résidu de certification doit être recalculé avec l'opérateur d'origine en FP64 lorsque celui-ci est disponible. Pour rtol seul, la référence est ||b||₂ si b est non nul ; uniquement pour b=0, elle est ||r₀||₂ afin qu'un démarrage non nul puisse converger vers la solution nulle. Le champ `residual_relative` utilise la même référence que le critère d'arrêt. Pour les vecteurs distribués, les normes et produits scalaires utilisent exclusivement le domaine owned, puis une réduction globale ; les ghosts sont actualisés mais ne sont pas recomptés.
 
 ## 4. Traitement des frontières
 
