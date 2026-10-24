@@ -338,7 +338,7 @@ inline SolverResult solve_gmres(
             result.status = SolverStatus::DIVERGED;
             result.iterations = iterations;
             result.residual = beta;
-            result.residual_relative = beta / rhs_scale;
+            result.residual_relative = beta / rhs_scale_for_diagnostics;
             return result;
         }
 
@@ -355,7 +355,7 @@ inline SolverResult solve_gmres(
     result.status = SolverStatus::MAX_ITER_REACHED;
     result.iterations = iterations;
     result.residual = beta;
-    result.residual_relative = beta / rhs_scale;
+    result.residual_relative = beta / rhs_scale_for_diagnostics;
     return result;
 }
 
