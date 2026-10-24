@@ -123,6 +123,8 @@ Le noyau SST, certains chemins transactionnels de production, les stages énergi
 
 | `a7bf8ef87c831d0636fbd53becb900bb475a5e4e` | `src/cfdx/physics/cht_solver.h` | Ajout du rejet explicite des identifiants de faces dupliqués dans le patch d'interface de la région 2. | Revue statique ; CI sur le HEAD final attendue. | EN COURS |
 
+| `5a8c290107c3ea3910f014014d088371ab155daa` | `src/cfdx/physics/cht_solver.h` | La détection des IDs dupliqués de région 2 est linéaire en nombre de faces (vecteur de présence), et rejette aussi les IDs hors limites avant indexation. | Revue statique ; CI sur le HEAD final en attente. | EN COURS |
+
 **Décision TR-01 :** correction proposée dans une branche fondée sur le `master` courant. Les PR #1094 et #1099 sont des variantes historiques concurrentes ; leurs HEAD ne sont pas utilisés directement car ils ont divergé du `master`. Cette implémentation doit passer CI avant d'être considérée intégrée.
 
 **État des preuves :** aucune preuve physique SST n'est revendiquée par ces deux tests algébriques. N9/qualification physique ne doivent pas être considérés comme réussis du seul fait que le test d'équation passe.
