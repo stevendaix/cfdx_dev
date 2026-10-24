@@ -261,5 +261,25 @@ int main() {
         EXPECT_TRUE(result.residual < 1e-12);
     });
 
+    run_case("gmres_arnoldi_uses_owned_range_for_projections", []() {
+        LinearOperator op;
+        op.size = 2;
+        op.apply = [](const Vector& in, Vector& out) {
+            if (out.size() != 2) out.resize(2);
+            out(0) = in(0);
+            out(1) = in(1);
+        };
+        Vector b(2); b(0) = 1.0; b(1) = 1.0;
+        Vector x(2, 0.0);
+        KrylovControls controls;
+        controls.reduction.local_begin = 0;
+        controls.reduction.local_end = 1; // second entry models a ghost copy
+        const auto result = solve_gmres(op, b, x, 2, 4, 1e-12,
+                                        nullptr, controls);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_NEAR(x(0), 1.0, 1e-12);
+        EXPECT_TRUE(result.residual_relative < 1e-12);
+    });
+
     return run_all();
 }
