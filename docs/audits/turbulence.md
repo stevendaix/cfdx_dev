@@ -119,6 +119,8 @@ Le noyau SST, certains chemins transactionnels de production, les stages énergi
 
 | `3e062d16db2368518a18d8bfabde3caf465ea705` + `a5d3a52a0ebcefa56210eaf04289ad88a6690454` | `src/cfdx/physics/cht_solver.h`, `tests/validation/test_cht_validation.cpp` | Refus explicite des patches d'interface vides, avec test négatif. | Revue statique ; CI encore en cours sur le HEAD final. | EN COURS |
 
+| `527f648811d9f17e11bda509a8bd8a75f3227e88` | `tests/validation/test_cht_validation.cpp` | Le cas de conservation CHT utilise désormais deux cubes adjacents et une seule face d'interface, au lieu d'associer artificiellement toutes les faces de deux cubes coïncidents. Le bilan indépendant utilise la distance normale et l'aire de la face réellement couplée. | Revue statique ; validation CI du HEAD final en attente. | EN COURS |
+
 **Décision TR-01 :** correction proposée dans une branche fondée sur le `master` courant. Les PR #1094 et #1099 sont des variantes historiques concurrentes ; leurs HEAD ne sont pas utilisés directement car ils ont divergé du `master`. Cette implémentation doit passer CI avant d'être considérée intégrée.
 
 **État des preuves :** aucune preuve physique SST n'est revendiquée par ces deux tests algébriques. N9/qualification physique ne doivent pas être considérés comme réussis du seul fait que le test d'équation passe.
