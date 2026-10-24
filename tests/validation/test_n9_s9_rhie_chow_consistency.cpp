@@ -192,13 +192,15 @@ static Mesh make_two_cell_channel_oblique()
 // Four-cell channel so an alternating pressure mode is distinguishable
 // from a genuinely affine pressure field. Interior cells have a centred
 // zero gradient for p = (+1,-1,+1,-1), while adjacent-cell jumps remain nonzero.
-static Mesh make_four_cell_channel()
+static Mesh make_four_cell_channel(
+    const std::array<double, 5>& x_positions = {0.0, 1.0, 2.0, 3.0, 4.0},
+    bool split_boundary_patches = false)
 {
     Mesh m;
     constexpr std::size_t nx = 4;
     m.points().resize((nx + 1) * 4);
     for (std::size_t i = 0; i <= nx; ++i) {
-        const double x = static_cast<double>(i);
+        const double x = x_positions[i];
         const double xyz[4][3] = {
             {x,0,0}, {x,1,0}, {x,1,1}, {x,0,1}};
         for (std::size_t j = 0; j < 4; ++j)
@@ -236,7 +238,18 @@ static Mesh make_four_cell_channel()
     Patch wall;
     wall.name = "wall";
     wall.type = PatchType::WALL;
-    wall.face_ids = {x_faces.front(), x_faces.back()};
+    Patch inlet;
+    inlet.name = "inlet";
+    inlet.type = PatchType::WALL;
+    Patch outlet;
+    outlet.name = "outlet";
+    outlet.type = PatchType::WALL;
+    if (split_boundary_patches) {
+        inlet.face_ids = {x_faces.front()};
+        outlet.face_ids = {x_faces.back()};
+    } else {
+        wall.face_ids = {x_faces.front(), x_faces.back()};
+    }
     for (std::size_t i = 0; i < nx; ++i) {
         const auto l = x_faces[i], r = x_faces[i+1];
         m.cells().push_cell({l, r, side_faces[i][0], side_faces[i][1],
@@ -247,6 +260,10 @@ static Mesh make_four_cell_channel()
         }
     }
     m.boundary().add_patch(wall);
+    if (split_boundary_patches) {
+        m.boundary().add_patch(inlet);
+        m.boundary().add_patch(outlet);
+    }
     return m;
 }
 
@@ -325,6 +342,59 @@ int main()
 
         for (std::size_t f = 0; f < mesh.n_faces(); ++f)
             EXPECT_NEAR(phi0(f), phi1(f), 1e-12);
+    });
+
+    run_case("n9_s9_rhie_chow_affine_pressure_nonuniform_mesh", [] {
+        const Mesh mesh = make_four_cell_channel(
+            {0.0, 0.5, 2.0, 4.0, 7.0}, true);
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        U.fill(0.0);
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+            U.set(cell, 2.0, 0.0, 0.0);
+            p(cell) = 1.0 + 2.0 * geometry.cell_centres[cell].x;
+        }
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ubc["inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {2.0, 0.0, 0.0}};
+        ubc["outlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {2.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        pbc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
+        pbc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 15.0, 0.0};
+
+        const auto rAU = unit_rAU(mesh.n_cells());
+        const auto phi = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc, true);
+        const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+        const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
+
+        // Internal face IDs 1..3 are orthogonal but have unequal centre
+        // distances and unequal cell volumes. The oracle is evaluated directly
+        // from geometry, the pressure jump, and the independently inspected
+        // cell gradients, rather than calling the production correction helper.
+        for (std::size_t f = 1; f <= 3; ++f) {
+            const auto owner = mesh.ownership().owner(f);
+            const auto neighbour = static_cast<std::size_t>(mesh.ownership().neighbour(f));
+            const double dAU_face_x = 0.5 * (
+                geometry.cell_volumes[owner] * rAU[0][owner] +
+                geometry.cell_volumes[neighbour] * rAU[0][neighbour]);
+            const double dx = geometry.cell_centres[neighbour].x -
+                              geometry.cell_centres[owner].x;
+            const double grad_face_x = 0.5 * (
+                grad_p.component_data(0)[owner] +
+                grad_p.component_data(0)[neighbour]);
+            const double sf_x = geometry.face_area_vectors[f].x;
+            const double pressure_jump_response =
+                dAU_face_x * (p(neighbour) - p(owner)) / dx * sf_x;
+            const double compensation = dAU_face_x * grad_face_x * sf_x;
+            const double expected = phi_linear(f) + compensation -
+                                    pressure_jump_response;
+            EXPECT_NEAR(grad_face_x, 2.0, 1e-12);
+            EXPECT_NEAR(phi(f), expected, 1e-12);
+        }
     });
 
     run_case("n9_s9_rhie_chow_fixed_pressure_boundary_gauge_invariance", [] {
