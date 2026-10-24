@@ -152,17 +152,22 @@ inline SolverResult solve_gmres(
             // orthogonality on nonsymmetric saddle-point systems. A second
             // orthogonalization pass is inexpensive for the small acceptance
             // systems and substantially improves the Hessenberg relation.
+            // Use the same owned-entry/MPI reduction contract as Krylov norms.
+            // Ghost copies are updated, but never double-counted in projections.
+            Vector arnoldi_basis(n);
             for (int i = 0; i <= j; ++i) {
                 const double* vi = w.v(static_cast<std::size_t>(i));
-                double h = 0.0;
-                for (std::size_t k = 0; k < n; ++k) h += vi[k] * w.w(k);
+                for (std::size_t k = 0; k < n; ++k) arnoldi_basis(k) = vi[k];
+                const double h = krylov_dot(
+                    arnoldi_basis, w.w, SolverPrecision::FP64, controls.reduction);
                 w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = h;
                 for (std::size_t k = 0; k < n; ++k) w.w(k) -= h * vi[k];
             }
             for (int i = 0; i <= j; ++i) {
                 const double* vi = w.v(static_cast<std::size_t>(i));
-                double correction = 0.0;
-                for (std::size_t k = 0; k < n; ++k) correction += vi[k] * w.w(k);
+                for (std::size_t k = 0; k < n; ++k) arnoldi_basis(k) = vi[k];
+                const double correction = krylov_dot(
+                    arnoldi_basis, w.w, SolverPrecision::FP64, controls.reduction);
                 w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) += correction;
                 for (std::size_t k = 0; k < n; ++k) w.w(k) -= correction * vi[k];
             }
