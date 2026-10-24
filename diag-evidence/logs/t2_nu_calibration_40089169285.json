@@ -1,0 +1,226 @@
+{
+  "run_id": "40089169285",
+  "solver": "build/cfdx_production_solver",
+  "case": {
+    "L": 10.0,
+    "H": 1.0,
+    "body_force": [
+      1.0,
+      0.0,
+      0.0
+    ],
+    "density": 1.0,
+    "dynamic_viscosity": 0.1,
+    "thermal_conductivity": 0.1,
+    "specific_heat": 1.0,
+    "heat_flux": 1.0,
+    "t_in": 300.0,
+    "energy_model": "conjugate",
+    "max_iterations": 3000,
+    "meshes": [
+      [
+        80,
+        16
+      ],
+      [
+        160,
+        32
+      ],
+      [
+        320,
+        64
+      ]
+    ],
+    "l2_gate": 0.005,
+    "dh": 2.0,
+    "x_dev": 7.5
+  },
+  "nu_ref": 8.235294117647058,
+  "err_target": 0.05,
+  "fine_carrier_max_iterations": 8000,
+  "meshes": [
+    {
+      "nx": 80,
+      "ny": 16,
+      "l2_poiseuille": 0.004882805498527169,
+      "probe_x": 5.0625,
+      "mdot": 0.8398437429985259,
+      "tb_in": 300.1511644109622,
+      "tb_out": 323.30553030512397,
+      "q_wall_per_unit_depth": 20.0,
+      "enthalpy_rise_per_unit_depth": 19.44604931931021,
+      "balance_rel": 0.027697534034489556,
+      "nu_dev": 8.308773073539209,
+      "nu_bottom_dev": 8.308773073409608,
+      "nu_top_dev": 8.30877307366881,
+      "nu_local_min": 8.257491884213291,
+      "nu_local_max": 8.658130316636036,
+      "n_dev_columns": 20,
+      "dx": 0.125,
+      "dy": 0.0625,
+      "err_rel": 0.008922444644046899,
+      "energy_summary": {
+        "min_temperature": 300.0404254913811,
+        "max_temperature": 325.3029978465265,
+        "total_source_power": 0,
+        "boundary_flux_out": -1.0240697179142444e-12,
+        "nonfinite_temperature": 0,
+        "volumetric_power": 0,
+        "patches": [
+          {
+            "name": "back",
+            "flux_out": 0
+          },
+          {
+            "name": "bottom",
+            "flux_out": -10
+          },
+          {
+            "name": "front",
+            "flux_out": 0
+          },
+          {
+            "name": "inlet",
+            "flux_out": -251.52612671271933
+          },
+          {
+            "name": "outlet",
+            "flux_out": 271.52612671271834
+          },
+          {
+            "name": "top",
+            "flux_out": -10
+          }
+        ]
+      },
+      "status": "PASS"
+    },
+    {
+      "nx": 160,
+      "ny": 32,
+      "l2_poiseuille": 0.0012205821538166129,
+      "probe_x": 5.03125,
+      "mdot": 0.8349608165273843,
+      "tb_in": 300.0620702757276,
+      "tb_out": 323.4703463659211,
+      "q_wall_per_unit_depth": 20.0,
+      "enthalpy_rise_per_unit_depth": 19.54499331776642,
+      "balance_rel": 0.022750334111679038,
+      "nu_dev": 8.291955515924005,
+      "nu_bottom_dev": 8.291955515821144,
+      "nu_top_dev": 8.29195551602687,
+      "nu_local_min": 8.240939759550626,
+      "nu_local_max": 8.70970370446384,
+      "n_dev_columns": 40,
+      "dx": 0.0625,
+      "dy": 0.03125,
+      "err_rel": 0.006880312647915054,
+      "energy_summary": {
+        "min_temperature": 300.0126290029395,
+        "max_temperature": 325.6103857322366,
+        "total_source_power": 0,
+        "boundary_flux_out": -5.364597654988756e-13,
+        "nonfinite_temperature": 0,
+        "volumetric_power": 0,
+        "patches": [
+          {
+            "name": "back",
+            "flux_out": 0
+          },
+          {
+            "name": "bottom",
+            "flux_out": -10
+          },
+          {
+            "name": "front",
+            "flux_out": 0
+          },
+          {
+            "name": "inlet",
+            "flux_out": -250.08506454438904
+          },
+          {
+            "name": "outlet",
+            "flux_out": 270.0850645443885
+          },
+          {
+            "name": "top",
+            "flux_out": -10
+          }
+        ]
+      },
+      "status": "PASS"
+    },
+    {
+      "nx": 320,
+      "ny": 64,
+      "l2_poiseuille": 0.0003046285560311912,
+      "probe_x": 5.015625,
+      "mdot": 0.8337396870314215,
+      "tb_in": 300.02738298504767,
+      "tb_out": 323.5256029681824,
+      "q_wall_per_unit_depth": 20.0,
+      "enthalpy_rise_per_unit_depth": 19.591398574534246,
+      "balance_rel": 0.02043007127328771,
+      "nu_dev": 8.287057709456723,
+      "nu_bottom_dev": 8.287057708880411,
+      "nu_top_dev": 8.287057710033036,
+      "nu_local_min": 8.236711852012746,
+      "nu_local_max": 8.74042510175476,
+      "n_dev_columns": 80,
+      "dx": 0.03125,
+      "dy": 0.015625,
+      "err_rel": 0.006285579005459382,
+      "energy_summary": {
+        "min_temperature": 300.0046684122994,
+        "max_temperature": 325.73569619204613,
+        "total_source_power": 0,
+        "boundary_flux_out": 6.547956621361095e-12,
+        "nonfinite_temperature": 0,
+        "volumetric_power": 0,
+        "patches": [
+          {
+            "name": "back",
+            "flux_out": 0
+          },
+          {
+            "name": "bottom",
+            "flux_out": -10
+          },
+          {
+            "name": "front",
+            "flux_out": 0
+          },
+          {
+            "name": "inlet",
+            "flux_out": -249.73613498066732
+          },
+          {
+            "name": "outlet",
+            "flux_out": 269.736134980674
+          },
+          {
+            "name": "top",
+            "flux_out": -10
+          }
+        ]
+      },
+      "status": "PASS"
+    }
+  ],
+  "order_fit": {
+    "dx": [
+      0.125,
+      0.0625,
+      0.03125
+    ],
+    "err": [
+      0.008922444644046899,
+      0.006880312647915054,
+      0.006285579005459382
+    ],
+    "p": 0.2526966994382062,
+    "C": 0.014669757015652027
+  },
+  "verdict": "err_rel_within_target"
+}

@@ -1,0 +1,21 @@
+T2 heated-channel Nu calibration campaign
+run_id: 40089169285
+solver: build/cfdx_production_solver
+case: L=10 H=1 G=1 nu=0.1 rho=1 k=0.1 cp=1 q''=1 T_in=300 energy=conjugate iterations=3000 meshes=80x16,160x32,320x64
+Nu_ref = 140/17 = 8.2352941176 ; err_rel target <= 0.05
+Poiseuille L2 gate: 0.005 ; developed region: x_c >= 7.5
+diag-only (plan A): fine carrier 320x64 budget 8000 iterations with the flat-envelope stagnation window neutralized (100000); carrier evidence: t2_carrier_* / t2_probes_*
+
+mesh 80x16: PASS l2=4.883e-03 Nu_dev=8.308773 err_rel=0.008922 (bottom 8.308773, top 8.308773)
+  mdot=0.839844 tb_in=300.151 tb_out=323.306 balance_rel=2.770e-02 n_dev_columns=20
+mesh 160x32: PASS l2=1.221e-03 Nu_dev=8.291956 err_rel=0.006880 (bottom 8.291956, top 8.291956)
+  mdot=0.834961 tb_in=300.062 tb_out=323.470 balance_rel=2.275e-02 n_dev_columns=40
+mesh 320x64: PASS l2=3.046e-04 Nu_dev=8.287058 err_rel=0.006286 (bottom 8.287058, top 8.287058)
+  mdot=0.833740 tb_in=300.027 tb_out=323.526 balance_rel=2.043e-02 n_dev_columns=80
+
+apparent order fit err ~ C*dx^p: p=0.253 C=0.014670
+
+verdict: err_rel_within_target
+interpretation (locked protocol):
+- err_rel <= 0.05 on the finest mesh -> wall-treatment defect dominates the fine-gap budget; no convective-scheme correction required for the +9.93% audit (T2 closes with this evidence).
+- err_rel > 0.05 and/or apparent order p ~ 1 -> upwind artificial diffusion dominates; T3 = repeat the campaign with a higher-order convective scheme.

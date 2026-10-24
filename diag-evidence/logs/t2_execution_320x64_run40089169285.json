@@ -1,0 +1,13 @@
+{
+  "format": "CFDX-EXECUTION",
+  "schema_version": 1,
+  "process_exit_code": 0,
+  "converged": true,
+  "iterations": 5820,
+  "convergence_status": 1,
+  "convergence_reason": "all configured convergence gates satisfied",
+  "artifacts": {
+    "restart_dat": true,
+    "convergence_json": true
+  }
+}

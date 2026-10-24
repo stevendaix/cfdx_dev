@@ -1,0 +1,8 @@
+T2NU_MESH nx=80 ny=16 Nu_dev=8.308773 err_rel=0.008922
+T2NU_BALANCE nx=80 ny=16 mdot=0.839844 balance_rel=2.769753e-02 l2=4.883e-03
+T2NU_MESH nx=160 ny=32 Nu_dev=8.291956 err_rel=0.006880
+T2NU_BALANCE nx=160 ny=32 mdot=0.834961 balance_rel=2.275033e-02 l2=1.221e-03
+T2NU_MESH nx=320 ny=64 Nu_dev=8.287058 err_rel=0.006286
+T2NU_BALANCE nx=320 ny=64 mdot=0.833740 balance_rel=2.043007e-02 l2=3.046e-04
+T2NU_ORDER p=0.253 C=0.014670
+T2NU_CAMPAIGN PASS finest_err_rel=0.006286 target=0.05 verdict=err_rel_within_target

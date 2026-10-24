@@ -1,0 +1,33 @@
+{
+  "converged": true,
+  "linear_solver_converged": true,
+  "linear_solver_status": 0,
+  "linear_residual_relative": 9.9315094544997301e-15,
+  "global_energy_balance_passed": true,
+  "local_energy_balance_passed": true,
+  "iterations": 1,
+  "independent_conservation_residual": 6.5435157292625945e-12,
+  "independent_conservation_normalized": 6.5435157292625945e-12,
+  "audit_power_scale": 539.47226996134145,
+  "global_balance_normalized": 1.2129475588673913e-14,
+  "max_cell_residual": 9.50350909079134e-14,
+  "worst_cell": 8625,
+  "local_balance_normalized": 1.7616306935428508e-16,
+  "max_cell_residual_normalized": 6.3964848241335583e-14,
+  "worst_cell_normalized": 20088,
+  "max_cell_flux_divergence": 6.9388939039072284e-18,
+  "worst_flux_divergence_cell": 14662,
+  "coupling_residual_total": 6.1896019282117445e-14,
+  "max_cell_coupling_residual": 2.2388822180001427e-15,
+  "max_cell_coupling_residual_normalized": 2.1543405228967308e-16,
+  "worst_coupling_cell": 14662,
+  "max_cell_pure_energy_residual": 9.3917350329969841e-14,
+  "max_cell_pure_energy_residual_normalized": 6.3964848241335583e-14,
+  "worst_pure_cell": 20088,
+  "pure_energy_balance_passed": true,
+  "nonfinite_faces": 0,
+  "nonfinite_cells": 0,
+  "history": [
+    {"iteration": 1, "residual": 9.9475983006414026e-14, "backward_error": 3.0080063930956622e-16, "linear_residual_relative": 9.9315094544997301e-15, "linear_solver_status": 0, "linear_solver_converged": true, "independent_conservation_normalized": 6.5435157292625945e-12}
+  ]
+}
