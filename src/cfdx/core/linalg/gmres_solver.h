@@ -59,7 +59,6 @@ inline SolverResult solve_gmres(
     // Scale the stopping criterion with the actual RHS norm. Using max(||b||,1)
     // makes physically small systems appear converged at x=0 and is incorrect
     // for nondimensionalized or otherwise small-scale operators.
-    const double rhs_scale = std::max(b_norm, 1e-300);
     double tol = 0.0;
 
     // Diagnostic: track the gauge-row value of the initial solution vector.
