@@ -571,17 +571,26 @@ int main() {
         EXPECT_NEAR(grad(0, 2), 0.0, 1e-12);
     });
 
-    run_case("wls_exclude_boundary_does_not_insert_implicit_ghosts", []() {
+    run_case("wls_default_boundary_policy_preserves_zero_gradient_ghosts", []() {
         Mesh m = make_unit_cube();
         ScalarCellField phi(1, "phi", "1", 1);
-        phi(0) = 0.5;
-        const auto grad = compute_gradient_weighted_least_squares(
-            phi, m, GradientWeighting::INVERSE_DISTANCE_SQUARED,
-            std::numeric_limits<double>::infinity(),
-            BoundaryGradientPolicy::EXCLUDE_BOUNDARY);
+        phi(0) = 3.0;
+        const auto grad = compute_gradient_weighted_least_squares(phi, m);
         EXPECT_NEAR(grad(0, 0), 0.0, 1e-12);
         EXPECT_NEAR(grad(0, 1), 0.0, 1e-12);
         EXPECT_NEAR(grad(0, 2), 0.0, 1e-12);
+    });
+
+    run_case("wls_exclude_boundary_rejects_rank_deficient_isolated_cell", []() {
+        Mesh m = make_unit_cube();
+        ScalarCellField phi(1, "phi", "1", 1);
+        phi(0) = 3.0;
+        EXPECT_THROW(
+            compute_gradient_weighted_least_squares(
+                phi, m, GradientWeighting::INVERSE_DISTANCE_SQUARED,
+                std::numeric_limits<double>::infinity(),
+                BoundaryGradientPolicy::EXCLUDE_BOUNDARY),
+            std::runtime_error);
     });
 
     return run_all();
