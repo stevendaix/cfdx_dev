@@ -153,6 +153,61 @@ int main()
                   << " interface_imbalance=" << r.interface_imbalance << "\\n";
     });
 
+    run_case("cht_interface_rejects_nonconformal_vertices", [] {
+        Mesh m1=cube("interface1",0.0,5);
+        Mesh m2=cube("interface2",1.0,4);
+        // Preserve the interface-face centroid while moving two vertices;
+        // centre-only matching must not accept this geometrically different face.
+        m2.points().set(0,1.0,0.1,0.0);
+        m2.points().set(3,1.0,0.9,0.0);
+        const auto g1=build_fv_geometry(m1), g2=build_fv_geometry(m2);
+        ChtInterfaceControls controls;
+        controls.region1_patch="interface1";
+        controls.region2_patch="interface2";
+        controls.matching_tolerance=1e-8;
+        controls.vertex_matching_tolerance=1e-10;
+        bool rejected=false;
+        try {
+            (void)match_cht_interface(m1,g1,m2,g2,controls);
+        } catch (const std::runtime_error&) {
+            rejected=true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
+    run_case("cht_interface_rejects_nonopposed_normals", [] {
+        Mesh m1=cube("interface1",0.0,5);
+        Mesh m2=cube("interface2",0.0,5);
+        const auto g1=build_fv_geometry(m1), g2=build_fv_geometry(m2);
+        ChtInterfaceControls controls;
+        controls.region1_patch="interface1";
+        controls.region2_patch="interface2";
+        bool rejected=false;
+        try {
+            (void)match_cht_interface(m1,g1,m2,g2,controls);
+        } catch (const std::runtime_error&) {
+            rejected=true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
+    run_case("cht_interface_rejects_permeable_boundary_patch", [] {
+        Mesh m1=cube("interface1",0.0,5);
+        Mesh m2=cube("interface2",1.0,4);
+        m1.boundary().patch(0).type=PatchType::INLET;
+        const auto g1=build_fv_geometry(m1), g2=build_fv_geometry(m2);
+        ChtInterfaceControls controls;
+        controls.region1_patch="interface1";
+        controls.region2_patch="interface2";
+        bool rejected=false;
+        try {
+            (void)match_cht_interface(m1,g1,m2,g2,controls);
+        } catch (const std::invalid_argument&) {
+            rejected=true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
     run_case("cht_independent_energy_balance_detects_nonconservative_state",[] {
         Mesh m=cube("interface");
         auto g=build_fv_geometry(m);
