@@ -23,9 +23,9 @@ Hypothèses : résistance de contact en série (saut de température localisé �
 ## 3. Discrétisation Volume Fini
 Schéma volumes finis two-point sur cellules $P$ :
 $$a_P T_P = \sum_{nb} a_{nb} T_{nb} + b,\qquad a_P=\sum_{nb}a_{nb}+\sum_{f\in\partial P_{Dirichlet}}G_{b,f}$$
-- **Faces internes** : conductance en résistance série exacte
-$$G_f=\frac{A_f}{\left(d_f/(2k_o)+R_c+d_f/(2k_n)\right)}$$
-avec $d_f=\|\mathbf{C}_n-\mathbf{C}_o\|$ (distance entre centres), $A_f$ aire de face. $R_c=0$ redonne la moyenne harmonique (Patankar) ; $R_c>0$ s'applique uniquement aux faces séparant deux zones **différentes** déclarées (une face intra-zone porte $R_c=0$).
+- **Faces internes** : conductance en résistance série sur maillage orthogonal
+$G_f=\frac{A_f}{\left(d_{o f}/k_o+R_c+d_{f n}/k_n\right)}$
+où $d_{o f}=| (\mathbf{C}_f-\mathbf{C}_o)\cdot\mathbf{n}_f |$ et $d_{f n}=| (\mathbf{C}_n-\mathbf{C}_f)\cdot\mathbf{n}_f |$ sont les distances normales propres à chaque côté, $\mathbf{n}_f$ est la normale unitaire de face et $A_f$ l'aire. La forme symétrique $d_f/(2k_o)+R_c+d_f/(2k_n)$ n'est valable que si les deux distances centre-face sont égales. $R_c=0$ redonne la résistance série multi-matériau ; $R_c>0$ s'applique uniquement aux faces séparant deux zones **différentes** déclarées (une face intra-zone porte $R_c=0$).
 - **Terme source** : $b_P \mathrel{+}= q_z''' V_P$ (explicite, indépendant de $T$ : pas de linéarisation requise).
 - **Conservativité** : le flux de face est débité symétriquement ($-G_fT_o$, $-G_fT_n$ en hors-diagonale) : conservation machine de l'énergie entre cellules adjacentes.
 - **Ordre** : exact pour les profils linéaires par morceaux aux centres (maillage uniforme) ; sinon $O(h^2)$ sur maillage orthogonal.
@@ -57,7 +57,7 @@ avec $d_f=\|\mathbf{C}_n-\mathbf{C}_o\|$ (distance entre centres), $A_f$ aire de
 - Fichiers source concernés : src/cfdx/physics/thermal_zones.h (noyau), apps/thermal_solver/main.cpp (app de production `cfdx_thermal_solver`).
 - Tests exécutables : tests/validation/test_thermal_zones_vv.cpp (`test_thermal_zones_vv`).
 - Conventions utilisateur : 1 matériau = 1 zone ; `extra_properties` par matériau : `zone_id` (requis si > 1 matériau), `volumetric_power` (W/m^3), `contact_resistance` (m^2.K/W) ; carte cellules→zones par champ scalaire `material_id` (ou `zone_id`) dans le .cfdx.h5 ; BC : `wall_temperature` → Dirichlet, `heat_flux` (W/m^2, positif entrant) → gradient fixé, sinon adiabatique.
-- Écarts connus code ↔ fiche : aucun identifié à la rédaction (la fiche décrit l'implémentation du PR #887) ; audit ligne à ligne à refaire à chaque évolution (Règle d'Or 1).
+- Écarts connus code ↔ fiche : la conductance d'interface utilise deux distances normales distinctes ; le cas asymétrique à deux cellules doit rester dans la suite d'intégration pour détecter toute régression vers des demi-distances symétriques (audit F29).
 - Gaps et prochaines actions : campagne T1 sur HEAD exact (MMS 3 niveaux + GCI + exécution réelle archivée) ; étage 2 de #885 (couplage fluide + énergie dans le production solver, échange CHT fluide/solide) ; extension transitoire et non orthogonale hors scope présent.
 
 ## 8. Journal des modifications de la fiche

@@ -106,6 +106,54 @@ static Mesh chain_mesh(std::size_t n, double dx)
     return m;
 }
 
+// Two-cell orthogonal mesh with unequal widths (1.5 m, 0.5 m) and
+// cross-sectional area 2 m^2. This is an integration oracle for asymmetric
+// centre-to-interface distances, not merely a conductance-helper test.
+static Mesh asymmetric_two_cell_chain_mesh()
+{
+    Mesh m;
+    m.points().resize(12);
+    const double x[3] = {0.0, 1.5, 2.0};
+    for (std::size_t i = 0; i < 3; ++i) {
+        m.points().set(4*i+0, x[i], 0.0, 0.0);
+        m.points().set(4*i+1, x[i], 2.0, 0.0);
+        m.points().set(4*i+2, x[i], 2.0, 1.0);
+        m.points().set(4*i+3, x[i], 0.0, 1.0);
+    }
+    for (std::size_t i = 0; i < 3; ++i)
+        m.faces().push_face({4*i+0,4*i+1,4*i+2,4*i+3});
+    for (std::size_t i = 0; i < 2; ++i) {
+        const std::size_t a=4*i, b=4*(i+1);
+        m.faces().push_face({a+0,b+0,b+1,a+1});
+        m.faces().push_face({a+3,a+2,b+2,b+3});
+        m.faces().push_face({a+0,a+3,b+3,b+0});
+        m.faces().push_face({a+1,b+1,b+2,a+2});
+    }
+    m.ownership().resize(11);
+    m.ownership().set_owner(0,0);
+    m.ownership().set_neighbour(0,FaceOwnership::BOUNDARY);
+    m.ownership().set_owner(1,0);
+    m.ownership().set_neighbour(1,1);
+    m.ownership().set_owner(2,1);
+    m.ownership().set_neighbour(2,FaceOwnership::BOUNDARY);
+    for (std::size_t i=0;i<2;++i)
+        for (std::size_t j=0;j<4;++j) {
+            const std::size_t f=3+4*i+j;
+            m.ownership().set_owner(f,static_cast<int>(i));
+            m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);
+        }
+    m.cells().push_cell({0,1,3,4,5,6});
+    m.cells().push_cell({1,2,7,8,9,10});
+    Patch left; left.name="left"; left.type=PatchType::WALL; left.face_ids={0};
+    Patch right; right.name="right"; right.type=PatchType::WALL; right.face_ids={2};
+    Patch walls; walls.name="walls"; walls.type=PatchType::WALL;
+    for (std::size_t f=3;f<11;++f) walls.face_ids.push_back(f);
+    m.boundary().add_patch(left);
+    m.boundary().add_patch(right);
+    m.boundary().add_patch(walls);
+    return m;
+}
+
 // Zone map: cells [0, n/3) -> id a, [n/3, 2n/3) -> id b, rest -> id c.
 static std::vector<int> three_zone_map(std::size_t n, int a, int b, int c)
 {
@@ -165,6 +213,17 @@ static double max_abs_error(const Vector& temperature,
 
 int main()
 {
+    run_case("thermal_contact_resistance_uses_asymmetric_half_distances", [] {
+        const double actual = thermal_interface_conductance(
+            2.0, 0.75, 0.25, 2.0, 4.0, 0.1);
+        // Series resistance is 0.375 + 0.0625 + 0.1 = 0.5375;
+        // the independent network conductance is therefore 3.7209302325581395.
+        constexpr double independent_reference = 3.7209302325581395;
+        EXPECT_NEAR(actual, independent_reference, 1e-14);
+        EXPECT_TRUE(std::abs(actual -
+            2.0 / (1.0 / 2.0 + 0.1 + 1.0 / 4.0)) > 1e-3);
+    });
+
     run_case("thermal_zones_composite_wall_exact_network", [] {
         const std::size_t n = 6;
         const double dx = 0.5;
@@ -204,6 +263,28 @@ int main()
                   << " max_error=" << max_abs_error(temperature, expected)
                   << " flux_left=" << result.patch_flux_out.at("left")
                   << " imbalance=" << result.energy_imbalance_relative << '\n';
+    });
+
+    run_case("thermal_contact_resistance_asymmetric_integration_oracle", [] {
+        Mesh m=asymmetric_two_cell_chain_mesh();
+        auto g=build_fv_geometry(m);
+        const std::vector<ThermalZoneSpec> specs = {
+            {"material_a", 10, 2.0, 0.0, 0.1, true},
+            {"material_b", 20, 4.0, 0.0, 0.1, true},
+        };
+        const auto zones=build_thermal_zones(m,std::vector<int>{10,20},specs);
+        const auto bc=chain_bcs(400.0,300.0);
+        Vector temperature(2,300.0);
+        const auto result=solve_thermal_conduction(
+            m,g,zones,bc,temperature,ScalarSolveControls{5000,1e-14,1.0});
+
+        // R'' = 1.5/2 + 0.1 + 0.5/4 = 0.975 m^2 K/W;
+        // Q = A*(400-300)/R'' = 8000/39 W.
+        EXPECT_NEAR(temperature(0),361.53846153846155,1e-10);
+        EXPECT_NEAR(temperature(1),306.4102564102564,1e-10);
+        EXPECT_NEAR(result.patch_flux_out.at("right"),8000.0/39.0,1e-10);
+        EXPECT_TRUE(result.converged);
+        EXPECT_TRUE(result.energy_imbalance_relative<1e-12);
     });
 
     run_case("thermal_zones_contact_resistance_exact", [] {
