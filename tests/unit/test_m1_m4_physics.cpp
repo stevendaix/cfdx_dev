@@ -23,7 +23,7 @@ int main()
 
     run_case("rans_and_les_models_are_positive", [] {
         EXPECT_NEAR(turbulent_kinematic_viscosity_kepsilon(4.0, 2.0), 0.72, 1e-12);
-        EXPECT_TRUE(turbulent_kinematic_viscosity_komega_sst(1.0, 2.0, 0.5) > 0.0);
+        EXPECT_TRUE(turbulent_kinematic_viscosity_komega_sst(1.0, 2.0, 0.5, 2.0, 0.31) > 0.0);
         EXPECT_NEAR(smagorinsky_eddy_viscosity(0.1, 20.0),
                     0.00578, 1e-12);
         EXPECT_TRUE(des_eddy_viscosity(0.1, 0.02, 20.0) >= 0.0);
