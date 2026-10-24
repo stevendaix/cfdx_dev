@@ -281,7 +281,7 @@ int main() {
         EXPECT_TRUE(result.residual_relative < 1e-12);
     });
 
-    run_case("gmres_and_fgmres_certify_mixed_precision_with_fp64_operator", []() {
+    run_case("gmres_sparse_mixed_precision_rejects_false_convergence", []() {
         SparseMatrix A(1, 1);
         A.push_back(0, 0, 1.0 + 1e-8);
         A.finalize();
@@ -291,19 +291,55 @@ int main() {
         precision.operator_precision = SolverPrecision::FP32;
         precision.reduction_precision = SolverPrecision::FP64;
 
-        Vector xg(1, 0.0);
-        const auto gmres = solve_gmres(
-            A, b, xg, 1, 4, 1e-12, nullptr, KrylovControls{}, precision);
-        EXPECT_TRUE(gmres.status != SolverStatus::CONVERGED ||
-                    gmres.residual > 1e-12);
-        EXPECT_TRUE(!std::isfinite(gmres.residual) || gmres.residual > 1e-12);
+        Vector x(1, 0.0);
+        const auto result = solve_gmres(
+            A, b, x, 1, 4, 1e-12, nullptr, KrylovControls{}, precision);
+        const auto Ax64 = A.matvec(x);
+        const double independent_residual = std::abs(b(0) - Ax64[0]);
+        EXPECT_TRUE(result.status != SolverStatus::CONVERGED);
+        EXPECT_TRUE(independent_residual > 1e-12);
+        EXPECT_NEAR(result.residual, independent_residual, 1e-14);
+    });
 
-        Vector xf(1, 0.0);
-        const auto fgmres = solve_fgmres(
-            A, b, xf, 1, 4, 1e-12, nullptr, KrylovControls{}, precision);
-        EXPECT_TRUE(fgmres.status != SolverStatus::CONVERGED ||
-                    fgmres.residual > 1e-12);
-        EXPECT_TRUE(!std::isfinite(fgmres.residual) || fgmres.residual > 1e-12);
+    run_case("fgmres_sparse_mixed_precision_rejects_false_convergence", []() {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 1.0 + 1e-8);
+        A.finalize();
+        Vector b(1, 1.0);
+        PrecisionPolicy precision;
+        precision.enabled = true;
+        precision.operator_precision = SolverPrecision::FP32;
+        precision.reduction_precision = SolverPrecision::FP64;
+
+        Vector x(1, 0.0);
+        const auto result = solve_fgmres(
+            A, b, x, 1, 4, 1e-12, nullptr, KrylovControls{}, precision);
+        const auto Ax64 = A.matvec(x);
+        const double independent_residual = std::abs(b(0) - Ax64[0]);
+        EXPECT_TRUE(result.status != SolverStatus::CONVERGED);
+        EXPECT_TRUE(independent_residual > 1e-12);
+        EXPECT_NEAR(result.residual, independent_residual, 1e-14);
+    });
+
+    run_case("gmres_nonzero_rhs_uses_rhs_relative_tolerance", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 2.0);
+        A.finalize();
+        Vector b(2, 1.0);
+        Vector x(2, 1e6);
+        const auto result = solve_gmres(A, b, x, 1, 100, 1e-8);
+        const auto Ax = A.matvec(x);
+        double r2 = 0.0, b2 = 0.0;
+        for (std::size_t i = 0; i < 2; ++i) {
+            const double r = b(i) - Ax[i];
+            r2 += r * r;
+            b2 += b(i) * b(i);
+        }
+        const double independent_relative = std::sqrt(r2 / b2);
+        EXPECT_TRUE(result.status != SolverStatus::CONVERGED);
+        EXPECT_TRUE(independent_relative > 1e-8);
+        EXPECT_NEAR(result.residual_relative, independent_relative, 1e-12);
     });
 
     return run_all();
