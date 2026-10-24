@@ -196,15 +196,14 @@ int main()
 
         Field<double, Location::CELL> U(2, "U", "m/s", 3);
         Field<double, Location::CELL> p(2, "p", "Pa", 1);
-        Field<double, Location::CELL> grad_p(2, "grad_p", "Pa/m", 3);
         U.set(0, 2.0, 0.0, 0.0);
         U.set(1, 2.0, 0.0, 0.0);
         p(0) = 1.0;
         p(1) = 3.0;
 
-        // Exact linear pressure field: dp/dx = 2 Pa/m.
-        grad_p.set(0, 2.0, 0.0, 0.0);
-        grad_p.set(1, 2.0, 0.0, 0.0);
+        // The internal pressure jump is 2 Pa across a unit centre distance.
+        // The zero-gradient boundary condition intentionally defines the
+        // discrete cell gradient used by the compensation term.
 
         VelocityBoundaryConditions ubc;
         ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
@@ -221,7 +220,7 @@ int main()
         // COUPLED supplies physical U, unlike the segregated H/A predictor.
         // Its flux therefore includes interp(dAU*grad(p)) before subtracting
         // the implicit pressure response. On this orthogonal internal face,
-        // the response is exactly (p_N-p_O)/d * Sf.x; this direct expression
+        // the response is dAU_f * (p_N-p_O) / d * Sf.x; this direct expression
         // is independent of the production Rhie-Chow flux routine.
         const double grad_face_x = 0.5 * (
             grad_p_discrete.component_data(0)[0] +
