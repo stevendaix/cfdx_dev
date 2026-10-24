@@ -22,8 +22,8 @@ int main()
         constexpr double temperature = 1000.0;
         const double ib = sigma * std::pow(temperature, 4) / M_PI;
         const double expected = 4.0 * M_PI * (ib - 0.0);
-        EXPECT_NEAR(m1m4::p1_source(1.0, 0.0, temperature), expected, 1e-8);
-        EXPECT_NEAR(m1m4::p1_source(1.0, ib, temperature), 0.0, 1e-8);
+        EXPECT_NEAR(cfdx::physics::m1m4::p1_source(1.0, 0.0, temperature), expected, 1e-8);
+        EXPECT_NEAR(cfdx::physics::m1m4::p1_source(1.0, ib, temperature), 0.0, 1e-8);
     });
 
     run_case("pressure_velocity_relaxation_and_rhie_chow", [] {
