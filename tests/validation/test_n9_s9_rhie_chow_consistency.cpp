@@ -395,6 +395,19 @@ int main()
             EXPECT_NEAR(grad_face_x, 2.0, 1e-12);
             EXPECT_NEAR(phi(f), expected, 1e-12);
         }
+
+        // Independent cellwise divergence of the authoritative reconstructed
+        // flux. Constant U has zero divergence on this closed orthogonal mesh.
+        std::vector<double> cell_divergence(mesh.n_cells(), 0.0);
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            const auto owner = mesh.ownership().owner(f);
+            cell_divergence[owner] += phi(f);
+            const auto neighbour = mesh.ownership().neighbour(f);
+            if (neighbour >= 0)
+                cell_divergence[static_cast<std::size_t>(neighbour)] -= phi(f);
+        }
+        for (const double divergence : cell_divergence)
+            EXPECT_NEAR(divergence, 0.0, 1e-12);
     });
 
     run_case("n9_s9_rhie_chow_fixed_pressure_boundary_gauge_invariance", [] {
