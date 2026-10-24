@@ -620,61 +620,7 @@ gauss_gradient_with_boundary(
     const FvGeometry& geometry,
     const ScalarBoundaryConditions& bcs)
 {
-    using namespace cfdx::core;
-    if (field.dimension() != 1 || field.size() != mesh.n_cells())
-        throw std::invalid_argument("gauss_gradient_with_boundary: invalid field");
-
-    Field<double, Location::CELL> grad(
-        mesh.n_cells(), field.name() + "_grad_bc", field.metadata().unit + "/m", 3);
-    const auto& own = mesh.ownership();
-
-    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
-        Vec3 sum{0.0, 0.0, 0.0};
-        const Offset off = mesh.cells().offsets_data()[c];
-        const Offset count = mesh.cells().offsets_data()[c + 1] - off;
-        for (Offset k = 0; k < count; ++k) {
-            const std::size_t f = mesh.cells().faces_data()[off + k];
-            const bool owner = own.owner(f) == c;
-            Vec3 Sf = owner ? geometry.face_area_vectors[f] : geometry.face_area_vectors[f] * -1.0;
-            double vf = field(c);
-
-            if (own.neighbour(f) >= 0) {
-                // The mesh stores owner/neighbour independent of the cell being
-                // visited.  When c is the neighbour, own.neighbour(f) == c;
-                // using it again would therefore collapse the face interpolation
-                // to field(c) and halve the Green-Gauss pressure gradient.
-                const std::size_t other = owner
-                    ? static_cast<std::size_t>(own.neighbour(f))
-                    : static_cast<std::size_t>(own.owner(f));
-                const double dc = (geometry.face_centres[f] -
-                                   geometry.cell_centres[c]).mag();
-                const double dn = (geometry.cell_centres[other] -
-                                   geometry.face_centres[f]).mag();
-                if (!(dc + dn > 0.0))
-                    throw std::runtime_error(
-                        "gauss_gradient_with_boundary: degenerate face distance");
-                const double w = dn / (dc + dn);
-                vf = w * field(c) + (1.0 - w) * field(other);
-            } else {
-                const std::size_t p = geometry.face_patch[f];
-                if (p < mesh.boundary().n_patches() &&
-                    mesh.boundary().patch(p).type == PatchType::EMPTY)
-                    continue;
-                if (p < mesh.boundary().n_patches()) {
-                    const auto& name = mesh.boundary().patch(p).name;
-                    const auto it = bcs.find(name);
-                    if (it != bcs.end() && it->second.type == ScalarBoundaryType::FIXED_VALUE)
-                        vf = it->second.value;
-                }
-            }
-            sum += Sf * vf;
-        }
-        const double invV = 1.0 / geometry.cell_volumes[c];
-        grad.component_data(0)[c] = sum.x * invV;
-        grad.component_data(1)[c] = sum.y * invV;
-        grad.component_data(2)[c] = sum.z * invV;
-    }
-    return grad;
+    return compute_scalar_gradient_with_boundary(field, mesh, geometry, bcs);
 }
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
