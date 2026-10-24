@@ -76,6 +76,6 @@ Still required before promotion:
 - compare the assembled coupled continuity block residual against the independently reconstructed cellwise flux divergence after an actual block solve;
 - a manufactured coupled velocity-pressure solution on a nonuniform mesh;
 - a quantitative checkerboard comparison with and without Rhie–Chow compensation;
-- explicit regression that SIMPLE/SIMPLEC retain the H/A predictor contract. The production boolean selector remains a maintainability risk; a named contract/API would be safer.
+- explicit regression that SIMPLE/SIMPLEC retain the H/A predictor contract. The call sites now use named APIs (make_rhie_chow_flux_from_hbya / make_rhie_chow_flux_from_physical_velocity), and the nonuniform affine test compares the two contracts directly.
 
 These additions improve the operator-level evidence but do not yet establish the complete coupled block contract or physical qualification. Keep the PR draft until the remaining independent checks and exact-HEAD CI pass.
