@@ -12,6 +12,7 @@ from .application import (
     Application,
     ApplicationStateChanged,
     ResultsChanged,
+    SelectionChanged,
     WorkflowStatus,
     workflow_children,
 )
@@ -21,7 +22,8 @@ from .capabilities import (
     evaluate_capability,
     get_capability,
 )
-from .mesh_model import read_mesh_catalog
+from .properties_panel import PropertiesPanel
+from .selection import parse_selection_id, selection_label
 from .session import CFDXSession
 from .solver_states import session_state_view
 from .theme import TOKENS, apply_workbench_theme
@@ -33,7 +35,6 @@ try:
         QDialog,
         QDockWidget,
         QFileDialog,
-        QFormLayout,
         QHBoxLayout,
         QInputDialog,
         QLabel,
@@ -70,6 +71,7 @@ if QMainWindow is not object:
         # cross this boundary through queued Qt signal delivery.
         _state_event = Signal(object)
         _results_event = Signal(object)
+        _selection_event = Signal(object)
 
         SETTINGS_ORGANIZATION = "CFDX"
         SETTINGS_APPLICATION = "Workbench"
@@ -86,10 +88,14 @@ if QMainWindow is not object:
             self._application_state = self.application.state
             self._state_event.connect(self._state_changed)
             self._results_event.connect(self._results_changed)
+            self._selection_event.connect(self._selection_state_changed)
             self.application.events.subscribe(
                 ApplicationStateChanged, self._state_event.emit
             )
             self.application.events.subscribe(ResultsChanged, self._results_event.emit)
+            self.application.events.subscribe(
+                SelectionChanged, self._selection_event.emit
+            )
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             self.resize(1440, 900)
             self.setDockNestingEnabled(True)
@@ -577,13 +583,10 @@ if QMainWindow is not object:
             )
 
         def _build_properties_panel(self) -> QWidget:
-            panel = QWidget()
-            panel.setObjectName("workbench.properties")
-            panel._form = QFormLayout(panel)
-            panel._form.addRow(QLabel("Select a workflow item"))
-            self.properties_panel = panel
-            self._refresh_properties()
-            return panel
+            """Compose the typed contextual inspector over the selection."""
+            self.properties_panel = PropertiesPanel()
+            self.properties_panel.on_apply = self._apply_property
+            return self.properties_panel
 
         def _open_results_directory(self) -> None:
             directory = QFileDialog.getExistingDirectory(
@@ -603,7 +606,8 @@ if QMainWindow is not object:
             if not path:
                 return
             try:
-                self.mesh_browser.set_catalog(read_mesh_catalog(Path(path)))
+                catalog = self.application.load_mesh(path)
+                self.mesh_browser.set_catalog(catalog)
                 if self.view3d is not None:
                     self.view3d.load_cfdx_mesh(path)
                     self._show_viewport()
@@ -837,8 +841,7 @@ if QMainWindow is not object:
             self.statusBar().showMessage("Visualization pipeline reset")
 
         def _mesh_selection_changed(self, selection) -> None:
-            if self.view3d is None:
-                return
+            """Sync the 3D view, the inspector and the selection state."""
             if selection.kind not in {"patch", "face", "region"}:
                 return
             stable_id = selection.stable_id
@@ -847,37 +850,27 @@ if QMainWindow is not object:
             if stable_id is None:
                 return
             try:
-                self.view3d.select(stable_id)
-            except (KeyError, ValueError):
+                summary = selection_label(parse_selection_id(stable_id))
+            except ValueError:
                 return
-            summary = self.view3d.selection_summary()
+            self.application.select(stable_id, selection.kind, selection.name)
+            if self.view3d is not None:
+                try:
+                    self.view3d.select(stable_id)
+                    summary = self.view3d.selection_summary()
+                except (KeyError, ValueError):
+                    pass
             self.statusBar().showMessage(f"Selected: {summary}")
 
         def _refresh_properties(self) -> None:
+            """Rebuild the typed inspector for the current selection context."""
             if not hasattr(self, "properties_panel"):
                 return
-            form = self.properties_panel._form
-            while form.count():
-                item = form.takeAt(0)
-                if item.widget() is not None:
-                    item.widget().deleteLater()
-            properties = self.application.properties()
-            if not properties:
-                form.addRow(QLabel("No editable properties for this selection"))
-                return
-            for prop in properties:
-                editor = QLineEdit(str(prop.value))
-                editor.setObjectName(f"workbench.property.{prop.key}")
-                editor.setReadOnly(not prop.editable)
-                button = QPushButton("Apply")
-                button.setEnabled(prop.editable)
-                button.clicked.connect(
-                    lambda _checked=False, p=prop, e=editor: self._apply_property(
-                        p.key, e.text()
-                    )
-                )
-                form.addRow(prop.label, editor)
-                form.addRow("", button)
+            try:
+                properties = self.application.properties()
+            except (KeyError, ValueError):
+                properties = ()
+            self.properties_panel.set_properties(properties)
 
         def _setup_changed(self) -> None:
             """Propagate specialized setup edits through the application state."""
@@ -887,9 +880,9 @@ if QMainWindow is not object:
             if hasattr(self, "setup_panel"):
                 self.setup_panel.set_case(self.session.case)
 
-        def _apply_property(self, key: str, raw_value: str) -> None:
+        def _apply_property(self, key: str, value: object) -> None:
+            """Apply one typed property value and report failures in clear text."""
             try:
-                value = float(raw_value) if key == "numerics.cfl" else raw_value
                 self.application.set_property(key, value)
             except (KeyError, TypeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Property error: {exc}")
@@ -988,6 +981,10 @@ if QMainWindow is not object:
             kind = item.data(0, Qt.ItemDataRole.UserRole + 1)
             label = item.text(0).rsplit("  [", 1)[0]
             self.application.select(stable_id, kind, label)
+
+        def _selection_state_changed(self, event) -> None:
+            """Keep the typed inspector in sync with the selection context."""
+            self._refresh_properties()
 
         def _restore_layout(self) -> None:
             geometry = self._settings.value("geometry")

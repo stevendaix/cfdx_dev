@@ -99,3 +99,89 @@ def test_workbench_has_stable_docks() -> None:
     assert window.application.state.selection.stable_id == "boundaries"
     window.close()
     app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_properties_inspector_applies_typed_cfl_value() -> None:
+    from cfdx.gui import create_application
+    from cfdx.session import SimulationState
+    from PySide6.QtWidgets import QDoubleSpinBox, QPushButton
+
+    app = create_application(["cfdx-workbench-test"])
+    session = CFDXSession()
+    session.state = SimulationState.READY
+    window = CFDXWorkbenchWindow(session)
+    window.application.select("numerics", "workflow", "Numerics")
+    editor = window.findChild(QDoubleSpinBox, "workbench.property.numerics.cfl")
+    assert editor is not None
+    editor.setValue(2.5)
+    window.findChild(QPushButton, "workbench.property.apply.numerics.cfl").click()
+    assert session.case.numerics["cfl"] == 2.5
+    assert isinstance(session.case.numerics["cfl"], float)
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_properties_inspector_applies_typed_physics_toggle() -> None:
+    from cfdx.gui import create_application
+    from cfdx.session import SimulationState
+    from PySide6.QtWidgets import QCheckBox, QPushButton
+
+    app = create_application(["cfdx-workbench-test"])
+    session = CFDXSession()
+    session.state = SimulationState.READY
+    session.case.physics["energy"] = {"enabled": True}
+    window = CFDXWorkbenchWindow(session)
+    window.application.select("physics", "workflow", "Physics")
+    toggle = window.findChild(QCheckBox, "workbench.property.physics.energy.enabled")
+    assert toggle is not None
+    assert toggle.isChecked()
+    toggle.setChecked(False)
+    window.findChild(
+        QPushButton, "workbench.property.apply.physics.energy.enabled"
+    ).click()
+    assert session.case.physics["energy"]["enabled"] is False
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_mesh_selection_updates_typed_inspector_context() -> None:
+    from cfdx.gui import create_application
+    from cfdx.mesh_model import MeshCatalog, MeshPatch, MeshRegion
+    from cfdx.session import SimulationState
+    from PySide6.QtWidgets import QLineEdit, QSpinBox
+
+    app = create_application(["cfdx-workbench-test"])
+    session = CFDXSession()
+    session.state = SimulationState.READY
+    window = CFDXWorkbenchWindow(session)
+    patch = MeshPatch(0, "inlet", "inlet", 2, "fluid")
+    region = MeshRegion("fluid", 16, 19, 5, (patch,), ("c0", "c1"))
+    catalog = MeshCatalog(16, 19, 5, (patch,), (region,))
+    window.application.mesh_catalog = catalog
+    window.mesh_browser.set_catalog(catalog)
+    browser = window.mesh_browser.patches
+    browser.setCurrentItem(browser.topLevelItem(0).child(0))
+    assert window.application.selection.stable_id == "region:fluid/patch:inlet"
+    patch_type = window.findChild(QLineEdit, "workbench.property.mesh.patch_type")
+    assert patch_type is not None
+    assert patch_type.text() == "inlet"
+    assert not patch_type.isEnabled()
+    faces = window.findChild(QSpinBox, "workbench.property.mesh.faces")
+    assert faces is not None
+    assert faces.value() == 2
+    browser.setCurrentItem(browser.topLevelItem(0))
+    assert window.application.selection.stable_id == "region:fluid"
+    cells = window.findChild(QSpinBox, "workbench.property.mesh.cells")
+    assert cells is not None
+    assert cells.value() == 5
+    window.close()
+    app.quit()
