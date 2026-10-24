@@ -64,6 +64,7 @@ advect_volume_fraction_1d(
     return next;
 }
 
+// Method contract: docs/audits/06-gradients-reconstruction.md
 // Curvature is -div(n). Derivatives must be evaluated along their own
 // coordinate axes by the caller; a single 1-D index stencil cannot recover
 // the multidimensional divergence from normal components.
