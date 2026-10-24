@@ -951,31 +951,36 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             result.status = cfdx::core::SolverStatus::DIVERGED;
             return result;
         }
-        result.residual_before_relaxation = result.residual;
+        // These paired diagnostics use the same physical operator, L-infinity
+        // norm, and RHS normalization. Solver-native Krylov diagnostics remain
+        // available in residual/residual_relative and are intentionally separate.
+        const auto physical_residual_inf = [&](const cfdx::core::Vector& state) {
+            double norm = 0.0;
+            for (std::size_t i = 0; i < state.size(); ++i) {
+                double ri = -equation.rhs(i);
+                const auto row_begin = equation.matrix.row_offsets_data()[i];
+                const auto row_end = equation.matrix.row_offsets_data()[i + 1];
+                for (std::uint32_t k = row_begin; k < row_end; ++k)
+                    ri += equation.matrix.values_data()[k] *
+                          state(equation.matrix.columns_data()[k]);
+                norm = std::max(norm, std::abs(ri));
+            }
+            return norm;
+        };
+        double rhs_norm = 0.0;
+        for (std::size_t i = 0; i < solution.size(); ++i)
+            rhs_norm = std::max(rhs_norm, std::abs(equation.rhs(i)));
+        const double rhs_scale = std::max(rhs_norm, 1e-300);
+        result.residual_before_relaxation = physical_residual_inf(candidate);
+        result.residual_relative_before_relaxation =
+            result.residual_before_relaxation / rhs_scale;
+
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) += controls.relaxation * (candidate(i) - solution(i));
 
-        double returned_residual = 0.0;
-        for (std::size_t i = 0; i < solution.size(); ++i) {
-            double ri = -equation.rhs(i);
-            const auto row_begin = equation.matrix.row_offsets_data()[i];
-            const auto row_end = equation.matrix.row_offsets_data()[i + 1];
-            for (std::uint32_t k = row_begin; k < row_end; ++k)
-                ri += equation.matrix.values_data()[k] *
-                      solution(equation.matrix.columns_data()[k]);
-            returned_residual = std::max(returned_residual, std::abs(ri));
-        }
-        const double rhs_norm = [&] {
-            double norm = 0.0;
-            for (std::size_t i = 0; i < solution.size(); ++i)
-                norm = std::max(norm, std::abs(equation.rhs(i)));
-            return norm;
-        }();
-        result.residual_after_relaxation = returned_residual;
-        result.residual_relative_before_relaxation =
-            result.residual_relative;
+        result.residual_after_relaxation = physical_residual_inf(solution);
         result.residual_relative_after_relaxation =
-            returned_residual / std::max(rhs_norm, 1e-300);
+            result.residual_after_relaxation / rhs_scale;
     }
     // A MAX_ITER_REACHED result is not an acceptable predictor solution.
     // Do not inject an unconverged Krylov iterate into the nonlinear solver:
