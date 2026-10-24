@@ -111,6 +111,22 @@ inline ChtSolveResult solve_two_region_cht(
     const ScalarBoundaryConditions& bcs1 = {},
     const ScalarBoundaryConditions& bcs2 = {})
 {
+    // The interface update and its flux audit must use the same conductivities
+    // as the two regional energy operators. Otherwise the interface can report
+    // zero imbalance while the assembled energy equations carry different heat
+    // rates. Reject contradictory contracts before mutating either temperature.
+    const auto conductivity_matches = [](double interface_k, double energy_k) {
+        if (!std::isfinite(interface_k) || !std::isfinite(energy_k) ||
+            !(interface_k > 0.0) || !(energy_k > 0.0))
+            return false;
+        const double scale = std::max(std::abs(interface_k), std::abs(energy_k));
+        return std::abs(interface_k - energy_k) <= 1e-12 * scale;
+    };
+    if (!conductivity_matches(controls.conductivity1, energy1.conductivity) ||
+        !conductivity_matches(controls.conductivity2, energy2.conductivity))
+        throw std::invalid_argument(
+            "CHT interface conductivities must match the regional energy conductivities");
+
     const auto pairs=match_cht_interface(mesh1,g1,mesh2,g2,controls);
     ChtSolveResult result;
     std::vector<double> previous_interface_temperature(pairs.size(), std::numeric_limits<double>::quiet_NaN());
