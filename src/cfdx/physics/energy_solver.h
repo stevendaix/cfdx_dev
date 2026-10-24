@@ -106,7 +106,8 @@ inline ScalarEquation assemble_energy_equation(
     const EnergySolverControls& c,
     const ScalarBoundaryConditions& bcs = {},
     const ScalarBoundaryFaceValues* face_values = nullptr,
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr)
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* current_temperature = nullptr)
 {
     validate_energy_controls(c);
     if (source.size()!=mesh.n_cells() || old_temperature.size()!=mesh.n_cells())
@@ -132,7 +133,8 @@ inline ScalarEquation assemble_energy_equation(
     const auto enthalpy_flux=enthalpy_face_flux(mass_flux,c.cp);
     return assemble_scalar_equation(
         mesh,geometry,enthalpy_flux,c.conductivity,su,sp,bcs,true,
-        face_values,&transient_diag,&transient_rhs);
+        face_values,&transient_diag,&transient_rhs,nullptr,
+        ConvectionScheme::UPWIND,current_temperature);
 }
 
 inline double energy_balance_relative_from_equation(
@@ -380,7 +382,8 @@ inline EnergySolveResult solve_energy(
         controls.energy_balance_tolerance > 0.0 ? controls.energy_balance_tolerance : controls.tolerance;
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         auto eq=assemble_energy_equation(
-            mesh,geometry,mass_flux,source,T_previous_time,controls,bcs,face_values,source_implicit);
+            mesh,geometry,mass_flux,source,T_previous_time,controls,bcs,
+            face_values,source_implicit,&temperature);
         cfdx::core::Vector candidate(temperature.size(),0.0);
         for(std::size_t i=0;i<temperature.size();++i)
             candidate(i)=temperature(i);
