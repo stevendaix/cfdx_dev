@@ -1,10 +1,10 @@
 import pytest
-
-from cfdx import CFDXSession
-from cfdx.application import Application, WorkflowStatus
 from cfdx.mesh_model import MeshCatalog, MeshPatch, MeshRegion
 from cfdx.selection import face_selection_id, patch_selection_id
 from cfdx.setup_model import ParameterType, SetupDiagnostic
+
+from cfdx import CFDXSession
+from cfdx.application import Application, WorkflowStatus
 
 
 def test_selection_resolves_properties_and_edit_updates_authoritative_case() -> None:

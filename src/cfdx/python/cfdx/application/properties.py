@@ -40,15 +40,13 @@ def properties_for_selection(
     """
     if stable_id is None:
         return ()
-    if stable_id.startswith("region:") or stable_id.startswith("patch:"):
+    if stable_id.startswith(("region:", "patch:")):
         if catalog is None:
             return ()
         return mesh_selection_properties(catalog, stable_id)
     if stable_id == "numerics":
         value = case.numerics.get("cfl", 1.0)
-        return (
-            PropertyState("numerics.cfl", "CFL", value, ParameterType.REAL),
-        )
+        return (PropertyState("numerics.cfl", "CFL", value, ParameterType.REAL),)
     if stable_id == "solver":
         return (
             PropertyState(
@@ -147,9 +145,7 @@ def set_property(case: Case, key: str, value: Any) -> ChangeImpact:
     raise KeyError(f"property is not editable: {key}")
 
 
-def _read_only(
-    key: str, label: str, value: Any, kind: ParameterType
-) -> PropertyState:
+def _read_only(key: str, label: str, value: Any, kind: ParameterType) -> PropertyState:
     """Build one read-only inspector row for a mesh fact."""
     return PropertyState(key, label, value, kind, editable=False)
 
@@ -182,9 +178,7 @@ def _region_in_catalog(catalog: MeshCatalog, name: str) -> MeshRegion:
     raise KeyError(f"mesh region not found: {name}")
 
 
-def _patch_in_catalog(
-    catalog: MeshCatalog, target: SelectionTarget
-) -> MeshPatch:
+def _patch_in_catalog(catalog: MeshCatalog, target: SelectionTarget) -> MeshPatch:
     region = target.region or "default"
     for patch in catalog.patches:
         if patch.name == target.name and patch.region == region:
