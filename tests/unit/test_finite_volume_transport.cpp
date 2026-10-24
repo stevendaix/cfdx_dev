@@ -274,6 +274,10 @@ int main()
         EXPECT_NEAR(r.residual_before_relaxation, 0.0, 1e-12);
         EXPECT_NEAR(r.residual_after_relaxation, scalar_equation_residual_inf(eq,x), 1e-14);
         EXPECT_TRUE(r.residual_after_relaxation > r.residual_before_relaxation);
+        EXPECT_NEAR(r.residual_relative_before_relaxation, r.residual_relative, 1e-14);
+        EXPECT_NEAR(r.residual_relative_after_relaxation,
+                    r.residual_after_relaxation /
+                        std::max(std::abs(eq.rhs(0)), std::abs(eq.rhs(1))), 1e-14);
     });
 
     run_case("exact_one_cell_solution_is_not_under_relaxed", [] {
