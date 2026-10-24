@@ -66,6 +66,8 @@ Cette section est le journal vivant de reprise. Elle complète les statuts histo
 |---|---|---|
 | #1110 | F28 — cohérence conductivité CHT, porté sur master courant | CI du HEAD `963fb7d745de44a9064b77f625c4c1291f26481b` en cours ; l'audit gate initial a échoué car il traite `audit_v2.md` et `turbulence.md` comme des fiches méthode. Ce défaut de classification est séparé du code CHT. |
 | #1111 | F26 — normalisation du terme source P1, porté sur master courant | CI en cours sur HEAD `e68b2056ec910d2fbc757dbc05137e11766136c7`. Oracle indépendant : source sans irradiation égale à (4\sigma T^4), et source nulle lorsque (J=I_b). Aucune fusion avant CI verte. |
+
+| #1113 | F25 — suppression de la surcharge SST ambiguë | Correctif porté sur master courant : surcharge historique supprimée au niveau compilation, appels tests/benchmarks migrés vers l'API avec strain-rate explicite, oracle numérique indépendant. CI exacte en attente sur HEAD `6f23e7dbd42d2b91d3d19b47d95ba43e0910625f`. |
 | #1112 | Gate d'audit — rapports vs fiches méthode | PR créée sur master courant ; liste d'exclusion explicite limitée aux rapports `audit_v2.md` et `turbulence.md`, sans relâcher les exigences des fiches méthode. CI en attente sur HEAD `9dceab6781871e70a5fcd69c126e85e26c47648b`. |
 
 ### Garde-fous de reprise
