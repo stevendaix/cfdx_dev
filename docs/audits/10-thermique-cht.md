@@ -28,6 +28,7 @@ Forme discrète sur la cellule $P$ :
 $$a_P T_P=\sum_{nb}a_{nb}T_{nb}+b,\qquad \sum_f \dot m_f c_p (\rho)_f \ldots$$
 - **Flux convectif** : porte $\rho c_p$ — leçon d'audit #419 **B2** : quand $c_p$ varie (ou par prudence systématique), le produit $\rho c_p$ doit être interpolé et appliqué au flux convectif ; jamais de flux convectif en $\rho$ seul additionné d'un $c_p$ séparé après coup. Le bilan d'énergie doit être vérifié exact sur ce point.
 - **Flux diffusif** : conductivité de face $k_f$ par **moyenne harmonique** des valeurs de cellules (Patankar) pour les coefficients discontinus à l'interface fluide-solide ; coefficients assemblés dans la matrice $A$.
+- **Contrat des propriétés CHT** : les conductivités déclarées dans `ChtInterfaceControls` doivent être identiques (à l'arrondi relatif près) aux conductivités utilisées par les deux `EnergySolverControls`. Une configuration contradictoire est rejetée avant résolution ; le bilan d'interface ne peut pas certifier une propriété différente de celle de l'opérateur énergie.
 - **Interface CHT conservatif** : le flux d'interface $q_{\Gamma}$ est calculé **une seule fois** et débité/credité symétriquement aux deux régions ($-q_{\Gamma}$ d'un côté, $+q_{\Gamma}$ de l'autre) — conservation machine de l'énergie d'interface ; jamais deux flux calculés indépendamment.
 - **Terme source** $S_T$ : linéarisé en $S_T=S^{exp}+S^{lin}T_P$ quand il dépend de T (source radiatif, voir fiche 11) ; signe vérifié par bilan.
 
@@ -39,7 +40,7 @@ $$a_P T_P=\sum_{nb}a_{nb}T_{nb}+b,\qquad \sum_f \dot m_f c_p (\rho)_f \ldots$$
 
 ## 5. Pièges connus
 - **B2** : $\rho c_p$ dans la convection d'énergie — pas $\rho$ seul.
-- Bilan d'énergie d'interface : l'énergie qui quitte le fluide doit entrer dans le solide à la tolérance machine — sinon le couplage fuit.
+- Bilan d'énergie d'interface : l'énergie qui quitte le fluide doit entrer dans le solide à la tolérance machine — sinon le couplage fuit. Les flux doivent être reconstruits avec les conductivités réellement assemblées dans les équations régionales ; le seul équilibre du calcul d'interface ne suffit pas si les contrats de propriétés divergent.
 - Boussinesq : seulement pour $\Delta T$ petits ; hors validité, utiliser la flottabilité pleine (variable $\rho$) et documenter le choix.
 - $c_p$ variable : la formulation température peut perdre la conservativité — la formulation enthalpie est l'alternative documentée.
 - Moyenne harmonique obligatoire pour $k$ à l'interface (l'arithmétique sur-lisse les discontinuités et casse le flux exact).
