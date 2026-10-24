@@ -1,0 +1,1 @@
+Round 2 oracle trigger for PR 1066: verify candidate files (ruff-canonical + TRY004 TypeError) on pinned head 38638dbebea4e1b1ed197579b061f83ae9c9e5de.
