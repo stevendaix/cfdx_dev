@@ -143,7 +143,8 @@ inline Field<double, Location::CELL> compute_gradient_gauss(
 inline Field<double, Location::CELL> compute_gradient_least_squares(
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
-    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::EXCLUDE_BOUNDARY)
+    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::EXCLUDE_BOUNDARY,
+    const std::vector<BoundaryGradientCondition>* boundary_conditions = nullptr)
 {
     const std::size_t n_cells = mesh.n_cells();
     if (cell_field.size() != n_cells)
@@ -181,6 +182,27 @@ inline Field<double, Location::CELL> compute_gradient_least_squares(
                 if (boundary_policy == BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL)
                     throw std::runtime_error("compute_gradient_least_squares: boundary face in rejected stencil at cell "
                                              + std::to_string(c));
+                if (boundary_policy == BoundaryGradientPolicy::EXCLUDE_BOUNDARY)
+                    continue;
+                BoundaryGradientCondition bc{BoundaryGradientConditionType::ZERO_GRADIENT, 0.0};
+                if (boundary_conditions && f < boundary_conditions->size())
+                    bc = (*boundary_conditions)[f];
+                const Vec3 n = geometry.face_normals[f];
+                const Vec3 dface = geometry.face_centres[f] - geometry.cell_centres[c];
+                const double dn = dface.dot(n);
+                if (!(dn > 0.0) || !std::isfinite(dn))
+                    throw std::runtime_error("compute_gradient_least_squares: invalid boundary distance at face "
+                                             + std::to_string(f));
+                if (bc.type == BoundaryGradientConditionType::DIRICHLET) {
+                    neighbours.push_back(geometry.face_centres[f] * 2.0 - geometry.cell_centres[c]);
+                    neighbour_values.push_back(2.0 * bc.value - values[c]);
+                } else if (bc.type == BoundaryGradientConditionType::NEUMANN) {
+                    neighbours.push_back(geometry.cell_centres[c] + n * (2.0 * dn));
+                    neighbour_values.push_back(values[c] + 2.0 * dn * bc.value);
+                } else {
+                    neighbours.push_back(geometry.cell_centres[c] + n * (2.0 * dn));
+                    neighbour_values.push_back(values[c]);
+                }
                 continue;
             }
             if (nb >= n_cells || nb == c)
@@ -843,6 +865,8 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
                 if (boundary_policy == BoundaryGradientPolicy::REJECT_BOUNDARY_STENCIL)
                     throw std::runtime_error("compute_gradient_weighted_least_squares: boundary face in rejected stencil at cell "
                                              + std::to_string(c));
+                if (boundary_policy == BoundaryGradientPolicy::EXCLUDE_BOUNDARY)
+                    continue;
 
                 // ZERO_GRADIENT_GHOST is a real policy even when no explicit
                 // boundary-condition vector is supplied. In that case the
