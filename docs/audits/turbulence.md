@@ -109,6 +109,8 @@ Le noyau SST, certains chemins transactionnels de production, les stages énergi
 
 | `9148030077a60d4d96c66946f00f1af1e2462607` + `e4089770512f147e52b5470a5f3e3ef783800e95` | `src/cfdx/physics/cht_solver.h`, `tests/validation/test_cht_validation.cpp`, `docs/audits/10-thermique-cht.md` | Rejet avant mutation des conductivités d'interface incohérentes avec les deux solveurs énergie ; test négatif vérifiant la préservation des températures. | Revue du diff effectuée ; CI de la branche empilée à exécuter. | EN COURS |
 
+| `8a4accbf2eb846449463a16db174c6d6f0b12330` | `tests/unit/test_turbulence_qualification_equations.cpp` | Corrigée une erreur de portée détectée par le premier Fast Guard : le test du cas νt=0 utilise maintenant sa propre valeur de strain. | Fast Guard initial en échec sur ce défaut de compilation ; correction poussée, CI relancée sur le HEAD courant. | CORRIGÉ — revalidation en cours |
+
 **Décision TR-01 :** correction proposée dans une branche fondée sur le `master` courant. Les PR #1094 et #1099 sont des variantes historiques concurrentes ; leurs HEAD ne sont pas utilisés directement car ils ont divergé du `master`. Cette implémentation doit passer CI avant d'être considérée intégrée.
 
 **État des preuves :** aucune preuve physique SST n'est revendiquée par ces deux tests algébriques. N9/qualification physique ne doivent pas être considérés comme réussis du seul fait que le test d'équation passe.
