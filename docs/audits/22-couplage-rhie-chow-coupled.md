@@ -74,7 +74,7 @@ Added regression coverage on the COUPLED physical-velocity flux contract:
 
 Still required before promotion:
 - the exact production matrix/RHS evidence hook now supports a cellwise comparison of the assembled continuity block residual against independently reconstructed authoritative flux divergence after an actual block solve;
-- a manufactured coupled velocity-pressure solution on a nonuniform mesh;
+- the nonuniform-mesh block test now starts from exact constant velocity and incorrect pressure, then checks recovery of the manufactured solution U=(2,0,0), p=1+2x after one coupled solve; this new recovery gate is awaiting exact-HEAD CI.
 - the checkerboard central-face test now quantifies the naive interpolated flux (0) versus the pressure-jump-corrected flux (-2) and checks both named contracts; a grid-level pressure-mode amplitude/suppression metric remains to be added;
 - explicit regression that SIMPLE/SIMPLEC retain the H/A predictor contract. The call sites now use named APIs (make_rhie_chow_flux_from_hbya / make_rhie_chow_flux_from_physical_velocity), and the nonuniform affine test compares the two contracts directly.
 
