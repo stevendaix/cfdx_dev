@@ -1079,7 +1079,8 @@ inline Field<double, Location::CELL> cell_gradient(
         case GradientScheme::GAUSS_POINT:
             return compute_gradient_gauss_point(cell_field, mesh, geometry);
         case GradientScheme::LEAST_SQUARES:
-            return compute_gradient_least_squares(cell_field, mesh);
+            return compute_gradient_least_squares(
+                cell_field, mesh, boundary_policy, boundary_conditions);
         case GradientScheme::WEIGHTED_LEAST_SQUARES:
             return compute_gradient_weighted_least_squares(
                 cell_field, mesh, GradientWeighting::INVERSE_DISTANCE_SQUARED,
