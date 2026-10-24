@@ -251,7 +251,8 @@ inline std::vector<double> estimate_view_factor_matrix(
     // The raw centroid estimator is not reciprocal on unequal-area patches.
     // First symmetrize the area-weighted exchange Q_ij = A_i F_ij. Then apply
     // one global closure scale; a row-by-row normalization would destroy
-    // reciprocity again. Finally, assign the remaining row fraction to F_ii.
+    // reciprocity again. The S2S consumer contract requires F_ii = 0; any
+    // remaining row fraction represents exchange with unmodeled/open space.
     // Positive patch areas are required explicitly: silently flooring a
     // degenerate geometric area would hide an invalid radiation surface and
     // could corrupt reciprocity by changing the physical area.
@@ -275,12 +276,9 @@ inline std::vector<double> estimate_view_factor_matrix(
     // established above.
     const double closure_scale = 1.0/std::max(1.0,max_row_sum);
     for (std::size_t i=0; i<n; ++i) {
-        double row_sum = 0.0;
-        for (std::size_t j=0; j<n; ++j) {
-            if (i!=j) F[i*n+j] *= closure_scale;
-            row_sum += F[i*n+j];
-        }
-        F[i*n+i] = std::max(0.0,1.0-row_sum);
+        F[i*n+i] = 0.0;
+        for (std::size_t j=0; j<n; ++j)
+            if (i != j) F[i*n+j] *= closure_scale;
     }
     return F;
 }
