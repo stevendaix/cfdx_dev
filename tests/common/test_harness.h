@@ -55,8 +55,17 @@ void run_case(const std::string& name, std::function<void()> func) {
 
 #define EXPECT_NEAR(a, b, eps) \
     do { \
-        if (std::abs((a) - (b)) > (eps)) { \
-            std::cerr << "  FAILED: " << #a " ≈ " #b " (diff=" << std::abs((a) - (b)) << " > " << eps << ")" << " in " << __FUNCTION__ << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
+        const double _cfdx_actual = static_cast<double>(a); \
+        const double _cfdx_expected = static_cast<double>(b); \
+        const double _cfdx_tolerance = static_cast<double>(eps); \
+        const double _cfdx_difference = std::abs(_cfdx_actual - _cfdx_expected); \
+        if (!std::isfinite(_cfdx_actual) || !std::isfinite(_cfdx_expected) || \
+            !std::isfinite(_cfdx_tolerance) || _cfdx_tolerance < 0.0 || \
+            !std::isfinite(_cfdx_difference) || _cfdx_difference > _cfdx_tolerance) { \
+            std::cerr << "  FAILED: " << #a " ≈ " #b " (actual=" << _cfdx_actual \
+                      << ", expected=" << _cfdx_expected << ", diff=" << _cfdx_difference \
+                      << ", tolerance=" << _cfdx_tolerance << ")" \
+                      << " in " << __FUNCTION__ << " at " << __FILE__ << ":" << __LINE__ << std::endl; \
             throw std::runtime_error("Assertion failed: " #a " ≈ " #b); \
         } \
     } while (0)
