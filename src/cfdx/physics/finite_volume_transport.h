@@ -781,6 +781,8 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             };
             result.residual_before_relaxation = candidate_residual;
             result.residual_after_relaxation = candidate_residual;
+            result.residual_relative_before_relaxation = candidate_residual / std::max(std::abs(equation.rhs(0)), 1e-300);
+            result.residual_relative_after_relaxation = result.residual_relative_before_relaxation;
             return result;
         }
         solution(0) += controls.relaxation * (candidate_value - solution(0));
@@ -792,6 +794,8 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         };
         result.residual_before_relaxation = candidate_residual;
         result.residual_after_relaxation = residual;
+        result.residual_relative_before_relaxation = candidate_residual / std::max(std::abs(equation.rhs(0)), 1e-300);
+        result.residual_relative_after_relaxation = residual / std::max(std::abs(equation.rhs(0)), 1e-300);
         return result;
     }
 
@@ -968,7 +972,10 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             return norm;
         }();
         result.residual_after_relaxation = returned_residual;
-        result.residual_relative = returned_residual / std::max(rhs_norm, 1e-300);
+        result.residual_relative_before_relaxation =
+            result.residual_relative;
+        result.residual_relative_after_relaxation =
+            returned_residual / std::max(rhs_norm, 1e-300);
     }
     // A MAX_ITER_REACHED result is not an acceptable predictor solution.
     // Do not inject an unconverged Krylov iterate into the nonlinear solver:
