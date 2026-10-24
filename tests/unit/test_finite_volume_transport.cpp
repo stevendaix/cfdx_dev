@@ -168,6 +168,28 @@ static Mesh make_unit_cube()
 
 int main()
 {
+    run_case("linear_and_blended_interpolation_are_exact_on_stretched_orthogonal_mesh", [] {
+        const Mesh m=make_two_cell_stretched_chain();
+        const FvGeometry g=build_fv_geometry(m);
+        const auto cache=make_geometry_cache(m);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","m",1);
+        Field<double,Location::FACE> flux(m.n_faces(),"mdot","kg/s",1);
+        flux.fill(1.0);
+        for (std::size_t c=0;c<m.n_cells();++c)
+            phi(c)=g.cell_centres[c].x;
+        std::size_t internal=m.n_faces();
+        for (std::size_t f=0;f<m.n_faces();++f)
+            if (m.ownership().neighbour(f)>=0) { internal=f; break; }
+        EXPECT_TRUE(internal<m.n_faces());
+        const auto linear=interpolate_cell_to_face(
+            phi,m,cache,InterpScheme::LINEAR);
+        const auto blended=interpolate_cell_to_face(
+            phi,m,cache,InterpScheme::BLENDED,&flux,LimiterType::NONE,nullptr,1.0);
+        const double exact=g.face_centres[internal].x;
+        EXPECT_NEAR(linear(internal),exact,1e-12);
+        EXPECT_NEAR(blended(internal),exact,1e-12);
+    });
+
     run_case("interface_diffusion_uses_geometric_half_cell_resistances", [] {
         const Mesh m=make_two_cell_stretched_chain();
         const FvGeometry g=build_fv_geometry(m);
