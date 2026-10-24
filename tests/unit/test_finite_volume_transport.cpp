@@ -328,7 +328,7 @@ int main()
         for (const auto scheme : schemes) {
             const auto reconstructed = reconstruct_scalar_transport_flux(
                 m,g,flux,phi,0.0,bc,true,scheme);
-            EXPECT_EQ(reconstructed.size(),m.n_faces());
+            EXPECT_TRUE(reconstructed.size() == m.n_faces());
             for (std::size_t f=0; f<m.n_faces(); ++f)
                 EXPECT_TRUE(std::isfinite(reconstructed(f)));
         }
