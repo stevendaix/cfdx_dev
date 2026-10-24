@@ -491,7 +491,8 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
 
 // Assemble:
 //     div(phi*psi) - div(gamma grad(psi)) = Su + Sp*psi
-// with first-order upwind convection and two-point orthogonal diffusion.
+// with first-order upwind convection and a normal implicit diffusion
+// conductance plus conservative non-orthogonal tangential correction.
 // For steady problems, bounded convection subtracts div(phi)*psi, matching
 // the standard bounded finite-volume treatment.
 inline ScalarEquation assemble_scalar_equation(
