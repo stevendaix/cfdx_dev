@@ -34,6 +34,7 @@ $$a_P T_P=\sum_{nb}a_{nb}T_{nb}+b,\qquad \sum_f \dot m_f c_p (\rho)_f \ldots$$
 
 ## 4. Traitement des frontières
 - Dirichlet $T=T_w$ : modifie $a_P$ et $b$ explicitement (valeur limite) ; Neumann $-k\partial T/\partial n=q_w$ : flux imposé entrant dans $b$ ; Robin $-k\partial T/\partial n=h(T-T_\infty)$ : coefficients répartis entre $a_P$ et $b$.
+- **Validation géométrique de l'interface CHT** : l'appariement par centre de face n'est qu'un candidat ; le nombre et les coordonnées des sommets doivent ensuite être conformes à tolérance finie, les aires doivent être finies et compatibles, et les normales sortantes doivent être opposées. Seuls les patches imperméables `WALL`/`INTERFACE` sont admissibles. Les patches perméables, les faces dupliquées/hors limites, les normales co-orientées et les interfaces de même centroïde mais non conformes doivent être rejetés avant la boucle de couplage.
 - Interface CHT : Robin croisé conservatif entre deux régions (élimination du flux d'interface par substitution) — ou équivalent matriciel exact documenté.
 - Symétrie/adiabatique : flux nul. EMPTY (2D) : aucun flux.
 - **Gauge de température** : un cas tout-Neumann (adiabatique complet, seul régime permanent) a un null-space de T (solution définie à une constante près) — un point de référence doit être fixé, comme pour la pression (fiche 04) ; le test doit l'établir explicitement.
