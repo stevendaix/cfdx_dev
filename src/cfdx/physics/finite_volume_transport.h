@@ -295,7 +295,7 @@ compute_scalar_gradient_with_boundary(
             "compute_scalar_gradient_with_boundary: field/geometry shape mismatch");
 
     Field<double, Location::CELL> gradient(
-        nc, field.name() + "_gradient_bc", field.metadata().unit + "/m", 3);
+        nc, field.name() + "_gradient_bc", "", 3);
     const auto& ownership = mesh.ownership();
     for (std::size_t cell = 0; cell < nc; ++cell) {
         Vec3 sum{0.0, 0.0, 0.0};
