@@ -87,6 +87,9 @@ int main() {
         // Independent SST-2003 production-limiter oracle. At S=100, raw
         // Pk=77.5 is capped at 9; omega production must use Pk_limited/nut.
         const auto limited=sst_cell_sources(k,omega,100.0,F1,F2,0.0,c);
+        if (!std::isfinite(limited.nut) || !std::isfinite(limited.sk) ||
+            !std::isfinite(limited.sw))
+            throw std::runtime_error("SST active-limiter oracle received a non-finite source");
         EXPECT_CLOSE(limited.nut,0.00775);
         EXPECT_CLOSE(limited.sk,9.0);
         EXPECT_CLOSE(limited.sw,551.2258064516129);
