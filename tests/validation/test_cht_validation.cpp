@@ -98,6 +98,22 @@ int main()
         EXPECT_TRUE(rejected);
     });
 
+    run_case("cht_rejects_empty_interface_patches", [] {
+        Mesh m1=cube("interface1"),m2=cube("interface2");
+        m1.boundary().patch(0).face_ids.clear();
+        m2.boundary().patch(0).face_ids.clear();
+        const auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
+        ChtInterfaceControls c;
+        c.region1_patch="interface1"; c.region2_patch="interface2";
+        bool rejected=false;
+        try {
+            (void)match_cht_interface(m1,g1,m2,g2,c);
+        } catch(const std::invalid_argument&) {
+            rejected=true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
     run_case("cht_rejects_permeable_interface_patch", [] {
         Mesh m1=cube("interface1",0.0,5),m2=cube("interface2",1.0,4);
         m1.boundary().patch(0).type=PatchType::INLET;
