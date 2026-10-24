@@ -165,6 +165,17 @@ static double max_abs_error(const Vector& temperature,
 
 int main()
 {
+    run_case("thermal_contact_resistance_uses_asymmetric_half_distances", [] {
+        const double actual = thermal_interface_conductance(
+            2.0, 0.75, 0.25, 2.0, 4.0, 0.1);
+        // Series resistance is 0.375 + 0.0625 + 0.1 = 0.5375;
+        // the independent network conductance is therefore 3.7209302325581395.
+        constexpr double independent_reference = 3.7209302325581395;
+        EXPECT_NEAR(actual, independent_reference, 1e-14);
+        EXPECT_TRUE(std::abs(actual -
+            2.0 / (1.0 / 2.0 + 0.1 + 1.0 / 4.0)) > 1e-3);
+    });
+
     run_case("thermal_zones_composite_wall_exact_network", [] {
         const std::size_t n = 6;
         const double dx = 0.5;
