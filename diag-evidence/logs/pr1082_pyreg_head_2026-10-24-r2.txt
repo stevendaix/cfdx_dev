@@ -1,0 +1,1 @@
+651b4271e02692af9b054d1666d793a5ca7639a9 fix(gui): canonical ruff format, import order and PIE810 startswith (pre-commit)

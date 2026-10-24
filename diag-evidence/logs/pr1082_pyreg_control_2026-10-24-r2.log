@@ -1,0 +1,24 @@
+== import smoke ==
+IMPORT_FAILED
+== pytest test_workbench.py + test_application_properties.py ==
+
+==================================== ERRORS ====================================
+_______________ ERROR collecting tests/python/test_workbench.py ________________
+ImportError while importing test module '/home/runner/work/_temp/ref/tests/python/test_workbench.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/usr/lib/python3.12/importlib/__init__.py:90: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/python/test_workbench.py:4: in <module>
+    from cfdx.workbench import CFDXWorkbenchWindow
+src/cfdx/python/cfdx/workbench.py:25: in <module>
+    from .properties_panel import PropertiesPanel
+src/cfdx/python/cfdx/properties_panel.py:13: in <module>
+    from PySide6.QtWidgets import (
+E   ModuleNotFoundError: No module named 'PySide6'
+=========================== short test summary info ============================
+ERROR tests/python/test_workbench.py
+!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!
+1 error in 0.45s
+CONTROL_TESTS_RED

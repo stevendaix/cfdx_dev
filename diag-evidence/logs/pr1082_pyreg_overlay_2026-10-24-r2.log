@@ -1,0 +1,6 @@
+== import smoke (overlay) ==
+IMPORT_OK
+== pytest (overlay) ==
+.ssss.......                                                             [100%]
+8 passed, 4 skipped in 0.31s
+OVERLAY_TESTS_GREEN
