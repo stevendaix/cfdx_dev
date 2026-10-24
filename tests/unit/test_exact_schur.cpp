@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <initializer_list>
+#include <limits>
 #include <stdexcept>
 #include <tuple>
 #include <vector>
