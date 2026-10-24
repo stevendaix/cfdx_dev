@@ -109,6 +109,8 @@ Le noyau SST, certains chemins transactionnels de production, les stages énergi
 
 | `8a4accbf2eb846449463a16db174c6d6f0b12330` | `tests/unit/test_turbulence_qualification_equations.cpp` | Corrigée une erreur de portée détectée par le premier Fast Guard : le test du cas νt=0 utilise maintenant sa propre valeur de strain. | Fast Guard initial en échec sur ce défaut de compilation ; correction poussée, CI relancée sur le HEAD courant. | CORRIGÉ — revalidation en cours |
 
+| `467255ef592dfdc82b34036222753cd2e0ad97d9` | `scripts/check_audit_gate.py` | Le gate classait à tort `audit_v2.md` (dossier d'audit consolidé avec annexes historiques) comme fiche méthode à sections strictes 1–7. Ajout d'une catégorie explicite de rapport non-fiche, sans relâcher les contrôles des fiches méthode. | Le premier audit gate a échoué uniquement sur la structure de `audit_v2.md`; nouveau contrôle CI requis après classification explicite. | EN COURS |
+
 **Décision TR-01 :** correction proposée dans une branche fondée sur le `master` courant. Les PR #1094 et #1099 sont des variantes historiques concurrentes ; leurs HEAD ne sont pas utilisés directement car ils ont divergé du `master`. Cette implémentation doit passer CI avant d'être considérée intégrée.
 
 **État des preuves :** aucune preuve physique SST n'est revendiquée par ces deux tests algébriques. N9/qualification physique ne doivent pas être considérés comme réussis du seul fait que le test d'équation passe.
