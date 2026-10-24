@@ -9,8 +9,8 @@
 //   Elle est générique et indépendante de la physique.
 //
 // Schémas (pour un champ de dimension D, composante par composante) :
-//   - linear   : 0.5 * (owner + neighbour) pour les faces internes ;
-//                owner pour les faces de frontière.
+//   - linear   : interpolation pondérée par la position de la face entre
+//                les centres des cellules, owner pour les faces de frontière.
 //   - upwind   : owner pour toutes les faces (suppose le flux positif).
 //   - limited  : linéaire borné par [min(owner,neighbour), max(owner,neighbour)].
 //
@@ -204,13 +204,20 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
             if (!internal) {
                 v = vo;
             } else if (scheme == InterpScheme::LINEAR) {
-                v = 0.5 * (vo + vn);
+                const double w = geometric_interpolation_weight(
+                    geometry.face_centres[f], geometry.cell_centres[owner],
+                    &geometry.cell_centres[neighbour]);
+                v = (1.0 - w) * vo + w * vn;
             } else if (scheme == InterpScheme::UPWIND) {
                 v = (flux[f] >= 0.0) ? vo : vn;
             } else if (scheme == InterpScheme::BLENDED) {
                 // Central/upwind blending: v = blend*linear + (1-blend)*upwind.
+                const double w = geometric_interpolation_weight(
+                    geometry.face_centres[f], geometry.cell_centres[owner],
+                    &geometry.cell_centres[neighbour]);
+                const double v_linear = (1.0 - w) * vo + w * vn;
                 const double v_up = (flux[f] >= 0.0) ? vo : vn;
-                v = blend_linear * 0.5 * (vo + vn) + (1.0 - blend_linear) * v_up;
+                v = blend_linear * v_linear + (1.0 - blend_linear) * v_up;
             } else if (scheme == InterpScheme::QUICK || scheme == InterpScheme::QUICK_BOUNDED) {
                 const bool owner_upwind = flux[f] >= 0.0;
                 const std::size_t up = owner_upwind ? owner : neighbour;
