@@ -1,0 +1,6 @@
+pr=1106
+pr_head=d590de860c5cc5b4388b66686ff4e14b39fdd82d
+pr_base=09be5d1bfc913bf2b73571b965d55c2bf9fabce1
+control=09be5d1bfc913bf2b73571b965d55c2bf9fabce1
+phase=g4-gui-diagnose-round3
+ci_failure_job=GUI / Qt / PyVista (headless)

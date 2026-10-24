@@ -1,0 +1,39 @@
+s....................F.....................................ss            [100%]
+=================================== FAILURES ===================================
+____________ test_palette_lists_the_registry_and_only_the_registry _____________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_palette_lists_the_registry_and_only_the_registry() -> None:
+        from PySide6.QtGui import QAction
+    
+        app = create_application(["cfdx-palette-test"])
+        window = CFDXWorkbenchWindow(CFDXSession())
+        assert set(window._capability_actions) == set(CAPABILITIES)
+        action_names = {action.objectName() for action in window.findChildren(QAction)}
+>       assert action_names - set(CAPABILITIES) == {"workbench.action.search"}
+E       AssertionError: assert {'', 'workben...ction.search'} == {'workbench.action.search'}
+E         
+E         Extra items in the left set:
+E         ''
+E         
+E         Full diff:
+E           {
+E         +     '',
+E               'workbench.action.search',
+E           }
+
+tests/python/test_capabilities.py:203: AssertionError
+=========================== short test summary info ============================
+FAILED tests/python/test_capabilities.py::test_palette_lists_the_registry_and_only_the_registry - AssertionError: assert {'', 'workben...ction.search'} == {'workbench.action.search'}
+  
+  Extra items in the left set:
+  ''
+  
+  Full diff:
+    {
+  +     '',
+        'workbench.action.search',
+    }
+1 failed, 57 passed, 3 skipped in 6.77s

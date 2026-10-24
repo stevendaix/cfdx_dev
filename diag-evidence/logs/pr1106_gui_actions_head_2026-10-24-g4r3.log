@@ -1,0 +1,33 @@
+'' 'Workbench' QAction QToolBar extra
+'' '' QAction QToolBar extra
+'' '' QAction QToolBar extra
+'' '' QAction QToolBar extra
+'' '' QAction QToolBar extra
+'' 'Workspace' QAction QToolBar extra
+'' 'Workflow' QAction QDockWidget extra
+'' 'Mesh' QAction QDockWidget extra
+'' 'Results' QAction QDockWidget extra
+'' 'Visualization Pipeline' QAction QDockWidget extra
+'' 'Probes' QAction QDockWidget extra
+'' 'Case Setup' QAction QDockWidget extra
+'' 'Properties' QAction QDockWidget extra
+'' 'Monitors / Console' QAction QDockWidget extra
+'workbench.action.check' 'Check' QAction CFDXWorkbenchWindow capability
+'workbench.action.contour' 'Contour' QAction CFDXWorkbenchWindow capability
+'workbench.action.glyph' 'Glyph' QAction CFDXWorkbenchWindow capability
+'workbench.action.new_project' 'New Project' QAction CFDXWorkbenchWindow capability
+'workbench.action.open' 'Open' QAction CFDXWorkbenchWindow capability
+'workbench.action.open_dat_checkpoint' 'Open DAT Checkpoint' QAction CFDXWorkbenchWindow capability
+'workbench.action.open_dat_result' 'Open DAT Result' QAction CFDXWorkbenchWindow capability
+'workbench.action.open_mesh' 'Open Mesh' QAction CFDXWorkbenchWindow capability
+'workbench.action.redo' 'Redo' QAction CFDXWorkbenchWindow capability
+'workbench.action.run' 'Run' QAction CFDXWorkbenchWindow capability
+'workbench.action.save' 'Save' QAction CFDXWorkbenchWindow capability
+'workbench.action.search' 'Search' QAction CFDXWorkbenchWindow extra
+'workbench.action.slice' 'Slice' QAction CFDXWorkbenchWindow capability
+'workbench.action.stop' 'Stop' QAction CFDXWorkbenchWindow capability
+'workbench.action.undo' 'Undo' QAction CFDXWorkbenchWindow capability
+'workbench.workspace.analyze' 'Analyze' QAction CFDXWorkbenchWindow capability
+'workbench.workspace.mesh' 'Mesh' QAction CFDXWorkbenchWindow capability
+'workbench.workspace.run' 'Run' QAction CFDXWorkbenchWindow capability
+'workbench.workspace.setup' 'Setup' QAction CFDXWorkbenchWindow capability
