@@ -10,6 +10,14 @@ using namespace cfdx::testing;
 
 int main()
 {
+    run_case("s2s_accepts_reciprocal_self_view_from_generic_estimator", [] {
+        // A concave/aggregated surface can see itself. The matrix remains
+        // conservative and reciprocal; the diagonal must not be rejected.
+        const std::vector<double> areas{2.0, 2.0};
+        const std::vector<double> F{0.25, 0.75, 0.75, 0.25};
+        validate_s2s_view_factors(F, areas, 1e-12);
+    });
+
     run_case("s2s_two_surface_gray_radiosity_analytic", [] {
         const std::vector<double> A{1.0,1.0};
         const std::vector<double> eps{0.7,0.5};
