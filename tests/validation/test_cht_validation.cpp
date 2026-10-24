@@ -30,12 +30,14 @@ int main()
         // On a skewed cell the Euclidean centre-to-face distance exceeds
         // the normal projection. Both the interface update and heat-flux
         // audit must use the same normal-distance contract as solve_energy.
-        const Vec3 sf(2.0, 0.0, 0.0);
-        const Vec3 centre(0.0, 0.5, 0.0);
-        const Vec3 face(1.0, 0.0, 0.0);
-        const double area = sf.mag();
-        const double normal_distance = std::abs((face - centre).dot(sf)) / area;
-        const double euclidean_distance = (face - centre).mag();
+        FvGeometry geometry;
+        geometry.face_area_vectors = {Vec3(2.0, 0.0, 0.0)};
+        geometry.cell_centres = {Vec3(0.0, 0.5, 0.0)};
+        geometry.face_centres = {Vec3(1.0, 0.0, 0.0)};
+        geometry.cell_volumes = {1.0};
+        const double normal_distance = boundary_normal_distance(geometry, 0, 0);
+        const double euclidean_distance =
+            (geometry.face_centres[0] - geometry.cell_centres[0]).mag();
         EXPECT_NEAR(normal_distance, 1.0, 1e-14);
         EXPECT_TRUE(euclidean_distance > normal_distance);
     });
