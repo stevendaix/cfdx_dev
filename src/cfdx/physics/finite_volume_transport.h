@@ -532,7 +532,6 @@ inline ScalarEquation assemble_scalar_equation(
     std::vector<double> div_phi(nc, 0.0);
     std::vector<double> deferred_rhs(nc, 0.0);
     cfdx::core::Field<double, cfdx::core::Location::CELL> reconstructed_gradient;
-    cfdx::core::Field<double, cfdx::core::Location::CELL> diffusion_gradient;
     cfdx::core::Field<double, cfdx::core::Location::FACE> reconstructed_face;
     const bool needs_field_reconstruction =
         convection_scheme != ConvectionScheme::UPWIND;
@@ -582,6 +581,11 @@ inline ScalarEquation assemble_scalar_equation(
                 if (patch < mesh.boundary().n_patches() &&
                     mesh.boundary().patch(patch).type == PatchType::EMPTY)
                     continue;
+                const auto bc = resolve_scalar_boundary_condition(
+                    mesh, geometry, face, boundary_conditions,
+                    face_values, face_conditions);
+                if (bc.type == ScalarBoundaryType::ZERO_GRADIENT)
+                    continue;
             }
             const std::size_t owner = own.owner(face);
             if (owner >= nc)
@@ -612,10 +616,11 @@ inline ScalarEquation assemble_scalar_equation(
         (convected_field->size() != nc || convected_field->dimension() != 1))
         throw std::invalid_argument(
             "assemble_scalar_equation: invalid scalar field for non-orthogonal diffusion");
+    std::vector<double> nonorthogonal_diffusion_flux(nf, 0.0);
     if (needs_nonorthogonal_gradient) {
-        diffusion_gradient = compute_scalar_gradient_with_boundary(
-            *convected_field, mesh, geometry, boundary_conditions,
-            face_values, face_conditions);
+        nonorthogonal_diffusion_flux = compute_nonorthogonal_diffusion_face_fluxes(
+            mesh, geometry, *convected_field, diffusion_coefficient,
+            boundary_conditions, cell_diffusion, face_values, face_conditions);
     }
 
     double max_abs_face_flux = 0.0;
@@ -678,37 +683,11 @@ inline ScalarEquation assemble_scalar_equation(
             div_phi[n] -= F;
 
             if (needs_nonorthogonal_gradient) {
-                const Vec3 d = Cn - Co;
-                const double sd = Sf.dot(d);
-                const double alpha = area * area / sd;
-                const Vec3 tangential = Sf - d * alpha;
-                if (tangential.mag() > 1e-12 * area) {
-                    const double dc = (Cf - Co).mag();
-                    const double dn = (Cn - Cf).mag();
-                    if (!(dc + dn > 0.0) || !std::isfinite(dc + dn))
-                        throw std::runtime_error(
-                            "assemble_scalar_equation: invalid non-orthogonal face gradient distance");
-                    const double w = dn / (dc + dn);
-                    const Vec3 grad_owner{
-                        diffusion_gradient.component_data(0)[o],
-                        diffusion_gradient.component_data(1)[o],
-                        diffusion_gradient.component_data(2)[o]};
-                    const Vec3 grad_neighbour{
-                        diffusion_gradient.component_data(0)[n],
-                        diffusion_gradient.component_data(1)[n],
-                        diffusion_gradient.component_data(2)[n]};
-                    const Vec3 grad_face = grad_owner * w + grad_neighbour * (1.0 - w);
-                    const double gamma_face = D / alpha;
-                    const double correction = gamma_face * grad_face.dot(tangential);
-                    if (!std::isfinite(correction))
-                        throw std::runtime_error(
-                            "assemble_scalar_equation: non-finite non-orthogonal diffusion correction");
-                    // The implicit matrix represents -div(F_orth); moving
-                    // the tangential diffusion flux to the RHS contributes
-                    // +div(F_tangent), with conservative owner/neighbour signs.
-                    deferred_rhs[o] += correction;
-                    deferred_rhs[n] -= correction;
-                }
+                // The implicit matrix represents -div(F_orth); moving the
+                // shared tangential face flux to the RHS contributes
+                // +div(F_tangent), with conservative owner/neighbour signs.
+                deferred_rhs[o] += nonorthogonal_diffusion_flux[f];
+                deferred_rhs[n] -= nonorthogonal_diffusion_flux[f];
             }
 
             if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
@@ -819,26 +798,8 @@ inline ScalarEquation assemble_scalar_equation(
             if (!(distance > 0.0) || !(area > 0.0))
                 throw std::runtime_error("assemble_scalar_equation: degenerate boundary face");
 
-            if (needs_nonorthogonal_gradient) {
-                const auto& Sf = geometry.face_area_vectors[f];
-                const auto d = geometry.face_centres[f] - geometry.cell_centres[o];
-                const double sd = Sf.dot(d);
-                const double alpha = area * area / sd;
-                const auto tangential = Sf - d * alpha;
-                if (tangential.mag() > 1e-12 * area) {
-                    const Vec3 grad_owner{
-                        diffusion_gradient.component_data(0)[o],
-                        diffusion_gradient.component_data(1)[o],
-                        diffusion_gradient.component_data(2)[o]};
-                    const double gamma_owner = cell_diffusion
-                        ? (*cell_diffusion)[o] : diffusion_coefficient;
-                    const double correction = gamma_owner * grad_owner.dot(tangential);
-                    if (!std::isfinite(correction))
-                        throw std::runtime_error(
-                            "assemble_scalar_equation: non-finite boundary non-orthogonal correction");
-                    deferred_rhs[o] += correction;
-                }
-            }
+            if (needs_nonorthogonal_gradient)
+                deferred_rhs[o] += nonorthogonal_diffusion_flux[f];
 
             if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
                 const double gamma_owner = cell_diffusion
