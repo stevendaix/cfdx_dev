@@ -1079,6 +1079,131 @@ inline ScalarEquation assemble_momentum_component(
         convection_scheme, convected_field);
 }
 
+// Conservative explicit contribution of div(mu_eff * grad(U)^T) to one
+// momentum component. The returned vector is the face-flux divergence, with
+// equal-and-opposite contributions on every internal face.
+inline std::vector<double> momentum_transpose_diffusion_rhs(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+    const VelocityBoundaryConditions& velocity_bcs,
+    const std::vector<double>& cell_effective_dynamic_viscosity,
+    std::size_t momentum_component)
+{
+    using cfdx::core::Field;
+    using cfdx::core::Location;
+    const std::size_t nc = mesh.n_cells();
+    const std::size_t nf = mesh.n_faces();
+    if (momentum_component >= 3 || velocity.dimension() != 3 ||
+        velocity.size() != nc || cell_effective_dynamic_viscosity.size() != nc ||
+        geometry.cell_centres.size() != nc || geometry.face_centres.size() != nf ||
+        geometry.face_area_vectors.size() != nf)
+        throw std::invalid_argument(
+            "momentum_transpose_diffusion_rhs: field/geometry shape mismatch");
+    for (const double mu : cell_effective_dynamic_viscosity) {
+        if (!std::isfinite(mu) || mu < 0.0)
+            throw std::invalid_argument(
+                "momentum_transpose_diffusion_rhs: viscosity must be finite and non-negative");
+    }
+
+    std::array<std::vector<std::array<double, 3>>, 3> gradient;
+    for (std::size_t component = 0; component < 3; ++component) {
+        Field<double, Location::CELL> scalar(
+            nc, "velocity_component_for_transpose_stress", "m/s", 1);
+        for (std::size_t cell = 0; cell < nc; ++cell)
+            scalar(cell) = velocity.component_data(component)[cell];
+
+        ScalarBoundaryConditions scalar_bcs;
+        for (const auto& [name, bc] : velocity_bcs) {
+            double value = 0.0;
+            if (component == 0) value = bc.value.x;
+            else if (component == 1) value = bc.value.y;
+            else value = bc.value.z;
+            scalar_bcs[name] = {
+                bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE
+                    ? ScalarBoundaryType::FIXED_VALUE
+                    : ScalarBoundaryType::ZERO_GRADIENT,
+                value, 0.0};
+        }
+        const auto grad = gauss_gradient_with_boundary(
+            scalar, mesh, geometry, scalar_bcs);
+        gradient[component].resize(nc);
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            for (std::size_t direction = 0; direction < 3; ++direction) {
+                const double value = grad.component_data(direction)[cell];
+                if (!std::isfinite(value))
+                    throw std::runtime_error(
+                        "momentum_transpose_diffusion_rhs: non-finite velocity gradient");
+                gradient[component][cell][direction] = value;
+            }
+        }
+    }
+
+    std::vector<double> rhs(nc, 0.0);
+    for (std::size_t face = 0; face < nf; ++face) {
+        const std::size_t owner = mesh.ownership().owner(face);
+        if (owner >= nc)
+            throw std::runtime_error(
+                "momentum_transpose_diffusion_rhs: invalid face owner");
+        const int neighbour_index = mesh.ownership().neighbour(face);
+        const auto& sf = geometry.face_area_vectors[face];
+        const double area = sf.mag();
+        if (!(area > 0.0) || !std::isfinite(area))
+            throw std::runtime_error(
+                "momentum_transpose_diffusion_rhs: invalid face area");
+        double mu_face = cell_effective_dynamic_viscosity[owner];
+        std::array<double, 3> grad_face{};
+        if (neighbour_index >= 0) {
+            const std::size_t neighbour = static_cast<std::size_t>(neighbour_index);
+            if (neighbour >= nc || neighbour == owner)
+                throw std::runtime_error(
+                    "momentum_transpose_diffusion_rhs: invalid face neighbour");
+            const auto d_owner_vec = geometry.face_centres[face] -
+                                     geometry.cell_centres[owner];
+            const auto d_neighbour_vec = geometry.cell_centres[neighbour] -
+                                         geometry.face_centres[face];
+            const double d_owner = std::abs(d_owner_vec.dot(sf)) / area;
+            const double d_neighbour = std::abs(d_neighbour_vec.dot(sf)) / area;
+            const double d_sum = d_owner + d_neighbour;
+            if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
+                !(d_sum > 0.0) || !std::isfinite(d_sum))
+                throw std::runtime_error(
+                    "momentum_transpose_diffusion_rhs: invalid face interpolation distance");
+            const double w_owner = d_neighbour / d_sum;
+            const double w_neighbour = d_owner / d_sum;
+            mu_face = w_owner * cell_effective_dynamic_viscosity[owner] +
+                      w_neighbour * cell_effective_dynamic_viscosity[neighbour];
+            for (std::size_t velocity_component = 0; velocity_component < 3;
+                 ++velocity_component) {
+                grad_face[velocity_component] =
+                    w_owner * gradient[velocity_component][owner][momentum_component] +
+                    w_neighbour * gradient[velocity_component][neighbour][momentum_component];
+            }
+            const double flux = mu_face * (
+                grad_face[0] * sf.x + grad_face[1] * sf.y +
+                grad_face[2] * sf.z);
+            if (!std::isfinite(flux))
+                throw std::runtime_error(
+                    "momentum_transpose_diffusion_rhs: non-finite internal stress flux");
+            rhs[owner] += flux;
+            rhs[neighbour] -= flux;
+        } else {
+            for (std::size_t velocity_component = 0; velocity_component < 3;
+                 ++velocity_component)
+                grad_face[velocity_component] =
+                    gradient[velocity_component][owner][momentum_component];
+            const double flux = mu_face * (
+                grad_face[0] * sf.x + grad_face[1] * sf.y +
+                grad_face[2] * sf.z);
+            if (!std::isfinite(flux))
+                throw std::runtime_error(
+                    "momentum_transpose_diffusion_rhs: non-finite boundary stress flux");
+            rhs[owner] += flux;
+        }
+    }
+    return rhs;
+}
+
 inline ScalarEquation assemble_momentum_component(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
@@ -1090,9 +1215,13 @@ inline ScalarEquation assemble_momentum_component(
     std::size_t component,
     bool bounded,
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
+    const std::vector<double>* extra_rhs = nullptr)
 {
     const std::size_t nc = mesh.n_cells();
+    if (extra_rhs != nullptr && extra_rhs->size() != nc)
+        throw std::invalid_argument(
+            "assemble_momentum_component: extra RHS size does not match mesh");
     if (cell_effective_dynamic_viscosity.size() != nc)
         throw std::invalid_argument(
             "assemble_momentum_component: cell viscosity size does not match mesh");
@@ -1120,8 +1249,34 @@ inline ScalarEquation assemble_momentum_component(
     }
     return assemble_scalar_equation(
         mesh, geometry, mass_flux, 0.0, source, sp, velocity_bcs, bounded,
-        nullptr, nullptr, nullptr, &cell_effective_dynamic_viscosity,
+        nullptr, nullptr, extra_rhs, &cell_effective_dynamic_viscosity,
         convection_scheme, convected_field);
+}
+
+// Production wrapper: the full velocity tensor and vector boundary conditions
+// are required so the transpose-stress term cannot be silently omitted.
+inline ScalarEquation assemble_momentum_component_with_transpose_diffusion(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure_gradient_component,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& body_component,
+    const std::vector<double>& cell_effective_dynamic_viscosity,
+    const ScalarBoundaryConditions& component_boundary_conditions,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& full_velocity,
+    const VelocityBoundaryConditions& velocity_bcs,
+    std::size_t component,
+    bool bounded,
+    ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
+{
+    const auto transpose_rhs = momentum_transpose_diffusion_rhs(
+        mesh, geometry, full_velocity, velocity_bcs,
+        cell_effective_dynamic_viscosity, component);
+    return assemble_momentum_component(
+        mesh, geometry, mass_flux, pressure_gradient_component, body_component,
+        cell_effective_dynamic_viscosity, component_boundary_conditions, component,
+        bounded, convection_scheme, convected_field, &transpose_rhs);
 }
 
 inline ScalarEquation assemble_momentum_component(
