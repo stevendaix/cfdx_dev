@@ -20,6 +20,9 @@ namespace cfdx::core {
 struct LinearOperator {
     std::size_t size = 0;
     std::function<void(const Vector&, Vector&)> apply;
+    // Optional original-precision application used only for certification.
+    // Matrix-free callers that omit it are certified against apply() itself.
+    std::function<void(const Vector&, Vector&)> apply_fp64;
 };
 
 inline SolverResult solve_gmres(
@@ -80,7 +83,9 @@ inline SolverResult solve_gmres(
         op.apply(w.vin, out);
     };
     auto true_residual = [&]() {
-        apply_operator(x.data(), w.ax);
+        for (std::size_t i = 0; i < n; ++i) w.vin(i) = x(i);
+        if (op.apply_fp64) op.apply_fp64(w.vin, w.ax);
+        else op.apply(w.vin, w.ax);
         for (std::size_t i = 0; i < n; ++i) w.r(i) = b(i) - w.ax(i);
         return krylov_norm2(w.r, SolverPrecision::FP64, controls.reduction);
     };
@@ -392,6 +397,18 @@ inline SolverResult solve_fgmres(
     bool setup_preconditioner = true) {
     LinearOperator op;
     op.size = A.n_rows();
+    op.apply_fp64 = [&A](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
     op.apply = [&A, precision](const Vector& in, Vector& out) {
         if (out.size() != A.n_rows()) out.resize(A.n_rows());
         if (precision.enabled && precision.operator_precision == SolverPrecision::FP32) {
