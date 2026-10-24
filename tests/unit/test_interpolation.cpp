@@ -310,5 +310,17 @@ int main() {
                      std::runtime_error);
     });
 
+    run_case("quick_small_stencil_preserves_affine_fallback", []() {
+        Mesh m = make_two_cell_unit_cubes();
+        ScalarCellField f(2, "phi", "1", 1);
+        f(0) = 0.5;
+        f(1) = 1.5; // exact cell-centre samples for phi=x
+        auto U = make_constant_velocity(m);
+        auto flux = compute_flux(U, m);
+        const auto face_field = interpolate_cell_to_face(
+            f, m, InterpScheme::QUICK, &flux);
+        EXPECT_NEAR(face_field(5), 1.0, 1e-12);
+    });
+
     return run_all();
 }
