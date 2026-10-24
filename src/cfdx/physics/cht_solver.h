@@ -95,6 +95,7 @@ struct ChtSolveResult {
     double interface_temperature_change=0.0;
 };
 
+// Method contract: docs/audits/10-thermique-cht.md
 inline ChtSolveResult solve_two_region_cht(
     const cfdx::core::Mesh& mesh1, const FvGeometry& g1,
     const cfdx::core::Mesh& mesh2, const FvGeometry& g2,
