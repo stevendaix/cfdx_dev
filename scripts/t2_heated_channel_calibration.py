@@ -32,6 +32,18 @@ campaign keeps all configured residual and conservation gates unchanged.
 Evidence (JSON + TXT) is always
 written to --output-dir before exiting; the exit code is 1 only when a
 mesh fails to run/converge (the err_rel measurement itself is not gated).
+
+Diag-only fine-carrier qualification (plan A, evidence run 40083901101):
+the 320x64 momentum carrier needs ~5800 iterations to satisfy the locked
+momentum gates (measured exponential decay -0.243%/iter; the production
+flat-envelope detector exits at iteration 22 on the slow rest-to-developed
+SIMPLE transient). On this diag branch the fine mesh runs with a dedicated
+iteration budget (FINE_CARRIER_MAX_ITERATIONS) and the flat-envelope
+stagnation window neutralized via --stagnation-window; coarse meshes stay
+byte-identical to the locked campaign. Carrier evidence (probe profile,
+Poiseuille L2, x-momentum balance) is archived BEFORE any
+energy-stage-dependent check, so the carrier can be qualified even while
+the energy stage keeps failing (tracked separately, plan D).
 """
 
 from __future__ import annotations
@@ -60,6 +72,18 @@ HEAT_FLUX = 1.0  # W/m^2, both plates, positive toward the domain
 T_IN = 300.0  # K (inlet Dirichlet temperature and initial temperature)
 MESHES = [(80, 16), (160, 32), (320, 64)]  # (nx, ny) refinement series
 MAX_ITERATIONS = 3000
+# Diag-only (plan A, fine-carrier qualification, evidence run 40083901101):
+# the 320x64 momentum carrier reaches the locked momentum gates around
+# iteration ~5800 (measured -0.243%/iter exponential decay late in the
+# solve), far beyond the 3000 production budget, and the flat-envelope
+# stagnation detector (window 10, threshold 1e-3) exits at iteration 22 on
+# the slow rest-to-developed SIMPLE transient. The two knobs below apply
+# ONLY to the fine mesh on this diag branch; coarse meshes keep the
+# production budget so their cases stay byte-identical to the locked
+# campaign. No gate, tolerance or convergence criterion is changed.
+FINE_CARRIER_MAX_ITERATIONS = 8000
+FINE_MESH = (320, 64)
+FINE_STAGNATION_WINDOW = 100000  # neutralizes the flat-envelope exit only
 L2_GATE = 5e-3  # Poiseuille analytic gate, identical to the N9 matrix
 DH = 2.0 * H  # hydraulic diameter of the parallel-plate channel (m)
 NU_REF = 140.0 / 17.0  # exact two-plate constant-flux Nusselt number
@@ -305,7 +329,10 @@ def _case_setup_json(nx: int, ny: int) -> str:
         temperature=T_IN,
     )
 
-    setup.numerics.max_iterations = MAX_ITERATIONS
+    # Diag-only (plan A): the solver applies min(CLI --iterations, case
+    # setup), so the fine-carrier budget must live in the case setup itself;
+    # coarse meshes get the production value and stay byte-identical.
+    setup.numerics.max_iterations = _max_iterations(nx, ny)
     setup.numerics.selection = NumericalSelectionConfig(
         entries=[
             NumericalSelection(
@@ -427,6 +454,118 @@ def _clip_error(text: str, head: int = 600, tail: int = 3000) -> str:
     return f"{text[:head]}\n...[{middle} chars truncated]...\n{text[-tail:]}"
 
 
+def _max_iterations(nx: int, ny: int) -> int:
+    """Diag-only (plan A): per-mesh iteration budget.
+
+    The fine 320x64 carrier needs ~5800 iterations to satisfy the locked
+    momentum gates (measured exponential decay, evidence run 40083901101);
+    every other mesh keeps the production budget (3000) so the coarse
+    cases stay byte-identical to the locked campaign.
+    """
+    if (nx, ny) == FINE_MESH:
+        return FINE_CARRIER_MAX_ITERATIONS
+    return MAX_ITERATIONS
+
+
+def _write_carrier_evidence(
+    nx: int,
+    ny: int,
+    run_dir: Path,
+    evidence_dir: Path,
+    run_id: str,
+    budget: int,
+    completed: subprocess.CompletedProcess,
+) -> None:
+    """Diag-only (plan A): archive the momentum carrier independently of the
+    energy stage, BEFORE any energy-stage-dependent check, so the fine-mesh
+    carrier stays qualifiable when the energy stage later fails the mesh
+    (still-open defect, tracked separately as plan D).
+
+    Writes a reduced probe profile CSV (final value per row; the raw probe
+    CSV can hold hundreds of thousands of per-iteration rows) plus a
+    carrier JSON with the full transverse u_x(y) profile, the analytic
+    Poiseuille comparison, the x-momentum balance and the raw final solver
+    markers.
+    """
+    mesh = f"{nx}x{ny}"
+    fine = (nx, ny) == FINE_MESH
+    probe_csv = run_dir / "probes.csv"
+    final: dict[str, float] = {}
+    if probe_csv.is_file():
+        with probe_csv.open(newline="") as stream:
+            for row in csv.reader(stream):
+                if not row or row[0].startswith("#"):
+                    continue
+                name, _iteration, _time, value = row
+                final[name] = float(value)
+
+    diagnostics = completed.stdout + completed.stderr
+    iter_lines = [
+        line
+        for line in diagnostics.splitlines()
+        if line.startswith("INCOMPRESSIBLE_ITER")
+    ]
+    carrier: dict = {
+        "nx": nx,
+        "ny": ny,
+        "run_id": run_id,
+        "iterations_budget": budget,
+        "stagnation_window_override": FINE_STAGNATION_WINDOW if fine else None,
+        "solver_returncode": completed.returncode,
+        "converged_marker": "Converged YES" in diagnostics,
+        "final_iter_line": iter_lines[-1] if iter_lines else None,
+    }
+
+    if len(final) == ny:
+        u = np.asarray([final[f"u_y{j:02d}"] for j in range(ny)], dtype=np.float64)
+        if np.all(np.isfinite(u)):
+            nu_fluid = DYNAMIC_VISCOSITY / DENSITY
+            g = BODY_FORCE[0]
+            dy = H / ny
+            squared = 0.0
+            profile: list[dict] = []
+            for j in range(ny):
+                y = (j + 0.5) / ny
+                exact = g * y * (1.0 - y) / (2.0 * nu_fluid)
+                error = u[j] - exact
+                squared += error * error
+                profile.append(
+                    {
+                        "y": y,
+                        "u_x": float(u[j]),
+                        "u_x_analytic": exact,
+                        "rel_error": float(error / exact) if exact else None,
+                    }
+                )
+            carrier["l2_poiseuille"] = math.sqrt(squared / ny)
+            carrier["u_max"] = float(u.max())
+            carrier["u_bulk"] = float(u.mean())
+            carrier["mdot"] = DENSITY * float((u * dy).sum())
+            # Fully-developed x-momentum balance, body force only: the wall
+            # shear on both plates must carry rho*G*H per unit depth. The
+            # discrete wall gradient is first order (half-cell distance),
+            # so this is an O(dy) diagnostic, not a gate.
+            tau_bottom = DYNAMIC_VISCOSITY * u[0] / (dy / 2.0)
+            tau_top = DYNAMIC_VISCOSITY * u[-1] / (dy / 2.0)
+            body_total = DENSITY * BODY_FORCE[0] * H
+            carrier["tau_wall_bottom"] = float(tau_bottom)
+            carrier["tau_wall_top"] = float(tau_top)
+            carrier["momentum_balance_rel"] = float(
+                abs(tau_bottom + tau_top - body_total) / body_total
+            )
+            carrier["profile"] = profile
+            probes_path = evidence_dir / f"t2_probes_{mesh}_run{run_id}.csv"
+            with probes_path.open("w", newline="") as stream:
+                writer = csv.writer(stream)
+                writer.writerow(["y", "u_x", "u_x_analytic"])
+                for row in profile:
+                    writer.writerow([row["y"], row["u_x"], row["u_x_analytic"]])
+
+    (evidence_dir / f"t2_carrier_{mesh}_run{run_id}.json").write_text(
+        json.dumps(carrier, indent=2) + "\n", encoding="utf-8"
+    )
+
+
 def _run_mesh(
     solver: Path, nx: int, ny: int, run_dir: Path, evidence_dir: Path, run_id: str
 ) -> dict:
@@ -446,23 +585,32 @@ def _run_mesh(
         probes.append(f"u_y{j:02d}:{x_probe!r},{y!r},0.5:u_x")
 
     probe_csv = run_dir / "probes.csv"
+    budget = _max_iterations(nx, ny)
+    fine = (nx, ny) == FINE_MESH
+    solver_args = [
+        str(solver),
+        "--mesh",
+        str(case_path),
+        "--output-dir",
+        str(run_dir),
+        "--iterations",
+        str(budget),
+        "--project-final-flux",
+        *[item for probe in probes for item in ("--probe", probe)],
+        "--probe-csv",
+        str(probe_csv),
+    ]
+    if fine:
+        # Diag-only (plan A): neutralize the flat-envelope stagnation exit
+        # (window 10, threshold 1e-3) that stops the fine carrier at
+        # iteration 22; gates, tolerances and every other control stay
+        # exactly as configured.
+        solver_args += ["--stagnation-window", str(FINE_STAGNATION_WINDOW)]
     completed = subprocess.run(
-        [
-            str(solver),
-            "--mesh",
-            str(case_path),
-            "--output-dir",
-            str(run_dir),
-            "--iterations",
-            str(MAX_ITERATIONS),
-            "--project-final-flux",
-            *[item for probe in probes for item in ("--probe", probe)],
-            "--probe-csv",
-            str(probe_csv),
-        ],
+        solver_args,
         capture_output=True,
         text=True,
-        timeout=3600,
+        timeout=7200 if fine else 3600,
         check=False,
     )
     diagnostics = completed.stdout + completed.stderr
@@ -484,6 +632,11 @@ def _run_mesh(
         (evidence_dir / f"t2_{artifact.stem}_{nx}x{ny}_run{run_id}.json").write_text(
             artifact.read_text(encoding="utf-8"), encoding="utf-8"
         )
+    # Diag-only (plan A), carrier-first: archive the momentum carrier
+    # evidence BEFORE any energy-stage-dependent check, so the fine-mesh
+    # carrier stays qualifiable when the energy stage fails the mesh
+    # (still-open defect, tracked separately as plan D).
+    _write_carrier_evidence(nx, ny, run_dir, evidence_dir, run_id, budget, completed)
     if completed.returncode != 0:
         raise RuntimeError(
             f"solver rc={completed.returncode}; stdout tail:\n"
@@ -633,6 +786,12 @@ def _write_evidence(out_dir: Path, campaign: dict) -> None:
     )
     lines.append(f"Nu_ref = 140/17 = {NU_REF:.10f} ; err_rel target <= {ERR_TARGET}")
     lines.append(f"Poiseuille L2 gate: {L2_GATE} ; developed region: x_c >= {X_DEV}")
+    lines.append(
+        f"diag-only (plan A): fine carrier {FINE_MESH[0]}x{FINE_MESH[1]} budget "
+        f"{FINE_CARRIER_MAX_ITERATIONS} iterations with the flat-envelope "
+        f"stagnation window neutralized ({FINE_STAGNATION_WINDOW}); "
+        "carrier evidence: t2_carrier_* / t2_probes_*"
+    )
     lines.append("")
     for entry in campaign["meshes"]:
         if entry["status"] == "PASS":
@@ -712,6 +871,7 @@ def main() -> int:
         },
         "nu_ref": NU_REF,
         "err_target": ERR_TARGET,
+        "fine_carrier_max_iterations": FINE_CARRIER_MAX_ITERATIONS,
         "meshes": [],
     }
 
