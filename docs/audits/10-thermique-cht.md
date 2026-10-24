@@ -28,6 +28,7 @@ Forme discrète sur la cellule $P$ :
 $$a_P T_P=\sum_{nb}a_{nb}T_{nb}+b,\qquad \sum_f \dot m_f c_p (\rho)_f \ldots$$
 - **Flux convectif** : porte $\rho c_p$ — leçon d'audit #419 **B2** : quand $c_p$ varie (ou par prudence systématique), le produit $\rho c_p$ doit être interpolé et appliqué au flux convectif ; jamais de flux convectif en $\rho$ seul additionné d'un $c_p$ séparé après coup. Le bilan d'énergie doit être vérifié exact sur ce point.
 - **Flux diffusif** : conductivité de face $k_f$ par **moyenne harmonique** des valeurs de cellules (Patankar) pour les coefficients discontinus à l'interface fluide-solide ; coefficients assemblés dans la matrice $A$.
+- **Cohérence des propriétés CHT** : `ChtInterfaceControls::conductivity1/2` doivent être finies, strictement positives et égales aux conductivités `EnergySolverControls` régionales à une tolérance relative de 1e-12 ; toute divergence est rejetée avant mutation des champs température. Le contrôle évite qu'un bilan d'interface apparemment équilibré emploie une conductivité différente de celle assemblée dans l'équation d'énergie.
 - **Interface CHT conservatif** : le flux d'interface $q_{\Gamma}$ est calculé **une seule fois** et débité/credité symétriquement aux deux régions ($-q_{\Gamma}$ d'un côté, $+q_{\Gamma}$ de l'autre) — conservation machine de l'énergie d'interface ; jamais deux flux calculés indépendamment.
 - **Terme source** $S_T$ : linéarisé en $S_T=S^{exp}+S^{lin}T_P$ quand il dépend de T (source radiatif, voir fiche 11) ; signe vérifié par bilan.
 
