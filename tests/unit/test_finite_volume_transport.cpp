@@ -278,7 +278,7 @@ int main()
                 EXPECT_TRUE(std::isfinite(reconstructed(f)));
 
             const auto equation = assemble_scalar_equation(
-                m,g,flux,0.0,su,sp,bc,true,nullptr,nullptr,nullptr,nullptr,
+                m,g,flux,0.0,su,sp,bc,false,nullptr,nullptr,nullptr,nullptr,
                 scheme,&phi);
             for (std::size_t c = 0; c < m.n_cells(); ++c)
                 EXPECT_TRUE(std::isfinite(equation.rhs(c)));
