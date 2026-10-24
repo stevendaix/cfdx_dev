@@ -1,0 +1,5 @@
+pr=1082
+pr_head=651b4271e02692af9b054d1666d793a5ca7639a9
+phase=2-no-qt-python-regression
+ci_failure_run=40088288085
+candidate=diag-tools/pr1082_pyreg_candidate_workbench.py
