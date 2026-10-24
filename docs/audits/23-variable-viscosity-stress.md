@@ -1,47 +1,66 @@
-# F11 — Variable-viscosity momentum stress
+# FICHE MÉTHODE 23 — Contrainte visqueuse transposée à viscosité variable
 
-Status: implementation and unit qualification added; exact-HEAD CI pending.
+**En-tête d'évidence**
+- Scope : contribution \(\nabla\cdot(\mu_{eff}(\nabla\mathbf U)^T)\) dans le solveur incompressible de production et dans le résidu final de quantité de mouvement. Non couvert : MMS complet Navier–Stokes, GCI et qualification polyédrique.
+- Statut : PARTIEL — flux conservatif et oracle affine ajoutés ; CI exacte en attente.
+- Registre autoritaire : `docs/validation/CFDX_QUALIFICATION_REGISTRY.json`, `NUMERICAL_METHOD_MATURITY_AUDIT.json/.md`, `NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json`.
+- Issues liées : F11, #461 (N7/N12).
+- Limitation : premier test sur maillage orthogonal uniforme ; les maillages déformés/polyédriques et la convergence globale du solveur restent à qualifier.
 
-## Governing term
+## 1. Références sources
+- J. H. Ferziger, M. Perić, *Computational Methods for Fluid Dynamics*, 3e éd., Springer, 2002 — DOI : 10.1007/978-3-642-56026-2. Discrétisation conservative des contraintes visqueuses.
+- F. Moukalled, L. Mangani, M. Darwish, *The Finite Volume Method in Computational Fluid Dynamics*, Springer, 2016 — ISBN : 978-3-319-16873-9. Forme tensorielle des contraintes et flux de face.
+- P. M. Gresho, R. L. Sani, *Incompressible Flow and the Finite Element Method*, Wiley, 2000 — ISBN : 978-0-471-09850-8. Formulation incompressible et interprétation des contraintes.
 
-For a Newtonian incompressible momentum equation with effective dynamic viscosity \(\mu_{eff}(x)\), the viscous stress divergence is
-
+## 2. Formulation continue
+Pour un fluide newtonien incompressible avec viscosité dynamique effective variable :
 \[
 \nabla\cdot\left[\mu_{eff}\left(\nabla\mathbf U+(\nabla\mathbf U)^T\right)\right].
 \]
-
-The scalar diffusion operator \(\nabla\cdot(\mu_{eff}\nabla U_i)\) does not contain the transpose contribution
-
+La contribution manquante dans l'opérateur scalaire \(\nabla\cdot(\mu_{eff}\nabla U_i)\) est
 \[
 \left[\nabla\cdot(\mu_{eff}(\nabla\mathbf U)^T)\right]_i
-=\sum_j \frac{\partial}{\partial x_j}
+=\sum_j\frac{\partial}{\partial x_j}
 \left(\mu_{eff}\frac{\partial U_j}{\partial x_i}\right).
 \]
+Même lorsque \(\nabla\cdot\mathbf U=0\), le terme \(\sum_j(\partial_j\mu_{eff})(\partial_i U_j)\) n'est généralement pas nul si la viscosité varie spatialement.
 
-Even when \(\nabla\cdot\mathbf U=0\), a spatially variable viscosity leaves the term
-\(\sum_j (\partial_j\mu_{eff})(\partial_i U_j)\), which is generally nonzero.
+## 3. Discrétisation Volume Fini
+Le flux de la contrainte transposée pour la composante de quantité de mouvement \(i\) est
+\[
+F^T_{i,f}=\mu_f\sum_j\left(\frac{\partial U_j}{\partial x_i}\right)_f S_{f,j}.
+\]
+- Les gradients de chaque composante de vitesse sont reconstruits à partir du champ vectoriel et des conditions aux limites composante par composante.
+- \(\mu_f\) et les gradients sont interpolés sur les faces internes par pondération des distances normales propriétaire/voisin.
+- Le flux intégré est assemblé de manière conservative : \(+F^T_{i,f}\) au second membre du propriétaire et \(-F^T_{i,f}\) au voisin.
+- Le terme est explicite et recalculé à chaque itération non linéaire. Il est inclus à la fois dans les trois prédicteurs de quantité de mouvement de production et dans le résidu final réassemblé indépendamment.
 
-## Discrete contract
+## 4. Traitement des frontières
+- Les valeurs imposées de vitesse sont converties en conditions scalaires fixes pour chacune des trois composantes ; les conditions de gradient nul restent des gradients nuls.
+- Sur une face de frontière, le gradient cellulaire propriétaire fournit le gradient de face de premier ordre ; cette approximation n'est qualifiée ici que pour le champ affine orthogonal du test.
+- Les faces internes sont strictement conservatives ; les flux de frontière sont comptabilisés dans le bilan global et ne doivent pas être annulés artificiellement.
+- Les frontières polyédriques inclinées, la non-orthogonalité et les interfaces à viscosité discontinue nécessitent une campagne séparée.
 
-- Reconstruct cell gradients of each velocity component with the same vector velocity boundary conditions converted component-wise to scalar boundary conditions.
-- Interpolate \(\mu_{eff}\) and velocity gradients to each face using the owner/neighbour normal distances.
-- Compute the integrated face flux \(F_i^{T}=\mu_f\sum_j(\partial_i U_j)_f S_{f,j}\).
-- Assemble the divergence conservatively: add \(F_i^T\) to the owner RHS and subtract it from the neighbour RHS. Internal-face contributions must cancel globally.
-- Include the same term in the final independently assembled momentum residual; otherwise convergence acceptance would evaluate a different equation from the production solve.
-- Keep the scalar diffusion contribution implicit and the transpose term explicit. Recompute it from the current velocity each nonlinear iteration; do not silently omit it in production.
+## 5. Pièges connus
+- Omettre le terme transposé revient à résoudre \(\nabla\cdot(\mu\nabla U_i)\) plutôt que la divergence complète de la contrainte newtonienne.
+- Supposer que \(\nabla\cdot\mathbf U=0\) annule ce terme est incorrect lorsque \(\mu\) varie spatialement.
+- Une contribution de contrainte ajoutée au prédicteur mais absente du résidu final peut faire accepter une solution qui ne satisfait pas l'équation effectivement visée.
+- Une correction explicite peut ralentir la convergence ; cela doit être traité par la méthode non linéaire, jamais par un relâchement des critères physiques.
 
-## Independent manufactured field
-
-Use \(\mathbf U=(a y,0,0)\), so \(\nabla\cdot\mathbf U=0\), and \(\mu_{eff}(x)=1+x\). The y-momentum transpose contribution is
-
+## 6. Ordre de précision attendu et validation exigée
+- Champ manufacturé : \(\mathbf U=(a y,0,0)\), donc \(\nabla\cdot\mathbf U=0\), et \(\mu_{eff}(x)=1+x\).
+- Oracle indépendant pour la composante y :
 \[
 \left[\nabla\cdot(\mu_{eff}(\nabla\mathbf U)^T)\right]_y
 =\frac{\partial}{\partial x}(\mu_{eff}a)=a.
 \]
+- Sur les cellules intérieures d'un canal orthogonal de largeur unité, \(F^T_{y,f}=\mu_{eff}(x_f)aS_x\) et la divergence doit être \(aV_c\). Le test compare le flux de face et le second membre de l'équation assemblée à une tolérance absolue de \(10^{-12}\).
+- Qualification restante : MMS de quantité de mouvement sur au moins trois maillages, ordre observé, comparaison tenseur/flux sur maillage incliné ou polyédrique, et vérification d'impact sur une solution Navier–Stokes complète.
 
-On interior cells of an orthogonal unit-width channel, the independent face oracle is
-\(F_y^T(x_f)=\mu_{eff}(x_f)a S_x\), and the cell divergence must equal \(aV_c\). The registered test checks both face fluxes and the RHS assembled into the momentum equation.
-
-## Limits
-
-This test qualifies the variable-viscosity transpose term on an orthogonal affine manufactured field. It does not yet establish second-order convergence on skewed/polyhedral meshes, coupled turbulence-model convergence, or a full variable-viscosity Navier–Stokes MMS campaign. Those remain separate qualification work.
+## 7. Statut d'implémentation CFDX
+- Source : `src/cfdx/physics/steady_incompressible_solver.h`.
+- Fonctions : `momentum_transpose_diffusion_face_fluxes`, `momentum_transpose_diffusion_rhs`, `assemble_momentum_component_with_transpose_diffusion`.
+- Intégration : prédicteurs x/y/z et réassemblage du résidu final utilisent le wrapper de contrainte transposée.
+- Test exécutable : `tests/unit/test_variable_viscosity_transpose_stress.cpp`, avec flux de face affine, divergence cellulaire, conservation des flux internes et contrôle du second membre.
+- Registre : cas `INC-TRANSPOSE-STRESS-MMS`, statut DIAGNOSTIC ; le test unitaire ne vaut pas qualification du solveur complet.
+- Gaps : CI exacte en attente, MMS/GCI, maillages polyédriques inclinés et convergence de l'équation complète.
