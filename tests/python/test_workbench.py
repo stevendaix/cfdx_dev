@@ -216,7 +216,7 @@ def test_undo_and_redo_restore_previous_property_value() -> None:
     editor = window.findChild(QDoubleSpinBox, "workbench.property.numerics.cfl")
     assert editor is not None
     assert editor.value() == initial
-    assert window.statusBar().currentText() == "Undid: set numerics.cfl to 2.5"
+    assert window.statusBar().currentMessage() == "Undid: set numerics.cfl to 2.5"
     assert not window.undo_action.isEnabled()
     assert window.redo_action.isEnabled()
     window.redo_action.trigger()
@@ -224,7 +224,7 @@ def test_undo_and_redo_restore_previous_property_value() -> None:
     editor = window.findChild(QDoubleSpinBox, "workbench.property.numerics.cfl")
     assert editor is not None
     assert editor.value() == 2.5
-    assert window.statusBar().currentText() == "Redid: set numerics.cfl to 2.5"
+    assert window.statusBar().currentMessage() == "Redid: set numerics.cfl to 2.5"
     assert window.undo_action.isEnabled()
     assert not window.redo_action.isEnabled()
     window.close()

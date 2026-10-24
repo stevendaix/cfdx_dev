@@ -104,6 +104,7 @@ def test_get_property_mirrors_the_routed_surface() -> None:
     case = application.session.case
     assert get_property(case, "numerics.cfl") == 2.5
     assert get_property(case, "execution.solver") == (case.execution.solver or "")
+    assert get_property(case, "physics.energy.enabled") is True
     with pytest.raises(KeyError, match="property is not editable"):
         get_property(case, "not.a.key")
 
