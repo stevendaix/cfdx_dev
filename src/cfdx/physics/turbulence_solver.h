@@ -428,12 +428,10 @@ inline KOmegaCellSources komega2006_cell_sources(
     const double ki=std::max(k,c.k_min), wi=std::max(omega,c.omega_min);
     const double S=std::max(strain,0.0);
     KOmegaCellSources q;
-    // Incompressible Wilcox2006-noPope: strain is sqrt(2*Sij*Sij).
-    // The diffusivities below deliberately retain k/omega (not limited nut).
-    if (!(c.beta_star>0.0) || !(c.komega_clim>=0.0))
-        throw std::invalid_argument("invalid Wilcox limiter coefficients");
-    const double omega_hat=std::max(wi,c.komega_clim*S/std::sqrt(c.beta_star));
-    q.nut=ki/omega_hat;
+    // Wilcox 2006 without the Pope correction uses the baseline
+    // k/omega eddy-viscosity relation. A separate strain limiter must not be
+    // introduced here without an independently qualified model contract.
+    q.nut=ki/wi;
     const double Pk=c.density*q.nut*S*S;
     q.sk=Pk; q.spk=-c.density*c.beta_star*wi;
     const double sigma_d=grad_k_dot_grad_omega>0.0?c.komega_sigma_d0:0.0;
