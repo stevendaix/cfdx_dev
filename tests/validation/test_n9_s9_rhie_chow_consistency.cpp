@@ -281,13 +281,15 @@ int main()
         const auto rAU = unit_rAU(mesh.n_cells());
         const auto phi = make_rhie_chow_mass_flux(
             mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+        const auto phi_coupled = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc, true);
 
-        // A collocated cell-centred velocity interpolation alone would produce
-        // zero mass flux. Rhie-Chow must couple this alternating pressure mode
-        // to the face flux instead of allowing a checkerboard pressure mode to
-        // become invisible to continuity.
+        // A collocated cell-centred velocity interpolation alone produces
+        // zero mass flux. Both the segregated and monolithic COUPLED contracts
+        // must keep the alternating pressure mode visible to continuity.
         EXPECT_TRUE(std::abs(phi(1)) > 1e-12);
         EXPECT_NEAR(phi(1), 2.0, 1e-12);
+        EXPECT_TRUE(std::abs(phi_coupled(1)) > 1e-12);
     });
 
 
