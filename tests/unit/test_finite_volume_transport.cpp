@@ -168,6 +168,22 @@ static Mesh make_unit_cube()
 
 int main()
 {
+    run_case("expect_near_rejects_non_finite_operands", [] {
+        const auto assertion_rejected = [](double actual, double expected) {
+            try {
+                EXPECT_NEAR(actual, expected, 1e-12);
+            } catch (const std::runtime_error&) {
+                return true;
+            }
+            return false;
+        };
+        EXPECT_TRUE(assertion_rejected(
+            std::numeric_limits<double>::quiet_NaN(), 1.0));
+        EXPECT_TRUE(assertion_rejected(
+            std::numeric_limits<double>::infinity(), 1.0));
+        EXPECT_TRUE(assertion_rejected(
+            1.0, std::numeric_limits<double>::quiet_NaN()));
+    });
     run_case("geometric_interpolation_weight_uses_longitudinal_projection", [] {
         const Vec3 owner(0.0,0.0,0.0);
         const Vec3 neighbour(1.0,0.0,0.0);
