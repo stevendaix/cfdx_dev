@@ -479,9 +479,9 @@ int main()
         }
 
         // The post-solve continuity row is the exact algebraic residual of
-        // the captured production block system. Its sign is opposite to
-        // b-Ax, so it must equal the negative independently reconstructed
-        // divergence of the authoritative face flux, cell by cell.
+        // the captured production block system. With the production sign
+        // convention, A*x-b equals the outward divergence of the authoritative
+        // face flux, independently reconstructed cell by cell.
         for (std::size_t cell = 0; cell < nc; ++cell) {
             const std::size_t row = 3 * nc + cell;
             double ax = 0.0;
