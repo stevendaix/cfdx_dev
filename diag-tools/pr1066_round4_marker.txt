@@ -1,0 +1,1 @@
+Round 4 oracle trigger for PR 1066: full verify (ruff + pre-commit + GUI pytest) of candidates incl. PySide6 setData fix.
