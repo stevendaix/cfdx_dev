@@ -316,11 +316,40 @@ int main()
         pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
 
         const auto rAU = unit_rAU(mesh.n_cells());
+        // Exercise the COUPLED physical-velocity contract, not the default
+        // segregated H/A contract, for this pressure-gauge invariance check.
         const auto phi0 = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p0, rAU, 1.0, ubc, pbc);
+            mesh, geometry, U, p0, rAU, 1.0, ubc, pbc, true);
         const auto phi1 = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p1, rAU, 1.0, ubc, pbc);
+            mesh, geometry, U, p1, rAU, 1.0, ubc, pbc, true);
 
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+            EXPECT_NEAR(phi0(f), phi1(f), 1e-12);
+    });
+
+    run_case("n9_s9_rhie_chow_fixed_pressure_boundary_gauge_invariance", [] {
+        const Mesh mesh = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> U(2, "U", "m/s", 3);
+        Field<double, Location::CELL> p0(2, "p0", "Pa", 1);
+        Field<double, Location::CELL> p1(2, "p1", "Pa", 1);
+        U.fill(0.0);
+        p0(0) = -2.0; p0(1) = 4.0;
+        constexpr double gauge_shift = 1000.0;
+        p1(0) = p0(0) + gauge_shift;
+        p1(1) = p0(1) + gauge_shift;
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc0, pbc1;
+        pbc0["wall"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        pbc1["wall"] = {ScalarBoundaryType::FIXED_VALUE, gauge_shift, 0.0};
+
+        const auto rAU = unit_rAU(mesh.n_cells());
+        const auto phi0 = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p0, rAU, 1.0, ubc, pbc0, true);
+        const auto phi1 = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p1, rAU, 1.0, ubc, pbc1, true);
         for (std::size_t f = 0; f < mesh.n_faces(); ++f)
             EXPECT_NEAR(phi0(f), phi1(f), 1e-12);
     });
