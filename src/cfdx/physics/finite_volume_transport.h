@@ -151,11 +151,36 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
     return g;
 }
 
+// Method contract: docs/audits/01-diffusion-laplacien.md
+struct FluxImbalanceMetrics {
+    double signed_global = 0.0;
+    double global_l1 = 0.0;
+    double local_linf = 0.0;
+};
+
+inline FluxImbalanceMetrics flux_imbalance_metrics(
+    const std::vector<double>& cell_flux_residuals)
+{
+    FluxImbalanceMetrics metrics;
+    for (const double residual : cell_flux_residuals) {
+        if (!std::isfinite(residual))
+            throw std::invalid_argument("flux_imbalance_metrics: non-finite residual");
+        metrics.signed_global += residual;
+        metrics.global_l1 += std::abs(residual);
+        metrics.local_linf = std::max(metrics.local_linf, std::abs(residual));
+    }
+    return metrics;
+}
+
 struct ScalarEquation {
     cfdx::core::SparseMatrix matrix;
     cfdx::core::Vector rhs;
     std::vector<double> diagonal;
+    // Compatibility alias: now represents the maximum cell-local imbalance.
     double max_imbalance = 0.0;
+    double signed_global_imbalance = 0.0;
+    double global_l1_imbalance = 0.0;
+    double max_local_imbalance = 0.0;
     // Assembly diagnostics retained temporarily for Issue #377 root-cause analysis.
     double max_abs_face_flux = 0.0;
     double min_internal_distance = std::numeric_limits<double>::infinity();
@@ -546,9 +571,11 @@ inline ScalarEquation assemble_scalar_equation(
     eq.min_face_area = min_face_area;
     eq.max_face_area = max_face_area;
 
-    double total_flux = 0.0;
-    for (std::size_t c = 0; c < nc; ++c) total_flux += div_phi[c];
-    eq.max_imbalance = std::abs(total_flux);
+    const auto imbalance = flux_imbalance_metrics(div_phi);
+    eq.signed_global_imbalance = imbalance.signed_global;
+    eq.global_l1_imbalance = imbalance.global_l1;
+    eq.max_local_imbalance = imbalance.local_linf;
+    eq.max_imbalance = imbalance.local_linf;
     return eq;
 }
 
@@ -746,6 +773,7 @@ reconstruct_scalar_transport_flux(
     return result;
 }
 
+// Method contract: docs/audits/01-diffusion-laplacien.md
 inline cfdx::core::SolverResult solve_scalar_equation(
     const ScalarEquation& equation,
     cfdx::core::Vector& solution,
@@ -768,24 +796,41 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         const double candidate_value = equation.rhs(0) / diagonal;
         const double candidate_residual =
             std::abs(diagonal * candidate_value - equation.rhs(0));
-        if (candidate_residual <= controls.tolerance) {
-            // A scalar 1x1 system has an exact closed-form solution. Do not
-            // under-relax an already converged linear solve: doing so makes
-            // the returned state fail the requested residual even though the
-            // reported linear residual is zero.
-            solution(0) = candidate_value;
-            return {
-                cfdx::core::SolverStatus::CONVERGED,
-                1, candidate_residual, candidate_residual
-            };
+        // H04: the tolerance is relative, as on the Krylov paths. Keep the
+        // candidate/returned-state diagnostics introduced by PR #1088.
+        const double rhs_scale = std::abs(equation.rhs(0));
+        const double relative = rhs_scale > 0.0
+            ? candidate_residual / rhs_scale : candidate_residual;
+        if (!std::isfinite(candidate_value) || !std::isfinite(candidate_residual) ||
+            !std::isfinite(relative)) {
+            return {cfdx::core::SolverStatus::DIVERGED, 1,
+                    candidate_residual, relative};
         }
-        solution(0) += controls.relaxation * (candidate_value - solution(0));
+        if (relative <= controls.tolerance) {
+            // Preserve the established exact 1x1 predictor contract.
+            solution(0) = candidate_value;
+            cfdx::core::SolverResult result{
+                cfdx::core::SolverStatus::CONVERGED,
+                1, candidate_residual, relative
+            };
+            result.residual_before_relaxation = candidate_residual;
+            result.residual_after_relaxation = candidate_residual;
+            result.residual_relative_before_relaxation = relative;
+            result.residual_relative_after_relaxation = result.residual_relative_before_relaxation;
+            return result;
+        }
+        // A rejected predictor must not replace the accepted iterate.
         const double residual =
             std::abs(diagonal * solution(0) - equation.rhs(0));
-        return {
+        cfdx::core::SolverResult result{
             cfdx::core::SolverStatus::MAX_ITER_REACHED,
-            controls.max_iterations, residual, residual
+            1, residual, rhs_scale > 0.0 ? residual / rhs_scale : residual
         };
+        result.residual_before_relaxation = candidate_residual;
+        result.residual_after_relaxation = residual;
+        result.residual_relative_before_relaxation = relative;
+        result.residual_relative_after_relaxation = result.residual_relative;
+        return result;
     }
 
     cfdx::core::Vector candidate = solution;
@@ -940,8 +985,36 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             result.status = cfdx::core::SolverStatus::DIVERGED;
             return result;
         }
+        // These paired diagnostics use the same physical operator, L-infinity
+        // norm, and RHS normalization. Solver-native Krylov diagnostics remain
+        // available in residual/residual_relative and are intentionally separate.
+        const auto physical_residual_inf = [&](const cfdx::core::Vector& state) {
+            double norm = 0.0;
+            for (std::size_t i = 0; i < state.size(); ++i) {
+                double ri = -equation.rhs(i);
+                const auto row_begin = equation.matrix.row_offsets_data()[i];
+                const auto row_end = equation.matrix.row_offsets_data()[i + 1];
+                for (std::uint32_t k = row_begin; k < row_end; ++k)
+                    ri += equation.matrix.values_data()[k] *
+                          state(equation.matrix.columns_data()[k]);
+                norm = std::max(norm, std::abs(ri));
+            }
+            return norm;
+        };
+        double rhs_norm = 0.0;
+        for (std::size_t i = 0; i < solution.size(); ++i)
+            rhs_norm = std::max(rhs_norm, std::abs(equation.rhs(i)));
+        const double rhs_scale = std::max(rhs_norm, 1e-300);
+        result.residual_before_relaxation = physical_residual_inf(candidate);
+        result.residual_relative_before_relaxation =
+            result.residual_before_relaxation / rhs_scale;
+
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) += controls.relaxation * (candidate(i) - solution(i));
+
+        result.residual_after_relaxation = physical_residual_inf(solution);
+        result.residual_relative_after_relaxation =
+            result.residual_after_relaxation / rhs_scale;
     }
     // A MAX_ITER_REACHED result is not an acceptable predictor solution.
     // Do not inject an unconverged Krylov iterate into the nonlinear solver:

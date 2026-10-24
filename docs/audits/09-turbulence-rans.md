@@ -12,7 +12,8 @@
 - W. P. Jones, B. E. Launder, « The prediction of laminarization with a two-equation model of turbulence », *Int. J. Heat Mass Transfer* 15:301-314, 1972. (k-epsilon original ; DOI non confirmé — citation bibliographique complète exigée)
 - B. E. Launder, D. B. Spalding, « The numerical computation of turbulent flows », *Comput. Methods Appl. Mech. Engrg.* 3(2):269-289, 1974 — DOI : 10.1016/0045-7825(74)90029-2. (constantes k-epsilon standard et lois de paroi)
 - D. C. Wilcox, « Reassessment of the scale-determining equation for advanced turbulence models », *AIAA Journal* 26(11):1299-1310, 1988 — DOI : 10.2514/3.10041. (k-omega)
-- F. R. Menter, « Two-equation eddy-viscosity turbulence models for engineering applications », *AIAA Journal* 32(8):1598-1605, 1994 — DOI : 10.2514/3.12149. (SST)
+- F. R. Menter, « Two-equation eddy-viscosity turbulence models for engineering applications », *AIAA Journal* 32(8):1598-1605, 1994 — DOI : 10.2514/3.12149. (SST original formulation).
+- NASA Turbulence Modeling Resource, « Menter Shear Stress Transport (SST) Model », SST-2003 formulation and production limiter: https://tmbwg.github.io/turbmodels/sst.html. The cell-source convention documented below uses the SST-2003 limited-production form; full-model qualification remains separate.
 - P. R. Spalart, S. R. Allmaras, « A One-Equation Turbulence Model for Aerodynamic Flows », *AIAA Paper* 92-0439, 30th Aerospace Sciences Meeting, 1992 — DOI : 10.2514/6.1992-439.
 - D. C. Wilcox, *Turbulence Modeling for CFD*, 3e éd., DCW Industries, 2006. (référence de synthèse)
 
@@ -29,8 +30,11 @@ avec $P_k=2\nu_t\,\mathbf{S}:\mathbf{S}$, $\mathbf{S}=\tfrac{1}{2}(\nabla\mathbf
 k-omega (Wilcox 1988) : $\nu_t=k/\omega$, même équation k avec $\sigma_k=0.5$, et
 $$\frac{\partial \omega}{\partial t}+\nabla\cdot(\mathbf{u}\omega)=\alpha\frac{\omega}{k}P_k-\beta\omega^2+\nabla\cdot\left[\left(\nu+\frac{\nu_t}{\sigma_\omega}\right)\nabla \omega\right]$$
 
-SST (Menter 1994) : mélange de k-omega près de la paroi et k-epsilon transformé à distance via $F_1$ ; limiteur :
-$$\nu_t=\frac{a_1 k}{\max(a_1\omega,\; S\,F_2)},\qquad a_1=0.31$$
+SST (variante SST-2003, Menter) : mélange de k-omega près de la paroi et k-epsilon transformé à distance via $F_1$ ; limiteur de viscosité :
+$\nu_t=\frac{a_1 k}{\max(a_1\omega,\; S\,F_2)},\qquad a_1=0.31$
+Production turbulente limitée :
+$\widetilde P_k=\min(\rho\nu_t S^2,\;10\beta^*\rho k\omega),\qquad P_\omega=\gamma\,\frac{\widetilde P_k}{\nu_t}$
+Le même $\widetilde P_k$ alimente la production de $k$ et celle de $\omega$ ; si $\nu_t=0$, la contribution de production de $\omega$ est définie comme nulle. Les termes de diffusion croisée restent ajoutés séparément. Cette convention doit être vérifiée contre les références SST-2003 avant qualification physique.
 
 Spalart-Allmaras (variable de travail $\tilde{\nu}$, $\nu_t=\tilde{\nu} f_{v1}$, $f_{v1}=\chi^3/(\chi^3+C_{v1}^3)$, $\chi=\tilde{\nu}/\nu$) :
 $$\frac{\partial \tilde{\nu}}{\partial t}+\nabla\cdot(\mathbf{u}\tilde{\nu})=c_{b1}\tilde{S}\tilde{\nu}+\nabla\cdot\left[(\nu+\tilde{\nu})\nabla\tilde{\nu}\right]+c_{b2}|\nabla\tilde{\nu}|^2-c_{w1}f_w\left(\frac{\tilde{\nu}}{d}\right)^2$$

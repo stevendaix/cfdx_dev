@@ -111,8 +111,30 @@ inline ChtSolveResult solve_two_region_cht(
     const ScalarBoundaryConditions& bcs1 = {},
     const ScalarBoundaryConditions& bcs2 = {})
 {
+    // Validate both regions before either solve can modify a temperature.
+    // Preserve the early checks from PR #1095 when consolidating with #1097.
+    validate_energy_controls(energy1);
+    validate_energy_controls(energy2);
+    // The interface update and its flux audit must use the same conductivities
+    // as the two regional energy operators. Otherwise the interface can report
+    // zero imbalance while the assembled energy equations carry different heat
+    // rates. Reject contradictory contracts before mutating either temperature.
+    const auto conductivity_matches = [](double interface_k, double energy_k) {
+        if (!std::isfinite(interface_k) || !std::isfinite(energy_k) ||
+            !(interface_k > 0.0) || !(energy_k > 0.0))
+            return false;
+        const double scale = std::max(std::abs(interface_k), std::abs(energy_k));
+        return std::abs(interface_k - energy_k) <= 1e-12 * scale;
+    };
+    if (!conductivity_matches(controls.conductivity1, energy1.conductivity) ||
+        !conductivity_matches(controls.conductivity2, energy2.conductivity))
+        throw std::invalid_argument(
+            "CHT interface conductivities must match the regional energy conductivities");
+
     const auto pairs=match_cht_interface(mesh1,g1,mesh2,g2,controls);
     ChtSolveResult result;
+    const auto T1_previous_time=T1;
+    const auto T2_previous_time=T2;
     std::vector<double> previous_interface_temperature(pairs.size(), std::numeric_limits<double>::quiet_NaN());
 
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
@@ -144,8 +166,8 @@ inline ChtSolveResult solve_two_region_cht(
             values2[p.face2]=Tint;
         }
 
-        auto r1=solve_energy(mesh1,g1,flux1,T1,source1,energy1,bcs1,&fv1);
-        auto r2=solve_energy(mesh2,g2,flux2,T2,source2,energy2,bcs2,&fv2);
+        auto r1=solve_energy(mesh1,g1,flux1,T1,source1,energy1,bcs1,&fv1,nullptr,&T1_previous_time);
+        auto r2=solve_energy(mesh2,g2,flux2,T2,source2,energy2,bcs2,&fv2,nullptr,&T2_previous_time);
         if(!r1.converged || !r2.converged)
             throw std::runtime_error("CHT region energy solve did not converge");
 

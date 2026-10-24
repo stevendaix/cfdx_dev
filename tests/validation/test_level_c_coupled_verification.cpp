@@ -168,6 +168,12 @@ int main()
         {
             Mesh m1=cube_with_patches();
             Mesh m2=cube_with_patches();
+            // Cold region lies above the hot one, not on top of its volume.
+            // Its lower y face is the common interface.
+            for (std::size_t i=0;i<m2.n_points();++i)
+                m2.points().set(i,m2.points().x(i),m2.points().y(i)+1.0,m2.points().z(i));
+            m2.boundary().patch(2).name="interface";
+            m2.boundary().patch(3).name="y_max";
             auto g1=build_fv_geometry(m1);
             auto g2=build_fv_geometry(m2);
 
@@ -195,6 +201,8 @@ int main()
 
             auto bc1=fixed_wall_conditions(500.0,"interface");
             auto bc2=fixed_wall_conditions(300.0,"interface");
+            bc2.erase("y_min");
+            bc2["y_max"]={ScalarBoundaryType::FIXED_VALUE,300.0,0.0};
 
             const auto r=solve_two_region_cht(
                 m1,g1,m2,g2,f1,f2,T1,T2,s1,s2,ec,ec,cc,bc1,bc2);

@@ -419,6 +419,13 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endmacro()
 
+    # Focused thermal audit regressions, extracted from PR #1096 without its
+    # unrelated changes or truncated build configuration.
+    add_cfdx_test(test_audit_cht_time tests/audit/test_audit_cht_time.cpp)
+    add_cfdx_test(test_audit_energy_boundary_metric tests/audit/test_audit_energy_boundary_metric.cpp)
+    set_tests_properties(test_audit_cht_time test_audit_energy_boundary_metric
+        PROPERTIES LABELS "audit;regression;thermal" TIMEOUT 60)
+
     # N8 physical/production qualification reuses the existing validation
     # executables and records a machine-readable campaign report. It is
     # intentionally a separate CTest entry so the individual physical or

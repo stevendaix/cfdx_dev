@@ -3,13 +3,27 @@
 #include "cfdx/physics/turbulence_solver.h"
 #include "cfdx/physics/sst_solver.h"
 #include "cfdx/physics/spalart_allmaras.h"
+#include "common/test_harness.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
+#include <sstream>
 
 namespace {
-void expect_close(const char* label,double a,double b,double tol=1e-12) {    if(std::abs(a-b)>tol*std::max({1.0,std::abs(a),std::abs(b)})) {        std::cerr << "FAIL " << label << ": actual=" << a << " reference=" << b << " abs_error=" << std::abs(a-b) << "\n";
+void expect_close(const char* label, double a, double b, double tol = 1e-12) {
+    if (!std::isfinite(a) || !std::isfinite(b) || !std::isfinite(tol) || tol < 0.0) {
+        std::cerr << "FAIL " << label
+                  << ": non-finite operand or invalid tolerance; actual=" << a
+                  << " reference=" << b << " tolerance=" << tol << "\n";
+        throw std::runtime_error("turbulence equation reference is non-finite or tolerance invalid");
+    }
+    const double error = std::abs(a - b);
+    const double limit = tol * std::max({1.0, std::abs(a), std::abs(b)});
+    if (!std::isfinite(error) || !std::isfinite(limit) || error > limit) {
+        std::cerr << "FAIL " << label << ": actual=" << a << " reference=" << b
+                  << " abs_error=" << error << " tolerance_limit=" << limit << "\n";
         throw std::runtime_error("turbulence equation reference mismatch");
     }
 }
@@ -17,6 +31,42 @@ void expect_close(const char* label,double a,double b,double tol=1e-12) {    if(
 }
 
 int main() {
+    // Prove the qualification comparator rejects non-finite values and invalid tolerances.
+    const auto expect_comparator_rejects = [](double actual, double reference, double tolerance) {
+        bool rejected = false;
+        try {
+            expect_close("comparator self-test", actual, reference, tolerance);
+        } catch (const std::runtime_error&) {
+            rejected = true;
+        }
+        if (!rejected)
+            throw std::runtime_error("numeric comparator accepted invalid input");
+    };
+    expect_comparator_rejects(std::numeric_limits<double>::quiet_NaN(), 1.0, 1e-12);
+    expect_comparator_rejects(std::numeric_limits<double>::infinity(), 1.0, 1e-12);
+    expect_comparator_rejects(1.0, 1.0, std::numeric_limits<double>::quiet_NaN());
+    expect_comparator_rejects(1.0, 1.0, -1.0);
+    expect_comparator_rejects(
+        2.0, 0.0, std::numeric_limits<double>::max());
+
+    const auto expect_near_rejects = [](double actual, double reference, double tolerance) {
+        bool rejected = false;
+        std::ostringstream suppressed_diagnostic;
+        auto* previous_buffer = std::cerr.rdbuf(suppressed_diagnostic.rdbuf());
+        try {
+            EXPECT_NEAR(actual, reference, tolerance);
+        } catch (const std::runtime_error&) {
+            rejected = true;
+        }
+        std::cerr.rdbuf(previous_buffer);
+        if (!rejected)
+            throw std::runtime_error("EXPECT_NEAR accepted invalid numeric input");
+    };
+    expect_near_rejects(std::numeric_limits<double>::quiet_NaN(), 1.0, 1e-12);
+    expect_near_rejects(1.0, std::numeric_limits<double>::infinity(), 1e-12);
+    expect_near_rejects(1.0, 1.0, std::numeric_limits<double>::quiet_NaN());
+    expect_near_rejects(1.0, 1.0, -1.0);
+
     using namespace cfdx::physics;
     TurbulenceTransportControls c;
     const double k=2.0, eps=4.0, omega=5.0, S=3.0, delta=0.2, volume=delta*delta*delta, y=0.05;
@@ -83,6 +133,16 @@ int main() {
         const double P=std::min(c.density*nut*S*S,c.sst_production_limiter*c.beta_star*c.density*k*omega);
         const double cross_term=2.0*(1.0-F1)*c.density*c.sst_sigma_w2/omega*cross;
         EXPECT_CLOSE(q.nut,nut); EXPECT_CLOSE(q.sk,P);        EXPECT_CLOSE(q.spk,-c.density*c.beta_star*omega);        EXPECT_CLOSE(q.sw,blend(c.gamma1,c.gamma2)*c.density*S*S+std::max(cross_term,0.0));        EXPECT_CLOSE(q.spw,-c.density*blend(c.beta1,c.beta2)*omega+std::min(cross_term,0.0)/omega);        EXPECT_CLOSE(q.gamma_k,c.density*(c.molecular_viscosity+blend(c.sst_sigma_k1,c.sst_sigma_k2)*nut));        EXPECT_CLOSE(q.gamma_w,c.density*(c.molecular_viscosity+blend(c.sst_sigma_w1,c.sst_sigma_w2)*nut));
+
+        // Independent SST-2003 production-limiter oracle. At S=100, raw
+        // Pk=77.5 is capped at 9; omega production must use Pk_limited/nut.
+        const auto limited=sst_cell_sources(k,omega,100.0,F1,F2,0.0,c);
+        if (!std::isfinite(limited.nut) || !std::isfinite(limited.sk) ||
+            !std::isfinite(limited.sw))
+            throw std::runtime_error("SST active-limiter oracle received a non-finite source");
+        EXPECT_CLOSE(limited.nut,0.00775);
+        EXPECT_CLOSE(limited.sk,9.0);
+        EXPECT_CLOSE(limited.sw,551.2258064516129);
     }
 
     c.model=TurbulenceModel::SPALART_ALLMARAS;
