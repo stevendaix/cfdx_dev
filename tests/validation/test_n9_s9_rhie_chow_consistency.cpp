@@ -368,6 +368,8 @@ int main()
         const auto rAU = unit_rAU(mesh.n_cells());
         const auto phi = make_rhie_chow_flux_from_physical_velocity(
             mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+        const auto phi_hbya = make_rhie_chow_flux_from_hbya(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
         const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
         const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
 
@@ -390,10 +392,12 @@ int main()
             const double pressure_jump_response =
                 dAU_face_x * (p(neighbour) - p(owner)) / dx * sf_x;
             const double compensation = dAU_face_x * grad_face_x * sf_x;
-            const double expected = phi_linear(f) + compensation -
-                                    pressure_jump_response;
+            const double expected_hbya = phi_linear(f) - pressure_jump_response;
+            const double expected = expected_hbya + compensation;
             EXPECT_NEAR(grad_face_x, 2.0, 1e-12);
+            EXPECT_NEAR(phi_hbya(f), expected_hbya, 1e-12);
             EXPECT_NEAR(phi(f), expected, 1e-12);
+            EXPECT_NEAR(phi(f) - phi_hbya(f), compensation, 1e-12);
         }
 
         // Independent cellwise divergence of the authoritative reconstructed
