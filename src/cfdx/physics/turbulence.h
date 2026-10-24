@@ -37,15 +37,12 @@ inline double turbulent_kinematic_viscosity_komega_sst(
     return a1 * k / std::max(a1 * omega, strain_rate * F2);
 }
 
-// Backward-compatible overload retained for existing callers using the
-// historical algebraic four-argument form.
+// Method contract: docs/audits/09-turbulence-rans.md
+// The historical overload omitted strain_rate and substituted omega in its
+// place. That is only correct for the special case S == omega; require callers
+// to provide the physical strain-rate invariant explicitly.
 inline double turbulent_kinematic_viscosity_komega_sst(
-    double k, double omega, double F2, double a1 = 0.31)
-{
-    if (k < 0.0 || omega <= 0.0 || F2 < 0.0 || F2 > 1.0 || a1 <= 0.0)
-        throw std::invalid_argument("k-omega SST: invalid k, omega, F2 or a1");
-    return a1 * k / std::max(a1 * omega, omega * F2);
-}
+    double k, double omega, double F2, double a1 = 0.31) = delete;
 
 inline double strain_rate_magnitude(const cfdx::core::Vec3& s)
 {
