@@ -63,3 +63,19 @@ Le bloc de continuité doit assembler la même compensation, ici différée au n
 
 ## 8. Journal des modifications
 - 2026-10-24 — création pour l'audit #1069 et la PR #1078 ; contrat et critères de preuve documentés, qualification en attente.
+
+## 9. Evidence update — 2026-10-24
+
+Added regression coverage on the COUPLED physical-velocity flux contract:
+- affine pressure with constant velocity on a rectilinear but nonuniform four-cell mesh, with compatible fixed-pressure inlet/outlet and zero-gradient walls;
+- independent face-level pressure-jump/gradient-compensation oracle on every internal face;
+- cellwise divergence of the authoritative reconstructed flux for the constant-velocity manufactured state;
+- pressure-gauge invariance on the COUPLED path for zero-gradient walls and a separate fixed-pressure-boundary test where the boundary pressure is shifted consistently.
+
+Still required before promotion:
+- compare the assembled coupled continuity block residual against the independently reconstructed cellwise flux divergence after an actual block solve;
+- a manufactured coupled velocity-pressure solution on a nonuniform mesh;
+- a quantitative checkerboard comparison with and without Rhie–Chow compensation;
+- explicit regression that SIMPLE/SIMPLEC retain the H/A predictor contract. The production boolean selector remains a maintainability risk; a named contract/API would be safer.
+
+These additions improve the operator-level evidence but do not yet establish the complete coupled block contract or physical qualification. Keep the PR draft until the remaining independent checks and exact-HEAD CI pass.
