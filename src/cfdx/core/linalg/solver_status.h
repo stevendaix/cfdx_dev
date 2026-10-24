@@ -66,6 +66,8 @@ struct SolverResult {
     // of the actual returned field. NaN means not measured/not applicable.
     double residual_before_relaxation = std::numeric_limits<double>::quiet_NaN();
     double residual_after_relaxation = std::numeric_limits<double>::quiet_NaN();
+    double residual_relative_before_relaxation = std::numeric_limits<double>::quiet_NaN();
+    double residual_relative_after_relaxation = std::numeric_limits<double>::quiet_NaN();
 };
 
 }  // namespace core
