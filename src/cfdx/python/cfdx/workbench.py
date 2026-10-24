@@ -22,7 +22,6 @@ from .capabilities import (
     evaluate_capability,
     get_capability,
 )
-from .properties_panel import PropertiesPanel
 from .selection import parse_selection_id, selection_label
 from .session import CFDXSession
 from .solver_states import session_state_view
@@ -58,6 +57,7 @@ except ImportError:  # pragma: no cover
 if QMainWindow is not object:
     from .gui_3d import PyVistaQtView
     from .mesh_browser_panel import MeshBrowserPanel
+    from .properties_panel import PropertiesPanel
     from .probes_panel import ProbesPanel
     from .results_panel import ResultsPanel
     from .run_center_panel import RunCenterPanel
