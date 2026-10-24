@@ -1,0 +1,114 @@
+....s....FF.......ss                                                     [100%]
+=================================== FAILURES ===================================
+___________ test_mesh_browser_drills_into_regions_patches_and_faces ____________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="optional Qt stack"
+    )
+    def test_mesh_browser_drills_into_regions_patches_and_faces():
+        from cfdx.mesh_browser_panel import MeshBrowserPanel
+        from cfdx.mesh_model import MeshCatalog, MeshPatch, MeshRegion
+        from cfdx.setup_model import MeshSelection
+    
+        from cfdx import create_application
+    
+        app = create_application(["cfdx-browser-tree-test"])
+        panel = MeshBrowserPanel()
+        emitted = []
+        panel.selection_changed.connect(emitted.append)
+        inlet = MeshPatch(0, "inlet", "inlet", 2, "fluid")
+        wall = MeshPatch(1, "wall", "wall", 1, "fluid")
+        region = MeshRegion("fluid", 8, 19, 3, (inlet, wall), ("c0", "c1"))
+        catalog = MeshCatalog(16, 19, 5, (inlet, wall), (region,))
+>       panel.set_catalog(catalog)
+
+tests/python/test_gui_browser_widgets.py:79: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <cfdx.mesh_browser_panel.MeshBrowserPanel(0x55f6634a9b40) at 0x7f8d6037c6c0>
+catalog = MeshCatalog(n_points=16, n_faces=19, n_cells=5, patches=(MeshPatch(index=0, name='inlet', type='inlet', face_count=2, ...region='fluid'), MeshPatch(index=1, name='wall', type='wall', face_count=1, region='fluid')), cell_ids=('c0', 'c1')),))
+
+    def set_catalog(self, catalog: MeshCatalog) -> None:
+        self.catalog = catalog
+        self.patches.clear()
+        regions = catalog.regions
+        if not regions or (len(regions) == 1 and regions[0].name == "default"):
+            for patch in catalog.patches:
+                self._add_patch_item(self.patches, patch)
+        else:
+            for index, region in enumerate(regions):
+>               self._add_region_item(region, index)
+
+src/cfdx/python/cfdx/mesh_browser_panel.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <cfdx.mesh_browser_panel.MeshBrowserPanel(0x55f6634a9b40) at 0x7f8d6037c6c0>
+region = MeshRegion(name='fluid', n_points=8, n_faces=19, n_cells=3, patches=(MeshPatch(index=0, name='inlet', type='inlet', fa...2, region='fluid'), MeshPatch(index=1, name='wall', type='wall', face_count=1, region='fluid')), cell_ids=('c0', 'c1'))
+index = 0
+
+    def _add_region_item(self, region: MeshRegion, index: int) -> None:
+        """Add one region node with its patches as children."""
+        label = f"{region.name}  [{region.n_cells} cells]"
+        item = QTreeWidgetItem(self.patches, [label])
+>       item.setData(
+            Qt.ItemDataRole.UserRole,
+            MeshSelection("region", index, region.name, region.stable_id),
+        )
+E       TypeError: setData expected 3 arguments, got 2
+
+src/cfdx/python/cfdx/mesh_browser_panel.py:67: TypeError
+__________ test_mesh_browser_keeps_flat_patch_list_for_default_region __________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="optional Qt stack"
+    )
+    def test_mesh_browser_keeps_flat_patch_list_for_default_region():
+        from cfdx.mesh_browser_panel import MeshBrowserPanel
+        from cfdx.mesh_model import MeshCatalog, MeshPatch
+    
+        from cfdx import create_application
+    
+        app = create_application(["cfdx-browser-flat-test"])
+        panel = MeshBrowserPanel()
+        emitted = []
+        panel.selection_changed.connect(emitted.append)
+        inlet = MeshPatch(0, "inlet", "inlet", 2)
+        catalog = MeshCatalog(16, 19, 5, (inlet,))
+>       panel.set_catalog(catalog)
+
+tests/python/test_gui_browser_widgets.py:123: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <cfdx.mesh_browser_panel.MeshBrowserPanel(0x55f6635d9ef0) at 0x7f8d5039c240>
+catalog = MeshCatalog(n_points=16, n_faces=19, n_cells=5, patches=(MeshPatch(index=0, name='inlet', type='inlet', face_count=2, region='default'),), regions=())
+
+    def set_catalog(self, catalog: MeshCatalog) -> None:
+        self.catalog = catalog
+        self.patches.clear()
+        regions = catalog.regions
+        if not regions or (len(regions) == 1 and regions[0].name == "default"):
+            for patch in catalog.patches:
+>               self._add_patch_item(self.patches, patch)
+
+src/cfdx/python/cfdx/mesh_browser_panel.py:49: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <cfdx.mesh_browser_panel.MeshBrowserPanel(0x55f6635d9ef0) at 0x7f8d5039c240>
+parent = <PySide6.QtWidgets.QTreeWidget(0x55f6636fb730, name="workbench.mesh_browser.patches") at 0x7f8d5039d640>
+patch = MeshPatch(index=0, name='inlet', type='inlet', face_count=2, region='default')
+
+    def _add_patch_item(
+        self, parent: QTreeWidget | QTreeWidgetItem, patch: MeshPatch
+    ) -> None:
+        """Add one patch node whose face children load lazily."""
+        item = QTreeWidgetItem(
+            parent, [f"{patch.name}  [{patch.type}]  faces={patch.face_count}"]
+        )
+>       item.setData(Qt.ItemDataRole.UserRole, patch.selection)
+E       TypeError: setData expected 3 arguments, got 2
+
+src/cfdx/python/cfdx/mesh_browser_panel.py:81: TypeError
+=========================== short test summary info ============================
+FAILED tests/python/test_gui_browser_widgets.py::test_mesh_browser_drills_into_regions_patches_and_faces - TypeError: setData expected 3 arguments, got 2
+FAILED tests/python/test_gui_browser_widgets.py::test_mesh_browser_keeps_flat_patch_list_for_default_region - TypeError: setData expected 3 arguments, got 2
+2 failed, 15 passed, 3 skipped in 5.68s

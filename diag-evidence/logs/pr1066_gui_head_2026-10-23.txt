@@ -1,0 +1,1 @@
+38638dbebea4e1b1ed197579b061f83ae9c9e5de feat(gui): fine face and region selection in browser and 3D view (Lot 2, G7)
