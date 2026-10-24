@@ -56,8 +56,9 @@ Grid make_affine_cube(std::size_t n, double shear, bool nonuniform = false)
     const auto cell_id = [n](std::size_t i, std::size_t j, std::size_t k) {
         return (k * n + j) * n + i;
     };
-    const auto transform = [shear](double x, double y, double z) {
-        return std::array<double, 3>{x + shear * y, y, z};
+    const auto transform = [shear, nonuniform](double x, double y, double z) {
+        const double warp = nonuniform ? 0.35 * x * y : 0.0;
+        return std::array<double, 3>{x + shear * y + warp, y, z};
     };
 
     for (std::size_t k = 0; k < n; ++k) {
