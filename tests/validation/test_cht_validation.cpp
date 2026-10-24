@@ -99,6 +99,17 @@ int main()
         EXPECT_NEAR(qflux1*interface_area,100.0,1e-10);
         EXPECT_NEAR(qflux2*interface_area,100.0,1e-10);
         EXPECT_NEAR(r.interface_imbalance,0.0,1e-10);
+
+        // The interface flux model must use the same conductivity as the
+        // region energy operator; reject contradictory duplicate controls.
+        c.conductivity2=2.0;
+        bool mismatch_rejected=false;
+        try {
+            (void)solve_two_region_cht(m1,g1,m2,g2,phi1,phi2,T1,T2,q1,q2,e1,e2,c);
+        } catch (const std::invalid_argument&) {
+            mismatch_rejected=true;
+        }
+        EXPECT_TRUE(mismatch_rejected);
         std::cout << "N11_ENERGY_RESULT converged=" << (r.converged ? "true" : "false")
                   << " T1=" << T1(0) << " T2=" << T2(0)
                   << " qflux=" << qflux1
