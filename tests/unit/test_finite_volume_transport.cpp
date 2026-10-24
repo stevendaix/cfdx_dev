@@ -78,6 +78,65 @@ static Mesh make_1d_chain(std::size_t n)
     return m;
 }
 
+static Mesh make_two_cell_stretched_chain()
+{
+    Mesh m;
+    m.points().resize(16);
+    const double x0[2]={0.0,0.25};
+    const double x1[2]={0.25,1.0};
+    for (std::size_t i=0;i<2;++i) {
+        const std::size_t b=8*i;
+        const double p[8][3] = {
+            {x0[i],0,0},{x1[i],0,0},{x1[i],1,0},{x0[i],1,0},
+            {x0[i],0,1},{x1[i],0,1},{x1[i],1,1},{x0[i],1,1}
+        };
+        for (std::size_t q=0;q<8;++q)
+            m.points().set(b+q,p[q][0],p[q][1],p[q][2]);
+    }
+    auto add_face=[&](std::initializer_list<std::size_t> v) {
+        const std::size_t id=m.faces().n_faces();
+        m.faces().push_face(std::vector<FaceIndex>(v.begin(),v.end()));
+        return id;
+    };
+    const std::size_t left=add_face({0,4,7,3});
+    const std::size_t right=add_face({9,10,14,13});
+    std::vector<std::size_t> y0,y1,z0,z1;
+    for (std::size_t i=0;i<2;++i) {
+        const std::size_t b=8*i;
+        y0.push_back(add_face({b,b+1,b+5,b+4}));
+        y1.push_back(add_face({b+3,b+7,b+6,b+2}));
+        z0.push_back(add_face({b,b+3,b+2,b+1}));
+        z1.push_back(add_face({b+4,b+5,b+6,b+7}));
+    }
+    const std::size_t internal=add_face({1,2,6,5});
+    m.ownership().resize(m.n_faces());
+    m.ownership().set_owner(left,0);
+    m.ownership().set_neighbour(left,FaceOwnership::BOUNDARY);
+    m.ownership().set_owner(right,1);
+    m.ownership().set_neighbour(right,FaceOwnership::BOUNDARY);
+    for (std::size_t i=0;i<2;++i) {
+        for (const auto f:{y0[i],y1[i],z0[i],z1[i]}) {
+            m.ownership().set_owner(f,i);
+            m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);
+        }
+    }
+    m.ownership().set_owner(internal,0);
+    m.ownership().set_neighbour(internal,1);
+    m.cells().push_cell({left,internal,y0[0],y1[0],z0[0],z1[0]});
+    m.cells().push_cell({internal,right,y0[1],y1[1],z0[1],z1[1]});
+    Patch inlet; inlet.name="inlet"; inlet.type=PatchType::WALL; inlet.face_ids={left};
+    Patch outlet; outlet.name="outlet"; outlet.type=PatchType::WALL; outlet.face_ids={right};
+    Patch wall; wall.name="wall"; wall.type=PatchType::WALL;
+    for (const auto f:y0) wall.face_ids.push_back(f);
+    for (const auto f:y1) wall.face_ids.push_back(f);
+    for (const auto f:z0) wall.face_ids.push_back(f);
+    for (const auto f:z1) wall.face_ids.push_back(f);
+    m.boundary().add_patch(inlet);
+    m.boundary().add_patch(outlet);
+    m.boundary().add_patch(wall);
+    return m;
+}
+
 static Mesh make_unit_cube()
 {
     Mesh m;
@@ -109,6 +168,69 @@ static Mesh make_unit_cube()
 
 int main()
 {
+    run_case("geometric_interpolation_weight_uses_longitudinal_projection", [] {
+        const Vec3 owner(0.0,0.0,0.0);
+        const Vec3 neighbour(1.0,0.0,0.0);
+        const Vec3 skew_face(0.5,0.5,0.0);
+        // The face is halfway along the centre line but has a transverse
+        // offset. Euclidean distance gives sqrt(0.5), projection gives 0.5.
+        EXPECT_NEAR(geometric_interpolation_weight(
+            skew_face,owner,&neighbour),0.5,1e-12);
+    });
+
+    run_case("linear_and_blended_interpolation_are_exact_on_stretched_orthogonal_mesh", [] {
+        const Mesh m=make_two_cell_stretched_chain();
+        const FvGeometry g=build_fv_geometry(m);
+        const auto cache=make_geometry_cache(m);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","m",1);
+        Field<double,Location::FACE> flux(m.n_faces(),"mdot","kg/s",1);
+        flux.fill(1.0);
+        for (std::size_t c=0;c<m.n_cells();++c)
+            phi(c)=g.cell_centres[c].x;
+        std::size_t internal=m.n_faces();
+        for (std::size_t f=0;f<m.n_faces();++f)
+            if (m.ownership().neighbour(f)>=0) { internal=f; break; }
+        EXPECT_TRUE(internal<m.n_faces());
+        const auto linear=interpolate_cell_to_face(
+            phi,m,cache,InterpScheme::LINEAR);
+        const auto blended=interpolate_cell_to_face(
+            phi,m,cache,InterpScheme::BLENDED,&flux,LimiterType::NONE,nullptr,1.0);
+        const double exact=g.face_centres[internal].x;
+        EXPECT_NEAR(linear(internal),exact,1e-12);
+        EXPECT_NEAR(blended(internal),exact,1e-12);
+    });
+
+    run_case("interface_diffusion_uses_geometric_half_cell_resistances", [] {
+        const Mesh m=make_two_cell_stretched_chain();
+        const FvGeometry g=build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0)=0.0; phi(1)=1.0;
+        ScalarBoundaryConditions bc;
+        bc["inlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        bc["outlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        bc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        const std::vector<double> gamma{1.0,4.0};
+        const auto eq=assemble_scalar_equation(
+            m,g,flux,0.0,su,sp,bc,false,nullptr,nullptr,nullptr,&gamma);
+        // The internal face is at x=0.25: d_Pf=0.125, d_Nf=0.375,
+        // area=1, Gamma_P=1 and Gamma_N=4.
+        const double expected=1.0/(0.125/1.0+0.375/4.0);
+        EXPECT_NEAR(eq.matrix(0,0),expected,1e-12);
+        EXPECT_NEAR(eq.matrix(1,1),expected,1e-12);
+        EXPECT_NEAR(expected,32.0/7.0,1e-12);
+        const auto reconstructed=reconstruct_scalar_transport_flux(
+            m,g,flux,phi,0.0,bc,false,ConvectionScheme::UPWIND,nullptr,&gamma);
+        std::size_t internal=m.n_faces();
+        for (std::size_t f=0;f<m.n_faces();++f)
+            if (m.ownership().neighbour(f)>=0) { internal=f; break; }
+        EXPECT_TRUE(internal<m.n_faces());
+        EXPECT_NEAR(reconstructed(internal),-expected,1e-12);
+    });
+
     run_case("scalar_dirichlet_diffusion_matches_one_cell_oracle", [] {
         const Mesh m = make_unit_cube();
         const FvGeometry g = build_fv_geometry(m);
