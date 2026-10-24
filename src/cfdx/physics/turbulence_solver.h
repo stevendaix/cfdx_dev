@@ -162,10 +162,10 @@ inline TurbulenceTransportResult solve_kepsilon_transport(
 
         auto eqk=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_k);
+            nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k);
         auto eqe=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_e);
+            nullptr,nullptr,nullptr,&gamma_e, ConvectionScheme::UPWIND, &epsilon);
 
         ScalarSolveControls sc;
         sc.max_iterations=2000;
@@ -245,8 +245,8 @@ inline TurbulenceTransportResult solve_rng_kepsilon_transport(
             gamma_k[i]=controls.density*(controls.molecular_viscosity+nut/controls.rng_sigma_k);
             gamma_e[i]=controls.density*(controls.molecular_viscosity+nut/controls.rng_sigma_epsilon);
         }
-        auto eqk=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,nullptr,nullptr,nullptr,&gamma_k);
-        auto eqe=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,nullptr,nullptr,nullptr,&gamma_e);
+        auto eqk=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k);
+        auto eqe=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,nullptr,nullptr,nullptr,&gamma_e, ConvectionScheme::UPWIND, &epsilon);
         ScalarSolveControls sc{2000,tolerance,0.7};
         cfdx::core::Vector ks(n,0.0), es(n,0.0);
         for(std::size_t i=0;i<n;++i){ks(i)=k(i);es(i)=epsilon(i);}
@@ -383,10 +383,10 @@ inline TurbulenceTransportResult solve_realizable_kepsilon_transport(
 
         auto eqk=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_k);
+            nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k);
         auto eqe=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,se,spe,epsilon_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_epsilon);
+            nullptr,nullptr,nullptr,&gamma_epsilon, ConvectionScheme::UPWIND, &epsilon);
         ScalarSolveControls sc{2000,tolerance,0.7};
         cfdx::core::Vector ks(n,0.0), es(n,0.0);
         for (std::size_t i=0; i<n; ++i) { ks(i)=k(i); es(i)=epsilon(i); }
@@ -482,8 +482,8 @@ inline TurbulenceTransportResult solve_komega_transport(
             sk(i)=q.sk; spk(i)=q.spk; sw(i)=q.sw; spw(i)=q.spw;
             gk[i]=q.gamma_k; gw[i]=q.gamma_w;
         }
-        auto eqk=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,nullptr,nullptr,nullptr,&gk);
-        auto eqw=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,nullptr,nullptr,nullptr,&gw);
+        auto eqk=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,nullptr,nullptr,nullptr,&gk, ConvectionScheme::UPWIND, &k);
+        auto eqw=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,nullptr,nullptr,nullptr,&gw, ConvectionScheme::UPWIND, &omega);
         ScalarSolveControls sc{2000,tolerance,0.7}; cfdx::core::Vector ks(n,0.0),ws(n,0.0);
         for(std::size_t i=0;i<n;++i){ks(i)=k(i);ws(i)=omega(i);}
         const auto rk=solve_scalar_equation(eqk,ks,sc), rw=solve_scalar_equation(eqw,ws,sc);
@@ -569,7 +569,7 @@ inline TurbulenceTransportResult solve_spalart_allmaras_transport(
             spu(i)=-controls.density*q.destruction;
             gamma[i]=q.gamma;
         }
-        auto eq=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,su,spu,bcs,true,nullptr,nullptr,nullptr,&gamma);
+        auto eq=assemble_scalar_equation(mesh,geometry,mass_flux,0.0,su,spu,bcs,true,nullptr,nullptr,nullptr,&gamma, ConvectionScheme::UPWIND, &nu_tilde);
         ScalarSolveControls sc{2000,tolerance,0.7}; cfdx::core::Vector sol(n,0.0); for(std::size_t i=0;i<n;++i)sol(i)=nu_tilde(i);
         const auto rr=solve_scalar_equation(eq,sol,sc); for(std::size_t i=0;i<n;++i)nu_tilde(i)=std::max(sol(i),0.0);
         double du=0;for(std::size_t i=0;i<n;++i)du=std::max(du,std::abs(nu_tilde(i)-old(i)));
