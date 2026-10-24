@@ -19,7 +19,7 @@ void expect_close(const char* label, double a, double b, double tol = 1e-12) {
     }
     const double error = std::abs(a - b);
     const double limit = tol * std::max({1.0, std::abs(a), std::abs(b)});
-    if (!std::isfinite(error) || error > limit) {
+    if (!std::isfinite(error) || !std::isfinite(limit) || error > limit) {
         std::cerr << "FAIL " << label << ": actual=" << a << " reference=" << b
                   << " abs_error=" << error << " tolerance_limit=" << limit << "\n";
         throw std::runtime_error("turbulence equation reference mismatch");
@@ -44,6 +44,10 @@ int main() {
     expect_comparator_rejects(std::numeric_limits<double>::infinity(), 1.0, 1e-12);
     expect_comparator_rejects(1.0, 1.0, std::numeric_limits<double>::quiet_NaN());
     expect_comparator_rejects(1.0, 1.0, -1.0);
+    expect_comparator_rejects(
+        std::numeric_limits<double>::max(),
+        -std::numeric_limits<double>::max(),
+        std::numeric_limits<double>::max());
 
     using namespace cfdx::physics;
     TurbulenceTransportControls c;
