@@ -14,6 +14,18 @@ using namespace cfdx::testing;
 
 int main()
 {
+    run_case("m1_m4_p1_source_uses_mean_intensity_normalization", [] {
+        // Independent dimensional reference: 4*pi*kappa*(Ib-J), with
+        // Ib=sigma*T^4/pi and J=0. The P1 production helper is checked
+        // separately below by the same physical convention.
+        constexpr double sigma = 5.670374419e-8;
+        constexpr double temperature = 1000.0;
+        const double ib = sigma * std::pow(temperature, 4) / M_PI;
+        const double expected = 4.0 * M_PI * (ib - 0.0);
+        EXPECT_NEAR(m1m4::p1_source(1.0, 0.0, temperature), expected, 1e-8);
+        EXPECT_NEAR(m1m4::p1_source(1.0, ib, temperature), 0.0, 1e-8);
+    });
+
     run_case("pressure_velocity_relaxation_and_rhie_chow", [] {
         CouplingControls c;
         validate_coupling_controls(c);
