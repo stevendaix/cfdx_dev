@@ -12,7 +12,8 @@
 - W. P. Jones, B. E. Launder, « The prediction of laminarization with a two-equation model of turbulence », *Int. J. Heat Mass Transfer* 15:301-314, 1972. (k-epsilon original ; DOI non confirmé — citation bibliographique complète exigée)
 - B. E. Launder, D. B. Spalding, « The numerical computation of turbulent flows », *Comput. Methods Appl. Mech. Engrg.* 3(2):269-289, 1974 — DOI : 10.1016/0045-7825(74)90029-2. (constantes k-epsilon standard et lois de paroi)
 - D. C. Wilcox, « Reassessment of the scale-determining equation for advanced turbulence models », *AIAA Journal* 26(11):1299-1310, 1988 — DOI : 10.2514/3.10041. (k-omega)
-- F. R. Menter, « Two-equation eddy-viscosity turbulence models for engineering applications », *AIAA Journal* 32(8):1598-1605, 1994 — DOI : 10.2514/3.12149. (SST)
+- F. R. Menter, « Two-equation eddy-viscosity turbulence models for engineering applications », *AIAA Journal* 32(8):1598-1605, 1994 — DOI : 10.2514/3.12149. (SST original formulation).
+- NASA Turbulence Modeling Resource, « Menter Shear Stress Transport (SST) Model », SST-2003 formulation and production limiter: https://tmbwg.github.io/turbmodels/sst.html. The cell-source convention documented below uses the SST-2003 limited-production form; full-model qualification remains separate.
 - P. R. Spalart, S. R. Allmaras, « A One-Equation Turbulence Model for Aerodynamic Flows », *AIAA Paper* 92-0439, 30th Aerospace Sciences Meeting, 1992 — DOI : 10.2514/6.1992-439.
 - D. C. Wilcox, *Turbulence Modeling for CFD*, 3e éd., DCW Industries, 2006. (référence de synthèse)
 
