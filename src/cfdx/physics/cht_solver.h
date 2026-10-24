@@ -95,6 +95,7 @@ struct ChtSolveResult {
     double interface_temperature_change=0.0;
 };
 
+// Method contract: docs/audits/10-thermique-cht.md
 inline ChtSolveResult solve_two_region_cht(
     const cfdx::core::Mesh& mesh1, const FvGeometry& g1,
     const cfdx::core::Mesh& mesh2, const FvGeometry& g2,
@@ -117,13 +118,15 @@ inline ChtSolveResult solve_two_region_cht(
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         ScalarBoundaryFaceValues fv1,fv2;
 
+        // Method contract: docs/audits/10-thermique-cht.md. Use the same
+        // boundary-normal distance convention as the energy operator.
         // Compute the exact two-layer interface temperature for the current
         // cell-centre values. This enforces equal normal heat flux on both
         // sides in the fixed-point limit.
         for(std::size_t i=0;i<pairs.size();++i) {
             const auto& p=pairs[i];
-            const double d1=(g1.face_centres[p.face1]-g1.cell_centres[p.cell1]).mag();
-            const double d2=(g2.face_centres[p.face2]-g2.cell_centres[p.cell2]).mag();
+            const double d1=boundary_normal_distance(g1,p.face1,p.cell1);
+            const double d2=boundary_normal_distance(g2,p.face2,p.cell2);
             if(!(d1>0.0) || !(d2>0.0) || !std::isfinite(d1) || !std::isfinite(d2))
                 throw std::runtime_error("CHT interface face-to-cell distance is invalid");
             const double h1=controls.conductivity1/d1;
@@ -149,8 +152,8 @@ inline ChtSolveResult solve_two_region_cht(
         double qimb=0.0, qscale=1e-30, dtint=0.0;
         for(std::size_t i=0;i<pairs.size();++i) {
             const auto& p=pairs[i];
-            const double d1=(g1.face_centres[p.face1]-g1.cell_centres[p.cell1]).mag();
-            const double d2=(g2.face_centres[p.face2]-g2.cell_centres[p.cell2]).mag();
+            const double d1=boundary_normal_distance(g1,p.face1,p.cell1);
+            const double d2=boundary_normal_distance(g2,p.face2,p.cell2);
             const double Tint=fv1.values.at(controls.region1_patch)[p.face1];
             const double qflux1=controls.conductivity1*
                 (T1(p.cell1)-Tint)/d1;
