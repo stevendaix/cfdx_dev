@@ -626,22 +626,24 @@ reconstruct_scalar_transport_flux(
                 convection_scheme == ConvectionScheme::QUICK_BOUNDED) {
                 const std::size_t u = F >= 0.0 ? o : n;
                 const std::size_t dcell = F >= 0.0 ? n : o;
-                const double gx=grad.component_data(0)[u];
-                const double gy=grad.component_data(1)[u];
-                const double gz=grad.component_data(2)[u];
-                const auto& Cu=geometry.cell_centres[u];
-                const auto& Cf=geometry.face_centres[f];
-                const double increment=gx*(Cf.x-Cu.x)+gy*(Cf.y-Cu.y)+gz*(Cf.z-Cu.z);
-                double high=field(u)+increment;
-                if (convection_scheme == ConvectionScheme::TVD) {
-                    const auto& Cd=geometry.cell_centres[dcell];
-                    const double delta=field(dcell)-field(u);
-                    const double full=gx*(Cd.x-Cu.x)+gy*(Cd.y-Cu.y)+gz*(Cd.z-Cu.z);
-                    const double ratio=std::abs(delta)>1e-14 ? (2.0*full-delta)/delta : 0.0;
-                    high=field(u)+limiter_psi(ratio, LimiterType::MINMOD)*increment;
-                }
                 if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
                     convection_scheme == ConvectionScheme::TVD) {
+                    // Only gradient-based schemes may access grad: CENTRAL,
+                    // BLENDED and QUICK variants use reconstructed_face instead.
+                    const double gx=grad.component_data(0)[u];
+                    const double gy=grad.component_data(1)[u];
+                    const double gz=grad.component_data(2)[u];
+                    const auto& Cu=geometry.cell_centres[u];
+                    const auto& Cf=geometry.face_centres[f];
+                    const double increment=gx*(Cf.x-Cu.x)+gy*(Cf.y-Cu.y)+gz*(Cf.z-Cu.z);
+                    double high=field(u)+increment;
+                    if (convection_scheme == ConvectionScheme::TVD) {
+                        const auto& Cd=geometry.cell_centres[dcell];
+                        const double delta=field(dcell)-field(u);
+                        const double full=gx*(Cd.x-Cu.x)+gy*(Cd.y-Cu.y)+gz*(Cd.z-Cu.z);
+                        const double ratio=std::abs(delta)>1e-14 ? (2.0*full-delta)/delta : 0.0;
+                        high=field(u)+limiter_psi(ratio, LimiterType::MINMOD)*increment;
+                    }
                     psi_face=bounded_convection
                         ? std::clamp(high,std::min(field(u),field(dcell)),std::max(field(u),field(dcell)))
                         : high;
