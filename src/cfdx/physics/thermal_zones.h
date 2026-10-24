@@ -181,7 +181,7 @@ inline ThermalZoneModel build_thermal_zones(
 // ---------------------------------------------------------------------------
 // Assembles the steady conduction system
 //     div( k grad(T) ) + q''' = 0
-// Method contract: docs/audits/10-thermique-cht.md
+// Method contract: docs/audits/13-conduction-solide-multimateriaux.md
 // with per-zone k, per-zone volumetric power and per-interface contact
 // resistance. Boundary conditions follow ScalarBoundaryConditions semantics
 // keyed by patch name.
