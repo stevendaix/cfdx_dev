@@ -117,6 +117,8 @@ Le noyau SST, certains chemins transactionnels de production, les stages énergi
 
 | `ddbcfc229d931b96d3e25a90dd3f0250d6f7b6d0` + `8d1c5c22e78fcd5a57d1a2a30cb3f9c6a4adf6ec` | `src/cfdx/physics/cht_solver.h`, `tests/validation/test_cht_validation.cpp`, `docs/audits/10-thermique-cht.md` | Ajout de contrôles finis sur les tolérances, validation du type de patch, des indices/owners, conformité sommet-à-sommet, aire et opposition des normales ; tests pour centroïdes identiques mais sommets différents, normales co-orientées et patch perméable. | Revue statique ; compilation et exécution des tests sur le HEAD final restent requises. | EN COURS |
 
+| `3e062d16db2368518a18d8bfabde3caf465ea705` + `a5d3a52a0ebcefa56210eaf04289ad88a6690454` | `src/cfdx/physics/cht_solver.h`, `tests/validation/test_cht_validation.cpp` | Refus explicite des patches d'interface vides, avec test négatif. | Revue statique ; CI encore en cours sur le HEAD final. | EN COURS |
+
 **Décision TR-01 :** correction proposée dans une branche fondée sur le `master` courant. Les PR #1094 et #1099 sont des variantes historiques concurrentes ; leurs HEAD ne sont pas utilisés directement car ils ont divergé du `master`. Cette implémentation doit passer CI avant d'être considérée intégrée.
 
 **État des preuves :** aucune preuve physique SST n'est revendiquée par ces deux tests algébriques. N9/qualification physique ne doivent pas être considérés comme réussis du seul fait que le test d'équation passe.
