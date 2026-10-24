@@ -269,5 +269,14 @@ int main() {
                     std::abs(operator_ref(1) - inverse_ref(1)) > 1e-6);
     });
 
+    run_case("exact_schur_rejects_nan_rhs_instead_of_treating_it_as_zero", [&] {
+        ExactSchurApproximation exact(auu_solve);
+        EXPECT_TRUE(exact.setup(blocks));
+        Vector rhs_p(2, 0.0);
+        rhs_p(0) = std::numeric_limits<double>::quiet_NaN();
+        Vector pressure(2, 0.0);
+        EXPECT_TRUE(!exact.apply(rhs_p, pressure));
+    });
+
     return run_all();
 }
