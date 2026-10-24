@@ -6,6 +6,7 @@ on:
     paths:
       - 'diag-tools/pr1082_precommit_marker.txt'
       - '.github/workflows/pr1082-precommit-oracle.yml'
+      - 'diag-tools/pr1082_precommit_candidate_workbench.py'
   workflow_dispatch:
 
 permissions:
@@ -19,8 +20,8 @@ jobs:
     env:
       EVID: diag-evidence/logs
       PR_BASE: 06726980596dc33acc51d425ef74f728bff5c598
-      PR_HEAD: 133a7b477a4dd72a4da91dea8a68e467ae877e39
-      STAMP: 2026-10-24
+      PR_HEAD: a671ed74a9fbad236ea56c84a2b1a9e20dfabc8e
+      STAMP: 2026-10-24-r3
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,7 +46,6 @@ jobs:
           {
             echo "ruff: $(ruff --version)"
             echo "pre-commit: $(pre-commit --version)"
-            echo "python: $(python --version)"
           } | tee "$GITHUB_WORKSPACE/$EVID/pr1082_oracle_versions_$STAMP.txt"
 
       - name: Changed Python files in PR range (same as CI)
@@ -67,8 +67,8 @@ jobs:
         run: |
           cd "$RUNNER_TEMP/ref"
           python_files=$(git diff --name-only "$PR_BASE...$PR_HEAD" -- '*.py')
-          ruff check --fix --no-cache $python_files 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr1082_oracle_rufffix_$STAMP.log" || echo "RUFF_FIX_PIPELINE_FAILED" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1082_oracle_rufffix_$STAMP.log"
-          ruff format --no-cache $python_files 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr1082_oracle_ruffformatwrite_$STAMP.log" || echo "RUFF_FORMAT_WRITE_PIPELINE_FAILED" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1082_oracle_ruffformatwrite_$STAMP.log"
+          ruff check --fix --no-cache $python_files 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr1082_oracle_rufffix_$STAMP.log" || true
+          ruff format --no-cache $python_files 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr1082_oracle_ruffformatwrite_$STAMP.log" || true
 
       - name: Capture canonical fixed files and applied diff
         run: |
@@ -78,6 +78,16 @@ jobs:
           for f in $python_files; do
             cp "$f" "$GITHUB_WORKSPACE/$EVID/pr1082_fixed_$(basename "$f")"
           done
+
+      - name: Compare canonical workbench.py with the candidate overlay
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          if cmp -s "$RUNNER_TEMP/ref/src/cfdx/python/cfdx/workbench.py" "$GITHUB_WORKSPACE/diag-tools/pr1082_precommit_candidate_workbench.py"; then
+            echo "CANDIDATE_MATCHES_CANONICAL" | tee "$E/pr1082_oracle_candidate_compare_$STAMP.txt"
+          else
+            echo "CANDIDATE_DIFFERS_FROM_CANONICAL" | tee "$E/pr1082_oracle_candidate_compare_$STAMP.txt"
+            diff -u "$RUNNER_TEMP/ref/src/cfdx/python/cfdx/workbench.py" "$GITHUB_WORKSPACE/diag-tools/pr1082_precommit_candidate_workbench.py" | tee "$E/pr1082_oracle_candidate_diff_$STAMP.patch" || true
+          fi
 
       - name: Verify canonical content passes all Pre-commit hooks
         continue-on-error: true
@@ -101,8 +111,7 @@ jobs:
             echo "pr=1082"
             echo "pr_head=$PR_HEAD"
             echo "pr_base=$PR_BASE"
-            echo "phase=1-diagnose-and-canonicalize"
-            echo "ci_failure_run=40088008910"
+            echo "phase=3-precommit-round3"
           } > "$E/pr1082_oracle_meta_$STAMP.txt"
 
       - name: Commit evidence
@@ -114,6 +123,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: PR 1082 pre-commit ruff oracle evidence (2026-10-24) [ci skip]"
+            git commit -m "diag: PR 1082 pre-commit ruff oracle round 3 evidence (2026-10-24) [ci skip]"
             (git push || (git pull --rebase && git push))
           fi
