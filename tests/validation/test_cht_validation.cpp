@@ -8,21 +8,41 @@ using namespace cfdx::core;
 using namespace cfdx::physics;
 using namespace cfdx::testing;
 
-static Mesh cube(const char* patch_name)
+static Mesh cube(const char* patch_name, double x_offset = 0.0,
+                  int interface_face = -1)
 {
     Mesh m;
     m.points().resize(8);
     const double p[8][3]={{0,0,0},{1,0,0},{1,1,0},{0,1,0},
                           {0,0,1},{1,0,1},{1,1,1},{0,1,1}};
-    for(std::size_t i=0;i<8;++i)m.points().set(i,p[i][0],p[i][1],p[i][2]);
+    for(std::size_t i=0;i<8;++i)
+        m.points().set(i,p[i][0]+x_offset,p[i][1],p[i][2]);
     m.faces().push_face({0,3,2,1});m.faces().push_face({4,5,6,7});
     m.faces().push_face({0,1,5,4});m.faces().push_face({3,7,6,2});
     m.faces().push_face({0,4,7,3});m.faces().push_face({1,2,6,5});
     m.ownership().resize(6);
-    for(std::size_t f=0;f<6;++f){m.ownership().set_owner(f,0);m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);}
+    for(std::size_t f=0;f<6;++f) {
+        m.ownership().set_owner(f,0);
+        m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);
+    }
     m.cells().push_cell({0,1,2,3,4,5});
-    Patch patch;patch.name=patch_name;patch.type=PatchType::WALL;patch.face_ids={0,1,2,3,4,5};
-    m.boundary().add_patch(patch);
+    if(interface_face<0) {
+        Patch patch;patch.name=patch_name;patch.type=PatchType::WALL;
+        patch.face_ids={0,1,2,3,4,5};
+        m.boundary().add_patch(patch);
+    } else {
+        Patch interface_patch;
+        interface_patch.name=patch_name;
+        interface_patch.type=PatchType::INTERFACE;
+        interface_patch.face_ids={static_cast<std::size_t>(interface_face)};
+        m.boundary().add_patch(interface_patch);
+        Patch walls;
+        walls.name=std::string(patch_name)+"_walls";
+        walls.type=PatchType::WALL;
+        for(std::size_t f=0;f<6;++f)
+            if(static_cast<int>(f)!=interface_face) walls.face_ids.push_back(f);
+        m.boundary().add_patch(walls);
+    }
     return m;
 }
 
