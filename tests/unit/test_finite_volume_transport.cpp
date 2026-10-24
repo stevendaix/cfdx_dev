@@ -265,8 +265,8 @@ int main()
         su.fill(1.0);
         sp.fill(0.0);
         ScalarBoundaryConditions bc;
-        bc["left"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
-        bc["right"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        bc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
         const auto eq = assemble_scalar_equation(m,g,flux,1.0,su,sp,bc);
         Vector x(m.n_cells(),0.0);
         const auto r = solve_scalar_equation(eq,x,{100,1e-12,0.25});
