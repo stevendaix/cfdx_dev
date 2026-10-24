@@ -210,6 +210,8 @@ Field<double, Location::CELL> laplacian_of(const Grid& grid, const std::vector<d
     return compute_laplacian(f, grid.mesh, grid.geometry, scheme, 0.5);
 }
 
+void require(bool condition, const std::string& message);
+
 void transport_nonorthogonal_linear_campaign()
 {
     const Grid grid = make_affine_cube(8, 1.0, true);
