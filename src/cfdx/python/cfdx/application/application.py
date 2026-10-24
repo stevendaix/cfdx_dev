@@ -54,6 +54,7 @@ class Application:
         self.events = EventBus()
         self.results = ResultsState()
         self._restart_dat: Path | None = None
+        self.mesh_catalog: MeshCatalog | None = None
         self.run_center = RunCenterModel(controller) if controller is not None else None
         if self.run_center is not None:
             self.run_center.on_change = lambda _state: self._publish_state()
@@ -110,6 +111,7 @@ class Application:
         self.diagnostics = ()
         self.results = ResultsState()
         self._restart_dat = None
+        self.mesh_catalog = None
         self.dirty = False
         return self._publish_state()
 
@@ -311,7 +313,11 @@ class Application:
         return build_setup_schema(self.session.case)
 
     def properties(self) -> tuple[PropertyState, ...]:
-        return properties_for_selection(self.session.case, self.selection.stable_id)
+        return properties_for_selection(
+            self.session.case,
+            self.selection.stable_id,
+            catalog=self.mesh_catalog,
+        )
 
     def set_property(self, key: str, value: Any) -> ApplicationState:
         return self.execute(SetProperty(key, value))
@@ -348,8 +354,9 @@ class Application:
         )
 
     def load_mesh(self, path: str | Path) -> MeshCatalog:
-        """Load a CFDX mesh and return its catalog via the application facade."""
-        return read_mesh_catalog(Path(path))
+        """Load a CFDX mesh and keep its catalog for contextual properties."""
+        self.mesh_catalog = read_mesh_catalog(Path(path))
+        return self.mesh_catalog
 
     def read_dat_restart(self, path: str | Path) -> DatRestart:
         """Read a numerical DAT artifact via the application facade."""
