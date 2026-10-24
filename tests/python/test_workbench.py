@@ -193,6 +193,7 @@ def test_mesh_selection_updates_typed_inspector_context() -> None:
 def test_undo_and_redo_restore_previous_property_value() -> None:
     from cfdx.gui import create_application
     from cfdx.session import SimulationState
+    from PySide6.QtCore import QCoreApplication, QEvent
     from PySide6.QtWidgets import QDoubleSpinBox, QPushButton
 
     app = create_application(["cfdx-workbench-test"])
@@ -212,6 +213,7 @@ def test_undo_and_redo_restore_previous_property_value() -> None:
     assert window.undo_action.isEnabled()
     assert not window.redo_action.isEnabled()
     window.undo_action.trigger()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     assert session.case.numerics.get("cfl", 1.0) == initial
     editor = window.findChild(QDoubleSpinBox, "workbench.property.numerics.cfl")
     assert editor is not None
@@ -220,6 +222,7 @@ def test_undo_and_redo_restore_previous_property_value() -> None:
     assert not window.undo_action.isEnabled()
     assert window.redo_action.isEnabled()
     window.redo_action.trigger()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     assert session.case.numerics["cfl"] == 2.5
     editor = window.findChild(QDoubleSpinBox, "workbench.property.numerics.cfl")
     assert editor is not None
@@ -272,4 +275,3 @@ def test_undo_and_redo_actions_have_stable_ids_and_shortcuts() -> None:
     ]
     window.close()
     app.quit()
-

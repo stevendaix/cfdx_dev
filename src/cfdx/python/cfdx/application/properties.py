@@ -207,4 +207,3 @@ def _patch_in_catalog(catalog: MeshCatalog, target: SelectionTarget) -> MeshPatc
         if patch.name == target.name and patch.region == region:
             return patch
     raise KeyError(f"mesh patch not found: {target.stable_id}")
-

@@ -450,4 +450,3 @@ class Application:
         snapshot = self.state
         self.events.publish(SelectionChanged(snapshot))
         return snapshot
-

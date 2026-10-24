@@ -180,5 +180,5 @@ def test_undo_publishes_the_application_state() -> None:
     application.events.subscribe(ApplicationStateChanged, published.append)
     application.set_property("numerics.cfl", 2.5)
     application.undo()
-    assert len(published) == 3
+    assert len(published) == 4
     assert published[-1].state.dirty
