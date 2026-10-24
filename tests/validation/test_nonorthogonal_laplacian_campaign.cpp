@@ -25,6 +25,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iomanip>
+#include <limits>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -43,7 +44,7 @@ struct Grid {
     std::vector<std::size_t> interior;
 };
 
-Grid make_affine_cube(std::size_t n, double shear)
+Grid make_affine_cube(std::size_t n, double shear, bool nonuniform = false)
 {
     if (n < 2) throw std::invalid_argument("make_affine_cube: n must be >= 2");
 
@@ -64,9 +65,12 @@ Grid make_affine_cube(std::size_t n, double shear)
             for (std::size_t i = 0; i < n; ++i) {
                 const std::size_t c = cell_id(i, j, k);
                 const std::size_t b = 8 * c;
-                const double x0 = i * h, x1 = (i + 1) * h;
-                const double y0 = j * h, y1 = (j + 1) * h;
-                const double z0 = k * h, z1 = (k + 1) * h;
+                const auto coordinate = [nonuniform](double value) {
+                    return nonuniform ? value + 0.20*value*value : value;
+                };
+                const double x0 = coordinate(i * h), x1 = coordinate((i + 1) * h);
+                const double y0 = coordinate(j * h), y1 = coordinate((j + 1) * h);
+                const double z0 = coordinate(k * h), z1 = coordinate((k + 1) * h);
                 const double raw[8][3] = {
                     {x0,y0,z0}, {x1,y0,z0}, {x1,y1,z0}, {x0,y1,z0},
                     {x0,y0,z1}, {x1,y0,z1}, {x1,y1,z1}, {x0,y1,z1}
@@ -208,7 +212,7 @@ Field<double, Location::CELL> laplacian_of(const Grid& grid, const std::vector<d
 
 void transport_nonorthogonal_linear_campaign()
 {
-    const Grid grid = make_affine_cube(8, 1.0);
+    const Grid grid = make_affine_cube(8, 1.0, true);
     const FvGeometry geometry = build_fv_geometry(grid.mesh);
     const std::size_t nc = grid.mesh.n_cells();
     const std::size_t nf = grid.mesh.n_faces();
