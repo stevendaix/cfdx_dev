@@ -858,7 +858,7 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
     const Mesh& mesh,
     GradientWeighting weighting = GradientWeighting::INVERSE_DISTANCE_SQUARED,
     double condition_limit = std::numeric_limits<double>::infinity(),
-    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::EXCLUDE_BOUNDARY,
+    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::ZERO_GRADIENT_GHOST,
     const std::vector<BoundaryGradientCondition>* boundary_conditions = nullptr)
 {
     const std::size_t n_cells = mesh.n_cells();
