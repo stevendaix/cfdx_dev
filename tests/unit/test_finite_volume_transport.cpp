@@ -306,7 +306,8 @@ int main()
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
         const auto equation = assemble_scalar_equation(
             m, g, flux, 0.0, su, sp, bc, false);
-        EXPECT_NEAR(scalar_equation_residual_inf(equation, phi), 0.0, 1e-12);
+        const Vector solution(1, 2.0);
+        EXPECT_NEAR(scalar_equation_residual_inf(equation, solution), 0.0, 1e-12);
 
         const auto reconstructed = reconstruct_scalar_transport_flux(
             m, g, flux, phi, 0.0, bc, false, ConvectionScheme::UPWIND);
