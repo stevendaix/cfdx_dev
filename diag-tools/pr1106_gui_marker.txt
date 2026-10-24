@@ -1,7 +1,7 @@
-pr1106 gui oracle trigger marker round 2
+pr1106 gui oracle trigger marker round 3
 pr=1106
-pr_head=d60a9d9a48e033d8bf481cc1bc0de0d13640a464
+pr_head=d590de860c5cc5b4388b66686ff4e14b39fdd82d
 pr_base=09be5d1bfc913bf2b73571b965d55c2bf9fabce1
-stamp=2026-10-24-g4r2
-phase=g4-gui-diagnose-round2
+stamp=2026-10-24-g4r3
+phase=g4-gui-diagnose-round3
 trigger=push-without-ci-skip

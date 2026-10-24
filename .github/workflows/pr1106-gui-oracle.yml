@@ -19,8 +19,9 @@ jobs:
     env:
       EVID: diag-evidence/logs
       PR_BASE: 09be5d1bfc913bf2b73571b965d55c2bf9fabce1
-      PR_HEAD: d60a9d9a48e033d8bf481cc1bc0de0d13640a464
-      STAMP: 2026-10-24-g4r2
+      PR_HEAD: d590de860c5cc5b4388b66686ff4e14b39fdd82d
+      CONTROL: 09be5d1bfc913bf2b73571b965d55c2bf9fabce1
+      STAMP: 2026-10-24-g4r3
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,6 +32,7 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/$EVID"
           git fetch origin '+refs/heads/*:refs/remotes/origin/*'
           git worktree add "$RUNNER_TEMP/ref" "$PR_HEAD"
+          git worktree add "$RUNNER_TEMP/control" "$CONTROL"
           cd "$RUNNER_TEMP/ref"
           git log -1 --format='%H %s' | tee "$GITHUB_WORKSPACE/$EVID/pr1106_gui_head_$STAMP.txt"
 
@@ -83,6 +85,63 @@ jobs:
               > "$GITHUB_WORKSPACE/$EVID/pr1106_gui_pytest_$STAMP.log" 2>&1
           echo "pytest exit code: $?" >> "$GITHUB_WORKSPACE/$EVID/pr1106_gui_pytest_$STAMP.log"
 
+      - name: Dump QAction inventory (PR head)
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: xcb
+        run: |
+          cd "$RUNNER_TEMP/ref"
+          xvfb-run -a -s "-screen 0 1280x1024x24" python - <<'PY' > "$GITHUB_WORKSPACE/$EVID/pr1106_gui_actions_head_$STAMP.log" 2>&1
+          from PySide6.QtGui import QAction
+          from cfdx.gui import create_application
+          from cfdx.workbench import CFDXWorkbenchWindow
+
+          from cfdx import CFDXSession
+
+          app = create_application(["cfdx-palette-test"])
+          window = CFDXWorkbenchWindow(CFDXSession())
+          capability_ids = set(window._capability_actions)
+          for action in sorted(window.findChildren(QAction), key=lambda a: a.objectName()):
+              parent = action.parent()
+              print(
+                  repr(action.objectName()),
+                  repr(action.text()),
+                  type(action).__name__,
+                  type(parent).__name__ if parent is not None else None,
+                  "capability" if action.objectName() in capability_ids else "extra",
+              )
+          window.close()
+          app.quit()
+          PY
+
+      - name: Dump QAction inventory (base control)
+        continue-on-error: true
+        env:
+          QT_QPA_PLATFORM: xcb
+        run: |
+          python -m pip install -e "$RUNNER_TEMP/control[gui]" > "$GITHUB_WORKSPACE/$EVID/pr1106_gui_control_install_$STAMP.log" 2>&1
+          cd "$RUNNER_TEMP/control"
+          xvfb-run -a -s "-screen 0 1280x1024x24" python - <<'PY' > "$GITHUB_WORKSPACE/$EVID/pr1106_gui_actions_control_$STAMP.log" 2>&1
+          from PySide6.QtGui import QAction
+          from cfdx.gui import create_application
+          from cfdx.workbench import CFDXWorkbenchWindow
+
+          from cfdx import CFDXSession
+
+          app = create_application(["cfdx-palette-test"])
+          window = CFDXWorkbenchWindow(CFDXSession())
+          for action in sorted(window.findChildren(QAction), key=lambda a: a.objectName()):
+              parent = action.parent()
+              print(
+                  repr(action.objectName()),
+                  repr(action.text()),
+                  type(action).__name__,
+                  type(parent).__name__ if parent is not None else None,
+              )
+          window.close()
+          app.quit()
+          PY
+
       - name: Write meta
         if: always()
         run: |
@@ -91,7 +150,8 @@ jobs:
             echo "pr=1106"
             echo "pr_head=$PR_HEAD"
             echo "pr_base=$PR_BASE"
-            echo "phase=g4-gui-diagnose-round2"
+            echo "control=$CONTROL"
+            echo "phase=g4-gui-diagnose-round3"
             echo "ci_failure_job=GUI / Qt / PyVista (headless)"
           } > "$E/pr1106_gui_meta_$STAMP.txt"
 
@@ -104,6 +164,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: PR 1106 GUI diagnosis evidence round 2 (2026-10-24) [ci skip]"
+            git commit -m "diag: PR 1106 GUI diagnosis evidence round 3 (2026-10-24) [ci skip]"
             (git push || (git pull --rebase && git push))
           fi
