@@ -23,6 +23,8 @@ struct ChtInterfaceControls {
     double matching_tolerance = 1e-8;
     double temperature_tolerance = 1e-8;
     double area_relative_tolerance = 1e-6;
+    double vertex_matching_tolerance = 1e-8;
+    double normal_opposition_tolerance = 1e-8;
 };
 
 struct ChtInterfaceFacePair {
@@ -41,8 +43,16 @@ inline std::vector<ChtInterfaceFacePair> match_cht_interface(
        c.conductivity1<=0.0 || c.conductivity2<=0.0 ||
        c.tolerance<=0.0 || c.max_iterations==0 ||
        !(c.relaxation>0.0 && c.relaxation<=1.0) ||
+       !std::isfinite(c.conductivity1) || !std::isfinite(c.conductivity2) ||
+       !std::isfinite(c.tolerance) || !std::isfinite(c.relaxation) ||
+       !std::isfinite(c.matching_tolerance) ||
+       !std::isfinite(c.temperature_tolerance) ||
+       !std::isfinite(c.area_relative_tolerance) ||
+       !std::isfinite(c.vertex_matching_tolerance) ||
+       !std::isfinite(c.normal_opposition_tolerance) ||
        c.matching_tolerance<=0.0 || c.temperature_tolerance<=0.0 ||
-       c.area_relative_tolerance<=0.0)
+       c.area_relative_tolerance<=0.0 || c.vertex_matching_tolerance<=0.0 ||
+       c.normal_opposition_tolerance<=0.0 || c.normal_opposition_tolerance>=1.0)
         throw std::invalid_argument("invalid CHT interface controls");
 
     std::size_t p1=mesh1.boundary().n_patches();
@@ -53,6 +63,15 @@ inline std::vector<ChtInterfaceFacePair> match_cht_interface(
         if(mesh2.boundary().patch(p).name==c.region2_patch) { p2=p; break; }
     if(p1>=mesh1.boundary().n_patches() || p2>=mesh2.boundary().n_patches())
         throw std::invalid_argument("CHT interface patch not found");
+
+    const auto is_impermeable_interface = [](cfdx::core::PatchType type) {
+        return type == cfdx::core::PatchType::WALL ||
+               type == cfdx::core::PatchType::INTERFACE;
+    };
+    if (!is_impermeable_interface(mesh1.boundary().patch(p1).type) ||
+        !is_impermeable_interface(mesh2.boundary().patch(p2).type))
+        throw std::invalid_argument(
+            "CHT interface patches must be impermeable wall/interface patches");
 
     const auto& f1=mesh1.boundary().patch(p1).face_ids;
     const auto& f2=mesh2.boundary().patch(p2).face_ids;
@@ -73,11 +92,54 @@ inline std::vector<ChtInterfaceFacePair> match_cht_interface(
         }
         if(bestj==f2.size() || best>c.matching_tolerance)
             throw std::runtime_error("CHT interface face matching failed");
-        const double a1=g1.face_area_vectors[face1].mag();
-        const double a2=g2.face_area_vectors[f2[bestj]].mag();
-        const double area_scale=std::max({a1,a2,1e-30});
-        if(std::abs(a1-a2)/area_scale>c.area_relative_tolerance)
+        if (face1 >= g1.face_area_vectors.size() ||
+            f2[bestj] >= g2.face_area_vectors.size())
+            throw std::runtime_error("CHT interface geometry does not cover the matched faces");
+
+        const auto& faces1 = mesh1.faces();
+        const auto& faces2 = mesh2.faces();
+        const auto nverts1 = faces1.face_size(face1);
+        const auto nverts2 = faces2.face_size(f2[bestj]);
+        if (nverts1 != nverts2)
+            throw std::runtime_error("CHT interface face vertex-count mismatch");
+        std::vector<bool> vertex_used(nverts2, false);
+        const auto* offsets1 = faces1.offsets_data();
+        const auto* offsets2 = faces2.offsets_data();
+        const auto* ids1 = faces1.vertices_data();
+        const auto* ids2 = faces2.vertices_data();
+        for (std::size_t i = 0; i < nverts1; ++i) {
+            const auto v1 = ids1[offsets1[face1] + i];
+            bool found_vertex = false;
+            for (std::size_t j = 0; j < nverts2; ++j) {
+                if (vertex_used[j]) continue;
+                const auto v2 = ids2[offsets2[f2[bestj]] + j];
+                const double dx = mesh1.points().x(v1) - mesh2.points().x(v2);
+                const double dy = mesh1.points().y(v1) - mesh2.points().y(v2);
+                const double dz = mesh1.points().z(v1) - mesh2.points().z(v2);
+                if (std::hypot(std::hypot(dx, dy), dz) <= c.vertex_matching_tolerance) {
+                    vertex_used[j] = true;
+                    found_vertex = true;
+                    break;
+                }
+            }
+            if (!found_vertex)
+                throw std::runtime_error("CHT interface vertex conformity failed");
+        }
+
+        const auto& normal1 = g1.face_area_vectors[face1];
+        const auto& normal2 = g2.face_area_vectors[f2[bestj]];
+        const double a1 = normal1.mag();
+        const double a2 = normal2.mag();
+        const double area_scale = std::max({a1, a2, 1e-30});
+        if (!(a1 > 0.0) || !(a2 > 0.0) ||
+            !std::isfinite(a1) || !std::isfinite(a2))
+            throw std::runtime_error("CHT interface face area is invalid");
+        if (std::abs(a1 - a2) / area_scale > c.area_relative_tolerance)
             throw std::runtime_error("CHT interface face area mismatch");
+        const double normal_cosine = normal1.dot(normal2) / (a1 * a2);
+        if (!std::isfinite(normal_cosine) ||
+            normal_cosine > -1.0 + c.normal_opposition_tolerance)
+            throw std::runtime_error("CHT interface outward normals are not opposed");
         used[bestj]=true;
         pairs.push_back({
             face1,f2[bestj],
@@ -126,6 +188,10 @@ inline ChtSolveResult solve_two_region_cht(
         !conductivity_matches(controls.conductivity2, energy2.conductivity))
         throw std::invalid_argument(
             "CHT interface conductivity must match the conductivity used by each energy region");
+    if (!std::isfinite(energy1.dt) || !std::isfinite(energy2.dt) ||
+        energy1.dt != energy2.dt)
+        throw std::invalid_argument(
+            "CHT energy regions must use the identical finite physical time step");
     ChtSolveResult result;
     std::vector<double> previous_interface_temperature(pairs.size(), std::numeric_limits<double>::quiet_NaN());
 
