@@ -2,6 +2,8 @@
 #include "cfdx/physics/energy_solver.h"
 #include "common/test_harness.h"
 
+#include <limits>
+
 using namespace cfdx::core;
 using namespace cfdx::physics;
 using namespace cfdx::testing;
@@ -52,20 +54,32 @@ int main()
         Field<double,Location::CELL> q1(1,"q1","W/m3",1),q2(1,"q2","W/m3",1);
         T1(0)=400.0; T2(0)=300.0; q1.fill(0.0); q2.fill(0.0);
         EnergySolverControls e1; e1.conductivity=1.0;
-        EnergySolverControls e2=e1; e2.conductivity=2.0;
+        EnergySolverControls e2=e1;
         ChtInterfaceControls c;
         c.region1_patch="interface1"; c.region2_patch="interface2";
         c.conductivity1=1.0; c.conductivity2=1.0;
-        bool rejected=false;
-        try {
-            (void)solve_two_region_cht(
-                m1,g1,m2,g2,phi1,phi2,T1,T2,q1,q2,e1,e2,c);
-        } catch (const std::invalid_argument&) {
-            rejected=true;
-        }
-        EXPECT_TRUE(rejected);
-        EXPECT_NEAR(T1(0),400.0,0.0);
-        EXPECT_NEAR(T2(0),300.0,0.0);
+
+        const auto expect_rejected_without_mutation = [&](double interface_k2, double energy_k2) {
+            c.conductivity2=interface_k2;
+            e2.conductivity=energy_k2;
+            bool rejected=false;
+            try {
+                (void)solve_two_region_cht(
+                    m1,g1,m2,g2,phi1,phi2,T1,T2,q1,q2,e1,e2,c);
+            } catch (const std::invalid_argument&) {
+                rejected=true;
+            }
+            EXPECT_TRUE(rejected);
+            EXPECT_NEAR(T1(0),400.0,0.0);
+            EXPECT_NEAR(T2(0),300.0,0.0);
+        };
+
+        // Contradictory finite values, non-finite interface data, non-finite
+        // energy data, and a non-positive interface conductivity all fail closed.
+        expect_rejected_without_mutation(1.0,2.0);
+        expect_rejected_without_mutation(std::numeric_limits<double>::quiet_NaN(),1.0);
+        expect_rejected_without_mutation(1.0,std::numeric_limits<double>::infinity());
+        expect_rejected_without_mutation(0.0,1.0);
     });
 
     run_case("two_region_cht_independent_energy_conservation",[] {
