@@ -105,7 +105,7 @@ int main() {
     {
         auto zero_controls=c;
         zero_controls.k_min=0.0;
-        const auto zero=sst_cell_sources(0.0,omega,active_strain,0.3,0.8,0.0,zero_controls);
+        const auto zero=sst_cell_sources(0.0,omega,100.0,0.3,0.8,0.0,zero_controls);
         EXPECT_CLOSE(zero.nut,0.0);
         EXPECT_CLOSE(zero.sk,0.0);
         EXPECT_CLOSE(zero.sw,0.0);
