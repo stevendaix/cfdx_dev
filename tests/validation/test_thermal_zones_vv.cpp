@@ -206,6 +206,28 @@ int main()
                   << " imbalance=" << result.energy_imbalance_relative << '\n';
     });
 
+    run_case("thermal_conduction_rejects_underrelaxed_unconverged_state", [] {
+        const std::size_t n = 2;
+        const double dx = 0.5;
+        Mesh m = chain_mesh(n, dx);
+        auto g = build_fv_geometry(m);
+        const std::vector<ThermalZoneSpec> specs = {
+            {"solid", 1, 1.0, 0.0, 0.0, true},
+        };
+        const auto zones = build_thermal_zones(m, std::vector<int>{1, 1}, specs);
+        const auto bc = chain_bcs(400.0, 300.0);
+        Vector temperature(n, 300.0);
+        const auto result = solve_thermal_conduction(
+            m, g, zones, bc, temperature, ScalarSolveControls{5000, 1e-12, 0.25});
+
+        EXPECT_TRUE(result.candidate_converged);
+        EXPECT_TRUE(!result.returned_state_converged);
+        EXPECT_TRUE(!result.converged);
+        EXPECT_NEAR(temperature(0), 318.75, 1e-12);
+        EXPECT_NEAR(temperature(1), 306.25, 1e-12);
+        EXPECT_NEAR(result.residual_inf, 300.0, 1e-10);
+    });
+
     run_case("thermal_zones_contact_resistance_exact", [] {
         const std::size_t n = 6;
         const double dx = 0.5;
