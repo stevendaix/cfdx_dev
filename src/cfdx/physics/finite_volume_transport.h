@@ -218,6 +218,125 @@ inline double boundary_normal_distance(
     return dn;
 }
 
+// Boundary-aware scalar gradient shared by transport and diffusion-flux
+// reconstruction. Face-specific values/conditions take precedence over patch
+// conditions so the gradient uses the same boundary state as the assembly.
+inline cfdx::core::Field<double, cfdx::core::Location::CELL>
+compute_scalar_gradient_with_boundary(
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const ScalarBoundaryConditions& boundary_conditions,
+    const ScalarBoundaryFaceValues* face_values = nullptr,
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
+{
+    using namespace cfdx::core;
+    const std::size_t nc = mesh.n_cells();
+    const std::size_t nf = mesh.n_faces();
+    if (field.dimension() != 1 || field.size() != nc ||
+        geometry.cell_centres.size() != nc ||
+        geometry.cell_volumes.size() != nc ||
+        geometry.face_centres.size() != nf ||
+        geometry.face_area_vectors.size() != nf ||
+        geometry.face_patch.size() != nf ||
+        (face_conditions &&
+         (face_conditions->conditions.size() != nf ||
+          face_conditions->specified.size() != nf)))
+        throw std::invalid_argument(
+            "compute_scalar_gradient_with_boundary: field/geometry shape mismatch");
+
+    Field<double, Location::CELL> gradient(
+        nc, field.name() + "_gradient_bc", field.metadata().unit + "/m", 3);
+    const auto& ownership = mesh.ownership();
+    for (std::size_t cell = 0; cell < nc; ++cell) {
+        Vec3 sum{0.0, 0.0, 0.0};
+        const Offset off = mesh.cells().offsets_data()[cell];
+        const Offset count = mesh.cells().offsets_data()[cell + 1] - off;
+        for (Offset k = 0; k < count; ++k) {
+            const std::size_t face = mesh.cells().faces_data()[off + k];
+            const bool is_owner = ownership.owner(face) == cell;
+            const Vec3 sf = is_owner
+                ? geometry.face_area_vectors[face]
+                : geometry.face_area_vectors[face] * -1.0;
+            double face_value = field(cell);
+            const auto neighbour_raw = ownership.neighbour(face);
+            if (neighbour_raw >= 0) {
+                const std::size_t other = is_owner
+                    ? static_cast<std::size_t>(neighbour_raw)
+                    : ownership.owner(face);
+                if (other >= nc)
+                    throw std::runtime_error(
+                        "compute_scalar_gradient_with_boundary: invalid neighbour");
+                const double dc =
+                    (geometry.face_centres[face] - geometry.cell_centres[cell]).mag();
+                const double dn =
+                    (geometry.cell_centres[other] - geometry.face_centres[face]).mag();
+                if (!(dc + dn > 0.0) || !std::isfinite(dc + dn))
+                    throw std::runtime_error(
+                        "compute_scalar_gradient_with_boundary: degenerate face distance");
+                const double w = dn / (dc + dn);
+                face_value = w * field(cell) + (1.0 - w) * field(other);
+            } else {
+                const std::size_t patch = geometry.face_patch[face];
+                if (patch < mesh.boundary().n_patches() &&
+                    mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                    continue;
+
+                bool resolved = false;
+                if (face_conditions && face_conditions->has(face)) {
+                    const auto& bc = face_conditions->conditions[face];
+                    if (!std::isfinite(bc.value))
+                        throw std::invalid_argument(
+                            "compute_scalar_gradient_with_boundary: non-finite face condition");
+                    if (bc.type == ScalarBoundaryFaceCondition::Type::FIXED_VALUE) {
+                        face_value = bc.value;
+                    } else {
+                        face_value = field(cell) + bc.value *
+                            boundary_normal_distance(geometry, face, cell);
+                    }
+                    resolved = true;
+                }
+                if (!resolved && patch < mesh.boundary().n_patches()) {
+                    const auto& patch_name = mesh.boundary().patch(patch).name;
+                    auto bc_it = boundary_conditions.find(patch_name);
+                    ScalarBoundaryCondition bc;
+                    if (bc_it != boundary_conditions.end()) bc = bc_it->second;
+                    if (face_values) {
+                        const auto fv = face_values->values.find(patch_name);
+                        if (fv != face_values->values.end() &&
+                            face < fv->second.size() &&
+                            std::isfinite(fv->second[face])) {
+                            bc.type = ScalarBoundaryType::FIXED_VALUE;
+                            bc.value = fv->second[face];
+                        }
+                    }
+                    if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
+                        face_value = bc.value;
+                    } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
+                        if (!std::isfinite(bc.gradient))
+                            throw std::invalid_argument(
+                                "compute_scalar_gradient_with_boundary: non-finite patch gradient");
+                        face_value = field(cell) + bc.gradient *
+                            boundary_normal_distance(geometry, face, cell);
+                    }
+                }
+            }
+            if (!std::isfinite(face_value))
+                throw std::runtime_error(
+                    "compute_scalar_gradient_with_boundary: non-finite face value");
+            sum += sf * face_value;
+        }
+        const double volume = geometry.cell_volumes[cell];
+        if (!(volume > 0.0) || !std::isfinite(volume))
+            throw std::runtime_error(
+                "compute_scalar_gradient_with_boundary: invalid cell volume");
+        gradient.component_data(0)[cell] = sum.x / volume;
+        gradient.component_data(1)[cell] = sum.y / volume;
+        gradient.component_data(2)[cell] = sum.z / volume;
+    }
+    return gradient;
+}
+
 // Assemble:
 //     div(phi*psi) - div(gamma grad(psi)) = Su + Sp*psi
 // with first-order upwind convection and two-point orthogonal diffusion.
