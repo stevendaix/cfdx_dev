@@ -55,7 +55,7 @@
     {
       "id": "N3",
       "name": "Diffusion and non-orthogonal correction",
-      "status": "qualified",
+      "status": "partial",
       "evidence": [
         "src/cfdx/core/numerics/gradient.h",
         "src/cfdx/core/numerics/laplacian.h",
@@ -65,10 +65,13 @@
         "tests/unit/test_diffusion_diagnostics.cpp",
         "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
         "tests/validation/test_nonorthogonal_skew_campaign.cpp",
-        "docs/validation/N3_DIFFUSION_QUALIFICATION.md"
+        "docs/validation/N3_DIFFUSION_QUALIFICATION.md",
+        "src/cfdx/physics/finite_volume_transport.h",
+        "docs/audits/24-nonorthogonal-transport-diffusion.md"
       ],
       "gaps": [
-        "general polyhedral higher-order diffusion is intentionally outside the N3 acceptance contract and remains a research item for N10/N16; the measured O(1) tetrahedral behaviour is documented rather than hidden"
+        "general polyhedral higher-order diffusion is intentionally outside the N3 acceptance contract and remains a research item for N10/N16; the measured O(1) tetrahedral behaviour is documented rather than hidden",
+        "transport assembly and reconstructed flux now share a tangential correction, but exact-HEAD CI, polyhedral MMS, and full Poisson/reconstruction/deferred-correction caller coverage remain pending"
       ]
     },
     {
@@ -229,7 +232,10 @@
         "tests/unit/test_conservation_boundedness.cpp",
         "tests/validation/test_phase9_acceptance.cpp",
         "tests/validation/test_n11_scalar_conservation.cpp",
-        "scripts/n11_conservation_boundedness.py"
+        "scripts/n11_conservation_boundedness.py",
+        "src/cfdx/physics/finite_volume_transport.h",
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
+        "docs/audits/24-nonorthogonal-transport-diffusion.md"
       ],
       "gaps": [
         "complete quantitative Couette/Poiseuille/scalar-MMS/energy/skew acceptance matrix",
@@ -253,10 +259,12 @@
       "evidence": [
         "tests/validation/test_mms_scalar_diffusion.cpp",
         "tests/validation/test_discretization_verification.cpp",
-        "docs/validation/CFDX_QUALIFICATION_CAMPAIGN.md"
+        "docs/validation/CFDX_QUALIFICATION_CAMPAIGN.md",
+        "tests/validation/test_nonorthogonal_laplacian_campaign.cpp",
+        "docs/audits/24-nonorthogonal-transport-diffusion.md"
       ],
       "gaps": [
-        "momentum MMS",
+        "full production momentum MMS; the added affine transport test qualifies the scalar diffusion operator only, not the momentum equation",
         "pressure/continuity MMS",
         "transient/energy/turbulence reusable matrix",
         "automated observed-order reporting across all families"
