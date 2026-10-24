@@ -245,5 +245,21 @@ int main() {
         }
     });
 
+    run_case("gmres_zero_rhs_converges_from_nonzero_initial_guess", []() {
+        LinearOperator op;
+        op.size = 1;
+        op.apply = [](const Vector& in, Vector& out) {
+            if (out.size() != 1) out.resize(1);
+            out(0) = in(0);
+        };
+        Vector b(1, 0.0);
+        Vector x(1, 1.0);
+        const auto result = solve_gmres(op, b, x, 1, 4, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations > 0);
+        EXPECT_NEAR(x(0), 0.0, 1e-12);
+        EXPECT_TRUE(result.residual < 1e-12);
+    });
+
     return run_all();
 }
