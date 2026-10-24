@@ -261,6 +261,10 @@ int main()
             if (m.ownership().neighbour(f) >= 0)
                 flux(f) = 1.0;
         }
+        // Keep the downstream cell diagonally anchored: a positive outlet
+        // flux is required for a well-posed pure-convection matrix.
+        for (const auto f : m.boundary().patch(0).face_ids) flux(f) = -1.0;
+        for (const auto f : m.boundary().patch(1).face_ids) flux(f) = 1.0;
         ScalarBoundaryConditions bc;
         bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
         bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
