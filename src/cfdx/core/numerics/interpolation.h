@@ -146,6 +146,10 @@ inline Field<double, Location::FACE> interpolate_cell_to_face(
         throw std::runtime_error("interpolate_cell_to_face: dimension must be >= 1");
     if (face_flux && (face_flux->size() != n_faces || face_flux->dimension() != 1))
         throw std::runtime_error("interpolate_cell_to_face: face_flux must be scalar with n_faces values");
+    if (scheme == InterpScheme::LINEAR || scheme == InterpScheme::BLENDED) {
+        if (!is_valid(geometry, mesh))
+            throw std::invalid_argument("interpolate_cell_to_face: invalid geometry cache");
+    }
     if (scheme == InterpScheme::BLENDED) {
         if (!face_flux)
             throw std::runtime_error("interpolate_cell_to_face: BLENDED requires face_flux");
