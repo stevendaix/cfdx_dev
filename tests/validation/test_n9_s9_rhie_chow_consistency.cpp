@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <vector>
 
@@ -213,7 +214,7 @@ static Mesh make_four_cell_channel()
     }
     for (std::size_t i = 0; i < nx; ++i) {
         const std::size_t l = 4*i, r = 4*(i+1);
-        const std::size_t first = m.faces().size();
+        const std::size_t first = nx + 1 + 4 * i;
         m.faces().push_face({l, r, r+3, l+3});       // y = 0
         m.faces().push_face({l+1, l+2, r+2, r+1});   // y = 1
         m.faces().push_face({l, l+1, r+1, r});       // z = 0
@@ -221,8 +222,9 @@ static Mesh make_four_cell_channel()
         side_faces[i] = {first, first+1, first+2, first+3};
     }
 
-    m.ownership().resize(m.faces().size());
-    for (std::size_t f = 0; f < m.faces().size(); ++f)
+    constexpr std::size_t n_faces = (nx + 1) + 4 * nx;
+    m.ownership().resize(n_faces);
+    for (std::size_t f = 0; f < n_faces; ++f)
         m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
     for (std::size_t i = 0; i <= nx; ++i) {
         if (i == 0) m.ownership().set_owner(x_faces[i], 0);
