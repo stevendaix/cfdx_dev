@@ -1,0 +1,11 @@
+== ruff check (candidates) ==
+All checks passed!
+RUFF_CHECK_GREEN
+== ruff format --check (candidates) ==
+6 files already formatted
+RUFF_FORMAT_GREEN
+== full pre-commit run (candidates) ==
+Ruff check...............................................................Passed
+Ruff format check........................................................Passed
+CFDX fast build/test guards..............................................Passed
+PRECOMMIT_GREEN

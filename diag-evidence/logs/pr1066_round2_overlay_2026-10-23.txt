@@ -1,0 +1,3 @@
+ M src/cfdx/python/cfdx/selection.py
+ M tests/python/test_gui_browser_widgets.py
+ M tests/python/test_selection.py
