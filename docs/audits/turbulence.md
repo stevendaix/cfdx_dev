@@ -113,6 +113,8 @@ Le noyau SST, certains chemins transactionnels de production, les stages énergi
 
 | `6ef95ee36b3870498f366429f71c483dbf500aa4` | `tests/validation/test_cht_validation.cpp` | Étendu le test négatif aux conductivités NaN, infinie, nulles et contradictoires ; chaque rejet vérifie que T1/T2 restent inchangées. | Revue statique faite ; exécution CTest sur le HEAD final encore attendue. | EN COURS |
 
+| `467255ef592dfdc82b34036222753cd2e0ad97d9` | `scripts/check_audit_gate.py` | Le gate classait à tort `audit_v2.md` comme fiche méthode à sections strictes 1–7 ; le dossier est maintenant explicitement classé comme rapport non-fiche, sans relâcher les contrôles des fiches méthode. | Le gate avait échoué sur cette classification ; revalidation CI requise sur le HEAD courant. | EN COURS |
+
 **Décision TR-01 :** correction proposée dans une branche fondée sur le `master` courant. Les PR #1094 et #1099 sont des variantes historiques concurrentes ; leurs HEAD ne sont pas utilisés directement car ils ont divergé du `master`. Cette implémentation doit passer CI avant d'être considérée intégrée.
 
 **État des preuves :** aucune preuve physique SST n'est revendiquée par ces deux tests algébriques. N9/qualification physique ne doivent pas être considérés comme réussis du seul fait que le test d'équation passe.
