@@ -1,0 +1,93 @@
+s....F...............F.............F.......................ss            [100%]
+=================================== FAILURES ===================================
+______________ test_undo_and_redo_restore_previous_property_value ______________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_undo_and_redo_restore_previous_property_value() -> None:
+        from cfdx.gui import create_application
+        from cfdx.session import SimulationState
+        from PySide6.QtWidgets import QDoubleSpinBox, QPushButton
+    
+        app = create_application(["cfdx-workbench-test"])
+        session = CFDXSession()
+        session.state = SimulationState.READY
+        window = CFDXWorkbenchWindow(session)
+        window.application.select("numerics", "workflow", "Numerics")
+        initial = session.case.numerics.get("cfl", 1.0)
+        assert not window.undo_action.isEnabled()
+        assert not window.redo_action.isEnabled()
+        assert window.undo_action.statusTip() == "Requires: an edit to undo"
+        editor = window.findChild(QDoubleSpinBox, "workbench.property.numerics.cfl")
+        assert editor is not None
+        editor.setValue(2.5)
+        window.findChild(QPushButton, "workbench.property.apply.numerics.cfl").click()
+        assert session.case.numerics["cfl"] == 2.5
+        assert window.undo_action.isEnabled()
+        assert not window.redo_action.isEnabled()
+        window.undo_action.trigger()
+        assert session.case.numerics.get("cfl", 1.0) == initial
+        editor = window.findChild(QDoubleSpinBox, "workbench.property.numerics.cfl")
+        assert editor is not None
+>       assert editor.value() == initial
+E       assert 2.5 == 1.0
+E        +  where 2.5 = <built-in method value of PySide6.QtWidgets.QDoubleSpinBox object at 0x7fc8ca5feec0>()
+E        +    where <built-in method value of PySide6.QtWidgets.QDoubleSpinBox object at 0x7fc8ca5feec0> = <PySide6.QtWidgets.QDoubleSpinBox(0x55751f1f6440, name="workbench.property.numerics.cfl") at 0x7fc8ca5feec0>.value
+
+tests/python/test_workbench.py:218: AssertionError
+____________ test_palette_lists_the_registry_and_only_the_registry _____________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_palette_lists_the_registry_and_only_the_registry() -> None:
+        from PySide6.QtGui import QAction
+    
+        app = create_application(["cfdx-palette-test"])
+        window = CFDXWorkbenchWindow(CFDXSession())
+        assert set(window._capability_actions) == set(CAPABILITIES)
+        action_names = {action.objectName() for action in window.findChildren(QAction)}
+>       assert action_names - set(CAPABILITIES) == {"workbench.action.search"}
+E       AssertionError: assert {'', 'workben...ction.search'} == {'workbench.action.search'}
+E         
+E         Extra items in the left set:
+E         ''
+E         
+E         Full diff:
+E           {
+E         +     '',
+E               'workbench.action.search',
+E           }
+
+tests/python/test_capabilities.py:203: AssertionError
+__________________ test_undo_publishes_the_application_state ___________________
+
+    def test_undo_publishes_the_application_state() -> None:
+        application = Application(CFDXSession())
+        published: list[ApplicationStateChanged] = []
+        application.events.subscribe(ApplicationStateChanged, published.append)
+        application.set_property("numerics.cfl", 2.5)
+        application.undo()
+>       assert len(published) == 3
+E       AssertionError: assert 4 == 3
+E        +  where 4 = len([ApplicationStateChanged(state=ApplicationState(project=ProjectState(name='untitled', path=None, dirty=True), simulati...sults', message=None)), results=ResultsState(directory=None, frames=(), selected_frame_id=None, selected_field=None)))])
+
+tests/python/test_edit_history.py:183: AssertionError
+=========================== short test summary info ============================
+FAILED tests/python/test_workbench.py::test_undo_and_redo_restore_previous_property_value - assert 2.5 == 1.0
+ +  where 2.5 = <built-in method value of PySide6.QtWidgets.QDoubleSpinBox object at 0x7fc8ca5feec0>()
+ +    where <built-in method value of PySide6.QtWidgets.QDoubleSpinBox object at 0x7fc8ca5feec0> = <PySide6.QtWidgets.QDoubleSpinBox(0x55751f1f6440, name="workbench.property.numerics.cfl") at 0x7fc8ca5feec0>.value
+FAILED tests/python/test_capabilities.py::test_palette_lists_the_registry_and_only_the_registry - AssertionError: assert {'', 'workben...ction.search'} == {'workbench.action.search'}
+  
+  Extra items in the left set:
+  ''
+  
+  Full diff:
+    {
+  +     '',
+        'workbench.action.search',
+    }
+FAILED tests/python/test_edit_history.py::test_undo_publishes_the_application_state - AssertionError: assert 4 == 3
+ +  where 4 = len([ApplicationStateChanged(state=ApplicationState(project=ProjectState(name='untitled', path=None, dirty=True), simulati...sults', message=None)), results=ResultsState(directory=None, frames=(), selected_frame_id=None, selected_field=None)))])
+3 failed, 55 passed, 3 skipped in 4.39s

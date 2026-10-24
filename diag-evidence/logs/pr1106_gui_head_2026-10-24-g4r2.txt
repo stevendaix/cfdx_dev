@@ -1,0 +1,1 @@
+d60a9d9a48e033d8bf481cc1bc0de0d13640a464 fix(gui): permissive get_property read and QStatusBar.currentMessage (Lot 2, G4 round 2)
