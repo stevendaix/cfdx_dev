@@ -1082,7 +1082,7 @@ inline ScalarEquation assemble_momentum_component(
 // Conservative explicit contribution of div(mu_eff * grad(U)^T) to one
 // momentum component. The returned vector is the face-flux divergence, with
 // equal-and-opposite contributions on every internal face.
-inline std::vector<double> momentum_transpose_diffusion_rhs(
+inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
@@ -1139,7 +1139,7 @@ inline std::vector<double> momentum_transpose_diffusion_rhs(
         }
     }
 
-    std::vector<double> rhs(nc, 0.0);
+    std::vector<double> face_fluxes(nf, 0.0);
     for (std::size_t face = 0; face < nf; ++face) {
         const std::size_t owner = mesh.ownership().owner(face);
         if (owner >= nc)
@@ -1185,8 +1185,7 @@ inline std::vector<double> momentum_transpose_diffusion_rhs(
             if (!std::isfinite(flux))
                 throw std::runtime_error(
                     "momentum_transpose_diffusion_rhs: non-finite internal stress flux");
-            rhs[owner] += flux;
-            rhs[neighbour] -= flux;
+            face_fluxes[face] = flux;
         } else {
             for (std::size_t velocity_component = 0; velocity_component < 3;
                  ++velocity_component)
@@ -1198,8 +1197,30 @@ inline std::vector<double> momentum_transpose_diffusion_rhs(
             if (!std::isfinite(flux))
                 throw std::runtime_error(
                     "momentum_transpose_diffusion_rhs: non-finite boundary stress flux");
-            rhs[owner] += flux;
+            face_fluxes[face] = flux;
         }
+    }
+    return face_fluxes;
+}
+
+inline std::vector<double> momentum_transpose_diffusion_rhs(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+    const VelocityBoundaryConditions& velocity_bcs,
+    const std::vector<double>& cell_effective_dynamic_viscosity,
+    std::size_t momentum_component)
+{
+    const auto face_fluxes = momentum_transpose_diffusion_face_fluxes(
+        mesh, geometry, velocity, velocity_bcs,
+        cell_effective_dynamic_viscosity, momentum_component);
+    std::vector<double> rhs(mesh.n_cells(), 0.0);
+    for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+        const std::size_t owner = mesh.ownership().owner(face);
+        rhs[owner] += face_fluxes[face];
+        const int neighbour = mesh.ownership().neighbour(face);
+        if (neighbour >= 0)
+            rhs[static_cast<std::size_t>(neighbour)] -= face_fluxes[face];
     }
     return rhs;
 }
