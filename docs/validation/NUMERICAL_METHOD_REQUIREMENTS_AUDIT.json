@@ -857,7 +857,9 @@
       "requirement": "momentum/scalar/energy balances",
       "status": "partial",
       "evidence": [
-        "src/cfdx/core/numerics/conservation.h"
+        "src/cfdx/core/numerics/conservation.h",
+        "tests/unit/test_variable_viscosity_transpose_stress.cpp",
+        "docs/audits/23-variable-viscosity-stress.md"
       ]
     },
     {
@@ -903,8 +905,12 @@
     {
       "package_id": "N12",
       "requirement": "momentum MMS",
-      "status": "missing",
-      "evidence": []
+      "status": "partial",
+      "evidence": [
+        "tests/unit/test_variable_viscosity_transpose_stress.cpp",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "docs/audits/23-variable-viscosity-stress.md"
+      ]
     },
     {
       "package_id": "N12",

@@ -144,13 +144,16 @@
         "src/cfdx/physics/steady_incompressible_solver.h",
         "tests/unit/test_continuation.cpp",
         "tests/unit/test_convergence_monitor.cpp",
-        "tests/validation/test_n7_convergence_qualification.cpp"
+        "tests/validation/test_n7_convergence_qualification.cpp",
+        "tests/unit/test_variable_viscosity_transpose_stress.cpp",
+        "docs/audits/23-variable-viscosity-stress.md"
       ],
       "gaps": [
         "automatic initialization strategies remain intentionally unqualified; provided/uniform/restart are the declared validated modes",
         "continuation failure/recovery remains unit-qualified but is not yet part of the canonical Re=100 qualification corridor",
         "qualification breadth beyond the Re=100 lid-driven cavity, including broader geometries/meshes and parameter corridors",
-        "spatial observed-order evidence is merge-gated only as a 16/32/64 trend tripwire (tests/validation/test_ghia_cavity.cpp --gate, order U_RMS=2.05, V_RMS=1.16); the full 32/64/128 plus Re=400/Re=1000 campaign runs weekly on schedule and establishes neither the spatial accuracy of the continuation or adaptive paths nor a general order on other schemes, meshes or geometries"
+        "spatial observed-order evidence is merge-gated only as a 16/32/64 trend tripwire (tests/validation/test_ghia_cavity.cpp --gate, order U_RMS=2.05, V_RMS=1.16); the full 32/64/128 plus Re=400/Re=1000 campaign runs weekly on schedule and establishes neither the spatial accuracy of the continuation or adaptive paths nor a general order on other schemes, meshes or geometries",
+        "the variable-viscosity transpose-stress contribution now enters the production predictor and final momentum residual, but exact-HEAD CI and skewed/polyhedral MMS qualification remain pending"
       ]
     },
     {
@@ -253,10 +256,13 @@
       "evidence": [
         "tests/validation/test_mms_scalar_diffusion.cpp",
         "tests/validation/test_discretization_verification.cpp",
-        "docs/validation/CFDX_QUALIFICATION_CAMPAIGN.md"
+        "docs/validation/CFDX_QUALIFICATION_CAMPAIGN.md",
+        "src/cfdx/physics/steady_incompressible_solver.h",
+        "tests/unit/test_variable_viscosity_transpose_stress.cpp",
+        "docs/audits/23-variable-viscosity-stress.md"
       ],
       "gaps": [
-        "momentum MMS",
+        "full production momentum MMS across mesh refinement; the current affine test verifies the variable-viscosity transpose-stress operator on an orthogonal mesh only",
         "pressure/continuity MMS",
         "transient/energy/turbulence reusable matrix",
         "automated observed-order reporting across all families"
