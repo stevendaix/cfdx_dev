@@ -15,6 +15,39 @@ Cette section est le point d'entrée courant. Les statuts ci-dessous sont basés
 
 Règle de clôture : chaque ligne ne passe à CORRIGÉE que si le code courant a été audité, les tests ciblés passent et les checks obligatoires passent sur le HEAD exact. Une campagne physique ignorée, en cours ou échouée reste ouverte.
 
+### Mise à jour — 25 octobre 2026 ~08:20Z : vagues de merges, doublons fermés, reste à faire
+
+Cette mise à jour supplante les lignes F25/F26/F27 et « Contrôle du registre » du tableau ci-dessus (rédigées avant les merges de la matinée).
+
+**Merges effectués dans master (squash, SHA de head épinglés, CI 100 % terminée et verte sur le head exact au moment du merge ; campagnes validation-total restant `skipped` sans label)** :
+
+- `7fec3d97` #1112 — classification des rapports consolidés (gate d'audit) ; `72ddaab9` #1106 — GUI undo/redo borné ; `a30c95b7` — rejet des références de qualification non finies (turbulence) ;
+- `d720662e` #1110 — CHT conductivité interface ; `9fa9bfb9` #1116 — SST production limiter appliqué à la source omega ;
+- `e9d27214` #1104 — tracker turbulence.md ; `a761292f` #1113 — F25 : suppression de la surcharge SST ambiguë (26 checks verts sur le head fixé, N1–N16 inclus) ;
+- `a672e021` #1111 — F26 : normalisation source P1 (23 checks verts, 0 échec, 0 en attente sur le head exact) ;
+- `dd863b43` #1114 — F27 : contrat de courbure VOF axe-par-axe + fiche 25 (21 checks verts, 0 échec, 0 en attente) ;
+- `be74325b` #1108 — contrôle du registre : l'action « relancer les workflows sur une révision actuelle » est satisfaite (merge postérieur à la correction #1112 de la gate).
+
+**Doublons fermés sans merge (supersession vérifiée par lecture byte-level du code master, commentaires sur chaque PR)** : #1105, #1107 (matin) ; #1079 → couverte par #1111 ; #1081 → couverte par #1113 ; #1083 → couverte par #1114 (fiches en plus) ; #1097 → couverte par #1110. #1086 (S2S, branche empilée) sera fermée après le merge de #1115.
+
+**En cours** :
+
+- F30 #1115 : conflit avec #1111/#1113 résolu par réconciliation byte-exact sur master courant (head `92af08d2`, alignement → update-branch → re-application du delta, FNV-1a vérifié) ; CI relancée ~08:00Z sur ce head exact — merge uniquement CI verte.
+- CHT géométrie/normales : #1118 (draft, base master courant) couvre intégralement le delta restant de #1109 (vérifié byte-level : 106 lignes incluses dans les 121 de #1109, les 15 excédentaires étant déjà dans master via #1110 ; test level-C identique). La réconciliation manuelle de #1109 est ANNULÉE ; #1109 sera fermée au merge de #1118.
+- #1120 (robustesse du test GUI palette aux actions internes Qt sans nom) : CI en vol ; un échec du job GUI observé à un instant — à instruire sur les checks stabilisés.
+- #1119 (docs audit) : draft.
+
+**Reste à faire (ordre proposé)** :
+
+1. F31/F32/F33 transport : #1080 / #1088 / #1089 (non-draft, non supersédées) — relever l'état CI exact-HEAD, merger si verts, sinon diagnostiquer.
+2. F30 : merger #1115 dès CI verte, puis fermer #1086.
+3. CHT : suivre #1118 jusqu'au merge, puis fermer #1109.
+4. F06 #1103 : attribuer l'échec « N9 Physical Validation » (exit 8, run 40172900788) — pré-existant vs causé par F06 — sur le HEAD exact en évolution (draft).
+5. F11 #1102 : portage propre sur master (branche divergente, échecs non isolables sur la base actuelle), puis CI exact-HEAD.
+6. F03 #1078 : attendre les campagnes N9 qualification + validation totale, puis auditer le flux de continuité avant promotion.
+
+Aucune tolérance, oracle ou gate n'a été modifié ; aucune qualification physique ignorée n'est comptée comme réussie (règle de clôture ci-dessus inchangée).
+
 ## Suivi d'exécution courant — 24 octobre 2026 (mise à jour depuis R2)
 
 Cette section est le journal vivant de reprise. Elle complète les statuts historiques R2 ci-dessous sans réécrire les preuves anciennes. Un PR ouvert signifie « correction candidate à auditer », jamais « problème corrigé ». Un item n'est clos qu'après lecture du diff actuel, vérification de l'absence de doublon sur `master`, tests ciblés et CI sur le HEAD exact.
