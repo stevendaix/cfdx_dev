@@ -397,10 +397,10 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
     if (!active) return flux;
 
     // Green-Gauss with two-point interpolation is biased when face centroids
-    // do not lie on owner-neighbour centre lines. Use least squares wherever
-    // the cell has a full 3-D neighbour stencil; retain the boundary-aware
-    // Green-Gauss estimate for lower-dimensional/undersampled boundary cells,
-    // where the boundary data supply information absent from the cell stencil.
+    // do not lie on owner-neighbour centre lines. Use least squares where the
+    // cell has at least three internal neighbours (the LS kernel is rank-aware);
+    // retain boundary-aware Green-Gauss on smaller stencils where prescribed
+    // boundary data supply information absent from the cell-centred stencil.
     auto boundary_gradient = compute_scalar_gradient_with_boundary(
         field, mesh, geometry, boundary_conditions, face_values, face_conditions);
     auto gradient = boundary_gradient;
