@@ -428,8 +428,9 @@ inline KOmegaCellSources komega2006_cell_sources(
     const double ki=std::max(k,c.k_min), wi=std::max(omega,c.omega_min);
     const double S=std::max(strain,0.0);
     KOmegaCellSources q;
-    // Baseline Wilcox k-omega uses nu_t = k/omega. The SST-specific
-    // strain-rate limiter belongs only to the SST closure.
+    // Wilcox 2006 without the Pope correction uses the baseline
+    // k/omega eddy-viscosity relation. A separate strain limiter must not be
+    // introduced here without an independently qualified model contract.
     q.nut=ki/wi;
     const double Pk=c.density*q.nut*S*S;
     q.sk=Pk; q.spk=-c.density*c.beta_star*wi;

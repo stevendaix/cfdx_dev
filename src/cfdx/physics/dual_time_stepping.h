@@ -70,13 +70,13 @@ inline void validate_dual_time_controls(const DualTimeStepControls& c) {
 }
 
 inline double dual_time_norm(const std::vector<double>& r) {
-    long double sum = 0.0L;
+    double sum = 0.0;
     for (double value : r) {
         if (!std::isfinite(value))
             throw std::runtime_error("dual-time residual is non-finite");
-        sum += static_cast<long double>(value) * static_cast<long double>(value);
+        sum=std::hypot(sum,value);
     }
-    return std::sqrt(static_cast<double>(sum));
+    return sum;
 }
 
 inline std::vector<double> dual_time_physical_residual(
@@ -85,7 +85,8 @@ inline std::vector<double> dual_time_physical_residual(
     const std::vector<double>& state_nm1,
     double dt,
     DualTimePhysicalScheme scheme,
-    const std::function<std::vector<double>(const std::vector<double>&)>& rhs)
+    const std::function<std::vector<double>(const std::vector<double>&)>& rhs,
+    double dt_previous = 0.0)
 {
     if (!(dt > 0.0) || !std::isfinite(dt))
         throw std::invalid_argument("dual-time physical dt must be finite and positive");
@@ -104,9 +105,14 @@ inline std::vector<double> dual_time_physical_residual(
         for (std::size_t i = 0; i < state.size(); ++i)
             residual[i] = state[i] - state_n[i] - dt * f[i];
     } else {
+        if (!std::isfinite(dt_previous) || dt_previous<0.0)
+            throw std::invalid_argument("invalid previous physical dt");
+        const double ratio=dt_previous>0.0 ? dt/dt_previous : 1.0;
+        const double a0=(1.0+2.0*ratio)/(1.0+ratio);
+        const double a1=-(1.0+ratio);
+        const double a2=ratio*ratio/(1.0+ratio);
         for (std::size_t i = 0; i < state.size(); ++i)
-            residual[i] = 1.5 * state[i] - 2.0 * state_n[i]
-                        + 0.5 * state_nm1[i] - dt * f[i];
+            residual[i] = a0*state[i]+a1*state_n[i]+a2*state_nm1[i]-dt*f[i];
     }
     return residual;
 }

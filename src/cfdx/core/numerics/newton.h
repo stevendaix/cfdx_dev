@@ -138,6 +138,14 @@ inline SolverResult solve_newton_field(
             result.residual_relative = norm / scale;
             return result;
         }
+        const double accepted_norm=r.norm2();
+        if (std::isfinite(accepted_norm) && accepted_norm<=controls.tolerance*scale) {
+            result.status=SolverStatus::CONVERGED;
+            result.iterations=iteration+1;
+            result.residual=accepted_norm;
+            result.residual_relative=accepted_norm/scale;
+            return result;
+        }
     }
 
     result.status = SolverStatus::MAX_ITER_REACHED;

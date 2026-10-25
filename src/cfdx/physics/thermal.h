@@ -30,13 +30,26 @@ inline EnergyTerms evaluate_energy_terms(
     if (!(rho > 0.0) || !(cp > 0.0) || !(conductivity >= 0.0))
         throw std::invalid_argument("evaluate_energy_terms: invalid material properties");
 
+    // F13 (audit 2026-10-24): both returned terms must share one unit
+    // contract. The helper returns rate-of-change terms in K/s for
+    //   dT/dt = -convection + conduction + Q/(rho*cp)
+    //   convection(c) = sum_f(mdot_f * T_f) / (rho * V_c)   [K/s]
+    //   conduction(c) = k/(rho*cp) * laplacian(T)            [K/s]
+    // The previous contract multiplied the convective power by cp (a
+    // flux-sum in W) while conduction was a specific rate in K/s, so the
+    // two fields could not be added into a coherent temperature equation.
     auto convection = cfdx::core::compute_convection(temperature, mass_flux, mesh, scheme);
-    for (std::size_t c = 0; c < n; ++c)
-        convection(c) *= cp;
+    const auto f13_geometry = cfdx::core::make_geometry_cache(mesh);
+    for (std::size_t c = 0; c < n; ++c) {
+        const double volume = f13_geometry.cell_volumes[c];
+        if (!(volume > 0.0) || !std::isfinite(volume))
+            throw std::runtime_error("evaluate_energy_terms: invalid cell volume");
+        convection(c) /= rho * volume;
+    }
 
     auto conduction = cfdx::core::compute_laplacian(temperature, mesh);
     for (std::size_t c = 0; c < n; ++c)
-        conduction(c) *= conductivity / rho;
+        conduction(c) *= conductivity / (rho * cp);
 
     return {std::move(convection), std::move(conduction)};
 }

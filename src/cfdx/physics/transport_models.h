@@ -76,7 +76,7 @@ inline TransportProperties compute_transport(double T, double rho,
                                              double S = SUTHERTY_S,
                                              double Pr = 0.71,
                                              double Sc = 0.7,
-                                             double Cp = AIR_R * 1005.0 / 1.4) {
+                                             double Cp = 1.4 * AIR_R / (1.4 - 1.0)) {
     TransportProperties tp;
     tp.mu = sutherland_viscosity(T, mu0_ref, T_ref, S);
     tp.k = prandtl_conductivity(tp.mu, Cp, Pr);

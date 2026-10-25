@@ -150,7 +150,7 @@ private:
 
         auto solved = run_dual_time_step(
             initial_values, n_values, nm1_values, dt,
-            controls.pseudo_time, rhs_vector, update);
+            controls.pseudo_time, rhs_vector, update, history.dt_previous);
         return {
             unflatten(initial, solved.first, "dual_time_state"),
             std::move(solved.second)

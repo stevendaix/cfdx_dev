@@ -20,7 +20,8 @@ inline std::pair<std::vector<double>, DualTimeStepReport> run_dual_time_step(
     double dt,
     const DualTimeStepControls& controls,
     const std::function<std::vector<double>(const std::vector<double>&)>& rhs,
-    const DualTimeUpdate& update)
+    const DualTimeUpdate& update,
+    double dt_previous = 0.0)
 {
     validate_dual_time_controls(controls);
     if (initial_state.size() != state_n.size())
@@ -36,7 +37,7 @@ inline std::pair<std::vector<double>, DualTimeStepReport> run_dual_time_step(
 
     for (std::size_t iteration = 1; iteration <= controls.max_pseudo_iterations; ++iteration) {
         const auto residual = dual_time_physical_residual(
-            state, state_n, state_nm1, dt, controls.physical_scheme, rhs);
+            state, state_n, state_nm1, dt, controls.physical_scheme, rhs, dt_previous);
         const double norm = dual_time_norm(residual);
         if (iteration == 1) report.initial_residual = norm;
         const double relative = report.initial_residual > 0.0
@@ -59,7 +60,7 @@ inline std::pair<std::vector<double>, DualTimeStepReport> run_dual_time_step(
 
         const double next_residual = dual_time_norm(
             dual_time_physical_residual(candidate, state_n, state_nm1, dt,
-                                         controls.physical_scheme, rhs));
+                                         controls.physical_scheme, rhs, dt_previous));
         state = candidate;
         if (std::isfinite(previous_residual)) {
             if (next_residual < previous_residual)

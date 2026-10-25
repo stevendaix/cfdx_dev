@@ -508,6 +508,26 @@ if(CFDX_BUILD_TESTS)
             LABELS "n11;unit;validation")
     endif()
 
+    # Audit counterexamples: active checks in Release as well as Debug.
+    # test_audit_numerics is deliberately not registered yet: its Krylov/QUICK/WLS
+    # sections exercise the G01-G09 fixes carried by PR #1092; register it when
+    # that work lands (file already present in tests/audit/).
+    add_cfdx_test(test_audit_flux_contract tests/audit/test_audit_flux_contract.cpp)
+    # H05: the boundary energy diagnostic must use the same normal-distance
+    # metric as the assembler; shear {0,1,3} x face-value override must keep
+    # matrix balance and independent diagnostic within 1e-12 of each other.
+    # test_audit_cht_contract is deliberately not registered yet: its
+    # fail-closed interface-contract rejections depend on the CHT conductance
+    # coherence work carried by PR #1095; register it when that work lands.
+    # F12/F13: evaluate_momentum_terms / evaluate_energy_terms must return
+    # homogeneous per-unit-volume terms (m/s^2, K/s); the rescaling checks
+    # catch an integrated flux-sum convection term (scales s^2, not 1/s).
+    add_cfdx_test(test_audit_helper_terms tests/audit/test_audit_helper_terms.cpp)
+    set_tests_properties(test_audit_flux_contract PROPERTIES
+        LABELS "audit;regression" TIMEOUT 60)
+    set_tests_properties(test_audit_helper_terms PROPERTIES
+        LABELS "audit;regression" TIMEOUT 60)
+
     # Unit tests - Core
     add_cfdx_test(test_point tests/unit/test_point.cpp)
     add_cfdx_test(test_face tests/unit/test_face.cpp)
