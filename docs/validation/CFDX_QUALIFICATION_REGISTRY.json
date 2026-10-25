@@ -1,4 +1,3 @@
-
 {
   "schema_version": "1.0",
   "campaign": "CFDX Engineering Qualification Campaign",
@@ -407,9 +406,27 @@
       "observed_order": "The oracle is the exact discrete solution on a frozen first-order upwind flux, so no refinement order is claimed; refinement series deferred to the physical campaign",
       "runtime": "Milliseconds per chain (unit test runs in fast CTest, labels qualification;validation;phase13)",
       "regression_status": "test_production_energy_stage_vv in CI; READY is not PASS: physical promotion requires the real-solver campaign (cfdx_production_solver on a .cfdx.h5 case) executed on an exact merged HEAD with retained evidence (governance #118); post-merge fix branch: root cause of the red CI (pressure gauge anchor on the inlet cell - the eliminated continuity row cannot balance the injected inlet mass) fixed by anchoring on the outlet cell, plus stage-contract hardening (heat_flux on WALL patches only, Dirichlet+heat_flux contradiction rejected, dynamic_viscosity required, per-cell normalized local gate, explicit solid_conduction/compressible routing, complete geometry contract)"
-
+    },
+    {
+      "id": "INC-TRANSPOSE-STRESS-MMS",
+      "domain": "Incompressible momentum",
+      "case": "Variable-viscosity transpose-stress manufactured operator",
+      "status": "DIAGNOSTIC",
+      "reference": "Analytical Newtonian stress divergence for U=(a*y,0,0), div(U)=0, and mu_eff(x)=1+x; independent face-flux and cell-RHS oracle",
+      "parameters": "a=2.5; mu_eff=1+x; U=(a*y,0,0); zero mass flux for isolated momentum assembly",
+      "mesh": "Four-cell orthogonal channel, unit width and height; internal x-face checks",
+      "boundary_conditions": "Component-wise fixed affine velocity values on separate x/y/z wall patches",
+      "numerical_schemes": "Finite-volume scalar diffusion plus conservative explicit div(mu_eff*grad(U)^T) face flux; linear distance-weighted face interpolation",
+      "solver_settings": "Unit-level production momentum-equation assembly; not a full production case-file solve",
+      "convergence_criteria": "Absolute internal face-flux and cell-RHS error <= 1e-12 for the affine operator test",
+      "conservation_criteria": "Equal-and-opposite internal face fluxes; sum of cell RHS equals the boundary stress-flux sum",
+      "qoi": "Transpose-stress internal face flux and y-momentum RHS",
+      "reference_value": "F_y^T(x_f)=mu_eff(x_f)*a*S_x; div(F_y^T)=a*V_c for internal cells",
+      "error": "Absolute face-flux and cell-RHS error",
+      "observed_order": "Not measured; single-mesh operator verification only",
+      "runtime": "Not measured",
+      "regression_status": "Registered unit test tests/unit/test_variable_viscosity_transpose_stress.cpp; exact-HEAD CI pending. Full production momentum MMS, mesh-refinement/GCI and skewed/polyhedral validation remain open.",
+      "method_fiche": "docs/audits/23-variable-viscosity-stress.md"
     }
-  ]
-}
   ]
 }
