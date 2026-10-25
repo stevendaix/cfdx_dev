@@ -18,7 +18,7 @@ namespace cfdx::physics {
 struct EnergySolverControls {
     double density = 1.0;
     double cp = 1000.0;
-    double conductivity = 1.0;       // fallback if no cell conductivity is supplied
+    double conductivity = 1.0;
     double dt = 0.0;                 // <=0 => steady
     double relaxation = 0.9;
     std::size_t max_iterations = 500;
@@ -89,26 +89,12 @@ inline void validate_energy_implicit_source(
     std::size_t n_cells)
 {
     if (!source_implicit) return;
-    if (source_implicit->size()!=n_cells || source_implicit->dimension()!=1)
+    if (source_implicit->size()!=n_cells)
         throw std::invalid_argument("energy implicit source field size mismatch");
     for(std::size_t i=0;i<n_cells;++i)
         if (!std::isfinite((*source_implicit)(i)) || (*source_implicit)(i)>0.0)
             throw std::invalid_argument(
                 "energy implicit source must be finite and non-positive");
-}
-
-// Conductivity is in W/(m.K), including any frozen turbulent contribution.
-// Density and cp remain constant in this temperature-based energy equation.
-inline void validate_energy_conductivity(
-    const std::vector<double>* conductivity_values, std::size_t n_cells)
-{
-    if (!conductivity_values) return;
-    if (conductivity_values->size()!=n_cells)
-        throw std::invalid_argument("energy conductivity field size mismatch");
-    for (const double k : *conductivity_values)
-        if (!(k>=0.0) || !std::isfinite(k))
-            throw std::invalid_argument(
-                "energy conductivity must be finite and non-negative");
 }
 
 inline ScalarEquation assemble_energy_equation(
@@ -121,15 +107,12 @@ inline ScalarEquation assemble_energy_equation(
     const ScalarBoundaryConditions& bcs = {},
     const ScalarBoundaryFaceValues* face_values = nullptr,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr,
-    const std::vector<double>* conductivity_values = nullptr,
-    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* current_temperature = nullptr)
 {
     validate_energy_controls(c);
-    if (source.size()!=mesh.n_cells() || source.dimension()!=1 ||
-        old_temperature.size()!=mesh.n_cells() || old_temperature.dimension()!=1)
+    if (source.size()!=mesh.n_cells() || old_temperature.size()!=mesh.n_cells())
         throw std::invalid_argument("energy field size mismatch");
     validate_energy_implicit_source(source_implicit,mesh.n_cells());
-    validate_energy_conductivity(conductivity_values,mesh.n_cells());
 
     cfdx::core::Field<double,cfdx::core::Location::CELL> su(
         mesh.n_cells(),"energy_source","W/m3",1);
@@ -150,38 +133,8 @@ inline ScalarEquation assemble_energy_equation(
     const auto enthalpy_flux=enthalpy_face_flux(mass_flux,c.cp);
     return assemble_scalar_equation(
         mesh,geometry,enthalpy_flux,c.conductivity,su,sp,bcs,true,
-        face_values,&transient_diag,&transient_rhs,conductivity_values,
-        ConvectionScheme::UPWIND,nullptr,face_conditions);
-}
-
-// Rebuild physical watts directly from the final state, independently of the
-// matrix: m_dot*cp*T_upwind - lambda_eff*grad(T). The same cell conductivities
-// and resolved face conditions must be supplied to assembly and all audits.
-inline cfdx::core::Field<double,cfdx::core::Location::FACE>
-reconstruct_energy_face_flux(
-    const cfdx::core::Mesh& mesh,
-    const FvGeometry& geometry,
-    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>& temperature,
-    const EnergySolverControls& controls,
-    const ScalarBoundaryConditions& bcs = {},
-    const ScalarBoundaryFaceValues* face_values = nullptr,
-    const std::vector<double>* conductivity_values = nullptr,
-    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
-{
-    validate_energy_controls(controls);
-    validate_energy_conductivity(conductivity_values,mesh.n_cells());
-    if (mass_flux.size()!=mesh.n_faces() || mass_flux.dimension()!=1 ||
-        temperature.size()!=mesh.n_cells() || temperature.dimension()!=1)
-        throw std::invalid_argument("energy flux reconstruction field size mismatch");
-    if (face_conditions &&
-        (face_conditions->conditions.size()!=mesh.n_faces() ||
-         face_conditions->specified.size()!=mesh.n_faces()))
-        throw std::invalid_argument("energy boundary face conditions size mismatch");
-    const auto enthalpy_flux=enthalpy_face_flux(mass_flux,controls.cp);
-    return reconstruct_scalar_transport_flux(
-        mesh,geometry,enthalpy_flux,temperature,controls.conductivity,bcs,true,
-        ConvectionScheme::UPWIND,face_conditions,conductivity_values,face_values);
+        face_values,&transient_diag,&transient_rhs,nullptr,
+        ConvectionScheme::UPWIND,current_temperature);
 }
 
 inline double energy_balance_relative_from_equation(
@@ -219,32 +172,72 @@ inline double energy_balance_relative(
     const EnergySolverControls& controls,
     const ScalarBoundaryConditions& bcs,
     const ScalarBoundaryFaceValues* face_values = nullptr,
-    const std::vector<double>* conductivity_values = nullptr,
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr,
-    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
+    const std::vector<double>* conductivity_values = nullptr)
 {
-    if (temperature.size()!=mesh.n_cells() || temperature.dimension()!=1 ||
-        old_temperature.size()!=mesh.n_cells() || old_temperature.dimension()!=1 ||
-        source.size()!=mesh.n_cells() || source.dimension()!=1)
-        throw std::invalid_argument("energy balance field size mismatch");
-    validate_energy_implicit_source(source_implicit,mesh.n_cells());
-    const auto flux=reconstruct_energy_face_flux(
-        mesh,geometry,mass_flux,temperature,controls,bcs,face_values,
-        conductivity_values,face_conditions);
-    double net_flux=0.0, source_total=0.0, accumulation=0.0;
-    for (std::size_t c=0;c<mesh.n_cells();++c) {
-        const double physical_source=source(c)+
-            (source_implicit ? (*source_implicit)(c)*temperature(c) : 0.0);
-        source_total+=physical_source*geometry.cell_volumes[c];
-        if (controls.dt>0.0)
-            accumulation+=controls.density*controls.cp*geometry.cell_volumes[c]*
+    if (conductivity_values && conductivity_values->size()!=mesh.n_cells())
+        throw std::invalid_argument("energy conductivity field size mismatch");
+    double net_flux = 0.0;
+    double source_total = 0.0;
+    double accumulation = 0.0;
+    const auto& own = mesh.ownership();
+
+    for(std::size_t c=0;c<mesh.n_cells();++c) {
+        source_total += source(c) * geometry.cell_volumes[c];
+        if(controls.dt > 0.0)
+            accumulation += controls.density * controls.cp *
+                geometry.cell_volumes[c] *
                 (temperature(c)-old_temperature(c))/controls.dt;
     }
-    for (std::size_t f=0;f<mesh.n_faces();++f)
-        if (mesh.ownership().neighbour(f)<0) net_flux+=flux(f);
-    const double imbalance=accumulation+net_flux-source_total;
+
+    for(std::size_t f=0;f<mesh.n_faces();++f) {
+        const std::size_t o=own.owner(f);
+        const auto nraw=own.neighbour(f);
+        if(nraw>=0) continue;
+
+        const std::size_t patch=geometry.face_patch[f];
+        ScalarBoundaryCondition bc;
+        if(patch<mesh.boundary().n_patches()) {
+            const auto& name=mesh.boundary().patch(patch).name;
+            auto it=bcs.find(name);
+            if(it!=bcs.end()) bc=it->second;
+        }
+
+        const auto& Sf0=geometry.face_area_vectors[f];
+        const auto dvec=geometry.face_centres[f]-geometry.cell_centres[o];
+        const double sign=(Sf0.dot(dvec)>=0.0)?1.0:-1.0;
+        const auto Sf=Sf0*sign;
+        const double area=Sf.mag();
+        const double d=dvec.mag();
+        const double F=mass_flux(f);
+        double Tf=temperature(o);
+        bool face_override_valid=false;
+        if(face_values && patch<mesh.boundary().n_patches()) {
+            const auto it=face_values->values.find(mesh.boundary().patch(patch).name);
+            if(it!=face_values->values.end() && f<it->second.size() &&
+               std::isfinite(it->second[f])) {
+                Tf=it->second[f];
+                face_override_valid=true;
+            }
+        }
+        if(!face_override_valid) {
+            if(bc.type==ScalarBoundaryType::FIXED_VALUE)
+                Tf=bc.value;
+            else if(bc.type==ScalarBoundaryType::FIXED_GRADIENT)
+                Tf=temperature(o)+bc.gradient*d;
+        }
+
+        const double k=conductivity_values
+            ? (*conductivity_values)[o] : controls.conductivity;
+        double conductive=-k*bc.gradient*area;
+        if(d>0.0 && (bc.type==ScalarBoundaryType::FIXED_VALUE || face_override_valid))
+            conductive=-k*(Tf-temperature(o))/d*area;
+        const double convective=controls.cp*F*(F>=0.0 ? temperature(o) : Tf);
+        net_flux += convective + conductive;
+    }
+
+    const double imbalance=accumulation + net_flux - source_total;
     const double scale=std::max({1.0,std::abs(accumulation),
-                                std::abs(net_flux),std::abs(source_total)});
+                                 std::abs(net_flux),std::abs(source_total)});
     return std::abs(imbalance)/scale;
 }
 
@@ -278,20 +271,24 @@ inline IndependentEnergyBalance reconstruct_energy_balance(
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& source,
     const EnergySolverControls& controls,
     const ScalarBoundaryConditions& bcs = {},
-    const ScalarBoundaryFaceValues* face_values = nullptr,
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr,
-    const std::vector<double>* conductivity_values = nullptr,
-    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
+    const ScalarBoundaryFaceValues* face_values = nullptr)
 {
-    if (temperature.size()!=mesh.n_cells() || temperature.dimension()!=1 ||
-        old_temperature.size()!=mesh.n_cells() || old_temperature.dimension()!=1 ||
-        source.size()!=mesh.n_cells() || source.dimension()!=1)
+    if (temperature.size()!=mesh.n_cells() || old_temperature.size()!=mesh.n_cells() ||
+        source.size()!=mesh.n_cells())
         throw std::invalid_argument("reconstruct_energy_balance: field size mismatch");
 
-    validate_energy_implicit_source(source_implicit,mesh.n_cells());
-    const auto flux=reconstruct_energy_face_flux(
-        mesh,geometry,mass_flux,temperature,controls,bcs,face_values,
-        conductivity_values,face_conditions);
+    // Rebuild the energy face flux from the final temperature and the
+    // authoritative mass flux. This does not use the assembled matrix.
+    // The scalar reconstruction is performed in temperature units first:
+    // F*T - (k/cp)*grad(T). Multiplication by cp then recovers the
+    // physical energy flux F*cp*T - k*grad(T), including boundary terms.
+    auto temperature_flux = reconstruct_scalar_transport_flux(
+        mesh, geometry, mass_flux, temperature,
+        controls.conductivity / controls.cp, bcs, true,
+        ConvectionScheme::UPWIND, nullptr, nullptr, face_values);
+    for (std::size_t f = 0; f < temperature_flux.size(); ++f)
+        temperature_flux(f) *= controls.cp;
+    const auto& flux = temperature_flux;
 
     IndependentEnergyBalance r;
     const auto& own=mesh.ownership();
@@ -314,11 +311,7 @@ inline IndependentEnergyBalance reconstruct_energy_balance(
 
     double sum2=0.0;
     for(std::size_t c=0;c<mesh.n_cells();++c) {
-        // The implicit coefficient belongs to the physical volumetric
-        // source Su+Sp*T_final, not just the matrix diagonal. Using Su alone
-        // reports a spurious source even at exact radiative equilibrium.
-        const double s=source(c)+
-            (source_implicit ? (*source_implicit)(c)*temperature(c) : 0.0);
+        const double s=source(c);
         const double accumulation=controls.dt>0.0
             ? controls.density*controls.cp*geometry.cell_volumes[c]*
               (temperature(c)-old_temperature(c))/controls.dt : 0.0;
@@ -363,20 +356,15 @@ inline EnergySolveResult solve_energy(
     const ScalarBoundaryConditions& bcs = {},
     const ScalarBoundaryFaceValues* face_values = nullptr,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>* source_implicit = nullptr,
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>* previous_time_temperature = nullptr,
-    const std::vector<double>* conductivity_values = nullptr,
-    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>* previous_time_temperature = nullptr)
 {
     validate_energy_controls(controls);
-    if(temperature.size()!=mesh.n_cells() || temperature.dimension()!=1 ||
-       source.size()!=mesh.n_cells() || source.dimension()!=1)
+    if(temperature.size()!=mesh.n_cells() || source.size()!=mesh.n_cells())
         throw std::invalid_argument("energy field size mismatch");
 
     validate_energy_implicit_source(source_implicit,mesh.n_cells());
-    validate_energy_conductivity(conductivity_values,mesh.n_cells());
     if (previous_time_temperature &&
-        (previous_time_temperature->size()!=mesh.n_cells() ||
-         previous_time_temperature->dimension()!=1))
+        previous_time_temperature->size()!=mesh.n_cells())
         throw std::invalid_argument("energy previous-time field size mismatch");
 
     EnergySolveResult result;
@@ -394,8 +382,8 @@ inline EnergySolveResult solve_energy(
         controls.energy_balance_tolerance > 0.0 ? controls.energy_balance_tolerance : controls.tolerance;
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         auto eq=assemble_energy_equation(
-            mesh,geometry,mass_flux,source,T_previous_time,controls,bcs,face_values,
-            source_implicit,conductivity_values,face_conditions);
+            mesh,geometry,mass_flux,source,T_previous_time,controls,bcs,
+            face_values,source_implicit,&temperature);
         cfdx::core::Vector candidate(temperature.size(),0.0);
         for(std::size_t i=0;i<temperature.size();++i)
             candidate(i)=temperature(i);
@@ -481,8 +469,7 @@ inline EnergySolveResult solve_energy(
             relative_temperature_change <= temperature_tolerance;
         const auto independent_energy = reconstruct_energy_balance(
             mesh, geometry, mass_flux, temperature, T_previous_time,
-            source, controls, bcs, face_values,source_implicit,
-            conductivity_values,face_conditions);
+            source, controls, bcs, face_values);
         EnergyIteration iteration_report;
         iteration_report.iteration = iter;
         iteration_report.residual = res;

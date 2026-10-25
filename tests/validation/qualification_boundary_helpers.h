@@ -109,8 +109,16 @@ inline void exercise_new_velocity_bc_contract(
         grad_p(mesh.n_cells(), "bc_preflight_gradp", "Pa/m", 3);
     cfdx::core::Field<double, cfdx::core::Location::CELL>
         body(mesh.n_cells(), "bc_preflight_body", "N/m3", 1);
+    cfdx::core::Field<double, cfdx::core::Location::CELL>
+        preflight_velocity_component(
+            mesh.n_cells(), "bc_preflight_velocity_component", "m/s", 1);
     grad_p.fill(0.0);
     body.fill(0.0);
+    // This helper validates boundary-condition resolution and matrix assembly,
+    // not a physical momentum iterate. Supply an explicit zero current field
+    // so non-orthogonal diffusion can be assembled without inventing a
+    // production fallback or weakening the fail-closed field contract.
+    preflight_velocity_component.fill(0.0);
 
     for (std::size_t component = 0; component < 3; ++component) {
         const std::string field =
@@ -132,7 +140,8 @@ inline void exercise_new_velocity_bc_contract(
         const auto equation = cfdx::physics::assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body, 1.0,
             constraints, component, false, 0.0,
-            cfdx::physics::ConvectionScheme::UPWIND, nullptr);
+            cfdx::physics::ConvectionScheme::UPWIND,
+            &preflight_velocity_component);
         if (equation.matrix.n_rows() != mesh.n_cells())
             throw std::runtime_error(label + ": new BC FVM assembly returned invalid matrix");
     }
