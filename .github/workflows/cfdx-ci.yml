@@ -137,6 +137,8 @@ jobs:
           set -o pipefail
           python -m pytest -q tests/python 2>&1 | tee pytest.log
         env:
+          CFDX_PRODUCTION_SOLVER: ${{ github.workspace }}/build/cfdx_production_solver
+          CFDX_THERMAL_SOLVER: ${{ github.workspace }}/build/cfdx_thermal_solver
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
 
       - name: Compiler cache diagnostics
