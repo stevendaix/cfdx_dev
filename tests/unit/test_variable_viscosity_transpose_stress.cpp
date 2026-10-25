@@ -374,8 +374,15 @@ int main()
             mesh, geometry, U, bcs, mu, 1);
         const auto rhs = momentum_transpose_diffusion_rhs(
             mesh, geometry, U, bcs, mu, 1);
-        for (const double value : flux) EXPECT_NEAR(value, 0.0, 0.0);
-        for (const double value : rhs) EXPECT_NEAR(value, 0.0, 0.0);
+        for (std::size_t face = 1; face <= 3; ++face) {
+            const double expected =
+                mu.front() * a * geometry.face_area_vectors[face].x;
+            EXPECT_NEAR(flux[face], expected, 1e-12);
+        }
+        // The affine shear has constant transpose-stress flux in x, so its
+        // cellwise divergence is zero even though the individual face fluxes
+        // are nonzero.
+        for (const double value : rhs) EXPECT_NEAR(value, 0.0, 1e-12);
     });
 
     return run_all();
