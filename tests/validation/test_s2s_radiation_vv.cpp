@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <vector>
 
 using namespace cfdx::physics;
@@ -86,6 +87,100 @@ int main()
         EXPECT_NEAR(A[0]*F[1],A[1]*F[2],1e-12);
     });
 
+    run_case("s2s_centroid_geometry_rejects_nonfinite_inputs", [] {
+        const ViewFactorPatch source{{0, 0, 0}, {0, 0, 1}, 2.0};
+        const ViewFactorPatch target{{0, 0, 2}, {0, 0, -1}, 1.0};
+        const double invalid[] = {
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::infinity(),
+            -std::numeric_limits<double>::infinity()};
+        for (double value : invalid) {
+            for (std::size_t axis = 0; axis < 3; ++axis) {
+                auto bad = source;
+                bad.center[axis] = value;
+                EXPECT_THROW(patch_pair_view_factor(bad, target),
+                             std::invalid_argument);
+                EXPECT_THROW(patch_pair_view_factor(target, bad),
+                             std::invalid_argument);
+                EXPECT_THROW(estimate_view_factor_matrix({bad}),
+                             std::invalid_argument);
+                bad = source;
+                bad.normal[axis] = value;
+                EXPECT_THROW(patch_pair_view_factor(bad, target),
+                             std::invalid_argument);
+                EXPECT_THROW(patch_pair_view_factor(target, bad),
+                             std::invalid_argument);
+                EXPECT_THROW(estimate_view_factor_matrix({bad}),
+                             std::invalid_argument);
+            }
+            auto bad = source;
+            bad.area = value;
+            EXPECT_THROW(patch_pair_view_factor(bad, target),
+                         std::invalid_argument);
+            EXPECT_THROW(patch_pair_view_factor(target, bad),
+                         std::invalid_argument);
+            EXPECT_THROW(estimate_view_factor_matrix({bad}),
+                         std::invalid_argument);
+        }
+        auto bad = source;
+        bad.normal = {0, 0, 0};
+        EXPECT_THROW(estimate_view_factor_matrix({bad}),
+                     std::invalid_argument);
+        // Reject geometry before even the coincident-centroid early return.
+        EXPECT_THROW(patch_pair_view_factor(bad, source),
+                     std::invalid_argument);
+        for (double area : {0.0, -1.0}) {
+            bad = source;
+            bad.area = area;
+            EXPECT_THROW(patch_pair_view_factor(bad, source),
+                         std::invalid_argument);
+            EXPECT_THROW(estimate_view_factor_matrix({bad}),
+                         std::invalid_argument);
+        }
+        auto distant = target;
+        distant.center[2] = std::numeric_limits<double>::max();
+        auto opposite = source;
+        opposite.center[2] = -std::numeric_limits<double>::max();
+        EXPECT_THROW(patch_pair_view_factor(opposite, distant),
+                     std::overflow_error);
+        // Finite geometry may still exceed the representable exchange range.
+        // Reject it before a zero closure scale could multiply infinity.
+        auto tiny = source;
+        tiny.area = 1e-300;
+        auto huge = target;
+        huge.area = 1e308;
+        huge.center[2] = 0.1;
+        EXPECT_THROW(estimate_view_factor_matrix({tiny, huge}),
+                     std::overflow_error);
+    });
+
+    run_case("s2s_centroid_geometry_preserves_reciprocity_and_limits", [] {
+        const ViewFactorPatch source{{0, 0, 0}, {0, 0, 2}, 2.0};
+        const ViewFactorPatch target{{0, 0, 2}, {0, 0, -3}, 1.0};
+        const auto F = estimate_view_factor_matrix({source, target});
+        const std::vector<double> areas{source.area, target.area};
+        validate_s2s_view_factors(F, areas, 1e-12);
+        EXPECT_NEAR(F[1], 1.0 / (4.0 * M_PI), 1e-14);
+        EXPECT_NEAR(F[2], 2.0 / (4.0 * M_PI), 1e-14);
+        EXPECT_NEAR(areas[0] * F[1], areas[1] * F[2], 1e-14);
+        EXPECT_NEAR(F[0], 0.0, 0.0);
+        EXPECT_NEAR(F[3], 0.0, 0.0);
+        EXPECT_NEAR(patch_pair_view_factor(source, source), 0.0, 0.0);
+        auto facing_away = target;
+        facing_away.normal = {0, 0, 1};
+        EXPECT_NEAR(patch_pair_view_factor(source, facing_away), 0.0, 0.0);
+
+        // Scaling normals cannot change the projected solid angle.
+        auto large_normal = source;
+        large_normal.normal[2] = 1e200;
+        EXPECT_NEAR(patch_pair_view_factor(large_normal, target), F[1], 1e-14);
+        const auto enclosure = solve_s2s_radiosity(
+            {1.0, 1.0}, {0.7, 0.5}, {800.0, 400.0},
+            {0.0, 1.0, 1.0, 0.0});
+        EXPECT_TRUE(enclosure.converged);
+        EXPECT_NEAR(enclosure.total_power, 0.0, 1e-9);
+    });
+
     run_case("s2s_monte_carlo_visibility_and_blocking", [] {
         const std::vector<RadiationTriangle> s1{{
             {0,0,0},{1,0,0},{0,1,0}}}; // +z
@@ -114,6 +209,42 @@ int main()
             radiation_triangle_area(s2.front())};
         validate_s2s_view_factors(matrix, areas, 1e-12);
         EXPECT_NEAR(areas[0] * matrix[1], areas[1] * matrix[2], 1e-12);
+    });
+
+    run_case("s2s_triangle_kernel_rejects_nonfinite_geometry", [] {
+        const RadiationTriangle triangle{{0, 0, 1}, {1, 0, 1}, {0, 1, 1}};
+        const double invalid[] = {
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::infinity(),
+            -std::numeric_limits<double>::infinity()};
+        for (double value : invalid) {
+            for (std::size_t axis = 0; axis < 3; ++axis) {
+                for (std::size_t vertex = 0; vertex < 3; ++vertex) {
+                    auto bad = triangle;
+                    auto& coordinate = vertex == 0 ? bad.a : vertex == 1 ? bad.b : bad.c;
+                    coordinate[axis] = value;
+                    double distance = 0.0;
+                    EXPECT_THROW(radiation_ray_triangle_hit(
+                        {0.1, 0.1, 0}, {0, 0, 1}, bad, distance), std::invalid_argument);
+                    EXPECT_THROW(radiation_triangle_area(bad), std::invalid_argument);
+                    EXPECT_THROW(radiation_triangle_normal(bad), std::invalid_argument);
+                    EXPECT_THROW(estimate_view_factor_ray_traced(
+                        {bad}, {triangle}, {}, 1), std::invalid_argument);
+                }
+                std::array<double, 3> bad_ray{0, 0, 1};
+                bad_ray[axis] = value;
+                double distance = 0.0;
+                EXPECT_THROW(radiation_ray_triangle_hit(
+                    bad_ray, {0, 0, 1}, triangle, distance), std::invalid_argument);
+                EXPECT_THROW(radiation_ray_triangle_hit(
+                    {0.1, 0.1, 0}, bad_ray, triangle, distance), std::invalid_argument);
+            }
+        }
+        double distance = 0.0;
+        EXPECT_TRUE(radiation_ray_triangle_hit(
+            {0.1, 0.1, 0}, {0, 0, 1}, triangle, distance));
+        EXPECT_NEAR(distance, 1.0, 1e-14);
+        EXPECT_NEAR(radiation_triangle_area(triangle), 0.5, 1e-14);
     });
 
     run_case("s2s_model_selector", [] {
