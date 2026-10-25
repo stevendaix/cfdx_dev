@@ -1134,10 +1134,10 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                 boundary_gradient[component][cell][direction] =
                     grad.component_data(direction)[cell];
         // The two-point Green-Gauss face value is not linear-exact on skewed
-        // polyhedra. Use the least-squares gradient on cells with at least
-        // three independent neighbour directions; preserve boundary-aware
-        // Green-Gauss values on undersampled cells (e.g. a one-cell-thick
-        // channel), where prescribed boundary values complete the stencil.
+        // polyhedra. Use the rank-aware least-squares gradient on cells with at
+        // least three internal neighbours; preserve boundary-aware Green-Gauss
+        // values on smaller stencils (e.g. a one-cell-thick channel), where
+        // prescribed boundary values complete the stencil.
         const auto grad_ls = cfdx::core::compute_gradient_least_squares(scalar, mesh);
         const auto* cell_faces = mesh.cells().faces_data();
         const auto* cell_offsets = mesh.cells().offsets_data();
