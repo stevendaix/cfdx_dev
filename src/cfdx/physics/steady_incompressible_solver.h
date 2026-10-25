@@ -1002,7 +1002,7 @@ inline ScalarEquation assemble_momentum_component(
     return assemble_scalar_equation(
         mesh, geometry, mass_flux, effective_dynamic_viscosity,
         source, sp, velocity_bcs, bounded, nullptr, nullptr, nullptr, nullptr,
-        convection_scheme, convected_field);
+        convection_scheme, convected_field, nullptr, false);
 }
 
 inline ScalarEquation assemble_momentum_component(
