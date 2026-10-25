@@ -396,8 +396,11 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
     std::vector<double> flux(nf, 0.0);
     if (!active) return flux;
 
-    const auto gradient = compute_scalar_gradient_with_boundary(
-        field, mesh, geometry, boundary_conditions, face_values, face_conditions);
+    // Least-squares reconstruction is linear-exact when face centroids do not
+    // lie on owner-neighbour centre lines. Green-Gauss with a two-point face
+    // interpolation is biased on warped/skewed cells and breaks the affine
+    // diffusion identity even when the flux decomposition is correct.
+    const auto gradient = cfdx::core::compute_gradient_least_squares(field, mesh);
     const auto& ownership = mesh.ownership();
     for (std::size_t face = 0; face < nf; ++face) {
         const std::size_t owner = ownership.owner(face);
