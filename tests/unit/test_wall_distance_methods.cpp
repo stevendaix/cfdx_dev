@@ -6,6 +6,44 @@
 
 using namespace cfdx::physics;
 
+
+static WallDistanceVec3 cross_product(const WallDistanceVec3& a,const WallDistanceVec3& b) {
+    return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};
+}
+
+// Retained brute-force oracle for ray_distance() regression tests.
+static double brute_ray_distance(const WallSurface& surface,
+                                 const WallDistanceVec3& p,
+                                 const WallDistanceVec3& direction,
+                                 double max_distance) {
+    const double dn=wd_norm(direction);
+    if(!(dn>1e-30) || !(max_distance>0.0))
+        return std::numeric_limits<double>::infinity();
+    const WallDistanceVec3 d=direction*(1.0/dn);
+    double best=std::numeric_limits<double>::infinity();
+    const double eps=1e-12*std::max(1.0,max_distance);
+    for(const auto& tri:surface.triangles) {
+        const auto& v0=surface.points[tri.v[0]];
+        const auto& v1=surface.points[tri.v[1]];
+        const auto& v2=surface.points[tri.v[2]];
+        const auto e1=v1-v0, e2=v2-v0;
+        const auto h=cross_product(d,e2);
+        const double a=wd_dot(e1,h);
+        if(std::abs(a)<1e-14) continue;
+        const double inv_a=1.0/a;
+        const auto offset=p-v0;
+        const double u=inv_a*wd_dot(offset,h);
+        if(u < -1e-12 || u > 1.0+1e-12) continue;
+        const auto q=cross_product(offset,e1);
+        const double v=inv_a*wd_dot(d,q);
+        if(v < -1e-12 || u+v > 1.0+1e-12) continue;
+        const double t=inv_a*wd_dot(e2,q);
+        if(t>=-eps && t<=max_distance+eps)
+            best=std::min(best,std::max(0.0,t));
+    }
+    return best;
+}
+
 static void require(bool ok,const char* msg) {
     if(!ok) throw std::runtime_error(msg);
 }
@@ -50,6 +88,27 @@ int main() {
     const WallDistanceBvh bvh(s);
     require(bvh.triangle_count()==s.triangles.size(),"BVH triangle count mismatch");
     require(bvh.node_count()>0,"BVH is empty");
+    // Ray-query regression: face interior, clipped hit, misses, and
+    // intersections on triangle seams/edges/vertices must match the
+    // historical brute-force triangle scan.
+    const auto check_ray=[&](const WallDistanceVec3& origin,
+                             const WallDistanceVec3& direction,double max_distance,
+                             const char* message) {
+        const double expected=brute_ray_distance(s,origin,direction,max_distance);
+        const double actual=bvh.ray_distance(origin,direction,max_distance);
+        if(std::isinf(expected)) require(std::isinf(actual),message);
+        else require(std::isfinite(actual) && std::abs(actual-expected)<1e-12,message);
+    };
+    check_ray({0.5,0.5,0.5},{1,0,0},1.0,"BVH ray face hit differs from brute force");
+    check_ray({0.5,0.5,0.5},{1,0,0},0.49,"BVH ray max-distance clipping differs");
+    check_ray({2,2,2},{1,0,0},5.0,"BVH ray miss differs from brute force");
+    check_ray({0.5,0.5,0.5},{1,1,0},1.0,"BVH ray edge hit differs from brute force");
+    check_ray({0.5,0.5,0.5},{1,1,1},1.0,"BVH ray vertex hit differs from brute force");
+    check_ray({-1e-13,0.5,-1.0},{0,0,1},2.0,"BVH pruning rejected a tolerance-level near-edge hit");
+    check_ray({0.5,0.5,0.5},{2,0,0},1.0,"BVH ray direction normalization differs");
+    check_ray({0.5,0.5,0.5},{0,0,0},1.0,"BVH zero-direction handling differs");
+    check_ray({0.5,0.5,0.5},{1,0,0},0.0,"BVH non-positive range handling differs");
+
     const std::array<WallDistanceVec3,8> probes={{{-0.2,0.4,0.4},{0.5,0.5,-0.3},
         {1.2,0.2,0.7},{0.25,0.8,1.4},{-0.4,-0.2,0.3},{0.7,1.3,0.1},
         {1.4,1.4,1.4},{0.12,0.34,0.91}}};
