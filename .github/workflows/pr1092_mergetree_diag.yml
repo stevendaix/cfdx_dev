@@ -9,7 +9,6 @@ permissions:
 
 jobs:
   merge-tree-oracle:
-    # ne tourne que si le message du push contient le marqueur dédié
     if: contains(github.event.head_commit.message, 'pr1092-mergetree')
     runs-on: ubuntu-latest
     steps:
@@ -24,23 +23,31 @@ jobs:
           git fetch origin master fix/numerical-audit-g01-g09
           MASTER_PIN=$(grep master_pin diag-tools/pr1092_mergetree_marker.txt | tail -1 | cut -d= -f2)
           BRANCH_PIN=$(grep branch_pin diag-tools/pr1092_mergetree_marker.txt | tail -1 | cut -d= -f2)
-          echo "master_pin=$MASTER_PIN branch_pin=$BRANCH_PIN"
+          BASE_PIN=$(git merge-base "$MASTER_PIN" "$BRANCH_PIN")
+          echo "master_pin=$MASTER_PIN branch_pin=$BRANCH_PIN base=$BASE_PIN"
           mkdir -p diag-evidence/logs
           OUT="diag-evidence/logs/pr1092_mergetree_${GITHUB_RUN_ID}.txt"
           {
             git --version
-            echo "master_pin=$MASTER_PIN branch_pin=$BRANCH_PIN"
-            git rev-parse "$MASTER_PIN^{commit}" "$BRANCH_PIN^{commit}"
-            echo "=== merge-base ==="
-            git merge-base "$MASTER_PIN" "$BRANCH_PIN"
-            echo "=== merge-tree --name-only (exit 0 = clean, 1 = conflits) ==="
+            echo "master_pin=$MASTER_PIN branch_pin=$BRANCH_PIN base=$BASE_PIN"
+            echo "=== merge-tree --name-only ==="
             git merge-tree --write-tree --name-only "$MASTER_PIN" "$BRANCH_PIN"
             echo "MERGE_TREE_EXIT=$?"
-            echo "=== merge-tree complet (marqueurs de conflit) ==="
-            git merge-tree --write-tree "$MASTER_PIN" "$BRANCH_PIN"
-            echo "MERGE_TREE_FULL_EXIT=$?"
-            echo "=== liste des fichiers en conflit ==="
-            git merge-tree --write-tree --name-only "$MASTER_PIN" "$BRANCH_PIN" 2>/dev/null | tail -n +2 || true
+            for P in src/cfdx/core/linalg/gmres_solver.h src/cfdx/core/linalg/cg_solver.h tests/unit/test_cg_solver.cpp; do
+              F=$(basename "$P")
+              git show "$BASE_PIN:$P" > "/tmp/$F.base" 2>/dev/null
+              git show "$MASTER_PIN:$P" > "/tmp/$F.master" 2>/dev/null
+              git show "$BRANCH_PIN:$P" > "/tmp/$F.branch" 2>/dev/null
+              echo ""
+              echo "########## FILE $P ##########"
+              echo "=== git merge-file (branch base master) exit + contenu diff3 ==="
+              git merge-file -p --diff3 "/tmp/$F.branch" "/tmp/$F.base" "/tmp/$F.master"
+              echo "MERGE_FILE_EXIT=$?"
+              echo "=== git diff base master (hunks git) ==="
+              git diff --no-color -U1 "$BASE_PIN" "$MASTER_PIN" -- "$P"
+              echo "=== git diff base branch (hunks git) ==="
+              git diff --no-color -U1 "$BASE_PIN" "$BRANCH_PIN" -- "$P"
+            done
           } > "$OUT" 2>&1
           cat "$OUT"
           exit 0
