@@ -168,6 +168,23 @@ if QMainWindow is not object:
                     action.triggered.connect(self._stop)
                     self.stop_action = action
             toolbar.addSeparator()
+            for label in ("Undo", "Redo"):
+                action = QAction(label, self)
+                action.setObjectName(f"workbench.action.{label.lower()}")
+                action.setEnabled(False)
+                capability = get_capability(action.objectName())
+                if capability is not None:
+                    action.setStatusTip(capability.prerequisites_tip)
+                toolbar.addAction(action)
+                if label == "Undo":
+                    action.setShortcut("Ctrl+Z")
+                    action.triggered.connect(self._undo)
+                    self.undo_action = action
+                else:
+                    action.setShortcuts(["Ctrl+Shift+Z", "Ctrl+Y"])
+                    action.triggered.connect(self._redo)
+                    self.redo_action = action
+            toolbar.addSeparator()
             for label in ("Contour", "Slice", "Glyph"):
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.action.{label.lower()}")
@@ -687,6 +704,8 @@ if QMainWindow is not object:
                 renderer_ready=has_renderer,
                 dataset_loaded=has_frame or has_dataset,
                 simulation_active=simulation_active,
+                undo_available=self.application.can_undo(),
+                redo_available=self.application.can_redo(),
             )
 
         def _refresh_action_availability(self) -> None:
@@ -887,6 +906,26 @@ if QMainWindow is not object:
             except (KeyError, TypeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Property error: {exc}")
             else:
+                self._refresh_properties()
+
+        def _undo(self) -> None:
+            """Revert the most recent reversible edit and report the label."""
+            try:
+                description = self.application.undo()
+            except (IndexError, KeyError, TypeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Undo failed: {exc}")
+            else:
+                self.statusBar().showMessage(f"Undid: {description}")
+                self._refresh_properties()
+
+        def _redo(self) -> None:
+            """Replay the most recent undone edit and report the label."""
+            try:
+                description = self.application.redo()
+            except (IndexError, KeyError, TypeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Redo failed: {exc}")
+            else:
+                self.statusBar().showMessage(f"Redid: {description}")
                 self._refresh_properties()
 
         def _add_dock(
