@@ -543,7 +543,8 @@ inline ScalarEquation assemble_scalar_equation(
     const std::vector<double>* cell_diffusion = nullptr,
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
-    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr,
+    bool apply_nonorthogonal_correction = true)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
@@ -607,7 +608,7 @@ inline ScalarEquation assemble_scalar_equation(
         }
     }
     bool needs_nonorthogonal_gradient = false;
-    if (diffusion_active) {
+    if (apply_nonorthogonal_correction && diffusion_active) {
         for (std::size_t face = 0; face < nf; ++face) {
             const auto nraw = own.neighbour(face);
             if (nraw < 0) {
@@ -643,15 +644,16 @@ inline ScalarEquation assemble_scalar_equation(
                 needs_nonorthogonal_gradient = true;
         }
     }
-    if (needs_nonorthogonal_gradient && convected_field == nullptr)
+    if (apply_nonorthogonal_correction &&
+        needs_nonorthogonal_gradient && convected_field == nullptr)
         throw std::invalid_argument(
             "assemble_scalar_equation: non-orthogonal diffusion requires the current scalar field");
-    if (needs_nonorthogonal_gradient &&
+    if (apply_nonorthogonal_correction && needs_nonorthogonal_gradient &&
         (convected_field->size() != nc || convected_field->dimension() != 1))
         throw std::invalid_argument(
             "assemble_scalar_equation: invalid scalar field for non-orthogonal diffusion");
     std::vector<double> nonorthogonal_diffusion_flux(nf, 0.0);
-    if (needs_nonorthogonal_gradient) {
+    if (apply_nonorthogonal_correction && needs_nonorthogonal_gradient) {
         nonorthogonal_diffusion_flux = compute_nonorthogonal_diffusion_face_fluxes(
             mesh, geometry, *convected_field, diffusion_coefficient,
             boundary_conditions, cell_diffusion, face_values, face_conditions);
