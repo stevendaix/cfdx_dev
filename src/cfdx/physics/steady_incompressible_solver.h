@@ -1114,10 +1114,12 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
     // bootstrap/convergence) through the finite continuity defect. F11 is
     // the variable-viscosity correction; preserve the equivalent
     // constant-viscosity incompressible formulation exactly.
-    const bool uniform_viscosity = std::all_of(
-        cell_effective_dynamic_viscosity.begin() + 1,
-        cell_effective_dynamic_viscosity.end(),
-        [&](double mu) { return mu == cell_effective_dynamic_viscosity.front(); });
+    const bool uniform_viscosity =
+        cell_effective_dynamic_viscosity.size() <= 1 ||
+        std::all_of(
+            cell_effective_dynamic_viscosity.begin() + 1,
+            cell_effective_dynamic_viscosity.end(),
+            [&](double mu) { return mu == cell_effective_dynamic_viscosity.front(); });
     if (uniform_viscosity)
         return std::vector<double>(nf, 0.0);
 
