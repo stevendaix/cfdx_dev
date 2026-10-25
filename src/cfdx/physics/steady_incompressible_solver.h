@@ -1106,23 +1106,6 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                 "momentum_transpose_diffusion_face_fluxes: viscosity must be finite and non-negative");
     }
 
-    // The production incompressible operator already uses the scalar
-    // Laplacian for the constant-viscosity stress. Under div(U)=0,
-    // div(mu * grad(U)^T) is identically zero for uniform mu. Re-applying
-    // its discrete, explicit approximation in that limit changes the
-    // established constant-viscosity solver (and can spoil transient
-    // bootstrap/convergence) through the finite continuity defect. F11 is
-    // the variable-viscosity correction; preserve the equivalent
-    // constant-viscosity incompressible formulation exactly.
-    const bool uniform_viscosity =
-        cell_effective_dynamic_viscosity.size() <= 1 ||
-        std::all_of(
-            cell_effective_dynamic_viscosity.begin() + 1,
-            cell_effective_dynamic_viscosity.end(),
-            [&](double mu) { return mu == cell_effective_dynamic_viscosity.front(); });
-    if (uniform_viscosity)
-        return std::vector<double>(nf, 0.0);
-
     std::array<std::vector<std::array<double, 3>>, 3> gradient;
     std::array<std::vector<std::array<double, 3>>, 3> boundary_gradient;
     for (std::size_t component = 0; component < 3; ++component) {
@@ -1340,9 +1323,21 @@ inline ScalarEquation assemble_momentum_component_with_transpose_diffusion(
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
 {
-    const auto transpose_rhs = momentum_transpose_diffusion_rhs(
-        mesh, geometry, full_velocity, velocity_bcs,
-        cell_effective_dynamic_viscosity, component);
+    // In the constant-viscosity incompressible limit, the transpose
+    // contribution is equivalent to zero when continuity is satisfied.
+    // Avoid feeding the finite discrete continuity defect back as an
+    // explicit source into the established constant-viscosity solver.
+    const bool uniform_viscosity =
+        cell_effective_dynamic_viscosity.size() <= 1 ||
+        std::all_of(
+            cell_effective_dynamic_viscosity.begin() + 1,
+            cell_effective_dynamic_viscosity.end(),
+            [&](double mu) { return mu == cell_effective_dynamic_viscosity.front(); });
+    const auto transpose_rhs = uniform_viscosity
+        ? std::vector<double>(mesh.n_cells(), 0.0)
+        : momentum_transpose_diffusion_rhs(
+              mesh, geometry, full_velocity, velocity_bcs,
+              cell_effective_dynamic_viscosity, component);
     return assemble_momentum_component(
         mesh, geometry, mass_flux, pressure_gradient_component, body_component,
         cell_effective_dynamic_viscosity, component_boundary_conditions, component,
