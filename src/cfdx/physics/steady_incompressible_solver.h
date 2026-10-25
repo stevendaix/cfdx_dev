@@ -1125,8 +1125,31 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                     : ScalarBoundaryType::ZERO_GRADIENT,
                 value, 0.0};
         }
-        const auto grad = gauss_gradient_with_boundary(
+        auto grad = gauss_gradient_with_boundary(
             scalar, mesh, geometry, scalar_bcs);
+        // The two-point Green-Gauss face value is not linear-exact on skewed
+        // polyhedra. Use the least-squares gradient on cells with at least
+        // three independent neighbour directions; preserve boundary-aware
+        // Green-Gauss values on undersampled cells (e.g. a one-cell-thick
+        // channel), where prescribed boundary values complete the stencil.
+        const auto grad_ls = cfdx::core::compute_gradient_least_squares(scalar, mesh);
+        const auto* cell_faces = mesh.cells().faces_data();
+        const auto* cell_offsets = mesh.cells().offsets_data();
+        const auto& ownership = mesh.ownership();
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            std::size_t internal_neighbours = 0;
+            for (cfdx::core::Offset k = cell_offsets[cell];
+                 k < cell_offsets[cell + 1]; ++k) {
+                const std::size_t face = cell_faces[k];
+                if (ownership.neighbour(face) >= 0 || ownership.owner(face) != cell)
+                    ++internal_neighbours;
+            }
+            if (internal_neighbours >= 3) {
+                for (std::size_t direction = 0; direction < 3; ++direction)
+                    grad.component_data(direction)[cell] =
+                        grad_ls.component_data(direction)[cell];
+            }
+        }
         gradient[component].resize(nc);
         for (std::size_t cell = 0; cell < nc; ++cell) {
             for (std::size_t direction = 0; direction < 3; ++direction) {
