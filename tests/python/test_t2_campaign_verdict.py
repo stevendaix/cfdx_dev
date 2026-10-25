@@ -38,9 +38,7 @@ class CampaignVerdictTests(unittest.TestCase):
     def test_poiseuille_gate_applies_to_every_mesh(self):
         data = observations()
         data[0]["l2_poiseuille"] = 0.006
-        self.assertFalse(
-            campaign.evaluate_campaign(data, True)["qualification_passed"]
-        )
+        self.assertFalse(campaign.evaluate_campaign(data, True)["qualification_passed"])
 
     def test_nan_infinity_negative_and_missing_metrics_cannot_pass(self):
         for metric in ("l2_poiseuille", "err_rel"):
@@ -57,14 +55,10 @@ class CampaignVerdictTests(unittest.TestCase):
 
     def test_missing_or_failed_mesh_does_not_qualify(self):
         for data in ([], observations()[:-1], observations()[1:]):
-            self.assertFalse(
-                campaign.evaluate_campaign(data, True)["execution_passed"]
-            )
+            self.assertFalse(campaign.evaluate_campaign(data, True)["execution_passed"])
         data = observations()
         data[1]["status"] = "FAIL"
-        self.assertFalse(
-            campaign.evaluate_campaign(data, True)["qualification_passed"]
-        )
+        self.assertFalse(campaign.evaluate_campaign(data, True)["qualification_passed"])
         self.assertFalse(
             campaign.evaluate_campaign(observations(), False)["qualification_passed"]
         )
@@ -76,10 +70,9 @@ class CampaignVerdictTests(unittest.TestCase):
         for entry in data:
             entry["l2_poiseuille"] = 0.005
         data[-1]["err_rel"] = 0.05
-        self.assertTrue(
-            campaign.evaluate_campaign(data, True)["qualification_passed"]
-        )
+        self.assertTrue(campaign.evaluate_campaign(data, True)["qualification_passed"])
 
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

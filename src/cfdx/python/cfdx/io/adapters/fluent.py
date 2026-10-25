@@ -887,8 +887,8 @@ class FluentAdapter(SolverAdapter):
         gap.unsupported_blocking(
             "mesh",
             "volume_topology",
-            f"No volumetric cell connectivity available from .cas.h5 " f
-            "(extracted {len(self._cell_nodes)} volume cells, {len(self._face_nodes)} surface faces only)",
+            f"No volumetric cell connectivity available from .cas.h5 "
+            f"(extracted {len(self._cell_nodes)} volume cells, {len(self._face_nodes)} surface faces only)",
             "For volumetric mesh import, use the legacy ASCII .cas reader (parse_cas) "
             "or export the mesh to CGNS/VTK from Fluent",
         )
@@ -1152,3 +1152,4 @@ def _extract_cas_h5_reference_values(rp_vars: dict, setup: CaseSetup) -> None:
 
     if rp_vars.get("piso/coupling?", False):
         setup.numerics.coupled_solver = "PISO"
+

@@ -126,7 +126,9 @@ class SolidConductionApplicationContract(unittest.TestCase):
         self.assertIn("Temperature min 350 max 350", result.stdout)
 
     def test_radiation_is_not_silently_ignored(self):
-        self.assert_rejected(lambda case: case.update(radiation_model="S2S"), "radiation")
+        self.assert_rejected(
+            lambda case: case.update(radiation_model="S2S"), "radiation"
+        )
 
     def test_transient_evolution_is_not_silently_ignored(self):
         self.assert_rejected(
@@ -176,3 +178,4 @@ class SolidConductionApplicationContract(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+

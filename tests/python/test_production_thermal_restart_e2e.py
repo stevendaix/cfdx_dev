@@ -49,7 +49,11 @@ class ProductionThermalRestart(unittest.TestCase):
                             "configuration_key": "linear.fgmres",
                         },
                     ],
-                    "required_families": ["gradient", "convection", "pressure_velocity"],
+                    "required_families": [
+                        "gradient",
+                        "convection",
+                        "pressure_velocity",
+                    ],
                 }
             }
 
@@ -139,7 +143,9 @@ class ProductionThermalRestart(unittest.TestCase):
         self.assertIn("transient evolution", result.stderr)
         self.assertFalse((output / "restart.dat").exists())
 
-    def test_energy_exception_cannot_report_successful_carrier_as_overall_convergence(self):
+    def test_energy_exception_cannot_report_successful_carrier_as_overall_convergence(
+        self,
+    ):
         import h5py
 
         for missing in ("ref_temperature", "specific_heat"):
@@ -187,3 +193,4 @@ class ProductionThermalRestart(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
