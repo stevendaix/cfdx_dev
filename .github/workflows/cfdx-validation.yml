@@ -238,6 +238,22 @@ jobs:
                 echo "::error title=ctest long campaign failure::${safe}"
               done
           exit 0
+      # TEMPORARY long-campaign annotations (to be reverted before merge)
+      - name: TEMPORARY long diagnostics annotations
+        if: always()
+        shell: bash
+        run: |
+          LOG="${BUILD_DIR}/long-validation.log"
+          if [[ -s "$LOG" ]]; then
+            failed=$(grep -n -E "The following tests FAILED|\*\*\*Failed|\*\*\*Timeout|Failed " "$LOG" | tail -n 40 || true)
+            if [[ -n "$failed" ]]; then
+              echo "::error title=long failed lines::$(printf '%s' "$failed" | head -c 4400 | tr '\n' '|')"
+            fi
+            tail -c 9000 "$LOG" > /tmp/longtail.log || true
+            echo "::error title=long tail (recent)::$(tail -c 4500 /tmp/longtail.log | tr '\n' '|')"
+            echo "::error title=long tail (earlier)::$(head -c 4500 /tmp/longtail.log | tr '\n' '|')"
+          fi
+
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
