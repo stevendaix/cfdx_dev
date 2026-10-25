@@ -137,6 +137,8 @@ jobs:
         run: |
           python -m pytest -q tests/python
         env:
+          CFDX_PRODUCTION_SOLVER: ${{ github.workspace }}/build/cfdx_production_solver
+          CFDX_THERMAL_SOLVER: ${{ github.workspace }}/build/cfdx_thermal_solver
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
 
       - name: Compiler cache diagnostics
