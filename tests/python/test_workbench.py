@@ -185,3 +185,93 @@ def test_mesh_selection_updates_typed_inspector_context() -> None:
     assert cells.value() == 5
     window.close()
     app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_undo_and_redo_restore_previous_property_value() -> None:
+    from cfdx.gui import create_application
+    from cfdx.session import SimulationState
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QDoubleSpinBox, QPushButton
+
+    app = create_application(["cfdx-workbench-test"])
+    session = CFDXSession()
+    session.state = SimulationState.READY
+    window = CFDXWorkbenchWindow(session)
+    window.application.select("numerics", "workflow", "Numerics")
+    initial = session.case.numerics.get("cfl", 1.0)
+    assert not window.undo_action.isEnabled()
+    assert not window.redo_action.isEnabled()
+    assert window.undo_action.statusTip() == "Requires: an edit to undo"
+    editor = window.findChild(QDoubleSpinBox, "workbench.property.numerics.cfl")
+    assert editor is not None
+    editor.setValue(2.5)
+    window.findChild(QPushButton, "workbench.property.apply.numerics.cfl").click()
+    assert session.case.numerics["cfl"] == 2.5
+    assert window.undo_action.isEnabled()
+    assert not window.redo_action.isEnabled()
+    window.undo_action.trigger()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert session.case.numerics.get("cfl", 1.0) == initial
+    editor = window.findChild(QDoubleSpinBox, "workbench.property.numerics.cfl")
+    assert editor is not None
+    assert editor.value() == initial
+    assert window.statusBar().currentMessage() == "Undid: set numerics.cfl to 2.5"
+    assert not window.undo_action.isEnabled()
+    assert window.redo_action.isEnabled()
+    window.redo_action.trigger()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    assert session.case.numerics["cfl"] == 2.5
+    editor = window.findChild(QDoubleSpinBox, "workbench.property.numerics.cfl")
+    assert editor is not None
+    assert editor.value() == 2.5
+    assert window.statusBar().currentMessage() == "Redid: set numerics.cfl to 2.5"
+    assert window.undo_action.isEnabled()
+    assert not window.redo_action.isEnabled()
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_command_palette_lists_undo_with_history_prerequisite() -> None:
+    from cfdx.gui import create_application
+
+    app = create_application(["cfdx-workbench-test"])
+    window = CFDXWorkbenchWindow(CFDXSession())
+    window._show_command_palette()
+    window.command_palette_query.setText("Undo")
+    assert window.command_palette_results.count() == 1
+    assert (
+        window.command_palette_results.item(0).text()
+        == "Undo — Requires: an edit to undo"
+    )
+    window.command_palette_dialog.close()
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_undo_and_redo_actions_have_stable_ids_and_shortcuts() -> None:
+    from cfdx.gui import create_application
+
+    app = create_application(["cfdx-workbench-test"])
+    window = CFDXWorkbenchWindow(CFDXSession())
+    assert window.undo_action.objectName() == "workbench.action.undo"
+    assert window.redo_action.objectName() == "workbench.action.redo"
+    assert window.undo_action.text() == "Undo"
+    assert window.redo_action.text() == "Redo"
+    assert [shortcut.toString() for shortcut in window.undo_action.shortcuts()] == [
+        "Ctrl+Z"
+    ]
+    assert [shortcut.toString() for shortcut in window.redo_action.shortcuts()] == [
+        "Ctrl+Shift+Z",
+        "Ctrl+Y",
+    ]
+    window.close()
+    app.quit()

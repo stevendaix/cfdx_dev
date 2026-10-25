@@ -27,7 +27,8 @@ from .commands import (
     StopSolver,
 )
 from .events import ApplicationStateChanged, EventBus, ResultsChanged, SelectionChanged
-from .properties import PropertyState, properties_for_selection
+from .history import EditHistory, HistoryEntry
+from .properties import PropertyState, get_property, properties_for_selection
 from .results import ResultsState, build_results_state
 from .run_center import RunCenterModel
 from .state import ApplicationState, SelectionState, build_application_state
@@ -52,6 +53,7 @@ class Application:
         self.diagnostics: tuple[Any, ...] = ()
         self.dirty = False
         self.events = EventBus()
+        self.history = EditHistory()
         self.results = ResultsState()
         self._restart_dat: Path | None = None
         self.mesh_catalog: MeshCatalog | None = None
@@ -113,6 +115,9 @@ class Application:
         self._restart_dat = None
         self.mesh_catalog = None
         self.dirty = False
+        # Undo entries reference values of the replaced case; they would be
+        # incoherent across sessions, so the history is reset with the rest.
+        self.history.clear()
         return self._publish_state()
 
     def open_project(
@@ -320,7 +325,45 @@ class Application:
         )
 
     def set_property(self, key: str, value: Any) -> ApplicationState:
-        return self.execute(SetProperty(key, value))
+        """Apply one routed property and record it as a reversible edit.
+
+        The previous value is captured through the symmetric ``get_property``
+        contract before the edit runs, and the undo entry is recorded after
+        it. The state is published once more after recording so availability
+        computed from the history (Undo/Redo actions) sees the new entry.
+        """
+        previous = get_property(self.session.case, key)
+        state = self.execute(SetProperty(key, value))
+        if value != previous:
+            self.history.push(
+                HistoryEntry(
+                    description=f"set {key} to {value!r}",
+                    undo=lambda: self.execute(SetProperty(key, previous)),
+                    redo=lambda: self.execute(SetProperty(key, value)),
+                )
+            )
+            state = self._publish_state()
+        return state
+
+    def can_undo(self) -> bool:
+        """Report whether a reversible edit is available to undo."""
+        return self.history.can_undo
+
+    def can_redo(self) -> bool:
+        """Report whether an undone edit is available to redo."""
+        return self.history.can_redo
+
+    def undo(self) -> str:
+        """Revert the most recent reversible edit and return its label."""
+        description = self.history.undo()
+        self._publish_state()
+        return description
+
+    def redo(self) -> str:
+        """Replay the most recently undone edit and return its label."""
+        description = self.history.redo()
+        self._publish_state()
+        return description
 
     def set_diagnostics(self, diagnostics: Iterable[Any]) -> ApplicationState:
         self.diagnostics = tuple(diagnostics)
