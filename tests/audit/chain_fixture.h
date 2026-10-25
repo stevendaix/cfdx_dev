@@ -71,4 +71,3 @@ static Mesh make_1d_chain(std::size_t n)
     m.boundary().add_patch(wall);
     return m;
 }
-
