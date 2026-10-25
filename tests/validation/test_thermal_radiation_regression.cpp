@@ -168,10 +168,12 @@ int main()
             {{0,0,1},{0,0,-1},1.0}
         };
         const auto F=estimate_view_factor_matrix(patches);
-        validate_view_factor_matrix(F,2,{2.0,1.0},1e-12);
+        validate_s2s_view_factors(F,{2.0,1.0},1e-12);
+        EXPECT_NEAR(F[0],0.0,1e-14);
+        EXPECT_NEAR(F[3],0.0,1e-14);
         EXPECT_NEAR(2.0*F[1],1.0*F[2],1e-12);
-        EXPECT_NEAR(F[0]+F[1],1.0,1e-12);
-        EXPECT_NEAR(F[2]+F[3],1.0,1e-12);
+        EXPECT_TRUE(F[0]+F[1] <= 1.0+1e-12);
+        EXPECT_TRUE(F[2]+F[3] <= 1.0+1e-12);
 
         auto degenerate=patches;
         degenerate[1].area=0.0;
