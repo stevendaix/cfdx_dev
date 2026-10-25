@@ -1,6 +1,7 @@
 #include "cfdx/physics/sst_solver.h"
 #include "cfdx/physics/sst_production_coupling.h"
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/sst_strain_rate.h"
 #include "cfdx/physics/sst_case_contract.h"
 #include "cfdx/io/cfdx_io/case_schema.h"
@@ -1118,6 +1119,33 @@ int main()
         EXPECT_THROW(
             sst_relative_eddy_viscosity_change(previous, current, 0.0),
             std::invalid_argument);
+    });
+
+    run_case("sst_production_runtime_requires_explicit_valid_state_and_excludes_prescribed_nu_t", [] {
+        IncompressibleSolverControls controls;
+        SSTProductionRuntime runtime;
+        controls.sst_runtime = &runtime;
+
+        EXPECT_THROW(validate_incompressible_controls(controls, 1), std::invalid_argument);
+
+        SSTProductionState state(1);
+        state.k(0) = 0.1;
+        state.omega(0) = 1.0;
+        state.nu_t(0) = 0.01;
+        state.wall_distance(0) = 0.5;
+        state.strain_rate(0) = 0.2;
+        runtime.state = &state;
+        runtime.transport.model = TurbulenceModel::SST;
+        runtime.transport.density = controls.density;
+        runtime.transport.molecular_viscosity = controls.kinematic_viscosity;
+        validate_incompressible_controls(controls, 1);
+
+        runtime.transport.density *= 2.0;
+        EXPECT_THROW(validate_incompressible_controls(controls, 1), std::invalid_argument);
+        runtime.transport.density = controls.density;
+
+        controls.turbulent_viscosity = 1.0e-5;
+        EXPECT_THROW(validate_incompressible_controls(controls, 1), std::invalid_argument);
     });
 
     run_case("sst_production_runtime_requires_explicit_valid_state_and_excludes_prescribed_nu_t", [] {
