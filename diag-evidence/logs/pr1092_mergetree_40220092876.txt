@@ -1,0 +1,2271 @@
+git version 2.55.0
+master_pin=749d1de52fb43bb8f38c0bbe7295b98d746cb5ce branch_pin=bb156a937434cb836e109919d9dae3d3113a50bb base=815c000d428b74bdb7ba568853f76f725a224fff
+=== merge-tree --name-only ===
+201e513d9e0e0655e99c32cad477ab19d8c120a9
+src/cfdx/core/linalg/gmres_solver.h
+
+Auto-merging .github/workflows/cfdx-ci.yml
+Auto-merging docs/audits/README.md
+Auto-merging src/cfdx/core/linalg/cg_solver.h
+Auto-merging src/cfdx/core/linalg/gmres_solver.h
+CONFLICT (content): Merge conflict in src/cfdx/core/linalg/gmres_solver.h
+Auto-merging tests/unit/test_cg_solver.cpp
+MERGE_TREE_EXIT=1
+
+########## FILE src/cfdx/core/linalg/gmres_solver.h ##########
+=== git merge-file (branch base master) exit + contenu diff3 ===
+#pragma once
+
+#include "sparse_matrix.h"
+#include "cg_solver.h"
+#include "vector.h"
+#include "preconditioner.h"
+#include "solver_workspace.h"
+#include "krylov_controls.h"
+#include "mixed_precision.h"
+#include "krylov_diagnostics.h"
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <functional>
+#include <limits>
+#include <stdexcept>
+
+namespace cfdx::core {
+
+struct LinearOperator {
+    std::size_t size = 0;
+    std::function<void(const Vector&, Vector&)> apply;
+    // Optional original-precision application used only for certification.
+    // Matrix-free callers that omit it are certified against apply() itself.
+    std::function<void(const Vector&, Vector&)> apply_fp64;
+};
+
+inline SolverResult solve_gmres(
+    const LinearOperator& op,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    KrylovControls controls = {},
+    GmresWorkspace* reusable_workspace = nullptr)
+{
+    SolverResult result;
+    if (op.size == 0 || !op.apply || b.size() != op.size || x.size() != op.size ||
+        restart <= 0 || max_iter == 0 || tolerance <= 0.0) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+
+    const std::size_t n = op.size;
+    int current_restart = std::clamp(restart, controls.restart_min, controls.restart_max);
+    current_restart = std::min<int>(current_restart, static_cast<int>(n));
+    if (!std::isfinite(tolerance) || tolerance <= 0.0 || max_iter == 0) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+
+    const double b_norm = krylov_norm2(b, SolverPrecision::FP64, controls.reduction);
+    if (!std::isfinite(b_norm)) {
+        result.status = SolverStatus::DIVERGED;
+        return result;
+    }
+    const bool zero_rhs = (b_norm == 0.0);
+    if (zero_rhs) {
+        // b == 0 with a nonzero initial iterate is still a solvable system:
+        // x* = x0 + y where A y = -A x0. Solve that shifted system with the
+        // same operator and preconditioner, then certify the returned
+        // iterate with the true b - A x residual, referenced to ||A x0||.
+        // When A x0 is already zero, x0 solves the homogeneous system and
+        // the b == 0 guard below reports it directly.
+        Vector ax0(n, 0.0);
+        {
+            Vector x0_in(n, 0.0);
+            for (std::size_t i = 0; i < n; ++i) x0_in(i) = x(i);
+            if (op.apply_fp64) op.apply_fp64(x0_in, ax0);
+            else op.apply(x0_in, ax0);
+        }
+        const double ax0_norm =
+            krylov_norm2(ax0, SolverPrecision::FP64, controls.reduction);
+        if (ax0_norm > 0.0) {
+            Vector shifted_rhs(n, 0.0);
+            for (std::size_t i = 0; i < n; ++i) shifted_rhs(i) = -ax0(i);
+            Vector y(n, 0.0);
+            const SolverResult shifted = solve_gmres(
+                op, shifted_rhs, y, restart, max_iter, tolerance,
+                preconditioner, controls, reusable_workspace);
+            for (std::size_t i = 0; i < n; ++i) x(i) += y(i);
+            Vector ax(n, 0.0);
+            {
+                Vector x_in(n, 0.0);
+                for (std::size_t i = 0; i < n; ++i) x_in(i) = x(i);
+                if (op.apply_fp64) op.apply_fp64(x_in, ax);
+                else op.apply(x_in, ax);
+            }
+            double residual_sq = 0.0;
+            for (std::size_t i = 0; i < n; ++i) {
+                const double r_i = b(i) - ax(i);
+                residual_sq += r_i * r_i;
+            }
+            const double residual = std::sqrt(residual_sq);
+            result.status = shifted.status;
+            result.iterations = shifted.iterations;
+            result.residual = residual;
+            result.residual_relative = residual / ax0_norm;
+            result.residual_replacements = shifted.residual_replacements;
+            result.first_residual_replacement = shifted.first_residual_replacement;
+            result.last_residual_replacement = shifted.last_residual_replacement;
+            result.max_true_residual = shifted.max_true_residual;
+            result.min_true_residual = shifted.min_true_residual;
+            result.min_true_recursive_ratio = shifted.min_true_recursive_ratio;
+            result.max_true_recursive_ratio = shifted.max_true_recursive_ratio;
+            result.max_true_recursive_gap = shifted.max_true_recursive_gap;
+            return result;
+        }
+    }
+    // Scale the stopping criterion with the actual RHS norm. Using max(||b||,1)
+    // makes physically small systems appear converged at x=0 and is incorrect
+    // for nondimensionalized or otherwise small-scale operators.
+    const double rhs_scale = std::max(b_norm, 1e-300);
+    const double tol = b_norm == 0.0 ? 0.0 : tolerance * b_norm;
+
+    // Diagnostic: track the gauge-row value of the initial solution vector.
+    // The gauge row is conventionally the last pressure unknown (index n-1),
+    // which is pinned to a reference value by the pressure gauge.
+    if (krylov_diagnostics_enabled()) {
+        const std::size_t gauge_row = n > 0 ? n - 1 : 0;
+        const double init_gauge = (gauge_row < x.size()) ? x(gauge_row) : 0.0;
+        std::cerr << "GMRES_INIT_GAUGE row=" << gauge_row
+                  << " value=" << init_gauge << "\n";
+    }
+
+    GmresWorkspace local_workspace;
+    GmresWorkspace& w = reusable_workspace ? *reusable_workspace : local_workspace;
+    w.resize(n, static_cast<std::size_t>(current_restart));
+
+    auto apply_operator = [&](const double* in, Vector& out) {
+        for (std::size_t i = 0; i < n; ++i) {
+            w.vin(i) = in[i];
+        }
+        op.apply(w.vin, out);
+    };
+    auto true_residual = [&]() {
+        for (std::size_t i = 0; i < n; ++i) w.vin(i) = x(i);
+        if (op.apply_fp64) op.apply_fp64(w.vin, w.ax);
+        else op.apply(w.vin, w.ax);
+        for (std::size_t i = 0; i < n; ++i) w.r(i) = b(i) - w.ax(i);
+        return krylov_norm2(w.r, SolverPrecision::FP64, controls.reduction);
+    };
+
+    double beta = true_residual();
+    if (!std::isfinite(beta)) {
+        result.status = SolverStatus::DIVERGED;
+        result.residual = beta;
+        return result;
+    }
+    if (b_norm == 0.0) {
+        // b == 0: use a stable, explicit reference common to criterion and diagnostics.
+        // A nonzero initial iterate must not silently relax the threshold.
+        const double x_norm = krylov_norm2(x, SolverPrecision::FP64, controls.reduction);
+        const double ref_scale = std::max({x_norm, 1.0, 1e-300});
+        const double tol_b0 = tolerance * ref_scale;
+        if (beta <= tol_b0) {
+            result.status = SolverStatus::CONVERGED;
+            result.iterations = 0;
+            result.residual = beta;
+            result.residual_relative = beta / ref_scale;
+            return result;
+        }
+        result.status = SolverStatus::DIVERGED;
+        result.iterations = 0;
+        result.residual = beta;
+        result.residual_relative = beta / ref_scale;
+        return result;
+    }
+    // Preserve RHS-relative convergence: with b nonzero the RHS norm is the
+    // reference scale for both the stopping criterion and the reported
+    // diagnostics. The zero-RHS case never reaches the iterations below
+    // (shifted solve above, or the explicit b == 0 guard).
+    const double rhs_scale_for_diagnostics = rhs_scale;
+    if (beta <= tol) {
+        result.status = SolverStatus::CONVERGED;
+        result.iterations = 0;
+        result.residual = beta;
+        result.residual_relative = beta / rhs_scale_for_diagnostics;
+        return result;
+    }
+
+    std::size_t iterations = 0;
+    double previous_cycle_residual = beta;
+    // Keep the current iterate associated with the best verified true
+    // residual. Restarted Krylov methods can occasionally suffer a loss of
+    // accuracy in the Hessenberg update; never return a worse iterate merely
+    // because the last cycle was numerically unlucky.
+    Vector best_x = x;
+    double best_residual = beta;
+
+    while (iterations < max_iter) {
+        w.resize(n, static_cast<std::size_t>(current_restart));
+        beta = true_residual();
+        if (beta <= tol) break;
+
+        for (std::size_t i = 0; i < n; ++i) w.v(0)[i] = w.r(i) / beta;
+        std::fill(w.h.begin(), w.h.end(), 0.0);
+        std::fill(w.cs.begin(), w.cs.end(), 0.0);
+        std::fill(w.sn.begin(), w.sn.end(), 0.0);
+        std::fill(w.g.begin(), w.g.end(), 0.0);
+        w.g[0] = beta;
+
+        int used = 0;
+        double estimated_residual = beta;
+        bool arnoldi_breakdown = false;
+
+        for (int j = 0; j < current_restart && iterations < max_iter; ++j) {
+            if (preconditioner) {
+                for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
+                if (!preconditioner->apply(w.z, w.vout)) {
+                    if (krylov_diagnostics_enabled())
+                        std::cerr << "PRECOND_APPLY_GAUGE FAIL at iteration "
+                                  << iterations << "\n";
+                    result.status = SolverStatus::NOT_APPLICABLE;
+                    result.iterations = iterations;
+                    return result;
+                }
+                for (std::size_t i = 0; i < n; ++i) w.zv(static_cast<std::size_t>(j))[i] = w.vout(i);
+            } else {
+                std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+            }
+
+            apply_operator(w.zv(static_cast<std::size_t>(j)), w.w);
+            const double arnoldi_action_norm =
+                krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
+                // Modified Gram-Schmidt once is vulnerable to loss of
+            // orthogonality on nonsymmetric saddle-point systems. A second
+            // orthogonalization pass is inexpensive for the small acceptance
+            // systems and substantially improves the Hessenberg relation.
+            // Use the same owned-entry/MPI reduction contract as Krylov norms.
+            // Ghost copies are updated, but never double-counted in projections.
+            Vector arnoldi_basis(n);
+            for (int i = 0; i <= j; ++i) {
+                const double* vi = w.v(static_cast<std::size_t>(i));
+                for (std::size_t k = 0; k < n; ++k) arnoldi_basis(k) = vi[k];
+                const double h = krylov_dot(
+                    arnoldi_basis, w.w, SolverPrecision::FP64, controls.reduction);
+                w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = h;
+                for (std::size_t k = 0; k < n; ++k) w.w(k) -= h * vi[k];
+            }
+            for (int i = 0; i <= j; ++i) {
+                const double* vi = w.v(static_cast<std::size_t>(i));
+                for (std::size_t k = 0; k < n; ++k) arnoldi_basis(k) = vi[k];
+                const double correction = krylov_dot(
+                    arnoldi_basis, w.w, SolverPrecision::FP64, controls.reduction);
+                w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) += correction;
+                for (std::size_t k = 0; k < n; ++k) w.w(k) -= correction * vi[k];
+            }
+
+            // Scale the breakdown test with ||A z_j||, not with an arbitrary
+            // absolute value of one. The operator can legitimately be very
+            // small after nondimensionalisation or physical scaling; an
+            // absolute epsilon floor would then misclassify a valid Krylov
+            // vector as a breakdown.
+            const double hnext = krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
+            w.H(static_cast<std::size_t>(j + 1), static_cast<std::size_t>(j)) = hnext;
+            // Arnoldi vectors are normalized, so loss of the new direction is
+            // a breakdown. Use a relative test against the current operator
+            // action, but never let a tiny absolute value trigger it.
+            // Treat loss of the Arnoldi direction as a numerical rank
+            // breakdown. A few thousand ulps are still far below any
+            // physically meaningful Krylov scale, but leave enough margin for
+            // the second MGS pass and different BLAS/reduction orderings.
+            const double arnoldi_breakdown_floor =
+                4096.0 * std::numeric_limits<double>::epsilon() *
+                std::max(arnoldi_action_norm, 1e-300);
+            const bool arnoldi_breakdown_detected =
+                hnext <= arnoldi_breakdown_floor &&
+                arnoldi_action_norm > 0.0;
+            if (hnext > 0.0) {
+                double* vnext = w.v(static_cast<std::size_t>(j + 1));
+                for (std::size_t k = 0; k < n; ++k) vnext[k] = w.w(k) / hnext;
+            }
+
+            for (int i = 0; i < j; ++i) {
+                const double h0 = w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
+                const double h1 = w.H(static_cast<std::size_t>(i + 1), static_cast<std::size_t>(j));
+                w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
+                    w.cs[static_cast<std::size_t>(i)] * h0 + w.sn[static_cast<std::size_t>(i)] * h1;
+                w.H(static_cast<std::size_t>(i + 1), static_cast<std::size_t>(j)) =
+                    -w.sn[static_cast<std::size_t>(i)] * h0 + w.cs[static_cast<std::size_t>(i)] * h1;
+            }
+
+            const double a = w.H(static_cast<std::size_t>(j), static_cast<std::size_t>(j));
+            const double b2 = w.H(static_cast<std::size_t>(j + 1), static_cast<std::size_t>(j));
+            const double rho = std::hypot(a, b2);
+            if (rho > 0.0) {
+                w.cs[static_cast<std::size_t>(j)] = a / rho;
+                w.sn[static_cast<std::size_t>(j)] = b2 / rho;
+                w.H(static_cast<std::size_t>(j), static_cast<std::size_t>(j)) = rho;
+                w.H(static_cast<std::size_t>(j + 1), static_cast<std::size_t>(j)) = 0.0;
+                const double gj = w.g[static_cast<std::size_t>(j)];
+                const double gj1 = w.g[static_cast<std::size_t>(j + 1)];
+                w.g[static_cast<std::size_t>(j)] =
+                    w.cs[static_cast<std::size_t>(j)] * gj + w.sn[static_cast<std::size_t>(j)] * gj1;
+                w.g[static_cast<std::size_t>(j + 1)] =
+                    -w.sn[static_cast<std::size_t>(j)] * gj + w.cs[static_cast<std::size_t>(j)] * gj1;
+            }
+
+            ++iterations;
+            ++used;
+            estimated_residual = std::abs(w.g[static_cast<std::size_t>(j + 1)]);
+
+            if (controls.residual_replacement &&
+                controls.residual_replacement_period > 0 &&
+                iterations % controls.residual_replacement_period == 0) {
+                const double exact = true_residual();
+                if (exact <= tol) {
+                    result.status = SolverStatus::CONVERGED;
+                    result.iterations = iterations;
+                    result.residual = exact;
+                    result.residual_relative = exact / rhs_scale_for_diagnostics;
+                    return result;
+                }
+            }
+
+            // Preserve the Arnoldi-breakdown classification even when
+            // the Givens residual estimate reaches zero. For a singular
+            // inconsistent system, the projected least-squares residual can
+            // be zero while the true ||b-Ax|| remains non-zero. In that case
+            // the exact residual check after the Krylov update must decide
+            // between a happy breakdown (CONVERGED) and a non-happy breakdown
+            // (DIVERGED), rather than allowing the solver to continue into
+            // another restart and eventually report MAX_ITER_REACHED.
+            if (arnoldi_breakdown_detected) {
+                arnoldi_breakdown = true;
+                break;
+            }
+            if (estimated_residual <= tol)
+                break;
+        }
+
+        if (used == 0) break;
+
+        std::fill(w.y.begin(), w.y.end(), 0.0);
+        for (int i = used - 1; i >= 0; --i) {
+            double sum = w.g[static_cast<std::size_t>(i)];
+            for (int j = i + 1; j < used; ++j)
+                sum -= w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) *
+                       w.y[static_cast<std::size_t>(j)];
+            const double diag = w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(i));
+            double h_scale = std::abs(diag);
+            for (int k = 0; k < used; ++k)
+                h_scale = std::max(
+                    h_scale,
+                    std::abs(w.H(static_cast<std::size_t>(k), static_cast<std::size_t>(i))));
+            const double diag_floor =
+                128.0 * std::numeric_limits<double>::epsilon() *
+                std::max(h_scale, 1e-300);
+            if (std::abs(diag) <= diag_floor) {
+                // Happy Arnoldi breakdown can produce a zero diagonal in the
+                // Givens-reduced Hessenberg system. If the corresponding
+                // transformed RHS is also zero, that coefficient is free and
+                // must not be reported as a solver divergence. The exact
+                // residual is checked immediately after the Krylov update.
+                if (std::abs(sum) <= diag_floor) {
+                    w.y[static_cast<std::size_t>(i)] = 0.0;
+                    continue;
+                }
+                // The Givens/Hessenberg estimate can be exactly zero at a
+                // non-happy breakdown. It is not the physical residual.
+                // Report the true ||b-Ax||_2 at the last admissible iterate.
+                double breakdown_residual = true_residual();
+                if (best_residual < breakdown_residual) {
+                    x = best_x;
+                    breakdown_residual = best_residual;
+                }
+                result.status = SolverStatus::DIVERGED;
+                result.iterations = iterations;
+                result.residual = breakdown_residual;
+                result.residual_relative =
+                    breakdown_residual / rhs_scale_for_diagnostics;
+                return result;
+            }
+            w.y[static_cast<std::size_t>(i)] = sum / diag;
+        }
+
+        for (int j = 0; j < used; ++j) {
+            const double alpha = w.y[static_cast<std::size_t>(j)];
+            const double* zj = w.zv(static_cast<std::size_t>(j));
+            for (std::size_t i = 0; i < n; ++i) x(i) += alpha * zj[i];
+        }
+
+        beta = true_residual();
+        if (beta < best_residual) {
+            best_residual = beta;
+            best_x = x;
+        }
+        if (beta <= tol) {
+            result.status = SolverStatus::CONVERGED;
+            result.iterations = iterations;
+            result.residual = beta;
+            result.residual_relative = beta / rhs_scale_for_diagnostics;
+            return result;
+        }
+
+        // Arnoldi breakdown means that the Krylov space stopped growing.
+        // If the updated iterate is still not converged, continuing into a
+        // fresh cycle can only repeat the same subspace and misclassify a
+        // singular/inconsistent system as MAX_ITER_REACHED. Report the
+        // physical residual as a genuine solver failure instead.
+        if (arnoldi_breakdown) {
+            if (best_residual < beta) {
+                x = best_x;
+                beta = best_residual;
+            }
+            result.status = SolverStatus::DIVERGED;
+            result.iterations = iterations;
+            result.residual = beta;
+            result.residual_relative = beta / rhs_scale_for_diagnostics;
+            return result;
+        }
+
+        const double reduction = beta / std::max(previous_cycle_residual, 1e-300);
+        if (controls.adaptive_restart)
+            current_restart = choose_gmres_restart(current_restart, reduction, controls);
+        previous_cycle_residual = beta;
+    }
+
+    if (best_residual < beta) {
+        x = best_x;
+        beta = best_residual;
+    }
+    result.status = SolverStatus::MAX_ITER_REACHED;
+    result.iterations = iterations;
+    result.residual = beta;
+    result.residual_relative = beta / rhs_scale_for_diagnostics;
+    return result;
+}
+
+
+/*
+ * Flexible GMRES uses the same right-preconditioned Arnoldi recurrence as the
+ * implementation above, but exposes the method explicitly so callers can
+ * select a solver whose preconditioner may change between Krylov iterations.
+ *
+ * The implementation stores the preconditioned vector z_j independently for
+ * every Arnoldi basis vector; therefore no assumption of a stationary
+ * preconditioner is made. This is the essential FGMRES contract.
+ */
+inline SolverResult solve_fgmres(
+    const LinearOperator& op,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    KrylovControls controls = {},
+    GmresWorkspace* reusable_workspace = nullptr)
+{
+    return solve_gmres(
+        op, b, x, restart, max_iter, tolerance, preconditioner,
+        controls, reusable_workspace);
+}
+
+inline SolverResult solve_fgmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart,
+    std::size_t max_iter,
+    double tolerance,
+    Preconditioner* preconditioner,
+    KrylovControls controls,
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true) {
+    LinearOperator op;
+    op.size = A.n_rows();
+    op.apply_fp64 = [&A](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
+    op.apply = [&A, precision](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        if (precision.enabled && precision.operator_precision == SolverPrecision::FP32) {
+            mixed_precision_matvec(A, in, out, SolverPrecision::FP32);
+            return;
+        }
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
+    if (setup_preconditioner && preconditioner && !preconditioner->setup(A)) {
+        SolverResult result;
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+    return solve_fgmres(
+        op, b, x, restart, max_iter, tolerance, preconditioner, controls);
+}
+
+inline SolverResult solve_fgmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true)
+{
+    return solve_fgmres(
+        A, b, x, restart, max_iter, tolerance, preconditioner,
+        KrylovControls{}, precision, setup_preconditioner);
+}
+
+
+inline SolverResult solve_gmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart,
+    std::size_t max_iter,
+    double tolerance,
+    Preconditioner* preconditioner,
+    KrylovControls controls,
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true) {
+    LinearOperator op;
+    op.size = A.n_rows();
+    // Certification always uses the original sparse matrix in FP64,
+    // independently of the iterative operator precision.
+    op.apply_fp64 = [&A](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
+    op.apply = [&A, precision](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        if (precision.enabled && precision.operator_precision == SolverPrecision::FP32) { mixed_precision_matvec(A, in, out, SolverPrecision::FP32); return; }
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
+    if (setup_preconditioner && preconditioner && !preconditioner->setup(A)) {
+        SolverResult result;
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+    return solve_gmres(op, b, x, restart, max_iter, tolerance, preconditioner, controls);
+}
+
+inline SolverResult solve_gmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true)
+{
+    return solve_gmres(
+        A, b, x, restart, max_iter, tolerance, preconditioner,
+        KrylovControls{}, precision, setup_preconditioner);
+}
+
+} // namespace cfdx::core
+MERGE_FILE_EXIT=0
+=== git diff base master (hunks git) ===
+diff --git a/src/cfdx/core/linalg/gmres_solver.h b/src/cfdx/core/linalg/gmres_solver.h
+index f5e1e471..3d353cf8 100644
+--- a/src/cfdx/core/linalg/gmres_solver.h
++++ b/src/cfdx/core/linalg/gmres_solver.h
+@@ -59,3 +59,3 @@ inline SolverResult solve_gmres(
+     const double rhs_scale = std::max(b_norm, 1e-300);
+-    const double tol = tolerance * b_norm;
++    const double tol = b_norm == 0.0 ? 0.0 : tolerance * b_norm;
+ 
+@@ -89,6 +89,18 @@ inline SolverResult solve_gmres(
+     if (b_norm == 0.0) {
+-        result.status = beta == 0.0 ? SolverStatus::CONVERGED : SolverStatus::DIVERGED;
++        // b == 0: use a stable, explicit reference common to criterion and diagnostics.
++        // A nonzero initial iterate must not silently relax the threshold.
++        const double x_norm = krylov_norm2(x, SolverPrecision::FP64, controls.reduction);
++        const double ref_scale = std::max({x_norm, 1.0, 1e-300});
++        const double tol_b0 = tolerance * ref_scale;
++        if (beta <= tol_b0) {
++            result.status = SolverStatus::CONVERGED;
++            result.iterations = 0;
++            result.residual = beta;
++            result.residual_relative = beta / ref_scale;
++            return result;
++        }
++        result.status = SolverStatus::DIVERGED;
+         result.iterations = 0;
+         result.residual = beta;
+-        result.residual_relative = beta;
++        result.residual_relative = beta / ref_scale;
+         return result;
+=== git diff base branch (hunks git) ===
+diff --git a/src/cfdx/core/linalg/gmres_solver.h b/src/cfdx/core/linalg/gmres_solver.h
+index f5e1e471..3317c946 100644
+--- a/src/cfdx/core/linalg/gmres_solver.h
++++ b/src/cfdx/core/linalg/gmres_solver.h
+@@ -22,2 +22,5 @@ struct LinearOperator {
+     std::function<void(const Vector&, Vector&)> apply;
++    // Optional original-precision application used only for certification.
++    // Matrix-free callers that omit it are certified against apply() itself.
++    std::function<void(const Vector&, Vector&)> apply_fp64;
+ };
+@@ -55,2 +58,55 @@ inline SolverResult solve_gmres(
+     }
++    const bool zero_rhs = (b_norm == 0.0);
++    if (zero_rhs) {
++        // b == 0 with a nonzero initial iterate is still a solvable system:
++        // x* = x0 + y where A y = -A x0. Solve that shifted system with the
++        // same operator and preconditioner, then certify the returned
++        // iterate with the true b - A x residual, referenced to ||A x0||.
++        // When A x0 is already zero, x0 solves the homogeneous system and
++        // the b == 0 guard below reports it directly.
++        Vector ax0(n, 0.0);
++        {
++            Vector x0_in(n, 0.0);
++            for (std::size_t i = 0; i < n; ++i) x0_in(i) = x(i);
++            if (op.apply_fp64) op.apply_fp64(x0_in, ax0);
++            else op.apply(x0_in, ax0);
++        }
++        const double ax0_norm =
++            krylov_norm2(ax0, SolverPrecision::FP64, controls.reduction);
++        if (ax0_norm > 0.0) {
++            Vector shifted_rhs(n, 0.0);
++            for (std::size_t i = 0; i < n; ++i) shifted_rhs(i) = -ax0(i);
++            Vector y(n, 0.0);
++            const SolverResult shifted = solve_gmres(
++                op, shifted_rhs, y, restart, max_iter, tolerance,
++                preconditioner, controls, reusable_workspace);
++            for (std::size_t i = 0; i < n; ++i) x(i) += y(i);
++            Vector ax(n, 0.0);
++            {
++                Vector x_in(n, 0.0);
++                for (std::size_t i = 0; i < n; ++i) x_in(i) = x(i);
++                if (op.apply_fp64) op.apply_fp64(x_in, ax);
++                else op.apply(x_in, ax);
++            }
++            double residual_sq = 0.0;
++            for (std::size_t i = 0; i < n; ++i) {
++                const double r_i = b(i) - ax(i);
++                residual_sq += r_i * r_i;
++            }
++            const double residual = std::sqrt(residual_sq);
++            result.status = shifted.status;
++            result.iterations = shifted.iterations;
++            result.residual = residual;
++            result.residual_relative = residual / ax0_norm;
++            result.residual_replacements = shifted.residual_replacements;
++            result.first_residual_replacement = shifted.first_residual_replacement;
++            result.last_residual_replacement = shifted.last_residual_replacement;
++            result.max_true_residual = shifted.max_true_residual;
++            result.min_true_residual = shifted.min_true_residual;
++            result.min_true_recursive_ratio = shifted.min_true_recursive_ratio;
++            result.max_true_recursive_ratio = shifted.max_true_recursive_ratio;
++            result.max_true_recursive_gap = shifted.max_true_recursive_gap;
++            return result;
++        }
++    }
+     // Scale the stopping criterion with the actual RHS norm. Using max(||b||,1)
+@@ -59,3 +115,3 @@ inline SolverResult solve_gmres(
+     const double rhs_scale = std::max(b_norm, 1e-300);
+-    const double tol = tolerance * b_norm;
++    const double tol = b_norm == 0.0 ? 0.0 : tolerance * b_norm;
+ 
+@@ -82,3 +138,5 @@ inline SolverResult solve_gmres(
+     auto true_residual = [&]() {
+-        apply_operator(x.data(), w.ax);
++        for (std::size_t i = 0; i < n; ++i) w.vin(i) = x(i);
++        if (op.apply_fp64) op.apply_fp64(w.vin, w.ax);
++        else op.apply(w.vin, w.ax);
+         for (std::size_t i = 0; i < n; ++i) w.r(i) = b(i) - w.ax(i);
+@@ -88,9 +146,31 @@ inline SolverResult solve_gmres(
+     double beta = true_residual();
++    if (!std::isfinite(beta)) {
++        result.status = SolverStatus::DIVERGED;
++        result.residual = beta;
++        return result;
++    }
+     if (b_norm == 0.0) {
+-        result.status = beta == 0.0 ? SolverStatus::CONVERGED : SolverStatus::DIVERGED;
++        // b == 0: use a stable, explicit reference common to criterion and diagnostics.
++        // A nonzero initial iterate must not silently relax the threshold.
++        const double x_norm = krylov_norm2(x, SolverPrecision::FP64, controls.reduction);
++        const double ref_scale = std::max({x_norm, 1.0, 1e-300});
++        const double tol_b0 = tolerance * ref_scale;
++        if (beta <= tol_b0) {
++            result.status = SolverStatus::CONVERGED;
++            result.iterations = 0;
++            result.residual = beta;
++            result.residual_relative = beta / ref_scale;
++            return result;
++        }
++        result.status = SolverStatus::DIVERGED;
+         result.iterations = 0;
+         result.residual = beta;
+-        result.residual_relative = beta;
++        result.residual_relative = beta / ref_scale;
+         return result;
+     }
++    // Preserve RHS-relative convergence: with b nonzero the RHS norm is the
++    // reference scale for both the stopping criterion and the reported
++    // diagnostics. The zero-RHS case never reaches the iterations below
++    // (shifted solve above, or the explicit b == 0 guard).
++    const double rhs_scale_for_diagnostics = rhs_scale;
+     if (beta <= tol) {
+@@ -99,3 +179,3 @@ inline SolverResult solve_gmres(
+         result.residual = beta;
+-        result.residual_relative = beta / rhs_scale;
++        result.residual_relative = beta / rhs_scale_for_diagnostics;
+         return result;
+@@ -151,6 +231,10 @@ inline SolverResult solve_gmres(
+             // systems and substantially improves the Hessenberg relation.
++            // Use the same owned-entry/MPI reduction contract as Krylov norms.
++            // Ghost copies are updated, but never double-counted in projections.
++            Vector arnoldi_basis(n);
+             for (int i = 0; i <= j; ++i) {
+                 const double* vi = w.v(static_cast<std::size_t>(i));
+-                double h = 0.0;
+-                for (std::size_t k = 0; k < n; ++k) h += vi[k] * w.w(k);
++                for (std::size_t k = 0; k < n; ++k) arnoldi_basis(k) = vi[k];
++                const double h = krylov_dot(
++                    arnoldi_basis, w.w, SolverPrecision::FP64, controls.reduction);
+                 w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = h;
+@@ -160,4 +244,5 @@ inline SolverResult solve_gmres(
+                 const double* vi = w.v(static_cast<std::size_t>(i));
+-                double correction = 0.0;
+-                for (std::size_t k = 0; k < n; ++k) correction += vi[k] * w.w(k);
++                for (std::size_t k = 0; k < n; ++k) arnoldi_basis(k) = vi[k];
++                const double correction = krylov_dot(
++                    arnoldi_basis, w.w, SolverPrecision::FP64, controls.reduction);
+                 w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) += correction;
+@@ -228,3 +313,3 @@ inline SolverResult solve_gmres(
+                     result.residual = exact;
+-                    result.residual_relative = exact / rhs_scale;
++                    result.residual_relative = exact / rhs_scale_for_diagnostics;
+                     return result;
+@@ -288,3 +373,3 @@ inline SolverResult solve_gmres(
+                 result.residual_relative =
+-                    breakdown_residual / rhs_scale;
++                    breakdown_residual / rhs_scale_for_diagnostics;
+                 return result;
+@@ -309,3 +394,3 @@ inline SolverResult solve_gmres(
+             result.residual = beta;
+-            result.residual_relative = beta / rhs_scale;
++            result.residual_relative = beta / rhs_scale_for_diagnostics;
+             return result;
+@@ -326,3 +411,3 @@ inline SolverResult solve_gmres(
+             result.residual = beta;
+-            result.residual_relative = beta / rhs_scale;
++            result.residual_relative = beta / rhs_scale_for_diagnostics;
+             return result;
+@@ -343,3 +428,3 @@ inline SolverResult solve_gmres(
+     result.residual = beta;
+-    result.residual_relative = beta / rhs_scale;
++    result.residual_relative = beta / rhs_scale_for_diagnostics;
+     return result;
+@@ -386,2 +471,14 @@ inline SolverResult solve_fgmres(
+     op.size = A.n_rows();
++    op.apply_fp64 = [&A](const Vector& in, Vector& out) {
++        if (out.size() != A.n_rows()) out.resize(A.n_rows());
++        const auto* row = A.row_offsets_data();
++        const auto* col = A.columns_data();
++        const auto* val = A.values_data();
++        for (std::size_t i = 0; i < A.n_rows(); ++i) {
++            double sum = 0.0;
++            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
++                sum += val[k] * in(col[k]);
++            out(i) = sum;
++        }
++    };
+     op.apply = [&A, precision](const Vector& in, Vector& out) {
+@@ -441,2 +538,16 @@ inline SolverResult solve_gmres(
+     op.size = A.n_rows();
++    // Certification always uses the original sparse matrix in FP64,
++    // independently of the iterative operator precision.
++    op.apply_fp64 = [&A](const Vector& in, Vector& out) {
++        if (out.size() != A.n_rows()) out.resize(A.n_rows());
++        const auto* row = A.row_offsets_data();
++        const auto* col = A.columns_data();
++        const auto* val = A.values_data();
++        for (std::size_t i = 0; i < A.n_rows(); ++i) {
++            double sum = 0.0;
++            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
++                sum += val[k] * in(col[k]);
++            out(i) = sum;
++        }
++    };
+     op.apply = [&A, precision](const Vector& in, Vector& out) {
+
+########## FILE src/cfdx/core/linalg/cg_solver.h ##########
+=== git merge-file (branch base master) exit + contenu diff3 ===
+// M0.8-T04 — Conjugate Gradient solver
+//
+// Spécification CFDX v0.7 §35 :
+//   Premiers solveurs : CG, BiCGStab, GMRES.
+//
+// CG (Hestenes-Stiefel) :
+//   Résout A x = b pour A symétrique définie positive.
+//  avec préconditionneur diagonal (Jacobi) par défaut.
+
+#pragma once
+
+#include "sparse_matrix.h"
+#include "vector.h"
+#include "mixed_precision.h"
+#include "solver_status.h"
+#include "krylov_reductions.h"
+#include "null_space.h"
+#include "preconditioner.h"
+#include <cstddef>
+#include <stdexcept>
+#include <cmath>
+#include <limits>
+#include <vector>
+
+namespace cfdx {
+namespace core {
+
+enum class CGResidualReplacementPolicy : std::uint8_t {
+    Adaptive,
+    Disabled,
+    Periodic
+};
+
+// Résout A x = b par la méthode du gradient conjugué (CG).
+//
+// Args:
+//   A          : matrice symétrique définie positive.
+//   b          : vecteur second membre.
+//   x          : solution (initialisé à l'entrée, modifié en sortie).
+//   max_iter   : nombre maximum d'itérations.
+//   tolerance  : tolérance sur le résidu relatif.
+//
+// Retourne un SolverResult.
+namespace detail {
+inline SolverResult solve_cg_impl(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    std::size_t max_iter,
+    double tolerance,
+    PrecisionPolicy precision,
+    KrylovReductionPolicy reduction,
+    Preconditioner* preconditioner,
+    const NullSpaceProjector* null_space,
+    bool setup_preconditioner,
+    CGResidualReplacementPolicy residual_policy = CGResidualReplacementPolicy::Adaptive,
+    std::size_t periodic_replacement_interval = 0)
+{
+    SolverResult result;
+
+    if (A.n_rows() != A.n_cols()) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+    if (b.size() != A.n_rows()) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+    if (x.size() != A.n_cols()) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+
+    if (null_space &&
+        (null_space->dimension() != A.n_rows() ||
+         !null_space->is_compatible(b) ||
+         !null_space->is_null_space(A))) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+
+    const std::size_t n = A.n_rows();
+    for (std::size_t k = 0; k < A.nnz(); ++k)
+        if (!std::isfinite(A.values_data()[k])) {
+            result.status = SolverStatus::DIVERGED;
+            return result;
+        }
+    for (std::size_t i = 0; i < b.size(); ++i)
+        if (!std::isfinite(b(i)) || !std::isfinite(x(i))) {
+            result.status = SolverStatus::DIVERGED;
+            return result;
+        }
+    if (null_space) null_space->remove(x);
+    // A valid system can fail before the usual convergence/final-residual
+    // reporting path (preconditioner failure, non-positive curvature, or
+    // rejected residual replacement). Preserve its current b-A*x diagnostic
+    // instead of returning SolverResult's default zero residuals. This helper
+    // is used only on failure; it does not change an iterate or a stopping gate.
+    const auto not_applicable = [&](std::size_t iterations) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        result.iterations = iterations;
+        Vector failure_residual(n);
+        mixed_precision_true_residual(A, b, x, failure_residual);
+        result.residual =
+            krylov_norm2(failure_residual, SolverPrecision::FP64, reduction);
+        const double rhs_norm =
+            krylov_norm2(b, SolverPrecision::FP64, reduction);
+        result.residual_relative = rhs_norm > 0.0
+            ? result.residual / rhs_norm
+            : (result.residual == 0.0
+                ? 0.0 : std::numeric_limits<double>::infinity());
+        return result;
+    };
+    const double* Av = A.values_data();
+    const bool mp32 = precision.enabled && precision.operator_precision == SolverPrecision::FP32;
+    // Mixed precision is opportunistic: promote the operator to FP64 if the
+    // recursive low-precision residual separates materially from the certified
+    // FP64 residual, so the requested tolerance remains an actual-residual gate.
+    bool promoted_to_fp64 = false;
+    const SolverPrecision redp = precision.enabled ? precision.reduction_precision : SolverPrecision::FP64;
+    const auto* Ac = A.columns_data();
+    const auto* Ar = A.row_offsets_data();
+
+    // Preserve the historical Jacobi path when no external preconditioner is
+    // supplied. This keeps the native solver behavior and API unchanged.
+    std::vector<double> M(n, 0.0);
+    if (preconditioner) {
+        if (setup_preconditioner && !preconditioner->setup(A)) {
+            return not_applicable(0);
+        }
+    } else {
+        for (std::size_t i = 0; i < n; ++i) {
+            for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
+                if (Ac[k] == static_cast<std::uint32_t>(i)) {
+                    M[i] = Av[k];
+                    break;
+                }
+            }
+            if (!(M[i] > 0.0) || !std::isfinite(M[i])) {
+                return not_applicable(0);
+            }
+        }
+    }
+
+    // r = b - A x
+    std::vector<double> r(n);
+    Vector rv(n); mixed_precision_true_residual(A,b,x,rv);
+    if (null_space) null_space->remove(rv);
+    for (std::size_t i=0;i<n;++i) r[i]=rv(i);
+
+    // z = M^{-1} r
+    std::vector<double> z(n);
+    Vector z_vector(n);
+    Vector r_vector(n);
+    const auto apply_preconditioner = [&]() {
+        if (preconditioner) {
+            for (std::size_t i = 0; i < n; ++i) r_vector(i) = r[i];
+            if (!preconditioner->apply(r_vector, z_vector)) return false;
+            for (std::size_t i = 0; i < n; ++i) z[i] = z_vector(i);
+        } else {
+            for (std::size_t i = 0; i < n; ++i) z[i] = r[i] / M[i];
+        }
+        if (null_space) null_space->remove(z);
+        for (const double value : z)
+            if (!std::isfinite(value)) return false;
+        return true;
+    };
+    if (!apply_preconditioner()) {
+        return not_applicable(0);
+    }
+
+    // p = z
+    std::vector<double> p = z;
+
+    for (std::size_t i = 0; i < n; ++i) z_vector(i) = z[i];
+    for (std::size_t i = 0; i < n; ++i) r_vector(i) = r[i];
+    double rsold = krylov_dot(r_vector, z_vector, redp, reduction);
+
+    const double b_norm = krylov_norm2(b, SolverPrecision::FP64, reduction);
+    const double tol_abs = tolerance * std::max(b_norm, 1e-300);
+
+    if (!std::isfinite(rsold)) { result.status=SolverStatus::DIVERGED; return result; }
+
+    const double initial_true_residual =
+        krylov_norm2(r_vector, SolverPrecision::FP64, reduction);
+    if (preconditioner) {
+        result.diagnostics.push_back(
+            {0, initial_true_residual, initial_true_residual,
+             rsold, 0.0, 0.0, 0.0});
+    }
+    if (initial_true_residual <= tol_abs) {
+        result.status = SolverStatus::CONVERGED;
+        result.iterations = 0;
+        result.residual = preconditioner
+            ? initial_true_residual
+            : krylov_norm2(rv, SolverPrecision::FP64, reduction);
+        result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
+        return result;
+    }
+
+    // Residual replacement only pays for itself while b-Ax is still
+    // decreasing. Once the iteration reaches the attainable accuracy of the
+    // system -- about eps*cond(A) in relative terms, which no solver, direct or
+    // iterative, can improve upon in FP64 -- the recursive residual keeps
+    // shrinking while b-Ax does not. The gap criterion below is then satisfied
+    // at every remaining iteration, and the restart that follows each
+    // replacement discards the Krylov direction, degrading CG into
+    // preconditioned steepest descent for the rest of the budget. Requiring
+    // measurable progress since the previous replacement bounds the number of
+    // replacements to O(log(r0/attainable_floor)).
+    double residual_at_last_replacement = std::numeric_limits<double>::infinity();
+
+    for (std::size_t iter = 1; iter <= max_iter; ++iter) {
+        // Ap = A p
+        std::vector<double> Ap(n, 0.0);
+        for (std::size_t i = 0; i < n; ++i) {
+            double sum = 0.0;
+            for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
+                sum += (mp32 && !promoted_to_fp64)
+                    ? static_cast<double>(static_cast<float>(Av[k]) * static_cast<float>(p[Ac[k]]))
+                    : Av[k] * p[Ac[k]];
+            }
+            Ap[i] = sum;
+        }
+        if (null_space) null_space->remove(Ap);
+
+        // alpha = rsold / (p · Ap)
+        Vector p_vector(n), Ap_vector(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            p_vector(i) = p[i];
+            Ap_vector(i) = Ap[i];
+        }
+        const double pAp = krylov_dot(p_vector, Ap_vector, redp, reduction);
+        if (!(pAp > 0.0) || !std::isfinite(pAp)) {
+            return not_applicable(iter);
+        }
+        const double alpha = rsold / pAp;
+        if (!std::isfinite(alpha)) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
+
+        // x = x + alpha p
+        // r = r - alpha Ap
+        for (std::size_t i = 0; i < n; ++i) {
+            x(i) += alpha * p[i];
+            r[i] -= alpha * Ap[i];
+        }
+        if (null_space) {
+            null_space->remove(x);
+            null_space->remove(r);
+        }
+
+        for (std::size_t i = 0; i < n; ++i)
+            if (!std::isfinite(x(i)) || !std::isfinite(r[i])) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
+
+        // z = M^{-1} r
+        if (!apply_preconditioner()) {
+            return not_applicable(iter);
+        }
+
+        // rsnew = r · z
+        for (std::size_t i = 0; i < n; ++i) {
+            r_vector(i) = r[i];
+            z_vector(i) = z[i];
+        }
+        const double rsnew = krylov_dot(r_vector, z_vector, redp, reduction);
+
+        if (!std::isfinite(rsnew)) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
+        // A preconditioned norm is not a true residual norm. Re-evaluate
+        // b-A*x in FP64 for the external-preconditioner path before deciding
+        // convergence, just as the reported final residual is evaluated.
+        // Certify convergence against the original FP64 operator for both
+        // internal Jacobi and externally supplied preconditioners. The
+        // preconditioned recurrence norm is not a residual norm and changes
+        // under a common scaling of A and b.
+        mixed_precision_true_residual(A, b, x, rv);
+        const double res = krylov_norm2(rv, SolverPrecision::FP64, reduction);
+        if (preconditioner &&
+            (iter == 1 || iter % 100 == 0 || iter == max_iter)) {
+            const double recursive_residual =
+                std::sqrt(std::max(0.0, krylov_dot(r_vector, r_vector,
+                                                   SolverPrecision::FP64,
+                                                   reduction)));
+            result.diagnostics.push_back(
+                {iter, res, recursive_residual, rsnew, pAp, alpha,
+                 rsold != 0.0 ? rsnew / rsold : 0.0});
+        }
+        if (res <= tol_abs) {
+            result.status = SolverStatus::CONVERGED;
+            result.iterations = iter;
+            result.residual = res;
+            result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+            return result;
+        }
+
+        // Internal-Jacobi CG also needs residual replacement when its recursive
+        // residual claims convergence but the independently recomputed FP64
+        // residual does not. Without this restart, roundoff can leave the
+        // recurrence near zero while the certified residual remains above the
+        // requested tolerance for the entire iteration budget.
+        if (!preconditioner) {
+            double recursive_r2 = 0.0;
+            for (const double value : r)
+                recursive_r2 = std::hypot(recursive_r2, value);
+            if (std::isfinite(recursive_r2) &&
+                recursive_r2 <= tol_abs && res > tol_abs) {
+                ++result.residual_replacements;
+                if (result.first_residual_replacement == 0)
+                    result.first_residual_replacement = iter;
+                result.last_residual_replacement = iter;
+                for (std::size_t i = 0; i < n; ++i) r[i] = rv(i);
+                if (null_space) null_space->remove(r);
+                if (!apply_preconditioner()) {
+                    result.status = SolverStatus::NOT_APPLICABLE;
+                    result.iterations = iter;
+                    return result;
+                }
+                for (std::size_t i = 0; i < n; ++i) {
+                    r_vector(i) = r[i];
+                    z_vector(i) = z[i];
+                }
+                const double replaced_rsnew =
+                    krylov_dot(r_vector, z_vector, redp, reduction);
+                if (!std::isfinite(replaced_rsnew) || !(replaced_rsnew > 0.0)) {
+                    result.status = SolverStatus::MAX_ITER_REACHED;
+                    result.iterations = iter;
+                    result.residual = res;
+                    result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+                    return result;
+                }
+                p = z;
+                rsold = replaced_rsnew;
+                continue;
+            }
+        }
+
+        // If FP32 operator rounding makes the recursive residual materially
+        // disagree with the independently recomputed FP64 residual, restart
+        // from the true residual and promote the operator. This is mixed-
+        // precision iterative refinement, not a relaxed convergence test.
+        if (!preconditioner && mp32 && !promoted_to_fp64 && res > tol_abs) {
+            double recursive_r2 = 0.0;
+            for (double value : r) recursive_r2 += value * value;
+            const double recursive_res = std::sqrt(recursive_r2);
+            const double gap = std::abs(res - recursive_res);
+            const double scale = std::max(res, recursive_res);
+            if (std::isfinite(recursive_res) && scale > 0.0 &&
+                gap > 0.25 * scale) {
+                promoted_to_fp64 = true;
+                ++result.residual_replacements;
+                result.first_residual_replacement = iter;
+                result.last_residual_replacement = iter;
+                residual_at_last_replacement = res;
+                for (std::size_t i = 0; i < n; ++i) r[i] = rv(i);
+                if (null_space) null_space->remove(r);
+                if (!apply_preconditioner()) {
+                    result.status = SolverStatus::NOT_APPLICABLE;
+                    result.iterations = iter;
+                    return result;
+                }
+                for (std::size_t i = 0; i < n; ++i) {
+                    r_vector(i) = r[i];
+                    z_vector(i) = z[i];
+                }
+                const double replaced_rsnew =
+                    krylov_dot(r_vector, z_vector, redp, reduction);
+                if (!std::isfinite(replaced_rsnew) || !(replaced_rsnew > 0.0)) {
+                    result.status = SolverStatus::NOT_APPLICABLE;
+                    result.iterations = iter;
+                    return result;
+                }
+                p = z;
+                rsold = replaced_rsnew;
+                continue;
+            }
+        }
+
+        // The recursive CG residual can drift away from b-Ax in finite
+        // precision, especially once an effective AMG preconditioner has
+        // reduced the true residual by many orders of magnitude. Continuing
+        // with the stale recurrence can eventually destroy conjugacy and make
+        // p^T A p appear non-positive even though A is SPD. Replacing the
+        // recursive residual when the gap becomes material is a standard
+        // residual-replacement safeguard; the true residual is already
+        // available here, so this adds no extra fine-grid matvec.
+        if (preconditioner) {
+            double recursive_r2 = 0.0;
+            for (std::size_t i = 0; i < n; ++i)
+                recursive_r2 += r[i] * r[i];
+            const double recursive_res = std::sqrt(recursive_r2);
+            const double gap = std::abs(res - recursive_res);
+            const double scale = std::max(res, recursive_res);
+            result.max_true_recursive_gap =
+                std::max(result.max_true_recursive_gap, gap);
+            if (recursive_res > 0.0 && std::isfinite(recursive_res)) {
+                const double ratio = res / recursive_res;
+                if (std::isfinite(ratio)) {
+                    result.min_true_recursive_ratio =
+                        std::min(result.min_true_recursive_ratio, ratio);
+                    result.max_true_recursive_ratio =
+                        std::max(result.max_true_recursive_ratio, ratio);
+                }
+            }
+            result.max_true_residual = std::max(result.max_true_residual, res);
+            result.min_true_residual = std::min(result.min_true_residual, res);
+            constexpr double residual_gap_fraction = 0.25;
+            const bool made_progress =
+                res < 0.5 * residual_at_last_replacement;
+            // A non-positive r^T z means the recursive residual has been
+            // annihilated by cancellation. z = M^{-1}r is then numerically
+            // zero, so the next search direction is zero and p^T A p vanishes.
+            // That is a dead recurrence, not an unusable preconditioner, and it
+            // must be recognized here: otherwise it surfaces one iteration
+            // later as a spurious NOT_APPLICABLE from the p^T A p guard, which
+            // wrongly tells the caller to abandon a perfectly valid
+            // preconditioner.
+            const bool recurrence_collapsed = !(rsnew > 0.0);
+            const bool adaptive_replacement =
+                residual_policy == CGResidualReplacementPolicy::Adaptive &&
+                std::isfinite(recursive_res) && scale > 0.0 &&
+                gap > residual_gap_fraction * scale && made_progress;
+            const bool periodic_replacement =
+                residual_policy == CGResidualReplacementPolicy::Periodic &&
+                periodic_replacement_interval > 0 &&
+                (iter % periodic_replacement_interval == 0);
+            // Repairing a collapsed recurrence is itself a replacement, so the
+            // Disabled policy must not do it, and it is pointless once b-Ax has
+            // stopped improving.
+            const bool repair_collapse =
+                recurrence_collapsed && made_progress &&
+                residual_policy != CGResidualReplacementPolicy::Disabled;
+            if (recurrence_collapsed && !repair_collapse &&
+                !periodic_replacement) {
+                // The recurrence is dead and replacing it cannot help, so the
+                // iteration has extracted all the accuracy this system allows.
+                // Report the accuracy actually achieved, at the iteration where
+                // it was reached, instead of spending the remaining budget on a
+                // zero search direction.
+                result.status = SolverStatus::MAX_ITER_REACHED;
+                result.iterations = iter;
+                result.residual = res;
+                result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+                return result;
+            }
+            if (adaptive_replacement || periodic_replacement ||
+                repair_collapse) {
+                ++result.residual_replacements;
+                residual_at_last_replacement = res;
+                if (result.first_residual_replacement == 0)
+                    result.first_residual_replacement = iter;
+                result.last_residual_replacement = iter;
+                for (std::size_t i = 0; i < n; ++i) r[i] = rv(i);
+                if (null_space) null_space->remove(r);
+                if (!apply_preconditioner()) {
+                    return not_applicable(iter);
+                }
+                for (std::size_t i = 0; i < n; ++i) {
+                    r_vector(i) = r[i];
+                    z_vector(i) = z[i];
+                }
+                const double replaced_rsnew =
+                    krylov_dot(r_vector, z_vector, redp, reduction);
+                if (!std::isfinite(replaced_rsnew) || !(replaced_rsnew > 0.0)) {
+                    return not_applicable(iter);
+                }
+                // The replacement recomputes b-Ax after the normal convergence
+                // check. Re-test the true residual here so a converged iterate
+                // produced exactly at a replacement is not reported as
+                // MAX_ITER_REACHED merely because the replacement was the last
+                // operation of the iteration.
+                if (res <= tol_abs) {
+                    result.status = SolverStatus::CONVERGED;
+                    result.iterations = iter;
+                    result.residual = res;
+                    result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+                    return result;
+                }
+                // Restart the search direction after replacement. This avoids
+                // carrying a direction built from a residual that no longer
+                // represents b-Ax while retaining the current iterate.
+                p = z;
+                rsold = replaced_rsnew;
+                continue;
+            }
+        }
+
+        // beta = rsnew / rsold
+        const double beta = rsnew / rsold;
+
+        // p = z + beta p
+        for (std::size_t i = 0; i < n; ++i) {
+            p[i] = z[i] + beta * p[i];
+        }
+        if (null_space) null_space->remove(p);
+
+        rsold = rsnew;
+    }
+
+    result.status = SolverStatus::MAX_ITER_REACHED;
+    result.iterations = max_iter;
+    mixed_precision_true_residual(A, b, x, rv);
+    result.residual = krylov_norm2(rv, SolverPrecision::FP64, reduction);
+    result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : result.residual;
+    return result;
+}
+} // namespace detail
+
+// Diagnostic/qualification entry point: keeps the production solve_cg API
+// unchanged while allowing V&V campaigns to isolate residual-replacement
+// behavior without changing the stopping criterion.
+inline SolverResult solve_cg_controlled(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    Preconditioner& preconditioner,
+    std::size_t max_iter,
+    double tolerance,
+    CGResidualReplacementPolicy residual_policy,
+    std::size_t periodic_replacement_interval = 0)
+{
+    return detail::solve_cg_impl(
+        A, b, x, max_iter, tolerance, {}, {},
+        &preconditioner, nullptr, true,
+        residual_policy, periodic_replacement_interval);
+}
+
+inline SolverResult solve_cg(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    PrecisionPolicy precision = {},
+    KrylovReductionPolicy reduction = {})
+{
+    return detail::solve_cg_impl(
+        A, b, x, max_iter, tolerance, precision, reduction,
+        nullptr, nullptr, true);
+}
+
+inline SolverResult solve_cg(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    Preconditioner& preconditioner,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    PrecisionPolicy precision = {},
+    KrylovReductionPolicy reduction = {})
+{
+    return detail::solve_cg_impl(
+        A, b, x, max_iter, tolerance, precision, reduction,
+        &preconditioner, nullptr, true);
+}
+
+inline SolverResult solve_cg(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    const NullSpaceProjector& null_space,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    PrecisionPolicy precision = {},
+    KrylovReductionPolicy reduction = {})
+{
+    return detail::solve_cg_impl(
+        A, b, x, max_iter, tolerance, precision, reduction,
+        nullptr, &null_space, true);
+}
+
+inline SolverResult solve_cg(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    Preconditioner& preconditioner,
+    const NullSpaceProjector& null_space,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    PrecisionPolicy precision = {},
+    KrylovReductionPolicy reduction = {})
+{
+    return detail::solve_cg_impl(
+        A, b, x, max_iter, tolerance, precision, reduction,
+        &preconditioner, &null_space, true);
+}
+
+// Solve with a preconditioner that has already been prepared for A. This is
+// the low-level path used by reusable nonlinear/pressure-solver contexts.
+inline SolverResult solve_cg_prepared(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    Preconditioner& preconditioner,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    PrecisionPolicy precision = {},
+    KrylovReductionPolicy reduction = {},
+    const NullSpaceProjector* null_space = nullptr)
+{
+    return detail::solve_cg_impl(
+        A, b, x, max_iter, tolerance, precision, reduction,
+        &preconditioner, null_space, false);
+}
+
+}  // namespace core
+}  // namespace cfdx
+MERGE_FILE_EXIT=0
+=== git diff base master (hunks git) ===
+diff --git a/src/cfdx/core/linalg/cg_solver.h b/src/cfdx/core/linalg/cg_solver.h
+index c21ecaa3..16daccf1 100644
+--- a/src/cfdx/core/linalg/cg_solver.h
++++ b/src/cfdx/core/linalg/cg_solver.h
+@@ -93,2 +93,22 @@ inline SolverResult solve_cg_impl(
+     if (null_space) null_space->remove(x);
++    // A valid system can fail before the usual convergence/final-residual
++    // reporting path (preconditioner failure, non-positive curvature, or
++    // rejected residual replacement). Preserve its current b-A*x diagnostic
++    // instead of returning SolverResult's default zero residuals. This helper
++    // is used only on failure; it does not change an iterate or a stopping gate.
++    const auto not_applicable = [&](std::size_t iterations) {
++        result.status = SolverStatus::NOT_APPLICABLE;
++        result.iterations = iterations;
++        Vector failure_residual(n);
++        mixed_precision_true_residual(A, b, x, failure_residual);
++        result.residual =
++            krylov_norm2(failure_residual, SolverPrecision::FP64, reduction);
++        const double rhs_norm =
++            krylov_norm2(b, SolverPrecision::FP64, reduction);
++        result.residual_relative = rhs_norm > 0.0
++            ? result.residual / rhs_norm
++            : (result.residual == 0.0
++                ? 0.0 : std::numeric_limits<double>::infinity());
++        return result;
++    };
+     const double* Av = A.values_data();
+@@ -104,4 +124,3 @@ inline SolverResult solve_cg_impl(
+         if (setup_preconditioner && !preconditioner->setup(A)) {
+-            result.status = SolverStatus::NOT_APPLICABLE;
+-            return result;
++            return not_applicable(0);
+         }
+@@ -116,4 +135,3 @@ inline SolverResult solve_cg_impl(
+             if (!(M[i] > 0.0) || !std::isfinite(M[i])) {
+-                result.status = SolverStatus::NOT_APPLICABLE;
+-                return result;
++                return not_applicable(0);
+             }
+@@ -146,4 +164,3 @@ inline SolverResult solve_cg_impl(
+     if (!apply_preconditioner()) {
+-        result.status = SolverStatus::NOT_APPLICABLE;
+-        return result;
++        return not_applicable(0);
+     }
+@@ -212,5 +229,3 @@ inline SolverResult solve_cg_impl(
+         if (!(pAp > 0.0) || !std::isfinite(pAp)) {
+-            result.status = SolverStatus::NOT_APPLICABLE;
+-            result.iterations = iter;
+-            return result;
++            return not_applicable(iter);
+         }
+@@ -235,5 +250,3 @@ inline SolverResult solve_cg_impl(
+         if (!apply_preconditioner()) {
+-            result.status = SolverStatus::NOT_APPLICABLE;
+-            result.iterations = iter;
+-            return result;
++            return not_applicable(iter);
+         }
+@@ -349,5 +362,3 @@ inline SolverResult solve_cg_impl(
+                 if (!apply_preconditioner()) {
+-                    result.status = SolverStatus::NOT_APPLICABLE;
+-                    result.iterations = iter;
+-                    return result;
++                    return not_applicable(iter);
+                 }
+@@ -360,5 +371,3 @@ inline SolverResult solve_cg_impl(
+                 if (!std::isfinite(replaced_rsnew) || !(replaced_rsnew > 0.0)) {
+-                    result.status = SolverStatus::NOT_APPLICABLE;
+-                    result.iterations = iter;
+-                    return result;
++                    return not_applicable(iter);
+                 }
+=== git diff base branch (hunks git) ===
+diff --git a/src/cfdx/core/linalg/cg_solver.h b/src/cfdx/core/linalg/cg_solver.h
+index c21ecaa3..3d6c154c 100644
+--- a/src/cfdx/core/linalg/cg_solver.h
++++ b/src/cfdx/core/linalg/cg_solver.h
+@@ -93,4 +93,28 @@ inline SolverResult solve_cg_impl(
+     if (null_space) null_space->remove(x);
++    // A valid system can fail before the usual convergence/final-residual
++    // reporting path (preconditioner failure, non-positive curvature, or
++    // rejected residual replacement). Preserve its current b-A*x diagnostic
++    // instead of returning SolverResult's default zero residuals. This helper
++    // is used only on failure; it does not change an iterate or a stopping gate.
++    const auto not_applicable = [&](std::size_t iterations) {
++        result.status = SolverStatus::NOT_APPLICABLE;
++        result.iterations = iterations;
++        Vector failure_residual(n);
++        mixed_precision_true_residual(A, b, x, failure_residual);
++        result.residual =
++            krylov_norm2(failure_residual, SolverPrecision::FP64, reduction);
++        const double rhs_norm =
++            krylov_norm2(b, SolverPrecision::FP64, reduction);
++        result.residual_relative = rhs_norm > 0.0
++            ? result.residual / rhs_norm
++            : (result.residual == 0.0
++                ? 0.0 : std::numeric_limits<double>::infinity());
++        return result;
++    };
+     const double* Av = A.values_data();
+     const bool mp32 = precision.enabled && precision.operator_precision == SolverPrecision::FP32;
++    // Mixed precision is opportunistic: promote the operator to FP64 if the
++    // recursive low-precision residual separates materially from the certified
++    // FP64 residual, so the requested tolerance remains an actual-residual gate.
++    bool promoted_to_fp64 = false;
+     const SolverPrecision redp = precision.enabled ? precision.reduction_precision : SolverPrecision::FP64;
+@@ -104,4 +128,3 @@ inline SolverResult solve_cg_impl(
+         if (setup_preconditioner && !preconditioner->setup(A)) {
+-            result.status = SolverStatus::NOT_APPLICABLE;
+-            return result;
++            return not_applicable(0);
+         }
+@@ -116,4 +139,3 @@ inline SolverResult solve_cg_impl(
+             if (!(M[i] > 0.0) || !std::isfinite(M[i])) {
+-                result.status = SolverStatus::NOT_APPLICABLE;
+-                return result;
++                return not_applicable(0);
+             }
+@@ -146,4 +168,3 @@ inline SolverResult solve_cg_impl(
+     if (!apply_preconditioner()) {
+-        result.status = SolverStatus::NOT_APPLICABLE;
+-        return result;
++        return not_applicable(0);
+     }
+@@ -158,3 +179,3 @@ inline SolverResult solve_cg_impl(
+     const double b_norm = krylov_norm2(b, SolverPrecision::FP64, reduction);
+-    const double tol_abs = tolerance * std::max(b_norm, 1e-15);
++    const double tol_abs = tolerance * std::max(b_norm, 1e-300);
+ 
+@@ -169,4 +190,3 @@ inline SolverResult solve_cg_impl(
+     }
+-    if ((preconditioner && initial_true_residual <= tol_abs) ||
+-        (!preconditioner && rsold < tol_abs * tol_abs)) {
++    if (initial_true_residual <= tol_abs) {
+         result.status = SolverStatus::CONVERGED;
+@@ -175,3 +195,3 @@ inline SolverResult solve_cg_impl(
+             ? initial_true_residual
+-            : krylov_norm2(rv, redp, reduction);
++            : krylov_norm2(rv, SolverPrecision::FP64, reduction);
+         result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
+@@ -198,3 +218,5 @@ inline SolverResult solve_cg_impl(
+             for (std::size_t k = Ar[i]; k < Ar[i + 1]; ++k) {
+-                sum += mp32 ? static_cast<double>(static_cast<float>(Av[k])*static_cast<float>(p[Ac[k]])) : Av[k]*p[Ac[k]];
++                sum += (mp32 && !promoted_to_fp64)
++                    ? static_cast<double>(static_cast<float>(Av[k]) * static_cast<float>(p[Ac[k]]))
++                    : Av[k] * p[Ac[k]];
+             }
+@@ -212,5 +234,3 @@ inline SolverResult solve_cg_impl(
+         if (!(pAp > 0.0) || !std::isfinite(pAp)) {
+-            result.status = SolverStatus::NOT_APPLICABLE;
+-            result.iterations = iter;
+-            return result;
++            return not_applicable(iter);
+         }
+@@ -235,5 +255,3 @@ inline SolverResult solve_cg_impl(
+         if (!apply_preconditioner()) {
+-            result.status = SolverStatus::NOT_APPLICABLE;
+-            result.iterations = iter;
+-            return result;
++            return not_applicable(iter);
+         }
+@@ -251,5 +269,8 @@ inline SolverResult solve_cg_impl(
+         // convergence, just as the reported final residual is evaluated.
+-        const double res = preconditioner
+-            ? mixed_precision_true_residual(A, b, x, rv)
+-            : std::sqrt(std::abs(rsnew));
++        // Certify convergence against the original FP64 operator for both
++        // internal Jacobi and externally supplied preconditioners. The
++        // preconditioned recurrence norm is not a residual norm and changes
++        // under a common scaling of A and b.
++        mixed_precision_true_residual(A, b, x, rv);
++        const double res = krylov_norm2(rv, SolverPrecision::FP64, reduction);
+         if (preconditioner &&
+@@ -264,3 +285,3 @@ inline SolverResult solve_cg_impl(
+         }
+-        if (res < tol_abs) {
++        if (res <= tol_abs) {
+             result.status = SolverStatus::CONVERGED;
+@@ -272,2 +293,84 @@ inline SolverResult solve_cg_impl(
+ 
++        // Internal-Jacobi CG also needs residual replacement when its recursive
++        // residual claims convergence but the independently recomputed FP64
++        // residual does not. Without this restart, roundoff can leave the
++        // recurrence near zero while the certified residual remains above the
++        // requested tolerance for the entire iteration budget.
++        if (!preconditioner) {
++            double recursive_r2 = 0.0;
++            for (const double value : r)
++                recursive_r2 = std::hypot(recursive_r2, value);
++            if (std::isfinite(recursive_r2) &&
++                recursive_r2 <= tol_abs && res > tol_abs) {
++                ++result.residual_replacements;
++                if (result.first_residual_replacement == 0)
++                    result.first_residual_replacement = iter;
++                result.last_residual_replacement = iter;
++                for (std::size_t i = 0; i < n; ++i) r[i] = rv(i);
++                if (null_space) null_space->remove(r);
++                if (!apply_preconditioner()) {
++                    result.status = SolverStatus::NOT_APPLICABLE;
++                    result.iterations = iter;
++                    return result;
++                }
++                for (std::size_t i = 0; i < n; ++i) {
++                    r_vector(i) = r[i];
++                    z_vector(i) = z[i];
++                }
++                const double replaced_rsnew =
++                    krylov_dot(r_vector, z_vector, redp, reduction);
++                if (!std::isfinite(replaced_rsnew) || !(replaced_rsnew > 0.0)) {
++                    result.status = SolverStatus::MAX_ITER_REACHED;
++                    result.iterations = iter;
++                    result.residual = res;
++                    result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
++                    return result;
++                }
++                p = z;
++                rsold = replaced_rsnew;
++                continue;
++            }
++        }
++
++        // If FP32 operator rounding makes the recursive residual materially
++        // disagree with the independently recomputed FP64 residual, restart
++        // from the true residual and promote the operator. This is mixed-
++        // precision iterative refinement, not a relaxed convergence test.
++        if (!preconditioner && mp32 && !promoted_to_fp64 && res > tol_abs) {
++            double recursive_r2 = 0.0;
++            for (double value : r) recursive_r2 += value * value;
++            const double recursive_res = std::sqrt(recursive_r2);
++            const double gap = std::abs(res - recursive_res);
++            const double scale = std::max(res, recursive_res);
++            if (std::isfinite(recursive_res) && scale > 0.0 &&
++                gap > 0.25 * scale) {
++                promoted_to_fp64 = true;
++                ++result.residual_replacements;
++                result.first_residual_replacement = iter;
++                result.last_residual_replacement = iter;
++                residual_at_last_replacement = res;
++                for (std::size_t i = 0; i < n; ++i) r[i] = rv(i);
++                if (null_space) null_space->remove(r);
++                if (!apply_preconditioner()) {
++                    result.status = SolverStatus::NOT_APPLICABLE;
++                    result.iterations = iter;
++                    return result;
++                }
++                for (std::size_t i = 0; i < n; ++i) {
++                    r_vector(i) = r[i];
++                    z_vector(i) = z[i];
++                }
++                const double replaced_rsnew =
++                    krylov_dot(r_vector, z_vector, redp, reduction);
++                if (!std::isfinite(replaced_rsnew) || !(replaced_rsnew > 0.0)) {
++                    result.status = SolverStatus::NOT_APPLICABLE;
++                    result.iterations = iter;
++                    return result;
++                }
++                p = z;
++                rsold = replaced_rsnew;
++                continue;
++            }
++        }
++
+         // The recursive CG residual can drift away from b-Ax in finite
+@@ -349,5 +452,3 @@ inline SolverResult solve_cg_impl(
+                 if (!apply_preconditioner()) {
+-                    result.status = SolverStatus::NOT_APPLICABLE;
+-                    result.iterations = iter;
+-                    return result;
++                    return not_applicable(iter);
+                 }
+@@ -360,5 +461,3 @@ inline SolverResult solve_cg_impl(
+                 if (!std::isfinite(replaced_rsnew) || !(replaced_rsnew > 0.0)) {
+-                    result.status = SolverStatus::NOT_APPLICABLE;
+-                    result.iterations = iter;
+-                    return result;
++                    return not_applicable(iter);
+                 }
+@@ -399,4 +498,5 @@ inline SolverResult solve_cg_impl(
+     result.iterations = max_iter;
+-    result.residual = mixed_precision_true_residual(A,b,x,rv);
+-    result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
++    mixed_precision_true_residual(A, b, x, rv);
++    result.residual = krylov_norm2(rv, SolverPrecision::FP64, reduction);
++    result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : result.residual;
+     return result;
+
+########## FILE tests/unit/test_cg_solver.cpp ##########
+=== git merge-file (branch base master) exit + contenu diff3 ===
+// M0.8-T04 — Tests for CG solver
+
+#include "cfdx/core/linalg/cg_solver.h"
+#include "cfdx/core/linalg/sparse_matrix.h"
+#include "cfdx/core/linalg/vector.h"
+#include "common/test_harness.h"
+#include <limits>
+#include <cmath>
+
+using namespace cfdx::core;
+using namespace cfdx::testing;
+
+// Crée une matrice symétrique définie positive (diagonale dominante).
+SparseMatrix make_poisson_1d(std::size_t n) {
+    SparseMatrix A(n, n);
+    for (std::size_t i = 0; i < n; ++i) {
+        A.push_back(i, i, 2.0);
+        if (i > 0) A.push_back(i, i - 1, -1.0);
+        if (i + 1 < n) A.push_back(i, i + 1, -1.0);
+    }
+    A.finalize();
+    return A;
+}
+
+namespace {
+enum class FailurePoint { Setup, InitialApply, IterationApply, ReplacementDot };
+
+class FailingPreconditioner final : public Preconditioner {
+public:
+    explicit FailingPreconditioner(FailurePoint point) : point_(point) {}
+    bool setup(const SparseMatrix&) override { return point_ != FailurePoint::Setup; }
+    bool apply(const Vector& r, Vector& z) const override {
+        ++applications;
+        if ((point_ == FailurePoint::InitialApply && applications == 1) ||
+            (point_ == FailurePoint::IterationApply && applications == 2))
+            return false;
+        const double sign =
+            point_ == FailurePoint::ReplacementDot && applications >= 2 ? -1.0 : 1.0;
+        for (std::size_t i = 0; i < r.size(); ++i) z(i) = sign * r(i);
+        return true;
+    }
+    const char* name() const override { return "Failure injection"; }
+    mutable std::size_t applications = 0;
+private:
+    FailurePoint point_;
+};
+
+void check_preconditioner_failure_residual(FailurePoint point) {
+    SparseMatrix A(2, 2);
+    A.push_back(0, 0, 1.0);
+    A.push_back(1, 1, 2.0);
+    A.finalize();
+    Vector b(2, 1.0), x(2, 0.0);
+    const bool before_iteration =
+        point == FailurePoint::Setup || point == FailurePoint::InitialApply;
+    if (before_iteration) {
+        x(0) = 0.25;
+        x(1) = -0.5;
+    }
+    FailingPreconditioner pc(point);
+    const auto result = solve_cg(A, b, x, pc, 10, 1e-12);
+    EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    EXPECT_TRUE(result.iterations == (before_iteration ? 0u : 1u));
+    if (point == FailurePoint::ReplacementDot) {
+        // The third application follows residual replacement and rejects
+        // r^T M^-1 r < 0, as in the captured NACA pressure failure.
+        EXPECT_TRUE(pc.applications == 3);
+        EXPECT_TRUE(result.residual_replacements == 1);
+    }
+    if (!before_iteration) {
+        EXPECT_NEAR(x(0), 2.0 / 3.0, 1e-15);
+        EXPECT_NEAR(x(1), 2.0 / 3.0, 1e-15);
+    }
+    // Independent two-equation oracle, evaluated at the returned iterate.
+    const double expected = std::hypot(1.0 - x(0), 1.0 - 2.0 * x(1));
+    EXPECT_TRUE(expected > 0.0);
+    EXPECT_NEAR(result.residual, expected, 1e-14);
+    EXPECT_NEAR(result.residual_relative, expected / std::sqrt(2.0), 1e-14);
+}
+} // namespace
+
+int main() {
+    run_case("cg_failed_setup_reports_current_true_residual", [] {
+        check_preconditioner_failure_residual(FailurePoint::Setup);
+    });
+    run_case("cg_failed_initial_apply_reports_current_true_residual", [] {
+        check_preconditioner_failure_residual(FailurePoint::InitialApply);
+    });
+    run_case("cg_failed_iteration_apply_reports_updated_true_residual", [] {
+        check_preconditioner_failure_residual(FailurePoint::IterationApply);
+    });
+    run_case("cg_failed_replacement_reports_updated_true_residual", [] {
+        check_preconditioner_failure_residual(FailurePoint::ReplacementDot);
+    });
+    run_case("cg_failed_zero_rhs_reports_nonzero_true_residual", [] {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 2.0);
+        A.finalize();
+        Vector b(1, 0.0), x(1, 3.0);
+        FailingPreconditioner pc(FailurePoint::Setup);
+        const auto result = solve_cg(A, b, x, pc, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_NEAR(x(0), 3.0, 0.0);
+        EXPECT_NEAR(result.residual, 6.0, 1e-14);
+        EXPECT_TRUE(std::isinf(result.residual_relative));
+        EXPECT_TRUE(result.residual_relative > 0.0);
+    });
+    run_case("cg_nonpositive_curvature_reports_true_residual", [] {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0); A.push_back(0, 1, 2.0);
+        A.push_back(1, 0, 2.0); A.push_back(1, 1, 1.0);
+        A.finalize();
+        Vector b(2), x(2, 0.0);
+        b(0) = 1.0; b(1) = -1.0;
+        const auto result = solve_cg(A, b, x, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(result.iterations == 1);
+        EXPECT_NEAR(x(0), 0.0, 0.0);
+        EXPECT_NEAR(x(1), 0.0, 0.0);
+        EXPECT_NEAR(result.residual, std::sqrt(2.0), 1e-14);
+        EXPECT_NEAR(result.residual_relative, 1.0, 1e-14);
+    });
+
+    run_case("cg_solve_diagonal", []() {
+        // A = 2I, b = [2, 2, 2], solution attendue x = [1, 1, 1].
+        SparseMatrix A(3, 3);
+        A.push_back(0, 0, 2.0);
+        A.push_back(1, 1, 2.0);
+        A.push_back(2, 2, 2.0);
+        A.finalize();
+
+        Vector b(3);
+        b(0) = 2.0; b(1) = 2.0; b(2) = 2.0;
+
+        Vector x(3, 0.0);
+        auto result = solve_cg(A, b, x);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations > 0);
+        EXPECT_TRUE(result.residual_relative < 1e-10);
+        EXPECT_NEAR(x(0), 1.0, 1e-10);
+        EXPECT_NEAR(x(1), 1.0, 1e-10);
+        EXPECT_NEAR(x(2), 1.0, 1e-10);
+    });
+
+    run_case("cg_solve_poisson_1d", []() {
+        // Système 1D : -u'' = f avec u(0)=u(n-1)=0.
+        // A = tridiag(-1, 2, -1), b = [0, 1, 1, 1, 0].
+        const std::size_t n = 5;
+        auto A = make_poisson_1d(n);
+
+        Vector b(n);
+        b(0) = 0.0; b(1) = 1.0; b(2) = 1.0; b(3) = 1.0; b(4) = 0.0;
+
+        Vector x(n, 0.0);
+        auto result = solve_cg(A, b, x);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.residual_relative < 1e-10);
+        // Vérification : A x ≈ b.
+        auto Ax = A.matvec(x);
+        for (std::size_t i = 0; i < n; ++i) {
+            EXPECT_NEAR(Ax[i], b(i), 1e-10);
+        }
+    });
+
+    run_case("cg_already_converged", []() {
+        // x = 0, b = 0 → déjà convergé.
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+
+        Vector b(2, 0.0);
+        Vector x(2, 0.0);
+        auto result = solve_cg(A, b, x);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations == 0);
+    });
+
+    run_case("cg_max_iter_reached", []() {
+        // Système mal conditionné avec très peu d'itérations.
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1e10);
+        A.push_back(1, 1, 1e-10);
+        A.finalize();
+
+        Vector b(2);
+        b(0) = 1.0; b(1) = 1.0;
+        Vector x(2, 0.0);
+        auto result = solve_cg(A, b, x, 1, 1e-20);
+        // Soit convergé, soit max_iter atteint.
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED ||
+                    result.status == SolverStatus::MAX_ITER_REACHED);
+    });
+
+    run_case("cg_not_applicable_non_square", []() {
+        SparseMatrix A(2, 3);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+
+        Vector b(2);
+        Vector x(3, 0.0);
+        auto result = solve_cg(A, b, x);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("cg_rejects_nonfinite_system", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+        A.values_data()[1] = std::numeric_limits<double>::quiet_NaN();
+        Vector b(2, 1.0);
+        Vector x(2, 0.0);
+        const auto result = solve_cg(A, b, x);
+        EXPECT_TRUE(result.status == SolverStatus::DIVERGED);
+    });
+
+    run_case("cg_dimension_mismatch", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+
+        Vector b(3);  // mauvaise taille
+        Vector x(2, 0.0);
+        auto result = solve_cg(A, b, x);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("cg_exact_spd_3x3_reference_solution", []() {
+        SparseMatrix A(3, 3);
+        A.push_back(0, 0, 4.0); A.push_back(0, 1, 1.0);
+        A.push_back(1, 0, 1.0); A.push_back(1, 1, 3.0); A.push_back(1, 2, 1.0);
+        A.push_back(2, 1, 1.0); A.push_back(2, 2, 2.0);
+        A.finalize();
+
+        Vector x_exact(3);
+        x_exact(0) = 1.0; x_exact(1) = -2.0; x_exact(2) = 3.0;
+        const auto b_values = A.matvec(x_exact);
+        Vector b(3);
+        for (std::size_t i = 0; i < 3; ++i) b(i) = b_values[i];
+        Vector x(3, 0.0);
+
+        const auto result = solve_cg(A, b, x, 20, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations <= 3);
+        EXPECT_TRUE(result.residual_relative < 1e-12);
+        const auto Ax = A.matvec(x);
+        double true_residual_sq = 0.0;
+        double b_sq = 0.0;
+        for (std::size_t i = 0; i < 3; ++i) {
+            const double r = Ax[i] - b(i);
+            true_residual_sq += r * r;
+            b_sq += b(i) * b(i);
+            EXPECT_TRUE(std::isfinite(x(i)));
+            EXPECT_NEAR(x(i), x_exact(i), 1e-11);
+        }
+        EXPECT_TRUE(std::sqrt(true_residual_sq / b_sq) < 1e-10);
+    });
+
+    run_case("cg_reports_non_spd_breakdown", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, -1.0);
+        A.finalize();
+
+        Vector b(2);
+        b(0) = 1.0; b(1) = 1.0;
+        Vector x(2, 0.0);
+
+        const auto result = solve_cg(A, b, x, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE ||
+                    result.status == SolverStatus::DIVERGED);
+    });
+
+    run_case("cg_internal_jacobi_is_invariant_to_common_scale", []() {
+        for (const double scale : {1.0, 1e8, 1e12, 1e24}) {
+            SparseMatrix A(2, 2);
+            A.push_back(0, 0, 4.0 * scale); A.push_back(0, 1, 1.0 * scale);
+            A.push_back(1, 0, 1.0 * scale); A.push_back(1, 1, 3.0 * scale);
+            A.finalize();
+            Vector b(2); b(0) = 6.0 * scale; b(1) = 7.0 * scale;
+            Vector x(2, 0.0);
+            const auto result = solve_cg(A, b, x, 20, 1e-10);
+            EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+            EXPECT_NEAR(x(0), 1.0, 1e-9);
+            EXPECT_NEAR(x(1), 2.0, 1e-9);
+            EXPECT_TRUE(result.residual_relative < 1e-10);
+        }
+    });
+
+    return run_all();
+}
+MERGE_FILE_EXIT=0
+=== git diff base master (hunks git) ===
+diff --git a/tests/unit/test_cg_solver.cpp b/tests/unit/test_cg_solver.cpp
+index dcd2c90a..d34faf23 100644
+--- a/tests/unit/test_cg_solver.cpp
++++ b/tests/unit/test_cg_solver.cpp
+@@ -24,3 +24,102 @@ SparseMatrix make_poisson_1d(std::size_t n) {
+ 
++namespace {
++enum class FailurePoint { Setup, InitialApply, IterationApply, ReplacementDot };
++
++class FailingPreconditioner final : public Preconditioner {
++public:
++    explicit FailingPreconditioner(FailurePoint point) : point_(point) {}
++    bool setup(const SparseMatrix&) override { return point_ != FailurePoint::Setup; }
++    bool apply(const Vector& r, Vector& z) const override {
++        ++applications;
++        if ((point_ == FailurePoint::InitialApply && applications == 1) ||
++            (point_ == FailurePoint::IterationApply && applications == 2))
++            return false;
++        const double sign =
++            point_ == FailurePoint::ReplacementDot && applications >= 2 ? -1.0 : 1.0;
++        for (std::size_t i = 0; i < r.size(); ++i) z(i) = sign * r(i);
++        return true;
++    }
++    const char* name() const override { return "Failure injection"; }
++    mutable std::size_t applications = 0;
++private:
++    FailurePoint point_;
++};
++
++void check_preconditioner_failure_residual(FailurePoint point) {
++    SparseMatrix A(2, 2);
++    A.push_back(0, 0, 1.0);
++    A.push_back(1, 1, 2.0);
++    A.finalize();
++    Vector b(2, 1.0), x(2, 0.0);
++    const bool before_iteration =
++        point == FailurePoint::Setup || point == FailurePoint::InitialApply;
++    if (before_iteration) {
++        x(0) = 0.25;
++        x(1) = -0.5;
++    }
++    FailingPreconditioner pc(point);
++    const auto result = solve_cg(A, b, x, pc, 10, 1e-12);
++    EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
++    EXPECT_TRUE(result.iterations == (before_iteration ? 0u : 1u));
++    if (point == FailurePoint::ReplacementDot) {
++        // The third application follows residual replacement and rejects
++        // r^T M^-1 r < 0, as in the captured NACA pressure failure.
++        EXPECT_TRUE(pc.applications == 3);
++        EXPECT_TRUE(result.residual_replacements == 1);
++    }
++    if (!before_iteration) {
++        EXPECT_NEAR(x(0), 2.0 / 3.0, 1e-15);
++        EXPECT_NEAR(x(1), 2.0 / 3.0, 1e-15);
++    }
++    // Independent two-equation oracle, evaluated at the returned iterate.
++    const double expected = std::hypot(1.0 - x(0), 1.0 - 2.0 * x(1));
++    EXPECT_TRUE(expected > 0.0);
++    EXPECT_NEAR(result.residual, expected, 1e-14);
++    EXPECT_NEAR(result.residual_relative, expected / std::sqrt(2.0), 1e-14);
++}
++} // namespace
++
+ int main() {
++    run_case("cg_failed_setup_reports_current_true_residual", [] {
++        check_preconditioner_failure_residual(FailurePoint::Setup);
++    });
++    run_case("cg_failed_initial_apply_reports_current_true_residual", [] {
++        check_preconditioner_failure_residual(FailurePoint::InitialApply);
++    });
++    run_case("cg_failed_iteration_apply_reports_updated_true_residual", [] {
++        check_preconditioner_failure_residual(FailurePoint::IterationApply);
++    });
++    run_case("cg_failed_replacement_reports_updated_true_residual", [] {
++        check_preconditioner_failure_residual(FailurePoint::ReplacementDot);
++    });
++    run_case("cg_failed_zero_rhs_reports_nonzero_true_residual", [] {
++        SparseMatrix A(1, 1);
++        A.push_back(0, 0, 2.0);
++        A.finalize();
++        Vector b(1, 0.0), x(1, 3.0);
++        FailingPreconditioner pc(FailurePoint::Setup);
++        const auto result = solve_cg(A, b, x, pc, 10, 1e-12);
++        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
++        EXPECT_TRUE(result.iterations == 0);
++        EXPECT_NEAR(x(0), 3.0, 0.0);
++        EXPECT_NEAR(result.residual, 6.0, 1e-14);
++        EXPECT_TRUE(std::isinf(result.residual_relative));
++        EXPECT_TRUE(result.residual_relative > 0.0);
++    });
++    run_case("cg_nonpositive_curvature_reports_true_residual", [] {
++        SparseMatrix A(2, 2);
++        A.push_back(0, 0, 1.0); A.push_back(0, 1, 2.0);
++        A.push_back(1, 0, 2.0); A.push_back(1, 1, 1.0);
++        A.finalize();
++        Vector b(2), x(2, 0.0);
++        b(0) = 1.0; b(1) = -1.0;
++        const auto result = solve_cg(A, b, x, 10, 1e-12);
++        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
++        EXPECT_TRUE(result.iterations == 1);
++        EXPECT_NEAR(x(0), 0.0, 0.0);
++        EXPECT_NEAR(x(1), 0.0, 0.0);
++        EXPECT_NEAR(result.residual, std::sqrt(2.0), 1e-14);
++        EXPECT_NEAR(result.residual_relative, 1.0, 1e-14);
++    });
++
+     run_case("cg_solve_diagonal", []() {
+@@ -179,2 +278,2 @@ int main() {
+     return run_all();
+-}
+\ No newline at end of file
++}
+=== git diff base branch (hunks git) ===
+diff --git a/tests/unit/test_cg_solver.cpp b/tests/unit/test_cg_solver.cpp
+index dcd2c90a..157adc71 100644
+--- a/tests/unit/test_cg_solver.cpp
++++ b/tests/unit/test_cg_solver.cpp
+@@ -24,3 +24,102 @@ SparseMatrix make_poisson_1d(std::size_t n) {
+ 
++namespace {
++enum class FailurePoint { Setup, InitialApply, IterationApply, ReplacementDot };
++
++class FailingPreconditioner final : public Preconditioner {
++public:
++    explicit FailingPreconditioner(FailurePoint point) : point_(point) {}
++    bool setup(const SparseMatrix&) override { return point_ != FailurePoint::Setup; }
++    bool apply(const Vector& r, Vector& z) const override {
++        ++applications;
++        if ((point_ == FailurePoint::InitialApply && applications == 1) ||
++            (point_ == FailurePoint::IterationApply && applications == 2))
++            return false;
++        const double sign =
++            point_ == FailurePoint::ReplacementDot && applications >= 2 ? -1.0 : 1.0;
++        for (std::size_t i = 0; i < r.size(); ++i) z(i) = sign * r(i);
++        return true;
++    }
++    const char* name() const override { return "Failure injection"; }
++    mutable std::size_t applications = 0;
++private:
++    FailurePoint point_;
++};
++
++void check_preconditioner_failure_residual(FailurePoint point) {
++    SparseMatrix A(2, 2);
++    A.push_back(0, 0, 1.0);
++    A.push_back(1, 1, 2.0);
++    A.finalize();
++    Vector b(2, 1.0), x(2, 0.0);
++    const bool before_iteration =
++        point == FailurePoint::Setup || point == FailurePoint::InitialApply;
++    if (before_iteration) {
++        x(0) = 0.25;
++        x(1) = -0.5;
++    }
++    FailingPreconditioner pc(point);
++    const auto result = solve_cg(A, b, x, pc, 10, 1e-12);
++    EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
++    EXPECT_TRUE(result.iterations == (before_iteration ? 0u : 1u));
++    if (point == FailurePoint::ReplacementDot) {
++        // The third application follows residual replacement and rejects
++        // r^T M^-1 r < 0, as in the captured NACA pressure failure.
++        EXPECT_TRUE(pc.applications == 3);
++        EXPECT_TRUE(result.residual_replacements == 1);
++    }
++    if (!before_iteration) {
++        EXPECT_NEAR(x(0), 2.0 / 3.0, 1e-15);
++        EXPECT_NEAR(x(1), 2.0 / 3.0, 1e-15);
++    }
++    // Independent two-equation oracle, evaluated at the returned iterate.
++    const double expected = std::hypot(1.0 - x(0), 1.0 - 2.0 * x(1));
++    EXPECT_TRUE(expected > 0.0);
++    EXPECT_NEAR(result.residual, expected, 1e-14);
++    EXPECT_NEAR(result.residual_relative, expected / std::sqrt(2.0), 1e-14);
++}
++} // namespace
++
+ int main() {
++    run_case("cg_failed_setup_reports_current_true_residual", [] {
++        check_preconditioner_failure_residual(FailurePoint::Setup);
++    });
++    run_case("cg_failed_initial_apply_reports_current_true_residual", [] {
++        check_preconditioner_failure_residual(FailurePoint::InitialApply);
++    });
++    run_case("cg_failed_iteration_apply_reports_updated_true_residual", [] {
++        check_preconditioner_failure_residual(FailurePoint::IterationApply);
++    });
++    run_case("cg_failed_replacement_reports_updated_true_residual", [] {
++        check_preconditioner_failure_residual(FailurePoint::ReplacementDot);
++    });
++    run_case("cg_failed_zero_rhs_reports_nonzero_true_residual", [] {
++        SparseMatrix A(1, 1);
++        A.push_back(0, 0, 2.0);
++        A.finalize();
++        Vector b(1, 0.0), x(1, 3.0);
++        FailingPreconditioner pc(FailurePoint::Setup);
++        const auto result = solve_cg(A, b, x, pc, 10, 1e-12);
++        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
++        EXPECT_TRUE(result.iterations == 0);
++        EXPECT_NEAR(x(0), 3.0, 0.0);
++        EXPECT_NEAR(result.residual, 6.0, 1e-14);
++        EXPECT_TRUE(std::isinf(result.residual_relative));
++        EXPECT_TRUE(result.residual_relative > 0.0);
++    });
++    run_case("cg_nonpositive_curvature_reports_true_residual", [] {
++        SparseMatrix A(2, 2);
++        A.push_back(0, 0, 1.0); A.push_back(0, 1, 2.0);
++        A.push_back(1, 0, 2.0); A.push_back(1, 1, 1.0);
++        A.finalize();
++        Vector b(2), x(2, 0.0);
++        b(0) = 1.0; b(1) = -1.0;
++        const auto result = solve_cg(A, b, x, 10, 1e-12);
++        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
++        EXPECT_TRUE(result.iterations == 1);
++        EXPECT_NEAR(x(0), 0.0, 0.0);
++        EXPECT_NEAR(x(1), 0.0, 0.0);
++        EXPECT_NEAR(result.residual, std::sqrt(2.0), 1e-14);
++        EXPECT_NEAR(result.residual_relative, 1.0, 1e-14);
++    });
++
+     run_case("cg_solve_diagonal", []() {
+@@ -178,3 +277,19 @@ int main() {
+ 
++    run_case("cg_internal_jacobi_is_invariant_to_common_scale", []() {
++        for (const double scale : {1.0, 1e8, 1e12, 1e24}) {
++            SparseMatrix A(2, 2);
++            A.push_back(0, 0, 4.0 * scale); A.push_back(0, 1, 1.0 * scale);
++            A.push_back(1, 0, 1.0 * scale); A.push_back(1, 1, 3.0 * scale);
++            A.finalize();
++            Vector b(2); b(0) = 6.0 * scale; b(1) = 7.0 * scale;
++            Vector x(2, 0.0);
++            const auto result = solve_cg(A, b, x, 20, 1e-10);
++            EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
++            EXPECT_NEAR(x(0), 1.0, 1e-9);
++            EXPECT_NEAR(x(1), 2.0, 1e-9);
++            EXPECT_TRUE(result.residual_relative < 1e-10);
++        }
++    });
++
+     return run_all();
+-}
+\ No newline at end of file
++}
