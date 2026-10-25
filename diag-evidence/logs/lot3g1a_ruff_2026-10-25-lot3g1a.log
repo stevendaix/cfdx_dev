@@ -1,0 +1,17 @@
+=== ruff check ===
+All checks passed!
+ruff_check_exit=0
+=== ruff format --check ===
+unformatted: File would be reformatted
+   --> src/cfdx/python/cfdx/workbench.py:603:58
+    |
+602 |             self.edit_visualization_button = QPushButton("Edit selected")
+    -             self.edit_visualization_button.setObjectName(
+    -                 "workbench.visualization.edit"
+    -             )
+603 +             self.edit_visualization_button.setObjectName("workbench.visualization.edit")
+604 |             self.edit_visualization_button.setEnabled(False)
+    |
+
+1 file would be reformatted, 4 files already formatted
+ruff_format_exit=1
