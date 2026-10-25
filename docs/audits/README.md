@@ -46,7 +46,9 @@ Ce dossier **ne duplique aucun registre existant** (cf. `docs/validation/CFDX_VV
 | [10-thermique-cht.md](10-thermique-cht.md) | Énergie ρ·cp, CHT multi-régions, Boussinesq | APPROUVÉE (2026-10-12, PR #861) ; reste requis (Phase 3, audit du code Phase 11) |
 | [11-rayonnement.md](11-rayonnement.md) | Rayonnement : Rosseland, P1, S2S, DOM | APPROUVÉE (2026-10-12, PR #861) ; reste requis (Phase 3, audit du code Phase 12) |
 | [12-parallelisme-gpu-ooc.md](12-parallelisme-gpu-ooc.md) | Parité CPU/MPI/GPU/OOC (Règle d’Or 4) | APPROUVÉE (2026-10-12, PR #861) ; reste requis (Phases 6–7, N13) |
+| [13-solveurs-krylov-certification.md](13-solveurs-krylov-certification.md) | Solveurs Krylov, certification FP64, précision mixte et réductions | EN COURS — audit G01–G09 |
 | [23-variable-viscosity-stress.md](23-variable-viscosity-stress.md) | Contrainte visqueuse transposée à viscosité variable (F11) | Implémentation + oracle affine ajoutés ; CI exacte et MMS/GCI polyédrique en attente |
+| [25-vof-curvature.md](25-vof-curvature.md) | Courbure d’interface VOF par divergence de la normale (F27) | PARTIEL — contrat du helper seulement ; intégration de production et qualification géométrique en attente |
 
 Les fiches à venir (VOF/PLIC, maillage dynamique, FSI, GUI) seront créées **avant** toute implémentation correspondante (Phase 4 de la roadmap). Les fiches 09–12 couvrant les Phases 1–3 du Plan Directeur sont approuvées (2026-10-12, PR #861) : l'audit du code contre chaque fiche reste requis avant toute promotion multiphysique (statuts BLOCKED du registre de qualification).
 
