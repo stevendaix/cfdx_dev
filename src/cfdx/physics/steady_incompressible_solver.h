@@ -538,6 +538,14 @@ inline void validate_incompressible_controls(
         !(c.kinematic_viscosity >= 0.0) || !std::isfinite(c.kinematic_viscosity) ||
         !(c.turbulent_viscosity >= 0.0) || !std::isfinite(c.turbulent_viscosity))
         throw std::invalid_argument("invalid incompressible material properties");
+    // Validate the derived dynamic viscosity before the caller's fields can
+    // be modified by initialization. Individually finite rho and nu values
+    // can still overflow when multiplied, as can rho * (nu + nu_t).
+    const double scalar_effective_viscosity =
+        c.density * (c.kinematic_viscosity + c.turbulent_viscosity);
+    if (!std::isfinite(scalar_effective_viscosity))
+        throw std::invalid_argument(
+            "derived dynamic viscosity must be finite");
     if (!c.cell_turbulent_viscosity.empty()) {
         if (c.cell_turbulent_viscosity.size() != n_cells)
             throw std::invalid_argument(
@@ -549,6 +557,11 @@ inline void validate_incompressible_controls(
             if (!(nu_t >= 0.0) || !std::isfinite(nu_t))
                 throw std::invalid_argument(
                     "cellwise turbulent viscosity must be finite and non-negative");
+            const double cell_effective_viscosity =
+                c.density * (c.kinematic_viscosity + nu_t);
+            if (!std::isfinite(cell_effective_viscosity))
+                throw std::invalid_argument(
+                    "derived cellwise dynamic viscosity must be finite");
         }
     }
     if (!c.cell_body_force.empty()) {
