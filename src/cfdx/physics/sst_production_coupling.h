@@ -293,13 +293,14 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
             return step;
         }
 
-        const auto cross = cell_gradient_dot(k, omega, mesh);
+        // F2 contains no cross diffusion; no scalar-boundary gradient is
+        // needed to refresh nu_t. F1/transport use the true BCs in sst_solver.
         cfdx::core::Field<double, cfdx::core::Location::CELL> F2(
             n, "sst_F2", "1", 1);
         for (std::size_t i = 0; i < n; ++i) {
             const auto blend = compute_sst_blending(
                 k(i), omega(i), wall_distance(i), controls.molecular_viscosity,
-                controls.beta_star, cross[i], controls.density,
+                controls.beta_star, 0.0, controls.density,
                 controls.sst_sigma_w2);
             F2(i) = blend.second;
         }
@@ -375,12 +376,11 @@ inline cfdx::io::DatRestartState restore_sst_production_state_from_dat(
                 "SST restart requires finite positive current-mesh wall distance");
     }
 
-    const auto cross = cell_gradient_dot(candidate.k, candidate.omega, mesh);
     Field<double, Location::CELL> F2(n, "sst_F2", "1", 1);
     for (std::size_t cell = 0; cell < n; ++cell) {
         const auto blending = compute_sst_blending(
             candidate.k(cell), candidate.omega(cell), candidate.wall_distance(cell),
-            controls.molecular_viscosity, controls.beta_star, cross[cell],
+            controls.molecular_viscosity, controls.beta_star, 0.0,
             controls.density, controls.sst_sigma_w2);
         F2(cell) = blending.second;
     }
@@ -426,13 +426,12 @@ inline SSTProductionState initialize_sst_production_state(
         state.strain_rate(cell) = strain_rate[cell];
     }
 
-    const auto cross = cell_gradient_dot(state.k, state.omega, mesh);
     cfdx::core::Field<double, cfdx::core::Location::CELL> F2(
         n, "sst_F2", "1", 1);
     for (std::size_t cell = 0; cell < n; ++cell) {
         const auto blending = compute_sst_blending(
             state.k(cell), state.omega(cell), state.wall_distance(cell),
-            controls.molecular_viscosity, controls.beta_star, cross[cell],
+            controls.molecular_viscosity, controls.beta_star, 0.0,
             controls.density, controls.sst_sigma_w2);
         F2(cell) = blending.second;
     }
@@ -494,10 +493,9 @@ inline void refresh_sst_production_derived_state_from_mesh(
         candidate.wall_distance(cell) = wall_distance.distance[cell];
         candidate.strain_rate(cell) = strain_field(cell);
     }
-    const auto cross = cell_gradient_dot(candidate.k, candidate.omega, mesh);
     cfdx::core::Field<double, cfdx::core::Location::CELL> F2(n, "sst_F2", "1", 1);
     for (std::size_t cell = 0; cell < n; ++cell) {
-        const auto blending = compute_sst_blending(candidate.k(cell), candidate.omega(cell), candidate.wall_distance(cell), controls.molecular_viscosity, controls.beta_star, cross[cell], controls.density, controls.sst_sigma_w2);
+        const auto blending = compute_sst_blending(candidate.k(cell), candidate.omega(cell), candidate.wall_distance(cell), controls.molecular_viscosity, controls.beta_star, 0.0, controls.density, controls.sst_sigma_w2);
         F2(cell) = blending.second;
     }
     refresh_sst_production_eddy_viscosity(candidate.k, candidate.omega, candidate.strain_rate, F2, controls, candidate.nu_t);
@@ -706,29 +704,69 @@ inline ScalarBoundaryFaceValues make_sst_wall_omega_face_values(
         if (face_counts[name] == 0)
             throw std::invalid_argument("SST wall omega patch has no boundary faces in mesh: " + name);
     }
+    validate_transport_boundary_face_values(mesh, geometry, values, true);
     return values;
 }
 
-// Fail closed before transport assembly until every declared wall-omega
-// condition has a corresponding production-qualified wall operator.
+// A geometry-free call cannot certify global-face coverage. Retain the old
+// overload for contracts without wall omega, but require the mesh-aware API
+// whenever WALL_OMEGA_SST is declared.
 inline void require_supported_sst_runtime_boundaries(
     const SSTRuntimeBoundaryContract& runtime,
     const ScalarBoundaryFaceValues* omega_face_values = nullptr)
 {
+    (void)omega_face_values;
     if (runtime.wall_omega_sst_patches.empty())
         return;
+    throw std::invalid_argument(
+        "SST production transport is blocked: WALL_OMEGA_SST requires mesh-aware "
+        "validation of every boundary face");
+}
+
+// Fail closed before carrier initialization or any SST mutation. Every mesh
+// face on every declared wall must have its own finite positive omega value.
+inline void require_supported_sst_runtime_boundaries(
+    const SSTRuntimeBoundaryContract& runtime,
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
+{
+    if (omega_face_values)
+        validate_transport_boundary_face_values(mesh, geometry, *omega_face_values, true);
+    if (runtime.wall_omega_sst_patches.empty())
+        return;
+    if (geometry.face_centres.size() != mesh.n_faces() ||
+        geometry.face_area_vectors.size() != mesh.n_faces() ||
+        geometry.cell_centres.size() != mesh.n_cells())
+        throw std::invalid_argument("SST wall omega geometry shape mismatch");
     if (omega_face_values == nullptr)
         throw std::invalid_argument(
             "SST production transport is blocked: WALL_OMEGA_SST requires explicit "
             "per-face wall values");
+    std::map<std::string, bool> seen;
     for (const auto& patch : runtime.wall_omega_sst_patches) {
-        const auto it = omega_face_values->values.find(patch);
-        if (it == omega_face_values->values.end() ||
-            std::none_of(it->second.begin(), it->second.end(),
-                         [](double value) { return std::isfinite(value); }))
+        const auto index = mesh.boundary().find(patch);
+        if (patch.empty() || !seen.emplace(patch, true).second ||
+            index == mesh.boundary().n_patches() ||
+            mesh.boundary().patch(index).type != cfdx::core::PatchType::WALL)
+            throw std::invalid_argument("SST wall omega requires a unique mesh WALL patch: " + patch);
+        if (omega_face_values->values.find(patch) == omega_face_values->values.end())
             throw std::invalid_argument(
                 "SST production transport is blocked: wall omega values are missing "
                 "for patch '" + patch + "'");
+        for (const auto face : mesh.boundary().patch(index).face_ids) {
+            const auto& area_vector = geometry.face_area_vectors[face];
+            const double area = area_vector.mag();
+            const auto owner = mesh.ownership().owner(face);
+            const double distance = area > 0.0
+                ? std::abs((geometry.face_centres[face] - geometry.cell_centres[owner]).dot(area_vector)) / area
+                : 0.0;
+            // WALL_OMEGA_SST has a resolved-wall geometric contract: never
+            // accept a characteristic-length fallback for a degenerate face.
+            if (!(area > 0.0) || !std::isfinite(area) ||
+                !(distance > 0.0) || !std::isfinite(distance))
+                throw std::invalid_argument("SST wall omega requires a positive geometric normal distance: " + patch);
+        }
     }
 }
 

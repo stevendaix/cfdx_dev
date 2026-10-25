@@ -10,8 +10,8 @@
 //     hand with Cramer's rule, and whose net flux is checked against the
 //     parallel-plate identity q = sigma (T_b^4 - T_t^4) / (1/eps_b +
 //     1/eps_t - 1). Wall temperatures are recomputed INDEPENDENTLY by the
-//     test (|Sf|-weighted average of adjacent cell temperatures over the
-//     patch faces) from the pass-1 production energy field.
+//     test (|Sf|-weighted boundary temperature, extrapolated from owner
+//     cells with the imposed thermal gradient) from the pass-1 energy field.
 //   * Blocking machine gates: the global enclosure balance closes
 //     (balance_passed, balance_normalized <= 1e-10) and the per-surface
 //     identity holds (surface_identity_passed).
@@ -260,12 +260,12 @@ static CaseSetup make_s2s_setup()
     return setup;
 }
 
-// Independent |Sf|-weighted wall temperature of a patch: the only link
-// between the resolved thermal field and the radiosity system, recomputed
-// here without any production helper.
+// Independent boundary-law reconstruction, without the production helper.
 static double patch_wall_temperature(
     const Mesh& mesh, const FvGeometry& geometry, const std::string& name,
-    const Field<double, Location::CELL>& temperature)
+    const Field<double, Location::CELL>& temperature,
+    double heat_flux_into_domain = 0.0,
+    const std::vector<double>* conductivity_values = nullptr)
 {
     double weighted = 0.0;
     double total = 0.0;
@@ -279,7 +279,14 @@ static double patch_wall_temperature(
                 area.x * area.x + area.y * area.y + area.z * area.z);
             const auto owner = static_cast<std::size_t>(
                 mesh.ownership().owner(face));
-            weighted += weight * temperature(owner);
+            const auto delta = geometry.face_centres[face] -
+                               geometry.cell_centres[owner];
+            const double normal_distance = std::abs(
+                delta.x * area.x + delta.y * area.y + delta.z * area.z) / weight;
+            const double conductivity = conductivity_values
+                ? conductivity_values->at(owner) : 1.0;
+            weighted += weight * (temperature(owner) +
+                heat_flux_into_domain * normal_distance / conductivity);
             total += weight;
         }
     }
@@ -297,6 +304,129 @@ static std::size_t surface_index(const ProductionS2SRadiationResult& result,
 
 int main()
 {
+    run_case("production_s2s_wall_temperature_obeys_thermal_gradient", [] {
+        auto mesh = box_mesh(2, 2, 0.25, 0.25);
+        auto geometry = build_fv_geometry(mesh);
+        const auto setup = make_s2s_setup();
+        Field<double, Location::CELL> temperature(mesh.n_cells(), "T", "K", 1);
+        temperature.fill(350.0);
+        // Tangential offset must not increase the normal extrapolation length.
+        for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p) {
+            const auto& patch = mesh.boundary().patch(p);
+            if (patch.name == "bottom")
+                for (const auto face : patch.face_ids)
+                    geometry.face_centres[face].x += 0.2;
+        }
+        const auto result = solve_production_s2s_radiation(
+            mesh, geometry, setup, temperature);
+        const auto bi = surface_index(result, "bottom");
+        const auto ti = surface_index(result, "top");
+        // Fourier boundary law: q_into = lambda*dT/dn, d_normal=dy/2.
+        const double expected_bottom = 350.0 + 50.0 * 0.125 / 1.0;
+        EXPECT_NEAR(result.wall_temperatures[bi], expected_bottom, 1e-12);
+        EXPECT_NEAR(result.wall_temperatures[ti], 350.0, 1e-12);
+        EXPECT_NEAR(result.applied_heat_flux.at("bottom"), 0.0, 0.0);
+        EXPECT_NEAR(result.applied_heat_flux.at("top"), 0.0, 0.0);
+        const double expected_flux = STEFAN_BOLTZMANN *
+            (std::pow(expected_bottom, 4) - std::pow(350.0, 4)) /
+            (1.0 / 0.8 + 1.0 / 0.9 - 1.0);
+        EXPECT_NEAR(result.net_flux[bi], expected_flux, 1e-10);
+        EXPECT_NEAR(result.net_flux[ti], -expected_flux, 1e-10);
+        EXPECT_TRUE(result.converged);
+    });
+
+    run_case("production_s2s_rejects_nonphysical_reconstructed_wall_temperature", [] {
+        auto mesh = box_mesh(2, 2, 0.25, 0.25);
+        const auto geometry = build_fv_geometry(mesh);
+        auto setup = make_s2s_setup();
+        for (auto& spec : setup.boundary_conditions)
+            if (spec.patch_name == "bottom")
+                spec.raw_params["heat_flux"] = "-10000";
+        Field<double, Location::CELL> temperature(mesh.n_cells(), "T", "K", 1);
+        temperature.fill(350.0);
+        EXPECT_THROW(solve_production_s2s_radiation(
+                         mesh, geometry, setup, temperature),
+                     std::invalid_argument);
+        // A positive patch mean must not hide one negative reconstructed face.
+        for (auto& spec : setup.boundary_conditions)
+            if (spec.patch_name == "bottom")
+                spec.raw_params["heat_flux"] = "-1000";
+        for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p) {
+            const auto& patch = mesh.boundary().patch(p);
+            if (patch.name != "bottom") continue;
+            temperature(mesh.ownership().owner(patch.face_ids[0])) = 100.0;
+            temperature(mesh.ownership().owner(patch.face_ids[1])) = 2000.0;
+        }
+        EXPECT_THROW(solve_production_s2s_radiation(
+                         mesh, geometry, setup, temperature),
+                     std::invalid_argument);
+    });
+
+    run_case("production_s2s_wall_temperature_uses_applied_flux_and_local_conductivity", [] {
+        auto mesh = box_mesh(2, 2, 0.25, 0.25);
+        const auto geometry = build_fv_geometry(mesh);
+        const auto setup = make_s2s_setup();
+        Field<double, Location::CELL> temperature(mesh.n_cells(), "T", "K", 1);
+        temperature.fill(350.0);
+        std::vector<double> conductivity(mesh.n_cells());
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+            conductivity[c] = 2.0 + static_cast<double>(c);
+        const std::map<std::string, double> applied{{"bottom", -10.0}, {"top", 10.0}};
+        const auto result = solve_production_s2s_radiation(
+            mesh, geometry, setup, temperature, applied, &conductivity);
+        const auto bi = surface_index(result, "bottom");
+        const auto ti = surface_index(result, "top");
+        const double tb = patch_wall_temperature(
+            mesh, geometry, "bottom", temperature, 40.0, &conductivity);
+        const double tt = patch_wall_temperature(
+            mesh, geometry, "top", temperature, 10.0, &conductivity);
+        EXPECT_NEAR(result.wall_temperatures[bi], tb, 1e-12);
+        EXPECT_NEAR(result.wall_temperatures[ti], tt, 1e-12);
+        EXPECT_NEAR(result.applied_heat_flux.at("bottom"), -10.0, 0.0);
+        const double oracle = STEFAN_BOLTZMANN *
+            (std::pow(tb, 4) - std::pow(tt, 4)) /
+            (1.0 / 0.8 + 1.0 / 0.9 - 1.0);
+        EXPECT_NEAR(result.net_flux[bi], oracle, 1e-10);
+        EXPECT_NEAR(result.net_flux[ti], -oracle, 1e-10);
+        EXPECT_TRUE(result.converged);
+        conductivity.pop_back();
+        EXPECT_THROW(solve_production_s2s_radiation(
+                         mesh, geometry, setup, temperature, applied, &conductivity),
+                     std::invalid_argument);
+    });
+
+    run_case("production_s2s_second_energy_pass_preserves_temperature_rejection", [] {
+        auto mesh = box_mesh(4, 4, 0.25, 0.25);
+        const auto geometry = build_fv_geometry(mesh);
+        auto setup = make_s2s_setup();
+        setup.materials.front().thermal_conductivity = 0.01;
+        Field<double, Location::FACE> mass_flux(mesh.n_faces(), "mass_flux", "kg/s", 1);
+        mass_flux.fill(0.0);
+        Field<double, Location::CELL> temperature(mesh.n_cells(), "T", "K", 1);
+        temperature.fill(350.0);
+
+        // A large one-pass radiative feedback can drive the second linear
+        // energy solution outside the kelvin domain despite perfect balances.
+        // Return that structured verdict; do not attempt a wall-temperature
+        // diagnostic on the rejected field and replace it with an exception.
+        const auto result = run_production_s2s_energy_stage(
+            mesh, geometry, setup, mass_flux, temperature);
+        EXPECT_TRUE(result.energy_pass1_converged);
+        EXPECT_TRUE(result.s2s_radiation_converged);
+        EXPECT_FALSE(result.energy_pass2_converged);
+        EXPECT_FALSE(result.converged);
+        EXPECT_TRUE(result.energy.linear_solver_converged);
+        EXPECT_TRUE(result.energy.global_energy_balance_passed);
+        EXPECT_TRUE(result.energy.local_energy_balance_passed);
+        EXPECT_FALSE(result.energy.temperature_admissibility_passed);
+        EXPECT_TRUE(result.energy.nonpositive_temperature > 0);
+        EXPECT_TRUE(result.energy.min_temperature < 0.0);
+        bool contains_negative = false;
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+            contains_negative = contains_negative || temperature(cell) < 0.0;
+        EXPECT_TRUE(contains_negative); // evidence is retained, never clipped
+    });
+
     // -----------------------------------------------------------------
     // Happy path: 4x4x1 box, two-surface parallel-plate enclosure.
     // -----------------------------------------------------------------
@@ -323,7 +453,7 @@ int main()
 
         // Independent wall temperatures from the pass-1 field.
         const double tb0 =
-            patch_wall_temperature(mesh, geometry, "bottom", t0);
+            patch_wall_temperature(mesh, geometry, "bottom", t0, 50.0);
         const double tt0 =
             patch_wall_temperature(mesh, geometry, "top", t0);
         EXPECT_TRUE(tb0 > 0.0 && tt0 > 0.0);

@@ -6,7 +6,7 @@
 - Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json + docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
 - Issues liées : #34 (roadmap, Phase 11) ; docs/validation/THERMOPHYSICAL_MODELS.md
 - Dernier commit vérifié : f5a728f205cb45ad6186c9fab92554ae4af06bdd (master, 2026-10-12 — présence des sources et tests confirmée)
-- Limitations connues : bilans d'énergie d'interface non exécutés depuis l'environnement d'audit ; statut déclaratif jusqu'à campagne sur HEAD exact.
+- Limites de promotion : les preuves locales ajoutées au §9 couvrent des contrats ciblés ; elles ne qualifient pas le pilote CHT multi-régions de production, encore absent, ni les campagnes physiques et la parité MPI.
 
 ## 1. Références sources
 - S. V. Patankar, *Numerical Heat Transfer and Fluid Flow*, Hemisphere, 1980 — DOI : 10.1201/9781482234213. (couplage conjugué, moyenne harmonique, linéarisation)
@@ -67,3 +67,85 @@ $$a_P T_P=\sum_{nb}a_{nb}T_{nb}+b,\qquad \sum_f \dot m_f c_p (\rho)_f \ldots$$
 - 2026-10-12 — approbation du contrat (PR d'approbation #861) ; l'audit du code contre cette fiche reste requis avant toute promotion (Règle d'Or 1).
 - 2026-10-21 — étape 4 du plan #885 : stage de production flottabilité `production_buoyancy_stage.h` + routage `buoyant` dans `cfdx_production_solver` — le contrat Boussinesq de §2 (source a = −β(T−T_ref)·g_vec per-cellule, part constante absorbée dans la pression modifiée, valide βΔT ≪ 1) est implémenté via le canal cellwise du porteur (fiche 04 §7) dans une boucle externe flow-énergie (ω = 0,25 sur la température vue par la source, budget 200 fail-closed, critères bloquants séparés sur la réponse non relaxée ≤ 1e-10 : stationnarité T/U/p normalisée ; verdict = point fixe couplé exact, INCONCLUSIVE n'est jamais PASS) ; oracles : équivalence bit-exacte avec le `body_force` uniforme équivalent, identité T = T_ref, signes, replay du point fixe, catalogue fail-closed (test `test_production_buoyancy_outer_loop_vv`) ; aucune tolérance/gate/oracle/budget de la fiche modifiée ; la flottabilité pleine ρ variable reste hors validité documentée (§5) et exigerait une nouvelle fiche.
 - 2026-10-21 — correctif de la PR #1016 (échecs A/C/D de `test_production_buoyancy_outer_loop_vv`) : convergence-at-entry ajoutée à la boucle externe flottabilité — acceptation du porteur warm classé `STAGNATED` au plancher machine (résidus pression/continuité/flux corrigé ≤ 1e-14, momentum RHS-normalisé ≤ 1e-12), restauration U/p d'entrée, conservation du porteur précédemment accepté, comptabilité `flow_converged_at_entry` ; cas A à la 3e itération (itérations 1-2 sans at-entry, itération 3 at-entry, porteur inchangé vs itération 2) ; échecs C/D relèvent de la calibration de la gate locale de l'étage énergie (fiche 14 §7/§8) ; aucune tolérance/gate/oracle/budget de la fiche modifiée.
+
+
+## 9. Intégration locale du 24 octobre 2026 — contrats vérifiés et limites
+
+Cette révision complète les corrections CHT/énergie du lot construit sur
+`038e3aeff40f02af95b8845b931245ce23a1a094`. Les sources et les tests sont
+présents dans le patch local de la révision ; aucun statut du registre de
+qualification n'est promu par ces modifications.
+
+### Formulation, propriétés et source physique
+
+`energy_solver.h` conserve une équation en température avec `rho` et `cp`
+constants. La source physique est `Su + Sp*T_final`, y compris dans le bilan
+indépendant global, le bilan par cellule et les diagnostics après relaxation.
+Le diagnostic ne réutilise pas `A*T-b` : `reconstruct_energy_face_flux`
+reconstruit les watts avec `cp*mass_flux` et la conductivité physique.
+
+Un champ optionnel de conductivité par cellule et des conditions par face
+parcourent l'assemblage, la résolution et les deux reconstructions indépendantes.
+Le noyau scalaire utilise la résistance série géométrique
+`A/(d_owner/lambda_owner + d_neighbour/lambda_neighbour)`.
+La paroi à flux imposé emploie `q_flux/lambda_owner` face par face.
+
+`build_effective_thermal_conductivity` reçoit une viscosité turbulente
+**cinématique** acceptée et un `Pr_t` explicite pour calculer
+`lambda_eff = lambda + rho*cp*nu_t/Pr_t`. Les champs, propriétés, positivité,
+finitude et débordements sont contrôlés. Cette API ne constitue pas le
+raccordement du sélecteur RANS de l'application ; ce dernier reste fermé.
+
+### Conditions d'acceptation et interfaces
+
+Le stage de production impose une température absolue finale finie et
+strictement positive, en plus des portes linéaire et de conservation.
+`temperature_admissibility_passed` et `nonpositive_temperature` rendent ce
+refus explicite dans les sorties. Les noyaux mathématiques génériques ne
+bornent pas artificiellement une solution négative.
+
+Le noyau CHT à deux régions exige une interface non vide, des faces frontières
+uniques, des paramètres finis, des normales extérieures opposées, le même pas
+physique dans les deux régions et un flux massique nul à l'interface.
+Les deux régions sont vérifiées avant mutation. Ces contrôles ne prouvent pas
+une correspondance générale des polygones et ne fournissent pas un rollback
+pour toute erreur apparue pendant les itérations couplées.
+
+### Exécutables, import et reprise
+
+L'exécutable solide refuse les déclarations de rayonnement, RANS, multiphase,
+physique de fluide incompatible et frontières non traitées. Les deux
+exécutables stationnaires refusent une évolution temporelle déclarée, y
+compris une sélection numérique canonique de la famille `Temporal`.
+
+Une propriété matériau absente reste non renseignée (zéro ou chaîne vide)
+dans les schémas Python/C++ et le chargement HDF5 ; elle n'est plus remplacée
+par une propriété d'air. Les validateurs propres à chaque physique décident
+quelles propriétés sont obligatoires. L'import Fluent sérialise la gravité
+comme trois scalaires natifs séparés par des espaces.
+
+Le chemin énergie de `cfdx_production_solver` écrit et recharge T dans le DAT.
+T est obligatoire si une reprise thermique est demandée, contrôlée avant le
+porteur, prioritaire sur l'initialisation scalaire et transmise à la première
+source de flottabilité. Cette reprise stationnaire n'est pas une équivalence
+de trajectoire : le flux de faces autoritaire et les historiques physiques
+complets ne sont pas encore persistés. Une exception d'énergie ne peut plus
+publier le succès du seul porteur comme succès de la simulation complète.
+
+### Preuves discriminantes et travaux restants
+
+Les sources des oracles sont `test_energy_integration_contracts.cpp`,
+`test_cht_integration_contracts.cpp` et les tests Python d'application solide,
+d'import et de reprise thermique. Le rapport d'intégration conserve les
+commandes, journaux, nombres de cas, versions et l'arbre Git exact testé.
+Exemples d'oracles : équilibre `Su=600,Sp=-2,T=300` à bilan nul ; deux couches
+`lambda={1,4}` à T={360,310} K et flux160 W ; transmission d'un état SST
+accepté sur trois cellules à l'énergie avec solution tridiagonale indépendante ;
+champ repris T={310,320,330} K alimentant la première force de Boussinesq ;
+refus d'une solution absolue négative malgré des bilans fermés.
+
+Restent à implémenter ou qualifier : schéma et pilote multi-régions, contact
+par interface et conductivité variable dans CHT, choix `Pr_t` et construction
+applicative de l'état SST, transaction et reprise de tous les champs couplés,
+enthalpie et propriétés variables en T, temps physique, domaine Boussinesq,
+MMS/GCI et références de convection turbulente, CHT et rayonnement.
