@@ -64,7 +64,7 @@ NON_FICHE_REPORTS = {
     # review reports without the method-fiche template, same category as
     # audit_v2.md. Excluded from structural fiche validation only.
     "CFDX_CODE_CORRECTIONS_COMPLET_2026-10-25.md",
-    "CFDX_CODE_ET_VALIDATION_6_VERROUX_2026-10-25.md",
+    "CFDX_CODE_ET_VALIDATION_6_VERROUS_2026-10-25.md",
     "CFDX_etat_integration_et_reste_a_faire_2026-10-25.md",
 }
 
