@@ -1,0 +1,92 @@
+name: Master evening-wave Python regression oracle (diag)
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/master1299_pyreg_marker.txt'
+      - '.github/workflows/master1299_pyreg_oracle_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  oracle:
+    name: pyreg-diff-1299a4c6-vs-2a1a0fcb
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      EVID: diag-evidence/logs
+      REF_BAD: 1299a4c668329d3839034a41d65a80c9114e81de
+      REF_GOOD: 2a1a0fcba4306513b60fd258f481bccea2f01a3e
+      STAMP: 2026-10-25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python stack (identical to CI Release Python regression)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
+          "$RUNNER_TEMP/venv/bin/python" -c "import importlib.util as u; print('PySide6 installed:', u.find_spec('PySide6') is not None)" | tee "$GITHUB_WORKSPACE/$EVID/master1299_pyreg_env_$STAMP.txt"
+
+      - name: Run pytest on both pinned refs
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          VP="$RUNNER_TEMP/venv/bin/python"
+          for REF in "$REF_BAD" "$REF_GOOD"; do
+            SHORT="${REF:0:7}"
+            git fetch origin "$REF"
+            git worktree add "$RUNNER_TEMP/ref-$SHORT" "$REF"
+            ( cd "$RUNNER_TEMP/ref-$SHORT" && \
+              export PYTHONPATH="$RUNNER_TEMP/ref-$SHORT/src/cfdx/python" && \
+              "$VP" -m pytest -q tests/python --tb=no > "$GITHUB_WORKSPACE/$EVID/master1299_pyreg_${SHORT}_$STAMP.log" 2>&1 ; \
+              echo "exit_code=$?" >> "$GITHUB_WORKSPACE/$EVID/master1299_pyreg_${SHORT}_$STAMP.log" )
+            cd "$GITHUB_WORKSPACE"
+            git worktree remove --force "$RUNNER_TEMP/ref-$SHORT"
+          done
+
+      - name: Diff failing tests between refs
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          BAD="$E/master1299_pyreg_${REF_BAD:0:7}_$STAMP.log"
+          GOOD="$E/master1299_pyreg_${REF_GOOD:0:7}_$STAMP.log"
+          {
+            echo "=== failures on $REF_BAD (evening-wave head) ==="
+            grep -E "^(FAILED|ERROR)" "$BAD" | sort > "$E/master1299_pyreg_bad_failed_$STAMP.txt" || true
+            cat "$E/master1299_pyreg_bad_failed_$STAMP.txt"
+            echo "=== failures on $REF_GOOD (pre-wave) ==="
+            grep -E "^(FAILED|ERROR)" "$GOOD" | sort > "$E/master1299_pyreg_good_failed_$STAMP.txt" || true
+            cat "$E/master1299_pyreg_good_failed_$STAMP.txt"
+            echo "=== failures ONLY on the evening wave head ==="
+            comm -23 "$E/master1299_pyreg_bad_failed_$STAMP.txt" "$E/master1299_pyreg_good_failed_$STAMP.txt"
+          } | tee "$E/master1299_pyreg_diff_$STAMP.txt"
+
+      - name: Write meta
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "target=master evening wave Release python regression (CI run 40222390117, job Release, step Run Python regression, exit 1)"
+            echo "ref_bad=$REF_BAD"
+            echo "ref_good=$REF_GOOD (parent of 026cb499, pre-wave)"
+            echo "note=no CFDX_PRODUCTION_SOLVER/CFDX_THERMAL_SOLVER: binaries not built here; binary-dependent failures cancel out in the diff"
+            echo "pytest=-q tests/python --tb=no"
+          } > "$E/master1299_pyreg_meta_$STAMP.txt"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: master evening-wave Python regression oracle evidence (2026-10-25) [ci skip]"
+            (git push || (git pull --rebase && git push))
+          fi

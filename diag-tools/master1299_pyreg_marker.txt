@@ -1,0 +1,1 @@
+master1299 pyreg oracle 2026-10-25: diff pytest failures 1299a4c6 vs 2a1a0fcb (pre-wave parent of 026cb499)
