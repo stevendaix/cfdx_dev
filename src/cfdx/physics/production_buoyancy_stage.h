@@ -372,7 +372,8 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
     const cfdx::io::CaseSetup& setup,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure,
-    const std::string& restart_path = {})
+    const std::string& restart_path = {},
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* initial_temperature_field = nullptr)
 {
     if (!production_buoyancy_requested(setup))
         throw std::invalid_argument(
@@ -385,8 +386,23 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
     const FvGeometry geometry = build_fv_geometry(mesh);
     const std::size_t n_cells = mesh.n_cells();
 
+    // An explicitly restored thermal field owns the first buoyancy source.
+    // Validate it completely before the carrier can modify velocity/pressure.
+    if (initial_temperature_field) {
+        if (initial_temperature_field->size()!=n_cells ||
+            initial_temperature_field->dimension()!=1)
+            throw std::invalid_argument(
+                "production buoyancy stage: initial temperature field must be a scalar matching the mesh");
+        for (std::size_t cell=0;cell<n_cells;++cell)
+            if (!std::isfinite((*initial_temperature_field)(cell)) ||
+                !((*initial_temperature_field)(cell)>0.0))
+                throw std::invalid_argument(
+                    "production buoyancy stage: initial temperature field must be finite and positive (kelvin)");
+    }
+
     // The temperature seen by the buoyancy source. Seeded with the
-    // declared initial temperature, else the case reference temperature
+    // restored field when supplied; otherwise the declared initial
+    // temperature, else the case reference temperature
     // (the stage-1 convention of the frozen-flow path; at the reference
     // temperature the buoyancy source is identically zero, a consistent
     // cold start).
@@ -394,15 +410,16 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
     if (setup.has_initial_condition &&
         setup.initial_condition.temperature != 0.0)
         initial_temperature = setup.initial_condition.temperature;
-    if (!std::isfinite(initial_temperature) ||
-        !(initial_temperature > 0.0))
+    if (!initial_temperature_field &&
+        (!std::isfinite(initial_temperature) || !(initial_temperature > 0.0)))
         throw std::invalid_argument(
             "production buoyancy stage: initial temperature must be finite "
             "and positive (kelvin)");
     cfdx::core::Field<double, cfdx::core::Location::CELL> relaxed_temperature(
         n_cells, "temperature", "K", 1);
     for (std::size_t cell = 0; cell < n_cells; ++cell)
-        relaxed_temperature(cell) = initial_temperature;
+        relaxed_temperature(cell) = initial_temperature_field
+            ? (*initial_temperature_field)(cell) : initial_temperature;
 
     // Previous UNRELAXED responses for the stationarity gates. Empty
     // until the first response exists.

@@ -36,6 +36,7 @@
 //     otherwise ref_temperature. The linear solve result does not depend
 //     on this initial guess.
 #include "cfdx/physics/thermal_zones.h"
+#include "cfdx/physics/production_solid_conduction_contract.h"
 #include "cfdx/io/hdf5/case_hdf5_io.h"
 #include "cfdx/io/runtime/execution_summary.h"
 #include "cfdx/io/vtu/vtu_writer.h"
@@ -477,14 +478,7 @@ int main(int argc, char** argv)
         if (mesh.n_cells() == 0)
             throw std::runtime_error("thermal solver: case carries no cells");
 
-        // Energy-model gate: the thermal path is only meaningful for a case
-        // that actually declares a thermal problem.
-        if (case_setup.energy_model != "conjugate" &&
-            case_setup.energy_model != "solid_conduction")
-            throw std::invalid_argument(
-                "thermal solver: case energy_model is '" +
-                case_setup.energy_model + "'; the thermal path requires "
-                "'conjugate' or 'solid_conduction'");
+        validate_production_solid_conduction_selection(case_setup);
 
         const auto geometry = build_fv_geometry(mesh);
         const auto specs = build_zone_specs(case_setup);

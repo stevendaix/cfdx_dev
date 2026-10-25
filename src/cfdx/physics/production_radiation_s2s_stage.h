@@ -31,9 +31,11 @@
 //   * Surface areas are the sum of |face_area_vectors| over the patch's
 //     boundary faces and must be finite and positive.
 //   * The wall temperature of each surface is the |Sf|-weighted average of
-//     the adjacent (owner) cell temperatures of the first-pass energy
-//     field: this is the link between the radiation and the resolved
-//     thermal field. The radiosity system is the production
+//     the boundary-face temperatures reconstructed from the energy BC:
+//     T_w = T_owner + (q_imposed + q_radiative_applied)*d_normal/lambda_owner
+//     for prescribed flux. The applied flux is the one used by the last
+//     energy pass, not the as-yet unapplied radiosity response. One patch
+//     remains one isothermal radiosity surface. The radiosity system is the production
 //     solve_s2s_radiosity with machine controls (tolerance 1e-10, direct
 //     dense solve).
 //   * Sign convention (fiche 11, B3): the net radiative flux per surface is
@@ -287,20 +289,32 @@ inline ProductionS2SRadiationCase build_production_s2s_radiation_case(
     return radiation_case;
 }
 
-// |Sf|-weighted average of the adjacent (owner) cell temperatures over
-// each participating patch: the wall temperature the radiosity system
-// sees. This is the only coupling from the resolved thermal field to the
-// radiation.
+// |Sf|-weighted boundary-face temperature for each participating patch.
+// Boundary states use the same outward normal gradient and normal distance
+// as the finite-volume energy operator. Omitted BCs mean zero gradient (the
+// legacy four-argument helper remains usable for that specific condition).
 inline std::vector<double> production_s2s_wall_temperatures(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
     const ProductionS2SRadiationCase& radiation_case,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature,
+    const ScalarBoundaryConditions& temperature_bcs = {},
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
 {
     if (temperature.size() != mesh.n_cells() || temperature.dimension() != 1)
         throw std::invalid_argument(
             "production S2S radiation stage: temperature field does not "
             "match the mesh");
+    if (geometry.face_area_vectors.size() != mesh.n_faces() ||
+        geometry.face_centres.size() != mesh.n_faces() ||
+        geometry.cell_centres.size() != mesh.n_cells() ||
+        geometry.cell_volumes.size() != mesh.n_cells() ||
+        (face_conditions &&
+         (face_conditions->conditions.size() != mesh.n_faces() ||
+          face_conditions->specified.size() != mesh.n_faces())))
+        throw std::invalid_argument(
+            "production S2S radiation stage: wall reconstruction geometry "
+            "or face conditions do not match the mesh");
     const std::size_t n = radiation_case.surface_names.size();
     std::vector<double> wall_temperatures(n, 0.0);
     const auto& own = mesh.ownership();
@@ -319,6 +333,9 @@ inline std::vector<double> production_s2s_wall_temperatures(
                 "' does not match a mesh patch");
         double weighted = 0.0;
         double total_weight = 0.0;
+        ScalarBoundaryCondition patch_bc;
+        const auto bc_it = temperature_bcs.find(patch->name);
+        if (bc_it != temperature_bcs.end()) patch_bc = bc_it->second;
         for (const auto face : patch->face_ids) {
             if (face >= mesh.n_faces() || own.neighbour(face) >= 0)
                 throw std::invalid_argument(
@@ -333,10 +350,43 @@ inline std::vector<double> production_s2s_wall_temperatures(
                 throw std::invalid_argument(
                     "production S2S radiation stage: boundary face owner "
                     "is invalid");
-            weighted += weight * temperature(cell);
+            const auto finite_vector = [](const cfdx::core::Vec3& value) {
+                return std::isfinite(value.x) && std::isfinite(value.y) &&
+                       std::isfinite(value.z);
+            };
+            if (!(weight > 0.0) || !std::isfinite(weight) ||
+                !finite_vector(geometry.face_centres[face]) ||
+                !finite_vector(geometry.cell_centres[cell]) ||
+                !std::isfinite(temperature(cell)) || !(temperature(cell) > 0.0))
+                throw std::invalid_argument(
+                    "production S2S radiation stage: invalid boundary geometry "
+                    "or owner temperature");
+            auto bc = patch_bc;
+            if (face_conditions && face_conditions->has(face)) {
+                const auto& resolved = face_conditions->conditions[face];
+                bc.type = resolved.type == ScalarBoundaryFaceCondition::Type::FIXED_VALUE
+                    ? ScalarBoundaryType::FIXED_VALUE : ScalarBoundaryType::FIXED_GRADIENT;
+                bc.value = resolved.value;
+                bc.gradient = resolved.value;
+            }
+            double face_temperature = temperature(cell);
+            if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
+                face_temperature = bc.value;
+            } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
+                face_temperature += bc.gradient *
+                    boundary_normal_distance(geometry, face, cell);
+            }
+            // Reject each face before averaging: a nonphysical cold face
+            // must not be masked by a hotter face of the same patch.
+            if (!std::isfinite(face_temperature) || !(face_temperature > 0.0))
+                throw std::invalid_argument(
+                    "production S2S radiation stage: reconstructed wall "
+                    "temperature must be finite and positive (kelvin)");
+            weighted += weight * face_temperature;
             total_weight += weight;
         }
-        if (!(total_weight > 0.0) || !std::isfinite(weighted))
+        if (!(total_weight > 0.0) || !std::isfinite(total_weight) ||
+            !std::isfinite(weighted))
             throw std::invalid_argument(
                 "production S2S radiation stage: surface '" +
                 radiation_case.surface_names[i] +
@@ -362,7 +412,7 @@ struct ProductionS2SRadiationResult {
     std::vector<std::string> surface_names;
     std::vector<double> areas;              // m^2
     std::vector<double> emissivities;
-    std::vector<double> wall_temperatures;   // K (T0-based)
+    std::vector<double> wall_temperatures;   // K, reconstructed boundary states
     std::vector<double> radiosity;           // W/m^2, J_i
     std::vector<double> irradiation;         // W/m^2, G_i
     std::vector<double> net_flux;            // W/m^2, q_i = J_i - G_i,
@@ -371,6 +421,9 @@ struct ProductionS2SRadiationResult {
     // Flux injected into the energy equation per patch (W/m^2, positive
     // into the domain): -q_i, the same convention as declared heat_flux.
     std::map<std::string, double> injected_heat_flux;
+    // Radiative map used by the preceding energy solve and wall reconstruction.
+    // Distinct from the new response above until the outer fixed point closes.
+    std::map<std::string, double> applied_heat_flux;
     double total_net_power = 0.0;     // W, sum A_i q_i (closes to ~0)
     double balance_scale = 0.0;       // W, emitted + absorbed, floor 1 W
     double balance_normalized = 0.0;  // |total| / scale
@@ -384,7 +437,9 @@ inline ProductionS2SRadiationResult solve_production_s2s_radiation(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
     const cfdx::io::CaseSetup& setup,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature,
+    const std::map<std::string, double>& applied_radiative_heat_flux_into_domain = {},
+    const std::vector<double>* conductivity_values = nullptr)
 {
     if (!production_s2s_radiation_requested(setup))
         throw std::invalid_argument(
@@ -409,8 +464,16 @@ inline ProductionS2SRadiationResult solve_production_s2s_radiation(
 
     const auto radiation_case =
         build_production_s2s_radiation_case(mesh, geometry, setup);
+    const auto energy_case = build_production_energy_case(setup);
+    const auto bcs = build_production_temperature_bcs(
+        mesh, setup, energy_case, applied_radiative_heat_flux_into_domain);
+    const auto face_conditions = conductivity_values
+        ? build_production_temperature_face_conditions(
+              mesh, bcs, energy_case, *conductivity_values)
+        : ScalarBoundaryFaceConditions{};
     const auto wall_temperatures = production_s2s_wall_temperatures(
-        mesh, geometry, radiation_case, temperature);
+        mesh, geometry, radiation_case, temperature, bcs,
+        conductivity_values ? &face_conditions : nullptr);
 
     S2SControls controls;
     controls.tolerance = 1e-10;
@@ -425,6 +488,11 @@ inline ProductionS2SRadiationResult solve_production_s2s_radiation(
     result.areas = radiation_case.areas;
     result.emissivities = radiation_case.emissivities;
     result.wall_temperatures = wall_temperatures;
+    result.applied_heat_flux = applied_radiative_heat_flux_into_domain;
+    // The first energy pass has no radiative map. Keep the returned surface
+    // contract complete even if an isothermal case converges on that pass.
+    for (const auto& name : radiation_case.surface_names)
+        result.applied_heat_flux.try_emplace(name, 0.0);
     result.radiosity = solution.radiosity;
     result.irradiation = solution.irradiation;
     result.net_flux.resize(radiation_case.surface_names.size(), 0.0);
@@ -510,7 +578,8 @@ inline ProductionS2SEnergyStageResult run_production_s2s_energy_stage(
     const FvGeometry& geometry,
     const cfdx::io::CaseSetup& setup,
     const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
-    cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature)
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature,
+    const std::vector<double>* conductivity_values = nullptr)
 {
     if (!production_s2s_radiation_requested(setup))
         throw std::invalid_argument(
@@ -527,14 +596,15 @@ inline ProductionS2SEnergyStageResult run_production_s2s_energy_stage(
     ProductionS2SEnergyStageResult result;
     const auto pass1 =
         run_production_energy_stage(mesh, geometry, setup, mass_flux,
-                                    temperature);
+                                    temperature, {}, conductivity_values);
     result.energy = pass1;
     result.energy_pass1_converged = pass1.converged;
     if (!pass1.converged)
         return result;
 
     const auto radiation =
-        solve_production_s2s_radiation(mesh, geometry, setup, temperature);
+        solve_production_s2s_radiation(mesh, geometry, setup, temperature,
+                                      {}, conductivity_values);
     result.radiation = radiation;
     result.s2s_radiation_converged = radiation.converged;
     if (!radiation.converged)
@@ -545,18 +615,29 @@ inline ProductionS2SEnergyStageResult run_production_s2s_energy_stage(
     // declared heat_flux by the energy BC builder.
     const auto extra_flux = radiation.injected_heat_flux;
     const auto pass2 = run_production_energy_stage(
-        mesh, geometry, setup, mass_flux, temperature, extra_flux);
+        mesh, geometry, setup, mass_flux, temperature, extra_flux,
+        conductivity_values);
     result.energy = pass2;
     result.energy_pass2_converged = pass2.converged;
     result.converged = pass2.converged;
+    if (!pass2.converged)
+        return result; // preserve the structured energy verdict and rejected field
 
     // Delayed-Picard diagnostic: how much the wall temperatures moved
     // between the radiation input (T0) and the re-solved field (T1). Not
     // a gate; the external energy-radiation iteration is step 3.
     const auto radiation_case =
         build_production_s2s_radiation_case(mesh, geometry, setup);
+    const auto energy_case = build_production_energy_case(setup);
+    const auto bcs = build_production_temperature_bcs(
+        mesh, setup, energy_case, extra_flux);
+    const auto face_conditions = conductivity_values
+        ? build_production_temperature_face_conditions(
+              mesh, bcs, energy_case, *conductivity_values)
+        : ScalarBoundaryFaceConditions{};
     const auto wall_t1 = production_s2s_wall_temperatures(
-        mesh, geometry, radiation_case, temperature);
+        mesh, geometry, radiation_case, temperature, bcs,
+        conductivity_values ? &face_conditions : nullptr);
     for (std::size_t i = 0; i < radiation.wall_temperatures.size(); ++i)
         result.max_wall_temperature_lag =
             std::max(result.max_wall_temperature_lag,
@@ -657,7 +738,8 @@ inline ProductionS2SOuterLoopResult run_production_s2s_energy_outer_loop(
     const FvGeometry& geometry,
     const cfdx::io::CaseSetup& setup,
     const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
-    cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature)
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature,
+    const std::vector<double>* conductivity_values = nullptr)
 {
     if (!production_s2s_radiation_requested(setup))
         throw std::invalid_argument(
@@ -677,10 +759,18 @@ inline ProductionS2SOuterLoopResult run_production_s2s_energy_outer_loop(
     // builder once, before any solve).
     const auto radiation_case =
         build_production_s2s_radiation_case(mesh, geometry, setup);
+    const auto energy_case = build_production_energy_case(setup);
+    const auto initial_bcs = build_production_temperature_bcs(
+        mesh, setup, energy_case);
+    const auto initial_face_conditions = conductivity_values
+        ? build_production_temperature_face_conditions(
+              mesh, initial_bcs, energy_case, *conductivity_values)
+        : ScalarBoundaryFaceConditions{};
     // Wall temperatures of the incoming field: the k = 1 stationarity
     // reference.
     auto previous_wall_temperatures = production_s2s_wall_temperatures(
-        mesh, geometry, radiation_case, temperature);
+        mesh, geometry, radiation_case, temperature, initial_bcs,
+        conductivity_values ? &initial_face_conditions : nullptr);
 
     // F(k): the radiative flux map applied to the energy pass. Empty on
     // the first pass (no radiative boundary contribution at all), then the
@@ -697,7 +787,8 @@ inline ProductionS2SOuterLoopResult run_production_s2s_energy_outer_loop(
         record.iteration = iteration;
 
         const auto energy = run_production_energy_stage(
-            mesh, geometry, setup, mass_flux, temperature, applied_flux);
+            mesh, geometry, setup, mass_flux, temperature, applied_flux,
+            conductivity_values);
         result.energy = energy;
         record.energy_converged = energy.converged;
         result.outer_iterations = iteration;
@@ -708,7 +799,7 @@ inline ProductionS2SOuterLoopResult run_production_s2s_energy_outer_loop(
         }
 
         const auto radiation = solve_production_s2s_radiation(
-            mesh, geometry, setup, temperature);
+            mesh, geometry, setup, temperature, applied_flux, conductivity_values);
         result.radiation = radiation;
         record.radiation_converged = radiation.converged;
         if (!radiation.converged) {
@@ -716,8 +807,7 @@ inline ProductionS2SOuterLoopResult run_production_s2s_energy_outer_loop(
             return result;  // fail-closed: red radiosity machine gate
         }
 
-        const auto wall_temperatures = production_s2s_wall_temperatures(
-            mesh, geometry, radiation_case, temperature);
+        const auto& wall_temperatures = radiation.wall_temperatures;
 
         // (3) Radiative fixed-point residual on the UNRELAXED response:
         // the map the final field was solved with must be the map the
@@ -767,7 +857,7 @@ inline ProductionS2SOuterLoopResult run_production_s2s_energy_outer_loop(
             std::isfinite(max_wall_change) && max_wall_change <= tolerance;
         if (result.fixed_point_flux_passed &&
             result.fixed_point_wall_temperature_passed) {
-            result.converged = true;  // exact coupled fixed point
+            result.converged = true;  // coupled fixed point within both tolerances
             return result;
         }
 
