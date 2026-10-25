@@ -494,6 +494,44 @@ int main()
         }
     });
 
+    run_case("high_resolution_flux_boundedness_is_independent_of_source_correction", [] {
+        const Mesh m = make_1d_chain(3);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"mass_flux","kg/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0)=0.0; phi(1)=1.0; phi(2)=1.01;
+        std::size_t target = m.n_faces();
+        for (std::size_t f = 0; f < m.n_faces(); ++f) {
+            if (m.ownership().owner(f) == 1 && m.ownership().neighbour(f) == 2) {
+                flux(f) = 1.0;
+                target = f;
+                break;
+            }
+        }
+        EXPECT_TRUE(target < m.n_faces());
+        const std::vector<double> extra_diagonal{1.0, 1.0, 1.0};
+        ScalarBoundaryConditions bc;
+        bc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.01, 0.0};
+        bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        for (const auto scheme : {ConvectionScheme::SECOND_ORDER_UPWIND, ConvectionScheme::TVD}) {
+            const auto equation = assemble_scalar_equation(
+                m, g, flux, 0.0, su, sp, bc, false, nullptr, &extra_diagonal,
+                nullptr, nullptr, scheme, &phi);
+            const auto reconstructed = reconstruct_scalar_transport_flux(
+                m, g, flux, phi, 0.0, bc, false, scheme);
+            EXPECT_NEAR(reconstructed(target), 1.01, 1e-12);
+            const auto upwind = assemble_scalar_equation(
+                m, g, flux, 0.0, su, sp, bc, false, nullptr, &extra_diagonal,
+                nullptr, nullptr, ConvectionScheme::UPWIND, &phi);
+            EXPECT_NEAR(equation.rhs(1) - upwind.rhs(1), -0.01, 1e-10);
+        }
+    });
+
     run_case("reconstructed_fixed_value_boundary_flux_matches_upwind_matrix", [] {
         const Mesh m = make_unit_cube();
         const FvGeometry g = build_fv_geometry(m);
