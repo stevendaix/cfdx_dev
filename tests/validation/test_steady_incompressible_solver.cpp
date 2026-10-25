@@ -862,6 +862,19 @@ int main()
             solve_steady_incompressible(m, U, p, ubc, pbc, controls),
             std::invalid_argument);
         EXPECT_NEAR(U.component_data(0)[0], 0.0, 0.0);
+
+        // Finite scalar inputs can still overflow only after adding the
+        // cellwise turbulent contribution. Reject that derived value before
+        // the uniform initialization mutates the caller-owned velocity.
+        controls.density = 1.0e308;
+        controls.kinematic_viscosity = 1.0;
+        controls.turbulent_viscosity = 0.0;
+        controls.cell_turbulent_viscosity = {1.0e308};
+        U.fill(0.0);
+        EXPECT_THROW(
+            solve_steady_incompressible(m, U, p, ubc, pbc, controls),
+            std::invalid_argument);
+        EXPECT_NEAR(U.component_data(0)[0], 0.0, 0.0);
     });
 
     return run_all();
