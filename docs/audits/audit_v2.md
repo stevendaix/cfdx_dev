@@ -1,3 +1,20 @@
+## Reprise opérationnelle — 25 octobre 2026
+
+Cette section est le point d'entrée courant. Les statuts ci-dessous sont basés sur les HEAD et workflows observés le 25/10/2026 ; une campagne `skipped` n'est jamais une validation physique réussie.
+
+| Sujet | HEAD / PR | Constat vérifié | Action obligatoire |
+|---|---|---|---|
+| F03 Rhie–Chow / COUPLED | #1078 | N9 physique réussi ; campagne N9 qualification et validation totale encore en cours lors du contrôle. | Attendre les deux campagnes et auditer le flux de continuité avant toute promotion. |
+| F06 diffusion non orthogonale | #1103, HEAD `080e87d60749b95c0424d151afecfd585a74d7a0` | Nouveau HEAD poussé ; tous les jobs de cette révision étaient encore en file d'attente. Un ancien essai COUPLED skew Couette plafonnait à `continuity_linf=0.001547` après 33 itérations. | Examiner les logs du HEAD exact. Si l'échec se reproduit, corriger le flux/gradient ou le couplage ; ne pas relâcher les gates. |
+| F11 contrainte transposée à viscosité variable | #1102, HEAD `5afd56a664fd1a81cb0f5fd705a8fb18e273b94f` | La branche cible est `fix/audit-1069-coupled-rhie-chow-contract`, divergente de master (25 commits en avance, 13 en retard). CI sur cette base a échoué sur `test_dual_time_navier_stokes` et `test_n9_negative_diagnostics`; ces résultats ne permettent pas d'isoler F11. | Porter F11 proprement sur master, puis relancer CI exact-HEAD avant d'évaluer le code physique. |
+| F25 SST API | #1113 | CI classique et audit verts sur le HEAD observé ; maturité numérique encore en attente. N9 physique, qualification et total sont `skipped`. | Attendre maturité et ne pas présenter les qualifications ignorées comme réussies. |
+| F26 source P1 | #1111 | Audit et garde-fous verts ; CI principale/maturité encore en cours au contrôle. N9/total `skipped`. | Attendre les workflows et garder l'oracle indépendant. |
+| F27 courbure VOF | #1114 | Audit et N10 verts ; CI, GUI, documentation et maturité encore en file/en cours. Qualification géométrique complète non couverte. | Attendre CI puis garder le statut PARTIEL tant que l'intégration de production n'est pas qualifiée. |
+| F30 facteurs de vue S2S | #1115 | Audit, GUI, N10 et garde-fous verts ; CI principale/maturité encore en cours. Qualification physique `skipped`. | Attendre les jobs restants ; la diagonale nulle ne qualifie pas une enceinte fermée. |
+| Contrôle du registre | #1108 | L'ancien run a échoué car l'audit gate traitait `audit_v2.md` et `turbulence.md` comme des fiches méthode ; la correction correspondante a été fusionnée via #1112, après ce run. | Relancer les workflows sur une révision actuelle et vérifier les contrôles de contenu sur le HEAD courant. |
+
+Règle de clôture : chaque ligne ne passe à CORRIGÉE que si le code courant a été audité, les tests ciblés passent et les checks obligatoires passent sur le HEAD exact. Une campagne physique ignorée, en cours ou échouée reste ouverte.
+
 ## Suivi d'exécution courant — 24 octobre 2026 (mise à jour depuis R2)
 
 Cette section est le journal vivant de reprise. Elle complète les statuts historiques R2 ci-dessous sans réécrire les preuves anciennes. Un PR ouvert signifie « correction candidate à auditer », jamais « problème corrigé ». Un item n'est clos qu'après lecture du diff actuel, vérification de l'absence de doublon sur `master`, tests ciblés et CI sur le HEAD exact.
