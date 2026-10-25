@@ -573,7 +573,7 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
             accepted_source(c)=non_radiative_source(c)-qrad(c);
         auto accepted_eq=assemble_energy_equation(
             mesh,geometry,mass_flux,accepted_source,T_previous_time,controls.energy,
-            thermal_bcs,nullptr,nullptr,&temperature);
+            thermal_bcs,nullptr,nullptr,nullptr,nullptr,&temperature);
         cfdx::core::Vector accepted_vec(nc,0.0);
         for(std::size_t c=0;c<nc;++c) accepted_vec(c)=temperature(c);
         const double energy_balance_residual =
