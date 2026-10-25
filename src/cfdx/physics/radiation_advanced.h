@@ -232,6 +232,7 @@ inline double patch_pair_view_factor(
                                         (M_PI * r2)));
 }
 
+// Method fiche: docs/audits/11-rayonnement.md (S2S view-factor diagonal and reciprocity).
 inline std::vector<double> estimate_view_factor_matrix(
     const std::vector<ViewFactorPatch>& patches)
 {
