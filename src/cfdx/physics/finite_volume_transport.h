@@ -151,11 +151,36 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
     return g;
 }
 
+// Method contract: docs/audits/01-diffusion-laplacien.md
+struct FluxImbalanceMetrics {
+    double signed_global = 0.0;
+    double global_l1 = 0.0;
+    double local_linf = 0.0;
+};
+
+inline FluxImbalanceMetrics flux_imbalance_metrics(
+    const std::vector<double>& cell_flux_residuals)
+{
+    FluxImbalanceMetrics metrics;
+    for (const double residual : cell_flux_residuals) {
+        if (!std::isfinite(residual))
+            throw std::invalid_argument("flux_imbalance_metrics: non-finite residual");
+        metrics.signed_global += residual;
+        metrics.global_l1 += std::abs(residual);
+        metrics.local_linf = std::max(metrics.local_linf, std::abs(residual));
+    }
+    return metrics;
+}
+
 struct ScalarEquation {
     cfdx::core::SparseMatrix matrix;
     cfdx::core::Vector rhs;
     std::vector<double> diagonal;
+    // Compatibility alias: now represents the maximum cell-local imbalance.
     double max_imbalance = 0.0;
+    double signed_global_imbalance = 0.0;
+    double global_l1_imbalance = 0.0;
+    double max_local_imbalance = 0.0;
     // Assembly diagnostics retained temporarily for Issue #377 root-cause analysis.
     double max_abs_face_flux = 0.0;
     double min_internal_distance = std::numeric_limits<double>::infinity();
@@ -546,9 +571,11 @@ inline ScalarEquation assemble_scalar_equation(
     eq.min_face_area = min_face_area;
     eq.max_face_area = max_face_area;
 
-    double total_flux = 0.0;
-    for (std::size_t c = 0; c < nc; ++c) total_flux += div_phi[c];
-    eq.max_imbalance = std::abs(total_flux);
+    const auto imbalance = flux_imbalance_metrics(div_phi);
+    eq.signed_global_imbalance = imbalance.signed_global;
+    eq.global_l1_imbalance = imbalance.global_l1;
+    eq.max_local_imbalance = imbalance.local_linf;
+    eq.max_imbalance = imbalance.local_linf;
     return eq;
 }
 
