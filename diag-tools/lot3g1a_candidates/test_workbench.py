@@ -23,6 +23,9 @@ class _StubVisualizationView:
         self._dat_dataset = _FakeFieldDataset()
         self._current_result = None
 
+    def _dataset(self) -> _FakeFieldDataset:
+        return self._dat_dataset
+
     def contour(self, scalars: str, isosurfaces: int = 10) -> None:
         operation = VisualizationOperation.contour(scalars, isosurfaces)
         self.calls.append(("contour", operation))
