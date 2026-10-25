@@ -309,5 +309,51 @@ int main()
                 }
     });
 
+
+    run_case("variable_viscosity_transpose_stress_smooth_mms_order", [] {
+        const double pi = std::acos(-1.0);
+        std::vector<double> errors;
+        for (const std::size_t n : {4u, 8u, 16u}) {
+            const Mesh mesh = make_skewed_stress_cube(n, 0.65);
+            const auto geometry = build_fv_geometry(mesh);
+            Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+            std::vector<double> mu(mesh.n_cells(), 0.0);
+            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                const double y = geometry.cell_centres[cell].y;
+                U.set(cell, std::sin(pi * y), 0.0, 0.0);
+                mu[cell] = 1.0 + geometry.cell_centres[cell].x;
+            }
+            VelocityBoundaryConditions bcs;
+            bcs["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+            const auto rhs = momentum_transpose_diffusion_rhs(
+                mesh, geometry, U, bcs, mu, 1);
+            double squared_error = 0.0;
+            std::size_t samples = 0;
+            const auto cell_id = [n](std::size_t i, std::size_t j, std::size_t k) {
+                return (k * n + j) * n + i;
+            };
+            for (std::size_t k = 1; k + 1 < n; ++k)
+                for (std::size_t j = 1; j + 1 < n; ++j)
+                    for (std::size_t i = 1; i + 1 < n; ++i) {
+                        const std::size_t cell = cell_id(i, j, k);
+                        const double numerical = rhs[cell] / geometry.cell_volumes[cell];
+                        const double exact = pi * std::cos(pi * geometry.cell_centres[cell].y);
+                        const double error = numerical - exact;
+                        squared_error += error * error;
+                        ++samples;
+                    }
+            if (samples == 0)
+                throw std::runtime_error("smooth transpose-stress MMS has no interior cells");
+            errors.push_back(std::sqrt(squared_error / static_cast<double>(samples)));
+        }
+        EXPECT_TRUE(errors[2] < errors[0]);
+        const double order_4_8 = std::log(errors[0] / errors[1]) / std::log(2.0);
+        const double order_8_16 = std::log(errors[1] / errors[2]) / std::log(2.0);
+        EXPECT_TRUE(std::isfinite(order_4_8));
+        EXPECT_TRUE(std::isfinite(order_8_16));
+        EXPECT_TRUE(order_4_8 > 1.0);
+        EXPECT_TRUE(order_8_16 > 1.0);
+    });
+
     return run_all();
 }
