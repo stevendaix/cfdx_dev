@@ -57,6 +57,56 @@ def test_pipeline_remove_and_clear_return_new_pipelines():
         pipeline.remove(2)
 
 
+def test_pipeline_replace_returns_new_pipeline_and_replays():
+    source = FakeDataset()
+    first = VisualizationOperation.contour("p", 7)
+    second = VisualizationOperation.slice((0.0, 1.0, 0.0))
+    pipeline = VisualizationPipeline((first, second))
+
+    updated = pipeline.replace(1, VisualizationOperation.contour("p", 3))
+
+    assert pipeline.operations == (first, second)
+    assert updated.operations == (first, VisualizationOperation.contour("p", 3))
+    assert updated.evaluate(source).history == (
+        ("contour", 7, "p"),
+        ("contour", 3, "p"),
+    )
+
+
+def test_pipeline_replace_rejects_invalid_index_and_type():
+    pipeline = VisualizationPipeline((VisualizationOperation.slice(),))
+    with pytest.raises(IndexError):
+        pipeline.replace(1, VisualizationOperation.slice())
+    with pytest.raises(TypeError, match="contour"):
+        pipeline.replace(0, "contour")
+
+
+def test_pipeline_move_reorders_operations_immutably():
+    first = VisualizationOperation.contour("p")
+    second = VisualizationOperation.slice()
+    third = VisualizationOperation.glyph("U")
+    pipeline = VisualizationPipeline((first, second, third))
+
+    moved = pipeline.move(0, 2)
+
+    assert pipeline.operations == (first, second, third)
+    assert moved.operations == (second, third, first)
+
+
+def test_pipeline_move_rejects_out_of_range_indices():
+    pipeline = VisualizationPipeline(
+        (VisualizationOperation.contour("p"), VisualizationOperation.slice())
+    )
+    with pytest.raises(IndexError):
+        pipeline.move(-1, 0)
+    with pytest.raises(IndexError):
+        pipeline.move(0, 2)
+    with pytest.raises(IndexError):
+        pipeline.move(2, 0)
+    with pytest.raises(IndexError):
+        pipeline.move(0, -1)
+
+
 @pytest.mark.parametrize(
     "kwargs",
     [

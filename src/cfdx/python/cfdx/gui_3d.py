@@ -237,6 +237,26 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self._visualization_pipeline = self._visualization_pipeline.remove(index)
         self._render_visualization()
 
+    def replace_visualization_operation(
+        self, index: int, operation: VisualizationOperation
+    ) -> None:
+        """Replace one pipeline operation and replay the updated pipeline."""
+        if operation.scalars is not None:
+            dataset = self._dataset()
+            if operation.scalars not in self._available_fields(dataset):
+                raise KeyError(operation.scalars)
+        self._visualization_pipeline = self._visualization_pipeline.replace(
+            index, operation
+        )
+        self._render_visualization()
+
+    def move_visualization_operation(self, from_index: int, to_index: int) -> None:
+        """Move one pipeline operation and replay the reordered pipeline."""
+        self._visualization_pipeline = self._visualization_pipeline.move(
+            from_index, to_index
+        )
+        self._render_visualization()
+
     def reset_visualization(self) -> None:
         """Remove all derived operations and show the original dataset again."""
         self._visualization_pipeline = self._visualization_pipeline.clear()

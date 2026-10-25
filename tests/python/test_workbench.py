@@ -1,9 +1,63 @@
 import importlib.util
 
 import pytest
+from cfdx.visualization_pipeline import VisualizationOperation, VisualizationPipeline
 from cfdx.workbench import CFDXWorkbenchWindow
 
 from cfdx import CFDXSession
+
+
+class _FakeFieldDataset:
+    def __init__(self) -> None:
+        vector = type("Vector", (), {"ndim": 2, "shape": (4, 3)})()
+        self.point_data = {"p": object(), "U": vector}
+        self.cell_data = {}
+
+
+class _StubVisualizationView:
+    """Renderer double recording workbench calls with a real pipeline."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, ...]] = []
+        self._visualization_pipeline = VisualizationPipeline()
+        self._dat_dataset = _FakeFieldDataset()
+        self._current_result = None
+
+    def _dataset(self) -> _FakeFieldDataset:
+        return self._dat_dataset
+
+    def contour(self, scalars: str, isosurfaces: int = 10) -> None:
+        operation = VisualizationOperation.contour(scalars, isosurfaces)
+        self.calls.append(("contour", operation))
+        self._visualization_pipeline = self._visualization_pipeline.append(operation)
+
+    def slice(self, normal: tuple[float, float, float] = (1.0, 0.0, 0.0)) -> None:
+        operation = VisualizationOperation.slice(normal)
+        self.calls.append(("slice", operation))
+        self._visualization_pipeline = self._visualization_pipeline.append(operation)
+
+    def glyph(self, scalars: str, factor: float = 1.0) -> None:
+        operation = VisualizationOperation.glyph(scalars, factor)
+        self.calls.append(("glyph", operation))
+        self._visualization_pipeline = self._visualization_pipeline.append(operation)
+
+    def replace_visualization_operation(
+        self, index: int, operation: VisualizationOperation
+    ) -> None:
+        self.calls.append(("replace", index, operation))
+        self._visualization_pipeline = self._visualization_pipeline.replace(
+            index, operation
+        )
+
+    def move_visualization_operation(self, from_index: int, to_index: int) -> None:
+        self.calls.append(("move", from_index, to_index))
+        self._visualization_pipeline = self._visualization_pipeline.move(
+            from_index, to_index
+        )
+
+
+def _no_fields(*, vector: bool) -> list[str]:
+    return []
 
 
 def test_workbench_is_importable_without_qt() -> None:
@@ -273,5 +327,158 @@ def test_undo_and_redo_actions_have_stable_ids_and_shortcuts() -> None:
         "Ctrl+Shift+Z",
         "Ctrl+Y",
     ]
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_contour_dialog_creates_pipeline_operation() -> None:
+    from cfdx.gui import create_application
+    from PySide6.QtWidgets import QPushButton
+
+    app = create_application(["cfdx-workbench-test"])
+    window = CFDXWorkbenchWindow(CFDXSession())
+    window.view3d = _StubVisualizationView()
+    window._refresh_action_availability()
+    window.contour_action.trigger()
+    dialog = window.visualization_operation_dialog
+    assert dialog.objectName() == "workbench.visualization.dialog.contour"
+    assert not dialog.isModal()
+    assert dialog.field_combo.currentText() == "p"
+    dialog.isosurfaces_spin.setValue(12)
+    dialog.findChild(QPushButton, "workbench.visualization.dialog.apply").click()
+    expected = VisualizationOperation.contour("p", 12)
+    assert window.view3d.calls == [("contour", expected)]
+    assert (
+        window.visualization_operations.item(0).text()
+        == "1. contour — p, 12 isosurfaces"
+    )
+    assert window.statusBar().currentMessage() == "Post-processing: contour"
+    window.workspace_actions["setup"].trigger()
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_edit_selected_operation_replaces_it_in_place() -> None:
+    from cfdx.gui import create_application
+    from PySide6.QtWidgets import QPushButton
+
+    app = create_application(["cfdx-workbench-test"])
+    window = CFDXWorkbenchWindow(CFDXSession())
+    window.view3d = _StubVisualizationView()
+    window.view3d.contour("p", isosurfaces=10)
+    window.view3d.slice((0.0, 1.0, 0.0))
+    window._refresh_visualization_operations()
+    window.visualization_operations.setCurrentRow(0)
+    assert window.edit_visualization_button.isEnabled()
+    assert not window.move_up_visualization_button.isEnabled()
+    assert window.move_down_visualization_button.isEnabled()
+    window.edit_visualization_button.click()
+    dialog = window.visualization_operation_dialog
+    assert dialog.objectName() == "workbench.visualization.dialog.contour"
+    assert dialog.field_combo.currentText() == "p"
+    assert dialog.isosurfaces_spin.value() == 10
+    dialog.isosurfaces_spin.setValue(5)
+    dialog.findChild(QPushButton, "workbench.visualization.dialog.apply").click()
+    assert window.view3d.calls[-1] == (
+        "replace",
+        0,
+        VisualizationOperation.contour("p", 5),
+    )
+    assert window.statusBar().currentMessage() == "Visualization operation updated"
+    window.workspace_actions["setup"].trigger()
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_move_buttons_reorder_pipeline_operations() -> None:
+    from cfdx.gui import create_application
+
+    app = create_application(["cfdx-workbench-test"])
+    window = CFDXWorkbenchWindow(CFDXSession())
+    window.view3d = _StubVisualizationView()
+    window.view3d.contour("p", isosurfaces=10)
+    window.view3d.slice((0.0, 1.0, 0.0))
+    window._refresh_visualization_operations()
+    window.visualization_operations.setCurrentRow(0)
+    window.move_down_visualization_button.click()
+    assert window.view3d.calls[-1] == ("move", 0, 1)
+    assert window.visualization_operations.currentRow() == 1
+    assert not window.move_down_visualization_button.isEnabled()
+    assert window.move_up_visualization_button.isEnabled()
+    window.move_up_visualization_button.click()
+    assert window.view3d.calls[-1] == ("move", 1, 0)
+    assert window.visualization_operations.currentRow() == 0
+    assert not window.move_up_visualization_button.isEnabled()
+    assert window.statusBar().currentMessage() == "Visualization operation moved"
+    window.workspace_actions["setup"].trigger()
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_edit_slice_operation_changes_normal() -> None:
+    from cfdx.gui import create_application
+    from PySide6.QtWidgets import QPushButton
+
+    app = create_application(["cfdx-workbench-test"])
+    window = CFDXWorkbenchWindow(CFDXSession())
+    window.view3d = _StubVisualizationView()
+    window.view3d.slice((0.0, 1.0, 0.0))
+    window._refresh_visualization_operations()
+    window.visualization_operations.setCurrentRow(0)
+    window.edit_visualization_button.click()
+    dialog = window.visualization_operation_dialog
+    assert dialog.objectName() == "workbench.visualization.dialog.slice"
+    assert dialog.normal_combo.currentText() == "Y"
+    dialog.normal_combo.setCurrentText("Z")
+    dialog.findChild(QPushButton, "workbench.visualization.dialog.apply").click()
+    assert window.view3d.calls[-1] == (
+        "replace",
+        0,
+        VisualizationOperation.slice((0.0, 0.0, 1.0)),
+    )
+    assert window.statusBar().currentMessage() == "Visualization operation updated"
+    window.workspace_actions["setup"].trigger()
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_glyph_dialog_uses_factor_and_reports_missing_fields() -> None:
+    from cfdx.gui import create_application
+    from PySide6.QtWidgets import QPushButton
+
+    app = create_application(["cfdx-workbench-test"])
+    window = CFDXWorkbenchWindow(CFDXSession())
+    window.view3d = _StubVisualizationView()
+    window._refresh_action_availability()
+    window.glyph_action.trigger()
+    dialog = window.visualization_operation_dialog
+    assert dialog.objectName() == "workbench.visualization.dialog.glyph"
+    assert dialog.field_combo.currentText() == "U"
+    dialog.factor_spin.setValue(2.5)
+    dialog.findChild(QPushButton, "workbench.visualization.dialog.apply").click()
+    assert window.view3d.calls[-1] == ("glyph", VisualizationOperation.glyph("U", 2.5))
+    assert window.statusBar().currentMessage() == "Post-processing: glyph"
+    window._postprocess_fields = _no_fields
+    window.contour_action.trigger()
+    assert (
+        window.statusBar().currentMessage()
+        == "No compatible scalar fields are available for Contour"
+    )
+    window.workspace_actions["setup"].trigger()
     window.close()
     app.quit()
