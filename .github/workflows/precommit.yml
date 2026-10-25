@@ -47,51 +47,23 @@ jobs:
       - name: Ruff diagnostics (annotate exact lint/format findings)
         if: failure()
         run: |
-          mapfile -t changed_py < <(git diff --name-only "$CFDX_PRECOMMIT_RANGE" -- '*.py')
-          for f in scripts/check_audit_gate.py scripts/n9_physical_campaign.py scripts/validation_report.py "${changed_py[@]}"; do
+          for f in scripts/check_audit_gate.py scripts/n9_physical_campaign.py scripts/validation_report.py; do
             [ -f "$f" ] || continue
-            chk=$(ruff check --output-format concise "$f" 2>&1 | grep -v "All checks passed" || true)
-            if [ -n "$chk" ]; then
-              for i in 0 1 2 3 4 5; do
-                chunk=$(printf '%s' "$chk" | cut -c $((i * 4500 + 1))-$((i * 4500 + 4500)))
-                if [ -n "$chunk" ]; then
-                  echo "::error title=ruff check ${f} (part $((i + 1)))::$(printf '%s' "$chunk" | tr '\n' '|')"
-                fi
-              done
-            fi
             fmt=$(ruff format --diff "$f" 2>&1 | grep -v "already formatted" || true)
             if [ -n "$fmt" ]; then
-              for i in 0 1 2 3; do
-                chunk=$(printf '%s' "$fmt" | cut -c $((i * 4500 + 1))-$((i * 4500 + 4500)))
+              for i in 0 1 2; do
+                chunk=$(printf '%s' "$fmt" | cut -c $((i * 3500 + 1))-$((i * 3500 + 3500)))
                 if [ -n "$chunk" ]; then
-                  echo "::error title=ruff format ${f} (part $((i + 1)))::$(printf '%s' "$chunk" | tr '\n' '|')"
+                  echo "::error title=ruff format ${f} (part $((i + 1)))::$(printf '%s' "$chunk" | tr '\n' '|' || true)"
                 fi
               done
             fi
-          done
-        env:
-          CFDX_PRECOMMIT_RANGE: ${{ github.event_name == 'pull_request' && format('{0}...{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}...{1}', github.event.before, github.sha) }}
-
-      - name: Run CFDX fast build/test guard
-        shell: bash
-        run: |
-          set +e
-          pre-commit run cfdx-fast --all-files > "$GITHUB_WORKSPACE/guard.log" 2>&1
-          status=$?
-          cat "$GITHUB_WORKSPACE/guard.log"
-          exit $status
-        env:
-          CFDX_PRECOMMIT_RANGE: ${{ github.event_name == 'pull_request' && format('{0}...{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}...{1}', github.event.before, github.sha) }}
-
-      - name: Guard diagnostics (annotate guard log tail)
-        if: failure()
-        run: |
-          log="$GITHUB_WORKSPACE/guard.log"
-          [ -f "$log" ] || exit 0
-          tail -c 12000 "$log" > tail.log || true
-          for i in 0 1 2 3; do
-            chunk=$(cut -c $((i * 3000 + 1))-$((i * 3000 + 3000)) tail.log || true)
-            if [ -n "$chunk" ]; then
-              echo "::error title=cfdx-fast guard tail (part $((i + 1)))::$(printf '%s' "$chunk" | tr '\n' '|')"
+            chk=$(ruff check "$f" 2>&1 | grep -v "All checks passed" || true)
+            if [ -n "$chk" ]; then
+              echo "::error title=ruff check ${f}::$(printf '%s' "$chk" | tr '\n' '|' || true)"
             fi
           done
+      - name: Run CFDX fast build/test guard
+        run: pre-commit run cfdx-fast --all-files
+        env:
+          CFDX_PRECOMMIT_RANGE: ${{ github.event_name == 'pull_request' && format('{0}...{1}', github.event.pull_request.base.sha, github.event.pull_request.head.sha) || format('{0}...{1}', github.event.before, github.sha) }}
