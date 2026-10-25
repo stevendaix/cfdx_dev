@@ -91,6 +91,26 @@ inline SolverResult solve_cg_impl(
             return result;
         }
     if (null_space) null_space->remove(x);
+    // A valid system can fail before the usual convergence/final-residual
+    // reporting path (preconditioner failure, non-positive curvature, or
+    // rejected residual replacement). Preserve its current b-A*x diagnostic
+    // instead of returning SolverResult's default zero residuals. This helper
+    // is used only on failure; it does not change an iterate or a stopping gate.
+    const auto not_applicable = [&](std::size_t iterations) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        result.iterations = iterations;
+        Vector failure_residual(n);
+        mixed_precision_true_residual(A, b, x, failure_residual);
+        result.residual =
+            krylov_norm2(failure_residual, SolverPrecision::FP64, reduction);
+        const double rhs_norm =
+            krylov_norm2(b, SolverPrecision::FP64, reduction);
+        result.residual_relative = rhs_norm > 0.0
+            ? result.residual / rhs_norm
+            : (result.residual == 0.0
+                ? 0.0 : std::numeric_limits<double>::infinity());
+        return result;
+    };
     const double* Av = A.values_data();
     const bool mp32 = precision.enabled && precision.operator_precision == SolverPrecision::FP32;
     // Mixed precision is opportunistic: promote the operator to FP64 if the
@@ -106,8 +126,7 @@ inline SolverResult solve_cg_impl(
     std::vector<double> M(n, 0.0);
     if (preconditioner) {
         if (setup_preconditioner && !preconditioner->setup(A)) {
-            result.status = SolverStatus::NOT_APPLICABLE;
-            return result;
+            return not_applicable(0);
         }
     } else {
         for (std::size_t i = 0; i < n; ++i) {
@@ -118,8 +137,7 @@ inline SolverResult solve_cg_impl(
                 }
             }
             if (!(M[i] > 0.0) || !std::isfinite(M[i])) {
-                result.status = SolverStatus::NOT_APPLICABLE;
-                return result;
+                return not_applicable(0);
             }
         }
     }
@@ -148,8 +166,7 @@ inline SolverResult solve_cg_impl(
         return true;
     };
     if (!apply_preconditioner()) {
-        result.status = SolverStatus::NOT_APPLICABLE;
-        return result;
+        return not_applicable(0);
     }
 
     // p = z
@@ -215,9 +232,7 @@ inline SolverResult solve_cg_impl(
         }
         const double pAp = krylov_dot(p_vector, Ap_vector, redp, reduction);
         if (!(pAp > 0.0) || !std::isfinite(pAp)) {
-            result.status = SolverStatus::NOT_APPLICABLE;
-            result.iterations = iter;
-            return result;
+            return not_applicable(iter);
         }
         const double alpha = rsold / pAp;
         if (!std::isfinite(alpha)) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
@@ -238,9 +253,7 @@ inline SolverResult solve_cg_impl(
 
         // z = M^{-1} r
         if (!apply_preconditioner()) {
-            result.status = SolverStatus::NOT_APPLICABLE;
-            result.iterations = iter;
-            return result;
+            return not_applicable(iter);
         }
 
         // rsnew = r · z
@@ -437,9 +450,7 @@ inline SolverResult solve_cg_impl(
                 for (std::size_t i = 0; i < n; ++i) r[i] = rv(i);
                 if (null_space) null_space->remove(r);
                 if (!apply_preconditioner()) {
-                    result.status = SolverStatus::NOT_APPLICABLE;
-                    result.iterations = iter;
-                    return result;
+                    return not_applicable(iter);
                 }
                 for (std::size_t i = 0; i < n; ++i) {
                     r_vector(i) = r[i];
@@ -448,9 +459,7 @@ inline SolverResult solve_cg_impl(
                 const double replaced_rsnew =
                     krylov_dot(r_vector, z_vector, redp, reduction);
                 if (!std::isfinite(replaced_rsnew) || !(replaced_rsnew > 0.0)) {
-                    result.status = SolverStatus::NOT_APPLICABLE;
-                    result.iterations = iter;
-                    return result;
+                    return not_applicable(iter);
                 }
                 // The replacement recomputes b-Ax after the normal convergence
                 // check. Re-test the true residual here so a converged iterate

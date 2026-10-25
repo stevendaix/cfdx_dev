@@ -56,10 +56,64 @@ inline SolverResult solve_gmres(
         result.status = SolverStatus::DIVERGED;
         return result;
     }
+    const bool zero_rhs = (b_norm == 0.0);
+    if (zero_rhs) {
+        // b == 0 with a nonzero initial iterate is still a solvable system:
+        // x* = x0 + y where A y = -A x0. Solve that shifted system with the
+        // same operator and preconditioner, then certify the returned
+        // iterate with the true b - A x residual, referenced to ||A x0||.
+        // When A x0 is already zero, x0 solves the homogeneous system and
+        // the b == 0 guard below reports it directly.
+        Vector ax0(n, 0.0);
+        {
+            Vector x0_in(n, 0.0);
+            for (std::size_t i = 0; i < n; ++i) x0_in(i) = x(i);
+            if (op.apply_fp64) op.apply_fp64(x0_in, ax0);
+            else op.apply(x0_in, ax0);
+        }
+        const double ax0_norm =
+            krylov_norm2(ax0, SolverPrecision::FP64, controls.reduction);
+        if (ax0_norm > 0.0) {
+            Vector shifted_rhs(n, 0.0);
+            for (std::size_t i = 0; i < n; ++i) shifted_rhs(i) = -ax0(i);
+            Vector y(n, 0.0);
+            const SolverResult shifted = solve_gmres(
+                op, shifted_rhs, y, restart, max_iter, tolerance,
+                preconditioner, controls, reusable_workspace);
+            for (std::size_t i = 0; i < n; ++i) x(i) += y(i);
+            Vector ax(n, 0.0);
+            {
+                Vector x_in(n, 0.0);
+                for (std::size_t i = 0; i < n; ++i) x_in(i) = x(i);
+                if (op.apply_fp64) op.apply_fp64(x_in, ax);
+                else op.apply(x_in, ax);
+            }
+            double residual_sq = 0.0;
+            for (std::size_t i = 0; i < n; ++i) {
+                const double r_i = b(i) - ax(i);
+                residual_sq += r_i * r_i;
+            }
+            const double residual = std::sqrt(residual_sq);
+            result.status = shifted.status;
+            result.iterations = shifted.iterations;
+            result.residual = residual;
+            result.residual_relative = residual / ax0_norm;
+            result.residual_replacements = shifted.residual_replacements;
+            result.first_residual_replacement = shifted.first_residual_replacement;
+            result.last_residual_replacement = shifted.last_residual_replacement;
+            result.max_true_residual = shifted.max_true_residual;
+            result.min_true_residual = shifted.min_true_residual;
+            result.min_true_recursive_ratio = shifted.min_true_recursive_ratio;
+            result.max_true_recursive_ratio = shifted.max_true_recursive_ratio;
+            result.max_true_recursive_gap = shifted.max_true_recursive_gap;
+            return result;
+        }
+    }
     // Scale the stopping criterion with the actual RHS norm. Using max(||b||,1)
     // makes physically small systems appear converged at x=0 and is incorrect
     // for nondimensionalized or otherwise small-scale operators.
-    double tol = 0.0;
+    const double rhs_scale = std::max(b_norm, 1e-300);
+    const double tol = b_norm == 0.0 ? 0.0 : tolerance * b_norm;
 
     // Diagnostic: track the gauge-row value of the initial solution vector.
     // The gauge row is conventionally the last pressure unknown (index n-1),
@@ -95,12 +149,30 @@ inline SolverResult solve_gmres(
         result.residual = beta;
         return result;
     }
-    // Preserve RHS-relative convergence whenever b is nonzero. Only the
-    // zero-RHS case uses the initial residual as its reference scale.
-    const double convergence_reference = b_norm > 0.0 ? b_norm : beta;
-    const double rhs_scale_for_diagnostics =
-        std::max(convergence_reference, 1e-300);
-    tol = tolerance * convergence_reference;
+    if (b_norm == 0.0) {
+        // b == 0: use a stable, explicit reference common to criterion and diagnostics.
+        // A nonzero initial iterate must not silently relax the threshold.
+        const double x_norm = krylov_norm2(x, SolverPrecision::FP64, controls.reduction);
+        const double ref_scale = std::max({x_norm, 1.0, 1e-300});
+        const double tol_b0 = tolerance * ref_scale;
+        if (beta <= tol_b0) {
+            result.status = SolverStatus::CONVERGED;
+            result.iterations = 0;
+            result.residual = beta;
+            result.residual_relative = beta / ref_scale;
+            return result;
+        }
+        result.status = SolverStatus::DIVERGED;
+        result.iterations = 0;
+        result.residual = beta;
+        result.residual_relative = beta / ref_scale;
+        return result;
+    }
+    // Preserve RHS-relative convergence: with b nonzero the RHS norm is the
+    // reference scale for both the stopping criterion and the reported
+    // diagnostics. The zero-RHS case never reaches the iterations below
+    // (shifted solve above, or the explicit b == 0 guard).
+    const double rhs_scale_for_diagnostics = rhs_scale;
     if (beta <= tol) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
