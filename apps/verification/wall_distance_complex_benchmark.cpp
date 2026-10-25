@@ -80,14 +80,200 @@ struct Row {
 
 } // namespace
 
+
+// Independent brute-force reference for the historical ray/triangle scan.
+// Keep the triangle predicate and tolerances identical to WallDistanceBvh::ray_distance().
+double brute_ray_distance(const WallSurface& surface,
+                          const WallDistanceVec3& p,
+                          const WallDistanceVec3& direction,
+                          double max_distance)
+{
+    const double direction_norm = wd_norm(direction);
+    if (!(direction_norm > 1e-30) || !(max_distance > 0.0))
+        return std::numeric_limits<double>::infinity();
+
+    const WallDistanceVec3 d = direction * (1.0 / direction_norm);
+    double best = std::numeric_limits<double>::infinity();
+    const double eps = 1e-12 * std::max(1.0, max_distance);
+    for (const auto& triangle : surface.triangles) {
+        const auto& v0 = surface.points[triangle.v[0]];
+        const auto& v1 = surface.points[triangle.v[1]];
+        const auto& v2 = surface.points[triangle.v[2]];
+        const auto e1 = v1 - v0;
+        const auto e2 = v2 - v0;
+        const WallDistanceVec3 h{
+            d.y * e2.z - d.z * e2.y,
+            d.z * e2.x - d.x * e2.z,
+            d.x * e2.y - d.y * e2.x};
+        const double a = wd_dot(e1, h);
+        if (std::abs(a) < 1e-14) continue;
+        const double inv_a = 1.0 / a;
+        const auto offset = p - v0;
+        const double u = inv_a * wd_dot(offset, h);
+        if (u < -1e-12 || u > 1.0 + 1e-12) continue;
+        const WallDistanceVec3 q{
+            offset.y * e1.z - offset.z * e1.y,
+            offset.z * e1.x - offset.x * e1.z,
+            offset.x * e1.y - offset.y * e1.x};
+        const double v = inv_a * wd_dot(d, q);
+        if (v < -1e-12 || u + v > 1.0 + 1e-12) continue;
+        const double t = inv_a * wd_dot(e2, q);
+        if (t >= -eps && t <= max_distance + eps)
+            best = std::min(best, std::max(0.0, t));
+    }
+    return best;
+}
+
+struct RayQuery {
+    WallDistanceVec3 origin;
+    WallDistanceVec3 direction;
+    double max_distance{};
+};
+
+struct RayBenchmarkResult {
+    std::size_t queries{};
+    std::size_t repetitions{};
+    std::size_t brute_force_triangle_tests{};
+    std::size_t mismatches{};
+    double max_absolute_error{};
+    double brute_force_ms{};
+    double bvh_ms{};
+    double brute_checksum{};
+    double bvh_checksum{};
+};
+
+RayBenchmarkResult benchmark_ray_queries(const WallSurface& surface,
+                                         const WallDistanceGrid& grid,
+                                         const WallDistanceBvh& bvh)
+{
+    std::vector<RayQuery> queries;
+    const auto add_if_solid = [&](std::size_t fluid_id, std::size_t neighbour_id,
+                                  bool exists, double h) {
+        if (!exists || !grid.solid[neighbour_id]) return;
+        queries.push_back({grid.points[fluid_id],
+                           grid.points[neighbour_id] - grid.points[fluid_id],
+                           2.0 * h});
+    };
+
+    for (std::size_t id = 0; id < grid.points.size(); ++id) {
+        if (grid.solid[id]) continue;
+        const std::size_t k = id / (grid.nx * grid.ny);
+        const std::size_t rem = id % (grid.nx * grid.ny);
+        const std::size_t j = rem / grid.nx;
+        const std::size_t i = rem % grid.nx;
+        if (i > 0) add_if_solid(id, grid.index(i - 1, j, k), true, grid.spacing.x);
+        if (i + 1 < grid.nx) add_if_solid(id, grid.index(i + 1, j, k), true, grid.spacing.x);
+        if (j > 0) add_if_solid(id, grid.index(i, j - 1, k), true, grid.spacing.y);
+        if (j + 1 < grid.ny) add_if_solid(id, grid.index(i, j + 1, k), true, grid.spacing.y);
+        if (k > 0) add_if_solid(id, grid.index(i, j, k - 1), true, grid.spacing.z);
+        if (k + 1 < grid.nz) add_if_solid(id, grid.index(i, j, k + 1), true, grid.spacing.z);
+    }
+    if (queries.empty())
+        throw std::runtime_error("ray benchmark generated no fluid/solid face queries");
+
+    RayBenchmarkResult result;
+    result.queries = queries.size();
+    result.repetitions = 5;
+    result.brute_force_triangle_tests =
+        queries.size() * result.repetitions * surface.triangles.size();
+
+    // Check equivalence outside the timed region so the measured work is just
+    // the same query batch through each implementation.
+    for (const auto& query : queries) {
+        const double reference = brute_ray_distance(
+            surface, query.origin, query.direction, query.max_distance);
+        const double accelerated = bvh.ray_distance(
+            query.origin, query.direction, query.max_distance);
+        if (std::isinf(reference) && std::isinf(accelerated)) continue;
+        if (!std::isfinite(reference) || !std::isfinite(accelerated)) {
+            ++result.mismatches;
+            continue;
+        }
+        const double error = std::abs(reference - accelerated);
+        result.max_absolute_error = std::max(result.max_absolute_error, error);
+        if (error > 1e-12 * std::max(1.0, std::abs(reference)))
+            ++result.mismatches;
+    }
+    if (result.mismatches != 0)
+        throw std::runtime_error("BVH ray benchmark disagrees with brute-force oracle");
+
+    // Warm up both paths before timing. Repeat the exact same deterministic batch.
+    for (std::size_t i = 0; i < std::min<std::size_t>(queries.size(), 32); ++i) {
+        (void)brute_ray_distance(surface, queries[i].origin,
+                                 queries[i].direction, queries[i].max_distance);
+        (void)bvh.ray_distance(queries[i].origin, queries[i].direction,
+                               queries[i].max_distance);
+    }
+
+    auto t0 = std::chrono::steady_clock::now();
+    for (std::size_t repeat = 0; repeat < result.repetitions; ++repeat)
+        for (const auto& query : queries)
+            {
+                const double value = brute_ray_distance(
+                    surface, query.origin, query.direction, query.max_distance);
+                if (std::isfinite(value)) result.brute_checksum += value;
+            }
+    auto t1 = std::chrono::steady_clock::now();
+    result.brute_force_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+    t0 = std::chrono::steady_clock::now();
+    for (std::size_t repeat = 0; repeat < result.repetitions; ++repeat)
+        for (const auto& query : queries)
+            {
+                const double value = bvh.ray_distance(
+                    query.origin, query.direction, query.max_distance);
+                if (std::isfinite(value)) result.bvh_checksum += value;
+            }
+    t1 = std::chrono::steady_clock::now();
+    result.bvh_ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+    const double checksum_scale = std::max(1.0, std::abs(result.brute_checksum));
+    if (std::abs(result.brute_checksum - result.bvh_checksum) > 1e-12 * checksum_scale)
+        throw std::runtime_error("timed BVH and brute-force checksums differ");
+    return result;
+}
+
+void write_ray_benchmark_csv(const std::string& path, const RayBenchmarkResult& r,
+                             std::size_t triangle_count)
+{
+    std::ofstream csv(path);
+    if (!csv) throw std::runtime_error("cannot open ray benchmark output: " + path);
+    csv << "queries,repetitions,triangles,brute_force_triangle_tests,mismatches,"
+           "max_absolute_error,brute_force_ms,bvh_ms,speedup,brute_checksum,bvh_checksum\n";
+    csv << r.queries << "," << r.repetitions << "," << triangle_count << ","
+        << r.brute_force_triangle_tests << "," << r.mismatches << ","
+        << std::setprecision(17) << r.max_absolute_error << "," << r.brute_force_ms
+        << "," << r.bvh_ms << ","
+        << (r.bvh_ms > 0.0 ? r.brute_force_ms / r.bvh_ms : 0.0) << ","
+        << r.brute_checksum << "," << r.bvh_checksum << "\n";
+}
+
 int main(int argc,char** argv) {
-    std::string output = argc>1 ? argv[1] : "wall_distance_complex_benchmark.csv";
+    const bool ray_only = argc > 1 && std::string(argv[1]) == "--ray-only";
+    const std::string output = ray_only
+        ? (argc > 2 ? argv[2] : "wall_distance_complex_benchmark.csv")
+        : (argc > 1 ? argv[1] : "wall_distance_complex_benchmark.csv");
     const WallSurface surface=make_complex_wing_body_tail();
     const WallDistanceGrid grid=make_wall_distance_grid(
         40,30,22,{-1.5,-5.0,-2.2},{0.30,0.34,0.21},inside_complex);
-    const auto reference=exact_reference(surface,grid);
     const double h=std::min({grid.spacing.x,grid.spacing.y,grid.spacing.z});
     const WallDistanceBvh poisson_bvh(surface);
+    const auto ray_benchmark = benchmark_ray_queries(surface, grid, poisson_bvh);
+    std::cout << "ray_query_benchmark,queries=" << ray_benchmark.queries
+              << ",repetitions=" << ray_benchmark.repetitions
+              << ",triangles=" << surface.triangles.size()
+              << ",brute_force_triangle_tests=" << ray_benchmark.brute_force_triangle_tests
+              << ",mismatches=" << ray_benchmark.mismatches
+              << ",max_absolute_error=" << std::setprecision(17) << ray_benchmark.max_absolute_error
+              << ",brute_force_ms=" << ray_benchmark.brute_force_ms
+              << ",bvh_ms=" << ray_benchmark.bvh_ms
+              << ",speedup=" << (ray_benchmark.bvh_ms > 0.0
+                                      ? ray_benchmark.brute_force_ms / ray_benchmark.bvh_ms : 0.0)
+              << "\n";
+    const std::string ray_csv = argc > 2 ? argv[2] : "wall_distance_ray_benchmark.csv";
+    write_ray_benchmark_csv(ray_csv, ray_benchmark, surface.triangles.size());
+    if (ray_only) return 0;
+    const auto reference=exact_reference(surface,grid);
     const auto poisson_operator_audit=audit_poisson_operator(poisson_bvh,grid);
     const auto poisson_offset_audit=audit_poisson_wall_offsets(poisson_bvh,grid);
     const std::size_t max_id=poisson_offset_audit.max_wall_coefficient_cell;

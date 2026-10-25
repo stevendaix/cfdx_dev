@@ -750,6 +750,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_wall_distance_invalid_results tests/unit/test_wall_distance_invalid_results.cpp)
     add_cfdx_test(test_wall_distance_godunov_ridges tests/unit/test_wall_distance_godunov_ridges.cpp)
     add_cfdx_test(test_wall_distance_advection_residual tests/unit/test_wall_distance_advection_residual.cpp)
+
     add_test(NAME benchmark_wall_distance_naca0012
         COMMAND cfdx_naca0012_wall_distance_comparison
                 ${CMAKE_SOURCE_DIR}/tests/data/su2/mesh_NACA0012_inv.su2
@@ -761,9 +762,17 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
 add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_positivity_clamp_counter.cpp)
     add_cfdx_test(test_n11_b1_b2_b3_linalg_guards tests/unit/test_n11_b1_b2_b3_linalg_guards.cpp)
     add_cfdx_test(test_n11_b4_b5_amg_footprint tests/unit/test_n11_b4_b5_amg_footprint.cpp)
+    add_test(NAME benchmark_wall_distance_bvh_rays
+             COMMAND cfdx_wall_distance_complex_benchmark --ray-only
+                     ${CMAKE_BINARY_DIR}/wall_distance_ray_benchmark_only.csv)
+    set_tests_properties(benchmark_wall_distance_bvh_rays PROPERTIES
+        LABELS "phase13;validation;benchmark;wall-distance")
     add_test(NAME benchmark_wall_distance_complex
-             COMMAND cfdx_wall_distance_complex_benchmark ${CMAKE_BINARY_DIR}/wall_distance_complex_benchmark.csv)
-    set_tests_properties(benchmark_wall_distance_complex PROPERTIES LABELS "phase13;validation;benchmark")
+             COMMAND cfdx_wall_distance_complex_benchmark
+                     ${CMAKE_BINARY_DIR}/wall_distance_complex_benchmark.csv
+                     ${CMAKE_BINARY_DIR}/wall_distance_ray_benchmark.csv)
+    set_tests_properties(benchmark_wall_distance_complex PROPERTIES
+        LABELS "phase13;validation;benchmark;wall-distance")
     add_cfdx_test(test_phase10_sst_limiter tests/validation/test_phase10_sst_limiter.cpp)
     add_cfdx_test(test_analytical_benchmarks tests/validation/test_analytical_benchmarks.cpp)
     add_cfdx_test(test_vmfl036_reference_case tests/validation/test_vmfl036_reference_case.cpp)

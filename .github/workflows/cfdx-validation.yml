@@ -277,6 +277,9 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          ./build-validation/cfdx_wall_distance_complex_benchmark --ray-only \
+            build-validation/wall_distance_ray_benchmark_only.csv
+          cat build-validation/wall_distance_ray_benchmark_only.csv
           ./build-validation/cfdx_wall_distance_controlled_benchmark \
             build-validation/wall_distance_controlled_benchmark.csv 16 32 64
           ./build-validation/cfdx_wall_distance_poisson_manufactured \
