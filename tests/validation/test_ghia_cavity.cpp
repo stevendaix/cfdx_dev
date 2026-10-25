@@ -417,8 +417,52 @@ int main(int argc, char** argv)
         const bool gate = argc == 2 && std::string(argv[1]) == "--gate";
         const bool pcd_preflight = argc == 2 && std::string(argv[1]) == "--pcd-preflight";
         const bool pcd = argc == 2 && std::string(argv[1]) == "--pcd";
-        if (argc > 1 && !quick && !gate && !pcd_preflight && !pcd)
-            throw std::invalid_argument("usage: test_ghia_cavity [--quick|--gate|--pcd-preflight|--pcd]");
+        const bool profile_study = argc == 2 && std::string(argv[1]) == "--profile-study";
+        if (argc > 1 && !quick && !gate && !pcd_preflight && !pcd && !profile_study)
+            throw std::invalid_argument("usage: test_ghia_cavity [--quick|--gate|--pcd-preflight|--pcd|--profile-study]");
+
+        if (profile_study) {
+            const std::vector<CavityCase> cases{
+                {100.0,20,20,2500}, {100.0,40,40,4000},
+                {100.0,80,80,8000}, {100.0,160,160,16000}};
+            std::vector<Profile> profiles;
+            std::vector<std::size_t> resolutions;
+            std::cout << std::setprecision(17);
+            std::cout << "CFDX_CASE,Re,N,iterations,continuity_linf,continuity_normalized,momentum_equation_residual,U_RMS,U_max,V_RMS,V_max\n";
+            std::cout << "CFDX_PROFILE,Re,N,component,coordinate,value,reference,abs_error\n";
+            for (const auto& test : cases) {
+                auto result = solve_cavity(test);
+                const auto u = compare(result.velocity, result.geometry, test.nx, test.ny, true, u_reference(test.reynolds));
+                const auto v = compare(result.velocity, result.geometry, test.nx, test.ny, false, v_reference(test.reynolds));
+                const auto profile = sample_profile(result, test.nx, test.ny);
+                const auto& final = result.solve.history.back();
+                std::cout << "CFDX_CASE," << test.reynolds << "," << test.nx << ","
+                          << result.solve.iterations << "," << final.continuity_linf << ","
+                          << final.continuity_normalized << "," << final.momentum_equation_residual << ","
+                          << u.rms << "," << u.max_abs << "," << v.rms << "," << v.max_abs << "\n";
+                const auto ur = u_reference(test.reynolds);
+                const auto vr = v_reference(test.reynolds);
+                for (std::size_t i = 0; i < profile.u.size(); ++i)
+                    std::cout << "CFDX_PROFILE," << test.reynolds << "," << test.nx << ",u,"
+                              << ur[i].coordinate << "," << profile.u[i] << "," << ur[i].reference << ","
+                              << std::abs(profile.u[i] - ur[i].reference) << "\n";
+                for (std::size_t i = 0; i < profile.v.size(); ++i)
+                    std::cout << "CFDX_PROFILE," << test.reynolds << "," << test.nx << ",v,"
+                              << vr[i].coordinate << "," << profile.v[i] << "," << vr[i].reference << ","
+                              << std::abs(profile.v[i] - vr[i].reference) << "\n";
+                profiles.push_back(profile);
+                resolutions.push_back(test.nx);
+            }
+            std::cout << "CFDX_SELF_CONVERGENCE,component,N_coarse,N_fine,rms_difference\n";
+            for (std::size_t i = 1; i < profiles.size(); ++i) {
+                std::cout << "CFDX_SELF_CONVERGENCE,u," << resolutions[i-1] << ","
+                          << resolutions[i] << "," << rms_difference(profiles[i-1].u, profiles[i].u) << "\n";
+                std::cout << "CFDX_SELF_CONVERGENCE,v," << resolutions[i-1] << ","
+                          << resolutions[i] << "," << rms_difference(profiles[i-1].v, profiles[i].v) << "\n";
+            }
+            std::cout << "CFDX_PROFILE_STUDY: COMPLETE\n";
+            return 0;
+        }
 
         // Merge-gated observed-order smoke check. Three resolutions are the
         // minimum for a Richardson-style order from successive differences, so
