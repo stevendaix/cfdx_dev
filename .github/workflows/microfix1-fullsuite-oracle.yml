@@ -1,0 +1,115 @@
+name: Microfix1 GUI full-suite interference oracle (diag)
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/microfix1_fullsuite_marker.txt'
+      - '.github/workflows/microfix1-fullsuite-oracle.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: microfix1-fullsuite-oracle
+  cancel-in-progress: false
+
+env:
+  PR_HEAD_SHA: "32bd9a600b51a110e294e1cfa92a65c9a5142fe6"
+  STAMP: "2026-10-25-mf1r3"
+
+jobs:
+  gui-full-suite:
+    name: GUI full-suite reproduction of the failing CI job
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout diag branch
+        uses: actions/checkout@v4
+        with:
+          ref: ci/long-campaign-diagnostics
+
+      - name: Pin the PR head into a worktree (fail-closed)
+        run: |
+          git fetch --depth=1 origin "$PR_HEAD_SHA"
+          test "$(git rev-parse FETCH_HEAD^{commit})" = "$PR_HEAD_SHA" || { echo "PR head unreachable: $PR_HEAD_SHA"; exit 1; }
+          git worktree add /tmp/prhead "$PR_HEAD_SHA"
+
+      - name: Install GUI system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb \
+            libgl1-mesa-dri \
+            libgl1-mesa-dev \
+            libglu1-mesa \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-xinerama0 \
+            libxkbcommon-x11-0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install CFDX with GUI dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "/tmp/prhead[gui]"
+          python -m pip install pytest
+
+      - name: Run the exact CI GUI regression list (long tracebacks)
+        working-directory: /tmp/prhead
+        env:
+          QT_QPA_PLATFORM: xcb
+        run: |
+          set +e
+          xvfb-run -a -s "-screen 0 1280x1024x24" \
+            python -m pytest -q \
+              tests/python/test_capabilities.py \
+              tests/python/test_specialized_setup.py \
+              tests/python/test_workbench.py \
+              tests/python/test_gui_browser_widgets.py \
+              tests/python/test_renderer.py \
+              tests/python/test_renderer_headless_contract.py \
+              tests/python/test_renderer_pyvista.py \
+              tests/python/test_gui_3d.py \
+              --tb=long -rA \
+              > "$GITHUB_WORKSPACE/diag-evidence/logs/microfix1_fullsuite_2026-10-25-mf1r3.log" 2>&1
+          echo "exit_code=$?" >> "$GITHUB_WORKSPACE/diag-evidence/logs/microfix1_fullsuite_2026-10-25-mf1r3.log"
+          exit 0
+
+      - name: Run test_capabilities.py alone (control)
+        working-directory: /tmp/prhead
+        env:
+          QT_QPA_PLATFORM: xcb
+        run: |
+          set +e
+          xvfb-run -a -s "-screen 0 1280x1024x24" \
+            python -m pytest -q tests/python/test_capabilities.py --tb=long -rA \
+              > "$GITHUB_WORKSPACE/diag-evidence/logs/microfix1_solo_2026-10-25-mf1r3.log" 2>&1
+          echo "exit_code=$?" >> "$GITHUB_WORKSPACE/diag-evidence/logs/microfix1_solo_2026-10-25-mf1r3.log"
+          exit 0
+
+      - name: Meta (pinned refs)
+        run: |
+          {
+            echo "pr_head=$PR_HEAD_SHA"
+            echo "stamp=$STAMP"
+            echo "purpose=reproduce the CI GUI job failure on the full 8-file pytest list; solo control included"
+          } > "diag-evidence/logs/microfix1_fullsuite_meta_2026-10-25-mf1r3.txt"
+
+      - name: Commit evidence
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "diag-evidence/logs/microfix1_fullsuite_2026-10-25-mf1r3.log" \
+                  "diag-evidence/logs/microfix1_solo_2026-10-25-mf1r3.log" \
+                  "diag-evidence/logs/microfix1_fullsuite_meta_2026-10-25-mf1r3.txt"
+          git commit -m "diag: microfix1 full-suite GUI interference evidence (2026-10-25-mf1r3) [ci skip]"
+          git push "https://x-access-token:${{ github.token }}@github.com/stevendaix/cfdx_dev.git" HEAD:ci/long-campaign-diagnostics

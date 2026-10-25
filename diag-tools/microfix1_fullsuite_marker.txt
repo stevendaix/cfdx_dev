@@ -1,0 +1,4 @@
+microfix1 full-suite interference oracle marker
+stamp=${STAMP}
+pr_head=${PR_HEAD}
+rev1 2026-10-25 mf1r3 full-suite oracle
