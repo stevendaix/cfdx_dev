@@ -202,34 +202,60 @@ struct ViewFactorPatch {
     double area = 0.0;
 };
 
+inline void validate_view_factor_patch(const ViewFactorPatch& patch)
+{
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+        if (!std::isfinite(patch.center[axis]) ||
+            !std::isfinite(patch.normal[axis]))
+            throw std::invalid_argument(
+                "view-factor patch centre and normal must be finite");
+    }
+    if (!std::isfinite(patch.area) || patch.area <= 0.0)
+        throw std::invalid_argument(
+            "view-factor patch area must be finite and positive");
+    if (patch.normal[0] == 0.0 && patch.normal[1] == 0.0 &&
+        patch.normal[2] == 0.0)
+        throw std::invalid_argument("view-factor patch normal must be non-zero");
+}
+
 inline double patch_pair_view_factor(
     const ViewFactorPatch& source,
     const ViewFactorPatch& target)
 {
+    // Validate before coincident-centroid or back-facing early returns, so
+    // malformed geometry cannot silently become a zero exchange.
+    validate_view_factor_patch(source);
+    validate_view_factor_patch(target);
     const double rx = target.center[0]-source.center[0];
     const double ry = target.center[1]-source.center[1];
     const double rz = target.center[2]-source.center[2];
-    const double r2 = rx*rx+ry*ry+rz*rz;
-    if (!std::isfinite(r2) || r2 <= 0.0)
+    const double r = std::hypot(rx, ry, rz);
+    if (!std::isfinite(r))
+        throw std::overflow_error("view-factor patch separation is not representable");
+    if (r == 0.0)
         return 0.0;
-    const double r = std::sqrt(r2);
-    const double ns = std::sqrt(source.normal[0]*source.normal[0] +
-                                 source.normal[1]*source.normal[1] +
-                                 source.normal[2]*source.normal[2]);
-    const double nt = std::sqrt(target.normal[0]*target.normal[0] +
-                                 target.normal[1]*target.normal[1] +
-                                 target.normal[2]*target.normal[2]);
-    if (!(source.area > 0.0) || !(target.area > 0.0) ||
-        !(ns > 0.0) || !(nt > 0.0))
-        throw std::invalid_argument("invalid view-factor patch");
-    const double cs = (source.normal[0]*rx + source.normal[1]*ry +
-                       source.normal[2]*rz)/(ns*r);
-    const double ct = -(target.normal[0]*rx + target.normal[1]*ry +
-                        target.normal[2]*rz)/(nt*r);
+    const auto unit_normal = [](const std::array<double, 3>& normal) {
+        // A normal's arbitrary scale must not cause squared-norm overflow.
+        const double scale = std::max({std::abs(normal[0]),
+                                       std::abs(normal[1]),
+                                       std::abs(normal[2])});
+        std::array<double, 3> unit{
+            normal[0] / scale, normal[1] / scale, normal[2] / scale};
+        const double norm = std::hypot(unit[0], unit[1], unit[2]);
+        for (auto& component : unit) component /= norm;
+        return unit;
+    };
+    const auto ns = unit_normal(source.normal);
+    const auto nt = unit_normal(target.normal);
+    const double cs = ns[0]*(rx/r) + ns[1]*(ry/r) + ns[2]*(rz/r);
+    const double ct = -(nt[0]*(rx/r) + nt[1]*(ry/r) + nt[2]*(rz/r));
     if (cs <= 0.0 || ct <= 0.0)
         return 0.0;
-    return std::max(0.0, std::min(1.0, target.area * cs * ct /
-                                        (M_PI * r2)));
+    // The differential-area estimate is capped at one. Logarithms avoid
+    // overflow/underflow in A/r^2 before this cap is applied.
+    const double log_factor = std::log(target.area) + std::log(cs) +
+                              std::log(ct) - std::log(M_PI) - 2.0*std::log(r);
+    return log_factor >= 0.0 ? 1.0 : std::exp(log_factor);
 }
 
 // Method contract: docs/audits/11-rayonnement.md
@@ -238,10 +264,8 @@ inline std::vector<double> estimate_view_factor_matrix(
 {
     if (patches.empty())
         throw std::invalid_argument("view-factor patch set is empty");
-    for (const auto& patch : patches) {
-        if (!std::isfinite(patch.area) || patch.area <= 0.0)
-            throw std::invalid_argument("view-factor patch area must be finite and positive");
-    }
+    // Also checks a singleton patch set, for which no pair kernel is called.
+    for (const auto& patch : patches) validate_view_factor_patch(patch);
     const std::size_t n = patches.size();
     std::vector<double> F(n*n, 0.0);
     for (std::size_t i=0; i<n; ++i)
@@ -249,7 +273,8 @@ inline std::vector<double> estimate_view_factor_matrix(
             if (i != j)
                 F[i*n+j] = patch_pair_view_factor(patches[i], patches[j]);
 
-    // The raw centroid estimator is not reciprocal on unequal-area patches.
+    // Capping the centroid estimate at one can break reciprocity on
+    // unequal-area patches.
     // First symmetrize the area-weighted exchange Q_ij = A_i F_ij. Then apply
     // one global closure scale; a row-by-row normalization would destroy
     // reciprocity again. The S2S consumer contract requires F_ii = 0; any
@@ -261,13 +286,18 @@ inline std::vector<double> estimate_view_factor_matrix(
     for (std::size_t i=0; i<n; ++i) {
         for (std::size_t j=i+1; j<n; ++j) {
             const double exchange =
-                0.5*(patches[i].area*F[i*n+j] +
-                     patches[j].area*F[j*n+i]);
+                0.5*patches[i].area*F[i*n+j] +
+                0.5*patches[j].area*F[j*n+i];
             F[i*n+j] = exchange/patches[i].area;
             F[j*n+i] = exchange/patches[j].area;
+            if (!std::isfinite(F[i*n+j]) || !std::isfinite(F[j*n+i]))
+                throw std::overflow_error(
+                    "reciprocal view-factor exchange is not representable");
         }
         double row_sum = 0.0;
         for (std::size_t j=0; j<n; ++j) row_sum += F[i*n+j];
+        if (!std::isfinite(row_sum))
+            throw std::overflow_error("view-factor row sum is not representable");
         max_row_sum = std::max(max_row_sum,row_sum);
     }
 
@@ -384,6 +414,15 @@ struct RadiationTriangle {
     std::array<double,3> c{0,0,0};
 };
 
+inline void validate_radiation_triangle_coordinates(const RadiationTriangle& triangle)
+{
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        if (!std::isfinite(triangle.a[axis]) ||
+            !std::isfinite(triangle.b[axis]) ||
+            !std::isfinite(triangle.c[axis]))
+            throw std::invalid_argument("radiation triangle coordinates must be finite");
+}
+
 inline std::array<double,3> radiation_cross(
     const std::array<double,3>& a,const std::array<double,3>& b)
 {
@@ -418,19 +457,26 @@ inline std::array<double,3> radiation_scale(
 
 inline double radiation_norm(const std::array<double,3>& a)
 {
-    return std::sqrt(radiation_dot(a,a));
+    return std::hypot(a[0], a[1], a[2]);
 }
 
 inline double radiation_triangle_area(const RadiationTriangle& t)
 {
-    return 0.5*radiation_norm(radiation_cross(
+    validate_radiation_triangle_coordinates(t);
+    const double area = 0.5*radiation_norm(radiation_cross(
         radiation_sub(t.b,t.a),radiation_sub(t.c,t.a)));
+    if (!std::isfinite(area))
+        throw std::overflow_error("radiation triangle area is not representable");
+    return area;
 }
 
 inline std::array<double,3> radiation_triangle_normal(const RadiationTriangle& t)
 {
+    validate_radiation_triangle_coordinates(t);
     const auto n=radiation_cross(radiation_sub(t.b,t.a),radiation_sub(t.c,t.a));
     const double l=radiation_norm(n);
+    if (!std::isfinite(l))
+        throw std::overflow_error("radiation triangle normal is not representable");
     if(!(l>0.0)) throw std::invalid_argument("degenerate radiation triangle");
     return radiation_scale(n,1.0/l);
 }
@@ -441,20 +487,32 @@ inline bool radiation_ray_triangle_hit(
     const RadiationTriangle& tri,
     double& distance)
 {
+    validate_radiation_triangle_coordinates(tri);
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        if (!std::isfinite(origin[axis]) || !std::isfinite(direction[axis]))
+            throw std::invalid_argument("radiation ray origin and direction must be finite");
     constexpr double eps=1e-11;
     const auto e1=radiation_sub(tri.b,tri.a);
     const auto e2=radiation_sub(tri.c,tri.a);
     const auto h=radiation_cross(direction,e2);
     const double det=radiation_dot(e1,h);
+    if (!std::isfinite(det))
+        throw std::overflow_error("radiation ray determinant is not representable");
     if(std::abs(det)<eps) return false;
     const double inv=1.0/det;
     const auto s=radiation_sub(origin,tri.a);
     const double u=inv*radiation_dot(s,h);
+    if (!std::isfinite(u))
+        throw std::overflow_error("radiation ray barycentric coordinate is not representable");
     if(u<0.0 || u>1.0) return false;
     const auto q=radiation_cross(s,e1);
     const double v=inv*radiation_dot(direction,q);
+    if (!std::isfinite(v))
+        throw std::overflow_error("radiation ray barycentric coordinate is not representable");
     if(v<0.0 || u+v>1.0) return false;
     const double t=inv*radiation_dot(e2,q);
+    if (!std::isfinite(t))
+        throw std::overflow_error("radiation ray distance is not representable");
     if(t<=eps) return false;
     distance=t;
     return true;
@@ -478,11 +536,9 @@ struct RadiationAabb {
 
 inline RadiationAabb radiation_triangle_aabb(const RadiationTriangle& t)
 {
+    validate_radiation_triangle_coordinates(t);
     RadiationAabb b;
     for (int k=0;k<3;++k) {
-        if (!std::isfinite(t.a[k]) || !std::isfinite(t.b[k]) ||
-            !std::isfinite(t.c[k]))
-            throw std::invalid_argument("radiation triangle coordinates must be finite");
         b.lo[k]=std::min({t.a[k],t.b[k],t.c[k]});
         b.hi[k]=std::max({t.a[k],t.b[k],t.c[k]});
     }
@@ -663,6 +719,8 @@ inline double estimate_view_factor_ray_traced(
     RadiationBvh blocker_bvh(blockers);
     double source_area=0.0;
     for(const auto& t:source) source_area+=radiation_triangle_area(t);
+    if (!std::isfinite(source_area))
+        throw std::overflow_error("radiation source surface area is not representable");
     if(!(source_area>0.0)) throw std::invalid_argument("source surface has zero area");
 
     std::vector<double> cumulative;

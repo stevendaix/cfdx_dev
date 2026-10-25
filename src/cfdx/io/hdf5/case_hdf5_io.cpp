@@ -646,12 +646,16 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
             if (!mat_v.is_object()) continue;
             MaterialSpec mat;
             mat.name = json_get_string(mat_v, "name", "air");
-            mat.density = json_get_number(mat_v, "density", 1.225);
-            mat.dynamic_viscosity = json_get_number(mat_v, "dynamic_viscosity", 1.789e-5);
-            mat.thermal_conductivity = json_get_number(mat_v, "thermal_conductivity", 0.024);
-            mat.specific_heat = json_get_number(mat_v, "specific_heat", 1006.43);
-            mat.molecular_weight = json_get_number(mat_v, "molecular_weight", 28.97);
-            mat.eos_model = json_get_string(mat_v, "eos_model", "ideal_gas");
+            // Preserve the typed schema's unspecified values. Supplying air
+            // properties here lets incomplete material declarations pass the
+            // production validators and changes the physical problem silently.
+            // Each selected physics validates the properties it actually needs.
+            mat.density = json_get_number(mat_v, "density", 0.0);
+            mat.dynamic_viscosity = json_get_number(mat_v, "dynamic_viscosity", 0.0);
+            mat.thermal_conductivity = json_get_number(mat_v, "thermal_conductivity", 0.0);
+            mat.specific_heat = json_get_number(mat_v, "specific_heat", 0.0);
+            mat.molecular_weight = json_get_number(mat_v, "molecular_weight", 0.0);
+            mat.eos_model = json_get_string(mat_v, "eos_model");
             mat.turbulence_model = json_get_string(mat_v, "turbulence_model", "laminar");
 
             const mini_json::value* ep = mini_json::find(mat_v, "extra_properties");

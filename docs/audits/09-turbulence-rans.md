@@ -102,8 +102,119 @@ $$a_P\phi_P=\sum_{nb}a_{nb}\phi_{nb}+b,\qquad a_P=\sum_{nb}a_{nb}+\frac{\rho V_P
 
 
 ## 12. Production outer-loop SST runtime (PR pending)
-- `IncompressibleSolverControls::sst_runtime` is an explicit opt-in runtime seam. When absent, the legacy fixed-viscosity path is unchanged.
+- `IncompressibleSolverControls::sst_runtime` is an explicit opt-in runtime seam. When absent and no cellwise turbulent-viscosity field is supplied, the legacy uniform-viscosity momentum operator is unchanged.
 - When present, the caller must provide a validated `SSTProductionState` and SST `TurbulenceTransportControls`; initialization from declared case data or DAT restart remains explicit through the existing initialization/restart helpers. Carrier and SST density/kinematic viscosity must agree exactly. No implicit SST initial values are fabricated.
 - Before the first momentum assembly, the solver refreshes wall distance, strain rate and `nu_t` from the actual initialized/restarted carrier field. The outer iteration then advances SST using the pressure-corrected authoritative face mass flux and the explicitly supplied omega face values when configured. A failed transport step raises the existing retryable-iteration path; the enclosing retry restores the SST snapshot together with carrier rollback.
 - After the carrier/SST transaction commits, the refreshed `nu_t` is converted to `mu_eff = rho * (nu + nu_t)` for the next momentum assembly. SST convergence is an additional hard gate based on the transport solver's convergence status, finite equation residuals, zero non-finite bound events, and dimensionless relative `nu_t` change no larger than the configured carrier relative tolerance. This prevents declaring the carrier solution converged before momentum has been assembled with the accepted SST closure. Raw dimensional SST residuals are not mixed into the normalized carrier convergence metric; carrier, continuity, and QoI gates are not relaxed.
 - This is integration scaffolding, not permission to enable the general RANS selector or a claim of physical qualification. Restart/state lifecycle and production regression coverage must be demonstrated by exact-head CI before merge.
+
+## 13. Fermeture des écarts d'intégration SST — 2026-10-24
+
+Cette section décrit le code du lot local d'intégration ; les constats des sections
+8 à 11 restent des états historiques. Le sélecteur RANS général reste fermé.
+
+### Frontières, gradients et état retourné
+
+`SSTProductionRuntime::wall_omega_sst_patches` conserve les obligations physiques
+`WALL_OMEGA_SST`, indépendamment des parois utilisées pour la distance minimale.
+Le contrôle `require_supported_sst_runtime_boundaries(contract, mesh, geometry, values)`
+parcourt les `face_ids` du maillage : chaque face de chaque paroi déclarée doit
+avoir une valeur de face globale, finie et strictement positive, avec une
+appartenance de patch cohérente. Ce contrôle précède l'initialisation de `U/p`.
+L'ancienne surcharge sans maillage refuse désormais un contrat avec wall omega :
+la présence d'une seule entrée finie ne permet pas de prouver la couverture.
+
+Les gradients utilisés par `F1` et par la diffusion croisée de l'équation omega
+emploient les mêmes états de frontière que le transport scalaire : valeur
+imposée, valeur de face prioritaire, gradient normal imposé, ou extrapolation
+de la valeur propriétaire si le gradient est nul. Le noyau commun est
+`scalar_gradient_with_transport_boundaries`. Il n'ajoute pas de correction de
+skewness. `F2` ne dépend pas de la diffusion croisée ; les reconstructions de
+`nu_t` seules n'ont donc pas besoin de calculer ce gradient.
+
+Après relaxation puis planchers de positivité, les vecteurs servant aux résidus
+sont remis en cohérence avec les champs effectivement retournés. La convergence
+conserve les contrôles existants et ajoute
+
+$$e_\phi=\max_i\frac{|(A\phi-b)_i|}{\sum_j|a_{ij}|}\leq\mathrm{tolerance},
+\qquad\phi\in\{k,\omega\}.$$
+
+Ce défaut d'équation a les unités du champ et utilise le même seuil absolu que
+le changement d'itéré ; il reste défini pour un second membre nul. Les résidus
+bruts dimensionnels et le nombre/amplitude des corrections de plancher restent
+rapportés. Aucun plancher ne peut masquer un défaut matériel de l'équation.
+
+La tolérance interne relative du solveur linéaire est traduite à partir de ce
+seuil absolu, séparément pour k et omega :
+
+$$\mathrm{tol}_{lin}=\mathrm{tolerance}\,\min\left(1,
+\frac{\min_i\sum_j|a_{ij}|}{\max(\|b\|_2,10^{-15})}\right).$$
+
+Cette traduction peut seulement resserrer le critère linéaire. Elle évite qu'un
+itéré chaud soit rendu inchangé parce que son résidu relatif au RHS satisfait
+le solveur linéaire alors que son défaut en unités du champ échoue à la porte
+SST. Les seuils externes, budgets et relaxations sont inchangés. Une norme non
+finie, une ligne nulle ou une tolérance résultante sous-débordée échouent
+explicitement. Le test de reprise DAT a révélé ce désaccord d'échelles ; la
+continuation directe du même état sans sérialisation le reproduisait aussi.
+
+### Tenseur visqueux et pression
+
+Pour le runtime SST ou un champ de viscosité turbulente cellulaire explicite,
+la quantité de mouvement incompressible emploie
+
+$$\nabla\cdot(\rho\mathbf U\otimes\mathbf U)
+=-\nabla p^*+\nabla\cdot\left[\mu_{eff}
+(\nabla\mathbf U+\nabla\mathbf U^T)\right]+\rho\mathbf f,
+\quad\mu_{eff}=\rho(\nu+\nu_t),\quad p^*=p_{statique}+\tfrac23\rho k.$$
+
+La diffusion de chaque composante demeure implicite. Le terme transposé
+complémentaire est un flux conservatif explicite de l'itération externe,
+
+$$F^T_{i,f}=\mu_f\sum_j(\partial_i U_j)_f S_{f,j}.$$
+
+Un même flux orienté propriétaire est ajouté/soustrait aux cellules adjacentes.
+La viscosité interne suit l'interpolation harmonique pondérée par les distances
+normales de la diffusion scalaire ; en frontière, la viscosité et le gradient
+de face utilisent la cellule propriétaire. Les valeurs de vitesse imposées
+entrent dans le gradient de Gauss. Le terme est réévalué avec `U` final pour le
+résidu non linéaire, et reconstruit comme flux dans le bilan indépendant.
+Le bilan additionne flux sortant et `grad(p*) - rho*f` : son signe et le facteur
+densité sont testés avec une force volumique non nulle. Le parcours historique
+à viscosité uniforme, sans runtime SST ni champ cellulaire, conserve sa
+réduction incompressible en laplacien ; l'égalité des assembleurs scalaires à
+viscosité uniforme ne signifie pas l'identité de toute itération avec un terme
+transposé discret explicite.
+
+Dans ce chemin SST, les valeurs initiales et les conditions de pression portent
+sur `p*`. Le noyau ne convertit pas automatiquement une pression statique
+imposée et ne certifie pas des sorties `Cp`. Toute utilisation comme pression
+statique doit soustraire explicitement `2*rho*k/3` et déclarer le même choix aux
+frontières.
+
+### Preuves bornées et limites
+
+`test_sst_integration_gaps` contient les oracles de couverture complète et
+d'atomicité avant initialisation, un gradient affine avec BC réelles, le
+contre-exemple de faux résidu après plancher, un premier prédicteur à trois
+cellules avec flux non nul, un rejet après commit SST suivi d'un retry, et une
+réhydratation DAT de l'état primaire suivie d'un premier prédicteur. Le fixture
+à parois mobiles vérifie un raccordement logiciel ; il ne valide pas un canal
+turbulent ni la convergence RANS globale.
+
+La MMS du terme transposé impose `U=(y,0,0)` et
+`mu=1+x^2*(1-x)^2`, donc une force exacte
+`(0,2*x*(1-x)*(1-2*x),0)` ; elle compare les erreurs sur 16, 32 et 64 cellules,
+le bilan des flux et la limite constante. Sa dérivée de viscosité s'annule aux
+frontières : elle ne qualifie pas une loi de paroi, des variations arbitraires
+de viscosité en frontière ni les maillages non orthogonaux. Le traitement
+explicite doit encore être étudié pour les forts contrastes et les difficultés
+de convergence des cas physiques.
+
+DAT v4 conserve `U/p/k/omega`, mais pas le flux de face autoritaire. Le test de
+réhydratation ne prouve donc pas la reprise d'une trajectoire couplée générale.
+Restent notamment la MMS des deux équations SST sur au moins trois maillages,
+les qualifications DNS canal, plaque plane puis NACA0012, les lois de paroi et
+`y+`, les reprises complètes avec flux/historique, et les parcours MPI. La
+qualification du système turbulence-énergie-rayonnement reste distincte des
+tests de raccordement des champs `nu_t` et `lambda_eff`.

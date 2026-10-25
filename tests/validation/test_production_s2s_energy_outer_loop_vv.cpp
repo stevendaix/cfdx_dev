@@ -246,12 +246,12 @@ static CaseSetup make_s2s_setup()
     return setup;
 }
 
-// Independent |Sf|-weighted wall temperature of a patch: the only link
-// between the resolved thermal field and the radiosity system, recomputed
-// here without any production helper.
+// Independent boundary-law reconstruction, without the production helper.
 static double patch_wall_temperature(
     const Mesh& mesh, const FvGeometry& geometry, const std::string& name,
-    const Field<double, Location::CELL>& temperature)
+    const Field<double, Location::CELL>& temperature,
+    double heat_flux_into_domain,
+    const std::vector<double>* conductivity_values = nullptr)
 {
     double weighted = 0.0;
     double total = 0.0;
@@ -265,7 +265,14 @@ static double patch_wall_temperature(
                 area.x * area.x + area.y * area.y + area.z * area.z);
             const auto owner = static_cast<std::size_t>(
                 mesh.ownership().owner(face));
-            weighted += weight * temperature(owner);
+            const auto delta = geometry.face_centres[face] -
+                               geometry.cell_centres[owner];
+            const double normal_distance = std::abs(
+                delta.x * area.x + delta.y * area.y + delta.z * area.z) / weight;
+            const double conductivity = conductivity_values
+                ? conductivity_values->at(owner) : 1.0;
+            weighted += weight * (temperature(owner) +
+                heat_flux_into_domain * normal_distance / conductivity);
             total += weight;
         }
     }
@@ -283,6 +290,30 @@ static std::size_t surface_index(const ProductionS2SRadiationResult& result,
 
 int main()
 {
+    run_case("production_s2s_outer_loop_isothermal_zero_applied_map", [] {
+        auto mesh = box_mesh(2, 2, 0.25, 0.25);
+        const auto geometry = build_fv_geometry(mesh);
+        auto setup = make_s2s_setup();
+        for (auto& spec : setup.boundary_conditions) {
+            if (spec.patch_name == "left" || spec.patch_name == "right")
+                spec.wall_temperature = 350.0;
+            if (spec.patch_name == "bottom") spec.raw_params["heat_flux"] = "0";
+        }
+        Field<double, Location::FACE> mass_flux(mesh.n_faces(), "mass_flux", "kg/s", 1);
+        mass_flux.fill(0.0);
+        Field<double, Location::CELL> temperature(mesh.n_cells(), "T", "K", 1);
+        temperature.fill(350.0);
+        const auto result = run_production_s2s_energy_outer_loop(
+            mesh, geometry, setup, mass_flux, temperature);
+        EXPECT_TRUE(result.converged);
+        EXPECT_TRUE(result.outer_iterations == 1);
+        EXPECT_TRUE(result.radiation.applied_heat_flux.size() == 2);
+        for (const auto& name : result.radiation.surface_names)
+            EXPECT_NEAR(result.radiation.applied_heat_flux.at(name), 0.0, 0.0);
+        for (const double flux : result.radiation.net_flux)
+            EXPECT_NEAR(flux, 0.0, 1e-10);
+    });
+
     // -----------------------------------------------------------------
     // Happy path: 4x4x1 box, two-surface parallel-plate enclosure, outer
     // energy-radiation iteration to the coupled fixed point.
@@ -341,9 +372,11 @@ int main()
 
         // Independent wall temperatures of the FINAL field.
         const double tb =
-            patch_wall_temperature(mesh, geometry, "bottom", temperature);
+            patch_wall_temperature(mesh, geometry, "bottom", temperature,
+                50.0 + stage.radiation.applied_heat_flux.at("bottom"));
         const double tt =
-            patch_wall_temperature(mesh, geometry, "top", temperature);
+            patch_wall_temperature(mesh, geometry, "top", temperature,
+                stage.radiation.applied_heat_flux.at("top"));
         EXPECT_NEAR(stage.radiation.wall_temperatures[bi], tb, 1e-12);
         EXPECT_NEAR(stage.radiation.wall_temperatures[ti], tt, 1e-12);
 
@@ -422,7 +455,8 @@ int main()
             mesh, geometry, setup, mass_flux, two_pass_field);
         EXPECT_TRUE(two_pass.converged);  // its own stage-2 gates pass
         const auto response = solve_production_s2s_radiation(
-            mesh, geometry, setup, two_pass_field);
+            mesh, geometry, setup, two_pass_field,
+            two_pass.radiation.injected_heat_flux);
         double two_pass_residual = 0.0;
         for (std::size_t i = 0; i < response.surface_count; ++i) {
             const std::string& name = response.surface_names[i];
@@ -449,6 +483,52 @@ int main()
         // The last iteration's lag is a finite, non-negative diagnostic.
         EXPECT_TRUE(std::isfinite(stage.max_wall_temperature_lag));
         EXPECT_TRUE(stage.max_wall_temperature_lag >= 0.0);
+    });
+
+    run_case("production_s2s_outer_loop_local_conductivity_replay", [] {
+        auto mesh = box_mesh(4, 4, 0.25, 0.25);
+        const auto geometry = build_fv_geometry(mesh);
+        const auto setup = make_s2s_setup();
+        Field<double, Location::FACE> mass_flux(mesh.n_faces(), "mass_flux", "kg/s", 1);
+        mass_flux.fill(0.0);
+        Field<double, Location::CELL> temperature(mesh.n_cells(), "T", "K", 1);
+        temperature.fill(350.0);
+        std::vector<double> conductivity(mesh.n_cells());
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+            conductivity[c] = 2.0 + geometry.cell_centres[c].x;
+        const auto result = run_production_s2s_energy_outer_loop(
+            mesh, geometry, setup, mass_flux, temperature, &conductivity);
+        EXPECT_TRUE(result.converged);
+        EXPECT_TRUE(result.fixed_point_flux_passed);
+        EXPECT_TRUE(result.fixed_point_wall_temperature_passed);
+        EXPECT_TRUE(result.energy.global_balance_normalized <= 1e-12);
+        EXPECT_TRUE(result.energy.local_balance_normalized <= 1e-12);
+        const double tb = patch_wall_temperature(
+            mesh, geometry, "bottom", temperature,
+            50.0 + result.radiation.applied_heat_flux.at("bottom"), &conductivity);
+        const double tt = patch_wall_temperature(
+            mesh, geometry, "top", temperature,
+            result.radiation.applied_heat_flux.at("top"), &conductivity);
+        const auto bi = surface_index(result.radiation, "bottom");
+        const auto ti = surface_index(result.radiation, "top");
+        EXPECT_NEAR(result.radiation.wall_temperatures[bi], tb, 1e-12);
+        EXPECT_NEAR(result.radiation.wall_temperatures[ti], tt, 1e-12);
+        const double oracle = STEFAN_BOLTZMANN *
+            (std::pow(tb, 4) - std::pow(tt, 4)) /
+            (1.0 / 0.8 + 1.0 / 0.9 - 1.0);
+        EXPECT_NEAR(result.radiation.net_flux[bi], oracle, 1e-10);
+        EXPECT_NEAR(result.radiation.net_flux[ti], -oracle, 1e-10);
+        Field<double, Location::CELL> replay(mesh.n_cells(), "replay", "K", 1);
+        replay.fill(350.0);
+        const std::map<std::string, double> oracle_flux{
+            {"bottom", -oracle}, {"top", oracle}};
+        const auto replay_result = run_production_energy_stage(
+            mesh, geometry, setup, mass_flux, replay, oracle_flux, &conductivity);
+        EXPECT_TRUE(replay_result.converged);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+            EXPECT_NEAR(replay(c), temperature(c), 1e-6);
+        EXPECT_NEAR(result.energy.patch_flux_out.at("left") +
+                    result.energy.patch_flux_out.at("right"), 50.0, 1e-6);
     });
 
     // -----------------------------------------------------------------
