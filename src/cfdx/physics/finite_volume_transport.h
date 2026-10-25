@@ -675,6 +675,17 @@ reconstruct_scalar_transport_flux(
             field, mesh, geometry_cache, core_scheme, &face_flux,
             cfdx::core::LimiterType::NONE, nullptr, 0.75);
     }
+    Field<double, Location::CELL> diffusion_gradient;
+    if (field.size() == nc && field.dimension() == 1 && diffusion_coefficient >= 0.0) {
+        try {
+            diffusion_gradient = compute_gradient_gauss_point(field, mesh);
+        } catch (...) {
+            try {
+                diffusion_gradient = compute_gradient_gauss(field, mesh);
+            } catch (...) {
+            }
+        }
+    }
 
     const auto& own = mesh.ownership();
     for (std::size_t f = 0; f < nf; ++f) {
@@ -758,7 +769,31 @@ reconstruct_scalar_transport_flux(
                     psi_face = reconstructed_face(f);
                 }
             }
-            result(f)=F*psi_face - diffusion_conductance*(field(n)-field(o));
+            double diff_flux = -diffusion_conductance*(field(n)-field(o));
+            if (diffusion_gradient.size() == nc && diffusion_gradient.dimension() == 3 && diffusion_gradient.is_valid()) {
+                const auto& dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+                const auto& Sf = geometry.face_area_vectors[f];
+                const double d2 = dvec.mag2();
+                if (d2 > 0.0 && std::isfinite(d2)) {
+                    const Vec3 Sf_corr = Sf - dvec * (Sf.dot(dvec) / d2);
+                    const Vec3 gf{0.5 * (diffusion_gradient(o, 0) + diffusion_gradient(n, 0)),
+                                   0.5 * (diffusion_gradient(o, 1) + diffusion_gradient(n, 1)),
+                                   0.5 * (diffusion_gradient(o, 2) + diffusion_gradient(n, 2))};
+                    double Gamma_f = diffusion_coefficient;
+                    if (cell_diffusion) {
+                        const double go = (*cell_diffusion)[o];
+                        const double gn = (*cell_diffusion)[n];
+                        if (go > 0.0 && gn > 0.0) {
+                            Gamma_f = 2.0 * go * gn / (go + gn);
+                        }
+                    }
+                    const double corr = Gamma_f * Sf_corr.dot(gf);
+                    if (std::isfinite(corr)) {
+                        diff_flux += corr;
+                    }
+                }
+            }
+            result(f)=F*psi_face + diff_flux;
         } else {
             const std::size_t patch=geometry.face_patch[f];
             if (patch < mesh.boundary().n_patches() &&
