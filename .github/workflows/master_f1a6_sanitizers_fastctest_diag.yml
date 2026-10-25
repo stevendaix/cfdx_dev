@@ -139,6 +139,7 @@ jobs:
             echo "=== unique sanitizer signatures (rerun + ctest logs) ==="
             cat "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_rerun_${SHORT}_run$GITHUB_RUN_ID.log" "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_ctest_${SHORT}_run$GITHUB_RUN_ID.log" 2>/dev/null \
               | grep -E "runtime error:|ERROR: AddressSanitizer|SUMMARY: AddressSanitizer|SUMMARY: UndefinedBehaviorSanitizer|LeakSanitizer" \
+              | sort -u | head -n 200 || true
           } > "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_sanreport_${SHORT}_run$GITHUB_RUN_ID.txt"
           cat "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_sanreport_${SHORT}_run$GITHUB_RUN_ID.txt"
 
