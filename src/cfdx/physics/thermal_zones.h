@@ -429,7 +429,12 @@ struct ThermalConductionResult {
     bool converged = false;
     cfdx::core::SolverStatus status = cfdx::core::SolverStatus::MAX_ITER_REACHED;
     std::size_t iterations = 0;
+    // Status and candidate_converged describe the linear candidate;
+    // converged describes the actual returned temperature field.
     double residual_inf = 0.0;
+    double residual_relative_inf = 0.0;
+    bool candidate_converged = false;
+    bool returned_state_converged = false;
     double min_temperature = 0.0;             // K
     double max_temperature = 0.0;             // K
     double total_source_power = 0.0;         // W
@@ -461,9 +466,18 @@ inline ThermalConductionResult solve_thermal_conduction(
     ThermalConductionResult result;
     result.status = solve.status;
     result.iterations = solve.iterations;
+    result.candidate_converged = solve.status == SolverStatus::CONVERGED;
     result.residual_inf = scalar_equation_residual_inf(equation, temperature);
-    result.converged = (solve.status == SolverStatus::CONVERGED) &&
-                       std::isfinite(result.residual_inf);
+    double rhs_norm_inf = 0.0;
+    for (std::size_t i = 0; i < equation.rhs.size(); ++i)
+        rhs_norm_inf = std::max(rhs_norm_inf, std::abs(equation.rhs(i)));
+    result.residual_relative_inf =
+        result.residual_inf / std::max(rhs_norm_inf, 1e-300);
+    result.returned_state_converged =
+        std::isfinite(result.residual_inf) &&
+        std::isfinite(result.residual_relative_inf) &&
+        result.residual_relative_inf <= controls.tolerance;
+    result.converged = result.candidate_converged && result.returned_state_converged;
 
     for (std::size_t c = 0; c < nc; ++c) {
         if (c == 0) {
