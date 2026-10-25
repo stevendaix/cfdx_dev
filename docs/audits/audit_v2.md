@@ -1,3 +1,104 @@
+## Reprise opérationnelle — 25 octobre 2026
+
+Cette section est le point d'entrée courant. Les statuts ci-dessous sont basés sur les HEAD et workflows observés le 25/10/2026 ; une campagne `skipped` n'est jamais une validation physique réussie.
+
+| Sujet | HEAD / PR | Constat vérifié | Action obligatoire |
+|---|---|---|---|
+| F03 Rhie–Chow / COUPLED | #1078 | N9 physique réussi ; campagne N9 qualification et validation totale encore en cours lors du contrôle. | Attendre les deux campagnes et auditer le flux de continuité avant toute promotion. |
+| F06 diffusion non orthogonale | #1103, HEAD `080e87d60749b95c0424d151afecfd585a74d7a0` | Nouveau HEAD poussé ; tous les jobs de cette révision étaient encore en file d'attente. Un ancien essai COUPLED skew Couette plafonnait à `continuity_linf=0.001547` après 33 itérations. | Examiner les logs du HEAD exact. Si l'échec se reproduit, corriger le flux/gradient ou le couplage ; ne pas relâcher les gates. |
+| F11 contrainte transposée à viscosité variable | #1102, HEAD `5afd56a664fd1a81cb0f5fd705a8fb18e273b94f` | La branche cible est `fix/audit-1069-coupled-rhie-chow-contract`, divergente de master (25 commits en avance, 13 en retard). CI sur cette base a échoué sur `test_dual_time_navier_stokes` et `test_n9_negative_diagnostics`; ces résultats ne permettent pas d'isoler F11. | Porter F11 proprement sur master, puis relancer CI exact-HEAD avant d'évaluer le code physique. |
+| F25 SST API | #1113 | CI classique et audit verts sur le HEAD observé ; maturité numérique encore en attente. N9 physique, qualification et total sont `skipped`. | Attendre maturité et ne pas présenter les qualifications ignorées comme réussies. |
+| F26 source P1 | #1111 | Audit et garde-fous verts ; CI principale/maturité encore en cours au contrôle. N9/total `skipped`. | Attendre les workflows et garder l'oracle indépendant. |
+| F27 courbure VOF | #1114 | Audit et N10 verts ; CI, GUI, documentation et maturité encore en file/en cours. Qualification géométrique complète non couverte. | Attendre CI puis garder le statut PARTIEL tant que l'intégration de production n'est pas qualifiée. |
+| F30 facteurs de vue S2S | #1115 | Audit, GUI, N10 et garde-fous verts ; CI principale/maturité encore en cours. Qualification physique `skipped`. | Attendre les jobs restants ; la diagonale nulle ne qualifie pas une enceinte fermée. |
+| Contrôle du registre | #1108 | L'ancien run a échoué car l'audit gate traitait `audit_v2.md` et `turbulence.md` comme des fiches méthode ; la correction correspondante a été fusionnée via #1112, après ce run. | Relancer les workflows sur une révision actuelle et vérifier les contrôles de contenu sur le HEAD courant. |
+
+Règle de clôture : chaque ligne ne passe à CORRIGÉE que si le code courant a été audité, les tests ciblés passent et les checks obligatoires passent sur le HEAD exact. Une campagne physique ignorée, en cours ou échouée reste ouverte.
+
+## Suivi d'exécution courant — 24 octobre 2026 (mise à jour depuis R2)
+
+Cette section est le journal vivant de reprise. Elle complète les statuts historiques R2 ci-dessous sans réécrire les preuves anciennes. Un PR ouvert signifie « correction candidate à auditer », jamais « problème corrigé ». Un item n'est clos qu'après lecture du diff actuel, vérification de l'absence de doublon sur `master`, tests ciblés et CI sur le HEAD exact.
+
+### État des reprises sur GitHub
+
+| ID de l'audit | État constaté à la reprise | Action / gate suivante |
+|---|---|---|
+| F03 | PR #1078 ouverte ; contrat Rhie–Chow/COUPLED à qualifier | Auditer le flux de face, le RHS de continuité, la jauge et les cas pression affine ; exiger CI exact-HEAD et comparaison COUPLED/ségrégé indépendante. |
+| F06 | PR draft #1103 ouverte | Auditer intégration réelle dans tous les appelants de transport, reconstruction et diffusion ; ajouter MMS polyédrique et vérifier Release/DebugSanitizers avant promotion. |
+| F08 | **Code candidat déjà présent sur master** : `geometric_interpolation_weight` calcule une projection longitudinale et `test_finite_volume_transport.cpp` contient un contre-exemple distance euclidienne vs projection | Pas de nouveau correctif avant vérification ciblée : confirmer le test est enregistré/exécuté en CI et que le chemin `compute_gradient_gauss` consomme bien ce helper ; si oui, passer à F12/F13. |
+| F11 | PR draft #1102 ouverte | Vérifier les trois prédicteurs, le résidu final indépendant, le signe et les flux opposés ; compléter MMS non orthogonal/polyédrique avant qualification. |
+| F12/F13 | Aucun PR dédié visible dans l'inventaire ouvert consulté | Auditer les contrats dimensionnels des helpers momentum/énergie et leurs appelants de production avant de proposer un patch. |
+| F18 | Aucun PR dédié visible dans l'inventaire ouvert consulté | Établir les identités thermodynamiques attendues pour `beta != 0`, puis tester dérivées et invariants dimensionnels. |
+| F22–F24 | Aucun PR dédié visible dans l'inventaire ouvert consulté | Séparer les variantes physiques nommées (WALE, compressibilité, Kato–Launder) ; pas de correction générique sans formule et variables nécessaires. |
+| F25 | PR #1081 ouverte | Auditer le diff et les appels de l'API supprimée ; vérifier les builds/CI avant clôture. |
+| F27 | PR #1083 ouverte | Vérifier les dérivées par axe et les oracles plan/cercle/sphère ; garder la qualification VOF/Laplace distincte. |
+| F30 | PR #1086 ouverte | Vérifier producteur→consommateur S2S, réciprocité, fermeture et fraction ouverte ; la cohérence algébrique seule ne qualifie pas la géométrie. |
+| F32 | PR #1088 ouverte | Recalculer le résidu du champ effectivement retourné après relaxation et auditer le gate thermique R3. |
+| F34 | PR #1100 ouverte, avec variantes historiques #1093/#1098 encore ouvertes | Éviter les doublons ; vérifier le comparateur courant, puis compléter les oracles indépendants manquants sans compter plusieurs sorties d'un même défaut comme plusieurs bugs. |
+| F02 | PR #1096 ouverte ; limiteur documenté comme partiel | Distinguer la correction du limiteur de diffusivité de la qualification du modèle k-omega 2006. |
+| F28 | PR #1110 créée depuis le master courant ; anciennes #1095/#1097/#1107 restent des branches candidates périmées/concurrentes | Auditer la CI de #1110 sur son HEAD exact ; fusionner uniquement si verte et mergeable, puis fermer/annoter les variantes obsolètes sans perdre les tests uniques. |
+| F26 | PR #1079 ouverte | Le correctif local R2 n'est pas une preuve de la PR ; vérifier formule, oracle et CI exact-HEAD. |
+| F01 / SST production | PR #1105 ouverte ; intégration de boucle/restart distincte (#1045/#1068) | Séparer source omega, intégration de production, persistance/restart et qualification physique ; aucune promotion globale SST sans les quatre gates. |
+
+### Ordre d'exécution maintenu
+
+1. **F08** : audit initial du code courant effectué. Le helper utilise déjà la projection longitudinale et un test compare explicitement projection et distance euclidienne. Vérifier l'enregistrement/CI du test et les appelants ; si la preuve est complète, marquer F08 comme corrigé dans le périmètre démontré et passer à F12/F13.
+2. **F03 / F06 / F11** : auditer les PR existantes avant toute réimplémentation ; pas de cherry-pick aveugle depuis les branches historiques.
+3. **F12 / F13 / F18 / F22–F24** : spécifier d'abord les contrats physiques et dimensionnels, puis ajouter des oracles indépendants.
+4. **F25 / F27 / F30 / F32 / F34 / F02 / F26 / F28** : examiner les PR existantes et leur CI exact-HEAD, éliminer les doublons et ne fermer que sur preuve.
+5. Après chaque étape, actualiser la ligne correspondante du registre de la section 5 et cette table ; garder les limitations de validation explicites.
+
+
+### Journal de revue des PR — campagne de clôture (mise à jour)
+
+| PR | Verdict de revue | Décision actuelle |
+|---|---|---|
+| #1100 — comparateur de qualification F34 | Correctif ciblé : rejet explicite NaN/Inf, tolérance non finie/négative ; CFDX CI, maturité numérique, Fast Guards et audit maturité verts sur HEAD `e0b4ca94a7292189e2bdf9eca6153cb34402a374`. Les campagnes N9/total étaient ignorées, pas réussies. | **Fusionnée** par squash, commit `a30c95b7248cb86dbcd3142a41830798e294d201`. La validation physique reste hors portée de ce test de comparateur. |
+| #1103 — diffusion non orthogonale F06 | **Échec reproductible** sur HEAD `6fbf8be1e490f4e0c361462d91b311277d3b2ad8`. `test_nonorthogonal_laplacian_campaign` échoue dans `transport_nonorthogonal_linear_campaign` : le résidu corrigé ne satisfait pas l'oracle affine sur le maillage shear + warp non uniforme. | **Ne pas fusionner.** Corriger la reconstruction du gradient/flux sur maillage déformé ; maintenir l'oracle strict, ajouter preuve locale de gradient affine et relancer Release + DebugSanitizers + N3 sur le HEAD corrigé. |
+| #1097 / #1110 — contrat de conductivité CHT F28 | #1097 a des checks verts sur un ancien HEAD mais n'est plus mergeable. J'ai porté le correctif audité sur le master courant dans #1110 : validation finie/positive/cohérente avant mutation, test négatif sans mutation, fixture thermique cohérente et mise à jour de la fiche. CI #1110 en attente sur HEAD `963fb7d745de44a9064b77f625c4c1291f26481b`. | **#1110 en validation** ; ne pas fusionner avant CI exacte. Éviter de fusionner #1097/#1107 en parallèle. |
+| #1107 — contrat CHT empilé | Head `25b6d58c536e920ea676d2f1d49fb6253d1f1653`, PR draft et `mergeable=false`; aucun run CI PR déclenché trouvé sur ce SHA lors de la revue. Diff empile les changements CHT avec des modifications SST et de gate documentaire. | **Ne pas fusionner en bloc.** Rebaser/extraire uniquement les tests CHT supplémentaires sur la correction retenue ; séparer le SST et la classification de rapport si ces changements ne sont pas strictement nécessaires. |
+| #1098 — comparateur F34 / régression F08 | Variante ouverte qui chevauche #1100 sur les comparateurs non finis, mais ajoute également des changements de test transport/F08. CI verte sur son ancien HEAD, pas une preuve de compatibilité avec le master après #1100. | Garder uniquement les tests F08 encore utiles ; supprimer la duplication du comparateur déjà fusionné, puis rebaser et relancer la CI. Ne pas fermer avant d'avoir isolé le delta non redondant. |
+| #1099 / #1094 — source omega SST | Variantes historiques concurrentes ; #1099 présente des échecs CFDX CI, maturité numérique et Fast Guards sur son HEAD `7ad610f9e3d189c6db8912c0098d12318982523d`. #1094 est une variante plus ancienne avec CI verte mais campagnes physiques ignorées. | Ne pas fusionner ces branches. Auditer #1105 comme candidat consolidé, attendre tous les runs en cours, et qualifier l'intégration de production séparément de la formule de source. |
+| #1078 — Rhie–Chow/COUPLED F03 | Les suites principales sont vertes sur l'ancien HEAD, mais Fast Guards est annulé, la PR reste draft et GitHub signale `mergeable=false`. | Ne pas fusionner : rebaser sur master courant, compléter Fast Guards et vérifier l'égalité des flux de face avec le bloc de continuité et l'oracle pression affine. |
+| #1079, #1081, #1083, #1086, #1088 — F26/F25/F27/F30/F32 | Les CI principales sont vertes sur leurs anciens HEAD, mais GitHub signale `mergeable=false` pour les cinq PR. Les campagnes N9 et validation totale sont ignorées. | Aucun merge aveugle. Rebaser chaque changement indépendamment, confirmer qu'il n'est pas déjà sur master, exécuter les tests ciblés et la CI sur le nouveau HEAD ; garder la qualification physique explicitement distincte. |
+| #1102 — contrainte visqueuse transposée F11 | CFDX CI, Fast Guards, audit gate, documentation et maturité numérique verts sur le HEAD examiné ; la PR est draft et sa propre fiche indique que l'oracle est seulement un maillage orthogonal uniforme. | Ne pas fusionner comme correction « terminée ». Ajouter MMS sur maillage déformé/polyédrique et contrôler le résidu final réassemblé ; promouvoir uniquement après ces gates. |
+| #1096 / #1101 — dossiers consolidés de corrections | CI verte sur les HEAD consultés, mais les scopes se chevauchent partiellement (tests CHT/énergie et éléments d'audit) ; #1096 indique explicitement que des tests ne sont pas enregistrés tant que les PR dépendantes n'ont pas été intégrées. | Comparer les arbres et bases exacts avant fusion. Ne pas fusionner les deux dossiers ensemble ni traiter le nombre de tests historiques comme une campagne sur master courant. |
+
+**Règle ajoutée à la clôture :** un statut vert sur un ancien SHA n'autorise pas une fusion après déplacement de `master`. La base, le diff et les checks doivent être vérifiés de nouveau sur le HEAD candidat final. « skipped » pour N9, validation totale ou campagne physique ne signifie jamais « passed ».
+
+---
+
+
+### Reprise après création de #1110
+
+- #1100 a été fusionnée dans `master` (commit `a30c95b7248cb86dbcd3142a41830798e294d201`).
+- #1110 porte le correctif F28 sur la base courante et attend CI ; ne pas conclure avant résultats sur `963fb7d745de44a9064b77f625c4c1291f26481b`.
+- #1103 reste bloquée par un contre-exemple N3 sur le maillage transformé shear+warp ; l'erreur ne doit pas être masquée en modifiant le seuil.
+- Les PR #1078, #1079, #1081, #1083, #1086 et #1088 ont des CI historiques majoritairement vertes, mais leur base est ancienne et GitHub signale `mergeable=false`. La reprise doit réconcilier chaque delta sur le master courant avant toute fusion.
+
+
+### Nouveaux correctifs portés sur le master courant
+
+| PR | Objet | État / gate |
+|---|---|---|
+| #1110 | F28 — cohérence conductivité CHT, porté sur master courant | CI du HEAD `963fb7d745de44a9064b77f625c4c1291f26481b` en cours ; l'audit gate initial a échoué car il traite `audit_v2.md` et `turbulence.md` comme des fiches méthode. Ce défaut de classification est séparé du code CHT. |
+| #1111 | F26 — normalisation du terme source P1, porté sur master courant | CI en cours sur HEAD `e68b2056ec910d2fbc757dbc05137e11766136c7`. Oracle indépendant : source sans irradiation égale à (4\sigma T^4), et source nulle lorsque (J=I_b). Aucune fusion avant CI verte. |
+
+
+
+| #1115 | F30 — estimateur de facteurs de forme S2S | Port courant : diagonale strictement nulle, réciprocité surfacique conservée, tests sur surfaces d'aires égales/inégales et validation par le consommateur S2S. CI en attente sur le HEAD final ; les rangées non fermées sont interprétées comme échange avec l'espace ouvert non modélisé, pas comme une qualification d'enceinte fermée. |
+| #1114 | F27 — contrat de courbure VOF | Port courant de la correction : l'API accepte explicitement les dérivées (\partial_x n_x,\partial_y n_y,\partial_z n_z), supprime l'ancien stencil ambigu et teste les cas plan/cercle/sphère. CI en attente sur HEAD `4c42092a8bdb9e3871ace2ce8a1aa06b78e6f8c3`. Limite déclarée : ne qualifie pas une chaîne de reconstruction VOF multidimensionnelle complète. |
+| #1113 | F25 — suppression de la surcharge SST ambiguë | Correctif porté sur master courant : surcharge historique supprimée au niveau compilation, appels tests/benchmarks migrés vers l'API avec strain-rate explicite, oracle numérique indépendant. CI exacte en attente sur HEAD `6f23e7dbd42d2b91d3d19b47d95ba43e0910625f`. |
+| #1112 | Gate d'audit — rapports vs fiches méthode | PR créée sur master courant ; liste d'exclusion explicite limitée aux rapports `audit_v2.md` et `turbulence.md`, sans relâcher les exigences des fiches méthode. CI en attente sur HEAD `9dceab6781871e70a5fcd69c126e85e26c47648b`. |
+
+### Garde-fous de reprise
+
+- L'état R2 est fondé sur une archive ZIP figée et un patch cumulatif ; il ne doit pas être appliqué tel quel à `master` ou empilé sur une PR sans comparaison exacte des sources.
+- L'inventaire GitHub courant montre des PR candidates, mais la liste des PR ouvertes ne suffit pas à établir leur diff, leur base/head ou leur CI. Aucune correction n'est déclarée fusionnée par cette section.
+- Aucun seuil de convergence, budget, oracle ou test ne doit être affaibli pour obtenir un vert. Les validations longues restent séparées et explicitement étiquetées.
+
+---
+
 CFDX — Audit consolidé, correctifs appliqués et tests — R2
 24 octobre 2026. Fichier de travail unique, révision R2.
 0. Lire, appliquer et prolonger ce document
