@@ -93,7 +93,8 @@ inline P1RadiationSolveResult solve_p1_radiation(
     }
 
     auto eq=assemble_scalar_equation(
-        mesh,geometry,zero_flux,D,su,sp,irradiation_bcs,true);
+        mesh,geometry,zero_flux,D,su,sp,irradiation_bcs,true,
+        nullptr,nullptr,nullptr,nullptr,ConvectionScheme::UPWIND,&irradiation);
     cfdx::core::Vector G(mesh.n_cells(),0.0);
     for(std::size_t cell=0; cell<mesh.n_cells(); ++cell)
         G(cell)=irradiation(cell);
@@ -267,7 +268,8 @@ inline RadiationSolveResult solve_participating_radiation_diffuse_gray_walls(
 
             auto eq=assemble_scalar_equation(
                 mesh,geometry,directional_flux,0.0,source,sp,
-                extrapolation_bcs,true,&wall_values);
+                extrapolation_bcs,true,&wall_values,nullptr,nullptr,nullptr,
+                ConvectionScheme::UPWIND,&intensities[m]);
 
             cfdx::core::Vector intensity(nc,0.0);
             for (std::size_t c=0;c<nc;++c) intensity(c)=intensities[m](c);
@@ -378,7 +380,8 @@ inline RadiationSolveResult solve_participating_radiation(
 
             auto eq=assemble_scalar_equation(
                 mesh,geometry,directional_flux,0.0,source,sp,
-                wall_intensity_bcs,true);
+                wall_intensity_bcs,true,nullptr,nullptr,nullptr,nullptr,
+                ConvectionScheme::UPWIND,&intensities[m]);
 
             auto old=intensities[m];
             cfdx::core::Vector intensity(nc,0.0);
@@ -569,7 +572,8 @@ inline RadiationEnergyCouplingResult solve_radiation_energy_coupled(
         for(std::size_t c=0;c<nc;++c)
             accepted_source(c)=non_radiative_source(c)-qrad(c);
         auto accepted_eq=assemble_energy_equation(
-            mesh,geometry,mass_flux,accepted_source,T_previous_time,controls.energy,thermal_bcs);
+            mesh,geometry,mass_flux,accepted_source,T_previous_time,controls.energy,
+            thermal_bcs,nullptr,nullptr,&temperature);
         cfdx::core::Vector accepted_vec(nc,0.0);
         for(std::size_t c=0;c<nc;++c) accepted_vec(c)=temperature(c);
         const double energy_balance_residual =
