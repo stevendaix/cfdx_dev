@@ -151,36 +151,36 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
     return g;
 }
 
-// Method contract: docs/audits/01-diffusion-laplacien.md
-struct FluxImbalanceMetrics {
-    double signed_global = 0.0;
-    double global_l1 = 0.0;
-    double local_linf = 0.0;
-};
-
-inline FluxImbalanceMetrics flux_imbalance_metrics(
-    const std::vector<double>& cell_flux_residuals)
-{
-    FluxImbalanceMetrics metrics;
-    for (const double residual : cell_flux_residuals) {
-        if (!std::isfinite(residual))
-            throw std::invalid_argument("flux_imbalance_metrics: non-finite residual");
-        metrics.signed_global += residual;
-        metrics.global_l1 += std::abs(residual);
-        metrics.local_linf = std::max(metrics.local_linf, std::abs(residual));
+    // face winding that was inward with respect to the owner.
+    for (std::size_t c = 0; c < nc; ++c) {
+        const Offset off = mesh.cells().offsets_data()[c];
+        const Offset count = mesh.cells().offsets_data()[c + 1] - off;
+        const auto cg = compute_cell_geometry_oriented(
+            g.face_centres.data(), g.face_area_vectors.data(),
+            mesh.cells().faces_data() + off, count, static_cast<CellIndex>(c),
+            mesh.ownership());
+        g.cell_centres[c] = cg.centre;
+        g.cell_volumes[c] = cg.volume;
+        if (!(cg.volume > 0.0) || !std::isfinite(cg.volume))
+            throw std::runtime_error("build_fv_geometry: non-positive cell volume");
     }
-    return metrics;
+
+    for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p) {
+        for (const auto f : mesh.boundary().patch(p).face_ids) {
+            if (f >= nf || mesh.ownership().neighbour(f) >= 0)
+                throw std::runtime_error("build_fv_geometry: invalid boundary face");
+            g.face_patch[f] = p;
+        }
+    }
+
+    return g;
 }
 
 struct ScalarEquation {
     cfdx::core::SparseMatrix matrix;
     cfdx::core::Vector rhs;
     std::vector<double> diagonal;
-    // Compatibility alias: now represents the maximum cell-local imbalance.
     double max_imbalance = 0.0;
-    double signed_global_imbalance = 0.0;
-    double global_l1_imbalance = 0.0;
-    double max_local_imbalance = 0.0;
     // Assembly diagnostics retained temporarily for Issue #377 root-cause analysis.
     double max_abs_face_flux = 0.0;
     double min_internal_distance = std::numeric_limits<double>::infinity();
@@ -243,20 +243,20 @@ inline double boundary_normal_distance(
     return dn;
 }
 
-// Assemble:
-//     div(phi*psi) - div(gamma grad(psi)) = Su + Sp*psi
-// with first-order upwind convection and two-point orthogonal diffusion.
-// For steady problems, bounded convection subtracts div(phi)*psi, matching
-// the standard bounded finite-volume treatment.
-inline ScalarEquation assemble_scalar_equation(
+        throw std::runtime_error("boundary_normal_distance: invalid normal distance");
+    }
+    return dn;
+}
+
+inline ScalarBoundaryCondition resolve_scalar_boundary_condition(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
-    const cfdx::core::Field<double, cfdx::core::Location::FACE>& face_flux,
-    double diffusion_coefficient,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>& source_explicit,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>& source_implicit,
-    const ScalarBoundaryConditions& boundary_conditions = {},
-    bool bounded_convection = true,
+inline cfdx::core::Field<double, cfdx::core::Location::CELL>
+compute_scalar_gradient_with_boundary(
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const ScalarBoundaryConditions& boundary_conditions,
     const ScalarBoundaryFaceValues* face_values = nullptr,
     const std::vector<double>* extra_diagonal = nullptr,
     const std::vector<double>* extra_rhs = nullptr,
@@ -1179,44 +1179,6 @@ inline double scalar_equation_residual_inf(
 {
     if (solution.size() != equation.rhs.size())
         throw std::invalid_argument("scalar_equation_residual_inf: dimension mismatch");
-    if (equation.matrix.row_offsets_data() == nullptr ||
-        equation.matrix.columns_data() == nullptr ||
-        equation.matrix.values_data() == nullptr) {
-        return std::numeric_limits<double>::infinity();
-    }
-    double max_r = 0.0;
-    for (std::size_t i = 0; i < solution.size(); ++i) {
-        const double rhs_i = equation.rhs(i);
-        if (!std::isfinite(rhs_i)) {
-            return std::numeric_limits<double>::infinity();
-        }
-        double r = -rhs_i;
-        if (!std::isfinite(r)) {
-            return std::numeric_limits<double>::infinity();
-        }
-        const std::uint32_t row_begin = equation.matrix.row_offsets_data()[i];
-        const std::uint32_t row_end = equation.matrix.row_offsets_data()[i + 1];
-        for (std::uint32_t k = row_begin; k < row_end; ++k) {
-            const std::uint32_t cidx = equation.matrix.columns_data()[k];
-            if (cidx >= solution.size()) {
-                return std::numeric_limits<double>::infinity();
-            }
-            const double mval = equation.matrix.values_data()[k];
-            if (!std::isfinite(mval)) {
-                return std::numeric_limits<double>::infinity();
-            }
-            const double sval = solution(cidx);
-            if (!std::isfinite(sval)) {
-                return std::numeric_limits<double>::infinity();
-            }
-            const double term = mval * sval;
-            if (!std::isfinite(term)) {
-                return std::numeric_limits<double>::infinity();
-            }
-            r += term;
-            if (!std::isfinite(r)) {
-                return std::numeric_limits<double>::infinity();
-            }
         }
         const double ar = std::abs(r);
         if (!std::isfinite(ar)) {
