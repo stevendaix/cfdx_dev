@@ -2,7 +2,7 @@
 
 > **Fichier de suivi de référence.** Mettre à jour ce registre à chaque session de travail, commit, PR, résultat CI ou changement de verdict. Ne pas recopier aveuglément les annexes historiques : vérifier le code sur `master`, les PR ouvertes et le HEAD exact. Une case « présent » signifie code trouvé ; elle ne signifie pas qualification physique.
 
-- **Dernière revue du registre :** 2026-10-24.
+- **Dernière revue du registre :** 2026-10-25.
 - **Dépôt :** [stevendaix/cfdx_dev](https://github.com/stevendaix/cfdx_dev).
 - **Source de vérité technique :** ce fichier, y compris sa matrice de suivi et les annexes d'évidence.
 - **Règles de travail :** pas de tolérance élargie, pas de tests désactivés, pas de fallback silencieux, pas d'activation générale de RANS sur la seule base de tests unitaires. Avant tout changement, inspecter `master`, le diff et les PR qui se chevauchent. Après tout changement, exécuter les contrôles applicables sur le HEAD exact, documenter les échecs et distinguer vérification logicielle, convergence numérique et validation physique.
@@ -129,6 +129,17 @@ Le noyau SST, certains chemins transactionnels de production, les stages énergi
 3. Déplacer une ligne vers « fermé » uniquement lorsque le code est sur `master` et que la preuve requise existe sur le commit fusionné. « PR verte », « test unitaire vert » ou « API présente » ne suffisent pas à qualifier une capacité physique.
 4. Toute campagne non exécutée, non distribuée ou sans référence mesurable doit rester explicitement ouverte.
 5. Les annexes historiques et le patch reproduit ci-dessous ne doivent pas être modifiés pour faire disparaître un échec : ajouter une nouvelle entrée datée et préserver les résultats antérieurs.
+
+
+## 5. Journal d'exécution — 2026-10-25
+
+| Référence | Changements / état | Vérification et décision |
+|---|---|---|
+| PR #1116 — commit de fusion `9fa9bfb9bed89c90598659ec898e5bd6936700fe` | SST-2003 : la source de production de ω utilise la même production limitée que l'équation de k, avec branche explicite νt=0 ; tests algébriques limiteur actif et viscosité turbulente nulle ; fiche RANS alignée sur l'état du runtime de production. | Tous les checks requis observés sur le HEAD exact `c6c053a32b95ef10fe73ce8889994623bf7f044e` étaient verts : Release, DebugSanitizers, audit gate, documentation, GUI, maturité numérique et N10. N9 physique et validation totale sont restées ignorées ; qualification physique SST toujours ouverte. **FUSIONNÉ**. |
+| PR #1104 — commit de fusion du registre | Le registre actif est placé en tête de ce fichier ; le rapport historique complet est conservé après le séparateur. | Contrôles de documentation, audit gate et CI observés verts sur le HEAD de cette PR. Le contenu historique ne doit pas être interprété comme une preuve de qualification sur le HEAD courant. **FUSIONNÉ**. |
+| PR #1118 — HEAD `255193daf6314cd067cc7d5545bb04bcc94e26ff` | Reprise propre du contrat géométrique CHT sur le master courant : conformité sommet-à-sommet, aires et normales, patches valides, indices/owners et fixtures à deux régions adjacentes. Le contrat de conductivité source est déjà présent sur master ; les tests et la validation géométrique sont portés dans cette PR. | CI déclenchée sur le HEAD exact ; aucune fusion avant réussite des builds Release/DebugSanitizers et des tests CHT/Level C concernés. N9 physique et validation totale non revendiquées. **EN COURS**. |
+| PR #1105 / #1107 / #1109 | Les branches SST/CHT historiques ont divergé du master ; elles ne doivent pas être fusionnées telles quelles. #1105 est remplacée par #1116 ; #1107 et #1109 sont des branches empilées dont le travail CHT est porté dans #1118. | Rebase/reconstruction préférable à un contournement de conflits. Fermer les PR CHT historiques seulement après validation de #1118. **REMPLACEMENT EN COURS**. |
+
 
 ---
 
