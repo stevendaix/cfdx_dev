@@ -15,6 +15,20 @@ Cette section est le point d'entrée courant. Les statuts ci-dessous sont basés
 
 Règle de clôture : chaque ligne ne passe à CORRIGÉE que si le code courant a été audité, les tests ciblés passent et les checks obligatoires passent sur le HEAD exact. Une campagne physique ignorée, en cours ou échouée reste ouverte.
 
+### Mise à jour — 25 octobre 2026 ~09:05Z (suite) : F30 mergée, GUI palette mergée, F31/F33 mergées, F32 dirty
+
+Cette suite poursuit la section ~08:20Z ci-dessous (les merges du matin y restent exacts).
+
+- **Push docs master `71858a20` vérifié** : le check-run du commit (« Build numerical test suite ») est `success` (54 s) ; l'unique annotation est le warning de dépréciation Node.js 20 des actions officielles, sans défaut.
+- **F30 #1115 MERGÉE** : squash `b7ced399`, `expectedHeadSha` épinglé sur `92af08d2` ; CI du head exact 37/37 check-runs terminés, 0 échec / 0 pending (Pre-commit, Validate, Audit gate vérifiés verts ; validation-total `skipped` sans label — la qualification physique de l'enceinte fermée reste ouverte). **#1086 fermée comme supersédée** (delta intégralement couvert par #1115, commentaire posté).
+- **#1120 MERGÉE** : squash `976d8b11`, head `20df917d` ; 36/36 check-runs terminés, 0 échec / 0 pending — les 6 jobs absents du canal check-runs dégradé (Pre-commit, Validate, Release, DebugSanitizers, GUI/Qt, Build numerical) ont été confirmés verts via l'API check-runs paginée. L'incident GUI noté à ~08:20Z est résolu par ce merge.
+- **F31 #1080 MERGÉE** : squash `f90de151`, head `755d7ac0` ; 37/37 check-runs terminés, 0 échec / 0 pending (Pre-commit, Validate, Audit gate, Release, DebugSanitizers, GUI, E2E inclus).
+- **F33 #1089 MERGÉE** : squash `78e2724b`, head `13dbbd71` ; 25/25 check-runs terminés, 0 échec / 0 pending.
+- **F32 #1088 NON mergée** : `mergeable_state=dirty` (conflit réel apparu après les merges du jour — ce n'est pas un échec CI). Aucune réconciliation automatique effectuée ; rebase/réconciliation à instruire séparément, aucun critère numérique modifié.
+- **#1118 (CHT géométrie) toujours draft** : aucune action ; #1109 reste ouverte en attendant le passage ready de #1118 (sa réconciliation manuelle reste annulée).
+
+Règles inchangées : aucune tolérance, oracle ou gate modifié ; les campagnes `validation-total` restent `skipped` sans label et ne comptent jamais comme validations physiques réussies ; INCONCLUSIVE ≠ PASS.
+
 ### Mise à jour — 25 octobre 2026 ~08:20Z : vagues de merges, doublons fermés, reste à faire
 
 Cette mise à jour supplante les lignes F25/F26/F27 et « Contrôle du registre » du tableau ci-dessus (rédigées avant les merges de la matinée).
