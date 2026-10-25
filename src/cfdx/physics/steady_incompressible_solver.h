@@ -15,6 +15,7 @@
 #include "cfdx/io/restart/dat_restart.h"
 #include "cfdx/physics/advanced_convergence.h"
 #include "cfdx/physics/finite_volume_transport.h"
+#include "cfdx/physics/momentum_viscous_stress.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/pressure_velocity_system.h"
 #include "cfdx/physics/solver_control.h"
@@ -177,6 +178,10 @@ struct SSTProductionRuntime {
     // State must be explicitly initialized from case data or restored from a
     // DAT checkpoint with the helpers in sst_production_coupling.h. The
     // production solver advances this state transactionally when non-null.
+    // In this incompressible SST path the carrier pressure and pressure BCs
+    // represent p*=p_static+2*rho*k/3. The isotropic Reynolds stress is thus
+    // absorbed in the pressure gradient. Convert explicitly before reporting
+    // static pressure/Cp or prescribing static-pressure boundary data.
     SSTProductionState* state = nullptr;
     TurbulenceTransportControls transport;
     ScalarBoundaryConditions k_boundary_conditions;
@@ -186,6 +191,9 @@ struct SSTProductionRuntime {
     // remains valid for the duration of the update.
     ScalarBoundaryFaceValues omega_face_values;
     std::vector<std::string> wall_patch_names;
+    // Physical WALL_OMEGA_SST obligations from the case contract. This is
+    // distinct from the list of walls used to compute nearest wall distance.
+    std::vector<std::string> wall_omega_sst_patches;
     std::size_t max_transport_iterations = 100;
     double transport_tolerance = 1e-8;
 };
@@ -279,6 +287,15 @@ struct IncompressibleSolverControls {
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&)>;
     InitializedStateCallback initialized_state_callback;
+    // Evidence hook at every actual momentum predictor (including retries).
+    // The viscosity and flux are the exact arrays consumed by assembly; U is
+    // the current carrier iterate. All references are read-only and transient.
+    using MomentumPredictorCallback = std::function<void(
+        std::size_t,
+        const std::vector<double>&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::FACE>&)>;
+    MomentumPredictorCallback momentum_predictor_callback;
     // Evidence-only hook: invoked at the exact Krylov call point of the
     // coupled solve - after assembly, gauge treatment, finite checks and
     // preconditioner setup - so the snapshot matrix, RHS and initial guess
@@ -2519,8 +2536,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // Validate the caller-owned SST bundle before initialization can mutate
     // the carrier fields. Derived SST quantities must be refreshed only after
     // initialization/restart has established the actual velocity field.
-    if (controls.sst_runtime)
+    const FvGeometry geometry = build_fv_geometry(mesh);
+    if (controls.sst_runtime) {
         validate_sst_production_state(*controls.sst_runtime->state, mesh.n_cells());
+        const auto& runtime = *controls.sst_runtime;
+        const SSTRuntimeBoundaryContract boundary_contract{
+            runtime.k_boundary_conditions, runtime.omega_boundary_conditions,
+            runtime.wall_omega_sst_patches};
+        require_supported_sst_runtime_boundaries(
+            boundary_contract, mesh, geometry, &runtime.omega_face_values);
+    }
 
     apply_initialization(
         controls.initialization, mesh, U, p, restart_fields, restart_path);
@@ -2530,6 +2555,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // Authoritative dynamic viscosity used by predictor assembly, nonlinear
     // acceptance residuals, and the independent momentum conservation audit.
     std::vector<double> mu_eff(mesh.n_cells());
+    // The legacy uniform-viscosity incompressible path uses mu*Laplacian(U).
+    // Cellwise/SST viscosity requires the full symmetric stress; its transpose
+    // term is conservative and explicit in each nonlinear predictor.
+    const bool include_transpose_stress = controls.sst_runtime != nullptr ||
+        !controls.cell_turbulent_viscosity.empty();
     if (controls.sst_runtime) {
         std::map<std::string, std::array<double, 3>> fixed_velocity_values;
         for (const auto& [patch, bc] : velocity_bcs) {
@@ -2556,7 +2586,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 "effective cellwise dynamic viscosity must be finite and non-negative");
     }
 
-    const FvGeometry geometry = build_fv_geometry(mesh);
     cfdx::core::ConvergenceMonitorControls monitor_controls;
     monitor_controls.residual.absolute_tolerance = controls.convergence.absolute_tolerance;
     monitor_controls.residual.relative_tolerance = controls.convergence.relative_tolerance;
@@ -2880,6 +2909,21 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
         // Momentum predictor uses the conservative corrected flux from the
         // previous outer iteration. This preserves the SIMPLE phi state.
+
+        Field<double, Location::CELL> transpose_force;
+        if (include_transpose_stress) {
+            const auto stress_flux = transpose_viscous_stress_flux(
+                mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z});
+            transpose_force = viscous_face_flux_divergence(mesh, geometry, stress_flux);
+            for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
+                body_x(cell) += transpose_force(cell,0);
+                body_y(cell) += transpose_force(cell,1);
+                body_z(cell) += transpose_force(cell,2);
+            }
+        }
+
+        if (controls.momentum_predictor_callback)
+            controls.momentum_predictor_callback(iter, mu_eff, U, mass_flux);
 
         auto ex = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_x, mu_eff, ubc_x, 0,
@@ -3551,6 +3595,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             final_uz_field(c) = U.component_data(2)[c];
         }
         auto final_grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+        if (include_transpose_stress) {
+            const auto final_stress_flux = transpose_viscous_stress_flux(
+                mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z});
+            const auto final_transpose_force = viscous_face_flux_divergence(
+                mesh, geometry, final_stress_flux);
+            for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
+                body_x(cell) += final_transpose_force(cell,0)-transpose_force(cell,0);
+                body_y(cell) += final_transpose_force(cell,1)-transpose_force(cell,1);
+                body_z(cell) += final_transpose_force(cell,2)-transpose_force(cell,2);
+            }
+        }
         auto final_ex = assemble_momentum_component(
             mesh, geometry, mass_flux, final_grad_p, body_x, mu_eff, ubc_x, 0,
             controls.use_bounded_convection, controls.convection_scheme, &final_ux_field);
@@ -4538,6 +4593,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // The flux is rebuilt from the accepted final field, independently
             // of the assembled matrix residual. Internal faces therefore have
             // one owner-oriented flux and are audited separately for balance.
+            Field<double, Location::FACE> audit_transpose_flux;
+            if (include_transpose_stress)
+                audit_transpose_flux = transpose_viscous_stress_flux(
+                    mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z});
             for (std::size_t d = 0; d < 3; ++d) {
                 cfdx::core::Field<double, cfdx::core::Location::CELL> component(
                     mesh.n_cells(), "U_reconstructed", "m/s", 1);
@@ -4574,12 +4633,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                    : (d == 1
                                           ? controls.body_force.y
                                           : controls.body_force.z));
-                    source(cell) = body_component - final_grad_p.component_data(d)[cell];
+                    // audit_integrated_balance sums outward flux + source.
+                    // The physical equation is div(convective-viscous flux)
+                    // + grad(p*) - rho*f = 0.
+                    source(cell) = final_grad_p.component_data(d)[cell] -
+                                   controls.density * body_component;
                 }
-                const auto flux = reconstruct_scalar_transport_flux(
+                auto flux = reconstruct_scalar_transport_flux(
                     mesh, geometry, mass_flux, component, 0.0, scalar_bcs,
                     controls.use_bounded_convection, controls.convection_scheme,
                     nullptr, &mu_eff);
+                // Transport flux is convection minus viscous stress. Rebuild
+                // the transpose contribution from final U independently of
+                // the predictor source and assembled matrix residual.
+                if (include_transpose_stress)
+                    for (std::size_t face=0; face<mesh.n_faces(); ++face)
+                        flux(face) -= audit_transpose_flux(face,d);
                 const auto balance = cfdx::core::audit_integrated_balance(
                     mesh, flux, source, geometry.cell_volumes);
                 h.momentum_conservation_residual[d] = balance.residual;

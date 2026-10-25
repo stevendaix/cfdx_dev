@@ -59,12 +59,14 @@ class SourceInfo(BaseModel):
 
 class MaterialSpec(BaseModel):
     name: str = "air"
-    density: float = 1.225
-    dynamic_viscosity: float = 1.789e-5
-    thermal_conductivity: float = 0.024
-    specific_heat: float = 1006.43
-    molecular_weight: float = 28.97
-    eos_model: str = "ideal_gas"
+    # Match the native typed schema: zero/empty means unspecified. The selected
+    # physics must validate its required properties instead of inventing air.
+    density: float = 0.0
+    dynamic_viscosity: float = 0.0
+    thermal_conductivity: float = 0.0
+    specific_heat: float = 0.0
+    molecular_weight: float = 0.0
+    eos_model: str = ""
     turbulence_model: str = "laminar"
     extra_properties: dict[str, str] = Field(default_factory=dict)
 
