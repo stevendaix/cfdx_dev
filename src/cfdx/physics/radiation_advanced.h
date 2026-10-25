@@ -202,6 +202,22 @@ struct ViewFactorPatch {
     double area = 0.0;
 };
 
+inline void validate_view_factor_patch(const ViewFactorPatch& patch)
+{
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+        if (!std::isfinite(patch.center[axis]) ||
+            !std::isfinite(patch.normal[axis]))
+            throw std::invalid_argument(
+                "view-factor patch centre and normal must be finite");
+    }
+    if (!std::isfinite(patch.area) || patch.area <= 0.0)
+        throw std::invalid_argument(
+            "view-factor patch area must be finite and positive");
+    if (patch.normal[0] == 0.0 && patch.normal[1] == 0.0 &&
+        patch.normal[2] == 0.0)
+        throw std::invalid_argument("view-factor patch normal must be non-zero");
+}
+
 inline double patch_pair_view_factor(
     const ViewFactorPatch& source,
     const ViewFactorPatch& target)
@@ -384,6 +400,15 @@ struct RadiationTriangle {
     std::array<double,3> b{0,0,0};
     std::array<double,3> c{0,0,0};
 };
+
+inline void validate_radiation_triangle_coordinates(const RadiationTriangle& triangle)
+{
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        if (!std::isfinite(triangle.a[axis]) ||
+            !std::isfinite(triangle.b[axis]) ||
+            !std::isfinite(triangle.c[axis]))
+            throw std::invalid_argument("radiation triangle coordinates must be finite");
+}
 
 inline std::array<double,3> radiation_cross(
     const std::array<double,3>& a,const std::array<double,3>& b)
