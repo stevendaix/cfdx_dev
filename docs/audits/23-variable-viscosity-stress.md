@@ -34,6 +34,7 @@ F^T_{i,f}=\mu_f\sum_j\left(\frac{\partial U_j}{\partial x_i}\right)_f S_{f,j}.
 - \(\mu_f\) et les gradients sont interpolés sur les faces internes par pondération des distances normales propriétaire/voisin.
 - Le flux intégré est assemblé de manière conservative : \(+F^T_{i,f}\) au second membre du propriétaire et \(-F^T_{i,f}\) au voisin.
 - Le terme est explicite et recalculé à chaque itération non linéaire. Il est inclus à la fois dans les trois prédicteurs de quantité de mouvement de production et dans le résidu final réassemblé indépendamment.
+- Limite à viscosité uniforme : le flux de face reste calculable et conserve sa valeur physique, mais le wrapper de production n'ajoute pas sa divergence comme source explicite. Cela préserve la formulation incompressible équivalente au Laplacien scalaire et évite de réinjecter le défaut de continuité discret ; la correction F11 active reste celle associée à une viscosité spatialement variable.
 
 ## 4. Traitement des frontières
 - Les valeurs imposées de vitesse sont converties en conditions scalaires fixes pour chacune des trois composantes ; les conditions de gradient nul restent des gradients nuls.
