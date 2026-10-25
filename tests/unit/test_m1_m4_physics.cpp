@@ -4,6 +4,8 @@
 #include "cfdx/physics/thermal.h"
 #include "cfdx/physics/radiation.h"
 #include "cfdx/physics/radiation_advanced.h"
+#include "cfdx/physics/radiation_s2s.h"
+#include "cfdx/physics/m1_m4_models.h"
 #include "common/test_harness.h"
 #include <cmath>
 #include <limits>
@@ -14,6 +16,15 @@ using namespace cfdx::testing;
 
 int main()
 {
+    run_case("m1_m4_p1_source_uses_mean_intensity_normalization", [] {
+        constexpr double sigma = 5.670374419e-8;
+        constexpr double temperature = 1000.0;
+        const double ib = sigma * std::pow(temperature, 4) / M_PI;
+        const double expected = 4.0 * sigma * std::pow(temperature, 4);
+        EXPECT_NEAR(cfdx::physics::m1m4::p1_source(1.0, 0.0, temperature), expected, 1e-8);
+        EXPECT_NEAR(cfdx::physics::m1m4::p1_source(1.0, ib, temperature), 0.0, 1e-8);
+    });
+
     run_case("pressure_velocity_relaxation_and_rhie_chow", [] {
         CouplingControls c;
         validate_coupling_controls(c);
@@ -23,7 +34,7 @@ int main()
 
     run_case("rans_and_les_models_are_positive", [] {
         EXPECT_NEAR(turbulent_kinematic_viscosity_kepsilon(4.0, 2.0), 0.72, 1e-12);
-        EXPECT_TRUE(turbulent_kinematic_viscosity_komega_sst(1.0, 2.0, 0.5) > 0.0);
+        EXPECT_TRUE(turbulent_kinematic_viscosity_komega_sst(1.0, 2.0, 0.5, 2.0, 0.31) > 0.0);
         EXPECT_NEAR(smagorinsky_eddy_viscosity(0.1, 20.0),
                     0.00578, 1e-12);
         EXPECT_TRUE(des_eddy_viscosity(0.1, 0.02, 20.0) >= 0.0);
@@ -138,6 +149,9 @@ int main()
             {{0,0,0},{0,0,1},1.0},
             {{0,0,1},{0,0,-1},1.0}};
         auto F=estimate_view_factor_matrix(patches);
+        EXPECT_NEAR(F[0], 0.0, 1e-14);
+        EXPECT_NEAR(F[3], 0.0, 1e-14);
+        validate_s2s_view_factors(F, std::vector<double>{1.0, 1.0}, 1e-10);
         EXPECT_TRUE(F[1] >= 0.0 && F[1] <= 1.0);
         EXPECT_TRUE(F[0] >= 0.0 && F[0] <= 1.0);
         EXPECT_TRUE(F[1] >= 0.0 && F[1] <= 1.0);

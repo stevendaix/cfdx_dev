@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .selection import parse_selection_id, selection_label
 from .visualization_pipeline import VisualizationOperation, VisualizationPipeline
 
 try:
@@ -35,6 +36,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self._dat_dataset = None
         self._dat_fields: list[str] = []
         self._visualization_pipeline = VisualizationPipeline()
+        self._reset_selection_state()
         layout = QVBoxLayout(self)
         layout.addWidget(self.plotter)
 
@@ -55,6 +57,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self.plotter.clear()
         self._actors.clear()
         self._visualization_pipeline = VisualizationPipeline()
+        self._reset_selection_state()
         self._current_result = path
         self._dat_dataset = None
         self._dat_fields = []
@@ -98,6 +101,8 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             self.plotter.clear()
             self._actors.clear()
             self._visualization_pipeline = VisualizationPipeline()
+            self._reset_selection_state()
+            self._mesh_points = points
             for index, item in enumerate(metadata):
                 fields = item.split(":")
                 if len(fields) < 4:
@@ -105,14 +110,18 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                 name = fields[0]
                 start, end = int(patch_offsets[index]), int(patch_offsets[index + 1])
                 faces = []
+                patch_faces: list[tuple[int, ...]] = []
                 for face_id in patch_face_ids[start:end]:
                     fid = int(face_id)
                     begin, stop = int(face_offsets[fid]), int(face_offsets[fid + 1])
-                    vertices = face_vertices[begin:stop]
-                    faces.extend([len(vertices), *map(int, vertices)])
+                    vertices = tuple(int(v) for v in face_vertices[begin:stop])
+                    patch_faces.append(vertices)
+                    faces.extend([len(vertices), *vertices])
                 actor_id = self.patch_actor_id(f"patch:{name}")
                 mesh = self._pv.PolyData(points, np.asarray(faces, dtype=np.int64))
                 self._actors[actor_id] = self.plotter.add_mesh(mesh, name=actor_id)
+                self._patch_face_vertices[actor_id] = tuple(patch_faces)
+                self._actor_regions[actor_id] = "default"
             self.plotter.reset_camera()
             self.plotter.render()
 
@@ -162,6 +171,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self.plotter.clear()
         self._actors.clear()
         self._visualization_pipeline = VisualizationPipeline()
+        self._reset_selection_state()
         self._current_result = None
         self._selected_field = None
         self._dat_dataset = dataset
@@ -178,6 +188,8 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         source = self._dataset()
         derived = self._visualization_pipeline.evaluate(source)
         self.plotter.clear()
+        self._selection_highlight = None
+        self._selection_id = None
         self.plotter.add_mesh(
             derived,
             scalars=(
@@ -225,18 +237,103 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self._visualization_pipeline = self._visualization_pipeline.remove(index)
         self._render_visualization()
 
+    def replace_visualization_operation(
+        self, index: int, operation: VisualizationOperation
+    ) -> None:
+        """Replace one pipeline operation and replay the updated pipeline."""
+        if operation.scalars is not None:
+            dataset = self._dataset()
+            if operation.scalars not in self._available_fields(dataset):
+                raise KeyError(operation.scalars)
+        self._visualization_pipeline = self._visualization_pipeline.replace(
+            index, operation
+        )
+        self._render_visualization()
+
+    def move_visualization_operation(self, from_index: int, to_index: int) -> None:
+        """Move one pipeline operation and replay the reordered pipeline."""
+        self._visualization_pipeline = self._visualization_pipeline.move(
+            from_index, to_index
+        )
+        self._render_visualization()
+
     def reset_visualization(self) -> None:
         """Remove all derived operations and show the original dataset again."""
         self._visualization_pipeline = self._visualization_pipeline.clear()
         self._render_visualization()
 
-    def select(self, object_id: str) -> None:
-        """Highlight a stable patch actor by application selection ID."""
-        if object_id not in self._actors:
-            raise KeyError(object_id)
-        for actor_id, actor in self._actors.items():
-            actor.GetProperty().SetOpacity(1.0 if actor_id == object_id else 0.2)
+    def select(self, stable_id: str) -> None:
+        """Highlight one stable selection target (patch, region or face)."""
+        target = parse_selection_id(stable_id)
+        self._remove_selection_highlight()
+        if target.kind == "patch":
+            if stable_id not in self._actors:
+                raise KeyError(stable_id)
+            for actor_id, actor in self._actors.items():
+                actor.GetProperty().SetOpacity(1.0 if actor_id == stable_id else 0.2)
+        elif target.kind == "region":
+            self._select_region(target)
+        else:
+            self._select_face(target)
+        self._selection_id = stable_id
         self.plotter.render()
+
+    def _select_region(self, target: Any) -> None:
+        """Highlight every actor of one region and dim the others."""
+        region_actors = [
+            actor
+            for actor_id, actor in self._actors.items()
+            if self._actor_regions.get(actor_id) == target.name
+        ]
+        if not region_actors:
+            raise KeyError(target.stable_id)
+        for actor in self._actors.values():
+            actor.GetProperty().SetOpacity(0.2)
+        for actor in region_actors:
+            actor.GetProperty().SetOpacity(1.0)
+
+    def _select_face(self, target: Any) -> None:
+        """Add a dedicated highlight actor for one face of a loaded patch."""
+        import numpy as np
+
+        patch_id = target.stable_id.rsplit("/face:", 1)[0]
+        patch_faces = self._patch_face_vertices.get(patch_id)
+        if not patch_faces:
+            raise KeyError(target.stable_id)
+        if target.face_index is None or target.face_index >= len(patch_faces):
+            raise KeyError(target.stable_id)
+        vertices = patch_faces[target.face_index]
+        face_mesh = np.asarray([len(vertices), *vertices], dtype=np.int64)
+        mesh = self._pv.PolyData(self._mesh_points, face_mesh)
+        for actor in self._actors.values():
+            actor.GetProperty().SetOpacity(0.2)
+        self._selection_highlight = self.plotter.add_mesh(
+            mesh, color="#ff9f43", name="workbench.selection.face"
+        )
+
+    def _remove_selection_highlight(self) -> None:
+        """Drop the face-highlight actor without touching the mesh actors."""
+        if self._selection_highlight is not None:
+            self.plotter.remove_actor("workbench.selection.face")
+            self._selection_highlight = None
+
+    def _reset_selection_state(self) -> None:
+        """Forget every per-dataset selection tracking structure."""
+        self._mesh_points = None
+        self._patch_face_vertices = {}
+        self._actor_regions = {}
+        self._selection_id = None
+        self._selection_highlight = None
+
+    def selection_id(self) -> str | None:
+        """Return the stable id of the currently highlighted target."""
+        return self._selection_id
+
+    def selection_summary(self) -> str:
+        """Return a human-readable summary for the status bar."""
+        if self._selection_id is None:
+            return "No selection"
+        return selection_label(parse_selection_id(self._selection_id))
 
     def clear(self) -> None:
         self.plotter.clear()
@@ -246,6 +343,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         self._dat_dataset = None
         self._dat_fields = []
         self._visualization_pipeline = VisualizationPipeline()
+        self._reset_selection_state()
 
     def closeEvent(self, event) -> None:
         self.plotter.close()

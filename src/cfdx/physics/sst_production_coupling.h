@@ -80,6 +80,40 @@ inline void restore_sst_production_state(
     state = snapshot;
 }
 
+ // Dimensionless closure-change measure used to ensure the accepted carrier
+ // momentum state corresponds to the SST eddy viscosity produced by the same
+ // outer iteration. Molecular kinematic viscosity supplies a physical scale
+ // when either eddy-viscosity value is near zero.
+ inline double sst_relative_eddy_viscosity_change(
+     const SSTProductionState& previous,
+     const SSTProductionState& current,
+     double molecular_kinematic_viscosity)
+ {
+     if (!std::isfinite(molecular_kinematic_viscosity) ||
+         molecular_kinematic_viscosity <= 0.0 ||
+         previous.nu_t.size() == 0 ||
+         previous.nu_t.size() != current.nu_t.size() ||
+         previous.nu_t.dimension() != 1 ||
+         current.nu_t.dimension() != 1)
+         throw std::invalid_argument(
+             "sst_relative_eddy_viscosity_change: invalid viscosity scale or field shape");
+
+     double maximum_relative_change = 0.0;
+     for (std::size_t cell = 0; cell < previous.nu_t.size(); ++cell) {
+         const double before = previous.nu_t(cell);
+         const double after = current.nu_t(cell);
+         if (!std::isfinite(before) || before < 0.0 ||
+             !std::isfinite(after) || after < 0.0)
+             throw std::invalid_argument(
+                 "sst_relative_eddy_viscosity_change: invalid eddy-viscosity value");
+         const double scale = std::max(
+             {before, after, molecular_kinematic_viscosity});
+         maximum_relative_change = std::max(
+             maximum_relative_change, std::abs(after - before) / scale);
+     }
+     return maximum_relative_change;
+ }
+
 // A single accept/reject boundary for the carrier and SST state. This mirrors
 // the production outer-iteration transaction contract: U, p, the authoritative
 // face mass flux, and all SST-owned fields must either be accepted together or

@@ -78,6 +78,65 @@ static Mesh make_1d_chain(std::size_t n)
     return m;
 }
 
+static Mesh make_two_cell_stretched_chain()
+{
+    Mesh m;
+    m.points().resize(16);
+    const double x0[2]={0.0,0.25};
+    const double x1[2]={0.25,1.0};
+    for (std::size_t i=0;i<2;++i) {
+        const std::size_t b=8*i;
+        const double p[8][3] = {
+            {x0[i],0,0},{x1[i],0,0},{x1[i],1,0},{x0[i],1,0},
+            {x0[i],0,1},{x1[i],0,1},{x1[i],1,1},{x0[i],1,1}
+        };
+        for (std::size_t q=0;q<8;++q)
+            m.points().set(b+q,p[q][0],p[q][1],p[q][2]);
+    }
+    auto add_face=[&](std::initializer_list<std::size_t> v) {
+        const std::size_t id=m.faces().n_faces();
+        m.faces().push_face(std::vector<FaceIndex>(v.begin(),v.end()));
+        return id;
+    };
+    const std::size_t left=add_face({0,4,7,3});
+    const std::size_t right=add_face({9,10,14,13});
+    std::vector<std::size_t> y0,y1,z0,z1;
+    for (std::size_t i=0;i<2;++i) {
+        const std::size_t b=8*i;
+        y0.push_back(add_face({b,b+1,b+5,b+4}));
+        y1.push_back(add_face({b+3,b+7,b+6,b+2}));
+        z0.push_back(add_face({b,b+3,b+2,b+1}));
+        z1.push_back(add_face({b+4,b+5,b+6,b+7}));
+    }
+    const std::size_t internal=add_face({1,2,6,5});
+    m.ownership().resize(m.n_faces());
+    m.ownership().set_owner(left,0);
+    m.ownership().set_neighbour(left,FaceOwnership::BOUNDARY);
+    m.ownership().set_owner(right,1);
+    m.ownership().set_neighbour(right,FaceOwnership::BOUNDARY);
+    for (std::size_t i=0;i<2;++i) {
+        for (const auto f:{y0[i],y1[i],z0[i],z1[i]}) {
+            m.ownership().set_owner(f,i);
+            m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);
+        }
+    }
+    m.ownership().set_owner(internal,0);
+    m.ownership().set_neighbour(internal,1);
+    m.cells().push_cell({left,internal,y0[0],y1[0],z0[0],z1[0]});
+    m.cells().push_cell({internal,right,y0[1],y1[1],z0[1],z1[1]});
+    Patch inlet; inlet.name="inlet"; inlet.type=PatchType::WALL; inlet.face_ids={left};
+    Patch outlet; outlet.name="outlet"; outlet.type=PatchType::WALL; outlet.face_ids={right};
+    Patch wall; wall.name="wall"; wall.type=PatchType::WALL;
+    for (const auto f:y0) wall.face_ids.push_back(f);
+    for (const auto f:y1) wall.face_ids.push_back(f);
+    for (const auto f:z0) wall.face_ids.push_back(f);
+    for (const auto f:z1) wall.face_ids.push_back(f);
+    m.boundary().add_patch(inlet);
+    m.boundary().add_patch(outlet);
+    m.boundary().add_patch(wall);
+    return m;
+}
+
 static Mesh make_unit_cube()
 {
     Mesh m;
@@ -109,6 +168,100 @@ static Mesh make_unit_cube()
 
 int main()
 {
+    run_case("flux_imbalance_metrics_do_not_hide_local_cancellation", [] {
+        const auto metrics = flux_imbalance_metrics({10.0, -10.0});
+        EXPECT_NEAR(metrics.signed_global, 0.0, 1e-14);
+        EXPECT_NEAR(metrics.global_l1, 20.0, 1e-14);
+        EXPECT_NEAR(metrics.local_linf, 10.0, 1e-14);
+    });
+
+    run_case("assembled_flux_imbalance_exposes_local_cancellation", [] {
+        const Mesh m = make_1d_chain(2);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"Su","K/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"Sp","1/s",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        std::size_t internal = m.n_faces();
+        for (std::size_t face = 0; face < m.n_faces(); ++face) {
+            if (m.ownership().neighbour(face) >= 0) {
+                internal = face;
+                break;
+            }
+        }
+        EXPECT_TRUE(internal < m.n_faces());
+        flux(internal) = 1.0;
+        ScalarBoundaryConditions bc;
+        const auto eq = assemble_scalar_equation(m,g,flux,1.0,su,sp,bc);
+        EXPECT_NEAR(eq.signed_global_imbalance, 0.0, 1e-14);
+        EXPECT_NEAR(eq.global_l1_imbalance, 2.0, 1e-14);
+        EXPECT_NEAR(eq.max_local_imbalance, 1.0, 1e-14);
+        EXPECT_NEAR(eq.max_imbalance, 1.0, 1e-14);
+    });
+
+    run_case("geometric_interpolation_weight_uses_longitudinal_projection", [] {
+        const Vec3 owner(0.0,0.0,0.0);
+        const Vec3 neighbour(1.0,0.0,0.0);
+        const Vec3 skew_face(0.5,0.5,0.0);
+        // The face is halfway along the centre line but has a transverse
+        // offset. Euclidean distance gives sqrt(0.5), projection gives 0.5.
+        EXPECT_NEAR(geometric_interpolation_weight(
+            skew_face,owner,&neighbour),0.5,1e-12);
+    });
+
+    run_case("linear_and_blended_interpolation_are_exact_on_stretched_orthogonal_mesh", [] {
+        const Mesh m=make_two_cell_stretched_chain();
+        const FvGeometry g=build_fv_geometry(m);
+        const auto cache=make_geometry_cache(m);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","m",1);
+        Field<double,Location::FACE> flux(m.n_faces(),"mdot","kg/s",1);
+        flux.fill(1.0);
+        for (std::size_t c=0;c<m.n_cells();++c)
+            phi(c)=g.cell_centres[c].x;
+        std::size_t internal=m.n_faces();
+        for (std::size_t f=0;f<m.n_faces();++f)
+            if (m.ownership().neighbour(f)>=0) { internal=f; break; }
+        EXPECT_TRUE(internal<m.n_faces());
+        const auto linear=interpolate_cell_to_face(
+            phi,m,cache,InterpScheme::LINEAR);
+        const auto blended=interpolate_cell_to_face(
+            phi,m,cache,InterpScheme::BLENDED,&flux,LimiterType::NONE,nullptr,1.0);
+        const double exact=g.face_centres[internal].x;
+        EXPECT_NEAR(linear(internal),exact,1e-12);
+        EXPECT_NEAR(blended(internal),exact,1e-12);
+    });
+
+    run_case("interface_diffusion_uses_geometric_half_cell_resistances", [] {
+        const Mesh m=make_two_cell_stretched_chain();
+        const FvGeometry g=build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0)=0.0; phi(1)=1.0;
+        ScalarBoundaryConditions bc;
+        bc["inlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        bc["outlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        bc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        const std::vector<double> gamma{1.0,4.0};
+        const auto eq=assemble_scalar_equation(
+            m,g,flux,0.0,su,sp,bc,false,nullptr,nullptr,nullptr,&gamma);
+        // The internal face is at x=0.25: d_Pf=0.125, d_Nf=0.375,
+        // area=1, Gamma_P=1 and Gamma_N=4.
+        const double expected=1.0/(0.125/1.0+0.375/4.0);
+        EXPECT_NEAR(eq.matrix(0,0),expected,1e-12);
+        EXPECT_NEAR(eq.matrix(1,1),expected,1e-12);
+        EXPECT_NEAR(expected,32.0/7.0,1e-12);
+        const auto reconstructed=reconstruct_scalar_transport_flux(
+            m,g,flux,phi,0.0,bc,false,ConvectionScheme::UPWIND,nullptr,&gamma);
+        std::size_t internal=m.n_faces();
+        for (std::size_t f=0;f<m.n_faces();++f)
+            if (m.ownership().neighbour(f)>=0) { internal=f; break; }
+        EXPECT_TRUE(internal<m.n_faces());
+        EXPECT_NEAR(reconstructed(internal),-expected,1e-12);
+    });
+
     run_case("scalar_dirichlet_diffusion_matches_one_cell_oracle", [] {
         const Mesh m = make_unit_cube();
         const FvGeometry g = build_fv_geometry(m);
@@ -131,6 +284,90 @@ int main()
         EXPECT_TRUE(r.status == SolverStatus::CONVERGED);
         EXPECT_NEAR(x(0),1.0/12.0,1e-12);
         EXPECT_NEAR(scalar_equation_residual_inf(eq,x),0.0,1e-12);
+    });
+
+    run_case("scalar_residual_pair_uses_same_physical_norm_and_scale", [] {
+        const auto check_identity_case = [](double a0, double a1, double b0,
+                                            double b1, double x0, double x1,
+                                            double expected_inf, double expected_relative,
+                                            cfdx::core::LinearScalingModel scaling) {
+            ScalarEquation eq;
+            eq.matrix = SparseMatrix(2,2);
+            eq.matrix.push_back(0,0,a0);
+            eq.matrix.push_back(1,1,a1);
+            eq.matrix.finalize();
+            eq.rhs = Vector(2);
+            eq.rhs(0)=b0; eq.rhs(1)=b1;
+            Vector x(2);
+            x(0)=x0; x(1)=x1;
+            ScalarSolveControls controls{20,1e-3,1.0};
+            controls.problem=cfdx::core::LinearProblemKind::Diffusion;
+            controls.linear_solver.krylov=cfdx::core::KrylovModel::CG;
+            controls.linear_solver.preconditioner=cfdx::core::PreconditionerModel::Jacobi;
+            controls.linear_solver.scaling=scaling;
+            const auto result=solve_scalar_equation(eq,x,controls);
+            EXPECT_TRUE(result.status==SolverStatus::CONVERGED);
+            EXPECT_NEAR(result.residual_before_relaxation,expected_inf,1e-10);
+            EXPECT_NEAR(result.residual_after_relaxation,expected_inf,1e-10);
+            EXPECT_NEAR(result.residual_relative_before_relaxation,expected_relative,1e-12);
+            EXPECT_NEAR(result.residual_relative_after_relaxation,expected_relative,1e-12);
+        };
+
+        // Initial candidate is already admissible under the solver tolerance,
+        // so alpha=1 leaves it unchanged. Both diagnostics must report the
+        // same physical L-infinity residual, not a Krylov L2 residual.
+        check_identity_case(1.0,1.0,3.0,4.0,2.9996,3.9996,
+                            0.0004,0.0001,cfdx::core::LinearScalingModel::None);
+
+        // Row scaling makes the algebraic system well-scaled but does not
+        // change the physical residual contract of the returned field.
+        check_identity_case(1.0e6,1.0,3.0e6,4.0,2.9996,3.9996,
+                            400.0,400.0/3.0e6,cfdx::core::LinearScalingModel::Row);
+    });
+
+    run_case("scalar_relaxation_residual_matches_closed_form_oracle", [] {
+        ScalarEquation eq;
+        eq.matrix=SparseMatrix(2,2);
+        eq.matrix.push_back(0,0,6.0); eq.matrix.push_back(0,1,-2.0);
+        eq.matrix.push_back(1,0,-2.0); eq.matrix.push_back(1,1,6.0);
+        eq.matrix.finalize();
+        eq.rhs=Vector(2); eq.rhs(0)=0.5; eq.rhs(1)=0.5;
+        Vector x(2,0.0);
+        ScalarSolveControls controls{20,1e-12,0.25};
+        controls.problem=cfdx::core::LinearProblemKind::Diffusion;
+        controls.linear_solver.krylov=cfdx::core::KrylovModel::CG;
+        controls.linear_solver.preconditioner=cfdx::core::PreconditionerModel::Jacobi;
+        const auto result=solve_scalar_equation(eq,x,controls);
+        EXPECT_TRUE(result.status==SolverStatus::CONVERGED);
+        EXPECT_NEAR(x(0),1.0/32.0,1e-14);
+        EXPECT_NEAR(x(1),1.0/32.0,1e-14);
+        EXPECT_NEAR(result.residual_after_relaxation,3.0/8.0,1e-14);
+        EXPECT_NEAR(result.residual_relative_after_relaxation,3.0/4.0,1e-14);
+    });
+
+    run_case("relaxed_scalar_solve_reports_returned_field_residual", [] {
+        const Mesh m = make_1d_chain(2);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"Su","K/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"Sp","1/s",1);
+        flux.fill(0.0);
+        su.fill(1.0);
+        sp.fill(0.0);
+        ScalarBoundaryConditions bc;
+        bc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        const auto eq = assemble_scalar_equation(m,g,flux,1.0,su,sp,bc);
+        Vector x(m.n_cells(),0.0);
+        const auto r = solve_scalar_equation(eq,x,{100,1e-12,0.25});
+        EXPECT_TRUE(r.status == SolverStatus::CONVERGED);
+        EXPECT_NEAR(r.residual_before_relaxation, 0.0, 1e-12);
+        EXPECT_NEAR(r.residual_after_relaxation, scalar_equation_residual_inf(eq,x), 1e-14);
+        EXPECT_TRUE(r.residual_after_relaxation > r.residual_before_relaxation);
+        EXPECT_NEAR(r.residual_relative_before_relaxation, r.residual_relative, 1e-14);
+        EXPECT_NEAR(r.residual_relative_after_relaxation,
+                    r.residual_after_relaxation /
+                        std::max(std::abs(eq.rhs(0)), std::abs(eq.rhs(1))), 1e-14);
     });
 
     run_case("exact_one_cell_solution_is_not_under_relaxed", [] {
@@ -297,6 +534,157 @@ int main()
         bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
         EXPECT_THROW(assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,true),
                      std::runtime_error);
+    });
+
+    run_case("high_resolution_reconstructed_flux_matches_assembly_when_unbounded_control_off", [] {
+        const Mesh m = make_1d_chain(3);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0)=0.0; phi(1)=1.0; phi(2)=0.1;
+        std::size_t target_face=m.n_faces();
+        for (std::size_t f=0; f<m.n_faces(); ++f) {
+            if (m.ownership().owner(f)==1 && m.ownership().neighbour(f)==2) {
+                target_face=f;
+                flux(f)=1.0;
+                break;
+            }
+        }
+        EXPECT_TRUE(target_face<m.n_faces());
+
+        ScalarBoundaryConditions bc;
+        bc["inlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        bc["outlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        bc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        std::vector<double> extra_diagonal{1.0,1.0,1.0};
+        for (const auto scheme : {ConvectionScheme::SECOND_ORDER_UPWIND,
+                                  ConvectionScheme::TVD}) {
+            const auto upwind_eq = assemble_scalar_equation(
+                m,g,flux,0.0,su,sp,bc,false,nullptr,&extra_diagonal,nullptr,nullptr,
+                ConvectionScheme::UPWIND,&phi);
+            const auto high_eq = assemble_scalar_equation(
+                m,g,flux,0.0,su,sp,bc,false,nullptr,&extra_diagonal,nullptr,nullptr,
+                scheme,&phi);
+            const auto upwind_flux = reconstruct_scalar_transport_flux(
+                m,g,flux,phi,0.0,bc,false,ConvectionScheme::UPWIND);
+            const auto high_flux = reconstruct_scalar_transport_flux(
+                m,g,flux,phi,0.0,bc,false,scheme);
+            const double face_correction=high_flux(target_face)-upwind_flux(target_face);
+            EXPECT_NEAR(high_eq.rhs(1)-upwind_eq.rhs(1),-face_correction,1e-12);
+            EXPECT_NEAR(high_eq.rhs(2)-upwind_eq.rhs(2), face_correction,1e-12);
+        }
+    });
+
+    run_case("high_resolution_flux_boundedness_is_independent_of_source_correction", [] {
+        const Mesh m = make_1d_chain(3);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"mass_flux","kg/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0)=0.0; phi(1)=1.0; phi(2)=1.01;
+        std::size_t target = m.n_faces();
+        for (std::size_t f = 0; f < m.n_faces(); ++f) {
+            if (m.ownership().owner(f) == 1 && m.ownership().neighbour(f) == 2) {
+                flux(f) = 1.0;
+                target = f;
+                break;
+            }
+        }
+        EXPECT_TRUE(target < m.n_faces());
+        const std::vector<double> extra_diagonal{1.0, 1.0, 1.0};
+        ScalarBoundaryConditions bc;
+        bc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.01, 0.0};
+        bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        for (const auto scheme : {ConvectionScheme::SECOND_ORDER_UPWIND, ConvectionScheme::TVD}) {
+            const auto equation = assemble_scalar_equation(
+                m, g, flux, 0.0, su, sp, bc, false, nullptr, &extra_diagonal,
+                nullptr, nullptr, scheme, &phi);
+            const auto reconstructed = reconstruct_scalar_transport_flux(
+                m, g, flux, phi, 0.0, bc, false, scheme);
+            EXPECT_NEAR(reconstructed(target), 1.01, 1e-12);
+            const auto upwind = assemble_scalar_equation(
+                m, g, flux, 0.0, su, sp, bc, false, nullptr, &extra_diagonal,
+                nullptr, nullptr, ConvectionScheme::UPWIND, &phi);
+            EXPECT_NEAR(equation.rhs(1) - upwind.rhs(1), -0.01, 1e-10);
+        }
+    });
+
+    run_case("reconstructed_fixed_value_boundary_flux_matches_upwind_matrix", [] {
+        const Mesh m = make_unit_cube();
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"Su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"Sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0)=2.0;
+        flux(0)=-1.0;  // inflow: prescribed boundary value is upwind
+        flux(1)= 1.0;  // outflow: owner-cell value is upwind
+
+        ScalarBoundaryConditions bc;
+        bc["wall"]={ScalarBoundaryType::FIXED_VALUE,5.0,0.0};
+        const auto eq = assemble_scalar_equation(m,g,flux,0.0,su,sp,bc,false);
+        const auto reconstructed = reconstruct_scalar_transport_flux(
+            m,g,flux,phi,0.0,bc,false,ConvectionScheme::UPWIND);
+
+        double net_reconstructed_flux = 0.0;
+        for (std::size_t f=0; f<m.n_faces(); ++f)
+            net_reconstructed_flux += reconstructed(f);
+        const double matrix_residual = eq.matrix(0,0)*phi(0)-eq.rhs(0);
+
+        // Independent balance: (-1)*5 + (+1)*2 = -3.
+        EXPECT_NEAR(net_reconstructed_flux,-3.0,1e-12);
+        EXPECT_NEAR(matrix_residual,-3.0,1e-12);
+        EXPECT_NEAR(net_reconstructed_flux,matrix_residual,1e-12);
+    });
+
+    run_case("all_reconstruction_schemes_have_initialized_gradients", [] {
+        const Mesh m = make_1d_chain(3);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","m3/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0)=0.25; phi(1)=0.50; phi(2)=0.75;
+        for (std::size_t f=0; f<m.n_faces(); ++f) {
+            if (m.ownership().neighbour(f) >= 0) {
+                flux(f)=1.0;
+                break;
+            }
+        }
+        ScalarBoundaryConditions bc;
+        bc["inlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        bc["outlet"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        bc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        const ConvectionScheme schemes[] = {
+            ConvectionScheme::UPWIND,
+            ConvectionScheme::SECOND_ORDER_UPWIND,
+            ConvectionScheme::TVD,
+            ConvectionScheme::CENTRAL,
+            ConvectionScheme::BLENDED,
+            ConvectionScheme::QUICK,
+            ConvectionScheme::QUICK_BOUNDED
+        };
+        std::vector<double> extra_diagonal{1.0,1.0,1.0};
+        for (const auto scheme : schemes) {
+            const auto reconstructed = reconstruct_scalar_transport_flux(
+                m,g,flux,phi,0.0,bc,true,scheme);
+            EXPECT_TRUE(reconstructed.size() == m.n_faces());
+            for (std::size_t f=0; f<m.n_faces(); ++f)
+                EXPECT_TRUE(std::isfinite(reconstructed(f)));
+            const auto assembled = assemble_scalar_equation(
+                m,g,flux,0.0,su,sp,bc,true,nullptr,&extra_diagonal,nullptr,nullptr,
+                scheme,&phi);
+            EXPECT_TRUE(assembled.rhs.size() == m.n_cells());
+        }
     });
 
     return run_all();

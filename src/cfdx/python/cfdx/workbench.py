@@ -12,29 +12,40 @@ from .application import (
     Application,
     ApplicationStateChanged,
     ResultsChanged,
+    SelectionChanged,
     WorkflowStatus,
     workflow_children,
 )
-from .mesh_model import read_mesh_catalog
+from .capabilities import (
+    Capability,
+    CapabilityContext,
+    evaluate_capability,
+    get_capability,
+)
+from .selection import parse_selection_id, selection_label
 from .session import CFDXSession
+from .solver_states import session_state_view
 from .theme import TOKENS, apply_workbench_theme
+from .visualization_pipeline import VisualizationOperation
 
 try:
     from PySide6.QtCore import QSettings, Qt, Signal
     from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor
     from PySide6.QtWidgets import (
+        QComboBox,
         QDialog,
         QDockWidget,
+        QDoubleSpinBox,
         QFileDialog,
         QFormLayout,
         QHBoxLayout,
-        QInputDialog,
         QLabel,
         QLineEdit,
         QListWidget,
         QListWidgetItem,
         QMainWindow,
         QPushButton,
+        QSpinBox,
         QStackedLayout,
         QStatusBar,
         QToolBar,
@@ -51,9 +62,120 @@ if QMainWindow is not object:
     from .gui_3d import PyVistaQtView
     from .mesh_browser_panel import MeshBrowserPanel
     from .probes_panel import ProbesPanel
+    from .properties_panel import PropertiesPanel
     from .results_panel import ResultsPanel
     from .run_center_panel import RunCenterPanel
     from .setup_panel import CaseSetupPanel
+
+    _SLICE_AXES: dict[str, tuple[float, float, float]] = {
+        "X": (1.0, 0.0, 0.0),
+        "Y": (0.0, 1.0, 0.0),
+        "Z": (0.0, 0.0, 1.0),
+    }
+
+    def _slice_axis(normal: tuple[float, float, float]) -> str:
+        """Return the canonical axis name matching a slice normal."""
+        for axis, candidate in _SLICE_AXES.items():
+            if tuple(normal) == candidate:
+                return axis
+        return "X"
+
+    def _slice_normal(axis: str) -> tuple[float, float, float]:
+        """Return the canonical normal of a slice axis, fail-closed."""
+        normal = _SLICE_AXES.get(axis)
+        if normal is None:
+            raise ValueError(f"unsupported slice axis: {axis!r}")
+        return normal
+
+    class VisualizationOperationDialog(QDialog):
+        """Modeless editor building one visualization operation at a time.
+
+        The pipeline stays visible while parameters are tuned: Apply emits
+        the built operation through the applied signal without closing the
+        dialog, and the Workbench applies it to the renderer pipeline.
+        """
+
+        applied = Signal(object)
+
+        def __init__(
+            self,
+            kind: str,
+            *,
+            fields: list[str] | None = None,
+            operation: VisualizationOperation | None = None,
+            parent: QWidget | None = None,
+        ) -> None:
+            super().__init__(parent)
+            self._kind = kind
+            self.setObjectName(f"workbench.visualization.dialog.{kind}")
+            self.setWindowTitle(f"{kind.title()} settings")
+            self.setModal(False)
+            layout = QFormLayout(self)
+            self.field_combo = QComboBox(self)
+            self.field_combo.setObjectName("workbench.visualization.dialog.field")
+            self.field_combo.addItems(fields or [])
+            self.isosurfaces_spin = QSpinBox(self)
+            self.isosurfaces_spin.setObjectName(
+                "workbench.visualization.dialog.isosurfaces"
+            )
+            self.isosurfaces_spin.setRange(2, 100)
+            self.isosurfaces_spin.setValue(10)
+            self.factor_spin = QDoubleSpinBox(self)
+            self.factor_spin.setObjectName("workbench.visualization.dialog.factor")
+            self.factor_spin.setRange(0.001, 1000.0)
+            self.factor_spin.setDecimals(3)
+            self.factor_spin.setValue(1.0)
+            self.normal_combo = QComboBox(self)
+            self.normal_combo.setObjectName("workbench.visualization.dialog.normal")
+            self.normal_combo.addItems(list(_SLICE_AXES))
+            if kind == "contour":
+                layout.addRow("Field", self.field_combo)
+                layout.addRow("Isosurfaces", self.isosurfaces_spin)
+            elif kind == "glyph":
+                layout.addRow("Field", self.field_combo)
+                layout.addRow("Scale factor", self.factor_spin)
+            elif kind == "slice":
+                layout.addRow("Normal axis", self.normal_combo)
+            else:
+                raise ValueError(f"unsupported visualization operation: {kind!r}")
+            buttons = QHBoxLayout()
+            apply_button = QPushButton("Apply", self)
+            apply_button.setObjectName("workbench.visualization.dialog.apply")
+            apply_button.clicked.connect(self._emit_operation)
+            close_button = QPushButton("Close", self)
+            close_button.setObjectName("workbench.visualization.dialog.close")
+            close_button.clicked.connect(self.close)
+            buttons.addWidget(apply_button)
+            buttons.addWidget(close_button)
+            layout.addRow(buttons)
+            if operation is not None:
+                self._prefill(operation)
+
+        def _prefill(self, operation: VisualizationOperation) -> None:
+            """Mirror an existing operation into the editors."""
+            if operation.scalars is not None:
+                index = self.field_combo.findText(operation.scalars)
+                if index >= 0:
+                    self.field_combo.setCurrentIndex(index)
+            self.isosurfaces_spin.setValue(operation.isosurfaces)
+            self.factor_spin.setValue(operation.factor)
+            self.normal_combo.setCurrentText(_slice_axis(operation.normal))
+
+        def _emit_operation(self) -> None:
+            """Build and emit the operation described by the editors."""
+            if self._kind == "contour":
+                operation = VisualizationOperation.contour(
+                    self.field_combo.currentText(), self.isosurfaces_spin.value()
+                )
+            elif self._kind == "glyph":
+                operation = VisualizationOperation.glyph(
+                    self.field_combo.currentText(), self.factor_spin.value()
+                )
+            else:
+                operation = VisualizationOperation.slice(
+                    _slice_normal(self.normal_combo.currentText())
+                )
+            self.applied.emit(operation)
 
     class CFDXWorkbenchWindow(QMainWindow):
         """Initial Workbench composition root with stable dock object names."""
@@ -63,6 +185,7 @@ if QMainWindow is not object:
         # cross this boundary through queued Qt signal delivery.
         _state_event = Signal(object)
         _results_event = Signal(object)
+        _selection_event = Signal(object)
 
         SETTINGS_ORGANIZATION = "CFDX"
         SETTINGS_APPLICATION = "Workbench"
@@ -79,10 +202,14 @@ if QMainWindow is not object:
             self._application_state = self.application.state
             self._state_event.connect(self._state_changed)
             self._results_event.connect(self._results_changed)
+            self._selection_event.connect(self._selection_state_changed)
             self.application.events.subscribe(
                 ApplicationStateChanged, self._state_event.emit
             )
             self.application.events.subscribe(ResultsChanged, self._results_event.emit)
+            self.application.events.subscribe(
+                SelectionChanged, self._selection_event.emit
+            )
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             self.resize(1440, 900)
             self.setDockNestingEnabled(True)
@@ -97,6 +224,7 @@ if QMainWindow is not object:
             apply_workbench_theme(self)
             self._restore_layout()
             self._set_workspace(str(self._settings.value("workspace", "setup")))
+            self._refresh_action_availability()
 
         def _build_toolbar(self) -> None:
             toolbar = QToolBar("Workbench", self)
@@ -154,10 +282,30 @@ if QMainWindow is not object:
                     action.triggered.connect(self._stop)
                     self.stop_action = action
             toolbar.addSeparator()
+            for label in ("Undo", "Redo"):
+                action = QAction(label, self)
+                action.setObjectName(f"workbench.action.{label.lower()}")
+                action.setEnabled(False)
+                capability = get_capability(action.objectName())
+                if capability is not None:
+                    action.setStatusTip(capability.prerequisites_tip)
+                toolbar.addAction(action)
+                if label == "Undo":
+                    action.setShortcut("Ctrl+Z")
+                    action.triggered.connect(self._undo)
+                    self.undo_action = action
+                else:
+                    action.setShortcuts(["Ctrl+Shift+Z", "Ctrl+Y"])
+                    action.triggered.connect(self._redo)
+                    self.redo_action = action
+            toolbar.addSeparator()
             for label in ("Contour", "Slice", "Glyph"):
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.action.{label.lower()}")
                 action.setEnabled(False)
+                capability = get_capability(action.objectName())
+                if capability is not None:
+                    action.setStatusTip(capability.prerequisites_tip)
                 mode = label.lower()
                 action.triggered.connect(
                     lambda _checked=False, mode=mode: self._postprocess(mode)
@@ -174,6 +322,7 @@ if QMainWindow is not object:
             self.search_action = search
             self.toolbar = toolbar
             self._build_workspace_toolbar()
+            self._register_capability_actions()
 
         def _build_workspace_toolbar(self) -> None:
             """Expose task-oriented layouts without duplicating domain actions."""
@@ -202,8 +351,21 @@ if QMainWindow is not object:
             self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
             self.workspace_toolbar = toolbar
 
+        def _register_capability_actions(self) -> None:
+            """Bind every registered capability id to its Qt action.
+
+            The stable capability id equals the Qt action objectName, so the
+            binding stays declarative: an action outside the registry never
+            enters the palette, and tests guard the bijection.
+            """
+            self._capability_actions = {
+                action.objectName(): action
+                for action in self.findChildren(QAction)
+                if get_capability(action.objectName()) is not None
+            }
+
         def _show_command_palette(self) -> None:
-            """Open a keyboard-first palette over existing application actions."""
+            """Open a keyboard-first palette over the capability registry."""
             dialog = QDialog(self)
             dialog.setObjectName("workbench.command_palette")
             dialog.setWindowTitle("Command Palette")
@@ -217,22 +379,29 @@ if QMainWindow is not object:
             layout.addWidget(query)
             layout.addWidget(results)
 
-            commands: list[tuple[str, QAction]] = []
-            for action in self.findChildren(QAction):
-                if action is self.search_action or not action.isEnabled():
-                    continue
-                label = action.text().replace("&", "").strip()
-                if label:
-                    commands.append((label, action))
-            commands.sort(key=lambda item: item[0].casefold())
+            commands: list[tuple[Capability, QAction]] = []
+            for capability_id, action in self._capability_actions.items():
+                capability = get_capability(capability_id)
+                if capability is not None:
+                    commands.append((capability, action))
+            commands.sort(key=lambda item: item[0].label.casefold())
 
             def refresh_results(text: str = "") -> None:
                 results.clear()
                 needle = text.casefold().strip()
-                for label, action in commands:
-                    if needle and needle not in label.casefold():
+                context = self._capability_context()
+                for capability, action in commands:
+                    if needle and needle not in capability.label.casefold():
                         continue
-                    item = QListWidgetItem(label)
+                    status = evaluate_capability(capability.id, context)
+                    if status.available:
+                        item = QListWidgetItem(capability.label)
+                    else:
+                        # P0 (Phase 0 audit, G3): never hide a disabled
+                        # command silently; show why it is unavailable.
+                        reason = status.tip or "not available in the current state"
+                        item = QListWidgetItem(f"{capability.label} — {reason}")
+                        item.setToolTip(reason)
                     item.setData(Qt.ItemDataRole.UserRole, action)
                     results.addItem(item)
                 if results.count():
@@ -414,9 +583,34 @@ if QMainWindow is not object:
             self.reset_visualization_button.clicked.connect(
                 self._reset_visualization_pipeline
             )
+            self.move_up_visualization_button = QPushButton("Move up")
+            self.move_up_visualization_button.setObjectName(
+                "workbench.visualization.move_up"
+            )
+            self.move_up_visualization_button.setEnabled(False)
+            self.move_up_visualization_button.clicked.connect(
+                lambda _checked=False: self._move_visualization_operation(-1)
+            )
+            self.move_down_visualization_button = QPushButton("Move down")
+            self.move_down_visualization_button.setObjectName(
+                "workbench.visualization.move_down"
+            )
+            self.move_down_visualization_button.setEnabled(False)
+            self.move_down_visualization_button.clicked.connect(
+                lambda _checked=False: self._move_visualization_operation(1)
+            )
+            self.edit_visualization_button = QPushButton("Edit selected")
+            self.edit_visualization_button.setObjectName("workbench.visualization.edit")
+            self.edit_visualization_button.setEnabled(False)
+            self.edit_visualization_button.clicked.connect(
+                self._edit_visualization_operation
+            )
             visualization_panel = QWidget()
             visualization_layout = QVBoxLayout(visualization_panel)
             visualization_layout.addWidget(self.visualization_operations)
+            visualization_layout.addWidget(self.move_up_visualization_button)
+            visualization_layout.addWidget(self.move_down_visualization_button)
+            visualization_layout.addWidget(self.edit_visualization_button)
             visualization_layout.addWidget(self.remove_visualization_operation_button)
             visualization_layout.addWidget(self.reset_visualization_button)
             self.visualization_operations.currentRowChanged.connect(
@@ -545,13 +739,10 @@ if QMainWindow is not object:
             )
 
         def _build_properties_panel(self) -> QWidget:
-            panel = QWidget()
-            panel.setObjectName("workbench.properties")
-            panel._form = QFormLayout(panel)
-            panel._form.addRow(QLabel("Select a workflow item"))
-            self.properties_panel = panel
-            self._refresh_properties()
-            return panel
+            """Compose the typed contextual inspector over the selection."""
+            self.properties_panel = PropertiesPanel()
+            self.properties_panel.on_apply = self._apply_property
+            return self.properties_panel
 
         def _open_results_directory(self) -> None:
             directory = QFileDialog.getExistingDirectory(
@@ -571,11 +762,12 @@ if QMainWindow is not object:
             if not path:
                 return
             try:
-                self.mesh_browser.set_catalog(read_mesh_catalog(Path(path)))
+                catalog = self.application.load_mesh(path)
+                self.mesh_browser.set_catalog(catalog)
                 if self.view3d is not None:
                     self.view3d.load_cfdx_mesh(path)
                     self._show_viewport()
-                    self._refresh_postprocess_actions(self._application_state)
+                    self._refresh_action_availability()
                 self.statusBar().showMessage(f"Mesh loaded: {path}")
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Mesh error: {exc}")
@@ -604,7 +796,7 @@ if QMainWindow is not object:
                         str(self.application.project_path), path
                     )
                     self._show_viewport()
-                    self._refresh_postprocess_actions(self._application_state)
+                    self._refresh_action_availability()
                 self.statusBar().showMessage(
                     f"DAT loaded: {Path(path).name} | iteration={loaded.iteration} | "
                     f"time={loaded.time:g} | fields={len(fields or loaded.fields)}"
@@ -624,7 +816,8 @@ if QMainWindow is not object:
                 self._show_viewport()
             except (OSError, RuntimeError, ValueError, KeyError) as exc:
                 self.statusBar().showMessage(f"Renderer error: {exc}")
-            self._refresh_postprocess_actions(event.state)
+            self._application_state = event.state
+            self._refresh_action_availability()
             self._refresh_visualization_operations()
 
         def _show_viewport(self) -> None:
@@ -632,15 +825,35 @@ if QMainWindow is not object:
             if self.view3d is not None:
                 self.viewport_stack.setCurrentWidget(self.view3d)
 
-        def _refresh_postprocess_actions(self, state) -> None:
-            enabled = self.view3d is not None and (
-                state.results.selected_frame is not None
-                or self.view3d._dat_dataset is not None
-                or self.view3d._current_result is not None
+        def _capability_context(self) -> CapabilityContext:
+            """Snapshot the facts capability availability is computed from."""
+            state = self._application_state
+            view3d = getattr(self, "view3d", None)
+            has_renderer = view3d is not None
+            has_frame = state.results.selected_frame is not None
+            if view3d is None:
+                has_dataset = False
+            else:
+                has_dataset = (
+                    view3d._dat_dataset is not None
+                    or view3d._current_result is not None
+                )
+            simulation_active = state.simulation_state.value in ("RUNNING", "PAUSED")
+            return CapabilityContext(
+                renderer_ready=has_renderer,
+                dataset_loaded=has_frame or has_dataset,
+                simulation_active=simulation_active,
+                undo_available=self.application.can_undo(),
+                redo_available=self.application.can_redo(),
             )
-            for name in ("contour_action", "slice_action", "glyph_action"):
-                if hasattr(self, name):
-                    getattr(self, name).setEnabled(enabled)
+
+        def _refresh_action_availability(self) -> None:
+            """Compute every registered action's availability from the registry."""
+            context = self._capability_context()
+            for capability_id, action in self._capability_actions.items():
+                status = evaluate_capability(capability_id, context)
+                action.setEnabled(status.available)
+                action.setStatusTip(status.tip)
 
         def _postprocess_fields(self, *, vector: bool) -> list[str]:
             """Return fields compatible with the requested visualization operation."""
@@ -658,9 +871,10 @@ if QMainWindow is not object:
             return sorted(names, key=str.casefold)
 
         def _postprocess(self, mode: str) -> None:
-            """Collect operation-specific inputs before applying a visualization filter."""
+            """Open the modeless editor for a new visualization operation."""
             if getattr(self, "view3d", None) is None:
                 return
+            fields: list[str] = []
             try:
                 if mode in {"contour", "glyph"}:
                     fields = self._postprocess_fields(vector=mode == "glyph")
@@ -670,66 +884,51 @@ if QMainWindow is not object:
                             f"No compatible {kind} fields are available for {mode.title()}"
                         )
                         return
-                    selected = self._application_state.results.selected_field
-                    default_index = fields.index(selected) if selected in fields else 0
-                    field, accepted = QInputDialog.getItem(
-                        self,
-                        f"{mode.title()} field",
-                        "Vector field" if mode == "glyph" else "Scalar field",
-                        fields,
-                        default_index,
-                        False,
-                    )
-                    if not accepted:
-                        return
-                    if mode == "contour":
-                        isosurfaces, accepted = QInputDialog.getInt(
-                            self,
-                            "Contour settings",
-                            "Number of isosurfaces:",
-                            10,
-                            2,
-                            100,
-                        )
-                        if not accepted:
-                            return
-                        self.view3d.contour(field, isosurfaces=isosurfaces)
-                    else:
-                        factor, accepted = QInputDialog.getDouble(
-                            self,
-                            "Glyph settings",
-                            "Scale factor:",
-                            1.0,
-                            0.001,
-                            1000.0,
-                            3,
-                        )
-                        if not accepted:
-                            return
-                        self.view3d.glyph(field, factor=factor)
-                elif mode == "slice":
-                    axes = ["X", "Y", "Z"]
-                    axis, accepted = QInputDialog.getItem(
-                        self, "Slice orientation", "Normal axis:", axes, 0, False
-                    )
-                    if not accepted:
-                        return
-                    normals = {
-                        "X": (1.0, 0.0, 0.0),
-                        "Y": (0.0, 1.0, 0.0),
-                        "Z": (0.0, 0.0, 1.0),
-                    }
-                    self.view3d.slice(normal=normals[axis])
-                else:
-                    raise ValueError(f"unsupported visualization operation: {mode}")
-                self.statusBar().showMessage(f"Post-processing: {mode}")
-                self._refresh_visualization_operations()
+                dialog = VisualizationOperationDialog(mode, fields=fields, parent=self)
             except (KeyError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Post-processing error: {exc}")
+                return
+            selected = self._application_state.results.selected_field
+            if mode in {"contour", "glyph"} and selected in fields:
+                dialog.field_combo.setCurrentText(selected)
+            dialog.applied.connect(
+                lambda operation: self._apply_visualization_operation(mode, operation)
+            )
+            dialog.show()
+            self.visualization_operation_dialog = dialog
+
+        def _apply_visualization_operation(
+            self, mode: str, operation: VisualizationOperation
+        ) -> None:
+            """Apply one built operation and report the outcome in clear text."""
+            if getattr(self, "view3d", None) is None:
+                return
+            try:
+                if mode == "contour":
+                    self.view3d.contour(
+                        operation.scalars, isosurfaces=operation.isosurfaces
+                    )
+                elif mode == "glyph":
+                    self.view3d.glyph(operation.scalars, factor=operation.factor)
+                elif mode == "slice":
+                    self.view3d.slice(normal=operation.normal)
+                else:
+                    raise ValueError(f"unsupported visualization operation: {mode}")
+            except (KeyError, RuntimeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Post-processing error: {exc}")
+                return
+            self._refresh_visualization_operations()
+            self.statusBar().showMessage(f"Post-processing: {operation.kind}")
 
         def _visualization_operation_selection_changed(self, row: int) -> None:
-            self.remove_visualization_operation_button.setEnabled(
-                row >= 0 and getattr(self, "view3d", None) is not None
+            view3d = getattr(self, "view3d", None)
+            count = self.visualization_operations.count()
+            has_selection = row >= 0 and view3d is not None
+            self.remove_visualization_operation_button.setEnabled(has_selection)
+            self.edit_visualization_button.setEnabled(has_selection)
+            self.move_up_visualization_button.setEnabled(has_selection and row > 0)
+            self.move_down_visualization_button.setEnabled(
+                has_selection and row < count - 1
             )
 
         def _refresh_visualization_operations(self) -> None:
@@ -755,6 +954,9 @@ if QMainWindow is not object:
                 item.setData(Qt.ItemDataRole.UserRole, index - 1)
                 self.visualization_operations.addItem(item)
             self.remove_visualization_operation_button.setEnabled(False)
+            self.edit_visualization_button.setEnabled(False)
+            self.move_up_visualization_button.setEnabled(False)
+            self.move_down_visualization_button.setEnabled(False)
             self.reset_visualization_button.setEnabled(bool(operations))
 
         def _remove_visualization_operation(self) -> None:
@@ -773,6 +975,74 @@ if QMainWindow is not object:
             self._refresh_visualization_operations()
             self.statusBar().showMessage("Visualization operation removed")
 
+        def _edit_visualization_operation(self) -> None:
+            """Open the modeless editor prefilled with the selected operation."""
+            if self.view3d is None:
+                return
+            item = self.visualization_operations.currentItem()
+            if item is None:
+                return
+            index = item.data(Qt.ItemDataRole.UserRole)
+            operations = self.view3d._visualization_pipeline.operations
+            if not 0 <= index < len(operations):
+                return
+            operation = operations[index]
+            fields: list[str] = []
+            try:
+                if operation.kind in {"contour", "glyph"}:
+                    fields = self._postprocess_fields(vector=operation.kind == "glyph")
+                    if operation.scalars not in fields:
+                        fields = [operation.scalars, *fields]
+                dialog = VisualizationOperationDialog(
+                    operation.kind,
+                    fields=fields,
+                    operation=operation,
+                    parent=self,
+                )
+            except (KeyError, RuntimeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Visualization update failed: {exc}")
+                return
+            dialog.applied.connect(
+                lambda edited: self._replace_visualization_operation(index, edited)
+            )
+            dialog.show()
+            self.visualization_operation_dialog = dialog
+
+        def _replace_visualization_operation(
+            self, index: int, operation: VisualizationOperation
+        ) -> None:
+            """Replace the selected operation and replay the pipeline."""
+            if self.view3d is None:
+                return
+            try:
+                self.view3d.replace_visualization_operation(index, operation)
+            except (IndexError, KeyError, RuntimeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Visualization update failed: {exc}")
+                return
+            self._refresh_visualization_operations()
+            self.statusBar().showMessage("Visualization operation updated")
+
+        def _move_visualization_operation(self, offset: int) -> None:
+            """Move the selected operation one position within the pipeline."""
+            if self.view3d is None:
+                return
+            item = self.visualization_operations.currentItem()
+            if item is None:
+                return
+            index = item.data(Qt.ItemDataRole.UserRole)
+            target = index + offset
+            operations = self.view3d._visualization_pipeline.operations
+            if not 0 <= index < len(operations) or not 0 <= target < len(operations):
+                return
+            try:
+                self.view3d.move_visualization_operation(index, target)
+            except (IndexError, KeyError, RuntimeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Visualization update failed: {exc}")
+                return
+            self._refresh_visualization_operations()
+            self.visualization_operations.setCurrentRow(target)
+            self.statusBar().showMessage("Visualization operation moved")
+
         def _reset_visualization_pipeline(self) -> None:
             """Clear all derived operations and return to the original dataset."""
             if self.view3d is None:
@@ -786,39 +1056,36 @@ if QMainWindow is not object:
             self.statusBar().showMessage("Visualization pipeline reset")
 
         def _mesh_selection_changed(self, selection) -> None:
-            if self.view3d is not None and selection.kind == "patch":
+            """Sync the 3D view, the inspector and the selection state."""
+            if selection.kind not in {"patch", "face", "region"}:
+                return
+            stable_id = selection.stable_id
+            if stable_id is None and selection.kind == "patch":
+                stable_id = f"patch:{selection.index}"
+            if stable_id is None:
+                return
+            try:
+                summary = selection_label(parse_selection_id(stable_id))
+            except ValueError:
+                return
+            self.application.select(stable_id, selection.kind, selection.name)
+            if self.view3d is not None:
                 try:
-                    self.view3d.select(
-                        selection.stable_id or f"patch:{selection.index}"
-                    )
-                except KeyError:
+                    self.view3d.select(stable_id)
+                    summary = self.view3d.selection_summary()
+                except (KeyError, ValueError):
                     pass
+            self.statusBar().showMessage(f"Selected: {summary}")
 
         def _refresh_properties(self) -> None:
+            """Rebuild the typed inspector for the current selection context."""
             if not hasattr(self, "properties_panel"):
                 return
-            form = self.properties_panel._form
-            while form.count():
-                item = form.takeAt(0)
-                if item.widget() is not None:
-                    item.widget().deleteLater()
-            properties = self.application.properties()
-            if not properties:
-                form.addRow(QLabel("No editable properties for this selection"))
-                return
-            for prop in properties:
-                editor = QLineEdit(str(prop.value))
-                editor.setObjectName(f"workbench.property.{prop.key}")
-                editor.setReadOnly(not prop.editable)
-                button = QPushButton("Apply")
-                button.setEnabled(prop.editable)
-                button.clicked.connect(
-                    lambda _checked=False, p=prop, e=editor: self._apply_property(
-                        p.key, e.text()
-                    )
-                )
-                form.addRow(prop.label, editor)
-                form.addRow("", button)
+            try:
+                properties = self.application.properties()
+            except (KeyError, ValueError):
+                properties = ()
+            self.properties_panel.set_properties(properties)
 
         def _setup_changed(self) -> None:
             """Propagate specialized setup edits through the application state."""
@@ -828,13 +1095,33 @@ if QMainWindow is not object:
             if hasattr(self, "setup_panel"):
                 self.setup_panel.set_case(self.session.case)
 
-        def _apply_property(self, key: str, raw_value: str) -> None:
+        def _apply_property(self, key: str, value: object) -> None:
+            """Apply one typed property value and report failures in clear text."""
             try:
-                value = float(raw_value) if key == "numerics.cfl" else raw_value
                 self.application.set_property(key, value)
             except (KeyError, TypeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Property error: {exc}")
             else:
+                self._refresh_properties()
+
+        def _undo(self) -> None:
+            """Revert the most recent reversible edit and report the label."""
+            try:
+                description = self.application.undo()
+            except (IndexError, KeyError, TypeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Undo failed: {exc}")
+            else:
+                self.statusBar().showMessage(f"Undid: {description}")
+                self._refresh_properties()
+
+        def _redo(self) -> None:
+            """Replay the most recent undone edit and report the label."""
+            try:
+                description = self.application.redo()
+            except (IndexError, KeyError, TypeError, ValueError) as exc:
+                self.statusBar().showMessage(f"Redo failed: {exc}")
+            else:
+                self.statusBar().showMessage(f"Redid: {description}")
                 self._refresh_properties()
 
         def _add_dock(
@@ -851,8 +1138,9 @@ if QMainWindow is not object:
         def _build_status_bar(self) -> None:
             status = QStatusBar(self)
             status.setObjectName("workbench.status_bar")
+            initial_view = session_state_view(self.session.state.value)
             status.showMessage(
-                f"State: {self.session.state.value} | Iteration: {self.session.iteration} | Time: {self.session.time:g}"
+                f"State: {initial_view.marker} {initial_view.label} | Iteration: {self.session.iteration} | Time: {self.session.time:g}"
             )
             self.setStatusBar(status)
 
@@ -910,20 +1198,14 @@ if QMainWindow is not object:
             state = event.state
             self._application_state = state
             self._refresh_workflow(state)
+            view = session_state_view(state.simulation_state.value)
             self.statusBar().showMessage(
-                f"State: {state.simulation_state.value} | Iteration: {state.execution.iteration} | "
-                f"Time: {state.execution.time:g}"
+                f"State: {view.marker} {view.label} | Iteration: {state.execution.iteration} | Time: {state.execution.time:g}"
             )
             self._refresh_properties()
             if hasattr(self, "setup_panel"):
                 self.setup_panel.set_diagnostics(state.diagnostics)
-            if hasattr(self, "run_action"):
-                running = state.simulation_state.value == "RUNNING"
-                paused = state.simulation_state.value == "PAUSED"
-                self.run_action.setEnabled(not running and not paused)
-                self.stop_action.setEnabled(running or paused)
-                self.check_action.setEnabled(not running and not paused)
-                self.save_case_action.setEnabled(not running and not paused)
+            self._refresh_action_availability()
 
         def _selection_changed(self) -> None:
             items = self.workflow_tree.selectedItems()
@@ -934,6 +1216,10 @@ if QMainWindow is not object:
             kind = item.data(0, Qt.ItemDataRole.UserRole + 1)
             label = item.text(0).rsplit("  [", 1)[0]
             self.application.select(stable_id, kind, label)
+
+        def _selection_state_changed(self, event) -> None:
+            """Keep the typed inspector in sync with the selection context."""
+            self._refresh_properties()
 
         def _restore_layout(self) -> None:
             geometry = self._settings.value("geometry")

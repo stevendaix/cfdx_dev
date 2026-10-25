@@ -74,8 +74,33 @@ QComboBox, QSpinBox, QDoubleSpinBox {
     selection-background-color: @accent.primary@;
     selection-color: @surface.canvas@;
 }
-QTreeWidget::item, QTableView::item, QTableWidget::item {
-    padding: 4px;
+QAbstractItemView {
+    alternate-background-color: @surface.panel@;
+    show-decoration-selected: 1;
+    outline: 0;
+}
+QTreeView::item, QTableView::item, QTableWidget::item {
+    padding: 4px 6px;
+}
+QTreeView::item:hover, QTableView::item:hover, QTableWidget::item:hover {
+    background: @surface.raised@;
+}
+QHeaderView::section {
+    background: @surface.panel@;
+    color: @text.secondary@;
+    border: 0;
+    border-right: 1px solid @border.subtle@;
+    border-bottom: 1px solid @border.subtle@;
+    padding: 6px 8px;
+    font-weight: 600;
+}
+QHeaderView::section:checked {
+    color: @text.primary@;
+    background: @surface.raised@;
+}
+QAbstractItemView:disabled {
+    color: @text.muted@;
+    background: @surface.panel@;
 }
 QPushButton {
     background: @surface.raised@;
@@ -89,7 +114,7 @@ QPushButton:hover {
 }
 QPushButton:focus, QLineEdit:focus, QComboBox:focus, QSpinBox:focus,
 QDoubleSpinBox:focus, QPlainTextEdit:focus, QTextEdit:focus,
-QTreeWidget:focus, QTableView:focus, QTableWidget:focus {
+QTreeWidget:focus, QTreeView:focus, QTableView:focus, QTableWidget:focus {
     border: 1px solid @accent.primary@;
 }
 QPushButton:disabled {

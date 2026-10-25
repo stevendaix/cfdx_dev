@@ -2,7 +2,7 @@
 
 **En-tête d'évidence**
 - Scope : modèles RANS à viscosité tourbillonnaire (k-epsilon standard, k-omega, SST de Menter), modèle à une équation de Spalart-Allmaras, lois de paroi (couche logarithmique), distance de paroi. Non couvert : LES/hybrides, RSM, transition, correction de compressibilité (à documenter séparément si activée).
-- Statut : APPROUVÉE (2026-10-12, PR #861) — contrat mathématique approuvé ; le code Phase 10 existant doit être audité contre cette fiche avant toute promotion (Règle d'Or 1).
+- Statut : contrat mathématique approuvé (PR #861). Le runtime SST transactionnel est présent dans le solveur incompressible de production sur le `master` courant ; cela ne ferme pas la qualification physique RANS, qui reste bloquée tant que les cas de référence de la section 6 ne sont pas validés.
 - Registre autoritaire : docs/validation/CFDX_QUALIFICATION_REGISTRY.json (cas TUR-CHANNEL, TUR-FLATPLATE, TUR-NACA0012) + docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json
 - Issues liées : #34 (roadmap, Phase 10) ; docs/validation/TURBULENCE_QUALIFICATION_MATRIX.md
 - Dernier commit vérifié : f5a728f205cb45ad6186c9fab92554ae4af06bdd (master, 2026-10-12 — présence des sources et tests confirmée)
@@ -30,7 +30,11 @@ k-omega (Wilcox 1988) : $\nu_t=k/\omega$, même équation k avec $\sigma_k=0.5$,
 $$\frac{\partial \omega}{\partial t}+\nabla\cdot(\mathbf{u}\omega)=\alpha\frac{\omega}{k}P_k-\beta\omega^2+\nabla\cdot\left[\left(\nu+\frac{\nu_t}{\sigma_\omega}\right)\nabla \omega\right]$$
 
 SST (Menter 1994) : mélange de k-omega près de la paroi et k-epsilon transformé à distance via $F_1$ ; limiteur :
-$$\nu_t=\frac{a_1 k}{\max(a_1\omega,\; S\,F_2)},\qquad a_1=0.31$$
+$\nu_t=\frac{a_1 k}{\max(a_1\omega,\; S\,F_2)},\qquad a_1=0.31$
+
+Pour SST-2003, la production utilisée dans les transports de `k` et `omega` doit être cohérente :
+$\widetilde P_k=\min\left(\rho\nu_t S^2,\;10\beta^*\rho k\omega\right),\qquad P_\omega=\begin{cases}\gamma\widetilde P_k/\nu_t,&\nu_t>0,\\0,&\nu_t=0,\end{cases}$
+avec $\gamma=F_1\gamma_1+(1-F_1)\gamma_2$. La branche $\nu_t=0$ évite une division indéfinie ; les tests algébriques ne remplacent pas la qualification sur des références DNS/expérimentales.
 
 Spalart-Allmaras (variable de travail $\tilde{\nu}$, $\nu_t=\tilde{\nu} f_{v1}$, $f_{v1}=\chi^3/(\chi^3+C_{v1}^3)$, $\chi=\tilde{\nu}/\nu$) :
 $$\frac{\partial \tilde{\nu}}{\partial t}+\nabla\cdot(\mathbf{u}\tilde{\nu})=c_{b1}\tilde{S}\tilde{\nu}+\nabla\cdot\left[(\nu+\tilde{\nu})\nabla\tilde{\nu}\right]+c_{b2}|\nabla\tilde{\nu}|^2-c_{w1}f_w\left(\frac{\tilde{\nu}}{d}\right)^2$$
@@ -71,10 +75,10 @@ $$a_P\phi_P=\sum_{nb}a_{nb}\phi_{nb}+b,\qquad a_P=\sum_{nb}a_{nb}+\frac{\rho V_P
 ## 7. Statut d'implémentation CFDX
 - Fichiers source concernés : src/cfdx/physics/turbulence.h, turbulence_models.h, turbulence_solver.h, turbulence_transport.h, sst_solver.h, spalart_allmaras.h, wall_functions.h, wall_distance.h, wall_distance_turbulence.h, apps/production_solver/main.cpp.
 - Tests exécutables : tests/validation/test_channel_qualification.cpp, tests/validation/test_phase10_turbulence_hardening.cpp et les autres tests test_phase10_* ; cas TUR-CHANNEL, TUR-FLATPLATE, TUR-NACA0012 (docs/validation/TUR-*_QUALIFICATION_CASE.md).
-- Audit production (PR #941, base `120070dedebecd70e9f78f30691e9e5172a71925`) : les API `solve_kepsilon_transport`, `solve_sst_transport`/`solve_sst_transport_dynamic_blending` et `solve_spalart_allmaras_transport` existent, mais la recherche des appelants et l'inspection de `apps/production_solver/main.cpp` n'ont trouvé aucun branchement de ces transports dans la boucle de quantité de mouvement de production. Les cas qui déclarent un modèle autre que laminaire sont donc rejetés explicitement par le garde-fou ajouté dans cette PR ; aucun RANS de production n'est revendiqué.
+- État actuel : les API de transport k-epsilon, SST et Spalart–Allmaras existent ; le runtime SST transactionnel est raccordé à la boucle externe de `solve_steady_incompressible` via `IncompressibleSolverControls::sst_runtime`, de manière explicite et opt-in. Cela ne signifie pas que les sélecteurs RANS génériques ni les autres modèles sont activés/qualifiés.
 - Correction de performance dans `sst_solver.h` : `cell_gradient_dot(k, omega, mesh)` est calculé une fois par itération externe, au lieu d'être recalculé dans chaque cellule (suppression du travail O(N²) redondant sans changement de formule ni tolérance).
-- Écarts connus code <-> fiche : le couplage de la viscosité turbulente à la matrice de quantité de mouvement, l'initialisation des variables transportées et la convergence externe restent à implémenter et qualifier. Les statuts `COMPONENT_READY` du registre C++/JSON ne valent pas `SOLVER_READY`.
-- Gaps et prochaines actions : MMS transport indépendantes sur au moins trois maillages ; intégration SST de bout en bout ; TUR-CHANNEL contre DNS Moser–Kim–Mansour, puis TUR-FLATPLATE et TUR-NACA0012 ; qualification MPI des modèles RANS ; GCI et conservation indépendante sur un HEAD exact. Promotion physique toujours BLOCKED selon la gouvernance #118.
+- Écarts connus code <-> fiche : la qualification physique SST, la validation des résidus sur l'état accepté après bornage, les campagnes DNS/couche limite/NACA, et l'intégration de production des modèles RANS autres que SST restent ouverts. Les statuts `COMPONENT_READY` du registre C++/JSON ne valent pas `SOLVER_READY`.
+- Gaps et prochaines actions : résidus non linéaires recalculés indépendamment sur l'état SST accepté ; MMS transport indépendantes sur au moins trois maillages ; TUR-CHANNEL contre DNS Moser–Kim–Mansour, puis TUR-FLATPLATE et TUR-NACA0012 ; qualification MPI ; GCI et conservation indépendante sur un HEAD exact. Promotion physique toujours BLOCKED selon la gouvernance #118.
 
 ## 8. Journal des modifications de la fiche
 - 2026-10-12 — création (Phase 3 du Plan Directeur, PR empilée sur governance/constitution-technique).
@@ -85,8 +89,8 @@ $$a_P\phi_P=\sum_{nb}a_{nb}\phi_{nb}+b,\qquad a_P=\sum_{nb}a_{nb}+\frac{\rho V_P
 - `advance_sst_production_iterate_transactionally` orchestre un pas de transport SST sans activer à lui seul le modèle RANS dans le solveur de production.
 - Avant le transport, la distance à la paroi et le taux de déformation sont recalculés depuis le maillage et l'itéré courant de vitesse, avec reconstruction tenant compte des conditions aux limites de vitesse fixes.
 - Le contrat d'acceptation est atomique pour les champs porteurs `U`, `p`, `phi` et l'état SST (`k`, `omega`, `nu_t`, distance à la paroi et taux de déformation). Un rejet du transport restaure l'état antérieur exact ; une exception restaure l'état avant propagation.
-- Le commit n'est autorisé qu'après convergence du transport et validation de l'état SST. Ce helper est une couture d'orchestration, pas encore l'intégration dans la boucle externe de `solve_steady_incompressible` et ne constitue pas une qualification physique.
-- Le sélecteur RANS de production doit rester fail-closed jusqu'à l'intégration complète, aux tests de transport MMS sur au moins trois maillages et à la qualification des cas DNS/couche limite/NACA déclarés en section 6.
+- Le commit n'est autorisé qu'après convergence du transport et validation de l'état SST. Le helper transactionnel est appelé par le runtime SST explicite de la boucle externe de `solve_steady_incompressible` sur le `master` courant ; cela ne constitue pas une qualification physique.
+- Le sélecteur RANS générique et les modèles autres que SST doivent rester fail-closed jusqu'à leur intégration complète. Pour SST, le runtime opt-in existe, mais les tests MMS multi-maillages et la qualification DNS/couche limite/NACA de la section 6 restent obligatoires.
 
 ## 10. Journal des modifications de la fiche
 - 2026-10-22 — contrat d'itération SST transactionnelle documenté pour la PR #1028 ; la vérification du code et les tests exact-head restent obligatoires.
@@ -95,3 +99,11 @@ $$a_P\phi_P=\sum_{nb}a_{nb}\phi_{nb}+b,\qquad a_P=\sum_{nb}a_{nb}+\frac{\rho V_P
 ## 11. Outer-iteration rollback regression (PR pending)
 - A regression now exercises a nested transaction: the inner SST/carrier transaction commits, then a later outer-iteration rejection rolls back `U`, `p`, authoritative `phi`, and all SST fields to the original outer snapshot.
 - This verifies the rollback primitive needed by the production outer loop; it does **not** itself wire the transaction into `solve_steady_incompressible`, refresh `mu_eff` per iteration, or qualify SST.
+
+
+## 12. Production outer-loop SST runtime (PR pending)
+- `IncompressibleSolverControls::sst_runtime` is an explicit opt-in runtime seam. When absent, the legacy fixed-viscosity path is unchanged.
+- When present, the caller must provide a validated `SSTProductionState` and SST `TurbulenceTransportControls`; initialization from declared case data or DAT restart remains explicit through the existing initialization/restart helpers. Carrier and SST density/kinematic viscosity must agree exactly. No implicit SST initial values are fabricated.
+- Before the first momentum assembly, the solver refreshes wall distance, strain rate and `nu_t` from the actual initialized/restarted carrier field. The outer iteration then advances SST using the pressure-corrected authoritative face mass flux and the explicitly supplied omega face values when configured. A failed transport step raises the existing retryable-iteration path; the enclosing retry restores the SST snapshot together with carrier rollback.
+- After the carrier/SST transaction commits, the refreshed `nu_t` is converted to `mu_eff = rho * (nu + nu_t)` for the next momentum assembly. SST convergence is an additional hard gate based on the transport solver's convergence status, finite equation residuals, zero non-finite bound events, and dimensionless relative `nu_t` change no larger than the configured carrier relative tolerance. This prevents declaring the carrier solution converged before momentum has been assembled with the accepted SST closure. Raw dimensional SST residuals are not mixed into the normalized carrier convergence metric; carrier, continuity, and QoI gates are not relaxed.
+- This is integration scaffolding, not permission to enable the general RANS selector or a claim of physical qualification. Restart/state lifecycle and production regression coverage must be demonstrated by exact-head CI before merge.

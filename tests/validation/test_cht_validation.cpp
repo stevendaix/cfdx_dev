@@ -2,32 +2,174 @@
 #include "cfdx/physics/energy_solver.h"
 #include "common/test_harness.h"
 
+#include <limits>
+
 using namespace cfdx::core;
 using namespace cfdx::physics;
 using namespace cfdx::testing;
 
-static Mesh cube(const char* patch_name)
+static Mesh cube(const char* patch_name, double x_offset = 0.0,
+                  int interface_face = -1)
 {
     Mesh m;
     m.points().resize(8);
     const double p[8][3]={{0,0,0},{1,0,0},{1,1,0},{0,1,0},
                           {0,0,1},{1,0,1},{1,1,1},{0,1,1}};
-    for(std::size_t i=0;i<8;++i)m.points().set(i,p[i][0],p[i][1],p[i][2]);
+    for(std::size_t i=0;i<8;++i)
+        m.points().set(i,p[i][0]+x_offset,p[i][1],p[i][2]);
     m.faces().push_face({0,3,2,1});m.faces().push_face({4,5,6,7});
     m.faces().push_face({0,1,5,4});m.faces().push_face({3,7,6,2});
     m.faces().push_face({0,4,7,3});m.faces().push_face({1,2,6,5});
     m.ownership().resize(6);
-    for(std::size_t f=0;f<6;++f){m.ownership().set_owner(f,0);m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);}
+    for(std::size_t f=0;f<6;++f) {
+        m.ownership().set_owner(f,0);
+        m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);
+    }
     m.cells().push_cell({0,1,2,3,4,5});
-    Patch patch;patch.name=patch_name;patch.type=PatchType::WALL;patch.face_ids={0,1,2,3,4,5};
-    m.boundary().add_patch(patch);
+    if(interface_face<0) {
+        Patch patch;patch.name=patch_name;patch.type=PatchType::WALL;
+        patch.face_ids={0,1,2,3,4,5};
+        m.boundary().add_patch(patch);
+    } else {
+        Patch interface_patch;
+        interface_patch.name=patch_name;
+        interface_patch.type=PatchType::INTERFACE;
+        interface_patch.face_ids={static_cast<std::size_t>(interface_face)};
+        m.boundary().add_patch(interface_patch);
+        Patch walls;
+        walls.name=std::string(patch_name)+"_walls";
+        walls.type=PatchType::WALL;
+        for(std::size_t f=0;f<6;++f)
+            if(static_cast<int>(f)!=interface_face) walls.face_ids.push_back(f);
+        m.boundary().add_patch(walls);
+    }
     return m;
 }
 
 int main()
 {
-    run_case("two_region_cht_independent_energy_conservation",[] {
+    run_case("cht_interface_conductance_uses_boundary_normal_distance", [] {
+        // On a skewed cell the Euclidean centre-to-face distance exceeds
+        // the normal projection. Both the interface update and heat-flux
+        // audit must use the same normal-distance contract as solve_energy.
+        FvGeometry geometry;
+        geometry.face_area_vectors = {Vec3(2.0, 0.0, 0.0)};
+        geometry.cell_centres = {Vec3(0.0, 0.5, 0.0)};
+        geometry.face_centres = {Vec3(1.0, 0.0, 0.0)};
+        geometry.cell_volumes = {1.0};
+        const double normal_distance = boundary_normal_distance(geometry, 0, 0);
+        const double euclidean_distance =
+            (geometry.face_centres[0] - geometry.cell_centres[0]).mag();
+        EXPECT_NEAR(normal_distance, 1.0, 1e-14);
+        EXPECT_TRUE(euclidean_distance > normal_distance);
+    });
+
+    run_case("cht_rejects_nonconformal_interface_vertices_with_matching_centres", [] {
+        Mesh m1=cube("interface1",0.0,5),m2=cube("interface2",1.0,4);
+        // Narrow the second interface symmetrically so its centroid remains
+        // at the same location while its vertices no longer conform.
+        m2.points().set(0,1.0,0.1,0.0);
+        m2.points().set(4,1.0,0.1,1.0);
+        m2.points().set(7,1.0,0.9,1.0);
+        m2.points().set(3,1.0,0.9,0.0);
+        const auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
+        ChtInterfaceControls c;
+        c.region1_patch="interface1"; c.region2_patch="interface2";
+        bool rejected=false;
+        try {
+            (void)match_cht_interface(m1,g1,m2,g2,c);
+        } catch(const std::runtime_error&) {
+            rejected=true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
+    run_case("cht_rejects_cooriented_interface_normals", [] {
+        Mesh m1=cube("interface1",0.0,5),m2=cube("interface2",0.0,5);
+        const auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
+        ChtInterfaceControls c;
+        c.region1_patch="interface1"; c.region2_patch="interface2";
+        bool rejected=false;
+        try {
+            (void)match_cht_interface(m1,g1,m2,g2,c);
+        } catch(const std::runtime_error&) {
+            rejected=true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
+    run_case("cht_rejects_empty_interface_patches", [] {
         Mesh m1=cube("interface1"),m2=cube("interface2");
+        m1.boundary().patch(0).face_ids.clear();
+        m2.boundary().patch(0).face_ids.clear();
+        const auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
+        ChtInterfaceControls c;
+        c.region1_patch="interface1"; c.region2_patch="interface2";
+        bool rejected=false;
+        try {
+            (void)match_cht_interface(m1,g1,m2,g2,c);
+        } catch(const std::invalid_argument&) {
+            rejected=true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
+    run_case("cht_rejects_permeable_interface_patch", [] {
+        Mesh m1=cube("interface1",0.0,5),m2=cube("interface2",1.0,4);
+        m1.boundary().patch(0).type=PatchType::INLET;
+        const auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
+        ChtInterfaceControls c;
+        c.region1_patch="interface1"; c.region2_patch="interface2";
+        bool rejected=false;
+        try {
+            (void)match_cht_interface(m1,g1,m2,g2,c);
+        } catch(const std::invalid_argument&) {
+            rejected=true;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
+    run_case("cht_rejects_interface_energy_conductivity_mismatch", [] {
+        Mesh m1=cube("interface1"),m2=cube("interface2");
+        auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
+        Field<double,Location::FACE> phi1(m1.n_faces(),"phi1","kg/s",1);
+        Field<double,Location::FACE> phi2(m2.n_faces(),"phi2","kg/s",1);
+        phi1.fill(0.0); phi2.fill(0.0);
+        Field<double,Location::CELL> T1(1,"T1","K",1),T2(1,"T2","K",1);
+        Field<double,Location::CELL> q1(1,"q1","W/m3",1),q2(1,"q2","W/m3",1);
+        T1(0)=400.0; T2(0)=300.0; q1.fill(0.0); q2.fill(0.0);
+        EnergySolverControls e1; e1.conductivity=1.0;
+        EnergySolverControls e2=e1;
+        ChtInterfaceControls c;
+        c.region1_patch="interface1"; c.region2_patch="interface2";
+        c.conductivity1=1.0; c.conductivity2=1.0;
+
+        const auto expect_rejected_without_mutation = [&](double interface_k2, double energy_k2) {
+            c.conductivity2=interface_k2;
+            e2.conductivity=energy_k2;
+            bool rejected=false;
+            try {
+                (void)solve_two_region_cht(
+                    m1,g1,m2,g2,phi1,phi2,T1,T2,q1,q2,e1,e2,c);
+            } catch (const std::invalid_argument&) {
+                rejected=true;
+            }
+            EXPECT_TRUE(rejected);
+            EXPECT_NEAR(T1(0),400.0,0.0);
+            EXPECT_NEAR(T2(0),300.0,0.0);
+        };
+
+        // Contradictory finite values, non-finite interface data, non-finite
+        // energy data, and a non-positive interface conductivity all fail closed.
+        expect_rejected_without_mutation(1.0,2.0);
+        expect_rejected_without_mutation(std::numeric_limits<double>::quiet_NaN(),1.0);
+        expect_rejected_without_mutation(1.0,std::numeric_limits<double>::infinity());
+        expect_rejected_without_mutation(0.0,1.0);
+    });
+
+    run_case("two_region_cht_independent_energy_conservation",[] {
+        // Two adjacent cubes share one conformal interface face at x=1.
+        Mesh m1=cube("interface1",0.0,5),m2=cube("interface2",1.0,4);
         auto g1=build_fv_geometry(m1),g2=build_fv_geometry(m2);
         Field<double,Location::FACE> phi1(m1.n_faces(),"phi1","kg/s",1);
         Field<double,Location::FACE> phi2(m2.n_faces(),"phi2","kg/s",1);
@@ -49,8 +191,8 @@ int main()
 
         // Reconstruct the interface state from the accepted temperatures and
         // independently rebuild each region's physical energy flux.
-        const double d1=(g1.face_centres[0]-g1.cell_centres[0]).mag();
-        const double d2=(g2.face_centres[0]-g2.cell_centres[0]).mag();
+        const double d1=boundary_normal_distance(g1,5,0);
+        const double d2=boundary_normal_distance(g2,4,0);
         const double h1=c.conductivity1/d1;
         const double h2=c.conductivity2/d2;
         const double tint=(h1*T1(0)+h2*T2(0))/(h1+h2);
@@ -75,7 +217,7 @@ int main()
 
         // Independent interface heat-flow equality: each side must carry the
         // same physical heat rate, with opposite outward signs.
-        const double interface_area=g1.face_area_vectors[0].mag()*static_cast<double>(m1.boundary().patch(0).face_ids.size());
+        const double interface_area=g1.face_area_vectors[5].mag();
         const double qflux1=c.conductivity1*(T1(0)-tint)/d1;
         const double qflux2=c.conductivity2*(tint-T2(0))/d2;
         EXPECT_TRUE(std::isfinite(qflux1) && std::isfinite(qflux2));

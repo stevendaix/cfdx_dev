@@ -33,6 +33,9 @@ struct EnergyIteration {
     std::size_t iteration = 0;
     double residual = 0.0;
     double backward_error = 0.0;
+    double linear_residual_relative = std::numeric_limits<double>::infinity();
+    int linear_solver_status = -1;
+    bool linear_solver_converged = false;
     double energy_imbalance = 0.0;
     double independent_conservation_residual = 0.0;
     double independent_conservation_normalized = 0.0;
@@ -44,6 +47,10 @@ struct EnergyIteration {
 
 struct EnergySolveResult {
     bool converged = false;
+    // Raw linear solve status is separate from the complete energy-stage verdict.
+    bool linear_solver_converged = false;
+    int linear_solver_status = -1;
+    double linear_residual_relative = std::numeric_limits<double>::infinity();
     std::size_t iterations = 0;
     std::vector<EnergyIteration> history;
 };
@@ -379,15 +386,13 @@ inline EnergySolveResult solve_energy(
             candidate(i)=temperature(i);
         ScalarSolveControls sc;
         sc.max_iterations=2000;
-        // Leave margin between the Krylov stopping criterion and the
-        // componentwise backward-error gate below. This is deliberately
-        // local to energy solves: ScalarSolveControls::tolerance remains a
-        // relative Krylov tolerance for the shared momentum/pressure paths.
-        sc.tolerance=temperature.size()==1
-            ? linear_tolerance
-            : std::max(
-                10.0*std::numeric_limits<double>::epsilon(),
-                0.001*linear_tolerance);
+        // Scalar Krylov solvers interpret this as a RELATIVE L2 residual
+        // tolerance (they scale it by ||rhs|| internally). The previous
+        // 0.001*linear_tolerance multiplier demanded a tolerance three orders
+        // tighter than the independent backward-error gate and could make
+        // the solve numerically unattainable. Use the configured tolerance
+        // consistently with the post-solve relative-residual check below.
+        sc.tolerance = linear_tolerance;
         // solve_scalar_equation returns the fully solved linear predictor;
         // nonlinear temperature relaxation is applied exactly once below.
         sc.relaxation=1.0;
@@ -440,8 +445,12 @@ inline EnergySolveResult solve_energy(
                 linear_backward_error,
                 std::abs(row_residual) / std::max(1.0, row_scale));
         }
+        result.linear_solver_status = static_cast<int>(linear.status);
+        result.linear_solver_converged =
+            linear.status == cfdx::core::SolverStatus::CONVERGED;
+        result.linear_residual_relative = linear.residual_relative;
         const bool linear_converged =
-            linear.status == cfdx::core::SolverStatus::CONVERGED &&
+            result.linear_solver_converged &&
             std::isfinite(res) && std::isfinite(linear_backward_error) &&
             std::isfinite(linear.residual_relative) &&
             linear.residual_relative<=linear_tolerance &&
@@ -462,6 +471,10 @@ inline EnergySolveResult solve_energy(
         iteration_report.iteration = iter;
         iteration_report.residual = res;
         iteration_report.backward_error = linear_backward_error;
+        iteration_report.linear_residual_relative = linear.residual_relative;
+        iteration_report.linear_solver_status = static_cast<int>(linear.status);
+        iteration_report.linear_solver_converged =
+            linear.status == cfdx::core::SolverStatus::CONVERGED;
         iteration_report.energy_imbalance = imbalance;
         iteration_report.independent_conservation_residual = independent_energy.residual;
         iteration_report.independent_conservation_normalized = independent_energy.normalized_residual;
@@ -494,6 +507,14 @@ inline EnergySolveResult solve_energy(
             result.converged=true;
             break;
         }
+        // The assembled energy operator is linear for the current frozen
+        // mass flux, conductivity, source and physical time level. If its
+        // linear solve failed, solve_scalar_equation deliberately preserves
+        // the last accepted state; retrying the identical system up to 500
+        // times cannot improve it. Preserve the failure diagnostics and fail
+        // fast instead of recording hundreds of duplicate nonlinear states.
+        if (linear.status != cfdx::core::SolverStatus::CONVERGED)
+            break;
         // T_previous_time remains fixed for transient physics. T_iterate is
         // updated above and is the state used for nonlinear/Picard relaxation.
     }

@@ -151,11 +151,36 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
     return g;
 }
 
+// Method contract: docs/audits/01-diffusion-laplacien.md
+struct FluxImbalanceMetrics {
+    double signed_global = 0.0;
+    double global_l1 = 0.0;
+    double local_linf = 0.0;
+};
+
+inline FluxImbalanceMetrics flux_imbalance_metrics(
+    const std::vector<double>& cell_flux_residuals)
+{
+    FluxImbalanceMetrics metrics;
+    for (const double residual : cell_flux_residuals) {
+        if (!std::isfinite(residual))
+            throw std::invalid_argument("flux_imbalance_metrics: non-finite residual");
+        metrics.signed_global += residual;
+        metrics.global_l1 += std::abs(residual);
+        metrics.local_linf = std::max(metrics.local_linf, std::abs(residual));
+    }
+    return metrics;
+}
+
 struct ScalarEquation {
     cfdx::core::SparseMatrix matrix;
     cfdx::core::Vector rhs;
     std::vector<double> diagonal;
+    // Compatibility alias: now represents the maximum cell-local imbalance.
     double max_imbalance = 0.0;
+    double signed_global_imbalance = 0.0;
+    double global_l1_imbalance = 0.0;
+    double max_local_imbalance = 0.0;
     // Assembly diagnostics retained temporarily for Issue #377 root-cause analysis.
     double max_abs_face_flux = 0.0;
     double min_internal_distance = std::numeric_limits<double>::infinity();
@@ -314,17 +339,31 @@ inline ScalarEquation assemble_scalar_equation(
             max_face_area = std::max(max_face_area, area);
             if (!(distance > 0.0) || !(area > 0.0))
                 throw std::runtime_error("assemble_scalar_equation: degenerate internal face");
-            double gamma_face = diffusion_coefficient;
+            const auto& Sf = geometry.face_area_vectors[f];
+            const auto& Cf = geometry.face_centres[f];
+            const auto& Co = geometry.cell_centres[o];
+            const auto& Cn = geometry.cell_centres[n];
+            // The implicit orthogonal conductance is a series resistance:
+            // A / (d_Pf/Gamma_P + d_Nf/Gamma_N). Euclidean centre distance
+            // and an unweighted harmonic mean are only equivalent on a
+            // uniform orthogonal mesh.
+            const double d_owner = std::abs((Cf - Co).dot(Sf)) / area;
+            const double d_neighbour = std::abs((Cn - Cf).dot(Sf)) / area;
+            if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
+                !std::isfinite(d_owner) || !std::isfinite(d_neighbour))
+                throw std::runtime_error("assemble_scalar_equation: degenerate normal half-distance");
+            double D = 0.0;
             if (cell_diffusion) {
                 const double go = (*cell_diffusion)[o];
                 const double gn = (*cell_diffusion)[n];
-                if (go < 0.0 || gn < 0.0)
-                    throw std::invalid_argument("assemble_scalar_equation: negative cell diffusion");
-                gamma_face = (go > 0.0 && gn > 0.0)
-                    ? 2.0 * go * gn / (go + gn)
-                    : 0.0;
+                if (!(go >= 0.0) || !(gn >= 0.0) ||
+                    !std::isfinite(go) || !std::isfinite(gn))
+                    throw std::invalid_argument("assemble_scalar_equation: invalid cell diffusion");
+                if (go > 0.0 && gn > 0.0)
+                    D = area / (d_owner / go + d_neighbour / gn);
+            } else {
+                D = diffusion_coefficient * area / (d_owner + d_neighbour);
             }
-            const double D = gamma_face * area / distance;
 
             const double a_on = D + std::max(F, 0.0);
             const double a_no = D + std::max(-F, 0.0);
@@ -532,9 +571,11 @@ inline ScalarEquation assemble_scalar_equation(
     eq.min_face_area = min_face_area;
     eq.max_face_area = max_face_area;
 
-    double total_flux = 0.0;
-    for (std::size_t c = 0; c < nc; ++c) total_flux += div_phi[c];
-    eq.max_imbalance = std::abs(total_flux);
+    const auto imbalance = flux_imbalance_metrics(div_phi);
+    eq.signed_global_imbalance = imbalance.signed_global;
+    eq.global_l1_imbalance = imbalance.global_l1;
+    eq.max_local_imbalance = imbalance.local_linf;
+    eq.max_imbalance = imbalance.local_linf;
     return eq;
 }
 
@@ -574,6 +615,8 @@ reconstruct_scalar_transport_flux(
     Field<double, Location::FACE> result(nf, field.name()+"_flux", "", 1);
     Field<double, Location::CELL> grad;
     Field<double, Location::FACE> reconstructed_face;
+    // Only SECOND_ORDER_UPWIND and TVD consume the cell gradient below.
+    // CENTRAL/BLENDED/QUICK variants use reconstructed_face directly.
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
         convection_scheme == ConvectionScheme::TVD)
         grad = compute_gradient_gauss(field, mesh);
@@ -610,11 +653,33 @@ reconstruct_scalar_transport_flux(
             const double d = (geometry.cell_centres[n] - geometry.cell_centres[o]).mag();
             if (!(area > 0.0) || !(d > 0.0))
                 throw std::runtime_error("reconstruct_scalar_transport_flux: degenerate internal face");
+            double diffusion_conductance = diffusion_coefficient * area / d;
             if (cell_diffusion) {
                 const double go=(*cell_diffusion)[o], gn=(*cell_diffusion)[n];
-                if (!(go >= 0.0) || !(gn >= 0.0) || !std::isfinite(go) || !std::isfinite(gn))
+                if (!(go >= 0.0) || !(gn >= 0.0) ||
+                    !std::isfinite(go) || !std::isfinite(gn))
                     throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid cell diffusion");
-                gamma = (go > 0.0 && gn > 0.0) ? 2.0*go*gn/(go+gn) : 0.0;
+                const auto& Sf=geometry.face_area_vectors[f];
+                const auto& Cf=geometry.face_centres[f];
+                const double d_owner=std::abs((Cf-geometry.cell_centres[o]).dot(Sf))/area;
+                const double d_neighbour=std::abs((geometry.cell_centres[n]-Cf).dot(Sf))/area;
+                if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
+                    !std::isfinite(d_owner) || !std::isfinite(d_neighbour))
+                    throw std::runtime_error(
+                        "reconstruct_scalar_transport_flux: degenerate normal half-distance");
+                diffusion_conductance = (go > 0.0 && gn > 0.0)
+                    ? area / (d_owner / go + d_neighbour / gn)
+                    : 0.0;
+            } else {
+                const auto& Sf=geometry.face_area_vectors[f];
+                const auto& Cf=geometry.face_centres[f];
+                const double d_owner=std::abs((Cf-geometry.cell_centres[o]).dot(Sf))/area;
+                const double d_neighbour=std::abs((geometry.cell_centres[n]-Cf).dot(Sf))/area;
+                if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
+                    !std::isfinite(d_owner) || !std::isfinite(d_neighbour))
+                    throw std::runtime_error(
+                        "reconstruct_scalar_transport_flux: degenerate normal half-distance");
+                diffusion_conductance = diffusion_coefficient * area / (d_owner+d_neighbour);
             }
             const double up = F >= 0.0 ? field(o) : field(n);
             psi_face = up;
@@ -626,30 +691,33 @@ reconstruct_scalar_transport_flux(
                 convection_scheme == ConvectionScheme::QUICK_BOUNDED) {
                 const std::size_t u = F >= 0.0 ? o : n;
                 const std::size_t dcell = F >= 0.0 ? n : o;
-                const double gx=grad.component_data(0)[u];
-                const double gy=grad.component_data(1)[u];
-                const double gz=grad.component_data(2)[u];
-                const auto& Cu=geometry.cell_centres[u];
-                const auto& Cf=geometry.face_centres[f];
-                const double increment=gx*(Cf.x-Cu.x)+gy*(Cf.y-Cu.y)+gz*(Cf.z-Cu.z);
-                double high=field(u)+increment;
-                if (convection_scheme == ConvectionScheme::TVD) {
-                    const auto& Cd=geometry.cell_centres[dcell];
-                    const double delta=field(dcell)-field(u);
-                    const double full=gx*(Cd.x-Cu.x)+gy*(Cd.y-Cu.y)+gz*(Cd.z-Cu.z);
-                    const double ratio=std::abs(delta)>1e-14 ? (2.0*full-delta)/delta : 0.0;
-                    high=field(u)+limiter_psi(ratio, LimiterType::MINMOD)*increment;
-                }
                 if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
                     convection_scheme == ConvectionScheme::TVD) {
-                    psi_face=bounded_convection
-                        ? std::clamp(high,std::min(field(u),field(dcell)),std::max(field(u),field(dcell)))
-                        : high;
+                    const double gx=grad.component_data(0)[u];
+                    const double gy=grad.component_data(1)[u];
+                    const double gz=grad.component_data(2)[u];
+                    const auto& Cu=geometry.cell_centres[u];
+                    const auto& Cf=geometry.face_centres[f];
+                    const double increment=gx*(Cf.x-Cu.x)+gy*(Cf.y-Cu.y)+gz*(Cf.z-Cu.z);
+                    double high=field(u)+increment;
+                    if (convection_scheme == ConvectionScheme::TVD) {
+                        const auto& Cd=geometry.cell_centres[dcell];
+                        const double delta=field(dcell)-field(u);
+                        const double full=gx*(Cd.x-Cu.x)+gy*(Cd.y-Cu.y)+gz*(Cd.z-Cu.z);
+                        const double ratio=std::abs(delta)>1e-14 ? (2.0*full-delta)/delta : 0.0;
+                        high=field(u)+limiter_psi(ratio, LimiterType::MINMOD)*increment;
+                    }
+                    // SECOND_ORDER_UPWIND and TVD face states are bounded by
+                    // scheme contract, independently of bounded_convection.
+                    // That option controls a separate bounded-divergence term.
+                    psi_face = std::clamp(
+                        high, std::min(field(u), field(dcell)),
+                        std::max(field(u), field(dcell)));
                 } else {
                     psi_face = reconstructed_face(f);
                 }
             }
-            result(f)=F*psi_face - gamma*area/d*(field(n)-field(o));
+            result(f)=F*psi_face - diffusion_conductance*(field(n)-field(o));
         } else {
             const std::size_t patch=geometry.face_patch[f];
             if (patch < mesh.boundary().n_patches() &&
@@ -684,8 +752,14 @@ reconstruct_scalar_transport_flux(
             if (!(gamma >= 0.0) || !std::isfinite(gamma))
                 throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid boundary diffusion");
             if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
-                psi_face=bc.value;
-                result(f)=F*psi_face - gamma*area/d*(psi_face-field(o));
+                // For a fixed-value boundary, the prescribed value enters the
+                // convective flux only on inflow. On outflow the upwind state
+                // is the owner-cell value, exactly as in matrix assembly.
+                // Diffusion still uses the prescribed boundary value in both
+                // flow directions.
+                const double convective_face_value = F < 0.0 ? bc.value : field(o);
+                result(f) = F * convective_face_value
+                    - gamma * area / d * (bc.value - field(o));
             } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
                 psi_face=field(o)+bc.gradient*d;
                 result(f)=F*psi_face - gamma*area*bc.gradient;
@@ -699,6 +773,7 @@ reconstruct_scalar_transport_flux(
     return result;
 }
 
+// Method contract: docs/audits/01-diffusion-laplacien.md
 inline cfdx::core::SolverResult solve_scalar_equation(
     const ScalarEquation& equation,
     cfdx::core::Vector& solution,
@@ -727,18 +802,28 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             // the returned state fail the requested residual even though the
             // reported linear residual is zero.
             solution(0) = candidate_value;
-            return {
+            cfdx::core::SolverResult result{
                 cfdx::core::SolverStatus::CONVERGED,
                 1, candidate_residual, candidate_residual
             };
+            result.residual_before_relaxation = candidate_residual;
+            result.residual_after_relaxation = candidate_residual;
+            result.residual_relative_before_relaxation = candidate_residual / std::max(std::abs(equation.rhs(0)), 1e-300);
+            result.residual_relative_after_relaxation = result.residual_relative_before_relaxation;
+            return result;
         }
         solution(0) += controls.relaxation * (candidate_value - solution(0));
         const double residual =
             std::abs(diagonal * solution(0) - equation.rhs(0));
-        return {
+        cfdx::core::SolverResult result{
             cfdx::core::SolverStatus::MAX_ITER_REACHED,
             controls.max_iterations, residual, residual
         };
+        result.residual_before_relaxation = candidate_residual;
+        result.residual_after_relaxation = residual;
+        result.residual_relative_before_relaxation = candidate_residual / std::max(std::abs(equation.rhs(0)), 1e-300);
+        result.residual_relative_after_relaxation = residual / std::max(std::abs(equation.rhs(0)), 1e-300);
+        return result;
     }
 
     cfdx::core::Vector candidate = solution;
@@ -893,8 +978,36 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             result.status = cfdx::core::SolverStatus::DIVERGED;
             return result;
         }
+        // These paired diagnostics use the same physical operator, L-infinity
+        // norm, and RHS normalization. Solver-native Krylov diagnostics remain
+        // available in residual/residual_relative and are intentionally separate.
+        const auto physical_residual_inf = [&](const cfdx::core::Vector& state) {
+            double norm = 0.0;
+            for (std::size_t i = 0; i < state.size(); ++i) {
+                double ri = -equation.rhs(i);
+                const auto row_begin = equation.matrix.row_offsets_data()[i];
+                const auto row_end = equation.matrix.row_offsets_data()[i + 1];
+                for (std::uint32_t k = row_begin; k < row_end; ++k)
+                    ri += equation.matrix.values_data()[k] *
+                          state(equation.matrix.columns_data()[k]);
+                norm = std::max(norm, std::abs(ri));
+            }
+            return norm;
+        };
+        double rhs_norm = 0.0;
+        for (std::size_t i = 0; i < solution.size(); ++i)
+            rhs_norm = std::max(rhs_norm, std::abs(equation.rhs(i)));
+        const double rhs_scale = std::max(rhs_norm, 1e-300);
+        result.residual_before_relaxation = physical_residual_inf(candidate);
+        result.residual_relative_before_relaxation =
+            result.residual_before_relaxation / rhs_scale;
+
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) += controls.relaxation * (candidate(i) - solution(i));
+
+        result.residual_after_relaxation = physical_residual_inf(solution);
+        result.residual_relative_after_relaxation =
+            result.residual_after_relaxation / rhs_scale;
     }
     // A MAX_ITER_REACHED result is not an acceptable predictor solution.
     // Do not inject an unconverged Krylov iterate into the nonlinear solver:

@@ -13,7 +13,7 @@ using namespace cfdx::physics;
 
 namespace {
 
-Mesh cube_with_patches()
+Mesh cube_with_patches(double y_offset = 0.0, int interface_face = 3)
 {
     Mesh m;
     m.points().resize(8);
@@ -22,12 +22,12 @@ Mesh cube_with_patches()
         {0,0,1},{1,0,1},{1,1,1},{0,1,1}
     };
     for (std::size_t i=0; i<8; ++i)
-        m.points().set(i,p[i][0],p[i][1],p[i][2]);
+        m.points().set(i,p[i][0],p[i][1]+y_offset,p[i][2]);
 
     m.faces().push_face({0,3,2,1}); // x-
     m.faces().push_face({4,5,6,7}); // x+
     m.faces().push_face({0,1,5,4}); // y-
-    m.faces().push_face({3,7,6,2}); // y+ interface
+    m.faces().push_face({3,7,6,2}); // y+
     m.faces().push_face({0,4,7,3}); // z-
     m.faces().push_face({1,2,6,5}); // z+
 
@@ -38,10 +38,12 @@ Mesh cube_with_patches()
     }
     m.cells().push_cell({0,1,2,3,4,5});
 
-    const char* names[6] = {"x_min","x_max","y_min","interface","z_min","z_max"};
+    const char* names[6] = {"x_min","x_max","y_min","y_max","z_min","z_max"};
+    if (interface_face < 0 || interface_face >= 6)
+        throw std::invalid_argument("invalid interface face for Level C mesh fixture");
     for (std::size_t f=0; f<6; ++f) {
         Patch patch;
-        patch.name=names[f];
+        patch.name=(static_cast<int>(f)==interface_face) ? "interface" : names[f];
         patch.type=PatchType::WALL;
         patch.face_ids={f};
         m.boundary().add_patch(patch);
@@ -62,7 +64,7 @@ ScalarBoundaryConditions fixed_wall_conditions(
     double value, const std::string& interface_name)
 {
     ScalarBoundaryConditions bc;
-    for (const char* name : {"x_min","x_max","y_min","z_min","z_max"})
+    for (const char* name : {"x_min","x_max","y_min","y_max","z_min","z_max"})
         bc[name] = {ScalarBoundaryType::FIXED_VALUE,value,0.0};
     // The interface value is supplied by the CHT coupling itself.
     (void)interface_name;
@@ -166,8 +168,8 @@ int main()
         // Level C-03: two-region CHT uses a single matched interface with
         // independent hot/cold boundaries and verifies flux continuity.
         {
-            Mesh m1=cube_with_patches();
-            Mesh m2=cube_with_patches();
+            Mesh m1=cube_with_patches(0.0,3);
+            Mesh m2=cube_with_patches(1.0,2);
             auto g1=build_fv_geometry(m1);
             auto g2=build_fv_geometry(m2);
 
