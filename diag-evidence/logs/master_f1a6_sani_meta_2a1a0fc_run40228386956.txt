@@ -1,0 +1,7 @@
+run_id=40228386956
+job_index=1
+started_utc=2026-10-25T19:56:28Z
+ref_pin=2a1a0fcba4306513b60fd258f481bccea2f01a3e
+scope=replica of CI DebugSanitizers 'Run fast CTest' (-LE 'long|benchmark|campaign|sanitizer-slow' --parallel 6, ASAN detect_leaks=1:halt_on_error=1, UBSAN halt_on_error=1) + rerun-failed full sanitizer report
+context=master 1299a4c6 DebugSanitizers fast CTest exit 8 (run 40222390117 job 121256740414); Release fast CTest PASSED on the same commit
+rule=EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL

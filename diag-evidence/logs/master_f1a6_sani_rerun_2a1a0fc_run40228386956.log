@@ -1,0 +1,207 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+      Start 133: test_generate_2d_validation_meshes
+ 1/17 Test #133: test_generate_2d_validation_meshes .........***Failed    0.11 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/scripts/generate_2d_validation_meshes.py", line 15, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+      Start 130: test_bfs_quick
+ 2/17 Test #130: test_bfs_quick .............................Subprocess aborted***Exception:   0.24 sec
+HDF5-DIAG: Error detected in HDF5 (1.10.10) thread 1:
+  #000: ../../../src/H5F.c line 412 in H5Fopen(): unable to open file
+    major: File accessibility
+    minor: Unable to open file
+  #001: ../../../src/H5Fint.c line 1655 in H5F_open(): unable to open file: time = Sun Oct 25 20:25:35 2026
+, name = '/home/runner/work/cfdx_dev/cfdx_dev/build/validation_meshes/bfs_re200_n16.h5', tent_flags = 0
+    major: File accessibility
+    minor: Unable to open file
+  #002: ../../../src/H5FD.c line 722 in H5FD_open(): open failed
+    major: Virtual File Layer
+    minor: Unable to initialize object
+  #003: ../../../src/H5FDsec2.c line 351 in H5FD__sec2_open(): unable to open file: name = '/home/runner/work/cfdx_dev/cfdx_dev/build/validation_meshes/bfs_re200_n16.h5', errno = 2, error message = 'No such file or directory', flags = 0, o_flags = 0
+    major: File accessibility
+    minor: Unable to open file
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  cannot read BFS mesh: /home/runner/work/cfdx_dev/cfdx_dev/build/validation_meshes/bfs_re200_n16.h5
+
+      Start 131: test_naca0012_quick
+ 3/17 Test #131: test_naca0012_quick ........................Subprocess aborted***Exception:   0.26 sec
+HDF5-DIAG: Error detected in HDF5 (1.10.10) thread 1:
+  #000: ../../../src/H5F.c line 412 in H5Fopen(): unable to open file
+    major: File accessibility
+    minor: Unable to open file
+  #001: ../../../src/H5Fint.c line 1655 in H5F_open(): unable to open file: time = Sun Oct 25 20:25:36 2026
+, name = '/home/runner/work/cfdx_dev/cfdx_dev/build/validation_meshes/naca0012_laminar_n64.h5', tent_flags = 0
+    major: File accessibility
+    minor: Unable to open file
+  #002: ../../../src/H5FD.c line 722 in H5FD_open(): open failed
+    major: Virtual File Layer
+    minor: Unable to initialize object
+  #003: ../../../src/H5FDsec2.c line 351 in H5FD__sec2_open(): unable to open file: name = '/home/runner/work/cfdx_dev/cfdx_dev/build/validation_meshes/naca0012_laminar_n64.h5', errno = 2, error message = 'No such file or directory', flags = 0, o_flags = 0
+    major: File accessibility
+    minor: Unable to open file
+terminate called after throwing an instance of 'std::runtime_error'
+  what():  cannot read NACA0012 mesh: /home/runner/work/cfdx_dev/cfdx_dev/build/validation_meshes/naca0012_laminar_n64.h5
+
+      Start 132: test_naca0012_wall_shear_audit_quick
+ 4/17 Test #132: test_naca0012_wall_shear_audit_quick .......***Failed    0.05 sec
+HDF5-DIAG: Error detected in HDF5 (1.10.10) thread 1:
+  #000: ../../../src/H5F.c line 412 in H5Fopen(): unable to open file
+    major: File accessibility
+    minor: Unable to open file
+  #001: ../../../src/H5Fint.c line 1655 in H5F_open(): unable to open file: time = Sun Oct 25 20:25:36 2026
+, name = '/home/runner/work/cfdx_dev/cfdx_dev/build/validation_meshes/channel_n16.h5', tent_flags = 0
+    major: File accessibility
+    minor: Unable to open file
+  #002: ../../../src/H5FD.c line 722 in H5FD_open(): open failed
+    major: Virtual File Layer
+    minor: Unable to initialize object
+  #003: ../../../src/H5FDsec2.c line 351 in H5FD__sec2_open(): unable to open file: name = '/home/runner/work/cfdx_dev/cfdx_dev/build/validation_meshes/channel_n16.h5', errno = 2, error message = 'No such file or directory', flags = 0, o_flags = 0
+    major: File accessibility
+    minor: Unable to open file
+NACA0012_WALL_SHEAR_AUDIT: FAIL: cannot read channel mesh: /home/runner/work/cfdx_dev/cfdx_dev/build/validation_meshes/channel_n16.h5
+
+      Start 231: test_cross_import_equivalence
+ 5/17 Test #231: test_cross_import_equivalence ..............***Failed    0.17 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/scripts/meshio_import.py", line 5, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+Gmsh/meshio import failed
+  imported-mesh faces=0 cells=0
+
+      Start 232: test_n9_s8_naca0012_contract
+ 6/17 Test #232: test_n9_s8_naca0012_contract ...............***Failed    0.10 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_n9_s8_naca0012_contract.py", line 7, in <module>
+    from import_tmr_naca0012 import infer_dimensions
+  File "/home/runner/work/_temp/head/scripts/import_tmr_naca0012.py", line 7, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+      Start 233: test_solid_conduction_contract_e2e
+ 7/17 Test #233: test_solid_conduction_contract_e2e .........***Failed    0.11 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_solid_conduction_contract_e2e.py", line 12, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+      Start 234: test_t2_campaign_verdict
+ 8/17 Test #234: test_t2_campaign_verdict ...................***Failed    0.11 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_t2_campaign_verdict.py", line 12, in <module>
+    spec.loader.exec_module(campaign)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/home/runner/work/_temp/head/scripts/t2_heated_channel_calibration.py", line 42, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+      Start 235: test_production_thermal_restart_e2e
+ 9/17 Test #235: test_production_thermal_restart_e2e ........***Failed    0.11 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_production_thermal_restart_e2e.py", line 12, in <module>
+    from test_solid_conduction_contract_e2e import write_cube
+  File "/home/runner/work/_temp/head/tests/python/test_solid_conduction_contract_e2e.py", line 12, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+      Start 236: test_imported_thermal_contracts
+10/17 Test #236: test_imported_thermal_contracts ............***Failed    0.11 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_imported_thermal_contracts.py", line 7, in <module>
+    from cfdx.io.adapters.fluent import _extract_cas_h5_reference_values
+  File "/home/runner/work/_temp/head/src/cfdx/python/cfdx/__init__.py", line 19, in <module>
+    from cfdx.io.interfaces import (
+  File "/home/runner/work/_temp/head/src/cfdx/python/cfdx/io/__init__.py", line 3, in <module>
+    from cfdx.io.interfaces import SolverAdapter, ConversionResult, SourceInfo
+  File "/home/runner/work/_temp/head/src/cfdx/python/cfdx/io/interfaces.py", line 18, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
+
+      Start 237: test_n9_coupled_schur_case_selection
+11/17 Test #237: test_n9_coupled_schur_case_selection .......***Failed    0.10 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_n9_coupled_schur_case_selection.py", line 8, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+      Start 238: test_n9_poiseuille_body_force_production
+12/17 Test #238: test_n9_poiseuille_body_force_production ...***Failed    0.10 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_n9_poiseuille_body_force_production.py", line 10, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+      Start 240: test_openfoam_results_cli_production_e2e
+13/17 Test #240: test_openfoam_results_cli_production_e2e ...***Failed    0.02 sec
+/usr/bin/python3.12: No module named pytest
+
+      Start 241: test_production_solver_e2e
+14/17 Test #241: test_production_solver_e2e .................***Failed    0.10 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_production_solver_e2e.py", line 9, in <module>
+    import pytest
+ModuleNotFoundError: No module named 'pytest'
+
+      Start 242: test_production_solver_numerics_e2e
+15/17 Test #242: test_production_solver_numerics_e2e ........***Failed    0.10 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_production_solver_numerics_e2e.py", line 7, in <module>
+    import pytest
+ModuleNotFoundError: No module named 'pytest'
+
+      Start 243: test_meshio_bridge
+16/17 Test #243: test_meshio_bridge .........................***Failed    0.10 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/mesh/test_meshio_bridge.py", line 3, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+      Start 244: test_mesh_geometry_matrix
+17/17 Test #244: test_mesh_geometry_matrix ..................***Failed    0.10 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/mesh/test_mesh_geometry_matrix.py", line 5, in <module>
+    import meshio
+ModuleNotFoundError: No module named 'meshio'
+
+
+0% tests passed, 17 tests failed out of 17
+
+Label Time Summary:
+integration         =   0.55 sec*proc (6 tests)
+io                  =   0.11 sec*proc (1 test)
+mesh                =   0.11 sec*proc (1 test)
+n9                  =   0.31 sec*proc (3 tests)
+openfoam            =   0.02 sec*proc (1 test)
+qualification       =   0.99 sec*proc (8 tests)
+restart             =   0.11 sec*proc (1 test)
+schur               =   0.10 sec*proc (1 test)
+thermal             =   0.44 sec*proc (4 tests)
+total-validation    =   0.10 sec*proc (1 test)
+validation          =   1.19 sec*proc (9 tests)
+validation-total    =   0.21 sec*proc (2 tests)
+
+Total Test time (real) =   2.00 sec
+
+The following tests FAILED:
+	130 - test_bfs_quick (Subprocess aborted)               qualification validation
+	131 - test_naca0012_quick (Subprocess aborted)          qualification validation
+	132 - test_naca0012_wall_shear_audit_quick (Failed)     qualification validation
+	133 - test_generate_2d_validation_meshes (Failed)       mesh qualification validation
+	231 - test_cross_import_equivalence (Failed)
+	232 - test_n9_s8_naca0012_contract (Failed)             n9 qualification total-validation validation
+	233 - test_solid_conduction_contract_e2e (Failed)       integration thermal validation
+	234 - test_t2_campaign_verdict (Failed)                 qualification thermal validation
+	235 - test_production_thermal_restart_e2e (Failed)      integration restart thermal
+	236 - test_imported_thermal_contracts (Failed)          integration io thermal
+	237 - test_n9_coupled_schur_case_selection (Failed)     integration n9 schur validation validation-total
+	238 - test_n9_poiseuille_body_force_production (Failed) integration n9 qualification validation validation-total
+	240 - test_openfoam_results_cli_production_e2e (Failed) integration openfoam qualification
+	241 - test_production_solver_e2e (Failed)
+	242 - test_production_solver_numerics_e2e (Failed)
+	243 - test_meshio_bridge (Failed)
+	244 - test_mesh_geometry_matrix (Failed)
+Errors while running CTest
