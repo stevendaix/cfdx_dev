@@ -5,7 +5,7 @@
 - Statut : PARTIEL — flux conservatif et oracle affine ajoutés ; CI exacte en attente.
 - Registre autoritaire : `docs/validation/CFDX_QUALIFICATION_REGISTRY.json`, `NUMERICAL_METHOD_MATURITY_AUDIT.json/.md`, `NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json`.
 - Issues liées : F11, #461 (N7/N12).
-- Limitation : premier test sur maillage orthogonal uniforme ; les maillages déformés/polyédriques et la convergence globale du solveur restent à qualifier.
+- Limitation : les tests affines orthogonal et hexaédrique incliné vérifient le flux discret, mais les maillages polyédriques arbitraires et la convergence globale du solveur restent à qualifier.
 
 ## 1. Références sources
 - J. H. Ferziger, M. Perić, *Computational Methods for Fluid Dynamics*, 3e éd., Springer, 2002 — DOI : 10.1007/978-3-642-56026-2. Discrétisation conservative des contraintes visqueuses.
@@ -30,7 +30,7 @@ Le flux de la contrainte transposée pour la composante de quantité de mouvemen
 \[
 F^T_{i,f}=\mu_f\sum_j\left(\frac{\partial U_j}{\partial x_i}\right)_f S_{f,j}.
 \]
-- Les gradients de chaque composante de vitesse sont reconstruits à partir du champ vectoriel et des conditions aux limites composante par composante.
+- Les gradients de chaque composante de vitesse sont reconstruits composante par composante. Les cellules ayant au moins trois voisins internes utilisent le gradient aux moindres carrés pour préserver l'exactitude affine sur les maillages inclinés ; les stencils sous-échantillonnés conservent le gradient Green–Gauss sensible aux conditions aux limites.
 - \(\mu_f\) et les gradients sont interpolés sur les faces internes par pondération des distances normales propriétaire/voisin.
 - Le flux intégré est assemblé de manière conservative : \(+F^T_{i,f}\) au second membre du propriétaire et \(-F^T_{i,f}\) au voisin.
 - Le terme est explicite et recalculé à chaque itération non linéaire. Il est inclus à la fois dans les trois prédicteurs de quantité de mouvement de production et dans le résidu final réassemblé indépendamment.
@@ -54,13 +54,13 @@ F^T_{i,f}=\mu_f\sum_j\left(\frac{\partial U_j}{\partial x_i}\right)_f S_{f,j}.
 \left[\nabla\cdot(\mu_{eff}(\nabla\mathbf U)^T)\right]_y
 =\frac{\partial}{\partial x}(\mu_{eff}a)=a.
 \]
-- Sur les cellules intérieures d'un canal orthogonal de largeur unité, \(F^T_{y,f}=\mu_{eff}(x_f)aS_x\) et la divergence doit être \(aV_c\). Le test compare le flux de face et le second membre de l'équation assemblée à une tolérance absolue de \(10^{-12}\).
+- Sur le canal orthogonal et le cube hexaédrique incliné, le test compare le flux interne à la formule analytique et la divergence intérieure à aV_c. Les tolérances restent absolues et serrées.
 - Qualification restante : MMS de quantité de mouvement sur au moins trois maillages, ordre observé, comparaison tenseur/flux sur maillage incliné ou polyédrique, et vérification d'impact sur une solution Navier–Stokes complète.
 
 ## 7. Statut d'implémentation CFDX
 - Source : `src/cfdx/physics/steady_incompressible_solver.h`.
 - Fonctions : `momentum_transpose_diffusion_face_fluxes`, `momentum_transpose_diffusion_rhs`, `assemble_momentum_component_with_transpose_diffusion`.
 - Intégration : prédicteurs x/y/z et réassemblage du résidu final utilisent le wrapper de contrainte transposée.
-- Test exécutable : `tests/unit/test_variable_viscosity_transpose_stress.cpp`, avec flux de face affine, divergence cellulaire, conservation des flux internes et contrôle du second membre.
+- Test exécutable : `tests/unit/test_variable_viscosity_transpose_stress.cpp`, avec flux de face affine orthogonal/incliné, divergence cellulaire, conservation des flux internes et contrôle du second membre.
 - Registre : cas `INC-TRANSPOSE-STRESS-MMS`, statut DIAGNOSTIC ; le test unitaire ne vaut pas qualification du solveur complet.
-- Gaps : CI exacte en attente, MMS/GCI, maillages polyédriques inclinés et convergence de l'équation complète.
+- Gaps : CI exacte sur le HEAD final, étude d'ordre/GCI, maillages polyédriques arbitraires et convergence de l'équation complète.
