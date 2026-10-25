@@ -209,7 +209,7 @@ inline std::vector<ChtInterfaceFacePair> match_cht_interface(
         const double normal_cosine = normal1.dot(normal2) / (a1 * a2);
         if (!std::isfinite(normal_cosine) ||
             normal_cosine > -1.0 + c.normal_opposition_tolerance)
-            throw std::runtime_error("CHT interface outward normals are not opposed");
+            throw std::invalid_argument("CHT interface requires opposite outward normals");
 
         used[bestj]=true;
         used1[face1]=true;
