@@ -313,7 +313,7 @@ int main()
     run_case("variable_viscosity_transpose_stress_smooth_mms_order", [] {
         const double pi = std::acos(-1.0);
         std::vector<double> errors;
-        for (const std::size_t n : {4u, 8u, 16u}) {
+        for (const std::size_t n : {8u, 16u, 32u}) {
             const Mesh mesh = make_skewed_stress_cube(n, 0.65);
             const auto geometry = build_fv_geometry(mesh);
             Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
@@ -332,9 +332,11 @@ int main()
             const auto cell_id = [n](std::size_t i, std::size_t j, std::size_t k) {
                 return (k * n + j) * n + i;
             };
-            for (std::size_t k = 1; k + 1 < n; ++k)
-                for (std::size_t j = 1; j + 1 < n; ++j)
-                    for (std::size_t i = 1; i + 1 < n; ++i) {
+            // Exclude two boundary layers so the gradients on every face
+            // of the measured cells use a centred neighbour stencil.
+            for (std::size_t k = 2; k + 2 < n; ++k)
+                for (std::size_t j = 2; j + 2 < n; ++j)
+                    for (std::size_t i = 2; i + 2 < n; ++i) {
                         const std::size_t cell = cell_id(i, j, k);
                         const double numerical = rhs[cell] / geometry.cell_volumes[cell];
                         const double exact = pi * std::cos(pi * geometry.cell_centres[cell].y);
