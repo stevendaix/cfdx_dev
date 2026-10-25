@@ -773,6 +773,7 @@ reconstruct_scalar_transport_flux(
     return result;
 }
 
+// Method contract: docs/audits/01-diffusion-laplacien.md
 inline cfdx::core::SolverResult solve_scalar_equation(
     const ScalarEquation& equation,
     cfdx::core::Vector& solution,
@@ -801,18 +802,28 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             // the returned state fail the requested residual even though the
             // reported linear residual is zero.
             solution(0) = candidate_value;
-            return {
+            cfdx::core::SolverResult result{
                 cfdx::core::SolverStatus::CONVERGED,
                 1, candidate_residual, candidate_residual
             };
+            result.residual_before_relaxation = candidate_residual;
+            result.residual_after_relaxation = candidate_residual;
+            result.residual_relative_before_relaxation = candidate_residual / std::max(std::abs(equation.rhs(0)), 1e-300);
+            result.residual_relative_after_relaxation = result.residual_relative_before_relaxation;
+            return result;
         }
         solution(0) += controls.relaxation * (candidate_value - solution(0));
         const double residual =
             std::abs(diagonal * solution(0) - equation.rhs(0));
-        return {
+        cfdx::core::SolverResult result{
             cfdx::core::SolverStatus::MAX_ITER_REACHED,
             controls.max_iterations, residual, residual
         };
+        result.residual_before_relaxation = candidate_residual;
+        result.residual_after_relaxation = residual;
+        result.residual_relative_before_relaxation = candidate_residual / std::max(std::abs(equation.rhs(0)), 1e-300);
+        result.residual_relative_after_relaxation = residual / std::max(std::abs(equation.rhs(0)), 1e-300);
+        return result;
     }
 
     cfdx::core::Vector candidate = solution;
@@ -967,8 +978,36 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             result.status = cfdx::core::SolverStatus::DIVERGED;
             return result;
         }
+        // These paired diagnostics use the same physical operator, L-infinity
+        // norm, and RHS normalization. Solver-native Krylov diagnostics remain
+        // available in residual/residual_relative and are intentionally separate.
+        const auto physical_residual_inf = [&](const cfdx::core::Vector& state) {
+            double norm = 0.0;
+            for (std::size_t i = 0; i < state.size(); ++i) {
+                double ri = -equation.rhs(i);
+                const auto row_begin = equation.matrix.row_offsets_data()[i];
+                const auto row_end = equation.matrix.row_offsets_data()[i + 1];
+                for (std::uint32_t k = row_begin; k < row_end; ++k)
+                    ri += equation.matrix.values_data()[k] *
+                          state(equation.matrix.columns_data()[k]);
+                norm = std::max(norm, std::abs(ri));
+            }
+            return norm;
+        };
+        double rhs_norm = 0.0;
+        for (std::size_t i = 0; i < solution.size(); ++i)
+            rhs_norm = std::max(rhs_norm, std::abs(equation.rhs(i)));
+        const double rhs_scale = std::max(rhs_norm, 1e-300);
+        result.residual_before_relaxation = physical_residual_inf(candidate);
+        result.residual_relative_before_relaxation =
+            result.residual_before_relaxation / rhs_scale;
+
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) += controls.relaxation * (candidate(i) - solution(i));
+
+        result.residual_after_relaxation = physical_residual_inf(solution);
+        result.residual_relative_after_relaxation =
+            result.residual_after_relaxation / rhs_scale;
     }
     // A MAX_ITER_REACHED result is not an acceptable predictor solution.
     // Do not inject an unconverged Krylov iterate into the nonlinear solver:
