@@ -414,7 +414,7 @@
       "status": "DIAGNOSTIC",
       "reference": "Analytical Newtonian stress divergence for U=(a*y,0,0), div(U)=0, and mu_eff(x)=1+x; independent face-flux and cell-RHS oracle",
       "parameters": "a=2.5; mu_eff=1+x; U=(a*y,0,0); zero mass flux for isolated momentum assembly",
-      "mesh": "Four-cell orthogonal channel, unit width and height; internal x-face checks",
+      "mesh": "Four-cell orthogonal channel for affine face-flux/RHS oracle; skewed hexahedral meshes n=8,16,32 for smooth MMS refinement",
       "boundary_conditions": "Component-wise fixed affine velocity values on separate x/y/z wall patches",
       "numerical_schemes": "Finite-volume scalar diffusion plus conservative explicit div(mu_eff*grad(U)^T) face flux; linear distance-weighted face interpolation",
       "solver_settings": "Unit-level production momentum-equation assembly; not a full production case-file solve",
@@ -422,10 +422,10 @@
       "conservation_criteria": "Equal-and-opposite internal face fluxes; sum of cell RHS equals the boundary stress-flux sum",
       "qoi": "Transpose-stress internal face flux and y-momentum RHS",
       "reference_value": "F_y^T(x_f)=mu_eff(x_f)*a*S_x; div(F_y^T)=a*V_c for internal cells",
-      "error": "Absolute face-flux and cell-RHS error",
-      "observed_order": "Not measured; single-mesh operator verification only",
+      "error": "Affine internal face-flux and cell-RHS absolute error <= 1e-12; smooth-MMS interior-cell RMS error per mesh",
+      "observed_order": "The registered smooth-MMS unit test computes p_8-16 and p_16-32 and gates both > 1.0 on n=8,16,32; this is not a formal GCI and does not qualify the full production solve",
       "runtime": "Not measured",
-      "regression_status": "Registered unit test tests/unit/test_variable_viscosity_transpose_stress.cpp; exact-HEAD CI pending. Full production momentum MMS, mesh-refinement/GCI and skewed/polyhedral validation remain open.",
+      "regression_status": "Registered test tests/unit/test_variable_viscosity_transpose_stress.cpp checks affine flux/RHS identities and smooth-MMS refinement order > 1.0; exact-HEAD CI and full production momentum MMS, formal GCI, and skewed/polyhedral qualification remain required.",
       "method_fiche": "docs/audits/23-variable-viscosity-stress.md"
     },
     {
