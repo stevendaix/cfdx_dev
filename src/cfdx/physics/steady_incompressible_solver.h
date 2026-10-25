@@ -973,6 +973,10 @@ make_rhie_chow_mass_flux(
     return flux;
 }
 
+// F06 currently qualifies the deferred non-orthogonal correction for scalar
+// transport only. Keep it explicitly disabled in momentum assembly until the
+// momentum predictor, pressure-correction operators, and final residual have a
+// dedicated skew-mesh qualification; do not silently change the COUPLED contract.
 inline ScalarEquation assemble_momentum_component(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
