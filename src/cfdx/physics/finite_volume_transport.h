@@ -396,11 +396,32 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
     std::vector<double> flux(nf, 0.0);
     if (!active) return flux;
 
-    // Least-squares reconstruction is linear-exact when face centroids do not
-    // lie on owner-neighbour centre lines. Green-Gauss with a two-point face
-    // interpolation is biased on warped/skewed cells and breaks the affine
-    // diffusion identity even when the flux decomposition is correct.
-    const auto gradient = cfdx::core::compute_gradient_least_squares(field, mesh);
+    // Green-Gauss with two-point interpolation is biased when face centroids
+    // do not lie on owner-neighbour centre lines. Use least squares wherever
+    // the cell has a full 3-D neighbour stencil; retain the boundary-aware
+    // Green-Gauss estimate for lower-dimensional/undersampled boundary cells,
+    // where the boundary data supply information absent from the cell stencil.
+    auto gradient = compute_scalar_gradient_with_boundary(
+        field, mesh, geometry, boundary_conditions, face_values, face_conditions);
+    const auto least_squares_gradient =
+        cfdx::core::compute_gradient_least_squares(field, mesh);
+    const auto& ownership = mesh.ownership();
+    const auto* cell_faces = mesh.cells().faces_data();
+    const auto* cell_offsets = mesh.cells().offsets_data();
+    for (std::size_t cell = 0; cell < nc; ++cell) {
+        std::size_t internal_neighbours = 0;
+        for (Offset k = cell_offsets[cell]; k < cell_offsets[cell + 1]; ++k) {
+            const std::size_t face = cell_faces[k];
+            const auto neighbour = ownership.neighbour(face);
+            if (neighbour >= 0 || ownership.owner(face) != cell)
+                ++internal_neighbours;
+        }
+        if (internal_neighbours >= 3) {
+            for (std::size_t direction = 0; direction < 3; ++direction)
+                gradient.component_data(direction)[cell] =
+                    least_squares_gradient.component_data(direction)[cell];
+        }
+    }
     const auto& ownership = mesh.ownership();
     for (std::size_t face = 0; face < nf; ++face) {
         const std::size_t owner = ownership.owner(face);
