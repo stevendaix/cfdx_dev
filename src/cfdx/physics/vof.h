@@ -68,6 +68,7 @@ advect_volume_fraction_1d(
 // Curvature is -div(n). Derivatives must be evaluated along their own
 // coordinate axes by the caller; one 1-D stencil cannot recover multidimensional
 // divergence from normal components.
+// Method fiche: docs/audits/25-vof-curvature.md (axis-specific normal-divergence contract).
 inline double interface_curvature_from_normal_divergence(
     double dnx_dx, double dny_dy, double dnz_dz = 0.0)
 {
