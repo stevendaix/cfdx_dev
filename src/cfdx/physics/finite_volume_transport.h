@@ -405,15 +405,15 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
         field, mesh, geometry, boundary_conditions, face_values, face_conditions);
     const auto least_squares_gradient =
         cfdx::core::compute_gradient_least_squares(field, mesh);
-    const auto& ownership = mesh.ownership();
+    const auto& stencil_ownership = mesh.ownership();
     const auto* cell_faces = mesh.cells().faces_data();
     const auto* cell_offsets = mesh.cells().offsets_data();
     for (std::size_t cell = 0; cell < nc; ++cell) {
         std::size_t internal_neighbours = 0;
         for (Offset k = cell_offsets[cell]; k < cell_offsets[cell + 1]; ++k) {
             const std::size_t face = cell_faces[k];
-            const auto neighbour = ownership.neighbour(face);
-            if (neighbour >= 0 || ownership.owner(face) != cell)
+            const auto neighbour = stencil_ownership.neighbour(face);
+            if (neighbour >= 0 || stencil_ownership.owner(face) != cell)
                 ++internal_neighbours;
         }
         if (internal_neighbours >= 3) {
