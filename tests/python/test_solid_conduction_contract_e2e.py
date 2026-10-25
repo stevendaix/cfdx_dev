@@ -82,7 +82,12 @@ def write_cube(path: Path, change=None) -> None:
 class SolidConductionApplicationContract(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.solver = Path(os.environ["CFDX_THERMAL_SOLVER"])
+        solver = os.environ.get("CFDX_THERMAL_SOLVER")
+        if not solver:
+            raise unittest.SkipTest(
+                "CFDX_THERMAL_SOLVER is provided by ctest"
+            )
+        cls.solver = Path(solver)
         if not cls.solver.is_file():
             raise RuntimeError(f"thermal executable is missing: {cls.solver}")
 

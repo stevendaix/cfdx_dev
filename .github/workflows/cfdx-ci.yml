@@ -134,7 +134,8 @@ jobs:
         id: python
         if: steps.build.outcome == 'success' && matrix.build_type == 'Release'
         run: |
-          python -m pytest -q tests/python
+          set -o pipefail
+          python -m pytest -q tests/python 2>&1 | tee pytest.log
         env:
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
 
@@ -157,6 +158,28 @@ jobs:
           if [[ -f build/Testing/Temporary/LastTest.log ]]; then
             echo "=== CTest diagnostics ==="
             tail -n 500 build/Testing/Temporary/LastTest.log
+          fi
+
+          # TEMPORARY failure annotations (to be reverted before merge)
+          if [[ -f pytest.log ]]; then
+            tail -c 18000 pytest.log > pytest_tail.log || true
+            for i in 0 1 2 3; do
+              chunk=$(cut -c $((i * 4500 + 1))-$((i * 4500 + 4500)) pytest_tail.log || true)
+              if [ -n "$chunk" ]; then
+                echo "::error title=pytest tail (part $((i + 1)))::$(printf '%s' "$chunk" | tr '\n' '|')"
+              fi
+            done
+          fi
+          if [[ -f build/Testing/Temporary/LastTest.log ]]; then
+            failed=$(grep -A 80 "The following tests FAILED" build/Testing/Temporary/LastTest.log || true)
+            if [[ -n "$failed" ]]; then
+              for i in 0 1 2 3; do
+                chunk=$(printf '%s' "$failed" | cut -c $((i * 4500 + 1))-$((i * 4500 + 4500)))
+                if [ -n "$chunk" ]; then
+                  echo "::error title=ctest failed tests (part $((i + 1)))::$(printf '%s' "$chunk" | tr '\n' '|')"
+                fi
+              done
+            fi
           fi
 
       - name: Upload diagnostics

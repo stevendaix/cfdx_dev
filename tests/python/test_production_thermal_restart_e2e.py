@@ -15,7 +15,12 @@ from test_solid_conduction_contract_e2e import write_cube
 class ProductionThermalRestart(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.solver = Path(os.environ["CFDX_PRODUCTION_SOLVER"])
+        solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
+        if not solver:
+            raise unittest.SkipTest(
+                "CFDX_PRODUCTION_SOLVER is provided by ctest"
+            )
+        cls.solver = Path(solver)
         if not cls.solver.is_file():
             raise RuntimeError(f"production executable is missing: {cls.solver}")
 
