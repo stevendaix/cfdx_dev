@@ -23,37 +23,43 @@ jobs:
           git fetch origin master fix/numerical-audit-g01-g09
           MASTER_PIN=$(grep master_pin diag-tools/pr1092_mergetree_marker.txt | tail -1 | cut -d= -f2)
           BRANCH_PIN=$(grep branch_pin diag-tools/pr1092_mergetree_marker.txt | tail -1 | cut -d= -f2)
-          BASE_PIN=$(git merge-base "$MASTER_PIN" "$BRANCH_PIN")
-          echo "master_pin=$MASTER_PIN branch_pin=$BRANCH_PIN base=$BASE_PIN"
+          echo "master_pin=$MASTER_PIN branch_pin=$BRANCH_PIN"
           mkdir -p diag-evidence/logs
           OUT="diag-evidence/logs/pr1092_mergetree_${GITHUB_RUN_ID}.txt"
           {
             git --version
-            echo "master_pin=$MASTER_PIN branch_pin=$BRANCH_PIN base=$BASE_PIN"
-            echo "=== merge-tree --name-only ==="
-            git merge-tree --write-tree --name-only "$MASTER_PIN" "$BRANCH_PIN"
+            echo "master_pin=$MASTER_PIN branch_pin=$BRANCH_PIN"
+            echo "=== 1. merge-tree actuel (attendu: conflit gmres) ==="
+            TREE=$(git merge-tree --write-tree --name-only "$MASTER_PIN" "$BRANCH_PIN")
             echo "MERGE_TREE_EXIT=$?"
-            for P in src/cfdx/core/linalg/gmres_solver.h src/cfdx/core/linalg/cg_solver.h tests/unit/test_cg_solver.cpp; do
-              F=$(basename "$P")
-              git show "$BASE_PIN:$P" > "/tmp/$F.base" 2>/dev/null
-              git show "$MASTER_PIN:$P" > "/tmp/$F.master" 2>/dev/null
-              git show "$BRANCH_PIN:$P" > "/tmp/$F.branch" 2>/dev/null
-              echo ""
-              echo "########## FILE $P ##########"
-              echo "=== git merge-file (branch base master) exit + contenu diff3 ==="
-              git merge-file -p --diff3 "/tmp/$F.branch" "/tmp/$F.base" "/tmp/$F.master"
-              echo "MERGE_FILE_EXIT=$?"
-              echo "=== git diff base master (hunks git) ==="
-              git diff --no-color -U1 "$BASE_PIN" "$MASTER_PIN" -- "$P"
-              echo "=== git diff base branch (hunks git) ==="
-              git diff --no-color -U1 "$BASE_PIN" "$BRANCH_PIN" -- "$P"
+            echo "=== 2. fichier gmres CONFLIT (marqueurs, extrait de l arbre) ==="
+            git cat-file -p "${TREE}:src/cfdx/core/linalg/gmres_solver.h"
+            echo "=== 3. merge-file ordre inverse (master base branch) ==="
+            git show "$(git merge-base "$MASTER_PIN" "$BRANCH_PIN"):src/cfdx/core/linalg/gmres_solver.h" > /tmp/g.base
+            git show "$MASTER_PIN:src/cfdx/core/linalg/gmres_solver.h" > /tmp/g.master
+            git show "$BRANCH_PIN:src/cfdx/core/linalg/gmres_solver.h" > /tmp/g.branch
+            git merge-file -p --diff3 /tmp/g.master /tmp/g.base /tmp/g.branch > /tmp/g.swapped
+            echo "MERGE_FILE_SWAPPED_EXIT=$?"
+            grep -n "<<<<<<<\|>>>>>>>\|=======\||||||||" /tmp/g.swapped | head -30
+            echo "=== 4. candidats (overlay sur branch_pin + merge-tree vs master_pin) ==="
+            git config user.email "actions@github.com"; git config user.name "diag"
+            for C in diag-tools/pr1092_gmres_candidate_*.h; do
+              [ -f "$C" ] || continue
+              git checkout -q --detach "$BRANCH_PIN"
+              cp "$C" src/cfdx/core/linalg/gmres_solver.h
+              git add -A && git commit -qm "candidate $C"
+              echo "----- CANDIDATE $C -----"
+              git merge-tree --write-tree --name-only "$MASTER_PIN" HEAD
+              echo "CANDIDATE_EXIT=$?"
             done
+            git checkout -q ci/long-campaign-diagnostics
           } > "$OUT" 2>&1
           cat "$OUT"
           exit 0
 
       - name: Commit evidence
         run: |
+          git checkout -q ci/long-campaign-diagnostics
           git config user.name "ci-diag-bot"
           git config user.email "actions@github.com"
           git add diag-evidence/logs/pr1092_mergetree_*.txt

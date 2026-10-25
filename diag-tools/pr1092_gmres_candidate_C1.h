@@ -1,0 +1,585 @@
+#pragma once
+
+#include "sparse_matrix.h"
+#include "cg_solver.h"
+#include "vector.h"
+#include "preconditioner.h"
+#include "solver_workspace.h"
+#include "krylov_controls.h"
+#include "mixed_precision.h"
+#include "krylov_diagnostics.h"
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <functional>
+#include <limits>
+#include <stdexcept>
+
+namespace cfdx::core {
+
+struct LinearOperator {
+    std::size_t size = 0;
+    std::function<void(const Vector&, Vector&)> apply;
+    // Optional original-precision application used only for certification.
+    // Matrix-free callers that omit it are certified against apply() itself.
+    std::function<void(const Vector&, Vector&)> apply_fp64;
+};
+
+inline SolverResult solve_gmres(
+    const LinearOperator& op,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    KrylovControls controls = {},
+    GmresWorkspace* reusable_workspace = nullptr)
+{
+    SolverResult result;
+    if (op.size == 0 || !op.apply || b.size() != op.size || x.size() != op.size ||
+        restart <= 0 || max_iter == 0 || tolerance <= 0.0) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+
+    const std::size_t n = op.size;
+    int current_restart = std::clamp(restart, controls.restart_min, controls.restart_max);
+    current_restart = std::min<int>(current_restart, static_cast<int>(n));
+    if (!std::isfinite(tolerance) || tolerance <= 0.0 || max_iter == 0) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+
+    const double b_norm = krylov_norm2(b, SolverPrecision::FP64, controls.reduction);
+    if (!std::isfinite(b_norm)) {
+        result.status = SolverStatus::DIVERGED;
+        return result;
+    }
+    const bool zero_rhs = (b_norm == 0.0);
+    if (zero_rhs) {
+        // b == 0 with a nonzero initial iterate is still a solvable system:
+        // x* = x0 + y where A y = -A x0. Solve that shifted system with the
+        // same operator and preconditioner, then certify the returned
+        // iterate with the true b - A x residual, referenced to ||A x0||.
+        // When A x0 is already zero, x0 solves the homogeneous system and
+        // the b == 0 guard below reports it directly.
+        Vector ax0(n, 0.0);
+        {
+            Vector x0_in(n, 0.0);
+            for (std::size_t i = 0; i < n; ++i) x0_in(i) = x(i);
+            if (op.apply_fp64) op.apply_fp64(x0_in, ax0);
+            else op.apply(x0_in, ax0);
+        }
+        const double ax0_norm =
+            krylov_norm2(ax0, SolverPrecision::FP64, controls.reduction);
+        if (ax0_norm > 0.0) {
+            Vector shifted_rhs(n, 0.0);
+            for (std::size_t i = 0; i < n; ++i) shifted_rhs(i) = -ax0(i);
+            Vector y(n, 0.0);
+            const SolverResult shifted = solve_gmres(
+                op, shifted_rhs, y, restart, max_iter, tolerance,
+                preconditioner, controls, reusable_workspace);
+            for (std::size_t i = 0; i < n; ++i) x(i) += y(i);
+            Vector ax(n, 0.0);
+            {
+                Vector x_in(n, 0.0);
+                for (std::size_t i = 0; i < n; ++i) x_in(i) = x(i);
+                if (op.apply_fp64) op.apply_fp64(x_in, ax);
+                else op.apply(x_in, ax);
+            }
+            double residual_sq = 0.0;
+            for (std::size_t i = 0; i < n; ++i) {
+                const double r_i = b(i) - ax(i);
+                residual_sq += r_i * r_i;
+            }
+            const double residual = std::sqrt(residual_sq);
+            result.status = shifted.status;
+            result.iterations = shifted.iterations;
+            result.residual = residual;
+            result.residual_relative = residual / ax0_norm;
+            result.residual_replacements = shifted.residual_replacements;
+            result.first_residual_replacement = shifted.first_residual_replacement;
+            result.last_residual_replacement = shifted.last_residual_replacement;
+            result.max_true_residual = shifted.max_true_residual;
+            result.min_true_residual = shifted.min_true_residual;
+            result.min_true_recursive_ratio = shifted.min_true_recursive_ratio;
+            result.max_true_recursive_ratio = shifted.max_true_recursive_ratio;
+            result.max_true_recursive_gap = shifted.max_true_recursive_gap;
+            return result;
+        }
+    }
+    // Scale the stopping criterion with the actual RHS norm. Using max(||b||,1)
+    // makes physically small systems appear converged at x=0 and is incorrect
+    // for nondimensionalized or otherwise small-scale operators.
+    const double rhs_scale = std::max(b_norm, 1e-300);
+    const double tol = b_norm == 0.0 ? 0.0 : tolerance * b_norm;
+
+    // Diagnostic: track the gauge-row value of the initial solution vector.
+    // The gauge row is conventionally the last pressure unknown (index n-1),
+    // which is pinned to a reference value by the pressure gauge.
+    if (krylov_diagnostics_enabled()) {
+        const std::size_t gauge_row = n > 0 ? n - 1 : 0;
+        const double init_gauge = (gauge_row < x.size()) ? x(gauge_row) : 0.0;
+        std::cerr << "GMRES_INIT_GAUGE row=" << gauge_row
+                  << " value=" << init_gauge << "\n";
+    }
+
+    GmresWorkspace local_workspace;
+    GmresWorkspace& w = reusable_workspace ? *reusable_workspace : local_workspace;
+    w.resize(n, static_cast<std::size_t>(current_restart));
+
+    auto apply_operator = [&](const double* in, Vector& out) {
+        for (std::size_t i = 0; i < n; ++i) {
+            w.vin(i) = in[i];
+        }
+        op.apply(w.vin, out);
+    };
+    auto true_residual = [&]() {
+        for (std::size_t i = 0; i < n; ++i) w.vin(i) = x(i);
+        if (op.apply_fp64) op.apply_fp64(w.vin, w.ax);
+        else op.apply(w.vin, w.ax);
+        for (std::size_t i = 0; i < n; ++i) w.r(i) = b(i) - w.ax(i);
+        return krylov_norm2(w.r, SolverPrecision::FP64, controls.reduction);
+    };
+
+    double beta = true_residual();
+    if (!std::isfinite(beta)) {
+        result.status = SolverStatus::DIVERGED;
+        result.residual = beta;
+        return result;
+    }
+    if (b_norm == 0.0) {
+        // b == 0: use a stable, explicit reference common to criterion and diagnostics.
+        // A nonzero initial iterate must not silently relax the threshold.
+        const double x_norm = krylov_norm2(x, SolverPrecision::FP64, controls.reduction);
+        const double ref_scale = std::max({x_norm, 1.0, 1e-300});
+        const double tol_b0 = tolerance * ref_scale;
+        if (beta <= tol_b0) {
+            result.status = SolverStatus::CONVERGED;
+            result.iterations = 0;
+            result.residual = beta;
+            result.residual_relative = beta / ref_scale;
+            return result;
+        }
+        result.status = SolverStatus::DIVERGED;
+        result.iterations = 0;
+        result.residual = beta;
+        result.residual_relative = beta / ref_scale;
+        return result;
+    }
+    if (beta <= tol) {
+        result.status = SolverStatus::CONVERGED;
+        result.iterations = 0;
+        result.residual = beta;
+        result.residual_relative = beta / rhs_scale;
+        return result;
+    }
+
+    std::size_t iterations = 0;
+    double previous_cycle_residual = beta;
+    // Keep the current iterate associated with the best verified true
+    // residual. Restarted Krylov methods can occasionally suffer a loss of
+    // accuracy in the Hessenberg update; never return a worse iterate merely
+    // because the last cycle was numerically unlucky.
+    Vector best_x = x;
+    double best_residual = beta;
+
+    while (iterations < max_iter) {
+        w.resize(n, static_cast<std::size_t>(current_restart));
+        beta = true_residual();
+        if (beta <= tol) break;
+
+        for (std::size_t i = 0; i < n; ++i) w.v(0)[i] = w.r(i) / beta;
+        std::fill(w.h.begin(), w.h.end(), 0.0);
+        std::fill(w.cs.begin(), w.cs.end(), 0.0);
+        std::fill(w.sn.begin(), w.sn.end(), 0.0);
+        std::fill(w.g.begin(), w.g.end(), 0.0);
+        w.g[0] = beta;
+
+        int used = 0;
+        double estimated_residual = beta;
+        bool arnoldi_breakdown = false;
+
+        for (int j = 0; j < current_restart && iterations < max_iter; ++j) {
+            if (preconditioner) {
+                for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
+                if (!preconditioner->apply(w.z, w.vout)) {
+                    if (krylov_diagnostics_enabled())
+                        std::cerr << "PRECOND_APPLY_GAUGE FAIL at iteration "
+                                  << iterations << "\n";
+                    result.status = SolverStatus::NOT_APPLICABLE;
+                    result.iterations = iterations;
+                    return result;
+                }
+                for (std::size_t i = 0; i < n; ++i) w.zv(static_cast<std::size_t>(j))[i] = w.vout(i);
+            } else {
+                std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+            }
+
+            apply_operator(w.zv(static_cast<std::size_t>(j)), w.w);
+            const double arnoldi_action_norm =
+                krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
+                // Modified Gram-Schmidt once is vulnerable to loss of
+            // orthogonality on nonsymmetric saddle-point systems. A second
+            // orthogonalization pass is inexpensive for the small acceptance
+            // systems and substantially improves the Hessenberg relation.
+            // Use the same owned-entry/MPI reduction contract as Krylov norms.
+            // Ghost copies are updated, but never double-counted in projections.
+            Vector arnoldi_basis(n);
+            for (int i = 0; i <= j; ++i) {
+                const double* vi = w.v(static_cast<std::size_t>(i));
+                for (std::size_t k = 0; k < n; ++k) arnoldi_basis(k) = vi[k];
+                const double h = krylov_dot(
+                    arnoldi_basis, w.w, SolverPrecision::FP64, controls.reduction);
+                w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = h;
+                for (std::size_t k = 0; k < n; ++k) w.w(k) -= h * vi[k];
+            }
+            for (int i = 0; i <= j; ++i) {
+                const double* vi = w.v(static_cast<std::size_t>(i));
+                for (std::size_t k = 0; k < n; ++k) arnoldi_basis(k) = vi[k];
+                const double correction = krylov_dot(
+                    arnoldi_basis, w.w, SolverPrecision::FP64, controls.reduction);
+                w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) += correction;
+                for (std::size_t k = 0; k < n; ++k) w.w(k) -= correction * vi[k];
+            }
+
+            // Scale the breakdown test with ||A z_j||, not with an arbitrary
+            // absolute value of one. The operator can legitimately be very
+            // small after nondimensionalisation or physical scaling; an
+            // absolute epsilon floor would then misclassify a valid Krylov
+            // vector as a breakdown.
+            const double hnext = krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
+            w.H(static_cast<std::size_t>(j + 1), static_cast<std::size_t>(j)) = hnext;
+            // Arnoldi vectors are normalized, so loss of the new direction is
+            // a breakdown. Use a relative test against the current operator
+            // action, but never let a tiny absolute value trigger it.
+            // Treat loss of the Arnoldi direction as a numerical rank
+            // breakdown. A few thousand ulps are still far below any
+            // physically meaningful Krylov scale, but leave enough margin for
+            // the second MGS pass and different BLAS/reduction orderings.
+            const double arnoldi_breakdown_floor =
+                4096.0 * std::numeric_limits<double>::epsilon() *
+                std::max(arnoldi_action_norm, 1e-300);
+            const bool arnoldi_breakdown_detected =
+                hnext <= arnoldi_breakdown_floor &&
+                arnoldi_action_norm > 0.0;
+            if (hnext > 0.0) {
+                double* vnext = w.v(static_cast<std::size_t>(j + 1));
+                for (std::size_t k = 0; k < n; ++k) vnext[k] = w.w(k) / hnext;
+            }
+
+            for (int i = 0; i < j; ++i) {
+                const double h0 = w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
+                const double h1 = w.H(static_cast<std::size_t>(i + 1), static_cast<std::size_t>(j));
+                w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
+                    w.cs[static_cast<std::size_t>(i)] * h0 + w.sn[static_cast<std::size_t>(i)] * h1;
+                w.H(static_cast<std::size_t>(i + 1), static_cast<std::size_t>(j)) =
+                    -w.sn[static_cast<std::size_t>(i)] * h0 + w.cs[static_cast<std::size_t>(i)] * h1;
+            }
+
+            const double a = w.H(static_cast<std::size_t>(j), static_cast<std::size_t>(j));
+            const double b2 = w.H(static_cast<std::size_t>(j + 1), static_cast<std::size_t>(j));
+            const double rho = std::hypot(a, b2);
+            if (rho > 0.0) {
+                w.cs[static_cast<std::size_t>(j)] = a / rho;
+                w.sn[static_cast<std::size_t>(j)] = b2 / rho;
+                w.H(static_cast<std::size_t>(j), static_cast<std::size_t>(j)) = rho;
+                w.H(static_cast<std::size_t>(j + 1), static_cast<std::size_t>(j)) = 0.0;
+                const double gj = w.g[static_cast<std::size_t>(j)];
+                const double gj1 = w.g[static_cast<std::size_t>(j + 1)];
+                w.g[static_cast<std::size_t>(j)] =
+                    w.cs[static_cast<std::size_t>(j)] * gj + w.sn[static_cast<std::size_t>(j)] * gj1;
+                w.g[static_cast<std::size_t>(j + 1)] =
+                    -w.sn[static_cast<std::size_t>(j)] * gj + w.cs[static_cast<std::size_t>(j)] * gj1;
+            }
+
+            ++iterations;
+            ++used;
+            estimated_residual = std::abs(w.g[static_cast<std::size_t>(j + 1)]);
+
+            if (controls.residual_replacement &&
+                controls.residual_replacement_period > 0 &&
+                iterations % controls.residual_replacement_period == 0) {
+                const double exact = true_residual();
+                if (exact <= tol) {
+                    result.status = SolverStatus::CONVERGED;
+                    result.iterations = iterations;
+                    result.residual = exact;
+                    result.residual_relative = exact / rhs_scale;
+                    return result;
+                }
+            }
+
+            // Preserve the Arnoldi-breakdown classification even when
+            // the Givens residual estimate reaches zero. For a singular
+            // inconsistent system, the projected least-squares residual can
+            // be zero while the true ||b-Ax|| remains non-zero. In that case
+            // the exact residual check after the Krylov update must decide
+            // between a happy breakdown (CONVERGED) and a non-happy breakdown
+            // (DIVERGED), rather than allowing the solver to continue into
+            // another restart and eventually report MAX_ITER_REACHED.
+            if (arnoldi_breakdown_detected) {
+                arnoldi_breakdown = true;
+                break;
+            }
+            if (estimated_residual <= tol)
+                break;
+        }
+
+        if (used == 0) break;
+
+        std::fill(w.y.begin(), w.y.end(), 0.0);
+        for (int i = used - 1; i >= 0; --i) {
+            double sum = w.g[static_cast<std::size_t>(i)];
+            for (int j = i + 1; j < used; ++j)
+                sum -= w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) *
+                       w.y[static_cast<std::size_t>(j)];
+            const double diag = w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(i));
+            double h_scale = std::abs(diag);
+            for (int k = 0; k < used; ++k)
+                h_scale = std::max(
+                    h_scale,
+                    std::abs(w.H(static_cast<std::size_t>(k), static_cast<std::size_t>(i))));
+            const double diag_floor =
+                128.0 * std::numeric_limits<double>::epsilon() *
+                std::max(h_scale, 1e-300);
+            if (std::abs(diag) <= diag_floor) {
+                // Happy Arnoldi breakdown can produce a zero diagonal in the
+                // Givens-reduced Hessenberg system. If the corresponding
+                // transformed RHS is also zero, that coefficient is free and
+                // must not be reported as a solver divergence. The exact
+                // residual is checked immediately after the Krylov update.
+                if (std::abs(sum) <= diag_floor) {
+                    w.y[static_cast<std::size_t>(i)] = 0.0;
+                    continue;
+                }
+                // The Givens/Hessenberg estimate can be exactly zero at a
+                // non-happy breakdown. It is not the physical residual.
+                // Report the true ||b-Ax||_2 at the last admissible iterate.
+                double breakdown_residual = true_residual();
+                if (best_residual < breakdown_residual) {
+                    x = best_x;
+                    breakdown_residual = best_residual;
+                }
+                result.status = SolverStatus::DIVERGED;
+                result.iterations = iterations;
+                result.residual = breakdown_residual;
+                result.residual_relative =
+                    breakdown_residual / rhs_scale;
+                return result;
+            }
+            w.y[static_cast<std::size_t>(i)] = sum / diag;
+        }
+
+        for (int j = 0; j < used; ++j) {
+            const double alpha = w.y[static_cast<std::size_t>(j)];
+            const double* zj = w.zv(static_cast<std::size_t>(j));
+            for (std::size_t i = 0; i < n; ++i) x(i) += alpha * zj[i];
+        }
+
+        beta = true_residual();
+        if (beta < best_residual) {
+            best_residual = beta;
+            best_x = x;
+        }
+        if (beta <= tol) {
+            result.status = SolverStatus::CONVERGED;
+            result.iterations = iterations;
+            result.residual = beta;
+            result.residual_relative = beta / rhs_scale;
+            return result;
+        }
+
+        // Arnoldi breakdown means that the Krylov space stopped growing.
+        // If the updated iterate is still not converged, continuing into a
+        // fresh cycle can only repeat the same subspace and misclassify a
+        // singular/inconsistent system as MAX_ITER_REACHED. Report the
+        // physical residual as a genuine solver failure instead.
+        if (arnoldi_breakdown) {
+            if (best_residual < beta) {
+                x = best_x;
+                beta = best_residual;
+            }
+            result.status = SolverStatus::DIVERGED;
+            result.iterations = iterations;
+            result.residual = beta;
+            result.residual_relative = beta / rhs_scale;
+            return result;
+        }
+
+        const double reduction = beta / std::max(previous_cycle_residual, 1e-300);
+        if (controls.adaptive_restart)
+            current_restart = choose_gmres_restart(current_restart, reduction, controls);
+        previous_cycle_residual = beta;
+    }
+
+    if (best_residual < beta) {
+        x = best_x;
+        beta = best_residual;
+    }
+    result.status = SolverStatus::MAX_ITER_REACHED;
+    result.iterations = iterations;
+    result.residual = beta;
+    result.residual_relative = beta / rhs_scale;
+    return result;
+}
+
+
+/*
+ * Flexible GMRES uses the same right-preconditioned Arnoldi recurrence as the
+ * implementation above, but exposes the method explicitly so callers can
+ * select a solver whose preconditioner may change between Krylov iterations.
+ *
+ * The implementation stores the preconditioned vector z_j independently for
+ * every Arnoldi basis vector; therefore no assumption of a stationary
+ * preconditioner is made. This is the essential FGMRES contract.
+ */
+inline SolverResult solve_fgmres(
+    const LinearOperator& op,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    KrylovControls controls = {},
+    GmresWorkspace* reusable_workspace = nullptr)
+{
+    return solve_gmres(
+        op, b, x, restart, max_iter, tolerance, preconditioner,
+        controls, reusable_workspace);
+}
+
+inline SolverResult solve_fgmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart,
+    std::size_t max_iter,
+    double tolerance,
+    Preconditioner* preconditioner,
+    KrylovControls controls,
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true) {
+    LinearOperator op;
+    op.size = A.n_rows();
+    op.apply_fp64 = [&A](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
+    op.apply = [&A, precision](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        if (precision.enabled && precision.operator_precision == SolverPrecision::FP32) {
+            mixed_precision_matvec(A, in, out, SolverPrecision::FP32);
+            return;
+        }
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
+    if (setup_preconditioner && preconditioner && !preconditioner->setup(A)) {
+        SolverResult result;
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+    return solve_fgmres(
+        op, b, x, restart, max_iter, tolerance, preconditioner, controls);
+}
+
+inline SolverResult solve_fgmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true)
+{
+    return solve_fgmres(
+        A, b, x, restart, max_iter, tolerance, preconditioner,
+        KrylovControls{}, precision, setup_preconditioner);
+}
+
+
+inline SolverResult solve_gmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart,
+    std::size_t max_iter,
+    double tolerance,
+    Preconditioner* preconditioner,
+    KrylovControls controls,
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true) {
+    LinearOperator op;
+    op.size = A.n_rows();
+    // Certification always uses the original sparse matrix in FP64,
+    // independently of the iterative operator precision.
+    op.apply_fp64 = [&A](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
+    op.apply = [&A, precision](const Vector& in, Vector& out) {
+        if (out.size() != A.n_rows()) out.resize(A.n_rows());
+        if (precision.enabled && precision.operator_precision == SolverPrecision::FP32) { mixed_precision_matvec(A, in, out, SolverPrecision::FP32); return; }
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        for (std::size_t i = 0; i < A.n_rows(); ++i) {
+            double sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                sum += val[k] * in(col[k]);
+            out(i) = sum;
+        }
+    };
+    if (setup_preconditioner && preconditioner && !preconditioner->setup(A)) {
+        SolverResult result;
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+    return solve_gmres(op, b, x, restart, max_iter, tolerance, preconditioner, controls);
+}
+
+inline SolverResult solve_gmres(
+    const SparseMatrix& A,
+    const Vector& b,
+    Vector& x,
+    int restart = 30,
+    std::size_t max_iter = 1000,
+    double tolerance = 1e-12,
+    Preconditioner* preconditioner = nullptr,
+    PrecisionPolicy precision = {},
+    bool setup_preconditioner = true)
+{
+    return solve_gmres(
+        A, b, x, restart, max_iter, tolerance, preconditioner,
+        KrylovControls{}, precision, setup_preconditioner);
+}
+
+} // namespace cfdx::core
