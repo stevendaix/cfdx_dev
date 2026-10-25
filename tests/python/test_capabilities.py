@@ -199,8 +199,16 @@ def test_palette_lists_the_registry_and_only_the_registry() -> None:
     app = create_application(["cfdx-palette-test"])
     window = CFDXWorkbenchWindow(CFDXSession())
     assert set(window._capability_actions) == set(CAPABILITIES)
-    action_names = {action.objectName() for action in window.findChildren(QAction)}
-    assert action_names - set(CAPABILITIES) == {"workbench.action.search"}
+    # Unnamed QActions belong to Qt itself (QDockWidget view toggles,
+    # QToolBar builtin actions) and the command palette never lists them:
+    # every named action must be either a registered capability or the
+    # palette search action.
+    named_actions = {
+        action.objectName()
+        for action in window.findChildren(QAction)
+        if action.objectName()
+    }
+    assert named_actions - set(CAPABILITIES) == {"workbench.action.search"}
 
     window._show_command_palette()
     results = window.command_palette_results
