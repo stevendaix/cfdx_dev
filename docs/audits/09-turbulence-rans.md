@@ -101,7 +101,7 @@ $$a_P\phi_P=\sum_{nb}a_{nb}\phi_{nb}+b,\qquad a_P=\sum_{nb}a_{nb}+\frac{\rho V_P
 - This verifies the rollback primitive needed by the production outer loop; it does **not** itself wire the transaction into `solve_steady_incompressible`, refresh `mu_eff` per iteration, or qualify SST.
 
 
-## 12. Production outer-loop SST runtime (PR pending)
+## 12. Production outer-loop SST runtime (PR #1128 merged; exact-HEAD validation pending)
 - `IncompressibleSolverControls::sst_runtime` is an explicit opt-in runtime seam. When absent and no cellwise turbulent-viscosity field is supplied, the legacy uniform-viscosity momentum operator is unchanged.
 - When present, the caller must provide a validated `SSTProductionState` and SST `TurbulenceTransportControls`; initialization from declared case data or DAT restart remains explicit through the existing initialization/restart helpers. Carrier and SST density/kinematic viscosity must agree exactly. No implicit SST initial values are fabricated.
 - Before the first momentum assembly, the solver refreshes wall distance, strain rate and `nu_t` from the actual initialized/restarted carrier field. The outer iteration then advances SST using the pressure-corrected authoritative face mass flux and the explicitly supplied omega face values when configured. A failed transport step raises the existing retryable-iteration path; the enclosing retry restores the SST snapshot together with carrier rollback.
