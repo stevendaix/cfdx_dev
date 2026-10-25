@@ -732,24 +732,48 @@ def main() -> int:
                 print(f"T2NU_MESH nx={nx} ny={ny} FAILED error={message}")
             campaign["meshes"].append(entry)
 
+    campaign["execution_passed"] = ok
+    campaign["poiseuille_passed"] = bool(ok) and all(
+        entry["l2_poiseuille"] <= L2_GATE
+        for entry in campaign["meshes"]
+        if entry.get("status") == "PASS"
+    )
+    campaign["nusselt_passed"] = bool(ok) and (
+        campaign["meshes"][-1]["err_rel"] <= ERR_TARGET
+        if campaign["meshes"] and campaign["meshes"][-1].get("status") == "PASS"
+        else False
+    )
+    campaign["qualification_passed"] = (
+        campaign["execution_passed"]
+        and campaign["poiseuille_passed"]
+        and campaign["nusselt_passed"]
+    )
+
     if ok:
         dxs = [entry["dx"] for entry in campaign["meshes"]]
         errs = [entry["err_rel"] for entry in campaign["meshes"]]
         p, c = _fit_order(dxs, errs)
         campaign["order_fit"] = {"dx": dxs, "err": errs, "p": p, "C": c}
         finest = campaign["meshes"][-1]
-        within = finest["err_rel"] <= ERR_TARGET
         campaign["verdict"] = (
-            "err_rel_within_target" if within else "err_rel_above_target"
+            "physics_qualified"
+            if campaign["qualification_passed"]
+            else "execution_complete_physics_not_qualified"
         )
         print(f"T2NU_ORDER p={p:.3f} C={c:.6f}")
         print(
-            f"T2NU_CAMPAIGN PASS finest_err_rel={finest['err_rel']:.6f} "
+            f"T2NU_DIAGNOSTIC COMPLETE execution_passed=true "
+            f"qualification_passed={str(campaign['qualification_passed']).lower()} "
+            f"finest_err_rel={finest['err_rel']:.6f} "
             f"target={ERR_TARGET} verdict={campaign['verdict']}"
         )
     else:
         campaign["verdict"] = "execution_failure"
-        print("T2NU_CAMPAIGN FAIL execution_failure")
+        campaign["execution_passed"] = False
+        campaign["poiseuille_passed"] = False
+        campaign["nusselt_passed"] = False
+        campaign["qualification_passed"] = False
+        print("T2NU_DIAGNOSTIC FAIL execution_failure")
 
     _write_evidence(out_dir, campaign)
     return 0 if ok else 1
@@ -757,3 +781,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
