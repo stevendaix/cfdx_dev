@@ -1,0 +1,33 @@
+PySide6 fully removed: yes
+no-qt import: OK <class 'cfdx.workbench.CFDXWorkbenchWindow'>
+noqt_import_exit=0
+.ssssssssssss............                                                [100%]
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/python/test_workbench.py::test_workbench_is_importable_without_qt
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_replays_ordered_operations_without_mutating_source
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_remove_and_clear_return_new_pipelines
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_replace_returns_new_pipeline_and_replays
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_replace_rejects_invalid_index_and_type
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_move_reorders_operations_immutably
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_move_rejects_out_of_range_indices
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs0]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs1]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs2]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs3]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs4]
+PASSED tests/python/test_visualization_pipeline.py::test_operation_checks_field_availability_and_supports_vector_glyphs
+SKIPPED [1] tests/python/test_workbench.py:71: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:158: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:181: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:207: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:244: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:291: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:311: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:334: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:364: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:399: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:427: PySide6 optional
+SKIPPED [1] tests/python/test_workbench.py:457: PySide6 optional
+13 passed, 12 skipped in 0.32s
+noqt_pytest_exit=0
