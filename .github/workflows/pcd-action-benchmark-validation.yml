@@ -1,7 +1,7 @@
 name: PCD Schur-action benchmark validation
 
 # Runs the PCD Schur-action A/B benchmark (real assembled Ghia coupled
-# systems, eight preconditioner action variants under identical linear-solve
+# systems, fourteen preconditioner action variants under identical linear-solve
 # conditions). It measures; it never judges the physical case
 # (test_ghia_cavity_n8_pcd keeps that responsibility) and nothing here
 # modifies a production gate, tolerance, budget or oracle.
@@ -15,7 +15,7 @@ name: PCD Schur-action benchmark validation
 
 on:
   push:
-    branches: [test/pcd-schur-action-benchmark, test/pcd-schur-action-tolerance-axis]
+    branches: [test/pcd-schur-action-benchmark, test/pcd-schur-action-tolerance-axis, test/pcd-nested-tolerance-sweep]
   workflow_dispatch:
 
 permissions:
