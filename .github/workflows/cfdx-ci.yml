@@ -82,7 +82,6 @@ jobs:
         if: steps.build.outcome == 'success'
         continue-on-error: true
         run: |
-          set -o pipefail
           if [[ "${{ matrix.build_type }}" == "DebugSanitizers" ]]; then
             # DebugSanitizers retains the full unit/regression suite, but excludes
             # individually tagged sanitizer-slow qualification cases. These are
@@ -91,9 +90,9 @@ jobs:
             # cfdx-validation.yml. The sanitizer-slow label is intentionally
             # narrow and is based on measured sanitizer runtime, not on test
             # importance.
-            ctest --test-dir build -LE 'long|benchmark|campaign|sanitizer-slow' --output-on-failure --no-tests=error --parallel 6 2>&1 | tee ctest.log
+            ctest --test-dir build -LE 'long|benchmark|campaign|sanitizer-slow' --output-on-failure --no-tests=error --parallel 6
           else
-            ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4 2>&1 | tee ctest.log
+            ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4
           fi
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
@@ -135,8 +134,7 @@ jobs:
         id: python
         if: steps.build.outcome == 'success' && matrix.build_type == 'Release'
         run: |
-          set -o pipefail
-          python -m pytest -q tests/python 2>&1 | tee pytest.log
+          python -m pytest -q tests/python
         env:
           CFDX_PRODUCTION_SOLVER: ${{ github.workspace }}/build/cfdx_production_solver
           CFDX_THERMAL_SOLVER: ${{ github.workspace }}/build/cfdx_thermal_solver
@@ -161,38 +159,6 @@ jobs:
           if [[ -f build/Testing/Temporary/LastTest.log ]]; then
             echo "=== CTest diagnostics ==="
             tail -n 500 build/Testing/Temporary/LastTest.log
-          fi
-
-          # TEMPORARY failure annotations (to be reverted before merge)
-          if [[ -f pytest.log ]]; then
-            tail -c 18000 pytest.log > pytest_tail.log || true
-            for i in 0 1 2 3; do
-              chunk=$(cut -c $((i * 4500 + 1))-$((i * 4500 + 4500)) pytest_tail.log || true)
-              if [ -n "$chunk" ]; then
-                echo "::error title=pytest tail (part $((i + 1)))::$(printf '%s' "$chunk" | tr '\n' '|')"
-              fi
-            done
-          fi
-          # TEMPORARY ctest stdout annotations (to be reverted before merge)
-          if [[ -f ctest.log ]]; then
-            summary=$(grep -A 60 "The following tests FAILED" ctest.log || true)
-            if [[ -n "$summary" ]]; then
-              echo "::error title=ctest failed list::$(printf '%s' "$summary" | head -c 4400 | tr '\n' '|')"
-            fi
-            tail -c 9000 ctest.log > ctest_tail.log || true
-            echo "::error title=ctest tail (recent)::$(tail -c 4500 ctest_tail.log | tr '\n' '|')"
-            echo "::error title=ctest tail (earlier)::$(head -c 4500 ctest_tail.log | tr '\n' '|')"
-          fi
-          if [[ -f build/Testing/Temporary/LastTest.log ]]; then
-            failed=$(grep -A 80 "The following tests FAILED" build/Testing/Temporary/LastTest.log || true)
-            if [[ -n "$failed" ]]; then
-              for i in 0 1 2 3; do
-                chunk=$(printf '%s' "$failed" | cut -c $((i * 4500 + 1))-$((i * 4500 + 4500)))
-                if [ -n "$chunk" ]; then
-                  echo "::error title=ctest failed tests (part $((i + 1)))::$(printf '%s' "$chunk" | tr '\n' '|')"
-                fi
-              done
-            fi
           fi
 
       - name: Upload diagnostics
