@@ -222,6 +222,8 @@ inline double patch_pair_view_factor(
     const ViewFactorPatch& source,
     const ViewFactorPatch& target)
 {
+    validate_view_factor_patch(source);
+    validate_view_factor_patch(target);
     const double rx = target.center[0]-source.center[0];
     const double ry = target.center[1]-source.center[1];
     const double rz = target.center[2]-source.center[2];
@@ -253,10 +255,7 @@ inline std::vector<double> estimate_view_factor_matrix(
 {
     if (patches.empty())
         throw std::invalid_argument("view-factor patch set is empty");
-    for (const auto& patch : patches) {
-        if (!std::isfinite(patch.area) || patch.area <= 0.0)
-            throw std::invalid_argument("view-factor patch area must be finite and positive");
-    }
+    for (const auto& patch : patches) validate_view_factor_patch(patch);
     const std::size_t n = patches.size();
     std::vector<double> F(n*n, 0.0);
     for (std::size_t i=0; i<n; ++i)
@@ -449,14 +448,21 @@ inline double radiation_norm(const std::array<double,3>& a)
 
 inline double radiation_triangle_area(const RadiationTriangle& t)
 {
-    return 0.5*radiation_norm(radiation_cross(
+    validate_radiation_triangle_coordinates(t);
+    const double area = 0.5*radiation_norm(radiation_cross(
         radiation_sub(t.b,t.a),radiation_sub(t.c,t.a)));
+    if (!std::isfinite(area))
+        throw std::overflow_error("radiation triangle area is not representable");
+    return area;
 }
 
 inline std::array<double,3> radiation_triangle_normal(const RadiationTriangle& t)
 {
+    validate_radiation_triangle_coordinates(t);
     const auto n=radiation_cross(radiation_sub(t.b,t.a),radiation_sub(t.c,t.a));
     const double l=radiation_norm(n);
+    if (!std::isfinite(l))
+        throw std::overflow_error("radiation triangle normal is not representable");
     if(!(l>0.0)) throw std::invalid_argument("degenerate radiation triangle");
     return radiation_scale(n,1.0/l);
 }
@@ -467,6 +473,10 @@ inline bool radiation_ray_triangle_hit(
     const RadiationTriangle& tri,
     double& distance)
 {
+    validate_radiation_triangle_coordinates(tri);
+    for (std::size_t axis = 0; axis < 3; ++axis)
+        if (!std::isfinite(origin[axis]) || !std::isfinite(direction[axis]))
+            throw std::invalid_argument("radiation ray origin and direction must be finite");
     constexpr double eps=1e-11;
     const auto e1=radiation_sub(tri.b,tri.a);
     const auto e2=radiation_sub(tri.c,tri.a);
@@ -504,6 +514,7 @@ struct RadiationAabb {
 
 inline RadiationAabb radiation_triangle_aabb(const RadiationTriangle& t)
 {
+    validate_radiation_triangle_coordinates(t);
     RadiationAabb b;
     for (int k=0;k<3;++k) {
         if (!std::isfinite(t.a[k]) || !std::isfinite(t.b[k]) ||
