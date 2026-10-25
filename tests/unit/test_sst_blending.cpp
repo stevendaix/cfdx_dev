@@ -1,7 +1,6 @@
 #include "cfdx/physics/sst_solver.h"
 #include "cfdx/physics/sst_production_coupling.h"
 #include "cfdx/physics/steady_incompressible_solver.h"
-#include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/sst_strain_rate.h"
 #include "cfdx/physics/sst_case_contract.h"
 #include "cfdx/io/cfdx_io/case_schema.h"
