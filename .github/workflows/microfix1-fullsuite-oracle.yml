@@ -16,11 +16,11 @@ concurrency:
 
 env:
   PR_HEAD_SHA: "32bd9a600b51a110e294e1cfa92a65c9a5142fe6"
-  STAMP: "2026-10-25-mf1r3"
+  STAMP: "2026-10-25-mf1r4"
 
 jobs:
   gui-full-suite:
-    name: GUI full-suite reproduction of the failing CI job
+    name: GUI full-suite verification with the hygiene candidate
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     steps:
@@ -34,6 +34,12 @@ jobs:
           git fetch --depth=1 origin "$PR_HEAD_SHA"
           test "$(git rev-parse FETCH_HEAD^{commit})" = "$PR_HEAD_SHA" || { echo "PR head unreachable: $PR_HEAD_SHA"; exit 1; }
           git worktree add /tmp/prhead "$PR_HEAD_SHA"
+
+      - name: Overlay the hygiene candidate (workspace restore before close)
+        run: |
+          cp "diag-tools/microfix1_candidates/test_capabilities_v2.py" \
+             "/tmp/prhead/tests/python/test_capabilities.py"
+          git -C /tmp/prhead diff --stat
 
       - name: Install GUI system dependencies
         run: |
@@ -80,20 +86,8 @@ jobs:
               tests/python/test_renderer_pyvista.py \
               tests/python/test_gui_3d.py \
               --tb=long -rA \
-              > "$GITHUB_WORKSPACE/diag-evidence/logs/microfix1_fullsuite_2026-10-25-mf1r3.log" 2>&1
-          echo "exit_code=$?" >> "$GITHUB_WORKSPACE/diag-evidence/logs/microfix1_fullsuite_2026-10-25-mf1r3.log"
-          exit 0
-
-      - name: Run test_capabilities.py alone (control)
-        working-directory: /tmp/prhead
-        env:
-          QT_QPA_PLATFORM: xcb
-        run: |
-          set +e
-          xvfb-run -a -s "-screen 0 1280x1024x24" \
-            python -m pytest -q tests/python/test_capabilities.py --tb=long -rA \
-              > "$GITHUB_WORKSPACE/diag-evidence/logs/microfix1_solo_2026-10-25-mf1r3.log" 2>&1
-          echo "exit_code=$?" >> "$GITHUB_WORKSPACE/diag-evidence/logs/microfix1_solo_2026-10-25-mf1r3.log"
+              > "$GITHUB_WORKSPACE/diag-evidence/logs/microfix1_fullsuite_2026-10-25-mf1r4.log" 2>&1
+          echo "exit_code=$?" >> "$GITHUB_WORKSPACE/diag-evidence/logs/microfix1_fullsuite_2026-10-25-mf1r4.log"
           exit 0
 
       - name: Meta (pinned refs)
@@ -101,15 +95,15 @@ jobs:
           {
             echo "pr_head=$PR_HEAD_SHA"
             echo "stamp=$STAMP"
-            echo "purpose=reproduce the CI GUI job failure on the full 8-file pytest list; solo control included"
-          } > "diag-evidence/logs/microfix1_fullsuite_meta_2026-10-25-mf1r3.txt"
+            echo "overlay=tests/python/test_capabilities.py from diag-tools/microfix1_candidates/test_capabilities_v2.py"
+            echo "purpose=verify the QSettings hygiene candidate on the full 8-file pytest list before pushing to the PR branch"
+          } > "diag-evidence/logs/microfix1_fullsuite_meta_2026-10-25-mf1r4.txt"
 
       - name: Commit evidence
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "diag-evidence/logs/microfix1_fullsuite_2026-10-25-mf1r3.log" \
-                  "diag-evidence/logs/microfix1_solo_2026-10-25-mf1r3.log" \
-                  "diag-evidence/logs/microfix1_fullsuite_meta_2026-10-25-mf1r3.txt"
-          git commit -m "diag: microfix1 full-suite GUI interference evidence (2026-10-25-mf1r3) [ci skip]"
+          git add "diag-evidence/logs/microfix1_fullsuite_2026-10-25-mf1r4.log" \
+                  "diag-evidence/logs/microfix1_fullsuite_meta_2026-10-25-mf1r4.txt"
+          git commit -m "diag: microfix1 hygiene candidate full-suite evidence (2026-10-25-mf1r4) [ci skip]"
           git push "https://x-access-token:${{ github.token }}@github.com/stevendaix/cfdx_dev.git" HEAD:ci/long-campaign-diagnostics
