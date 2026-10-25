@@ -787,7 +787,11 @@ reconstruct_scalar_transport_flux(
                             Gamma_f = 2.0 * go * gn / (go + gn);
                         }
                     }
-                    const double corr = Gamma_f * Sf_corr.dot(gf);
+                    // The reconstructed face flux is oriented owner-to-neighbour
+                    // and uses the physical diffusive flux -Gamma*grad(phi)·Sf.
+                    // The tangential contribution therefore has the opposite sign
+                    // to the deferred RHS correction used by assemble_scalar_equation.
+                    const double corr = -Gamma_f * Sf_corr.dot(gf);
                     if (std::isfinite(corr)) {
                         diff_flux += corr;
                     }
