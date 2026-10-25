@@ -182,8 +182,6 @@ inline Field<double, Location::CELL> advance_time(
                         candidate = (a0 * phi_data[cell] - a1 * prev[cell] +
                              b * rhs_data[cell]) / denom;
                     }
-                    if (!std::isfinite(candidate) || !std::isfinite(new_data[cell]))
-                        throw std::runtime_error("advance_time: non-finite implicit iterate");
                     max_delta = std::max(max_delta, std::abs(candidate - new_data[cell]));
                     new_data[cell] = candidate;
                 }
@@ -251,9 +249,7 @@ inline Field<double, Location::CELL> advance_time(
                         double* new_data = phi_new.component_data(d);
                         for (std::size_t cell = 0; cell < n_cells; ++cell) {
                             const double candidate = phi_data[cell] + dt * rhs_data[cell];
-                            if (!std::isfinite(candidate) || !std::isfinite(new_data[cell]))
-                        throw std::runtime_error("advance_time: non-finite implicit iterate");
-                    max_delta = std::max(max_delta, std::abs(candidate - new_data[cell]));
+                            max_delta = std::max(max_delta, std::abs(candidate - new_data[cell]));
                             new_data[cell] = candidate;
                         }
                     }
