@@ -117,6 +117,37 @@ int main() {
         EXPECT_FALSE(m.boundary().is_consistent(m.n_faces()));
     });
 
+    run_case("boundary_mesh_membership_complete", []() {
+        const Mesh m = make_unit_cube();
+        EXPECT_TRUE(m.boundary().is_consistent_with_mesh(m));
+    });
+
+    run_case("boundary_mesh_membership_orphan", []() {
+        Mesh m = make_unit_cube();
+        m.boundary().remove_patch(0);
+        EXPECT_FALSE(m.boundary().is_consistent_with_mesh(m));
+    });
+
+    run_case("boundary_mesh_membership_duplicate", []() {
+        Mesh m = make_unit_cube();
+        m.boundary().patch(0).face_ids.push_back(0);
+        EXPECT_FALSE(m.boundary().is_consistent_with_mesh(m));
+    });
+
+    run_case("boundary_mesh_membership_internal_face", []() {
+        Mesh m = make_unit_cube();
+        // Only the boundary-membership contract is under test here: a
+        // nonnegative neighbour makes this a non-boundary face.
+        m.ownership().set_neighbour(0, 1);
+        EXPECT_FALSE(m.boundary().is_consistent_with_mesh(m));
+    });
+
+    run_case("boundary_mesh_membership_out_of_range", []() {
+        Mesh m = make_unit_cube();
+        m.boundary().patch(0).face_ids[0] = static_cast<FaceIndex>(m.n_faces());
+        EXPECT_FALSE(m.boundary().is_consistent_with_mesh(m));
+    });
+
     run_case("validate_mesh_full_ok", []() {
         Mesh m = make_unit_cube();
         auto report = validate_mesh(m);

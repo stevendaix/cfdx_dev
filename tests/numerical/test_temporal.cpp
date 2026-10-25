@@ -12,50 +12,54 @@
 using namespace cfdx::core;
 using namespace cfdx::testing;
 
-// Helper: build a simple 1D mesh with 4 cells (thin 3D slab)
+// Four closed hexahedra: dx=1/4, dy=dz=1/10, V=1/400 each.
+// The former coplanar fixture had zero volume and only exercised the 1e30
+// fallback in the CFL/local-step routines.
 Mesh make_test_mesh() {
-    Mesh m;
-
-    m.points().resize(10);
-    m.points().set(0, 0.0, 0.0, 0.0);
-    m.points().set(1, 0.25, 0.0, 0.0);
-    m.points().set(2, 0.5, 0.0, 0.0);
-    m.points().set(3, 0.75, 0.0, 0.0);
-    m.points().set(4, 1.0, 0.0, 0.0);
-    m.points().set(5, 0.0, 0.0, 0.1);
-    m.points().set(6, 0.25, 0.0, 0.1);
-    m.points().set(7, 0.5, 0.0, 0.1);
-    m.points().set(8, 0.75, 0.0, 0.1);
-    m.points().set(9, 1.0, 0.0, 0.1);
-
-    m.faces().push_face({0, 5, 6, 1});
-    m.faces().push_face({1, 6, 7, 2});
-    m.faces().push_face({2, 7, 8, 3});
-    m.faces().push_face({3, 8, 9, 4});
-    m.faces().push_face({0, 1, 6, 5});
-    m.faces().push_face({4, 9, 8, 3});
-
-    m.ownership().resize(6);
-    m.ownership().set_owner(0, 0); m.ownership().set_neighbour(0, 1);
-    m.ownership().set_owner(1, 1); m.ownership().set_neighbour(1, 2);
-    m.ownership().set_owner(2, 2); m.ownership().set_neighbour(2, 3);
-    m.ownership().set_owner(3, 3); m.ownership().set_neighbour(3, FaceOwnership::BOUNDARY);
-    m.ownership().set_owner(4, 0); m.ownership().set_neighbour(4, FaceOwnership::BOUNDARY);
-    m.ownership().set_owner(5, 3); m.ownership().set_neighbour(5, FaceOwnership::BOUNDARY);
-
-    m.cells().push_cell({0, 4});
-    m.cells().push_cell({0, 1});
-    m.cells().push_cell({1, 2});
-    m.cells().push_cell({2, 3, 5});
-
-    BoundaryPatches bp;
-    bp.add_patch("inlet", PatchType::INLET);
-    bp.patch(0).face_ids = {4};
-    bp.add_patch("outlet", PatchType::OUTLET);
-    bp.patch(1).face_ids = {5};
-    m.set_boundary(bp);
-
-    return m;
+    constexpr std::size_t cells=4;
+    Mesh mesh;
+    mesh.points().resize(4*(cells+1));
+    for(std::size_t i=0;i<=cells;++i) {
+        const auto b=4*i;
+        const double x=.25*static_cast<double>(i);
+        mesh.points().set(b,  x,0.0,0.0);
+        mesh.points().set(b+1,x,.1,0.0);
+        mesh.points().set(b+2,x,.1,.1);
+        mesh.points().set(b+3,x,0.0,.1);
+        if(i==0) mesh.faces().push_face({b,b+3,b+2,b+1});
+        else mesh.faces().push_face({b,b+1,b+2,b+3});
+    }
+    for(std::size_t i=0;i<cells;++i) {
+        const auto b=4*i;
+        const auto side=mesh.n_faces();
+        mesh.faces().push_face({b,b+4,b+7,b+3});
+        mesh.faces().push_face({b+1,b+2,b+6,b+5});
+        mesh.faces().push_face({b,b+1,b+5,b+4});
+        mesh.faces().push_face({b+3,b+7,b+6,b+2});
+        mesh.cells().push_cell({i,i+1,side,side+1,side+2,side+3});
+    }
+    mesh.ownership().resize(mesh.n_faces());
+    for(std::size_t i=0;i<=cells;++i) {
+        mesh.ownership().set_owner(i,i==0 ? 0 : i-1);
+        mesh.ownership().set_neighbour(i,i>0 && i<cells
+            ? static_cast<CellIndex>(i) : FaceOwnership::BOUNDARY);
+    }
+    for(std::size_t i=0;i<cells;++i)
+        for(std::size_t side=0;side<4;++side) {
+            const auto face=cells+1+4*i+side;
+            mesh.ownership().set_owner(face,i);
+            mesh.ownership().set_neighbour(face,FaceOwnership::BOUNDARY);
+        }
+    BoundaryPatches patches;
+    patches.add_patch("inlet",PatchType::INLET);
+    patches.patch(0).face_ids={0};
+    patches.add_patch("outlet",PatchType::OUTLET);
+    patches.patch(1).face_ids={cells};
+    patches.add_patch("walls",PatchType::WALL);
+    for(std::size_t face=cells+1;face<mesh.n_faces();++face)
+        patches.patch(2).face_ids.push_back(face);
+    mesh.set_boundary(patches);
+    return mesh;
 }
 
 // Simple RHS for testing: dφ/dt = -φ (decay)
@@ -71,37 +75,47 @@ void decay_rhs(const Field<double, Location::CELL>& phi, Field<double, Location:
 
 int main() {
     run_case("euler_explicit_decay", [&]() {
-        Mesh mesh = make_test_mesh();
         Field<double, Location::CELL> phi(4, "phi", "1", 1);
         phi.fill(1.0);
 
         double dt = 0.1;
-        auto phi_new = advance_time(TimeScheme::EULER_EXPLICIT, phi, dt, decay_rhs);
+        auto phi_new = advance_time(phi, dt, decay_rhs, TimeScheme::EULER_EXPLICIT);
 
         // Exact: φ(t) = φ0 * exp(-t)
         // Euler: φ^{n+1} = φ^n * (1 - dt)
         EXPECT_NEAR(phi_new(0), 1.0 * (1.0 - dt), 1e-12);
     });
 
+    run_case("euler_implicit_decay", []() {
+        Field<double,Location::CELL> phi(4,"phi","1",2);
+        for(std::size_t cell=0;cell<phi.size();++cell) {
+            phi(cell,0)=1.0+.1*static_cast<double>(cell);
+            phi(cell,1)=.5+.2*static_cast<double>(cell);
+        }
+        constexpr double dt=.1;
+        const auto result=advance_time(phi,dt,decay_rhs,TimeScheme::EULER_IMPLICIT);
+        for(std::size_t cell=0;cell<phi.size();++cell)
+            for(std::size_t component=0;component<phi.dimension();++component)
+                EXPECT_NEAR(result(cell,component),phi(cell,component)/(1.0+dt),1e-12);
+    });
+
     run_case("crank_nicolson_decay", [&]() {
-        Mesh mesh = make_test_mesh();
         Field<double, Location::CELL> phi(4, "phi", "1", 1);
         phi.fill(1.0);
 
         double dt = 0.1;
-        auto phi_new = advance_time(TimeScheme::CRANK_NICOLSON, phi, dt, decay_rhs);
+        auto phi_new = advance_time(phi, dt, decay_rhs, TimeScheme::CRANK_NICOLSON);
 
-        // CN predictor-corrector:
-        // Predictor: φ* = φ^n + Δt * RHS(φ^n) = 1.0 + 0.1 * (-1.0) = 0.9
-        // Corrector: φ^{n+1} = φ^n + 0.5*Δt * (RHS(φ^n) + RHS(φ*))
-        // = 1.0 + 0.5*0.1 * (-1.0 + -0.9) = 1.0 - 0.05 * 1.9 = 1.0 - 0.095 = 0.905
-        double phi_star = 1.0 + dt * (-1.0);
-        double expected = 1.0 + 0.5 * dt * (-1.0 + -phi_star);
-        EXPECT_NEAR(phi_new(0), expected, 1e-12);
+        // Solve (1+dt/2) phi^{n+1} = (1-dt/2) phi^n.
+        // The former oracle was Heun's explicit predictor-corrector, not CN.
+        const double expected=(1.0-.5*dt)/(1.0+.5*dt);
+        for(std::size_t cell=0;cell<phi.size();++cell) {
+            EXPECT_NEAR(phi_new(cell),expected,1e-12);
+            EXPECT_NEAR(phi_new(cell)-phi(cell)+.5*dt*(phi(cell)+phi_new(cell)),0.0,1e-12);
+        }
     });
 
     run_case("bdf2_requires_history", [&]() {
-        Mesh mesh = make_test_mesh();
         Field<double, Location::CELL> phi(4, "phi", "1", 1);
         phi.fill(1.0);
 
@@ -109,16 +123,40 @@ int main() {
         ctx.initialize(phi);
 
         double dt = 0.1;
-        // First step (falls back to Euler)
-        auto phi1 = advance_time(TimeScheme::BDF2, phi, dt, decay_rhs, &ctx);
-        EXPECT_NEAR(phi1(0), 1.0 * (1.0 - dt), 1e-12);
+        // Bootstrap solves (1+dt) phi1 = phi0 by implicit Euler.
+        EXPECT_FALSE(ctx.has_prev);
+        const auto phi1=advance_time(phi,dt,decay_rhs,TimeScheme::BDF2,&ctx);
+        EXPECT_TRUE(ctx.has_prev);
+        EXPECT_NEAR(ctx.dt_prev,dt,1e-15);
+        for(std::size_t cell=0;cell<phi.size();++cell) {
+            EXPECT_NEAR(phi1(cell),1.0/(1.0+dt),1e-12);
+            EXPECT_NEAR(ctx.phi_prev(cell),phi(cell),1e-15);
+            EXPECT_NEAR(ctx.phi_curr(cell),phi1(cell),1e-15);
+        }
 
-        // Second step (uses BDF2 explicit):
-        // φ2 = (4φ1 - φ0 + 2Δt * RHS(φ1)) / 3
-        // RHS(φ1) = -φ1
-        auto phi2 = advance_time(TimeScheme::BDF2, phi1, dt, decay_rhs, &ctx);
-        double expected = (4.0 * phi1(0) - 1.0 + 2.0 * dt * (-phi1(0))) / 3.0;
-        EXPECT_NEAR(phi2(0), expected, 1e-12);
+        // BDF2: (3+2dt) phi2 = 4 phi1 - phi0.
+        const auto phi2=advance_time(phi1,dt,decay_rhs,TimeScheme::BDF2,&ctx);
+        for(std::size_t cell=0;cell<phi.size();++cell) {
+            const double expected=(4.0*phi1(cell)-phi(cell))/(3.0+2.0*dt);
+            EXPECT_NEAR(phi2(cell),expected,1e-12);
+            EXPECT_NEAR((3.0+2.0*dt)*phi2(cell)-4.0*phi1(cell)+phi(cell),0.0,1e-12);
+            EXPECT_NEAR(ctx.phi_prev(cell),phi1(cell),1e-15);
+            EXPECT_NEAR(ctx.phi_curr(cell),phi2(cell),1e-15);
+        }
+    });
+
+    run_case("bdf2_variable_step_implicit_decay", []() {
+        Field<double,Location::CELL> phi(4,"phi","1",1);
+        phi.fill(1.0);
+        TimeIntegrationContext ctx(4,1,"phi");
+        ctx.initialize(phi);
+        const auto first=advance_time(phi,.1,decay_rhs,TimeScheme::BDF2,&ctx);
+        // dt_new / dt_old = 2: 5*phi2 - 9*phi1 + 4*phi0 = .6*RHS(phi2).
+        // This closed-form oracle does not call bdf2_coefficients().
+        const auto second=advance_time(first,.2,decay_rhs,TimeScheme::BDF2,&ctx);
+        for(std::size_t cell=0;cell<phi.size();++cell)
+            EXPECT_NEAR(second(cell),(9.0*first(cell)-4.0*phi(cell))/5.6,1e-12);
+        EXPECT_NEAR(ctx.dt_prev,.2,1e-15);
     });
 
     run_case("compute_cfl_time_step", [&]() {
@@ -133,9 +171,11 @@ int main() {
 
         double dt = compute_cfl_time_step(mesh, velocity, 0.5, 0.0);
 
-        // dt should be positive and finite (mesh dependent)
-        EXPECT_TRUE(dt > 0.0);
-        EXPECT_TRUE(std::isfinite(dt));
+        // The existing API uses h=V^(1/3), with V=.25*.1*.1.
+        const double expected=.5*std::cbrt(.0025)/10.0;
+        EXPECT_NEAR(dt,expected,1e-12);
+        EXPECT_NEAR(compute_cfl_time_step(mesh,velocity,.5,2.0),
+                    .5*std::cbrt(.0025)/12.0,1e-12);
     });
 
     run_case("adaptive_time_stepper", [&]() {
@@ -171,11 +211,10 @@ int main() {
 
         auto dt_local = compute_local_time_steps(mesh, velocity, 0.5);
 
-        // All dt should be positive and finite
-        for (std::size_t c = 0; c < 4; ++c) {
-            EXPECT_TRUE(dt_local[c] > 0.0);
-            EXPECT_TRUE(std::isfinite(dt_local[c]));
-        }
+        // Equal positive volumes make the expected local dt independent of
+        // the geometry routine under test. A 1e30 fallback must fail.
+        for(std::size_t c=0;c<4;++c)
+            EXPECT_NEAR(dt_local[c],.5*std::cbrt(.0025)/velocity(c,0),1e-12);
 
         // Apply local time stepping
         Field<double, Location::CELL> phi(4, "phi", "1", 1);

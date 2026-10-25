@@ -3436,13 +3436,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
-            if (rp.status != cfdx::core::SolverStatus::CONVERGED)
-                throw NonlinearRetryableFailure(
-                    "solve_steady_incompressible: pressure-correction solve did not converge "
-                    "(status=" + std::to_string(static_cast<int>(rp.status)) +
-                    ", iterations=" + std::to_string(rp.iterations) +
-                    ", residual=" + std::to_string(rp.residual) +
-                    ", relative=" + std::to_string(rp.residual_relative) + ")");
+            if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
+                std::ostringstream message;
+                message << "solve_steady_incompressible: pressure-correction solve did not converge "
+                        << "(status=" << static_cast<int>(rp.status)
+                        << ", iterations=" << rp.iterations
+                        << ", residual=" << std::scientific
+                        << std::setprecision(std::numeric_limits<double>::max_digits10)
+                        << rp.residual
+                        << ", relative=" << rp.residual_relative << ")";
+                throw NonlinearRetryableFailure(message.str());
+            }
 
             // Relax the physical pressure exactly once. The reference is a
             // gauge: enforce it by a uniform shift, never by overwriting one

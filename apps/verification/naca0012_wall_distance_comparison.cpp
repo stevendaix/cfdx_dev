@@ -286,6 +286,9 @@ int main(int argc,char** argv) {
                       << row.elapsed_ms << ',' << (row.converged ? "true" : "false") << ','
                       << row.stopping_reason << '\n';
         std::cout << "csv=" << output_path << '\n';
+        for(const auto& row:rows)
+            if(row.invalid_samples!=0)
+                throw std::runtime_error("invalid fluid distance field for "+row.method);
         return 0;
     } catch(const std::exception& error) {
         std::cerr << "NACA0012 wall-distance comparison failed: " << error.what() << '\n';

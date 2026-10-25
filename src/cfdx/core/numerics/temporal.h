@@ -135,6 +135,17 @@ inline Field<double, Location::CELL> advance_time(
     if (ctx && (ctx->n_cells != n_cells || ctx->field_dim != dim)) {
         throw std::invalid_argument("advance_time: time-integration context does not match field shape");
     }
+    const auto require_finite = [&](const Field<double, Location::CELL>& field,
+                                    const char* message) {
+        for (std::size_t d = 0; d < dim; ++d) {
+            for (std::size_t cell = 0; cell < n_cells; ++cell) {
+                if (!std::isfinite(field.component_data(d)[cell])) {
+                    throw std::runtime_error(message);
+                }
+            }
+        }
+    };
+    require_finite(phi, "advance_time: input field contains a non-finite value");
     Field<double, Location::CELL> phi_new(
         n_cells, "phi_new", phi.metadata().unit, dim);
 
@@ -160,6 +171,7 @@ inline Field<double, Location::CELL> advance_time(
         predictor();
         for (int iteration = 0; iteration < max_iterations; ++iteration) {
             rhs_func(phi_new, rhs_iter);
+            require_finite(rhs_iter, "advance_time: implicit RHS contains a non-finite value");
             double max_delta = 0.0;
             for (std::size_t d = 0; d < dim; ++d) {
                 const double* old_data = phi_new.component_data(d);
@@ -181,6 +193,9 @@ inline Field<double, Location::CELL> advance_time(
                         bdf2_coefficients(ctx->dt_prev, dt, a0, a1, denom, b);
                         candidate = (a0 * phi_data[cell] - a1 * prev[cell] +
                              b * rhs_data[cell]) / denom;
+                    }
+                    if (!std::isfinite(candidate)) {
+                        throw std::runtime_error("advance_time: implicit candidate contains a non-finite value");
                     }
                     max_delta = std::max(max_delta, std::abs(candidate - new_data[cell]));
                     new_data[cell] = candidate;
@@ -242,6 +257,7 @@ inline Field<double, Location::CELL> advance_time(
                 }
                 for (int iteration = 0; iteration < max_iterations; ++iteration) {
                     rhs_func(phi_new, rhs_iter);
+                    require_finite(rhs_iter, "advance_time: BDF2 bootstrap RHS contains a non-finite value");
                     double max_delta = 0.0;
                     for (std::size_t d = 0; d < dim; ++d) {
                         const double* phi_data = phi.component_data(d);
@@ -249,6 +265,9 @@ inline Field<double, Location::CELL> advance_time(
                         double* new_data = phi_new.component_data(d);
                         for (std::size_t cell = 0; cell < n_cells; ++cell) {
                             const double candidate = phi_data[cell] + dt * rhs_data[cell];
+                            if (!std::isfinite(candidate)) {
+                                throw std::runtime_error("advance_time: BDF2 bootstrap candidate contains a non-finite value");
+                            }
                             max_delta = std::max(max_delta, std::abs(candidate - new_data[cell]));
                             new_data[cell] = candidate;
                         }
@@ -264,6 +283,8 @@ inline Field<double, Location::CELL> advance_time(
             break;
     }
 
+    // Reject arithmetic overflow and invalid iterates before committing history.
+    require_finite(phi_new, "advance_time: output field contains a non-finite value");
     if (ctx) {
         ctx->dt_prev = dt;
         ctx->shift(phi_new);

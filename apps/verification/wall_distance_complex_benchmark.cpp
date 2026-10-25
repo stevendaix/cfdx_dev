@@ -204,5 +204,8 @@ int main(int argc,char** argv) {
     // gate for the benchmark infrastructure, not a physical validation claim.
     if(rows.front().l2>1e-14 || rows.front().near_l2>1e-14)
         throw std::runtime_error("exact wall-distance reference is not self-consistent");
+    for(const auto& row:rows)
+        if(row.invalid!=0)
+            throw std::runtime_error("invalid fluid distance field for "+row.method);
     return 0;
 }

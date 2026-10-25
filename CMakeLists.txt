@@ -419,12 +419,54 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endmacro()
 
+<<<<<<< HEAD
     # Focused thermal audit regressions, extracted from PR #1096 without its
     # unrelated changes or truncated build configuration.
     add_cfdx_test(test_audit_cht_time tests/audit/test_audit_cht_time.cpp)
     add_cfdx_test(test_audit_energy_boundary_metric tests/audit/test_audit_energy_boundary_metric.cpp)
     set_tests_properties(test_audit_cht_time test_audit_energy_boundary_metric
         PROPERTIES LABELS "audit;regression;thermal" TIMEOUT 60)
+=======
+    # Recovered standalone regressions: these sources previously had no CTest
+    # target, so API drift in them was invisible to normal builds.
+    add_cfdx_test(test_temporal tests/numerical/test_temporal.cpp)
+    add_cfdx_test(test_discretization_verification tests/validation/test_discretization_verification.cpp)
+    add_cfdx_test(test_matrix_diagnostics tests/unit/test_matrix_diagnostics.cpp)
+    add_cfdx_test(test_application_layer tests/unit/test_application_layer.cpp)
+    add_cfdx_test(test_memory_budget tests/unit/test_memory_budget.cpp)
+    add_cfdx_test(test_memory_planner tests/unit/test_memory_planner.cpp)
+    set_tests_properties(test_temporal test_discretization_verification PROPERTIES
+        LABELS "numerical;verification;recovered")
+    set_tests_properties(test_matrix_diagnostics test_application_layer
+        test_memory_budget test_memory_planner PROPERTIES LABELS "unit;recovered")
+
+    if(CFDX_ENABLE_MPI AND MPI_FOUND)
+        set(CFDX_RECOVERED_MPIEXEC_NUMPROCS_FLAG "${MPIEXEC_NUMPROCS_FLAG}")
+        if(CFDX_RECOVERED_MPIEXEC_NUMPROCS_FLAG STREQUAL "")
+            set(CFDX_RECOVERED_MPIEXEC_NUMPROCS_FLAG "-n")
+        endif()
+        add_executable(test_mpi_deterministic_fused tests/unit/test_mpi_deterministic_fused.cpp)
+        target_link_libraries(test_mpi_deterministic_fused PRIVATE cfdx_core MPI::MPI_CXX)
+        add_test(NAME test_mpi_deterministic_fused
+            COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_RECOVERED_MPIEXEC_NUMPROCS_FLAG} 2
+                ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_deterministic_fused> ${MPIEXEC_POSTFLAGS})
+        set_tests_properties(test_mpi_deterministic_fused PROPERTIES
+            LABELS "unit;mpi;recovered" PROCESSORS 2)
+
+        # This source calls MPI-IO entry points directly and requires two ranks.
+        # Do not substitute a serial HDF5 build or a one-rank smoke test.
+        if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND AND HDF5_IS_PARALLEL)
+            add_executable(test_parallel_hdf5 tests/unit/test_parallel_hdf5.cpp)
+            target_link_libraries(test_parallel_hdf5 PRIVATE cfdx_core MPI::MPI_CXX)
+            target_include_directories(test_parallel_hdf5 PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+            add_test(NAME test_parallel_hdf5
+                COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_RECOVERED_MPIEXEC_NUMPROCS_FLAG} 2
+                    ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_parallel_hdf5> ${MPIEXEC_POSTFLAGS})
+            set_tests_properties(test_parallel_hdf5 PROPERTIES
+                LABELS "unit;mpi;hdf5;recovered" PROCESSORS 2)
+        endif()
+    endif()
+>>>>>>> 7d91a2e7 (Apply CFDX correction candidate patch (single integration branch))
 
     # N8 physical/production qualification reuses the existing validation
     # executables and records a machine-readable campaign report. It is
@@ -678,6 +720,9 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_n11_bound_reporting_hardening tests/unit/test_n11_bound_reporting_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_wall_distance_methods tests/unit/test_wall_distance_methods.cpp)
+    add_cfdx_test(test_wall_distance_invalid_results tests/unit/test_wall_distance_invalid_results.cpp)
+    add_cfdx_test(test_wall_distance_godunov_ridges tests/unit/test_wall_distance_godunov_ridges.cpp)
+    add_cfdx_test(test_wall_distance_advection_residual tests/unit/test_wall_distance_advection_residual.cpp)
     add_test(NAME benchmark_wall_distance_naca0012
         COMMAND cfdx_naca0012_wall_distance_comparison
                 ${CMAKE_SOURCE_DIR}/tests/data/su2/mesh_NACA0012_inv.su2
@@ -1016,6 +1061,18 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         if(CFDX_MPIEXEC_NUMPROCS_FLAG STREQUAL "")
             set(CFDX_MPIEXEC_NUMPROCS_FLAG "-n")
         endif()
+        # Only Open MPI accepts --oversubscribe. MPICH/Hydra rejects it
+        # before starting the restart reader. Preserve three-rank readers on
+        # two-core Open MPI CI workers without sending a vendor flag to all MPI.
+        set(CFDX_MPIEXEC_OVERSUBSCRIBE_FLAG "")
+        execute_process(COMMAND "${MPIEXEC_EXECUTABLE}" --version
+            OUTPUT_VARIABLE CFDX_MPIEXEC_VERSION_OUTPUT
+            ERROR_VARIABLE CFDX_MPIEXEC_VERSION_ERROR
+            RESULT_VARIABLE CFDX_MPIEXEC_VERSION_RESULT)
+        if(CFDX_MPIEXEC_VERSION_RESULT EQUAL 0 AND
+           "${CFDX_MPIEXEC_VERSION_OUTPUT}${CFDX_MPIEXEC_VERSION_ERROR}" MATCHES "Open MPI|OpenRTE")
+            set(CFDX_MPIEXEC_OVERSUBSCRIBE_FLAG "--oversubscribe")
+        endif()
         add_test(NAME test_mpi_deterministic
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_deterministic> ${MPIEXEC_POSTFLAGS})
@@ -1055,7 +1112,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                              --reference ${CMAKE_BINARY_DIR}/production_poisson_reference.h5
                              ${MPIEXEC_POSTFLAGS})
             add_test(NAME test_production_mpi_poisson_reader
-                     COMMAND ${MPIEXEC_EXECUTABLE} --oversubscribe ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_OVERSUBSCRIBE_FLAG} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
                              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:cfdx_mpi_poisson_restart>
                              --mode reader
                              --checkpoint ${CMAKE_BINARY_DIR}/production_poisson_checkpoint.h5
@@ -1067,7 +1124,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                      COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_restart_writer> ${MPIEXEC_POSTFLAGS})
             add_test(NAME test_phase5_restart_reader
-                     COMMAND ${MPIEXEC_EXECUTABLE} --oversubscribe ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_OVERSUBSCRIBE_FLAG} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
                              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_restart_reader> ${MPIEXEC_POSTFLAGS})
             set_tests_properties(test_phase5_restart_reader PROPERTIES DEPENDS test_phase5_restart_writer)
         endif()
@@ -1134,6 +1191,13 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
     endif()
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_cpp_harness_execution_contract
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/scripts/check_cpp_test_execution.py
+                    --root ${CMAKE_SOURCE_DIR} --self-test)
+        set_tests_properties(test_cpp_harness_execution_contract PROPERTIES
+            LABELS "audit;test-infrastructure"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
         add_test(NAME test_n9_s8_naca0012_contract
             COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tests/python/test_n9_s8_naca0012_contract.py)

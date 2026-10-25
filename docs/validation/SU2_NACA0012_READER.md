@@ -83,3 +83,22 @@ The reader qualification passes only when:
 
 No CFDX numerical result is compared here. Numerical validation remains a
 separate solver-level campaign.
+
+## Reproducible command and remaining fidelity limits (2026-10-25)
+
+Run the explicitly limited reader scope with:
+
+```bash
+python validation/run_su2_naca0012.py --reader-only --output-dir reader-evidence
+```
+
+The JSON report separates input parsing from boundary/initial-condition
+fidelity, canonical numerical conversion and physical simulation. Without
+`--reader-only`, the legacy command exits nonzero when the full aerodynamic
+validation cannot run. It never substitutes another scheme for unsupported JST
+and never presents an isentropic static-pressure expression as a NACA Cp oracle.
+
+The current adapter's Euler wall, farfield velocity and velocity-vector scaling
+still require correction; a reader PASS only covers the explicitly listed
+format checks. See [the importer repair and audit record](NACA0012_IMPORT_REPAIR_2026-10-25.md)
+for measured counterexamples and the separate NASA/TMR topology repair.

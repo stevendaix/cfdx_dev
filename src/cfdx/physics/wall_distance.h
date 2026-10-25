@@ -41,7 +41,8 @@ enum class WallDistanceConvergenceStatus {
     MAX_ITER,
     RESIDUAL_TOO_HIGH,
     RESIDUAL_STAGNATION,
-    NOT_REPORTED
+    NOT_REPORTED,
+    INVALID_FIELD
 };
 
 struct WallDistanceResult {
@@ -951,8 +952,10 @@ inline double godunov_gradient_at(const WallDistanceBvh& bvh,
             if(k>0) face(g.index(i,j,k-1),true,g.spacing.z,4);
             if(k+1<g.nz) face(g.index(i,j,k+1),false,g.spacing.z,5);
         }
-        return std::sqrt(std::max(dm,0.0)*std::max(dm,0.0)
-                       + std::min(dp,0.0)*std::min(dp,0.0));
+        // The upwind Eikonal Hamiltonian chooses one direction per axis.
+        // Adding both squared slopes double-counts a medial ridge and
+        // disagrees with eikonal_update(), which uses the nearest neighbour.
+        return std::max({dm,-dp,0.0});
     };
     const double gx=component(0), gy=component(1), gz=component(2);
     return std::sqrt(gx*gx+gy*gy+gz*gz);
@@ -997,8 +1000,10 @@ inline double godunov_gradient_at(const std::vector<double>& d,const WallDistanc
                 else if(std::isfinite(d[p])) dp=(d[p]-d[id])/g.spacing.z;
             }
         }
-        return std::sqrt(std::max(dm,0.0)*std::max(dm,0.0)
-                       + std::min(dp,0.0)*std::min(dp,0.0));
+        // The upwind Eikonal Hamiltonian chooses one direction per axis.
+        // Adding both squared slopes double-counts a medial ridge and
+        // disagrees with eikonal_update(), which uses the nearest neighbour.
+        return std::max({dm,-dp,0.0});
     };
     const double gx=component(0), gy=component(1), gz=component(2);
     return std::sqrt(gx*gx+gy*gy+gz*gz);
@@ -2079,13 +2084,28 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
                                                         const std::vector<unsigned char>* fixed,
                                                         double advection_diffusion_gamma,
                                                         const WallDistanceBvh* bvh) {
+    if(d.size()!=g.points.size() || g.solid.size()!=g.points.size() ||
+       (fixed && fixed->size()!=g.points.size()))
+        throw std::invalid_argument("wall_distance_pde_residual_inf: field/grid size mismatch");
     double rmax=0.0;
+    std::size_t fluid_samples=0;
+    const auto accumulate=[&](double residual) {
+        rmax=std::isfinite(residual)
+            ? std::max(rmax,std::abs(residual))
+            : std::numeric_limits<double>::infinity();
+    };
     for(std::size_t id=0;id<d.size();++id) {
-        if(g.solid[id] || !std::isfinite(d[id]) || (fixed && (*fixed)[id])) continue;
+        if(g.solid[id]) continue;
+        ++fluid_samples;
+        // A missing or corrupt value is not a zero PDE residual. Check fixed
+        // seeds too: otherwise an invalid boundary field can certify a solve.
+        if(!std::isfinite(d[id]) || d[id]<0.0)
+            return std::numeric_limits<double>::infinity();
+        if(fixed && (*fixed)[id]) continue;
         if(method==WallDistanceMethod::EIKONAL) {
             const double grad=bvh ? godunov_gradient_at(*bvh,d,g,id)
                                   : godunov_gradient_at(d,g,id);
-            rmax=std::max(rmax,std::abs(grad-1.0));
+            accumulate(grad-1.0);
             continue;
         }
         if(method==WallDistanceMethod::HAMILTON_JACOBI ||
@@ -2095,7 +2115,7 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
                                   : godunov_gradient_at(d,g,id);
             const double lap=bvh ? laplacian_at(*bvh,d,g,id)
                                  : laplacian_at(d,g,id);
-            rmax=std::max(rmax,std::abs(grad-1.0-gamma*lap));
+            accumulate(grad-1.0-gamma*lap);
             continue;
         }
         if(method==WallDistanceMethod::ADVECTION_DIFFUSION) {
@@ -2117,30 +2137,34 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
             };
             const double gx=one(0), gy=one(1), gz=one(2);
             const double gn=std::sqrt(gx*gx+gy*gy+gz*gz);
-            if(!(gn>1e-14)) continue;
-            const double ux=gx/gn, uy=gy/gn, uz=gz/gn;
-            auto upwind=[&](double u,int axis)->double {
-                if(axis==0) {
-                    if(u>0.0 && i>0) return u*(d[id]-value(g.index(i-1,j,k)))/g.spacing.x;
-                    if(u<0.0 && i+1<g.nx) return u*(value(g.index(i+1,j,k))-d[id])/g.spacing.x;
-                } else if(axis==1) {
-                    if(u>0.0 && j>0) return u*(d[id]-value(g.index(i,j-1,k)))/g.spacing.y;
-                    if(u<0.0 && j+1<g.ny) return u*(value(g.index(i,j+1,k))-d[id])/g.spacing.y;
-                } else {
-                    if(u>0.0 && k>0) return u*(d[id]-value(g.index(i,j,k-1)))/g.spacing.z;
-                    if(u<0.0 && k+1<g.nz) return u*(value(g.index(i,j,k+1))-d[id])/g.spacing.z;
-                }
-                return 0.0;
+            const double ux=gn>1e-14 ? gx/gn : 0.0;
+            const double uy=gn>1e-14 ? gy/gn : 0.0;
+            const double uz=gn>1e-14 ? gz/gn : 0.0;
+            // Certify the same discrete equation as the in-place update in
+            // advection_diffusion_distance(): normalized signed upwind U,
+            // first-order face transport, and gamma/(h*delta) diffusion.
+            // Godunov |grad d| plus a Shortley-Weller Laplacian is a different
+            // operator and can stay O(1) after this solve reaches roundoff.
+            double lhs=0.0;
+            const auto face=[&](std::size_t q,bool exists,bool minus_side,double h,double u) {
+                if(!exists) return;
+                const double delta=(bvh && g.solid[q])
+                    ? poisson_wall_offset(*bvh,g.points[id],g.points[q],h) : h;
+                const double difference=d[id]-value(q);
+                lhs+=advection_diffusion_gamma*difference/(h*delta);
+                if((minus_side && u>0.0) || (!minus_side && u<0.0))
+                    lhs+=std::abs(u)*difference/delta;
             };
-            const double transport=bvh ? godunov_gradient_at(*bvh,d,g,id)
-                                        : upwind(ux,0)+upwind(uy,1)+upwind(uz,2);
-            const double lap=bvh ? laplacian_at(*bvh,d,g,id)
-                                 : laplacian_at(d,g,id);
-            rmax=std::max(rmax,std::abs(
-                transport-1.0-advection_diffusion_gamma*lap));
+            face(i>0?g.index(i-1,j,k):0,i>0,true,g.spacing.x,ux);
+            face(i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,false,g.spacing.x,ux);
+            face(j>0?g.index(i,j-1,k):0,j>0,true,g.spacing.y,uy);
+            face(j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny,false,g.spacing.y,uy);
+            face(k>0?g.index(i,j,k-1):0,k>0,true,g.spacing.z,uz);
+            face(k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,false,g.spacing.z,uz);
+            accumulate(lhs-1.0);
         }
     }
-    return rmax;
+    return fluid_samples>0 ? rmax : std::numeric_limits<double>::infinity();
 }
 
 // Default arguments deliberately not applied: callers must state the method
@@ -2251,8 +2275,21 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             break;
         }
     }
-    for(std::size_t i=0;i<r.distance.size();++i)
-        if(g.solid[i] || !std::isfinite(r.distance[i]) || r.distance[i]<0.0) r.valid[i]=0;
+    std::size_t fluid_samples=0, invalid_fluid_samples=0;
+    for(std::size_t i=0;i<r.distance.size();++i) {
+        if(g.solid[i]) { r.valid[i]=0; continue; }
+        ++fluid_samples;
+        if(!std::isfinite(r.distance[i]) || r.distance[i]<0.0) {
+            r.valid[i]=0;
+            ++invalid_fluid_samples;
+        }
+    }
+    if(fluid_samples==0 || invalid_fluid_samples!=0) {
+        r.converged=false;
+        r.residual_inf=std::numeric_limits<double>::infinity();
+        r.stopping_reason=fluid_samples==0 ? "no_fluid_samples" : "invalid_distance_field";
+        r.convergence_status=WallDistanceConvergenceStatus::INVALID_FIELD;
+    }
     return r;
 }
 
@@ -2272,24 +2309,41 @@ struct WallDistanceBenchmarkMetrics {
     double near_wall_l2_relative{0.0};
     double monotonicity_violations{0.0};
     std::size_t samples{0};
+    std::size_t invalid_samples{0};
+    std::size_t near_wall_samples{0};
 };
 
 inline WallDistanceBenchmarkMetrics compare_wall_distance(const WallDistanceGrid& g,
                                                           const std::vector<double>& ref,
                                                           const std::vector<double>& value,
                                                           double near_wall) {
+    if(ref.size()!=g.points.size() || value.size()!=g.points.size() ||
+       g.solid.size()!=g.points.size() || g.neighbours.size()!=g.points.size())
+        throw std::invalid_argument("compare_wall_distance: field/grid size mismatch");
+    if(!std::isfinite(near_wall) || near_wall<0.0)
+        throw std::invalid_argument("compare_wall_distance: invalid near-wall width");
     double sum2=0.0, ref2=0.0, maxe=0.0, max_ref=0.0, near_sum2=0.0, near_ref2=0.0;
-    std::size_t n=0, near_n=0, violations=0;
+    std::size_t n=0, near_n=0, violations=0, invalid=0;
     for(std::size_t i=0;i<ref.size();++i) {
-        if(g.solid[i] || !std::isfinite(ref[i]) || !std::isfinite(value[i])) continue;
+        if(g.solid[i]) continue;
+        if(!std::isfinite(ref[i]) || !std::isfinite(value[i]) || ref[i]<0.0 || value[i]<0.0) {
+            ++invalid;
+            continue;
+        }
         const double e=std::abs(value[i]-ref[i]); sum2+=e*e; ref2+=ref[i]*ref[i]; maxe=std::max(maxe,e); max_ref=std::max(max_ref,ref[i]); ++n;
         if(ref[i]<=near_wall) { near_sum2+=e*e; near_ref2+=ref[i]*ref[i]; ++near_n; }
         for(auto nb:g.neighbours[i]) if(!g.solid[nb] && ref[nb]>ref[i] && value[nb]+1e-12<value[i]) ++violations;
     }
+    const double unavailable=std::numeric_limits<double>::infinity();
+    // Never turn an empty set or a partially invalid field into an accuracy
+    // success. Counts are retained so the caller can diagnose the failure.
+    if(n==0 || invalid!=0 || !std::isfinite(sum2) || !std::isfinite(ref2) ||
+       !std::isfinite(near_sum2) || !std::isfinite(near_ref2))
+        return {unavailable,unavailable,unavailable,static_cast<double>(violations),n,invalid,near_n};
     return {std::sqrt(sum2/std::max(1e-30,ref2)),
             maxe/std::max(1e-30,max_ref),
-            std::sqrt(near_sum2/std::max(1e-30,near_ref2)),
-            static_cast<double>(violations),n};
+            near_n>0 ? std::sqrt(near_sum2/std::max(1e-30,near_ref2)) : unavailable,
+            static_cast<double>(violations),n,invalid,near_n};
 }
 
 } // namespace cfdx::physics

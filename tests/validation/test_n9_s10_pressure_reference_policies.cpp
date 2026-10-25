@@ -83,13 +83,30 @@ int main()
         EXPECT_NEAR(p(1), 3.0, 1e-12);
     });
 
-    run_case("n9_s10_zero_mean_policy", [] {
+    run_case("n9_s10_zero_mean_shift_preserves_pressure_differences", [] {
+        const Mesh mesh = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        p(0) = 2.0;
+        p(1) = 6.0;
+
+        // Gauge removal changes only the additive constant. This is an
+        // operator contract, independent of the momentum/continuity solve.
+        apply_pressure_gauge_policy(
+            p, geometry, PressureGaugePolicy::ZERO_MEAN, 0, 3.0, false);
+        EXPECT_NEAR(0.5 * (p(0) + p(1)), 0.0, 1e-12);
+        EXPECT_NEAR(p(1) - p(0), 4.0, 1e-12);
+    });
+
+    run_case("n9_s10_zero_mean_equilibrium_solver", [] {
         const Mesh mesh = make_two_cell_channel();
         Field<double, Location::CELL> U(2, "U", "m/s", 3);
         Field<double, Location::CELL> p(2, "p", "Pa", 1);
         U.fill(0.0);
-        p(0) = 2.0;
-        p(1) = 6.0;
+        // A closed, unforced box at rest has constant pressure. A nonzero
+        // initial pressure gradient is not an equilibrium that a steady solve
+        // should preserve; that property belongs only to the gauge helper.
+        p.fill(7.0);
         VelocityBoundaryConditions ubc;
         ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
         ScalarBoundaryConditions pbc;
@@ -99,7 +116,10 @@ int main()
         const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
         EXPECT_TRUE(result.converged);
         EXPECT_NEAR(0.5 * (p(0) + p(1)), 0.0, 1e-12);
-        EXPECT_NEAR(p(1) - p(0), 4.0, 1e-12);
+        EXPECT_NEAR(p(1) - p(0), 0.0, 1e-12);
+        for (std::size_t cell = 0; cell < U.size(); ++cell)
+            for (std::size_t component = 0; component < 3; ++component)
+                EXPECT_NEAR(U(cell, component), 0.0, 1e-12);
     });
 
     run_case("n9_s10_none_policy_preserves_pressure_level", [] {
@@ -120,5 +140,5 @@ int main()
         EXPECT_NEAR(p(0), 7.0, 1e-12);
         EXPECT_NEAR(p(1), 7.0, 1e-12);
     });
-    return 0;
+    return run_all();
 }

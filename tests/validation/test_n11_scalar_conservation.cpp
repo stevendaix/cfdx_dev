@@ -129,4 +129,5 @@ int main()
         EXPECT_TRUE(bounds.above == 0);
         EXPECT_TRUE(bounds.nonfinite == 1);
     });
+    return run_all();
 }

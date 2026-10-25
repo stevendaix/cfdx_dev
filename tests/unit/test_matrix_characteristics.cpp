@@ -50,5 +50,5 @@ int main() {
         EXPECT_TRUE(characteristics.coefficient_range > 1.0e10);
     });
 
-    return 0;
+    return run_all();
 }
