@@ -1107,6 +1107,7 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
     }
 
     std::array<std::vector<std::array<double, 3>>, 3> gradient;
+    std::array<std::vector<std::array<double, 3>>, 3> boundary_gradient;
     for (std::size_t component = 0; component < 3; ++component) {
         Field<double, Location::CELL> scalar(
             nc, "velocity_component_for_transpose_stress", "m/s", 1);
@@ -1127,6 +1128,11 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
         }
         auto grad = gauss_gradient_with_boundary(
             scalar, mesh, geometry, scalar_bcs);
+        boundary_gradient[component].resize(nc);
+        for (std::size_t cell = 0; cell < nc; ++cell)
+            for (std::size_t direction = 0; direction < 3; ++direction)
+                boundary_gradient[component][cell][direction] =
+                    grad.component_data(direction)[cell];
         // The two-point Green-Gauss face value is not linear-exact on skewed
         // polyhedra. Use the least-squares gradient on cells with at least
         // three independent neighbour directions; preserve boundary-aware
@@ -1210,10 +1216,13 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                     "momentum_transpose_diffusion_face_fluxes: non-finite internal stress flux");
             face_fluxes[face] = flux;
         } else {
+            // Preserve prescribed boundary-value information in the boundary
+            // stress flux; least-squares reconstruction is used for internal
+            // faces only.
             for (std::size_t velocity_component = 0; velocity_component < 3;
                  ++velocity_component)
                 grad_face[velocity_component] =
-                    gradient[velocity_component][owner][momentum_component];
+                    boundary_gradient[velocity_component][owner][momentum_component];
             const double flux = mu_face * (
                 grad_face[0] * sf.x + grad_face[1] * sf.y +
                 grad_face[2] * sf.z);
