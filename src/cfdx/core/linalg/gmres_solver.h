@@ -168,16 +168,11 @@ inline SolverResult solve_gmres(
         result.residual_relative = beta / ref_scale;
         return result;
     }
-    // Preserve RHS-relative convergence: with b nonzero the RHS norm is the
-    // reference scale for both the stopping criterion and the reported
-    // diagnostics. The zero-RHS case never reaches the iterations below
-    // (shifted solve above, or the explicit b == 0 guard).
-    const double rhs_scale_for_diagnostics = rhs_scale;
     if (beta <= tol) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
         result.residual = beta;
-        result.residual_relative = beta / rhs_scale_for_diagnostics;
+        result.residual_relative = beta / rhs_scale;
         return result;
     }
 
@@ -311,7 +306,7 @@ inline SolverResult solve_gmres(
                     result.status = SolverStatus::CONVERGED;
                     result.iterations = iterations;
                     result.residual = exact;
-                    result.residual_relative = exact / rhs_scale_for_diagnostics;
+                    result.residual_relative = exact / rhs_scale;
                     return result;
                 }
             }
@@ -371,7 +366,7 @@ inline SolverResult solve_gmres(
                 result.iterations = iterations;
                 result.residual = breakdown_residual;
                 result.residual_relative =
-                    breakdown_residual / rhs_scale_for_diagnostics;
+                    breakdown_residual / rhs_scale;
                 return result;
             }
             w.y[static_cast<std::size_t>(i)] = sum / diag;
@@ -392,7 +387,7 @@ inline SolverResult solve_gmres(
             result.status = SolverStatus::CONVERGED;
             result.iterations = iterations;
             result.residual = beta;
-            result.residual_relative = beta / rhs_scale_for_diagnostics;
+            result.residual_relative = beta / rhs_scale;
             return result;
         }
 
@@ -409,7 +404,7 @@ inline SolverResult solve_gmres(
             result.status = SolverStatus::DIVERGED;
             result.iterations = iterations;
             result.residual = beta;
-            result.residual_relative = beta / rhs_scale_for_diagnostics;
+            result.residual_relative = beta / rhs_scale;
             return result;
         }
 
@@ -426,7 +421,7 @@ inline SolverResult solve_gmres(
     result.status = SolverStatus::MAX_ITER_REACHED;
     result.iterations = iterations;
     result.residual = beta;
-    result.residual_relative = beta / rhs_scale_for_diagnostics;
+    result.residual_relative = beta / rhs_scale;
     return result;
 }
 

@@ -83,21 +83,6 @@ jobs:
             --expected-git-sha "$GITHUB_SHA" \
             2>&1 | tee "$BUILD_DIR/n9-campaign.log"
 
-      # TEMPORARY failure annotations (to be reverted before merge)
-      - name: TEMPORARY n9 diagnostics annotations
-        if: always()
-        shell: bash
-        run: |
-          LOG="${BUILD_DIR}/n9-campaign.log"
-          if [[ -s "$LOG" ]]; then
-            failed=$(grep -n -E "FAILED|Failed|failed|exit code|EXIT" "$LOG" | tail -n 40 || true)
-            if [[ -n "$failed" ]]; then
-              echo "::error title=n9 failed lines::$(printf '%s' "$failed" | head -c 4400 | tr '\n' '|')"
-            fi
-            tail -c 9000 "$LOG" > /tmp/n9tail.log || true
-            echo "::error title=n9 tail (recent)::$(tail -c 4500 /tmp/n9tail.log | tr '\n' '|')"
-            echo "::error title=n9 tail (earlier)::$(head -c 4500 /tmp/n9tail.log | tr '\n' '|')"
-          fi
       - name: Upload N9 campaign evidence
         if: always()
         uses: actions/upload-artifact@v4
