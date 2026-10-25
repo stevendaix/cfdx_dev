@@ -1,0 +1,13 @@
+Ruff check...............................................................Failed
+- hook id: ruff-check
+- exit code: 1
+
+Executable `ruff` not found
+
+Ruff format check........................................................Failed
+- hook id: ruff-format
+- exit code: 1
+
+Executable `ruff` not found
+
+CFDX fast build/test guards..............................................Passed
