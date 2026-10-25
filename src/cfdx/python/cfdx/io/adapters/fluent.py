@@ -763,9 +763,10 @@ class FluentAdapter(SolverAdapter):
                     )
 
         # Import vector cell fields (velocity from SV_U, SV_V, SV_W)
-        for (fluent_u, fluent_v, fluent_w), (cfdx_name, units) in (
-            vector_field_map.items()
-        ):
+        for (fluent_u, fluent_v, fluent_w), (
+            cfdx_name,
+            units,
+        ) in vector_field_map.items():
             if all(f in cell_variables for f in (fluent_u, fluent_v, fluent_w)):
                 try:
                     u_data = field_data_cells.get(fluent_u)
@@ -777,9 +778,9 @@ class FluentAdapter(SolverAdapter):
                         w_arr = w_data[:]
                         if u_arr.size == v_arr.size == w_arr.size and u_arr.size > 0:
                             # Combine into (N, 3) array
-                            vec_data = np.column_stack(
-                                [u_arr, v_arr, w_arr]
-                            ).astype(np.float64)
+                            vec_data = np.column_stack([u_arr, v_arr, w_arr]).astype(
+                                np.float64
+                            )
                             result.vec_fields.append((cfdx_name, vec_data))
                             result.gap_report.supported(
                                 "results",
@@ -987,7 +988,6 @@ def _parse_s_expressions(text: str) -> list[tuple[int, list[str]]]:
         if text[i] == "(":
             depth = 1
             i += 1
-            start = i
             tokens: list[str] = []
             while i < n and depth > 0:
                 c = text[i]
@@ -1004,13 +1004,13 @@ def _parse_s_expressions(text: str) -> list[tuple[int, list[str]]]:
                     j = i + 1
                     while j < n and text[j] != '"':
                         j += 1
-                    tokens.append(f'"{text[i+1:j]}"')
+                    tokens.append(f'"{text[i + 1 : j]}"')
                     i = j + 1
                 elif c in (" ", "\t", "\n", "\r"):
                     i += 1
                 else:
                     j = i
-                    while j < n and text[j] not in "()\t\n\r\" ":
+                    while j < n and text[j] not in '()\t\n\r" ':
                         j += 1
                     tokens.append(text[i:j])
                     i = j
@@ -1065,8 +1065,13 @@ def _parse_model_settings(
             i += 2
         else:
             key = settings[i].lower()
-            if key in ("ke-realizable-viscous", "ke-standard-viscous",
-                       "kw-viscous", "mixing-length", "transition-to-turbulence"):
+            if key in (
+                "ke-realizable-viscous",
+                "ke-standard-viscous",
+                "kw-viscous",
+                "mixing-length",
+                "transition-to-turbulence",
+            ):
                 mapped = rules.map_turbulence(key)
                 setup.turbulence_model = mapped if mapped else key
             elif key == "simple":
