@@ -1,6 +1,6 @@
-STAMP: 2026-10-25-lot3g1a-r2
+STAMP: 2026-10-25-lot3g1a-r3
 PR_HEAD_SHA: 71858a20fbfc67006824936d0646b3dd1cb79394
 BASE: master (docs-only head of 2026-10-25, G1a base)
-ROUND: 2 (fixes from round 1: stub _dataset() method, ruff format on edit button objectName, complete no-Qt uninstall incl. PySide6_Essentials/PySide6_Addons/shiboken6)
+ROUND: 3 (oracle-infrastructure fix only, candidates unchanged from r2: purge PySide6/shiboken6/pyvista residue from site-packages after pip uninstall + fail-closed find_spec check journaled + no heredoc log truncation)
 OVERLAY: diag-tools/lot3g1a_candidates/ -> visualization_pipeline.py, gui_3d.py, workbench.py, test_visualization_pipeline.py, test_workbench.py, PHASE0_AUDIT.md
 ORACLE: .github/workflows/lot3g1a-oracle.yml (ruff check + ruff format --check + GUI pytest 8 files + no-Qt path)
