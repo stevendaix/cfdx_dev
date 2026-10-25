@@ -71,6 +71,7 @@ F_{diff,f}=D_f(\psi_N-\psi_P)
 - Entrées partagées : `resolve_scalar_boundary_condition`, `compute_scalar_gradient_with_boundary`, `compute_nonorthogonal_diffusion_face_fluxes` ; la correction utilise le gradient LS.
 - Gradient : `compute_nonorthogonal_diffusion_face_fluxes` utilise le gradient aux moindres carrés pour préserver l'exactitude affine sur maillages déformés.
 - Assembleur : `assemble_scalar_equation` ajoute le flux tangentiel au second membre de façon conservative.
+- Périmètre : la correction est activée par défaut pour le transport scalaire ; les wrappers de quantité de mouvement la désactivent explicitement afin de préserver la qualification COUPLED existante. Son activation sur la quantité de mouvement doit faire l'objet d'une qualification dédiée.
 - Reconstruction : `reconstruct_scalar_transport_flux` utilise la même correction et la même conductance normale.
 - Test exécutable : `tests/validation/test_nonorthogonal_laplacian_campaign.cpp` — champ affine sur maillage hexaédrique incliné et non uniforme, résidu assemblé, divergence du flux reconstruit, rejet si le champ courant manque.
 - Registre : `docs/validation/CFDX_QUALIFICATION_REGISTRY.json` (cas `SCALAR-TRANSPORT-NONORTH-AFFINE`, statut DIAGNOSTIC), `NUMERICAL_METHOD_MATURITY_AUDIT.json/.md` et `NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json`.
