@@ -57,7 +57,7 @@ inline SolverResult solve_gmres(
     // makes physically small systems appear converged at x=0 and is incorrect
     // for nondimensionalized or otherwise small-scale operators.
     const double rhs_scale = std::max(b_norm, 1e-300);
-    const double tol = tolerance * b_norm;
+    const double tol = b_norm == 0.0 ? 0.0 : tolerance * b_norm;
 
     // Diagnostic: track the gauge-row value of the initial solution vector.
     // The gauge row is conventionally the last pressure unknown (index n-1),
@@ -87,10 +87,22 @@ inline SolverResult solve_gmres(
 
     double beta = true_residual();
     if (b_norm == 0.0) {
-        result.status = beta == 0.0 ? SolverStatus::CONVERGED : SolverStatus::DIVERGED;
+        // b == 0: use a stable, explicit reference common to criterion and diagnostics.
+        // A nonzero initial iterate must not silently relax the threshold.
+        const double x_norm = krylov_norm2(x, SolverPrecision::FP64, controls.reduction);
+        const double ref_scale = std::max({x_norm, 1.0, 1e-300});
+        const double tol_b0 = tolerance * ref_scale;
+        if (beta <= tol_b0) {
+            result.status = SolverStatus::CONVERGED;
+            result.iterations = 0;
+            result.residual = beta;
+            result.residual_relative = beta / ref_scale;
+            return result;
+        }
+        result.status = SolverStatus::DIVERGED;
         result.iterations = 0;
         result.residual = beta;
-        result.residual_relative = beta;
+        result.residual_relative = beta / ref_scale;
         return result;
     }
     if (beta <= tol) {

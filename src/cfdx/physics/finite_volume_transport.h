@@ -12,9 +12,9 @@
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/mesh/mesh.h"
-#include "cfdx/core/numerics/gradient.h"
+#include "cfdx/core/numerics/laplacian.h"
 #include "cfdx/core/numerics/interpolation.h"
-#include <algorithm>
+#include <map>
 #include <cmath>
 #include <iostream>
 #include <cstddef>
@@ -312,6 +312,20 @@ inline ScalarEquation assemble_scalar_equation(
             *convected_field, mesh, geometry_cache, core_scheme, &face_flux,
             cfdx::core::LimiterType::NONE, nullptr, 0.75);
     }
+    // Non-orthogonal diffusion correction (F06): use cell gradients of the
+    // diffused variable when available to add the tangential correction.
+    cfdx::core::Field<double, cfdx::core::Location::CELL> diffusion_gradient;
+    if (convected_field && convected_field->size() == nc && convected_field->dimension() == 1 &&
+        diffusion_coefficient >= 0.0) {
+        try {
+            diffusion_gradient = cfdx::core::compute_gradient_gauss_point(*convected_field, mesh);
+        } catch (...) {
+            try {
+                diffusion_gradient = cfdx::core::compute_gradient_gauss(*convected_field, mesh);
+            } catch (...) {
+            }
+        }
+    }
 
     const auto& own = mesh.ownership();
     const double* phi = face_flux.component_data(0);
@@ -374,6 +388,33 @@ inline ScalarEquation assemble_scalar_equation(
 
             div_phi[o] += F;
             div_phi[n] -= F;
+
+            // Non-orthogonal diffusion correction: add explicit tangential term
+            if (diffusion_gradient.size() == nc && diffusion_gradient.dimension() == 3 && diffusion_gradient.is_valid()) {
+                const auto& dvec = Cn - Co;
+                const auto& Sf = geometry.face_area_vectors[f];
+                const double d2 = dvec.mag2();
+                const double d = std::sqrt(d2);
+                if (d > 0.0 && std::isfinite(d)) {
+                    const Vec3 Sf_corr = Sf - dvec * (Sf.dot(dvec) / d2);
+                    const Vec3 gf{0.5 * (diffusion_gradient(o, 0) + diffusion_gradient(n, 0)),
+                                   0.5 * (diffusion_gradient(o, 1) + diffusion_gradient(n, 1)),
+                                   0.5 * (diffusion_gradient(o, 2) + diffusion_gradient(n, 2))};
+                    double Gamma_f = diffusion_coefficient;
+                    if (cell_diffusion) {
+                        const double go = (*cell_diffusion)[o];
+                        const double gn = (*cell_diffusion)[n];
+                        if (go > 0.0 && gn > 0.0) {
+                            Gamma_f = 2.0 * go * gn / (go + gn);
+                        }
+                    }
+                    const double corr = Gamma_f * Sf_corr.dot(gf);
+                    if (std::isfinite(corr)) {
+                        deferred_rhs[o] += corr;
+                        deferred_rhs[n] -= corr;
+                    }
+                }
+            }
 
             if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
                 convection_scheme == ConvectionScheme::TVD ||
@@ -989,30 +1030,100 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         // norm, and RHS normalization. Solver-native Krylov diagnostics remain
         // available in residual/residual_relative and are intentionally separate.
         const auto physical_residual_inf = [&](const cfdx::core::Vector& state) {
+            if (state.size() != equation.rhs.size()) {
+                return std::numeric_limits<double>::infinity();
+            }
+            if (equation.matrix.row_offsets_data() == nullptr ||
+                equation.matrix.columns_data() == nullptr ||
+                equation.matrix.values_data() == nullptr) {
+                return std::numeric_limits<double>::infinity();
+            }
             double norm = 0.0;
             for (std::size_t i = 0; i < state.size(); ++i) {
-                double ri = -equation.rhs(i);
-                const auto row_begin = equation.matrix.row_offsets_data()[i];
-                const auto row_end = equation.matrix.row_offsets_data()[i + 1];
-                for (std::uint32_t k = row_begin; k < row_end; ++k)
-                    ri += equation.matrix.values_data()[k] *
-                          state(equation.matrix.columns_data()[k]);
-                norm = std::max(norm, std::abs(ri));
+                const double rhs_i = equation.rhs(i);
+                if (!std::isfinite(rhs_i)) {
+                    return std::numeric_limits<double>::infinity();
+                }
+                double ri = -rhs_i;
+                if (!std::isfinite(ri)) {
+                    return std::numeric_limits<double>::infinity();
+                }
+                const std::uint32_t row_begin = equation.matrix.row_offsets_data()[i];
+                const std::uint32_t row_end = equation.matrix.row_offsets_data()[i + 1];
+                for (std::uint32_t k = row_begin; k < row_end; ++k) {
+                    const std::uint32_t cidx = equation.matrix.columns_data()[k];
+                    if (cidx >= state.size()) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                    const double mval = equation.matrix.values_data()[k];
+                    if (!std::isfinite(mval)) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                    const double sval = state(cidx);
+                    if (!std::isfinite(sval)) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                    const double term = mval * sval;
+                    if (!std::isfinite(term)) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                    ri += term;
+                    if (!std::isfinite(ri)) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                }
+                const double ari = std::abs(ri);
+                if (!std::isfinite(ari)) {
+                    return std::numeric_limits<double>::infinity();
+                }
+                if (ari > norm) {
+                    norm = ari;
+                }
             }
             return norm;
         };
         double rhs_norm = 0.0;
-        for (std::size_t i = 0; i < solution.size(); ++i)
-            rhs_norm = std::max(rhs_norm, std::abs(equation.rhs(i)));
+        if (solution.size() == equation.rhs.size()) {
+            for (std::size_t i = 0; i < solution.size(); ++i) {
+                const double rv = std::abs(equation.rhs(i));
+                if (!std::isfinite(rv)) {
+                    rhs_norm = 0.0;
+                    break;
+                }
+                if (rv > rhs_norm) {
+                    rhs_norm = rv;
+                }
+            }
+        }
+        if (!std::isfinite(rhs_norm)) {
+            rhs_norm = 0.0;
+        }
         const double rhs_scale = std::max(rhs_norm, 1e-300);
         result.residual_before_relaxation = physical_residual_inf(candidate);
+        if (!std::isfinite(result.residual_before_relaxation)) {
+            result.status = cfdx::core::SolverStatus::DIVERGED;
+            return result;
+        }
         result.residual_relative_before_relaxation =
             result.residual_before_relaxation / rhs_scale;
 
-        for (std::size_t i = 0; i < solution.size(); ++i)
+        for (std::size_t i = 0; i < solution.size(); ++i) {
+            if (!std::isfinite(candidate(i))) {
+                result.status = cfdx::core::SolverStatus::DIVERGED;
+                return result;
+            }
             solution(i) += controls.relaxation * (candidate(i) - solution(i));
+            if (!std::isfinite(solution(i))) {
+                result.status = cfdx::core::SolverStatus::DIVERGED;
+                return result;
+            }
+        }
 
         result.residual_after_relaxation = physical_residual_inf(solution);
+        if (!std::isfinite(result.residual_after_relaxation)) {
+            result.status = cfdx::core::SolverStatus::DIVERGED;
+            return result;
+        }
         result.residual_relative_after_relaxation =
             result.residual_after_relaxation / rhs_scale;
     }
@@ -1029,14 +1140,52 @@ inline double scalar_equation_residual_inf(
 {
     if (solution.size() != equation.rhs.size())
         throw std::invalid_argument("scalar_equation_residual_inf: dimension mismatch");
+    if (equation.matrix.row_offsets_data() == nullptr ||
+        equation.matrix.columns_data() == nullptr ||
+        equation.matrix.values_data() == nullptr) {
+        return std::numeric_limits<double>::infinity();
+    }
     double max_r = 0.0;
     for (std::size_t i = 0; i < solution.size(); ++i) {
-        double r = -equation.rhs(i);
-        const auto row_begin = equation.matrix.row_offsets_data()[i];
-        const auto row_end = equation.matrix.row_offsets_data()[i + 1];
-        for (std::uint32_t k = row_begin; k < row_end; ++k)
-            r += equation.matrix.values_data()[k] * solution(equation.matrix.columns_data()[k]);
-        max_r = std::max(max_r, std::abs(r));
+        const double rhs_i = equation.rhs(i);
+        if (!std::isfinite(rhs_i)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        double r = -rhs_i;
+        if (!std::isfinite(r)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        const std::uint32_t row_begin = equation.matrix.row_offsets_data()[i];
+        const std::uint32_t row_end = equation.matrix.row_offsets_data()[i + 1];
+        for (std::uint32_t k = row_begin; k < row_end; ++k) {
+            const std::uint32_t cidx = equation.matrix.columns_data()[k];
+            if (cidx >= solution.size()) {
+                return std::numeric_limits<double>::infinity();
+            }
+            const double mval = equation.matrix.values_data()[k];
+            if (!std::isfinite(mval)) {
+                return std::numeric_limits<double>::infinity();
+            }
+            const double sval = solution(cidx);
+            if (!std::isfinite(sval)) {
+                return std::numeric_limits<double>::infinity();
+            }
+            const double term = mval * sval;
+            if (!std::isfinite(term)) {
+                return std::numeric_limits<double>::infinity();
+            }
+            r += term;
+            if (!std::isfinite(r)) {
+                return std::numeric_limits<double>::infinity();
+            }
+        }
+        const double ar = std::abs(r);
+        if (!std::isfinite(ar)) {
+            return std::numeric_limits<double>::infinity();
+        }
+        if (ar > max_r) {
+            max_r = ar;
+        }
     }
     return max_r;
 }
