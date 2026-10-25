@@ -273,6 +273,7 @@ inline double p1_blackbody_intensity(double T)
     return blackbody(T) / M_PI;
 }
 
+// Method fiche: docs/audits/11-rayonnement.md (P1 source normalization and irradiation convention).
 inline double p1_source(double absorption, double mean_intensity, double T)
 {
     if (absorption < 0.0 || mean_intensity < 0.0 || T < 0.0)
