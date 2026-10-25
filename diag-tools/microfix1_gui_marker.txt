@@ -1,0 +1,4 @@
+microfix1 gui palette-test verification oracle
+stamp: 2026-10-25-mf1
+base: 72ddaab9d8d5e428e2956db0e1e35954972dee88
+purpose: verify candidate test_capabilities.py (unnamed QAction filter) and cfdx-gui.yml (add test file to GUI regression) BEFORE pushing to the fix branch
