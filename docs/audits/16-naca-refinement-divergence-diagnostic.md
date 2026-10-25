@@ -1,71 +1,64 @@
-# NACA refinement divergence: exact-HEAD diagnostic protocol
+# FICHE MÉTHODE 16 — Diagnostic de convergence non linéaire et divergence NACA
 
-Status: diagnostic plan; no production solver behavior is changed by this document.
+**En-tête d'évidence**
+- Scope : protocole de diagnostic exact-HEAD des trajectoires non linéaires NACA0012, qualification N64/N128/N256 et attribution des échecs d'audit de cisaillement pariétal.
+- Statut : DIAGNOSTIC (protocole uniquement ; aucune qualification numérique ni correction du solveur revendiquée).
+- Issue liée : #986 ; PR de documentation #987.
+- Limitation : les observations historiques ne remplacent pas une exécution sur le HEAD courant. Le protocole n'autorise aucun changement de relaxation, d'oracle, de tolérance ou de budget.
 
-Tracked by [issue #986](https://github.com/stevendaix/cfdx_dev/issues/986).
+## 1. Références sources
+- Dembo, R. S., Eisenstat, S. C., Steihaug, T. (1982), “Inexact Newton Methods”, SIAM Journal on Numerical Analysis, 19(2), 400–408. DOI: 10.1137/0719025.
+- Ferziger, J. H., Perić, M., Street, R. L. (2020), *Computational Methods for Fluid Dynamics*, 4th ed., Springer. ISBN 978-3-662-62183-2.
+- Les références définissent le contexte des méthodes non linéaires et des critères de convergence ; elles ne valident pas à elles seules les résultats CFDX.
 
-## Scope
+## 2. Formulation continue
+Pour une discrétisation non linéaire (F(U)=0), une trajectoire d'itération doit être évaluée à partir des résidus de l'équation discrète, de la continuité/du bilan de flux et de la variation de l'état. Un résidu relatif isolé ne suffit pas à démontrer la cohérence du correcteur de pression ni la validité physique de la solution.
 
-Investigate both long-validation failures:
+La qualification de NACA0012 doit conserver les équations, conditions aux limites, discrétisation, initialisation et oracles existants. Le présent protocole observe la trajectoire ; il ne modifie pas la solution calculée.
 
-- `test_naca0012_qualification`
-- `test_naca0012_wall_shear_audit`
+## 3. Discrétisation Volume Fini
+Exécuter la voie de production SIMPLE existante sur les maillages N64, N128 et N256, indépendamment lorsque le harnais le permet. Conserver les fichiers maillage, paramètres, révisions de code, journaux et artefacts.
 
-The second may be a cascade from the first. Treat it as independent only if its own solve/gradient path produces a reproducible failure after the NACA flow solve is qualified.
+À chaque itération, recueillir :
+- indice d'itération et nombre de cellules ;
+- résidus momentum RHS-relative et reference-relative ;
+- résidu linéaire pression, statut du solveur et nombre d'itérations ;
+- continuité L1, L-infinity et résidu normalisé ;
+- variations L-infinity de vitesse et pression ;
+- valeurs effectives de `alpha_u` et `alpha_p` ;
+- vérifications finite-value et première cellule/face fautive, si disponibles.
 
-Historical evidence from an older HEAD reported N64 converged, followed by N128 early divergence (`momentum_rhs_relative=17217.3`, `continuity=1.36922`, `alpha_u=0.6`). This is a lead, not proof for the current HEAD. Pin and record the current master SHA and exact run before drawing conclusions.
+La trace actuelle à fréquence 200 est trop espacée pour localiser un début de divergence autour de l'itération 11. Pour le diagnostic seulement, utiliser l'historique non linéaire existant ou capturer chaque itération sans modifier l'algorithme de production.
 
-## A. Capture the production trajectory without changing it
+## 4. Traitement des frontières
+Vérifier que la correction de pression est cohérente avec le flux de face réellement utilisé et avec les conditions de pression fixée/jauge. Évaluer indépendamment l'identité de continuité/flux avant et après correction de pression.
 
-Use the existing production SIMPLE path, existing mesh fixtures, initialisation, boundary conditions, discretisation, linear-solver settings and acceptance gates. Run N64, N128 and N256 independently where possible so an early failure on one mesh does not suppress evidence from the others.
+Contrôler les orientations des faces, les normales et les coefficients géométriques locaux. Toute incohérence de flux ou de frontière doit être investiguée avant d'attribuer l'échec au facteur de relaxation. Aucun traitement de frontière ne doit être changé dans le cadre de cette fiche.
 
-Record at each nonlinear iteration:
+## 5. Pièges connus
+- Une fréquence de trace trop faible peut masquer l'itération d'apparition de la divergence.
+- Un solveur linéaire qui annonce la convergence ne prouve pas que le système assemblé correspond à l'opérateur de flux appliqué.
+- L'échec de l'audit de cisaillement pariétal peut être une conséquence d'un écoulement non qualifié ; ne le classer comme cause indépendante que si sa voie de calcul échoue encore sur une solution convergée.
+- Une hausse ponctuelle du résidu n'est pas, à elle seule, une preuve de divergence.
+- Aucun seuil, oracle, budget d'itérations, normalisation ou test ne doit être affaibli pour obtenir un résultat vert.
 
-- iteration index and mesh cell count;
-- momentum RHS-relative and reference-relative residuals;
-- pressure linear residual and linear solver convergence/iteration count;
-- continuity L1, L-infinity and normalized residuals;
-- velocity and pressure infinity-norm changes;
-- effective `alpha_u` and `alpha_p`;
-- finite-value checks and the first failing cell/face if available.
+## 6. Ordre de précision attendu et validation exigée
+Le protocole ne définit pas de nouvelle tolérance ni d'ordre de précision. Les critères numériques faisant autorité sont ceux des tests existants.
 
-The existing NACA test enables `iteration_trace` at frequency 200, which is too coarse to locate an onset around iteration 11. For the diagnostic-only run, capture every iteration or use the already-retained nonlinear history; do not change the production algorithm. Keep raw logs and a machine-readable per-iteration table as artifacts.
+Pour chaque niveau de maillage, présenter séparément le verdict et les métriques. Les contrôles requis avant attribution causale sont :
+1. topologie du maillage, volumes cellulaires, aires et orientations de faces ;
+2. signes, valeurs finies et contributions convection/diffusion des coefficients momentum aux premières cellules en croissance ;
+3. matrice de correction de pression, jauge et traitement des frontières à pression fixée ;
+4. identité de flux/continuité avant et après correction ;
+5. résidu pression et statut réel du solveur linéaire mis en regard de la croissance du résidu momentum ;
+6. comparaison du point d'échec du wall-shear audit au verdict du solveur d'écoulement.
 
-### Checks before attributing the failure to relaxation
+Les tests de classification diagnostique doivent couvrir : décroissance convergente, stagnation plate, croissance monotone, croissance exponentielle, oscillations bornées, pic transitoire suivi d'une récupération, métrique de référence nulle, NaN/Inf et priorité explicite entre divergence et budget maximal. Les seuils doivent être justifiés par les contrôles existants et les traces synthétiques, pas ajustés pour faire réussir NACA.
 
-1. Verify mesh topology, cell volumes, face areas/orientation and local geometric coefficients on N64/N128.
-2. Check the first cells where momentum residuals grow for finite/sign-consistent momentum coefficients and convection/diffusion contributions.
-3. Check the pressure-correction matrix, pressure gauge and fixed-pressure boundary handling against the actual face-flux correction.
-4. Independently evaluate the continuity/flux identity before and after pressure correction.
-5. Compare momentum residual growth against pressure residual, continuity and linear-solver status. A pressure solve that reports convergence is not sufficient if the assembled correction is inconsistent with the flux operator.
-6. Compare the wall-shear audit's failure point with the flow solve verdict. Do not call a downstream audit failure an independent root cause without evidence.
+## 7. Statut d'implémentation CFDX
+- Statut actuel : protocole de diagnostic documentaire ; implémentation et exécution A/B restent à faire.
+- Cibles de validation : `test_naca0012_qualification`, `test_naca0012_wall_shear_audit`, Release, DebugSanitizers, tests NACA ciblés et `validation-total` sur le HEAD exact.
+- Acceptation : N64 conserve ses résultats et gates ; le verdict N128 identifie le début mesuré de divergence sans le confondre avec une stagnation ; N256 est rapporté séparément si exécutable ; l'audit wall-shear est classé comme indépendant ou en cascade sur la base de preuves.
+- Changement de production interdit dans ce lot : aucun ajustement de `alpha_u`/`alpha_p`, solveur linéaire, normalisation, tolérance, oracle, budget ou fallback.
+- Étude séparée éventuelle : comparaison de facteurs `alpha_u` fixes seulement après les contrôles A/B et si les preuves isolent effectivement la relaxation comme cause ; elle exige une proposition de diff indépendante et une revue.
 
-## B. Classify nonlinear convergence states; do not alter the solution
-
-Add or validate a convergence classification that distinguishes:
-
-- `CONVERGED`: all existing authoritative gates pass;
-- `STAGNATED`: insufficient improvement over the configured stagnation window without sustained explosive growth;
-- `DIVERGED`: sustained, material residual growth over a bounded window, or non-finite state/metrics;
-- `MAX_ITERATIONS`: finite trajectory reaches the configured budget without convergence or a stronger classification.
-
-The exact thresholds/window must be justified against existing convergence controls and synthetic traces, not tuned to make NACA pass. Do not classify a single noisy increase as divergence. Preserve the first triggering iteration, metric, value, comparison window and reason in the result.
-
-Required unit tests: convergent decay, flat stagnation, monotone growth, exponential growth, oscillatory-but-bounded residuals, transient spike followed by recovery, zero reference metric, NaN/Inf, and exact precedence between `DIVERGED` and `MAX_ITERATIONS`.
-
-The classification is diagnostic only: it must not change `alpha_u`, `alpha_p`, the linear solver, residual normalization, convergence tolerances, force oracle, iteration budget or fallback behavior.
-
-## Acceptance
-
-- N64 retains its existing result and authoritative gates.
-- N128 divergence is detected at its measured onset and not mislabeled as ordinary stagnation.
-- N256 is run independently if the harness permits, and its verdict is reported separately.
-- The wall-shear audit is attributed as independent or cascading based on its own evidence.
-- Release, DebugSanitizers, focused NACA tests and exact-HEAD `validation-total` results are reported. A quick green is not sufficient for merge.
-- No tolerance, oracle or budget is weakened; no test is skipped.
-
-## Separate follow-up: adaptive relaxation (not part of A/B)
-
-Only after A/B is complete, compare fixed `alpha_u` values on the same N64/N128 meshes and solver path. Present per-iteration residuals, continuity/flux identity, linear-solver status and force results for each run. Adaptive relaxation is justified only if the evidence isolates relaxation as causal and the flux/matrix checks pass.
-
-Any production change must be proposed as a separate diff and reviewed before implementation. No adaptive relaxation or other production solver change is authorized by this diagnostic work.
