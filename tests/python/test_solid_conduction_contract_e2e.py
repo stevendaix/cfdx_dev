@@ -84,9 +84,7 @@ class SolidConductionApplicationContract(unittest.TestCase):
     def setUpClass(cls):
         solver = os.environ.get("CFDX_THERMAL_SOLVER")
         if not solver:
-            raise unittest.SkipTest(
-                "CFDX_THERMAL_SOLVER is provided by ctest"
-            )
+            raise unittest.SkipTest("CFDX_THERMAL_SOLVER is provided by ctest")
         cls.solver = Path(solver)
         if not cls.solver.is_file():
             raise RuntimeError(f"thermal executable is missing: {cls.solver}")

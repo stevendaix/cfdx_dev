@@ -17,9 +17,7 @@ class ProductionThermalRestart(unittest.TestCase):
     def setUpClass(cls):
         solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
         if not solver:
-            raise unittest.SkipTest(
-                "CFDX_PRODUCTION_SOLVER is provided by ctest"
-            )
+            raise unittest.SkipTest("CFDX_PRODUCTION_SOLVER is provided by ctest")
         cls.solver = Path(solver)
         if not cls.solver.is_file():
             raise RuntimeError(f"production executable is missing: {cls.solver}")
