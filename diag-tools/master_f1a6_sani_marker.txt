@@ -1,0 +1,4 @@
+diag marker: master DebugSanitizers fast CTest exit 8 capture
+pinned refs: f1a6e71688c5c47de8271aec5cbb3f592e157c98 (evening-wave head, post typo-fix), 2a1a0fcba4306513b60fd258f481bccea2f01a3e (pre-wave)
+context: run 40222390117 job 121256740414; Release fast CTest PASSED on 1299a4c6
+created: 2026-10-25 evening session (Steven)

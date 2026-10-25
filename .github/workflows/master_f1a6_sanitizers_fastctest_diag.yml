@@ -1,0 +1,250 @@
+name: Master DebugSanitizers fast-ctest capture (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Capture-only : AUCUNE instrumentation du code. Replique EXACTEMENT le job
+# "Build and test (DebugSanitizers)" de cfdx-ci.yml (cmake DebugSanitizers,
+# CFDX_BUILD_TESTS=ON, CFDX_ENABLE_LONG_VALIDATION=OFF, CMAKE_UNITY_BUILD=ON,
+# ctest -LE 'long|benchmark|campaign|sanitizer-slow' --parallel 6,
+# ASAN_OPTIONS=detect_leaks=1:halt_on_error=1, UBSAN_OPTIONS=halt_on_error=1)
+# sur deux refs epinglees en matrice :
+#   f1a6e71688c5c47de8271aec5cbb3f592e157c98 (head master, vague du soir : 026cb499/749d1de5/eda955fa/68fc916c + fix typo f1a6e716)
+#   2a1a0fcba4306513b60fd258f481bccea2f01a3e (pre-vague, parent de 026cb499)
+# Contexte : master 1299a4c6 DebugSanitizers "Run fast CTest" exit 8
+# (run 40222390117, job 121256740414) alors que le fast CTest du job Release
+# PASSE sur le meme commit -> defaut visible uniquement sous sanitizers.
+# But : QUELS tests echouent + rapport ASan/UBSan complet (file:line) par ref.
+# Verdicts fail-closed par ref : EVIDENCE_COMPLETE / NO_FAILURES_REPRODUCED /
+# INCONCLUSIVE_BUILD / INCONCLUSIVE_NO_FAILED_LIST / INCONCLUSIVE_RERUN_NO_OUTPUT.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/master_f1a6_sani_marker.txt'
+      - '.github/workflows/master_f1a6_sanitizers_fastctest_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: master-f1a6-sani-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+
+jobs:
+  sanitizers-fastctest-diag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        ref_pin: [f1a6e71688c5c47de8271aec5cbb3f592e157c98, 2a1a0fcba4306513b60fd258f481bccea2f01a3e]
+    env:
+      HEAD_SHA_PIN: ${{ matrix.ref_pin }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pinned ref and create worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          SHORT="${HEAD_SHA_PIN:0:7}"
+          git fetch origin master
+          git cat-file -e "$HEAD_SHA_PIN^{commit}" \
+            || { echo "::error::pinned head SHA not resolvable: $HEAD_SHA_PIN"; exit 1; }
+          git merge-base --is-ancestor "$HEAD_SHA_PIN" origin/master \
+            || { echo "::error::pinned head is not an ancestor of master: $HEAD_SHA_PIN"; exit 1; }
+          git worktree add "$RUNNER_TEMP/head" "$HEAD_SHA_PIN"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "job_index=${{ strategy.job-index }}"
+            echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "ref_pin=$HEAD_SHA_PIN"
+            echo "scope=replica of CI DebugSanitizers 'Run fast CTest' (-LE 'long|benchmark|campaign|sanitizer-slow' --parallel 6, ASAN detect_leaks=1:halt_on_error=1, UBSAN halt_on_error=1) + rerun-failed full sanitizer report"
+            echo "context=master 1299a4c6 DebugSanitizers fast CTest exit 8 (run 40222390117 job 121256740414); Release fast CTest PASSED on the same commit"
+            echo "rule=EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL"
+          } > "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_meta_${SHORT}_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin libglu1-mesa
+
+      - name: Configure (DebugSanitizers, replica of CI)
+        run: |
+          SHORT="${HEAD_SHA_PIN:0:7}"
+          cmake -S "$RUNNER_TEMP/head" -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=DebugSanitizers \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_UNITY_BUILD=ON
+
+      - name: Build
+        run: |
+          SHORT="${HEAD_SHA_PIN:0:7}"
+          set +e
+          cmake --build build --parallel 8 > /tmp/build_raw.log 2>&1
+          rc=$?
+          {
+            echo "build_exit=$rc"
+            echo "--- build log (tail 300) ---"
+            tail -n 300 /tmp/build_raw.log
+            echo "--- build errors (if any) ---"
+            grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' /tmp/build_raw.log | tail -n 120 || true
+          } > "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_build_${SHORT}_run$GITHUB_RUN_ID.log"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::build failed on pinned head - see evidence log"
+            exit 1
+          fi
+
+      - name: Run fast CTest (replica of the CI DebugSanitizers step)
+        run: |
+          SHORT="${HEAD_SHA_PIN:0:7}"
+          set +e
+          ctest --test-dir build -LE 'long|benchmark|campaign|sanitizer-slow' --output-on-failure --no-tests=error --parallel 6 \
+            > "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_ctest_${SHORT}_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "ctest_exit=$rc" > "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_status_${SHORT}_run$GITHUB_RUN_ID.txt"
+          echo "ctest_exit=$rc"
+          tail -n 40 "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_ctest_${SHORT}_run$GITHUB_RUN_ID.log"
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1
+
+      - name: Rerun failed tests with full sanitizer report
+        run: |
+          SHORT="${HEAD_SHA_PIN:0:7}"
+          set +e
+          ctest --test-dir build --rerun-failed --output-on-failure \
+            > "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_rerun_${SHORT}_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "rerun_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_status_${SHORT}_run$GITHUB_RUN_ID.txt"
+          echo "rerun_exit=$rc"
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1
+
+      - name: Sanitizer report signatures
+        if: always()
+        run: |
+          SHORT="${HEAD_SHA_PIN:0:7}"
+          {
+            echo "=== unique sanitizer signatures (rerun + ctest logs) ==="
+            cat "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_rerun_${SHORT}_run$GITHUB_RUN_ID.log" "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_ctest_${SHORT}_run$GITHUB_RUN_ID.log" 2>/dev/null \
+              | grep -E "runtime error:|ERROR: AddressSanitizer|SUMMARY: AddressSanitizer|SUMMARY: UndefinedBehaviorSanitizer|LeakSanitizer" \
+          } > "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_sanreport_${SHORT}_run$GITHUB_RUN_ID.txt"
+          cat "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_sanreport_${SHORT}_run$GITHUB_RUN_ID.txt"
+
+      - name: Analyze and classify
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os
+          import sys
+
+          run_id = os.environ["GITHUB_RUN_ID"]
+          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+          short = os.environ["HEAD_SHA_PIN"][:7]
+          prefix = "master_f1a6_sani_" + short + "_run" + run_id
+          ctest_log = os.path.join(evid, prefix + "_ctest.log")
+          rerun_log = os.path.join(evid, prefix + "_rerun.log")
+          status = os.path.join(evid, prefix + "_status.txt")
+
+          def write_verdict(v, lines):
+              path = os.path.join(evid, prefix + "_verdict.txt")
+              with open(path, "w") as fh:
+                  fh.write("verdict=" + v + "\n")
+                  for line in lines:
+                      fh.write(line + "\n")
+              print("verdict=" + v)
+
+          if not os.path.exists(ctest_log):
+              write_verdict("INCONCLUSIVE_BUILD", ["ctest log absent (build or ctest step did not run)"])
+              sys.exit(0)
+
+          with open(ctest_log, errors="replace") as fh:
+              lines = fh.read().splitlines()
+
+          failed = []
+          in_failed = False
+          for line in lines:
+              if line.strip().startswith("The following tests FAILED:"):
+                  in_failed = True
+                  continue
+              if in_failed:
+                  stripped = line.strip()
+                  if not stripped:
+                      if failed:
+                          break
+                      continue
+                  if stripped.startswith("- "):
+                      failed.append(stripped[2:].strip())
+
+          with open(os.path.join(evid, prefix + "_failedlist.txt"), "w") as fh:
+              for t in failed:
+                  fh.write(t + "\n")
+
+          ctest_exit = None
+          if os.path.exists(status):
+              with open(status) as fh:
+                  for line in fh:
+                      if line.startswith("ctest_exit="):
+                          ctest_exit = int(line.split("=", 1)[1].strip())
+                          break
+
+          if ctest_exit == 0 and not failed:
+              write_verdict("NO_FAILURES_REPRODUCED",
+                            ["fast ctest PASSED under sanitizers on this pinned ref"])
+              sys.exit(0)
+          if not failed:
+              write_verdict("INCONCLUSIVE_NO_FAILED_LIST",
+                            ["ctest_exit=" + str(ctest_exit) + " but failed list not parsed - read the raw ctest log"])
+              sys.exit(0)
+
+          rerun_text = ""
+          if os.path.exists(rerun_log):
+              with open(rerun_log, errors="replace") as fh:
+                  rerun_text = fh.read()
+          if not rerun_text.strip():
+              write_verdict("INCONCLUSIVE_RERUN_NO_OUTPUT", ["rerun log empty"])
+              sys.exit(0)
+
+          write_verdict("EVIDENCE_COMPLETE", ["failed_tests=" + str(len(failed))] + failed)
+          PY
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: master DebugSanitizers fast-ctest capture run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          SHORT="${HEAD_SHA_PIN:0:7}"
+          v=$(head -n 1 "$GITHUB_WORKSPACE/$EVID/master_f1a6_sani_verdict_${SHORT}_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "verdict=MISSING")
+          echo "Final gate: $v"
+          case "$v" in
+            verdict=EVIDENCE_COMPLETE|verdict=NO_FAILURES_REPRODUCED)
+              echo "evidence committed - diagnostic complete for this ref" ;;
+            *)
+              echo "::error::$v - see diag-evidence/logs/master_f1a6_sani_${SHORT}_run$GITHUB_RUN_ID.*"
+              exit 1 ;;
+          esac
