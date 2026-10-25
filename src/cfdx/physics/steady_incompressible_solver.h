@@ -1106,6 +1106,21 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                 "momentum_transpose_diffusion_face_fluxes: viscosity must be finite and non-negative");
     }
 
+    // The production incompressible operator already uses the scalar
+    // Laplacian for the constant-viscosity stress. Under div(U)=0,
+    // div(mu * grad(U)^T) is identically zero for uniform mu. Re-applying
+    // its discrete, explicit approximation in that limit changes the
+    // established constant-viscosity solver (and can spoil transient
+    // bootstrap/convergence) through the finite continuity defect. F11 is
+    // the variable-viscosity correction; preserve the equivalent
+    // constant-viscosity incompressible formulation exactly.
+    const bool uniform_viscosity = std::all_of(
+        cell_effective_dynamic_viscosity.begin() + 1,
+        cell_effective_dynamic_viscosity.end(),
+        [&](double mu) { return mu == cell_effective_dynamic_viscosity.front(); });
+    if (uniform_viscosity)
+        return std::vector<double>(nf, 0.0);
+
     std::array<std::vector<std::array<double, 3>>, 3> gradient;
     std::array<std::vector<std::array<double, 3>>, 3> boundary_gradient;
     for (std::size_t component = 0; component < 3; ++component) {
