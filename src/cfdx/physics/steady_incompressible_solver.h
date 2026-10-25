@@ -858,6 +858,11 @@ inline double rhie_chow_pressure_flux_internal(
         non_orthogonal_flux);
 }
 
+enum class RhieChowVelocityContract {
+    HBYA_PREDICTOR,
+    PHYSICAL_VELOCITY
+};
+
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
 make_rhie_chow_mass_flux(
     const cfdx::core::Mesh& mesh,
@@ -867,7 +872,9 @@ make_rhie_chow_mass_flux(
     const std::array<std::vector<double>, 3>& rAU,
     double rho,
     const VelocityBoundaryConditions& bcs,
-    const ScalarBoundaryConditions& pressure_bcs = {})
+    const ScalarBoundaryConditions& pressure_bcs = {},
+    RhieChowVelocityContract velocity_contract =
+        RhieChowVelocityContract::HBYA_PREDICTOR)
 ;
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
@@ -894,9 +901,12 @@ make_rhie_chow_mass_flux(
     const std::array<std::vector<double>, 3>& rAU,
     double rho,
     const VelocityBoundaryConditions& bcs,
-    const ScalarBoundaryConditions& pressure_bcs)
+    const ScalarBoundaryConditions& pressure_bcs,
+    RhieChowVelocityContract velocity_contract)
 {
     using namespace cfdx::core;
+    const bool coupled_physical_velocity =
+        velocity_contract == RhieChowVelocityContract::PHYSICAL_VELOCITY;
     const auto& own = mesh.ownership();
     if (p.size() != mesh.n_cells())
         throw std::invalid_argument("make_rhie_chow_mass_flux: field size mismatch");
@@ -942,6 +952,28 @@ make_rhie_chow_mass_flux(
             Hf = (Hf + Hn) * 0.5;
             correction = rhie_chow_pressure_flux_internal(
                 mesh, geometry, f, p, grad_p, rAU, rho);
+            if (coupled_physical_velocity) {
+                // In the monolithic block U is the physical velocity, not H/A.
+                // Add the interpolated dAU*grad(p) compensation so an affine
+                // pressure field is not subtracted twice from the face flux.
+                const double cx = 0.5 * (
+                    geometry.cell_volumes[o] * rAU[0][o] +
+                    geometry.cell_volumes[n] * rAU[0][n]);
+                const double cy = 0.5 * (
+                    geometry.cell_volumes[o] * rAU[1][o] +
+                    geometry.cell_volumes[n] * rAU[1][n]);
+                const double cz = 0.5 * (
+                    geometry.cell_volumes[o] * rAU[2][o] +
+                    geometry.cell_volumes[n] * rAU[2][n]);
+                const Vec3 gp{
+                    0.5 * (grad_p.component_data(0)[o] + grad_p.component_data(0)[n]),
+                    0.5 * (grad_p.component_data(1)[o] + grad_p.component_data(1)[n]),
+                    0.5 * (grad_p.component_data(2)[o] + grad_p.component_data(2)[n])};
+                const Vec3 Sf = geometry.face_area_vectors[f];
+                correction -= rho * (cx * gp.x * Sf.x +
+                                     cy * gp.y * Sf.y +
+                                     cz * gp.z * Sf.z);
+            }
         } else {
             const std::size_t patch = geometry.face_patch[f];
             if (patch < mesh.boundary().n_patches() &&
@@ -982,12 +1014,54 @@ make_rhie_chow_mass_flux(
                     correction = rho * (
                         implicit_coefficient * (pbc->second.value - p(o)) +
                         deferred);
+                    if (coupled_physical_velocity) {
+                        const Vec3 gp{
+                            grad_p.component_data(0)[o],
+                            grad_p.component_data(1)[o],
+                            grad_p.component_data(2)[o]};
+                        correction -= rho * (
+                            dAU_boundary.x * gp.x * Sf.x +
+                            dAU_boundary.y * gp.y * Sf.y +
+                            dAU_boundary.z * gp.z * Sf.z);
+                    }
                 }
             }
         }
         flux(f) = rho * Hf.dot(geometry.face_area_vectors[f]) - correction;
     }
     return flux;
+}
+
+inline cfdx::core::Field<double, cfdx::core::Location::FACE>
+make_rhie_chow_flux_from_hbya(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& h_by_a,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
+    const std::array<std::vector<double>, 3>& rAU,
+    double rho,
+    const VelocityBoundaryConditions& bcs,
+    const ScalarBoundaryConditions& pressure_bcs = {})
+{
+    return make_rhie_chow_mass_flux(
+        mesh, geometry, h_by_a, p, rAU, rho, bcs, pressure_bcs,
+        RhieChowVelocityContract::HBYA_PREDICTOR);
+}
+
+inline cfdx::core::Field<double, cfdx::core::Location::FACE>
+make_rhie_chow_flux_from_physical_velocity(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& physical_velocity,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& p,
+    const std::array<std::vector<double>, 3>& rAU,
+    double rho,
+    const VelocityBoundaryConditions& bcs,
+    const ScalarBoundaryConditions& pressure_bcs = {})
+{
+    return make_rhie_chow_mass_flux(
+        mesh, geometry, physical_velocity, p, rAU, rho, bcs, pressure_bcs,
+        RhieChowVelocityContract::PHYSICAL_VELOCITY);
 }
 
 inline ScalarEquation assemble_momentum_component(
@@ -1741,7 +1815,11 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 // every row as D*(p_self - p_other), the deferred flux
                 // must enter this cell's outward divergence with the
                 // face sign.
-                b(row) += sign * nonorth_flux;
+                const double compensation = rho * (
+                    rAUx_f * gp.x * rawSf.x +
+                    rAUy_f * gp.y * rawSf.y +
+                    rAUz_f * gp.z * rawSf.z);
+                b(row) += sign * (nonorth_flux - compensation);
             } else {
                 const std::size_t patch = geometry.face_patch[f];
                 if (patch < mesh.boundary().n_patches() &&
@@ -1806,7 +1884,11 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     // Match the boundary's deferred pressure response to the
                     // internal-face treatment; otherwise COUPLED drops the
                     // tangential pressure flux at fixed-pressure boundaries.
-                    b(row) += rho * deferred_boundary;
+                    const double compensation_boundary = rho * (
+                        rAUx * gp_boundary.x * rawSf.x +
+                        rAUy * gp_boundary.y * rawSf.y +
+                        rAUz * gp_boundary.z * rawSf.z);
+                    b(row) += rho * deferred_boundary - compensation_boundary;
                 }
             }
         }
@@ -3065,7 +3147,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 coupled_rAU[1][c] = 1.0 / ey.diagonal[c];
                 coupled_rAU[2][c] = 1.0 / ez.diagonal[c];
             }
-            mass_flux = make_rhie_chow_mass_flux(
+            mass_flux = make_rhie_chow_flux_from_physical_velocity(
                 mesh, geometry, U, p, coupled_rAU,
                 controls.density, velocity_bcs, pressure_bcs);
 
@@ -3074,7 +3156,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // against the stored field. Zero unless the stored flux was
             // mutated after the rebuild.
             {
-                const auto rederived_flux = make_rhie_chow_mass_flux(
+                const auto rederived_flux = make_rhie_chow_flux_from_physical_velocity(
                     mesh, geometry, U, p, coupled_rAU,
                     controls.density, velocity_bcs, pressure_bcs);
                 for (std::size_t f = 0; f < mesh.n_faces(); ++f)

@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 #include <vector>
 
@@ -188,6 +189,84 @@ static Mesh make_two_cell_channel_oblique()
     return m;
 }
 
+// Four-cell channel so an alternating pressure mode is distinguishable
+// from a genuinely affine pressure field. Interior cells have a centred
+// zero gradient for p = (+1,-1,+1,-1), while adjacent-cell jumps remain nonzero.
+static Mesh make_four_cell_channel(
+    const std::array<double, 5>& x_positions = {0.0, 1.0, 2.0, 3.0, 4.0},
+    bool split_boundary_patches = false)
+{
+    Mesh m;
+    constexpr std::size_t nx = 4;
+    m.points().resize((nx + 1) * 4);
+    for (std::size_t i = 0; i <= nx; ++i) {
+        const double x = x_positions[i];
+        const double xyz[4][3] = {
+            {x,0,0}, {x,1,0}, {x,1,1}, {x,0,1}};
+        for (std::size_t j = 0; j < 4; ++j)
+            m.points().set(4*i+j, xyz[j][0], xyz[j][1], xyz[j][2]);
+    }
+
+    std::vector<std::size_t> x_faces(nx + 1);
+    std::vector<std::vector<std::size_t>> side_faces(nx);
+    for (std::size_t i = 0; i <= nx; ++i) {
+        const std::size_t b = 4*i;
+        m.faces().push_face({b, b+1, b+2, b+3});
+        x_faces[i] = i;
+    }
+    for (std::size_t i = 0; i < nx; ++i) {
+        const std::size_t l = 4*i, r = 4*(i+1);
+        const std::size_t first = nx + 1 + 4 * i;
+        m.faces().push_face({l, r, r+3, l+3});       // y = 0
+        m.faces().push_face({l+1, l+2, r+2, r+1});   // y = 1
+        m.faces().push_face({l, l+1, r+1, r});       // z = 0
+        m.faces().push_face({l+3, r+3, r+2, l+2});   // z = 1
+        side_faces[i] = {first, first+1, first+2, first+3};
+    }
+
+    constexpr std::size_t n_faces = (nx + 1) + 4 * nx;
+    m.ownership().resize(n_faces);
+    for (std::size_t f = 0; f < n_faces; ++f)
+        m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
+    for (std::size_t i = 0; i <= nx; ++i) {
+        if (i == 0) m.ownership().set_owner(x_faces[i], 0);
+        else m.ownership().set_owner(x_faces[i], i-1);
+        if (i > 0 && i < nx)
+            m.ownership().set_neighbour(x_faces[i], static_cast<std::int64_t>(i));
+    }
+
+    Patch wall;
+    wall.name = "wall";
+    wall.type = PatchType::WALL;
+    Patch inlet;
+    inlet.name = "inlet";
+    inlet.type = PatchType::WALL;
+    Patch outlet;
+    outlet.name = "outlet";
+    outlet.type = PatchType::WALL;
+    if (split_boundary_patches) {
+        inlet.face_ids = {x_faces.front()};
+        outlet.face_ids = {x_faces.back()};
+    } else {
+        wall.face_ids = {x_faces.front(), x_faces.back()};
+    }
+    for (std::size_t i = 0; i < nx; ++i) {
+        const auto l = x_faces[i], r = x_faces[i+1];
+        m.cells().push_cell({l, r, side_faces[i][0], side_faces[i][1],
+                             side_faces[i][2], side_faces[i][3]});
+        for (const auto f : side_faces[i]) {
+            m.ownership().set_owner(f, i);
+            wall.face_ids.push_back(f);
+        }
+    }
+    m.boundary().add_patch(wall);
+    if (split_boundary_patches) {
+        m.boundary().add_patch(inlet);
+        m.boundary().add_patch(outlet);
+    }
+    return m;
+}
+
 int main()
 {
     run_case("n9_s9_rhie_chow_linear_pressure_consistency", [] {
@@ -196,15 +275,14 @@ int main()
 
         Field<double, Location::CELL> U(2, "U", "m/s", 3);
         Field<double, Location::CELL> p(2, "p", "Pa", 1);
-        Field<double, Location::CELL> grad_p(2, "grad_p", "Pa/m", 3);
         U.set(0, 2.0, 0.0, 0.0);
         U.set(1, 2.0, 0.0, 0.0);
         p(0) = 1.0;
         p(1) = 3.0;
 
-        // Exact linear pressure field: dp/dx = 2 Pa/m.
-        grad_p.set(0, 2.0, 0.0, 0.0);
-        grad_p.set(1, 2.0, 0.0, 0.0);
+        // The internal pressure jump is 2 Pa across a unit centre distance.
+        // The zero-gradient boundary condition intentionally defines the
+        // discrete cell gradient used by the compensation term.
 
         VelocityBoundaryConditions ubc;
         ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
@@ -212,13 +290,28 @@ int main()
         pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
 
         const auto rAU = unit_rAU(mesh.n_cells());
-        const auto phi = make_rhie_chow_mass_flux(
+        const auto phi = make_rhie_chow_flux_from_physical_velocity(
             mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
         const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+        const auto grad_p_discrete = gauss_gradient_with_boundary(
+            p, mesh, geometry, pbc);
 
-        // The Rhie-Chow pressure correction must vanish for a pressure field
-        // whose cell gradient is exactly the same as its face pressure jump.
-        EXPECT_NEAR(phi(1), phi_linear(1), 1e-12);
+        // COUPLED supplies physical U, unlike the segregated H/A predictor.
+        // Its flux therefore includes interp(dAU*grad(p)) before subtracting
+        // the implicit pressure response. On this orthogonal internal face,
+        // the response is dAU_f * (p_N-p_O) / d * Sf.x; this direct expression
+        // is independent of the production Rhie-Chow flux routine.
+        const double grad_face_x = 0.5 * (
+            grad_p_discrete.component_data(0)[0] +
+            grad_p_discrete.component_data(0)[1]);
+        const double dAU_face_x = 0.5 * (
+            geometry.cell_volumes[0] * rAU[0][0] +
+            geometry.cell_volumes[1] * rAU[0][1]);
+        const double pressure_jump_response =
+            dAU_face_x * (p(1) - p(0));
+        const double expected = phi_linear(1) +
+            dAU_face_x * grad_face_x - pressure_jump_response;
+        EXPECT_NEAR(phi(1), expected, 1e-12);
     });
 
     run_case("n9_s9_rhie_chow_pressure_offset_invariance", [] {
@@ -240,24 +333,213 @@ int main()
         pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
 
         const auto rAU = unit_rAU(mesh.n_cells());
-        const auto phi0 = make_rhie_chow_mass_flux(
+        // Exercise the COUPLED physical-velocity contract, not the default
+        // segregated H/A contract, for this pressure-gauge invariance check.
+        const auto phi0 = make_rhie_chow_flux_from_physical_velocity(
             mesh, geometry, U, p0, rAU, 1.0, ubc, pbc);
-        const auto phi1 = make_rhie_chow_mass_flux(
+        const auto phi1 = make_rhie_chow_flux_from_physical_velocity(
             mesh, geometry, U, p1, rAU, 1.0, ubc, pbc);
 
         for (std::size_t f = 0; f < mesh.n_faces(); ++f)
             EXPECT_NEAR(phi0(f), phi1(f), 1e-12);
     });
 
-    run_case("n9_s9_rhie_chow_alternating_pressure_mode_is_coupled", [] {
+    run_case("n9_s9_rhie_chow_affine_pressure_nonuniform_mesh", [] {
+        const Mesh mesh = make_four_cell_channel(
+            {0.0, 0.5, 2.0, 4.0, 7.0}, true);
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        U.fill(0.0);
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+            U.set(cell, 2.0, 0.0, 0.0);
+            p(cell) = 1.0 + 2.0 * geometry.cell_centres[cell].x;
+        }
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ubc["inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {2.0, 0.0, 0.0}};
+        ubc["outlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {2.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        pbc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
+        pbc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 15.0, 0.0};
+
+        const auto rAU = unit_rAU(mesh.n_cells());
+        const auto phi = make_rhie_chow_flux_from_physical_velocity(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+        const auto phi_hbya = make_rhie_chow_flux_from_hbya(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+        const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+        const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
+
+        // Internal face IDs 1..3 are orthogonal but have unequal centre
+        // distances and unequal cell volumes. The oracle is evaluated directly
+        // from geometry, the pressure jump, and the independently inspected
+        // cell gradients, rather than calling the production correction helper.
+        for (std::size_t f = 1; f <= 3; ++f) {
+            const auto owner = mesh.ownership().owner(f);
+            const auto neighbour = static_cast<std::size_t>(mesh.ownership().neighbour(f));
+            const double dAU_face_x = 0.5 * (
+                geometry.cell_volumes[owner] * rAU[0][owner] +
+                geometry.cell_volumes[neighbour] * rAU[0][neighbour]);
+            const double dx = geometry.cell_centres[neighbour].x -
+                              geometry.cell_centres[owner].x;
+            const double grad_face_x = 0.5 * (
+                grad_p.component_data(0)[owner] +
+                grad_p.component_data(0)[neighbour]);
+            const double sf_x = geometry.face_area_vectors[f].x;
+            const double pressure_jump_response =
+                dAU_face_x * (p(neighbour) - p(owner)) / dx * sf_x;
+            const double compensation = dAU_face_x * grad_face_x * sf_x;
+            const double expected_hbya = phi_linear(f) - pressure_jump_response;
+            const double expected = expected_hbya + compensation;
+            EXPECT_NEAR(grad_face_x, 2.0, 1e-12);
+            EXPECT_NEAR(phi_hbya(f), expected_hbya, 1e-12);
+            EXPECT_NEAR(phi(f), expected, 1e-12);
+            EXPECT_NEAR(phi(f) - phi_hbya(f), compensation, 1e-12);
+        }
+
+        // Independent cellwise divergence of the authoritative reconstructed
+        // flux. Constant U has zero divergence on this closed orthogonal mesh.
+        std::vector<double> cell_divergence(mesh.n_cells(), 0.0);
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            const auto owner = mesh.ownership().owner(f);
+            cell_divergence[owner] += phi(f);
+            const auto neighbour = mesh.ownership().neighbour(f);
+            if (neighbour >= 0)
+                cell_divergence[static_cast<std::size_t>(neighbour)] -= phi(f);
+        }
+        for (const double divergence : cell_divergence)
+            EXPECT_NEAR(divergence, 0.0, 1e-12);
+    });
+
+    run_case("n9_s9_coupled_block_continuity_matches_flux_divergence", [] {
+        const Mesh mesh = make_four_cell_channel(
+            {0.0, 0.5, 2.0, 4.0, 7.0}, true);
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+            // Manufactured solution: U=(2,0,0), p=1+2x, body force=(2,0,0).
+            // Start with the exact velocity but a deliberately incorrect
+            // pressure field so the coupled block must recover the pressure.
+            U.set(cell, 2.0, 0.0, 0.0);
+            p(cell) = 0.0;
+        }
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {2.0, 0.0, 0.0}};
+        ubc["inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {2.0, 0.0, 0.0}};
+        ubc["outlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {2.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        pbc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
+        pbc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 15.0, 0.0};
+
+        SparseMatrix captured_matrix;
+        Vector captured_rhs;
+        bool captured = false;
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::COUPLED;
+        controls.pressure_gauge_policy = PressureGaugePolicy::NONE;
+        controls.body_force = {2.0, 0.0, 0.0};
+        controls.kinematic_viscosity = 1e-2;
+        controls.coupling.alpha_u = 1.0;
+        controls.coupling.alpha_p = 1.0;
+        controls.coupling.n_outer_correctors = 1;
+        controls.coupling.schur_model = CoupledSchurModel::BlockLocal;
+        controls.coupling.coupled_linear_tolerance = 1e-12;
+        controls.convergence.max_iterations = 1;
+        controls.coupled_assembly_callback = [&](const CoupledAssemblySnapshot& snapshot) {
+            if (snapshot.matrix == nullptr || snapshot.rhs == nullptr)
+                throw std::runtime_error("coupled assembly evidence was incomplete");
+            captured_matrix = *snapshot.matrix;
+            captured_rhs = *snapshot.rhs;
+            captured = true;
+        };
+
+        const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, controls);
+        EXPECT_TRUE(captured);
+        EXPECT_TRUE(result.authoritative_mass_flux.size() == mesh.n_faces());
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+            EXPECT_NEAR(U.component_data(0)[cell], 2.0, 1e-8);
+            EXPECT_NEAR(U.component_data(1)[cell], 0.0, 1e-8);
+            EXPECT_NEAR(U.component_data(2)[cell], 0.0, 1e-8);
+            EXPECT_NEAR(p(cell), 1.0 + 2.0 * geometry.cell_centres[cell].x, 1e-8);
+        }
+
+        const std::size_t nc = mesh.n_cells();
+        Vector x(4 * nc, 0.0);
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            x(cell) = U.component_data(0)[cell];
+            x(nc + cell) = U.component_data(1)[cell];
+            x(2 * nc + cell) = U.component_data(2)[cell];
+            x(3 * nc + cell) = p(cell);
+        }
+        std::vector<double> cell_divergence(nc, 0.0);
+        for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+            const auto owner = mesh.ownership().owner(face);
+            cell_divergence[owner] += result.authoritative_mass_flux(face);
+            const auto neighbour = mesh.ownership().neighbour(face);
+            if (neighbour >= 0)
+                cell_divergence[static_cast<std::size_t>(neighbour)] -=
+                    result.authoritative_mass_flux(face);
+        }
+
+        // The post-solve continuity row is the exact algebraic residual of
+        // the captured production block system. With the production sign
+        // convention, A*x-b equals the outward divergence of the authoritative
+        // face flux, independently reconstructed cell by cell.
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            const std::size_t row = 3 * nc + cell;
+            double ax = 0.0;
+            const auto rb = captured_matrix.row_offsets_data()[row];
+            const auto re = captured_matrix.row_offsets_data()[row + 1];
+            for (std::size_t k = rb; k < re; ++k)
+                ax += captured_matrix.values_data()[k] *
+                      x(captured_matrix.columns_data()[k]);
+            const double block_residual = ax - captured_rhs(row);
+            EXPECT_NEAR(block_residual, cell_divergence[cell], 1e-8);
+        }
+    });
+
+    run_case("n9_s9_rhie_chow_fixed_pressure_boundary_gauge_invariance", [] {
         const Mesh mesh = make_two_cell_channel();
         const auto geometry = build_fv_geometry(mesh);
-
         Field<double, Location::CELL> U(2, "U", "m/s", 3);
-        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        Field<double, Location::CELL> p0(2, "p0", "Pa", 1);
+        Field<double, Location::CELL> p1(2, "p1", "Pa", 1);
         U.fill(0.0);
-        p(0) = 1.0;
-        p(1) = -1.0;
+        p0(0) = -2.0; p0(1) = 4.0;
+        constexpr double gauge_shift = 1000.0;
+        p1(0) = p0(0) + gauge_shift;
+        p1(1) = p0(1) + gauge_shift;
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc0, pbc1;
+        pbc0["wall"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        pbc1["wall"] = {ScalarBoundaryType::FIXED_VALUE, gauge_shift, 0.0};
+
+        const auto rAU = unit_rAU(mesh.n_cells());
+        const auto phi0 = make_rhie_chow_flux_from_physical_velocity(
+            mesh, geometry, U, p0, rAU, 1.0, ubc, pbc0);
+        const auto phi1 = make_rhie_chow_flux_from_physical_velocity(
+            mesh, geometry, U, p1, rAU, 1.0, ubc, pbc1);
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+            EXPECT_NEAR(phi0(f), phi1(f), 1e-12);
+    });
+
+    run_case("n9_s9_rhie_chow_alternating_pressure_mode_is_coupled", [] {
+        const Mesh mesh = make_four_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        U.fill(0.0);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+            p(c) = (c % 2 == 0) ? 1.0 : -1.0;
 
         VelocityBoundaryConditions ubc;
         ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
@@ -265,15 +547,43 @@ int main()
         pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
 
         const auto rAU = unit_rAU(mesh.n_cells());
-        const auto phi = make_rhie_chow_mass_flux(
+        const auto phi = make_rhie_chow_flux_from_physical_velocity(
             mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+        const auto phi_hbya = make_rhie_chow_flux_from_hbya(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+        const auto phi_linear = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+        const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
 
-        // A collocated cell-centred velocity interpolation alone would produce
-        // zero mass flux. Rhie-Chow must couple this alternating pressure mode
-        // to the face flux instead of allowing a checkerboard pressure mode to
-        // become invisible to continuity.
-        EXPECT_TRUE(std::abs(phi(1)) > 1e-12);
-        EXPECT_NEAR(phi(1), 2.0, 1e-12);
+        // Independent face-level oracle: on the central orthogonal face the
+        // alternating mode has a nonzero pressure jump but a zero interpolated
+        // cell-gradient contribution. The expected flux is the physical
+        // velocity flux plus dAU_f*grad(p)_f.Sf minus the orthogonal pressure
+        // jump response. Do not merely assert nonzero flux: that would also
+        // pass for an incorrectly signed or incorrectly scaled correction.
+        constexpr std::size_t f = 2;
+        constexpr std::size_t owner = 1;
+        constexpr std::size_t neighbour = 2;
+        const double dAU_face_x = 0.5 * (
+            geometry.cell_volumes[owner] * rAU[0][owner] +
+            geometry.cell_volumes[neighbour] * rAU[0][neighbour]);
+        const double grad_face_x = 0.5 * (
+            grad_p.component_data(0)[owner] +
+            grad_p.component_data(0)[neighbour]);
+        const double dx = geometry.cell_centres[neighbour].x -
+                          geometry.cell_centres[owner].x;
+        const double sf_x = geometry.face_area_vectors[f].x;
+        const double pressure_jump_response =
+            dAU_face_x * (p(neighbour) - p(owner)) / dx * sf_x;
+        const double compensation =
+            dAU_face_x * grad_face_x * sf_x;
+        const double expected = phi_linear(f) + compensation -
+                                pressure_jump_response;
+        EXPECT_NEAR(grad_face_x, 0.0, 1e-12);
+        EXPECT_NEAR(phi_linear(f), 0.0, 1e-12);
+        EXPECT_NEAR(phi_hbya(f), expected, 1e-12);
+        EXPECT_NEAR(phi(f), expected, 1e-12);
+        EXPECT_NEAR(phi(f) - phi_linear(f), -2.0, 1e-12);
+        EXPECT_TRUE(std::abs(phi(f) - phi_linear(f)) > 1.0);
     });
 
 
