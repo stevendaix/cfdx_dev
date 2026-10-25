@@ -98,9 +98,13 @@ static Mesh make_skewed_stress_cube(std::size_t n, double shear)
     for (std::size_t k = 0; k <= n; ++k)
         for (std::size_t j = 0; j <= n; ++j)
             for (std::size_t i = 0; i <= n; ++i) {
-                const double x = static_cast<double>(i) / static_cast<double>(n);
-                const double y = static_cast<double>(j) / static_cast<double>(n);
-                const double z = static_cast<double>(k) / static_cast<double>(n);
+                const auto stretched_coordinate = [n](std::size_t index) {
+                    const double eta = static_cast<double>(index) / static_cast<double>(n);
+                    return eta + 0.20 * eta * eta;
+                };
+                const double x = stretched_coordinate(i);
+                const double y = stretched_coordinate(j);
+                const double z = stretched_coordinate(k);
                 mesh.points().set(point_id(i, j, k), x + shear * y, y, z);
             }
 
@@ -267,7 +271,7 @@ int main()
     });
 
 
-    run_case("variable_viscosity_transpose_stress_skewed_affine", [] {
+    run_case("variable_viscosity_transpose_stress_skewed_nonuniform_affine", [] {
         constexpr std::size_t n = 4;
         constexpr double shear = 0.65;
         constexpr double a = 2.5;
