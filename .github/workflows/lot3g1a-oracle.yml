@@ -16,7 +16,7 @@ concurrency:
 
 env:
   PR_HEAD_SHA: "71858a20fbfc67006824936d0646b3dd1cb79394"
-  STAMP: "2026-10-25-lot3g1a"
+  STAMP: "2026-10-25-lot3g1a-r2"
 
 jobs:
   g1a-candidate-verify:
@@ -100,7 +100,7 @@ jobs:
               tests/python/test_visualization_pipeline.py \
               tests/python/test_workbench.py
             echo "ruff_format_exit=$?"
-          } > "$GITHUB_WORKSPACE/diag-evidence/logs/lot3g1a_ruff_2026-10-25-lot3g1a.log" 2>&1
+          } > "$GITHUB_WORKSPACE/diag-evidence/logs/lot3g1a_ruff_2026-10-25-lot3g1a-r2.log" 2>&1
           exit 0
 
       - name: Run the CI GUI regression list plus pipeline tests (long tracebacks)
@@ -120,16 +120,21 @@ jobs:
               tests/python/test_gui_3d.py \
               tests/python/test_visualization_pipeline.py \
               --tb=long -rA \
-              > "$GITHUB_WORKSPACE/diag-evidence/logs/lot3g1a_gui_2026-10-25-lot3g1a.log" 2>&1
-          echo "exit_code=$?" >> "$GITHUB_WORKSPACE/diag-evidence/logs/lot3g1a_gui_2026-10-25-lot3g1a.log"
+              > "$GITHUB_WORKSPACE/diag-evidence/logs/lot3g1a_gui_2026-10-25-lot3g1a-r2.log" 2>&1
+          echo "exit_code=$?" >> "$GITHUB_WORKSPACE/diag-evidence/logs/lot3g1a_gui_2026-10-25-lot3g1a-r2.log"
           exit 0
 
       - name: No-Qt path check (Release job import path)
         working-directory: /tmp/prhead
         run: |
           set +e
-          LOG="$GITHUB_WORKSPACE/diag-evidence/logs/lot3g1a_noqt_2026-10-25-lot3g1a.log"
-          python -m pip uninstall -y PySide6 pyvistaqt pyvista pyqtgraph > /dev/null 2>&1
+          LOG="$GITHUB_WORKSPACE/diag-evidence/logs/lot3g1a_noqt_2026-10-25-lot3g1a-r2.log"
+          python -m pip uninstall -y PySide6 PySide6_Essentials PySide6_Addons shiboken6 pyvistaqt pyvista pyqtgraph > /dev/null 2>&1
+          if PYTHONPATH=src/cfdx/python python -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('PySide6') is None else 1)"; then
+            echo "PySide6 fully removed: yes" >> "$LOG"
+          else
+            echo "PySide6 fully removed: NO (uninstall incomplete)" >> "$LOG"
+          fi
           PYTHONPATH=src/cfdx/python python - <<'PY' > "$LOG" 2>&1
           import cfdx.workbench
           from cfdx.workbench import CFDXWorkbenchWindow
@@ -150,15 +155,15 @@ jobs:
             echo "stamp=$STAMP"
             echo "overlay=6 G1a candidate files from diag-tools/lot3g1a_candidates/"
             echo "purpose=verify ruff, GUI pytest (7 CI GUI files + test_visualization_pipeline.py) and the no-Qt path before pushing feat/gui-lot3-editable-pipeline"
-          } > "diag-evidence/logs/lot3g1a_meta_2026-10-25-lot3g1a.txt"
+          } > "diag-evidence/logs/lot3g1a_meta_2026-10-25-lot3g1a-r2.txt"
 
       - name: Commit evidence
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "diag-evidence/logs/lot3g1a_ruff_2026-10-25-lot3g1a.log" \
-                  "diag-evidence/logs/lot3g1a_gui_2026-10-25-lot3g1a.log" \
-                  "diag-evidence/logs/lot3g1a_noqt_2026-10-25-lot3g1a.log" \
-                  "diag-evidence/logs/lot3g1a_meta_2026-10-25-lot3g1a.txt"
-          git commit -m "diag: lot3 g1a candidate oracle evidence (2026-10-25-lot3g1a) [ci skip]"
+          git add "diag-evidence/logs/lot3g1a_ruff_2026-10-25-lot3g1a-r2.log" \
+                  "diag-evidence/logs/lot3g1a_gui_2026-10-25-lot3g1a-r2.log" \
+                  "diag-evidence/logs/lot3g1a_noqt_2026-10-25-lot3g1a-r2.log" \
+                  "diag-evidence/logs/lot3g1a_meta_2026-10-25-lot3g1a-r2.txt"
+          git commit -m "diag: lot3 g1a candidate oracle evidence (2026-10-25-lot3g1a-r2) [ci skip]"
           git push "https://x-access-token:${{ github.token }}@github.com/stevendaix/cfdx_dev.git" HEAD:ci/long-campaign-diagnostics
