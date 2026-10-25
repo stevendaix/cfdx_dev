@@ -23,6 +23,8 @@ PREREQUISITES = {
     "dataset": Prerequisite("dataset", "a mesh or result loaded in the 3D viewport"),
     "idle": Prerequisite("idle", "no simulation currently running or paused"),
     "active": Prerequisite("active", "a running or paused simulation"),
+    "undo": Prerequisite("undo", "an edit to undo"),
+    "redo": Prerequisite("redo", "an edit to redo"),
 }
 
 
@@ -33,6 +35,8 @@ class CapabilityContext:
     renderer_ready: bool = False
     dataset_loaded: bool = False
     simulation_active: bool = False
+    undo_available: bool = False
+    redo_available: bool = False
 
 
 @dataclass(frozen=True)
@@ -77,6 +81,8 @@ _EVALUATORS = {
     "dataset": lambda context: context.dataset_loaded,
     "idle": lambda context: not context.simulation_active,
     "active": lambda context: context.simulation_active,
+    "undo": lambda context: context.undo_available,
+    "redo": lambda context: context.redo_available,
 }
 
 
@@ -103,6 +109,8 @@ _CAPABILITY_DEFS = (
     Capability("workbench.action.check", "Check", 1, (PREREQUISITES["idle"],)),
     Capability("workbench.action.save", "Save", 1, (PREREQUISITES["idle"],)),
     Capability("workbench.action.stop", "Stop", 1, (PREREQUISITES["active"],)),
+    Capability("workbench.action.undo", "Undo", 2, (PREREQUISITES["undo"],)),
+    Capability("workbench.action.redo", "Redo", 2, (PREREQUISITES["redo"],)),
     Capability("workbench.action.new_project", "New Project", 1, ()),
     Capability("workbench.action.open", "Open", 1, ()),
     Capability("workbench.action.open_mesh", "Open Mesh", 1, ()),
