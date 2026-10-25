@@ -1030,9 +1030,9 @@ def _extract_cas_h5_reference_values(rp_vars: dict, setup: CaseSetup) -> None:
         gx = float(rp_vars.get("gravity/x", 0.0))
         gy = float(rp_vars.get("gravity/y", 0.0))
         gz = float(rp_vars.get("gravity/z", 0.0))
-        setup.gravity_vector = f"[{gx}, {gy}, {gz}]"
+        setup.gravity_vector = f"{gx:.17g} {gy:.17g} {gz:.17g}"
     else:
-        setup.gravity_vector = "[0, 0, 0]"
+        setup.gravity_vector = "0 0 0"
 
     setup.energy_model = "energy" if rp_vars.get("energy?", False) else "isothermal"
 
