@@ -1,0 +1,48 @@
+....s........................ss............                              [100%]
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/python/test_specialized_setup.py::test_setup_panel_exposes_physics_controls_and_applies_model
+PASSED tests/python/test_specialized_setup.py::test_setup_panel_turbulence_filters_to_solver_ready_models
+PASSED tests/python/test_specialized_setup.py::test_setup_panel_routes_physics_diagnostic_to_field_widget
+PASSED tests/python/test_specialized_setup.py::test_setup_panel_selects_tab_for_material_boundary_and_initialization_diagnostics
+PASSED tests/python/test_workbench.py::test_workbench_has_stable_docks
+PASSED tests/python/test_workbench.py::test_properties_inspector_applies_typed_cfl_value
+PASSED tests/python/test_workbench.py::test_properties_inspector_applies_typed_physics_toggle
+PASSED tests/python/test_workbench.py::test_mesh_selection_updates_typed_inspector_context
+PASSED tests/python/test_workbench.py::test_undo_and_redo_restore_previous_property_value
+PASSED tests/python/test_workbench.py::test_command_palette_lists_undo_with_history_prerequisite
+PASSED tests/python/test_workbench.py::test_undo_and_redo_actions_have_stable_ids_and_shortcuts
+PASSED tests/python/test_workbench.py::test_contour_dialog_creates_pipeline_operation
+PASSED tests/python/test_workbench.py::test_edit_selected_operation_replaces_it_in_place
+PASSED tests/python/test_workbench.py::test_move_buttons_reorder_pipeline_operations
+PASSED tests/python/test_workbench.py::test_edit_slice_operation_changes_normal
+PASSED tests/python/test_workbench.py::test_glyph_dialog_uses_factor_and_reports_missing_fields
+PASSED tests/python/test_gui_browser_widgets.py::test_browser_widgets_import
+PASSED tests/python/test_gui_browser_widgets.py::test_results_series_panel_exposes_field_and_playback_controls
+PASSED tests/python/test_gui_browser_widgets.py::test_3d_patch_actor_id_uses_stable_identity
+PASSED tests/python/test_gui_browser_widgets.py::test_mesh_browser_drills_into_regions_patches_and_faces
+PASSED tests/python/test_gui_browser_widgets.py::test_mesh_browser_keeps_flat_patch_list_for_default_region
+PASSED tests/python/test_renderer.py::test_null_renderer_is_headless_and_selectable
+PASSED tests/python/test_renderer.py::test_null_renderer_rejects_unknown_selection
+PASSED tests/python/test_renderer.py::test_null_renderer_clear_removes_selection
+PASSED tests/python/test_renderer.py::test_null_renderer_rejects_empty_source
+PASSED tests/python/test_renderer_headless_contract.py::test_renderer_contract_import_does_not_load_optional_gui_stack
+PASSED tests/python/test_renderer_headless_contract.py::test_renderer_contract_symbols_are_headless
+PASSED tests/python/test_renderer_pyvista.py::test_pyvista_renderer_loads_vtu
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_replays_ordered_operations_without_mutating_source
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_remove_and_clear_return_new_pipelines
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_replace_returns_new_pipeline_and_replays
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_replace_rejects_invalid_index_and_type
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_move_reorders_operations_immutably
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_move_rejects_out_of_range_indices
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs0]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs1]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs2]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs3]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs4]
+PASSED tests/python/test_visualization_pipeline.py::test_operation_checks_field_availability_and_supports_vector_glyphs
+SKIPPED [1] tests/python/test_workbench.py:66: PySide6 is installed
+SKIPPED [1] tests/python/test_renderer_pyvista.py:28: PyVista is installed
+SKIPPED [1] tests/python/test_gui_3d.py:7: PyVistaQt OpenGL smoke test is opt-in and requires a stable display
+40 passed, 3 skipped in 4.50s
+exit_code=0

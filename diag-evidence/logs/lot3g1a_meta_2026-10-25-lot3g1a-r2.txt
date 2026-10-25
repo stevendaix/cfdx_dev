@@ -1,0 +1,4 @@
+pr_head=71858a20fbfc67006824936d0646b3dd1cb79394
+stamp=2026-10-25-lot3g1a-r2
+overlay=6 G1a candidate files from diag-tools/lot3g1a_candidates/
+purpose=verify ruff, GUI pytest (7 CI GUI files + test_visualization_pipeline.py) and the no-Qt path before pushing feat/gui-lot3-editable-pipeline

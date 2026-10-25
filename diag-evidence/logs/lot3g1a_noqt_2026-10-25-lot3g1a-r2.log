@@ -1,0 +1,198 @@
+no-qt import: OK <class 'cfdx.workbench.CFDXWorkbenchWindow'>
+noqt_import_exit=0
+sFFFFFFFFFFFF............                                                [100%]
+=================================== FAILURES ===================================
+_______________________ test_workbench_has_stable_docks ________________________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_workbench_has_stable_docks() -> None:
+        from cfdx.gui import create_application
+        from cfdx.session import SimulationState
+>       from PySide6.QtWidgets import QDockWidget, QLabel, QPushButton
+E       ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+
+tests/python/test_workbench.py:77: ModuleNotFoundError
+______________ test_properties_inspector_applies_typed_cfl_value _______________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_properties_inspector_applies_typed_cfl_value() -> None:
+        from cfdx.gui import create_application
+        from cfdx.session import SimulationState
+>       from PySide6.QtWidgets import QDoubleSpinBox, QPushButton
+E       ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+
+tests/python/test_workbench.py:164: ModuleNotFoundError
+____________ test_properties_inspector_applies_typed_physics_toggle ____________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_properties_inspector_applies_typed_physics_toggle() -> None:
+        from cfdx.gui import create_application
+        from cfdx.session import SimulationState
+>       from PySide6.QtWidgets import QCheckBox, QPushButton
+E       ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+
+tests/python/test_workbench.py:187: ModuleNotFoundError
+_____________ test_mesh_selection_updates_typed_inspector_context ______________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_mesh_selection_updates_typed_inspector_context() -> None:
+        from cfdx.gui import create_application
+        from cfdx.mesh_model import MeshCatalog, MeshPatch, MeshRegion
+        from cfdx.session import SimulationState
+>       from PySide6.QtWidgets import QLineEdit, QSpinBox
+E       ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+
+tests/python/test_workbench.py:214: ModuleNotFoundError
+______________ test_undo_and_redo_restore_previous_property_value ______________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_undo_and_redo_restore_previous_property_value() -> None:
+        from cfdx.gui import create_application
+        from cfdx.session import SimulationState
+>       from PySide6.QtCore import QCoreApplication, QEvent
+E       ModuleNotFoundError: No module named 'PySide6.QtCore'
+
+tests/python/test_workbench.py:250: ModuleNotFoundError
+__________ test_command_palette_lists_undo_with_history_prerequisite ___________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_command_palette_lists_undo_with_history_prerequisite() -> None:
+        from cfdx.gui import create_application
+    
+>       app = create_application(["cfdx-workbench-test"])
+
+tests/python/test_workbench.py:297: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+argv = ['cfdx-workbench-test']
+
+    def create_application(argv=None):
+>       raise RuntimeError("PySide6 is required for the CFDX GUI")
+E       RuntimeError: PySide6 is required for the CFDX GUI
+
+src/cfdx/python/cfdx/gui.py:739: RuntimeError
+___________ test_undo_and_redo_actions_have_stable_ids_and_shortcuts ___________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_undo_and_redo_actions_have_stable_ids_and_shortcuts() -> None:
+        from cfdx.gui import create_application
+    
+>       app = create_application(["cfdx-workbench-test"])
+
+tests/python/test_workbench.py:317: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+argv = ['cfdx-workbench-test']
+
+    def create_application(argv=None):
+>       raise RuntimeError("PySide6 is required for the CFDX GUI")
+E       RuntimeError: PySide6 is required for the CFDX GUI
+
+src/cfdx/python/cfdx/gui.py:739: RuntimeError
+________________ test_contour_dialog_creates_pipeline_operation ________________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_contour_dialog_creates_pipeline_operation() -> None:
+        from cfdx.gui import create_application
+>       from PySide6.QtWidgets import QPushButton
+E       ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+
+tests/python/test_workbench.py:339: ModuleNotFoundError
+______________ test_edit_selected_operation_replaces_it_in_place _______________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_edit_selected_operation_replaces_it_in_place() -> None:
+        from cfdx.gui import create_application
+>       from PySide6.QtWidgets import QPushButton
+E       ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+
+tests/python/test_workbench.py:369: ModuleNotFoundError
+________________ test_move_buttons_reorder_pipeline_operations _________________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_move_buttons_reorder_pipeline_operations() -> None:
+        from cfdx.gui import create_application
+    
+>       app = create_application(["cfdx-workbench-test"])
+
+tests/python/test_workbench.py:405: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+argv = ['cfdx-workbench-test']
+
+    def create_application(argv=None):
+>       raise RuntimeError("PySide6 is required for the CFDX GUI")
+E       RuntimeError: PySide6 is required for the CFDX GUI
+
+src/cfdx/python/cfdx/gui.py:739: RuntimeError
+___________________ test_edit_slice_operation_changes_normal ___________________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_edit_slice_operation_changes_normal() -> None:
+        from cfdx.gui import create_application
+>       from PySide6.QtWidgets import QPushButton
+E       ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+
+tests/python/test_workbench.py:432: ModuleNotFoundError
+___________ test_glyph_dialog_uses_factor_and_reports_missing_fields ___________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_glyph_dialog_uses_factor_and_reports_missing_fields() -> None:
+        from cfdx.gui import create_application
+>       from PySide6.QtWidgets import QPushButton
+E       ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+
+tests/python/test_workbench.py:462: ModuleNotFoundError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_replays_ordered_operations_without_mutating_source
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_remove_and_clear_return_new_pipelines
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_replace_returns_new_pipeline_and_replays
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_replace_rejects_invalid_index_and_type
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_move_reorders_operations_immutably
+PASSED tests/python/test_visualization_pipeline.py::test_pipeline_move_rejects_out_of_range_indices
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs0]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs1]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs2]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs3]
+PASSED tests/python/test_visualization_pipeline.py::test_invalid_operations_are_rejected[kwargs4]
+PASSED tests/python/test_visualization_pipeline.py::test_operation_checks_field_availability_and_supports_vector_glyphs
+SKIPPED [1] tests/python/test_workbench.py:66: PySide6 is installed
+FAILED tests/python/test_workbench.py::test_workbench_has_stable_docks - ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+FAILED tests/python/test_workbench.py::test_properties_inspector_applies_typed_cfl_value - ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+FAILED tests/python/test_workbench.py::test_properties_inspector_applies_typed_physics_toggle - ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+FAILED tests/python/test_workbench.py::test_mesh_selection_updates_typed_inspector_context - ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+FAILED tests/python/test_workbench.py::test_undo_and_redo_restore_previous_property_value - ModuleNotFoundError: No module named 'PySide6.QtCore'
+FAILED tests/python/test_workbench.py::test_command_palette_lists_undo_with_history_prerequisite - RuntimeError: PySide6 is required for the CFDX GUI
+FAILED tests/python/test_workbench.py::test_undo_and_redo_actions_have_stable_ids_and_shortcuts - RuntimeError: PySide6 is required for the CFDX GUI
+FAILED tests/python/test_workbench.py::test_contour_dialog_creates_pipeline_operation - ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+FAILED tests/python/test_workbench.py::test_edit_selected_operation_replaces_it_in_place - ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+FAILED tests/python/test_workbench.py::test_move_buttons_reorder_pipeline_operations - RuntimeError: PySide6 is required for the CFDX GUI
+FAILED tests/python/test_workbench.py::test_edit_slice_operation_changes_normal - ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+FAILED tests/python/test_workbench.py::test_glyph_dialog_uses_factor_and_reports_missing_fields - ModuleNotFoundError: No module named 'PySide6.QtWidgets'
+12 failed, 12 passed, 1 skipped in 0.50s
+noqt_pytest_exit=1
