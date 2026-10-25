@@ -47,7 +47,8 @@ jobs:
       - name: Ruff diagnostics (annotate exact lint/format findings)
         if: failure()
         run: |
-          for f in scripts/check_audit_gate.py scripts/n9_physical_campaign.py scripts/validation_report.py; do
+          mapfile -t changed_py < <(git diff --name-only "$CFDX_PRECOMMIT_RANGE" -- '*.py')
+          for f in scripts/check_audit_gate.py scripts/n9_physical_campaign.py scripts/validation_report.py "${changed_py[@]}"; do
             [ -f "$f" ] || continue
             fmt=$(ruff format --diff "$f" 2>&1 | grep -v "already formatted" || true)
             if [ -n "$fmt" ]; then
