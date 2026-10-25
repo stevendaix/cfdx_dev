@@ -357,5 +357,26 @@ int main()
         EXPECT_TRUE(order_8_16 > 1.0);
     });
 
+    run_case("uniform_viscosity_transpose_correction_reduces_to_incompressible_laplacian", [] {
+        constexpr double a = 2.5;
+        const Mesh mesh = make_four_cell_stress_channel();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        std::vector<double> mu(mesh.n_cells(), 2.0);
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+            U.set(cell, a * geometry.cell_centres[cell].y, 0.0, 0.0);
+        const auto bcs = affine_velocity_bcs(a);
+
+        // For this divergence-free affine field and uniform viscosity,
+        // div(mu * grad(U)^T) = mu * grad(div(U)) = 0. Preserve the
+        // existing incompressible Laplacian formulation in this limit.
+        const auto flux = momentum_transpose_diffusion_face_fluxes(
+            mesh, geometry, U, bcs, mu, 1);
+        const auto rhs = momentum_transpose_diffusion_rhs(
+            mesh, geometry, U, bcs, mu, 1);
+        for (const double value : flux) EXPECT_NEAR(value, 0.0, 0.0);
+        for (const double value : rhs) EXPECT_NEAR(value, 0.0, 0.0);
+    });
+
     return run_all();
 }
