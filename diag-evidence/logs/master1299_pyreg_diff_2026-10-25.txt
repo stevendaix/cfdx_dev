@@ -1,0 +1,5 @@
+=== failures on 1299a4c668329d3839034a41d65a80c9114e81de (evening-wave head) ===
+FAILED tests/python/test_check_audit_gate.py::ValidateFichesContractTests::test_repository_fiches_are_structurally_valid - AssertionError: Lists differ: ["CFDX_CODE_ET_VALIDATION_6_VERROUS_2026-1[1241 chars]ut'"] != []
+=== failures on 2a1a0fcba4306513b60fd258f481bccea2f01a3e (pre-wave) ===
+=== failures ONLY on the evening wave head ===
+FAILED tests/python/test_check_audit_gate.py::ValidateFichesContractTests::test_repository_fiches_are_structurally_valid - AssertionError: Lists differ: ["CFDX_CODE_ET_VALIDATION_6_VERROUS_2026-1[1241 chars]ut'"] != []

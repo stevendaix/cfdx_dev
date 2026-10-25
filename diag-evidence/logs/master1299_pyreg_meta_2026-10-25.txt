@@ -1,0 +1,5 @@
+target=master evening wave Release python regression (CI run 40222390117, job Release, step Run Python regression, exit 1)
+ref_bad=1299a4c668329d3839034a41d65a80c9114e81de
+ref_good=2a1a0fcba4306513b60fd258f481bccea2f01a3e (parent of 026cb499, pre-wave)
+note=no CFDX_PRODUCTION_SOLVER/CFDX_THERMAL_SOLVER: binaries not built here; binary-dependent failures cancel out in the diff
+pytest=-q tests/python --tb=no
