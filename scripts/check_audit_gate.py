@@ -54,6 +54,14 @@ NON_METHOD_FICHES = {
     "08-codes-de-reference.md",
 }
 
+# Consolidated audit dossiers and active tracking registers are reports, not
+# numerical-method fiches. They retain historical sections and checklists and
+# therefore do not follow the strict 1..7 method-fiche template.
+NON_FICHE_REPORTS = {
+    "audit_v2.md",
+    "turbulence.md",
+}
+
 # Reference detection (DOI prefix or ISBN). Every character class avoids
 # backslash escapes ([.] for the dot, [0-9] for digits, etc.) so the
 # pattern cannot be damaged again by transport layers that strip raw
@@ -80,6 +88,8 @@ def validate_fiches(root: Path) -> list[str]:
     if not fiches:
         return ["docs/audits contains no fiche methode"]
     for fiche in fiches:
+        if fiche.name in NON_FICHE_REPORTS:
+            continue
         text = fiche.read_text(encoding="utf-8").replace(NBSP, " ")
         for section in REQUIRED_NUMBERED_SECTIONS:
             if section not in text:
