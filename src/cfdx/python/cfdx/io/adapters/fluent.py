@@ -35,35 +35,29 @@ Corresponds to the C++ header:
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 
+from cfdx.io.gap_analysis import GapAnalysis
 from cfdx.io.interfaces import (
-    SolverAdapter,
     ConversionResult,
+    SolverAdapter,
     SourceInfo,
 )
+from cfdx.io.mapping_rules import MappingRules
 from cfdx.io.schema import (
-    BCType,
-    BCValueType,
+    BoundarySpec,
     CaseSetup,
     MaterialSpec,
-    BoundarySpec,
-    InitialCondition,
-    NumericalScheme,
-    MeshMetadata,
 )
-from cfdx.io.mapping_rules import MappingRules
-from cfdx.io.gap_analysis import GapAnalysis
 
 
 def _try_pyfluent() -> bool:
     """Check if pyfluent CaseFile reader is available (no license needed for .cas.h5)."""
     try:
         from ansys.fluent.core.filereader.case_file import CaseFile  # noqa: F401
+
         return True
     except ImportError:
         return False
@@ -87,7 +81,7 @@ def _infer_turbulence_model(rp_vars: dict) -> str:
         return "kw-standard-viscous"
     if rp_vars.get("rp-les?", False):
         return "les"
-    return "laminar" if rp_vars.get("rp-lam?", False) else "laminar"
+    return "laminar"
 
 
 def _infer_zone_type(name: str) -> str:
@@ -146,7 +140,7 @@ class FluentAdapter(SolverAdapter):
     solver_name = "Fluent"
     format_name = "cas_dat"
 
-    def __init__(self, rules: Optional[MappingRules] = None) -> None:
+    def __init__(self, rules: MappingRules | None = None) -> None:
         self.rules = rules or MappingRules.load_default()
         self.setup = CaseSetup(source=SourceInfo(solver="Fluent", format="cas_dat"))
         self._points: list[list[float]] = []
@@ -186,7 +180,11 @@ class FluentAdapter(SolverAdapter):
             cas_file = p
         if not cas_file.exists():
             # Check for .cas.h5 fallback
-            h5_candidates = list(p.parent.glob("*.cas.h5")) if p.is_dir() else [p.with_suffix(".cas.h5")]
+            h5_candidates = (
+                list(p.parent.glob("*.cas.h5"))
+                if p.is_dir()
+                else [p.with_suffix(".cas.h5")]
+            )
             for h5 in h5_candidates:
                 if h5.exists() and _try_pyfluent():
                     info.solver = "Fluent"
@@ -209,11 +207,11 @@ class FluentAdapter(SolverAdapter):
             return True
         return False
 
-    def convert(self, case_path: Union[str, Path], result: ConversionResult) -> bool:
+    def convert(self, case_path: str | Path, result: ConversionResult) -> bool:
         base = Path(str(case_path))
         cas_file = base
         dat_file = base
-        h5_file: Optional[Path] = None
+        h5_file: Path | None = None
 
         if base.is_file():
             cas_file = base
@@ -243,7 +241,8 @@ class FluentAdapter(SolverAdapter):
             mesh_ok = self.parse_cas_h5(str(h5_file))
             if not mesh_ok:
                 result.gap_report.unsupported_blocking(
-                    "mesh", "fluent_cas_h5",
+                    "mesh",
+                    "fluent_cas_h5",
                     f"Cannot parse Fluent .cas.h5 file: {h5_file}",
                     "pyfluent CaseFile is available; see gap report for details",
                 )
@@ -252,7 +251,8 @@ class FluentAdapter(SolverAdapter):
             mesh_ok = self.parse_cas(str(cas_file)) if cas_file.exists() else False
             if not mesh_ok:
                 result.gap_report.unsupported_blocking(
-                    "mesh", "fluent_cas",
+                    "mesh",
+                    "fluent_cas",
                     f"Cannot parse Fluent .cas file: {cas_file}",
                     "Ensure the file is a legacy ASCII Fluent .cas (not binary .cas.h5)",
                 )
@@ -260,7 +260,11 @@ class FluentAdapter(SolverAdapter):
 
         # Attempt results import — check for .dat.h5 alongside .cas.h5
         if h5_file is not None:
-            h5_dat = h5_file.parent / (h5_file.stem.replace(".cas", ".dat.h5") if h5_file.stem.endswith(".cas") else h5_file.parent.name + ".dat.h5")
+            h5_dat = h5_file.parent / (
+                h5_file.stem.replace(".cas", ".dat.h5")
+                if h5_file.stem.endswith(".cas")
+                else h5_file.parent.name + ".dat.h5"
+            )
             if h5_dat.exists():
                 self.import_results(str(h5_dat), result)
             else:
@@ -270,7 +274,8 @@ class FluentAdapter(SolverAdapter):
                     self.import_results(str(h5_dat), result)
                 else:
                     result.gap_report.unsupported_nonblocking(
-                        "results", "fluent_dat_h5",
+                        "results",
+                        "fluent_dat_h5",
                         "No .dat.h5 solution file found alongside .cas.h5",
                         "Copy the .dat.h5 file alongside the .cas.h5 for solution data import",
                     )
@@ -281,7 +286,11 @@ class FluentAdapter(SolverAdapter):
         result.setup = self.setup.model_copy(deep=True)
 
         # Build mesh dict — handle mixed cell types (tetra/hexa/prism/etc.)
-        points_arr = np.array(self._points, dtype=np.float64) if self._points else np.empty((0, 3))
+        points_arr = (
+            np.array(self._points, dtype=np.float64)
+            if self._points
+            else np.empty((0, 3))
+        )
         cells: dict[str, np.ndarray] = {}
         if self._cell_nodes:
             type_map = {4: "tetra", 5: "pyramid", 6: "wedge", 8: "hexahedron"}
@@ -298,7 +307,8 @@ class FluentAdapter(SolverAdapter):
                 cells[key] = np.array(cell_list, dtype=np.int32)
             if skipped > 0:
                 result.gap_report.approximated(
-                    "mesh", "polyhedral_cells",
+                    "mesh",
+                    "polyhedral_cells",
                     f"Skipped {skipped} polyhedral/unknown cells in .cas.h5",
                     "Use Fluent export to VTM or CGNS for polyhedral mesh support",
                 )
@@ -310,7 +320,9 @@ class FluentAdapter(SolverAdapter):
             result.setup.mesh_info.n_vertices = len(self._points)
             result.setup.mesh_info.n_cells = len(self._cell_nodes)
             result.setup.mesh_info.n_faces = len(self._face_nodes)
-            result.setup.mesh_info.dimension = 3 if any(len(p) >= 3 for p in self._points) else 2
+            result.setup.mesh_info.dimension = (
+                3 if any(len(p) >= 3 for p in self._points) else 2
+            )
 
         self._populate_gap_report(result.gap_report)
         return not result.gap_report.has_blocking()
@@ -387,15 +399,17 @@ class FluentAdapter(SolverAdapter):
                     n_elems = int(data_tokens[i + 4])
                     zone_type_id = int(data_tokens[i + 5])
                     # Remaining fields are zone-specific surface info
-                    self._zones.append({
-                        "zone_id": zone_id,
-                        "name": zone_name,
-                        "node_type": node_type,
-                        "element_type": bc_type_str,
-                        "n_elements": n_elems,
-                        "zone_type": bc_type_str,
-                        "zone_type_id": zone_type_id,
-                    })
+                    self._zones.append(
+                        {
+                            "zone_id": zone_id,
+                            "name": zone_name,
+                            "node_type": node_type,
+                            "element_type": bc_type_str,
+                            "n_elements": n_elems,
+                            "zone_type": bc_type_str,
+                            "zone_type_id": zone_type_id,
+                        }
+                    )
                     i += fields_per_zone
             elif section_id == 39:
                 # Materials: header is (n_materials n_fields_per_mat)
@@ -412,15 +426,17 @@ class FluentAdapter(SolverAdapter):
                     cp = float(data_tokens[i + 5])
                     mw = float(data_tokens[i + 6])
                     i += 7
-                    self._materials.append({
-                        "name": mat_name,
-                        "type": mat_type,
-                        "density": density,
-                        "viscosity": viscosity,
-                        "conductivity": cond,
-                        "cp": cp,
-                        "mw": mw,
-                    })
+                    self._materials.append(
+                        {
+                            "name": mat_name,
+                            "type": mat_type,
+                            "density": density,
+                            "viscosity": viscosity,
+                            "conductivity": cond,
+                            "cp": cp,
+                            "mw": mw,
+                        }
+                    )
             elif section_id == 45:
                 # Cell zone conditions: header is (n_zones n_fields)
                 n_zones = int(data_tokens[0])
@@ -434,14 +450,16 @@ class FluentAdapter(SolverAdapter):
                     node_type = data_tokens[i + 2]
                     elem_type = data_tokens[i + 3].strip('"')
                     n_elems = int(data_tokens[i + 4])
-                    self._zones.append({
-                        "zone_id": zone_id,
-                        "name": zone_name,
-                        "node_type": node_type,
-                        "element_type": elem_type,
-                        "n_elements": n_elems,
-                        "zone_type": "cell",
-                    })
+                    self._zones.append(
+                        {
+                            "zone_id": zone_id,
+                            "name": zone_name,
+                            "node_type": node_type,
+                            "element_type": elem_type,
+                            "n_elements": n_elems,
+                            "zone_type": "cell",
+                        }
+                    )
                     i += fields_per_zone
             elif section_id == 48:
                 # Model settings: skip header (2 tokens), rest are key-value pairs
@@ -458,15 +476,17 @@ class FluentAdapter(SolverAdapter):
 
         # Build materials
         for mat in self._materials:
-            self.setup.materials.append(MaterialSpec(
-                name=mat["name"],
-                density=mat["density"],
-                dynamic_viscosity=mat["viscosity"],
-                thermal_conductivity=mat["conductivity"],
-                specific_heat=mat["cp"],
-                molecular_weight=mat["mw"],
-                eos_model="ideal_gas" if mat["type"] == "constant" else "real_gas",
-            ))
+            self.setup.materials.append(
+                MaterialSpec(
+                    name=mat["name"],
+                    density=mat["density"],
+                    dynamic_viscosity=mat["viscosity"],
+                    thermal_conductivity=mat["conductivity"],
+                    specific_heat=mat["cp"],
+                    molecular_weight=mat["mw"],
+                    eos_model="ideal_gas" if mat["type"] == "constant" else "real_gas",
+                )
+            )
 
         # Build boundary conditions from zones
         for zone in self._zones:
@@ -512,7 +532,7 @@ class FluentAdapter(SolverAdapter):
 
         try:
             reader = CaseFile(case_file_name=cas_h5_file)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - pyfluent robustness (gap report)
             self.setup.source.version = f"pyfluent_error: {e}"
             return False
 
@@ -564,15 +584,17 @@ class FluentAdapter(SolverAdapter):
                 )
                 j += n_fn
                 n_faces += 1
-            self._zones.append({
-                "zone_id": sid_int,
-                "name": name,
-                "node_type": "face",
-                "element_type": name,
-                "n_elements": n_faces,
-                "zone_type": _infer_zone_type(name),
-                "zone_type_id": 4,
-            })
+            self._zones.append(
+                {
+                    "zone_id": sid_int,
+                    "name": name,
+                    "node_type": "face",
+                    "element_type": name,
+                    "n_elements": n_faces,
+                    "zone_type": _infer_zone_type(name),
+                    "zone_type_id": 4,
+                }
+            )
 
         self.setup.source.solver = "Fluent"
         self.setup.source.format = "cas_h5"
@@ -621,7 +643,8 @@ class FluentAdapter(SolverAdapter):
         """Import Fluent .dat.h5 solution data via pyfluent FileSession (no license needed)."""
         if not _try_pyfluent():
             result.gap_report.unsupported_nonblocking(
-                "results", "fluent_dat_h5",
+                "results",
+                "fluent_dat_h5",
                 "pyfluent not installed; cannot read .dat.h5 solution data",
                 "Install ansys-fluent-core for offline result import",
             )
@@ -629,7 +652,7 @@ class FluentAdapter(SolverAdapter):
 
         try:
             from ansys.fluent.core.file_session import FileSession
-            from ansys.fluent.core.filereader.data_file import DataFile
+            from ansys.fluent.core.filereader.data_file import DataFile  # noqa: F401
         except ImportError:
             return False
 
@@ -638,9 +661,10 @@ class FluentAdapter(SolverAdapter):
             case_file = self.setup.source.case_path
             session.read_case(case_file)
             session.read_data(dat_file)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - pyfluent robustness (gap report)
             result.gap_report.unsupported_nonblocking(
-                "results", "fluent_dat_h5",
+                "results",
+                "fluent_dat_h5",
                 f"Cannot read Fluent .dat.h5 file: {e}",
                 "Ensure both .cas.h5 and .dat.h5 are from the same case",
             )
@@ -657,7 +681,8 @@ class FluentAdapter(SolverAdapter):
         }
         result.field_data_source = dat_file
         result.gap_report.supported(
-            "results", "fluent_dat_h5",
+            "results",
+            "fluent_dat_h5",
             f"Extracted {len(scalar_fields)} scalar and {len(vector_fields)} vector fields via pyfluent FileSession",
         )
 
@@ -684,7 +709,8 @@ class FluentAdapter(SolverAdapter):
         phases = session._data_file.get_phases()
         if not phases:
             result.gap_report.unsupported_nonblocking(
-                "results", "no_phases",
+                "results",
+                "no_phases",
                 "No phases found in .dat.h5 file",
                 "Check that the data file contains solution data",
             )
@@ -696,9 +722,10 @@ class FluentAdapter(SolverAdapter):
         # Import scalar cell fields
         try:
             cell_variables = session._data_file.get_cell_variables(phase_name)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - pyfluent robustness (gap report)
             result.gap_report.unsupported_nonblocking(
-                "results", "cell_variables",
+                "results",
+                "cell_variables",
                 f"Cannot get cell variables: {e}",
                 "Data file may not contain cell-centered solution data",
             )
@@ -706,7 +733,9 @@ class FluentAdapter(SolverAdapter):
 
         # Access the raw HDF5 field data structure for cells
         # Structure: _field_data[phase_name]["cells"][field_name] -> h5py Dataset
-        field_data_cells = session._data_file._field_data.get(phase_name, {}).get("cells", {})
+        field_data_cells = session._data_file._field_data.get(phase_name, {}).get(
+            "cells", {}
+        )
 
         for fluent_name, (cfdx_name, units) in scalar_field_map.items():
             if fluent_name in cell_variables:
@@ -717,20 +746,27 @@ class FluentAdapter(SolverAdapter):
                         # Read all cell data (cell-centered, no surface slicing needed)
                         data = field_dataset[:]
                         if data.size > 0:
-                            result.scalar_fields.append((cfdx_name, np.asarray(data, dtype=np.float64)))
-                            result.gap_report.supported(
-                                "results", cfdx_name,
-                                f"Imported cell field '{fluent_name}' -> '{cfdx_name}' [{units}], {data.size} cells"
+                            result.scalar_fields.append(
+                                (cfdx_name, np.asarray(data, dtype=np.float64))
                             )
-                except Exception as e:
+                            result.gap_report.supported(
+                                "results",
+                                cfdx_name,
+                                f"Imported cell field '{fluent_name}' -> '{cfdx_name}' [{units}], {data.size} cells",
+                            )
+                except Exception as e:  # noqa: BLE001 - pyfluent robustness (gap report)
                     result.gap_report.approximated(
-                        "results", cfdx_name,
+                        "results",
+                        cfdx_name,
                         f"Failed to import cell field '{fluent_name}': {e}",
-                        "Field data may be corrupted or in unexpected format"
+                        "Field data may be corrupted or in unexpected format",
                     )
 
         # Import vector cell fields (velocity from SV_U, SV_V, SV_W)
-        for (fluent_u, fluent_v, fluent_w), (cfdx_name, units) in vector_field_map.items():
+        for (fluent_u, fluent_v, fluent_w), (
+            cfdx_name,
+            units,
+        ) in vector_field_map.items():
             if all(f in cell_variables for f in (fluent_u, fluent_v, fluent_w)):
                 try:
                     u_data = field_data_cells.get(fluent_u)
@@ -742,17 +778,21 @@ class FluentAdapter(SolverAdapter):
                         w_arr = w_data[:]
                         if u_arr.size == v_arr.size == w_arr.size and u_arr.size > 0:
                             # Combine into (N, 3) array
-                            vec_data = np.column_stack([u_arr, v_arr, w_arr]).astype(np.float64)
+                            vec_data = np.column_stack([u_arr, v_arr, w_arr]).astype(
+                                np.float64
+                            )
                             result.vec_fields.append((cfdx_name, vec_data))
                             result.gap_report.supported(
-                                "results", cfdx_name,
-                                f"Imported cell vector field '{fluent_u}/{fluent_v}/{fluent_w}' -> '{cfdx_name}' [{units}], {u_arr.size} cells"
+                                "results",
+                                cfdx_name,
+                                f"Imported cell vector field '{fluent_u}/{fluent_v}/{fluent_w}' -> '{cfdx_name}' [{units}], {u_arr.size} cells",
                             )
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - pyfluent robustness (gap report)
                     result.gap_report.approximated(
-                        "results", cfdx_name,
+                        "results",
+                        cfdx_name,
                         f"Failed to import cell vector field '{fluent_u}/{fluent_v}/{fluent_w}': {e}",
-                        "Vector component data may be corrupted or mismatched"
+                        "Vector component data may be corrupted or mismatched",
                     )
 
         # Also import face/surface fields if needed (boundary data)
@@ -769,101 +809,163 @@ class FluentAdapter(SolverAdapter):
             self._populate_gap_report_hdf5(gap)
         else:
             gap.unsupported_blocking(
-                "mesh", "unknown",
+                "mesh",
+                "unknown",
                 f"Unknown source version: {source_version}",
                 "Use a valid Fluent case file or install pyfluent for .cas.h5 support",
             )
 
     def _populate_gap_report_legacy(self, gap: GapAnalysis) -> None:
         gap.supported("mesh", "nodes", f"Parsed {len(self._points)} vertices from .cas")
-        gap.supported("mesh", "face_nodes", f"Parsed {len(self._face_nodes)} face-node connectivities from .cas")
-        gap.supported("mesh", "cells", f"Parsed {len(self._cell_nodes)} cells from .cas")
+        gap.supported(
+            "mesh",
+            "face_nodes",
+            f"Parsed {len(self._face_nodes)} face-node connectivities from .cas",
+        )
+        gap.supported(
+            "mesh",
+            "cells",
+            f"Parsed {len(self._cell_nodes)} cells from .cas",
+        )
 
         for zone in self._zones:
-            gap.supported("boundary_zone", zone.get("name", "?"), f"Detected zone '{zone.get('name', '?')}' type={zone.get('zone_type', 'unknown')}")
+            gap.supported(
+                "boundary_zone",
+                zone.get("name", "?"),
+                f"Detected zone '{zone.get('name', '?')}' type={zone.get('zone_type', 'unknown')}",
+            )
 
         for mat in self._materials:
-            gap.supported("material", mat["name"], f"Parsed material '{mat['name']}' (ρ={mat['density']}, μ={mat['viscosity']})")
+            gap.supported(
+                "material",
+                mat["name"],
+                f"Parsed material '{mat['name']}' (ρ={mat['density']}, μ={mat['viscosity']})",
+            )
 
         for bc in self.setup.boundary_conditions:
-            gap.supported("boundary_condition", bc.patch_name, f"Mapped Fluent zone '{bc.source_zone_name}' to {bc.type.value}")
+            gap.supported(
+                "boundary_condition",
+                bc.patch_name,
+                f"Mapped Fluent zone '{bc.source_zone_name}' to {bc.type.value}",
+            )
 
         gap.unsupported_nonblocking(
-            "features", "binary_cas",
+            "features",
+            "binary_cas",
             "Binary .cas.h5 format not supported (only legacy ASCII .cas)",
             "Export as legacy ASCII: File → Export → Case...",
         )
         gap.unsupported_nonblocking(
-            "features", "dpm",
+            "features",
+            "dpm",
             "Discrete Phase Model (DPM) particles not supported",
             "Use single-phase flow for CFDX conversion",
         )
         gap.unsupported_nonblocking(
-            "features", "udfs",
+            "features",
+            "udfs",
             "UDFs and custom field functions not supported",
             "Pre-compute and export field values via Fluent surface or volume monitor",
         )
         gap.unsupported_nonblocking(
-            "features", "multiphase",
+            "features",
+            "multiphase",
             "Multiphase models (VOF/Mixture/Eulerian) not supported",
             "Use single-phase configuration for CFDX conversion",
         )
         gap.unsupported_nonblocking(
-            "features", "sliding_mesh",
+            "features",
+            "sliding_mesh",
             "Sliding mesh and dynamic mesh not supported",
             "Use steady-state or static mesh for CFDX conversion",
         )
         gap.unsupported_nonblocking(
-            "features", "results",
+            "features",
+            "results",
             "Fluent .dat results import requires meshio or neutral export; not parsed natively",
             "Export results as .cgns, .vtk, or .plt via Fluent File → Export",
         )
 
     def _populate_gap_report_hdf5(self, gap: GapAnalysis) -> None:
-        gap.supported("mesh", "nodes", f"Parsed {len(self._points)} vertices from .cas.h5 via pyfluent CaseFile")
+        gap.supported(
+            "mesh",
+            "nodes",
+            f"Parsed {len(self._points)} vertices from .cas.h5 via pyfluent CaseFile",
+        )
         gap.unsupported_blocking(
-            "mesh", "volume_topology",
+            "mesh",
+            "volume_topology",
             f"No volumetric cell connectivity available from .cas.h5 "
             f"(extracted {len(self._cell_nodes)} volume cells, {len(self._face_nodes)} surface faces only)",
             "For volumetric mesh import, use the legacy ASCII .cas reader (parse_cas) "
             "or export the mesh to CGNS/VTK from Fluent",
         )
         for zone in self._zones:
-            gap.supported("boundary_zone", zone.get("name", "?"), f"Detected zone '{zone.get('name', '?')}' type={zone.get('zone_type', 'unknown')}")
+            gap.supported(
+                "boundary_zone",
+                zone.get("name", "?"),
+                f"Detected zone '{zone.get('name', '?')}' type={zone.get('zone_type', 'unknown')}",
+            )
         for mat in self.setup.materials:
-            gap.supported("material", mat.name, f"Parsed material '{mat.name}' (ρ={mat.density}, μ={mat.dynamic_viscosity})")
+            gap.supported(
+                "material",
+                mat.name,
+                f"Parsed material '{mat.name}' (ρ={mat.density}, μ={mat.dynamic_viscosity})",
+            )
         for bc in self.setup.boundary_conditions:
-            gap.supported("boundary_condition", bc.patch_name, f"Mapped Fluent zone '{bc.source_zone_name}' to {bc.type.value}")
-        gap.supported("mesh", "pyfluent_reader", "pyfluent CaseFile reader provided offline access to HDF5 mesh data")
-        gap.supported("physics", "turbulence", f"Inferred turbulence model: {self.setup.turbulence_model}")
-        gap.supported("physics", "reference_values", "Extracted reference length, density, velocity, temperature, pressure")
+            gap.supported(
+                "boundary_condition",
+                bc.patch_name,
+                f"Mapped Fluent zone '{bc.source_zone_name}' to {bc.type.value}",
+            )
+        gap.supported(
+            "mesh",
+            "pyfluent_reader",
+            "pyfluent CaseFile reader provided offline access to HDF5 mesh data",
+        )
+        gap.supported(
+            "physics",
+            "turbulence",
+            f"Inferred turbulence model: {self.setup.turbulence_model}",
+        )
+        gap.supported(
+            "physics",
+            "reference_values",
+            "Extracted reference length, density, velocity, temperature, pressure",
+        )
         gap.approximated(
-            "features", "dpm",
+            "features",
+            "dpm",
             "Discrete Phase Model (DPM) particles not extracted from .cas.h5 (CaseFile mesh-only reader)",
             "Export DPM data separately via Fluent surface monitors or .cgns/.vtk export",
         )
         gap.approximated(
-            "features", "udfs",
+            "features",
+            "udfs",
             "UDFs and custom field functions not available via CaseFile (mesh-only reader)",
             "Pre-compute and export field values via Fluent surface or volume monitor",
         )
         gap.unsupported_nonblocking(
-            "features", "solution_data",
+            "features",
+            "solution_data",
             "CaseFile reader provides mesh only; no .dat.h5 solution data extracted",
             "Use FileSession or export results as .cgns, .vtk, or .plt via Fluent File → Export",
         )
         gap.unsupported_nonblocking(
-            "features", "multiphase",
+            "features",
+            "multiphase",
             "Multiphase models (VOF/Mixture/Eulerian) not supported via CaseFile",
             "Use single-phase configuration for CFDX conversion",
         )
         gap.unsupported_nonblocking(
-            "features", "sliding_mesh",
+            "features",
+            "sliding_mesh",
             "Sliding mesh and dynamic mesh not supported via CaseFile",
             "Use steady-state or static mesh for CFDX conversion",
         )
         gap.unsupported_nonblocking(
-            "features", "results",
+            "features",
+            "results",
             "Fluent .dat.h5 results import requires FileSession (license needed); not parsed natively",
             "Export results as .cgns, .vtk, or .plt via Fluent File → Export",
         )
@@ -886,7 +988,6 @@ def _parse_s_expressions(text: str) -> list[tuple[int, list[str]]]:
         if text[i] == "(":
             depth = 1
             i += 1
-            start = i
             tokens: list[str] = []
             while i < n and depth > 0:
                 c = text[i]
@@ -903,13 +1004,13 @@ def _parse_s_expressions(text: str) -> list[tuple[int, list[str]]]:
                     j = i + 1
                     while j < n and text[j] != '"':
                         j += 1
-                    tokens.append(f'"{text[i+1:j]}"')
+                    tokens.append(f'"{text[i + 1 : j]}"')
                     i = j + 1
                 elif c in (" ", "\t", "\n", "\r"):
                     i += 1
                 else:
                     j = i
-                    while j < n and text[j] not in "()\t\n\r\" ":
+                    while j < n and text[j] not in '()\t\n\r" ':
                         j += 1
                     tokens.append(text[i:j])
                     i = j
@@ -929,7 +1030,9 @@ def _parse_s_expressions(text: str) -> list[tuple[int, list[str]]]:
     return sections
 
 
-def _parse_model_settings(settings: list[str], setup: CaseSetup, rules: MappingRules) -> None:
+def _parse_model_settings(
+    settings: list[str], setup: CaseSetup, rules: MappingRules
+) -> None:
     """Parse model settings tokens from Fluent section 48."""
     i = 0
     while i < len(settings):
@@ -962,8 +1065,13 @@ def _parse_model_settings(settings: list[str], setup: CaseSetup, rules: MappingR
             i += 2
         else:
             key = settings[i].lower()
-            if key in ("ke-realizable-viscous", "ke-standard-viscous",
-                       "kw-viscous", "mixing-length", "transition-to-turbulence"):
+            if key in (
+                "ke-realizable-viscous",
+                "ke-standard-viscous",
+                "kw-viscous",
+                "mixing-length",
+                "transition-to-turbulence",
+            ):
                 mapped = rules.map_turbulence(key)
                 setup.turbulence_model = mapped if mapped else key
             elif key == "simple":
@@ -1004,7 +1112,9 @@ def _parse_rp_materials(rp_vars: dict, setup: CaseSetup) -> None:
         setup.materials.append(mat)
 
 
-def _parse_rp_boundary_conditions(rp_vars: dict, setup: CaseSetup, zones: list[dict]) -> None:
+def _parse_rp_boundary_conditions(
+    rp_vars: dict, setup: CaseSetup, zones: list[dict]
+) -> None:
     """Extract boundary condition info from RP variables and zones."""
     for zone in zones:
         bc = BoundarySpec(
@@ -1012,9 +1122,13 @@ def _parse_rp_boundary_conditions(rp_vars: dict, setup: CaseSetup, zones: list[d
             source_zone_name=zone.get("name", ""),
             source_type_name=zone.get("zone_type", ""),
         )
-        mapped = MappingRules.load_default().map_boundary_type(zone.get("zone_type", ""))
+        mapped = MappingRules.load_default().map_boundary_type(
+            zone.get("zone_type", "")
+        )
         bc.type = mapped
-        bc.value_type = MappingRules.load_default().map_bc_value_type(zone.get("zone_type", ""))
+        bc.value_type = MappingRules.load_default().map_bc_value_type(
+            zone.get("zone_type", "")
+        )
         setup.boundary_conditions.append(bc)
 
 
@@ -1030,9 +1144,9 @@ def _extract_cas_h5_reference_values(rp_vars: dict, setup: CaseSetup) -> None:
         gx = float(rp_vars.get("gravity/x", 0.0))
         gy = float(rp_vars.get("gravity/y", 0.0))
         gz = float(rp_vars.get("gravity/z", 0.0))
-        setup.gravity_vector = f"[{gx}, {gy}, {gz}]"
+        setup.gravity_vector = f"{gx:.17g} {gy:.17g} {gz:.17g}"
     else:
-        setup.gravity_vector = "[0, 0, 0]"
+        setup.gravity_vector = "0 0 0"
 
     setup.energy_model = "energy" if rp_vars.get("energy?", False) else "isothermal"
 

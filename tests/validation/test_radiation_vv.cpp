@@ -1,9 +1,11 @@
 #include "cfdx/physics/radiation.h"
 #include "cfdx/physics/radiation_solver.h"
+#include "cfdx/physics/m1_m4_models.h"
 #include "common/test_harness.h"
 
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <string>
 
 using namespace cfdx::core;
@@ -91,6 +93,39 @@ int main()
         EXPECT_NEAR(
             p1_radiative_source(absorption,0.0,temperature),
             expected,1e-12*expected);
+    });
+
+    run_case("radiation_p1_helper_rejects_nonfinite_inputs", [] {
+        const double invalid[] = {
+            std::numeric_limits<double>::quiet_NaN(),
+            std::numeric_limits<double>::infinity(),
+            -std::numeric_limits<double>::infinity(), -1.0};
+        for (double value : invalid) {
+            EXPECT_THROW(m1m4::p1_blackbody_intensity(value),
+                         std::invalid_argument);
+            EXPECT_THROW(m1m4::p1_source(value, 0.0, 800.0),
+                         std::invalid_argument);
+            EXPECT_THROW(m1m4::p1_source(1.0, value, 800.0),
+                         std::invalid_argument);
+            EXPECT_THROW(m1m4::p1_source(1.0, 0.0, value),
+                         std::invalid_argument);
+        }
+        // Valid transparent/cold limits and heating must not be rejected.
+        EXPECT_NEAR(m1m4::p1_blackbody_intensity(0.0), 0.0, 0.0);
+        EXPECT_NEAR(m1m4::p1_source(0.0, 12.0, 800.0), 0.0, 0.0);
+        EXPECT_NEAR(m1m4::p1_source(2.0, 3.0, 0.0),
+                    -24.0 * M_PI, 1e-12);
+    });
+
+    run_case("radiation_p1_helper_rejects_unrepresentable_output", [] {
+        const double largest = std::numeric_limits<double>::max();
+        EXPECT_THROW(m1m4::p1_blackbody_intensity(largest),
+                     std::overflow_error);
+        EXPECT_THROW(m1m4::p1_source(largest, 0.0, 800.0),
+                     std::overflow_error);
+        // A large finite absorption must still yield zero at equilibrium.
+        const double Ib = m1m4::p1_blackbody_intensity(800.0);
+        EXPECT_NEAR(m1m4::p1_source(largest, Ib, 800.0), 0.0, 0.0);
     });
 
     return run_all();

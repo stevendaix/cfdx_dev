@@ -38,9 +38,10 @@ inline double turbulent_kinematic_viscosity_komega_sst(
 }
 
 // Method contract: docs/audits/09-turbulence-rans.md
-// The historical overload omitted strain_rate and substituted omega in its
-// place. That is only correct for the special case S == omega; require callers
-// to provide the physical strain-rate invariant explicitly.
+// The historical overload omitted strain_rate and silently substituted
+// omega in its place. That is only correct for the special case S == omega.
+// Reject it at compile time so callers must provide the physical invariant.
+[[deprecated("Use the five-argument SST viscosity overload and provide strain_rate")]]
 inline double turbulent_kinematic_viscosity_komega_sst(
     double k, double omega, double F2, double a1 = 0.31) = delete;
 

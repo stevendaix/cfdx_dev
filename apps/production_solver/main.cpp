@@ -13,6 +13,7 @@
 #include "cfdx/io/runtime/convergence_history.h"
 #include "cfdx/io/runtime/execution_summary.h"
 #include "cfdx/io/vtu/vtu_writer.h"
+#include "cfdx/physics/production_time_contract.h"
 
 #include <algorithm>
 #include <cmath>
@@ -337,6 +338,10 @@ std::string energy_convergence_json(
         << (energy.global_energy_balance_passed ? "true" : "false") << ",\n";
     out << "  \"local_energy_balance_passed\": "
         << (energy.local_energy_balance_passed ? "true" : "false") << ",\n";
+    out << "  \"temperature_admissibility_passed\": "
+        << (energy.temperature_admissibility_passed ? "true" : "false") << ",\n";
+    out << "  \"nonpositive_temperature\": " << energy.nonpositive_temperature
+        << ",\n";
     out << "  \"iterations\": " << energy.iterations << ",\n";
     out << "  \"independent_conservation_residual\": "
         << json_number(energy.independent_conservation_residual) << ",\n";
@@ -396,6 +401,10 @@ std::string energy_summary_json(const ProductionEnergyStageResult& energy)
         << json_number(energy.boundary_flux_out) << ",\n";
     out << "  \"nonfinite_temperature\": " << energy.nonfinite_temperature
         << ",\n";
+    out << "  \"nonpositive_temperature\": " << energy.nonpositive_temperature
+        << ",\n";
+    out << "  \"temperature_admissibility_passed\": "
+        << (energy.temperature_admissibility_passed ? "true" : "false") << ",\n";
     out << "  \"volumetric_power\": "
         << json_number(energy.volumetric_power) << ",\n";
     out << "  \"patches\": [\n";
@@ -478,7 +487,9 @@ std::string radiation_s2s_json(const ProductionS2SOuterLoopResult& stage)
             << ", \"net_power\": "
             << json_number(radiation.net_power[index])
             << ", \"injected_heat_flux\": "
-            << json_number(radiation.injected_heat_flux.at(name)) << "}";
+            << json_number(radiation.injected_heat_flux.at(name))
+            << ", \"applied_heat_flux\": "
+            << json_number(radiation.applied_heat_flux.at(name)) << "}";
         out << (index + 1 == radiation.surface_names.size() ? "\n"
                                                             : ",\n");
     }
@@ -577,6 +588,7 @@ int main(int argc, char** argv)
         // load time; the flow-energy buoyancy outer loop below is the only
         // solver path that may run it.
         if (is_case_hdf5) {
+            validate_production_steady_time_selection(case_setup, "production solver");
             validate_production_turbulence_selection(case_setup);
             validate_production_energy_model(case_setup);
             validate_production_radiation_selection(case_setup);
@@ -879,6 +891,27 @@ int main(int argc, char** argv)
                 return g_stop_requested == 0;
             };
 
+        const bool energy_requested = is_case_hdf5 &&
+            production_energy_requested(case_setup);
+        Field<double, Location::CELL> temperature(
+            mesh.n_cells(), "temperature", "K", 1);
+        const bool thermal_restart = energy_requested && !options.restart.empty();
+        if (thermal_restart) {
+            // Validate the complete thermal checkpoint before running the
+            // carrier. The carrier's own initialization subsequently consumes
+            // U/p and its iteration metadata; no live fields are changed here.
+            auto candidate_velocity = U;
+            auto candidate_pressure = p;
+            DatRestartFields fields;
+            fields.temperature = &temperature;
+            read_dat_restart_fields(options.restart.string(), mesh,
+                candidate_velocity, candidate_pressure, fields);
+            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                if (!std::isfinite(temperature(cell)) || !(temperature(cell) > 0.0))
+                    throw std::invalid_argument(
+                        "production solver: restarted temperature must be finite and positive (kelvin)");
+        }
+
         IncompressibleSolveResult result;
         bool buoyancy_ran = false;
         ProductionBuoyancyOuterLoopResult buoyancy_result;
@@ -893,7 +926,7 @@ int main(int argc, char** argv)
             // never an intermediate Picard pass.
             buoyancy_result = run_production_buoyant_outer_loop(
                 mesh, ubc, pbc, controls, case_setup, U, p,
-                options.restart.string());
+                options.restart.string(), thermal_restart ? &temperature : nullptr);
             result = buoyancy_result.flow;
             buoyancy_ran = true;
             std::cout << "Buoyant flow-energy outer loop "
@@ -938,15 +971,10 @@ int main(int argc, char** argv)
         // diverged flow is not evidence, and the global exit code below
         // is flow AND energy. The energy model was already validated
         // fail-closed right after case load.
-        bool energy_requested = false;
         bool energy_ran = false;
         ProductionEnergyStageResult energy_result;
         ProductionS2SOuterLoopResult s2s_outer_result;
         bool s2s_ran = false;
-        Field<double, Location::CELL> temperature(
-            mesh.n_cells(), "temperature", "K", 1);
-        if (is_case_hdf5)
-            energy_requested = production_energy_requested(case_setup);
         if (buoyancy_ran) {
             // The buoyant outer loop already produced the coupled energy
             // response (and, when declared, the energy-S2S fixed point)
@@ -955,7 +983,6 @@ int main(int argc, char** argv)
             // responses; they are gated on the loop having completed at
             // least one full outer pass, exactly like the frozen-flow
             // path.
-            energy_requested = true;
             energy_ran = buoyancy_result.energy_ran;
             s2s_ran = buoyancy_result.s2s_ran;
             energy_result = buoyancy_result.energy;
@@ -967,8 +994,9 @@ int main(int argc, char** argv)
             // Initial temperature: the declared initial condition, else
             // the case reference temperature. Zero means "not declared"
             // (stage-1 convention) and falls back to ref_temperature.
-            double initial_temperature = case_setup.ref_temperature;
-            if (case_setup.has_initial_condition &&
+            double initial_temperature = thermal_restart
+                ? temperature(0) : case_setup.ref_temperature;
+            if (!thermal_restart && case_setup.has_initial_condition &&
                 case_setup.initial_condition.temperature != 0.0)
                 initial_temperature =
                     case_setup.initial_condition.temperature;
@@ -980,8 +1008,9 @@ int main(int argc, char** argv)
                 throw std::invalid_argument(
                     "production solver: initial temperature must be finite "
                     "and positive (kelvin)");
-            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
-                temperature(cell) = initial_temperature;
+            if (!thermal_restart)
+                for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                    temperature(cell) = initial_temperature;
             if (production_s2s_radiation_requested(case_setup)) {
                 // External energy-radiation iteration (issue #885 step
                 // 3): energy pass on the frozen flow, S2S radiosity from
@@ -1053,6 +1082,10 @@ int main(int argc, char** argv)
                       << (energy_result.global_energy_balance_passed ? 1 : 0)
                       << " local_balance="
                       << (energy_result.local_energy_balance_passed ? 1 : 0)
+                      << " temperature_admissibility="
+                      << (energy_result.temperature_admissibility_passed ? 1 : 0)
+                      << " nonpositive_temperature="
+                      << energy_result.nonpositive_temperature
                       << " audit_scale=" << energy_result.audit_power_scale
                       << "\n";
             std::cout << "Energy temperatures ["
@@ -1108,17 +1141,36 @@ int main(int argc, char** argv)
               (!s2s_ran || s2s_outer_result.converged)));
         const auto solver_exit_code =
             execution_exit_code_for_solver(overall_converged);
+        auto overall_status = result.convergence_status;
+        std::string overall_reason = result.convergence_reason;
+        if (result.converged && !overall_converged) {
+            overall_status = cfdx::core::ConvergenceStatus::DIVERGED;
+            if (energy_ran && !energy_result.temperature_admissibility_passed)
+                overall_reason = "energy temperature admissibility gate failed";
+            else if (energy_ran && !energy_result.converged)
+                overall_reason = "energy stage linear or conservation gate failed";
+            else if (s2s_ran && !s2s_outer_result.converged)
+                overall_reason = "energy-radiation fixed point did not converge";
+            else if (buoyancy_ran && !buoyancy_result.converged)
+                overall_reason = "flow-energy buoyancy fixed point did not converge";
+            else
+                overall_reason = "requested energy stage did not complete";
+        }
 
         const auto dat = options.output_dir / "restart.dat";
-        write_dat_restart(dat.string(), mesh, U, p, result.iterations, 0.0);
+        DatRestartFields checkpoint_fields;
+        if (energy_ran)
+            checkpoint_fields.temperature = &temperature;
+        write_dat_restart_fields(dat.string(), mesh, U, p, checkpoint_fields,
+                                 result.iterations, 0.0);
         const auto convergence = options.output_dir / "convergence.json";
         write_convergence_history(convergence.string(), result);
         write_execution_summary(execution.string(), ExecutionSummary{
             solver_exit_code,
             overall_converged,
             result.iterations,
-            static_cast<int>(result.convergence_status),
-            result.convergence_reason,
+            static_cast<int>(overall_status),
+            overall_reason,
             std::filesystem::is_regular_file(dat),
             std::filesystem::is_regular_file(convergence)});
         std::cout << "Checkpoint " << dat.string() << "\n";
@@ -1145,14 +1197,10 @@ int main(int argc, char** argv)
                     std::filesystem::is_regular_file(execution_output_dir / "convergence.json");
                 write_execution_summary(execution.string(), ExecutionSummary{
                     kExecutionExitError,
-                    execution_result.has_value() ? execution_result->converged : false,
+                    false,
                     execution_result.has_value() ? execution_result->iterations : 0,
-                    execution_result.has_value()
-                        ? static_cast<int>(execution_result->convergence_status)
-                        : 0,
-                    execution_result.has_value()
-                        ? execution_result->convergence_reason
-                        : exc.what(),
+                    static_cast<int>(cfdx::core::ConvergenceStatus::DIVERGED),
+                    exc.what(),
                     has_restart,
                     has_convergence});
             } catch (const std::exception& summary_exc) {

@@ -48,6 +48,11 @@
 //     mass flux, never a flux reconstructed from the cell velocity, and the
 //     finite-volume geometry must match the mesh (sizes, positive finite
 //     volumes, finite centres and area vectors, valid patch indices).
+//   * An optional frozen cell conductivity (W/(m.K), finite and positive)
+//     overrides the molecular conductivity in assembly and every flux audit.
+//     Wall gradients are resolved per face as q''/lambda_eff_owner; density
+//     and cp remain the declared constants. The caller owns any nonlinear
+//     property update and the accepted turbulence state used to build lambda_t.
 //   * Conservation audits are independent of the assembled matrix: the
 //     energy flux is rebuilt from the final temperature and the same mass
 //     flux (reconstruct_energy_balance), and per-patch fluxes are rebuilt
@@ -61,6 +66,10 @@
 //     1 W), so a local defect cannot hide behind a large domain scale -
 //     AND every temperature/flux/cell residual to be finite. A solution
 //     whose independent audit fails cannot be declared converged.
+//   * Production temperatures are absolute kelvins. The final field must
+//     also be strictly positive; an excessive heat sink can satisfy the
+//     linear equation and conservation while producing an inadmissible
+//     temperature. This separate physical gate never clips the solution.
 
 #include "cfdx/core/field/field.h"
 #include "cfdx/io/cfdx_io/case_schema.h"
@@ -211,6 +220,37 @@ inline ProductionEnergyCase build_production_energy_case(
     energy_case.controls.energy_balance_tolerance = 1e-11;
     validate_energy_controls(energy_case.controls);
     return energy_case;
+}
+
+// Gradient-diffusion heat transport for an accepted, frozen turbulent state:
+// lambda_eff = lambda + rho*cp*nu_t/Pr_t. This is an opt-in coupling seam;
+// it does not select a turbulence model or run a flow/thermal outer loop.
+inline std::vector<double> build_effective_thermal_conductivity(
+    const ProductionEnergyCase& energy_case,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& turbulent_viscosity,
+    double turbulent_prandtl)
+{
+    if (!(turbulent_prandtl>0.0) || !std::isfinite(turbulent_prandtl))
+        throw std::invalid_argument("turbulent Prandtl number must be finite and positive");
+    if (!(energy_case.conductivity>0.0) || !std::isfinite(energy_case.conductivity) ||
+        !(energy_case.density>0.0) || !std::isfinite(energy_case.density) ||
+        !(energy_case.specific_heat>0.0) || !std::isfinite(energy_case.specific_heat))
+        throw std::invalid_argument("effective conductivity requires positive finite material properties");
+    if (turbulent_viscosity.dimension()!=1)
+        throw std::invalid_argument("turbulent viscosity must be a scalar cell field");
+    std::vector<double> conductivity(turbulent_viscosity.size());
+    for (std::size_t c=0;c<turbulent_viscosity.size();++c) {
+        const double nu_t=turbulent_viscosity(c);
+        if (!(nu_t>=0.0) || !std::isfinite(nu_t))
+            throw std::invalid_argument("turbulent viscosity must be finite and non-negative");
+        const long double value=static_cast<long double>(energy_case.conductivity)+
+            static_cast<long double>(energy_case.density)*energy_case.specific_heat*
+            nu_t/turbulent_prandtl;
+        conductivity[c]=static_cast<double>(value);
+        if (!(conductivity[c]>0.0) || !std::isfinite(conductivity[c]))
+            throw std::invalid_argument("effective conductivity must be finite and positive");
+    }
+    return conductivity;
 }
 
 inline ScalarBoundaryConditions build_production_temperature_bcs(
@@ -367,16 +407,68 @@ inline ScalarBoundaryConditions build_production_temperature_bcs(
     return bcs;
 }
 
+// Resolve the canonical patch conditions against each boundary owner's
+// conductivity. A uniform prescribed heat flux must remain q'' on every
+// face, even when one wall patch touches cells with different lambda_eff.
+inline ScalarBoundaryFaceConditions build_production_temperature_face_conditions(
+    const cfdx::core::Mesh& mesh,
+    const ScalarBoundaryConditions& bcs,
+    const ProductionEnergyCase& energy_case,
+    const std::vector<double>& conductivity_values)
+{
+    validate_energy_conductivity(&conductivity_values,mesh.n_cells());
+    if (!(energy_case.conductivity>0.0) || !std::isfinite(energy_case.conductivity))
+        throw std::invalid_argument("production boundary conductivity must be finite and positive");
+    for (const double k : conductivity_values)
+        if (!(k>0.0))
+            throw std::invalid_argument("production effective conductivity must be positive");
+    ScalarBoundaryFaceConditions faces(mesh.n_faces());
+    for (std::size_t p=0;p<mesh.boundary().n_patches();++p) {
+        const auto& patch=mesh.boundary().patch(p);
+        if (patch.type==cfdx::core::PatchType::EMPTY) continue;
+        const auto it=bcs.find(patch.name);
+        if (it==bcs.end())
+            throw std::invalid_argument("missing production thermal patch condition");
+        for (const auto f : patch.face_ids) {
+            if (f>=mesh.n_faces() || mesh.ownership().neighbour(f)>=0 ||
+                mesh.ownership().owner(f)>=mesh.n_cells())
+                throw std::invalid_argument("invalid production thermal boundary face");
+            auto& resolved=faces.conditions[f];
+            const auto& bc=it->second;
+            if (bc.type==ScalarBoundaryType::FIXED_VALUE) {
+                resolved.type=ScalarBoundaryFaceCondition::Type::FIXED_VALUE;
+                resolved.value=bc.value;
+            } else {
+                resolved.type=ScalarBoundaryFaceCondition::Type::FIXED_GRADIENT;
+                const double gradient=bc.type==ScalarBoundaryType::FIXED_GRADIENT
+                    ? bc.gradient : 0.0;
+                // The patch builder encodes q'' as gradient*lambda. Use
+                // wide intermediate arithmetic to avoid a spurious overflow
+                // when the final owner-specific quotient is representable.
+                resolved.value=static_cast<double>(
+                    static_cast<long double>(gradient)*energy_case.conductivity/
+                    conductivity_values[mesh.ownership().owner(f)]);
+            }
+            if (!std::isfinite(resolved.value))
+                throw std::invalid_argument("production thermal face condition must be finite");
+            faces.specified[f]=1;
+        }
+    }
+    return faces;
+}
+
 struct ProductionEnergyStageResult {
     // Blocking verdict, see run_production_energy_stage: linear convergence
     // AND independent global balance AND independent local balance AND all
-    // results finite. A red independent audit can never yield converged.
+    // results finite AND absolute temperatures positive. Linear convergence,
+    // conservation and physical admissibility are reported separately.
     bool converged = false;
     bool linear_solver_converged = false;
     int linear_solver_status = -1;
     double linear_residual_relative = std::numeric_limits<double>::infinity();
     bool global_energy_balance_passed = false;
     bool local_energy_balance_passed = false;
+    bool temperature_admissibility_passed = false;
     std::size_t iterations = 0;
     double min_temperature = std::numeric_limits<double>::infinity();
     double max_temperature = -std::numeric_limits<double>::infinity();
@@ -402,6 +494,7 @@ struct ProductionEnergyStageResult {
     double max_cell_residual_normalized = 0.0;
     std::size_t worst_cell_normalized = 0;
     std::size_t nonfinite_temperature = 0;
+    std::size_t nonpositive_temperature = 0; // finite T <= 0 K
     std::size_t nonfinite_faces = 0;
     std::size_t nonfinite_cells = 0;
     std::vector<EnergyIteration> history;
@@ -415,7 +508,8 @@ inline ProductionEnergyStageResult run_production_energy_stage(
     const cfdx::io::CaseSetup& setup,
     const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature,
-    const std::map<std::string, double>& radiative_heat_flux_into_domain = {})
+    const std::map<std::string, double>& radiative_heat_flux_into_domain = {},
+    const std::vector<double>* conductivity_values = nullptr)
 {
     validate_production_energy_model(setup);
     if (!production_energy_requested(setup))
@@ -494,6 +588,10 @@ inline ProductionEnergyStageResult run_production_energy_stage(
     const auto energy_case = build_production_energy_case(setup);
     const auto bcs = build_production_temperature_bcs(
         mesh, setup, energy_case, radiative_heat_flux_into_domain);
+    const auto resolved_faces=conductivity_values
+        ? build_production_temperature_face_conditions(mesh,bcs,energy_case,*conductivity_values)
+        : ScalarBoundaryFaceConditions{};
+    const auto* face_conditions=conductivity_values ? &resolved_faces : nullptr;
 
     cfdx::core::Field<double, cfdx::core::Location::CELL> source(
         mesh.n_cells(), "volumetric_power", "W/m3", 1);
@@ -503,7 +601,8 @@ inline ProductionEnergyStageResult run_production_energy_stage(
     const auto previous_temperature = temperature;
     const auto solve = solve_energy(
         mesh, geometry, mass_flux, temperature, source,
-        energy_case.controls, bcs);
+        energy_case.controls, bcs,nullptr,nullptr,nullptr,
+        conductivity_values,face_conditions);
 
     ProductionEnergyStageResult result;
     result.linear_solver_converged = solve.linear_solver_converged;
@@ -519,6 +618,7 @@ inline ProductionEnergyStageResult run_production_energy_stage(
             ++result.nonfinite_temperature;
             continue;
         }
+        if (!(t>0.0)) ++result.nonpositive_temperature;
         result.min_temperature = std::min(result.min_temperature, t);
         result.max_temperature = std::max(result.max_temperature, t);
     }
@@ -530,7 +630,8 @@ inline ProductionEnergyStageResult run_production_energy_stage(
     // the assembled matrix.
     const auto audit = reconstruct_energy_balance(
         mesh, geometry, mass_flux, temperature, previous_temperature,
-        source, energy_case.controls, bcs);
+        source, energy_case.controls, bcs,nullptr,nullptr,
+        conductivity_values,face_conditions);
     result.independent_conservation_residual = audit.residual;
     result.independent_conservation_normalized = audit.normalized_residual;
     result.boundary_flux_out = audit.boundary_flux;
@@ -541,14 +642,11 @@ inline ProductionEnergyStageResult run_production_energy_stage(
     result.nonfinite_faces = audit.nonfinite_faces;
     result.nonfinite_cells = audit.nonfinite_cells;
 
-    // Per-patch fluxes use the same independent reconstruction (temperature
-    // units first, then scaled back by cp to physical watts).
-    auto energy_flux = reconstruct_scalar_transport_flux(
-        mesh, geometry, mass_flux, temperature,
-        energy_case.conductivity / energy_case.specific_heat,
-        bcs, true, ConvectionScheme::UPWIND, nullptr, nullptr, nullptr);
-    for (std::size_t f = 0; f < energy_flux.size(); ++f)
-        energy_flux(f) *= energy_case.specific_heat;
+    // Every balance uses the same physical face flux, including variable
+    // conductivity and the actual owner-specific applied wall gradients.
+    const auto energy_flux=reconstruct_energy_face_flux(
+        mesh,geometry,mass_flux,temperature,energy_case.controls,bcs,nullptr,
+        conductivity_values,face_conditions);
     const auto& own = mesh.ownership();
     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
         if (own.neighbour(f) >= 0)
@@ -593,15 +691,23 @@ inline ProductionEnergyStageResult run_production_energy_stage(
         std::isfinite(audit.max_cell_residual_normalized) &&
         audit.max_cell_residual_normalized <= balance_tolerance;
 
+    // Conservation alone does not establish physical admissibility. Keep
+    // the raw temperatures and successful algebraic/balance diagnostics
+    // visible when this independent kelvin-domain gate rejects the result.
+    result.temperature_admissibility_passed =
+        result.nonfinite_temperature == 0 &&
+        result.nonpositive_temperature == 0 &&
+        std::isfinite(result.min_temperature) &&
+        std::isfinite(result.max_temperature) &&
+        result.min_temperature > 0.0;
+
     result.converged =
         result.linear_solver_converged &&
         result.global_energy_balance_passed &&
         result.local_energy_balance_passed &&
-        result.nonfinite_temperature == 0 &&
+        result.temperature_admissibility_passed &&
         result.nonfinite_faces == 0 &&
-        result.nonfinite_cells == 0 &&
-        std::isfinite(result.min_temperature) &&
-        std::isfinite(result.max_temperature);
+        result.nonfinite_cells == 0;
     return result;
 }
 

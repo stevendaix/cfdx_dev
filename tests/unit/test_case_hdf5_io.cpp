@@ -124,6 +124,43 @@ static GapAnalysis make_test_gap() {
 
 int main() {
 
+    run_case("case_hdf5_missing_material_properties_remain_unspecified", []() {
+        const std::string filename = "/tmp/cfdx_case_unspecified_material.h5";
+        std::remove(filename.c_str());
+        EXPECT_TRUE(write_case_cfdx_h5(filename, make_unit_cube(),
+            make_test_source(), make_default_setup(), GapAnalysis{}));
+        const std::string json = R"({"materials":[{"name":"unspecified"}]})";
+        const hid_t file = H5Fopen(filename.c_str(), H5F_ACC_RDWR, H5P_DEFAULT);
+        EXPECT_TRUE(file >= 0);
+        EXPECT_TRUE(H5Adelete(file, "case_setup_json") >= 0);
+        const hid_t type = H5Tcopy(H5T_C_S1);
+        EXPECT_TRUE(H5Tset_size(type, json.size() + 1) >= 0);
+        const hid_t space = H5Screate(H5S_SCALAR);
+        const hid_t attr = H5Acreate2(file, "case_setup_json", type, space,
+            H5P_DEFAULT, H5P_DEFAULT);
+        EXPECT_TRUE(attr >= 0);
+        EXPECT_TRUE(H5Awrite(attr, type, json.c_str()) >= 0);
+        H5Aclose(attr);
+        H5Sclose(space);
+        H5Tclose(type);
+        H5Fclose(file);
+        Mesh mesh;
+        SourceInfo source;
+        CaseSetup setup;
+        GapAnalysis gap;
+        EXPECT_TRUE(read_case_cfdx_h5(filename, mesh, source, setup, gap));
+        EXPECT_TRUE(setup.materials.size() == 1);
+        const auto& material = setup.materials.front();
+        EXPECT_TRUE(material.name == "unspecified");
+        EXPECT_TRUE(material.density == 0.0);
+        EXPECT_TRUE(material.dynamic_viscosity == 0.0);
+        EXPECT_TRUE(material.thermal_conductivity == 0.0);
+        EXPECT_TRUE(material.specific_heat == 0.0);
+        EXPECT_TRUE(material.molecular_weight == 0.0);
+        EXPECT_TRUE(material.eos_model.empty());
+        std::remove(filename.c_str());
+    });
+
     run_case("case_hdf5_roundtrip_mesh_and_metadata", []() {
         const std::string filename = "/tmp/cfdx_case_roundtrip.h5";
         std::remove(filename.c_str());

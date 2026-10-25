@@ -419,6 +419,13 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endmacro()
 
+    # Focused thermal audit regressions, extracted from PR #1096 without its
+    # unrelated changes or truncated build configuration.
+    add_cfdx_test(test_audit_cht_time tests/audit/test_audit_cht_time.cpp)
+    add_cfdx_test(test_audit_energy_boundary_metric tests/audit/test_audit_energy_boundary_metric.cpp)
+    set_tests_properties(test_audit_cht_time test_audit_energy_boundary_metric
+        PROPERTIES LABELS "audit;regression;thermal" TIMEOUT 60)
+
     # N8 physical/production qualification reuses the existing validation
     # executables and records a machine-readable campaign report. It is
     # intentionally a separate CTest entry so the individual physical or
@@ -662,6 +669,10 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
     add_cfdx_test(test_turbulence_qualification_equations tests/unit/test_turbulence_qualification_equations.cpp)
     add_cfdx_test(test_production_turbulence_contract tests/unit/test_production_turbulence_contract.cpp)
+    add_cfdx_test(test_solid_conduction_selection tests/unit/test_solid_conduction_selection.cpp)
+    add_cfdx_test(test_energy_integration_contracts tests/validation/test_energy_integration_contracts.cpp)
+    add_cfdx_test(test_cht_integration_contracts tests/validation/test_cht_integration_contracts.cpp)
+    add_cfdx_test(test_sst_integration_gaps tests/audit/test_sst_integration_gaps.cpp)
     add_cfdx_test(test_production_radiation_contract tests/unit/test_production_radiation_contract.cpp)
     add_cfdx_test(test_n11_sa_negative_nu_tilde_policy tests/unit/test_n11_sa_negative_nu_tilde_policy.cpp)
     add_cfdx_test(test_n11_bound_reporting_hardening tests/unit/test_n11_bound_reporting_hardening.cpp)
@@ -1131,6 +1142,33 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     endif()
     if(Python3_Interpreter_FOUND AND CFDX_HAS_HDF5)
+        add_test(NAME test_solid_conduction_contract_e2e
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_solid_conduction_contract_e2e.py)
+        set_tests_properties(test_solid_conduction_contract_e2e PROPERTIES
+            LABELS "thermal;integration;validation"
+            ENVIRONMENT "CFDX_THERMAL_SOLVER=$<TARGET_FILE:cfdx_thermal_solver>"
+            TIMEOUT 120)
+        add_test(NAME test_t2_campaign_verdict
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_t2_campaign_verdict.py)
+        set_tests_properties(test_t2_campaign_verdict PROPERTIES
+            LABELS "thermal;qualification;validation"
+            TIMEOUT 30)
+        add_test(NAME test_production_thermal_restart_e2e
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_production_thermal_restart_e2e.py)
+        set_tests_properties(test_production_thermal_restart_e2e PROPERTIES
+            LABELS "thermal;integration;restart"
+            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>"
+            TIMEOUT 120)
+        add_test(NAME test_imported_thermal_contracts
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_imported_thermal_contracts.py)
+        set_tests_properties(test_imported_thermal_contracts PROPERTIES
+            LABELS "thermal;integration;io"
+            ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+            TIMEOUT 30)
         add_test(NAME test_n9_coupled_schur_case_selection
             COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tests/python/test_n9_coupled_schur_case_selection.py)
