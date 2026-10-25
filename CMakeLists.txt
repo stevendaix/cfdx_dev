@@ -452,6 +452,14 @@ if(CFDX_BUILD_TESTS)
         set_tests_properties(test_mpi_deterministic_fused PROPERTIES
             LABELS "unit;mpi;recovered" PROCESSORS 2)
 
+        if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
+            # OpenMPI/hwloc retains process-global allocations after MPI_Finalize.
+            # Use the existing narrow third-party suppression list for this test;
+            # LeakSanitizer remains enabled for unsuppressed CFDX allocation stacks.
+            set_tests_properties(test_mpi_deterministic_fused PROPERTIES
+                ENVIRONMENT "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/tests/sanitizers/lsan_mpi.supp")
+        endif()
+
         # This source calls MPI-IO entry points directly and requires two ranks.
         # Do not substitute a serial HDF5 build or a one-rank smoke test.
         if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND AND HDF5_IS_PARALLEL)
