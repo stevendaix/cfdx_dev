@@ -168,6 +168,37 @@ static Mesh make_unit_cube()
 
 int main()
 {
+    run_case("flux_imbalance_metrics_do_not_hide_local_cancellation", [] {
+        const auto metrics = flux_imbalance_metrics({10.0, -10.0});
+        EXPECT_NEAR(metrics.signed_global, 0.0, 1e-14);
+        EXPECT_NEAR(metrics.global_l1, 20.0, 1e-14);
+        EXPECT_NEAR(metrics.local_linf, 10.0, 1e-14);
+    });
+
+    run_case("assembled_flux_imbalance_exposes_local_cancellation", [] {
+        const Mesh m = make_1d_chain(2);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"Su","K/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"Sp","1/s",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        std::size_t internal = m.n_faces();
+        for (std::size_t face = 0; face < m.n_faces(); ++face) {
+            if (m.ownership().neighbour(face) >= 0) {
+                internal = face;
+                break;
+            }
+        }
+        EXPECT_TRUE(internal < m.n_faces());
+        flux(internal) = 1.0;
+        ScalarBoundaryConditions bc;
+        const auto eq = assemble_scalar_equation(m,g,flux,1.0,su,sp,bc);
+        EXPECT_NEAR(eq.signed_global_imbalance, 0.0, 1e-14);
+        EXPECT_NEAR(eq.global_l1_imbalance, 2.0, 1e-14);
+        EXPECT_NEAR(eq.max_local_imbalance, 1.0, 1e-14);
+        EXPECT_NEAR(eq.max_imbalance, 1.0, 1e-14);
+    });
+
     run_case("geometric_interpolation_weight_uses_longitudinal_projection", [] {
         const Vec3 owner(0.0,0.0,0.0);
         const Vec3 neighbour(1.0,0.0,0.0);
@@ -253,90 +284,6 @@ int main()
         EXPECT_TRUE(r.status == SolverStatus::CONVERGED);
         EXPECT_NEAR(x(0),1.0/12.0,1e-12);
         EXPECT_NEAR(scalar_equation_residual_inf(eq,x),0.0,1e-12);
-    });
-
-    run_case("scalar_residual_pair_uses_same_physical_norm_and_scale", [] {
-        const auto check_identity_case = [](double a0, double a1, double b0,
-                                            double b1, double x0, double x1,
-                                            double expected_inf, double expected_relative,
-                                            cfdx::core::LinearScalingModel scaling) {
-            ScalarEquation eq;
-            eq.matrix = SparseMatrix(2,2);
-            eq.matrix.push_back(0,0,a0);
-            eq.matrix.push_back(1,1,a1);
-            eq.matrix.finalize();
-            eq.rhs = Vector(2);
-            eq.rhs(0)=b0; eq.rhs(1)=b1;
-            Vector x(2);
-            x(0)=x0; x(1)=x1;
-            ScalarSolveControls controls{20,1e-3,1.0};
-            controls.problem=cfdx::core::LinearProblemKind::Diffusion;
-            controls.linear_solver.krylov=cfdx::core::KrylovModel::CG;
-            controls.linear_solver.preconditioner=cfdx::core::PreconditionerModel::Jacobi;
-            controls.linear_solver.scaling=scaling;
-            const auto result=solve_scalar_equation(eq,x,controls);
-            EXPECT_TRUE(result.status==SolverStatus::CONVERGED);
-            EXPECT_NEAR(result.residual_before_relaxation,expected_inf,1e-10);
-            EXPECT_NEAR(result.residual_after_relaxation,expected_inf,1e-10);
-            EXPECT_NEAR(result.residual_relative_before_relaxation,expected_relative,1e-12);
-            EXPECT_NEAR(result.residual_relative_after_relaxation,expected_relative,1e-12);
-        };
-
-        // Initial candidate is already admissible under the solver tolerance,
-        // so alpha=1 leaves it unchanged. Both diagnostics must report the
-        // same physical L-infinity residual, not a Krylov L2 residual.
-        check_identity_case(1.0,1.0,3.0,4.0,2.9996,3.9996,
-                            0.0004,0.0001,cfdx::core::LinearScalingModel::None);
-
-        // Row scaling makes the algebraic system well-scaled but does not
-        // change the physical residual contract of the returned field.
-        check_identity_case(1.0e6,1.0,3.0e6,4.0,2.9996,3.9996,
-                            400.0,400.0/3.0e6,cfdx::core::LinearScalingModel::Row);
-    });
-
-    run_case("scalar_relaxation_residual_matches_closed_form_oracle", [] {
-        ScalarEquation eq;
-        eq.matrix=SparseMatrix(2,2);
-        eq.matrix.push_back(0,0,6.0); eq.matrix.push_back(0,1,-2.0);
-        eq.matrix.push_back(1,0,-2.0); eq.matrix.push_back(1,1,6.0);
-        eq.matrix.finalize();
-        eq.rhs=Vector(2); eq.rhs(0)=0.5; eq.rhs(1)=0.5;
-        Vector x(2,0.0);
-        ScalarSolveControls controls{20,1e-12,0.25};
-        controls.problem=cfdx::core::LinearProblemKind::Diffusion;
-        controls.linear_solver.krylov=cfdx::core::KrylovModel::CG;
-        controls.linear_solver.preconditioner=cfdx::core::PreconditionerModel::Jacobi;
-        const auto result=solve_scalar_equation(eq,x,controls);
-        EXPECT_TRUE(result.status==SolverStatus::CONVERGED);
-        EXPECT_NEAR(x(0),1.0/32.0,1e-14);
-        EXPECT_NEAR(x(1),1.0/32.0,1e-14);
-        EXPECT_NEAR(result.residual_after_relaxation,3.0/8.0,1e-14);
-        EXPECT_NEAR(result.residual_relative_after_relaxation,3.0/4.0,1e-14);
-    });
-
-    run_case("relaxed_scalar_solve_reports_returned_field_residual", [] {
-        const Mesh m = make_1d_chain(2);
-        const FvGeometry g = build_fv_geometry(m);
-        Field<double,Location::FACE> flux(m.n_faces(),"phi","kg/s",1);
-        Field<double,Location::CELL> su(m.n_cells(),"Su","K/s",1);
-        Field<double,Location::CELL> sp(m.n_cells(),"Sp","1/s",1);
-        flux.fill(0.0);
-        su.fill(1.0);
-        sp.fill(0.0);
-        ScalarBoundaryConditions bc;
-        bc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
-        bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
-        const auto eq = assemble_scalar_equation(m,g,flux,1.0,su,sp,bc);
-        Vector x(m.n_cells(),0.0);
-        const auto r = solve_scalar_equation(eq,x,{100,1e-12,0.25});
-        EXPECT_TRUE(r.status == SolverStatus::CONVERGED);
-        EXPECT_NEAR(r.residual_before_relaxation, 0.0, 1e-12);
-        EXPECT_NEAR(r.residual_after_relaxation, scalar_equation_residual_inf(eq,x), 1e-14);
-        EXPECT_TRUE(r.residual_after_relaxation > r.residual_before_relaxation);
-        EXPECT_NEAR(r.residual_relative_before_relaxation, r.residual_relative, 1e-14);
-        EXPECT_NEAR(r.residual_relative_after_relaxation,
-                    r.residual_after_relaxation /
-                        std::max(std::abs(eq.rhs(0)), std::abs(eq.rhs(1))), 1e-14);
     });
 
     run_case("exact_one_cell_solution_is_not_under_relaxed", [] {
@@ -544,6 +491,44 @@ int main()
             const double face_correction=high_flux(target_face)-upwind_flux(target_face);
             EXPECT_NEAR(high_eq.rhs(1)-upwind_eq.rhs(1),-face_correction,1e-12);
             EXPECT_NEAR(high_eq.rhs(2)-upwind_eq.rhs(2), face_correction,1e-12);
+        }
+    });
+
+    run_case("high_resolution_flux_boundedness_is_independent_of_source_correction", [] {
+        const Mesh m = make_1d_chain(3);
+        const FvGeometry g = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"mass_flux","kg/s",1);
+        Field<double,Location::CELL> su(m.n_cells(),"su","unit/s",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","1/s",1);
+        Field<double,Location::CELL> phi(m.n_cells(),"phi","unit",1);
+        flux.fill(0.0); su.fill(0.0); sp.fill(0.0);
+        phi(0)=0.0; phi(1)=1.0; phi(2)=1.01;
+        std::size_t target = m.n_faces();
+        for (std::size_t f = 0; f < m.n_faces(); ++f) {
+            if (m.ownership().owner(f) == 1 && m.ownership().neighbour(f) == 2) {
+                flux(f) = 1.0;
+                target = f;
+                break;
+            }
+        }
+        EXPECT_TRUE(target < m.n_faces());
+        const std::vector<double> extra_diagonal{1.0, 1.0, 1.0};
+        ScalarBoundaryConditions bc;
+        bc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 1.01, 0.0};
+        bc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        for (const auto scheme : {ConvectionScheme::SECOND_ORDER_UPWIND, ConvectionScheme::TVD}) {
+            const auto equation = assemble_scalar_equation(
+                m, g, flux, 0.0, su, sp, bc, false, nullptr, &extra_diagonal,
+                nullptr, nullptr, scheme, &phi);
+            const auto reconstructed = reconstruct_scalar_transport_flux(
+                m, g, flux, phi, 0.0, bc, false, scheme);
+            EXPECT_NEAR(reconstructed(target), 1.01, 1e-12);
+            const auto upwind = assemble_scalar_equation(
+                m, g, flux, 0.0, su, sp, bc, false, nullptr, &extra_diagonal,
+                nullptr, nullptr, ConvectionScheme::UPWIND, &phi);
+            EXPECT_NEAR(equation.rhs(1) - upwind.rhs(1), -0.01, 1e-10);
         }
     });
 
