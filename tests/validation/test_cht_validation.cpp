@@ -70,7 +70,6 @@ static Mesh cube_m(const char* patch_name, double x_offset = 0.0,
     return m;
 }
 
-int main()
 
 int main()
 {
