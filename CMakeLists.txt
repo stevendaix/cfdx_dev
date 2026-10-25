@@ -419,6 +419,61 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endmacro()
 
+    # Focused thermal audit regressions, extracted from PR #1096 without its
+    # unrelated changes or truncated build configuration.
+    add_cfdx_test(test_audit_cht_time tests/audit/test_audit_cht_time.cpp)
+    add_cfdx_test(test_audit_energy_boundary_metric tests/audit/test_audit_energy_boundary_metric.cpp)
+    set_tests_properties(test_audit_cht_time test_audit_energy_boundary_metric
+        PROPERTIES LABELS "audit;regression;thermal" TIMEOUT 60)
+
+    # Recovered standalone regressions: these sources previously had no CTest
+    # target, so API drift in them was invisible to normal builds.
+    add_cfdx_test(test_temporal tests/numerical/test_temporal.cpp)
+    add_cfdx_test(test_discretization_verification tests/validation/test_discretization_verification.cpp)
+    add_cfdx_test(test_matrix_diagnostics tests/unit/test_matrix_diagnostics.cpp)
+    add_cfdx_test(test_application_layer tests/unit/test_application_layer.cpp)
+    add_cfdx_test(test_memory_budget tests/unit/test_memory_budget.cpp)
+    add_cfdx_test(test_memory_planner tests/unit/test_memory_planner.cpp)
+    set_tests_properties(test_temporal test_discretization_verification PROPERTIES
+        LABELS "numerical;verification;recovered")
+    set_tests_properties(test_matrix_diagnostics test_application_layer
+        test_memory_budget test_memory_planner PROPERTIES LABELS "unit;recovered")
+
+    if(CFDX_ENABLE_MPI AND MPI_FOUND)
+        set(CFDX_RECOVERED_MPIEXEC_NUMPROCS_FLAG "${MPIEXEC_NUMPROCS_FLAG}")
+        if(CFDX_RECOVERED_MPIEXEC_NUMPROCS_FLAG STREQUAL "")
+            set(CFDX_RECOVERED_MPIEXEC_NUMPROCS_FLAG "-n")
+        endif()
+        add_executable(test_mpi_deterministic_fused tests/unit/test_mpi_deterministic_fused.cpp)
+        target_link_libraries(test_mpi_deterministic_fused PRIVATE cfdx_core MPI::MPI_CXX)
+        add_test(NAME test_mpi_deterministic_fused
+            COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_RECOVERED_MPIEXEC_NUMPROCS_FLAG} 2
+                ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_deterministic_fused> ${MPIEXEC_POSTFLAGS})
+        set_tests_properties(test_mpi_deterministic_fused PROPERTIES
+            LABELS "unit;mpi;recovered" PROCESSORS 2)
+
+        if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
+            # OpenMPI/hwloc retains process-global allocations after MPI_Finalize.
+            # Use the existing narrow third-party suppression list for this test;
+            # LeakSanitizer remains enabled for unsuppressed CFDX allocation stacks.
+            set_tests_properties(test_mpi_deterministic_fused PROPERTIES
+                ENVIRONMENT "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/tests/sanitizers/lsan_mpi.supp")
+        endif()
+
+        # This source calls MPI-IO entry points directly and requires two ranks.
+        # Do not substitute a serial HDF5 build or a one-rank smoke test.
+        if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND AND HDF5_IS_PARALLEL)
+            add_executable(test_parallel_hdf5 tests/unit/test_parallel_hdf5.cpp)
+            target_link_libraries(test_parallel_hdf5 PRIVATE cfdx_core MPI::MPI_CXX)
+            target_include_directories(test_parallel_hdf5 PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+            add_test(NAME test_parallel_hdf5
+                COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_RECOVERED_MPIEXEC_NUMPROCS_FLAG} 2
+                    ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_parallel_hdf5> ${MPIEXEC_POSTFLAGS})
+            set_tests_properties(test_parallel_hdf5 PROPERTIES
+                LABELS "unit;mpi;hdf5;recovered" PROCESSORS 2)
+        endif()
+    endif()
+
     # N8 physical/production qualification reuses the existing validation
     # executables and records a machine-readable campaign report. It is
     # intentionally a separate CTest entry so the individual physical or
@@ -452,6 +507,26 @@ if(CFDX_BUILD_TESTS)
         set_tests_properties(test_n11_campaign_integrity PROPERTIES
             LABELS "n11;unit;validation")
     endif()
+
+    # Audit counterexamples: active checks in Release as well as Debug.
+    # test_audit_numerics is deliberately not registered yet: its Krylov/QUICK/WLS
+    # sections exercise the G01-G09 fixes carried by PR #1092; register it when
+    # that work lands (file already present in tests/audit/).
+    add_cfdx_test(test_audit_flux_contract tests/audit/test_audit_flux_contract.cpp)
+    # H05: the boundary energy diagnostic must use the same normal-distance
+    # metric as the assembler; shear {0,1,3} x face-value override must keep
+    # matrix balance and independent diagnostic within 1e-12 of each other.
+    # test_audit_cht_contract is deliberately not registered yet: its
+    # fail-closed interface-contract rejections depend on the CHT conductance
+    # coherence work carried by PR #1095; register it when that work lands.
+    # F12/F13: evaluate_momentum_terms / evaluate_energy_terms must return
+    # homogeneous per-unit-volume terms (m/s^2, K/s); the rescaling checks
+    # catch an integrated flux-sum convection term (scales s^2, not 1/s).
+    add_cfdx_test(test_audit_helper_terms tests/audit/test_audit_helper_terms.cpp)
+    set_tests_properties(test_audit_flux_contract PROPERTIES
+        LABELS "audit;regression" TIMEOUT 60)
+    set_tests_properties(test_audit_helper_terms PROPERTIES
+        LABELS "audit;regression" TIMEOUT 60)
 
     # Unit tests - Core
     add_cfdx_test(test_point tests/unit/test_point.cpp)
@@ -574,6 +649,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     set_tests_properties(test_n11_scalar_conservation PROPERTIES
         LABELS "n11;qualification;validation")
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
+    add_cfdx_test(test_vof_curvature_contract tests/unit/test_vof_curvature_contract.cpp)
     add_cfdx_test(test_variable_viscosity_transpose_stress tests/unit/test_variable_viscosity_transpose_stress.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
     add_cfdx_test(test_vtu_writer_validation tests/validation/test_vtu_writer_validation.cpp)
@@ -588,6 +664,12 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     # pulled into the quick smoke path because its coupled Krylov/preconditioner
     # cost is materially different from the SIMPLE Ghia regression.
     if(CFDX_ENABLE_LONG_VALIDATION)
+        # Matched-grid Re=100 profiles for comparison with the public OpenFOAM
+        # N=20/40/80/160 campaign. Keep the additional study in total validation.
+        add_test(NAME test_ghia_cavity_profile_study COMMAND test_ghia_cavity --profile-study)
+        set_tests_properties(test_ghia_cavity_profile_study PROPERTIES
+            LABELS "phase13;validation;campaign;long"
+            TIMEOUT 2400)
         # Run a bounded low-resolution preflight first. The dependency prevents
         # the physical PCD qualification from starting when the nested solver
         # already exhibits runaway behaviour on the smaller case.
@@ -656,11 +738,18 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
     add_cfdx_test(test_turbulence_qualification_equations tests/unit/test_turbulence_qualification_equations.cpp)
     add_cfdx_test(test_production_turbulence_contract tests/unit/test_production_turbulence_contract.cpp)
+    add_cfdx_test(test_solid_conduction_selection tests/unit/test_solid_conduction_selection.cpp)
+    add_cfdx_test(test_energy_integration_contracts tests/validation/test_energy_integration_contracts.cpp)
+    add_cfdx_test(test_cht_integration_contracts tests/validation/test_cht_integration_contracts.cpp)
+    add_cfdx_test(test_sst_integration_gaps tests/audit/test_sst_integration_gaps.cpp)
     add_cfdx_test(test_production_radiation_contract tests/unit/test_production_radiation_contract.cpp)
     add_cfdx_test(test_n11_sa_negative_nu_tilde_policy tests/unit/test_n11_sa_negative_nu_tilde_policy.cpp)
     add_cfdx_test(test_n11_bound_reporting_hardening tests/unit/test_n11_bound_reporting_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_wall_distance_methods tests/unit/test_wall_distance_methods.cpp)
+    add_cfdx_test(test_wall_distance_invalid_results tests/unit/test_wall_distance_invalid_results.cpp)
+    add_cfdx_test(test_wall_distance_godunov_ridges tests/unit/test_wall_distance_godunov_ridges.cpp)
+    add_cfdx_test(test_wall_distance_advection_residual tests/unit/test_wall_distance_advection_residual.cpp)
     add_test(NAME benchmark_wall_distance_naca0012
         COMMAND cfdx_naca0012_wall_distance_comparison
                 ${CMAKE_SOURCE_DIR}/tests/data/su2/mesh_NACA0012_inv.su2
@@ -999,6 +1088,18 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         if(CFDX_MPIEXEC_NUMPROCS_FLAG STREQUAL "")
             set(CFDX_MPIEXEC_NUMPROCS_FLAG "-n")
         endif()
+        # Only Open MPI accepts --oversubscribe. MPICH/Hydra rejects it
+        # before starting the restart reader. Preserve three-rank readers on
+        # two-core Open MPI CI workers without sending a vendor flag to all MPI.
+        set(CFDX_MPIEXEC_OVERSUBSCRIBE_FLAG "")
+        execute_process(COMMAND "${MPIEXEC_EXECUTABLE}" --version
+            OUTPUT_VARIABLE CFDX_MPIEXEC_VERSION_OUTPUT
+            ERROR_VARIABLE CFDX_MPIEXEC_VERSION_ERROR
+            RESULT_VARIABLE CFDX_MPIEXEC_VERSION_RESULT)
+        if(CFDX_MPIEXEC_VERSION_RESULT EQUAL 0 AND
+           "${CFDX_MPIEXEC_VERSION_OUTPUT}${CFDX_MPIEXEC_VERSION_ERROR}" MATCHES "Open MPI|OpenRTE")
+            set(CFDX_MPIEXEC_OVERSUBSCRIBE_FLAG "--oversubscribe")
+        endif()
         add_test(NAME test_mpi_deterministic
                  COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                          ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_deterministic> ${MPIEXEC_POSTFLAGS})
@@ -1038,7 +1139,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                              --reference ${CMAKE_BINARY_DIR}/production_poisson_reference.h5
                              ${MPIEXEC_POSTFLAGS})
             add_test(NAME test_production_mpi_poisson_reader
-                     COMMAND ${MPIEXEC_EXECUTABLE} --oversubscribe ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_OVERSUBSCRIBE_FLAG} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
                              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:cfdx_mpi_poisson_restart>
                              --mode reader
                              --checkpoint ${CMAKE_BINARY_DIR}/production_poisson_checkpoint.h5
@@ -1050,7 +1151,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                      COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
                              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_restart_writer> ${MPIEXEC_POSTFLAGS})
             add_test(NAME test_phase5_restart_reader
-                     COMMAND ${MPIEXEC_EXECUTABLE} --oversubscribe ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_OVERSUBSCRIBE_FLAG} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
                              ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_restart_reader> ${MPIEXEC_POSTFLAGS})
             set_tests_properties(test_phase5_restart_reader PROPERTIES DEPENDS test_phase5_restart_writer)
         endif()
@@ -1117,6 +1218,13 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
     endif()
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_cpp_harness_execution_contract
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/scripts/check_cpp_test_execution.py
+                    --root ${CMAKE_SOURCE_DIR} --self-test)
+        set_tests_properties(test_cpp_harness_execution_contract PROPERTIES
+            LABELS "audit;test-infrastructure"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
         add_test(NAME test_n9_s8_naca0012_contract
             COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tests/python/test_n9_s8_naca0012_contract.py)
@@ -1125,6 +1233,33 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
     endif()
     if(Python3_Interpreter_FOUND AND CFDX_HAS_HDF5)
+        add_test(NAME test_solid_conduction_contract_e2e
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_solid_conduction_contract_e2e.py)
+        set_tests_properties(test_solid_conduction_contract_e2e PROPERTIES
+            LABELS "thermal;integration;validation"
+            ENVIRONMENT "CFDX_THERMAL_SOLVER=$<TARGET_FILE:cfdx_thermal_solver>"
+            TIMEOUT 120)
+        add_test(NAME test_t2_campaign_verdict
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_t2_campaign_verdict.py)
+        set_tests_properties(test_t2_campaign_verdict PROPERTIES
+            LABELS "thermal;qualification;validation"
+            TIMEOUT 30)
+        add_test(NAME test_production_thermal_restart_e2e
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_production_thermal_restart_e2e.py)
+        set_tests_properties(test_production_thermal_restart_e2e PROPERTIES
+            LABELS "thermal;integration;restart"
+            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>"
+            TIMEOUT 120)
+        add_test(NAME test_imported_thermal_contracts
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_imported_thermal_contracts.py)
+        set_tests_properties(test_imported_thermal_contracts PROPERTIES
+            LABELS "thermal;integration;io"
+            ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+            TIMEOUT 30)
         add_test(NAME test_n9_coupled_schur_case_selection
             COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_SOURCE_DIR}/tests/python/test_n9_coupled_schur_case_selection.py)

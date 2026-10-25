@@ -1098,5 +1098,5 @@ int main()
         EXPECT_TRUE(identity_stale > 1e-12);
     });
 
-    return 0;
+    return run_all();
 }
