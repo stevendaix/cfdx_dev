@@ -600,9 +600,7 @@ if QMainWindow is not object:
                 lambda _checked=False: self._move_visualization_operation(1)
             )
             self.edit_visualization_button = QPushButton("Edit selected")
-            self.edit_visualization_button.setObjectName(
-                "workbench.visualization.edit"
-            )
+            self.edit_visualization_button.setObjectName("workbench.visualization.edit")
             self.edit_visualization_button.setEnabled(False)
             self.edit_visualization_button.clicked.connect(
                 self._edit_visualization_operation
