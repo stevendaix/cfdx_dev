@@ -427,6 +427,27 @@
       "runtime": "Not measured",
       "regression_status": "Registered unit test tests/unit/test_variable_viscosity_transpose_stress.cpp; exact-HEAD CI pending. Full production momentum MMS, mesh-refinement/GCI and skewed/polyhedral validation remain open.",
       "method_fiche": "docs/audits/23-variable-viscosity-stress.md"
+    },
+    {
+      "id": "SCALAR-TRANSPORT-NONORTH-AFFINE",
+      "domain": "Scalar transport / diffusion",
+      "case": "Affine scalar field on a skewed nonuniform mesh",
+      "status": "DIAGNOSTIC",
+      "reference": "Analytical Laplacian of phi=2x-3y+0.5z is zero; independent assembled residual and reconstructed-flux divergence",
+      "parameters": "Diffusion coefficient 1; shear=1; nonuniform coordinate map q -> q+0.2q^2; zero mass flux",
+      "mesh": "8x8x8 affine-sheared, nonuniform hexahedral mesh; interior-cell residual gate",
+      "boundary_conditions": "Default zero-gradient boundaries; only interior cells are used for the affine exactness gate",
+      "numerical_schemes": "Implicit normal diffusion conductance plus explicit conservative non-orthogonal tangential flux; shared flux reconstruction",
+      "solver_settings": "Operator-level assembly and flux reconstruction; no production case solve",
+      "convergence_criteria": "Corrected interior residual and reconstructed flux divergence < 1e-10; uncorrected residual must exceed 1e-3 to prove the correction is active",
+      "conservation_criteria": "Equal-and-opposite internal-face correction fluxes; reconstructed face flux matches the assembled diffusion operator",
+      "qoi": "Cellwise diffusion residual and reconstructed total flux divergence",
+      "reference_value": "Laplacian(phi)=0 for affine phi; reconstructed diffusion flux divergence is zero in interior cells",
+      "error": "Absolute cellwise residual and flux-divergence error",
+      "observed_order": "Not measured; single-mesh operator exactness only",
+      "runtime": "Not measured",
+      "regression_status": "Added to tests/validation/test_nonorthogonal_laplacian_campaign.cpp; exact-HEAD CI pending. Polyhedral MMS and mesh-refinement/GCI remain open.",
+      "method_fiche": "docs/audits/24-nonorthogonal-transport-diffusion.md"
     }
   ]
 }
