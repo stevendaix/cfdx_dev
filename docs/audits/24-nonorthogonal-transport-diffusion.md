@@ -39,9 +39,9 @@ F_{diff,f}=D_f(\psi_N-\psi_P)
 +\Gamma_f\nabla\psi_f\cdot\mathbf S_{t,f},\qquad
 \Gamma_f=D_f/\alpha_f.
 \]
-- Le flux tangentiel est explicite et différé, évalué avec le champ scalaire courant et un gradient reconstruit par volumes finis.
+- Le flux tangentiel est explicite et différé, évalué avec le champ scalaire courant et un gradient aux moindres carrés, linéaire-exact lorsque le stencil est de rang plein. Green–Gauss avec interpolation deux-points n'est pas utilisé pour cette correction, car il est biaisé lorsque les centres de cellules et les centroïdes de faces ne sont pas alignés.
 - La correction est assemblée de façon conservative : ajouter le flux orienté au second membre du propriétaire et le soustraire au voisin. Les contributions d'une face interne s'annulent globalement.
-- `compute_nonorthogonal_diffusion_face_fluxes` fournit le flux de correction par face ; `assemble_scalar_equation` et `reconstruct_scalar_transport_flux` réutilisent le même calcul et la même conductance normale.
+- `compute_nonorthogonal_diffusion_face_fluxes` fournit le flux de correction par face ; `assemble_scalar_equation` et `reconstruct_scalar_transport_flux` réutilisent le même calcul et la même conductance normale. Le gradient de correction utilise `compute_gradient_least_squares`.
 - Si une face diffusive non orthogonale exige un champ scalaire courant et que celui-ci n'est pas fourni, l'assembleur échoue explicitement au lieu de retomber silencieusement sur la diffusion orthogonale.
 
 ## 4. Traitement des frontières
@@ -56,6 +56,7 @@ F_{diff,f}=D_f(\psi_N-\psi_P)
 - Ajouter la correction tangente avec le mauvais signe rompt l'exactitude affine ; pour \(-\nabla\cdot F_{diff}=S\), la divergence de correction est déplacée au second membre avec le signe positif.
 - Une correction calculée pour l'assemblage mais omise dans la reconstruction produit des bilans de flux incompatibles.
 - Une face quasi singulière avec \(\mathbf S_f\cdot\mathbf d\approx0\) rend la décomposition instable et doit être rejetée.
+- Le gradient LS est linéaire-exact lorsque le stencil est de rang plein ; les maillages dégénérés ou les stencils insuffisants restent à couvrir par des tests explicites.
 - Le test hexaédrique incliné ne constitue pas une preuve d'ordre sur un maillage polyédrique arbitraire.
 
 ## 6. Ordre de précision attendu et validation exigée
@@ -67,7 +68,8 @@ F_{diff,f}=D_f(\psi_N-\psi_P)
 
 ## 7. Statut d'implémentation CFDX
 - Fichiers source : `src/cfdx/physics/finite_volume_transport.h`.
-- Entrées partagées : `resolve_scalar_boundary_condition`, `compute_scalar_gradient_with_boundary`, `compute_nonorthogonal_diffusion_face_fluxes`.
+- Entrées partagées : `resolve_scalar_boundary_condition`, `compute_scalar_gradient_with_boundary`, `compute_nonorthogonal_diffusion_face_fluxes` ; la correction utilise le gradient LS.
+- Gradient : `compute_nonorthogonal_diffusion_face_fluxes` utilise le gradient aux moindres carrés pour préserver l'exactitude affine sur maillages déformés.
 - Assembleur : `assemble_scalar_equation` ajoute le flux tangentiel au second membre de façon conservative.
 - Reconstruction : `reconstruct_scalar_transport_flux` utilise la même correction et la même conductance normale.
 - Test exécutable : `tests/validation/test_nonorthogonal_laplacian_campaign.cpp` — champ affine sur maillage hexaédrique incliné et non uniforme, résidu assemblé, divergence du flux reconstruit, rejet si le champ courant manque.
