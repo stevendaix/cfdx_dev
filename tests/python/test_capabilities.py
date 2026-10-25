@@ -66,6 +66,19 @@ def test_stop_requires_an_active_simulation() -> None:
     assert not evaluate_capability("workbench.action.run", active).available
 
 
+def test_undo_and_redo_report_their_history_prerequisites() -> None:
+    empty = CapabilityContext()
+    undo = evaluate_capability("workbench.action.undo", empty)
+    redo = evaluate_capability("workbench.action.redo", empty)
+    assert not undo.available
+    assert not redo.available
+    assert undo.tip == "Requires: an edit to undo"
+    assert redo.tip == "Requires: an edit to redo"
+    ready = CapabilityContext(undo_available=True, redo_available=True)
+    assert evaluate_capability("workbench.action.undo", ready).available
+    assert evaluate_capability("workbench.action.redo", ready).available
+
+
 def test_unknown_capability_is_rejected_explicitly() -> None:
     import pytest
 
@@ -140,6 +153,8 @@ def test_registry_covers_every_workbench_command() -> None:
         "workbench.action.check",
         "workbench.action.save",
         "workbench.action.stop",
+        "workbench.action.undo",
+        "workbench.action.redo",
         "workbench.action.new_project",
         "workbench.action.open",
         "workbench.action.open_mesh",
