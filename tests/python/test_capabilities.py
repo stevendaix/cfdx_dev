@@ -140,6 +140,10 @@ def test_disabled_actions_explain_their_prerequisites() -> None:
 
     window.workspace_actions["analyze"].trigger()
     assert window._workspace == "analyze"
+    # Restore the default workspace before closing: closeEvent persists the
+    # workspace and dock layout through QSettings, and later test modules
+    # assert the fresh-launch layout of a brand new window.
+    window.workspace_actions["setup"].trigger()
     window.close()
     app.quit()
 
@@ -225,6 +229,9 @@ def test_palette_lists_the_registry_and_only_the_registry() -> None:
     assert results.count() == 1
     window.command_palette_query.returnPressed.emit()
     assert window._workspace == "mesh"
+    # Restore the default workspace before closing (see
+    # test_disabled_actions_explain_their_prerequisites).
+    window.workspace_actions["setup"].trigger()
     window.command_palette_dialog.close()
     window.close()
     app.quit()
