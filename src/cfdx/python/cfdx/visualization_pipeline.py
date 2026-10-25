@@ -86,6 +86,28 @@ class VisualizationPipeline:
             operations=self.operations[:index] + self.operations[index + 1 :],
         )
 
+    def replace(
+        self, index: int, operation: VisualizationOperation
+    ) -> VisualizationPipeline:
+        if index < 0 or index >= len(self.operations):
+            raise IndexError(index)
+        if not isinstance(operation, VisualizationOperation):
+            raise TypeError(
+                f"operation must be a VisualizationOperation, got {operation!r}"
+            )
+        operations = list(self.operations)
+        operations[index] = operation
+        return replace(self, operations=tuple(operations))
+
+    def move(self, from_index: int, to_index: int) -> VisualizationPipeline:
+        if from_index < 0 or from_index >= len(self.operations):
+            raise IndexError(from_index)
+        if to_index < 0 or to_index >= len(self.operations):
+            raise IndexError(to_index)
+        operations = list(self.operations)
+        operations.insert(to_index, operations.pop(from_index))
+        return replace(self, operations=tuple(operations))
+
     def clear(self) -> VisualizationPipeline:
         return VisualizationPipeline()
 
