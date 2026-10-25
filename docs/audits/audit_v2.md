@@ -29,6 +29,12 @@ Cette suite poursuit la section ~08:20Z ci-dessous (les merges du matin y resten
 
 Règles inchangées : aucune tolérance, oracle ou gate modifié ; les campagnes `validation-total` restent `skipped` sans label et ne comptent jamais comme validations physiques réussies ; INCONCLUSIVE ≠ PASS.
 
+### Mise à jour — 25 octobre 2026 ~09:55Z (suite) : F32 #1088 réconcilée byte-exact puis mergée — vague transport F31/F32/F33 complète
+
+- **F32 #1088 réconciliée sur master** : le `mergeable_state=dirty` noté à ~09:05Z provenait de l'évolution de master dans les mêmes fichiers — #1080 (F31, squash `f90de151af`) et #1089 (F33, squash `78e2724b`) dans `finite_volume_transport.h`/`test_finite_volume_transport.cpp`, et `038e3aef` (distances asymétriques) dans `thermal_zones.h`/`test_thermal_zones_vv.cpp`, le nouvel oracle asymétrique occupant exactement le point d'insertion du test F32. Résolution en 3 étapes : `0f588204` alignement des 4 fichiers sur master, `548c11f89` update-branch sans conflit, `0a455abe` ré-application du delta F32 complet. 5 fichiers re-fetchés byte-identiques (FNV-1a 64 : `9c31fe78fa46c44a` solver_status.h, `2c697c534266c004` finite_volume_transport.h, `a4d73a02f18b8910` thermal_zones.h, `245dc70cbb7b56f4` test_finite_volume_transport.cpp, `8ac99ace3e50c945` test_thermal_zones_vv.cpp). Aucun oracle/tolérance/gate modifié ; le test `thermal_conduction_rejects_underrelaxed_unconverged_state` est réinséré à sa position d'origine (après `composite_wall`, avant le nouvel oracle asymétrique). Commentaire de consolidation : 6395799481.
+- **F32 #1088 MERGÉE** : squash `1c39147c`, `expectedHeadSha` épinglé sur `0a455abe` ; CI du head exact terminée : 26 ✅ / 0 échec / 0 pending / 11 skipped (validation-total sans label = normal), jobs démarrés 09:18Z+ (frais du head réconcilié, pas de cache) ; mergeable_state `clean` au moment du merge (09:53:19Z).
+- **Conséquence registre** : F31/F32/F33 sont portées par master au commit `1c39147c` (statut CORRIGÉE au sens « code audité + tests ciblés + checks obligatoires verts sur le HEAD exact » UNIQUEMENT). La qualification physique (campagnes `validation-total`, enceinte fermée S2S, ordres de convergence) reste NON acquise ; INCONCLUSIVE ≠ PASS.
+
 ### Mise à jour — 25 octobre 2026 ~08:20Z : vagues de merges, doublons fermés, reste à faire
 
 Cette mise à jour supplante les lignes F25/F26/F27 et « Contrôle du registre » du tableau ci-dessus (rédigées avant les merges de la matinée).
