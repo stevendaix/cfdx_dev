@@ -157,7 +157,7 @@ int main()
         bool rejected=false;
         try {
             (void)match_cht_interface(m1,g1,m2,g2,c);
-        } catch(const std::runtime_error&) {
+        } catch(const std::invalid_argument&) {
             rejected=true;
         }
         EXPECT_TRUE(rejected);
