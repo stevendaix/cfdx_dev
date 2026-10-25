@@ -4,8 +4,8 @@
 #include "cfdx/physics/thermal.h"
 #include "cfdx/physics/radiation.h"
 #include "cfdx/physics/radiation_advanced.h"
-#include "cfdx/physics/radiation_s2s.h"
 #include "cfdx/physics/m1_m4_models.h"
+#include "cfdx/physics/radiation_s2s.h"
 #include "common/test_harness.h"
 #include <cmath>
 #include <limits>
@@ -17,9 +17,14 @@ using namespace cfdx::testing;
 int main()
 {
     run_case("m1_m4_p1_source_uses_mean_intensity_normalization", [] {
+        // Independent dimensional reference: 4*pi*kappa*(Ib-J), with
+        // Ib=sigma*T^4/pi and J=0. The P1 production helper is checked
+        // separately below by the same physical convention.
         constexpr double sigma = 5.670374419e-8;
         constexpr double temperature = 1000.0;
         const double ib = sigma * std::pow(temperature, 4) / M_PI;
+        // With zero irradiation, 4*pi*kappa*Ib simplifies independently to
+        // 4*sigma*T^4; do not reuse the implementation's source expression.
         const double expected = 4.0 * sigma * std::pow(temperature, 4);
         EXPECT_NEAR(cfdx::physics::m1m4::p1_source(1.0, 0.0, temperature), expected, 1e-8);
         EXPECT_NEAR(cfdx::physics::m1m4::p1_source(1.0, ib, temperature), 0.0, 1e-8);

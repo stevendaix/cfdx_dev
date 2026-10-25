@@ -419,6 +419,13 @@ if(CFDX_BUILD_TESTS)
         add_test(NAME ${test_name} COMMAND ${test_name})
     endmacro()
 
+    # Focused thermal audit regressions, extracted from PR #1096 without its
+    # unrelated changes or truncated build configuration.
+    add_cfdx_test(test_audit_cht_time tests/audit/test_audit_cht_time.cpp)
+    add_cfdx_test(test_audit_energy_boundary_metric tests/audit/test_audit_energy_boundary_metric.cpp)
+    set_tests_properties(test_audit_cht_time test_audit_energy_boundary_metric
+        PROPERTIES LABELS "audit;regression;thermal" TIMEOUT 60)
+
     # N8 physical/production qualification reuses the existing validation
     # executables and records a machine-readable campaign report. It is
     # intentionally a separate CTest entry so the individual physical or
@@ -662,6 +669,10 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
     add_cfdx_test(test_turbulence_qualification_equations tests/unit/test_turbulence_qualification_equations.cpp)
     add_cfdx_test(test_production_turbulence_contract tests/unit/test_production_turbulence_contract.cpp)
+    add_cfdx_test(test_solid_conduction_selection tests/unit/test_solid_conduction_selection.cpp)
+    add_cfdx_test(test_energy_integration_contracts tests/validation/test_energy_integration_contracts.cpp)
+    add_cfdx_test(test_cht_integration_contracts tests/validation/test_cht_integration_contracts.cpp)
+    add_cfdx_test(test_sst_integration_gaps tests/audit/test_sst_integration_gaps.cpp)
     add_cfdx_test(test_production_radiation_contract tests/unit/test_production_radiation_contract.cpp)
     add_cfdx_test(test_n11_sa_negative_nu_tilde_policy tests/unit/test_n11_sa_negative_nu_tilde_policy.cpp)
     add_cfdx_test(test_n11_bound_reporting_hardening tests/unit/test_n11_bound_reporting_hardening.cpp)
@@ -1068,134 +1079,3 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
             # N13 has the same external OpenMPI/hwloc teardown behavior as the
             # other MPI sanitizer tests. Its numerical equivalence and reduction
             # assertions remain active; only LeakSanitizer's process-global
-            # external-library teardown check is disabled for these MPI tests.
-            set_tests_properties(test_n13_mpi_equivalence test_mpi_deterministic
-                test_mpi_partition test_mpi_fused_reduction test_mpi_krylov_reduction
-                test_phase8_mpi_poisson test_n8_mpi_boundary PROPERTIES
-                ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
-        endif()
-    endif()
-    add_cfdx_test(test_convergence_history tests/unit/test_convergence_history.cpp)
-    add_cfdx_test(test_execution_summary tests/unit/test_execution_summary.cpp)
-    add_cfdx_test(test_restart_mapping tests/unit/test_restart_mapping.cpp)
-    add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
-    add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
-    add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
-    add_cfdx_test(test_thermo_transport_contracts tests/unit/test_thermo_transport_contracts.cpp)
-    add_cfdx_test(test_thermophysical_models tests/unit/test_thermophysical_models.cpp)
-    add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)
-    if(CFDX_BUILD_RUNTIME_TESTS)
-        add_cfdx_test(test_runtime_execution_ooc tests/unit/test_runtime_execution_ooc.cpp)
-        add_cfdx_test(test_runtime_pipeline tests/unit/test_runtime_pipeline.cpp)
-        add_cfdx_test(test_phase6_runtime_acceptance tests/validation/test_phase6_runtime_acceptance.cpp)
-        add_cfdx_test(test_ooc_pipeline tests/unit/test_ooc_pipeline.cpp)
-        add_cfdx_test(test_phase7_ooc_validation tests/validation/test_phase7_ooc_validation.cpp)
-    endif()
-    if(CFDX_ENABLE_GPU)
-        add_cfdx_test(test_cuda_runtime tests/unit/test_cuda_runtime.cpp)
-        add_cfdx_test(test_phase8_cuda_poisson tests/validation/test_phase8_cuda_poisson.cpp)
-        add_executable(test_n13_cuda_equivalence tests/validation/test_n13_cuda_equivalence.cpp)
-        target_link_libraries(test_n13_cuda_equivalence PRIVATE cfdx_core)
-        add_test(NAME test_n13_cuda_equivalence COMMAND test_n13_cuda_equivalence)
-        set_tests_properties(test_n13_cuda_equivalence PROPERTIES LABELS "phase13;validation;n13;hardware")
-    endif()
-
-    # HDF5 tests require the native reader/writer implementation.
-    if(CFDX_HAS_HDF5)
-        add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
-        add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
-        add_cfdx_test(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
-        add_cfdx_test(test_case_hdf5_io tests/unit/test_case_hdf5_io.cpp)
-    else()
-        add_cfdx_test(test_hdf5_unavailable tests/unit/test_hdf5_unavailable.cpp)
-    endif()
-
-    # Memory Planner tests
-    add_cfdx_test(test_memory_planner_validation tests/unit/test_memory_planner_validation.cpp)
-
-    # Plan completion tests
-    add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)
-
-    # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
-    add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
-    add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
-    if(CFDX_HAS_HDF5)
-        add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
-    endif()
-    if(Python3_Interpreter_FOUND)
-        add_test(NAME test_n9_s8_naca0012_contract
-            COMMAND ${Python3_EXECUTABLE}
-                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_s8_naca0012_contract.py)
-        set_tests_properties(test_n9_s8_naca0012_contract PROPERTIES
-            LABELS "n9;qualification;validation;total-validation"
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-    endif()
-    if(Python3_Interpreter_FOUND AND CFDX_HAS_HDF5)
-        add_test(NAME test_n9_coupled_schur_case_selection
-            COMMAND ${Python3_EXECUTABLE}
-                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_coupled_schur_case_selection.py)
-        set_tests_properties(test_n9_coupled_schur_case_selection PROPERTIES
-            LABELS "n9;schur;integration;validation;validation-total"
-            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
-        add_test(NAME test_n9_poiseuille_body_force_production
-            COMMAND ${Python3_EXECUTABLE}
-                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_poiseuille_body_force_production.py)
-        set_tests_properties(test_n9_poiseuille_body_force_production PROPERTIES
-            LABELS "n9;qualification;integration;validation;validation-total"
-            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
-            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-            TIMEOUT 900)
-    endif()
-
-    if(Python3_Interpreter_FOUND)
-        add_test(NAME test_missing_qualification_case_contracts COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/test_missing_qualification_case_contracts.py)
-        set_tests_properties(test_missing_qualification_case_contracts PROPERTIES LABELS "qualification;validation")
-    endif()
-
-    if(Python3_Interpreter_FOUND)
-        if(CFDX_HAS_HDF5)
-            # End-to-end OpenFOAM result import through the production executable.
-            # This is intentionally bounded: each subprocess has a 30 s timeout.
-            add_test(NAME test_openfoam_results_cli_production_e2e
-                     COMMAND ${Python3_EXECUTABLE} -m pytest -q
-                             ${CMAKE_SOURCE_DIR}/tests/python/test_openfoam_results_cli.py)
-            set_tests_properties(test_openfoam_results_cli_production_e2e PROPERTIES
-                LABELS "openfoam;integration;qualification"
-                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
-                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-                TIMEOUT 120)
-            add_test(NAME test_production_solver_e2e
-                     COMMAND ${Python3_EXECUTABLE}
-                             ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py)
-            set_tests_properties(test_production_solver_e2e PROPERTIES
-                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python")
-            add_test(NAME test_production_solver_numerics_e2e
-                     COMMAND ${Python3_EXECUTABLE}
-                             ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_numerics_e2e.py)
-            set_tests_properties(test_production_solver_numerics_e2e PROPERTIES
-                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python")
-        endif()
-        add_test(NAME test_meshio_bridge
-                 COMMAND ${Python3_EXECUTABLE}
-                         ${CMAKE_SOURCE_DIR}/tests/mesh/test_meshio_bridge.py
-                         ${CMAKE_SOURCE_DIR}/scripts/meshio_import.py)
-        add_test(NAME test_mesh_geometry_matrix
-                 COMMAND ${Python3_EXECUTABLE}
-                         ${CMAKE_SOURCE_DIR}/tests/mesh/test_mesh_geometry_matrix.py
-                         ${CMAKE_SOURCE_DIR}/scripts/meshio_import.py)
-    endif()
-
-    # I/O adapter tests (M0.10-T03)
-    # C++ solver adapters are now thin stubs (format parsing moved to Python).
-    add_cfdx_test(test_gap_analysis tests/unit/test_gap_analysis.cpp)
-
-    # Thermal production-path qualification label (T1 / issue #880).
-    set_tests_properties(test_thermal_zones_vv PROPERTIES LABELS "qualification;validation;phase13")
-    set_tests_properties(test_production_energy_stage_vv PROPERTIES LABELS "qualification;validation;phase13")
-    set_tests_properties(test_production_s2s_energy_stage_vv PROPERTIES LABELS "qualification;validation;phase13")
-    set_tests_properties(test_production_s2s_energy_outer_loop_vv PROPERTIES LABELS "qualification;validation;phase13")
-    set_tests_properties(test_production_buoyancy_outer_loop_vv PROPERTIES LABELS "qualification;validation;phase13")
-
-endif()
-

@@ -16,7 +16,7 @@ double flat_plate_turbulent_cf(double Re_x){if(Re_x<=0)throw std::invalid_argume
 int main(){try{
  const double k=0.81,eps=0.27;
  if(std::abs(turbulent_kinematic_viscosity_kepsilon(k,eps)-0.09*k*k/eps)>1e-14)throw std::runtime_error("k-epsilon closure");
- if(std::abs(turbulent_kinematic_viscosity_komega_sst(k,2.0,0.4,2.0,0.31)-0.313875)>1e-14)throw std::runtime_error("SST closure");
+ if(std::abs(turbulent_kinematic_viscosity_komega_sst(k,2.0,0.4,2.0,0.31)-0.313875)>1e-14)throw std::runtime_error("SST closure reference value");
  const Vec3 s{2,-1,0.5}; if(!(smagorinsky_eddy_viscosity(0.2,strain_rate_magnitude(s))>0))throw std::runtime_error("Smagorinsky");
  if(!(des_eddy_viscosity(0.2,0.01,1.0)>0))throw std::runtime_error("DES");
  for(const auto&p:channel_dns)if(!std::isfinite(p.y_plus)||!std::isfinite(p.u_plus))throw std::runtime_error("DNS reference");

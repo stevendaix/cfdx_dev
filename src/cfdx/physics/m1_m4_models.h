@@ -269,19 +269,32 @@ inline void validate_reciprocity(const std::vector<double>& F,
 
 inline double p1_blackbody_intensity(double T)
 {
-    if (T < 0.0) throw std::invalid_argument("temperature must be non-negative");
-    return blackbody(T) / M_PI;
+    if (!std::isfinite(T) || T < 0.0)
+        throw std::invalid_argument("P1 temperature must be finite and non-negative");
+    // Apply the small prefactor before T^4 to avoid overflowing pow(T,4)
+    // when the physical intensity itself is still representable.
+    const double intensity = (sigma_sb / M_PI) * T * T * T * T;
+    if (!std::isfinite(intensity))
+        throw std::overflow_error("P1 blackbody intensity is not representable");
+    return intensity;
 }
 
-// Method fiche: docs/audits/11-rayonnement.md (P1 source normalization and irradiation convention).
+// Method contract: docs/audits/11-rayonnement.md
 inline double p1_source(double absorption, double mean_intensity, double T)
 {
-    if (absorption < 0.0 || mean_intensity < 0.0 || T < 0.0)
-        throw std::invalid_argument("invalid P1 source input");
+    if (!std::isfinite(absorption) || !std::isfinite(mean_intensity) ||
+        !std::isfinite(T) || absorption < 0.0 || mean_intensity < 0.0 || T < 0.0)
+        throw std::invalid_argument("P1 source inputs must be finite and non-negative");
+    if (absorption == 0.0) return 0.0;
     // P1 source convention: div(q_r) = 4*pi*kappa*(I_b - J),
     // where I_b = sigma*T^4/pi and J is mean intensity (G = 4*pi*J).
-    return 4.0 * M_PI * absorption *
-           (p1_blackbody_intensity(T) - mean_intensity);
+    // Form the intensity difference first: equilibrium remains exactly zero
+    // even for a very large, finite absorption coefficient.
+    const double source = 4.0 * M_PI *
+        (absorption * (p1_blackbody_intensity(T) - mean_intensity));
+    if (!std::isfinite(source))
+        throw std::overflow_error("P1 radiative source is not representable");
+    return source;
 }
 
 struct Direction {

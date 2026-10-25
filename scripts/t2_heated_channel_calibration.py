@@ -21,9 +21,10 @@ Locked case decisions (N9/T2 audit, heated-channel campaign #884):
   * external energy check: mdot*cp*(Tb_out - Tb_in) vs q''*2*L, with mdot
     measured from the u_x probes (not an oracle)
 
-The script never modifies the solver. Evidence (JSON + TXT) is always
-written to --output-dir before exiting; the exit code is 1 only when a
-mesh fails to run/converge (the err_rel measurement itself is not gated).
+The script never modifies the solver. Evidence (JSON + TXT) distinguishes
+execution, Poiseuille and Nusselt acceptance. By default the exit code remains
+diagnostic (failure to execute/converge); --require-qualification additionally
+gates the documented physical targets, without changing their thresholds.
 """
 
 from __future__ import annotations
@@ -608,6 +609,38 @@ def _fit_order(dxs: list[float], errs: list[float]) -> tuple[float, float]:
     return p, c
 
 
+def evaluate_campaign(meshes: list[dict], execution_ok: bool) -> dict:
+    """Apply the frozen campaign targets; a successful process is not a pass.
+
+    The complete prescribed mesh sequence is required, and every numerical
+    gate explicitly rejects non-finite values. These are the T2 campaign's
+    targets, not a qualification of unrelated models or coupled physics.
+    """
+    complete = ([(entry.get("nx"), entry.get("ny")) for entry in meshes] == MESHES)
+    execution_passed = bool(execution_ok and complete and
+                            all(entry.get("status") == "PASS" for entry in meshes))
+
+    def within(value, limit):
+        return (isinstance(value, (int, float)) and math.isfinite(value) and
+                0.0 <= value <= limit)
+
+    poiseuille_passed = execution_passed and all(
+        within(entry.get("l2_poiseuille"), L2_GATE) for entry in meshes)
+    nusselt_passed = (execution_passed and
+                      all(within(entry.get("err_rel"), float("inf")) for entry in meshes) and
+                      within(meshes[-1].get("err_rel"), ERR_TARGET))
+    qualification_passed = bool(poiseuille_passed and nusselt_passed)
+    return {
+        "execution_passed": execution_passed,
+        "poiseuille_passed": bool(poiseuille_passed),
+        "nusselt_passed": bool(nusselt_passed),
+        "qualification_passed": qualification_passed,
+        "verdict": ("physics_qualified" if qualification_passed else
+                    "execution_complete_physics_not_qualified" if execution_passed else
+                    "execution_failure"),
+    }
+
+
 def _write_evidence(out_dir: Path, campaign: dict) -> None:
     run_id = campaign["run_id"]
     json_path = out_dir / f"t2_nu_calibration_{run_id}.json"
@@ -650,6 +683,8 @@ def _write_evidence(out_dir: Path, campaign: dict) -> None:
         )
     lines.append("")
     lines.append(f"verdict: {campaign['verdict']}")
+    for key in ("execution_passed", "poiseuille_passed", "nusselt_passed", "qualification_passed"):
+        lines.append(f"{key}: {str(campaign[key]).lower()}")
     lines.append("interpretation (locked protocol):")
     lines.append(
         "- err_rel <= 0.05 on the finest mesh -> wall-treatment defect dominates"
@@ -672,6 +707,8 @@ def main() -> int:
     parser.add_argument("--solver", required=True, help="production solver binary")
     parser.add_argument("--output-dir", required=True, help="evidence directory")
     parser.add_argument("--run-id", default="local", help="campaign run id")
+    parser.add_argument("--require-qualification", action="store_true",
+                        help="also fail the process when the frozen physical targets are not met")
     args = parser.parse_args()
 
     solver = Path(args.solver)
@@ -732,34 +769,13 @@ def main() -> int:
                 print(f"T2NU_MESH nx={nx} ny={ny} FAILED error={message}")
             campaign["meshes"].append(entry)
 
-    campaign["execution_passed"] = ok
-    campaign["poiseuille_passed"] = bool(ok) and all(
-        entry["l2_poiseuille"] <= L2_GATE
-        for entry in campaign["meshes"]
-        if entry.get("status") == "PASS"
-    )
-    campaign["nusselt_passed"] = bool(ok) and (
-        campaign["meshes"][-1]["err_rel"] <= ERR_TARGET
-        if campaign["meshes"] and campaign["meshes"][-1].get("status") == "PASS"
-        else False
-    )
-    campaign["qualification_passed"] = (
-        campaign["execution_passed"]
-        and campaign["poiseuille_passed"]
-        and campaign["nusselt_passed"]
-    )
-
-    if ok:
+    campaign.update(evaluate_campaign(campaign["meshes"], ok))
+    if campaign["execution_passed"]:
         dxs = [entry["dx"] for entry in campaign["meshes"]]
         errs = [entry["err_rel"] for entry in campaign["meshes"]]
         p, c = _fit_order(dxs, errs)
         campaign["order_fit"] = {"dx": dxs, "err": errs, "p": p, "C": c}
         finest = campaign["meshes"][-1]
-        campaign["verdict"] = (
-            "physics_qualified"
-            if campaign["qualification_passed"]
-            else "execution_complete_physics_not_qualified"
-        )
         print(f"T2NU_ORDER p={p:.3f} C={c:.6f}")
         print(
             f"T2NU_DIAGNOSTIC COMPLETE execution_passed=true "
@@ -768,17 +784,12 @@ def main() -> int:
             f"target={ERR_TARGET} verdict={campaign['verdict']}"
         )
     else:
-        campaign["verdict"] = "execution_failure"
-        campaign["execution_passed"] = False
-        campaign["poiseuille_passed"] = False
-        campaign["nusselt_passed"] = False
-        campaign["qualification_passed"] = False
         print("T2NU_DIAGNOSTIC FAIL execution_failure")
 
     _write_evidence(out_dir, campaign)
-    return 0 if ok else 1
+    passed = campaign["qualification_passed"] if args.require_qualification else campaign["execution_passed"]
+    return 0 if passed else 1
 
 
 if __name__ == "__main__":
     sys.exit(main())
-
