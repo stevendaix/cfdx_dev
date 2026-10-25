@@ -19,10 +19,11 @@ jobs:
 
       - name: Run git merge-tree oracle on pinned refs
         run: |
+          set +e
           git config --global --add safe.directory "$PWD"
           git fetch origin master fix/numerical-audit-g01-g09
-          MASTER_PIN=$(grep master_pin diag-tools/pr1092_mergetree_marker.txt | cut -d= -f2)
-          BRANCH_PIN=$(grep branch_pin diag-tools/pr1092_mergetree_marker.txt | cut -d= -f2)
+          MASTER_PIN=$(grep master_pin diag-tools/pr1092_mergetree_marker.txt | tail -1 | cut -d= -f2)
+          BRANCH_PIN=$(grep branch_pin diag-tools/pr1092_mergetree_marker.txt | tail -1 | cut -d= -f2)
           echo "master_pin=$MASTER_PIN branch_pin=$BRANCH_PIN"
           mkdir -p diag-evidence/logs
           OUT="diag-evidence/logs/pr1092_mergetree_${GITHUB_RUN_ID}.txt"
@@ -36,9 +37,13 @@ jobs:
             git merge-tree --write-tree --name-only "$MASTER_PIN" "$BRANCH_PIN"
             echo "MERGE_TREE_EXIT=$?"
             echo "=== merge-tree complet (marqueurs de conflit) ==="
-            git merge-tree --write-tree "$MASTER_PIN" "$BRANCH_PIN" || true
+            git merge-tree --write-tree "$MASTER_PIN" "$BRANCH_PIN"
+            echo "MERGE_TREE_FULL_EXIT=$?"
+            echo "=== liste des fichiers en conflit ==="
+            git merge-tree --write-tree --name-only "$MASTER_PIN" "$BRANCH_PIN" 2>/dev/null | tail -n +2 || true
           } > "$OUT" 2>&1
           cat "$OUT"
+          exit 0
 
       - name: Commit evidence
         run: |

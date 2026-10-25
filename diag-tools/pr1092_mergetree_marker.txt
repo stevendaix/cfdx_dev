@@ -1,3 +1,4 @@
 # Oracle merge-tree pour PR #1092 (2026-10-25)
 master_pin=749d1de52fb43bb8f38c0bbe7295b98d746cb5ce
 branch_pin=bb156a937434cb836e109919d9dae3d3113a50bb
+run=v2 (set +e pour capturer levidence malgre exit 1)
