@@ -401,8 +401,9 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
     // the cell has a full 3-D neighbour stencil; retain the boundary-aware
     // Green-Gauss estimate for lower-dimensional/undersampled boundary cells,
     // where the boundary data supply information absent from the cell stencil.
-    auto gradient = compute_scalar_gradient_with_boundary(
+    auto boundary_gradient = compute_scalar_gradient_with_boundary(
         field, mesh, geometry, boundary_conditions, face_values, face_conditions);
+    auto gradient = boundary_gradient;
     const auto least_squares_gradient =
         cfdx::core::compute_gradient_least_squares(field, mesh);
     const auto& stencil_ownership = mesh.ownership();
@@ -504,6 +505,14 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
             grad_face = grad_face * w + grad_neighbour * (1.0 - w);
         }
 
+        if (neighbour_raw < 0) {
+            // Boundary correction must honour resolved face/patch data even
+            // when the cell-centred internal-face gradient uses least squares.
+            grad_face = Vec3{
+                boundary_gradient.component_data(0)[owner],
+                boundary_gradient.component_data(1)[owner],
+                boundary_gradient.component_data(2)[owner]};
+        }
         const double correction = gamma_face * grad_face.dot(tangential);
         if (!std::isfinite(correction))
             throw std::runtime_error(
