@@ -1,0 +1,5 @@
+STAMP: 2026-10-25-lot3g1a
+PR_HEAD_SHA: 71858a20fbfc67006824936d0646b3dd1cb79394
+BASE: master (docs-only head of 2026-10-25, G1a base)
+OVERLAY: diag-tools/lot3g1a_candidates/ -> visualization_pipeline.py, gui_3d.py, workbench.py, test_visualization_pipeline.py, test_workbench.py, PHASE0_AUDIT.md
+ORACLE: .github/workflows/lot3g1a-oracle.yml (ruff check + ruff format --check + GUI pytest 8 files + no-Qt path)
