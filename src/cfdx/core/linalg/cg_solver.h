@@ -270,12 +270,53 @@ inline SolverResult solve_cg_impl(
                 {iter, res, recursive_residual, rsnew, pAp, alpha,
                  rsold != 0.0 ? rsnew / rsold : 0.0});
         }
-        if (res < tol_abs) {
+        if (res <= tol_abs) {
             result.status = SolverStatus::CONVERGED;
             result.iterations = iter;
             result.residual = res;
             result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
             return result;
+        }
+
+        // Internal-Jacobi CG also needs residual replacement when its recursive
+        // residual claims convergence but the independently recomputed FP64
+        // residual does not. Without this restart, roundoff can leave the
+        // recurrence near zero while the certified residual remains above the
+        // requested tolerance for the entire iteration budget.
+        if (!preconditioner) {
+            double recursive_r2 = 0.0;
+            for (const double value : r)
+                recursive_r2 = std::hypot(recursive_r2, value);
+            if (std::isfinite(recursive_r2) &&
+                recursive_r2 <= tol_abs && res > tol_abs) {
+                ++result.residual_replacements;
+                if (result.first_residual_replacement == 0)
+                    result.first_residual_replacement = iter;
+                result.last_residual_replacement = iter;
+                for (std::size_t i = 0; i < n; ++i) r[i] = rv(i);
+                if (null_space) null_space->remove(r);
+                if (!apply_preconditioner()) {
+                    result.status = SolverStatus::NOT_APPLICABLE;
+                    result.iterations = iter;
+                    return result;
+                }
+                for (std::size_t i = 0; i < n; ++i) {
+                    r_vector(i) = r[i];
+                    z_vector(i) = z[i];
+                }
+                const double replaced_rsnew =
+                    krylov_dot(r_vector, z_vector, redp, reduction);
+                if (!std::isfinite(replaced_rsnew) || !(replaced_rsnew > 0.0)) {
+                    result.status = SolverStatus::MAX_ITER_REACHED;
+                    result.iterations = iter;
+                    result.residual = res;
+                    result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+                    return result;
+                }
+                p = z;
+                rsold = replaced_rsnew;
+                continue;
+            }
         }
 
         // If FP32 operator rounding makes the recursive residual materially
