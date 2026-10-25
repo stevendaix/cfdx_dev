@@ -1047,7 +1047,7 @@ inline ScalarEquation assemble_momentum_component(
     return assemble_scalar_equation(
         mesh, geometry, mass_flux, 0.0, source, sp, velocity_bcs, bounded,
         nullptr, nullptr, nullptr, &cell_effective_dynamic_viscosity,
-        convection_scheme, convected_field);
+        convection_scheme, convected_field, nullptr, false);
 }
 
 inline ScalarEquation assemble_momentum_component(
@@ -1083,7 +1083,7 @@ inline ScalarEquation assemble_momentum_component(
     return assemble_scalar_equation(
         mesh, geometry, mass_flux, effective_dynamic_viscosity,
         source, sp, {}, bounded, nullptr, nullptr, nullptr, nullptr,
-        convection_scheme, convected_field, &face_conditions);
+        convection_scheme, convected_field, &face_conditions, false);
 }
 
 inline void add_dual_time_mass_term(
