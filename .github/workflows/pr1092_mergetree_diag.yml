@@ -1,0 +1,49 @@
+name: PR 1092 merge-tree conflict oracle (diag)
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+
+permissions:
+  contents: write
+
+jobs:
+  merge-tree-oracle:
+    # ne tourne que si le message du push contient le marqueur dédié
+    if: contains(github.event.head_commit.message, 'pr1092-mergetree')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run git merge-tree oracle on pinned refs
+        run: |
+          git config --global --add safe.directory "$PWD"
+          git fetch origin master fix/numerical-audit-g01-g09
+          MASTER_PIN=$(grep master_pin diag-tools/pr1092_mergetree_marker.txt | cut -d= -f2)
+          BRANCH_PIN=$(grep branch_pin diag-tools/pr1092_mergetree_marker.txt | cut -d= -f2)
+          echo "master_pin=$MASTER_PIN branch_pin=$BRANCH_PIN"
+          mkdir -p diag-evidence/logs
+          OUT="diag-evidence/logs/pr1092_mergetree_${GITHUB_RUN_ID}.txt"
+          {
+            git --version
+            echo "master_pin=$MASTER_PIN branch_pin=$BRANCH_PIN"
+            git rev-parse "$MASTER_PIN^{commit}" "$BRANCH_PIN^{commit}"
+            echo "=== merge-base ==="
+            git merge-base "$MASTER_PIN" "$BRANCH_PIN"
+            echo "=== merge-tree --name-only (exit 0 = clean, 1 = conflits) ==="
+            git merge-tree --write-tree --name-only "$MASTER_PIN" "$BRANCH_PIN"
+            echo "MERGE_TREE_EXIT=$?"
+            echo "=== merge-tree complet (marqueurs de conflit) ==="
+            git merge-tree --write-tree "$MASTER_PIN" "$BRANCH_PIN" || true
+          } > "$OUT" 2>&1
+          cat "$OUT"
+
+      - name: Commit evidence
+        run: |
+          git config user.name "ci-diag-bot"
+          git config user.email "actions@github.com"
+          git add diag-evidence/logs/pr1092_mergetree_*.txt
+          git commit -m "diag: pr1092 merge-tree oracle evidence [ci skip]"
+          git push
