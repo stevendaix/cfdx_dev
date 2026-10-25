@@ -1,3 +1,137 @@
+# Suivi actif — intégration turbulence / thermique / rayonnement CFDX
+
+> **Fichier de suivi de référence.** Mettre à jour ce registre à chaque session de travail, commit, PR, résultat CI ou changement de verdict. Ne pas recopier aveuglément les annexes historiques : vérifier le code sur `master`, les PR ouvertes et le HEAD exact. Une case « présent » signifie code trouvé ; elle ne signifie pas qualification physique.
+
+- **Dernière revue du registre :** 2026-10-24.
+- **Dépôt :** [stevendaix/cfdx_dev](https://github.com/stevendaix/cfdx_dev).
+- **Source de vérité technique :** ce fichier, y compris sa matrice de suivi et les annexes d'évidence.
+- **Règles de travail :** pas de tolérance élargie, pas de tests désactivés, pas de fallback silencieux, pas d'activation générale de RANS sur la seule base de tests unitaires. Avant tout changement, inspecter `master`, le diff et les PR qui se chevauchent. Après tout changement, exécuter les contrôles applicables sur le HEAD exact, documenter les échecs et distinguer vérification logicielle, convergence numérique et validation physique.
+- **État de ce commit :** mise à jour documentaire de suivi ; ne prétend pas que les chantiers ouverts sont implémentés. Les résultats de la révision 2 plus bas restent des résultats historiques du checkout et des campagnes qui y sont décrites, pas une preuve automatique du HEAD actuel.
+
+## 1. Objet et domaine de validité
+
+Cette fiche suit l'intégration du transport SST, de l'énergie turbulente, du rayonnement de surface à surface (S2S) et du transfert conjugué (CHT) dans CFDX. Elle distingue explicitement : (a) une équation ou un opérateur présent, (b) son raccordement au solveur de production, et (c) sa qualification par vérification numérique et validation physique. Les résultats d'un test unitaire ne suffisent pas à affirmer qu'une simulation industrielle est qualifiée.
+
+**Statut :** intégration partielle. Les sections détaillées et la matrice TR-00 à TR-16 ci-dessous font foi pour les travaux restants ; les résultats du dossier v2 plus bas sont historiques et doivent être rattachés à leur SHA exact avant réutilisation.
+
+## 2. Formulation continue
+
+Pour un fluide incompressible à propriétés constantes, le système porteur comprend la continuité et la quantité de mouvement :
+
+\[
+\nabla\cdot\mathbf{U}=0,\qquad
+\rho\left(\frac{\partial\mathbf{U}}{\partial t}
++\nabla\cdot(\mathbf{U}\otimes\mathbf{U})\right)
+=-\nabla p^*+\nabla\cdot\boldsymbol{\tau}_{eff}+\mathbf{S}.
+\]
+
+Pour la variante SST-2003, les transports de l'énergie cinétique turbulente \(k\) et de la fréquence spécifique \(\omega\) utilisent une production limitée cohérente :
+
+\[
+\widetilde P_k=\min\!\left(\rho\nu_t S^2,\;10\beta^*\rho k\omega\right),\qquad
+P_\omega=\begin{cases}\gamma\widetilde P_k/\nu_t,&\nu_t>0,\\0,&\nu_t=0.\end{cases}
+\]
+
+Le flux de chaleur turbulent est modélisé par \(\lambda_{eff}=\lambda+\rho c_p\nu_t/Pr_t\), avec \(\nu_t\ge0\) et \(Pr_t>0\). Le couplage doit consommer l'état SST accepté et le flux massique autoritaire, et ne doit pas annoncer de convergence globale lorsque seule une sous-étape a convergé.
+
+Pour deux surfaces grises diffuses, le S2S utilise les radiosités et facteurs de forme qui doivent respecter la fermeture des lignes et la réciprocité pondérée par l'aire. En CHT, les puissances transférées de part et d'autre d'une interface imperméable doivent être égales et opposées ; une résistance de contact impose un saut de température explicite.
+
+Référence de formulation SST : F. R. Menter, « Two-equation eddy-viscosity turbulence models for engineering applications », *AIAA Journal*, 32(8), 1598–1605 (1994), DOI 10.2514/3.12149. La variante SST-2003 et ses limiteurs doivent être comparés à la référence NASA TMR avant qualification : https://tmbwg.github.io/turbmodels/sst.html.
+
+## 3. Discrétisation Volume Fini
+
+Les flux convectifs et diffusifs sont assemblés par face sur volumes de contrôle. Le bilan de conservation est calculé séparément de la matrice et du second membre, à partir des flux effectivement appliqués et de l'état retourné. La correction non orthogonale, les gradients de face et les flux aux frontières doivent être partagés ou comparés explicitement entre l'assemblage et l'audit indépendant.
+
+Pour la chaleur, le flux diffusif interne avec conductivité discontinue doit employer une résistance série, et non une moyenne arithmétique non justifiée. Pour les résidus SST, il faut distinguer le résidu du système linéaire candidat, le résidu non linéaire avant relaxation et celui de l'état effectivement retourné après relaxation/bornage.
+
+Les preuves de fermeture attendues comprennent des oracles analytiques, des MMS sur plusieurs maillages avec ordre observé, des bilans locaux et globaux indépendants, ainsi que des tests négatifs qui montrent que les portes rejettent un état physiquement invalide même si le solveur linéaire annonce une convergence.
+
+## 4. Traitement des frontières
+
+Les conditions de paroi SST doivent valider avant mutation les patches non vides, les identifiants de faces frontières valides, l'absence de doublons, les propriétaires géométriques et la finitude des valeurs imposées ; la condition de paroi sur \(\omega\) exige des valeurs strictement positives. Les gradients de face doivent respecter les conditions scalaires utilisées par le transport.
+
+En thermique, les flux imposés ou radiatifs doivent conserver leurs unités et leur signe en W/m², indépendamment de la conductivité de la cellule adjacente. Les interfaces CHT doivent vérifier la correspondance géométrique, l'opposition des normales, l'absence de fuite massique pour une interface imperméable et la cohérence entre la conductivité de l'opérateur énergie et celle utilisée pour l'interface.
+
+Les validations d'entrée doivent précéder tout appel de solveur ou mutation d'état ; une entrée invalide doit être rejetée sans écrêtage silencieux ni changement partiel des champs.
+
+## 5. Pièges connus
+
+- Une valeur \(\Delta k\) ou \(\Delta\omega\) faible ne prouve pas que le résidu de l'équation évalué sur l'état borné soit faible.
+- Utiliser une production brute dans l'équation de \(\omega\) alors que celle de \(k\) est limitée mélange deux contrats de fermeture.
+- Un bilan global fermé peut cacher deux erreurs locales qui se compensent ; publier les deux métriques.
+- Une conductivité de contact différente de celle de l'opérateur énergie crée un flux incohérent même si chaque sous-solveur converge.
+- Une température de cellule n'est pas automatiquement la température radiative de face ; reconstruire la température physique cohérente avec la condition thermique appliquée.
+- Une exécution locale avec un binaire lié à MPI ne constitue pas une preuve de parallélisme multi-rang.
+- Un checkpoint sans flux massique de face autoritaire et sans historique requis ne prouve pas l'équivalence de trajectoire après reprise.
+- Une campagne ciblée ne qualifie pas les maillages skew/non orthogonaux, les géométries radiatives générales, les propriétés variables ou les autres modèles RANS non testés.
+
+## 6. Vérification, validation et reproductibilité
+
+Pour chaque changement, consigner le commit exact, les versions d'outils, la configuration de build, les commandes complètes, les codes de retour, les nombres de tests, les journaux bruts et leurs empreintes SHA-256. Les tests de contrat et les oracles analytiques établissent la vérification de code ; les études de raffinement et d'erreur itérative établissent la vérification de solution ; la comparaison aux données DNS/expérimentales avec conditions comparables est nécessaire à la validation physique.
+
+Les références de qualification SST doivent inclure des cas adaptés au modèle et au régime étudié, par exemple les données de canal turbulent de Moser, Kim et Mansour et les cas de la NASA Turbulence Modeling Resource. Toute différence de conditions, de convention de pression, de définition de coefficient ou de traitement de paroi doit être consignée plutôt que masquée par une tolérance élargie.
+
+## 7. Statut d'implémentation
+
+Le noyau SST, certains chemins transactionnels de production, les stages énergie/S2S et les contrats CHT ont des implémentations et des tests ciblés décrits dans le dossier détaillé ci-dessous. L'intégration complète du schéma de régions, du pilote multi-régions, du contact par interface, du restart global et de la qualification physique n'est pas considérée comme terminée tant que les critères de fermeture du registre TR-00 à TR-16 ne sont pas satisfaits sur le code fusionné dans `master`.
+
+## Registre d'avancement (à maintenir en premier)
+
+### Contrôles d'intégration à chaque reprise
+
+- [ ] Lire ce registre et la section « Travail restant » avant de modifier le code.
+- [ ] Relire le HEAD de `master`, l'arbre du dépôt, et les PR ouvertes pertinentes ; comparer chaque fichier concerné.
+- [ ] Pour chaque correction candidate, vérifier si elle est déjà sur `master`, dans une PR ouverte, ou seulement dans l'annexe patch de ce document.
+- [ ] Ne pas compter deux PR concurrentes comme deux corrections indépendantes. Une correction n'est « intégrée » qu'après vérification du contenu de `master`.
+- [ ] Pour une branche de travail, consigner SHA de base, SHA de tête, fichiers modifiés, commandes, versions, code de retour, résultats et limites.
+- [ ] Vérifier les contrôles CI après le dernier push ; des runs verts sur un HEAD antérieur ne certifient pas le nouveau HEAD.
+- [ ] Ne fusionner qu'après résolution des conflits, audit du diff complet, CI verte et absence de défaut bloquant. Préférer plusieurs incréments ciblés plutôt qu'un patch géant non attribuable.
+
+### État initial confirmé le 2026-10-24
+
+| Sujet | État constaté | Décision / prochaine action |
+|---|---|---|
+| Patch v2 de l'annexe | Le dossier contient un patch historique annoncé comme 58 fichiers ; cela ne prouve pas qu'il soit encore intégralement absent de `master`. | Comparer fichier par fichier avec `master` et PR actives avant toute réapplication. |
+| Intégration thermique/rayonnement/turbulence | PR [#1101](https://github.com/stevendaix/cfdx_dev/pull/1101) ouverte ; elle a un HEAD historique avec des runs verts, mais sa branche était en retard/divergence par rapport à `master` au dernier contrôle. | Ne pas fusionner sur la base de runs historiques ; rebaser/réconcilier, auditer le diff et relancer la CI sur le HEAD final. |
+| Limiteur de production SST ω | PR concurrentes [#1094](https://github.com/stevendaix/cfdx_dev/pull/1094) et [#1099](https://github.com/stevendaix/cfdx_dev/pull/1099). | Choisir un seul correctif après comparaison exacte ; vérifier la source de production et les tests d'oracle avant fusion. |
+| Oracles non finis | PR [#1093](https://github.com/stevendaix/cfdx_dev/pull/1093), [#1098](https://github.com/stevendaix/cfdx_dev/pull/1098) et [#1100](https://github.com/stevendaix/cfdx_dev/pull/1100) se recouvrent partiellement. | Consolider sans perdre les cas NaN/Inf ; une comparaison non finie doit échouer explicitement. |
+| Conductivité CHT | PR [#1095](https://github.com/stevendaix/cfdx_dev/pull/1095) et [#1097](https://github.com/stevendaix/cfdx_dev/pull/1097) se recouvrent. | Vérifier le contrat commun de conductivité et l'ordre des validations avant de choisir un seul patch. |
+| SST production E2E/restart | PR [#1045](https://github.com/stevendaix/cfdx_dev/pull/1045) et [#1068](https://github.com/stevendaix/cfdx_dev/pull/1068) restent à auditer selon leur HEAD réel. | Vérifier l'acceptation transactionnelle, les flux autoritaires et la reprise ; un titre WIP n'est pas une preuve d'intégration. |
+| Transport thermique | La v2 documente l'API de conductivité turbulente et des tests ciblés ; elle note encore l'absence de contrat de cas/régions complet et de pilote général CHT. | Garder le sélecteur RANS fermé jusqu'à l'intégration de production et à la qualification. |
+| S2S | Le noyau et des chemins de production existent, mais les limites de géométrie, de relaxation, de reprise et de MPI sont explicitées dans l'audit. | Conserver les limites et les cas négatifs ; ajouter les campagnes manquantes sans prétendre à une qualification générale. |
+
+### Matrice de travaux — état à mettre à jour après chaque PR
+
+| ID | Chantier | État de suivi | Dépendances | Preuve exigée pour fermer |
+|---|---|---|---|---|
+| TR-00 | Déduplication patch v2 vs `master` et PR ouvertes | EN COURS | Aucun | Inventaire des 58 chemins, diff par chemin, décision `already-present / PR-open / missing / conflicting`, zéro écrasement silencieux |
+| TR-01 | SST : production limitée de ω et cohérence production de (k) | À AUDITER | TR-00 | Référence SST-2003, test de non-finis, contre-exemple pour ν_t=0, résidu évalué sur l'état accepté après bornage |
+| TR-02 | Conditions de paroi SST et données d'entrée | À AUDITER | TR-00 | Patch non vide, identifiants de faces valides et uniques, omega strictement positif, validation avant mutation de U/p/k/ω/ν_t |
+| TR-03 | Résidus SST de l'état accepté | À QUALIFIER | TR-01, TR-02 | Résidu non linéaire recalculé indépendamment après projection/bornage ; un état bloqué au plancher ne doit pas être déclaré convergé par le seul petit Δchamp |
+| TR-04 | Gradient de face et contrainte transposée turbulente | À QUALIFIER | TR-02 | MMS sur au moins trois maillages, ordre observé documenté, bilan indépendant et cas μ uniforme |
+| TR-05 | Cas déclaré et schéma régions/interfaces | OUVERT | Contrat HDF5/C++/Python | Aller-retour identités/unités/interfaces et rejets déterministes avant allocation/solveur |
+| TR-06 | Énergie de production avec λ_eff = λ + ρ c_p ν_t/Pr_t | PARTIEL — API/tests décrits, pilote général ouvert | TR-01, TR-05 | État SST accepté, flux massique autoritaire, variations de ν_t et Pr_t, limite laminaire, bilans globaux/locaux et rejets NaN/≤0 avant mutation |
+| TR-07 | Pilote CHT multi-régions | OUVERT | TR-05, TR-06 | Oracle analytique deux régions, bilan par région et somme globale, perturbation locale détectée, rollback de toutes les régions sur échec |
+| TR-08 | Conductivité variable aux interfaces CHT | OUVERT | TR-07 | Conductances utilisant les champs des cellules propriétaires, maillage asymétrique, λ discontinu et oracle analytique |
+| TR-09 | Résistance de contact par interface | OUVERT | TR-05, TR-08 | Trois zones avec deux R'' distinctes, températures de surface distinctes et limite R''→0 |
+| TR-10 | Couplage S2S et température réelle des parois | PARTIEL — chemins ciblés décrits | TR-06, TR-07 | Constitutif radiatif recalculé depuis les flux/températures appliqués, point fixe convergé, cas non physiques rejetés |
+| TR-11 | Restart transactionnel multiphysique | OUVERT | TR-05, TR-07, TR-10 | Calcul continu vs interruption/reprise : U/p/T/k/ω/flux de face/historique identiques sous seuil fixé ; rollback atomique en cas de checkpoint invalide |
+| TR-12 | Propriétés thermophysiques variables | OUVERT | TR-05, TR-06 | λ(T) avec MMS ; cp(T) via enthalpie h(T)=∫cp(T)dT ; unités, bornes et extrapolation explicites |
+| TR-13 | Import OpenFOAM/Fluent et exécutable de production | PARTIEL | TR-05 | Cas E2E chargé par le parseur réel, propriétés/gravitée/BC préservées et physique exécutée déclarée explicitement |
+| TR-14 | Qualification RANS de référence | OUVERT | TR-01 à TR-04 | Canal DNS Moser–Kim–Mansour, plaque plane, NACA0012 ; y+, frottement/Cp, GCI, bilan et conditions comparables documentés |
+| TR-15 | Campagnes MPI et tailles représentatives | OUVERT | TR-07, TR-10, TR-11 | Exécutions multi-rang réelles, réduction de sommes/échanges vérifiée, parité sérielle/distribuée et budget mesuré |
+| TR-16 | Revue des autres modèles RANS | OUVERT — SST seulement ciblé | TR-01 à TR-04 | Audit spécifique de bornage, résidus, BC, fermeture et benchmarks avant activation de chaque modèle |
+
+### Règles de mise à jour de ce suivi
+
+1. À l'ouverture d'une session, relire cette matrice puis contrôler le code courant ; ne pas supposer qu'un statut historique est toujours actuel.
+2. Après chaque correction, ajouter le SHA du commit, le chemin, les tests exacts et leur résultat à la section de preuves correspondante. Si une PR concurrente couvre le même défaut, l'indiquer et ne pas dupliquer le patch.
+3. Déplacer une ligne vers « fermé » uniquement lorsque le code est sur `master` et que la preuve requise existe sur le commit fusionné. « PR verte », « test unitaire vert » ou « API présente » ne suffisent pas à qualifier une capacité physique.
+4. Toute campagne non exécutée, non distribuée ou sans référence mesurable doit rester explicitement ouverte.
+5. Les annexes historiques et le patch reproduit ci-dessous ne doivent pas être modifiés pour faire disparaître un échec : ajouter une nouvelle entrée datée et préserver les résultats antérieurs.
+
+---
+
 CFDX — Intégration thermique, rayonnement et turbulence
 Révision 2 — 24 octobre 2026. Code amélioré, essais exécutés et dossier de revue.
 Dépôt : https://github.com/stevendaix/cfdx_dev. État GitHub actualisé à 16:46 UTC ; dossier assemblé à 2026-10-24T17:10:00.944265+00:00.

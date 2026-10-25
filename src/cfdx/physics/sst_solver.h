@@ -58,7 +58,10 @@ inline SSTCellSources sst_cell_sources(
     s.sk=Pk;
     s.spk=-c.density*c.beta_star*wi;
     const double cross=2.0*(1.0-f1)*c.density*c.sst_sigma_w2/wi*grad_k_dot_grad_omega;
-    s.sw=blend(c.gamma1,c.gamma2)*c.density*S*S+std::max(cross,0.0);
+    // SST-2003 uses the same limited production as the k equation.
+    // Pk already includes density; handle the zero-nut limit explicitly.
+    const double omega_production = s.nut > 0.0 ? Pk / s.nut : 0.0;
+    s.sw=blend(c.gamma1,c.gamma2)*omega_production+std::max(cross,0.0);
     s.spw=-c.density*blend(c.beta1,c.beta2)*wi+std::min(cross,0.0)/wi;
     s.gamma_k=c.density*(c.molecular_viscosity+
         blend(c.sst_sigma_k1,c.sst_sigma_k2)*s.nut);
