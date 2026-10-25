@@ -1,31 +1,59 @@
 """Exercise physics selection through the real solid-conduction executable."""
+
 from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from pathlib import Path
 
 import h5py
 import numpy as np
 
 
 def write_cube(path: Path, change=None) -> None:
-    points = np.array([[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
-                       [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]], dtype=float)
-    faces = [[0, 3, 2, 1], [4, 5, 6, 7], [0, 1, 5, 4],
-             [3, 7, 6, 2], [0, 4, 7, 3], [1, 2, 6, 5]]
+    points = np.array(
+        [
+            [0, 0, 0],
+            [1, 0, 0],
+            [1, 1, 0],
+            [0, 1, 0],
+            [0, 0, 1],
+            [1, 0, 1],
+            [1, 1, 1],
+            [0, 1, 1],
+        ],
+        dtype=float,
+    )
+    faces = [
+        [0, 3, 2, 1],
+        [4, 5, 6, 7],
+        [0, 1, 5, 4],
+        [3, 7, 6, 2],
+        [0, 4, 7, 3],
+        [1, 2, 6, 5],
+    ]
     names = ["bottom", "top", "front", "back", "left", "right"]
     setup = {
-        "energy_model": "solid_conduction", "solver_mode": "steady",
+        "energy_model": "solid_conduction",
+        "solver_mode": "steady",
         "ref_temperature": 300.0,
         "materials": [{"name": "solid", "thermal_conductivity": 2.0}],
         "boundary_conditions": [
-            {"patch_name": name, "type": "wall", "value_type": "wall_thermal",
-             "wall_temperature": 300.0 if name == "left" else 400.0 if name == "right" else 0.0}
-            for name in names],
+            {
+                "patch_name": name,
+                "type": "wall",
+                "value_type": "wall_thermal",
+                "wall_temperature": 300.0
+                if name == "left"
+                else 400.0
+                if name == "right"
+                else 0.0,
+            }
+            for name in names
+        ],
     }
     if change is not None:
         change(setup)
@@ -36,9 +64,12 @@ def write_cube(path: Path, change=None) -> None:
         h5.attrs["mesh_topology"] = "cfdx-csr-v1"
         h5.attrs["case_setup_json"] = json.dumps(setup)
         h5.attrs["boundary_patches"] = ";".join(
-            f"{name}:{index}:1:0" for index, name in enumerate(names))
+            f"{name}:{index}:1:0" for index, name in enumerate(names)
+        )
         h5.create_dataset("points", data=points)
-        h5.create_dataset("face_vertices", data=np.array(faces, dtype=np.uint64).ravel())
+        h5.create_dataset(
+            "face_vertices", data=np.array(faces, dtype=np.uint64).ravel()
+        )
         h5.create_dataset("face_offsets", data=np.arange(0, 25, 4, dtype=np.uint64))
         h5.create_dataset("owner", data=np.zeros(6, dtype=np.uint64))
         h5.create_dataset("neighbour", data=np.full(6, -1, dtype=np.int64))
@@ -60,12 +91,23 @@ class SolidConductionApplicationContract(unittest.TestCase):
             root = Path(work)
             write_cube(root / "case.cfdx.h5", change)
             result = subprocess.run(
-                [str(self.solver), "--mesh", str(root / "case.cfdx.h5"),
-                 "--output-dir", str(root / "output")],
-                capture_output=True, text=True, timeout=30, check=False)
+                [
+                    str(self.solver),
+                    "--mesh",
+                    str(root / "case.cfdx.h5"),
+                    "--output-dir",
+                    str(root / "output"),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
             execution = json.loads((root / "output/execution.json").read_text())
             summary_path = root / "output/thermal_summary.json"
-            summary = json.loads(summary_path.read_text()) if summary_path.exists() else None
+            summary = (
+                json.loads(summary_path.read_text()) if summary_path.exists() else None
+            )
             return result, execution, summary
 
     def assert_rejected(self, change, message):
@@ -87,28 +129,49 @@ class SolidConductionApplicationContract(unittest.TestCase):
         self.assert_rejected(lambda case: case.update(radiation_model="S2S"), "radiation")
 
     def test_transient_evolution_is_not_silently_ignored(self):
-        self.assert_rejected(lambda case: case.update(transient=True, time_step=0.1), "transient")
+        self.assert_rejected(
+            lambda case: case.update(transient=True, time_step=0.1), "transient"
+        )
 
     def test_turbulence_is_not_silently_ignored(self):
-        self.assert_rejected(lambda case: case.update(turbulence_model="k_omega_sst"), "turbulence")
+        self.assert_rejected(
+            lambda case: case.update(turbulence_model="k_omega_sst"), "turbulence"
+        )
 
     def test_canonical_temporal_selection_is_not_silently_ignored(self):
-        self.assert_rejected(lambda case: case.update(numerics={"selection": {
-            "entries": [{"family": "temporal", "configuration_key": "numerics.temporal.bdf2"}],
-            "required_families": ["temporal"],
-        }}), "transient evolution")
+        self.assert_rejected(
+            lambda case: case.update(
+                numerics={
+                    "selection": {
+                        "entries": [
+                            {
+                                "family": "temporal",
+                                "configuration_key": "numerics.temporal.bdf2",
+                            }
+                        ],
+                        "required_families": ["temporal"],
+                    }
+                }
+            ),
+            "transient evolution",
+        )
 
     def test_multiphase_is_not_silently_ignored(self):
-        self.assert_rejected(lambda case: case.update(multiphase_model="VOF"), "multiphase")
+        self.assert_rejected(
+            lambda case: case.update(multiphase_model="VOF"), "multiphase"
+        )
 
     def test_fluid_inlet_is_not_replaced_by_adiabatic_wall(self):
         def change(case):
             case["boundary_conditions"][0].update(type="inlet", velocity_magnitude=1.0)
+
         self.assert_rejected(change, "boundary physics")
 
     def test_absent_conductivity_is_not_replaced_by_air(self):
-        self.assert_rejected(lambda case: case["materials"][0].pop("thermal_conductivity"),
-                             "conductivity")
+        self.assert_rejected(
+            lambda case: case["materials"][0].pop("thermal_conductivity"),
+            "conductivity",
+        )
 
 
 if __name__ == "__main__":

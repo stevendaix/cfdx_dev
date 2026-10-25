@@ -616,28 +616,41 @@ def evaluate_campaign(meshes: list[dict], execution_ok: bool) -> dict:
     gate explicitly rejects non-finite values. These are the T2 campaign's
     targets, not a qualification of unrelated models or coupled physics.
     """
-    complete = ([(entry.get("nx"), entry.get("ny")) for entry in meshes] == MESHES)
-    execution_passed = bool(execution_ok and complete and
-                            all(entry.get("status") == "PASS" for entry in meshes))
+    complete = [(entry.get("nx"), entry.get("ny")) for entry in meshes] == MESHES
+    execution_passed = bool(
+        execution_ok
+        and complete
+        and all(entry.get("status") == "PASS" for entry in meshes)
+    )
 
     def within(value, limit):
-        return (isinstance(value, (int, float)) and math.isfinite(value) and
-                0.0 <= value <= limit)
+        return (
+            isinstance(value, (int, float))
+            and math.isfinite(value)
+            and 0.0 <= value <= limit
+        )
 
     poiseuille_passed = execution_passed and all(
-        within(entry.get("l2_poiseuille"), L2_GATE) for entry in meshes)
-    nusselt_passed = (execution_passed and
-                      all(within(entry.get("err_rel"), float("inf")) for entry in meshes) and
-                      within(meshes[-1].get("err_rel"), ERR_TARGET))
+        within(entry.get("l2_poiseuille"), L2_GATE) for entry in meshes
+    )
+    nusselt_passed = (
+        execution_passed
+        and all(within(entry.get("err_rel"), float("inf")) for entry in meshes)
+        and within(meshes[-1].get("err_rel"), ERR_TARGET)
+    )
     qualification_passed = bool(poiseuille_passed and nusselt_passed)
     return {
         "execution_passed": execution_passed,
         "poiseuille_passed": bool(poiseuille_passed),
         "nusselt_passed": bool(nusselt_passed),
         "qualification_passed": qualification_passed,
-        "verdict": ("physics_qualified" if qualification_passed else
-                    "execution_complete_physics_not_qualified" if execution_passed else
-                    "execution_failure"),
+        "verdict": (
+            "physics_qualified"
+            if qualification_passed
+            else "execution_complete_physics_not_qualified"
+            if execution_passed
+            else "execution_failure"
+        ),
     }
 
 
@@ -683,7 +696,12 @@ def _write_evidence(out_dir: Path, campaign: dict) -> None:
         )
     lines.append("")
     lines.append(f"verdict: {campaign['verdict']}")
-    for key in ("execution_passed", "poiseuille_passed", "nusselt_passed", "qualification_passed"):
+    for key in (
+        "execution_passed",
+        "poiseuille_passed",
+        "nusselt_passed",
+        "qualification_passed",
+    ):
         lines.append(f"{key}: {str(campaign[key]).lower()}")
     lines.append("interpretation (locked protocol):")
     lines.append(
@@ -707,8 +725,11 @@ def main() -> int:
     parser.add_argument("--solver", required=True, help="production solver binary")
     parser.add_argument("--output-dir", required=True, help="evidence directory")
     parser.add_argument("--run-id", default="local", help="campaign run id")
-    parser.add_argument("--require-qualification", action="store_true",
-                        help="also fail the process when the frozen physical targets are not met")
+    parser.add_argument(
+        "--require-qualification",
+        action="store_true",
+        help="also fail the process when the frozen physical targets are not met",
+    )
     args = parser.parse_args()
 
     solver = Path(args.solver)
@@ -787,7 +808,11 @@ def main() -> int:
         print("T2NU_DIAGNOSTIC FAIL execution_failure")
 
     _write_evidence(out_dir, campaign)
-    passed = campaign["qualification_passed"] if args.require_qualification else campaign["execution_passed"]
+    passed = (
+        campaign["qualification_passed"]
+        if args.require_qualification
+        else campaign["execution_passed"]
+    )
     return 0 if passed else 1
 
 
