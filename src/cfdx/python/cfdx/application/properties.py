@@ -145,6 +145,29 @@ def set_property(case: Case, key: str, value: Any) -> ChangeImpact:
     raise KeyError(f"property is not editable: {key}")
 
 
+def get_property(case: Case, key: str) -> Any:
+    """Return the current effective value of one routed property key.
+
+    Mirrors the routing of :func:`set_property` so a reversible edit can
+    capture the value it must restore. Reading stays permissive where the
+    write contract would create state on demand: a missing (or malformed)
+    physics model exposes the effective enabled default, so reading never
+    preempts the contract's own validation errors. Keys outside the routed
+    surface raise ``KeyError`` exactly like ``set_property``.
+    """
+    if key == "numerics.cfl":
+        return case.numerics.get("cfl", 1.0)
+    if key == "execution.solver":
+        return case.execution.solver or ""
+    parts = key.split(".")
+    if len(parts) == 3 and parts[0] == "physics" and parts[2] == "enabled":
+        model = case.physics.get(parts[1])
+        if not isinstance(model, dict):
+            return True
+        return bool(model.get("enabled", True))
+    raise KeyError(f"property is not editable: {key}")
+
+
 def _read_only(key: str, label: str, value: Any, kind: ParameterType) -> PropertyState:
     """Build one read-only inspector row for a mesh fact."""
     return PropertyState(key, label, value, kind, editable=False)
