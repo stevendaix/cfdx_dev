@@ -36,7 +36,6 @@ Corresponds to the C++ header:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional, Union
 
 import numpy as np
 
@@ -82,7 +81,7 @@ def _infer_turbulence_model(rp_vars: dict) -> str:
         return "kw-standard-viscous"
     if rp_vars.get("rp-les?", False):
         return "les"
-    return "laminar" if rp_vars.get("rp-lam?", False) else "laminar"
+    return "laminar"
 
 
 def _infer_zone_type(name: str) -> str:
@@ -141,7 +140,7 @@ class FluentAdapter(SolverAdapter):
     solver_name = "Fluent"
     format_name = "cas_dat"
 
-    def __init__(self, rules: Optional[MappingRules] = None) -> None:
+    def __init__(self, rules: MappingRules | None = None) -> None:
         self.rules = rules or MappingRules.load_default()
         self.setup = CaseSetup(source=SourceInfo(solver="Fluent", format="cas_dat"))
         self._points: list[list[float]] = []
@@ -208,11 +207,11 @@ class FluentAdapter(SolverAdapter):
             return True
         return False
 
-    def convert(self, case_path: Union[str, Path], result: ConversionResult) -> bool:
+    def convert(self, case_path: str | Path, result: ConversionResult) -> bool:
         base = Path(str(case_path))
         cas_file = base
         dat_file = base
-        h5_file: Optional[Path] = None
+        h5_file: Path | None = None
 
         if base.is_file():
             cas_file = base
@@ -400,15 +399,17 @@ class FluentAdapter(SolverAdapter):
                     n_elems = int(data_tokens[i + 4])
                     zone_type_id = int(data_tokens[i + 5])
                     # Remaining fields are zone-specific surface info
-                    self._zones.append({
-                        "zone_id": zone_id,
-                        "name": zone_name,
-                        "node_type": node_type,
-                        "element_type": bc_type_str,
-                        "n_elements": n_elems,
-                        "zone_type": bc_type_str,
-                        "zone_type_id": zone_type_id,
-                    })
+                    self._zones.append(
+                        {
+                            "zone_id": zone_id,
+                            "name": zone_name,
+                            "node_type": node_type,
+                            "element_type": bc_type_str,
+                            "n_elements": n_elems,
+                            "zone_type": bc_type_str,
+                            "zone_type_id": zone_type_id,
+                        }
+                    )
                     i += fields_per_zone
             elif section_id == 39:
                 # Materials: header is (n_materials n_fields_per_mat)
@@ -425,15 +426,17 @@ class FluentAdapter(SolverAdapter):
                     cp = float(data_tokens[i + 5])
                     mw = float(data_tokens[i + 6])
                     i += 7
-                    self._materials.append({
-                        "name": mat_name,
-                        "type": mat_type,
-                        "density": density,
-                        "viscosity": viscosity,
-                        "conductivity": cond,
-                        "cp": cp,
-                        "mw": mw,
-                    })
+                    self._materials.append(
+                        {
+                            "name": mat_name,
+                            "type": mat_type,
+                            "density": density,
+                            "viscosity": viscosity,
+                            "conductivity": cond,
+                            "cp": cp,
+                            "mw": mw,
+                        }
+                    )
             elif section_id == 45:
                 # Cell zone conditions: header is (n_zones n_fields)
                 n_zones = int(data_tokens[0])
@@ -447,14 +450,16 @@ class FluentAdapter(SolverAdapter):
                     node_type = data_tokens[i + 2]
                     elem_type = data_tokens[i + 3].strip('"')
                     n_elems = int(data_tokens[i + 4])
-                    self._zones.append({
-                        "zone_id": zone_id,
-                        "name": zone_name,
-                        "node_type": node_type,
-                        "element_type": elem_type,
-                        "n_elements": n_elems,
-                        "zone_type": "cell",
-                    })
+                    self._zones.append(
+                        {
+                            "zone_id": zone_id,
+                            "name": zone_name,
+                            "node_type": node_type,
+                            "element_type": elem_type,
+                            "n_elements": n_elems,
+                            "zone_type": "cell",
+                        }
+                    )
                     i += fields_per_zone
             elif section_id == 48:
                 # Model settings: skip header (2 tokens), rest are key-value pairs
@@ -527,7 +532,7 @@ class FluentAdapter(SolverAdapter):
 
         try:
             reader = CaseFile(case_file_name=cas_h5_file)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - pyfluent robustness (gap report)
             self.setup.source.version = f"pyfluent_error: {e}"
             return False
 
@@ -579,15 +584,17 @@ class FluentAdapter(SolverAdapter):
                 )
                 j += n_fn
                 n_faces += 1
-            self._zones.append({
-                "zone_id": sid_int,
-                "name": name,
-                "node_type": "face",
-                "element_type": name,
-                "n_elements": n_faces,
-                "zone_type": _infer_zone_type(name),
-                "zone_type_id": 4,
-            })
+            self._zones.append(
+                {
+                    "zone_id": sid_int,
+                    "name": name,
+                    "node_type": "face",
+                    "element_type": name,
+                    "n_elements": n_faces,
+                    "zone_type": _infer_zone_type(name),
+                    "zone_type_id": 4,
+                }
+            )
 
         self.setup.source.solver = "Fluent"
         self.setup.source.format = "cas_h5"
@@ -645,7 +652,7 @@ class FluentAdapter(SolverAdapter):
 
         try:
             from ansys.fluent.core.file_session import FileSession
-            from ansys.fluent.core.filereader.data_file import DataFile
+            from ansys.fluent.core.filereader.data_file import DataFile  # noqa: F401
         except ImportError:
             return False
 
@@ -654,7 +661,7 @@ class FluentAdapter(SolverAdapter):
             case_file = self.setup.source.case_path
             session.read_case(case_file)
             session.read_data(dat_file)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - pyfluent robustness (gap report)
             result.gap_report.unsupported_nonblocking(
                 "results",
                 "fluent_dat_h5",
@@ -715,7 +722,7 @@ class FluentAdapter(SolverAdapter):
         # Import scalar cell fields
         try:
             cell_variables = session._data_file.get_cell_variables(phase_name)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - pyfluent robustness (gap report)
             result.gap_report.unsupported_nonblocking(
                 "results",
                 "cell_variables",
@@ -747,7 +754,7 @@ class FluentAdapter(SolverAdapter):
                                 cfdx_name,
                                 f"Imported cell field '{fluent_name}' -> '{cfdx_name}' [{units}], {data.size} cells",
                             )
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - pyfluent robustness (gap report)
                     result.gap_report.approximated(
                         "results",
                         cfdx_name,
@@ -779,7 +786,7 @@ class FluentAdapter(SolverAdapter):
                                 cfdx_name,
                                 f"Imported cell vector field '{fluent_u}/{fluent_v}/{fluent_w}' -> '{cfdx_name}' [{units}], {u_arr.size} cells",
                             )
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - pyfluent robustness (gap report)
                     result.gap_report.approximated(
                         "results",
                         cfdx_name,
@@ -1152,4 +1159,3 @@ def _extract_cas_h5_reference_values(rp_vars: dict, setup: CaseSetup) -> None:
 
     if rp_vars.get("piso/coupling?", False):
         setup.numerics.coupled_solver = "PISO"
-
