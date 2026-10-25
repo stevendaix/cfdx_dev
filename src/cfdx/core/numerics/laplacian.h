@@ -86,7 +86,9 @@ inline Field<double, Location::CELL> compute_laplacian(
     const GeometryCache& geometry,
     LaplacianScheme scheme = LaplacianScheme::ORTHOGONAL,
     double non_orthogonal_limit = 0.5,
-    GradientScheme gradient_scheme = GradientScheme::GAUSS_TWO_POINT)
+    GradientScheme gradient_scheme = GradientScheme::GAUSS_TWO_POINT,
+    BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::ZERO_GRADIENT_GHOST,
+    const std::vector<BoundaryGradientCondition>* boundary_conditions = nullptr)
 {
     const std::size_t n_cells = mesh.n_cells();
     if (!is_valid(geometry, mesh))
@@ -117,7 +119,9 @@ inline Field<double, Location::CELL> compute_laplacian(
         // polyhedral-heavy meshes the skew-corrected point-linear GG or the
         // (extended / quadratic) least-squares gradients are linear-consistent
         // options.
-        gradients = cell_gradient(cell_field, mesh, geometry, gradient_scheme);
+        gradients = cell_gradient(
+            cell_field, mesh, geometry, gradient_scheme,
+            boundary_policy, boundary_conditions);
     }
 
     for (std::size_t c = 0; c < n_cells; ++c) {

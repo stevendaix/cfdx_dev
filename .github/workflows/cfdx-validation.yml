@@ -11,7 +11,7 @@ on:
   schedule:
     - cron: "17 3 * * 1"
   pull_request:
-    types: [labeled, synchronize, reopened]
+    types: [labeled, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -238,6 +238,7 @@ jobs:
                 echo "::error title=ctest long campaign failure::${safe}"
               done
           exit 0
+
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4

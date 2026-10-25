@@ -83,9 +83,9 @@ inline SolverResult solve_bicgstab(
     if(!finite_vector(w.r)){result.status=SolverStatus::DIVERGED;return result;}
     for(std::size_t i=0;i<n;++i)w.r_hat(i)=w.r(i);
 
-    const double bnorm=krylov_norm2(b, SolverPrecision::FP64, reduction),tol=tolerance*std::max(bnorm,1e-15);
+    const double bnorm=krylov_norm2(b, SolverPrecision::FP64, reduction),tol=tolerance*std::max(bnorm,1e-300);
     if(!std::isfinite(bnorm)||!std::isfinite(tol)){result.status=SolverStatus::DIVERGED;return result;}
-    Vector true_r(n); mixed_precision_true_residual(A,b,x,true_r); double res=krylov_norm2(true_r, redp, reduction);
+    Vector true_r(n); mixed_precision_true_residual(A,b,x,true_r); double res=krylov_norm2(true_r, SolverPrecision::FP64, reduction);
     if(res<=tol){
         result.status=SolverStatus::CONVERGED;result.residual=res;
         result.residual_relative=bnorm>0?res/bnorm:0.0;return result;
@@ -95,21 +95,35 @@ inline SolverResult solve_bicgstab(
     for(std::size_t i=0;i<n;++i){w.v(i)=0.0;w.p(i)=0.0;}
 
     auto true_residual = [&]() {
-        matvec(x, Ax);
-        if (!finite_vector(Ax)) return std::numeric_limits<double>::infinity();
+        // Recompute b-Ax with the original sparse operator in FP64, even
+        // when the iterative matvec is configured for FP32.
+        const double residual = mixed_precision_true_residual(A, b, x, true_r);
+        if (!std::isfinite(residual)) return std::numeric_limits<double>::infinity();
         for (std::size_t i = 0; i < n; ++i) {
-            const double ri = b(i) - Ax(i);
-            if (!std::isfinite(ri)) return std::numeric_limits<double>::infinity();
-            w.r(i) = ri;
+            if (!std::isfinite(true_r(i))) return std::numeric_limits<double>::infinity();
+            w.r(i) = true_r(i);
         }
-        return krylov_norm2(w.r, redp, reduction);
+        return krylov_norm2(w.r, SolverPrecision::FP64, reduction);
+    };
+
+    const double breakdown_factor = 64.0 * std::numeric_limits<double>::epsilon();
+    auto fail_with_true_residual = [&](std::size_t iterations) {
+        result.status = SolverStatus::DIVERGED;
+        result.iterations = iterations;
+        result.residual = true_residual();
+        result.residual_relative = bnorm > 0.0 ? result.residual / bnorm : result.residual;
+        return result;
     };
 
     for(std::size_t iter=1;iter<=max_iter;++iter){
         const double rho_new=krylov_dot(w.r_hat, w.r, redp, reduction);
-        if(!std::isfinite(rho_new)||std::abs(rho_new)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter-1;return result;}
+        const double rho_scale = krylov_norm2(w.r_hat, redp, reduction)
+                               * krylov_norm2(w.r, redp, reduction);
+        if(!std::isfinite(rho_new)||!std::isfinite(rho_scale)||
+           !(rho_scale > 0.0)||std::abs(rho_new)<=breakdown_factor*rho_scale)
+            return fail_with_true_residual(iter-1);
         const double beta=(rho!=0.0)?(rho_new/rho)*(alpha/omega):0.0;
-        if(!std::isfinite(beta)){result.status=SolverStatus::DIVERGED;result.iterations=iter-1;return result;}
+        if(!std::isfinite(beta)) return fail_with_true_residual(iter-1);
         for(std::size_t i=0;i<n;++i)w.p(i)=w.r(i)+beta*(w.p(i)-omega*w.v(i));
 
         if(preconditioner){
@@ -118,14 +132,18 @@ inline SolverResult solve_bicgstab(
             for(std::size_t i=0;i<n;++i)w.z(i)=w.p(i);
         }
         matvec(w.z,w.v);
-        if(!finite_vector(w.v)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
+        if(!finite_vector(w.v)) return fail_with_true_residual(iter);
 
         const double rv=krylov_dot(w.r_hat, w.v, redp, reduction);
-        if(!std::isfinite(rv)||std::abs(rv)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
+        const double rv_scale = krylov_norm2(w.r_hat, redp, reduction)
+                              * krylov_norm2(w.v, redp, reduction);
+        if(!std::isfinite(rv)||!std::isfinite(rv_scale)||!(rv_scale > 0.0)||
+           std::abs(rv)<=breakdown_factor*rv_scale)
+            return fail_with_true_residual(iter);
         alpha=rho_new/rv;
-        if(!std::isfinite(alpha)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
+        if(!std::isfinite(alpha)) return fail_with_true_residual(iter);
         for(std::size_t i=0;i<n;++i)w.s(i)=w.r(i)-alpha*w.v(i);
-        if(!finite_vector(w.s)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
+        if(!finite_vector(w.s)) return fail_with_true_residual(iter);
 
         const double snorm=krylov_norm2(w.s, redp, reduction);
         if(snorm<=tol){
@@ -135,11 +153,7 @@ inline SolverResult solve_bicgstab(
                 result.status=SolverStatus::CONVERGED;result.iterations=iter;result.residual=res;
                 result.residual_relative=bnorm>0?res/bnorm:0.0;return result;
             }
-            if (!std::isfinite(res)) {
-                result.status=SolverStatus::DIVERGED;
-                result.iterations=iter;
-                return result;
-            }
+            if (!std::isfinite(res)) return fail_with_true_residual(iter);
             // The recurrence residual s can be below tolerance while the
             // recomputed true residual is not. Continue from the recomputed
             // residual; never mix the two residual states.
@@ -160,14 +174,17 @@ inline SolverResult solve_bicgstab(
             for(std::size_t i=0;i<n;++i)w.z_s(i)=w.s(i);
         }
         matvec(w.z_s,w.t);
-        if(!finite_vector(w.t)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
+        if(!finite_vector(w.t)) return fail_with_true_residual(iter);
 
         const double ts=krylov_dot(w.t, w.s, redp, reduction);
         const double tt=krylov_dot(w.t, w.t, redp, reduction);
-        if(!std::isfinite(ts)||!std::isfinite(tt)||tt<=1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
-        omega=ts/tt;if(!std::isfinite(omega)||std::abs(omega)<1e-30){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
+        if(!std::isfinite(ts)||!std::isfinite(tt)||!(tt>0.0))
+            return fail_with_true_residual(iter);
+        omega=ts/tt;
+        if(!std::isfinite(omega)||omega==0.0)
+            return fail_with_true_residual(iter);
         for(std::size_t i=0;i<n;++i){x(i)+=alpha*w.z(i)+omega*w.z_s(i);w.r(i)=w.s(i)-omega*w.t(i);}
-        if(!finite_vector(x)||!finite_vector(w.r)){result.status=SolverStatus::DIVERGED;result.iterations=iter;return result;}
+        if(!finite_vector(x)||!finite_vector(w.r)) return fail_with_true_residual(iter);
 
         res=true_residual();
         if(res<=tol){
