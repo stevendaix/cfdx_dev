@@ -1,0 +1,19 @@
+..............                                                           [100%]
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/python/test_capabilities.py::test_capability_ids_are_stable_and_unique
+PASSED tests/python/test_capabilities.py::test_contour_reports_missing_prerequisites_in_clear_text
+PASSED tests/python/test_capabilities.py::test_contour_available_once_renderer_and_dataset_are_ready
+PASSED tests/python/test_capabilities.py::test_run_unavailable_while_simulation_is_active
+PASSED tests/python/test_capabilities.py::test_stop_requires_an_active_simulation
+PASSED tests/python/test_capabilities.py::test_undo_and_redo_report_their_history_prerequisites
+PASSED tests/python/test_capabilities.py::test_unknown_capability_is_rejected_explicitly
+PASSED tests/python/test_capabilities.py::test_solver_states_are_never_conflated
+PASSED tests/python/test_capabilities.py::test_unknown_solver_values_are_surfaced_verbatim
+PASSED tests/python/test_capabilities.py::test_disabled_actions_explain_their_prerequisites
+PASSED tests/python/test_capabilities.py::test_registry_covers_every_workbench_command
+PASSED tests/python/test_capabilities.py::test_file_and_workspace_commands_are_always_available
+PASSED tests/python/test_capabilities.py::test_capability_labels_are_unique
+PASSED tests/python/test_capabilities.py::test_palette_lists_the_registry_and_only_the_registry
+14 passed in 1.61s
+exit_code=0

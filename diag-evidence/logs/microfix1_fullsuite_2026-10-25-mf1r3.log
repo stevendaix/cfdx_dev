@@ -1,0 +1,93 @@
+..................sF..................ss                                 [100%]
+=================================== FAILURES ===================================
+_______________________ test_workbench_has_stable_docks ________________________
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+    )
+    def test_workbench_has_stable_docks() -> None:
+        from cfdx.gui import create_application
+        from cfdx.session import SimulationState
+        from PySide6.QtWidgets import QDockWidget, QLabel, QPushButton
+    
+        app = create_application(["cfdx-workbench-test"])
+        session = CFDXSession()
+        session.state = SimulationState.READY
+        window = CFDXWorkbenchWindow(session)
+        from cfdx.application import WorkflowStatus
+    
+        assert window._status_marker(WorkflowStatus.CONDITIONAL) == "[~]"
+        assert window._status_marker(WorkflowStatus.COMPLETE) == "[OK]"
+        assert window._status_marker(WorkflowStatus.NOT_CONFIGURED) == "[ ]"
+        assert window.objectName() == ""
+        assert window.workflow_tree.objectName() == "workbench.workflow_tree"
+        assert window.workflow_tree.topLevelItem(1).child(2).text(0).endswith("[OK]")
+        assert window.workflow_tree.topLevelItem(0).child(4).text(0).endswith("[ ]")
+        assert window.findChild(QDockWidget, "workbench.dock.workflow") is not None
+        assert window.findChild(QDockWidget, "workbench.dock.setup") is not None
+        assert window.findChild(QDockWidget, "workbench.dock.probes") is not None
+        assert window.findChild(QDockWidget, "workbench.dock.properties") is not None
+        assert window.findChild(QDockWidget, "workbench.dock.monitor") is not None
+        assert window.centralWidget().objectName() == "workbench.viewport"
+        assert window.viewport_stack.currentWidget() is window.viewport_placeholder
+        assert (
+            window.viewport_placeholder.findChild(
+                QLabel, "workbench.viewport.empty_title"
+            ).text()
+            == "Your simulation workspace"
+        )
+        assert window.workflow_tree.topLevelItem(0).font(0).bold()
+>       assert window._workspace == "setup"
+E       AssertionError: assert 'mesh' == 'setup'
+E         
+E         - setup
+E         + mesh
+
+tests/python/test_workbench.py:52: AssertionError
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED tests/python/test_capabilities.py::test_capability_ids_are_stable_and_unique
+PASSED tests/python/test_capabilities.py::test_contour_reports_missing_prerequisites_in_clear_text
+PASSED tests/python/test_capabilities.py::test_contour_available_once_renderer_and_dataset_are_ready
+PASSED tests/python/test_capabilities.py::test_run_unavailable_while_simulation_is_active
+PASSED tests/python/test_capabilities.py::test_stop_requires_an_active_simulation
+PASSED tests/python/test_capabilities.py::test_undo_and_redo_report_their_history_prerequisites
+PASSED tests/python/test_capabilities.py::test_unknown_capability_is_rejected_explicitly
+PASSED tests/python/test_capabilities.py::test_solver_states_are_never_conflated
+PASSED tests/python/test_capabilities.py::test_unknown_solver_values_are_surfaced_verbatim
+PASSED tests/python/test_capabilities.py::test_disabled_actions_explain_their_prerequisites
+PASSED tests/python/test_capabilities.py::test_registry_covers_every_workbench_command
+PASSED tests/python/test_capabilities.py::test_file_and_workspace_commands_are_always_available
+PASSED tests/python/test_capabilities.py::test_capability_labels_are_unique
+PASSED tests/python/test_capabilities.py::test_palette_lists_the_registry_and_only_the_registry
+PASSED tests/python/test_specialized_setup.py::test_setup_panel_exposes_physics_controls_and_applies_model
+PASSED tests/python/test_specialized_setup.py::test_setup_panel_turbulence_filters_to_solver_ready_models
+PASSED tests/python/test_specialized_setup.py::test_setup_panel_routes_physics_diagnostic_to_field_widget
+PASSED tests/python/test_specialized_setup.py::test_setup_panel_selects_tab_for_material_boundary_and_initialization_diagnostics
+PASSED tests/python/test_workbench.py::test_properties_inspector_applies_typed_cfl_value
+PASSED tests/python/test_workbench.py::test_properties_inspector_applies_typed_physics_toggle
+PASSED tests/python/test_workbench.py::test_mesh_selection_updates_typed_inspector_context
+PASSED tests/python/test_workbench.py::test_undo_and_redo_restore_previous_property_value
+PASSED tests/python/test_workbench.py::test_command_palette_lists_undo_with_history_prerequisite
+PASSED tests/python/test_workbench.py::test_undo_and_redo_actions_have_stable_ids_and_shortcuts
+PASSED tests/python/test_gui_browser_widgets.py::test_browser_widgets_import
+PASSED tests/python/test_gui_browser_widgets.py::test_results_series_panel_exposes_field_and_playback_controls
+PASSED tests/python/test_gui_browser_widgets.py::test_3d_patch_actor_id_uses_stable_identity
+PASSED tests/python/test_gui_browser_widgets.py::test_mesh_browser_drills_into_regions_patches_and_faces
+PASSED tests/python/test_gui_browser_widgets.py::test_mesh_browser_keeps_flat_patch_list_for_default_region
+PASSED tests/python/test_renderer.py::test_null_renderer_is_headless_and_selectable
+PASSED tests/python/test_renderer.py::test_null_renderer_rejects_unknown_selection
+PASSED tests/python/test_renderer.py::test_null_renderer_clear_removes_selection
+PASSED tests/python/test_renderer.py::test_null_renderer_rejects_empty_source
+PASSED tests/python/test_renderer_headless_contract.py::test_renderer_contract_import_does_not_load_optional_gui_stack
+PASSED tests/python/test_renderer_headless_contract.py::test_renderer_contract_symbols_are_headless
+PASSED tests/python/test_renderer_pyvista.py::test_pyvista_renderer_loads_vtu
+SKIPPED [1] tests/python/test_workbench.py:12: PySide6 is installed
+SKIPPED [1] tests/python/test_renderer_pyvista.py:28: PyVista is installed
+SKIPPED [1] tests/python/test_gui_3d.py:7: PyVistaQt OpenGL smoke test is opt-in and requires a stable display
+FAILED tests/python/test_workbench.py::test_workbench_has_stable_docks - AssertionError: assert 'mesh' == 'setup'
+  
+  - setup
+  + mesh
+1 failed, 36 passed, 3 skipped in 5.39s
+exit_code=1

@@ -1,0 +1,3 @@
+pr_head=32bd9a600b51a110e294e1cfa92a65c9a5142fe6
+stamp=2026-10-25-mf1r3
+purpose=reproduce the CI GUI job failure on the full 8-file pytest list; solo control included
