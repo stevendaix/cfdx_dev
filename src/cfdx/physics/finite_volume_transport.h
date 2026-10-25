@@ -151,6 +151,27 @@ inline FvGeometry build_fv_geometry(const cfdx::core::Mesh& mesh)
     return g;
 }
 
+// Method contract: docs/audits/01-diffusion-laplacien.md
+struct FluxImbalanceMetrics {
+    double signed_global = 0.0;
+    double global_l1 = 0.0;
+    double local_linf = 0.0;
+};
+
+inline FluxImbalanceMetrics flux_imbalance_metrics(
+    const std::vector<double>& cell_flux_residuals)
+{
+    FluxImbalanceMetrics metrics;
+    for (const double residual : cell_flux_residuals) {
+        if (!std::isfinite(residual))
+            throw std::invalid_argument("flux_imbalance_metrics: non-finite residual");
+        metrics.signed_global += residual;
+        metrics.global_l1 += std::abs(residual);
+        metrics.local_linf = std::max(metrics.local_linf, std::abs(residual));
+    }
+    return metrics;
+}
+
 struct ScalarEquation {
     cfdx::core::SparseMatrix matrix;
     cfdx::core::Vector rhs;
