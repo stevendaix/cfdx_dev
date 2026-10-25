@@ -18,8 +18,8 @@ jobs:
     timeout-minutes: 40
     env:
       EVID: diag-evidence/logs
-      BASE_SHA: 72ddaab9d8d5e428e2956db0e1e35954972dee88
-      STAMP: 2026-10-25-mf1
+      BASE_SHA: a761292f4423831b48db44778f364a6618c55021
+      STAMP: 2026-10-25-mf1r2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -121,7 +121,7 @@ jobs:
           } > "$E/microfix1_meta_$STAMP.txt"
 
       - name: Commit evidence
-        if* always()
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

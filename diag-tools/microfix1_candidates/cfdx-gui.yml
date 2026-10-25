@@ -110,7 +110,7 @@ jobs:
       - name: Capture Workbench screenshot
         if: always() && steps.install_gui.outcome == 'success'
         env:
-          QT_QPA_PLATEORM: xcb
+          QT_QPA_PLATFORM: xcb
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
         run: |
           xvfb-run -a -s "-screen 0 1280x1024x24" \

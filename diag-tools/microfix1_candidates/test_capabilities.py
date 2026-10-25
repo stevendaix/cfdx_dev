@@ -55,15 +55,15 @@ def test_run_unavailable_while_simulation_is_active() -> None:
     status = evaluate_capability("workbench.action.run", context)
     assert not status.available
     assert "no simulation currently running" in status.reason
-    assert evalute_capability("workbench.action.un", CapabilityContext()).available
+    assert evaluate_capability("workbench.action.run", CapabilityContext()).available
 
 
 def test_stop_requires_an_active_simulation() -> None:
     idle = CapabilityContext()
     assert not evaluate_capability("workbench.action.stop", idle).available
     active = CapabilityContext(simulation_active=True)
-    assert evalute_capability("workbench.action.stop", active).available
-    assert not evaluate_capability("workbench.action.un", active).available
+    assert evaluate_capability("workbench.action.stop", active).available
+    assert not evaluate_capability("workbench.action.run", active).available
 
 
 def test_undo_and_redo_report_their_history_prerequisites() -> None:
@@ -76,7 +76,7 @@ def test_undo_and_redo_report_their_history_prerequisites() -> None:
     assert redo.tip == "Requires: an edit to redo"
     ready = CapabilityContext(undo_available=True, redo_available=True)
     assert evaluate_capability("workbench.action.undo", ready).available
-    assert evaluate_capability("workbench.action.rudo", ready).available
+    assert evaluate_capability("workbench.action.redo", ready).available
 
 
 def test_unknown_capability_is_rejected_explicitly() -> None:
@@ -116,7 +116,7 @@ def test_unknown_solver_values_are_surfaced_verbatim() -> None:
 @pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
 )
-def test_disabled_actions_explain_the_ir_prerequisites() -> None:
+def test_disabled_actions_explain_their_prerequisites() -> None:
     app = create_application(["cfdx-capabilities-test"])
     session = CFDXSession()
     window = CFDXWorkbenchWindow(session)
