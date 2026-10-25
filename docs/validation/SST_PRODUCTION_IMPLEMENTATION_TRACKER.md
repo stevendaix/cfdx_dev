@@ -236,3 +236,14 @@ Synchronized PR #1047 carries the opt-in production outer-loop coupling original
 4. Complete transport MMS on at least three mesh levels, frozen DNS channel qualification and mesh/y+ sensitivity, then flat-plate and NACA0012 validation.
 5. Keep the general RANS/SST selector fail-closed until physical qualification gates pass.
 
+
+
+### Follow-up implementation — issue #1067 (PR in progress)
+
+The next implementation increment is intentionally limited to closing the three production integration gaps below. Do not mark any item complete until a regression exercises the production solve path on the exact PR head.
+
+- [ ] **First-predictor closure and retry rollback:** observe the effective viscosity actually consumed by the first momentum assembly after SST initialization; force a retry after authoritative pressure-corrected face mass flux changes; assert exact restoration of carrier fields, flux, SST-owned fields, convergence monitor, and tentative history before retry.
+- [ ] **Application lifecycle:** construct the opt-in runtime from loaded case boundary metadata and DAT-restored state; resolve geometric `WALL_OMEGA_SST` face values from the current mesh; reject incomplete/unsupported inputs without defaults.
+- [ ] **Restart equivalence:** compare continuous and interrupted/restarted production trajectories at equivalent accepted iterations for `U`, `p`, authoritative face mass flux, `k`, `omega`, `nu_t`, wall distance, and strain rate; verify malformed checkpoints leave caller state unchanged.
+
+The production RANS/SST selector remains fail-closed. This work is software-integration evidence only; it does not qualify the model physically. No tolerance widening, disabled tests, or silent fallback is allowed.
