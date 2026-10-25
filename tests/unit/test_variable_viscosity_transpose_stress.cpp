@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <unordered_map>
 #include <vector>
 
 using namespace cfdx::core;
@@ -83,6 +84,102 @@ static Mesh make_four_cell_stress_channel()
     add_wall_patch("y_max", std::move(y_max));
     add_wall_patch("z_min", std::move(z_min));
     add_wall_patch("z_max", std::move(z_max));
+    return mesh;
+}
+
+
+static Mesh make_skewed_stress_cube(std::size_t n, double shear)
+{
+    Mesh mesh;
+    const auto point_id = [n](std::size_t i, std::size_t j, std::size_t k) {
+        return (k * (n + 1) + j) * (n + 1) + i;
+    };
+    mesh.points().resize((n + 1) * (n + 1) * (n + 1));
+    for (std::size_t k = 0; k <= n; ++k)
+        for (std::size_t j = 0; j <= n; ++j)
+            for (std::size_t i = 0; i <= n; ++i) {
+                const double x = static_cast<double>(i) / static_cast<double>(n);
+                const double y = static_cast<double>(j) / static_cast<double>(n);
+                const double z = static_cast<double>(k) / static_cast<double>(n);
+                mesh.points().set(point_id(i, j, k), x + shear * y, y, z);
+            }
+
+    struct FaceKey {
+        std::size_t i, j, k, axis;
+        bool operator==(const FaceKey& other) const {
+            return i == other.i && j == other.j && k == other.k && axis == other.axis;
+        }
+    };
+    struct FaceKeyHash {
+        std::size_t operator()(const FaceKey& f) const {
+            std::size_t h = f.i;
+            h = h * 1315423911u + f.j;
+            h = h * 1315423911u + f.k;
+            h = h * 1315423911u + f.axis;
+            return h;
+        }
+    };
+    const std::size_t nc = n * n * n;
+    const auto cell_id = [n](std::size_t i, std::size_t j, std::size_t k) {
+        return (k * n + j) * n + i;
+    };
+    std::unordered_map<FaceKey, std::size_t, FaceKeyHash> face_map;
+    std::vector<std::vector<std::size_t>> faces_per_cell(nc);
+    const auto add_face = [&](FaceKey key, std::initializer_list<std::size_t> vertices) {
+        const auto found = face_map.find(key);
+        if (found != face_map.end()) return found->second;
+        const std::size_t id = mesh.faces().n_faces();
+        mesh.faces().push_face(std::vector<FaceIndex>(vertices.begin(), vertices.end()));
+        face_map.emplace(key, id);
+        return id;
+    };
+    for (std::size_t k = 0; k < n; ++k)
+        for (std::size_t j = 0; j < n; ++j)
+            for (std::size_t i = 0; i < n; ++i) {
+                const auto p = [&](std::size_t pi, std::size_t pj, std::size_t pk) {
+                    return point_id(pi, pj, pk);
+                };
+                faces_per_cell[cell_id(i,j,k)] = {
+                    add_face({i,j,k,0}, {p(i,j,k),p(i,j,k+1),p(i,j+1,k+1),p(i,j+1,k)}),
+                    add_face({i+1,j,k,0}, {p(i+1,j,k),p(i+1,j+1,k),p(i+1,j+1,k+1),p(i+1,j,k+1)}),
+                    add_face({i,j,k,1}, {p(i,j,k),p(i+1,j,k),p(i+1,j,k+1),p(i,j,k+1)}),
+                    add_face({i,j+1,k,1}, {p(i,j+1,k),p(i,j+1,k+1),p(i+1,j+1,k+1),p(i+1,j+1,k)}),
+                    add_face({i,j,k,2}, {p(i,j,k),p(i,j+1,k),p(i+1,j+1,k),p(i+1,j,k)}),
+                    add_face({i,j,k+1,2}, {p(i,j,k+1),p(i+1,j,k+1),p(i+1,j+1,k+1),p(i,j+1,k+1)})
+                };
+            }
+
+    mesh.ownership().resize(mesh.n_faces());
+    Patch wall;
+    wall.name = "wall";
+    wall.type = PatchType::WALL;
+    for (const auto& entry : face_map) {
+        const FaceKey key = entry.first;
+        const std::size_t face = entry.second;
+        const bool lower = key.axis == 0 ? key.i == 0 :
+                           key.axis == 1 ? key.j == 0 : key.k == 0;
+        const bool upper = key.axis == 0 ? key.i == n :
+                           key.axis == 1 ? key.j == n : key.k == n;
+        const std::size_t oi = key.axis == 0 ? (lower ? 0 : key.i - 1) : key.i;
+        const std::size_t oj = key.axis == 1 ? (lower ? 0 : key.j - 1) : key.j;
+        const std::size_t ok = key.axis == 2 ? (lower ? 0 : key.k - 1) : key.k;
+        const std::size_t owner = cell_id(oi, oj, ok);
+        mesh.ownership().set_owner(face, owner);
+        if (lower || upper) {
+            mesh.ownership().set_neighbour(face, FaceOwnership::BOUNDARY);
+            wall.face_ids.push_back(face);
+        } else {
+            std::size_t ni = oi, nj = oj, nk = ok;
+            if (key.axis == 0) ++ni;
+            else if (key.axis == 1) ++nj;
+            else ++nk;
+            mesh.ownership().set_neighbour(face,
+                static_cast<std::int64_t>(cell_id(ni, nj, nk)));
+        }
+    }
+    for (std::size_t cell = 0; cell < nc; ++cell)
+        mesh.cells().push_cell(faces_per_cell[cell]);
+    mesh.boundary().add_patch(wall);
     return mesh;
 }
 
@@ -167,6 +264,45 @@ int main()
             vector_bcs, 1, false, ConvectionScheme::UPWIND, &U_y);
         EXPECT_NEAR(equation.rhs(1), a*geometry.cell_volumes[1], 1e-12);
         EXPECT_NEAR(equation.rhs(2), a*geometry.cell_volumes[2], 1e-12);
+    });
+
+
+    run_case("variable_viscosity_transpose_stress_skewed_affine", [] {
+        constexpr std::size_t n = 4;
+        constexpr double shear = 0.65;
+        constexpr double a = 2.5;
+        const Mesh mesh = make_skewed_stress_cube(n, shear);
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        std::vector<double> mu(mesh.n_cells(), 0.0);
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+            U.set(cell, a * geometry.cell_centres[cell].y, 0.0, 0.0);
+            mu[cell] = 1.0 + geometry.cell_centres[cell].x;
+        }
+        VelocityBoundaryConditions bcs;
+        bcs["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+
+        const auto flux = momentum_transpose_diffusion_face_fluxes(
+            mesh, geometry, U, bcs, mu, 1);
+        for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+            if (mesh.ownership().neighbour(face) < 0) continue;
+            const double expected =
+                (1.0 + geometry.face_centres[face].x) * a *
+                geometry.face_area_vectors[face].x;
+            EXPECT_NEAR(flux[face], expected, 2e-11);
+        }
+
+        const auto rhs = momentum_transpose_diffusion_rhs(
+            mesh, geometry, U, bcs, mu, 1);
+        const auto cell_id = [](std::size_t i, std::size_t j, std::size_t k) {
+            return (k * n + j) * n + i;
+        };
+        for (std::size_t k = 1; k + 1 < n; ++k)
+            for (std::size_t j = 1; j + 1 < n; ++j)
+                for (std::size_t i = 1; i + 1 < n; ++i) {
+                    const std::size_t cell = cell_id(i, j, k);
+                    EXPECT_NEAR(rhs[cell], a * geometry.cell_volumes[cell], 2e-11);
+                }
     });
 
     return run_all();
