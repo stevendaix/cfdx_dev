@@ -326,7 +326,7 @@ int main()
         T1(0)=400; T2(0)=300;
         Field<double,Location::CELL> s1(1,"s1","W/m3",1), s2(1,"s2","W/m3",1); s1.fill(0); s2.fill(0);
         EnergySolverControls e1; e1.conductivity=2; e1.relaxation=1; e1.max_iterations=20; e1.tolerance=1e-10;
-        EnergySolverControls e2=e1;
+        EnergySolverControls e2=e1; e2.conductivity=1;
         ChtInterfaceControls c; c.region1_patch="interface"; c.region2_patch="interface";
         c.conductivity1=2; c.conductivity2=1; c.tolerance=1e-10; c.temperature_tolerance=1e-10;
         ScalarBoundaryConditions b1{{"outer_hot",{ScalarBoundaryType::FIXED_VALUE,400,0}},
