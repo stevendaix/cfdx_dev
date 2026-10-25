@@ -61,6 +61,6 @@ F^T_{i,f}=\mu_f\sum_j\left(\frac{\partial U_j}{\partial x_i}\right)_f S_{f,j}.
 - Source : `src/cfdx/physics/steady_incompressible_solver.h`.
 - Fonctions : `momentum_transpose_diffusion_face_fluxes`, `momentum_transpose_diffusion_rhs`, `assemble_momentum_component_with_transpose_diffusion`.
 - Intégration : prédicteurs x/y/z et réassemblage du résidu final utilisent le wrapper de contrainte transposée.
-- Test exécutable : `tests/unit/test_variable_viscosity_transpose_stress.cpp`, avec flux de face affine orthogonal/incliné, divergence cellulaire, conservation des flux internes, contrôle du second membre et MMS lisse sur trois raffinements (n=4/8/16) avec ordre observé.
+- Test exécutable : `tests/unit/test_variable_viscosity_transpose_stress.cpp`, avec flux de face affine orthogonal/incliné, divergence cellulaire, conservation des flux internes, contrôle du second membre et MMS lisse sur trois raffinements (n=8/16/32) avec ordre observé.
 - Registre : cas `INC-TRANSPOSE-STRESS-MMS`, statut DIAGNOSTIC ; le test unitaire ne vaut pas qualification du solveur complet.
 - Gaps : CI exacte sur le HEAD final, GCI formel, maillages polyédriques arbitraires et convergence de l'équation complète.
