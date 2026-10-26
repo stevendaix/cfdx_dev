@@ -1,0 +1,5 @@
+target=master post-merge-wave Release python regression (CI run 40238292636, job Build and test (Release), step Run Python regression, exit 1)
+ref_bad=e8138a68c10b72c8697b932757ad31f31c9e9cb1 (master head 2026-10-25 22:02Z, docs(sst) mark merged, after #1126/#1127/#1128 + parallel rebase merges)
+ref_good=f1a6e71688c5c47de8271aec5cbb3f592e157c98 (post VERROUX->VERROUS typo fix, fiches gate repaired)
+note=no CFDX_PRODUCTION_SOLVER/CFDX_THERMAL_SOLVER: binaries not built here; binary-dependent failures cancel out in the diff
+pytest=-q tests/python --tb=no; traceback rerun: --tb=short
