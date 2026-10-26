@@ -3375,7 +3375,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << candidate_continuity_linf
                           << " alpha_u=" << retry_controller.alpha_u(effective_alpha_u)
                           << " alpha_p=" << retry_controller.alpha_p(effective_alpha_p)
-                          << "\\n";
+                          << "\n";
             }
 
             // The coupled linear system is a Picard/Newton linearization of the
