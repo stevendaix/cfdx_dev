@@ -1185,6 +1185,17 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
         }
     }
 
+    // Reconstruct the cellwise viscosity gradient once so interpolation is
+    // linear-exact on skewed/nonuniform meshes. Normal-distance weighting
+    // alone is only exact when the centre-to-centre vector is orthogonal
+    // to the face; it otherwise evaluates a different viscosity than the
+    // declared cell field at the face centroid.
+    Field<double, Location::CELL> mu_cell(
+        nc, "transpose_stress_mu", "Pa s", 1);
+    for (std::size_t cell = 0; cell < nc; ++cell)
+        mu_cell(cell) = cell_effective_dynamic_viscosity[cell];
+    const auto mu_gradient = cfdx::core::compute_gradient_least_squares(mu_cell, mesh);
+
     std::vector<double> face_fluxes(nf, 0.0);
     for (std::size_t face = 0; face < nf; ++face) {
         const std::size_t owner = mesh.ownership().owner(face);
@@ -1199,16 +1210,6 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                 "momentum_transpose_diffusion_face_fluxes: invalid face area");
         double mu_face = cell_effective_dynamic_viscosity[owner];
         std::array<double, 3> grad_face{};
-        // Reconstruct the cellwise viscosity gradient so interpolation is
-        // linear-exact on skewed/nonuniform meshes. Normal-distance weighting
-        // alone is only exact when the centre-to-centre vector is orthogonal
-        // to the face; it otherwise evaluates a different viscosity than the
-        // declared cell field at the face centroid.
-        Field<double, Location::CELL> mu_cell(
-            nc, "transpose_stress_mu", "Pa s", 1);
-        for (std::size_t cell = 0; cell < nc; ++cell)
-            mu_cell(cell) = cell_effective_dynamic_viscosity[cell];
-        const auto mu_gradient = cfdx::core::compute_gradient_least_squares(mu_cell, mesh);
         if (neighbour_index >= 0) {
             const std::size_t neighbour = static_cast<std::size_t>(neighbour_index);
             if (neighbour >= nc || neighbour == owner)
