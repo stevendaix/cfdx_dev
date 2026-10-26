@@ -1,0 +1,281 @@
+name: Master post-merge-wave fast-ctest + pyreg capture (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Capture-only : AUCUNE instrumentation du code. Replique EXACTEMENT les jobs
+# "Build and test (Release)" et "Build and test (DebugSanitizers)" de cfdx-ci.yml
+# sur le head master post-vague EPINGLE :
+#   e8138a68c10b72c8697b932757ad31f31c9e9cb1 (2026-10-25 22:02Z, apres merges
+#   #1096/#1078/#1068/#1125/#1126/#1127/#1128)
+# Contexte : CI run 40238292636 sur ce head :
+#   Release : "Run fast CTest" exit 8 + "Run Python regression" exit 1
+#   DebugSanitizers : "Run fast CTest" exit 8
+# Pre-vague f1a6e716 : Release VERT (fast CTest + pyreg), DebugSanitizers exit 8
+# avec 18 tests en echec (defaut sanitizer pre-existant, cf. run 40228386956).
+# But : listes de tests en echec PAR CONFIG + sorties rerun + pyreg AVEC binaires
+# (l'oracle mastere8138_pyreg de 05:21Z n'avait PAS les binaires -> 0 echec sur
+# les tests non binaires) + signatures sanitizer uniques.
+# Verdicts fail-closed par config : EVIDENCE_COMPLETE / NO_FAILURES_REPRODUCED /
+# INCONCLUSIVE_BUILD / INCONCLUSIVE_NO_FAILED_LIST.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/master_e8138_postwave_marker.txt'
+      - '.github/workflows/master_e8138_postwave_fastctest_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: master-e8138-postwave-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  HEAD_SHA_PIN: e8138a68c10b72c8697b932757ad31f31c9e9cb1
+
+jobs:
+  postwave-capture:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Release, DebugSanitizers]
+    env:
+      CFG: ${{ matrix.build_type }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pinned ref and create worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin master
+          git cat-file -e "$HEAD_SHA_PIN^{commit}" \
+            || { echo "::error::pinned head SHA not resolvable: $HEAD_SHA_PIN"; exit 1; }
+          git merge-base --is-ancestor "$HEAD_SHA_PIN" origin/master \
+            || { echo "::error::pinned head is not an ancestor of master: $HEAD_SHA_PIN"; exit 1; }
+          git worktree add "$RUNNER_TEMP/head" "$HEAD_SHA_PIN"
+          if [ "$CFG" = "Release" ]; then
+            SCOPE="replica of CI Release: fast CTest -LE long --parallel 4 + Python regression with CFDX_PRODUCTION_SOLVER/CFDX_THERMAL_SOLVER/PYTHONPATH (venv sans PySide6)"
+          else
+            SCOPE="replica of CI DebugSanitizers: fast CTest -LE 'long|benchmark|campaign|sanitizer-slow' --parallel 6, ASAN detect_leaks=1:halt_on_error=1, UBSAN halt_on_error=1"
+          fi
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "ref_pin=$HEAD_SHA_PIN"
+            echo "config=$CFG"
+            echo "scope=$SCOPE"
+            echo "context=CI run 40238292636: Release fast CTest exit 8 + pyreg exit 1; DebugSanitizers fast CTest exit 8. Pre-vague f1a6e716: Release vert, DebugSanitizers 18 echecs pre-existants (run 40228386956)"
+            echo "rule=EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL"
+          } > "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_meta_${CFG}_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Install Python stack (Release replica only)
+        if: matrix.build_type == 'Release'
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Configure (replica of CI)
+        run: |
+          if [ "$CFG" = "Release" ]; then UNITY=OFF; else UNITY=ON; fi
+          cmake -S "$RUNNER_TEMP/head" -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=$CFG \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DCMAKE_UNITY_BUILD=$UNITY
+
+      - name: Build
+        run: |
+          set +e
+          cmake --build build --parallel 8 > /tmp/build_raw.log 2>&1
+          rc=$?
+          {
+            echo "build_exit=$rc"
+            echo "--- build log (tail 200) ---"
+            tail -n 200 /tmp/build_raw.log
+            echo "--- build errors (if any) ---"
+            grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' /tmp/build_raw.log | tail -n 120 || true
+          } > "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_build_${CFG}_run$GITHUB_RUN_ID.log"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::build failed on pinned head - see evidence log"
+            exit 1
+          fi
+
+      - name: Run fast CTest (replica of the CI step)
+        run: |
+          set +e
+          if [ "$CFG" = "Release" ]; then
+            ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4 \
+              > "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_ctest_${CFG}_run$GITHUB_RUN_ID.log" 2>&1
+          else
+            ctest --test-dir build -LE 'long|benchmark|campaign|sanitizer-slow' --output-on-failure --no-tests=error --parallel 6 \
+              > "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_ctest_${CFG}_run$GITHUB_RUN_ID.log" 2>&1
+          fi
+          rc=$?
+          set -e
+          echo "ctest_exit=$rc" > "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_status_${CFG}_run$GITHUB_RUN_ID.txt"
+          echo "ctest_exit=$rc"
+          tail -n 40 "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_ctest_${CFG}_run$GITHUB_RUN_ID.log"
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1
+
+      - name: Rerun failed tests
+        run: |
+          set +e
+          ctest --test-dir build --rerun-failed --output-on-failure \
+            > "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_rerun_${CFG}_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "rerun_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_status_${CFG}_run$GITHUB_RUN_ID.txt"
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1
+
+      - name: Run Python regression replica (Release only)
+        if: matrix.build_type == 'Release'
+        run: |
+          set +e
+          cd "$RUNNER_TEMP/head"
+          export CFDX_PRODUCTION_SOLVER="$GITHUB_WORKSPACE/build/cfdx_production_solver"
+          export CFDX_THERMAL_SOLVER="$GITHUB_WORKSPACE/build/cfdx_thermal_solver"
+          export PYTHONPATH="$RUNNER_TEMP/head/src/cfdx/python"
+          python -m pytest -q tests/python --tb=short \
+            > "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_pyreg_${CFG}_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "pyreg_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_status_${CFG}_run$GITHUB_RUN_ID.txt"
+          {
+            grep -E '^(FAILED|ERROR) ' "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_pyreg_${CFG}_run$GITHUB_RUN_ID.log" || true
+            tail -n 5 "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_pyreg_${CFG}_run$GITHUB_RUN_ID.log"
+          } > "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_pyreg_failed_${CFG}_run$GITHUB_RUN_ID.txt"
+          cat "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_pyreg_failed_${CFG}_run$GITHUB_RUN_ID.txt"
+
+      - name: Sanitizer report signatures (DebugSanitizers only)
+        if: matrix.build_type == 'DebugSanitizers'
+        run: |
+          {
+            echo "=== unique sanitizer signatures (rerun + ctest logs) ==="
+            cat "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_rerun_${CFG}_run$GITHUB_RUN_ID.log" \
+                "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_ctest_${CFG}_run$GITHUB_RUN_ID.log" 2>/dev/null \
+              | grep -E "runtime error:|ERROR: AddressSanitizer|SUMMARY: AddressSanitizer|SUMMARY: UndefinedBehaviorSanitizer|LeakSanitizer" \
+              | sort -u | head -n 300 || true
+          } > "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_sanreport_${CFG}_run$GITHUB_RUN_ID.txt"
+          cat "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_sanreport_${CFG}_run$GITHUB_RUN_ID.txt"
+
+      - name: Analyze and classify
+        if: always()
+        run: |
+          python3 - "$CFG" <<'PY'
+import os, re, sys
+
+cfg = sys.argv[1]
+run_id = os.environ["GITHUB_RUN_ID"]
+evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+tag = "master_e8138_postwave_%s_run%s" % (cfg, run_id)
+
+def p(kind, ext="log"):
+    return os.path.join(evid, tag + "_" + kind + "." + ext)
+
+def write_verdict(v, lines):
+    with open(p("verdict", "txt"), "w") as fh:
+        fh.write("verdict=" + v + "\n")
+        for line in lines:
+            fh.write(line + "\n")
+    print("verdict=" + v)
+
+ctest_log = p("ctest")
+if not os.path.exists(ctest_log):
+    write_verdict("INCONCLUSIVE_BUILD", ["ctest log absent (build or ctest step did not run)"])
+    sys.exit(0)
+
+text = open(ctest_log, errors="replace").read()
+failed = []
+idx = text.find("The following tests FAILED:")
+if idx >= 0:
+    for line in text[idx:].splitlines()[1:]:
+        s = line.strip()
+        if not s:
+            break
+        m = re.match(r"(\d+)\s*-\s*(\S+)", s)
+        if not m:
+            break
+        failed.append(m.group(1) + ": " + m.group(2))
+
+with open(p("failedlist", "txt"), "w") as fh:
+    for t in failed:
+        fh.write(t + "\n")
+
+status = {}
+sp = p("status", "txt")
+if os.path.exists(sp):
+    for line in open(sp):
+        if "=" in line:
+            k, v = line.split("=", 1)
+            status[k.strip()] = v.strip()
+
+ctest_exit = status.get("ctest_exit")
+if ctest_exit == "0" and not failed:
+    write_verdict("NO_FAILURES_REPRODUCED", ["fast ctest PASSED on this pinned ref (" + cfg + ")"])
+    sys.exit(0)
+if not failed:
+    write_verdict("INCONCLUSIVE_NO_FAILED_LIST", ["ctest_exit=" + str(ctest_exit) + " but failed list not parsed - read the raw ctest log"])
+    sys.exit(0)
+
+lines = ["ctest_exit=" + str(ctest_exit), "failed_tests=" + str(len(failed))] + failed
+if cfg == "Release":
+    pyreg_log = p("pyreg")
+    if os.path.exists(pyreg_log):
+        ptext = open(pyreg_log, errors="replace").read()
+        pfailed = [l for l in ptext.splitlines() if l.startswith("FAILED ") or l.startswith("ERROR ")]
+        with open(p("pyreg_failed", "txt"), "w") as fh:
+            for l in pfailed:
+                fh.write(l + "\n")
+        lines.append("pyreg_exit=" + str(status.get("pyreg_exit")))
+        lines.append("pyreg_failed=" + str(len(pfailed)))
+        lines += pfailed[:40]
+write_verdict("EVIDENCE_COMPLETE", lines)
+PY
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: master post-merge-wave fast-ctest/pyreg capture run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          v=$(head -n 1 "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_verdict_${CFG}_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo "verdict=MISSING")
+          echo "Final gate: $v"
+          case "$v" in
+            verdict=EVIDENCE_COMPLETE|verdict=NO_FAILURES_REPRODUCED)
+              echo "evidence committed - diagnostic complete for $CFG" ;;
+            *)
+              echo "::error::$v - see diag-evidence/logs/master_e8138_postwave_${CFG}_run$GITHUB_RUN_ID.*"
+              exit 1 ;;
+          esac

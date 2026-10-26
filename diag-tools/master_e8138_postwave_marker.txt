@@ -1,0 +1,5 @@
+target=master post-merge-wave head e8138a68c10b72c8697b932757ad31f31c9e9cb1
+context=CI run 40238292636: Release fast CTest exit 8 + Python regression exit 1; DebugSanitizers fast CTest exit 8
+prewave=f1a6e71688c5c47de8271aec5cbb3f592e157c98 (Release vert, DebugSanitizers exit 8 pre-existant, run diag 40228386956)
+purpose=failed lists par config + rerun outputs + pyreg AVEC binaires + signatures sanitizer
+date=2026-10-26
