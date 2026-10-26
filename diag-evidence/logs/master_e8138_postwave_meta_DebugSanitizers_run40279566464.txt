@@ -1,0 +1,6 @@
+run_id=40279566464
+started_utc=2026-10-26T06:23:55Z
+ref_pin=e8138a68c10b72c8697b932757ad31f31c9e9cb1
+config=DebugSanitizers
+context=CI run 40238292636: Release fast CTest exit 8 + pyreg exit 1; DebugSanitizers fast CTest exit 8. Pre-vague f1a6e716: Release vert.
+rule=EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL

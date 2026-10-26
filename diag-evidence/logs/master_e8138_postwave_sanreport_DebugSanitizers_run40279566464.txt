@@ -1,0 +1,6 @@
+=== unique sanitizer signatures (rerun + ctest logs) ===
+==5916==ERROR: LeakSanitizer: detected memory leaks
+==5918==ERROR: LeakSanitizer: detected memory leaks
+==6521==ERROR: LeakSanitizer: detected memory leaks
+==6522==ERROR: LeakSanitizer: detected memory leaks
+SUMMARY: AddressSanitizer: 19 byte(s) leaked in 1 allocation(s).
