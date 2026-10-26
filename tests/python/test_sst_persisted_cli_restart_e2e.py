@@ -46,8 +46,26 @@ def _prepare_persisted_sst_case(case_path: Path) -> None:
             "velocity_vector": [1.0, 0.0, 0.0],
             "scalar_fields": {"k": 0.01, "omega": 2.0},
         }
-        # Preserve the converter's resolved N1 selection; the test must not
-        # bypass the production numerics gate.
+        # The source SU2 fixture is an implicit-time case. Remove only its
+        # temporal selection because this executable is steady; retain the
+        # converter's other resolved N1 selections and their validation gate.
+        for key in ("numerics", "numerical_config"):
+            numerics = setup.get(key)
+            if not isinstance(numerics, dict):
+                continue
+            selection = numerics.get("selection")
+            if not isinstance(selection, dict):
+                continue
+            entries = selection.get("entries", [])
+            selection["entries"] = [
+                entry for entry in entries
+                if entry.get("family") != "temporal"
+            ]
+            required = selection.get("required_families")
+            if isinstance(required, list):
+                selection["required_families"] = [
+                    family for family in required if family != "temporal"
+                ]
         for boundary in setup.get("boundary_conditions", []):
             patch_type = str(boundary.get("type", "")).lower()
             value_type = str(boundary.get("value_type", "")).lower()
@@ -61,7 +79,10 @@ def _prepare_persisted_sst_case(case_path: Path) -> None:
                     {"field": "k", "type": "fixed_value", "value": 0.01},
                     {"field": "omega", "type": "fixed_value", "value": 2.0},
                 ]
-        h5.attrs.modify("case_setup_json", json.dumps(setup))
+        # Recreate the attribute because the serialized JSON may grow beyond
+        # the converter's original HDF5 string-attribute width.
+        del h5.attrs["case_setup_json"]
+        h5.attrs["case_setup_json"] = json.dumps(setup)
 
 
 def _run(
