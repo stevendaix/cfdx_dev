@@ -1227,8 +1227,6 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                 !(d_sum > 0.0) || !std::isfinite(d_sum))
                 throw std::runtime_error(
                     "momentum_transpose_diffusion_face_fluxes: invalid face interpolation distance");
-            const double w_owner = d_neighbour / d_sum;
-            const double w_neighbour = d_owner / d_sum;
             const double mu_owner_face =
                 cell_effective_dynamic_viscosity[owner] +
                 viscosity_gradient.component_data(0)[owner] * d_owner_vec.x +
