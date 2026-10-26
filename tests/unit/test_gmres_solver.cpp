@@ -366,7 +366,7 @@ int main() {
         EXPECT_NEAR(result.residual_relative, independent_relative, 1e-12);
     });
 
-    run_case("gmres_rejects_nonfinite_arnoldi_action", []() {
+    run_case("gmres_rejects_nonfinite_cycle_residual", []() {
         int applications = 0;
         LinearOperator op;
         op.size = 1;
@@ -374,6 +374,24 @@ int main() {
             if (out.size() != 1) out.resize(1);
             ++applications;
             out(0) = applications == 2
+                ? std::numeric_limits<double>::quiet_NaN() : in(0);
+        };
+        Vector b(1, 1.0), x(1, 0.0);
+        const auto result = solve_gmres(op, b, x, 1, 4, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::DIVERGED);
+        EXPECT_TRUE(std::isfinite(result.residual));
+        EXPECT_NEAR(result.residual, 1.0, 1e-14);
+        EXPECT_NEAR(x(0), 0.0, 1e-14);
+    });
+
+    run_case("gmres_rejects_nonfinite_arnoldi_action", []() {
+        int applications = 0;
+        LinearOperator op;
+        op.size = 1;
+        op.apply = [&applications](const Vector& in, Vector& out) {
+            if (out.size() != 1) out.resize(1);
+            ++applications;
+            out(0) = applications == 3
                 ? std::numeric_limits<double>::quiet_NaN() : in(0);
         };
         Vector b(1, 1.0), x(1, 0.0);
