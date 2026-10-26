@@ -1,0 +1,6 @@
+FAILED tests/python/test_n9_coupled_schur_case_selection.py::test_n9_coupled_schur_uses_case_selection_and_production_resolution - AssertionError: Resolved numerical selections:
+  CFDX production solver error: assemble_scalar_equation: non-orthogonal diffusion requires the current scalar field
+  
+assert 2 in (0, 1)
+ +  where 2 = CompletedProcess(args=['/home/runner/work/cfdx_dev/cfdx_dev/build/cfdx_production_solver', '--mesh', '/tmp/pytest-of-r...'CFDX production solver error: assemble_scalar_equation: non-orthogonal diffusion requires the current scalar field\n').returncode
+1 failed, 688 passed, 66 skipped, 5 warnings, 10 subtests passed in 22.50s

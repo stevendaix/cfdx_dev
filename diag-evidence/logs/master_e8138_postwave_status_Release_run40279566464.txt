@@ -1,0 +1,3 @@
+ctest_exit=8
+rerun_exit=8
+pyreg_exit=1

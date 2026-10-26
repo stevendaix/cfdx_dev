@@ -1,0 +1,2 @@
+verdict=INCONCLUSIVE_BUILD
+ctest log absent (build or ctest step did not run)

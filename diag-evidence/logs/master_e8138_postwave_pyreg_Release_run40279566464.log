@@ -1,0 +1,61 @@
+.......s........ssss..ss.........s...............................s...s.. [  9%]
+........................................................................ [ 19%]
+........................................................................ [ 28%]
+................................ssssssssssssss.......................... [ 38%]
+.......s................................................................ [ 47%]
+F....................................................................... [ 57%]
+...............................s.ssss................s................ [ 66%]
+........................................................................ [ 76%]
+............s........................................................... [ 85%]
+.........s...................................................... [ 94%]
+..........sssssssssssssssssss..sssssssssssss                             [100%]
+=================================== FAILURES ===================================
+_____ test_n9_coupled_schur_uses_case_selection_and_production_resolution ______
+tests/python/test_n9_coupled_schur_case_selection.py:88: in test_n9_coupled_schur_uses_case_selection_and_production_resolution
+    assert completed.returncode in (0, 1), diagnostics[-12000:]
+E   AssertionError: Resolved numerical selections:
+E     case=mesh_NACA0012_inv
+E     scheme[gradient]=numerics.gradient.gauss->gradient.gauss_cell(implemented)
+E     scheme[convection]=numerics.convection.upwind->convection.upwind(implemented)
+E     scheme[pressure_velocity]=pressure_velocity.coupled->pressure_velocity.coupled(implemented)
+E     scheme[linear_solver]=linear.fgmres->linear.fgmres(implemented)
+E     scheme[schur]=schur.pcd->schur.pcd(implemented)
+E     Initialization strategy uniform
+E     CFDX production solver error: assemble_scalar_equation: non-orthogonal diffusion requires the current scalar field
+E     
+E   assert 2 in (0, 1)
+E    +  where 2 = CompletedProcess(args=['/home/runner/work/cfdx_dev/cfdx_dev/build/cfdx_production_solver', '--mesh', '/tmp/pytest-of-r...'CFDX production solver error: assemble_scalar_equation: non-orthogonal diffusion requires the current scalar field\n').returncode
+=============================== warnings summary ===============================
+tests/python/test_fluent_adapter.py::TestFluentAdapter::test_convert_cas_h5_full
+tests/python/test_fluent_adapter.py::TestFluentAdapter::test_import_dat_h5
+  /home/runner/work/_temp/venv/lib/python3.12/site-packages/ansys/fluent/core/execution/session/file.py:1123: PyFluentDeprecationWarning: This usage is deprecated and will be removed in a future release. Please use 'field_data.scalar_fields()' instead
+    warnings.warn(
+
+tests/python/test_fluent_adapter.py::TestFluentAdapter::test_convert_cas_h5_full
+tests/python/test_fluent_adapter.py::TestFluentAdapter::test_import_dat_h5
+  /home/runner/work/_temp/venv/lib/python3.12/site-packages/ansys/fluent/core/execution/session/file.py:1166: PyFluentDeprecationWarning: This usage is deprecated and will be removed in a future release. Please use 'field_data.vector_fields()' instead
+    warnings.warn(
+
+tests/python/test_vm2025r2_fluent.py::TestVM2025R2FluentCases::test_cas_h5_detection
+  /home/runner/work/_temp/venv/lib/python3.12/site-packages/_pytest/fixtures.py:1313: PytestRemovedIn10Warning: Class-scoped fixture defined as instance method is deprecated.
+  Instance attributes set in this fixture will NOT be visible to test methods,
+  as each test gets a new instance while the fixture runs only once per class.
+  Use @classmethod decorator and set attributes on cls instead.
+  See https://docs.pytest.org/en/stable/deprecations.html#class-scoped-fixture-as-instance-method
+    fixturefunc = resolve_fixture_function(fixturedef, request)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/python/test_n9_coupled_schur_case_selection.py::test_n9_coupled_schur_uses_case_selection_and_production_resolution - AssertionError: Resolved numerical selections:
+  case=mesh_NACA0012_inv
+  scheme[gradient]=numerics.gradient.gauss->gradient.gauss_cell(implemented)
+  scheme[convection]=numerics.convection.upwind->convection.upwind(implemented)
+  scheme[pressure_velocity]=pressure_velocity.coupled->pressure_velocity.coupled(implemented)
+  scheme[linear_solver]=linear.fgmres->linear.fgmres(implemented)
+  scheme[schur]=schur.pcd->schur.pcd(implemented)
+  Initialization strategy uniform
+  CFDX production solver error: assemble_scalar_equation: non-orthogonal diffusion requires the current scalar field
+  
+assert 2 in (0, 1)
+ +  where 2 = CompletedProcess(args=['/home/runner/work/cfdx_dev/cfdx_dev/build/cfdx_production_solver', '--mesh', '/tmp/pytest-of-r...'CFDX production solver error: assemble_scalar_equation: non-orthogonal diffusion requires the current scalar field\n').returncode
+1 failed, 688 passed, 66 skipped, 5 warnings, 10 subtests passed in 22.50s
