@@ -1123,6 +1123,18 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                 "momentum_transpose_diffusion_face_fluxes: viscosity must be finite and non-negative");
     }
 
+    // Reconstruct variable viscosity at the geometric face centre. Normal
+    // distance weighting is not affine-exact on skewed meshes. Excluding
+    // boundary ghosts avoids biasing the gradient on reduced boundary stencils.
+    Field<double, Location::CELL> viscosity_field(
+        nc, "effective_dynamic_viscosity", "Pa.s", 1);
+    for (std::size_t cell = 0; cell < nc; ++cell)
+        viscosity_field(cell) = cell_effective_dynamic_viscosity[cell];
+    const auto viscosity_gradient =
+        cfdx::core::compute_gradient_least_squares(
+            viscosity_field, mesh,
+            cfdx::core::BoundaryGradientPolicy::EXCLUDE_BOUNDARY);
+
     std::array<std::vector<std::array<double, 3>>, 3> gradient;
     std::array<std::vector<std::array<double, 3>>, 3> boundary_gradient;
     for (std::size_t component = 0; component < 3; ++component) {
@@ -1217,8 +1229,22 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                     "momentum_transpose_diffusion_face_fluxes: invalid face interpolation distance");
             const double w_owner = d_neighbour / d_sum;
             const double w_neighbour = d_owner / d_sum;
-            mu_face = w_owner * cell_effective_dynamic_viscosity[owner] +
-                      w_neighbour * cell_effective_dynamic_viscosity[neighbour];
+            const double mu_owner_face =
+                cell_effective_dynamic_viscosity[owner] +
+                viscosity_gradient.component_data(0)[owner] * d_owner_vec.x +
+                viscosity_gradient.component_data(1)[owner] * d_owner_vec.y +
+                viscosity_gradient.component_data(2)[owner] * d_owner_vec.z;
+            const Vec3 face_to_neighbour =
+                geometry.face_centres[face] - geometry.cell_centres[neighbour];
+            const double mu_neighbour_face =
+                cell_effective_dynamic_viscosity[neighbour] +
+                viscosity_gradient.component_data(0)[neighbour] * face_to_neighbour.x +
+                viscosity_gradient.component_data(1)[neighbour] * face_to_neighbour.y +
+                viscosity_gradient.component_data(2)[neighbour] * face_to_neighbour.z;
+            mu_face = 0.5 * (mu_owner_face + mu_neighbour_face);
+            if (!std::isfinite(mu_face) || mu_face < 0.0)
+                throw std::runtime_error(
+                    "momentum_transpose_diffusion_face_fluxes: invalid reconstructed face viscosity");
             for (std::size_t velocity_component = 0; velocity_component < 3;
                  ++velocity_component) {
                 grad_face[velocity_component] =

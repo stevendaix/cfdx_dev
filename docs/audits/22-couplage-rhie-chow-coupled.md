@@ -59,7 +59,8 @@ Le bloc de continuité doit assembler la même compensation, ici différée au n
 - Le chemin COUPLED est modifié dans la PR #1078 pour distinguer le contrat du flux à partir de la vitesse physique de celui du prédicteur ségrégé.
 - La compensation \(dAU\nabla p\) est ajoutée au flux autoritaire et au second membre de continuité, y compris les faces à pression imposée.
 - Une régression d'opérateur indépendante du helper de flux est ajoutée dans `tests/validation/test_n9_s9_rhie_chow_consistency.cpp`.
-- À la rédaction de cette fiche, la CI Release/DebugSanitizers et les campagnes de cohérence exact-HEAD ne sont pas encore toutes terminées. PR #1078 reste draft ; ne pas merger avant inspection des résultats et revue du test affine/checkerboard.
+- La PR #1078 a depuis été fusionnée. Cela ne ferme pas la qualification F03 : les résultats de validation totale comportent encore des échecs sans lien causal établi avec ce changement.
+- Le complément ajoute un indicateur de divergence L1 sur toute la grille pour le mode de pression alternée, comparant le flux corrigé au flux interpolé sans correction. Il mesure la réponse de l'opérateur, pas l'amortissement d'une solution convergée ; il doit passer en CI exact-HEAD avant d'être considéré comme preuve.
 
 ## 8. Journal des modifications
 - 2026-10-24 — création pour l'audit #1069 et la PR #1078 ; contrat et critères de preuve documentés, qualification en attente.
@@ -77,7 +78,19 @@ Added regression coverage on the COUPLED physical-velocity flux contract:
 - a quantitative checkerboard central-face test comparing naive interpolated flux (0) with pressure-jump-corrected flux (-2).
 
 Remaining before promotion:
-- a grid-level checkerboard pressure-mode amplitude/suppression metric rather than a single-face response;
-- an explicit end-to-end regression proving the production SIMPLE/SIMPLEC solver continues to call the H/A predictor API and COUPLED calls the physical-velocity API.
+- run the added grid-level checkerboard flux-response metric on exact HEAD;
+- add or identify an explicit end-to-end regression proving the production SIMPLE/SIMPLEC solver continues to call the H/A predictor API and COUPLED calls the physical-velocity API;
+- execute and review the applicable physical N9 matrix and total validation.
 
 These additions strengthen the operator-level and block-level evidence, but the exact-HEAD Release/DebugSanitizers and numerical maturity campaigns must pass before promotion. Keep the PR draft until those results are green.
+
+## 10. CI audit follow-up — 2026-10-26
+
+The first exact-HEAD CI run for follow-up PR #1133 failed, so the PR remains draft. The failure review found a production-selection blocker in the PCD setup: its matrix-only pressure operators called `assemble_scalar_equation` with non-orthogonal correction enabled but without a current scalar field. The PCD operators now explicitly disable that deferred correction, which is consistent with their documented matrix-only contract; this does not alter the physical transport operator.
+
+The same run exposed two independent regression-test/diagnostic defects:
+- the skewed one-cell energy audit did not pass its current temperature to the energy assembly, despite requiring it for the non-orthogonal correction;
+- scalar solve results left the physical residual-before/after-relaxation fields as NaN. The scalar solver now records the physical infinity-norm residual for the linear candidate and returned field, with relative values normalized by the RHS infinity norm; the 1x1 path uses the same relative-residual contract.
+- the skewed variable-viscosity transpose-stress regression exposed normal-distance interpolation of viscosity on a skewed mesh. Internal-face viscosity is now reconstructed from least-squares cell gradients at the face centre, preserving affine-field exactness when the stencil supports it.
+
+These are code/test corrections, not relaxed acceptance criteria. The original CI run also reported failures in the CHT-time audit, MPI deterministic fused reduction under LeakSanitizer, and skewed variable-viscosity transpose-stress flux. Those failures have not yet been requalified on the updated HEAD; they must not be treated as resolved. Release, DebugSanitizers, and full validation must pass on one exact HEAD before promotion.

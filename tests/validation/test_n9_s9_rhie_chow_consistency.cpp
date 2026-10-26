@@ -584,6 +584,32 @@ int main()
         EXPECT_NEAR(phi(f), expected, 1e-12);
         EXPECT_NEAR(phi(f) - phi_linear(f), -2.0, 1e-12);
         EXPECT_TRUE(std::abs(phi(f) - phi_linear(f)) > 1.0);
+
+        // Grid-level pressure-mode response: compare the corrected authoritative
+        // flux with the velocity-only interpolated flux for an alternating
+        // pressure field. This is an operator-response metric, not a claim of
+        // checkerboard damping in a converged pressure-velocity solution.
+        std::vector<double> corrected_divergence(mesh.n_cells(), 0.0);
+        std::vector<double> naive_divergence(mesh.n_cells(), 0.0);
+        for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+            const std::size_t face_owner = mesh.ownership().owner(face);
+            corrected_divergence[face_owner] += phi(face);
+            naive_divergence[face_owner] += phi_linear(face);
+            const auto face_neighbour = mesh.ownership().neighbour(face);
+            if (face_neighbour >= 0) {
+                const auto neighbour_cell = static_cast<std::size_t>(face_neighbour);
+                corrected_divergence[neighbour_cell] -= phi(face);
+                naive_divergence[neighbour_cell] -= phi_linear(face);
+            }
+        }
+        double corrected_l1 = 0.0;
+        double naive_l1 = 0.0;
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+            corrected_l1 += std::abs(corrected_divergence[cell]);
+            naive_l1 += std::abs(naive_divergence[cell]);
+        }
+        EXPECT_TRUE(corrected_l1 > 1.0);
+        EXPECT_NEAR(naive_l1, 0.0, 1e-12);
     });
 
 
