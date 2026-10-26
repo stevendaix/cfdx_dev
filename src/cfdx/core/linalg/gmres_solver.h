@@ -38,7 +38,7 @@ inline SolverResult solve_gmres(
 {
     SolverResult result;
     if (op.size == 0 || !op.apply || b.size() != op.size || x.size() != op.size ||
-        restart <= 0 || max_iter == 0 || tolerance <= 0.0) {
+        restart <= 0 || max_iter == 0 || !std::isfinite(tolerance) || tolerance <= 0.0) {
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
     }
@@ -50,8 +50,7 @@ inline SolverResult solve_gmres(
         controls.restart_max < controls.restart_min ||
         !std::isfinite(controls.target_reduction_per_cycle) ||
         controls.target_reduction_per_cycle <= 0.0 ||
-        controls.target_reduction_per_cycle >= 1.0 ||
-        !std::isfinite(tolerance) || tolerance <= 0.0 || max_iter == 0) {
+        controls.target_reduction_per_cycle >= 1.0) {
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
     }
