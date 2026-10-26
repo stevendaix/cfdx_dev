@@ -49,24 +49,32 @@ inline ReductionPacket mpi_deterministic_fused_reduction(
     const ReductionPacket& local, MPI_Comm comm = MPI_COMM_WORLD) {
     const int rank = cfdx::core::parallel::mpi_rank(comm);
     const int size = cfdx::core::parallel::mpi_size(comm);
-    double local_add[2] = {local.dot, local.norm2};
-    std::vector<double> gathered(rank == 0 ? static_cast<std::size_t>(2 * size) : 0);
-    MPI_Gather(local_add, 2, MPI_DOUBLE,
-               rank == 0 ? gathered.data() : nullptr, 2, MPI_DOUBLE, 0, comm);
 
-    double global_add[2] = {0.0, 0.0};
+    // Gather all three components together. Rank-ordered accumulation makes
+    // the additive reductions reproducible and the max reduction deterministic,
+    // while avoiding a separate MPI_MAX operation dispatch on the deterministic
+    // path. It also reduces the collective count from three to two.
+    const double local_values[3] = {local.dot, local.norm2, local.max_abs};
+    std::vector<double> gathered(
+        rank == 0 ? static_cast<std::size_t>(size) * 3U : 0U);
+    MPI_Gather(local_values, 3, MPI_DOUBLE,
+               rank == 0 ? gathered.data() : nullptr, 3, MPI_DOUBLE, 0, comm);
+
+    double global_values[3] = {0.0, 0.0, 0.0};
     if (rank == 0) {
         for (int r = 0; r < size; ++r) {
-            global_add[0] += gathered[static_cast<std::size_t>(2 * r)];
-            global_add[1] += gathered[static_cast<std::size_t>(2 * r + 1)];
+            const auto offset = static_cast<std::size_t>(r) * 3U;
+            global_values[0] += gathered[offset];
+            global_values[1] += gathered[offset + 1U];
+            global_values[2] = std::max(global_values[2], gathered[offset + 2U]);
         }
     }
-    MPI_Bcast(global_add, 2, MPI_DOUBLE, 0, comm);
+    MPI_Bcast(global_values, 3, MPI_DOUBLE, 0, comm);
 
     ReductionPacket global;
-    global.dot = global_add[0];
-    global.norm2 = global_add[1];
-    MPI_Allreduce(&local.max_abs, &global.max_abs, 1, MPI_DOUBLE, MPI_MAX, comm);
+    global.dot = global_values[0];
+    global.norm2 = global_values[1];
+    global.max_abs = global_values[2];
     return global;
 }
 
