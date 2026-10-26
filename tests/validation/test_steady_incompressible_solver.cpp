@@ -374,6 +374,248 @@ int main()
         std::filesystem::remove(csv_path);
     });
 
+    run_case("steady_incompressible_sst_dat_restart_hydrates_runtime_before_first_predictor", [] {
+        const Mesh m = make_unit_cube();
+        Field<double, Location::CELL> seed_u(1, "U", "m/s", 3);
+        Field<double, Location::CELL> seed_p(1, "p", "Pa", 1);
+        Field<double, Location::CELL> seed_k(1, "k", "m2/s2", 1);
+        Field<double, Location::CELL> seed_omega(1, "omega", "1/s", 1);
+        seed_u.fill(0.0);
+        seed_p.fill(0.0);
+        seed_k(0) = 0.25;
+        seed_omega(0) = 3.0;
+        const auto dat = unique_temp_path("_sst_runtime_restart.dat");
+        cfdx::io::write_dat_restart_fields(
+            dat.string(), m, seed_u, seed_p,
+            cfdx::io::DatRestartFields{nullptr, &seed_k, nullptr, &seed_omega},
+            4, 0.2);
+
+        Field<double, Location::CELL> U(1, "U", "m/s", 3);
+        Field<double, Location::CELL> p(1, "p", "Pa", 1);
+        U.fill(0.0);
+        p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        controls.initialization.mode = InitializationMode::Restart;
+        controls.initialization.restart_path = dat.string();
+        controls.convergence.max_iterations = 1;
+        controls.convergence.continuity_tolerance = 1e-12;
+        controls.linear_tolerance = 1e-12;
+
+        SSTProductionState state(1);
+        state.k(0) = 0.1;
+        state.omega(0) = 1.0;
+        state.nu_t(0) = 0.01;
+        state.wall_distance(0) = 0.5;
+        state.strain_rate(0) = 0.0;
+        SSTProductionRuntime runtime;
+        runtime.state = &state;
+        runtime.transport.model = TurbulenceModel::SST;
+        runtime.transport.density = controls.density;
+        runtime.transport.molecular_viscosity = controls.kinematic_viscosity;
+        runtime.k_boundary_conditions["wall"] =
+            {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        runtime.omega_boundary_conditions["wall"] =
+            {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        runtime.wall_patch_names = {"wall"};
+        controls.sst_runtime = &runtime;
+
+        double first_predictor_mu = std::numeric_limits<double>::quiet_NaN();
+        controls.momentum_predictor_callback =
+            [&](std::size_t, const std::vector<double>& mu_eff,
+                const Field<double, Location::CELL>&,
+                const Field<double, Location::FACE>&) {
+                if (!std::isfinite(first_predictor_mu))
+                    first_predictor_mu = mu_eff.at(0);
+            };
+
+        (void)solve_steady_incompressible(m, U, p, ubc, pbc, controls);
+        // For this one-cell, zero-strain state, the SST limiter reduces to
+        // nu_t = k/omega. This checks the viscosity actually supplied to the
+        // first momentum predictor, not merely the final mutated SST fields.
+        const double expected_mu = controls.density *
+            (controls.kinematic_viscosity + seed_k(0) / seed_omega(0));
+        EXPECT_TRUE(std::isfinite(first_predictor_mu));
+        EXPECT_NEAR(first_predictor_mu, expected_mu, 1e-10);
+
+        // A second, caller-owned k target would split restart ownership between
+        // the runtime and the positional restart API. Reject it before U/p or
+        // either SST state can be mutated.
+        Field<double, Location::CELL> conflicting_k(1, "k_other", "m2/s2", 1);
+        conflicting_k(0) = 7.0;
+        cfdx::io::DatRestartFields conflicting_fields;
+        conflicting_fields.k = &conflicting_k;
+        const double u_before = U(0, 0);
+        const double p_before = p(0);
+        EXPECT_THROW_WITH(
+            solve_steady_incompressible(
+                m, U, p, ubc, pbc, controls, "", conflicting_fields),
+            std::invalid_argument, "active runtime state");
+        EXPECT_NEAR(U(0, 0), u_before, 0.0);
+        EXPECT_NEAR(p(0), p_before, 0.0);
+        EXPECT_NEAR(conflicting_k(0), 7.0, 0.0);
+
+        // The omega target is subject to the same single-owner contract as k.
+        Field<double, Location::CELL> conflicting_omega(
+            1, "omega_other", "1/s", 1);
+        conflicting_omega(0) = 9.0;
+        cfdx::io::DatRestartFields conflicting_omega_fields;
+        conflicting_omega_fields.omega = &conflicting_omega;
+        EXPECT_THROW_WITH(
+            solve_steady_incompressible(
+                m, U, p, ubc, pbc, controls, "", conflicting_omega_fields),
+            std::invalid_argument, "active runtime state");
+        EXPECT_NEAR(U(0, 0), u_before, 0.0);
+        EXPECT_NEAR(p(0), p_before, 0.0);
+        EXPECT_NEAR(conflicting_omega(0), 9.0, 0.0);
+
+        // An incomplete SST checkpoint must fail atomically at the integrated
+        // solver entry point, leaving carrier and every runtime-owned field
+        // untouched even when k was present before the missing omega is found.
+        const auto malformed_dat = unique_temp_path("_sst_runtime_restart_missing_omega.dat");
+        cfdx::io::write_dat_restart_fields(
+            malformed_dat.string(), m, seed_u, seed_p,
+            cfdx::io::DatRestartFields{nullptr, &seed_k, nullptr, nullptr},
+            5, 0.25);
+        const double k_before = state.k(0);
+        const double omega_before = state.omega(0);
+        const double nu_t_before = state.nu_t(0);
+        const double wall_distance_before = state.wall_distance(0);
+        const double strain_before = state.strain_rate(0);
+        controls.initialization.restart_path = malformed_dat.string();
+        EXPECT_THROW_WITH(
+            solve_steady_incompressible(m, U, p, ubc, pbc, controls),
+            std::runtime_error, "requested omega but DAT has none");
+        EXPECT_NEAR(U(0, 0), u_before, 0.0);
+        EXPECT_NEAR(p(0), p_before, 0.0);
+        EXPECT_NEAR(state.k(0), k_before, 0.0);
+        EXPECT_NEAR(state.omega(0), omega_before, 0.0);
+        EXPECT_NEAR(state.nu_t(0), nu_t_before, 0.0);
+        EXPECT_NEAR(state.wall_distance(0), wall_distance_before, 0.0);
+        EXPECT_NEAR(state.strain_rate(0), strain_before, 0.0);
+        std::filesystem::remove(malformed_dat);
+        std::filesystem::remove(dat);
+    });
+
+    run_case("steady_incompressible_sst_continuous_and_dat_restarted_trajectories_match", [] {
+        const Mesh m = make_unit_cube();
+        const auto dat = unique_temp_path("_sst_trajectory_equivalence.dat");
+
+        const auto initialize_state = [](SSTProductionState& state) {
+            state.k(0) = 0.1;
+            state.omega(0) = 1.0;
+            state.nu_t(0) = 0.1;
+            state.wall_distance(0) = 0.5;
+            state.strain_rate(0) = 0.0;
+        };
+        const auto configure_runtime = [](SSTProductionState& state,
+                                          SSTProductionRuntime& runtime,
+                                          IncompressibleSolverControls& controls) {
+            runtime.state = &state;
+            runtime.transport.model = TurbulenceModel::SST;
+            runtime.transport.density = controls.density;
+            runtime.transport.molecular_viscosity = controls.kinematic_viscosity;
+            runtime.k_boundary_conditions["wall"] =
+                {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+            runtime.omega_boundary_conditions["wall"] =
+                {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+            runtime.wall_patch_names = {"wall"};
+            controls.sst_runtime = &runtime;
+            controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+            controls.convergence.max_iterations = 2;
+            controls.convergence.continuity_tolerance = 1e-12;
+            controls.linear_tolerance = 1e-12;
+            controls.pressure_reference_cell = 0;
+            controls.pressure_reference_value = 0.0;
+        };
+        const auto capture_flux = [](std::vector<double>& destination) {
+            return [&destination](
+                std::size_t, const std::vector<double>&,
+                const Field<double, Location::CELL>&,
+                const Field<double, Location::FACE>& mass_flux) {
+                destination.resize(mass_flux.size());
+                for (std::size_t face = 0; face < mass_flux.size(); ++face)
+                    destination[face] = mass_flux(face);
+            };
+        };
+
+        Field<double, Location::CELL> continuous_u(1, "U", "m/s", 3);
+        Field<double, Location::CELL> continuous_p(1, "p", "Pa", 1);
+        continuous_u.fill(0.0);
+        continuous_p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {
+            VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        SSTProductionState continuous_state(1);
+        initialize_state(continuous_state);
+        SSTProductionRuntime continuous_runtime;
+        IncompressibleSolverControls continuous_controls;
+        configure_runtime(continuous_state, continuous_runtime, continuous_controls);
+        std::vector<double> continuous_flux;
+        continuous_controls.momentum_predictor_callback = capture_flux(continuous_flux);
+        const auto continuous_result = solve_steady_incompressible(
+            m, continuous_u, continuous_p, ubc, pbc, continuous_controls);
+        EXPECT_TRUE(continuous_result.iterations == 2);
+        EXPECT_TRUE(!continuous_flux.empty());
+
+        Field<double, Location::CELL> split_u(1, "U", "m/s", 3);
+        Field<double, Location::CELL> split_p(1, "p", "Pa", 1);
+        split_u.fill(0.0);
+        split_p.fill(0.0);
+        SSTProductionState split_state(1);
+        initialize_state(split_state);
+        SSTProductionRuntime split_runtime;
+        IncompressibleSolverControls first_controls;
+        configure_runtime(split_state, split_runtime, first_controls);
+        first_controls.convergence.max_iterations = 1;
+        std::vector<double> first_flux;
+        first_controls.momentum_predictor_callback = capture_flux(first_flux);
+        const auto first_result = solve_steady_incompressible(
+            m, split_u, split_p, ubc, pbc, first_controls);
+        EXPECT_TRUE(first_result.iterations == 1);
+        EXPECT_TRUE(!first_flux.empty());
+
+        cfdx::io::write_dat_restart_fields(
+            dat.string(), m, split_u, split_p,
+            cfdx::io::DatRestartFields{
+                nullptr, &split_state.k, nullptr, &split_state.omega},
+            4, 0.1);
+
+        SSTProductionState restarted_state(1);
+        initialize_state(restarted_state);
+        SSTProductionRuntime restarted_runtime;
+        IncompressibleSolverControls restart_controls;
+        configure_runtime(restarted_state, restarted_runtime, restart_controls);
+        restart_controls.convergence.max_iterations = 1;
+        restart_controls.initialization.mode = InitializationMode::Restart;
+        restart_controls.initialization.restart_path = dat.string();
+        std::vector<double> restarted_flux;
+        restart_controls.momentum_predictor_callback = capture_flux(restarted_flux);
+        const auto restarted_result = solve_steady_incompressible(
+            m, split_u, split_p, ubc, pbc, restart_controls);
+        EXPECT_TRUE(restarted_result.iterations == 1);
+        EXPECT_TRUE(restarted_flux.size() == continuous_flux.size());
+
+        for (std::size_t component = 0; component < 3; ++component)
+            EXPECT_NEAR(split_u(0, component), continuous_u(0, component), 1e-12);
+        EXPECT_NEAR(split_p(0), continuous_p(0), 1e-12);
+        EXPECT_NEAR(restarted_state.k(0), continuous_state.k(0), 1e-12);
+        EXPECT_NEAR(restarted_state.omega(0), continuous_state.omega(0), 1e-12);
+        EXPECT_NEAR(restarted_state.nu_t(0), continuous_state.nu_t(0), 1e-12);
+        EXPECT_NEAR(restarted_state.wall_distance(0), continuous_state.wall_distance(0), 1e-12);
+        EXPECT_NEAR(restarted_state.strain_rate(0), continuous_state.strain_rate(0), 1e-12);
+        for (std::size_t face = 0; face < continuous_flux.size(); ++face)
+            EXPECT_NEAR(restarted_flux[face], continuous_flux[face], 1e-12);
+        std::filesystem::remove(dat);
+    });
+
     run_case("steady_incompressible_opt_in_sst_runtime_executes_coupled_path", [] {
         const Mesh m = make_unit_cube();
         Field<double, Location::CELL> U(1, "U", "m/s", 3);

@@ -16,12 +16,14 @@
 #include "cfdx/physics/production_time_contract.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <csignal>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -46,6 +48,8 @@ struct Options {
     std::size_t iterations = 2;
     bool adaptive_convergence = false;
     bool initial_velocity_field = false;
+    // Explicit opt-in only; this path remains experimental and unqualified.
+    bool experimental_sst = false;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
 };
@@ -514,12 +518,14 @@ Options parse(int argc, char** argv)
         else if (arg == "--iterations") o.iterations = std::stoull(value("--iterations"));
         else if (arg == "--adaptive-convergence") o.adaptive_convergence = true;
         else if (arg == "--initial-velocity-field") o.initial_velocity_field = true;
+        else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
                          "  [--initial-velocity-field] (initialize U from /fields/vector/U)\n"
+                         "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::exit(0);
@@ -577,6 +583,9 @@ int main(int argc, char** argv)
         }
         if (!ok || mesh.n_cells() == 0)
             throw std::runtime_error("production solver: mesh import failed");
+        if (options.experimental_sst && !is_case_hdf5)
+            throw std::invalid_argument(
+                "production solver: --experimental-sst requires a .cfdx.h5 case");
 
         // The declared energy model is validated fail-closed as soon as the
         // case is loaded, before any expensive flow computation: an unknown
@@ -589,7 +598,8 @@ int main(int argc, char** argv)
         // solver path that may run it.
         if (is_case_hdf5) {
             validate_production_steady_time_selection(case_setup, "production solver");
-            validate_production_turbulence_selection(case_setup);
+            validate_production_turbulence_selection(
+                case_setup, options.experimental_sst);
             validate_production_energy_model(case_setup);
             validate_production_radiation_selection(case_setup);
             validate_production_buoyancy_model(case_setup);
@@ -847,6 +857,121 @@ int main(int argc, char** argv)
         controls.initialization = initialization;
         if (!options.restart.empty())
             controls.initialization.mode = InitializationMode::Restart;
+
+        // Own all SST runtime objects in main for the complete solver call.
+        // The default production selector stays fail-closed; this branch can
+        // only be entered through the explicit --experimental-sst opt-in.
+        std::optional<SSTProductionState> experimental_sst_state;
+        SSTProductionRuntime experimental_sst_runtime;
+        DatRestartFields solver_restart_fields{};
+        if (options.experimental_sst) {
+            if (production_energy_requested(case_setup) ||
+                production_buoyancy_requested(case_setup) ||
+                production_s2s_radiation_requested(case_setup))
+                throw std::invalid_argument(
+                    "production solver: --experimental-sst currently supports only "
+                    "the isolated incompressible carrier; coupled energy, buoyancy, "
+                    "and radiation cases remain unsupported");
+
+            TurbulenceTransportControls sst_controls;
+            sst_controls.model = TurbulenceModel::SST;
+            sst_controls.density = controls.density;
+            sst_controls.molecular_viscosity = controls.kinematic_viscosity;
+            validate_turbulence_controls(sst_controls);
+
+            const auto boundary_contract =
+                make_sst_runtime_boundary_contract(case_setup);
+            std::vector<std::string> wall_patch_names;
+            for (std::size_t patch_index = 0;
+                 patch_index < mesh.boundary().n_patches(); ++patch_index) {
+                const auto& patch = mesh.boundary().patch(patch_index);
+                const auto* bc = case_setup.find_boundary(patch.name);
+                if (bc == nullptr)
+                    throw std::invalid_argument(
+                        "production solver: SST runtime has no case boundary metadata for patch '" +
+                        patch.name + "'");
+                const bool declared_wall =
+                    bc->type == BCType::WALL ||
+                    bc->value_type == BCValueType::WALL_NO_SLIP ||
+                    bc->value_type == BCValueType::WALL_SLIP ||
+                    bc->value_type == BCValueType::WALL_THERMAL;
+                if (declared_wall) {
+                    if (patch.type != PatchType::WALL)
+                        throw std::invalid_argument(
+                            "production solver: SST case declares wall patch '" +
+                            patch.name + "' but mesh patch is not WALL");
+                    wall_patch_names.push_back(patch.name);
+                }
+            }
+            if (wall_patch_names.empty())
+                throw std::invalid_argument(
+                    "production solver: experimental SST requires at least one "
+                    "explicit wall patch for wall-distance reconstruction");
+
+            std::map<std::string, std::array<double, 3>> fixed_velocity_values;
+            for (const auto& [name, bc] : ubc) {
+                if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                    fixed_velocity_values.emplace(
+                        name, std::array<double, 3>{bc.value.x, bc.value.y, bc.value.z});
+            }
+
+            const FvGeometry sst_geometry = build_fv_geometry(mesh);
+            if (!options.restart.empty()) {
+                experimental_sst_state.emplace(mesh.n_cells());
+                const auto wall_distance = compute_mesh_cell_wall_distance(
+                    mesh, sst_geometry, wall_patch_names);
+                // Stage and validate U, p, k, omega and derived SST fields
+                // before changing live fields. The solver re-reads the same
+                // checkpoint through its normal initialization transaction.
+                (void)restore_sst_production_state_from_dat(
+                    options.restart.string(), mesh, U, p,
+                    *experimental_sst_state, wall_distance.distance,
+                    sst_controls, fixed_velocity_values);
+            } else {
+                if (!case_setup.has_initial_condition ||
+                    case_setup.initial_condition.scalar_fields.find("k") ==
+                        case_setup.initial_condition.scalar_fields.end() ||
+                    case_setup.initial_condition.scalar_fields.find("omega") ==
+                        case_setup.initial_condition.scalar_fields.end())
+                    throw std::invalid_argument(
+                        "production solver: experimental SST requires explicit "
+                        "initial_condition.scalar_fields.k and .omega, or a DAT restart");
+                experimental_sst_state.emplace(
+                    initialize_sst_production_state_from_mesh(
+                        mesh, case_setup, sst_controls, U,
+                        fixed_velocity_values, wall_patch_names));
+            }
+
+            experimental_sst_runtime.state = &*experimental_sst_state;
+            experimental_sst_runtime.transport = sst_controls;
+            experimental_sst_runtime.k_boundary_conditions = boundary_contract.k;
+            experimental_sst_runtime.omega_boundary_conditions = boundary_contract.omega;
+            experimental_sst_runtime.wall_patch_names = wall_patch_names;
+            experimental_sst_runtime.wall_omega_sst_patches =
+                boundary_contract.wall_omega_sst_patches;
+            experimental_sst_runtime.max_transport_iterations = 100;
+            experimental_sst_runtime.transport_tolerance = 1e-8;
+            if (!boundary_contract.wall_omega_sst_patches.empty()) {
+                experimental_sst_runtime.omega_face_values =
+                    make_sst_wall_omega_face_values(
+                        mesh, sst_geometry,
+                        boundary_contract.wall_omega_sst_patches, sst_controls);
+                require_supported_sst_runtime_boundaries(
+                    boundary_contract, mesh, sst_geometry,
+                    &experimental_sst_runtime.omega_face_values);
+            } else {
+                require_supported_sst_runtime_boundaries(
+                    boundary_contract, mesh, sst_geometry, nullptr);
+            }
+            controls.sst_runtime = &experimental_sst_runtime;
+            solver_restart_fields.k = &experimental_sst_state->k;
+            solver_restart_fields.omega = &experimental_sst_state->omega;
+            std::cerr
+                << "WARNING: experimental SST runtime explicitly enabled. "
+                   "This path is not physically qualified and does not enable "
+                   "the general RANS selector.\n";
+        }
+
         std::cout << "Initialization strategy "
                   << cfdx::physics::to_string(controls.initialization.mode) << "\n";
 
@@ -943,7 +1068,8 @@ int main(int argc, char** argv)
                       << "\n";
         } else {
             result = solve_steady_incompressible(
-                mesh, U, p, ubc, pbc, controls, options.restart.string());
+                mesh, U, p, ubc, pbc, controls, options.restart.string(),
+                solver_restart_fields);
         }
         execution_result = result;
         const auto execution = options.output_dir / "execution.json";
