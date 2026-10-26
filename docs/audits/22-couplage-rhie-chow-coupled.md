@@ -116,3 +116,22 @@ Other exact-HEAD evidence observed so far:
 - The earlier compile blocker from the unqualified `Vec3` name was corrected; Release now builds.
 
 Next investigation must isolate why the PCD coupled solve stalls specifically on skewed Couette, compare the reconstructed authoritative face flux and cellwise continuity against the assembled continuity block, and inspect the nested (F_p) termination/status semantics. Any fix must preserve the strict physical residual gate and be requalified on exact HEAD. PR #1133 remains draft and must not be merged until the physical failure is resolved and required CI completes.
+
+
+## 12. Résultats CI et instrumentation de diagnostic — 2026-10-26
+
+HEAD évalué par les campagnes complètes : `33318dae25eb71ff8a860ac5fc0893d26eda1427`.
+
+- `CFDX CI / Release` : succès.
+- `Pre-commit Fast Guards`, `CFDX documentation`, `cfdx-audit-gate`, `CFDX numerical maturity audit` et `N10 Public Fixture Verification` : succès.
+- `N9 physical validation` et `N9 qualification campaign` : échec identique sur `COUPLED skew Couette`, à l'itération 58.
+- `CFDX GUI CI`, `DebugSanitizers`, `CFDX numerical maturity` et `CFDX total validation` : encore en cours lors de cette lecture.
+
+Mesures de l'échec N9 : `momentum_rel=1.1e-5`, `continuity_linf=1.63e-3`, `pressure_rel=2.27e-4`, `velocity_change=3.9e-5`, `pressure_change=8.0e-5`. Le résidu vrai du système linéaire couplé est de l'ordre de `1e-12`. Les appels imbriqués `Fp` affichent `status=MAX_ITER_REACHED` après 1000 itérations, mais avec un résidu relatif mesuré proche de `1e-14`; le contrat actuel les accepte comme applications de préconditionneur si l'itéré reste fini et exploitable. Ce statut seul ne prouve donc pas la cause de l'échec physique et ne justifie pas de modifier la tolérance.
+
+### Suite de diagnostic
+
+1. Ne pas relâcher les seuils de continuité/momentum ni le budget de stagnation.
+2. Le bloc couplé assemble la correction non orthogonale explicitement à partir de (p_{old}), tandis que le flux physique d'acceptation est reconstruit avec le gradient de la pression mise à jour. C'est un point à vérifier quantitativement, pas encore une cause démontrée.
+3. Le commit `7c72fb51e510ec4aff63b5234b39e2b3f27065e6` enrichit le message d'échec de `test_n9_physical_matrix` avec les canaux indépendants déjà calculés : continuité reconstruite depuis la vitesse, écart flux/vitesse et identité Rhie–Chow. Ces données doivent permettre de distinguer une incohérence de flux d'une stagnation physique réelle au prochain run.
+4. Après la collecte de ces mesures, comparer le résidu de continuité de la ligne algébrique capturée au résidu des flux reconstruits sur le même état ((U,p)). Toute correction doit préserver les gates actuelles et être accompagnée d'un test de non-régression ciblé.
