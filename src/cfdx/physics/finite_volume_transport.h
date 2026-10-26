@@ -1130,6 +1130,20 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     if (solution.size() != equation.rhs.size())
         throw std::invalid_argument("solve_scalar_equation: solution size mismatch");
 
+    const auto rhs_inf = [&]() {
+        double norm = 0.0;
+        for (std::size_t i = 0; i < equation.rhs.size(); ++i) {
+            const double value = equation.rhs(i);
+            if (!std::isfinite(value))
+                throw std::invalid_argument("solve_scalar_equation: non-finite RHS");
+            norm = std::max(norm, std::abs(value));
+        }
+        return norm;
+    }();
+    const auto relative_residual = [rhs_inf](double residual) {
+        return residual / std::max(rhs_inf, 1e-300);
+    };
+
     if (solution.size() == 1) {
         const auto begin = equation.matrix.row_offsets_data()[0];
         const auto end = equation.matrix.row_offsets_data()[1];
@@ -1149,18 +1163,31 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             // the returned state fail the requested residual even though the
             // reported linear residual is zero.
             solution(0) = candidate_value;
-            return {
+            cfdx::core::SolverResult result{
                 cfdx::core::SolverStatus::CONVERGED,
-                1, candidate_residual, candidate_residual
+                1, candidate_residual, relative_residual(candidate_residual)
             };
+            result.residual_before_relaxation = candidate_residual;
+            result.residual_after_relaxation = candidate_residual;
+            result.residual_relative_before_relaxation =
+                relative_residual(candidate_residual);
+            result.residual_relative_after_relaxation =
+                relative_residual(candidate_residual);
+            return result;
         }
         solution(0) += controls.relaxation * (candidate_value - solution(0));
         const double residual =
             std::abs(diagonal * solution(0) - equation.rhs(0));
-        return {
+        cfdx::core::SolverResult result{
             cfdx::core::SolverStatus::MAX_ITER_REACHED,
-            controls.max_iterations, residual, residual
+            controls.max_iterations, residual, relative_residual(residual)
         };
+        result.residual_before_relaxation = candidate_residual;
+        result.residual_after_relaxation = residual;
+        result.residual_relative_before_relaxation =
+            relative_residual(candidate_residual);
+        result.residual_relative_after_relaxation = relative_residual(residual);
+        return result;
     }
 
     cfdx::core::Vector candidate = solution;
@@ -1305,6 +1332,14 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     }
 
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
+        // Report the physical L-infinity residual of the linear candidate and
+        // of the field actually returned after relaxation. Krylov's residual
+        // may use a different norm or row-scaled system and is not a substitute
+        // for this public scalar-transport diagnostic contract.
+        result.residual_before_relaxation =
+            scalar_equation_residual_inf(equation, candidate);
+        result.residual_relative_before_relaxation =
+            relative_residual(result.residual_before_relaxation);
         for (std::size_t i = 0; i < candidate.size(); ++i) {
             if (!std::isfinite(candidate(i))) {
                 result.status = cfdx::core::SolverStatus::DIVERGED;
@@ -1317,6 +1352,10 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         }
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) += controls.relaxation * (candidate(i) - solution(i));
+        result.residual_after_relaxation =
+            scalar_equation_residual_inf(equation, solution);
+        result.residual_relative_after_relaxation =
+            relative_residual(result.residual_after_relaxation);
     }
     // A MAX_ITER_REACHED result is not an acceptable predictor solution.
     // Do not inject an unconverged Krylov iterate into the nonlinear solver:
