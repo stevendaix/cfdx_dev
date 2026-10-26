@@ -1,0 +1,5 @@
+verdict=FAILURES
+ctest_exit=?
+failed_tests=0
+pyreg_exit=1
+pyreg_failed=0
