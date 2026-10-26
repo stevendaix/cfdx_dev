@@ -1613,15 +1613,21 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     Field<double, Location::CELL> zero_source(nc, "pcd_zero_source", "", 1);
     Field<double, Location::CELL> zero_implicit(nc, "pcd_zero_implicit", "", 1);
 
+    // These PCD operators are matrix-only preconditioner ingredients. Their
+    // deferred non-orthogonal correction belongs to the scalar-equation RHS,
+    // which is intentionally discarded here; computing it would require an
+    // iterate that the preconditioner operator builder does not own. Disable
+    // only that explicit correction, while retaining the same implicit
+    // normal-diffusion matrix. This is not a production-solver fallback.
     const auto diffusion = assemble_scalar_equation(
         mesh, geometry, zero_flux, 1.0,
         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
-        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);
 
     const auto convection_diffusion = assemble_scalar_equation(
         mesh, geometry, mass_flux, rho * kinematic_viscosity,
         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
-        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);
 
     // A fixed pressure boundary already removes the constant null mode of
     // the pressure operators, so the gauge reference row is imposed only
