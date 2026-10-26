@@ -154,9 +154,16 @@ static Mesh make_skewed_stress_cube(std::size_t n, double shear)
             }
 
     mesh.ownership().resize(mesh.n_faces());
-    Patch wall;
-    wall.name = "wall";
-    wall.type = PatchType::WALL;
+    Patch x_min, x_max, y_min, y_max, z_min, z_max;
+    for (Patch* patch : {&x_min, &x_max, &y_min, &y_max, &z_min, &z_max}) {
+        patch->type = PatchType::WALL;
+    }
+    x_min.name = "x_min";
+    x_max.name = "x_max";
+    y_min.name = "y_min";
+    y_max.name = "y_max";
+    z_min.name = "z_min";
+    z_max.name = "z_max";
     for (const auto& entry : face_map) {
         const FaceKey key = entry.first;
         const std::size_t face = entry.second;
@@ -171,7 +178,10 @@ static Mesh make_skewed_stress_cube(std::size_t n, double shear)
         mesh.ownership().set_owner(face, owner);
         if (lower || upper) {
             mesh.ownership().set_neighbour(face, FaceOwnership::BOUNDARY);
-            wall.face_ids.push_back(face);
+            Patch* patch = key.axis == 0 ? (lower ? &x_min : &x_max) :
+                           key.axis == 1 ? (lower ? &y_min : &y_max) :
+                                           (lower ? &z_min : &z_max);
+            patch->face_ids.push_back(face);
         } else {
             std::size_t ni = oi, nj = oj, nk = ok;
             if (key.axis == 0) ++ni;
@@ -183,7 +193,12 @@ static Mesh make_skewed_stress_cube(std::size_t n, double shear)
     }
     for (std::size_t cell = 0; cell < nc; ++cell)
         mesh.cells().push_cell(faces_per_cell[cell]);
-    mesh.boundary().add_patch(wall);
+    mesh.boundary().add_patch(x_min);
+    mesh.boundary().add_patch(x_max);
+    mesh.boundary().add_patch(y_min);
+    mesh.boundary().add_patch(y_max);
+    mesh.boundary().add_patch(z_min);
+    mesh.boundary().add_patch(z_max);
     return mesh;
 }
 
@@ -284,7 +299,12 @@ int main()
             mu[cell] = 1.0 + geometry.cell_centres[cell].x;
         }
         VelocityBoundaryConditions bcs;
-        bcs["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        bcs["x_min"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0.0, 0.0, 0.0}};
+        bcs["x_max"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0.0, 0.0, 0.0}};
+        bcs["y_min"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        bcs["y_max"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {a, 0.0, 0.0}};
+        bcs["z_min"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0.0, 0.0, 0.0}};
+        bcs["z_max"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0.0, 0.0, 0.0}};
 
         const auto flux = momentum_transpose_diffusion_face_fluxes(
             mesh, geometry, U, bcs, mu, 1);
@@ -324,7 +344,12 @@ int main()
                 mu[cell] = 1.0 + geometry.cell_centres[cell].x;
             }
             VelocityBoundaryConditions bcs;
-            bcs["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+            bcs["x_min"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0.0, 0.0, 0.0}};
+            bcs["x_max"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0.0, 0.0, 0.0}};
+            bcs["y_min"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+            bcs["y_max"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+            bcs["z_min"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0.0, 0.0, 0.0}};
+            bcs["z_max"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT, {0.0, 0.0, 0.0}};
             const auto rhs = momentum_transpose_diffusion_rhs(
                 mesh, geometry, U, bcs, mu, 1);
             double squared_error = 0.0;
