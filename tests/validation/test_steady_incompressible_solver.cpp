@@ -459,6 +459,32 @@ int main()
         EXPECT_NEAR(U(0, 0), u_before, 0.0);
         EXPECT_NEAR(p(0), p_before, 0.0);
         EXPECT_NEAR(conflicting_k(0), 7.0, 0.0);
+
+        // An incomplete SST checkpoint must fail atomically at the integrated
+        // solver entry point, leaving carrier and every runtime-owned field
+        // untouched even when k was present before the missing omega is found.
+        const auto malformed_dat = unique_temp_path("_sst_runtime_restart_missing_omega.dat");
+        cfdx::io::write_dat_restart_fields(
+            malformed_dat.string(), m, seed_u, seed_p,
+            cfdx::io::DatRestartFields{nullptr, &seed_k, nullptr, nullptr},
+            5, 0.25);
+        const double k_before = state.k(0);
+        const double omega_before = state.omega(0);
+        const double nu_t_before = state.nu_t(0);
+        const double wall_distance_before = state.wall_distance(0);
+        const double strain_before = state.strain_rate(0);
+        controls.initialization.restart_path = malformed_dat.string();
+        EXPECT_THROW_WITH(
+            solve_steady_incompressible(m, U, p, ubc, pbc, controls),
+            std::runtime_error, "requested omega but DAT has none");
+        EXPECT_NEAR(U(0, 0), u_before, 0.0);
+        EXPECT_NEAR(p(0), p_before, 0.0);
+        EXPECT_NEAR(state.k(0), k_before, 0.0);
+        EXPECT_NEAR(state.omega(0), omega_before, 0.0);
+        EXPECT_NEAR(state.nu_t(0), nu_t_before, 0.0);
+        EXPECT_NEAR(state.wall_distance(0), wall_distance_before, 0.0);
+        EXPECT_NEAR(state.strain_rate(0), strain_before, 0.0);
+        std::filesystem::remove(malformed_dat);
         std::filesystem::remove(dat);
     });
 
