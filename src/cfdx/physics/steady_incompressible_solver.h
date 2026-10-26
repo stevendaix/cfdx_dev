@@ -2629,25 +2629,37 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             }
             if (controls.diagnostics.coupled_matrix_summary) {
                 // Recompute the inner Fp true residual from the exact matrix,
-                // RHS and best iterate returned by the Krylov driver. This is
-                // diagnostic only; retain SolverResult status and acceptance
-                // semantics unchanged.
+                // RHS and best iterate returned by the Krylov driver. Preserve
+                // the initial-guess residual as the denominator used by GMRES/
+                // FGMRES for their reported relative residual. This is
+                // diagnostic only; do not alter solver status or acceptance.
+                double initial_residual_sq = 0.0;
                 double true_residual_sq = 0.0;
                 double rhs_norm_sq = 0.0;
                 double true_residual_linf = 0.0;
                 for (std::size_t row = 0; row < matrix.n_rows(); ++row) {
+                    double ax_initial = 0.0;
                     double ax = 0.0;
                     for (std::size_t k = matrix.row_offsets_data()[row];
-                         k < matrix.row_offsets_data()[row + 1]; ++k)
-                        ax += matrix.values_data()[k] * x(matrix.columns_data()[k]);
+                         k < matrix.row_offsets_data()[row + 1]; ++k) {
+                        const double a = matrix.values_data()[k];
+                        const std::size_t column = matrix.columns_data()[k];
+                        ax_initial += a * x_initial(column);
+                        ax += a * x(column);
+                    }
+                    const double initial_residual = rhs(row) - ax_initial;
                     const double residual = rhs(row) - ax;
+                    initial_residual_sq += initial_residual * initial_residual;
                     true_residual_sq += residual * residual;
                     rhs_norm_sq += rhs(row) * rhs(row);
                     true_residual_linf = std::max(true_residual_linf, std::abs(residual));
                 }
+                const double initial_residual_norm = std::sqrt(initial_residual_sq);
                 const double true_residual = std::sqrt(true_residual_sq);
                 const double rhs_norm = std::sqrt(rhs_norm_sq);
-                const double true_relative = true_residual /
+                const double true_relative_initial = true_residual /
+                    (initial_residual_norm > 0.0 ? initial_residual_norm : 1.0);
+                const double true_relative_rhs = true_residual /
                     (rhs_norm > 0.0 ? rhs_norm : 1.0);
                 if (result.status != SolverStatus::CONVERGED) {
                     std::cerr << "COUPLED_NESTED_PCD_BEST_EFFORT operator=Fp"
@@ -2655,10 +2667,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                               << " iterations=" << result.iterations
                               << " reported_residual=" << result.residual
                               << " reported_relative=" << result.residual_relative
+                              << " initial_residual_l2=" << initial_residual_norm
                               << " true_residual_l2=" << true_residual
-                              << " true_relative_l2=" << true_relative
+                              << " true_relative_initial_l2=" << true_relative_initial
+                              << " true_relative_rhs_l2=" << true_relative_rhs
                               << " true_residual_linf=" << true_residual_linf
-                              << "\\n";
+                              << "\n";
                 }
             }
             return nested_schur_pressure_solve_usable(
@@ -3409,6 +3423,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // under-relaxation. This separates a block/flux inconsistency from
             // continuity loss introduced by the nonlinear update itself.
             if (controls.diagnostics.coupled_matrix_summary) {
+                const auto* cell_faces = mesh.cells().faces_data();
+                const auto* cell_offsets = mesh.cells().offsets_data();
                 std::array<std::vector<double>, 3> candidate_rAU;
                 for (auto& component : candidate_rAU)
                     component.resize(mesh.n_cells());
