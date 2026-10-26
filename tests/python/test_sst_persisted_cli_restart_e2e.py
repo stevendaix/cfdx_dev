@@ -4,6 +4,7 @@ The fixture starts from a real converted CFDX case so the C++ case reader,
 boundary metadata reader, and production executable are exercised together.
 This is software-integration evidence, not a physical SST qualification.
 """
+
 from __future__ import annotations
 
 import json
@@ -13,9 +14,8 @@ from pathlib import Path
 
 import h5py
 import numpy as np
-import pytest
-
 from cfdx.dat_io import read_dat_restart
+import pytest
 
 
 def _prepare_persisted_sst_case(case_path: Path) -> None:
