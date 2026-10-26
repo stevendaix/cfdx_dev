@@ -245,7 +245,15 @@ inline SolverResult solve_gmres(
             apply_operator(w.zv(static_cast<std::size_t>(j)), w.w);
             const double arnoldi_action_norm =
                 krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
-                // Modified Gram-Schmidt once is vulnerable to loss of
+            if (!std::isfinite(arnoldi_action_norm)) {
+                x = best_x;
+                result.status = SolverStatus::DIVERGED;
+                result.iterations = iterations;
+                result.residual = best_residual;
+                result.residual_relative = best_residual / rhs_scale;
+                return result;
+            }
+            // Modified Gram-Schmidt once is vulnerable to loss of
             // orthogonality on nonsymmetric saddle-point systems. A second
             // orthogonalization pass is inexpensive for the small acceptance
             // systems and substantially improves the Hessenberg relation.
@@ -275,6 +283,14 @@ inline SolverResult solve_gmres(
             // absolute epsilon floor would then misclassify a valid Krylov
             // vector as a breakdown.
             const double hnext = krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
+            if (!std::isfinite(hnext)) {
+                x = best_x;
+                result.status = SolverStatus::DIVERGED;
+                result.iterations = iterations;
+                result.residual = best_residual;
+                result.residual_relative = best_residual / rhs_scale;
+                return result;
+            }
             w.H(static_cast<std::size_t>(j + 1), static_cast<std::size_t>(j)) = hnext;
             // Arnoldi vectors are normalized, so loss of the new direction is
             // a breakdown. Use a relative test against the current operator
@@ -404,6 +420,14 @@ inline SolverResult solve_gmres(
         }
 
         beta = true_residual();
+        if (!std::isfinite(beta)) {
+            x = best_x;
+            result.status = SolverStatus::DIVERGED;
+            result.iterations = iterations;
+            result.residual = beta;
+            result.residual_relative = beta / rhs_scale;
+            return result;
+        }
         if (beta < best_residual) {
             best_residual = beta;
             best_x = x;
