@@ -442,6 +442,23 @@ int main()
             (controls.kinematic_viscosity + seed_k(0) / seed_omega(0));
         EXPECT_TRUE(std::isfinite(first_predictor_mu));
         EXPECT_NEAR(first_predictor_mu, expected_mu, 1e-10);
+
+        // A second, caller-owned k target would split restart ownership between
+        // the runtime and the positional restart API. Reject it before U/p or
+        // either SST state can be mutated.
+        Field<double, Location::CELL> conflicting_k(1, "k_other", "m2/s2", 1);
+        conflicting_k(0) = 7.0;
+        cfdx::io::DatRestartFields conflicting_fields;
+        conflicting_fields.k = &conflicting_k;
+        const double u_before = U(0, 0);
+        const double p_before = p(0);
+        EXPECT_THROW_WITH(
+            solve_steady_incompressible(
+                m, U, p, ubc, pbc, controls, "", conflicting_fields),
+            std::invalid_argument, "active runtime state");
+        EXPECT_NEAR(U(0, 0), u_before, 0.0);
+        EXPECT_NEAR(p(0), p_before, 0.0);
+        EXPECT_NEAR(conflicting_k(0), 7.0, 0.0);
         std::filesystem::remove(dat);
     });
 
