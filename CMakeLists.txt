@@ -457,7 +457,8 @@ if(CFDX_BUILD_TESTS)
             # Use the existing narrow third-party suppression list for this test;
             # LeakSanitizer remains enabled for unsuppressed CFDX allocation stacks.
             set_tests_properties(test_mpi_deterministic_fused PROPERTIES
-                ENVIRONMENT "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/tests/sanitizers/lsan_mpi.supp")
+                ENVIRONMENT
+                    "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/tests/sanitizers/lsan_mpi.supp;ASAN_OPTIONS=fast_unwind_on_malloc=0")
         endif()
 
         # This source calls MPI-IO entry points directly and requires two ranks.
