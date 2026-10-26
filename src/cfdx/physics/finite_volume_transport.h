@@ -1148,10 +1148,16 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         const double before = scalar_equation_residual_inf(equation, linear_candidate);
         const double after = scalar_equation_residual_inf(equation, returned_state);
         const double scale = std::max(rhs_norm, 1e-300);
+        const double relative_before =
+            std::isfinite(before) && std::isfinite(rhs_norm)
+                ? before / scale : std::numeric_limits<double>::infinity();
+        const double relative_after =
+            std::isfinite(after) && std::isfinite(rhs_norm)
+                ? after / scale : std::numeric_limits<double>::infinity();
         result.residual_before_relaxation = before;
         result.residual_after_relaxation = after;
-        result.residual_relative_before_relaxation = before / scale;
-        result.residual_relative_after_relaxation = after / scale;
+        result.residual_relative_before_relaxation = relative_before;
+        result.residual_relative_after_relaxation = relative_after;
         // Preserve SolverResult's established meaning: its primary residual
         // describes the linear candidate, measured in the same physical
         // infinity norm and RHS scale exposed by the before-relaxation fields.
