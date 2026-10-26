@@ -2608,6 +2608,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             const int restart = std::min<int>(
                 controls.pcd_convection_diffusion_linear_solver.gmres_restart,
                 static_cast<int>(matrix.n_rows()));
+            const Vector x_initial = x;
             cfdx::core::SolverResult result;
             if (controls.pcd_convection_diffusion_linear_solver.krylov ==
                 cfdx::core::KrylovModel::GMRES) {
