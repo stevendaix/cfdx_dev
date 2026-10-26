@@ -1,0 +1,10 @@
+verdict=VERIFIED
+ctest_exit=8
+failed_tests=2
+test_audit_cht_time
+test_variable_viscosity_transpose_stress
+targeted_not_seen=[]
+unexpected_failures=[]
+pyreg_exit=0
+pyreg_failed=0
+push_to_master=false

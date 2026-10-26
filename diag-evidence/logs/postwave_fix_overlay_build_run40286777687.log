@@ -1,0 +1,101 @@
+build_exit=0
+/tmp/postwave_head_wt/src/cfdx/physics/steady_incompressible_solver.h:1838:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 1837 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 1838 |                     ? nr
+      |                     ^~~~
+ 1839 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/postwave_head_wt/src/cfdx/physics/steady_incompressible_solver.h:1923:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 1922 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 1923 |                     ? nr
+      |                     ^~~~
+ 1924 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/postwave_head_wt/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::physics::IncompressibleSolveResult cfdx::physics::solve_steady_incompressible(const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, const IncompressibleSolverControls&, const std::string&, cfdx::io::DatRestartFields)’:
+/tmp/postwave_head_wt/src/cfdx/physics/steady_incompressible_solver.h:4067:44: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+ 4067 |                       std::max<std::size_t>(mesh.n_cells(), 1));
+      |                       ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+/tmp/postwave_head_wt/tests/unit/test_sst_blending.cpp: In lambda function:
+/tmp/postwave_head_wt/tests/unit/test_sst_blending.cpp:601:44: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  601 |             U.component_data(0)[c] = 1.0 + c;
+      |                                            ^
+/tmp/postwave_head_wt/tests/unit/test_sst_blending.cpp:602:44: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  602 |             U.component_data(1)[c] = 2.0 + c;
+      |                                            ^
+/tmp/postwave_head_wt/tests/unit/test_sst_blending.cpp:603:44: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  603 |             U.component_data(2)[c] = 3.0 + c;
+      |                                            ^
+/tmp/postwave_head_wt/tests/unit/test_sst_blending.cpp:604:27: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  604 |             p(c) = 10.0 + c;
+      |                           ^
+/tmp/postwave_head_wt/tests/unit/test_sst_blending.cpp:605:38: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  605 |             state.k(c) = 0.1 + 0.1 * c;
+      |                                      ^
+/tmp/postwave_head_wt/tests/unit/test_sst_blending.cpp:606:44: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  606 |             state.omega(c) = 10.0 + 10.0 * c;
+      |                                            ^
+/tmp/postwave_head_wt/tests/unit/test_sst_blending.cpp:607:45: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  607 |             state.nu_t(c) = 0.001 + 0.001 * c;
+      |                                             ^
+/tmp/postwave_head_wt/tests/unit/test_sst_blending.cpp:608:52: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  608 |             state.wall_distance(c) = 0.01 + 0.01 * c;
+      |                                                    ^
+/tmp/postwave_head_wt/tests/unit/test_sst_blending.cpp:609:42: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  609 |             state.strain_rate(c) = 1.0 + c;
+      |                                          ^
+In file included from /tmp/postwave_head_wt/src/cfdx/physics/turbulence_solver.h:3:
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::FACE]’:
+/tmp/postwave_head_wt/src/cfdx/physics/momentum_viscous_stress.h:38:14:   required from here
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::CELL]’:
+/tmp/postwave_head_wt/src/cfdx/physics/momentum_viscous_stress.h:88:16:   required from here
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+[487/517] Linking CXX executable test_mpi_partition
+[488/517] Linking CXX executable test_mpi_fused_reduction
+[489/517] Linking CXX executable test_n13_mpi_equivalence
+[490/517] Linking CXX executable test_mpi_deterministic
+[491/517] Linking CXX executable test_transport_models
+[492/517] Linking CXX executable test_n8_mpi_boundary
+[493/517] Linking CXX executable test_mpi_krylov_reduction
+[494/517] Linking CXX executable test_execution_summary
+[495/517] Linking CXX executable test_restart_mapping
+[496/517] Linking CXX executable test_equation_of_state_consistency
+[497/517] Linking CXX executable test_phase8_mpi_poisson
+[498/517] Linking CXX executable test_convergence_history
+[499/517] Linking CXX executable test_sst_blending
+[500/517] Linking CXX executable test_thermophysical_models
+[501/517] Linking CXX executable test_phase7_ooc_validation
+[502/517] Linking CXX executable test_runtime_pipeline
+[503/517] Linking CXX executable test_m5_m7_foundations
+[504/517] Linking CXX executable test_ooc_pipeline
+[505/517] Linking CXX executable test_thermo_transport_contracts
+[506/517] Linking CXX executable test_phase6_runtime_acceptance
+[507/517] Linking CXX executable test_runtime_execution_ooc
+[508/517] Linking CXX executable test_plan_complet
+[509/517] Linking CXX executable test_memory_planner_validation
+[510/517] Linking CXX executable test_case_hdf5_io
+[511/517] Linking CXX executable test_hdf5_roundtrip
+[512/517] Linking CXX executable test_validation_simple
+[513/517] Linking CXX executable test_openfoam_importer
+[514/517] Linking CXX executable test_hdf5_writer
+[515/517] Linking CXX executable test_gap_analysis
+[516/517] Linking CXX executable test_field_roundtrip
+[517/517] Linking CXX executable test_cross_import_equivalence

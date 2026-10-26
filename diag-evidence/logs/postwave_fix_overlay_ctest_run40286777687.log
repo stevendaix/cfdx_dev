@@ -1,0 +1,1075 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+        Start 147: test_generate_2d_validation_meshes
+        Start   1: test_audit_cht_time
+        Start   2: test_audit_energy_boundary_metric
+        Start   3: test_temporal
+  1/255 Test   #3: test_temporal ...............................   Passed    0.00 sec
+        Start   4: test_discretization_verification
+  2/255 Test   #2: test_audit_energy_boundary_metric ...........   Passed    0.01 sec
+        Start   5: test_matrix_diagnostics
+  3/255 Test   #1: test_audit_cht_time .........................***Failed    0.01 sec
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00279743 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00134108 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.28263e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=1 residual=1.45519e-11 backward_error=5.91378e-17 linear_relative=1.45519e-11 dT_relative=8.46123e-06 energy_balance=5.91378e-17 accepted_state=1
+cht/exception CHT region energy solve did not converge
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00279743 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00134108 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.56531e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.69226e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=1 residual=7.27596e-12 backward_error=5.98652e-17 linear_relative=7.27596e-12 dT_relative=1.94941e-07 energy_balance=5.98652e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.85149e-07 energy_balance=0 accepted_state=1
+cht/exception CHT region energy solve did not converge
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.0251108 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.0109744 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=6.71901e-17 linear_relative=9.09495e-13 dT_relative=0.000284901 energy_balance=6.71901e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000513261 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000169061 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000304611 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000100314 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000180759 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=6.72122e-17 linear_relative=9.09495e-13 dT_relative=5.952e-05 energy_balance=6.72122e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000107256 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.53145e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=1 residual=1.81899e-12 backward_error=6.05626e-17 linear_relative=1.81899e-12 dT_relative=6.36392e-05 energy_balance=6.05626e-17 accepted_state=1
+cht/exception CHT region energy solve did not converge
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.0251108 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.0109744 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000569964 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00102705 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000106368 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000191687 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.9849e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.57706e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.7039e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.67495e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.91158e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.24557e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.28972e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.32426e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.40666e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.33714e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=6.7218e-17 linear_relative=9.09495e-13 dT_relative=4.49089e-09 energy_balance=6.7218e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=1 residual=1.81899e-12 backward_error=6.05682e-17 linear_relative=1.81899e-12 dT_relative=8.09323e-09 energy_balance=6.05682e-17 accepted_state=1
+cht/exception CHT region energy solve did not converge
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.124088 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.038961 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00256129 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00331675 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00215846 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00279689 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00181837 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00235747 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00153142 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00198636 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00128945 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00167314 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00108549 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00140894 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000913629 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.0011862 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00076887 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00099848 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000646968 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000840336 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000544337 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000707146 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000457948 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000594999 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000385241 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000500591 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000324058 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000421129 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000272577 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000354256 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000229265 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000297986 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000192828 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000250642 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000162177 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000210812 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000136395 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000177305 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000114709 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000149119 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.64692e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000125412 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.11284e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000105471 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.82263e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.86993e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.73754e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.45936e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.82498e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.27304e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.05753e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.27533e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.41213e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.43627e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.86938e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.73064e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.41294e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.13723e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.02911e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.63819e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.70632e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.21853e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.43488e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.86562e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.20662e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.56884e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.01467e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.31927e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.53252e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.1094e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.17512e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.32911e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.03366e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.84499e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.07379e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.59697e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.26661e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.54748e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.58785e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.66495e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.01706e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.92282e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.53708e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.29874e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.13346e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.77395e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.79405e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.33264e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.50863e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.96155e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.26863e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.64948e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.0668e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.38707e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.97082e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.1664e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.54365e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.80837e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.34353e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.24796e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.33433e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.93579e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.48569e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.83237e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.77206e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.9045e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.17196e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.12424e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.66733e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.46811e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.24298e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.91637e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.88615e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.4524e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.58608e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.06224e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.33375e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.73416e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.12156e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.45827e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.4313e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.22627e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.93087e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.03119e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.66914e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.67133e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.60814e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.2918e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.71594e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.13174e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.96567e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.15624e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.33477e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.33593e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.80424e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.64612e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.35811e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.06606e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.98296e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.57827e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.66749e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.16809e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.4022e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.82317e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.17913e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.53312e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.91538e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.28922e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.33794e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.08411e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.01145e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.1164e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.89599e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.66607e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.95799e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.44646e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.16922e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.42089e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.50593e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.55848e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.94817e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.83326e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.47915e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.22343e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.08474e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.71061e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.75307e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.27938e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.47418e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.91675e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.23965e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.61181e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.04243e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.35539e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.76589e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.13976e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.37132e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.58432e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.19861e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.05954e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.21247e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.77734e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.38321e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.69913e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.68588e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.79245e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.09949e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.03001e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.60639e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.38887e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.19174e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.84973e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.84305e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.39637e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.54984e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.01513e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.30327e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.69454e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.09593e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.42495e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.21582e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.19826e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.74966e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.00762e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.51675e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.4732e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.48001e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.12519e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.6082e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.99166e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.87507e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.03842e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.25858e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.23687e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.74017e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.56282e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.30423e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.99599e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.93764e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.51935e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.6294e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.11857e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.37016e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.78151e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.15218e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.49809e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.68885e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.25977e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.14733e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.05932e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.85123e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.90813e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.76126e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.49082e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.84468e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.29922e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.074e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.29699e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.42579e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.45429e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.8808e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.74563e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.42251e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.14991e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.03725e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.64887e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.71306e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.2273e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.44048e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.87297e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.21142e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.57503e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.01846e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.32429e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.56531e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.11365e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.20242e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.36484e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.05711e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.87515e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.09398e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.62369e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.28265e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.56824e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.60289e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.68468e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.02771e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.93682e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.54699e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.31109e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.14217e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.78638e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.80145e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.34159e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.5147e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.96916e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.27349e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.65555e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.0694e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.39168e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.00724e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.17004e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.5735e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.84582e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.35904e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.27773e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.36386e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.96596e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.50362e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.86528e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.79518e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.93045e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.17109e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.11625e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.66506e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.4679e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.26024e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.94018e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.88916e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.45769e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.58554e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.06566e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.3494e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.74903e-14 energy_balance=0 accepted_state=1
+cht/status	dt=1	relax=0.5	PASS	152
+cht/temperature1	dt=1	relax=0.5	PASS	2.3817392502678558e-11
+cht/temperature2	dt=1	relax=0.5	PASS	3.4674485505092889e-11
+cht/energy	dt=1	relax=0.5	PASS	1.5194245861493982e-10
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.124088 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.038961 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00513573 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00665557 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00351394 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00455858 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00240162 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00311781 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00164015 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00213031 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.00111954 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.0014546 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000763905 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000992755 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000521116 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000677337 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000355433 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000462034 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000242399 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000315122 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000165299 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000214902 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000112717 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.000146546 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.68583e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=9.99276e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.24062e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.81371e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.57327e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.64593e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.43638e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.16778e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.6612e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.15989e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.13265e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.47268e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.72266e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.00411e-05 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.26548e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.84624e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.59011e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.66791e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.44781e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.18268e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.66896e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.17001e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.13793e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.47956e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.75862e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.00879e-06 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.28997e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.87811e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.6068e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.68962e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.45918e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.19747e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.67672e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.18009e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.14322e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.48643e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.79465e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.01347e-07 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.31454e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.91005e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.62355e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.7114e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.4706e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.21232e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.6845e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.19022e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.14852e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.49333e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.83084e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.01818e-08 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.33921e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.94213e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.64037e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.73327e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.48207e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.22723e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.69232e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.20038e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.15386e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.50026e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.86719e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.02291e-09 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.364e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=6.97436e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.65727e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.75524e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.49359e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.24221e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.70018e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.2106e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.15921e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.50723e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.90371e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.02765e-10 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.38889e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.00673e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.67424e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.77732e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.50518e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.25726e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.70807e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.22086e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.1646e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.51424e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.94037e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.03242e-11 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.41396e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.03924e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.69128e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.79957e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.5168e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.27234e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.71593e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.23107e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.16993e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.5212e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.97832e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.03735e-12 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.43808e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.06999e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.70916e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.8234e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.52844e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.28697e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.72386e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.24207e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.17566e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.52738e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=8.01205e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.04188e-13 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=5.46506e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=7.11674e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.72771e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=4.83998e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.54699e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=3.31712e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.73735e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.2466e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.16386e-14 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.52286e-14 energy_balance=0 accepted_state=1
+cht/status	dt=1	relax=1	PASS	72
+cht/temperature1	dt=1	relax=1	PASS	8.4696694102603942e-12
+cht/temperature2	dt=1	relax=1	PASS	1.2335021892795339e-11
+cht/energy	dt=1	relax=1	PASS	5.4228621593210846e-11
+SUMMARY	checks=12	failures=4
+
+        Start   6: test_application_layer
+  4/255 Test   #4: test_discretization_verification ............   Passed    0.00 sec
+        Start   7: test_memory_budget
+  5/255 Test   #6: test_application_layer ......................   Passed    0.00 sec
+        Start   8: test_memory_planner
+  6/255 Test   #5: test_matrix_diagnostics .....................   Passed    0.00 sec
+        Start  12: test_n11_campaign_integrity
+  7/255 Test   #7: test_memory_budget ..........................   Passed    0.00 sec
+  8/255 Test   #8: test_memory_planner .........................   Passed    0.00 sec
+        Start   9: test_mpi_deterministic_fused
+  9/255 Test  #12: test_n11_campaign_integrity .................   Passed    0.12 sec
+        Start  13: test_audit_flux_contract
+ 10/255 Test  #13: test_audit_flux_contract ....................   Passed    0.00 sec
+        Start  14: test_audit_helper_terms
+ 11/255 Test  #14: test_audit_helper_terms .....................   Passed    0.00 sec
+        Start  15: test_point
+ 12/255 Test  #15: test_point ..................................   Passed    0.00 sec
+        Start  16: test_face
+ 13/255 Test  #16: test_face ...................................   Passed    0.00 sec
+        Start  17: test_ownership
+ 14/255 Test  #17: test_ownership ..............................   Passed    0.00 sec
+        Start  18: test_cell
+ 15/255 Test  #18: test_cell ...................................   Passed    0.00 sec
+        Start  19: test_boundary
+ 16/255 Test  #19: test_boundary ...............................   Passed    0.00 sec
+        Start  20: test_mesh
+ 17/255 Test  #20: test_mesh ...................................   Passed    0.00 sec
+        Start  21: test_field
+ 18/255 Test  #21: test_field ..................................   Passed    0.00 sec
+        Start  22: test_field_storage
+ 19/255 Test  #22: test_field_storage ..........................   Passed    0.00 sec
+        Start  23: test_field_wall_hardening
+ 20/255 Test  #23: test_field_wall_hardening ...................   Passed    0.00 sec
+        Start  24: test_boundary_field
+ 21/255 Test  #24: test_boundary_field .........................   Passed    0.00 sec
+        Start  25: test_boundary_contract
+ 22/255 Test  #25: test_boundary_contract ......................   Passed    0.00 sec
+        Start  26: test_boundary_fvm_constraints
+ 23/255 Test  #26: test_boundary_fvm_constraints ...............   Passed    0.00 sec
+        Start  27: test_boundary_validator
+ 24/255 Test  #27: test_boundary_validator .....................   Passed    0.00 sec
+        Start  28: test_interpolation
+ 25/255 Test  #28: test_interpolation ..........................   Passed    0.00 sec
+        Start  29: test_gradient
+ 26/255 Test  #29: test_gradient ...............................   Passed    0.00 sec
+        Start  30: test_pressure_velocity_system
+ 27/255 Test  #30: test_pressure_velocity_system ...............   Passed    0.00 sec
+        Start  31: test_oriented_numerics
+ 28/255 Test  #31: test_oriented_numerics ......................   Passed    0.00 sec
+        Start  32: test_divergence
+ 29/255 Test  #32: test_divergence .............................   Passed    0.00 sec
+        Start  33: test_flux
+ 30/255 Test  #33: test_flux ...................................   Passed    0.00 sec
+        Start  34: test_spatial_scheme_contract
+ 31/255 Test  #34: test_spatial_scheme_contract ................   Passed    0.00 sec
+        Start  35: test_conservation_boundedness
+ 32/255 Test  #35: test_conservation_boundedness ...............   Passed    0.00 sec
+        Start  36: test_transport_conservation
+ 33/255 Test  #36: test_transport_conservation .................   Passed    0.00 sec
+        Start  37: test_conservation_assembly
+ 34/255 Test  #37: test_conservation_assembly ..................   Passed    0.00 sec
+        Start  38: test_integrate
+ 35/255 Test  #38: test_integrate ..............................   Passed    0.00 sec
+        Start  39: test_forces
+ 36/255 Test  #39: test_forces .................................   Passed    0.00 sec
+        Start  40: test_probe_csv
+ 37/255 Test  #40: test_probe_csv ..............................   Passed    0.00 sec
+        Start  41: test_sparse_matrix
+ 38/255 Test  #41: test_sparse_matrix ..........................   Passed    0.00 sec
+        Start  42: test_vector
+ 39/255 Test  #42: test_vector .................................   Passed    0.00 sec
+        Start  43: test_linear_system
+ 40/255 Test  #43: test_linear_system ..........................   Passed    0.00 sec
+        Start  44: test_cg_solver
+ 41/255 Test  #44: test_cg_solver ..............................   Passed    0.00 sec
+        Start  45: test_null_space
+ 42/255 Test  #45: test_null_space .............................   Passed    0.00 sec
+        Start  46: test_n8_pinned_pressure_gauge
+ 43/255 Test  #46: test_n8_pinned_pressure_gauge ...............   Passed    0.00 sec
+        Start  47: test_bicgstab_solver
+ 44/255 Test  #47: test_bicgstab_solver ........................   Passed    0.00 sec
+        Start  48: test_gmres_solver
+ 45/255 Test  #48: test_gmres_solver ...........................   Passed    0.00 sec
+        Start  49: test_fgmres_solver
+ 46/255 Test  #49: test_fgmres_solver ..........................   Passed    0.00 sec
+        Start  50: test_krylov_preconditioning
+ 47/255 Test  #50: test_krylov_preconditioning .................   Passed    0.00 sec
+        Start  51: test_krylov_diagnostics
+ 48/255 Test  #51: test_krylov_diagnostics .....................   Passed    0.00 sec
+        Start  52: test_stationary_solvers
+ 49/255 Test  #52: test_stationary_solvers .....................   Passed    0.00 sec
+        Start  53: test_performance_foundations
+ 50/255 Test  #53: test_performance_foundations ................   Passed    0.00 sec
+        Start  54: test_performance_runtime
+ 51/255 Test  #54: test_performance_runtime ....................   Passed    0.00 sec
+        Start  55: test_phase6_memory_benchmark
+ 52/255 Test  #55: test_phase6_memory_benchmark ................   Passed    0.00 sec
+        Start  56: test_amg_chebyshev
+ 53/255 Test  #56: test_amg_chebyshev ..........................   Passed    0.02 sec
+        Start  57: test_native_external_methods
+ 54/255 Test  #57: test_native_external_methods ................   Passed    0.00 sec
+        Start  58: test_matrix_characteristics
+ 55/255 Test  #58: test_matrix_characteristics .................   Passed    0.00 sec
+        Start  59: test_amg_preconditioner_qualification
+ 56/255 Test   #9: test_mpi_deterministic_fused ................   Passed    0.42 sec
+        Start  60: test_matrix_free_fv_operator
+        Start  61: test_n11_scaling_equivalence
+ 57/255 Test  #60: test_matrix_free_fv_operator ................   Passed    0.00 sec
+        Start  62: test_n11_production_scaling
+ 58/255 Test  #61: test_n11_scaling_equivalence ................   Passed    0.00 sec
+        Start  63: test_n11_unit_invariance_robustness
+ 59/255 Test  #62: test_n11_production_scaling .................   Passed    0.00 sec
+        Start  64: test_backend_equivalence
+ 60/255 Test  #63: test_n11_unit_invariance_robustness .........   Passed    0.00 sec
+ 61/255 Test  #64: test_backend_equivalence ....................   Passed    0.00 sec
+        Start  65: test_n13_restart_equivalence
+        Start  66: test_laplacian
+ 62/255 Test  #65: test_n13_restart_equivalence ................   Passed    0.00 sec
+        Start  67: test_diffusion_diagnostics
+ 63/255 Test  #66: test_laplacian ..............................   Passed    0.00 sec
+        Start  68: test_phase123_regression
+ 64/255 Test  #67: test_diffusion_diagnostics ..................   Passed    0.00 sec
+        Start  69: test_phase12_radiation_vv
+ 65/255 Test  #69: test_phase12_radiation_vv ...................   Passed    0.00 sec
+        Start  70: test_scalar_diffusion
+ 66/255 Test  #68: test_phase123_regression ....................   Passed    0.01 sec
+ 67/255 Test  #70: test_scalar_diffusion .......................   Passed    0.00 sec
+        Start  71: test_advanced_preconditioners
+        Start  72: test_schur_preconditioner
+ 68/255 Test  #71: test_advanced_preconditioners ...............   Passed    0.00 sec
+        Start  73: test_face_geometry
+ 69/255 Test  #72: test_schur_preconditioner ...................   Passed    0.00 sec
+        Start  74: test_cell_geometry
+ 70/255 Test  #73: test_face_geometry ..........................   Passed    0.00 sec
+        Start  75: test_mesh_quality
+ 71/255 Test  #75: test_mesh_quality ...........................   Passed    0.00 sec
+        Start  76: test_geometry_invariants
+ 72/255 Test  #74: test_cell_geometry ..........................   Passed    0.00 sec
+ 73/255 Test  #76: test_geometry_invariants ....................   Passed    0.00 sec
+        Start  77: test_dat_restart_identity
+        Start  78: test_mesh_family_volumes
+ 74/255 Test  #78: test_mesh_family_volumes ....................   Passed    0.00 sec
+        Start  79: test_source_term
+ 75/255 Test  #79: test_source_term ............................   Passed    0.00 sec
+        Start  80: test_temporal_physics
+ 76/255 Test  #77: test_dat_restart_identity ...................   Passed    0.01 sec
+ 77/255 Test  #80: test_temporal_physics .......................   Passed    0.00 sec
+        Start  81: test_dual_time_stepping
+        Start  82: test_dual_time_adaptive
+ 78/255 Test  #81: test_dual_time_stepping .....................   Passed    0.00 sec
+ 79/255 Test  #82: test_dual_time_adaptive .....................   Passed    0.00 sec
+        Start  83: test_dual_time_field_driver
+        Start  84: test_dual_time_field_integrator
+ 80/255 Test  #83: test_dual_time_field_driver .................   Passed    0.00 sec
+ 81/255 Test  #84: test_dual_time_field_integrator .............   Passed    0.00 sec
+        Start  85: test_dual_time_physical_lifecycle
+        Start  86: test_dual_time_navier_stokes
+ 82/255 Test  #85: test_dual_time_physical_lifecycle ...........   Passed    0.00 sec
+        Start  87: test_case_numerics_report
+ 83/255 Test  #87: test_case_numerics_report ...................   Passed    0.01 sec
+        Start  88: test_temporal_history
+ 84/255 Test  #88: test_temporal_history .......................   Passed    0.00 sec
+        Start  89: test_core_temporal
+ 85/255 Test  #89: test_core_temporal ..........................   Passed    0.00 sec
+        Start  90: test_newton_field
+ 86/255 Test  #90: test_newton_field ...........................   Passed    0.00 sec
+        Start  91: test_simulation_controller
+ 87/255 Test  #91: test_simulation_controller ..................   Passed    0.00 sec
+        Start  92: test_adaptive_cfl
+ 88/255 Test  #92: test_adaptive_cfl ...........................   Passed    0.00 sec
+        Start  93: test_timestep_control
+ 89/255 Test  #93: test_timestep_control .......................   Passed    0.00 sec
+        Start  94: test_continuation
+ 90/255 Test  #94: test_continuation ...........................   Passed    0.01 sec
+        Start  95: test_local_time_stepping
+ 91/255 Test  #95: test_local_time_stepping ....................   Passed    0.00 sec
+        Start  96: test_incompressible
+ 92/255 Test  #96: test_incompressible .........................   Passed    0.00 sec
+        Start  97: test_m1_m4_physics
+ 93/255 Test  #97: test_m1_m4_physics ..........................   Passed    0.01 sec
+        Start  98: test_m1_m4_validation
+ 94/255 Test  #98: test_m1_m4_validation .......................   Passed    0.00 sec
+        Start  99: test_solver_control
+ 95/255 Test  #99: test_solver_control .........................   Passed    0.00 sec
+        Start 100: test_convergence_monitor
+ 96/255 Test #100: test_convergence_monitor ....................   Passed    0.00 sec
+        Start 101: test_initialization
+ 97/255 Test #101: test_initialization .........................   Passed    0.00 sec
+        Start 102: test_n7_convergence_qualification
+ 98/255 Test  #86: test_dual_time_navier_stokes ................   Passed    0.20 sec
+        Start 103: test_n7_adaptive_relaxation_re400
+ 99/255 Test  #59: test_amg_preconditioner_qualification .......   Passed    0.84 sec
+        Start 104: test_n7_causal_overshoot_regression
+100/255 Test #104: test_n7_causal_overshoot_regression .........   Passed    0.00 sec
+        Start 105: test_n11_scalar_conservation
+101/255 Test #105: test_n11_scalar_conservation ................   Passed    0.00 sec
+        Start 106: test_finite_volume_transport
+102/255 Test #106: test_finite_volume_transport ................   Passed    0.00 sec
+        Start 107: test_vof_curvature_contract
+103/255 Test #107: test_vof_curvature_contract .................   Passed    0.00 sec
+        Start 108: test_variable_viscosity_transpose_stress
+104/255 Test #108: test_variable_viscosity_transpose_stress ....***Failed    0.14 sec
+Running 5 test cases...
+  PASS: variable_viscosity_transpose_stress_affine_face_flux
+  PASS: variable_viscosity_transpose_stress_enters_momentum_rhs
+  FAILED: flux[face] ≈ expected (diff=0.147447, tolerance=2e-11) in operator() at /tmp/postwave_head_wt/tests/unit/test_variable_viscosity_transpose_stress.cpp:296
+  FAIL: variable_viscosity_transpose_stress_skewed_nonuniform_affine - Assertion failed: flux[face] ≈ expected
+  PASS: variable_viscosity_transpose_stress_smooth_mms_order
+  PASS: uniform_viscosity_transpose_correction_reduces_to_incompressible_laplacian
+
+Results: 4 passed, 1 failed
+
+        Start 109: test_steady_incompressible_solver
+105/255 Test #109: test_steady_incompressible_solver ...........   Passed    0.01 sec
+        Start 110: test_vtu_writer_validation
+106/255 Test #110: test_vtu_writer_validation ..................   Passed    0.00 sec
+        Start 111: test_solver_vtu_provenance
+107/255 Test #111: test_solver_vtu_provenance ..................   Passed    0.00 sec
+        Start 112: test_ghia_cavity_quick
+108/255 Test #103: test_n7_adaptive_relaxation_re400 ...........   Passed    1.38 sec
+        Start 113: test_ghia_cavity_order
+109/255 Test #112: test_ghia_cavity_quick ......................   Passed    6.84 sec
+        Start 115: test_couette_quick
+110/255 Test #115: test_couette_quick ..........................   Passed    9.64 sec
+        Start 116: test_m2_m4_solver_validation
+111/255 Test #116: test_m2_m4_solver_validation ................   Passed    0.01 sec
+        Start 117: test_phase10_turbulence_hardening
+112/255 Test #117: test_phase10_turbulence_hardening ...........   Passed    0.00 sec
+        Start 118: test_turbulence_qualification_equations
+113/255 Test #118: test_turbulence_qualification_equations .....   Passed    0.00 sec
+        Start 119: test_production_turbulence_contract
+114/255 Test #119: test_production_turbulence_contract .........   Passed    0.00 sec
+        Start 120: test_solid_conduction_selection
+115/255 Test #120: test_solid_conduction_selection .............   Passed    0.00 sec
+        Start 121: test_energy_integration_contracts
+116/255 Test #121: test_energy_integration_contracts ...........   Passed    0.00 sec
+        Start 122: test_cht_integration_contracts
+117/255 Test #122: test_cht_integration_contracts ..............   Passed    0.00 sec
+        Start 123: test_sst_integration_gaps
+118/255 Test #123: test_sst_integration_gaps ...................   Passed    0.01 sec
+        Start 124: test_production_radiation_contract
+119/255 Test #124: test_production_radiation_contract ..........   Passed    0.00 sec
+        Start 125: test_n11_sa_negative_nu_tilde_policy
+120/255 Test #125: test_n11_sa_negative_nu_tilde_policy ........   Passed    0.00 sec
+        Start 126: test_n11_bound_reporting_hardening
+121/255 Test #126: test_n11_bound_reporting_hardening ..........   Passed    0.00 sec
+        Start 127: test_phase10_model_registry
+122/255 Test #127: test_phase10_model_registry .................   Passed    0.00 sec
+        Start 128: test_wall_distance_methods
+123/255 Test #128: test_wall_distance_methods ..................   Passed    0.04 sec
+        Start 129: test_wall_distance_invalid_results
+124/255 Test #129: test_wall_distance_invalid_results ..........   Passed    0.00 sec
+        Start 130: test_wall_distance_godunov_ridges
+125/255 Test #130: test_wall_distance_godunov_ridges ...........   Passed    0.00 sec
+        Start 131: test_wall_distance_advection_residual
+126/255 Test #131: test_wall_distance_advection_residual .......   Passed    0.00 sec
+        Start 132: benchmark_wall_distance_naca0012
+127/255 Test #132: benchmark_wall_distance_naca0012 ............   Passed    0.09 sec
+        Start 133: test_n11_fw1_nearest_normal_fallback
+128/255 Test #133: test_n11_fw1_nearest_normal_fallback ........   Passed    0.01 sec
+        Start 134: test_n11_fw2_positivity_clamp_counter
+129/255 Test #134: test_n11_fw2_positivity_clamp_counter .......   Passed    0.01 sec
+        Start 135: test_n11_b1_b2_b3_linalg_guards
+130/255 Test #135: test_n11_b1_b2_b3_linalg_guards .............   Passed    0.00 sec
+        Start 136: test_n11_b4_b5_amg_footprint
+131/255 Test #136: test_n11_b4_b5_amg_footprint ................   Passed    0.00 sec
+        Start 137: benchmark_wall_distance_bvh_rays
+132/255 Test #137: benchmark_wall_distance_bvh_rays ............   Passed    0.02 sec
+        Start 138: benchmark_wall_distance_complex
+133/255 Test #138: benchmark_wall_distance_complex .............   Passed    7.04 sec
+        Start 139: test_phase10_sst_limiter
+134/255 Test #139: test_phase10_sst_limiter ....................   Passed    0.00 sec
+        Start 140: test_analytical_benchmarks
+135/255 Test #140: test_analytical_benchmarks ..................   Passed    0.01 sec
+        Start 141: test_vmfl036_reference_case
+136/255 Test #141: test_vmfl036_reference_case .................   Passed    0.00 sec
+        Start 142: test_axisymmetric_vmfl036_kernel
+137/255 Test #142: test_axisymmetric_vmfl036_kernel ............   Passed    0.00 sec
+        Start 143: test_vmfl036_axisymmetric_quick
+138/255 Test #143: test_vmfl036_axisymmetric_quick .............   Passed    0.09 sec
+        Start 149: test_numerical_model_verification
+139/255 Test #149: test_numerical_model_verification ...........   Passed    0.01 sec
+        Start 150: test_poiseuille_quick
+140/255 Test #150: test_poiseuille_quick .......................   Passed    0.00 sec
+        Start 151: test_mms_scalar_diffusion
+141/255 Test #151: test_mms_scalar_diffusion ...................   Passed    0.21 sec
+        Start 152: test_nonorthogonal_skew_campaign
+142/255 Test #152: test_nonorthogonal_skew_campaign ............   Passed    0.00 sec
+        Start 153: test_nonorthogonal_laplacian_campaign
+143/255 Test #153: test_nonorthogonal_laplacian_campaign .......   Passed    0.21 sec
+        Start 154: test_transient_mms
+144/255 Test #154: test_transient_mms ..........................   Passed    0.07 sec
+        Start 155: test_transient_mms_closure
+145/255 Test #147: test_generate_2d_validation_meshes ..........   Passed   25.87 sec
+        Start 144: test_bfs_quick
+146/255 Test #144: test_bfs_quick ..............................   Passed    0.02 sec
+        Start 145: test_naca0012_quick
+147/255 Test #145: test_naca0012_quick .........................   Passed    0.03 sec
+        Start 146: test_naca0012_wall_shear_audit_quick
+148/255 Test #146: test_naca0012_wall_shear_audit_quick ........   Passed    0.02 sec
+        Start 148: test_channel_quick
+149/255 Test #155: test_transient_mms_closure ..................   Passed    3.81 sec
+        Start 156: test_transient_mms_3d_stiff
+150/255 Test #156: test_transient_mms_3d_stiff .................   Passed    0.01 sec
+        Start 157: test_n12_momentum_mms
+151/255 Test #157: test_n12_momentum_mms .......................   Passed    0.00 sec
+        Start 158: test_n12_pressure_continuity_mms
+152/255 Test #158: test_n12_pressure_continuity_mms ............   Passed    0.00 sec
+        Start 160: test_polyhedral_laplacian_campaign
+153/255 Test #160: test_polyhedral_laplacian_campaign ..........   Passed    0.49 sec
+        Start 161: test_polyhedral_poisson_convergence
+154/255 Test #102: test_n7_convergence_qualification ...........   Passed   33.75 sec
+        Start 162: test_convection_scheme_verification
+155/255 Test #162: test_convection_scheme_verification .........   Passed    0.00 sec
+        Start 163: test_convection_3d_verification
+156/255 Test #163: test_convection_3d_verification .............   Passed    1.67 sec
+        Start 164: test_convection_blending
+157/255 Test #148: test_channel_quick ..........................   Passed   10.42 sec
+        Start 165: test_n16_weno5z
+158/255 Test #165: test_n16_weno5z .............................   Passed    0.00 sec
+        Start 166: test_temporal_order_matrix
+159/255 Test #166: test_temporal_order_matrix ..................   Passed    0.00 sec
+        Start 167: test_gradient_verification
+160/255 Test #164: test_convection_blending ....................   Passed    0.44 sec
+        Start 168: test_polyhedral_gradient_campaign
+161/255 Test #167: test_gradient_verification ..................   Passed    0.14 sec
+        Start 169: test_n10_difficult_mesh_robustness
+162/255 Test #169: test_n10_difficult_mesh_robustness ..........   Passed    0.02 sec
+        Start 171: test_n10_mesh_fixture_manifest
+163/255 Test #171: test_n10_mesh_fixture_manifest ..............   Passed    0.03 sec
+        Start 172: test_convection_polyhedral_campaign
+164/255 Test #172: test_convection_polyhedral_campaign .........   Passed    0.00 sec
+        Start 173: test_convection_solver_qualification
+165/255 Test #173: test_convection_solver_qualification ........   Passed    0.02 sec
+        Start 174: test_fluent_vmfl_reference
+166/255 Test #174: test_fluent_vmfl_reference ..................   Passed    0.00 sec
+        Start 175: test_benchmark_matrix
+167/255 Test #175: test_benchmark_matrix .......................   Passed    0.00 sec
+        Start 176: test_level_b_reference_benchmarks
+168/255 Test #176: test_level_b_reference_benchmarks ...........   Passed    0.00 sec
+        Start 177: test_level_c_coupled_verification
+169/255 Test #177: test_level_c_coupled_verification ...........   Passed    0.01 sec
+        Start 178: test_cht_validation
+170/255 Test #178: test_cht_validation .........................   Passed    0.00 sec
+        Start 179: test_thermal_vv
+171/255 Test #179: test_thermal_vv .............................   Passed    0.00 sec
+        Start 180: test_thermal_zones_vv
+172/255 Test #180: test_thermal_zones_vv .......................   Passed    0.00 sec
+        Start 181: test_production_energy_stage_vv
+173/255 Test #181: test_production_energy_stage_vv .............   Passed    0.06 sec
+        Start 182: test_production_s2s_energy_stage_vv
+174/255 Test #182: test_production_s2s_energy_stage_vv .........   Passed    0.01 sec
+        Start 183: test_production_s2s_energy_outer_loop_vv
+175/255 Test #183: test_production_s2s_energy_outer_loop_vv ....   Passed    0.01 sec
+        Start 184: test_production_buoyancy_outer_loop_vv
+176/255 Test #168: test_polyhedral_gradient_campaign ...........   Passed    2.22 sec
+        Start 185: test_radiation_vv
+177/255 Test #185: test_radiation_vv ...........................   Passed    0.00 sec
+        Start 186: test_s2s_radiation_vv
+178/255 Test #186: test_s2s_radiation_vv .......................   Passed    0.01 sec
+        Start 187: test_thermal_radiation_model_matrix
+179/255 Test #187: test_thermal_radiation_model_matrix .........   Passed    0.00 sec
+        Start 188: test_thermal_radiation_regression
+180/255 Test #188: test_thermal_radiation_regression ...........   Passed    0.00 sec
+        Start 189: test_thermal_challenge_vv
+181/255 Test #189: test_thermal_challenge_vv ...................   Passed    0.04 sec
+        Start 190: test_thermophysical_models_vv
+182/255 Test #190: test_thermophysical_models_vv ...............   Passed    0.00 sec
+        Start 191: test_turbulence_qualification_matrix
+183/255 Test #191: test_turbulence_qualification_matrix ........   Passed    0.02 sec
+        Start 192: test_cfdx_qualification_registry
+184/255 Test #192: test_cfdx_qualification_registry ............   Passed    0.03 sec
+        Start 193: test_schur_infrastructure
+185/255 Test #193: test_schur_infrastructure ...................   Passed    0.00 sec
+        Start 194: test_exact_schur
+186/255 Test #194: test_exact_schur ............................   Passed    0.00 sec
+        Start 195: test_n9_schur_oracle
+187/255 Test #195: test_n9_schur_oracle ........................   Passed    0.00 sec
+        Start 196: test_simplerc_schur
+188/255 Test #196: test_simplerc_schur .........................   Passed    0.00 sec
+        Start 197: test_lsc_bfbt_schur
+189/255 Test #197: test_lsc_bfbt_schur .........................   Passed    0.00 sec
+        Start 198: test_pcd_schur
+190/255 Test #198: test_pcd_schur ..............................   Passed    0.00 sec
+        Start 199: test_coupled_schur_selection
+191/255 Test #199: test_coupled_schur_selection ................   Passed    0.00 sec
+        Start 200: test_lsc_bfbt_schur_null_space
+192/255 Test #200: test_lsc_bfbt_schur_null_space ..............   Passed    0.00 sec
+        Start 201: test_schur_approximation_comparison
+193/255 Test #201: test_schur_approximation_comparison .........   Passed    0.00 sec
+        Start 202: test_schur_quantitative_qualification
+194/255 Test #202: test_schur_quantitative_qualification .......   Passed    0.00 sec
+        Start 203: test_mgr_preconditioner
+195/255 Test #203: test_mgr_preconditioner .....................   Passed    0.00 sec
+        Start 204: test_wall_distance_turbulence
+196/255 Test #204: test_wall_distance_turbulence ...............   Passed    0.00 sec
+        Start 205: test_geometry_cache
+197/255 Test #205: test_geometry_cache .........................   Passed    0.00 sec
+        Start 206: test_coupled_block_schur_amg
+198/255 Test #206: test_coupled_block_schur_amg ................   Passed    0.00 sec
+        Start 207: test_n8_schur_production_benchmark
+199/255 Test #207: test_n8_schur_production_benchmark ..........   Passed    0.01 sec
+        Start 208: test_n8_schur_representative_cfd
+200/255 Test #184: test_production_buoyancy_outer_loop_vv ......   Passed    2.12 sec
+        Start 209: test_n8_schur_complete_krylov
+201/255 Test #208: test_n8_schur_representative_cfd ............   Passed    0.01 sec
+        Start 210: test_n8_amg_anisotropy_scaling
+202/255 Test #209: test_n8_schur_complete_krylov ...............   Passed    0.01 sec
+        Start 211: test_n9_common_schur_qualification
+203/255 Test #211: test_n9_common_schur_qualification ..........   Passed    0.04 sec
+        Start 216: test_mpi_deterministic
+204/255 Test #210: test_n8_amg_anisotropy_scaling ..............   Passed    0.09 sec
+        Start 217: test_n13_mpi_equivalence
+205/255 Test #216: test_mpi_deterministic ......................   Passed    0.35 sec
+        Start 218: test_mpi_partition
+206/255 Test #217: test_n13_mpi_equivalence ....................   Passed    0.37 sec
+        Start 219: test_mpi_fused_reduction
+207/255 Test #218: test_mpi_partition ..........................   Passed    0.36 sec
+        Start 220: test_mpi_krylov_reduction
+208/255 Test #219: test_mpi_fused_reduction ....................   Passed    0.37 sec
+        Start 221: test_phase8_mpi_poisson
+209/255 Test #220: test_mpi_krylov_reduction ...................   Passed    0.36 sec
+        Start 222: test_n8_mpi_boundary
+210/255 Test #221: test_phase8_mpi_poisson .....................   Passed    0.37 sec
+        Start 223: test_convergence_history
+211/255 Test #223: test_convergence_history ....................   Passed    0.01 sec
+        Start 224: test_execution_summary
+212/255 Test #224: test_execution_summary ......................   Passed    0.00 sec
+        Start 225: test_restart_mapping
+213/255 Test #225: test_restart_mapping ........................   Passed    0.00 sec
+        Start 226: test_transport_models
+214/255 Test #226: test_transport_models .......................   Passed    0.00 sec
+        Start 227: test_equation_of_state_consistency
+215/255 Test #227: test_equation_of_state_consistency ..........   Passed    0.00 sec
+        Start 228: test_sst_blending
+216/255 Test #228: test_sst_blending ...........................   Passed    0.00 sec
+        Start 229: test_thermo_transport_contracts
+217/255 Test #229: test_thermo_transport_contracts .............   Passed    0.00 sec
+        Start 230: test_thermophysical_models
+218/255 Test #230: test_thermophysical_models ..................   Passed    0.00 sec
+        Start 231: test_m5_m7_foundations
+219/255 Test #231: test_m5_m7_foundations ......................   Passed    0.00 sec
+        Start 232: test_runtime_execution_ooc
+220/255 Test #232: test_runtime_execution_ooc ..................   Passed    0.00 sec
+        Start 233: test_runtime_pipeline
+221/255 Test #233: test_runtime_pipeline .......................   Passed    0.01 sec
+        Start 234: test_phase6_runtime_acceptance
+222/255 Test #234: test_phase6_runtime_acceptance ..............   Passed    0.00 sec
+        Start 235: test_ooc_pipeline
+223/255 Test #235: test_ooc_pipeline ...........................   Passed    0.00 sec
+        Start 236: test_phase7_ooc_validation
+224/255 Test #236: test_phase7_ooc_validation ..................   Passed    0.01 sec
+        Start 237: test_hdf5_writer
+225/255 Test #237: test_hdf5_writer ............................   Passed    0.01 sec
+        Start 238: test_hdf5_roundtrip
+226/255 Test #238: test_hdf5_roundtrip .........................   Passed    0.02 sec
+        Start 239: test_field_roundtrip
+227/255 Test #239: test_field_roundtrip ........................   Passed    0.01 sec
+        Start 240: test_case_hdf5_io
+228/255 Test #240: test_case_hdf5_io ...........................   Passed    0.02 sec
+        Start 241: test_memory_planner_validation
+229/255 Test #241: test_memory_planner_validation ..............   Passed    0.00 sec
+        Start 242: test_plan_complet
+230/255 Test #242: test_plan_complet ...........................   Passed    0.00 sec
+        Start 243: test_validation_simple
+231/255 Test #243: test_validation_simple ......................   Passed    0.00 sec
+        Start 244: test_openfoam_importer
+232/255 Test #244: test_openfoam_importer ......................   Passed    0.00 sec
+        Start 245: test_cross_import_equivalence
+233/255 Test #222: test_n8_mpi_boundary ........................   Passed    0.36 sec
+        Start 246: test_cpp_harness_execution_contract
+234/255 Test #245: test_cross_import_equivalence ...............   Passed    0.31 sec
+        Start 247: test_n9_s8_naca0012_contract
+235/255 Test #247: test_n9_s8_naca0012_contract ................   Passed    0.20 sec
+        Start 248: test_solid_conduction_contract_e2e
+236/255 Test #248: test_solid_conduction_contract_e2e ..........   Passed    0.26 sec
+        Start 249: test_t2_campaign_verdict
+237/255 Test #249: test_t2_campaign_verdict ....................   Passed    0.22 sec
+        Start 250: test_production_thermal_restart_e2e
+238/255 Test #246: test_cpp_harness_execution_contract .........   Passed    0.89 sec
+        Start 251: test_imported_thermal_contracts
+239/255 Test #250: test_production_thermal_restart_e2e .........   Passed    0.39 sec
+        Start 252: test_n9_coupled_schur_case_selection
+240/255 Test #251: test_imported_thermal_contracts .............   Passed    0.61 sec
+        Start 253: test_n9_poiseuille_body_force_production
+241/255 Test #252: test_n9_coupled_schur_case_selection ........   Passed    0.32 sec
+        Start 254: test_missing_qualification_case_contracts
+242/255 Test #254: test_missing_qualification_case_contracts ...   Passed    0.02 sec
+        Start 255: test_openfoam_results_cli_production_e2e
+243/255 Test #253: test_n9_poiseuille_body_force_production ....   Passed    0.35 sec
+        Start 256: test_production_solver_e2e
+244/255 Test #256: test_production_solver_e2e ..................   Passed    1.19 sec
+        Start 257: test_production_solver_numerics_e2e
+245/255 Test #257: test_production_solver_numerics_e2e .........   Passed    0.19 sec
+        Start 258: test_meshio_bridge
+246/255 Test #258: test_meshio_bridge ..........................   Passed    0.51 sec
+        Start 259: test_mesh_geometry_matrix
+247/255 Test #255: test_openfoam_results_cli_production_e2e ....   Passed    3.20 sec
+        Start 260: test_gap_analysis
+248/255 Test #260: test_gap_analysis ...........................   Passed    0.00 sec
+249/255 Test #259: test_mesh_geometry_matrix ...................   Passed    3.69 sec
+250/255 Test #161: test_polyhedral_poisson_convergence .........   Passed   18.81 sec
+251/255 Test #113: test_ghia_cavity_order ......................   Passed   78.64 sec
+        Start  10: test_n8_physical_qualification
+252/255 Test  #10: test_n8_physical_qualification ..............   Passed   18.13 sec
+        Start 114: test_n8_pressure_velocity_matrix
+253/255 Test #114: test_n8_pressure_velocity_matrix ............   Passed   12.93 sec
+        Start 170: test_n10_qualification
+254/255 Test #170: test_n10_qualification ......................   Passed   13.88 sec
+        Start 215: test_n9_negative_diagnostics
+255/255 Test #215: test_n9_negative_diagnostics ................   Passed    1.69 sec
+
+99% tests passed, 2 tests failed out of 255
+
+Label Time Summary:
+audit                  =   0.92 sec*proc (5 tests)
+axisymmetric           =   0.09 sec*proc (2 tests)
+benchmark              =   7.16 sec*proc (3 tests)
+campaign               =  78.64 sec*proc (1 test)
+experimental           =   0.00 sec*proc (1 test)
+integration            =   5.14 sec*proc (6 tests)
+io                     =   0.61 sec*proc (1 test)
+mesh                   =  25.90 sec*proc (2 tests)
+mms                    =   3.90 sec*proc (5 tests)
+mpi                    =   1.20 sec*proc (2 tests)
+n10                    =  35.80 sec*proc (9 tests)
+n11                    =   0.13 sec*proc (3 tests)
+n12                    =   3.90 sec*proc (5 tests)
+n13                    =   0.37 sec*proc (3 tests)
+n16                    =   0.00 sec*proc (1 test)
+n7                     =  35.13 sec*proc (3 tests)
+n8                     =  31.42 sec*proc (3 tests)
+n9                     =   2.57 sec*proc (4 tests)
+numerical              =   0.00 sec*proc (2 tests)
+openfoam               =   3.20 sec*proc (1 test)
+phase12                =   0.00 sec*proc (1 test)
+phase13                =  89.08 sec*proc (34 tests)
+phase14                =   0.09 sec*proc (3 tests)
+provenance             =   0.03 sec*proc (1 test)
+qualification          = 163.14 sec*proc (38 tests)
+recovered              =   0.86 sec*proc (7 tests)
+reference              =   0.00 sec*proc (1 test)
+regression             =   0.03 sec*proc (5 tests)
+restart                =   0.39 sec*proc (1 test)
+sanitizer-slow         = 111.91 sec*proc (8 tests)
+schur                  =   0.32 sec*proc (1 test)
+test-infrastructure    =   0.89 sec*proc (1 test)
+thermal                =   1.50 sec*proc (6 tests)
+total-validation       =   0.20 sec*proc (1 test)
+turbulence             =   0.02 sec*proc (1 test)
+unit                   =   0.98 sec*proc (7 tests)
+validation             = 251.52 sec*proc (78 tests)
+validation-total       =   2.37 sec*proc (3 tests)
+verification           =   0.00 sec*proc (2 tests)
+wall-distance          =   7.16 sec*proc (3 tests)
+
+Total Test time (real) = 127.38 sec
+
+The following tests FAILED:
+	  1 - test_audit_cht_time (Failed)                      audit regression thermal
+	108 - test_variable_viscosity_transpose_stress (Failed)
+Errors while running CTest

@@ -1,0 +1,4 @@
+push_to_master=false
+build_exit=0
+ctest_exit=8
+pyreg_exit=0
