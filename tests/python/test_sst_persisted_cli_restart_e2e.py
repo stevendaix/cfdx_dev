@@ -14,8 +14,9 @@ from pathlib import Path
 
 import h5py
 import numpy as np
-from cfdx.dat_io import read_dat_restart
 import pytest
+
+from cfdx.dat_io import read_dat_restart
 
 
 def _prepare_persisted_sst_case(case_path: Path) -> None:
