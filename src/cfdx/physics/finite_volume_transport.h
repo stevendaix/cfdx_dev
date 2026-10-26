@@ -1315,8 +1315,106 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             result.status = cfdx::core::SolverStatus::DIVERGED;
             return result;
         }
-        for (std::size_t i = 0; i < solution.size(); ++i)
+        // These paired diagnostics use the same physical operator, L-infinity
+        // norm, and RHS normalization. Solver-native Krylov diagnostics remain
+        // available in residual/residual_relative and are intentionally separate.
+        const auto physical_residual_inf = [&](const cfdx::core::Vector& state) {
+            if (state.size() != equation.rhs.size()) {
+                return std::numeric_limits<double>::infinity();
+            }
+            if (equation.matrix.row_offsets_data() == nullptr ||
+                equation.matrix.columns_data() == nullptr ||
+                equation.matrix.values_data() == nullptr) {
+                return std::numeric_limits<double>::infinity();
+            }
+            double norm = 0.0;
+            for (std::size_t i = 0; i < state.size(); ++i) {
+                const double rhs_i = equation.rhs(i);
+                if (!std::isfinite(rhs_i)) {
+                    return std::numeric_limits<double>::infinity();
+                }
+                double ri = -rhs_i;
+                if (!std::isfinite(ri)) {
+                    return std::numeric_limits<double>::infinity();
+                }
+                const std::uint32_t row_begin = equation.matrix.row_offsets_data()[i];
+                const std::uint32_t row_end = equation.matrix.row_offsets_data()[i + 1];
+                for (std::uint32_t k = row_begin; k < row_end; ++k) {
+                    const std::uint32_t cidx = equation.matrix.columns_data()[k];
+                    if (cidx >= state.size()) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                    const double mval = equation.matrix.values_data()[k];
+                    if (!std::isfinite(mval)) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                    const double sval = state(cidx);
+                    if (!std::isfinite(sval)) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                    const double term = mval * sval;
+                    if (!std::isfinite(term)) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                    ri += term;
+                    if (!std::isfinite(ri)) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                }
+                const double ari = std::abs(ri);
+                if (!std::isfinite(ari)) {
+                    return std::numeric_limits<double>::infinity();
+                }
+                if (ari > norm) {
+                    norm = ari;
+                }
+            }
+            return norm;
+        };
+        double rhs_norm = 0.0;
+        if (solution.size() == equation.rhs.size()) {
+            for (std::size_t i = 0; i < solution.size(); ++i) {
+                const double rv = std::abs(equation.rhs(i));
+                if (!std::isfinite(rv)) {
+                    rhs_norm = 0.0;
+                    break;
+                }
+                if (rv > rhs_norm) {
+                    rhs_norm = rv;
+                }
+            }
+        }
+        if (!std::isfinite(rhs_norm)) {
+            rhs_norm = 0.0;
+        }
+        const double rhs_scale = std::max(rhs_norm, 1e-300);
+        result.residual_before_relaxation = physical_residual_inf(candidate);
+        if (!std::isfinite(result.residual_before_relaxation)) {
+            result.status = cfdx::core::SolverStatus::DIVERGED;
+            return result;
+        }
+        result.residual_relative_before_relaxation =
+            result.residual_before_relaxation / rhs_scale;
+
+        for (std::size_t i = 0; i < solution.size(); ++i) {
+            if (!std::isfinite(candidate(i))) {
+                result.status = cfdx::core::SolverStatus::DIVERGED;
+                return result;
+            }
             solution(i) += controls.relaxation * (candidate(i) - solution(i));
+            if (!std::isfinite(solution(i))) {
+                result.status = cfdx::core::SolverStatus::DIVERGED;
+                return result;
+            }
+        }
+
+        result.residual_after_relaxation = physical_residual_inf(solution);
+        if (!std::isfinite(result.residual_after_relaxation)) {
+            result.status = cfdx::core::SolverStatus::DIVERGED;
+            return result;
+        }
+        result.residual_relative_after_relaxation =
+            result.residual_after_relaxation / rhs_scale;
     }
     // A MAX_ITER_REACHED result is not an acceptable predictor solution.
     // Do not inject an unconverged Krylov iterate into the nonlinear solver:
