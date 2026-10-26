@@ -182,3 +182,10 @@ Sur la dernière campagne disponible :
 - validation totale : échec du rapport de validation (sept suites Python en échec) et campagne longue annulée, en plus du blocage N9.
 
 La PR reste draft. Ne pas fusionner tant que le diagnostic exact-HEAD n'a pas identifié la cause et que les contrôles requis ne sont pas verts.
+
+
+## 14. Décomposition cellulaire de la continuité — 2026-10-26
+
+Le diagnostic `COUPLED_CELL_OPERATOR_AUDIT` est ajouté sur le candidat monolithique exact, avant toute relaxation séparée de U et p. Pour la cellule argmax du résidu de ligne et celle argmax de la divergence du flux (si différente), il publie séparément la somme des contributions matricielles vitesse/pression, le second membre et le résidu algébrique, puis les composantes du flux conservatif : interpolation de vitesse, correction de pression orthogonale, correction non orthogonale différée et compensation Rhie–Chow.
+
+Le diagnostic recalcule le flux à partir du même état U,p et des mêmes diagonales de quantité de mouvement. Il est conditionné par `coupled_matrix_summary`, n'altère ni le solveur ni les critères d'acceptation. Les résultats doivent être lus sur le prochain run exact-HEAD avant toute modification de signe, coefficient, tolérance ou budget. Le statut `MAX_ITER_REACHED` des sous-résolutions Fp reste une piste secondaire séparée ; aucun changement de statut n'est inclus dans ce commit.
