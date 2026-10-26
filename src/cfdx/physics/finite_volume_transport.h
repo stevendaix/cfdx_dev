@@ -1121,6 +1121,10 @@ reconstruct_scalar_transport_flux(
     return result;
 }
 
+inline double scalar_equation_residual_inf(
+    const ScalarEquation& equation,
+    const cfdx::core::Vector& solution);
+
 inline cfdx::core::SolverResult solve_scalar_equation(
     const ScalarEquation& equation,
     cfdx::core::Vector& solution,
@@ -1129,6 +1133,31 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     validate_scalar_controls(controls);
     if (solution.size() != equation.rhs.size())
         throw std::invalid_argument("solve_scalar_equation: solution size mismatch");
+
+    double rhs_norm = 0.0;
+    for (std::size_t i = 0; i < equation.rhs.size(); ++i) {
+        if (!std::isfinite(equation.rhs(i))) {
+            rhs_norm = std::numeric_limits<double>::infinity();
+            break;
+        }
+        rhs_norm = std::max(rhs_norm, std::abs(equation.rhs(i)));
+    }
+    const auto record_residual_pair = [&](cfdx::core::SolverResult& result,
+                                          const cfdx::core::Vector& linear_candidate,
+                                          const cfdx::core::Vector& returned_state) {
+        const double before = scalar_equation_residual_inf(equation, linear_candidate);
+        const double after = scalar_equation_residual_inf(equation, returned_state);
+        const double scale = std::max(rhs_norm, 1e-300);
+        result.residual_before_relaxation = before;
+        result.residual_after_relaxation = after;
+        result.residual_relative_before_relaxation = before / scale;
+        result.residual_relative_after_relaxation = after / scale;
+        // Preserve SolverResult's established meaning: its primary residual
+        // describes the linear candidate, measured in the same physical
+        // infinity norm and RHS scale exposed by the before-relaxation fields.
+        result.residual = before;
+        result.residual_relative = result.residual_relative_before_relaxation;
+    };
 
     if (solution.size() == 1) {
         const auto begin = equation.matrix.row_offsets_data()[0];
@@ -1149,18 +1178,24 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             // the returned state fail the requested residual even though the
             // reported linear residual is zero.
             solution(0) = candidate_value;
-            return {
+            cfdx::core::SolverResult result{
                 cfdx::core::SolverStatus::CONVERGED,
                 1, candidate_residual, candidate_residual
             };
+            cfdx::core::Vector candidate(1, candidate_value);
+            record_residual_pair(result, candidate, solution);
+            return result;
         }
         solution(0) += controls.relaxation * (candidate_value - solution(0));
         const double residual =
             std::abs(diagonal * solution(0) - equation.rhs(0));
-        return {
+        cfdx::core::SolverResult result{
             cfdx::core::SolverStatus::MAX_ITER_REACHED,
             controls.max_iterations, residual, residual
         };
+        cfdx::core::Vector candidate(1, candidate_value);
+        record_residual_pair(result, candidate, solution);
+        return result;
     }
 
     cfdx::core::Vector candidate = solution;
@@ -1317,6 +1352,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         }
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) += controls.relaxation * (candidate(i) - solution(i));
+        record_residual_pair(result, candidate, solution);
     }
     // A MAX_ITER_REACHED result is not an acceptable predictor solution.
     // Do not inject an unconverged Krylov iterate into the nonlinear solver:
