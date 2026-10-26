@@ -59,6 +59,8 @@ jobs:
           git cat-file -e "$PR1131_HEAD^{commit}" || { echo "::error::PR1131 head unresolvable"; exit 1; }
           git worktree add "$WDIR" "$PR1131_HEAD"
           cd "$WDIR"
+          git config user.name "oracle-diag-bot"
+          git config user.email "oracle-diag-bot@users.noreply.github.com"
           if ! git merge --no-edit "$MASTER_PIN" > /tmp/merge.log 2>&1; then
             echo "::error::merge PR1131-head + master failed - conflicts"
             cp /tmp/merge.log "$GITHUB_WORKSPACE/$EVID/pr1131_fastctest_mergefail_run$GITHUB_RUN_ID.log"
