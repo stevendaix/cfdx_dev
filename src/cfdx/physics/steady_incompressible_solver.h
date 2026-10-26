@@ -2783,6 +2783,42 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             coupled_preconditioner.get(), coupled_gmres_controls);
     }
 
+    // Evidence-only: inspect the pressure/continuity rows on the exact
+    // monolithic candidate returned by Krylov, before the caller applies
+    // separate U/p relaxation. Exclude the pinned reference row for pure
+    // Neumann pressure, because that row is a gauge equation, not continuity.
+    // This is deliberately diagnostic only: it does not alter SolverResult
+    // or any physical acceptance criterion.
+    if (diagnostics.coupled_matrix_summary) {
+        double continuity_row_linf = 0.0;
+        double continuity_row_signed = 0.0;
+        std::size_t continuity_row_cell = 0;
+        for (std::size_t c = 0; c < nc; ++c) {
+            if (!has_fixed_pressure && c == reference_cell)
+                continue;
+            const std::size_t row = nv + c;
+            double ax = 0.0;
+            for (std::size_t k = A.row_offsets_data()[row];
+                 k < A.row_offsets_data()[row + 1]; ++k)
+                ax += A.values_data()[k] * x(A.columns_data()[k]);
+            const double residual = ax - b(row);
+            if (std::abs(residual) > continuity_row_linf) {
+                continuity_row_linf = std::abs(residual);
+                continuity_row_signed = residual;
+                continuity_row_cell = c;
+            }
+        }
+        std::cerr << "COUPLED_PRE_RELAXATION_CONTINUITY_ROW"
+                  << " linf=" << std::scientific << std::setprecision(8)
+                  << continuity_row_linf
+                  << " signed=" << continuity_row_signed
+                  << " cell=" << continuity_row_cell
+                  << " status=" << static_cast<int>(result.status)
+                  << " iterations=" << result.iterations
+                  << " reported_relative=" << result.residual_relative
+                  << "\\n";
+    }
+
     // Keep coupled-solver failures visible. Do not replace a failed Schur
     // setup by identity-preconditioned GMRES: that would hide the defect in
     // the production preconditioner and make the numerical gate non-diagnostic.
@@ -3360,6 +3396,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     mesh, geometry, U, p, candidate_rAU,
                     controls.density, velocity_bcs, pressure_bcs);
                 double candidate_continuity_linf = 0.0;
+                double candidate_continuity_signed = 0.0;
+                std::size_t candidate_continuity_cell = 0;
                 for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
                     double divergence = 0.0;
                     for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
@@ -3367,12 +3405,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         divergence += mesh.ownership().owner(face) == c
                             ? candidate_flux(face) : -candidate_flux(face);
                     }
-                    candidate_continuity_linf = std::max(
-                        candidate_continuity_linf, std::abs(divergence));
+                    if (std::abs(divergence) > candidate_continuity_linf) {
+                        candidate_continuity_linf = std::abs(divergence);
+                        candidate_continuity_signed = divergence;
+                        candidate_continuity_cell = c;
+                    }
                 }
                 std::cerr << "COUPLED_PRE_RELAXATION_FLUX_CONTINUITY linf="
                           << std::scientific << std::setprecision(8)
                           << candidate_continuity_linf
+                          << " signed=" << candidate_continuity_signed
+                          << " cell=" << candidate_continuity_cell
                           << " alpha_u=" << retry_controller.alpha_u(effective_alpha_u)
                           << " alpha_p=" << retry_controller.alpha_p(effective_alpha_p)
                           << "\n";
