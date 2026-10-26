@@ -374,6 +374,77 @@ int main()
         std::filesystem::remove(csv_path);
     });
 
+    run_case("steady_incompressible_sst_dat_restart_hydrates_runtime_before_first_predictor", [] {
+        const Mesh m = make_unit_cube();
+        Field<double, Location::CELL> seed_u(1, "U", "m/s", 3);
+        Field<double, Location::CELL> seed_p(1, "p", "Pa", 1);
+        Field<double, Location::CELL> seed_k(1, "k", "m2/s2", 1);
+        Field<double, Location::CELL> seed_omega(1, "omega", "1/s", 1);
+        seed_u.fill(0.0);
+        seed_p.fill(0.0);
+        seed_k(0) = 0.25;
+        seed_omega(0) = 3.0;
+        const auto dat = unique_temp_path("_sst_runtime_restart.dat");
+        cfdx::io::write_dat_restart_fields(
+            dat.string(), m, seed_u, seed_p,
+            cfdx::io::DatRestartFields{nullptr, &seed_k, nullptr, &seed_omega},
+            4, 0.2);
+
+        Field<double, Location::CELL> U(1, "U", "m/s", 3);
+        Field<double, Location::CELL> p(1, "p", "Pa", 1);
+        U.fill(0.0);
+        p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        controls.initialization.mode = InitializationMode::Restart;
+        controls.initialization.restart_path = dat.string();
+        controls.convergence.max_iterations = 1;
+        controls.convergence.continuity_tolerance = 1e-12;
+        controls.linear_tolerance = 1e-12;
+
+        SSTProductionState state(1);
+        state.k(0) = 0.1;
+        state.omega(0) = 1.0;
+        state.nu_t(0) = 0.01;
+        state.wall_distance(0) = 0.5;
+        state.strain_rate(0) = 0.0;
+        SSTProductionRuntime runtime;
+        runtime.state = &state;
+        runtime.transport.model = TurbulenceModel::SST;
+        runtime.transport.density = controls.density;
+        runtime.transport.molecular_viscosity = controls.kinematic_viscosity;
+        runtime.k_boundary_conditions["wall"] =
+            {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        runtime.omega_boundary_conditions["wall"] =
+            {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        runtime.wall_patch_names = {"wall"};
+        controls.sst_runtime = &runtime;
+
+        double first_predictor_mu = std::numeric_limits<double>::quiet_NaN();
+        controls.momentum_predictor_callback =
+            [&](std::size_t, const std::vector<double>& mu_eff,
+                const Field<double, Location::CELL>&,
+                const Field<double, Location::FACE>&) {
+                if (!std::isfinite(first_predictor_mu))
+                    first_predictor_mu = mu_eff.at(0);
+            };
+
+        (void)solve_steady_incompressible(m, U, p, ubc, pbc, controls);
+        // For this one-cell, zero-strain state, the SST limiter reduces to
+        // nu_t = k/omega. This checks the viscosity actually supplied to the
+        // first momentum predictor, not merely the final mutated SST fields.
+        const double expected_mu = controls.density *
+            (controls.kinematic_viscosity + seed_k(0) / seed_omega(0));
+        EXPECT_TRUE(std::isfinite(first_predictor_mu));
+        EXPECT_NEAR(first_predictor_mu, expected_mu, 1e-10);
+        std::filesystem::remove(dat);
+    });
+
     run_case("steady_incompressible_opt_in_sst_runtime_executes_coupled_path", [] {
         const Mesh m = make_unit_cube();
         Field<double, Location::CELL> U(1, "U", "m/s", 3);
