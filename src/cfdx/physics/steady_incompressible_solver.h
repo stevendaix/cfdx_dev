@@ -1616,12 +1616,12 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     const auto diffusion = assemble_scalar_equation(
         mesh, geometry, zero_flux, 1.0,
         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
-        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);
 
     const auto convection_diffusion = assemble_scalar_equation(
         mesh, geometry, mass_flux, rho * kinematic_viscosity,
         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
-        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);
 
     // A fixed pressure boundary already removes the constant null mode of
     // the pressure operators, so the gauge reference row is imposed only
