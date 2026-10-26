@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <vector>
 
 namespace cfdx::core {
 
@@ -66,7 +67,8 @@ inline ReductionPacket mpi_deterministic_fused_reduction(
             const auto offset = static_cast<std::size_t>(r) * 3U;
             global_values[0] += gathered[offset];
             global_values[1] += gathered[offset + 1U];
-            global_values[2] = std::max(global_values[2], gathered[offset + 2U]);
+            global_values[2] =
+                std::max(global_values[2], gathered[offset + 2U]);
         }
     }
     MPI_Bcast(global_values, 3, MPI_DOUBLE, 0, comm);
