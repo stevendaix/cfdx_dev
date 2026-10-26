@@ -485,8 +485,15 @@ inline SolverResult solve_gmres(
             result.residual_relative = best_residual / rhs_scale;
             return result;
         }
-        if (controls.adaptive_restart)
+        if (controls.adaptive_restart) {
             current_restart = choose_gmres_restart(current_restart, reduction, controls);
+            // The adaptive policy may raise restart_min above the operator
+            // dimension. Keep every subsequent cycle bounded by the actual
+            // Krylov space, not only the initial cycle.
+            if (n < static_cast<std::size_t>(current_restart)) {
+                current_restart = static_cast<int>(n);
+            }
+        }
         previous_cycle_residual = beta;
     }
 
