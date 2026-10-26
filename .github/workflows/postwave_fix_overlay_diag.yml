@@ -5,8 +5,9 @@ name: Post-merge-wave fix overlay + bisect (diag)
 #     refs de la vague (post-#1096, post-#1125, post-#1126+fixes).
 # (b) overlay : verifier fix1/fix2/fix3 en replica exacte du job Release
 #     (fast CTest -LE long + pyreg complete) AVANT tout push master.
-# fix1 tests/audit/test_audit_energy_boundary_metric.cpp : nullptr
-#     (face_conditions) + &t (current_temperature) au contrat F06.
+# fix1 tests/audit/test_audit_energy_boundary_metric.cpp : 4 args explicites
+#     (source_implicit/conductivity_values/face_conditions=nullptr + &t en
+#     current_temperature, 12e param - la signature en a 12) au contrat F06.
 # fix2 steady_incompressible_solver.h : operateurs pression PCD sans champ
 #     convecte (audit #663) -> apply_nonorthogonal_correction=false explicite.
 # fix3 finite_volume_transport.h : restaurer le segment pre-vague des
@@ -209,7 +210,7 @@ jobs:
           p1 = os.path.join(WT, "tests/audit/test_audit_energy_boundary_metric.cpp")
           s = rd(p1)
           old1 = "assemble_energy_equation(m,geometry,flux,source,old,c,bc,values);"
-          new1 = "assemble_energy_equation(m,geometry,flux,source,old,c,bc,values,nullptr,&t);"
+          new1 = "assemble_energy_equation(m,geometry,flux,source,old,c,bc,values,nullptr,nullptr,nullptr,&t);"
           one(s, old1, "fix1 energy assembly call")
           wr(p1, s.replace(old1, new1, 1))
           report.append("fix1 applied (test_audit_energy_boundary_metric.cpp)")
