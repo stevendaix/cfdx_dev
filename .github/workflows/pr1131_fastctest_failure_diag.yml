@@ -24,7 +24,7 @@ concurrency:
 env:
   EVID: diag-evidence/logs
   PR1131_HEAD: 65af5e1880ab46c596737b29dd59af48f0cf2bfd
-  MASTER_PIN: 46d694e842ff0f8d6e420ea750eb26cc4a21132e
+  MASTER_PIN: b5dd621a30e55bb1f47342addf5c8690bfa14bde
 
 jobs:
   oracle:
