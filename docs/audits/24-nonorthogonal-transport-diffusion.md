@@ -76,3 +76,7 @@ F_{diff,f}=D_f(\psi_N-\psi_P)
 - Test exécutable : `tests/validation/test_nonorthogonal_laplacian_campaign.cpp` — champ affine sur maillage hexaédrique incliné et non uniforme, résidu assemblé, divergence du flux reconstruit, rejet si le champ courant manque.
 - Registre : `docs/validation/CFDX_QUALIFICATION_REGISTRY.json` (cas `SCALAR-TRANSPORT-NONORTH-AFFINE`, statut DIAGNOSTIC), `NUMERICAL_METHOD_MATURITY_AUDIT.json/.md` et `NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json`.
 - Gaps : CI exacte en attente ; MMS polyédrique, GCI, et audit exhaustif de tous les appels Poisson/reconstruction/correction différée requis avant promotion.
+
+
+## Journal de correction post-merge
+- 2026-10-26 — audit après F06 / PR #1126 : le chemin N9 PCD construisait des opérateurs utilisés uniquement sous forme de matrice, mais l'assembleur tentait aussi d'évaluer la correction non orthogonale explicite sans champ courant. Le correctif désactive cette correction différée uniquement dans les deux assemblages PCD matrix-only ; la conductance normale implicite et la diffusion de production restent inchangées. L'audit énergie transmet explicitement la température courante. Les assertions de résidu avant/après relaxation sont documentées dans la fiche 11. Statut : validation CI du HEAD exact en cours ; aucune promotion de qualification n'est revendiquée.
