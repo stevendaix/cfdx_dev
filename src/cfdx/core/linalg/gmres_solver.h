@@ -50,7 +50,8 @@ inline SolverResult solve_gmres(
         controls.restart_max < controls.restart_min ||
         !std::isfinite(controls.target_reduction_per_cycle) ||
         controls.target_reduction_per_cycle <= 0.0 ||
-        controls.target_reduction_per_cycle >= 1.0) {
+        controls.target_reduction_per_cycle >= 1.0 ||
+        controls.reduction.local_begin > controls.reduction.end_for(op.size)) {
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
     }
