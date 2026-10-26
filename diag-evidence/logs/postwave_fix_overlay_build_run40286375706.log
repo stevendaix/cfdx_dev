@@ -1,0 +1,116 @@
+build_exit=1
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:575:57: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  575 |             if (origin[k]<box.lo[k] || origin[k]>box.hi[k]) return false;
+      |                                                         ^
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:578:40: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  578 |         const double inv=1.0/direction[k];
+      |                                        ^
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:579:27: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  579 |         double t1=(box.lo[k]-origin[k])*inv;
+      |                           ^
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:579:37: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  579 |         double t1=(box.lo[k]-origin[k])*inv;
+      |                                     ^
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:580:27: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  580 |         double t2=(box.hi[k]-origin[k])*inv;
+      |                           ^
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:580:37: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  580 |         double t2=(box.hi[k]-origin[k])*inv;
+      |                                     ^
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h: In member function ‘bool cfdx::physics::RadiationBvh::nearest_hit(const std::array<double, 3>&, const std::array<double, 3>&, double&) const’:
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:627:39: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  627 |             if (!std::isfinite(origin[k]) || !std::isfinite(direction[k]))
+      |                                       ^
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:627:71: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  627 |             if (!std::isfinite(origin[k]) || !std::isfinite(direction[k]))
+      |                                                                       ^
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:629:47: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  629 |             direction_norm_squared+=direction[k]*direction[k];
+      |                                               ^
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:629:60: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  629 |             direction_norm_squared+=direction[k]*direction[k];
+      |                                                            ^
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:640:37: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  640 |             const auto& node=nodes_[ni];
+      |                                     ^~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h: In member function ‘int32_t cfdx::physics::RadiationBvh::build_node(std::size_t, std::size_t)’:
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:679:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  679 |         nodes_[id].bounds=bounds;
+      |                ^~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:680:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  680 |         nodes_[id].begin=static_cast<std::uint32_t>(begin);
+      |                ^~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:681:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  681 |         nodes_[id].count=static_cast<std::uint32_t>(end-begin);
+      |                ^~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:690:30: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  690 |         if (extent[1]>extent[axis]) axis=1;
+      |                              ^~~~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:691:30: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  691 |         if (extent[2]>extent[axis]) axis=2;
+      |                              ^~~~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:693:43: warning: conversion to ‘__gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int> >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  693 |         std::nth_element(indices_.begin()+begin,indices_.begin()+mid,
+      |                                           ^~~~~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:693:66: warning: conversion to ‘__gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int> >::difference_type’ {aka ‘long int’} from ‘long unsigned int’ may change the sign of the result [-Wsign-conversion]
+  693 |         std::nth_element(indices_.begin()+begin,indices_.begin()+mid,
+      |                                                                  ^~~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:694:43: warning: conversion to ‘__gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int> >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  694 |                          indices_.begin()+end,[&](std::uint32_t a,
+      |                                           ^~~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h: In lambda function:
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:700:23: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  700 |             return ca[axis]<cb[axis];
+      |                       ^~~~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:700:32: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  700 |             return ca[axis]<cb[axis];
+      |                                ^~~~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h: In member function ‘int32_t cfdx::physics::RadiationBvh::build_node(std::size_t, std::size_t)’:
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:702:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  702 |         nodes_[id].left=build_node(begin,mid);
+      |                ^~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:703:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  703 |         nodes_[id].right=build_node(mid,end);
+      |                ^~
+/tmp/postwave_head_wt/src/cfdx/physics/radiation_advanced.h:704:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  704 |         nodes_[id].count=0;
+      |                ^~
+In file included from /tmp/postwave_head_wt/src/cfdx/physics/steady_incompressible_solver.h:3:
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::FACE]’:
+/tmp/postwave_head_wt/src/cfdx/physics/momentum_viscous_stress.h:38:14:   required from here
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::CELL]’:
+/tmp/postwave_head_wt/src/cfdx/physics/momentum_viscous_stress.h:88:16:   required from here
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/tmp/postwave_head_wt/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+ninja: build stopped: subcommand failed.
+[33/517] Building CXX object CMakeFiles/cfdx_wall_distance_controlled_benchmark.dir/apps/verification/wall_distance_controlled_benchmark.cpp.o
+[34/517] Building CXX object CMakeFiles/test_audit_energy_boundary_metric.dir/tests/audit/test_audit_energy_boundary_metric.cpp.o
+FAILED: [code=1] CMakeFiles/test_audit_energy_boundary_metric.dir/tests/audit/test_audit_energy_boundary_metric.cpp.o 
+/usr/bin/c++ -DCFDX_HAS_HDF5=1 -DCFDX_HAS_MPI=1 -I/tmp/postwave_head_wt/tests -I/tmp/postwave_head_wt/src -I/usr/include/hdf5/serial -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -O3 -DNDEBUG -O2 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -O2 -DNDEBUG -MD -MT CMakeFiles/test_audit_energy_boundary_metric.dir/tests/audit/test_audit_energy_boundary_metric.cpp.o -MF CMakeFiles/test_audit_energy_boundary_metric.dir/tests/audit/test_audit_energy_boundary_metric.cpp.o.d -o CMakeFiles/test_audit_energy_boundary_metric.dir/tests/audit/test_audit_energy_boundary_metric.cpp.o -c /tmp/postwave_head_wt/tests/audit/test_audit_energy_boundary_metric.cpp
+In file included from /tmp/postwave_head_wt/src/cfdx/core/linalg/krylov_reductions.h:6,
+                 from /tmp/postwave_head_wt/src/cfdx/core/linalg/cg_solver.h:16,
+                 from /tmp/postwave_head_wt/src/cfdx/core/linalg/bicgstab_solver.h:4,
+--
+      |                 ^
+/tmp/postwave_head_wt/tests/audit/test_audit_energy_boundary_metric.cpp: In function ‘int main()’:
+/tmp/postwave_head_wt/tests/audit/test_audit_energy_boundary_metric.cpp:25:95: error: cannot convert ‘cfdx::core::Field<double, cfdx::core::Location::CELL>*’ to ‘const std::vector<double>*’
+   25 |         const auto eq=assemble_energy_equation(m,geometry,flux,source,old,c,bc,values,nullptr,&t);
+      |                                                                                               ^~
+      |                                                                                               |
+      |                                                                                               cfdx::core::Field<double, cfdx::core::Location::CELL>*
