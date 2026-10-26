@@ -443,8 +443,8 @@ inline SolverResult solve_gmres(
             x = best_x;
             result.status = SolverStatus::DIVERGED;
             result.iterations = iterations;
-            result.residual = beta;
-            result.residual_relative = beta / rhs_scale;
+            result.residual = best_residual;
+            result.residual_relative = best_residual / rhs_scale;
             return result;
         }
         if (beta < best_residual) {
