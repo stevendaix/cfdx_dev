@@ -63,6 +63,20 @@ int main(int argc, char** argv) {
     for (std::size_t i = 0; i < x_zero_rhs.size(); ++i)
         ok = ok && std::abs(x_zero_rhs(i)) <= 1e-12;
 
+    // Owned-range reductions must ignore duplicated ghost/storage entries.
+    // Entries 4 and 5 intentionally contain large values on both ranks, but
+    // neither rank owns them. The global owned vector is four ones, so its
+    // norm is exactly 2 and its dot product with itself is 4.
+    Vector with_ghost_storage(6, 1.0);
+    with_ghost_storage(4) = 1.0e12;
+    with_ghost_storage(5) = -1.0e12;
+    const double owned_norm = krylov_norm2(
+        with_ghost_storage, SolverPrecision::FP64, reduction);
+    const double owned_dot = krylov_dot(
+        with_ghost_storage, with_ghost_storage, SolverPrecision::FP64, reduction);
+    ok = ok && std::abs(owned_norm - 2.0) <= 1e-14 &&
+         std::abs(owned_dot - 4.0) <= 1e-14;
+
     // Also exercise the ordinary MPI_Allreduce path, not only deterministic
     // reductions, and compare its solution against the same exact answer.
     KrylovReductionPolicy nondeterministic = reduction;
