@@ -322,7 +322,17 @@ void require_physical_convergence(
                 " continuity_linf=" + std::to_string(h.continuity_linf) +
                 " pressure_rel=" + std::to_string(h.pressure_residual) +
                 " velocity_change=" + std::to_string(h.velocity_change_inf) +
-                " pressure_change=" + std::to_string(h.pressure_change_inf);
+                " pressure_change=" + std::to_string(h.pressure_change_inf) +
+                " corrected_flux_continuity_linf=" +
+                    std::to_string(h.corrected_flux_continuity_linf) +
+                " reconstructed_velocity_continuity_linf=" +
+                    std::to_string(h.reconstructed_velocity_continuity_linf) +
+                " flux_velocity_mismatch_linf=" +
+                    std::to_string(h.flux_velocity_mismatch_linf) +
+                " flux_velocity_mismatch_normalized=" +
+                    std::to_string(h.flux_velocity_mismatch_normalized) +
+                " rhie_chow_identity_linf=" +
+                    std::to_string(h.rhie_chow_identity_linf);
         }
         throw std::runtime_error(detail);
     }
