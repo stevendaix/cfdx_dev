@@ -2857,6 +2857,25 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << " iterations=" << result.iterations
                   << " reported_relative=" << result.residual_relative
                   << "\n";
+        {
+            const std::size_t row = nv + continuity_row_cell;
+            double velocity_block = 0.0;
+            double pressure_block = 0.0;
+            for (std::size_t k = A.row_offsets_data()[row];
+                 k < A.row_offsets_data()[row + 1]; ++k) {
+                const std::size_t column = A.columns_data()[k];
+                const double term = A.values_data()[k] * x(column);
+                if (column < nv) velocity_block += term;
+                else pressure_block += term;
+            }
+            std::cerr << "COUPLED_CONTINUITY_ROW_BREAKDOWN"
+                      << " cell=" << continuity_row_cell
+                      << " velocity_block=" << velocity_block
+                      << " pressure_block=" << pressure_block
+                      << " rhs_including_explicit_correction=" << b(row)
+                      << " lhs_minus_rhs=" << (velocity_block + pressure_block - b(row))
+                      << "\\n";
+        }
     }
 
     // Keep coupled-solver failures visible. Do not replace a failed Schur
@@ -3616,6 +3635,56 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         candidate_continuity_cell = c;
                     }
                 }
+
+                const auto candidate_grad_p =
+                    gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+                double velocity_flux_div = 0.0;
+                double pressure_orth_div = 0.0;
+                double pressure_nonorth_div = 0.0;
+                for (Offset k = cell_offsets[candidate_continuity_cell];
+                     k < cell_offsets[candidate_continuity_cell + 1]; ++k) {
+                    const std::size_t face = cell_faces[k];
+                    const bool owner = mesh.ownership().owner(face) == candidate_continuity_cell;
+                    const double sign = owner ? 1.0 : -1.0;
+                    const auto nr = mesh.ownership().neighbour(face);
+                    double orth = 0.0;
+                    double nonorth = 0.0;
+                    if (nr >= 0) {
+                        const std::size_t face_owner = mesh.ownership().owner(face);
+                        const std::size_t face_neighbour = static_cast<std::size_t>(nr);
+                        const Vec3 sf = geometry.face_area_vectors[face];
+                        const Vec3 dvec = geometry.cell_centres[face_neighbour] -
+                                          geometry.cell_centres[face_owner];
+                        const Vec3 cx{
+                            0.5 * (geometry.cell_volumes[face_owner] * candidate_rAU[0][face_owner] +
+                                   geometry.cell_volumes[face_neighbour] * candidate_rAU[0][face_neighbour]),
+                            0.5 * (geometry.cell_volumes[face_owner] * candidate_rAU[1][face_owner] +
+                                   geometry.cell_volumes[face_neighbour] * candidate_rAU[1][face_neighbour]),
+                            0.5 * (geometry.cell_volumes[face_owner] * candidate_rAU[2][face_owner] +
+                                   geometry.cell_volumes[face_neighbour] * candidate_rAU[2][face_neighbour])};
+                        const Vec3 gp{
+                            0.5 * (candidate_grad_p.component_data(0)[face_owner] +
+                                   candidate_grad_p.component_data(0)[face_neighbour]),
+                            0.5 * (candidate_grad_p.component_data(1)[face_owner] +
+                                   candidate_grad_p.component_data(1)[face_neighbour]),
+                            0.5 * (candidate_grad_p.component_data(2)[face_owner] +
+                                   candidate_grad_p.component_data(2)[face_neighbour])};
+                        orth = controls.density * pressure_face_orthogonal_coefficient(sf, dvec, cx) *
+                               (p(face_neighbour) - p(face_owner));
+                        nonorth = controls.density * pressure_face_nonorthogonal_flux(sf, dvec, cx, gp);
+                    }
+                    pressure_orth_div += sign * orth;
+                    pressure_nonorth_div += sign * nonorth;
+                    velocity_flux_div += sign * (candidate_flux(face) - orth - nonorth);
+                }
+                std::cerr << "COUPLED_PRE_RELAXATION_FLUX_BREAKDOWN"
+                          << " cell=" << candidate_continuity_cell
+                          << " velocity_interpolation_div=" << velocity_flux_div
+                          << " pressure_orthogonal_div=" << pressure_orth_div
+                          << " pressure_nonorthogonal_div=" << pressure_nonorth_div
+                          << " sum=" << (velocity_flux_div + pressure_orth_div + pressure_nonorth_div)
+                          << " authoritative_div=" << candidate_continuity_signed
+                          << "\\n";
                 std::cerr << "COUPLED_PRE_RELAXATION_FLUX_CONTINUITY linf="
                           << std::scientific << std::setprecision(8)
                           << candidate_continuity_linf
