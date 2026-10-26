@@ -5,16 +5,22 @@ name: Post-merge-wave fix overlay + bisect (diag)
 #     refs de la vague (post-#1096, post-#1125, post-#1126+fixes).
 # (b) overlay : verifier fix1/fix2/fix3 en replica exacte du job Release
 #     (fast CTest -LE long + pyreg complete) AVANT tout push master.
-# fix1 tests/audit/test_audit_energy_boundary_metric.cpp : 4 args explicites
-#     (source_implicit/conductivity_values/face_conditions=nullptr + &t en
-#     current_temperature, 12e param - la signature en a 12) au contrat F06.
-# fix2 steady_incompressible_solver.h : operateurs pression PCD sans champ
-#     convecte (audit #663) -> apply_nonorthogonal_correction=false explicite.
-# fix3 finite_volume_transport.h : restaurer le segment pre-vague des
-#     diagnostics apparies de relaxation (f1a6e716, splice par ancre unique).
-# Push master (3 commits) uniquement si push_to_master=true ET verdict
-# VERIFIED (fail-closed) : zero regression au-dela des 2 echecs connus non
-# encore corriges, 3 tests cibles PASS, pyreg 100% verte.
+# CYCLE 2 - fix1/fix2/fix3 sont deja dans master (run #7 40318353208 :
+#     verdict VERIFIED, 3 commits pousses, master head 57d951d6).
+# fix4 steady_incompressible_solver.h : le gradient LS de
+#     momentum_transpose_diffusion_face_fluxes utilisait la politique par
+#     defaut ZERO_GRADIENT_GHOST - les fantomes miroir contredisent la CL mur
+#     FIXED_VALUE et le champ affine du test (bug ne dans #1125, diff 0.147447)
+#     -> EXCLUDE_BOUNDARY (1 ligne, occurrence unique).
+# fix5 finite_volume_transport.h : #1126 a remplace le residu RELATIF H04 du
+#     chemin 1x1 par un residu ABSOLU ; CHT (1 cellule/région, tol 1e-12,
+#     |rhs|~6e4 a dt=0.01/0.1) -> plancher d'arrondi ~1e-11 > tol ->
+#     MAX_ITER_REACHED -> throw CHT. Restaurer le bloc 1x1 pre-#1126
+#     byte-exact depuis b82797f1 (tolerance relative H04 + diagnostics
+#     apparies #1088 + garde DIVERGED + rejet qui n'ecrase pas solution).
+# Push master (2 commits) uniquement si push_to_master=true ET verdict
+# VERIFIED (fail-closed) : zero echec fast-ctest attendu (cht_time et
+# transpose_stress doivent PASSER), pyreg 100% verte.
 
 on:
   push:
@@ -33,8 +39,8 @@ concurrency:
 
 env:
   EVID: diag-evidence/logs
-  HEAD_PIN: e8138a68c10b72c8697b932757ad31f31c9e9cb1
-  PREV_PIN: f1a6e71688c5c47de8271aec5cbb3f592e157c98
+  HEAD_PIN: 57d951d6f20dd9880aeb1d30b6096318c773c320
+  WAVE2_PIN: b82797f14ff1242a28bd73888c9bf379a8974248
 
 jobs:
   bisect:
@@ -131,7 +137,7 @@ jobs:
           cat "$f"
 
   overlay:
-    name: overlay (fix1+fix2+fix3 verify, gated master push)
+    name: overlay (fix4+fix5 verify, gated master push)
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     env:
@@ -150,20 +156,20 @@ jobs:
             echo "run_id=$GITHUB_RUN_ID"
             echo "head_pin=$HEAD_PIN"
             echo "master_sha=$MASTER_SHA"
-            echo "expected_remaining_failures=test_audit_cht_time,test_variable_viscosity_transpose_stress (wave 2)"
+            echo "expected_remaining_failures=none (wave 2 tests must pass with fix4/fix5)"
           } > "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_meta_run$GITHUB_RUN_ID.txt"
           if [ "$MASTER_SHA" != "$HEAD_PIN" ]; then
             echo "::error::master has moved (master_sha=$MASTER_SHA vs pinned $HEAD_PIN) - abort, evidence-only"
             echo "master_moved=true" >> "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_status_run$GITHUB_RUN_ID.txt"
             exit 1
           fi
-          git cat-file -e "$PREV_PIN^{commit}" || { echo "::error::pre-wave pin unresolvable"; exit 1; }
+          git cat-file -e "$WAVE2_PIN^{commit}" || { echo "::error::wave2 pin unresolvable"; exit 1; }
           git worktree add "$WDIR" "$HEAD_PIN"
           PUSH_FLAG=$(sed -n 's/^push_to_master=//p' diag-tools/postwave_fix_push_flag.txt | head -n 1)
           echo "PUSH_FLAG=$PUSH_FLAG" >> "$GITHUB_ENV"
           {
             echo "push_to_master=$PUSH_FLAG"
-            echo "prev_pin=$PREV_PIN"
+            echo "wave2_pin=$WAVE2_PIN"
           } >> "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_meta_run$GITHUB_RUN_ID.txt"
           echo "push_to_master=$PUSH_FLAG" >> "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_status_run$GITHUB_RUN_ID.txt"
 
@@ -186,7 +192,7 @@ jobs:
 
           WT = os.environ["WDIR"]
           EVID = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
-          PREV = os.environ["PREV_PIN"]
+          WAVE2 = os.environ["WAVE2_PIN"]
           RUN = os.environ["GITHUB_RUN_ID"]
           report = []
 
@@ -206,99 +212,104 @@ jobs:
                   print(needle[:400])
                   sys.exit(3)
 
-          # ---- fix 1: shear-chain energy audit passes the current temperature ----
-          p1 = os.path.join(WT, "tests/audit/test_audit_energy_boundary_metric.cpp")
-          s = rd(p1)
-          old1 = "assemble_energy_equation(m,geometry,flux,source,old,c,bc,values);"
-          new1 = "assemble_energy_equation(m,geometry,flux,source,old,c,bc,values,nullptr,nullptr,nullptr,&t);"
-          one(s, old1, "fix1 energy assembly call")
-          wr(p1, s.replace(old1, new1, 1))
-          report.append("fix1 applied (test_audit_energy_boundary_metric.cpp)")
+          # ---- fix 4: transpose-flux LS gradient must not use boundary ghosts ----
+          p4 = os.path.join(WT, "src/cfdx/physics/steady_incompressible_solver.h")
+          s = rd(p4)
+          old4 = "        const auto grad_ls = cfdx::core::compute_gradient_least_squares(scalar, mesh);\n"
+          new4 = "        const auto grad_ls = cfdx::core::compute_gradient_least_squares(scalar, mesh, cfdx::core::BoundaryGradientPolicy::EXCLUDE_BOUNDARY);\n"
+          one(s, old4, "fix4 transpose-flux LS gradient call")
+          wr(p4, s.replace(old4, new4, 1))
+          report.append("fix4 applied (steady_incompressible_solver.h transpose LS gradient: EXCLUDE_BOUNDARY)")
 
-          # ---- fix 2: PCD pressure operators opt out of the non-orth correction ----
-          p2 = os.path.join(WT, "src/cfdx/physics/steady_incompressible_solver.h")
-          s = rd(p2)
-          headA = ("    const auto diffusion = assemble_scalar_equation(\n"
-                   "        mesh, geometry, zero_flux, 1.0,\n")
-          headB = ("    const auto convection_diffusion = assemble_scalar_equation(\n"
-                   "        mesh, geometry, mass_flux, rho * kinematic_viscosity,\n")
-          tail = ("        zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,\n"
-                  "        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);")
-          newtail = ("        zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,\n"
-                     "        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);")
-          one(s, headA + tail, "fix2 PCD pressure laplacian operator")
-          one(s, headB + tail, "fix2 PCD pressure convection-diffusion operator")
-          s = s.replace(headA + tail, headA + newtail, 1)
-          s = s.replace(headB + tail, headB + newtail, 1)
-          wr(p2, s)
-          report.append("fix2 applied (steady_incompressible_solver.h PCD operators)")
-
-          # ---- fix 3: restore pre-wave paired relaxation diagnostics (segment splice) ----
-          p3 = os.path.join(WT, "src/cfdx/physics/finite_volume_transport.h")
-          s = rd(p3)
-          show = subprocess.run(["git", "-C", WT, "show", PREV + ":src/cfdx/physics/finite_volume_transport.h"], capture_output=True, text=True)
+          # ---- fix 5: restore the pre-#1126 relative-tolerance 1x1 path ----
+          p5 = os.path.join(WT, "src/cfdx/physics/finite_volume_transport.h")
+          s = rd(p5)
+          show = subprocess.run(["git", "-C", WT, "show", WAVE2 + ":src/cfdx/physics/finite_volume_transport.h"], capture_output=True, text=True)
           if show.returncode != 0:
-              print("PATCH-FAIL: git show of pre-wave file failed:", show.stderr[:400])
+              print("PATCH-FAIL: git show of wave2 file failed:", show.stderr[:400])
               sys.exit(3)
-          ptext = show.stdout
-          start_marker = "        // These paired diagnostics use the same physical operator"
-          n_start = ptext.count(start_marker)
-          if n_start != 1:
-              print("PATCH-FAIL: pre-wave paired-diagnostics comment: expected 1 occurrence, got %d" % n_start)
+          wtext = show.stdout
+          start_marker = "        // H04: the tolerance is relative, as on the Krylov paths. Keep the"
+          if wtext.count(start_marker) != 1:
+              print("PATCH-FAIL: wave2 H04 comment: expected 1 occurrence, got %d" % wtext.count(start_marker))
               sys.exit(3)
-          end_marker = ("result.residual_relative_after_relaxation =\n"
-                        "            result.residual_after_relaxation / rhs_scale;\n")
-          start = ptext.index(start_marker)
-          end = ptext.find(end_marker, start)
+          end_marker = ("        result.residual_relative_after_relaxation = result.residual_relative;\n"
+                        "        return result;\n")
+          if wtext.count(end_marker) != 1:
+              print("PATCH-FAIL: wave2 1x1 tail marker: expected 1 occurrence, got %d" % wtext.count(end_marker))
+              sys.exit(3)
+          start = wtext.index(start_marker)
+          end = wtext.find(end_marker, start)
           if end < 0:
-              print("PATCH-FAIL: pre-wave segment end marker not found after the comment")
+              print("PATCH-FAIL: wave2 segment end marker not found after the H04 comment")
               sys.exit(3)
-          segment = ptext[start:end + len(end_marker)]
-          for marker in ("physical_residual_inf", "residual_before_relaxation",
-                         "residual_after_relaxation", "residual_relative_after_relaxation"):
+          segment = wtext[start:end + len(end_marker)]
+          for marker in ("rhs_scale", "relative <= controls.tolerance",
+                         "SolverStatus::DIVERGED", "residual_before_relaxation",
+                         "A rejected predictor must not replace the accepted iterate"):
               if marker not in segment:
-                  print("PATCH-FAIL: pre-wave segment missing marker:", marker)
+                  print("PATCH-FAIL: wave2 1x1 segment missing marker:", marker)
                   sys.exit(3)
+          if "if (solution.size() == 1)" in segment:
+              print("PATCH-FAIL: wave2 1x1 segment must not contain the block opener")
+              sys.exit(3)
           seg_open = segment.count("{")
           seg_close = segment.count("}")
           if seg_open != seg_close:
-              print("PATCH-FAIL: pre-wave segment braces unbalanced: %d open vs %d close" % (seg_open, seg_close))
+              print("PATCH-FAIL: wave2 1x1 segment braces unbalanced: %d open vs %d close" % (seg_open, seg_close))
               sys.exit(3)
           if not segment.startswith(start_marker):
-              print("PATCH-FAIL: pre-wave segment does not start with the expected comment")
+              print("PATCH-FAIL: wave2 1x1 segment does not start with the H04 comment")
               sys.exit(3)
-          with open(os.path.join(EVID, "postwave_fix_overlay_prevague_segment_run" + RUN + ".txt"), "w") as f:
+          with open(os.path.join(EVID, "postwave_fix_overlay_wave2_segment_run" + RUN + ".txt"), "w") as f:
               f.write(segment)
 
-          anchor = ("        for (std::size_t i = 0; i < solution.size(); ++i)\n"
-                    "            solution(i) += controls.relaxation * (candidate(i) - solution(i));\n")
-          one(s, anchor, "fix3 anchor (bare relaxation loop)")
+          old5 = (
+              "        if (candidate_residual <= controls.tolerance) {\n"
+              "            // A scalar 1x1 system has an exact closed-form solution. Do not\n"
+              "            // under-relax an already converged linear solve: doing so makes\n"
+              "            // the returned state fail the requested residual even though the\n"
+              "            // reported linear residual is zero.\n"
+              "            solution(0) = candidate_value;\n"
+              "            return {\n"
+              "                cfdx::core::SolverStatus::CONVERGED,\n"
+              "                1, candidate_residual, candidate_residual\n"
+              "            };\n"
+              "        }\n"
+              "        solution(0) += controls.relaxation * (candidate_value - solution(0));\n"
+              "        const double residual =\n"
+              "            std::abs(diagonal * solution(0) - equation.rhs(0));\n"
+              "        return {\n"
+              "            cfdx::core::SolverStatus::MAX_ITER_REACHED,\n"
+              "            controls.max_iterations, residual, residual\n"
+              "        };\n")
+          one(s, old5, "fix5 absolute-tolerance 1x1 tail")
           open_before = s.count("{")
           close_before = s.count("}")
-          s = s.replace(anchor, segment, 1)
-          if anchor in s:
-              print("PATCH-FAIL: anchor still present after splice")
+          old_open = old5.count("{")
+          old_close = old5.count("}")
+          s = s.replace(old5, segment, 1)
+          if old5 in s:
+              print("PATCH-FAIL: absolute-tolerance 1x1 tail still present after splice")
               sys.exit(3)
-          for marker in ("physical_residual_inf", "residual_before_relaxation",
-                         "residual_after_relaxation"):
-              if marker not in s:
-                  print("PATCH-FAIL: post-splice file missing marker:", marker)
-                  sys.exit(3)
-          if s.count("{") != open_before + seg_open or s.count("}") != close_before + seg_close:
+          if start_marker not in s:
+              print("PATCH-FAIL: restored H04 comment not present after splice")
+              sys.exit(3)
+          if s.count("{") != open_before - old_open + seg_open or s.count("}") != close_before - old_close + seg_close:
               print("PATCH-FAIL: post-splice brace counts unexpected")
               sys.exit(3)
           if s.count("{") != s.count("}"):
               print("PATCH-FAIL: post-splice file braces unbalanced")
               sys.exit(3)
-          wr(p3, s)
-          report.append("fix3 applied (finite_volume_transport.h): pre-wave segment restored byte-for-byte from " + PREV + "; one-cell path left as merged")
+          wr(p5, s)
+          report.append("fix5 applied (finite_volume_transport.h): 1x1 relative-tolerance block restored byte-for-byte from " + WAVE2)
 
           diff = subprocess.run(["git", "-C", WT, "diff"], capture_output=True, text=True).stdout
           with open(os.path.join(EVID, "postwave_fix_overlay_patchdiff_run" + RUN + ".patch"), "w") as f:
               f.write(diff)
           for line in report:
               print("PATCH:", line)
-          print("PATCH-OK fix3=segment-splice segment_lines=%d seg_braces=%d" % (segment.count("\n"), seg_open))
+          print("PATCH-OK fix4=ls-exclude-boundary fix5=1x1-segment-splice segment_lines=%d" % segment.count("\n"))
           PY
 
       - name: Configure (Release replica)
@@ -358,8 +369,8 @@ jobs:
           def p(kind, ext):
               return os.path.join(evid, "postwave_fix_overlay_%s_run%s.%s" % (kind, run, ext))
 
-          expected = {"test_audit_cht_time", "test_variable_viscosity_transpose_stress"}
-          targeted = ["test_audit_energy_boundary_metric", "test_finite_volume_transport"]
+          expected = set()
+          targeted = ["test_audit_cht_time", "test_variable_viscosity_transpose_stress"]
           lines = []
 
           def write(v):
@@ -448,12 +459,10 @@ jobs:
           cd "$WDIR"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tests/audit/test_audit_energy_boundary_metric.cpp
-          git commit -m "fix(audit): provide the current temperature to the shear-chain energy assembly" -m "The F06 non-orthogonal diffusion contract requires the current scalar field whenever the non-orthogonal correction is active. The shear-chain energy boundary metric audit called the short assembly form on sheared one-cell chains and hit the fail-closed contract. Pass the full 12-parameter contract explicitly (source_implicit=nullptr, conductivity_values=nullptr, face_conditions=nullptr, current_temperature=&t), mirroring the solve_energy assembly call. Verified by the postwave fix overlay diag run (evidence in diag-evidence/logs on ci/long-campaign-diagnostics)."
           git add src/cfdx/physics/steady_incompressible_solver.h
-          git commit -m "fix(coupled): opt PCD pressure operators out of the non-orthogonal correction" -m "assemble_pcd_pressure_operators builds preconditioner operators on the pressure space with no convected field to evaluate the deferred correction against (audit context: issue #663). The F06 fail-closed contract now rejects that call on non-orthogonal meshes, exiting the coupled production solve with schur.pcd. Make the documented opt-out explicit with apply_nonorthogonal_correction=false, which reproduces the pre-#1126 orthogonal-only PCD operators exactly. Verified by the postwave fix overlay diag run."
+          git commit -m "fix(coupled): exclude boundary ghosts from the transpose-flux least-squares gradient" -m "momentum_transpose_diffusion_face_fluxes evaluated its least-squares gradient with the default ZERO_GRADIENT_GHOST policy, so boundary cells received mirror ghosts carrying the cell value. Those ghosts contradict a wall FIXED_VALUE condition and any field with a non-zero normal gradient, biasing corner-cell gradients and the transposed viscous face fluxes (reproduced as the 0.147447 diff of test_variable_viscosity_transpose_stress since #1125). Request EXCLUDE_BOUNDARY so boundary ghosts never enter the LS stencil; cells with fewer than three internal neighbours keep the boundary-aware Green-Gauss values unchanged, matching the documented intent. Verified by the postwave fix overlay diag run (evidence in diag-evidence/logs on ci/long-campaign-diagnostics)."
           git add src/cfdx/physics/finite_volume_transport.h
-          git commit -m "fix(transport): restore paired relaxation diagnostics in the general scalar solve" -m "The F06 merge wave removed the paired residual_before/after_relaxation diagnostics from the general path of solve_scalar_equation, leaving the #1088 solver-status fields at their NaN sentinel while three unit regressions assert the closed-form oracle. Restore the pre-wave paired-diagnostics segment byte-for-byte from f1a6e716 (same physical operator, L-infinity norm, RHS normalization, per-element finite guards). The one-cell path is left as merged. Verified by the postwave fix overlay diag run."
+          git commit -m "fix(transport): restore the relative-tolerance H04 one-cell solve" -m "The #1126 merge replaced the relative H04 convergence test of the one-cell solve path with an absolute residual test. For the CHT one-cell regions (tolerance 1e-12, |rhs| ~ 6e4 at dt=0.01/0.1) the rounding floor of the closed-form solve (~1e-11) exceeds the absolute tolerance, so converged solves returned MAX_ITER_REACHED and the CHT driver aborted with the region energy solve did not converge. Restore the pre-#1126 block byte-for-byte from b82797f1: relative tolerance as on the Krylov paths, the #1088 paired residual diagnostics, the DIVERGED finite guards, and the rejected-predictor contract that never overwrites the accepted iterate. Verified by the postwave fix overlay diag run."
           if git push origin HEAD:master > /tmp/master_push.log 2>&1; then
             echo "master_push=success"
             echo "master_pushed=true" >> "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_status_run$GITHUB_RUN_ID.txt"
