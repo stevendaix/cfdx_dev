@@ -391,5 +391,25 @@ int main() {
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
     });
 
+    run_case("gmres_rejects_nonpositive_tolerance", []() {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 1.0);
+        A.finalize();
+        Vector b(1, 1.0), x(1, 0.0);
+        const auto zero_tol = solve_gmres(A, b, x, 1, 4, 0.0);
+        EXPECT_TRUE(zero_tol.status == SolverStatus::NOT_APPLICABLE);
+        const auto negative_tol = solve_gmres(A, b, x, 1, 4, -1e-12);
+        EXPECT_TRUE(negative_tol.status == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("gmres_rejects_zero_iteration_budget", []() {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 1.0);
+        A.finalize();
+        Vector b(1, 1.0), x(1, 0.0);
+        const auto result = solve_gmres(A, b, x, 1, 0, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    });
+
     return run_all();
 }
