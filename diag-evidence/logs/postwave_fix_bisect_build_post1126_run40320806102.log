@@ -1,0 +1,120 @@
+build_exit=1
+  664 |                          indices_.begin()+end,[&](std::uint32_t a,
+      |                                           ^~~
+/home/runner/work/_temp/head/src/cfdx/physics/radiation_advanced.h: In lambda function:
+/home/runner/work/_temp/head/src/cfdx/physics/radiation_advanced.h:670:23: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  670 |             return ca[axis]<cb[axis];
+      |                       ^~~~
+/home/runner/work/_temp/head/src/cfdx/physics/radiation_advanced.h:670:32: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  670 |             return ca[axis]<cb[axis];
+      |                                ^~~~
+/home/runner/work/_temp/head/src/cfdx/physics/radiation_advanced.h: In member function ‘int32_t cfdx::physics::RadiationBvh::build_node(std::size_t, std::size_t)’:
+/home/runner/work/_temp/head/src/cfdx/physics/radiation_advanced.h:672:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  672 |         nodes_[id].left=build_node(begin,mid);
+      |                ^~
+/home/runner/work/_temp/head/src/cfdx/physics/radiation_advanced.h:673:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  673 |         nodes_[id].right=build_node(mid,end);
+      |                ^~
+/home/runner/work/_temp/head/src/cfdx/physics/radiation_advanced.h:674:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  674 |         nodes_[id].count=0;
+      |                ^~
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:3:
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::FACE]’:
+/home/runner/work/_temp/head/src/cfdx/physics/momentum_viscous_stress.h:38:14:   required from here
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::CELL]’:
+/home/runner/work/_temp/head/src/cfdx/physics/momentum_viscous_stress.h:88:16:   required from here
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+[28/517] Building CXX object CMakeFiles/cfdx_wall_distance_complex_benchmark.dir/apps/verification/wall_distance_complex_benchmark.cpp.o
+[29/517] Building CXX object CMakeFiles/cfdx_wall_distance_poisson_manufactured.dir/apps/verification/wall_distance_poisson_manufactured.cpp.o
+/home/runner/work/_temp/head/apps/verification/wall_distance_poisson_manufactured.cpp: In function ‘int main(int, char**)’:
+/home/runner/work/_temp/head/apps/verification/wall_distance_poisson_manufactured.cpp:506:83: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  506 |                                 std::log(static_cast<double>(rows[i].n)/rows[i-1].n);
+[30/517] Building CXX object CMakeFiles/cfdx_wall_distance_poisson_decomposition.dir/apps/verification/wall_distance_poisson_decomposition.cpp.o
+[31/517] Building CXX object CMakeFiles/cfdx_naca0012_wall_distance_comparison.dir/apps/verification/naca0012_wall_distance_comparison.cpp.o
+[32/517] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/case_hdf5_io.cpp.o
+[33/517] Building CXX object CMakeFiles/cfdx_wall_distance_controlled_benchmark.dir/apps/verification/wall_distance_controlled_benchmark.cpp.o
+[34/517] Building CXX object CMakeFiles/cfdx_thermal_solver.dir/apps/thermal_solver/main.cpp.o
+In file included from /home/runner/work/_temp/head/src/cfdx/core/linalg/krylov_reductions.h:6,
+                 from /home/runner/work/_temp/head/src/cfdx/core/linalg/cg_solver.h:16,
+                 from /home/runner/work/_temp/head/src/cfdx/core/linalg/bicgstab_solver.h:4,
+                 from /home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:7,
+                 from /home/runner/work/_temp/head/src/cfdx/physics/thermal_zones.h:31,
+                 from /home/runner/work/_temp/head/apps/thermal_solver/main.cpp:38:
+/home/runner/work/_temp/head/src/cfdx/core/parallel/mpi_utils.h: In function ‘std::string cfdx::core::parallel::mpi_bcast_string(const std::string&, int, MPI_Comm)’:
+/home/runner/work/_temp/head/src/cfdx/core/parallel/mpi_utils.h:171:24: warning: conversion to ‘std::__cxx11::basic_string<char>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  171 |     std::string result(len, '\0');
+      |                        ^~~
+In file included from /home/runner/work/_temp/head/src/cfdx/core/linalg/cg_solver.h:18:
+/home/runner/work/_temp/head/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/home/runner/work/_temp/head/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:9:
+/home/runner/work/_temp/head/src/cfdx/core/linalg/gmres_solver.h: In function ‘cfdx::core::SolverResult cfdx::core::solve_gmres(const LinearOperator&, const Vector&, Vector&, int, std::size_t, double, Preconditioner*, KrylovControls, GmresWorkspace*)’:
+/home/runner/work/_temp/head/src/cfdx/core/linalg/gmres_solver.h:206:66: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  206 |                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
+      |                                                                  ^
+/home/runner/work/_temp/head/src/cfdx/core/linalg/gmres_solver.h:217:31: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  217 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                               ^
+/home/runner/work/_temp/head/src/cfdx/core/linalg/gmres_solver.h:217:39: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  217 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                                       ^
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:15:
+/home/runner/work/_temp/head/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/home/runner/work/_temp/head/src/cfdx/core/numerics/gradient.h:567:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  567 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/home/runner/work/_temp/head/src/cfdx/core/numerics/gradient.h:569:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  569 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::FACE> cfdx::physics::reconstruct_scalar_transport_flux(const cfdx::core::Mesh&, const FvGeometry&, const cfdx::core::Field<double, cfdx::core::Location::FACE>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, double, const ScalarBoundaryConditions&, bool, ConvectionScheme, const ScalarBoundaryFaceConditions*, const std::vector<double>*, const ScalarBoundaryFaceValues*)’:
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:959:10: warning: unused parameter ‘bounded_convection’ [-Wunused-parameter]
+  959 |     bool bounded_convection = true,
+      |     ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_scalar_equation(const ScalarEquation&, cfdx::core::Vector&, const ScalarSolveControls&)’:
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:1155:13: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1155 |             };
+      |             ^
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:1163:9: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1163 |         };
+      |         ^
+/home/runner/work/_temp/head/src/cfdx/physics/finite_volume_transport.h:1302:17: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1302 |                 };
+      |                 ^
+ninja: build stopped: subcommand failed.
+[26/517] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o
+[27/517] Building CXX object CMakeFiles/cfdx_production_solver.dir/apps/production_solver/main.cpp.o
+FAILED: [code=1] CMakeFiles/cfdx_production_solver.dir/apps/production_solver/main.cpp.o 
+/usr/bin/c++ -DCFDX_HAS_HDF5=1 -DCFDX_HAS_MPI=1 -I/home/runner/work/_temp/head/src -I/usr/include/hdf5/serial -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -O3 -DNDEBUG -O2 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -O2 -DNDEBUG -MD -MT CMakeFiles/cfdx_production_solver.dir/apps/production_solver/main.cpp.o -MF CMakeFiles/cfdx_production_solver.dir/apps/production_solver/main.cpp.o.d -o CMakeFiles/cfdx_production_solver.dir/apps/production_solver/main.cpp.o -c /home/runner/work/_temp/head/apps/production_solver/main.cpp
+In file included from /home/runner/work/_temp/head/src/cfdx/core/linalg/krylov_reductions.h:6,
+                 from /home/runner/work/_temp/head/src/cfdx/core/linalg/cg_solver.h:16,
+                 from /home/runner/work/_temp/head/src/cfdx/core/linalg/bicgstab_solver.h:4,
+                 from /home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:4,
+                 from /home/runner/work/_temp/head/apps/production_solver/main.cpp:2:
+--
+                 from /home/runner/work/_temp/head/apps/production_solver/main.cpp:6:
+/home/runner/work/_temp/head/src/cfdx/physics/radiation_solver.h: In function ‘cfdx::physics::RadiationEnergyCouplingResult cfdx::physics::solve_radiation_energy_coupled(const cfdx::core::Mesh&, const FvGeometry&, const cfdx::core::Field<double, cfdx::core::Location::FACE>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, const std::vector<DiscreteDirection>&, const RadiationEnergyCouplingControls&, const ScalarBoundaryConditions&, const ScalarBoundaryConditions&)’:
+/home/runner/work/_temp/head/src/cfdx/physics/radiation_solver.h:576:41: error: cannot convert ‘cfdx::core::Field<double, cfdx::core::Location::CELL>*’ to ‘const std::vector<double>*’
+  576 |             thermal_bcs,nullptr,nullptr,&temperature);
+      |                                         ^~~~~~~~~~~~
+      |                                         |
+      |                                         cfdx::core::Field<double, cfdx::core::Location::CELL>*
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/production_energy_stage.h:76,
+                 from /home/runner/work/_temp/head/apps/production_solver/main.cpp:3:
