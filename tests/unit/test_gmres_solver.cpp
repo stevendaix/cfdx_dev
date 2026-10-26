@@ -407,13 +407,21 @@ int main() {
         A.push_back(0, 0, 1.0);
         A.push_back(1, 1, 2.0);
         A.finalize();
+        LinearOperator op;
+        op.size = 2;
+        op.apply = [&A](const Vector& in, Vector& out) {
+            const auto values = A.matvec(in);
+            if (out.size() != values.size()) out.resize(values.size());
+            for (std::size_t i = 0; i < values.size(); ++i) out(i) = values[i];
+        };
         Vector b(2, 1.0), x(2, 0.0);
         KrylovControls controls;
         controls.restart_min = 1;
         controls.restart_max = 512;
         controls.adaptive_restart = true;
         GmresWorkspace workspace;
-        (void)solve_gmres(A, b, x, 1, 2, 1e-14, nullptr, controls, &workspace);
+        const auto result = solve_gmres(op, b, x, 1, 2, 1e-14, nullptr, controls, &workspace);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
         EXPECT_TRUE(workspace.n == 2);
         EXPECT_TRUE(workspace.restart <= 2);
     });
