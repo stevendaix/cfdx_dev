@@ -16,12 +16,14 @@
 #include "cfdx/physics/production_time_contract.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <csignal>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
