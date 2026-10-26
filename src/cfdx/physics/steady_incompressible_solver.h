@@ -1199,6 +1199,16 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                 "momentum_transpose_diffusion_face_fluxes: invalid face area");
         double mu_face = cell_effective_dynamic_viscosity[owner];
         std::array<double, 3> grad_face{};
+        // Reconstruct the cellwise viscosity gradient so interpolation is
+        // linear-exact on skewed/nonuniform meshes. Normal-distance weighting
+        // alone is only exact when the centre-to-centre vector is orthogonal
+        // to the face; it otherwise evaluates a different viscosity than the
+        // declared cell field at the face centroid.
+        Field<double, Location::CELL> mu_cell(
+            nc, "transpose_stress_mu", "Pa s", 1);
+        for (std::size_t cell = 0; cell < nc; ++cell)
+            mu_cell(cell) = cell_effective_dynamic_viscosity[cell];
+        const auto mu_gradient = cfdx::core::compute_gradient_least_squares(mu_cell, mesh);
         if (neighbour_index >= 0) {
             const std::size_t neighbour = static_cast<std::size_t>(neighbour_index);
             if (neighbour >= nc || neighbour == owner)
@@ -1217,8 +1227,24 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                     "momentum_transpose_diffusion_face_fluxes: invalid face interpolation distance");
             const double w_owner = d_neighbour / d_sum;
             const double w_neighbour = d_owner / d_sum;
-            mu_face = w_owner * cell_effective_dynamic_viscosity[owner] +
-                      w_neighbour * cell_effective_dynamic_viscosity[neighbour];
+            const auto& face_centre = geometry.face_centres[face];
+            const auto& owner_centre = geometry.cell_centres[owner];
+            const auto& neighbour_centre = geometry.cell_centres[neighbour];
+            const double mu_owner_at_face =
+                cell_effective_dynamic_viscosity[owner] +
+                mu_gradient.component_data(0)[owner] * (face_centre.x - owner_centre.x) +
+                mu_gradient.component_data(1)[owner] * (face_centre.y - owner_centre.y) +
+                mu_gradient.component_data(2)[owner] * (face_centre.z - owner_centre.z);
+            const double mu_neighbour_at_face =
+                cell_effective_dynamic_viscosity[neighbour] +
+                mu_gradient.component_data(0)[neighbour] * (face_centre.x - neighbour_centre.x) +
+                mu_gradient.component_data(1)[neighbour] * (face_centre.y - neighbour_centre.y) +
+                mu_gradient.component_data(2)[neighbour] * (face_centre.z - neighbour_centre.z);
+            mu_face = w_owner * mu_owner_at_face +
+                      w_neighbour * mu_neighbour_at_face;
+            if (!std::isfinite(mu_face) || mu_face < 0.0)
+                throw std::runtime_error(
+                    "momentum_transpose_diffusion_face_fluxes: reconstructed face viscosity is invalid");
             for (std::size_t velocity_component = 0; velocity_component < 3;
                  ++velocity_component) {
                 grad_face[velocity_component] =
