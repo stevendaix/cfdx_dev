@@ -459,7 +459,7 @@ if(CFDX_BUILD_TESTS)
             add_test(NAME test_mpi_deterministic_fused_runtime_control
                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_RECOVERED_MPIEXEC_NUMPROCS_FLAG} 2
                     ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_deterministic_fused>
-                    --runtime-only ${MPIEXEC_POSTFLAGS})
+                    ${MPIEXEC_POSTFLAGS} --runtime-only)
             set_tests_properties(test_mpi_deterministic_fused_runtime_control PROPERTIES
                 LABELS "unit;mpi;recovered;sanitizer-diagnostic" PROCESSORS 2)
 
