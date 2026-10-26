@@ -2874,7 +2874,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                       << " pressure_block=" << pressure_block
                       << " rhs_including_explicit_correction=" << b(row)
                       << " lhs_minus_rhs=" << (velocity_block + pressure_block - b(row))
-                      << "\\n";
+                      << "\n";
         }
     }
 
@@ -3684,7 +3684,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " pressure_nonorthogonal_div=" << pressure_nonorth_div
                           << " sum=" << (velocity_flux_div + pressure_orth_div + pressure_nonorth_div)
                           << " authoritative_div=" << candidate_continuity_signed
-                          << "\\n";
+                          << "\n";
                 std::cerr << "COUPLED_PRE_RELAXATION_FLUX_CONTINUITY linf="
                           << std::scientific << std::setprecision(8)
                           << candidate_continuity_linf
