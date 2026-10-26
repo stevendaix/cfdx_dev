@@ -58,13 +58,32 @@ def _prepare_persisted_sst_case(case_path: Path) -> None:
                 continue
             entries = selection.get("entries", [])
             selection["entries"] = [
-                entry for entry in entries
-                if entry.get("family") != "temporal"
+                entry for entry in entries if entry.get("family") != "temporal"
             ]
             required = selection.get("required_families")
             if isinstance(required, list):
                 selection["required_families"] = [
                     family for family in required if family != "temporal"
+                ]
+        # The steady production executable rejects temporal declarations from
+        # both the legacy scheme and the resolved numerical-method report.
+        numerics = setup.get("numerics")
+        if isinstance(numerics, dict):
+            numerics["transient_scheme"] = "steady"
+        numerical_config = setup.get("numerical_config")
+        if isinstance(numerical_config, dict):
+            numerical_config["transient_scheme"] = "steady"
+            entries = numerical_config.get("entries")
+            if isinstance(entries, list):
+                numerical_config["entries"] = [
+                    entry for entry in entries if entry.get("family") != "temporal"
+                ]
+        numerical_report = setup.get("numerical_report")
+        if isinstance(numerical_report, dict):
+            resolved = numerical_report.get("resolved")
+            if isinstance(resolved, list):
+                numerical_report["resolved"] = [
+                    entry for entry in resolved if entry.get("family") != "temporal"
                 ]
         for boundary in setup.get("boundary_conditions", []):
             patch_type = str(boundary.get("type", "")).lower()
@@ -130,7 +149,9 @@ def test_persisted_sst_cli_wall_omega_and_dat_restart_equivalence(
 
     root = Path(__file__).resolve().parents[2]
     source = root / "tests" / "data" / "su2" / "mesh_NACA0012_inv.su2"
-    config = root / "tests" / "data" / "su2" / "inv_NACA0012_basic.cfg"
+    # Use the incompressible RANS reference setup (viscous), not the
+    # inviscid Euler setup, because SST requires a viscous wall treatment.
+    config = root / "tests" / "data" / "su2" / "incomp_NACA0012.cfg"
     assert source.is_file() and config.is_file()
 
     case_dir = tmp_path / "persisted_case"
@@ -173,8 +194,10 @@ def test_persisted_sst_cli_wall_omega_and_dat_restart_equivalence(
     first_state = read_dat_restart(first_dat)
     assert {"U", "p", "k", "omega"}.issubset(first_state.fields)
 
+    # --iterations is a per-invocation iteration budget, not a global target:
+    # the resumed segment performs one more iteration after the first segment.
     resumed = _run(
-        solver, case_path, tmp_path / "resumed_segment", 2, restart=first_dat
+        solver, case_path, tmp_path / "resumed_segment", 1, restart=first_dat
     )
     assert resumed.returncode == 0, (resumed.stdout + resumed.stderr)[-16000:]
     resumed_dat = tmp_path / "resumed_segment" / "restart.dat"
