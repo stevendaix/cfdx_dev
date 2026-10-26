@@ -9,8 +9,8 @@ name: Post-merge-wave fix overlay + bisect (diag)
 #     (face_conditions) + &t (current_temperature) au contrat F06.
 # fix2 steady_incompressible_solver.h : operateurs pression PCD sans champ
 #     convecte (audit #663) -> apply_nonorthogonal_correction=false explicite.
-# fix3 finite_volume_transport.h : restaurer le bloc pre-vague (f1a6e716
-#     lignes 857-1175) des diagnostics apparies de relaxation.
+# fix3 finite_volume_transport.h : restaurer le segment pre-vague des
+#     diagnostics apparies de relaxation (f1a6e716, splice par ancre unique).
 # Push master (3 commits) uniquement si push_to_master=true ET verdict
 # VERIFIED (fail-closed) : zero regression au-dela des 2 echecs connus non
 # encore corriges, 3 tests cibles PASS, pyreg 100% verte.
@@ -68,7 +68,7 @@ jobs:
             echo "ref=$BREF"
             echo "label=$BLABEL"
             echo "purpose=date the 4 post-wave fast-ctest failures at wave merge refs"
-          } > "$GITHUB_WORKSPACE/$EVID/postwave_fix_bisect_meta_$BLABEL_run$GITHUB_RUN_ID.txt"
+          } > "$GITHUB_WORKSPACE/$EVID/postwave_fix_bisect_meta_${BLABEL}_run$GITHUB_RUN_ID.txt"
 
       - name: Install build dependencies
         run: |
@@ -86,7 +86,8 @@ jobs:
           {
             echo "build_exit=$rc"
             tail -n 100 /tmp/build_raw.log
-          } > "$GITHUB_WORKSPACE/$EVID/postwave_fix_bisect_build_$BLABEL_run$GITHUB_RUN_ID.log"
+            grep -E -B2 -A6 'error:|fatal error:|undefined reference|collect2: error|FAILED:' /tmp/build_raw.log | tail -n 150 || true
+          } > "$GITHUB_WORKSPACE/$EVID/postwave_fix_bisect_build_${BLABEL}_run$GITHUB_RUN_ID.log"
           if [ "$rc" -ne 0 ]; then
             echo "::error::build failed at $BREF - see evidence"
             exit 1
@@ -95,12 +96,12 @@ jobs:
       - name: Run target tests
         run: |
           set +e
-          ctest --test-dir build -R '^(test_audit_cht_time|test_audit_energy_boundary_metric|test_variable_viscosity_transpose_stress|test_finite_volume_transport)$' --output-on-failure --no-tests=ignore > "$GITHUB_WORKSPACE/$EVID/postwave_fix_bisect_ctest_$BLABEL_run$GITHUB_RUN_ID.log" 2>&1
+          ctest --test-dir build -R '^(test_audit_cht_time|test_audit_energy_boundary_metric|test_variable_viscosity_transpose_stress|test_finite_volume_transport)$' --output-on-failure --no-tests=ignore > "$GITHUB_WORKSPACE/$EVID/postwave_fix_bisect_ctest_${BLABEL}_run$GITHUB_RUN_ID.log" 2>&1
           rc=$?
           set -e
-          echo "ctest_exit=$rc" > "$GITHUB_WORKSPACE/$EVID/postwave_fix_bisect_status_$BLABEL_run$GITHUB_RUN_ID.txt"
+          echo "ctest_exit=$rc" > "$GITHUB_WORKSPACE/$EVID/postwave_fix_bisect_status_${BLABEL}_run$GITHUB_RUN_ID.txt"
           echo "ctest_exit=$rc"
-          grep -E 'tests passed|tests failed|The following tests FAILED' "$GITHUB_WORKSPACE/$EVID/postwave_fix_bisect_ctest_$BLABEL_run$GITHUB_RUN_ID.log" || true
+          grep -E 'tests passed|tests failed|The following tests FAILED' "$GITHUB_WORKSPACE/$EVID/postwave_fix_bisect_ctest_${BLABEL}_run$GITHUB_RUN_ID.log" || true
 
       - name: Commit evidence
         if: always()
@@ -121,7 +122,7 @@ jobs:
       - name: Final gate
         if: always()
         run: |
-          f="$GITHUB_WORKSPACE/$EVID/postwave_fix_bisect_status_$BLABEL_run$GITHUB_RUN_ID.txt"
+          f="$GITHUB_WORKSPACE/$EVID/postwave_fix_bisect_status_${BLABEL}_run$GITHUB_RUN_ID.txt"
           if [ ! -f "$f" ]; then
             echo "::error::bisect $BLABEL produced no status - read build/ctest evidence"
             exit 1
@@ -231,57 +232,72 @@ jobs:
           wr(p2, s)
           report.append("fix2 applied (steady_incompressible_solver.h PCD operators)")
 
-          # ---- fix 3: restore pre-wave paired relaxation diagnostics ----
+          # ---- fix 3: restore pre-wave paired relaxation diagnostics (segment splice) ----
           p3 = os.path.join(WT, "src/cfdx/physics/finite_volume_transport.h")
           s = rd(p3)
           show = subprocess.run(["git", "-C", WT, "show", PREV + ":src/cfdx/physics/finite_volume_transport.h"], capture_output=True, text=True)
           if show.returncode != 0:
               print("PATCH-FAIL: git show of pre-wave file failed:", show.stderr[:400])
               sys.exit(3)
-          plines = show.stdout.split("\n")
-          block = "\n".join(plines[856:1175]) + "\n"
+          ptext = show.stdout
+          start_marker = "        // These paired diagnostics use the same physical operator"
+          n_start = ptext.count(start_marker)
+          if n_start != 1:
+              print("PATCH-FAIL: pre-wave paired-diagnostics comment: expected 1 occurrence, got %d" % n_start)
+              sys.exit(3)
+          end_marker = ("result.residual_relative_after_relaxation =\n"
+                        "            result.residual_after_relaxation / rhs_scale;\n")
+          start = ptext.index(start_marker)
+          end = ptext.find(end_marker, start)
+          if end < 0:
+              print("PATCH-FAIL: pre-wave segment end marker not found after the comment")
+              sys.exit(3)
+          segment = ptext[start:end + len(end_marker)]
           for marker in ("physical_residual_inf", "residual_before_relaxation",
                          "residual_after_relaxation", "residual_relative_after_relaxation"):
-              if marker not in block:
-                  print("PATCH-FAIL: pre-wave block (lines 857-1175) missing marker:", marker)
+              if marker not in segment:
+                  print("PATCH-FAIL: pre-wave segment missing marker:", marker)
                   sys.exit(3)
-          comment = "// A MAX_ITER_REACHED result is not an acceptable predictor solution."
-          if len(plines) > 1175 and plines[1175].strip() == comment:
-              block = block + plines[1175] + "\n"
-          with open(os.path.join(EVID, "postwave_fix_prevague_block_run" + RUN + ".txt"), "w") as f:
-              f.write(block)
+          seg_open = segment.count("{")
+          seg_close = segment.count("}")
+          if seg_open != seg_close:
+              print("PATCH-FAIL: pre-wave segment braces unbalanced: %d open vs %d close" % (seg_open, seg_close))
+              sys.exit(3)
+          if not segment.startswith(start_marker):
+              print("PATCH-FAIL: pre-wave segment does not start with the expected comment")
+              sys.exit(3)
+          with open(os.path.join(EVID, "postwave_fix_overlay_prevague_segment_run" + RUN + ".txt"), "w") as f:
+              f.write(segment)
 
-          anchor_full = ("        for (std::size_t i = 0; i < solution.size(); ++i)\n"
-                        "            solution(i) += controls.relaxation * (candidate(i) - solution(i));\n"
-                        "    }\n"
-                        "    // A MAX_ITER_REACHED result is not an acceptable predictor solution.\n")
-          anchor_loop = ("        for (std::size_t i = 0; i < solution.size(); ++i)\n"
-                        "            solution(i) += controls.relaxation * (candidate(i) - solution(i));\n")
-          one(s, anchor_full, "fix3 anchor (full)")
-          one(s, anchor_loop, "fix3 anchor (loop)")
-          nonempty = [l for l in block.split("\n") if l.strip()]
-          last = nonempty[-1].strip() if nonempty else ""
-          first = nonempty[0].strip() if nonempty else ""
-          if last == comment:
-              s = s.replace(anchor_full, block, 1)
-              mode = "replace-full-anchor (block carries its own brace+comment)"
-          elif last == "}":
-              s = s.replace(anchor_full, block, 1)
-              mode = "replace-full-anchor (block ends with brace; current comment line dropped)"
-          else:
-              s = s.replace(anchor_loop, block, 1)
-              mode = "replace-loop-only (block ends with code; current brace+comment kept)"
-          if not first.startswith("//"):
-              mode = mode + " [warning: block first line is not a comment]"
+          anchor = ("        for (std::size_t i = 0; i < solution.size(); ++i)\n"
+                    "            solution(i) += controls.relaxation * (candidate(i) - solution(i));\n")
+          one(s, anchor, "fix3 anchor (bare relaxation loop)")
+          open_before = s.count("{")
+          close_before = s.count("}")
+          s = s.replace(anchor, segment, 1)
+          if anchor in s:
+              print("PATCH-FAIL: anchor still present after splice")
+              sys.exit(3)
+          for marker in ("physical_residual_inf", "residual_before_relaxation",
+                         "residual_after_relaxation"):
+              if marker not in s:
+                  print("PATCH-FAIL: post-splice file missing marker:", marker)
+                  sys.exit(3)
+          if s.count("{") != open_before + seg_open or s.count("}") != close_before + seg_close:
+              print("PATCH-FAIL: post-splice brace counts unexpected")
+              sys.exit(3)
+          if s.count("{") != s.count("}"):
+              print("PATCH-FAIL: post-splice file braces unbalanced")
+              sys.exit(3)
           wr(p3, s)
-          report.append("fix3 applied (finite_volume_transport.h), mode=" + mode)
+          report.append("fix3 applied (finite_volume_transport.h): pre-wave segment restored byte-for-byte from " + PREV + "; one-cell path left as merged")
 
           diff = subprocess.run(["git", "-C", WT, "diff"], capture_output=True, text=True).stdout
-          with open(os.path.join(EVID, "postwave_fix_patchdiff_run" + RUN + ".patch"), "w") as f:
+          with open(os.path.join(EVID, "postwave_fix_overlay_patchdiff_run" + RUN + ".patch"), "w") as f:
               f.write(diff)
           for line in report:
               print("PATCH:", line)
-          print("PATCH-OK mode3=" + mode)
+          print("PATCH-OK fix3=segment-splice segment_lines=%d seg_braces=%d" % (segment.count("\n"), seg_open))
           PY
 
       - name: Configure (Release replica)
@@ -436,7 +452,7 @@ jobs:
           git add src/cfdx/physics/steady_incompressible_solver.h
           git commit -m "fix(coupled): opt PCD pressure operators out of the non-orthogonal correction" -m "assemble_pcd_pressure_operators builds preconditioner operators on the pressure space with no convected field to evaluate the deferred correction against (audit context: issue #663). The F06 fail-closed contract now rejects that call on non-orthogonal meshes, exiting the coupled production solve with schur.pcd. Make the documented opt-out explicit with apply_nonorthogonal_correction=false, which reproduces the pre-#1126 orthogonal-only PCD operators exactly. Verified by the postwave fix overlay diag run."
           git add src/cfdx/physics/finite_volume_transport.h
-          git commit -m "fix(transport): restore paired relaxation diagnostics in the general scalar solve" -m "The F06 merge wave removed the paired residual_before/after_relaxation diagnostics from the general path of solve_scalar_equation, leaving the #1088 solver-status fields at their NaN sentinel while three unit regressions assert the closed-form oracle. Restore the pre-wave block byte-for-byte from f1a6e716 (same physical operator, L-infinity norm, RHS normalization, per-element finite guards). The one-cell path is left as merged. Verified by the postwave fix overlay diag run."
+          git commit -m "fix(transport): restore paired relaxation diagnostics in the general scalar solve" -m "The F06 merge wave removed the paired residual_before/after_relaxation diagnostics from the general path of solve_scalar_equation, leaving the #1088 solver-status fields at their NaN sentinel while three unit regressions assert the closed-form oracle. Restore the pre-wave paired-diagnostics segment byte-for-byte from f1a6e716 (same physical operator, L-infinity norm, RHS normalization, per-element finite guards). The one-cell path is left as merged. Verified by the postwave fix overlay diag run."
           if git push origin HEAD:master > /tmp/master_push.log 2>&1; then
             echo "master_push=success"
             echo "master_pushed=true" >> "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_status_run$GITHUB_RUN_ID.txt"
