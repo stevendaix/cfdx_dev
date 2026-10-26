@@ -1,0 +1,113 @@
+name: Master post-merge-wave Python regression oracle (diag)
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - 'diag-tools/master_e8138_pyreg_marker.txt'
+      - '.github/workflows/master_e8138_pyreg_oracle_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  oracle:
+    name: pyreg-diff-e8138a68-vs-f1a6e716
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EVID: diag-evidence/logs
+      REF_BAD: e8138a68c10b72c8697b932757ad31f31c9e9cb1
+      REF_GOOD: f1a6e71688c5c47de8271aec5cbb3f592e157c98
+      STAMP: 2026-10-26
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python stack (identical to CI Release Python regression)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
+          "$RUNNER_TEMP/venv/bin/python" -c "import importlib.util as u; print('PySide6 installed:', u.find_spec('PySide6') is not None)" | tee "$GITHUB_WORKSPACE/$EVID/mastere8138_pyreg_env_$STAMP.txt"
+
+      - name: Run pytest on both pinned refs
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          VP="$RUNNER_TEMP/venv/bin/python"
+          for REF in "$REF_BAD" "$REF_GOOD"; do
+            SHORT="${REF:0:7}"
+            git fetch origin "$REF"
+            git worktree add "$RUNNER_TEMP/ref-$SHORT" "$REF"
+            ( cd "$RUNNER_TEMP/ref-$SHORT" && \
+              export PYTHONPATH="$RUNNER_TEMP/ref-$SHORT/src/cfdx/python" && \
+              "$VP" -m pytest -q tests/python --tb=no > "$GITHUB_WORKSPACE/$EVID/mastere8138_pyreg_${SHORT}_$STAMP.log" 2>&1 ; \
+              echo "exit_code=$?" >> "$GITHUB_WORKSPACE/$EVID/mastere8138_pyreg_${SHORT}_$STAMP.log" )
+            cd "$GITHUB_WORKSPACE"
+            git worktree remove --force "$RUNNER_TEMP/ref-$SHORT"
+          done
+
+      - name: Diff failing tests between refs
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          BAD="$E/mastere8138_pyreg_${REF_BAD:0:7}_$STAMP.log"
+          GOOD="$E/mastere8138_pyreg_${REF_GOOD:0:7}_$STAMP.log"
+          {
+            echo "=== failures on $REF_BAD (post-merge-wave head, Release pyreg exit 1, CI run 40238292636) ==="
+            grep -E "^(FAILED|ERROR)" "$BAD" | sort > "$E/mastere8138_pyreg_bad_failed_$STAMP.txt" || true
+            cat "$E/mastere8138_pyreg_bad_failed_$STAMP.txt"
+            echo "=== failures on $REF_GOOD (post-typo-fix predecessor) ==="
+            grep -E "^(FAILED|ERROR)" "$GOOD" | sort > "$E/mastere8138_pyreg_good_failed_$STAMP.txt" || true
+            cat "$E/mastere8138_pyreg_good_failed_$STAMP.txt"
+            echo "=== failures ONLY on the post-merge-wave head ==="
+            comm -23 "$E/mastere8138_pyreg_bad_failed_$STAMP.txt" "$E/mastere8138_pyreg_good_failed_$STAMP.txt"
+          } | tee "$E/mastere8138_pyreg_diff_$STAMP.txt"
+
+      - name: Rerun failing tests with tracebacks (bad ref)
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          VP="$RUNNER_TEMP/venv/bin/python"
+          SHORT="${REF_BAD:0:7}"
+          FAILED_LIST="$E/mastere8138_pyreg_bad_failed_$STAMP.txt"
+          if [ -s "$FAILED_LIST" ]; then
+            git fetch origin "$REF_BAD"
+            git worktree add "$RUNNER_TEMP/ref-tb-$SHORT" "$REF_BAD"
+            TESTS=$(sed -E 's/^FAILED ([^ ]+) - .*$/\1/' "$FAILED_LIST" | sort -u | tr '\n' ' ')
+            ( cd "$RUNNER_TEMP/ref-tb-$SHORT" && \
+              export PYTHONPATH="$RUNNER_TEMP/ref-tb-$SHORT/src/cfdx/python" && \
+              "$VP" -m pytest -q $TESTS --tb=short > "$E/mastere8138_pyreg_tb_${SHORT}_$STAMP.log" 2>&1 ; \
+              echo "exit_code=$?" >> "$E/mastere8138_pyreg_tb_${SHORT}_$STAMP.log" )
+            cd "$GITHUB_WORKSPACE"
+            git worktree remove --force "$RUNNER_TEMP/ref-tb-$SHORT"
+          else
+            echo "no failing tests to rerun" > "$E/mastere8138_pyreg_tb_${SHORT}_$STAMP.log"
+          fi
+
+      - name: Write meta
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "target=master post-merge-wave Release python regression (CI run 40238292636, job Build and test (Release), step Run Python regression, exit 1)"
+            echo "ref_bad=$REF_BAD (master head 2026-10-25 22:02Z, docs(sst) mark merged, after #1126/#1127/#1128 + parallel rebase merges)"
+            echo "ref_good=$REF_GOOD (post VERROUX->VERROUS typo fix, fiches gate repaired)"
+            echo "note=no CFDX_PRODUCTION_SOLVER/CFDX_THERMAL_SOLVER: binaries not built here; binary-dependent failures cancel out in the diff"
+            echo "pytest=-q tests/python --tb=no; traceback rerun: --tb=short"
+          } > "$E/mastere8138_pyreg_meta_$STAMP.txt"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: master post-merge-wave Python regression oracle evidence (2026-10-26) [ci skip]"
+            (git push || (git pull --rebase && git push))
+          fi
