@@ -1,0 +1,6 @@
+run_id=40320806102
+head_pin=57d951d6f20dd9880aeb1d30b6096318c773c320
+master_sha=57d951d6f20dd9880aeb1d30b6096318c773c320
+expected_remaining_failures=none (wave 2 tests must pass with fix4/fix5)
+push_to_master=true
+wave2_pin=b82797f14ff1242a28bd73888c9bf379a8974248

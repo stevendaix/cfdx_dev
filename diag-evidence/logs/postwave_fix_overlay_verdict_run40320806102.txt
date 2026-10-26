@@ -1,0 +1,8 @@
+verdict=VERIFIED
+ctest_exit=0
+failed_tests=0
+targeted_not_seen=[]
+unexpected_failures=[]
+pyreg_exit=0
+pyreg_failed=0
+push_to_master=true

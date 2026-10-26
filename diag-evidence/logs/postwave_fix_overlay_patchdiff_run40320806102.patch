@@ -1,0 +1,69 @@
+diff --git a/src/cfdx/physics/finite_volume_transport.h b/src/cfdx/physics/finite_volume_transport.h
+index 04d8c61f..e1cfe26b 100644
+--- a/src/cfdx/physics/finite_volume_transport.h
++++ b/src/cfdx/physics/finite_volume_transport.h
+@@ -1143,24 +1143,41 @@ inline cfdx::core::SolverResult solve_scalar_equation(
+         const double candidate_value = equation.rhs(0) / diagonal;
+         const double candidate_residual =
+             std::abs(diagonal * candidate_value - equation.rhs(0));
+-        if (candidate_residual <= controls.tolerance) {
+-            // A scalar 1x1 system has an exact closed-form solution. Do not
+-            // under-relax an already converged linear solve: doing so makes
+-            // the returned state fail the requested residual even though the
+-            // reported linear residual is zero.
++        // H04: the tolerance is relative, as on the Krylov paths. Keep the
++        // candidate/returned-state diagnostics introduced by PR #1088.
++        const double rhs_scale = std::abs(equation.rhs(0));
++        const double relative = rhs_scale > 0.0
++            ? candidate_residual / rhs_scale : candidate_residual;
++        if (!std::isfinite(candidate_value) || !std::isfinite(candidate_residual) ||
++            !std::isfinite(relative)) {
++            return {cfdx::core::SolverStatus::DIVERGED, 1,
++                    candidate_residual, relative};
++        }
++        if (relative <= controls.tolerance) {
++            // Preserve the established exact 1x1 predictor contract.
+             solution(0) = candidate_value;
+-            return {
++            cfdx::core::SolverResult result{
+                 cfdx::core::SolverStatus::CONVERGED,
+-                1, candidate_residual, candidate_residual
++                1, candidate_residual, relative
+             };
++            result.residual_before_relaxation = candidate_residual;
++            result.residual_after_relaxation = candidate_residual;
++            result.residual_relative_before_relaxation = relative;
++            result.residual_relative_after_relaxation = result.residual_relative_before_relaxation;
++            return result;
+         }
+-        solution(0) += controls.relaxation * (candidate_value - solution(0));
++        // A rejected predictor must not replace the accepted iterate.
+         const double residual =
+             std::abs(diagonal * solution(0) - equation.rhs(0));
+-        return {
++        cfdx::core::SolverResult result{
+             cfdx::core::SolverStatus::MAX_ITER_REACHED,
+-            controls.max_iterations, residual, residual
++            1, residual, rhs_scale > 0.0 ? residual / rhs_scale : residual
+         };
++        result.residual_before_relaxation = candidate_residual;
++        result.residual_after_relaxation = residual;
++        result.residual_relative_before_relaxation = relative;
++        result.residual_relative_after_relaxation = result.residual_relative;
++        return result;
+     }
+ 
+     cfdx::core::Vector candidate = solution;
+diff --git a/src/cfdx/physics/steady_incompressible_solver.h b/src/cfdx/physics/steady_incompressible_solver.h
+index 901b5739..b474a0ad 100644
+--- a/src/cfdx/physics/steady_incompressible_solver.h
++++ b/src/cfdx/physics/steady_incompressible_solver.h
+@@ -1155,7 +1155,7 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
+         // least three internal neighbours; preserve boundary-aware Green-Gauss
+         // values on smaller stencils (e.g. a one-cell-thick channel), where
+         // prescribed boundary values complete the stencil.
+-        const auto grad_ls = cfdx::core::compute_gradient_least_squares(scalar, mesh);
++        const auto grad_ls = cfdx::core::compute_gradient_least_squares(scalar, mesh, cfdx::core::BoundaryGradientPolicy::EXCLUDE_BOUNDARY);
+         const auto* cell_faces = mesh.cells().faces_data();
+         const auto* cell_offsets = mesh.cells().offsets_data();
+         const auto& ownership = mesh.ownership();
