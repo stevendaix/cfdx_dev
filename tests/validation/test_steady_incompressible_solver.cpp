@@ -460,6 +460,20 @@ int main()
         EXPECT_NEAR(p(0), p_before, 0.0);
         EXPECT_NEAR(conflicting_k(0), 7.0, 0.0);
 
+        // The omega target is subject to the same single-owner contract as k.
+        Field<double, Location::CELL> conflicting_omega(
+            1, "omega_other", "1/s", 1);
+        conflicting_omega(0) = 9.0;
+        cfdx::io::DatRestartFields conflicting_omega_fields;
+        conflicting_omega_fields.omega = &conflicting_omega;
+        EXPECT_THROW_WITH(
+            solve_steady_incompressible(
+                m, U, p, ubc, pbc, controls, "", conflicting_omega_fields),
+            std::invalid_argument, "active runtime state");
+        EXPECT_NEAR(U(0, 0), u_before, 0.0);
+        EXPECT_NEAR(p(0), p_before, 0.0);
+        EXPECT_NEAR(conflicting_omega(0), 9.0, 0.0);
+
         // An incomplete SST checkpoint must fail atomically at the integrated
         // solver entry point, leaving carrier and every runtime-owned field
         // untouched even when k was present before the missing omega is found.
