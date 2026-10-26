@@ -43,13 +43,22 @@ inline SolverResult solve_gmres(
         return result;
     }
 
-    const std::size_t n = op.size;
-    int current_restart = std::clamp(restart, controls.restart_min, controls.restart_max);
-    current_restart = std::min<int>(current_restart, static_cast<int>(n));
-    if (!std::isfinite(tolerance) || tolerance <= 0.0 || max_iter == 0) {
+    // Validate the bounds before std::clamp: its precondition requires
+    // restart_min <= restart_max. Reject malformed controls rather than
+    // invoking undefined behavior or silently changing the requested policy.
+    if (controls.restart_min <= 0 ||
+        controls.restart_max < controls.restart_min ||
+        !std::isfinite(controls.target_reduction_per_cycle) ||
+        controls.target_reduction_per_cycle <= 0.0 ||
+        controls.target_reduction_per_cycle >= 1.0 ||
+        !std::isfinite(tolerance)) {
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
     }
+
+    const std::size_t n = op.size;
+    int current_restart = std::clamp(restart, controls.restart_min, controls.restart_max);
+    current_restart = std::min<int>(current_restart, static_cast<int>(n));
 
     const double b_norm = krylov_norm2(b, SolverPrecision::FP64, controls.reduction);
     if (!std::isfinite(b_norm)) {
@@ -73,6 +82,12 @@ inline SolverResult solve_gmres(
         }
         const double ax0_norm =
             krylov_norm2(ax0, SolverPrecision::FP64, controls.reduction);
+        if (!std::isfinite(ax0_norm)) {
+            result.status = SolverStatus::DIVERGED;
+            result.residual = ax0_norm;
+            result.residual_relative = ax0_norm;
+            return result;
+        }
         if (ax0_norm > 0.0) {
             Vector shifted_rhs(n, 0.0);
             for (std::size_t i = 0; i < n; ++i) shifted_rhs(i) = -ax0(i);
@@ -88,16 +103,23 @@ inline SolverResult solve_gmres(
                 if (op.apply_fp64) op.apply_fp64(x_in, ax);
                 else op.apply(x_in, ax);
             }
-            double residual_sq = 0.0;
-            for (std::size_t i = 0; i < n; ++i) {
-                const double r_i = b(i) - ax(i);
-                residual_sq += r_i * r_i;
-            }
-            const double residual = std::sqrt(residual_sq);
-            result.status = shifted.status;
+            Vector true_residual(n, 0.0);
+            for (std::size_t i = 0; i < n; ++i)
+                true_residual(i) = b(i) - ax(i);
+            const double residual =
+                krylov_norm2(true_residual, SolverPrecision::FP64, controls.reduction);
+            const double relative_residual = residual / ax0_norm;
+            // A shifted solve's status is not sufficient: certify the final
+            // iterate using the original homogeneous system's true residual.
+            const bool certified = std::isfinite(residual) &&
+                std::isfinite(relative_residual) && relative_residual <= tolerance;
+            result.status = certified
+                ? SolverStatus::CONVERGED
+                : (shifted.status == SolverStatus::NOT_APPLICABLE
+                    ? SolverStatus::NOT_APPLICABLE : SolverStatus::DIVERGED);
             result.iterations = shifted.iterations;
             result.residual = residual;
-            result.residual_relative = residual / ax0_norm;
+            result.residual_relative = relative_residual;
             result.residual_replacements = shifted.residual_replacements;
             result.first_residual_replacement = shifted.first_residual_replacement;
             result.last_residual_replacement = shifted.last_residual_replacement;
