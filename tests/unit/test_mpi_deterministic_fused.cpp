@@ -3,12 +3,25 @@
 
 #include <cmath>
 #include <iostream>
+#include <string_view>
 
 int main(int argc, char** argv) {
     cfdx::core::parallel::mpi_init(&argc, &argv);
 
     const int rank = cfdx::core::parallel::mpi_rank();
     const int size = cfdx::core::parallel::mpi_size();
+
+    // Diagnostic mode isolates MPI startup/finalization from the reduction
+    // collectives so LeakSanitizer can distinguish a runtime leak from a
+    // leak triggered by the deterministic reduction path.
+    if (argc > 1 && std::string_view(argv[1]) == "--runtime-only") {
+        const bool valid_size = size == 2;
+        if (!valid_size) {
+            std::cerr << "MPI runtime control expected exactly two ranks\n";
+        }
+        cfdx::core::parallel::mpi_finalize();
+        return valid_size ? 0 : 1;
+    }
 
     const cfdx::core::ReductionPacket local{
         static_cast<double>(rank + 1),
