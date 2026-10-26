@@ -265,6 +265,10 @@ jobs:
               if marker not in block:
                   print("PATCH-FAIL: pre-wave block (lines 857-1175) missing marker:", marker)
                   sys.exit(3)
+          comment = "// A MAX_ITER_REACHED result is not an acceptable predictor solution."
+          if len(plines) > 1175 and plines[1175].strip() == comment:
+              block = block + plines[1175] + "
+"
           with open(os.path.join(EVID, "postwave_fix_prevague_block_run" + RUN + ".txt"), "w") as f:
               f.write(block)
 
@@ -285,16 +289,18 @@ jobs:
           nonempty = [l for l in block.split("
 ") if l.strip()]
           last = nonempty[-1].strip() if nonempty else ""
-          if last == "// A MAX_ITER_REACHED result is not an acceptable predictor solution.":
+          first = nonempty[0].strip() if nonempty else ""
+          if last == comment:
               s = s.replace(anchor_full, block, 1)
               mode = "replace-full-anchor (block carries its own brace+comment)"
           elif last == "}":
-              s = s.replace(anchor_loop, block, 1)
-              mode = "replace-loop (block ends with brace; current brace+comment kept)"
+              s = s.replace(anchor_full, block, 1)
+              mode = "replace-full-anchor (block ends with brace; current comment line dropped)"
           else:
-              s = s.replace(anchor_loop, block, "
-", 1)
-              mode = "replace-loop (block ends with code; current brace+comment kept)"
+              s = s.replace(anchor_loop, block, 1)
+              mode = "replace-loop-only (block ends with code; current brace+comment kept)"
+          if not first.startswith("//"):
+              mode = mode + " [warning: block first line is not a comment]"
           wr(p3, s)
           report.append("fix3 applied (finite_volume_transport.h), mode=" + mode)
 
@@ -305,185 +311,6 @@ jobs:
               print("PATCH:", line)
           print("PATCH-OK mode3=" + mode)
           PY
-
-      - name: Configure (Release replica)
-        run: |
-          cmake -S "$WDIR" -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_LONG_VALIDATION=OFF             -DCMAKE_EXPORT_COMPILE_COMMANDS=ON             -DCMAKE_UNITY_BUILD=OFF
-
-      - name: Build
-        run: |
-          set +e
-          cmake --build build --parallel 8 > /tmp/build_raw.log 2>&1
-          rc=$?
-          {
-            echo "build_exit=$rc"
-            tail -n 100 /tmp/build_raw.log
-            grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' /tmp/build_raw.log | tail -n 120 || true
-          } > "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_build_run$GITHUB_RUN_ID.log"
-          echo "build_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_status_run$GITHUB_RUN_ID.txt"
-          if [ "$rc" -ne 0 ]; then
-            echo "::error::patched build failed - see evidence log"
-            exit 1
-          fi
-
-      - name: Run fast CTest (replica of the CI step)
-        run: |
-          set +e
-          ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4             > "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_ctest_run$GITHUB_RUN_ID.log" 2>&1
-          rc=$?
-          set -e
-          echo "ctest_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_status_run$GITHUB_RUN_ID.txt"
-          echo "ctest_exit=$rc"
-          tail -n 40 "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_ctest_run$GITHUB_RUN_ID.log"
-
-      - name: Run Python regression replica
-        run: |
-          set +e
-          cd "$WDIR"
-          export CFDX_PRODUCTION_SOLVER="$GITHUB_WORKSPACE/build/cfdx_production_solver"
-          export CFDX_THERMAL_SOLVER="$GITHUB_WORKSPACE/build/cfdx_thermal_solver"
-          export PYTHONPATH="$WDIR/src/cfdx/python"
-          python -m pytest -q tests/python --tb=short             > "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_pyreg_run$GITHUB_RUN_ID.log" 2>&1
-          rc=$?
-          set -e
-          echo "pyreg_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_status_run$GITHUB_RUN_ID.txt"
-          {
-            grep -E '^(FAILED|ERROR) ' "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_pyreg_run$GITHUB_RUN_ID.log" || true
-            tail -n 5 "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_pyreg_run$GITHUB_RUN_ID.log"
-          } > "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_pyreg_failed_run$GITHUB_RUN_ID.txt"
-          cat "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_pyreg_failed_run$GITHUB_RUN_ID.txt"
-
-      - name: Analyze and classify
-        if: always()
-        run: |
-          python3 - <<'PY'
-          import os, re, sys
-
-          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
-          run = os.environ["GITHUB_RUN_ID"]
-          def p(kind, ext):
-              return os.path.join(evid, "postwave_fix_overlay_%s_run%s.%s" % (kind, run, ext))
-
-          expected = {"test_audit_cht_time", "test_variable_viscosity_transpose_stress"}
-          targeted = ["test_audit_energy_boundary_metric", "test_finite_volume_transport"]
-          lines = []
-
-          def write(v):
-              with open(p("verdict", "txt"), "w") as f:
-                  f.write("verdict=" + v + "
-")
-                  for l in lines:
-                      f.write(l + "
-")
-              print("verdict=" + v)
-
-          status = {}
-          if os.path.exists(p("status", "txt")):
-              for l in open(p("status", "txt")):
-                  if "=" in l:
-                      k, v = l.split("=", 1)
-                      status[k.strip()] = v.strip()
-
-          if status.get("master_moved") == "true":
-              lines.append("master moved away from the pinned head; nothing verified")
-              write("MASTER_MOVED"); sys.exit(0)
-          if not os.path.exists(p("patchdiff", "patch")):
-              lines.append("patch step failed or did not run - see job log / evidence")
-              write("PATCH_FAILED"); sys.exit(0)
-          if status.get("build_exit") != "0":
-              lines.append("build_exit=" + str(status.get("build_exit")))
-              write("INCONCLUSIVE_BUILD"); sys.exit(0)
-
-          ctest_log = p("ctest", "log")
-          if not os.path.exists(ctest_log):
-              lines.append("no ctest log - run did not reach tests")
-              write("INCONCLUSIVE_NO_CTEST"); sys.exit(0)
-          text = open(ctest_log, errors="replace").read()
-          failed = []
-          idx = text.find("The following tests FAILED:")
-          if idx >= 0:
-              for line in text[idx:].splitlines()[1:]:
-                  s = line.strip()
-                  if not s:
-                      break
-                  m = re.match(r"(d+)s*-s*(S+)", s)
-                  if not m:
-                      break
-                  failed.append(m.group(2))
-          with open(p("failedlist", "txt"), "w") as f:
-              for t in failed:
-                  f.write(t + "
-")
-
-          pyreg_failed = []
-          if os.path.exists(p("pyreg", "log")):
-              pt = open(p("pyreg", "log"), errors="replace").read()
-              pyreg_failed = [l for l in pt.splitlines() if l.startswith("FAILED ") or l.startswith("ERROR ")]
-
-          unexpected = [t for t in failed if t not in expected]
-          not_run = [t for t in targeted if t not in text]
-          still_failing = [t for t in targeted if t in failed]
-          ok = (not unexpected) and (not not_run) and (not still_failing) and (not pyreg_failed)
-
-          lines.append("ctest_exit=" + str(status.get("ctest_exit")))
-          lines.append("failed_tests=" + str(len(failed)))
-          lines += failed
-          lines.append("targeted_not_seen=" + str(not_run))
-          lines.append("unexpected_failures=" + str(unexpected))
-          lines.append("pyreg_exit=" + str(status.get("pyreg_exit")))
-          lines.append("pyreg_failed=" + str(len(pyreg_failed)))
-          lines += pyreg_failed[:20]
-          lines.append("push_to_master=" + str(status.get("push_to_master")))
-          write("VERIFIED" if ok else "FAILED")
-          PY
-
-      - name: Push fixes to master (gated)
-        if: always()
-        run: |
-          v=$(head -n 1 "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo verdict=MISSING)
-          echo "verdict: $v"
-          if [ "$v" != "verdict=VERIFIED" ]; then
-            echo "no push: verdict is not VERIFIED"
-            exit 0
-          fi
-          if [ "$PUSH_FLAG" != "true" ]; then
-            echo "no push: diag-tools/postwave_fix_push_flag.txt is not push_to_master=true"
-            exit 0
-          fi
-          cd "$WDIR"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add tests/audit/test_audit_energy_boundary_metric.cpp
-          git commit -m "fix(audit): provide the current temperature to the shear-chain energy assembly" -m "The F06 non-orthogonal diffusion contract requires the current scalar field whenever the non-orthogonal correction is active. The shear-chain energy boundary metric audit called the short assembly form on sheared one-cell chains and hit the fail-closed contract. Pass face_conditions=nullptr and the current temperature field explicitly. Verified by the postwave fix overlay diag run (evidence in diag-evidence/logs on ci/long-campaign-diagnostics)."
-          git add src/cfdx/physics/steady_incompressible_solver.h
-          git commit -m "fix(coupled): opt PCD pressure operators out of the non-orthogonal correction" -m "assemble_pcd_pressure_operators builds preconditioner operators on the pressure space with no convected field to evaluate the deferred correction against (audit context: issue #663). The F06 fail-closed contract now rejects that call on non-orthogonal meshes, exiting the coupled production solve with schur.pcd. Make the documented opt-out explicit with apply_nonorthogonal_correction=false, which reproduces the pre-#1126 orthogonal-only PCD operators exactly. Verified by the postwave fix overlay diag run."
-          git add src/cfdx/physics/finite_volume_transport.h
-          git commit -m "fix(transport): restore paired relaxation diagnostics in the general scalar solve" -m "The F06 merge wave removed the paired residual_before/after_relaxation diagnostics from the general path of solve_scalar_equation, leaving the #1088 solver-status fields at their NaN sentinel while three unit regressions assert the closed-form oracle. Restore the pre-wave block byte-for-byte from f1a6e716 (same physical operator, L-infinity norm, RHS normalization, per-element finite guards). The one-cell path is left as merged. Verified by the postwave fix overlay diag run."
-          if git push origin HEAD:master > /tmp/master_push.log 2>&1; then
-            echo "master_push=success"
-            echo "master_pushed=true" >> "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_status_run$GITHUB_RUN_ID.txt"
-          else
-            echo "master_push=FAILED - see evidence"
-            cat /tmp/master_push.log
-            cp /tmp/master_push.log "$GITHUB_WORKSPACE/$EVID/postwave_fix_overlay_pushfail_run$GITHUB_RUN_ID.log" || true
-            exit 1
-          fi
-
-      - name: Commit evidence
-        if: always()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A diag-evidence/logs
-          if git diff --cached --quiet; then
-            echo "no evidence changes"
-          else
-            git commit -m "diag: postwave fix overlay run $GITHUB_RUN_ID (evidence-only) [ci skip]"
-            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
-              git pull --rebase origin "$GITHUB_REF_NAME"
-              git push origin "HEAD:$GITHUB_REF_NAME"
-            fi
-          fi
 
       - name: Final gate
         if: always()
@@ -496,9 +323,9 @@ jobs:
           cat "$f"
           v=$(head -n 1 "$f")
           case "$v" in
-            verdict=VERIFIED|verdict=PATCH_FAILED|verdict=FAILED)
+            verdict=VERIFIED|verdict=FAILED)
               echo "overlay run concluded with a recorded verdict" ;;
             *)
-              echo "::error::$v - inconclusive overlay run"
+              echo "::error::$v - inconclusive or failed overlay run"
               exit 1 ;;
           esac
