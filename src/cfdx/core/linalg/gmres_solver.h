@@ -213,6 +213,14 @@ inline SolverResult solve_gmres(
     while (iterations < max_iter) {
         w.resize(n, static_cast<std::size_t>(current_restart));
         beta = true_residual();
+        if (!std::isfinite(beta)) {
+            x = best_x;
+            result.status = SolverStatus::DIVERGED;
+            result.iterations = iterations;
+            result.residual = best_residual;
+            result.residual_relative = best_residual / rhs_scale;
+            return result;
+        }
         if (beta <= tol) break;
 
         for (std::size_t i = 0; i < n; ++i) w.v(0)[i] = w.r(i) / beta;
@@ -343,6 +351,14 @@ inline SolverResult solve_gmres(
                 controls.residual_replacement_period > 0 &&
                 iterations % controls.residual_replacement_period == 0) {
                 const double exact = true_residual();
+                if (!std::isfinite(exact)) {
+                    x = best_x;
+                    result.status = SolverStatus::DIVERGED;
+                    result.iterations = iterations;
+                    result.residual = best_residual;
+                    result.residual_relative = best_residual / rhs_scale;
+                    return result;
+                }
                 if (exact <= tol) {
                     result.status = SolverStatus::CONVERGED;
                     result.iterations = iterations;
