@@ -1,0 +1,221 @@
+build_exit=1
+      |         cfdx::io::write_dat_restart_fields
+/tmp/postwave_head_wt/src/cfdx/io/restart/dat_restart.h:152:13: note: ‘cfdx::io::write_dat_restart_fields’ declared here
+  152 | inline void write_dat_restart_fields(
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1166:53: error: no match for ‘operator/’ (operand types are ‘const cfdx::physics::std::filesystem::__cxx11::path’ and ‘const char [17]’)
+ 1166 |         const auto convergence = options.output_dir / "convergence.json";
+      |                                  ~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~~~~~~~~~
+      |                                          |            |
+      |                                          |            const char [17]
+      |                                          const cfdx::physics::std::filesystem::__cxx11::path
+/usr/include/c++/13/bits/fs_path.h:591:17: note: candidate: ‘cfdx::physics::std::filesystem::__cxx11::path cfdx::physics::std::filesystem::__cxx11::operator/(const path&, const path&)’
+  591 |     friend path operator/(const path& __lhs, const path& __rhs)
+      |                 ^~~~~~~~
+/usr/include/c++/13/bits/fs_path.h:591:58: note:   no known conversion for argument 2 from ‘const char [17]’ to ‘const cfdx::physics::std::filesystem::__cxx11::path&’
+  591 |     friend path operator/(const path& __lhs, const path& __rhs)
+      |                                              ~~~~~~~~~~~~^~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1171:20: error: ‘struct cfdx::physics::cfdx::physics::IncompressibleSolveResult’ has no member named ‘iterations’
+ 1171 |             result.iterations,
+      |                    ^~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1173:13: error: ‘overall_reason’ was not declared in this scope
+ 1173 |             overall_reason,
+      |             ^~~~~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1176:14: error: ‘cout’ is not a member of ‘cfdx::physics::std’; did you mean ‘std::cout’?
+ 1176 |         std::cout << "Checkpoint " << dat.string() << "\n";
+      |              ^~~~
+/usr/include/c++/13/iostream:63:18: note: ‘std::cout’ declared here
+   63 |   extern ostream cout;          ///< Linked to standard output
+      |                  ^~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1177:14: error: ‘cout’ is not a member of ‘cfdx::physics::std’; did you mean ‘std::cout’?
+ 1177 |         std::cout << "Convergence history " << convergence.string() << "\n";
+      |              ^~~~
+/usr/include/c++/13/iostream:63:18: note: ‘std::cout’ declared here
+   63 |   extern ostream cout;          ///< Linked to standard output
+      |                  ^~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1178:14: error: ‘cout’ is not a member of ‘cfdx::physics::std’; did you mean ‘std::cout’?
+ 1178 |         std::cout << "Execution summary " << execution.string() << "\n";
+      |              ^~~~
+/usr/include/c++/13/iostream:63:18: note: ‘std::cout’ declared here
+   63 |   extern ostream cout;          ///< Linked to standard output
+      |                  ^~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1181:47: error: ‘const class cfdx::physics::std::filesystem::__cxx11::path’ has no member named ‘string’
+ 1181 |             write_probe_csv(options.probe_csv.string(), result.probe_samples, options.probes);
+      |                                               ^~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1181:64: error: ‘struct cfdx::physics::cfdx::physics::IncompressibleSolveResult’ has no member named ‘probe_samples’
+ 1181 |             write_probe_csv(options.probe_csv.string(), result.probe_samples, options.probes);
+      |                                                                ^~~~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1181:87: error: ‘const struct cfdx::physics::{anonymous}::Options’ has no member named ‘probes’; did you mean ‘probe_csv’?
+ 1181 |             write_probe_csv(options.probe_csv.string(), result.probe_samples, options.probes);
+      |                                                                                       ^~~~~~
+      |                                                                                       probe_csv
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1182:18: error: ‘cout’ is not a member of ‘cfdx::physics::std’; did you mean ‘std::cout’?
+ 1182 |             std::cout << "Probe CSV " << options.probe_csv.string() << " ("
+      |                  ^~~~
+/usr/include/c++/13/iostream:63:18: note: ‘std::cout’ declared here
+   63 |   extern ostream cout;          ///< Linked to standard output
+      |                  ^~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1182:60: error: ‘const class cfdx::physics::std::filesystem::__cxx11::path’ has no member named ‘string’
+ 1182 |             std::cout << "Probe CSV " << options.probe_csv.string() << " ("
+      |                                                            ^~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1183:33: error: ‘struct cfdx::physics::cfdx::physics::IncompressibleSolveResult’ has no member named ‘probe_samples’
+ 1183 |                       << result.probe_samples.size() << " samples)\n";
+      |                                 ^~~~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1186:14: error: ‘cout’ is not a member of ‘cfdx::physics::std’; did you mean ‘std::cout’?
+ 1186 |         std::cout << "Converged " << (overall_converged ? "YES" : "NO")
+      |              ^~~~
+/usr/include/c++/13/iostream:63:18: note: ‘std::cout’ declared here
+   63 |   extern ostream cout;          ///< Linked to standard output
+      |                  ^~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1187:47: error: ‘struct cfdx::physics::cfdx::physics::IncompressibleSolveResult’ has no member named ‘iterations’
+ 1187 |                   << " Iterations " << result.iterations << "\n";
+      |                                               ^~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1189:34: error: expected unqualified-id before ‘&’ token
+ 1189 |     } catch (const std::exception& exc) {
+      |                                  ^
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1189:34: error: expected ‘)’ before ‘&’ token
+ 1189 |     } catch (const std::exception& exc) {
+      |             ~                    ^
+      |                                  )
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1189:34: error: expected ‘{’ before ‘&’ token
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1189:36: error: ‘exc’ was not declared in this scope; did you mean ‘exp’?
+ 1189 |     } catch (const std::exception& exc) {
+      |                                    ^~~
+      |                                    exp
+/tmp/postwave_head_wt/apps/production_solver/main.cpp: At global scope:
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1213:2: error: expected ‘}’ at end of input
+ 1213 | }
+      |  ^
+/tmp/postwave_head_wt/src/cfdx/physics/finite_volume_transport.h:27:25: note: to match this ‘{’
+   27 | namespace cfdx::physics {
+      |                         ^
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:254:6: warning: ‘void cfdx::physics::{anonymous}::write_text_file_atomic(const cfdx::physics::std::filesystem::__cxx11::path&, const int&)’ defined but not used [-Wunused-function]
+  254 | void write_text_file_atomic(
+      |      ^~~~~~~~~~~~~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:60:26: warning: ‘cfdx::physics::cfdx::physics::IncompressiblePointProbe cfdx::physics::{anonymous}::parse_probe(const int&)’ defined but not used [-Wunused-function]
+   60 | IncompressiblePointProbe parse_probe(const std::string& spec)
+      |                          ^~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:37:6: warning: ‘void cfdx::physics::{anonymous}::handle_stop_signal(int)’ defined but not used [-Wunused-function]
+   37 | void handle_stop_signal(int) noexcept
+      |      ^~~~~~~~~~~~~~~~~~
+ninja: build stopped: subcommand failed.
+      |                                  |            const char [12]
+--
+  591 |     friend path operator/(const path& __lhs, const path& __rhs)
+      |                                              ~~~~~~~~~~~~^~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1161:9: error: ‘DatRestartFields’ was not declared in this scope; did you mean ‘cfdx::io::DatRestartFields’?
+ 1161 |         DatRestartFields checkpoint_fields;
+      |         ^~~~~~~~~~~~~~~~
+      |         cfdx::io::DatRestartFields
+/tmp/postwave_head_wt/src/cfdx/io/restart/dat_restart.h:133:8: note: ‘cfdx::io::DatRestartFields’ declared here
+  133 | struct DatRestartFields {
+      |        ^~~~~~~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1163:13: error: ‘checkpoint_fields’ was not declared in this scope
+ 1163 |             checkpoint_fields.temperature = &temperature;
+      |             ^~~~~~~~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1163:46: error: ‘temperature’ was not declared in this scope
+ 1163 |             checkpoint_fields.temperature = &temperature;
+      |                                              ^~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1164:48: error: ‘mesh’ was not declared in this scope
+ 1164 |         write_dat_restart_fields(dat.string(), mesh, U, p, checkpoint_fields,
+      |                                                ^~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1164:54: error: ‘U’ was not declared in this scope
+ 1164 |         write_dat_restart_fields(dat.string(), mesh, U, p, checkpoint_fields,
+      |                                                      ^
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1164:57: error: ‘p’ was not declared in this scope
+ 1164 |         write_dat_restart_fields(dat.string(), mesh, U, p, checkpoint_fields,
+      |                                                         ^
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1164:60: error: ‘checkpoint_fields’ was not declared in this scope
+ 1164 |         write_dat_restart_fields(dat.string(), mesh, U, p, checkpoint_fields,
+      |                                                            ^~~~~~~~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1165:41: error: ‘struct cfdx::physics::cfdx::physics::IncompressibleSolveResult’ has no member named ‘iterations’
+ 1165 |                                  result.iterations, 0.0);
+      |                                         ^~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1164:9: error: ‘write_dat_restart_fields’ was not declared in this scope; did you mean ‘cfdx::io::write_dat_restart_fields’?
+ 1164 |         write_dat_restart_fields(dat.string(), mesh, U, p, checkpoint_fields,
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~
+      |         cfdx::io::write_dat_restart_fields
+/tmp/postwave_head_wt/src/cfdx/io/restart/dat_restart.h:152:13: note: ‘cfdx::io::write_dat_restart_fields’ declared here
+  152 | inline void write_dat_restart_fields(
+      |             ^~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1166:53: error: no match for ‘operator/’ (operand types are ‘const cfdx::physics::std::filesystem::__cxx11::path’ and ‘const char [17]’)
+ 1166 |         const auto convergence = options.output_dir / "convergence.json";
+      |                                  ~~~~~~~~~~~~~~~~~~ ^ ~~~~~~~~~~~~~~~~~~
+      |                                          |            |
+      |                                          |            const char [17]
+--
+  591 |     friend path operator/(const path& __lhs, const path& __rhs)
+      |                                              ~~~~~~~~~~~~^~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1171:20: error: ‘struct cfdx::physics::cfdx::physics::IncompressibleSolveResult’ has no member named ‘iterations’
+ 1171 |             result.iterations,
+      |                    ^~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1173:13: error: ‘overall_reason’ was not declared in this scope
+ 1173 |             overall_reason,
+      |             ^~~~~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1176:14: error: ‘cout’ is not a member of ‘cfdx::physics::std’; did you mean ‘std::cout’?
+ 1176 |         std::cout << "Checkpoint " << dat.string() << "\n";
+      |              ^~~~
+/usr/include/c++/13/iostream:63:18: note: ‘std::cout’ declared here
+   63 |   extern ostream cout;          ///< Linked to standard output
+      |                  ^~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1177:14: error: ‘cout’ is not a member of ‘cfdx::physics::std’; did you mean ‘std::cout’?
+ 1177 |         std::cout << "Convergence history " << convergence.string() << "\n";
+      |              ^~~~
+/usr/include/c++/13/iostream:63:18: note: ‘std::cout’ declared here
+   63 |   extern ostream cout;          ///< Linked to standard output
+      |                  ^~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1178:14: error: ‘cout’ is not a member of ‘cfdx::physics::std’; did you mean ‘std::cout’?
+ 1178 |         std::cout << "Execution summary " << execution.string() << "\n";
+      |              ^~~~
+/usr/include/c++/13/iostream:63:18: note: ‘std::cout’ declared here
+   63 |   extern ostream cout;          ///< Linked to standard output
+      |                  ^~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1181:47: error: ‘const class cfdx::physics::std::filesystem::__cxx11::path’ has no member named ‘string’
+ 1181 |             write_probe_csv(options.probe_csv.string(), result.probe_samples, options.probes);
+      |                                               ^~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1181:64: error: ‘struct cfdx::physics::cfdx::physics::IncompressibleSolveResult’ has no member named ‘probe_samples’
+ 1181 |             write_probe_csv(options.probe_csv.string(), result.probe_samples, options.probes);
+      |                                                                ^~~~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1181:87: error: ‘const struct cfdx::physics::{anonymous}::Options’ has no member named ‘probes’; did you mean ‘probe_csv’?
+ 1181 |             write_probe_csv(options.probe_csv.string(), result.probe_samples, options.probes);
+      |                                                                                       ^~~~~~
+      |                                                                                       probe_csv
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1182:18: error: ‘cout’ is not a member of ‘cfdx::physics::std’; did you mean ‘std::cout’?
+ 1182 |             std::cout << "Probe CSV " << options.probe_csv.string() << " ("
+      |                  ^~~~
+/usr/include/c++/13/iostream:63:18: note: ‘std::cout’ declared here
+   63 |   extern ostream cout;          ///< Linked to standard output
+      |                  ^~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1182:60: error: ‘const class cfdx::physics::std::filesystem::__cxx11::path’ has no member named ‘string’
+ 1182 |             std::cout << "Probe CSV " << options.probe_csv.string() << " ("
+      |                                                            ^~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1183:33: error: ‘struct cfdx::physics::cfdx::physics::IncompressibleSolveResult’ has no member named ‘probe_samples’
+ 1183 |                       << result.probe_samples.size() << " samples)\n";
+      |                                 ^~~~~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1186:14: error: ‘cout’ is not a member of ‘cfdx::physics::std’; did you mean ‘std::cout’?
+ 1186 |         std::cout << "Converged " << (overall_converged ? "YES" : "NO")
+      |              ^~~~
+/usr/include/c++/13/iostream:63:18: note: ‘std::cout’ declared here
+   63 |   extern ostream cout;          ///< Linked to standard output
+      |                  ^~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1187:47: error: ‘struct cfdx::physics::cfdx::physics::IncompressibleSolveResult’ has no member named ‘iterations’
+ 1187 |                   << " Iterations " << result.iterations << "\n";
+      |                                               ^~~~~~~~~~
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1189:34: error: expected unqualified-id before ‘&’ token
+ 1189 |     } catch (const std::exception& exc) {
+      |                                  ^
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1189:34: error: expected ‘)’ before ‘&’ token
+ 1189 |     } catch (const std::exception& exc) {
+      |             ~                    ^
+      |                                  )
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1189:34: error: expected ‘{’ before ‘&’ token
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1189:36: error: ‘exc’ was not declared in this scope; did you mean ‘exp’?
+ 1189 |     } catch (const std::exception& exc) {
+      |                                    ^~~
+      |                                    exp
+/tmp/postwave_head_wt/apps/production_solver/main.cpp: At global scope:
+/tmp/postwave_head_wt/apps/production_solver/main.cpp:1213:2: error: expected ‘}’ at end of input
+ 1213 | }
+      |  ^
+/tmp/postwave_head_wt/src/cfdx/physics/finite_volume_transport.h:27:25: note: to match this ‘{’
+   27 | namespace cfdx::physics {

@@ -1,0 +1,368 @@
+diff --git a/src/cfdx/physics/finite_volume_transport.h b/src/cfdx/physics/finite_volume_transport.h
+index b80b5180..910afe8b 100644
+--- a/src/cfdx/physics/finite_volume_transport.h
++++ b/src/cfdx/physics/finite_volume_transport.h
+@@ -1315,8 +1315,317 @@ inline cfdx::core::SolverResult solve_scalar_equation(
+             result.status = cfdx::core::SolverStatus::DIVERGED;
+             return result;
+         }
+-        for (std::size_t i = 0; i < solution.size(); ++i)
++inline cfdx::core::SolverResult solve_scalar_equation(
++    const ScalarEquation& equation,
++    cfdx::core::Vector& solution,
++    const ScalarSolveControls& controls = {})
++{
++    validate_scalar_controls(controls);
++    if (solution.size() != equation.rhs.size())
++        throw std::invalid_argument("solve_scalar_equation: solution size mismatch");
++
++    if (solution.size() == 1) {
++        const auto begin = equation.matrix.row_offsets_data()[0];
++        const auto end = equation.matrix.row_offsets_data()[1];
++        double diagonal = 0.0;
++        for (std::uint32_t k = begin; k < end; ++k) {
++            if (equation.matrix.columns_data()[k] == 0)
++                diagonal += equation.matrix.values_data()[k];
++        }
++        if (!(std::abs(diagonal) > 0.0) || !std::isfinite(diagonal))
++            throw std::runtime_error("solve_scalar_equation: singular 1x1 system");
++        const double candidate_value = equation.rhs(0) / diagonal;
++        const double candidate_residual =
++            std::abs(diagonal * candidate_value - equation.rhs(0));
++        // H04: the tolerance is relative, as on the Krylov paths. Keep the
++        // candidate/returned-state diagnostics introduced by PR #1088.
++        const double rhs_scale = std::abs(equation.rhs(0));
++        const double relative = rhs_scale > 0.0
++            ? candidate_residual / rhs_scale : candidate_residual;
++        if (!std::isfinite(candidate_value) || !std::isfinite(candidate_residual) ||
++            !std::isfinite(relative)) {
++            return {cfdx::core::SolverStatus::DIVERGED, 1,
++                    candidate_residual, relative};
++        }
++        if (relative <= controls.tolerance) {
++            // Preserve the established exact 1x1 predictor contract.
++            solution(0) = candidate_value;
++            cfdx::core::SolverResult result{
++                cfdx::core::SolverStatus::CONVERGED,
++                1, candidate_residual, relative
++            };
++            result.residual_before_relaxation = candidate_residual;
++            result.residual_after_relaxation = candidate_residual;
++            result.residual_relative_before_relaxation = relative;
++            result.residual_relative_after_relaxation = result.residual_relative_before_relaxation;
++            return result;
++        }
++        // A rejected predictor must not replace the accepted iterate.
++        const double residual =
++            std::abs(diagonal * solution(0) - equation.rhs(0));
++        cfdx::core::SolverResult result{
++            cfdx::core::SolverStatus::MAX_ITER_REACHED,
++            1, residual, rhs_scale > 0.0 ? residual / rhs_scale : residual
++        };
++        result.residual_before_relaxation = candidate_residual;
++        result.residual_after_relaxation = residual;
++        result.residual_relative_before_relaxation = relative;
++        result.residual_relative_after_relaxation = result.residual_relative;
++        return result;
++    }
++
++    cfdx::core::Vector candidate = solution;
++
++    const auto selected = cfdx::core::solve_linear_system(
++        equation.matrix, equation.rhs, candidate, controls.problem,
++        controls.linear_solver, controls.max_iterations, controls.tolerance);
++    auto result = selected.result;
++
++    const bool fallback_allowed = controls.linear_solver.allow_fallback ||
++        (controls.linear_solver.krylov == cfdx::core::KrylovModel::Auto &&
++         controls.linear_solver.preconditioner ==
++             cfdx::core::PreconditionerModel::Auto);
++
++    // Keep all retries anchored to the same nonlinear iterate; the accepted
++    // predictor is updated only after a solver reports convergence.
++    // Momentum matrices can move between nearly symmetric diffusion-dominated
++    // states and mildly nonsymmetric convection-dominated states. BiCGStab may
++    // either stagnate or break down on the former even though the linear
++    // system is well posed. Retry from the original nonlinear iterate with
++    // restarted GMRES, then with CG as a final robust path. Every retry starts
++    // from the original iterate so no unconverged Krylov state is injected.
++    if (fallback_allowed &&
++        result.status != cfdx::core::SolverStatus::CONVERGED) {
++        candidate = solution;
++        result = cfdx::core::solve_gmres(
++            equation.matrix, equation.rhs, candidate,
++            64, controls.max_iterations, controls.tolerance);
++    }
++
++    if (fallback_allowed &&
++        result.status != cfdx::core::SolverStatus::CONVERGED) {
++        candidate = solution;
++        result = cfdx::core::solve_gauss_seidel(
++            equation.matrix, equation.rhs, candidate,
++            controls.max_iterations, controls.tolerance);
++    }
++
++    if (fallback_allowed &&
++        result.status != cfdx::core::SolverStatus::CONVERGED) {
++        candidate = solution;
++        result = cfdx::core::solve_cg(
++            equation.matrix, equation.rhs, candidate,
++            controls.max_iterations, controls.tolerance);
++    }
++
++    // Very small coupled momentum systems (notably the analytical
++    // acceptance meshes) can legitimately defeat every Krylov/stationary
++    // applicability criterion while remaining perfectly nonsingular. Use a
++    // bounded dense LU fallback only for small systems; production-size
++    // systems continue to use the sparse iterative path above.
++    if (fallback_allowed &&
++        result.status != cfdx::core::SolverStatus::CONVERGED &&
++        solution.size() <= 256) {
++        const std::size_t n = solution.size();
++        std::vector<double> a(n * n, 0.0);
++        std::vector<double> b(n, 0.0);
++        const auto* row = equation.matrix.row_offsets_data();
++        const auto* col = equation.matrix.columns_data();
++        const auto* val = equation.matrix.values_data();
++        for (std::size_t i = 0; i < n; ++i) {
++            b[i] = equation.rhs(i);
++            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k)
++                a[i * n + col[k]] += val[k];
++        }
++
++        bool singular = false;
++        for (std::size_t k = 0; k < n && !singular; ++k) {
++            std::size_t pivot = k;
++            double pivot_abs = std::abs(a[k * n + k]);
++            for (std::size_t i = k + 1; i < n; ++i) {
++                const double candidate_abs = std::abs(a[i * n + k]);
++                if (candidate_abs > pivot_abs) {
++                    pivot = i;
++                    pivot_abs = candidate_abs;
++                }
++            }
++            const double scale = std::max(1.0, pivot_abs);
++            if (!(pivot_abs > 100.0 * std::numeric_limits<double>::epsilon() * scale) ||
++                !std::isfinite(pivot_abs)) {
++                singular = true;
++                break;
++            }
++            if (pivot != k) {
++                for (std::size_t j = k; j < n; ++j)
++                    std::swap(a[k * n + j], a[pivot * n + j]);
++                std::swap(b[k], b[pivot]);
++            }
++            for (std::size_t i = k + 1; i < n; ++i) {
++                const double factor = a[i * n + k] / a[k * n + k];
++                if (!std::isfinite(factor)) {
++                    singular = true;
++                    break;
++                }
++                a[i * n + k] = 0.0;
++                for (std::size_t j = k + 1; j < n; ++j)
++                    a[i * n + j] -= factor * a[k * n + j];
++                b[i] -= factor * b[k];
++            }
++        }
++
++        if (!singular) {
++            candidate = solution;
++            for (std::size_t ii = n; ii-- > 0;) {
++                double value = b[ii];
++                for (std::size_t j = ii + 1; j < n; ++j)
++                    value -= a[ii * n + j] * candidate(j);
++                const double d = a[ii * n + ii];
++                if (!(std::abs(d) > 0.0) || !std::isfinite(d)) {
++                    singular = true;
++                    break;
++                }
++                candidate(ii) = value / d;
++                if (!std::isfinite(candidate(ii))) {
++                    singular = true;
++                    break;
++                }
++            }
++        }
++
++        if (!singular) {
++            double residual = 0.0;
++            for (std::size_t i = 0; i < n; ++i) {
++                double ri = -equation.rhs(i);
++                for (std::uint32_t k = row[i]; k < row[i + 1]; ++k)
++                    ri += val[k] * candidate(col[k]);
++                residual = std::max(residual, std::abs(ri));
++            }
++            if (std::isfinite(residual)) {
++                double rhs_norm = 0.0;
++                for (std::size_t i = 0; i < n; ++i)
++                    rhs_norm = std::max(rhs_norm, std::abs(equation.rhs(i)));
++                const double relative = residual / std::max(rhs_norm, 1e-300);
++                result = {
++                    relative <= controls.tolerance
++                        ? cfdx::core::SolverStatus::CONVERGED
++                        : cfdx::core::SolverStatus::MAX_ITER_REACHED,
++                    0, residual, relative
++                };
++            }
++        }
++    }
++
++    if (result.status == cfdx::core::SolverStatus::CONVERGED) {
++        for (std::size_t i = 0; i < candidate.size(); ++i) {
++            if (!std::isfinite(candidate(i))) {
++                result.status = cfdx::core::SolverStatus::DIVERGED;
++                return result;
++            }
++        }
++        if (!std::isfinite(result.residual) || !std::isfinite(result.residual_relative)) {
++            result.status = cfdx::core::SolverStatus::DIVERGED;
++            return result;
++        }
++        // These paired diagnostics use the same physical operator, L-infinity
++        // norm, and RHS normalization. Solver-native Krylov diagnostics remain
++        // available in residual/residual_relative and are intentionally separate.
++        const auto physical_residual_inf = [&](const cfdx::core::Vector& state) {
++            if (state.size() != equation.rhs.size()) {
++                return std::numeric_limits<double>::infinity();
++            }
++            if (equation.matrix.row_offsets_data() == nullptr ||
++                equation.matrix.columns_data() == nullptr ||
++                equation.matrix.values_data() == nullptr) {
++                return std::numeric_limits<double>::infinity();
++            }
++            double norm = 0.0;
++            for (std::size_t i = 0; i < state.size(); ++i) {
++                const double rhs_i = equation.rhs(i);
++                if (!std::isfinite(rhs_i)) {
++                    return std::numeric_limits<double>::infinity();
++                }
++                double ri = -rhs_i;
++                if (!std::isfinite(ri)) {
++                    return std::numeric_limits<double>::infinity();
++                }
++                const std::uint32_t row_begin = equation.matrix.row_offsets_data()[i];
++                const std::uint32_t row_end = equation.matrix.row_offsets_data()[i + 1];
++                for (std::uint32_t k = row_begin; k < row_end; ++k) {
++                    const std::uint32_t cidx = equation.matrix.columns_data()[k];
++                    if (cidx >= state.size()) {
++                        return std::numeric_limits<double>::infinity();
++                    }
++                    const double mval = equation.matrix.values_data()[k];
++                    if (!std::isfinite(mval)) {
++                        return std::numeric_limits<double>::infinity();
++                    }
++                    const double sval = state(cidx);
++                    if (!std::isfinite(sval)) {
++                        return std::numeric_limits<double>::infinity();
++                    }
++                    const double term = mval * sval;
++                    if (!std::isfinite(term)) {
++                        return std::numeric_limits<double>::infinity();
++                    }
++                    ri += term;
++                    if (!std::isfinite(ri)) {
++                        return std::numeric_limits<double>::infinity();
++                    }
++                }
++                const double ari = std::abs(ri);
++                if (!std::isfinite(ari)) {
++                    return std::numeric_limits<double>::infinity();
++                }
++                if (ari > norm) {
++                    norm = ari;
++                }
++            }
++            return norm;
++        };
++        double rhs_norm = 0.0;
++        if (solution.size() == equation.rhs.size()) {
++            for (std::size_t i = 0; i < solution.size(); ++i) {
++                const double rv = std::abs(equation.rhs(i));
++                if (!std::isfinite(rv)) {
++                    rhs_norm = 0.0;
++                    break;
++                }
++                if (rv > rhs_norm) {
++                    rhs_norm = rv;
++                }
++            }
++        }
++        if (!std::isfinite(rhs_norm)) {
++            rhs_norm = 0.0;
++        }
++        const double rhs_scale = std::max(rhs_norm, 1e-300);
++        result.residual_before_relaxation = physical_residual_inf(candidate);
++        if (!std::isfinite(result.residual_before_relaxation)) {
++            result.status = cfdx::core::SolverStatus::DIVERGED;
++            return result;
++        }
++        result.residual_relative_before_relaxation =
++            result.residual_before_relaxation / rhs_scale;
++
++        for (std::size_t i = 0; i < solution.size(); ++i) {
++            if (!std::isfinite(candidate(i))) {
++                result.status = cfdx::core::SolverStatus::DIVERGED;
++                return result;
++            }
+             solution(i) += controls.relaxation * (candidate(i) - solution(i));
++            if (!std::isfinite(solution(i))) {
++                result.status = cfdx::core::SolverStatus::DIVERGED;
++                return result;
++            }
++        }
++
++        result.residual_after_relaxation = physical_residual_inf(solution);
++        if (!std::isfinite(result.residual_after_relaxation)) {
++            result.status = cfdx::core::SolverStatus::DIVERGED;
++            return result;
++        }
++        result.residual_relative_after_relaxation =
++            result.residual_after_relaxation / rhs_scale;
+     }
+     // A MAX_ITER_REACHED result is not an acceptable predictor solution.
+     // Do not inject an unconverged Krylov iterate into the nonlinear solver:
+@@ -1325,6 +1634,12 @@ inline cfdx::core::SolverResult solve_scalar_equation(
+     return result;
+ }
+ 
++    // Do not inject an unconverged Krylov iterate into the nonlinear solver:
++    // doing so can create an apparently finite but numerically meaningless
++    // state that subsequently corrupts the face mass flux.
++    return result;
++}
++
+ inline double scalar_equation_residual_inf(
+     const ScalarEquation& equation,
+     const cfdx::core::Vector& solution)
+diff --git a/src/cfdx/physics/steady_incompressible_solver.h b/src/cfdx/physics/steady_incompressible_solver.h
+index 23ffa9d9..901b5739 100644
+--- a/src/cfdx/physics/steady_incompressible_solver.h
++++ b/src/cfdx/physics/steady_incompressible_solver.h
+@@ -1616,12 +1616,12 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
+     const auto diffusion = assemble_scalar_equation(
+         mesh, geometry, zero_flux, 1.0,
+         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
+-        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
++        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);
+ 
+     const auto convection_diffusion = assemble_scalar_equation(
+         mesh, geometry, mass_flux, rho * kinematic_viscosity,
+         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
+-        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
++        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);
+ 
+     // A fixed pressure boundary already removes the constant null mode of
+     // the pressure operators, so the gauge reference row is imposed only
+diff --git a/tests/audit/test_audit_energy_boundary_metric.cpp b/tests/audit/test_audit_energy_boundary_metric.cpp
+index 42580ac5..19f93abd 100644
+--- a/tests/audit/test_audit_energy_boundary_metric.cpp
++++ b/tests/audit/test_audit_energy_boundary_metric.cpp
+@@ -22,7 +22,7 @@ int main() {
+         if(override_value) fv.values["outlet"].assign(m.n_faces(),400.);
+         else bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,400,0};
+         const auto* values=override_value?&fv:nullptr;
+-        const auto eq=assemble_energy_equation(m,geometry,flux,source,old,c,bc,values);
++        const auto eq=assemble_energy_equation(m,geometry,flux,source,old,c,bc,values,nullptr,&t);
+         Vector x(1,t(0));
+         const double matrix=energy_balance_relative_from_equation(eq,x);
+         const double diagnostic=energy_balance_relative(m,geometry,flux,t,old,source,c,bc,values);

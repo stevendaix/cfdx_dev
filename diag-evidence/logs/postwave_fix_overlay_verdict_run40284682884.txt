@@ -1,0 +1,2 @@
+verdict=PATCH_FAILED
+patch step failed or did not run - see job log / evidence
