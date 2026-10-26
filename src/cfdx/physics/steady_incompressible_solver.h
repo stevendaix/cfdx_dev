@@ -2856,7 +2856,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << " status=" << static_cast<int>(result.status)
                   << " iterations=" << result.iterations
                   << " reported_relative=" << result.residual_relative
-                  << "\\n";
+                  << "\n";
     }
 
     // Keep coupled-solver failures visible. Do not replace a failed Schur
@@ -3054,7 +3054,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                       << " flux_pressure_compensation=" << flux_pressure_compensation
                       << " flux_sum_components=" << (flux_velocity + flux_pressure_orthogonal +
                             flux_pressure_nonorthogonal + flux_pressure_compensation)
-                      << " flux_authoritative=" << flux_total << "\\n";
+                      << " flux_authoritative=" << flux_total << "\n";
         };
 
         double flux_linf = -1.0;
@@ -3077,7 +3077,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                   << " continuity_row_cell=" << row_cell
                   << " continuity_row_linf=" << row_linf
                   << " flux_cell=" << flux_cell
-                  << " flux_divergence_linf=" << flux_linf << "\\n";
+                  << " flux_divergence_linf=" << flux_linf << "\n";
     }
     return result;
 }
