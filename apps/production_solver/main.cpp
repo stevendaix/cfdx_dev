@@ -1066,7 +1066,8 @@ int main(int argc, char** argv)
                       << "\n";
         } else {
             result = solve_steady_incompressible(
-                mesh, U, p, ubc, pbc, controls, options.restart.string());
+                mesh, U, p, ubc, pbc, controls, options.restart.string(),
+                solver_restart_fields);
         }
         execution_result = result;
         const auto execution = options.output_dir / "execution.json";
