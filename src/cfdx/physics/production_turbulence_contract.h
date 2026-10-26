@@ -27,8 +27,7 @@ inline std::string normalize_turbulence_model_key(const std::string& declared)
 inline bool is_explicit_sst_model_key(const std::string& declared)
 {
     const auto normalized = normalize_turbulence_model_key(declared);
-    return normalized == "sst" || normalized == "komegasst" ||
-           normalized == "sstkomega";
+    return normalized == "sst" || normalized == "komegasst";
 }
 
 // General turbulence selection remains fail-closed. The only opt-in exception
