@@ -46,6 +46,8 @@ struct Options {
     std::size_t iterations = 2;
     bool adaptive_convergence = false;
     bool initial_velocity_field = false;
+    // Explicit opt-in only; this path remains experimental and unqualified.
+    bool experimental_sst = false;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
 };
@@ -514,12 +516,14 @@ Options parse(int argc, char** argv)
         else if (arg == "--iterations") o.iterations = std::stoull(value("--iterations"));
         else if (arg == "--adaptive-convergence") o.adaptive_convergence = true;
         else if (arg == "--initial-velocity-field") o.initial_velocity_field = true;
+        else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
                          "  [--initial-velocity-field] (initialize U from /fields/vector/U)\n"
+                         "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::exit(0);
@@ -577,6 +581,9 @@ int main(int argc, char** argv)
         }
         if (!ok || mesh.n_cells() == 0)
             throw std::runtime_error("production solver: mesh import failed");
+        if (options.experimental_sst && !is_case_hdf5)
+            throw std::invalid_argument(
+                "production solver: --experimental-sst requires a .cfdx.h5 case");
 
         // The declared energy model is validated fail-closed as soon as the
         // case is loaded, before any expensive flow computation: an unknown
@@ -589,7 +596,8 @@ int main(int argc, char** argv)
         // solver path that may run it.
         if (is_case_hdf5) {
             validate_production_steady_time_selection(case_setup, "production solver");
-            validate_production_turbulence_selection(case_setup);
+            validate_production_turbulence_selection(
+                case_setup, options.experimental_sst);
             validate_production_energy_model(case_setup);
             validate_production_radiation_selection(case_setup);
             validate_production_buoyancy_model(case_setup);
