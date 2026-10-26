@@ -194,9 +194,15 @@ ScalarResult solve_diffusion_case(std::size_t n, double height,
 
     const auto face_conditions = resolve_scalar_boundary_constraints(
         problem.mesh, geometry.face_centres, constraints, "U.x");
+    Field<double,Location::CELL> current(n, "current_scalar", "unit", 1);
+    for (std::size_t i = 0; i < n; ++i) {
+        const double y = geometry.cell_centres[i].y;
+        current(i) = bottom_value +
+            (top_value - bottom_value) * y / height;
+    }
     auto eq = assemble_scalar_equation(
         problem.mesh, geometry, phi, gamma, su, sp, {}, true, nullptr, nullptr,
-        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, &face_conditions);
+        nullptr, nullptr, ConvectionScheme::UPWIND, &current, &face_conditions);
     Vector solution(n, 0.0);
     const auto linear = solve_scalar_equation(
         eq, solution, {5000, 1e-13, 1.0});
