@@ -135,3 +135,30 @@ Mesures de l'échec N9 : `momentum_rel=1.1e-5`, `continuity_linf=1.63e-3`, `pres
 2. Le bloc couplé assemble la correction non orthogonale explicitement à partir de (p_{old}), tandis que le flux physique d'acceptation est reconstruit avec le gradient de la pression mise à jour. C'est un point à vérifier quantitativement, pas encore une cause démontrée.
 3. Le commit `7c72fb51e510ec4aff63b5234b39e2b3f27065e6` enrichit le message d'échec de `test_n9_physical_matrix` avec les canaux indépendants déjà calculés : continuité reconstruite depuis la vitesse, écart flux/vitesse et identité Rhie–Chow. Ces données doivent permettre de distinguer une incohérence de flux d'une stagnation physique réelle au prochain run.
 4. Après la collecte de ces mesures, comparer le résidu de continuité de la ligne algébrique capturée au résidu des flux reconstruits sur le même état ((U,p)). Toute correction doit préserver les gates actuelles et être accompagnée d'un test de non-régression ciblé.
+
+
+## 13. Requalification après instrumentation — 2026-10-26, HEAD `618951c1339a3aeda2cc24b560157b8e313127a4`
+
+Le rerun sur le HEAD courant confirme que l'instrumentation est active mais que le défaut physique n'est pas corrigé.
+
+Campagne [N9 physical validation, run 1158](https://github.com/stevendaix/cfdx_dev/actions/runs/40380695906) :
+- `COUPLED skew Couette` stagne à l'itération 58 ; `momentum_rel=1.1e-5`, `continuity_linf=1.630e-3`, `pressure_rel=2.27e-4`.
+- `corrected_flux_continuity_linf=1.630e-3`, `reconstructed_velocity_continuity_linf=1.027e-3`.
+- `flux_velocity_mismatch_linf=3.51e-4`, `flux_velocity_mismatch_normalized=4.293e-3`, `rhie_chow_identity_linf` arrondi à zéro.
+- Le résidu vrai linéaire couplé est de l'ordre de `1e-12`. Les applications imbriquées Fp atteignent encore 1000 itérations avec un résidu relatif affiché autour de `1e-14`.
+
+Interprétation limitée aux preuves disponibles : l'identité Rhie–Chow vérifie l'identité locale instrumentée, mais elle ne prouve ni l'égalité entre la ligne de continuité assemblée et la divergence du flux autoritaire, ni la convergence non linéaire. La continuité reconstruite depuis la vitesse est inférieure à celle du flux corrigé d'environ (6.03\times10^{-4}) en norme (L_\infty). Cet écart doit être localisé cellule par cellule avant de modifier l'assemblage. La valeur normalisée de l'écart flux/vitesse reste une métrique diagnostique, pas un seuil d'acceptation.
+
+État CI exact-HEAD :
+- Release : succès.
+- Pre-commit, GUI CI, documentation, audit gate, numerical maturity audit, numerical maturity et N10 : succès.
+- N9 physical validation et N9 qualification campaign : échec physique ci-dessus.
+- DebugSanitizers : échec indépendant de `test_mpi_deterministic_fused` ; les 242 autres tests de ce job passent. Le défaut MPI doit rester séparé de F03, sans suppression de sanitizer ni changement de test.
+- CFDX total validation : annulé après l'échec d'une étape requise ; ce n'est pas une validation réussie.
+
+### Actions exigées avant correction
+
+1. Capturer sur le même état ((U,p)) la ligne algébrique de continuité ((A x-b)_p), la divergence du flux corrigé et la divergence reconstruite depuis la vitesse ; rapporter les maxima, cellules d'argmax et valeurs signées. Ne pas comparer des champs issus de deux itérations différentes.
+2. Vérifier les signes et la compensation de non-orthogonalité entre l'assemblage couplé (correction explicite fondée sur (p_{old})) et la reconstruction du flux d'acceptation (pression mise à jour). La divergence des métriques est un indice à tester, pas encore une preuve de cause.
+3. Pour Fp, distinguer le résidu déclaré par le solveur de la terminaison au budget et vérifier le résidu vrai recalculé avec exactement la matrice/RHS internes. Ne pas accepter le seul résidu affiché comme preuve de convergence physique ; ne pas durcir ou relâcher le contrat best-effort sans preuve.
+4. Garder les gates physiques et le détecteur de stagnation inchangés. Relancer N9, Release, DebugSanitizers, les audits et la validation totale après une correction causale. La PR reste draft.
