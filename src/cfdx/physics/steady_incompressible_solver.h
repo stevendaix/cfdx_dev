@@ -3344,6 +3344,40 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     ", relative=" + coupled_linear_failure_value(coupled_result.residual_relative) + ")");
             }
 
+            // Diagnose the full monolithic candidate before independent U/p
+            // under-relaxation. This separates a block/flux inconsistency from
+            // continuity loss introduced by the nonlinear update itself.
+            if (controls.diagnostics.coupled_matrix_summary) {
+                std::array<std::vector<double>, 3> candidate_rAU;
+                for (auto& component : candidate_rAU)
+                    component.resize(mesh.n_cells());
+                for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                    candidate_rAU[0][c] = 1.0 / ex.diagonal[c];
+                    candidate_rAU[1][c] = 1.0 / ey.diagonal[c];
+                    candidate_rAU[2][c] = 1.0 / ez.diagonal[c];
+                }
+                const auto candidate_flux = make_rhie_chow_flux_from_physical_velocity(
+                    mesh, geometry, U, p, candidate_rAU,
+                    controls.density, velocity_bcs, pressure_bcs);
+                double candidate_continuity_linf = 0.0;
+                for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                    double divergence = 0.0;
+                    for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+                        const std::size_t face = cell_faces[k];
+                        divergence += mesh.ownership().owner(face) == c
+                            ? candidate_flux(face) : -candidate_flux(face);
+                    }
+                    candidate_continuity_linf = std::max(
+                        candidate_continuity_linf, std::abs(divergence));
+                }
+                std::cerr << "COUPLED_PRE_RELAXATION_FLUX_CONTINUITY linf="
+                          << std::scientific << std::setprecision(8)
+                          << candidate_continuity_linf
+                          << " alpha_u=" << retry_controller.alpha_u(effective_alpha_u)
+                          << " alpha_p=" << retry_controller.alpha_p(effective_alpha_p)
+                          << "\\n";
+            }
+
             // The coupled linear system is a Picard/Newton linearization of the
             // current nonlinear iterate. Keep the nonlinear field update explicit
             // and bounded; there is no hidden scalar fallback.
