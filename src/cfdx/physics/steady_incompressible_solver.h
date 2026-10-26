@@ -1198,12 +1198,14 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
     Field<double, Location::CELL> mu_gradient(
         nc, "transpose_stress_mu_gradient", "Pa", 3);
     mu_gradient.fill(0.0);
-    const bool uniform_face_viscosity = std::all_of(
-        cell_effective_dynamic_viscosity.begin() + 1,
-        cell_effective_dynamic_viscosity.end(),
-        [&](double value) {
-            return value == cell_effective_dynamic_viscosity.front();
-        });
+    const bool uniform_face_viscosity =
+        cell_effective_dynamic_viscosity.size() <= 1 ||
+        std::all_of(
+            cell_effective_dynamic_viscosity.begin() + 1,
+            cell_effective_dynamic_viscosity.end(),
+            [&](double value) {
+                return value == cell_effective_dynamic_viscosity.front();
+            });
     if (!uniform_face_viscosity) {
         mu_gradient = cfdx::core::compute_gradient_least_squares(
             mu_cell, mesh,
