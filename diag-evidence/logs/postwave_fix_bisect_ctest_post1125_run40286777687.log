@@ -1,0 +1,33 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+    Start   1: test_audit_cht_time
+1/4 Test   #1: test_audit_cht_time ........................   Passed    0.01 sec
+    Start   2: test_audit_energy_boundary_metric
+2/4 Test   #2: test_audit_energy_boundary_metric ..........   Passed    0.00 sec
+    Start 106: test_finite_volume_transport
+3/4 Test #106: test_finite_volume_transport ...............   Passed    0.00 sec
+    Start 108: test_variable_viscosity_transpose_stress
+4/4 Test #108: test_variable_viscosity_transpose_stress ...***Failed    0.10 sec
+Running 5 test cases...
+  PASS: variable_viscosity_transpose_stress_affine_face_flux
+  PASS: variable_viscosity_transpose_stress_enters_momentum_rhs
+  FAILED: flux[face] ≈ expected (diff=0.147447, tolerance=2e-11) in operator() at /home/runner/work/_temp/head/tests/unit/test_variable_viscosity_transpose_stress.cpp:296
+  FAIL: variable_viscosity_transpose_stress_skewed_nonuniform_affine - Assertion failed: flux[face] ≈ expected
+  PASS: variable_viscosity_transpose_stress_smooth_mms_order
+  PASS: uniform_viscosity_transpose_correction_reduces_to_incompressible_laplacian
+
+Results: 4 passed, 1 failed
+
+
+75% tests passed, 1 tests failed out of 4
+
+Label Time Summary:
+audit         =   0.02 sec*proc (2 tests)
+regression    =   0.02 sec*proc (2 tests)
+thermal       =   0.02 sec*proc (2 tests)
+
+Total Test time (real) =   0.20 sec
+
+The following tests FAILED:
+	108 - test_variable_viscosity_transpose_stress (Failed)
+Errors while running CTest
