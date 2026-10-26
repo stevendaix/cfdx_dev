@@ -2036,8 +2036,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 // implicit in the coupled matrix. The non-orthogonal remainder
                 // is a deferred correction evaluated from p_old below, exactly
                 // as in the segregated Rhie-Chow operator.
-                A.push_back(row, nv + c, D);
-                A.push_back(row, nv + ncell, -D);
+                A.push_back(row, nv + c, -D);
+                A.push_back(row, nv + ncell, D);
                 coupled_pressure_schur_diagonal[c] += D;
 
                 const Vec3 gp{
@@ -2065,7 +2065,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     rAUx_f * gp.x * rawSf.x +
                     rAUy_f * gp.y * rawSf.y +
                     rAUz_f * gp.z * rawSf.z);
-                b(row) += sign * (nonorth_flux - compensation);
+                b(row) += sign * (compensation - nonorth_flux);
             } else {
                 const std::size_t patch = geometry.face_patch[f];
                 if (patch < mesh.boundary().n_patches() &&
@@ -2118,9 +2118,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         throw std::runtime_error(
                             "solve_coupled_momentum_continuity: invalid boundary pressure coefficient on face " +
                             std::to_string(f));
-                    A.push_back(row, nv + c, D);
+                    A.push_back(row, nv + c, -D);
                     coupled_pressure_schur_diagonal[c] += D;
-                    b(row) += D * pbc->value;
+                    b(row) -= D * pbc->value;
                     const Vec3 gp_boundary{
                         grad_p_old.component_data(0)[c],
                         grad_p_old.component_data(1)[c],
@@ -2134,7 +2134,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         rAUx * gp_boundary.x * rawSf.x +
                         rAUy * gp_boundary.y * rawSf.y +
                         rAUz * gp_boundary.z * rawSf.z);
-                    b(row) += rho * deferred_boundary - compensation_boundary;
+                    b(row) += compensation_boundary - rho * deferred_boundary;
                 }
             }
         }
