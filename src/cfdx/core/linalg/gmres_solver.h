@@ -241,8 +241,11 @@ inline SolverResult solve_gmres(
                     if (krylov_diagnostics_enabled())
                         std::cerr << "PRECOND_APPLY_GAUGE FAIL at iteration "
                                   << iterations << "\n";
+                    x = best_x;
                     result.status = SolverStatus::NOT_APPLICABLE;
                     result.iterations = iterations;
+                    result.residual = best_residual;
+                    result.residual_relative = best_residual / rhs_scale;
                     return result;
                 }
                 for (std::size_t i = 0; i < n; ++i) w.zv(static_cast<std::size_t>(j))[i] = w.vout(i);
@@ -415,15 +418,15 @@ inline SolverResult solve_gmres(
                 // non-happy breakdown. It is not the physical residual.
                 // Report the true ||b-Ax||_2 at the last admissible iterate.
                 double breakdown_residual = true_residual();
-                if (best_residual < breakdown_residual) {
+                if (!std::isfinite(breakdown_residual) ||
+                    best_residual < breakdown_residual) {
                     x = best_x;
                     breakdown_residual = best_residual;
                 }
                 result.status = SolverStatus::DIVERGED;
                 result.iterations = iterations;
                 result.residual = breakdown_residual;
-                result.residual_relative =
-                    breakdown_residual / rhs_scale;
+                result.residual_relative = breakdown_residual / rhs_scale;
                 return result;
             }
             w.y[static_cast<std::size_t>(i)] = sum / diag;
