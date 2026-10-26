@@ -1161,7 +1161,11 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         const double candidate_value = equation.rhs(0) / diagonal;
         const double candidate_residual =
             std::abs(diagonal * candidate_value - equation.rhs(0));
-        if (candidate_residual <= controls.tolerance) {
+        // ScalarSolveControls::tolerance is a relative linear-solver
+        // tolerance. Compare a scale-free residual here too; an absolute
+        // threshold can reject a backward-stable 1x1 solution solely because
+        // the RHS is large (e.g. transient energy capacity terms).
+        if (relative_residual(candidate_residual) <= controls.tolerance) {
             // A scalar 1x1 system has an exact closed-form solution. Do not
             // under-relax an already converged linear solve: doing so makes
             // the returned state fail the requested residual even though the
