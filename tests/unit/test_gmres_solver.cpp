@@ -418,6 +418,32 @@ int main() {
         EXPECT_TRUE(workspace.restart <= 2);
     });
 
+    run_case("gmres_rejects_invalid_owned_entry_range", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+        Vector b(2, 1.0), x(2, 0.0);
+        KrylovControls controls;
+        controls.reduction.local_begin = 2;
+        controls.reduction.local_end = 1;
+        const auto result = solve_gmres(A, b, x, 1, 4, 1e-12, nullptr, controls);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("gmres_rejects_owned_range_past_operator_dimension", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+        Vector b(2, 1.0), x(2, 0.0);
+        KrylovControls controls;
+        controls.reduction.local_begin = 3;
+        controls.reduction.local_end = 4;
+        const auto result = solve_gmres(A, b, x, 1, 4, 1e-12, nullptr, controls);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    });
+
     run_case("gmres_rejects_inverted_restart_bounds_before_clamp", []() {
         SparseMatrix A(2, 2);
         A.push_back(0, 0, 1.0);
