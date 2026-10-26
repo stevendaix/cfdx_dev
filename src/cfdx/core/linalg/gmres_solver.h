@@ -458,6 +458,14 @@ inline SolverResult solve_gmres(
         }
 
         const double reduction = beta / std::max(previous_cycle_residual, 1e-300);
+        if (!std::isfinite(reduction)) {
+            x = best_x;
+            result.status = SolverStatus::DIVERGED;
+            result.iterations = iterations;
+            result.residual = best_residual;
+            result.residual_relative = best_residual / rhs_scale;
+            return result;
+        }
         if (controls.adaptive_restart)
             current_restart = choose_gmres_restart(current_restart, reduction, controls);
         previous_cycle_residual = beta;
