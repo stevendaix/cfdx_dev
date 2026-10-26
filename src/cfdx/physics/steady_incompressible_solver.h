@@ -1155,7 +1155,7 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
         // least three internal neighbours; preserve boundary-aware Green-Gauss
         // values on smaller stencils (e.g. a one-cell-thick channel), where
         // prescribed boundary values complete the stencil.
-        const auto grad_ls = cfdx::core::compute_gradient_least_squares(scalar, mesh);
+        const auto grad_ls = cfdx::core::compute_gradient_least_squares(scalar, mesh, cfdx::core::BoundaryGradientPolicy::EXCLUDE_BOUNDARY);
         const auto* cell_faces = mesh.cells().faces_data();
         const auto* cell_offsets = mesh.cells().offsets_data();
         const auto& ownership = mesh.ownership();
