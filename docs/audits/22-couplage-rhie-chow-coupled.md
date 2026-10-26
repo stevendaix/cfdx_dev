@@ -162,3 +162,23 @@ Interprétation limitée aux preuves disponibles : l'identité Rhie–Chow véri
 2. Vérifier les signes et la compensation de non-orthogonalité entre l'assemblage couplé (correction explicite fondée sur (p_{old})) et la reconstruction du flux d'acceptation (pression mise à jour). La divergence des métriques est un indice à tester, pas encore une preuve de cause.
 3. Pour Fp, distinguer le résidu déclaré par le solveur de la terminaison au budget et vérifier le résidu vrai recalculé avec exactement la matrice/RHS internes. Ne pas accepter le seul résidu affiché comme preuve de convergence physique ; ne pas durcir ou relâcher le contrat best-effort sans preuve.
 4. Garder les gates physiques et le détecteur de stagnation inchangés. Relancer N9, Release, DebugSanitizers, les audits et la validation totale après une correction causale. La PR reste draft.
+
+## 13. Diagnostic pre-relaxation du bloc COUPLED — 2026-10-26
+
+La campagne exacte sur HEAD `618951c1` confirme que le système linéaire couplé atteint un résidu vrai relatif inférieur à `1e-12`, alors que le flux reconstruit après mise à jour non linéaire conserve une divergence de `1.63e-3`. Les canaux indépendants mesurés au point d'échec sont : divergence issue de la vitesse `1.027e-3`, écart de flux interne `3.51e-4`, écart normalisé `4.293e-3`, identité de l'opérateur Rhie–Chow `0`.
+
+Une instrumentation ciblée a été ajoutée dans `solve_steady_incompressible` pour mesurer la divergence du flux calculé depuis la solution monolithique **avant** les relaxations séparées de U et p. Elle journalise aussi `alpha_u` et `alpha_p`. Cela doit trancher entre :
+- une incohérence du bloc de continuité et du flux déjà présente sur la solution linéaire ;
+- une perte de continuité introduite par la relaxation non linéaire indépendante ;
+- un effet du terme non orthogonal différé évalué avec l'ancien gradient de pression.
+
+Le diagnostic est conditionné par `coupled_matrix_summary`, n'affecte pas les champs, les critères d'acceptation ni les budgets. Les gates physiques restent inchangées. Le prochain run doit être lu avant de modifier les signes ou la formulation du bloc : l'inspection algébrique seule ne justifie pas un changement de signe qui pourrait rompre les cas orthogonaux déjà qualifiés.
+
+Sur la dernière campagne disponible :
+- Release : succès ;
+- pre-commit, documentation, GUI, audit gate, maturité numérique et fixtures N10 : succès ;
+- N9 physique et campagne N9 : échec sur Couette non orthogonal ;
+- DebugSanitizers : échec uniquement sur la fuite de 19 octets de `test_mpi_deterministic_fused` ;
+- validation totale : échec du rapport de validation (sept suites Python en échec) et campagne longue annulée, en plus du blocage N9.
+
+La PR reste draft. Ne pas fusionner tant que le diagnostic exact-HEAD n'a pas identifié la cause et que les contrôles requis ne sont pas verts.
