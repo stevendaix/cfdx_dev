@@ -1234,7 +1234,7 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
                 viscosity_gradient.component_data(0)[owner] * d_owner_vec.x +
                 viscosity_gradient.component_data(1)[owner] * d_owner_vec.y +
                 viscosity_gradient.component_data(2)[owner] * d_owner_vec.z;
-            const Vec3 face_to_neighbour =
+            const cfdx::core::Vec3 face_to_neighbour =
                 geometry.face_centres[face] - geometry.cell_centres[neighbour];
             const double mu_neighbour_face =
                 cell_effective_dynamic_viscosity[neighbour] +
