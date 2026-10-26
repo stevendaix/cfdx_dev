@@ -2916,6 +2916,169 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         U.component_data(2)[c] = x(2*nc + c);
         p(c) = x(nv + c);
     }
+
+    // Cellwise operator accounting for the exact monolithic candidate. This
+    // is diagnostic-only: decompose A*x-b and the conservative Rhie-Chow
+    // flux on the same U,p state, without changing acceptance or solver data.
+    if (diagnostics.coupled_matrix_summary) {
+        std::size_t row_cell = 0;
+        double row_linf = -1.0;
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            if (!has_fixed_pressure && cell == reference_cell)
+                continue;
+            const std::size_t row = nv + cell;
+            double ax = 0.0;
+            for (std::size_t k = A.row_offsets_data()[row];
+                 k < A.row_offsets_data()[row + 1]; ++k)
+                ax += A.values_data()[k] * x(A.columns_data()[k]);
+            const double residual = ax - b(row);
+            if (std::abs(residual) > row_linf) {
+                row_linf = std::abs(residual);
+                row_cell = cell;
+            }
+        }
+
+        std::array<std::vector<double>, 3> rAU;
+        for (auto& component : rAU)
+            component.resize(nc);
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            rAU[0][cell] = 1.0 / ex.diagonal[cell];
+            rAU[1][cell] = 1.0 / ey.diagonal[cell];
+            rAU[2][cell] = 1.0 / ez.diagonal[cell];
+        }
+        const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+        const auto flux = make_rhie_chow_flux_from_physical_velocity(
+            mesh, geometry, U, p, rAU, rho, velocity_bcs, pressure_bcs);
+        const auto* cell_faces = mesh.cells().faces_data();
+        const auto* cell_offsets = mesh.cells().offsets_data();
+
+        auto report_cell = [&](std::size_t cell, const char* role) {
+            const std::size_t row = nv + cell;
+            double matrix_velocity = 0.0;
+            double matrix_pressure = 0.0;
+            for (std::size_t k = A.row_offsets_data()[row];
+                 k < A.row_offsets_data()[row + 1]; ++k) {
+                const std::size_t column = A.columns_data()[k];
+                const double contribution = A.values_data()[k] * x(column);
+                if (column < nv)
+                    matrix_velocity += contribution;
+                else
+                    matrix_pressure += contribution;
+            }
+            const double matrix_residual = matrix_velocity + matrix_pressure - b(row);
+            double flux_velocity = 0.0;
+            double flux_pressure_orthogonal = 0.0;
+            double flux_pressure_nonorthogonal = 0.0;
+            double flux_pressure_compensation = 0.0;
+            double flux_total = 0.0;
+
+            for (Offset k = cell_offsets[cell]; k < cell_offsets[cell + 1]; ++k) {
+                const std::size_t face = cell_faces[k];
+                const double face_sign = mesh.ownership().owner(face) == cell ? 1.0 : -1.0;
+                const std::size_t owner = mesh.ownership().owner(face);
+                const auto neighbour = mesh.ownership().neighbour(face);
+                const Vec3 sf = geometry.face_area_vectors[face];
+                Vec3 uf{};
+                U.get(owner, uf.x, uf.y, uf.z);
+                if (neighbour >= 0) {
+                    const std::size_t n = static_cast<std::size_t>(neighbour);
+                    Vec3 un{};
+                    U.get(n, un.x, un.y, un.z);
+                    uf = (uf + un) * 0.5;
+                    const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[owner];
+                    const Vec3 dAU{
+                        0.5 * (geometry.cell_volumes[owner] * rAU[0][owner] +
+                               geometry.cell_volumes[n] * rAU[0][n]),
+                        0.5 * (geometry.cell_volumes[owner] * rAU[1][owner] +
+                               geometry.cell_volumes[n] * rAU[1][n]),
+                        0.5 * (geometry.cell_volumes[owner] * rAU[2][owner] +
+                               geometry.cell_volumes[n] * rAU[2][n])};
+                    const Vec3 gp{
+                        0.5 * (grad_p.component_data(0)[owner] + grad_p.component_data(0)[n]),
+                        0.5 * (grad_p.component_data(1)[owner] + grad_p.component_data(1)[n]),
+                        0.5 * (grad_p.component_data(2)[owner] + grad_p.component_data(2)[n])};
+                    const double coefficient = pressure_face_orthogonal_coefficient(sf, dvec, dAU);
+                    const double deferred = pressure_face_nonorthogonal_flux(sf, dvec, dAU, gp);
+                    flux_velocity += face_sign * rho * uf.dot(sf);
+                    flux_pressure_orthogonal -= face_sign * rho * coefficient * (p(n) - p(owner));
+                    flux_pressure_nonorthogonal -= face_sign * rho * deferred;
+                    flux_pressure_compensation += face_sign * rho *
+                        (dAU.x * gp.x * sf.x + dAU.y * gp.y * sf.y + dAU.z * gp.z * sf.z);
+                } else {
+                    const std::size_t patch = geometry.face_patch[face];
+                    if (patch < mesh.boundary().n_patches() &&
+                        mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                        continue;
+                    if (patch < mesh.boundary().n_patches()) {
+                        const auto& name = mesh.boundary().patch(patch).name;
+                        const auto ubc = velocity_bcs.find(name);
+                        if (ubc != velocity_bcs.end() &&
+                            ubc->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                            uf = ubc->second.value;
+                        const auto pbc = pressure_bcs.find(name);
+                        if (pbc != pressure_bcs.end() &&
+                            pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                            const Vec3 dvec = geometry.face_centres[face] -
+                                              geometry.cell_centres[owner];
+                            const Vec3 dAU{
+                                geometry.cell_volumes[owner] * rAU[0][owner],
+                                geometry.cell_volumes[owner] * rAU[1][owner],
+                                geometry.cell_volumes[owner] * rAU[2][owner]};
+                            const Vec3 gp{
+                                grad_p.component_data(0)[owner],
+                                grad_p.component_data(1)[owner],
+                                grad_p.component_data(2)[owner]};
+                            const double coefficient =
+                                pressure_face_orthogonal_coefficient(sf, dvec, dAU);
+                            const double deferred = pressure_face_nonorthogonal_flux(sf, dvec, dAU, gp);
+                            flux_pressure_orthogonal -= face_sign * rho * coefficient *
+                                (pbc->second.value - p(owner));
+                            flux_pressure_nonorthogonal -= face_sign * rho * deferred;
+                            flux_pressure_compensation += face_sign * rho *
+                                (dAU.x * gp.x * sf.x + dAU.y * gp.y * sf.y + dAU.z * gp.z * sf.z);
+                        }
+                    }
+                    flux_velocity += face_sign * rho * uf.dot(sf);
+                }
+                flux_total += face_sign * flux(face);
+            }
+            std::cerr << "COUPLED_CELL_OPERATOR_AUDIT role=" << role
+                      << " cell=" << cell
+                      << " matrix_velocity=" << matrix_velocity
+                      << " matrix_pressure_orthogonal=" << matrix_pressure
+                      << " matrix_rhs=" << b(row)
+                      << " matrix_residual=" << matrix_residual
+                      << " flux_velocity=" << flux_velocity
+                      << " flux_pressure_orthogonal=" << flux_pressure_orthogonal
+                      << " flux_pressure_nonorthogonal=" << flux_pressure_nonorthogonal
+                      << " flux_pressure_compensation=" << flux_pressure_compensation
+                      << " flux_sum_components=" << (flux_velocity + flux_pressure_orthogonal +
+                            flux_pressure_nonorthogonal + flux_pressure_compensation)
+                      << " flux_authoritative=" << flux_total << "\\n";
+        };
+
+        double flux_linf = -1.0;
+        std::size_t flux_cell = 0;
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            double divergence = 0.0;
+            for (Offset k = cell_offsets[cell]; k < cell_offsets[cell + 1]; ++k) {
+                const std::size_t face = cell_faces[k];
+                divergence += mesh.ownership().owner(face) == cell ? flux(face) : -flux(face);
+            }
+            if (std::abs(divergence) > flux_linf) {
+                flux_linf = std::abs(divergence);
+                flux_cell = cell;
+            }
+        }
+        report_cell(row_cell, "continuity_row_argmax");
+        if (flux_cell != row_cell)
+            report_cell(flux_cell, "flux_divergence_argmax");
+        std::cerr << "COUPLED_CELL_OPERATOR_AUDIT_MAXIMA"
+                  << " continuity_row_cell=" << row_cell
+                  << " continuity_row_linf=" << row_linf
+                  << " flux_cell=" << flux_cell
+                  << " flux_divergence_linf=" << flux_linf << "\\n";
+    }
     return result;
 }
 
