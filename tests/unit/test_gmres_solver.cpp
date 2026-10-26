@@ -402,6 +402,22 @@ int main() {
         EXPECT_NEAR(x(0), 0.0, 1e-14);
     });
 
+    run_case("gmres_adaptive_restart_never_exceeds_operator_dimension", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 2.0);
+        A.finalize();
+        Vector b(2, 1.0), x(2, 0.0);
+        KrylovControls controls;
+        controls.restart_min = 1;
+        controls.restart_max = 512;
+        controls.adaptive_restart = true;
+        GmresWorkspace workspace;
+        (void)solve_gmres(A, b, x, 1, 2, 1e-14, nullptr, controls, &workspace);
+        EXPECT_TRUE(workspace.n == 2);
+        EXPECT_TRUE(workspace.restart <= 2);
+    });
+
     run_case("gmres_rejects_inverted_restart_bounds_before_clamp", []() {
         SparseMatrix A(2, 2);
         A.push_back(0, 0, 1.0);
