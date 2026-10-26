@@ -1,0 +1,144 @@
+diff --git a/src/cfdx/physics/finite_volume_transport.h b/src/cfdx/physics/finite_volume_transport.h
+index b80b5180..04d8c61f 100644
+--- a/src/cfdx/physics/finite_volume_transport.h
++++ b/src/cfdx/physics/finite_volume_transport.h
+@@ -1315,8 +1315,106 @@ inline cfdx::core::SolverResult solve_scalar_equation(
+             result.status = cfdx::core::SolverStatus::DIVERGED;
+             return result;
+         }
+-        for (std::size_t i = 0; i < solution.size(); ++i)
++        // These paired diagnostics use the same physical operator, L-infinity
++        // norm, and RHS normalization. Solver-native Krylov diagnostics remain
++        // available in residual/residual_relative and are intentionally separate.
++        const auto physical_residual_inf = [&](const cfdx::core::Vector& state) {
++            if (state.size() != equation.rhs.size()) {
++                return std::numeric_limits<double>::infinity();
++            }
++            if (equation.matrix.row_offsets_data() == nullptr ||
++                equation.matrix.columns_data() == nullptr ||
++                equation.matrix.values_data() == nullptr) {
++                return std::numeric_limits<double>::infinity();
++            }
++            double norm = 0.0;
++            for (std::size_t i = 0; i < state.size(); ++i) {
++                const double rhs_i = equation.rhs(i);
++                if (!std::isfinite(rhs_i)) {
++                    return std::numeric_limits<double>::infinity();
++                }
++                double ri = -rhs_i;
++                if (!std::isfinite(ri)) {
++                    return std::numeric_limits<double>::infinity();
++                }
++                const std::uint32_t row_begin = equation.matrix.row_offsets_data()[i];
++                const std::uint32_t row_end = equation.matrix.row_offsets_data()[i + 1];
++                for (std::uint32_t k = row_begin; k < row_end; ++k) {
++                    const std::uint32_t cidx = equation.matrix.columns_data()[k];
++                    if (cidx >= state.size()) {
++                        return std::numeric_limits<double>::infinity();
++                    }
++                    const double mval = equation.matrix.values_data()[k];
++                    if (!std::isfinite(mval)) {
++                        return std::numeric_limits<double>::infinity();
++                    }
++                    const double sval = state(cidx);
++                    if (!std::isfinite(sval)) {
++                        return std::numeric_limits<double>::infinity();
++                    }
++                    const double term = mval * sval;
++                    if (!std::isfinite(term)) {
++                        return std::numeric_limits<double>::infinity();
++                    }
++                    ri += term;
++                    if (!std::isfinite(ri)) {
++                        return std::numeric_limits<double>::infinity();
++                    }
++                }
++                const double ari = std::abs(ri);
++                if (!std::isfinite(ari)) {
++                    return std::numeric_limits<double>::infinity();
++                }
++                if (ari > norm) {
++                    norm = ari;
++                }
++            }
++            return norm;
++        };
++        double rhs_norm = 0.0;
++        if (solution.size() == equation.rhs.size()) {
++            for (std::size_t i = 0; i < solution.size(); ++i) {
++                const double rv = std::abs(equation.rhs(i));
++                if (!std::isfinite(rv)) {
++                    rhs_norm = 0.0;
++                    break;
++                }
++                if (rv > rhs_norm) {
++                    rhs_norm = rv;
++                }
++            }
++        }
++        if (!std::isfinite(rhs_norm)) {
++            rhs_norm = 0.0;
++        }
++        const double rhs_scale = std::max(rhs_norm, 1e-300);
++        result.residual_before_relaxation = physical_residual_inf(candidate);
++        if (!std::isfinite(result.residual_before_relaxation)) {
++            result.status = cfdx::core::SolverStatus::DIVERGED;
++            return result;
++        }
++        result.residual_relative_before_relaxation =
++            result.residual_before_relaxation / rhs_scale;
++
++        for (std::size_t i = 0; i < solution.size(); ++i) {
++            if (!std::isfinite(candidate(i))) {
++                result.status = cfdx::core::SolverStatus::DIVERGED;
++                return result;
++            }
+             solution(i) += controls.relaxation * (candidate(i) - solution(i));
++            if (!std::isfinite(solution(i))) {
++                result.status = cfdx::core::SolverStatus::DIVERGED;
++                return result;
++            }
++        }
++
++        result.residual_after_relaxation = physical_residual_inf(solution);
++        if (!std::isfinite(result.residual_after_relaxation)) {
++            result.status = cfdx::core::SolverStatus::DIVERGED;
++            return result;
++        }
++        result.residual_relative_after_relaxation =
++            result.residual_after_relaxation / rhs_scale;
+     }
+     // A MAX_ITER_REACHED result is not an acceptable predictor solution.
+     // Do not inject an unconverged Krylov iterate into the nonlinear solver:
+diff --git a/src/cfdx/physics/steady_incompressible_solver.h b/src/cfdx/physics/steady_incompressible_solver.h
+index 23ffa9d9..901b5739 100644
+--- a/src/cfdx/physics/steady_incompressible_solver.h
++++ b/src/cfdx/physics/steady_incompressible_solver.h
+@@ -1616,12 +1616,12 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
+     const auto diffusion = assemble_scalar_equation(
+         mesh, geometry, zero_flux, 1.0,
+         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
+-        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
++        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);
+ 
+     const auto convection_diffusion = assemble_scalar_equation(
+         mesh, geometry, mass_flux, rho * kinematic_viscosity,
+         zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
+-        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr);
++        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);
+ 
+     // A fixed pressure boundary already removes the constant null mode of
+     // the pressure operators, so the gauge reference row is imposed only
+diff --git a/tests/audit/test_audit_energy_boundary_metric.cpp b/tests/audit/test_audit_energy_boundary_metric.cpp
+index 42580ac5..62d81986 100644
+--- a/tests/audit/test_audit_energy_boundary_metric.cpp
++++ b/tests/audit/test_audit_energy_boundary_metric.cpp
+@@ -22,7 +22,7 @@ int main() {
+         if(override_value) fv.values["outlet"].assign(m.n_faces(),400.);
+         else bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,400,0};
+         const auto* values=override_value?&fv:nullptr;
+-        const auto eq=assemble_energy_equation(m,geometry,flux,source,old,c,bc,values);
++        const auto eq=assemble_energy_equation(m,geometry,flux,source,old,c,bc,values,nullptr,nullptr,nullptr,&t);
+         Vector x(1,t(0));
+         const double matrix=energy_balance_relative_from_equation(eq,x);
+         const double diagnostic=energy_balance_relative(m,geometry,flux,t,old,source,c,bc,values);

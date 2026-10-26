@@ -1,0 +1,6 @@
+run_id=40318353208
+head_pin=e8138a68c10b72c8697b932757ad31f31c9e9cb1
+master_sha=e8138a68c10b72c8697b932757ad31f31c9e9cb1
+expected_remaining_failures=test_audit_cht_time,test_variable_viscosity_transpose_stress (wave 2)
+push_to_master=true
+prev_pin=f1a6e71688c5c47de8271aec5cbb3f592e157c98
