@@ -58,7 +58,11 @@ inline SolverResult solve_gmres(
 
     const std::size_t n = op.size;
     int current_restart = std::clamp(restart, controls.restart_min, controls.restart_max);
-    current_restart = std::min<int>(current_restart, static_cast<int>(n));
+    // Avoid narrowing n to int: a large operator dimension may exceed INT_MAX.
+    // The cast is safe only in the branch where n is smaller than an int value.
+    if (n < static_cast<std::size_t>(current_restart)) {
+        current_restart = static_cast<int>(n);
+    }
 
     const double b_norm = krylov_norm2(b, SolverPrecision::FP64, controls.reduction);
     if (!std::isfinite(b_norm)) {
