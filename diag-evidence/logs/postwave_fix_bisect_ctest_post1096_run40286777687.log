@@ -1,0 +1,17 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+    Start   1: test_audit_cht_time
+1/3 Test   #1: test_audit_cht_time .................   Passed    0.01 sec
+    Start   2: test_audit_energy_boundary_metric
+2/3 Test   #2: test_audit_energy_boundary_metric ...   Passed    0.00 sec
+    Start 106: test_finite_volume_transport
+3/3 Test #106: test_finite_volume_transport ........   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 3
+
+Label Time Summary:
+audit         =   0.02 sec*proc (2 tests)
+regression    =   0.02 sec*proc (2 tests)
+thermal       =   0.02 sec*proc (2 tests)
+
+Total Test time (real) =   0.09 sec
