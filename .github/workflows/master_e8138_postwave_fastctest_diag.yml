@@ -4,16 +4,9 @@ name: Master post-merge-wave fast-ctest + pyreg capture (diag)
 # Capture-only : AUCUNE instrumentation du code. Replique EXACTEMENT les jobs
 # "Build and test (Release)" et "Build and test (DebugSanitizers)" de cfdx-ci.yml
 # sur le head master post-vague EPINGLE :
-#   e8138a68c10b72c8697b932757ad31f31c9e9cb1 (2026-10-25 22:02Z, apres merges
-#   #1096/#1078/#1068/#1125/#1126/#1127/#1128)
-# Contexte : CI run 40238292636 sur ce head :
-#   Release : "Run fast CTest" exit 8 + "Run Python regression" exit 1
-#   DebugSanitizers : "Run fast CTest" exit 8
-# Pre-vague f1a6e716 : Release VERT (fast CTest + pyreg), DebugSanitizers exit 8
-# avec 18 tests en echec (defaut sanitizer pre-existant, cf. run 40228386956).
-# But : listes de tests en echec PAR CONFIG + sorties rerun + pyreg AVEC binaires
-# (l'oracle mastere8138_pyreg de 05:21Z n'avait PAS les binaires -> 0 echec sur
-# les tests non binaires) + signatures sanitizer uniques.
+#   e8138a68c10b72c8697b932757ad31f31c9e9cb1 (2026-10-25 22:02Z)
+# Contexte : CI run 40238292636 - Release fast CTest exit 8 + pyreg exit 1,
+# DebugSanitizers fast CTest exit 8 ; pre-vague f1a6e716 Release vert.
 # Verdicts fail-closed par config : EVIDENCE_COMPLETE / NO_FAILURES_REPRODUCED /
 # INCONCLUSIVE_BUILD / INCONCLUSIVE_NO_FAILED_LIST.
 
@@ -60,18 +53,12 @@ jobs:
           git merge-base --is-ancestor "$HEAD_SHA_PIN" origin/master \
             || { echo "::error::pinned head is not an ancestor of master: $HEAD_SHA_PIN"; exit 1; }
           git worktree add "$RUNNER_TEMP/head" "$HEAD_SHA_PIN"
-          if [ "$CFG" = "Release" ]; then
-            SCOPE="replica of CI Release: fast CTest -LE long --parallel 4 + Python regression with CFDX_PRODUCTION_SOLVER/CFDX_THERMAL_SOLVER/PYTHONPATH (venv sans PySide6)"
-          else
-            SCOPE="replica of CI DebugSanitizers: fast CTest -LE 'long|benchmark|campaign|sanitizer-slow' --parallel 6, ASAN detect_leaks=1:halt_on_error=1, UBSAN halt_on_error=1"
-          fi
           {
             echo "run_id=$GITHUB_RUN_ID"
             echo "started_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "ref_pin=$HEAD_SHA_PIN"
             echo "config=$CFG"
-            echo "scope=$SCOPE"
-            echo "context=CI run 40238292636: Release fast CTest exit 8 + pyreg exit 1; DebugSanitizers fast CTest exit 8. Pre-vague f1a6e716: Release vert, DebugSanitizers 18 echecs pre-existants (run 40228386956)"
+            echo "context=CI run 40238292636: Release fast CTest exit 8 + pyreg exit 1; DebugSanitizers fast CTest exit 8. Pre-vague f1a6e716: Release vert."
             echo "rule=EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL"
           } > "$GITHUB_WORKSPACE/$EVID/master_e8138_postwave_meta_${CFG}_run$GITHUB_RUN_ID.txt"
 
@@ -181,75 +168,75 @@ jobs:
         if: always()
         run: |
           python3 - "$CFG" <<'PY'
-import os, re, sys
-
-cfg = sys.argv[1]
-run_id = os.environ["GITHUB_RUN_ID"]
-evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
-tag = "master_e8138_postwave_%s_run%s" % (cfg, run_id)
-
-def p(kind, ext="log"):
-    return os.path.join(evid, tag + "_" + kind + "." + ext)
-
-def write_verdict(v, lines):
-    with open(p("verdict", "txt"), "w") as fh:
-        fh.write("verdict=" + v + "\n")
-        for line in lines:
-            fh.write(line + "\n")
-    print("verdict=" + v)
-
-ctest_log = p("ctest")
-if not os.path.exists(ctest_log):
-    write_verdict("INCONCLUSIVE_BUILD", ["ctest log absent (build or ctest step did not run)"])
-    sys.exit(0)
-
-text = open(ctest_log, errors="replace").read()
-failed = []
-idx = text.find("The following tests FAILED:")
-if idx >= 0:
-    for line in text[idx:].splitlines()[1:]:
-        s = line.strip()
-        if not s:
-            break
-        m = re.match(r"(\d+)\s*-\s*(\S+)", s)
-        if not m:
-            break
-        failed.append(m.group(1) + ": " + m.group(2))
-
-with open(p("failedlist", "txt"), "w") as fh:
-    for t in failed:
-        fh.write(t + "\n")
-
-status = {}
-sp = p("status", "txt")
-if os.path.exists(sp):
-    for line in open(sp):
-        if "=" in line:
-            k, v = line.split("=", 1)
-            status[k.strip()] = v.strip()
-
-ctest_exit = status.get("ctest_exit")
-if ctest_exit == "0" and not failed:
-    write_verdict("NO_FAILURES_REPRODUCED", ["fast ctest PASSED on this pinned ref (" + cfg + ")"])
-    sys.exit(0)
-if not failed:
-    write_verdict("INCONCLUSIVE_NO_FAILED_LIST", ["ctest_exit=" + str(ctest_exit) + " but failed list not parsed - read the raw ctest log"])
-    sys.exit(0)
-
-lines = ["ctest_exit=" + str(ctest_exit), "failed_tests=" + str(len(failed))] + failed
-if cfg == "Release":
-    pyreg_log = p("pyreg")
-    if os.path.exists(pyreg_log):
-        ptext = open(pyreg_log, errors="replace").read()
-        pfailed = [l for l in ptext.splitlines() if l.startswith("FAILED ") or l.startswith("ERROR ")]
-        with open(p("pyreg_failed", "txt"), "w") as fh:
-            for l in pfailed:
-                fh.write(l + "\n")
-        lines.append("pyreg_exit=" + str(status.get("pyreg_exit")))
-        lines.append("pyreg_failed=" + str(len(pfailed)))
-        lines += pfailed[:40]
-write_verdict("EVIDENCE_COMPLETE", lines)
-PY
+          import os, re, sys
+          
+          cfg = sys.argv[1]
+          run_id = os.environ["GITHUB_RUN_ID"]
+          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+          tag = "master_e8138_postwave_%s_run%s" % (cfg, run_id)
+          
+          def p(kind, ext="log"):
+              return os.path.join(evid, tag + "_" + kind + "." + ext)
+          
+          def write_verdict(v, lines):
+              with open(p("verdict", "txt"), "w") as fh:
+                  fh.write("verdict=" + v + "\n")
+                  for line in lines:
+                      fh.write(line + "\n")
+              print("verdict=" + v)
+          
+          ctest_log = p("ctest")
+          if not os.path.exists(ctest_log):
+              write_verdict("INCONCLUSIVE_BUILD", ["ctest log absent (build or ctest step did not run)"])
+              sys.exit(0)
+          
+          text = open(ctest_log, errors="replace").read()
+          failed = []
+          idx = text.find("The following tests FAILED:")
+          if idx >= 0:
+              for line in text[idx:].splitlines()[1:]:
+                  s = line.strip()
+                  if not s:
+                      break
+                  m = re.match(r"(\d+)\s*-\s*(\S+)", s)
+                  if not m:
+                      break
+                  failed.append(m.group(1) + ": " + m.group(2))
+          
+          with open(p("failedlist", "txt"), "w") as fh:
+              for t in failed:
+                  fh.write(t + "\n")
+          
+          status = {}
+          sp = p("status", "txt")
+          if os.path.exists(sp):
+              for line in open(sp):
+                  if "=" in line:
+                      k, v = line.split("=", 1)
+                      status[k.strip()] = v.strip()
+          
+          ctest_exit = status.get("ctest_exit")
+          if ctest_exit == "0" and not failed:
+              write_verdict("NO_FAILURES_REPRODUCED", ["fast ctest PASSED on this pinned ref (" + cfg + ")"])
+              sys.exit(0)
+          if not failed:
+              write_verdict("INCONCLUSIVE_NO_FAILED_LIST", ["ctest_exit=" + str(ctest_exit) + " but failed list not parsed - read the raw ctest log"])
+              sys.exit(0)
+          
+          lines = ["ctest_exit=" + str(ctest_exit), "failed_tests=" + str(len(failed))] + failed
+          if cfg == "Release":
+              pyreg_log = p("pyreg")
+              if os.path.exists(pyreg_log):
+                  ptext = open(pyreg_log, errors="replace").read()
+                  pfailed = [l for l in ptext.splitlines() if l.startswith("FAILED ") or l.startswith("ERROR ")]
+                  with open(p("pyreg_failed", "txt"), "w") as fh:
+                      for l in pfailed:
+                          fh.write(l + "\n")
+                  lines.append("pyreg_exit=" + str(status.get("pyreg_exit")))
+                  lines.append("pyreg_failed=" + str(len(pfailed)))
+                  lines += pfailed[:40]
+          write_verdict("EVIDENCE_COMPLETE", lines)
+          PY
 
       - name: Commit evidence
         if: always()
