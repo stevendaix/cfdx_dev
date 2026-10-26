@@ -1155,7 +1155,8 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
         // least three internal neighbours; preserve boundary-aware Green-Gauss
         // values on smaller stencils (e.g. a one-cell-thick channel), where
         // prescribed boundary values complete the stencil.
-        const auto grad_ls = cfdx::core::compute_gradient_least_squares(scalar, mesh);
+        const auto grad_ls = cfdx::core::compute_gradient_least_squares(
+            scalar, mesh, cfdx::core::BoundaryGradientPolicy::EXCLUDE_BOUNDARY);
         const auto* cell_faces = mesh.cells().faces_data();
         const auto* cell_offsets = mesh.cells().offsets_data();
         const auto& ownership = mesh.ownership();
@@ -1194,7 +1195,8 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
         nc, "transpose_stress_mu", "Pa s", 1);
     for (std::size_t cell = 0; cell < nc; ++cell)
         mu_cell(cell) = cell_effective_dynamic_viscosity[cell];
-    const auto mu_gradient = cfdx::core::compute_gradient_least_squares(mu_cell, mesh);
+    const auto mu_gradient = cfdx::core::compute_gradient_least_squares(
+        mu_cell, mesh, cfdx::core::BoundaryGradientPolicy::EXCLUDE_BOUNDARY);
 
     std::vector<double> face_fluxes(nf, 0.0);
     for (std::size_t face = 0; face < nf; ++face) {
