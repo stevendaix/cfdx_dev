@@ -247,3 +247,13 @@ The next implementation increment is intentionally limited to closing the three 
 - [ ] **Restart equivalence:** compare continuous and interrupted/restarted production trajectories at equivalent accepted iterations for `U`, `p`, authoritative face mass flux, `k`, `omega`, `nu_t`, wall distance, and strain rate; verify malformed checkpoints leave caller state unchanged.
 
 The production RANS/SST selector remains fail-closed. This work is software-integration evidence only; it does not qualify the model physically. No tolerance widening, disabled tests, or silent fallback is allowed.
+
+### Follow-up implementation — SST DAT hydration in the solver API
+
+- [x] When the explicit SST runtime and InitializationMode::Restart are both selected, route the checkpoint's named k and omega fields into the active SSTProductionState through the same staged DAT reader used for carrier U/p.
+- [x] Reject caller-supplied k/omega restart targets that disagree with the active SST runtime, avoiding two competing state owners.
+- [x] Add a production-solver regression that checks the effective viscosity consumed by the first momentum predictor against the restarted k/omega values.
+- [ ] Run the new regression and exact-HEAD Release/DebugSanitizers/numerical-maturity/audit workflows; no test result is claimed until CI reports it.
+- [ ] Construct SSTProductionRuntime from persisted case boundary metadata in the application driver, including explicit wall-omega face values. This solver-API change does not complete application case construction.
+- [ ] Prove interrupted/restarted trajectory equivalence across carrier fields, authoritative mass flux, and all SST-owned state.
+
