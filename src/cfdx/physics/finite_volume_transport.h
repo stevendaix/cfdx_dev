@@ -1121,6 +1121,10 @@ reconstruct_scalar_transport_flux(
     return result;
 }
 
+inline double scalar_equation_residual_inf(
+    const ScalarEquation& equation,
+    const cfdx::core::Vector& solution);
+
 inline cfdx::core::SolverResult solve_scalar_equation(
     const ScalarEquation& equation,
     cfdx::core::Vector& solution,
