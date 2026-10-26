@@ -22,7 +22,12 @@ int main() {
         if(override_value) fv.values["outlet"].assign(m.n_faces(),400.);
         else bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,400,0};
         const auto* values=override_value?&fv:nullptr;
-        const auto eq=assemble_energy_equation(m,geometry,flux,source,old,c,bc,values);
+        // Assembly evaluates the deferred non-orthogonal correction from
+        // the current temperature iterate. This audit compares the matrix
+        // against that same explicitly supplied physical state.
+        const auto eq=assemble_energy_equation(
+            m,geometry,flux,source,old,c,bc,values,
+            nullptr,nullptr,nullptr,&t);
         Vector x(1,t(0));
         const double matrix=energy_balance_relative_from_equation(eq,x);
         const double diagnostic=energy_balance_relative(m,geometry,flux,t,old,source,c,bc,values);
