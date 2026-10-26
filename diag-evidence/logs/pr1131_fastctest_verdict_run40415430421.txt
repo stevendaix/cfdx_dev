@@ -1,0 +1,6 @@
+verdict=FAILURES
+ctest_exit=8
+failed_tests=1
+test_gmres_solver
+pyreg_exit=0
+pyreg_failed=0

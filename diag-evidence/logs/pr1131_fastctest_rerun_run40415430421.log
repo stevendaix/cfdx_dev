@@ -1,0 +1,44 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+    Start 48: test_gmres_solver
+1/1 Test #48: test_gmres_solver ................***Failed    0.00 sec
+Running 27 test cases...
+  PASS: gmres_solve_diagonal
+  PASS: gmres_solve_poisson_1d
+  PASS: gmres_already_converged
+  PASS: gmres_dimension_mismatch
+  PASS: gmres_with_restart
+  PASS: gmres_exact_nonsymmetric_3x3_reference_solution
+  PASS: gmres_rejects_invalid_controls
+  PASS: gmres_tiny_operator_scale_is_not_breakdown
+  PASS: gmres_honors_fixed_restart_controls
+  PASS: gmres_saddle_point_breakdown_reports_true_residual
+  PASS: gmres_nonhappy_breakdown_reports_true_residual
+  PASS: gmres_lucky_breakdown_converges_without_nan
+  PASS: gmres_zero_rhs_converges_from_nonzero_initial_guess
+  PASS: gmres_arnoldi_uses_owned_range_for_projections
+  PASS: gmres_sparse_mixed_precision_rejects_false_convergence
+  PASS: fgmres_sparse_mixed_precision_rejects_false_convergence
+  PASS: gmres_nonzero_rhs_uses_rhs_relative_tolerance
+  PASS: fgmres_nonzero_rhs_uses_rhs_relative_tolerance
+  PASS: gmres_rejects_nonfinite_cycle_residual
+  PASS: gmres_rejects_nonfinite_arnoldi_action
+  FAILED: result.status == SolverStatus::CONVERGED in operator() at /tmp/pr1131_wt/tests/unit/test_gmres_solver.cpp:424
+  FAIL: gmres_adaptive_restart_never_exceeds_operator_dimension - Assertion failed: result.status == SolverStatus::CONVERGED
+  PASS: gmres_rejects_invalid_owned_entry_range
+  PASS: gmres_rejects_owned_range_past_operator_dimension
+  PASS: gmres_rejects_inverted_restart_bounds_before_clamp
+  PASS: gmres_rejects_nonfinite_restart_policy
+  PASS: gmres_rejects_nonpositive_tolerance
+  PASS: gmres_rejects_zero_iteration_budget
+
+Results: 26 passed, 1 failed
+
+
+0% tests passed, 1 tests failed out of 1
+
+Total Test time (real) =   0.01 sec
+
+The following tests FAILED:
+	 48 - test_gmres_solver (Failed)
+Errors while running CTest
