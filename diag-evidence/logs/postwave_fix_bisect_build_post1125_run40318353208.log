@@ -1,0 +1,101 @@
+build_exit=0
+/home/runner/work/_temp/head/src/cfdx/physics/thermophysical_models.h: In member function ‘double cfdx::physics::ThermophysicalProperties::enthalpy(double, double, double) const’:
+/home/runner/work/_temp/head/src/cfdx/physics/thermophysical_models.h:181:40: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                        ^
+/home/runner/work/_temp/head/src/cfdx/physics/thermophysical_models.h:181:42: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                          ^
+/home/runner/work/_temp/head/src/cfdx/physics/thermophysical_models.h:181:56: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                      ~~^~~
+/home/runner/work/_temp/head/src/cfdx/physics/thermophysical_models.h:181:60: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                            ^
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/sst_production_coupling.h:3,
+                 from /home/runner/work/_temp/head/tests/unit/test_sst_blending.cpp:2:
+/home/runner/work/_temp/head/src/cfdx/io/restart/dat_restart.h: In function ‘cfdx::io::DatRestartState cfdx::io::read_dat_restart_fields(const std::string&, const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, DatRestartFields)’:
+/home/runner/work/_temp/head/src/cfdx/io/restart/dat_restart.h:284:10: warning: variable ‘read_scalar_field’ set but not used [-Wunused-but-set-variable]
+  284 |     auto read_scalar_field = [&](const char* expected,
+      |          ^~~~~~~~~~~~~~~~~
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/sst_production_coupling.h:5:
+/home/runner/work/_temp/head/src/cfdx/physics/sst_case_contract.h: In function ‘void cfdx::physics::validate_sst_case_prerequisites(const cfdx::io::CaseSetup&, const TurbulenceTransportControls&)’:
+/home/runner/work/_temp/head/src/cfdx/physics/sst_case_contract.h:82:41: warning: conversion to ‘unsigned char’ from ‘char’ may change the sign of the result [-Wsign-conversion]
+   82 |     for (const unsigned char ch : setup.turbulence_model) {
+      |                                         ^~~~~~~~~~~~~~~~
+In file included from /home/runner/work/_temp/head/tests/unit/test_sst_blending.cpp:3:
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h: In lambda function:
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:1792:23: warning: unused variable ‘old_component’ [-Wunused-variable]
+ 1792 |         const double* old_component = U_old.component_data(component);
+      |                       ^~~~~~~~~~~~~
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_coupled_momentum_continuity(const cfdx::core::Mesh&, const FvGeometry&, ScalarEquation, ScalarEquation, ScalarEquation, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, double, double, std::size_t, double, std::size_t, double, const DiagnosticsControls&, CoupledSchurModel, const cfdx::core::LinearSolverRequest&, const IncompressibleSolverControls&, double, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::LinearSolverPlan*)’:
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:1838:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 1837 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 1838 |                     ? nr
+      |                     ^~~~
+ 1839 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:1923:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 1922 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 1923 |                     ? nr
+      |                     ^~~~
+ 1924 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::physics::IncompressibleSolveResult cfdx::physics::solve_steady_incompressible(const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, const IncompressibleSolverControls&, const std::string&, cfdx::io::DatRestartFields)’:
+/home/runner/work/_temp/head/src/cfdx/physics/steady_incompressible_solver.h:4067:44: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+ 4067 |                       std::max<std::size_t>(mesh.n_cells(), 1));
+      |                       ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/head/tests/unit/test_sst_blending.cpp: In lambda function:
+/home/runner/work/_temp/head/tests/unit/test_sst_blending.cpp:601:44: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  601 |             U.component_data(0)[c] = 1.0 + c;
+      |                                            ^
+/home/runner/work/_temp/head/tests/unit/test_sst_blending.cpp:602:44: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  602 |             U.component_data(1)[c] = 2.0 + c;
+      |                                            ^
+/home/runner/work/_temp/head/tests/unit/test_sst_blending.cpp:603:44: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  603 |             U.component_data(2)[c] = 3.0 + c;
+      |                                            ^
+/home/runner/work/_temp/head/tests/unit/test_sst_blending.cpp:604:27: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  604 |             p(c) = 10.0 + c;
+      |                           ^
+/home/runner/work/_temp/head/tests/unit/test_sst_blending.cpp:605:38: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  605 |             state.k(c) = 0.1 + 0.1 * c;
+      |                                      ^
+/home/runner/work/_temp/head/tests/unit/test_sst_blending.cpp:606:44: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  606 |             state.omega(c) = 10.0 + 10.0 * c;
+      |                                            ^
+/home/runner/work/_temp/head/tests/unit/test_sst_blending.cpp:607:45: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  607 |             state.nu_t(c) = 0.001 + 0.001 * c;
+      |                                             ^
+/home/runner/work/_temp/head/tests/unit/test_sst_blending.cpp:608:52: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  608 |             state.wall_distance(c) = 0.01 + 0.01 * c;
+      |                                                    ^
+/home/runner/work/_temp/head/tests/unit/test_sst_blending.cpp:609:42: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  609 |             state.strain_rate(c) = 1.0 + c;
+      |                                          ^
+In file included from /home/runner/work/_temp/head/src/cfdx/physics/turbulence_solver.h:3:
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::FACE]’:
+/home/runner/work/_temp/head/src/cfdx/physics/momentum_viscous_stress.h:38:14:   required from here
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::CELL]’:
+/home/runner/work/_temp/head/src/cfdx/physics/momentum_viscous_stress.h:88:16:   required from here
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/home/runner/work/_temp/head/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+[517/517] Linking CXX executable test_sst_blending
