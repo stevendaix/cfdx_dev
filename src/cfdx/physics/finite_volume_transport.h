@@ -1143,24 +1143,41 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         const double candidate_value = equation.rhs(0) / diagonal;
         const double candidate_residual =
             std::abs(diagonal * candidate_value - equation.rhs(0));
-        if (candidate_residual <= controls.tolerance) {
-            // A scalar 1x1 system has an exact closed-form solution. Do not
-            // under-relax an already converged linear solve: doing so makes
-            // the returned state fail the requested residual even though the
-            // reported linear residual is zero.
-            solution(0) = candidate_value;
-            return {
-                cfdx::core::SolverStatus::CONVERGED,
-                1, candidate_residual, candidate_residual
-            };
+        // H04: the tolerance is relative, as on the Krylov paths. Keep the
+        // candidate/returned-state diagnostics introduced by PR #1088.
+        const double rhs_scale = std::abs(equation.rhs(0));
+        const double relative = rhs_scale > 0.0
+            ? candidate_residual / rhs_scale : candidate_residual;
+        if (!std::isfinite(candidate_value) || !std::isfinite(candidate_residual) ||
+            !std::isfinite(relative)) {
+            return {cfdx::core::SolverStatus::DIVERGED, 1,
+                    candidate_residual, relative};
         }
-        solution(0) += controls.relaxation * (candidate_value - solution(0));
+        if (relative <= controls.tolerance) {
+            // Preserve the established exact 1x1 predictor contract.
+            solution(0) = candidate_value;
+            cfdx::core::SolverResult result{
+                cfdx::core::SolverStatus::CONVERGED,
+                1, candidate_residual, relative
+            };
+            result.residual_before_relaxation = candidate_residual;
+            result.residual_after_relaxation = candidate_residual;
+            result.residual_relative_before_relaxation = relative;
+            result.residual_relative_after_relaxation = result.residual_relative_before_relaxation;
+            return result;
+        }
+        // A rejected predictor must not replace the accepted iterate.
         const double residual =
             std::abs(diagonal * solution(0) - equation.rhs(0));
-        return {
+        cfdx::core::SolverResult result{
             cfdx::core::SolverStatus::MAX_ITER_REACHED,
-            controls.max_iterations, residual, residual
+            1, residual, rhs_scale > 0.0 ? residual / rhs_scale : residual
         };
+        result.residual_before_relaxation = candidate_residual;
+        result.residual_after_relaxation = residual;
+        result.residual_relative_before_relaxation = relative;
+        result.residual_relative_after_relaxation = result.residual_relative;
+        return result;
     }
 
     cfdx::core::Vector candidate = solution;
