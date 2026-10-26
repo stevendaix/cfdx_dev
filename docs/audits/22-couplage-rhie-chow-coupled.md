@@ -94,3 +94,25 @@ The same run exposed two independent regression-test/diagnostic defects:
 - the skewed variable-viscosity transpose-stress regression exposed normal-distance interpolation of viscosity on a skewed mesh. Internal-face viscosity is now reconstructed from least-squares cell gradients at the face centre, preserving affine-field exactness when the stencil supports it.
 
 These are code/test corrections, not relaxed acceptance criteria. On the exact-HEAD run for the pre-rebase commit, Release CTest failed only `test_variable_viscosity_transpose_stress`; DebugSanitizers failed that test plus `test_mpi_deterministic_fused`. The CHT-time audit, energy-boundary audit, and finite-volume transport unit test passed on that run. The viscosity reconstruction has since been changed to use least-squares gradients with boundary ghosts excluded, and the PR has been rebased onto current master while preserving its H04 relative-tolerance fix. The new exact-HEAD CI has not yet completed. The 19-byte LeakSanitizer allocation from an unknown external module remains unresolved; it is neither suppressed nor waived. Release, DebugSanitizers, and full validation must pass on one exact HEAD before promotion.
+
+
+## 11. Exact-HEAD validation follow-up — 2026-10-26, HEAD `3e09c881`
+
+The latest N9 physical-validation run failed on the PCD Schur model's skewed Couette case. The test reached the configured nonlinear stagnation detector at iteration 58:
+- momentum relative residual: `1.1e-5`;
+- continuity (L_\infty): `1.63e-3`;
+- pressure relative residual: `2.27e-4`;
+- velocity change: `3.9e-5`;
+- pressure change: `8.0e-5`.
+
+The nested PCD (F_p) solves repeatedly report `status=1` at 1000 iterations despite relative residuals around (10^{-14}), while the outer coupled solve's independently recomputed linear true residual is around (10^{-12}). This is not sufficient evidence of nonlinear physical convergence: the continuity residual remains materially above the (10^{-7}) physical gate. Do not raise the stagnation window, relax the physical gates, or reinterpret the nested residual as proof of convergence.
+
+Other exact-HEAD evidence observed so far:
+- Release build and test job: passed.
+- Pre-commit: passed.
+- GUI CI, documentation, audit gate, numerical maturity audit, and N10 public fixture verification: passed.
+- N9 physical validation: failed as described above.
+- DebugSanitizers and the total-validation workflow: still running at the time of this update.
+- The earlier compile blocker from the unqualified `Vec3` name was corrected; Release now builds.
+
+Next investigation must isolate why the PCD coupled solve stalls specifically on skewed Couette, compare the reconstructed authoritative face flux and cellwise continuity against the assembled continuity block, and inspect the nested (F_p) termination/status semantics. Any fix must preserve the strict physical residual gate and be requalified on exact HEAD. PR #1133 remains draft and must not be merged until the physical failure is resolved and required CI completes.
