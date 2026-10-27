@@ -163,6 +163,33 @@ def _assert_close_field(left, right, name: str) -> None:
     np.testing.assert_allclose(a, b, rtol=2e-10, atol=2e-12, err_msg=name)
 
 
+def _assert_completed_run(
+    run: subprocess.CompletedProcess[str], output: Path, iterations: int
+) -> None:
+    """Assert the documented CLI execution contract for a nominal run.
+
+    The production CLI separates execution success from convergence
+    (``execution_summary.h``): 0 = converged, 1 = completed without
+    converging, 2 = execution error. This regression exercises persisted
+    metadata and restart determinism, not convergence, so both documented
+    completion codes are nominal here; an execution error is never accepted.
+    The execution summary is cross-checked so a silent failure cannot pass
+    as a completed budget run.
+    """
+    assert run.returncode in (0, 1), (run.stdout + run.stderr)[-16000:]
+    summary_path = output / "execution.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert summary["process_exit_code"] == run.returncode
+    # The fixture premise is an exact budget run: each trajectory must have
+    # performed its full iteration budget so the field comparison below
+    # compares equivalent iteration counts.
+    assert summary["iterations"] == iterations
+    assert summary["artifacts"]["restart_dat"] is True
+    assert summary["artifacts"]["convergence_json"] is True
+    expected_converged = run.returncode == 0
+    assert summary["converged"] is expected_converged
+
+
 def test_persisted_sst_cli_wall_omega_and_dat_restart_equivalence(
     tmp_path: Path,
 ) -> None:
@@ -249,14 +276,14 @@ ITER= 2
             assert inlet["turbulence_length_scale"] > 0.0
 
     continuous = _run(solver, case_path, tmp_path / "continuous", 2)
-    assert continuous.returncode == 0, (continuous.stdout + continuous.stderr)[-16000:]
+    _assert_completed_run(continuous, tmp_path / "continuous", 2)
     continuous_dat = tmp_path / "continuous" / "restart.dat"
     assert continuous_dat.is_file()
     continuous_state = read_dat_restart(continuous_dat)
     assert {"U", "p", "k", "omega"}.issubset(continuous_state.fields)
 
     first = _run(solver, case_path, tmp_path / "first_segment", 1)
-    assert first.returncode == 0, (first.stdout + first.stderr)[-16000:]
+    _assert_completed_run(first, tmp_path / "first_segment", 1)
     first_dat = tmp_path / "first_segment" / "restart.dat"
     assert first_dat.is_file()
     first_state = read_dat_restart(first_dat)
@@ -267,7 +294,7 @@ ITER= 2
     resumed = _run(
         solver, case_path, tmp_path / "resumed_segment", 1, restart=first_dat
     )
-    assert resumed.returncode == 0, (resumed.stdout + resumed.stderr)[-16000:]
+    _assert_completed_run(resumed, tmp_path / "resumed_segment", 1)
     resumed_dat = tmp_path / "resumed_segment" / "restart.dat"
     assert resumed_dat.is_file()
     resumed_state = read_dat_restart(resumed_dat)
