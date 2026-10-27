@@ -1929,6 +1929,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // exact diagonal of the same momentum-weighted (Rhie-Chow) face-flux
     // derivative and is passed explicitly to the coupled preconditioner.
     std::vector<double> coupled_pressure_schur_diagonal(nc, 0.0);
+    // Preserve the exact deferred continuity RHS contribution at the point
+    // where it is assembled. This audit channel must not re-evaluate the
+    // correction from a later pressure iterate.
+    std::vector<double> coupled_explicit_continuity_correction(nc, 0.0);
     for (std::size_t c = 0; c < nc; ++c) {
         const std::size_t row = nv + c;
         const Offset off = mesh.cells().offsets_data()[c];
@@ -2065,7 +2069,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     rAUx_f * gp.x * rawSf.x +
                     rAUy_f * gp.y * rawSf.y +
                     rAUz_f * gp.z * rawSf.z);
-                b(row) += sign * (nonorth_flux - compensation);
+                const double explicit_correction = sign * (nonorth_flux - compensation);
+                b(row) += explicit_correction;
+                coupled_explicit_continuity_correction[c] += explicit_correction;
             } else {
                 const std::size_t patch = geometry.face_patch[f];
                 if (patch < mesh.boundary().n_patches() &&
@@ -2134,7 +2140,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         rAUx * gp_boundary.x * rawSf.x +
                         rAUy * gp_boundary.y * rawSf.y +
                         rAUz * gp_boundary.z * rawSf.z);
-                    b(row) += rho * deferred_boundary - compensation_boundary;
+                    const double explicit_boundary_correction =
+                        rho * deferred_boundary - compensation_boundary;
+                    b(row) += explicit_boundary_correction;
+                    coupled_explicit_continuity_correction[c] += explicit_boundary_correction;
                 }
             }
         }
@@ -3066,6 +3075,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                       << " matrix_velocity=" << matrix_velocity
                       << " matrix_pressure_orthogonal=" << matrix_pressure
                       << " matrix_rhs=" << b(row)
+                      << " explicit_deferred_rhs=" << coupled_explicit_continuity_correction[cell]
+                      << " rhs_without_deferred=" << (b(row) - coupled_explicit_continuity_correction[cell])
                       << " matrix_residual=" << matrix_residual
                       << " flux_velocity=" << flux_velocity
                       << " flux_pressure_orthogonal=" << flux_pressure_orthogonal
@@ -3622,6 +3633,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 double candidate_continuity_linf = 0.0;
                 double candidate_continuity_signed = 0.0;
                 std::size_t candidate_continuity_cell = 0;
+                double candidate_global_divergence_sum = 0.0;
+                double candidate_boundary_flux_sum = 0.0;
+                double candidate_boundary_flux_abs_sum = 0.0;
+                double candidate_gauge_cell_divergence = 0.0;
                 for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
                     double divergence = 0.0;
                     for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
@@ -3629,12 +3644,40 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         divergence += mesh.ownership().owner(face) == c
                             ? candidate_flux(face) : -candidate_flux(face);
                     }
+                    candidate_global_divergence_sum += divergence;
+                    if (c == controls.pressure_reference_cell)
+                        candidate_gauge_cell_divergence = divergence;
                     if (std::abs(divergence) > candidate_continuity_linf) {
                         candidate_continuity_linf = std::abs(divergence);
                         candidate_continuity_signed = divergence;
                         candidate_continuity_cell = c;
                     }
                 }
+                // Every internal face cancels exactly in the global signed
+                // divergence sum. The remaining sum must equal the signed
+                // boundary flux; report both independently to audit topology,
+                // face orientation, and the reference-pressure cell.
+                for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+                    if (mesh.ownership().neighbour(face) >= 0) continue;
+                    const std::size_t patch = geometry.face_patch[face];
+                    if (patch < mesh.boundary().n_patches() &&
+                        mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                        continue;
+                    candidate_boundary_flux_sum += candidate_flux(face);
+                    candidate_boundary_flux_abs_sum += std::abs(candidate_flux(face));
+                }
+                std::cerr << "COUPLED_GLOBAL_CONSERVATION_AUDIT"
+                          << " divergence_sum=" << candidate_global_divergence_sum
+                          << " signed_boundary_flux_sum=" << candidate_boundary_flux_sum
+                          << " boundary_flux_abs_sum=" << candidate_boundary_flux_abs_sum
+                          << " divergence_minus_boundary_flux="
+                          << (candidate_global_divergence_sum - candidate_boundary_flux_sum)
+                          << " gauge_cell=" << controls.pressure_reference_cell
+                          << " gauge_cell_divergence=" << candidate_gauge_cell_divergence
+                          << " max_cell=" << candidate_continuity_cell
+                          << " max_cell_divergence_signed=" << candidate_continuity_signed
+                          << " max_cell_divergence_linf=" << candidate_continuity_linf
+                          << "\\n";
 
                 const auto candidate_grad_p =
                     gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
