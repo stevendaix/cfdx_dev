@@ -154,18 +154,19 @@ struct InitializationControls {
 struct CoupledAssemblySnapshot {
     const cfdx::core::SparseMatrix* matrix = nullptr;
     const cfdx::core::Vector* rhs = nullptr;
-    // Production initial guess ([U_old; p_old] with the gauge row set to the
-    // reference value), i.e. the x passed to the Krylov solver.
+    // Production initial guess ([U_old; p_old] with the reference pressure
+    // component initialized to the configured value), i.e. x passed to Krylov.
     const cfdx::core::Vector* initial_guess = nullptr;
     // Momentum-weighted Rhie-Chow pressure Schur diagonal, in both forms:
-    // pinned (reference cell = 1.0, exactly as production leaves it at solve
-    // time) and raw (as assembled, before the pin). Diagnostic evidence
-    // channels; production preconditioning does not consume them.
+    // gauge-adjusted (reference cell = 1.0 only when the pure-Neumann gauge
+    // row is replaced) and raw (as assembled, before gauge treatment). With a
+    // fixed-pressure boundary these arrays must be identical. Diagnostic
+    // evidence channels; production preconditioning consumes the adjusted form.
     const std::vector<double>* pressure_schur_diagonal = nullptr;
     const std::vector<double>* pressure_schur_diagonal_raw = nullptr;
     // Production PCD pressure operators of this assembly, exactly as passed
-    // to PcdSchurApproximation (reference row already imposed by the
-    // assembler). Null when the resolved coupled plan is not PCD.
+    // to PcdSchurApproximation after the applicable boundary/gauge treatment.
+    // Null when the resolved coupled plan is not PCD.
     const cfdx::core::SparseMatrix* pcd_pressure_mass = nullptr;
     const cfdx::core::SparseMatrix* pcd_pressure_laplacian = nullptr;
     const cfdx::core::SparseMatrix* pcd_pressure_convection_diffusion = nullptr;
