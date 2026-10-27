@@ -238,6 +238,15 @@ ITER= 2
             for boundary in setup["boundary_conditions"]
             for condition in boundary.get("sst_scalar_conditions", [])
         ), "fixture must persist at least one WALL_OMEGA_SST obligation"
+        inlets = [
+            boundary
+            for boundary in setup["boundary_conditions"]
+            if str(boundary.get("type", "")).lower() == "inlet"
+        ]
+        assert inlets, "fixture must persist an inlet boundary"
+        for inlet in inlets:
+            assert 0.0 < inlet["turbulence_intensity"] < 1.0
+            assert inlet["turbulence_length_scale"] > 0.0
 
     continuous = _run(solver, case_path, tmp_path / "continuous", 2)
     assert continuous.returncode == 0, (continuous.stdout + continuous.stderr)[-16000:]
