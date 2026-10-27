@@ -4052,8 +4052,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // conversion; EMPTY and zero-gradient-pressure faces contribute
             // no pressure correction.
     const auto add_simplec_consistent_response =
-                [&](cfdx::core::Field<double, cfdx::core::Location::FACE>& flux) {
-                for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        [&](cfdx::core::Field<double, cfdx::core::Location::FACE>& flux) {
+            const auto response_grad_p =
+                gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+            for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                     const auto nr = mesh.ownership().neighbour(f);
                     const std::size_t o = mesh.ownership().owner(f);
                     const Vec3 Sf = geometry.face_area_vectors[f];
@@ -4076,8 +4078,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                  geometry.cell_volumes[n]*rAU[2][n])};
                         const double orthogonal = pressure_face_orthogonal_coefficient(
                             Sf, dvec, delta_dAU);
-                        const auto response_grad_p =
-                gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
                         const Vec3 grad_p_face{
                             0.5*(response_grad_p.component_data(0)[o] +
                                  response_grad_p.component_data(0)[n]),
