@@ -105,6 +105,14 @@ def _prepare_persisted_sst_case(case_path: Path) -> None:
         for boundary in setup.get("boundary_conditions", []):
             patch_type = str(boundary.get("type", "")).lower()
             value_type = str(boundary.get("value_type", "")).lower()
+            if patch_type == "inlet":
+                # The production SST path derives inlet k/omega from these
+                # explicit, dimensionally consistent inputs. Defaults of zero
+                # are intentionally rejected by the case contract.
+                boundary["velocity_magnitude"] = 1.0
+                boundary["velocity_vector"] = [1.0, 0.0, 0.0]
+                boundary["turbulence_intensity"] = 0.05
+                boundary["turbulence_length_scale"] = 0.1
             if patch_type == "wall" or value_type in {"wall_no_slip", "wall"}:
                 boundary["sst_scalar_conditions"] = [
                     {"field": "k", "type": "wall_k_zero", "value": 0.0},
