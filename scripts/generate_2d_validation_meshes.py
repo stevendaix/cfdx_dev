@@ -197,12 +197,14 @@ def bfs(n: int):
     nx_up = 5 * n
     nx_down = max(2 * n, round(nx_up * L_down / L_up))
     nodes, key, cells = [], {}, []
+
     def nid(x, y):
         k = (round(x, 14), round(y, 14))
         if k not in key:
             key[k] = len(nodes)
             nodes.append((x, y))
         return key[k]
+
     def block(x0, x1, y0, y1, nx, ny):
         ids = [
             [
@@ -217,6 +219,7 @@ def bfs(n: int):
                     (ids[j][i], ids[j][i + 1], ids[j + 1][i + 1], ids[j + 1][i])
                 )
         return ids
+
     up = block(-L_up, 0.0, 1.0, 1.0 + H_in, nx_up, n)
     lo = block(0.0, L_down, 0.0, 1.0, nx_down, n)
     hi = block(0.0, L_down, 1.0, H_out, nx_down, n)
@@ -237,6 +240,7 @@ def bfs(n: int):
         cells,
         {"inlet": inlet, "outlet": outlet, "wall": wall, "_front_cells": cells},
     )
+
 
 def naca0012_surface(n: int):
     t = 0.12
@@ -272,9 +276,13 @@ def naca_o_grid(n_surface: int, n_radial: int, radius: float = 20.0):
         for i, (x, y) in enumerate(surf):
             theta = 2.0 * math.pi * (i + 0.5) / m
             xo, yo = radius * math.cos(theta), radius * math.sin(theta)
-            pts.append(((1 - rfac) * x + rfac * xo, (1 - rfac) * y + rfac * yo))
+            pts.append(
+                ((1 - rfac) * x + rfac * xo, (1 - rfac) * y + rfac * yo)
+            )
+
     def P(j, i):
         return j * m + (i % m)
+
     cells2d = []
     for j in range(n_radial):
         for i in range(m):
