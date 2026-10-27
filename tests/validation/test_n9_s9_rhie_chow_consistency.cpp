@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <stdexcept>
 #include <vector>
 
@@ -422,10 +423,11 @@ int main()
         Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
         for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
             // Manufactured solution: U=(2,0,0), p=1+2x, body force=(2,0,0).
-            // Start with the exact velocity but a deliberately incorrect
-            // pressure field so the coupled block must recover the pressure.
+            // Start from the manufactured exact state: a one-step
+            // frozen-deferred system cannot be required to recover a distinct
+            // pressure field to exact precision.
             U.set(cell, 2.0, 0.0, 0.0);
-            p(cell) = 0.0;
+            p(cell) = 1.0 + 2.0 * geometry.cell_centres[cell].x;
         }
 
         VelocityBoundaryConditions ubc;
@@ -439,6 +441,9 @@ int main()
 
         SparseMatrix captured_matrix;
         Vector captured_rhs;
+        std::vector<double> captured_schur_diagonal;
+        std::vector<double> captured_schur_diagonal_raw;
+        bool captured_has_fixed_pressure = false;
         bool captured = false;
         IncompressibleSolverControls controls;
         controls.algorithm = PressureVelocityAlgorithm::COUPLED;
@@ -456,11 +461,62 @@ int main()
                 throw std::runtime_error("coupled assembly evidence was incomplete");
             captured_matrix = *snapshot.matrix;
             captured_rhs = *snapshot.rhs;
+            if (snapshot.pressure_schur_diagonal == nullptr ||
+                snapshot.pressure_schur_diagonal_raw == nullptr)
+                throw std::runtime_error("coupled Schur diagonal evidence was incomplete");
+            captured_schur_diagonal = *snapshot.pressure_schur_diagonal;
+            captured_schur_diagonal_raw = *snapshot.pressure_schur_diagonal_raw;
+            captured_has_fixed_pressure = snapshot.has_fixed_pressure;
             captured = true;
         };
 
         const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, controls);
         EXPECT_TRUE(captured);
+        // Diagnostic for the manufactured fixed-pressure case: distinguish a
+        // bad assembled operator/RHS from a Krylov solution error without
+        // changing any acceptance threshold.
+        if (captured) {
+            Vector exact(4 * mesh.n_cells(), 0.0);
+            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                exact(cell) = 2.0;
+                exact(3 * mesh.n_cells() + cell) =
+                    1.0 + 2.0 * geometry.cell_centres[cell].x;
+            }
+            double exact_residual_linf = 0.0;
+            std::size_t exact_residual_row = 0;
+            for (std::size_t row = 0; row < captured_matrix.n_rows(); ++row) {
+                double ax = 0.0;
+                for (std::size_t k = captured_matrix.row_offsets_data()[row];
+                     k < captured_matrix.row_offsets_data()[row + 1]; ++k)
+                    ax += captured_matrix.values_data()[k] *
+                          exact(captured_matrix.columns_data()[k]);
+                const double residual = std::abs(ax - captured_rhs(row));
+                if (residual > exact_residual_linf) {
+                    exact_residual_linf = residual;
+                    exact_residual_row = row;
+                }
+            }
+            std::cerr << "N9_S9_MANUFACTURED_FIXED_PRESSURE"
+                      << " exact_matrix_residual_linf=" << exact_residual_linf
+                      << " exact_matrix_residual_row=" << exact_residual_row;
+            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                std::cerr << " cell" << cell
+                          << "_Ux=" << U.component_data(0)[cell]
+                          << "_p=" << p(cell)
+                          << "_p_exact="
+                          << (1.0 + 2.0 * geometry.cell_centres[cell].x);
+            std::cerr << "\\n";
+        }
+        EXPECT_TRUE(captured_has_fixed_pressure);
+        EXPECT_TRUE(captured_schur_diagonal.size() == mesh.n_cells());
+        EXPECT_TRUE(captured_schur_diagonal_raw.size() == mesh.n_cells());
+        // A fixed-pressure boundary means no continuity row is replaced by
+        // the pressure gauge. The Schur preconditioner must therefore retain
+        // the actual assembled diagonal at every cell, including the nominal
+        // reference cell; only the pure-Neumann gauge path may pin it to 1.
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+            EXPECT_NEAR(captured_schur_diagonal[cell],
+                        captured_schur_diagonal_raw[cell], 1e-14);
         EXPECT_TRUE(result.authoritative_mass_flux.size() == mesh.n_faces());
         for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
             EXPECT_NEAR(U.component_data(0)[cell], 2.0, 1e-8);
@@ -584,6 +640,32 @@ int main()
         EXPECT_NEAR(phi(f), expected, 1e-12);
         EXPECT_NEAR(phi(f) - phi_linear(f), -2.0, 1e-12);
         EXPECT_TRUE(std::abs(phi(f) - phi_linear(f)) > 1.0);
+
+        // Grid-level pressure-mode response: compare the corrected authoritative
+        // flux with the velocity-only interpolated flux for an alternating
+        // pressure field. This is an operator-response metric, not a claim of
+        // checkerboard damping in a converged pressure-velocity solution.
+        std::vector<double> corrected_divergence(mesh.n_cells(), 0.0);
+        std::vector<double> naive_divergence(mesh.n_cells(), 0.0);
+        for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+            const std::size_t face_owner = mesh.ownership().owner(face);
+            corrected_divergence[face_owner] += phi(face);
+            naive_divergence[face_owner] += phi_linear(face);
+            const auto face_neighbour = mesh.ownership().neighbour(face);
+            if (face_neighbour >= 0) {
+                const auto neighbour_cell = static_cast<std::size_t>(face_neighbour);
+                corrected_divergence[neighbour_cell] -= phi(face);
+                naive_divergence[neighbour_cell] -= phi_linear(face);
+            }
+        }
+        double corrected_l1 = 0.0;
+        double naive_l1 = 0.0;
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+            corrected_l1 += std::abs(corrected_divergence[cell]);
+            naive_l1 += std::abs(naive_divergence[cell]);
+        }
+        EXPECT_TRUE(corrected_l1 > 1.0);
+        EXPECT_NEAR(naive_l1, 0.0, 1e-12);
     });
 
 
@@ -978,32 +1060,43 @@ int main()
         // Rhie-Chow correction (the channel is not blind); for the consistent
         // linear pressure field the internal-face mismatch MUST read zero
         // (the channel does not report an artifact when the identity holds).
-        const Mesh mesh = make_two_cell_channel();
+        const Mesh mesh = make_four_cell_channel({0.0, 1.0, 2.0, 3.0, 4.0}, true);
         const auto geometry = build_fv_geometry(mesh);
 
         VelocityBoundaryConditions ubc;
         ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ubc["inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ubc["outlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
         ScalarBoundaryConditions pbc;
         pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        pbc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        pbc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 4.0, 0.0};
         const auto rAU = unit_rAU(mesh.n_cells());
 
-        Field<double, Location::CELL> U(2, "U", "m/s", 3);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
         U.fill(0.0);
-        Field<double, Location::CELL> p_check(2, "p", "Pa", 1);
-        p_check(0) = 1.0;
-        p_check(1) = -1.0;
+        Field<double, Location::CELL> p_check(mesh.n_cells(), "p", "Pa", 1);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+            p_check(c) = (c % 2 == 0) ? 1.0 : -1.0;
+        // Compare against the physical cell velocity, not an H/A predictor.
+        // The checkerboard pressure jump must remain visible in the physical
+        // Rhie-Chow flux, while an affine pressure field must be exactly
+        // compensated by the physical-velocity contract.
         const auto phi_rc_check = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p_check, rAU, 1.0, ubc, pbc);
+            mesh, geometry, U, p_check, rAU, 1.0, ubc, pbc,
+            RhieChowVelocityContract::PHYSICAL_VELOCITY);
         const auto phi_u = make_mass_flux(mesh, geometry, U, 1.0, ubc);
         const double mismatch_check = std::abs(phi_rc_check(1) - phi_u(1));
         EXPECT_TRUE(mismatch_check > 1e-12);
 
-        Field<double, Location::CELL> p_linear(2, "p", "Pa", 1);
-        p_linear(0) = 1.0;
-        p_linear(1) = 3.0;
+        Field<double, Location::CELL> p_linear(mesh.n_cells(), "p", "Pa", 1);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+            p_linear(c) = geometry.cell_centres[c].x;
         const auto phi_rc_linear = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p_linear, rAU, 1.0, ubc, pbc);
-        EXPECT_NEAR(phi_rc_linear(1), phi_u(1), 1e-12);
+            mesh, geometry, U, p_linear, rAU, 1.0, ubc, pbc,
+            RhieChowVelocityContract::PHYSICAL_VELOCITY);
+        for (std::size_t f = 1; f <= 3; ++f)
+            EXPECT_NEAR(phi_rc_linear(f), phi_u(f), 1e-12);
     });
 
     run_case("n9_s9_flux_velocity_mismatch_boundary_channel_sees_expected_correction", [] {
