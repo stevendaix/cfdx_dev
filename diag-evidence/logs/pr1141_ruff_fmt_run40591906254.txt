@@ -1,0 +1,92 @@
+unformatted: File would be reformatted
+   --> scripts/generate_2d_validation_meshes.py:168:1
+    |
+167 |             nodes.append((length * i / nx, y))
+168 +
+169 |     def idx(i, j):
+170 |         return j * (nx + 1) + i
+171 +
+172 |     cells = []
+--------------------------------------------------------------------------------
+203 |     nodes, key, cells = [], {}, []
+204 +
+205 |     def nid(x, y):
+--------------------------------------------------------------------------------
+210 |         return key[k]
+211 +
+212 |     def block(x0, x1, y0, y1, nx, ny):
+--------------------------------------------------------------------------------
+225 |         return ids
+226 +
+227 |     up = block(-L_up, 0.0, 1.0, 1.0 + H_in, nx_up, n)
+--------------------------------------------------------------------------------
+247 |
+248 +
+249 | def naca0012_surface(n: int):
+--------------------------------------------------------------------------------
+283 |             pts.append(((1 - rfac) * x + rfac * xo, (1 - rfac) * y + rfac * yo))
+284 +
+285 |     def P(j, i):
+286 |         return j * m + (i % m)
+287 +
+288 |     cells2d = []
+    |
+
+1 file would be reformatted, 1 file already formatted
+--- scripts/generate_2d_validation_meshes.py
++++ scripts/generate_2d_validation_meshes.py
+@@ -165,8 +165,10 @@
+         y = j / ny
+         for i in range(nx + 1):
+             nodes.append((length * i / nx, y))
++
+     def idx(i, j):
+         return j * (nx + 1) + i
++
+     cells = []
+     for j in range(ny):
+         for i in range(nx):
+@@ -199,12 +201,14 @@
+     nx_up = 5 * n
+     nx_down = max(2 * n, round(nx_up * L_down / L_up))
+     nodes, key, cells = [], {}, []
++
+     def nid(x, y):
+         k = (round(x, 14), round(y, 14))
+         if k not in key:
+             key[k] = len(nodes)
+             nodes.append((x, y))
+         return key[k]
++
+     def block(x0, x1, y0, y1, nx, ny):
+         ids = [
+             [
+@@ -219,6 +223,7 @@
+                     (ids[j][i], ids[j][i + 1], ids[j + 1][i + 1], ids[j + 1][i])
+                 )
+         return ids
++
+     up = block(-L_up, 0.0, 1.0, 1.0 + H_in, nx_up, n)
+     lo = block(0.0, L_down, 0.0, 1.0, nx_down, n)
+     hi = block(0.0, L_down, 1.0, H_out, nx_down, n)
+@@ -240,6 +245,7 @@
+         {"inlet": inlet, "outlet": outlet, "wall": wall, "_front_cells": cells},
+     )
+ 
++
+ def naca0012_surface(n: int):
+     t = 0.12
+     beta = np.linspace(0.0, math.pi, n + 1)
+@@ -275,8 +281,10 @@
+             theta = 2.0 * math.pi * (i + 0.5) / m
+             xo, yo = radius * math.cos(theta), radius * math.sin(theta)
+             pts.append(((1 - rfac) * x + rfac * xo, (1 - rfac) * y + rfac * yo))
++
+     def P(j, i):
+         return j * m + (i % m)
++
+     cells2d = []
+     for j in range(n_radial):
+         for i in range(m):
+
+1 file would be reformatted, 1 file already formatted

@@ -1,0 +1,9 @@
+EXE001 Shebang is present but file is not executable
+ --> scripts/generate_2d_validation_meshes.py:1:1
+  |
+1 | #!/usr/bin/env python3
+  | ^^^^^^^^^^^^^^^^^^^^^^
+2 | """Generate CFDX 2-D qualification meshes without Gmsh.
+  |
+
+Found 1 error.

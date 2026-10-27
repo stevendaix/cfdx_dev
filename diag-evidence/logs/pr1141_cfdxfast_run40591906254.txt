@@ -1,0 +1,12 @@
+CFDX pre-commit: 2 changed files
++ /usr/bin/python3 -m compileall -q scripts/generate_2d_validation_meshes.py tests/python/test_naca0012_mesh_symmetry.py
++ ruff check scripts/generate_2d_validation_meshes.py tests/python/test_naca0012_mesh_symmetry.py
+EXE001 Shebang is present but file is not executable
+ --> scripts/generate_2d_validation_meshes.py:1:1
+  |
+1 | #!/usr/bin/env python3
+  | ^^^^^^^^^^^^^^^^^^^^^^
+2 | """Generate CFDX 2-D qualification meshes without Gmsh.
+  |
+
+Found 1 error.
