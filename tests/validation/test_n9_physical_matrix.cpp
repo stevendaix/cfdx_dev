@@ -633,7 +633,7 @@ int main()
     // the mesh exercises non-orthogonal/skew face geometry.
     for (std::size_t k=0;k<algs.size();++k) {
         const auto skew=solve_case(make_channel_mesh(12,16,0.25),algs[k],
-                                   u_channel,p_channel,0.0);
+                                   u_channel,p_open_channel,0.0);
         require_physical_convergence(skew,"skew Couette",algs[k]);
         if (couette_l2(skew,12,16)>2e-2)
             throw std::runtime_error("skew Couette analytic L2 gate failed");
