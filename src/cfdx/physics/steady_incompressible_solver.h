@@ -3641,6 +3641,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 double velocity_flux_div = 0.0;
                 double pressure_orth_div = 0.0;
                 double pressure_nonorth_div = 0.0;
+                double physical_velocity_compensation_div = 0.0;
                 for (Offset k = cell_offsets[candidate_continuity_cell];
                      k < cell_offsets[candidate_continuity_cell + 1]; ++k) {
                     const std::size_t face = cell_faces[k];
@@ -3649,6 +3650,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const auto nr = mesh.ownership().neighbour(face);
                     double orth = 0.0;
                     double nonorth = 0.0;
+                    double compensation = 0.0;
                     if (nr >= 0) {
                         const std::size_t face_owner = mesh.ownership().owner(face);
                         const std::size_t face_neighbour = static_cast<std::size_t>(nr);
@@ -3669,20 +3671,33 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                                    candidate_grad_p.component_data(1)[face_neighbour]),
                             0.5 * (candidate_grad_p.component_data(2)[face_owner] +
                                    candidate_grad_p.component_data(2)[face_neighbour])};
-                        orth = controls.density * pressure_face_orthogonal_coefficient(sf, dvec, cx) *
-                               (p(face_neighbour) - p(face_owner));
-                        nonorth = controls.density * pressure_face_nonorthogonal_flux(sf, dvec, cx, gp);
+                        // In the PHYSICAL_VELOCITY contract the authoritative
+                        // flux is U_f.Sf minus the pressure jump and deferred
+                        // pressure flux, plus the dAU*grad(p) compensation.
+                        // Keep these signs identical to make_rhie_chow_mass_flux.
+                        orth = -controls.density *
+                            pressure_face_orthogonal_coefficient(sf, dvec, cx) *
+                            (p(face_neighbour) - p(face_owner));
+                        nonorth = -controls.density *
+                            pressure_face_nonorthogonal_flux(sf, dvec, cx, gp);
+                        compensation = controls.density *
+                            (cx.x * gp.x * sf.x + cx.y * gp.y * sf.y +
+                             cx.z * gp.z * sf.z);
                     }
                     pressure_orth_div += sign * orth;
                     pressure_nonorth_div += sign * nonorth;
-                    velocity_flux_div += sign * (candidate_flux(face) - orth - nonorth);
+                    physical_velocity_compensation_div += sign * compensation;
+                    velocity_flux_div += sign *
+                        (candidate_flux(face) - orth - nonorth - compensation);
                 }
                 std::cerr << "COUPLED_PRE_RELAXATION_FLUX_BREAKDOWN"
                           << " cell=" << candidate_continuity_cell
                           << " velocity_interpolation_div=" << velocity_flux_div
                           << " pressure_orthogonal_div=" << pressure_orth_div
                           << " pressure_nonorthogonal_div=" << pressure_nonorth_div
-                          << " sum=" << (velocity_flux_div + pressure_orth_div + pressure_nonorth_div)
+                          << " physical_velocity_compensation_div=" << physical_velocity_compensation_div
+                          << " sum=" << (velocity_flux_div + pressure_orth_div +
+                                         pressure_nonorth_div + physical_velocity_compensation_div)
                           << " authoritative_div=" << candidate_continuity_signed
                           << "\n";
                 std::cerr << "COUPLED_PRE_RELAXATION_FLUX_CONTINUITY linf="
