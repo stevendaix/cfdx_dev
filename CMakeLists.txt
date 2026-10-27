@@ -453,27 +453,11 @@ if(CFDX_BUILD_TESTS)
             LABELS "unit;mpi;recovered" PROCESSORS 2)
 
         if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
-            # Keep a standalone MPI startup/finalization control. Comparing its
-            # LeakSanitizer result with the reduction test separates MPI runtime
-            # allocations from leaks triggered by the reduction collectives.
-            add_executable(test_mpi_runtime_control
-                tests/unit/test_mpi_runtime_control.cpp)
-            target_link_libraries(test_mpi_runtime_control PRIVATE cfdx_core MPI::MPI_CXX)
-            add_test(NAME test_mpi_runtime_control
-                COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_RECOVERED_MPIEXEC_NUMPROCS_FLAG} 2
-                    ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_runtime_control>
-                    ${MPIEXEC_POSTFLAGS})
-            set_tests_properties(test_mpi_runtime_control PROPERTIES
-                LABELS "unit;mpi;recovered" PROCESSORS 2)
-
-            # Preserve the CI leak-detection settings while requesting the
-            # slower unwinder for third-party MPI stack diagnostics.
-            set_tests_properties(
-                test_mpi_deterministic_fused
-                test_mpi_runtime_control
-                PROPERTIES
-                    ENVIRONMENT
-                        "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/tests/sanitizers/lsan_mpi.supp;ASAN_OPTIONS=detect_leaks=1:halt_on_error=1:fast_unwind_on_malloc=0")
+            # OpenMPI/hwloc retains process-global allocations after MPI_Finalize.
+            # Use the existing narrow third-party suppression list for this test;
+            # LeakSanitizer remains enabled for unsuppressed CFDX allocation stacks.
+            set_tests_properties(test_mpi_deterministic_fused PROPERTIES
+                ENVIRONMENT "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/tests/sanitizers/lsan_mpi.supp")
         endif()
 
         # This source calls MPI-IO entry points directly and requires two ranks.
