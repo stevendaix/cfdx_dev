@@ -247,3 +247,32 @@ The next implementation increment is intentionally limited to closing the three 
 - [ ] **Restart equivalence:** compare continuous and interrupted/restarted production trajectories at equivalent accepted iterations for `U`, `p`, authoritative face mass flux, `k`, `omega`, `nu_t`, wall distance, and strain rate; verify malformed checkpoints leave caller state unchanged.
 
 The production RANS/SST selector remains fail-closed. This work is software-integration evidence only; it does not qualify the model physically. No tolerance widening, disabled tests, or silent fallback is allowed.
+
+### Follow-up implementation — SST DAT hydration in the solver API
+
+- [x] When the explicit SST runtime and InitializationMode::Restart are both selected, route the checkpoint's named k and omega fields into the active SSTProductionState through the same staged DAT reader used for carrier U/p.
+- [x] Reject caller-supplied k/omega restart targets that disagree with the active SST runtime, avoiding two competing state owners.
+- [x] Add a production-solver regression that checks the effective viscosity consumed by the first momentum predictor against the restarted k/omega values.
+- [ ] Run the new regression and exact-HEAD Release/DebugSanitizers/numerical-maturity/audit workflows; no test result is claimed until CI reports it.
+- [ ] Construct SSTProductionRuntime from persisted case boundary metadata in the application driver, including explicit wall-omega face values. This solver-API change does not complete application case construction.
+- [ ] Prove interrupted/restarted trajectory equivalence across carrier fields, authoritative mass flux, and all SST-owned state.
+
+
+
+## 2026-10-26 follow-up — application runtime and restart trajectory
+
+**Implementation status: code added; exact-HEAD CI and runtime fixture evidence pending. No physical qualification is claimed.**
+
+- [x] Add an explicit `--experimental-sst` application opt-in. Without this flag, the production turbulence selector remains fail-closed; the flag accepts only case metadata explicitly selecting k-omega SST and does not enable other RANS models.
+- [x] Build the runtime from `.cfdx.h5` case metadata: density/kinematic viscosity, explicit initial `k`/`omega`, scalar patch conditions, fixed velocity boundary data, and mesh-derived wall distance/strain.
+- [x] Resolve `WALL_OMEGA_SST` to per-face values using the geometric owner-cell-to-face normal distance and the existing `6 nu / (beta1 y^2)` wall formula. Missing/invalid wall geometry fails closed.
+- [x] Route the active runtime `k` and `omega` into the solver's staged DAT reader; restart initialization also stages and validates the checkpoint before the solver call.
+- [x] Reject the experimental option for non-CFDX-HDF5 inputs and coupled energy, buoyancy, or S2S-radiation cases not yet qualified with SST.
+- [x] Add a production solver regression comparing a two-iteration continuous path against a one-iteration + DAT-restart path for `U`, `p`, face mass flux, `k`, `omega`, `nu_t`, wall distance and strain rate.
+- [x] Add explicit gate tests proving that the experimental flag permits SST only and does not permit other RANS models.
+- [ ] Run and inspect exact-HEAD Release and DebugSanitizers, numerical maturity, audit gate, docs, GUI CI and N10 fixture workflows. Do not infer success from earlier heads.
+- [ ] Add a true application-level fixture that invokes `cfdx_production_solver --experimental-sst` on a persisted SST case, including a wall-`omega` patch and a DAT restart; the current app wiring is not yet backed by this full CLI fixture.
+- [ ] Demonstrate restart trajectory equivalence on a multi-cell representative mesh and preserve the comparison artifacts.
+- [ ] Complete transport MMS and frozen DNS/flat-plate/NACA qualification before removing the explicit experimental status or changing the default production selector.
+
+**Current decision:** keep this increment draft until exact-HEAD CI is green and the CLI-level case/restart fixture is added. The opt-in is an integration seam, not evidence that SST is production-qualified.

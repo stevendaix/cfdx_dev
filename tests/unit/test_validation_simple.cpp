@@ -15,6 +15,7 @@
 
 #include <cstddef>
 #include <exception>
+#include <limits>
 #include <type_traits>
 
 using namespace cfdx::core;
@@ -33,6 +34,38 @@ int main()
         const auto r = choose_gmres_restart(30, 0.5);
         EXPECT_TRUE(r == 35);
         EXPECT_TRUE(r <= 512);
+    });
+
+    run_case("krylov_restart_contract_rejects_nonfinite_policy", [] {
+        KrylovControls controls;
+        controls.target_reduction_per_cycle = std::numeric_limits<double>::quiet_NaN();
+        bool threw = false;
+        try {
+            (void)choose_gmres_restart(30, 0.5, controls);
+        } catch (const std::invalid_argument&) {
+            threw = true;
+        }
+        EXPECT_TRUE(threw);
+    });
+
+    run_case("krylov_restart_contract_rejects_nonfinite_cycle_reduction", [] {
+        bool threw = false;
+        try {
+            (void)choose_gmres_restart(
+                30, std::numeric_limits<double>::quiet_NaN());
+        } catch (const std::invalid_argument&) {
+            threw = true;
+        }
+        EXPECT_TRUE(threw);
+    });
+
+    run_case("krylov_restart_contract_avoids_signed_overflow", [] {
+        KrylovControls controls;
+        controls.restart_min = 1;
+        controls.restart_max = std::numeric_limits<int>::max();
+        const int restart = choose_gmres_restart(
+            std::numeric_limits<int>::max() - 2, 0.5, controls);
+        EXPECT_TRUE(restart == std::numeric_limits<int>::max());
     });
 
     run_case("memory_ledger_allocate_deallocate_is_balanced", [] {

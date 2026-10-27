@@ -65,6 +65,35 @@ int main()
         EXPECT_TRUE(rejected);
     });
 
+    run_case("production_turbulence_allows_only_explicit_experimental_sst_opt_in", [] {
+        CaseSetup setup;
+        setup.physics_model = "rans";
+        setup.turbulence_model = "k_omega_sst";
+        validate_production_turbulence_selection(setup, true);
+
+        setup.turbulence_model = "Spalart-Allmaras";
+        bool rejected_other_model = false;
+        try {
+            validate_production_turbulence_selection(setup, true);
+        } catch (const std::invalid_argument&) {
+            rejected_other_model = true;
+        }
+        EXPECT_TRUE(rejected_other_model);
+    });
+
+    run_case("production_turbulence_experimental_flag_requires_sst_case_metadata", [] {
+        CaseSetup setup;
+        setup.turbulence_model = "laminar";
+        bool rejected = false;
+        try {
+            validate_production_turbulence_selection(setup, true);
+        } catch (const std::invalid_argument& error) {
+            rejected = std::string(error.what()).find("--experimental-sst") !=
+                       std::string::npos;
+        }
+        EXPECT_TRUE(rejected);
+    });
+
     run_case("production_turbulence_rejects_unknown_model", [] {
         CaseSetup setup;
         setup.turbulence_model = "unrecognized-model";
