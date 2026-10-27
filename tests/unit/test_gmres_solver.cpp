@@ -67,7 +67,8 @@ int main() {
 
         Vector b(2, 0.0);
         Vector x(2, 0.0);
-        auto result = solve_gmres(A, b, x);
+        auto result = solve_gmres(A, b,
+ x);
         EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
         EXPECT_TRUE(result.iterations == 0);
     });
@@ -125,7 +126,8 @@ int main() {
         for (std::size_t i = 0; i < 3; ++i) {
             const double r = Ax[i] - b(i);
             true_residual_sq += r * r;
-            b_sq += b(i) * b(i);
+            b_
+sq += b(i) * b(i);
             EXPECT_TRUE(std::isfinite(x(i)));
             EXPECT_NEAR(x(i), x_exact(i), 1e-10);
         }
@@ -178,7 +180,8 @@ int main() {
         // [ 1  0  1 ] [u]   [1]
         // [ 0  1  1 ] [v] = [1]
         // [-1 -1 -2 ] [p]   [0]
-        //
+    
+    //
         // The third row is exactly the negative sum of the first two rows,
         // so the matrix is singular.  With b=(1,1,0), the left-null-space
         // compatibility condition is violated: b_3 != -(b_1+b_2).
@@ -229,7 +232,8 @@ int main() {
         SparseMatrix A(3, 3);
         A.push_back(0, 0, 1.0);
         A.push_back(1, 1, 1.0);
-        A.push_back(2, 2, 1.0);
+        A.push_ba
+ck(2, 2, 1.0);
         A.finalize();
 
         Vector b(3);
@@ -281,7 +285,8 @@ int main() {
                                         nullptr, controls);
         EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
         EXPECT_NEAR(x(0), 1.0, 1e-12);
-        EXPECT_TRUE(result.residual_relative < 1e-12);
+        EXPECT_TRUE(result.residual_relativ
+e < 1e-12);
     });
 
     run_case("gmres_sparse_mixed_precision_rejects_false_convergence", []() {
@@ -332,7 +337,8 @@ int main() {
         Vector b(2, 1.0);
         Vector x(2, 1e6);
         const auto result = solve_gmres(A, b, x, 1, 1, 1e-8);
-        const auto Ax = A.matvec(x);
+        const auto A
+x = A.matvec(x);
         double r2 = 0.0, b2 = 0.0;
         for (std::size_t i = 0; i < 2; ++i) {
             const double r = b(i) - Ax[i];
@@ -384,7 +390,8 @@ int main() {
         EXPECT_NEAR(x(0), 0.0, 1e-14);
     });
 
-    run_case("gmres_rejects_nonfinite_arnoldi_action", []() {
+    run_case("gmres_rejec
+ts_nonfinite_arnoldi_action", []() {
         int applications = 0;
         LinearOperator op;
         op.size = 1;
@@ -420,7 +427,10 @@ int main() {
         controls.restart_max = 512;
         controls.adaptive_restart = true;
         GmresWorkspace workspace;
-        const auto result = solve_gmres(op, b, x, 1, 2, 1e-14, nullptr, controls, &workspace);
+        // max_iter counts total Arnoldi iterations, not restart cycles:
+        // one step in the first cycle at restart=1, then two steps in the
+        // second cycle at the dimension-clamped restart=2.
+        const auto result = solve_gmres(op, b, x, 1, 8, 1e-14, nullptr, controls, &workspace);
         EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
         EXPECT_TRUE(workspace.n == 2);
         EXPECT_TRUE(workspace.restart <= 2);
@@ -434,7 +444,8 @@ int main() {
         Vector b(2, 1.0), x(2, 0.0);
         KrylovControls controls;
         controls.reduction.local_begin = 2;
-        controls.reduction.local_end = 1;
+        controls.reduction.local_end = 1
+;
         const auto result = solve_gmres(A, b, x, 1, 4, 1e-12, nullptr, controls);
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
     });
@@ -484,7 +495,8 @@ int main() {
         Vector b(1, 1.0), x(1, 0.0);
         const auto zero_tol = solve_gmres(A, b, x, 1, 4, 0.0);
         EXPECT_TRUE(zero_tol.status == SolverStatus::NOT_APPLICABLE);
-        const auto negative_tol = solve_gmres(A, b, x, 1, 4, -1e-12);
+        const auto negative_tol = solve_gmres(A, b, x, 1
+, 4, -1e-12);
         EXPECT_TRUE(negative_tol.status == SolverStatus::NOT_APPLICABLE);
     });
 
