@@ -3659,10 +3659,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // face orientation, and the reference-pressure cell.
                 for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
                     if (mesh.ownership().neighbour(face) >= 0) continue;
-                    const std::size_t patch = geometry.face_patch[face];
-                    if (patch < mesh.boundary().n_patches() &&
-                        mesh.boundary().patch(patch).type == PatchType::EMPTY)
-                        continue;
+                    // Include every topological boundary face. Empty/extruded
+                    // faces should contribute zero geometrically; excluding
+                    // them here would hide a mesh/flux inconsistency.
                     candidate_boundary_flux_sum += candidate_flux(face);
                     candidate_boundary_flux_abs_sum += std::abs(candidate_flux(face));
                 }
@@ -3677,7 +3676,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " max_cell=" << candidate_continuity_cell
                           << " max_cell_divergence_signed=" << candidate_continuity_signed
                           << " max_cell_divergence_linf=" << candidate_continuity_linf
-                          << "\\n";
+                          << "\n";
 
                 const auto candidate_grad_p =
                     gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
