@@ -164,19 +164,53 @@ def test_persisted_sst_cli_wall_omega_and_dat_restart_equivalence(
     solver = Path(solver_text)
     assert solver.is_file()
 
-    root = Path(__file__).resolve().parents[2]
-    source = root / "tests" / "data" / "su2" / "mesh_NACA0012_inv.su2"
-    # Use the incompressible RANS reference setup (viscous), not the
-    # inviscid Euler setup, because SST requires a viscous wall treatment.
-    config = root / "tests" / "data" / "su2" / "incomp_NACA0012.cfg"
-    assert source.is_file() and config.is_file()
-
+    # Keep this integration fixture deliberately tiny.  The regression is
+    # about persisted SST metadata and restart determinism, not airfoil physics;
+    # the NACA mesh made each first SST iteration exceed the CI test budget.
     case_dir = tmp_path / "persisted_case"
     case_dir.mkdir()
-    source_case = case_dir / source.name
-    config_case = case_dir / source.with_suffix(".cfg").name
-    source_case.write_bytes(source.read_bytes())
-    config_case.write_bytes(config.read_bytes())
+    source_case = case_dir / "sst_restart_fixture.su2"
+    config_case = case_dir / "sst_restart_fixture.cfg"
+    source_case.write_text(
+        """NDIME= 2
+NELEM= 2
+5 0 1 2 0
+5 0 2 3 1
+NPOIN= 4
+0.0 0.0 0
+1.0 0.0 1
+1.0 1.0 2
+0.0 1.0 3
+NMARK= 4
+MARKER_TAG= inlet
+MARKER_ELEMS= 1
+3 0 3
+MARKER_TAG= outlet
+MARKER_ELEMS= 1
+3 1 2
+MARKER_TAG= wall_bottom
+MARKER_ELEMS= 1
+3 0 1
+MARKER_TAG= wall_top
+MARKER_ELEMS= 1
+3 2 3
+""",
+        encoding="utf-8",
+    )
+    config_case.write_text(
+        """SOLVER= INC_RANS
+KIND_TURB_MODEL= SST
+INC_DENSITY_INIT= 1.2
+INC_VELOCITY_INIT= (1.0, 0.0, 0.0)
+MU_CONSTANT= 0.012
+CONV_NUM_METHOD_FLOW= ROE
+MUSCL_FLOW= NO
+NUM_METHOD_GRAD= GREEN_GAUSS
+TIME_DISCRE_FLOW= EULER_IMPLICIT
+ITER= 2
+""",
+        encoding="utf-8",
+    )
     case_path = case_dir / "case.cfdx.h5"
 
     from cfdx.io.converter import convert
