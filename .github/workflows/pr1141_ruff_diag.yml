@@ -1,0 +1,108 @@
+name: PR 1141 ruff pre-commit oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Evidence-only : relever les findings Ruff exacts derriere l'echec du job
+# "Pre-commit" (exit 1 a 22:02:57Z) sur le head PR #1141 f3c15596.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1141_ruff_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1141-ruff-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR1141_HEAD: f3c1559680730319c9edc60a1a6240cd7fbb409e
+  PR1141_BASE: 940635ee1ab7853002030680548525be692d2b97
+
+jobs:
+  oracle:
+    name: ruff check + format + cfdx-fast replica on PR1141 head
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      WDIR: /tmp/pr1141_wt
+      FILES: scripts/generate_2d_validation_meshes.py tests/python/test_naca0012_mesh_symmetry.py
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pins and worktree PR head
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "pr1141_head=$PR1141_HEAD"
+            echo "purpose=exact ruff findings behind Pre-commit exit 1 at 22:02:57Z on PR #1141 head f3c15596"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1141_ruff_meta_run$GITHUB_RUN_ID.txt"
+          git cat-file -e "$PR1141_HEAD^{commit}" || { echo "::error::PR1141 head unresolvable"; exit 1; }
+          git worktree add "$WDIR" "$PR1141_HEAD"
+
+      - name: Install ruff and pre-commit
+        run: python3 -m pip install --upgrade ruff pre-commit
+
+      - name: Ruff check replica
+        run: |
+          set +e
+          cd "$WDIR"
+          ruff --version > "$GITHUB_WORKSPACE/$EVID/pr1141_ruff_version_run$GITHUB_RUN_ID.txt"
+          ruff check $FILES > "$GITHUB_WORKSPACE/$EVID/pr1141_ruff_check_run$GITHUB_RUN_ID.txt" 2>&1
+          rc=$?
+          set -e
+          echo "ruff_check_exit=$rc" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1141_ruff_status_run$GITHUB_RUN_ID.txt"
+          cat "$GITHUB_WORKSPACE/$EVID/pr1141_ruff_check_run$GITHUB_RUN_ID.txt"
+
+      - name: Ruff format check replica
+        run: |
+          set +e
+          cd "$WDIR"
+          ruff format --check $FILES > "$GITHUB_WORKSPACE/$EVID/pr1141_ruff_fmt_run$GITHUB_RUN_ID.txt" 2>&1
+          rc=$?
+          ruff format --diff $FILES >> "$GITHUB_WORKSPACE/$EVID/pr1141_ruff_fmt_run$GITHUB_RUN_ID.txt" 2>&1 || true
+          set -e
+          echo "ruff_format_exit=$rc" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1141_ruff_status_run$GITHUB_RUN_ID.txt"
+          cat "$GITHUB_WORKSPACE/$EVID/pr1141_ruff_fmt_run$GITHUB_RUN_ID.txt"
+
+      - name: cfdx-fast guard replica
+        run: |
+          set +e
+          cd "$WDIR"
+          CFDX_PRECOMMIT_RANGE="$PR1141_BASE...$PR1141_HEAD" python3 tools/precommit/cfdx_precommit.py > "$GITHUB_WORKSPACE/$EVID/pr1141_cfdxfast_run$GITHUB_RUN_ID.txt" 2>&1
+          rc=$?
+          set -e
+          echo "cfdx_fast_exit=$rc" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1141_ruff_status_run$GITHUB_RUN_ID.txt"
+          cat "$GITHUB_WORKSPACE/$EVID/pr1141_cfdxfast_run$GITHUB_RUN_ID.txt"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1141 ruff oracle run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/pr1141_ruff_status_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$f" ]; then
+            echo "::error::no status recorded - read oracle evidence"
+            exit 1
+          fi
+          cat "$f"
