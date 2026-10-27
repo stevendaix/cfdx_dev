@@ -1,7 +1,7 @@
 """Regression tests for the generated NACA0012 O-grid outer boundary."""
 
-from pathlib import Path
 import sys
+from pathlib import Path
 
 import numpy as np
 import pytest
