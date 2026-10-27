@@ -1,0 +1,223 @@
+name: PR 1133 fast-ctest failure oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Oracle evidence-only : repliquer le job CI "Build and test (Release)" sur
+# l'etat EXACT de la PR #1133 (head 08d2cad0 merge master 79131398,
+# fail-closed si master bouge) pour relever les NOMS des tests fautifs
+# (echec exit 8 a 21:39:50Z sur le head post-patch 08d2cad0 ; echec identique
+# sur le head pre-patch 7dd7573e a 19:28Z, donc NON introduit par le patch
+# n9_s9 pousse a 21:30Z). Aucun push master, aucune modification de branche PR.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1133_fastctest_failure_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1133-fastctest-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR1133_HEAD: 08d2cad0ad4187709d6a1c345aaf69f596f62281
+  MASTER_PIN: 7913139885ca0cdc368c8f81aa107e6bf10373b7
+
+jobs:
+  oracle:
+    name: replica Release (fast ctest + pyreg) on PR1133 head + pinned master
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      WDIR: /tmp/pr1133_wt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pins, worktree PR head, merge pinned master
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin master
+          MASTER_SHA=$(git rev-parse origin/master)
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "pr1133_head=$PR1133_HEAD"
+            echo "master_pin=$MASTER_PIN"
+            echo "master_sha=$MASTER_SHA"
+            echo "purpose=names of the failing tests behind PR #1133 Release exit 8 at 21:39:50Z and N9 exit 8 at 21:38:55Z (head 08d2cad0 post-patch; same failures on pre-patch head 7dd7573e)"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_meta_run$GITHUB_RUN_ID.txt"
+          echo "master_sha=$MASTER_SHA" > "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_status_run$GITHUB_RUN_ID.txt"
+          if [ "$MASTER_SHA" != "$MASTER_PIN" ]; then
+            echo "::error::master moved ($MASTER_SHA vs pinned $MASTER_PIN) - abort evidence-only"
+            echo "master_moved=true" >> "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_status_run$GITHUB_RUN_ID.txt"
+            exit 1
+          fi
+          git cat-file -e "$PR1133_HEAD^{commit}" || { echo "::error::PR1133 head unresolvable"; exit 1; }
+          git worktree add "$WDIR" "$PR1133_HEAD"
+          cd "$WDIR"
+          git config user.name "oracle-diag-bot"
+          git config user.email "oracle-diag-bot@users.noreply.github.com"
+          if ! git merge --no-edit "$MASTER_PIN" > /tmp/merge.log 2>&1; then
+            echo "::error::merge PR1133-head + master failed - conflicts"
+            cp /tmp/merge.log "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_mergefail_run$GITHUB_RUN_ID.log"
+            exit 1
+          fi
+          git rev-parse HEAD > "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_mergesha_run$GITHUB_RUN_ID.txt"
+          git log --oneline -3 >> "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_mergesha_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Install Python stack
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Configure (Release replica)
+        run: cmake -S "$WDIR" -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=OFF -DCMAKE_UNITY_BUILD=OFF
+
+      - name: Build
+        run: |
+          set +e
+          cmake --build build --parallel 8 > /tmp/build_raw.log 2>&1
+          rc=$?
+          {
+            echo "build_exit=$rc"
+            tail -n 100 /tmp/build_raw.log
+            grep -E -B2 -A6 'error:|fatal error:|undefined reference|collect2: error|FAILED:' /tmp/build_raw.log | tail -n 150 || true
+          } > "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_build_run$GITHUB_RUN_ID.log"
+          echo "build_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_status_run$GITHUB_RUN_ID.txt"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::build failed - see evidence"
+            exit 1
+          fi
+
+      - name: Run fast CTest (CI replica)
+        run: |
+          set +e
+          ctest --test-dir build -LE 'long|benchmark|campaign|sanitizer-slow' --output-on-failure --parallel 6 > "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_ctest_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "ctest_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_status_run$GITHUB_RUN_ID.txt"
+          echo "ctest_exit=$rc"
+          grep -E 'tests passed|tests failed|The following tests FAILED' "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_ctest_run$GITHUB_RUN_ID.log" || true
+
+      - name: Run N9-labelled CTest (N9 job replica)
+        run: |
+          set +e
+          ctest --test-dir build -L n9 --output-on-failure > "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_n9lab_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "n9lab_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_status_run$GITHUB_RUN_ID.txt"
+          echo "n9lab_exit=$rc"
+          grep -E 'tests passed|tests failed|The following tests FAILED' "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_n9lab_run$GITHUB_RUN_ID.log" || true
+
+      - name: Rerun failed with full output
+        if: always()
+        run: |
+          set +e
+          ctest --test-dir build --rerun-failed --output-on-failure > "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_rerun_run$GITHUB_RUN_ID.log" 2>&1
+          set -e
+          tail -n 30 "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_rerun_run$GITHUB_RUN_ID.log" || true
+
+      - name: Run Python regression replica
+        if: always()
+        run: |
+          set +e
+          cd "$WDIR"
+          export CFDX_PRODUCTION_SOLVER="$GITHUB_WORKSPACE/build/cfdx_production_solver"
+          export CFDX_THERMAL_SOLVER="$GITHUB_WORKSPACE/build/cfdx_thermal_solver"
+          export PYTHONPATH="$WDIR/src/cfdx/python"
+          python -m pytest -q tests/python --tb=short > "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_pyreg_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "pyreg_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_status_run$GITHUB_RUN_ID.txt"
+          {
+            grep -E '^(FAILED|ERROR) ' "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_pyreg_run$GITHUB_RUN_ID.log" || true
+            tail -n 5 "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_pyreg_run$GITHUB_RUN_ID.log"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_pyreg_failed_run$GITHUB_RUN_ID.txt"
+          cat "$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_pyreg_failed_run$GITHUB_RUN_ID.txt"
+
+      - name: Extract failed list and verdict (evidence-only)
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, re
+          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+          run = os.environ["GITHUB_RUN_ID"]
+          def p(kind, ext):
+              return os.path.join(evid, "pr1133_fastctest_%s_run%s.%s" % (kind, run, ext))
+          status = {}
+          sp = p("status", "txt")
+          if os.path.exists(sp):
+              for l in open(sp):
+                  if "=" in l:
+                      k, v = l.split("=", 1)
+                      status[k.strip()] = v.strip()
+          failed = []
+          cl = p("ctest", "log")
+          if os.path.exists(cl):
+              text = open(cl, errors="replace").read()
+              idx = text.find("The following tests FAILED:")
+              if idx >= 0:
+                  for line in text[idx:].splitlines()[1:]:
+                      st = line.strip()
+                      if not st:
+                          break
+                      m = re.match(r"(\d+)\s*-\s*(\S+)", st)
+                      if not m:
+                          break
+                      failed.append(m.group(2))
+          with open(p("failedlist", "txt"), "w") as f:
+              for t in failed:
+                  f.write(t + "\n")
+          pyreg_failed = []
+          pl = p("pyreg_failed", "txt")
+          if os.path.exists(pl):
+              pyreg_failed = [l for l in open(pl, errors="replace").read().splitlines() if l.startswith("FAILED ") or l.startswith("ERROR ")]
+          with open(p("verdict", "txt"), "w") as f:
+              f.write("verdict=%s\n" % ("GREEN" if not failed and not pyreg_failed and status.get("ctest_exit") == "0" else "FAILURES"))
+              f.write("ctest_exit=%s\n" % status.get("ctest_exit", "?"))
+              f.write("failed_tests=%d\n" % len(failed))
+              for t in failed:
+                  f.write(t + "\n")
+              f.write("pyreg_exit=%s\n" % status.get("pyreg_exit", "?"))
+              f.write("pyreg_failed=%d\n" % len(pyreg_failed))
+              for t in pyreg_failed[:20]:
+                  f.write(t + "\n")
+          print(open(p("verdict", "txt")).read())
+          PY
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1133 fastctest oracle run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/pr1133_fastctest_verdict_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$f" ]; then
+            echo "::error::no verdict recorded - read oracle evidence"
+            exit 1
+          fi
+          cat "$f"
