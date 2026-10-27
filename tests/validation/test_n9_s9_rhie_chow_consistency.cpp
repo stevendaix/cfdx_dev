@@ -1037,8 +1037,13 @@ int main()
         Field<double, Location::CELL> p_check(2, "p", "Pa", 1);
         p_check(0) = 1.0;
         p_check(1) = -1.0;
+        // Compare against the physical cell velocity, not an H/A predictor.
+        // The checkerboard pressure jump must remain visible in the physical
+        // Rhie-Chow flux, while an affine pressure field must be exactly
+        // compensated by the physical-velocity contract.
         const auto phi_rc_check = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p_check, rAU, 1.0, ubc, pbc);
+            mesh, geometry, U, p_check, rAU, 1.0, ubc, pbc,
+            RhieChowVelocityContract::PHYSICAL_VELOCITY);
         const auto phi_u = make_mass_flux(mesh, geometry, U, 1.0, ubc);
         const double mismatch_check = std::abs(phi_rc_check(1) - phi_u(1));
         EXPECT_TRUE(mismatch_check > 1e-12);
@@ -1047,7 +1052,8 @@ int main()
         p_linear(0) = 1.0;
         p_linear(1) = 3.0;
         const auto phi_rc_linear = make_rhie_chow_mass_flux(
-            mesh, geometry, U, p_linear, rAU, 1.0, ubc, pbc);
+            mesh, geometry, U, p_linear, rAU, 1.0, ubc, pbc,
+            RhieChowVelocityContract::PHYSICAL_VELOCITY);
         EXPECT_NEAR(phi_rc_linear(1), phi_u(1), 1e-12);
     });
 
