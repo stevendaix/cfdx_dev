@@ -15,7 +15,6 @@ from pathlib import Path
 import h5py
 import numpy as np
 import pytest
-
 from cfdx.dat_io import read_dat_restart
 
 
@@ -66,6 +65,23 @@ def _prepare_persisted_sst_case(case_path: Path) -> None:
                 selection["required_families"] = [
                     family for family in required if family != "temporal"
                 ]
+
+            # The SU2 adapter records JST as unmapped; the production driver
+            # intentionally rejects that conversion gap. This integration
+            # fixture explicitly chooses a supported convection method rather
+            # than weakening the driver's numerical-selection contract.
+            if key == "numerics":
+                entries = selection.setdefault("entries", [])
+                if not any(entry.get("family") == "convection" for entry in entries):
+                    entries.append(
+                        {
+                            "family": "convection",
+                            "configuration_key": "numerics.convection.upwind",
+                        }
+                    )
+                required = selection.setdefault("required_families", [])
+                if "convection" not in required:
+                    required.append("convection")
         # The steady production executable rejects temporal declarations from
         # both the legacy scheme and the resolved numerical-method report.
         numerics = setup.get("numerics")
