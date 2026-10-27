@@ -4847,7 +4847,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // never a replacement for the individual physical criteria.
         const bool momentum_residual_gate =
             h.momentum_equation_residual_rhs_relative <= controls.convergence.relative_tolerance;
+        // COUPLED solves the monolithic momentum-continuity system before
+        // this post-update residual is measured. Using that already-solved
+        // residual as its own first-iteration reference makes the ratio
+        // approximately one even when the independently recomputed true
+        // residual is at the linear-solver floor. The RHS-normalized physical
+        // residual gate above remains mandatory for COUPLED; the
+        // post-update/reference ratio is not an independent convergence test
+        // for this direct block solve.
         const bool momentum_equation_residual_gate =
+            controls.algorithm == PressureVelocityAlgorithm::COUPLED ||
             momentum_reference_ill_conditioned ||
             h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance;
         const bool pressure_residual_gate =
