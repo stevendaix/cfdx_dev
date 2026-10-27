@@ -176,10 +176,12 @@ IncompressibleSolverControls controls_for(
         // cannot descend durably below the nested solve's own relative
         // tolerance. With the 1e-8/100 defaults the outer 1e-12 gate stalled
         // on the Poiseuille Picard system: MAX_ITER at the full budget, on
-        // every relaxation retry. Keep the nested Fp budget below the outer
-        // gate, mirroring the LSC/BFBt path which already runs its nested
-        // pressure solves at the outer coupled tolerance and budget.
-        c.pcd_convection_diffusion_tolerance = 1e-14;
+        // every relaxation retry. Keep the nested solve one decade tighter
+        // than the outer 1e-12 gate, but above the observed FP64 round-off
+        // floor: 1e-14 caused repeated 1000-iteration exhaustion despite
+        // true relative residuals around 1e-14. This is a preconditioner
+        // accuracy setting, not a physical acceptance gate.
+        c.pcd_convection_diffusion_tolerance = 1e-13;
         c.pcd_convection_diffusion_max_iterations = 1000;
         // Full pressure-block Krylov space per case (clamped to the block
         // size: 192 on the 12x16 channel, 1024 on the 32x32 cavity) so the
