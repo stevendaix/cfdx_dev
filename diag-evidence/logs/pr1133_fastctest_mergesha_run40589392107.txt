@@ -1,0 +1,4 @@
+78d60aeca03484bd7012ea4f027b9842b3f125a8
+78d60aec Merge commit '7913139885ca0cdc368c8f81aa107e6bf10373b7' into HEAD
+08d2cad0 fix(pr1133): CTest mesh fixture for qualification deps; n9_s9 frozen-deferred init and four-cell mismatch channel; add audit script
+7dd7573e fix(numerics): avoid self-referenced coupled residual gate

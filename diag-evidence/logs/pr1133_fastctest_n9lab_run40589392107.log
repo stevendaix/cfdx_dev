@@ -1,0 +1,30 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+    Start 212: test_n9_s10_pressure_reference_policies
+1/7 Test #212: test_n9_s10_pressure_reference_policies ....   Passed    0.00 sec
+    Start 213: test_n9_physical_matrix
+2/7 Test #213: test_n9_physical_matrix ....................   Passed  388.97 sec
+    Start 214: test_n9_s9_rhie_chow_consistency
+3/7 Test #214: test_n9_s9_rhie_chow_consistency ...........   Passed    0.00 sec
+    Start 215: test_n9_negative_diagnostics
+4/7 Test #215: test_n9_negative_diagnostics ...............   Passed    2.28 sec
+    Start 247: test_n9_s8_naca0012_contract
+5/7 Test #247: test_n9_s8_naca0012_contract ...............   Passed    0.11 sec
+    Start 252: test_n9_coupled_schur_case_selection
+6/7 Test #252: test_n9_coupled_schur_case_selection .......   Passed    0.18 sec
+    Start 253: test_n9_poiseuille_body_force_production
+7/7 Test #253: test_n9_poiseuille_body_force_production ...   Passed    0.18 sec
+
+100% tests passed, 0 tests failed out of 7
+
+Label Time Summary:
+integration         =   0.37 sec*proc (2 tests)
+long                = 388.97 sec*proc (3 tests)
+n9                  = 391.73 sec*proc (7 tests)
+qualification       = 391.55 sec*proc (6 tests)
+schur               =   0.18 sec*proc (1 test)
+total-validation    =   0.11 sec*proc (1 test)
+validation          = 391.73 sec*proc (7 tests)
+validation-total    = 391.62 sec*proc (6 tests)
+
+Total Test time (real) = 391.82 sec

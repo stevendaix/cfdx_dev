@@ -1,0 +1,14 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+    Start 86: test_dual_time_navier_stokes
+1/1 Test #86: test_dual_time_navier_stokes .....***Failed    0.04 sec
+production dual-time Navier-Stokes FAIL: first step must use BE bootstrap without retry
+
+
+0% tests passed, 1 tests failed out of 1
+
+Total Test time (real) =   0.04 sec
+
+The following tests FAILED:
+	 86 - test_dual_time_navier_stokes (Failed)
+Errors while running CTest

@@ -1,0 +1,5 @@
+  See https://docs.pytest.org/en/stable/deprecations.html#class-scoped-fixture-as-instance-method
+    fixturefunc = resolve_fixture_function(fixturedef, request)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+689 passed, 66 skipped, 5 warnings, 10 subtests passed in 24.05s
