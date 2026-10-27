@@ -2333,7 +2333,11 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // inverse is generally singular because continuity rows have no
     // pressure-pressure diagonal. Select the N8 linear plan before constructing
     // its preconditioner so the production path uses exactly the resolved policy.
-    coupled_pressure_schur_diagonal[reference_cell] = 1.0;
+    // Only a pure-Neumann system has the reference continuity row replaced by
+    // the pressure gauge equation. With a fixed-pressure boundary all continuity
+    // rows remain physical, so retain the assembled Rhie-Chow Schur diagonal.
+    if (!has_fixed_pressure)
+        coupled_pressure_schur_diagonal[reference_cell] = 1.0;
     // The production Couette system is only 512 unknowns. A restart of
     // 128 can stagnate on the nonsymmetric saddle-point spectrum even when
     // the assembled system is nonsingular. Use one full Krylov space for
