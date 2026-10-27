@@ -229,7 +229,7 @@ def naca_o_grid(n_surface: int, n_radial: int, radius: float = 20.0):
         eta = j / n_radial
         rfac = eta ** 1.8
         for i, (x, y) in enumerate(surf):
-            theta = 2.0 * math.pi * i / m
+            theta = 2.0 * math.pi * (i + 0.5) / m
             xo, yo = radius * math.cos(theta), radius * math.sin(theta)
             pts.append(((1-rfac)*x + rfac*xo, (1-rfac)*y + rfac*yo))
     def P(j,i): return j*m + (i % m)
