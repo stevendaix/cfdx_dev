@@ -439,6 +439,9 @@ int main()
 
         SparseMatrix captured_matrix;
         Vector captured_rhs;
+        std::vector<double> captured_schur_diagonal;
+        std::vector<double> captured_schur_diagonal_raw;
+        bool captured_has_fixed_pressure = false;
         bool captured = false;
         IncompressibleSolverControls controls;
         controls.algorithm = PressureVelocityAlgorithm::COUPLED;
@@ -456,11 +459,27 @@ int main()
                 throw std::runtime_error("coupled assembly evidence was incomplete");
             captured_matrix = *snapshot.matrix;
             captured_rhs = *snapshot.rhs;
+            if (snapshot.pressure_schur_diagonal == nullptr ||
+                snapshot.pressure_schur_diagonal_raw == nullptr)
+                throw std::runtime_error("coupled Schur diagonal evidence was incomplete");
+            captured_schur_diagonal = *snapshot.pressure_schur_diagonal;
+            captured_schur_diagonal_raw = *snapshot.pressure_schur_diagonal_raw;
+            captured_has_fixed_pressure = snapshot.has_fixed_pressure;
             captured = true;
         };
 
         const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, controls);
         EXPECT_TRUE(captured);
+        EXPECT_TRUE(captured_has_fixed_pressure);
+        EXPECT_TRUE(captured_schur_diagonal.size() == mesh.n_cells());
+        EXPECT_TRUE(captured_schur_diagonal_raw.size() == mesh.n_cells());
+        // A fixed-pressure boundary means no continuity row is replaced by
+        // the pressure gauge. The Schur preconditioner must therefore retain
+        // the actual assembled diagonal at every cell, including the nominal
+        // reference cell; only the pure-Neumann gauge path may pin it to 1.
+        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+            EXPECT_NEAR(captured_schur_diagonal[cell],
+                        captured_schur_diagonal_raw[cell], 1e-14);
         EXPECT_TRUE(result.authoritative_mass_flux.size() == mesh.n_faces());
         for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
             EXPECT_NEAR(U.component_data(0)[cell], 2.0, 1e-8);
