@@ -470,6 +470,41 @@ int main()
 
         const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, controls);
         EXPECT_TRUE(captured);
+        // Diagnostic for the manufactured fixed-pressure case: distinguish a
+        // bad assembled operator/RHS from a Krylov solution error without
+        // changing any acceptance threshold.
+        if (captured) {
+            Vector exact(4 * mesh.n_cells(), 0.0);
+            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                exact(cell) = 2.0;
+                exact(3 * mesh.n_cells() + cell) =
+                    1.0 + 2.0 * geometry.cell_centres[cell].x;
+            }
+            double exact_residual_linf = 0.0;
+            std::size_t exact_residual_row = 0;
+            for (std::size_t row = 0; row < captured_matrix.n_rows(); ++row) {
+                double ax = 0.0;
+                for (std::size_t k = captured_matrix.row_offsets_data()[row];
+                     k < captured_matrix.row_offsets_data()[row + 1]; ++k)
+                    ax += captured_matrix.values_data()[k] *
+                          exact(captured_matrix.columns_data()[k]);
+                const double residual = std::abs(ax - captured_rhs(row));
+                if (residual > exact_residual_linf) {
+                    exact_residual_linf = residual;
+                    exact_residual_row = row;
+                }
+            }
+            std::cerr << "N9_S9_MANUFACTURED_FIXED_PRESSURE"
+                      << " exact_matrix_residual_linf=" << exact_residual_linf
+                      << " exact_matrix_residual_row=" << exact_residual_row;
+            for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                std::cerr << " cell" << cell
+                          << "_Ux=" << U.component_data(0)[cell]
+                          << "_p=" << p(cell)
+                          << "_p_exact="
+                          << (1.0 + 2.0 * geometry.cell_centres[cell].x);
+            std::cerr << "\\n";
+        }
         EXPECT_TRUE(captured_has_fixed_pressure);
         EXPECT_TRUE(captured_schur_diagonal.size() == mesh.n_cells());
         EXPECT_TRUE(captured_schur_diagonal_raw.size() == mesh.n_cells());
