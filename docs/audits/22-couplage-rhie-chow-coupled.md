@@ -189,3 +189,18 @@ La PR reste draft. Ne pas fusionner tant que le diagnostic exact-HEAD n'a pas id
 Le diagnostic `COUPLED_CELL_OPERATOR_AUDIT` est ajouté sur le candidat monolithique exact, avant toute relaxation séparée de U et p. Pour la cellule argmax du résidu de ligne et celle argmax de la divergence du flux (si différente), il publie séparément la somme des contributions matricielles vitesse/pression, le second membre et le résidu algébrique, puis les composantes du flux conservatif : interpolation de vitesse, correction de pression orthogonale, correction non orthogonale différée et compensation Rhie–Chow.
 
 Le diagnostic recalcule le flux à partir du même état U,p et des mêmes diagonales de quantité de mouvement. Il est conditionné par `coupled_matrix_summary`, n'altère ni le solveur ni les critères d'acceptation. Les résultats doivent être lus sur le prochain run exact-HEAD avant toute modification de signe, coefficient, tolérance ou budget. Le statut `MAX_ITER_REACHED` des sous-résolutions Fp reste une piste secondaire séparée ; aucun changement de statut n'est inclus dans ce commit.
+
+## 15. Audit de conservation globale et RHS différé exact — 2026-10-27
+
+La prochaine instrumentation conserve désormais, cellule par cellule, la contribution explicite de non-orthogonalité **exactement au point d'assemblage** du second membre de continuité. Le journal `COUPLED_CELL_OPERATOR_AUDIT` sépare `explicit_deferred_rhs` et `rhs_without_deferred`; il ne réévalue pas ce terme depuis le gradient d'une pression ultérieure.
+
+Le candidat monolithique pré-relaxation émet aussi `COUPLED_GLOBAL_CONSERVATION_AUDIT` avec :
+- la somme signée des divergences de toutes les cellules ;
+- la somme signée du flux de toutes les faces de frontière (y compris les faces `EMPTY`, qui doivent contribuer zéro par leur géométrie) ;
+- l'écart entre ces deux sommes, la somme des modules des flux de frontière ;
+- la divergence signée de la cellule de référence de pression et la cellule de divergence maximale.
+
+Les faces internes doivent s'annuler dans la somme globale. Cet audit permet donc de distinguer une erreur d'orientation/topologie ou un flux de frontière non nul d'un défaut local de continuité. Il reste strictement diagnostique : aucun seuil, budget, terme du solveur ou condition de convergence n'est modifié.
+
+**Décision en attente des résultats exact-HEAD :** ne pas changer la ligne de jauge ni le signe de la correction différée sans comparer les nouvelles sommes et les contributions sur la même solution monolithique. Une correction numérique n'est justifiée qu'après localisation causale ; N9 physique, qualification N9 et validation totale doivent ensuite repasser sur le même HEAD.
+
