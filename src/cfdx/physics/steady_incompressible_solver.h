@@ -2889,8 +2889,28 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             boundary_contract, mesh, geometry, &runtime.omega_face_values);
     }
 
+    // In an explicitly opted-in SST restart, the DAT checkpoint is the
+    // source of truth for k and omega just as it is for U and p. Wire those
+    // named fields into the same atomic reader instead of requiring callers
+    // to remember a separate restore helper. Preserve unrelated optional
+    // fields (e.g. temperature) supplied by the caller.
+    auto effective_restart_fields = restart_fields;
+    if (controls.sst_runtime &&
+        controls.initialization.mode == InitializationMode::Restart) {
+        auto& sst_state = *controls.sst_runtime->state;
+        if (effective_restart_fields.k && effective_restart_fields.k != &sst_state.k)
+            throw std::invalid_argument(
+                "SST DAT restart k target must be the active runtime state");
+        if (effective_restart_fields.omega &&
+            effective_restart_fields.omega != &sst_state.omega)
+            throw std::invalid_argument(
+                "SST DAT restart omega target must be the active runtime state");
+        effective_restart_fields.k = &sst_state.k;
+        effective_restart_fields.omega = &sst_state.omega;
+    }
+
     apply_initialization(
-        controls.initialization, mesh, U, p, restart_fields, restart_path);
+        controls.initialization, mesh, U, p, effective_restart_fields, restart_path);
     if (controls.initialized_state_callback)
         controls.initialized_state_callback(mesh, U, p);
 

@@ -5,6 +5,7 @@
 #include "cfdx/core/linalg/vector.h"
 #include "common/test_harness.h"
 #include <cmath>
+#include <limits>
 
 using namespace cfdx::core;
 using namespace cfdx::testing;
@@ -363,6 +364,140 @@ int main() {
         EXPECT_TRUE(result.status != SolverStatus::CONVERGED);
         EXPECT_TRUE(independent_relative > 1e-8);
         EXPECT_NEAR(result.residual_relative, independent_relative, 1e-12);
+    });
+
+    run_case("gmres_rejects_nonfinite_cycle_residual", []() {
+        int applications = 0;
+        LinearOperator op;
+        op.size = 1;
+        op.apply = [&applications](const Vector& in, Vector& out) {
+            if (out.size() != 1) out.resize(1);
+            ++applications;
+            out(0) = applications == 2
+                ? std::numeric_limits<double>::quiet_NaN() : in(0);
+        };
+        Vector b(1, 1.0), x(1, 0.0);
+        const auto result = solve_gmres(op, b, x, 1, 4, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::DIVERGED);
+        EXPECT_TRUE(std::isfinite(result.residual));
+        EXPECT_NEAR(result.residual, 1.0, 1e-14);
+        EXPECT_NEAR(x(0), 0.0, 1e-14);
+    });
+
+    run_case("gmres_rejects_nonfinite_arnoldi_action", []() {
+        int applications = 0;
+        LinearOperator op;
+        op.size = 1;
+        op.apply = [&applications](const Vector& in, Vector& out) {
+            if (out.size() != 1) out.resize(1);
+            ++applications;
+            out(0) = applications == 3
+                ? std::numeric_limits<double>::quiet_NaN() : in(0);
+        };
+        Vector b(1, 1.0), x(1, 0.0);
+        const auto result = solve_gmres(op, b, x, 1, 4, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::DIVERGED);
+        EXPECT_TRUE(std::isfinite(result.residual));
+        EXPECT_NEAR(result.residual, 1.0, 1e-14);
+        EXPECT_NEAR(x(0), 0.0, 1e-14);
+    });
+
+    run_case("gmres_adaptive_restart_never_exceeds_operator_dimension", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 2.0);
+        A.finalize();
+        LinearOperator op;
+        op.size = 2;
+        op.apply = [&A](const Vector& in, Vector& out) {
+            const auto values = A.matvec(in);
+            if (out.size() != values.size()) out.resize(values.size());
+            for (std::size_t i = 0; i < values.size(); ++i) out(i) = values[i];
+        };
+        Vector b(2, 1.0), x(2, 0.0);
+        KrylovControls controls;
+        controls.restart_min = 1;
+        controls.restart_max = 512;
+        controls.adaptive_restart = true;
+        GmresWorkspace workspace;
+        // max_iter counts total Arnoldi iterations, not restart cycles:
+        // one step in the first cycle at restart=1, then two steps in the
+        // second cycle at the dimension-clamped restart=2.
+        const auto result = solve_gmres(op, b, x, 1, 8, 1e-14, nullptr, controls, &workspace);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(workspace.n == 2);
+        EXPECT_TRUE(workspace.restart <= 2);
+    });
+
+    run_case("gmres_rejects_invalid_owned_entry_range", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+        Vector b(2, 1.0), x(2, 0.0);
+        KrylovControls controls;
+        controls.reduction.local_begin = 2;
+        controls.reduction.local_end = 1;
+        const auto result = solve_gmres(A, b, x, 1, 4, 1e-12, nullptr, controls);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("gmres_rejects_owned_range_past_operator_dimension", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+        Vector b(2, 1.0), x(2, 0.0);
+        KrylovControls controls;
+        controls.reduction.local_begin = 3;
+        controls.reduction.local_end = 4;
+        const auto result = solve_gmres(A, b, x, 1, 4, 1e-12, nullptr, controls);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("gmres_rejects_inverted_restart_bounds_before_clamp", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+        Vector b(2, 1.0);
+        Vector x(2, 0.0);
+        KrylovControls controls;
+        controls.restart_min = 8;
+        controls.restart_max = 4;
+        const auto result = solve_gmres(A, b, x, 4, 10, 1e-12, nullptr, controls);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("gmres_rejects_nonfinite_restart_policy", []() {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 1.0);
+        A.finalize();
+        Vector b(1, 1.0), x(1, 0.0);
+        KrylovControls controls;
+        controls.target_reduction_per_cycle = std::numeric_limits<double>::quiet_NaN();
+        const auto result = solve_gmres(A, b, x, 1, 4, 1e-12, nullptr, controls);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("gmres_rejects_nonpositive_tolerance", []() {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 1.0);
+        A.finalize();
+        Vector b(1, 1.0), x(1, 0.0);
+        const auto zero_tol = solve_gmres(A, b, x, 1, 4, 0.0);
+        EXPECT_TRUE(zero_tol.status == SolverStatus::NOT_APPLICABLE);
+        const auto negative_tol = solve_gmres(A, b, x, 1, 4, -1e-12);
+        EXPECT_TRUE(negative_tol.status == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("gmres_rejects_zero_iteration_budget", []() {
+        SparseMatrix A(1, 1);
+        A.push_back(0, 0, 1.0);
+        A.finalize();
+        Vector b(1, 1.0), x(1, 0.0);
+        const auto result = solve_gmres(A, b, x, 1, 0, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
     });
 
     return run_all();
