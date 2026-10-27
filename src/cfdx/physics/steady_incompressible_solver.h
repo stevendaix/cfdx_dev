@@ -4255,44 +4255,83 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
                 controls.density, velocity_bcs, pressure_bcs);
 
-            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
-                // The SIMPLEC pressure equation balances the over-relaxed
-                // predictor flux phiHbyA + rho*(dAtU - dAU)*(p_N - p_P),
-                // not the bare interpolated predictor. The corrected flux
-                // must therefore carry the same consistent-response term,
-                // evaluated at the corrected pressure; otherwise it differs
-                // from the operator the pressure equation just balanced by
-                // exactly div(rho*(dAtU - dAU)*dp) and a continuity floor of
-                // that size survives on every case with a non-constant
-                // pressure field (e.g. the lid-driven cavity) even though
-                // the momentum residual is zero. With the term included the
-                // face operator collapses to the plain Rhie-Chow flux built
-                // with rAU: (dAtU - dAU) cancels the rAtU response, leaving
-                // the conservative flux of the reconstructed cell velocity.
+            // SIMPLEC's pressure equation uses the consistent response
+            // rAtU, while the corrected cell velocity uses rAU. Convert the
+            // reconstructed rAtU Rhie-Chow flux back to the rAU response by
+            // adding the full directional difference (rAtU-rAU), not only
+            // its orthogonal pressure-jump part. Omitting the deferred
+            // non-orthogonal remainder leaves a continuity floor on skewed
+            // meshes. Fixed-pressure boundary faces require the same response
+            // conversion; EMPTY and zero-gradient-pressure faces contribute
+            // no pressure correction.
+            const auto add_simplec_consistent_response =
+                [&](cfdx::core::Field<double, cfdx::core::Location::FACE>& flux) {
                 for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                     const auto nr = mesh.ownership().neighbour(f);
-                    if (nr < 0) continue;
                     const std::size_t o = mesh.ownership().owner(f);
-                    const std::size_t n = static_cast<std::size_t>(nr);
-                    const auto Sf = geometry.face_area_vectors[f];
-                    const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
-                    const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
-                                           geometry.cell_volumes[n]*rAtU[0][n]) -
-                                      0.5*(geometry.cell_volumes[o]*rAU[0][o] +
-                                           geometry.cell_volumes[n]*rAU[0][n]);
-                    const double dy = 0.5*(geometry.cell_volumes[o]*rAtU[1][o] +
-                                           geometry.cell_volumes[n]*rAtU[1][n]) -
-                                      0.5*(geometry.cell_volumes[o]*rAU[1][o] +
-                                           geometry.cell_volumes[n]*rAU[1][n]);
-                    const double dz = 0.5*(geometry.cell_volumes[o]*rAtU[2][o] +
-                                           geometry.cell_volumes[n]*rAtU[2][n]) -
-                                      0.5*(geometry.cell_volumes[o]*rAU[2][o] +
-                                           geometry.cell_volumes[n]*rAU[2][n]);
-                    const double correction_coeff = pressure_face_orthogonal_coefficient(
-                        Sf, dvec, {dx, dy, dz});
-                    mass_flux(f) += controls.density * correction_coeff * (p(n)-p(o));
+                    const Vec3 Sf = geometry.face_area_vectors[f];
+                    if (nr >= 0) {
+                        const std::size_t n = static_cast<std::size_t>(nr);
+                        const Vec3 dvec =
+                            geometry.cell_centres[n] - geometry.cell_centres[o];
+                        const Vec3 delta_dAU{
+                            0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
+                                 geometry.cell_volumes[n]*rAtU[0][n]) -
+                            0.5*(geometry.cell_volumes[o]*rAU[0][o] +
+                                 geometry.cell_volumes[n]*rAU[0][n]),
+                            0.5*(geometry.cell_volumes[o]*rAtU[1][o] +
+                                 geometry.cell_volumes[n]*rAtU[1][n]) -
+                            0.5*(geometry.cell_volumes[o]*rAU[1][o] +
+                                 geometry.cell_volumes[n]*rAU[1][n]),
+                            0.5*(geometry.cell_volumes[o]*rAtU[2][o] +
+                                 geometry.cell_volumes[n]*rAtU[2][n]) -
+                            0.5*(geometry.cell_volumes[o]*rAU[2][o] +
+                                 geometry.cell_volumes[n]*rAU[2][n])};
+                        const double orthogonal = pressure_face_orthogonal_coefficient(
+                            Sf, dvec, delta_dAU);
+                        const Vec3 grad_p_face{
+                            0.5*(corrected_grad_p.component_data(0)[o] +
+                                 corrected_grad_p.component_data(0)[n]),
+                            0.5*(corrected_grad_p.component_data(1)[o] +
+                                 corrected_grad_p.component_data(1)[n]),
+                            0.5*(corrected_grad_p.component_data(2)[o] +
+                                 corrected_grad_p.component_data(2)[n])};
+                        const double deferred = pressure_face_nonorthogonal_flux(
+                            Sf, dvec, delta_dAU, grad_p_face);
+                        flux(f) += controls.density *
+                            (orthogonal * (p(n)-p(o)) + deferred);
+                        continue;
+                    }
+
+                    const std::size_t patch = geometry.face_patch[f];
+                    if (patch >= mesh.boundary().n_patches() ||
+                        mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                        continue;
+                    const auto pbc = pressure_bcs.find(
+                        mesh.boundary().patch(patch).name);
+                    if (pbc == pressure_bcs.end() ||
+                        pbc->second.type != ScalarBoundaryType::FIXED_VALUE)
+                        continue;
+                    const Vec3 dvec =
+                        geometry.face_centres[f] - geometry.cell_centres[o];
+                    const Vec3 delta_dAU{
+                        geometry.cell_volumes[o] * (rAtU[0][o] - rAU[0][o]),
+                        geometry.cell_volumes[o] * (rAtU[1][o] - rAU[1][o]),
+                        geometry.cell_volumes[o] * (rAtU[2][o] - rAU[2][o])};
+                    const double orthogonal = pressure_face_orthogonal_coefficient(
+                        Sf, dvec, delta_dAU);
+                    const Vec3 grad_p_boundary{
+                        corrected_grad_p.component_data(0)[o],
+                        corrected_grad_p.component_data(1)[o],
+                        corrected_grad_p.component_data(2)[o]};
+                    const double deferred = pressure_face_nonorthogonal_flux(
+                        Sf, dvec, delta_dAU, grad_p_boundary);
+                    flux(f) += controls.density *
+                        (orthogonal * (pbc->second.value - p(o)) + deferred);
                 }
-            }
+            };
+            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
+                add_simplec_consistent_response(mass_flux);
 
             // Issa corrector form: every pressure corrector is driven by the
             // ORIGINAL predictor flux together with the current pressure,
@@ -4320,34 +4359,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
                     ? rAtU : rAU,
                 controls.density, velocity_bcs, pressure_bcs);
-            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
-                for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-                    const auto nr = mesh.ownership().neighbour(f);
-                    if (nr < 0) continue;
-                    const std::size_t o = mesh.ownership().owner(f);
-                    const std::size_t n = static_cast<std::size_t>(nr);
-                    const auto Sf = geometry.face_area_vectors[f];
-                    const Vec3 dvec =
-                        geometry.cell_centres[n] - geometry.cell_centres[o];
-                    const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
-                                          geometry.cell_volumes[n]*rAtU[0][n]) -
-                                      0.5*(geometry.cell_volumes[o]*rAU[0][o] +
-                                           geometry.cell_volumes[n]*rAU[0][n]);
-                    const double dy = 0.5*(geometry.cell_volumes[o]*rAtU[1][o] +
-                                          geometry.cell_volumes[n]*rAtU[1][n]) -
-                                      0.5*(geometry.cell_volumes[o]*rAU[1][o] +
-                                           geometry.cell_volumes[n]*rAU[1][n]);
-                    const double dz = 0.5*(geometry.cell_volumes[o]*rAtU[2][o] +
-                                          geometry.cell_volumes[n]*rAtU[2][n]) -
-                                      0.5*(geometry.cell_volumes[o]*rAU[2][o] +
-                                           geometry.cell_volumes[n]*rAU[2][n]);
-                    const double correction_coeff =
-                        pressure_face_orthogonal_coefficient(
-                            Sf, dvec, {dx, dy, dz});
-                    rederived_flux(f) +=
-                        controls.density * correction_coeff * (p(n)-p(o));
-                }
-            }
+            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
+                add_simplec_consistent_response(rederived_flux);
             for (std::size_t f = 0; f < mesh.n_faces(); ++f)
                 rhie_chow_identity_audit_linf = std::max(
                     rhie_chow_identity_audit_linf,
