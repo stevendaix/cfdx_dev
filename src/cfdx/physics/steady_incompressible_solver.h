@@ -3777,21 +3777,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << "\n";
             }
 
-            // COUPLED solves U and p as one saddle-point system. Applying
-            // independent post-solve relaxation factors to the two blocks
-            // destroys the continuity constraint just solved by the monolithic
-            // system (the exact candidate has O(linear-tolerance) continuity,
-            // while alpha_u != alpha_p introduces a finite divergence). Accept
-            // the coupled candidate as a whole; segregated algorithms retain
-            // their independent equation/state relaxation below.
-            //
-            // Keep the assignment explicit so this contract is visible at the
-            // state-transition point and cannot silently inherit SIMPLE factors.
-            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
-                for (std::size_t d = 0; d < 3; ++d)
-                    U.component_data(d)[c] = U.component_data(d)[c];
-                p(c) = p(c);
-            }
+            // COUPLED solves U and p as one saddle-point system. Do not
+            // apply independent post-solve relaxation factors to its blocks:
+            // that destroys the continuity constraint enforced by the
+            // monolithic solve (the candidate has O(linear-tolerance)
+            // continuity, while alpha_u != alpha_p introduces finite
+            // divergence). U and p already contain the coupled candidate.
+            // Segregated algorithms retain their relaxation logic below.
             apply_pressure_gauge_policy(
                 p, geometry, controls.pressure_gauge_policy,
                 controls.pressure_reference_cell, controls.pressure_reference_value,
