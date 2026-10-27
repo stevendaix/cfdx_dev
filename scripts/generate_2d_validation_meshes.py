@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Generate CFDX 2-D qualification meshes without Gmsh.
 
 The solver core is three-dimensional, so each 2-D case is represented by a
@@ -35,9 +34,12 @@ def write_mesh(path: Path, points, cells, boundary_faces):
     # Local hexahedron faces. Orientation is corrected below from owner-cell
     # centroids, so the generator remains independent of block orientation.
     templates = (
-        (0, 3, 2, 1), (4, 5, 6, 7),
-        (0, 1, 5, 4), (1, 2, 6, 5),
-        (2, 3, 7, 6), (3, 0, 4, 7),
+        (0, 3, 2, 1),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (1, 2, 6, 5),
+        (2, 3, 7, 6),
+        (3, 0, 4, 7),
     )
 
     for ci, cell in enumerate(cells):
@@ -69,7 +71,7 @@ def write_mesh(path: Path, points, cells, boundary_faces):
         rel = p - centre
         sf = 0.5 * np.sum(np.cross(rel, np.roll(rel, -1, axis=0)), axis=0)
         if np.dot(sf, centre - cell_centres[owner[fid]]) < 0.0:
-            faces[fid].reverse()
+            face.reverse()
 
     fv = np.asarray([v for f in faces for v in f], dtype=np.uint64)
     fo = np.zeros(len(faces) + 1, dtype=np.uint64)
@@ -177,7 +179,7 @@ def bfs(n: int):
     L_up = 200.0 / 4.9
     L_down = 100.0 / 4.9
     nx_up = 5 * n
-    nx_down = max(2 * n, int(round(nx_up * L_down / L_up)))
+    nx_down = max(2 * n, round(nx_up * L_down / L_up))
     nodes, key, cells = [], {}, []
     def nid(x, y):
         k = (round(x, 14), round(y, 14))
