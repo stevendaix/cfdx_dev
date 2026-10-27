@@ -3777,17 +3777,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << "\n";
             }
 
-            // The coupled linear system is a Picard/Newton linearization of the
-            // current nonlinear iterate. Keep the nonlinear field update explicit
-            // and bounded; there is no hidden scalar fallback.
+            // COUPLED solves U and p as one saddle-point system. Applying
+            // independent post-solve relaxation factors to the two blocks
+            // destroys the continuity constraint just solved by the monolithic
+            // system (the exact candidate has O(linear-tolerance) continuity,
+            // while alpha_u != alpha_p introduces a finite divergence). Accept
+            // the coupled candidate as a whole; segregated algorithms retain
+            // their independent equation/state relaxation below.
+            //
+            // Keep the assignment explicit so this contract is visible at the
+            // state-transition point and cannot silently inherit SIMPLE factors.
             for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
                 for (std::size_t d = 0; d < 3; ++d)
-                    U.component_data(d)[c] =
-                        U_old.component_data(d)[c] +
-                        retry_controller.alpha_u(effective_alpha_u) *
-                        (U.component_data(d)[c] - U_old.component_data(d)[c]);
-                p(c) = p_old(c) +
-                    retry_controller.alpha_p(effective_alpha_p) * (p(c) - p_old(c));
+                    U.component_data(d)[c] = U.component_data(d)[c];
+                p(c) = p(c);
             }
             apply_pressure_gauge_policy(
                 p, geometry, controls.pressure_gauge_policy,
