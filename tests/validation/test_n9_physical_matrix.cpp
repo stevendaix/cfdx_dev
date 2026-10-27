@@ -227,6 +227,20 @@ ScalarBoundaryConditions channel_pressure_bc()
     return bc;
 }
 
+// Open channel cases need a pressure datum at the outlet. With zero-gradient
+// velocity at both ends, leaving pressure Neumann on every boundary makes the
+// coupled gauge treatment replace one continuity row even though the end-face
+// normal velocities are unknown. That removes a physical mass-balance equation
+// and lets a non-zero net boundary flux accumulate in the reference cell.
+// Keep the all-Neumann pressure set for closed-wall cases (e.g. the cavity),
+// where the continuity-row dependency is supplied by impermeable boundaries.
+ScalarBoundaryConditions open_channel_pressure_bc()
+{
+    auto bc = channel_pressure_bc();
+    bc["outlet"] = {ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+    return bc;
+}
+
 Run solve_case(
     Mesh mesh,
     PressureVelocityAlgorithm algorithm,
@@ -461,6 +475,7 @@ int main()
 
     const auto u_channel=channel_velocity_bc(1.0);
     const auto p_channel=channel_pressure_bc();
+    const auto p_open_channel=open_channel_pressure_bc();
 
     for (std::size_t k=0;k<algs.size();++k) {
         // Skip COUPLED in the first loop - it's tested in the Schur model loop below
@@ -468,14 +483,14 @@ int main()
         char buf[128];
         snprintf(buf, sizeof(buf), "ALG %zu/%zu %s Couette\n", k+1, algs.size(), (k==0?"SIMPLE":k==1?"SIMPLEC":k==2?"PISO":k==3?"PIMPLE":k==4?"FRACTIONAL_STEP":"COUPLED"));
         write(2, buf, strlen(buf));
-        couette.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],u_channel,p_channel,0.0));
+        couette.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],u_channel,p_open_channel,0.0));
         require_physical_convergence(couette[k],"Couette",algs[k]);
         if (couette_l2(couette[k],12,16)>2e-3)
             throw std::runtime_error("Couette analytic L2 gate failed");
 
         snprintf(buf, sizeof(buf), "ALG %zu/%zu %s Poiseuille\n", k+1, algs.size(), (k==0?"SIMPLE":k==1?"SIMPLEC":k==2?"PISO":k==3?"PIMPLE":k==4?"FRACTIONAL_STEP":"COUPLED"));
         write(2, buf, strlen(buf));
-        poiseuille.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],channel_velocity_bc(0.0),p_channel,1.0));
+        poiseuille.push_back(solve_case(make_channel_mesh(12,16,0.0),algs[k],channel_velocity_bc(0.0),p_open_channel,1.0));
         require_physical_convergence(poiseuille[k],"Poiseuille",algs[k]);
         if (poiseuille_l2(poiseuille[k],12,16,1.0,0.1)>5e-3)
             throw std::runtime_error("Poiseuille analytic L2 gate failed");
@@ -513,7 +528,7 @@ int main()
         write(2, msg2.data(), msg2.size());
         const auto coupled_couette = solve_coupled_case(
             make_channel_mesh(12,16,0.0), schur_model,
-            u_channel, p_channel, 0.0);
+            u_channel, p_open_channel, 0.0);
         require_physical_convergence(coupled_couette, "COUPLED Couette", PressureVelocityAlgorithm::COUPLED);
         check_model(coupled_couette, "Couette");
         if (couette_l2(coupled_couette,12,16)>2e-3)
@@ -523,7 +538,7 @@ int main()
         write(2, msg3.data(), msg3.size());
         const auto coupled_poiseuille = solve_coupled_case(
             make_channel_mesh(12,16,0.0), schur_model,
-            channel_velocity_bc(0.0), p_channel, 1.0);
+            channel_velocity_bc(0.0), p_open_channel, 1.0);
         require_physical_convergence(coupled_poiseuille, "COUPLED Poiseuille", PressureVelocityAlgorithm::COUPLED);
         check_model(coupled_poiseuille, "Poiseuille");
         if (poiseuille_l2(coupled_poiseuille,12,16,1.0,0.1)>5e-3)
@@ -544,7 +559,7 @@ int main()
 
         const auto coupled_skew = solve_coupled_case(
             make_channel_mesh(12,16,0.25), schur_model,
-            u_channel, p_channel, 0.0);
+            u_channel, p_open_channel, 0.0);
         require_physical_convergence(coupled_skew, "COUPLED skew Couette", PressureVelocityAlgorithm::COUPLED);
         check_model(coupled_skew, "skew Couette");
         if (couette_l2(coupled_skew,12,16)>2e-2)
