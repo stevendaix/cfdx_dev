@@ -3,6 +3,7 @@ name: PR 1141 ruff pre-commit oracle (diag)
 # DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
 # Evidence-only : relever les findings Ruff exacts derriere l'echec du job
 # "Pre-commit" (exit 1 a 22:02:57Z) sur le head PR #1141 f3c15596.
+# v2: premier push portait par erreur un [ci skip] et n'a pas declenche.
 on:
   push:
     branches: [ci/long-campaign-diagnostics]
