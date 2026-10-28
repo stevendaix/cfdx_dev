@@ -52,9 +52,13 @@ def test_naca0012_o_grid_quality_metrics_are_finite(n_surface, n_radial):
     assert quality["inverted_or_degenerate_cells"] == 0
     assert quality["minimum_absolute_cell_area"] > 0.0
     assert quality["minimum_first_layer_spacing"] > 0.0
-    assert quality["maximum_first_layer_spacing"] >= quality["minimum_first_layer_spacing"]
+    assert (
+        quality["maximum_first_layer_spacing"] >= quality["minimum_first_layer_spacing"]
+    )
     assert quality["minimum_radial_growth_ratio"] > 0.0
-    assert quality["maximum_radial_growth_ratio"] >= quality["minimum_radial_growth_ratio"]
+    assert (
+        quality["maximum_radial_growth_ratio"] >= quality["minimum_radial_growth_ratio"]
+    )
     assert np.isfinite(quality["maximum_cell_edge_aspect_ratio"])
     assert quality["maximum_cell_edge_aspect_ratio"] >= 1.0
     assert 0.0 <= quality["p95_nonorthogonality_degrees"]
