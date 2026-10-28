@@ -1,4 +1,48 @@
-# NACA0012 Re=1000, alpha=0: correlation audit and implementation gates
+# FICHE MÉTHODE — Qualification de corrélation NACA0012 Re=1000
+
+**En-tête d'évidence**
+- Scope : maillage O-grid NACA0012, solveur incompressible laminaire Re=1000, intégration des forces et portes de qualification ; la turbulence, le CHT et le rayonnement sont évalués séparément.
+- Statut : DIAGNOSTIC — qualification physique non acquise (2026-10-28).
+- Registre autoritaire : `docs/validation/CFDX_QUALIFICATION_REGISTRY.json` et `docs/validation/TURBULENCE_QUALIFICATION_MATRIX.json`.
+- Issue / PR liées : PR #1141 ; contrats et campagnes de qualification existants dans le dépôt.
+- Dernier commit vérifié avant cette fiche : `3e9dd8c793b56c2efab665b972ee76608d78cdfc` (2026-10-28).
+- Limitations connues : pas de corrélation à trois maillages achevée ; force pariétale encore dépendante des reconstructions existantes ; pas de voie RANS NACA de production qualifiée.
+
+## 1. Références sources (DOI ou ISBN)
+- Abbott, I. H. et von Doenhoff, A. E., *Theory of Wing Sections*, Dover Publications, ISBN 978-0-486-60586-9. Référence géométrique/aérodynamique générale ; ne constitue pas à elle seule l'oracle exact du cas CFDX.
+- Menter, F. R. (1994), “Two-Equation Eddy-Viscosity Turbulence Models for Engineering Applications”, *AIAA Journal*, 32(8), 1598–1605, DOI: 10.2514/3.12149. Référence de fermeture SST ; la validation SST NACA reste ouverte.
+
+## 2. Formulation continue
+Pour le cas laminaire incompressible, le problème est `div(U)=0` et
+`rho (U·grad) U = -grad(p) + div(mu grad(U))`, avec `Re=U_inf c/nu=1000`,
+incidence nulle et corde `c=1`. Cette fiche n'établit pas la validité physique
+d'une solution à partir de la seule convergence du solveur.
+
+## 3. Discrétisation Volume Fini
+La voie actuellement testée est le solveur stationnaire incompressible SIMPLE,
+avec convection UPWIND et flux de faces Rhie–Chow. La pression, les composantes
+de force et la continuité doivent être évaluées séparément. La reconstruction
+de pression et de traction aux faces n'est pas encore qualifiée par des tests
+manufacturés suffisamment généraux et un bilan indépendant du volume de contrôle.
+
+## 4. Traitement des frontières
+Le cas utilise une vitesse imposée au farfield, non-glissement sur `airfoil`,
+pression fixée au farfield et gradient de pression nul sur l'airfoil. Les faces
+`front/back` représentent l'extrusion 3D à une seule couche d'un problème 2D ;
+elles ne constituent pas une qualification d'un écoulement 3D.
+
+## 5. Pièges connus
+- Une aire polygonale positive ne prouve ni une faible non-orthogonalité ni une bonne résolution de couche limite.
+- Le rapport de croissance, le rapport d'aspect, la non-orthogonalité et la distance normale à la paroi sont des métriques distinctes.
+- Un seul maillage donnant un coefficient proche d'une référence ne démontre pas la convergence spatiale.
+- Une convergence du solveur linéaire ne garantit pas que l'opérateur de pression-correction soit robuste sur le maillage.
+- Les résultats thermiques et turbulence composant par composant ne qualifient pas un cas couplé NACA de production.
+
+## 6. Ordre de précision attendu et validation exigée
+La campagne doit conserver les seuils déjà définis par les tests et produire au moins trois maillages convergés, une estimation d'erreur de discrétisation, `Cd_pressure` et `Cd_viscous` indépendants, `Cl` à incidence nulle, continuité et bilan de quantité de mouvement. Toute comparaison bibliographique doit documenter la géométrie du bord de fuite, le farfield, les conditions aux limites et la convention des coefficients. Aucun seuil ou budget d'itérations ne doit être relâché pour obtenir un résultat vert.
+
+## 7. Statut d'implémentation CFDX
+## Audit de corrélation NACA0012 — constats et travaux requis
 
 Date: 2026-10-28
 
@@ -152,3 +196,7 @@ invariant. It does not, by itself, resolve M1–M4. Keep the symmetry fix
 independently reviewable; implement the mesh generator, nonlinear solver and
 face-traction changes as separately testable commits/PRs rather than mixing
 unverified physical changes into the geometry regression.
+
+
+## 8. Journal des modifications de la fiche
+- 2026-10-28 — PR #1141 — ajout des métriques de non-orthogonalité, validation des paramètres, vérification du JSON et consignation des résultats locaux. Les limites physiques restent ouvertes.
