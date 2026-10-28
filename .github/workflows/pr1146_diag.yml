@@ -1,0 +1,104 @@
+name: PR 1146 ruff canonical oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Oracle : produire le canonical ruff format/check des 3 fichiers Python
+# changes par la PR #1146 (head 015c5097) et le committer en evidence.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1146_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1146-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs/pr1146
+  PR1146_HEAD: 015c5097ff02c6315998f5653c026cbca8e2e4f6
+  PR1146_BASE: ecf1d02287b71ee69f118955b31b966e0d3888fe
+
+jobs:
+  oracle:
+    name: ruff canonical on PR1146 head
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      WDIR: /tmp/pr1146_wt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pins and worktree PR head
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID/canonical"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "pr1146_head=$PR1146_HEAD"
+            echo "pr1146_base=$PR1146_BASE"
+            echo "purpose=ruff canonical (format+check) for PR1146 python files"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1146_diag_meta_run$GITHUB_RUN_ID.txt"
+          git cat-file -e "$PR1146_HEAD^{commit}" || { echo "::error::PR1146 head unresolvable"; exit 1; }
+          git worktree add "$WDIR" "$PR1146_HEAD"
+
+      - name: Set up Python 3.10 (replica precommit.yml)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Ruff
+        run: python -m pip install --upgrade ruff
+
+      - name: Ruff check + canonical format
+        run: |
+          cd "$WDIR"
+          FILES="scripts/generate_naca_radial_family.py scripts/qualify_naca_grid.py tests/python/test_qualify_naca_grid.py"
+          set +e
+          {
+            echo "=== ruff version ==="
+            ruff --version
+            echo "=== ruff check (pre-fix, head pin) ==="
+            ruff check $FILES
+            echo "ruff_check_exit=$?"
+            echo "=== ruff format --diff (pre-fix) ==="
+            ruff format --diff $FILES
+            echo "ruff_format_exit=$?"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt" 2>&1
+          cat "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt"
+          ruff format $FILES
+          echo "=== post-format ruff check ===" >> "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt"
+          ruff check $FILES >> "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt" 2>&1
+          echo "post_format_check_exit=$?" >> "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt"
+          ruff format --check $FILES >> "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt" 2>&1
+          echo "post_format_check_exit=$?" >> "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt"
+          for f in $FILES; do
+            mkdir -p "$GITHUB_WORKSPACE/$EVID/canonical/$(dirname "$f")"
+            cp "$f" "$GITHUB_WORKSPACE/$EVID/canonical/$f"
+          done
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1146 ruff canonical oracle run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          ls "$GITHUB_WORKSPACE/$EVID/canonical/scripts" "$GITHUB_WORKSPACE/$EVID/canonical/scripts" "$GITHUB_WORKSPACE/$EVID/canonical/tests/python" | grep ".py" || { echo "::error::no canonical recorded"; exit 1; }
+          echo "diag canonical committed for run $GITHUB_RUN_ID"
