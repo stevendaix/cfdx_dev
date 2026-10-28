@@ -36,3 +36,22 @@ def test_naca0012_outer_boundary_is_reflection_symmetric(n_surface, n_radial):
     np.testing.assert_allclose(
         np.linalg.norm(outer, axis=1), 20.0, rtol=0.0, atol=1.0e-12
     )
+
+
+
+@pytest.mark.parametrize(
+    ("n_surface", "n_radial"),
+    [(64, 24), (128, 48), (256, 96)],
+)
+def test_naca0012_o_grid_quality_metrics_are_finite(n_surface, n_radial):
+    quality = MESHGEN.naca_o_grid_quality(n_surface, n_radial, radius=20.0)
+
+    assert quality["cell_count"] == (2 * n_surface + 1) * n_radial
+    assert quality["inverted_or_degenerate_cells"] == 0
+    assert quality["minimum_absolute_cell_area"] > 0.0
+    assert quality["minimum_first_layer_spacing"] > 0.0
+    assert quality["maximum_first_layer_spacing"] >= quality["minimum_first_layer_spacing"]
+    assert quality["minimum_radial_growth_ratio"] > 0.0
+    assert quality["maximum_radial_growth_ratio"] >= quality["minimum_radial_growth_ratio"]
+    assert np.isfinite(quality["maximum_cell_edge_aspect_ratio"])
+    assert quality["maximum_cell_edge_aspect_ratio"] >= 1.0
