@@ -54,7 +54,7 @@ Validation requise :
 
 - Fichier source : `src/cfdx/physics/steady_incompressible_solver.h`.
 - Changements : le RHS-normalisé reste toujours un gate. Le ratio de première itération reste un critère du monitor pour les algorithmes ségrégés lorsque la référence est bien conditionnée ; il est exclu lorsque la référence est au bruit machine et pour l’algorithme `COUPLED`, dont le résidu de référence est post-solve.
-- Implémenté : candidat dans la PR #956.
-- Vérifié : CI en cours ; pas encore qualifié physiquement.
+- Implémenté : la correction algorithmique est proposée dans la PR #1143 ; la régression est couverte par `tests/validation/test_n9_physical_matrix.cpp`.
+- Vérifié : CI exact-HEAD et campagnes N9 / validation totale en attente ; pas encore qualifié physiquement.
 - Qualification : **PENDING** jusqu’au verdict exact-HEAD de `validation-total`.
 - Décision de merge : interdite tant que les preuves ci-dessus ne sont pas terminées et examinées.
