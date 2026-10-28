@@ -1,0 +1,10 @@
+run_id=40644409390
+master_pin=940635ee1ab7853002030680548525be692d2b97
+master_sha=940635ee1ab7853002030680548525be692d2b97
+decoded_patch_md5=17e910eca542cf2a2fe22f4c2d2c717f
+base_solver_md5=f816e711f86758b0a144a34c0168bdfe
+patched_solver_md5=11fc48395ba718abd0585fa93b443a76
+applied_numstat=25/7
+block_markers_u_p=1/1
+push_to_master=
+purpose=verify fix1 (restore COUPLED post-solve relaxation removed by #1133): targeted 8 tests + fast CTest -LE long + pyreg on Release replica

@@ -1,0 +1,9 @@
+verdict=FAILED
+targeted_ctest_exit=0
+targeted_failed=[]
+targeted_not_seen=[]
+full_ctest_exit=8
+full_failed=['test_probe_csv', 'test_steady_incompressible_solver']
+pyreg_exit=0
+pyreg_failed=0
+push_to_master=

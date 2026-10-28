@@ -1,0 +1,613 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+        Start 147: test_generate_2d_validation_meshes
+        Start 113: test_ghia_cavity_order
+        Start 102: test_n7_convergence_qualification
+        Start 161: test_polyhedral_poisson_convergence
+  1/255 Test #161: test_polyhedral_poisson_convergence .........   Passed   31.74 sec
+        Start 138: benchmark_wall_distance_complex
+  2/255 Test #138: benchmark_wall_distance_complex .............   Passed   12.74 sec
+        Start 115: test_couette_quick
+  3/255 Test #147: test_generate_2d_validation_meshes ..........   Passed   57.82 sec
+        Start 148: test_channel_quick
+  4/255 Test #102: test_n7_convergence_qualification ...........   Passed   57.87 sec
+        Start 155: test_transient_mms_closure
+  5/255 Test #155: test_transient_mms_closure ..................   Passed    7.16 sec
+        Start 112: test_ghia_cavity_quick
+  6/255 Test #115: test_couette_quick ..........................   Passed   21.75 sec
+        Start 259: test_mesh_geometry_matrix
+  7/255 Test #259: test_mesh_geometry_matrix ...................   Passed    4.09 sec
+        Start 255: test_openfoam_results_cli_production_e2e
+  8/255 Test #255: test_openfoam_results_cli_production_e2e ....   Passed    3.01 sec
+        Start 184: test_production_buoyancy_outer_loop_vv
+  9/255 Test #148: test_channel_quick ..........................   Passed   18.70 sec
+        Start 168: test_polyhedral_gradient_campaign
+ 10/255 Test #184: test_production_buoyancy_outer_loop_vv ......   Passed    3.95 sec
+        Start 103: test_n7_adaptive_relaxation_re400
+ 11/255 Test #112: test_ghia_cavity_quick ......................   Passed   12.60 sec
+        Start 163: test_convection_3d_verification
+ 12/255 Test #103: test_n7_adaptive_relaxation_re400 ...........   Passed    2.42 sec
+        Start 246: test_cpp_harness_execution_contract
+ 13/255 Test #163: test_convection_3d_verification .............   Passed    2.17 sec
+        Start 256: test_production_solver_e2e
+ 14/255 Test #168: test_polyhedral_gradient_campaign ...........   Passed    3.29 sec
+        Start 221: test_phase8_mpi_poisson
+ 15/255 Test #221: test_phase8_mpi_poisson .....................   Passed    0.37 sec
+        Start  59: test_amg_preconditioner_qualification
+ 16/255 Test #256: test_production_solver_e2e ..................   Passed    1.17 sec
+        Start 160: test_polyhedral_laplacian_campaign
+ 17/255 Test #246: test_cpp_harness_execution_contract .........   Passed    1.59 sec
+        Start 258: test_meshio_bridge
+ 18/255 Test #160: test_polyhedral_laplacian_campaign ..........   Passed    0.87 sec
+        Start 251: test_imported_thermal_contracts
+ 19/255 Test #258: test_meshio_bridge ..........................   Passed    0.64 sec
+        Start 220: test_mpi_krylov_reduction
+ 20/255 Test  #59: test_amg_preconditioner_qualification .......   Passed    2.01 sec
+        Start 219: test_mpi_fused_reduction
+ 21/255 Test #251: test_imported_thermal_contracts .............   Passed    0.47 sec
+        Start 216: test_mpi_deterministic
+ 22/255 Test #220: test_mpi_krylov_reduction ...................   Passed    0.40 sec
+        Start 218: test_mpi_partition
+ 23/255 Test #219: test_mpi_fused_reduction ....................   Passed    0.34 sec
+        Start 217: test_n13_mpi_equivalence
+ 24/255 Test #216: test_mpi_deterministic ......................   Passed    0.34 sec
+        Start 222: test_n8_mpi_boundary
+ 25/255 Test #218: test_mpi_partition ..........................   Passed    0.34 sec
+        Start 250: test_production_thermal_restart_e2e
+ 26/255 Test #217: test_n13_mpi_equivalence ....................   Passed    0.36 sec
+        Start 151: test_mms_scalar_diffusion
+ 27/255 Test #222: test_n8_mpi_boundary ........................   Passed    0.35 sec
+        Start 164: test_convection_blending
+ 28/255 Test #250: test_production_thermal_restart_e2e .........   Passed    0.38 sec
+        Start 248: test_solid_conduction_contract_e2e
+ 29/255 Test #151: test_mms_scalar_diffusion ...................   Passed    0.32 sec
+        Start 153: test_nonorthogonal_laplacian_campaign
+ 30/255 Test #164: test_convection_blending ....................   Passed    0.38 sec
+        Start 253: test_n9_poiseuille_body_force_production
+ 31/255 Test #248: test_solid_conduction_contract_e2e ..........   Passed    0.41 sec
+        Start 252: test_n9_coupled_schur_case_selection
+ 32/255 Test #153: test_nonorthogonal_laplacian_campaign .......   Passed    0.34 sec
+        Start 245: test_cross_import_equivalence
+ 33/255 Test #253: test_n9_poiseuille_body_force_production ....   Passed    0.43 sec
+        Start 108: test_variable_viscosity_transpose_stress
+ 34/255 Test #252: test_n9_coupled_schur_case_selection ........   Passed    0.34 sec
+        Start 167: test_gradient_verification
+ 35/255 Test #245: test_cross_import_equivalence ...............   Passed    0.38 sec
+        Start 249: test_t2_campaign_verdict
+ 36/255 Test #167: test_gradient_verification ..................   Passed    0.25 sec
+        Start 247: test_n9_s8_naca0012_contract
+ 37/255 Test #108: test_variable_viscosity_transpose_stress ....   Passed    0.28 sec
+        Start 257: test_production_solver_numerics_e2e
+ 38/255 Test #249: test_t2_campaign_verdict ....................   Passed    0.25 sec
+        Start 143: test_vmfl036_axisymmetric_quick
+ 39/255 Test #247: test_n9_s8_naca0012_contract ................   Passed    0.24 sec
+        Start  86: test_dual_time_navier_stokes
+ 40/255 Test #143: test_vmfl036_axisymmetric_quick .............   Passed    0.15 sec
+        Start 210: test_n8_amg_anisotropy_scaling
+ 41/255 Test #257: test_production_solver_numerics_e2e .........   Passed    0.25 sec
+        Start 132: benchmark_wall_distance_naca0012
+ 42/255 Test #210: test_n8_amg_anisotropy_scaling ..............   Passed    0.17 sec
+        Start 154: test_transient_mms
+ 43/255 Test #132: benchmark_wall_distance_naca0012 ............   Passed    0.17 sec
+        Start 181: test_production_energy_stage_vv
+ 44/255 Test #154: test_transient_mms ..........................   Passed    0.13 sec
+        Start  12: test_n11_campaign_integrity
+ 45/255 Test #181: test_production_energy_stage_vv .............   Passed    0.11 sec
+        Start 128: test_wall_distance_methods
+ 46/255 Test  #86: test_dual_time_navier_stokes ................   Passed    0.35 sec
+        Start  56: test_amg_chebyshev
+ 47/255 Test #128: test_wall_distance_methods ..................   Passed    0.06 sec
+        Start 192: test_cfdx_qualification_registry
+ 48/255 Test  #12: test_n11_campaign_integrity .................   Passed    0.07 sec
+        Start 145: test_naca0012_quick
+ 49/255 Test  #56: test_amg_chebyshev ..........................   Passed    0.07 sec
+        Start 211: test_n9_common_schur_qualification
+ 50/255 Test #192: test_cfdx_qualification_registry ............   Passed    0.04 sec
+        Start 171: test_n10_mesh_fixture_manifest
+ 51/255 Test #145: test_naca0012_quick .........................   Passed    0.04 sec
+        Start 254: test_missing_qualification_case_contracts
+ 52/255 Test #254: test_missing_qualification_case_contracts ...   Passed    0.03 sec
+        Start 137: benchmark_wall_distance_bvh_rays
+ 53/255 Test #171: test_n10_mesh_fixture_manifest ..............   Passed    0.03 sec
+        Start 173: test_convection_solver_qualification
+ 54/255 Test #137: benchmark_wall_distance_bvh_rays ............   Passed    0.04 sec
+        Start 189: test_thermal_challenge_vv
+ 55/255 Test #211: test_n9_common_schur_qualification ..........   Passed    0.07 sec
+        Start 191: test_turbulence_qualification_matrix
+ 56/255 Test #173: test_convection_solver_qualification ........   Passed    0.04 sec
+        Start 240: test_case_hdf5_io
+ 57/255 Test #191: test_turbulence_qualification_matrix ........   Passed    0.03 sec
+        Start 144: test_bfs_quick
+ 58/255 Test #189: test_thermal_challenge_vv ...................   Passed    0.04 sec
+        Start   1: test_audit_cht_time
+ 59/255 Test #240: test_case_hdf5_io ...........................   Passed    0.03 sec
+        Start 169: test_n10_difficult_mesh_robustness
+ 60/255 Test #144: test_bfs_quick ..............................   Passed    0.03 sec
+        Start 238: test_hdf5_roundtrip
+ 61/255 Test #169: test_n10_difficult_mesh_robustness ..........   Passed    0.03 sec
+        Start 146: test_naca0012_wall_shear_audit_quick
+ 62/255 Test   #1: test_audit_cht_time .........................   Passed    0.04 sec
+        Start 134: test_n11_fw2_positivity_clamp_counter
+ 63/255 Test #238: test_hdf5_roundtrip .........................   Passed    0.03 sec
+        Start 209: test_n8_schur_complete_krylov
+ 64/255 Test #146: test_naca0012_wall_shear_audit_quick ........   Passed    0.02 sec
+        Start 237: test_hdf5_writer
+ 65/255 Test #134: test_n11_fw2_positivity_clamp_counter .......   Passed    0.02 sec
+        Start 186: test_s2s_radiation_vv
+ 66/255 Test #237: test_hdf5_writer ............................   Passed    0.01 sec
+        Start 183: test_production_s2s_energy_outer_loop_vv
+ 67/255 Test #209: test_n8_schur_complete_krylov ...............   Passed    0.02 sec
+        Start 239: test_field_roundtrip
+ 68/255 Test #186: test_s2s_radiation_vv .......................   Passed    0.01 sec
+        Start 133: test_n11_fw1_nearest_normal_fallback
+ 69/255 Test #183: test_production_s2s_energy_outer_loop_vv ....   Passed    0.01 sec
+        Start 236: test_phase7_ooc_validation
+ 70/255 Test #239: test_field_roundtrip ........................   Passed    0.01 sec
+        Start 156: test_transient_mms_3d_stiff
+ 71/255 Test #133: test_n11_fw1_nearest_normal_fallback ........   Passed    0.01 sec
+        Start  57: test_native_external_methods
+ 72/255 Test #236: test_phase7_ooc_validation ..................   Passed    0.01 sec
+        Start  68: test_phase123_regression
+ 73/255 Test #156: test_transient_mms_3d_stiff .................   Passed    0.01 sec
+        Start 233: test_runtime_pipeline
+ 74/255 Test  #57: test_native_external_methods ................   Passed    0.01 sec
+        Start 140: test_analytical_benchmarks
+ 75/255 Test  #68: test_phase123_regression ....................   Passed    0.01 sec
+        Start 123: test_sst_integration_gaps
+ 76/255 Test #233: test_runtime_pipeline .......................   Passed    0.01 sec
+        Start 149: test_numerical_model_verification
+ 77/255 Test #140: test_analytical_benchmarks ..................   Passed    0.01 sec
+        Start  77: test_dat_restart_identity
+ 78/255 Test #149: test_numerical_model_verification ...........   Passed    0.01 sec
+        Start  87: test_case_numerics_report
+ 79/255 Test #123: test_sst_integration_gaps ...................   Passed    0.01 sec
+        Start  13: test_audit_flux_contract
+ 80/255 Test  #77: test_dat_restart_identity ...................   Passed    0.00 sec
+        Start 182: test_production_s2s_energy_stage_vv
+ 81/255 Test  #87: test_case_numerics_report ...................   Passed    0.01 sec
+        Start  94: test_continuation
+ 82/255 Test  #13: test_audit_flux_contract ....................   Passed    0.01 sec
+        Start 121: test_energy_integration_contracts
+ 83/255 Test #182: test_production_s2s_energy_stage_vv .........   Passed    0.01 sec
+        Start 109: test_steady_incompressible_solver
+ 84/255 Test  #94: test_continuation ...........................   Passed    0.01 sec
+        Start  45: test_null_space
+ 85/255 Test #121: test_energy_integration_contracts ...........   Passed    0.01 sec
+        Start  40: test_probe_csv
+ 86/255 Test  #45: test_null_space .............................   Passed    0.00 sec
+        Start 223: test_convergence_history
+ 87/255 Test  #40: test_probe_csv ..............................***Failed    0.01 sec
+Running 13 test cases...
+  FAIL: writes_native_schema_header - write_probe_csv: cannot replace /tmp/cfdx_test_0.csv
+  PASS: orders_rows_by_name_then_iteration
+  PASS: round_trips_full_precision_values
+  PASS: atomic_publish_leaves_no_tmp
+  PASS: rejects_empty_samples
+  PASS: rejects_empty_probe_name
+  PASS: rejects_nonfinite_value
+  PASS: rejects_nonfinite_time
+  PASS: rejects_name_with_comma
+  PASS: canonical_float_encoding_matches_python_repr
+  PASS: overwrites_existing_file
+  PASS: emits_probe_metadata_when_probes_given
+  PASS: omits_metadata_when_no_probes_are_passed
+
+Results: 12 passed, 1 failed
+
+        Start 228: test_sst_blending
+ 88/255 Test #223: test_convergence_history ....................   Passed    0.00 sec
+        Start 101: test_initialization
+ 89/255 Test #109: test_steady_incompressible_solver ...........***Failed    0.01 sec
+Running 27 test cases...
+  PASS: n9_2_rhie_chow_pressure_sensitivity_and_flux_reference
+  PASS: native_solver_consumes_dat_restart
+  PASS: native_solver_consumes_dat_v2_thermal_turbulence_restart
+  PASS: native_point_probe_emission_is_iteration_synchronized
+  PASS: native_point_probe_matches_zero_reference_solution
+  FAILED: std::getline(in, line) && line.rfind("# probe ", 0) == 0 in operator() at /tmp/fix1_wt/tests/validation/test_steady_incompressible_solver.cpp:353
+  FAIL: native_point_probe_csv_matches_analytical_reference - Assertion failed: std::getline(in, line) && line.rfind("# probe ", 0) == 0
+  PASS: steady_incompressible_sst_dat_restart_hydrates_runtime_before_first_predictor
+  PASS: steady_incompressible_sst_continuous_and_dat_restarted_trajectories_match
+  PASS: steady_incompressible_opt_in_sst_runtime_executes_coupled_path
+CFDX nonlinear iteration 1 rejected; retry=1 alpha_u=0.35 alpha_p=0.15 reason=test-only rejection after committed SST transport
+  PASS: steady_incompressible_sst_state_rolls_back_after_post_transport_retry
+  PASS: steady_incompressible_opt_in_sst_runtime_executes_coupled_path
+  PASS: steady_incompressible_zero_state_is_fixed_point
+  PASS: simplec_zero_state_uses_consistent_momentum_diagonal
+  PASS: piso_zero_state_runs_multiple_pressure_corrections
+  PASS: piso_adaptive_acceleration_reduces_inner_work
+  PASS: momentum_assembly_uses_matching_pressure_gradient_component
+  PASS: momentum_assembly_consumes_mathematical_constraints
+  PASS: rhie_chow_rejects_nonfinite_inverse_diagonal
+  PASS: fixed_pressure_boundary_is_accepted_by_coupled_solver
+  PASS: dat_restart_roundtrip_thermal_and_turbulence_fields
+  PASS: nonlinear_retry_controls_are_validated_by_the_solver
+  PASS: nonlinear_state_rollback_restores_fields_exactly
+  PASS: convergence_qoi_gate_is_enforced_by_the_solver
+  PASS: convergence_qoi_gate_must_name_a_configured_probe
+  PASS: momentum_assembly_uses_harmonic_cellwise_viscosity
+  PASS: cellwise_turbulent_viscosity_controls_are_validated
+  PASS: cellwise_effective_viscosity_overflow_is_rejected_before_initialization
+
+Results: 26 passed, 1 failed
+
+ 90/255 Test #228: test_sst_blending ...........................   Passed    0.00 sec
+        Start   9: test_mpi_deterministic_fused
+ 91/255 Test #101: test_initialization .........................   Passed    0.00 sec
+        Start  97: test_m1_m4_physics
+ 92/255 Test  #97: test_m1_m4_physics ..........................   Passed    0.00 sec
+        Start 157: test_n12_momentum_mms
+ 93/255 Test #157: test_n12_momentum_mms .......................   Passed    0.00 sec
+        Start 177: test_level_c_coupled_verification
+ 94/255 Test #177: test_level_c_coupled_verification ...........   Passed    0.01 sec
+        Start 185: test_radiation_vv
+ 95/255 Test #185: test_radiation_vv ...........................   Passed    0.00 sec
+        Start  60: test_matrix_free_fv_operator
+ 96/255 Test  #60: test_matrix_free_fv_operator ................   Passed    0.00 sec
+        Start   2: test_audit_energy_boundary_metric
+ 97/255 Test   #2: test_audit_energy_boundary_metric ...........   Passed    0.00 sec
+        Start   4: test_discretization_verification
+ 98/255 Test   #4: test_discretization_verification ............   Passed    0.00 sec
+        Start 117: test_phase10_turbulence_hardening
+ 99/255 Test #117: test_phase10_turbulence_hardening ...........   Passed    0.00 sec
+        Start 204: test_wall_distance_turbulence
+100/255 Test #204: test_wall_distance_turbulence ...............   Passed    0.00 sec
+        Start 175: test_benchmark_matrix
+101/255 Test #175: test_benchmark_matrix .......................   Passed    0.00 sec
+        Start 180: test_thermal_zones_vv
+102/255 Test #180: test_thermal_zones_vv .......................   Passed    0.01 sec
+        Start 244: test_openfoam_importer
+103/255 Test #244: test_openfoam_importer ......................   Passed    0.01 sec
+        Start  58: test_matrix_characteristics
+104/255 Test  #58: test_matrix_characteristics .................   Passed    0.00 sec
+        Start 111: test_solver_vtu_provenance
+105/255 Test #111: test_solver_vtu_provenance ..................   Passed    0.00 sec
+        Start 178: test_cht_validation
+106/255 Test #178: test_cht_validation .........................   Passed    0.00 sec
+        Start  90: test_newton_field
+107/255 Test  #90: test_newton_field ...........................   Passed    0.00 sec
+        Start  70: test_scalar_diffusion
+108/255 Test  #70: test_scalar_diffusion .......................   Passed    0.00 sec
+        Start 208: test_n8_schur_representative_cfd
+109/255 Test #208: test_n8_schur_representative_cfd ............   Passed    0.01 sec
+        Start 106: test_finite_volume_transport
+110/255 Test #106: test_finite_volume_transport ................   Passed    0.00 sec
+        Start 122: test_cht_integration_contracts
+111/255 Test #122: test_cht_integration_contracts ..............   Passed    0.00 sec
+        Start  96: test_incompressible
+112/255 Test  #96: test_incompressible .........................   Passed    0.00 sec
+        Start  61: test_n11_scaling_equivalence
+113/255 Test  #61: test_n11_scaling_equivalence ................   Passed    0.00 sec
+        Start  63: test_n11_unit_invariance_robustness
+114/255 Test  #63: test_n11_unit_invariance_robustness .........   Passed    0.00 sec
+        Start 172: test_convection_polyhedral_campaign
+115/255 Test #172: test_convection_polyhedral_campaign .........   Passed    0.00 sec
+        Start  62: test_n11_production_scaling
+116/255 Test  #62: test_n11_production_scaling .................   Passed    0.00 sec
+        Start  36: test_transport_conservation
+117/255 Test  #36: test_transport_conservation .................   Passed    0.00 sec
+        Start 105: test_n11_scalar_conservation
+118/255 Test #105: test_n11_scalar_conservation ................   Passed    0.00 sec
+        Start 126: test_n11_bound_reporting_hardening
+119/255 Test #126: test_n11_bound_reporting_hardening ..........   Passed    0.00 sec
+        Start  52: test_stationary_solvers
+120/255 Test  #52: test_stationary_solvers .....................   Passed    0.00 sec
+        Start   5: test_matrix_diagnostics
+121/255 Test   #5: test_matrix_diagnostics .....................   Passed    0.00 sec
+        Start 118: test_turbulence_qualification_equations
+122/255 Test #118: test_turbulence_qualification_equations .....   Passed    0.00 sec
+        Start 243: test_validation_simple
+123/255 Test #243: test_validation_simple ......................   Passed    0.00 sec
+        Start 158: test_n12_pressure_continuity_mms
+124/255 Test #158: test_n12_pressure_continuity_mms ............   Passed    0.00 sec
+        Start 179: test_thermal_vv
+125/255 Test #179: test_thermal_vv .............................   Passed    0.00 sec
+        Start 188: test_thermal_radiation_regression
+126/255 Test #188: test_thermal_radiation_regression ...........   Passed    0.00 sec
+        Start 125: test_n11_sa_negative_nu_tilde_policy
+127/255 Test #125: test_n11_sa_negative_nu_tilde_policy ........   Passed    0.00 sec
+        Start 127: test_phase10_model_registry
+128/255 Test #127: test_phase10_model_registry .................   Passed    0.00 sec
+        Start 162: test_convection_scheme_verification
+129/255 Test #162: test_convection_scheme_verification .........   Passed    0.00 sec
+        Start  54: test_performance_runtime
+130/255 Test  #54: test_performance_runtime ....................   Passed    0.00 sec
+        Start 166: test_temporal_order_matrix
+131/255 Test #166: test_temporal_order_matrix ..................   Passed    0.00 sec
+        Start 110: test_vtu_writer_validation
+132/255 Test #110: test_vtu_writer_validation ..................   Passed    0.00 sec
+        Start 224: test_execution_summary
+133/255 Test #224: test_execution_summary ......................   Passed    0.00 sec
+        Start 116: test_m2_m4_solver_validation
+134/255 Test #116: test_m2_m4_solver_validation ................   Passed    0.00 sec
+        Start 165: test_n16_weno5z
+135/255 Test #165: test_n16_weno5z .............................   Passed    0.00 sec
+        Start  55: test_phase6_memory_benchmark
+136/255 Test  #55: test_phase6_memory_benchmark ................   Passed    0.00 sec
+        Start 129: test_wall_distance_invalid_results
+137/255 Test #129: test_wall_distance_invalid_results ..........   Passed    0.00 sec
+        Start 207: test_n8_schur_production_benchmark
+138/255 Test #207: test_n8_schur_production_benchmark ..........   Passed    0.00 sec
+        Start  50: test_krylov_preconditioning
+139/255 Test  #50: test_krylov_preconditioning .................   Passed    0.00 sec
+        Start  88: test_temporal_history
+140/255 Test  #88: test_temporal_history .......................   Passed    0.00 sec
+        Start  14: test_audit_helper_terms
+141/255 Test  #14: test_audit_helper_terms .....................   Passed    0.00 sec
+        Start 139: test_phase10_sst_limiter
+142/255 Test #139: test_phase10_sst_limiter ....................   Passed    0.00 sec
+        Start  29: test_gradient
+143/255 Test  #29: test_gradient ...............................   Passed    0.00 sec
+        Start 260: test_gap_analysis
+144/255 Test #260: test_gap_analysis ...........................   Passed    0.00 sec
+        Start 104: test_n7_causal_overshoot_regression
+145/255 Test #104: test_n7_causal_overshoot_regression .........   Passed    0.00 sec
+        Start  91: test_simulation_controller
+146/255 Test  #91: test_simulation_controller ..................   Passed    0.00 sec
+        Start 136: test_n11_b4_b5_amg_footprint
+147/255 Test #136: test_n11_b4_b5_amg_footprint ................   Passed    0.00 sec
+        Start  85: test_dual_time_physical_lifecycle
+148/255 Test  #85: test_dual_time_physical_lifecycle ...........   Passed    0.00 sec
+        Start  89: test_core_temporal
+149/255 Test  #89: test_core_temporal ..........................   Passed    0.00 sec
+        Start 135: test_n11_b1_b2_b3_linalg_guards
+150/255 Test #135: test_n11_b1_b2_b3_linalg_guards .............   Passed    0.00 sec
+        Start 232: test_runtime_execution_ooc
+151/255 Test #232: test_runtime_execution_ooc ..................   Passed    0.00 sec
+        Start  34: test_spatial_scheme_contract
+152/255 Test  #34: test_spatial_scheme_contract ................   Passed    0.00 sec
+        Start  15: test_point
+153/255 Test  #15: test_point ..................................   Passed    0.00 sec
+        Start 120: test_solid_conduction_selection
+154/255 Test #120: test_solid_conduction_selection .............   Passed    0.00 sec
+        Start 235: test_ooc_pipeline
+155/255 Test #235: test_ooc_pipeline ...........................   Passed    0.00 sec
+        Start  66: test_laplacian
+156/255 Test  #66: test_laplacian ..............................   Passed    0.00 sec
+        Start 190: test_thermophysical_models_vv
+157/255 Test #190: test_thermophysical_models_vv ...............   Passed    0.00 sec
+        Start  46: test_n8_pinned_pressure_gauge
+158/255 Test  #46: test_n8_pinned_pressure_gauge ...............   Passed    0.00 sec
+        Start  20: test_mesh
+159/255 Test  #20: test_mesh ...................................   Passed    0.00 sec
+        Start  73: test_face_geometry
+160/255 Test  #73: test_face_geometry ..........................   Passed    0.00 sec
+        Start  69: test_phase12_radiation_vv
+161/255 Test  #69: test_phase12_radiation_vv ...................   Passed    0.00 sec
+        Start  28: test_interpolation
+162/255 Test  #28: test_interpolation ..........................   Passed    0.00 sec
+        Start 241: test_memory_planner_validation
+163/255 Test #241: test_memory_planner_validation ..............   Passed    0.00 sec
+        Start  35: test_conservation_boundedness
+164/255 Test  #35: test_conservation_boundedness ...............   Passed    0.00 sec
+        Start  93: test_timestep_control
+165/255 Test  #93: test_timestep_control .......................   Passed    0.00 sec
+        Start  16: test_face
+166/255 Test  #16: test_face ...................................   Passed    0.00 sec
+        Start  24: test_boundary_field
+167/255 Test  #24: test_boundary_field .........................   Passed    0.00 sec
+        Start 206: test_coupled_block_schur_amg
+168/255 Test #206: test_coupled_block_schur_amg ................   Passed    0.00 sec
+        Start 124: test_production_radiation_contract
+169/255 Test #124: test_production_radiation_contract ..........   Passed    0.00 sec
+        Start  81: test_dual_time_stepping
+170/255 Test  #81: test_dual_time_stepping .....................   Passed    0.00 sec
+        Start  95: test_local_time_stepping
+171/255 Test  #95: test_local_time_stepping ....................   Passed    0.00 sec
+        Start 119: test_production_turbulence_contract
+172/255 Test #119: test_production_turbulence_contract .........   Passed    0.00 sec
+        Start  32: test_divergence
+173/255 Test  #32: test_divergence .............................   Passed    0.00 sec
+        Start 142: test_axisymmetric_vmfl036_kernel
+174/255 Test #142: test_axisymmetric_vmfl036_kernel ............   Passed    0.00 sec
+        Start 130: test_wall_distance_godunov_ridges
+175/255 Test #130: test_wall_distance_godunov_ridges ...........   Passed    0.00 sec
+        Start  92: test_adaptive_cfl
+176/255 Test  #92: test_adaptive_cfl ...........................   Passed    0.00 sec
+        Start  17: test_ownership
+177/255 Test  #17: test_ownership ..............................   Passed    0.00 sec
+        Start 225: test_restart_mapping
+178/255 Test #225: test_restart_mapping ........................   Passed    0.00 sec
+        Start 187: test_thermal_radiation_model_matrix
+179/255 Test #187: test_thermal_radiation_model_matrix .........   Passed    0.00 sec
+        Start  18: test_cell
+180/255 Test  #18: test_cell ...................................   Passed    0.00 sec
+        Start  51: test_krylov_diagnostics
+181/255 Test  #51: test_krylov_diagnostics .....................   Passed    0.00 sec
+        Start  64: test_backend_equivalence
+182/255 Test  #64: test_backend_equivalence ....................   Passed    0.00 sec
+        Start  98: test_m1_m4_validation
+183/255 Test  #98: test_m1_m4_validation .......................   Passed    0.00 sec
+        Start  19: test_boundary
+184/255 Test  #19: test_boundary ...............................   Passed    0.00 sec
+        Start 100: test_convergence_monitor
+185/255 Test #100: test_convergence_monitor ....................   Passed    0.00 sec
+        Start  84: test_dual_time_field_integrator
+186/255 Test  #84: test_dual_time_field_integrator .............   Passed    0.00 sec
+        Start 234: test_phase6_runtime_acceptance
+187/255 Test #234: test_phase6_runtime_acceptance ..............   Passed    0.00 sec
+        Start  26: test_boundary_fvm_constraints
+188/255 Test  #26: test_boundary_fvm_constraints ...............   Passed    0.00 sec
+        Start 205: test_geometry_cache
+189/255 Test #205: test_geometry_cache .........................   Passed    0.00 sec
+        Start  41: test_sparse_matrix
+190/255 Test  #41: test_sparse_matrix ..........................   Passed    0.00 sec
+        Start   3: test_temporal
+191/255 Test   #3: test_temporal ...............................   Passed    0.00 sec
+        Start  23: test_field_wall_hardening
+192/255 Test  #23: test_field_wall_hardening ...................   Passed    0.00 sec
+        Start  21: test_field
+193/255 Test  #21: test_field ..................................   Passed    0.00 sec
+        Start 231: test_m5_m7_foundations
+194/255 Test #231: test_m5_m7_foundations ......................   Passed    0.00 sec
+        Start  38: test_integrate
+195/255 Test  #38: test_integrate ..............................   Passed    0.00 sec
+        Start 229: test_thermo_transport_contracts
+196/255 Test #229: test_thermo_transport_contracts .............   Passed    0.00 sec
+        Start  67: test_diffusion_diagnostics
+197/255 Test  #67: test_diffusion_diagnostics ..................   Passed    0.00 sec
+        Start  78: test_mesh_family_volumes
+198/255 Test  #78: test_mesh_family_volumes ....................   Passed    0.00 sec
+        Start  31: test_oriented_numerics
+199/255 Test  #31: test_oriented_numerics ......................   Passed    0.00 sec
+        Start  65: test_n13_restart_equivalence
+200/255 Test  #65: test_n13_restart_equivalence ................   Passed    0.00 sec
+        Start  42: test_vector
+201/255 Test  #42: test_vector .................................   Passed    0.00 sec
+        Start 131: test_wall_distance_advection_residual
+202/255 Test #131: test_wall_distance_advection_residual .......   Passed    0.00 sec
+        Start 226: test_transport_models
+203/255 Test #226: test_transport_models .......................   Passed    0.00 sec
+        Start 174: test_fluent_vmfl_reference
+204/255 Test #174: test_fluent_vmfl_reference ..................   Passed    0.00 sec
+        Start  39: test_forces
+205/255 Test  #39: test_forces .................................   Passed    0.00 sec
+        Start  79: test_source_term
+206/255 Test  #79: test_source_term ............................   Passed    0.00 sec
+        Start 199: test_coupled_schur_selection
+207/255 Test #199: test_coupled_schur_selection ................   Passed    0.00 sec
+        Start 150: test_poiseuille_quick
+208/255 Test #150: test_poiseuille_quick .......................   Passed    0.00 sec
+        Start  76: test_geometry_invariants
+209/255 Test  #76: test_geometry_invariants ....................   Passed    0.00 sec
+        Start 176: test_level_b_reference_benchmarks
+210/255 Test #176: test_level_b_reference_benchmarks ...........   Passed    0.00 sec
+        Start 230: test_thermophysical_models
+211/255 Test #230: test_thermophysical_models ..................   Passed    0.00 sec
+        Start   6: test_application_layer
+212/255 Test   #6: test_application_layer ......................   Passed    0.00 sec
+        Start  25: test_boundary_contract
+213/255 Test  #25: test_boundary_contract ......................   Passed    0.00 sec
+        Start 141: test_vmfl036_reference_case
+214/255 Test #141: test_vmfl036_reference_case .................   Passed    0.00 sec
+        Start   8: test_memory_planner
+215/255 Test   #8: test_memory_planner .........................   Passed    0.00 sec
+        Start 107: test_vof_curvature_contract
+216/255 Test #107: test_vof_curvature_contract .................   Passed    0.00 sec
+        Start  83: test_dual_time_field_driver
+217/255 Test  #83: test_dual_time_field_driver .................   Passed    0.00 sec
+        Start  33: test_flux
+218/255 Test  #33: test_flux ...................................   Passed    0.00 sec
+        Start 227: test_equation_of_state_consistency
+219/255 Test #227: test_equation_of_state_consistency ..........   Passed    0.00 sec
+        Start  74: test_cell_geometry
+220/255 Test  #74: test_cell_geometry ..........................   Passed    0.00 sec
+        Start  30: test_pressure_velocity_system
+221/255 Test  #30: test_pressure_velocity_system ...............   Passed    0.00 sec
+        Start  43: test_linear_system
+222/255 Test  #43: test_linear_system ..........................   Passed    0.00 sec
+        Start  37: test_conservation_assembly
+223/255 Test  #37: test_conservation_assembly ..................   Passed    0.00 sec
+        Start  99: test_solver_control
+224/255 Test  #99: test_solver_control .........................   Passed    0.00 sec
+        Start  53: test_performance_foundations
+225/255 Test  #53: test_performance_foundations ................   Passed    0.00 sec
+        Start  80: test_temporal_physics
+226/255 Test  #80: test_temporal_physics .......................   Passed    0.00 sec
+        Start  75: test_mesh_quality
+227/255 Test  #75: test_mesh_quality ...........................   Passed    0.00 sec
+        Start  22: test_field_storage
+228/255 Test  #22: test_field_storage ..........................   Passed    0.00 sec
+        Start  27: test_boundary_validator
+229/255 Test  #27: test_boundary_validator .....................   Passed    0.00 sec
+        Start   7: test_memory_budget
+230/255 Test   #7: test_memory_budget ..........................   Passed    0.00 sec
+        Start  82: test_dual_time_adaptive
+231/255 Test  #82: test_dual_time_adaptive .....................   Passed    0.00 sec
+        Start  49: test_fgmres_solver
+232/255 Test   #9: test_mpi_deterministic_fused ................   Passed    0.34 sec
+        Start  48: test_gmres_solver
+        Start  44: test_cg_solver
+233/255 Test  #49: test_fgmres_solver ..........................   Passed    0.00 sec
+        Start  47: test_bicgstab_solver
+234/255 Test  #48: test_gmres_solver ...........................   Passed    0.00 sec
+        Start 152: test_nonorthogonal_skew_campaign
+235/255 Test  #44: test_cg_solver ..............................   Passed    0.00 sec
+236/255 Test  #47: test_bicgstab_solver ........................   Passed    0.00 sec
+237/255 Test #152: test_nonorthogonal_skew_campaign ............   Passed    0.00 sec
+        Start 193: test_schur_infrastructure
+        Start 242: test_plan_complet
+        Start 194: test_exact_schur
+238/255 Test #193: test_schur_infrastructure ...................   Passed    0.00 sec
+239/255 Test #242: test_plan_complet ...........................   Passed    0.00 sec
+        Start 196: test_simplerc_schur
+        Start 198: test_pcd_schur
+240/255 Test #194: test_exact_schur ............................   Passed    0.00 sec
+        Start 197: test_lsc_bfbt_schur
+241/255 Test #196: test_simplerc_schur .........................   Passed    0.00 sec
+242/255 Test #198: test_pcd_schur ..............................   Passed    0.00 sec
+        Start 195: test_n9_schur_oracle
+        Start  72: test_schur_preconditioner
+243/255 Test #197: test_lsc_bfbt_schur .........................   Passed    0.00 sec
+244/255 Test #195: test_n9_schur_oracle ........................   Passed    0.00 sec
+        Start 202: test_schur_quantitative_qualification
+        Start 203: test_mgr_preconditioner
+245/255 Test  #72: test_schur_preconditioner ...................   Passed    0.00 sec
+246/255 Test #202: test_schur_quantitative_qualification .......   Passed    0.00 sec
+        Start 200: test_lsc_bfbt_schur_null_space
+        Start 201: test_schur_approximation_comparison
+247/255 Test #203: test_mgr_preconditioner .....................   Passed    0.00 sec
+248/255 Test #200: test_lsc_bfbt_schur_null_space ..............   Passed    0.00 sec
+        Start  71: test_advanced_preconditioners
+249/255 Test #201: test_schur_approximation_comparison .........   Passed    0.00 sec
+250/255 Test  #71: test_advanced_preconditioners ...............   Passed    0.00 sec
+251/255 Test #113: test_ghia_cavity_order ......................   Passed  139.53 sec
+        Start 170: test_n10_qualification
+252/255 Test #170: test_n10_qualification ......................   Passed   21.58 sec
+        Start  10: test_n8_physical_qualification
+253/255 Test  #10: test_n8_physical_qualification ..............   Passed   31.58 sec
+        Start 114: test_n8_pressure_velocity_matrix
+254/255 Test #114: test_n8_pressure_velocity_matrix ............   Passed   22.99 sec
+        Start 215: test_n9_negative_diagnostics
+255/255 Test #215: test_n9_negative_diagnostics ................   Passed    2.80 sec
+
+99% tests passed, 2 tests failed out of 255
+
+Label Time Summary:
+audit                  =   1.64 sec*proc (5 tests)
+axisymmetric           =   0.15 sec*proc (2 tests)
+benchmark              =  12.95 sec*proc (3 tests)
+campaign               = 139.53 sec*proc (1 test)
+experimental           =   0.00 sec*proc (1 test)
+integration            =   5.04 sec*proc (6 tests)
+io                     =   0.47 sec*proc (1 test)
+mesh                   =  57.85 sec*proc (2 tests)
+mms                    =   7.32 sec*proc (5 tests)
+mpi                    =   1.02 sec*proc (2 tests)
+n10                    =  58.15 sec*proc (9 tests)
+n11                    =   0.08 sec*proc (3 tests)
+n12                    =   7.32 sec*proc (5 tests)
+n13                    =   0.36 sec*proc (3 tests)
+n16                    =   0.00 sec*proc (1 test)
+n7                     =  60.29 sec*proc (3 tests)
+n8                     =  54.91 sec*proc (3 tests)
+n9                     =   3.82 sec*proc (4 tests)
+numerical              =   0.01 sec*proc (2 tests)
+openfoam               =   3.01 sec*proc (1 test)
+phase12                =   0.00 sec*proc (1 test)
+phase13                = 157.76 sec*proc (34 tests)
+phase14                =   0.15 sec*proc (3 tests)
+provenance             =   0.03 sec*proc (1 test)
+qualification          = 295.27 sec*proc (38 tests)
+recovered              =   0.68 sec*proc (7 tests)
+reference              =   0.00 sec*proc (1 test)
+regression             =   0.05 sec*proc (5 tests)
+restart                =   0.38 sec*proc (1 test)
+sanitizer-slow         = 199.64 sec*proc (8 tests)
+schur                  =   0.34 sec*proc (1 test)
+test-infrastructure    =   1.59 sec*proc (1 test)
+thermal                =   1.55 sec*proc (6 tests)
+total-validation       =   0.24 sec*proc (1 test)
+turbulence             =   0.03 sec*proc (1 test)
+unit                   =   0.75 sec*proc (7 tests)
+validation             = 454.21 sec*proc (78 tests)
+validation-total       =   3.57 sec*proc (3 tests)
+verification           =   0.01 sec*proc (2 tests)
+wall-distance          =  12.95 sec*proc (3 tests)
+
+Total Test time (real) = 218.48 sec
+
+The following tests FAILED:
+	 40 - test_probe_csv (Failed)
+	109 - test_steady_incompressible_solver (Failed)        phase13 validation
+Errors while running CTest

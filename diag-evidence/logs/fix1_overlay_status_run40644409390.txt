@@ -1,0 +1,7 @@
+patch_transport_md5=differs
+md5_guard=differs-diagnostic
+patch_ok=true
+build_exit=0
+targeted_ctest_exit=0
+full_ctest_exit=8
+pyreg_exit=0

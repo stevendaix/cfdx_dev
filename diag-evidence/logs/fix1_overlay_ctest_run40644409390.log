@@ -1,0 +1,29 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+    Start  10: test_n8_physical_qualification
+1/8 Test  #10: test_n8_physical_qualification ......   Passed   31.71 sec
+    Start  86: test_dual_time_navier_stokes
+2/8 Test  #86: test_dual_time_navier_stokes ........   Passed    0.21 sec
+    Start 109: test_steady_incompressible_solver
+3/8 Test #109: test_steady_incompressible_solver ...   Passed    0.01 sec
+    Start 114: test_n8_pressure_velocity_matrix
+4/8 Test #114: test_n8_pressure_velocity_matrix ....   Passed   23.00 sec
+    Start 115: test_couette_quick
+5/8 Test #115: test_couette_quick ..................   Passed   12.54 sec
+    Start 116: test_m2_m4_solver_validation
+6/8 Test #116: test_m2_m4_solver_validation ........   Passed    0.00 sec
+    Start 177: test_level_c_coupled_verification
+7/8 Test #177: test_level_c_coupled_verification ...   Passed    0.01 sec
+    Start 195: test_n9_schur_oracle
+8/8 Test #195: test_n9_schur_oracle ................   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 8
+
+Label Time Summary:
+n8                =  54.72 sec*proc (2 tests)
+phase13           =   0.02 sec*proc (3 tests)
+qualification     =  67.26 sec*proc (3 tests)
+sanitizer-slow    =  67.26 sec*proc (3 tests)
+validation        =  67.28 sec*proc (6 tests)
+
+Total Test time (real) =  67.58 sec
