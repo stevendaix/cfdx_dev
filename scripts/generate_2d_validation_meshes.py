@@ -150,11 +150,7 @@ def extrude_2d(nodes2d, cells2d, boundary2d, layers: int = 1, span: float = 1.0)
     if layers < 1 or not math.isfinite(span) or span <= 0.0:
         raise ValueError("layers must be positive and span finite and positive")
     n = len(nodes2d)
-    points = [
-        [x, y, span * k / layers]
-        for k in range(layers + 1)
-        for x, y in nodes2d
-    ]
+    points = [[x, y, span * k / layers] for k in range(layers + 1) for x, y in nodes2d]
     cells = []
     for k in range(layers):
         lo, hi = k * n, (k + 1) * n
@@ -173,10 +169,7 @@ def extrude_2d(nodes2d, cells2d, boundary2d, layers: int = 1, span: float = 1.0)
                 bf[name].append((a + lo, b + lo, b + hi, a + hi))
     front_cells = boundary2d.get("_front_cells", cells2d)
     bf["front"] = [tuple(cell) for cell in front_cells]
-    bf["back"] = [
-        tuple(reversed(tuple(v + layers * n for v in cell)))
-        for cell in front_cells
-    ]
+    bf["back"] = [tuple(reversed(tuple(v + layers * n for v in cell))) for cell in front_cells]
     return points, cells, bf
 
 
