@@ -1,7 +1,10 @@
 """Regression tests for the generated NACA0012 O-grid outer boundary."""
 
 import importlib.util
+import json
 from pathlib import Path
+import subprocess
+import sys
 
 import numpy as np
 import pytest
@@ -55,3 +58,52 @@ def test_naca0012_o_grid_quality_metrics_are_finite(n_surface, n_radial):
     assert quality["maximum_radial_growth_ratio"] >= quality["minimum_radial_growth_ratio"]
     assert np.isfinite(quality["maximum_cell_edge_aspect_ratio"])
     assert quality["maximum_cell_edge_aspect_ratio"] >= 1.0
+
+
+@pytest.mark.parametrize(
+    ("n_surface", "n_radial"),
+    [(64, 24), (128, 48), (256, 96)],
+)
+def test_naca0012_o_grid_quality_metrics_are_finite(n_surface, n_radial):
+    quality = MESHGEN.naca_o_grid_quality(n_surface, n_radial, radius=20.0)
+
+    assert quality["cell_count"] == (2 * n_surface + 1) * n_radial
+    assert quality["inverted_or_degenerate_cells"] == 0
+    assert quality["minimum_absolute_cell_area"] > 0.0
+    assert quality["minimum_first_layer_spacing"] > 0.0
+    assert quality["maximum_first_layer_spacing"] >= quality["minimum_first_layer_spacing"]
+    assert quality["minimum_radial_growth_ratio"] > 0.0
+    assert quality["maximum_radial_growth_ratio"] >= quality["minimum_radial_growth_ratio"]
+    assert np.isfinite(quality["maximum_cell_edge_aspect_ratio"])
+    assert quality["maximum_cell_edge_aspect_ratio"] >= 1.0
+    assert 0.0 <= quality["p95_nonorthogonality_degrees"]
+    assert quality["p95_nonorthogonality_degrees"] <= quality["maximum_nonorthogonality_degrees"] <= 90.0
+
+
+@pytest.mark.parametrize(
+    ("n_surface", "n_radial", "radius"),
+    [(1, 24, 20.0), (64, 0, 20.0), (64, 24, 0.0), (64, 24, float("inf"))],
+)
+def test_naca0012_o_grid_rejects_invalid_parameters(n_surface, n_radial, radius):
+    with pytest.raises(ValueError):
+        MESHGEN.naca_o_grid(n_surface, n_radial, radius)
+
+
+def test_naca0012_mesh_quality_report_is_valid_json(tmp_path):
+    subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "naca0012",
+            "--quick",
+            "--output-dir",
+            str(tmp_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    report = json.loads((tmp_path / "naca0012_mesh_quality.json").read_text(encoding="utf-8"))
+    assert len(report) == 1
+    assert report[0]["inverted_or_degenerate_cells"] == 0
+    assert "maximum_nonorthogonality_degrees" in report[0]
