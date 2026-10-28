@@ -1,9 +1,8 @@
 name: PR 1145 pre-commit + numerical build oracle (diag)
 
 # DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
-# Evidence-only : relever les findings Ruff/pre-commit exacts et l'erreur de
-# compilation C++ derriere les echecs "Pre-commit" et "Build numerical test
-# suite" (exit 1) sur le head PR #1145 6d860684.
+# Evidence-only : relever les findings Ruff/pre-commit exacts sur le head
+# PR #1145 d75adaac (run 2 : apres fixes ruff round 1).
 on:
   push:
     branches: [ci/long-campaign-diagnostics]
@@ -20,17 +19,16 @@ concurrency:
 
 env:
   EVID: diag-evidence/logs
-  PR1145_HEAD: 6d860684e9578f14857c5a60306a1c19ede96864
+  PR1145_HEAD: d75adaac6275739c2348364970e6e7b6e66ce16d
   PR1145_BASE: 940635ee1ab7853002030680548525be692d2b97
 
 jobs:
   oracle:
-    name: pre-commit replica + numerical build replica on PR1145 head
+    name: pre-commit replica on PR1145 head
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     env:
       WDIR: /tmp/pr1145_wt
-      FILES: scripts/generate_2d_validation_meshes.py tests/python/test_naca_mesh_symmetry_extrusion.py
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,7 +41,7 @@ jobs:
             echo "run_id=$GITHUB_RUN_ID"
             echo "pr1145_head=$PR1145_HEAD"
             echo "pr1145_base=$PR1145_BASE"
-            echo "purpose=exact ruff/precommit findings + C++ build error behind PR1145 CI failures"
+            echo "purpose=round2 exact ruff/precommit findings on PR1145 head d75adaac"
           } > "$GITHUB_WORKSPACE/$EVID/pr1145_diag_meta_run$GITHUB_RUN_ID.txt"
           git cat-file -e "$PR1145_HEAD^{commit}" || { echo "::error::PR1145 head unresolvable"; exit 1; }
           git worktree add "$WDIR" "$PR1145_HEAD"
@@ -56,26 +54,20 @@ jobs:
       - name: Install pre-commit and Ruff
         run: python -m pip install --upgrade pre-commit ruff
 
-      - name: List changed python files in range
-        run: |
-          cd "$WDIR"
-          git diff --name-only "$PR1145_BASE...$PR1145_HEAD" -- '*.py' | tee "$GITHUB_WORKSPACE/$EVID/pr1145_changed_py_run$GITHUB_RUN_ID.txt"
-
       - name: Pre-commit replica (exact precommit.yml guard)
         run: |
-          set +e
           cd "$WDIR"
+          FILES="scripts/generate_2d_validation_meshes.py tests/python/test_naca_mesh_symmetry_extrusion.py"
+          set +e
           {
             echo "=== ruff version ==="
             ruff --version
             echo "=== ruff check ==="
             ruff check $FILES
             echo "ruff_check_exit=$?"
-            echo "=== ruff format --check ==="
-            ruff format --check $FILES
-            echo "ruff_format_exit=$?"
-            echo "=== ruff format --diff ==="
+            echo "=== ruff format --diff (full) ==="
             ruff format --diff $FILES
+            echo "ruff_format_exit=$?"
             echo "=== pre-commit run --files ==="
             pre-commit run --files $FILES --show-diff-on-failure
             echo "precommit_exit=$?"
@@ -83,39 +75,7 @@ jobs:
             CFDX_PRECOMMIT_RANGE="$PR1145_BASE...$PR1145_HEAD" pre-commit run cfdx-fast --all-files
             echo "cfdx_fast_exit=$?"
           } > "$GITHUB_WORKSPACE/$EVID/pr1145_precommit_replica_run$GITHUB_RUN_ID.txt" 2>&1
-          rc=$?
-          set -e
           cat "$GITHUB_WORKSPACE/$EVID/pr1145_precommit_replica_run$GITHUB_RUN_ID.txt"
-
-      - name: Install numerical build dependencies (replica cfdx-numerical.yml)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y cmake ninja-build g++ ccache zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
-
-      - name: Configure replica
-        run: |
-          cd "$WDIR"
-          python3 -m venv .venv
-          .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic
-          ccache --zero-stats || true
-          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCFDX_BUILD_TESTS=ON             -DCFDX_ENABLE_LONG_VALIDATION=OFF             -DCFDX_ENABLE_MPI=ON             -DCFDX_USE_HDF5_SERIAL=OFF             -DPython3_EXECUTABLE=$PWD/.venv/bin/python             -DCMAKE_C_COMPILER_LAUNCHER=ccache             -DCMAKE_CXX_COMPILER_LAUNCHER=ccache             > "$GITHUB_WORKSPACE/$EVID/pr1145_configure_run$GITHUB_RUN_ID.txt" 2>&1 || {
-              cat "$GITHUB_WORKSPACE/$EVID/pr1145_configure_run$GITHUB_RUN_ID.txt"; exit 1; }
-          tail -n 30 "$GITHUB_WORKSPACE/$EVID/pr1145_configure_run$GITHUB_RUN_ID.txt"
-
-      - name: Build replica (numerical test suite)
-        run: |
-          set +e
-          cd "$WDIR"
-          cmake --build build --parallel 4 --verbose 2>&1 | tee build.log
-          build_rc=$?
-          set -e
-          {
-            echo "build_exit=$build_rc"
-            echo "=== error excerpt ==="
-            grep -E -B3 -A6 'error:|fatal error:|undefined reference|collect2: error|FAILED:' build.log | tail -n 250 || true
-          } > "$GITHUB_WORKSPACE/$EVID/pr1145_build_replica_run$GITHUB_RUN_ID.txt"
-          cat "$GITHUB_WORKSPACE/$EVID/pr1145_build_replica_run$GITHUB_RUN_ID.txt"
 
       - name: Commit evidence
         if: always()
@@ -126,7 +86,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: pr1145 precommit+build oracle run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            git commit -m "diag: pr1145 precommit oracle round2 run $GITHUB_RUN_ID (evidence-only) [ci skip]"
             if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
               git pull --rebase origin "$GITHUB_REF_NAME"
               git push origin "HEAD:$GITHUB_REF_NAME"
