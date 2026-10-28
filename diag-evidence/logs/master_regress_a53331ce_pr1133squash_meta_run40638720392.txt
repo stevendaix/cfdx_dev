@@ -1,0 +1,7 @@
+run_id=40638720392
+ref=a53331ce463262cf6167c099e769639d43b0d7ae
+ref_label=a53331ce_pr1133squash
+purpose=bisect failing tests (dual_time, couette_quick, n8 matrix, n8 physical qualification, maturity N9 set) between #1133 squash and #1137 master
+a53331ce fix(numerics): repair CI blockers for Rhie-Chow qualification (#1133)
+79131398 Make variable-viscosity stress flux linear-exact on skewed meshes (#1139)
+5d85d98d Fix GMRES residual certification and MPI qualification (#1131)
