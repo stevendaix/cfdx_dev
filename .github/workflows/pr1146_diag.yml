@@ -1,8 +1,10 @@
-name: PR 1146 pre-commit replica round2 (diag)
+name: PR 1146 repair corrupted python files (diag)
 
 # DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
-# Round 2 : replique EXACTE de l'etape faillante de precommit.yml sur le head
-# final e41f7cfc (apres canonicals ruff) pour capturer la sortie complete.
+# Round 3 : REPARATION. Les 3 fichiers python de la branche PR contiennent des
+# placeholders MSL (1 ligne) poussees par erreur. Ce workflow restaure le
+# canonical ruff-format du round 1 (commit 9ffb69b2, issu d'un cp de worktree
+# git reel) et pousse la reparation sur la branche PR depuis un worktree.
 on:
   push:
     branches: [ci/long-campaign-diagnostics]
@@ -20,61 +22,94 @@ concurrency:
 env:
   EVID: diag-evidence/logs/pr1146
   PR1146_HEAD: e41f7cfce20681540a914ffe07341e3ed24c9a19
-  PR1146_BASE: ecf1d02287b71ee69f118955b31b966e0d3888fe
+  CANON_COMMIT: 9ffb69b21148c02e0935154322eea9362b132035
+  PR_BRANCH: fix/p0-p1-physical-guards-wall-forces
 
 jobs:
-  oracle:
-    name: pre-commit replica round2 on PR1146 head
+  repair:
+    name: restore canonical python files on PR branch
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      WDIR: /tmp/pr1146_wt2
+      WDIR: /tmp/pr1146_wt3
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Resolve pins and worktree PR head
+      - name: Resolve pins and worktree
         run: |
           mkdir -p "$GITHUB_WORKSPACE/$EVID"
           {
             echo "run_id=$GITHUB_RUN_ID"
+            echo "purpose=round3 repair placeholder-corrupted python files"
             echo "pr1146_head=$PR1146_HEAD"
-            echo "pr1146_base=$PR1146_BASE"
-            echo "purpose=round2 exact pre-commit failure output on head e41f7cfc"
-          } > "$GITHUB_WORKSPACE/$EVID/pr1146_round2_meta_run$GITHUB_RUN_ID.txt"
-          git cat-file -e "$PR1146_HEAD^{commit}" || { echo "::error::PR1146 head unresolvable"; exit 1; }
+            echo "canonical_source=$CANON_COMMIT"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1146_round3_meta_run$GITHUB_RUN_ID.txt"
+          git cat-file -e "$PR1146_HEAD^{commit}" || { echo "::error::PR head unresolvable"; exit 1; }
+          git cat-file -e "$CANON_COMMIT^{commit}" || { echo "::error::canonical commit unresolvable"; exit 1; }
           git worktree add "$WDIR" "$PR1146_HEAD"
 
-      - name: Set up Python 3.10 (replica precommit.yml)
+      - name: Restore canonicals from round-1 evidence
+        run: |
+          cd "$WDIR"
+          FILES="scripts/generate_naca_radial_family.py scripts/qualify_naca_grid.py tests/python/test_qualify_naca_grid.py"
+          git checkout "$CANON_COMMIT" -- diag-evidence/logs/pr1146/canonical/
+          {
+            echo "=== before (corrupted) ==="
+            for f in $FILES; do echo "--- $f"; git show "$PR1146_HEAD:$f"; done
+            echo "=== restore ==="
+            for f in $FILES; do
+              cp "diag-evidence/logs/pr1146/canonical/$f" "$f"
+              echo "restored $f"
+            done
+          } > "$GITHUB_WORKSPACE/$EVID/pr1146_round3_restore_run$GITHUB_RUN_ID.txt"
+
+      - name: Set up Python 3.10 and verify
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
 
-      - name: Install pre-commit and Ruff
-        run: python -m pip install --upgrade pre-commit ruff
+      - name: Install Ruff
+        run: python -m pip install --upgrade ruff
 
-      - name: Exact precommit.yml replica on PR head
+      - name: Verify restored files (ruff + syntax + hashes)
         run: |
           cd "$WDIR"
-          export CFDX_PRECOMMIT_RANGE="$PR1146_BASE...$PR1146_HEAD"
+          FILES="scripts/generate_naca_radial_family.py scripts/qualify_naca_grid.py tests/python/test_qualify_naca_grid.py"
           set +e
           {
-            echo "=== env ==="
-            echo "CFDX_PRECOMMIT_RANGE=$CFDX_PRECOMMIT_RANGE"
-            echo "=== git diff name-only (py) ==="
-            git diff --name-only "$CFDX_PRECOMMIT_RANGE" -- '*.py'
-            echo "=== ruff version ==="
-            ruff --version
-            echo "=== pre-commit run --files (EXACT replica) ==="
-            mapfile -t python_files < <(git diff --name-only "$CFDX_PRECOMMIT_RANGE" -- '*.py')
-            pre-commit run --files "${python_files[@]}" --show-diff-on-failure
-            echo "precommit_run_exit=$?"
-            echo "=== pre-commit run cfdx-fast --all-files ==="
-            pre-commit run cfdx-fast --all-files
-            echo "cfdx_fast_exit=$?"
-          } > "$GITHUB_WORKSPACE/$EVID/pr1146_round2_replica_run$GITHUB_RUN_ID.txt" 2>&1
-          cat "$GITHUB_WORKSPACE/$EVID/pr1146_round2_replica_run$GITHUB_RUN_ID.txt"
+            echo "=== ruff version ==="; ruff --version
+            echo "=== ruff check ==="; ruff check $FILES; echo "check_exit=$?"
+            echo "=== ruff format --check ==="; ruff format --check $FILES; echo "format_exit=$?"
+            echo "=== compileall ==="; python3 -m compileall -q $FILES; echo "compile_exit=$?"
+            echo "=== git hash-object (restored) ==="; git hash-object $FILES
+            echo "=== first lines ==="; for f in $FILES; do echo "--- $f"; head -2 "$f"; done
+          } >> "$GITHUB_WORKSPACE/$EVID/pr1146_round3_restore_run$GITHUB_RUN_ID.txt" 2>&1
+          ruff check $FILES && ruff format --check $FILES && python3 -m compileall -q $FILES
+          if [ $? -ne 0 ]; then echo "::error::restored files failed verification"; exit 1; fi
+
+      - name: Push repair to PR branch
+        run: |
+          cd "$WDIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/generate_naca_radial_family.py scripts/qualify_naca_grid.py tests/python/test_qualify_naca_grid.py
+          if git diff --cached --quiet; then
+            echo "nothing to repair" >> "$GITHUB_WORKSPACE/$EVID/pr1146_round3_restore_run$GITHUB_RUN_ID.txt"
+          else
+            git commit -m "fix: restore canonical ruff-formatted python files (PR #1146)
+
+Repair: the three changed python files were corrupted to one-line
+placeholders by a faulty fetch channel. Restored byte-exact from the
+diag round-1 canonical (ruff 0.17.3 format, ruff check clean,
+compileall clean) produced from a real git worktree at PR head
+015c5097 and verified again in this run (see diag-evidence/logs/pr1146/
+pr1146_round3_restore_run*)."
+            git push origin "HEAD:$PR_BRANCH"
+            git rev-parse HEAD > "$GITHUB_WORKSPACE/$EVID/pr1146_round3_pushed_commit_run$GITHUB_RUN_ID.txt"
+            git hash-object scripts/generate_naca_radial_family.py scripts/qualify_naca_grid.py tests/python/test_qualify_naca_grid.py >> "$GITHUB_WORKSPACE/$EVID/pr1146_round3_pushed_commit_run$GITHUB_RUN_ID.txt"
+          fi
 
       - name: Commit evidence
         if: always()
@@ -85,7 +120,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: pr1146 precommit replica round2 run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            git commit -m "diag: pr1146 round3 repair run $GITHUB_RUN_ID (evidence-only) [ci skip]"
             if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
               git pull --rebase origin "$GITHUB_REF_NAME"
               git push origin "HEAD:$GITHUB_REF_NAME"
@@ -95,5 +130,5 @@ jobs:
       - name: Final gate
         if: always()
         run: |
-          ls "$GITHUB_WORKSPACE/$EVID" | grep "round2.*run$GITHUB_RUN_ID|run$GITHUB_RUN_ID" || { echo "::error::no evidence recorded"; exit 1; }
-          echo "diag evidence committed for run $GITHUB_RUN_ID"
+          ls "$GITHUB_WORKSPACE/$EVID" | grep "round3" || { echo "::error::no round3 evidence"; exit 1; }
+          echo "round3 repair executed for run $GITHUB_RUN_ID"
