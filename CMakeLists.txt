@@ -632,6 +632,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_simulation_controller tests/unit/test_simulation_controller.cpp)
     add_cfdx_test(test_adaptive_cfl tests/unit/test_adaptive_cfl.cpp)
     add_cfdx_test(test_timestep_control tests/unit/test_timestep_control.cpp)
+    add_cfdx_test(test_wall_face_reconstruction_quadratic tests/unit/test_wall_face_reconstruction_quadratic.cpp)
     add_cfdx_test(test_continuation tests/unit/test_continuation.cpp)
     add_cfdx_test(test_local_time_stepping tests/unit/test_local_time_stepping.cpp)
     add_cfdx_test(test_incompressible tests/unit/test_incompressible.cpp)
