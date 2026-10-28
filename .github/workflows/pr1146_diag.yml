@@ -1,8 +1,8 @@
-name: PR 1146 ruff canonical oracle (diag)
+name: PR 1146 pre-commit replica round2 (diag)
 
 # DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
-# Oracle : produire le canonical ruff format/check des 3 fichiers Python
-# changes par la PR #1146 (head 015c5097) et le committer en evidence.
+# Round 2 : replique EXACTE de l'etape faillante de precommit.yml sur le head
+# final e41f7cfc (apres canonicals ruff) pour capturer la sortie complete.
 on:
   push:
     branches: [ci/long-campaign-diagnostics]
@@ -19,16 +19,16 @@ concurrency:
 
 env:
   EVID: diag-evidence/logs/pr1146
-  PR1146_HEAD: 015c5097ff02c6315998f5653c026cbca8e2e4f6
+  PR1146_HEAD: e41f7cfce20681540a914ffe07341e3ed24c9a19
   PR1146_BASE: ecf1d02287b71ee69f118955b31b966e0d3888fe
 
 jobs:
   oracle:
-    name: ruff canonical on PR1146 head
+    name: pre-commit replica round2 on PR1146 head
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
-      WDIR: /tmp/pr1146_wt
+      WDIR: /tmp/pr1146_wt2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,13 +36,13 @@ jobs:
 
       - name: Resolve pins and worktree PR head
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/$EVID/canonical"
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
           {
             echo "run_id=$GITHUB_RUN_ID"
             echo "pr1146_head=$PR1146_HEAD"
             echo "pr1146_base=$PR1146_BASE"
-            echo "purpose=ruff canonical (format+check) for PR1146 python files"
-          } > "$GITHUB_WORKSPACE/$EVID/pr1146_diag_meta_run$GITHUB_RUN_ID.txt"
+            echo "purpose=round2 exact pre-commit failure output on head e41f7cfc"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1146_round2_meta_run$GITHUB_RUN_ID.txt"
           git cat-file -e "$PR1146_HEAD^{commit}" || { echo "::error::PR1146 head unresolvable"; exit 1; }
           git worktree add "$WDIR" "$PR1146_HEAD"
 
@@ -51,35 +51,30 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Install Ruff
-        run: python -m pip install --upgrade ruff
+      - name: Install pre-commit and Ruff
+        run: python -m pip install --upgrade pre-commit ruff
 
-      - name: Ruff check + canonical format
+      - name: Exact precommit.yml replica on PR head
         run: |
           cd "$WDIR"
-          FILES="scripts/generate_naca_radial_family.py scripts/qualify_naca_grid.py tests/python/test_qualify_naca_grid.py"
+          export CFDX_PRECOMMIT_RANGE="$PR1146_BASE...$PR1146_HEAD"
           set +e
           {
+            echo "=== env ==="
+            echo "CFDX_PRECOMMIT_RANGE=$CFDX_PRECOMMIT_RANGE"
+            echo "=== git diff name-only (py) ==="
+            git diff --name-only "$CFDX_PRECOMMIT_RANGE" -- '*.py'
             echo "=== ruff version ==="
             ruff --version
-            echo "=== ruff check (pre-fix, head pin) ==="
-            ruff check $FILES
-            echo "ruff_check_exit=$?"
-            echo "=== ruff format --diff (pre-fix) ==="
-            ruff format --diff $FILES
-            echo "ruff_format_exit=$?"
-          } > "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt" 2>&1
-          cat "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt"
-          ruff format $FILES
-          echo "=== post-format ruff check ===" >> "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt"
-          ruff check $FILES >> "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt" 2>&1
-          echo "post_format_check_exit=$?" >> "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt"
-          ruff format --check $FILES >> "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt" 2>&1
-          echo "post_format_check_exit=$?" >> "$GITHUB_WORKSPACE/$EVID/pr1146_ruff_replica_run$GITHUB_RUN_ID.txt"
-          for f in $FILES; do
-            mkdir -p "$GITHUB_WORKSPACE/$EVID/canonical/$(dirname "$f")"
-            cp "$f" "$GITHUB_WORKSPACE/$EVID/canonical/$f"
-          done
+            echo "=== pre-commit run --files (EXACT replica) ==="
+            mapfile -t python_files < <(git diff --name-only "$CFDX_PRECOMMIT_RANGE" -- '*.py')
+            pre-commit run --files "${python_files[@]}" --show-diff-on-failure
+            echo "precommit_run_exit=$?"
+            echo "=== pre-commit run cfdx-fast --all-files ==="
+            pre-commit run cfdx-fast --all-files
+            echo "cfdx_fast_exit=$?"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1146_round2_replica_run$GITHUB_RUN_ID.txt" 2>&1
+          cat "$GITHUB_WORKSPACE/$EVID/pr1146_round2_replica_run$GITHUB_RUN_ID.txt"
 
       - name: Commit evidence
         if: always()
@@ -90,7 +85,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: pr1146 ruff canonical oracle run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            git commit -m "diag: pr1146 precommit replica round2 run $GITHUB_RUN_ID (evidence-only) [ci skip]"
             if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
               git pull --rebase origin "$GITHUB_REF_NAME"
               git push origin "HEAD:$GITHUB_REF_NAME"
@@ -100,5 +95,5 @@ jobs:
       - name: Final gate
         if: always()
         run: |
-          ls "$GITHUB_WORKSPACE/$EVID/canonical/scripts" "$GITHUB_WORKSPACE/$EVID/canonical/scripts" "$GITHUB_WORKSPACE/$EVID/canonical/tests/python" | grep ".py" || { echo "::error::no canonical recorded"; exit 1; }
-          echo "diag canonical committed for run $GITHUB_RUN_ID"
+          ls "$GITHUB_WORKSPACE/$EVID" | grep "round2.*run$GITHUB_RUN_ID|run$GITHUB_RUN_ID" || { echo "::error::no evidence recorded"; exit 1; }
+          echo "diag evidence committed for run $GITHUB_RUN_ID"
