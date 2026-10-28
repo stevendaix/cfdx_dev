@@ -8,6 +8,7 @@ in Python and written in the CFDX-HDF5 mesh interchange format.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 from pathlib import Path
 
@@ -305,6 +306,72 @@ def naca_o_grid(n_surface: int, n_radial: int, radius: float = 20.0):
     )
 
 
+
+def naca_o_grid_quality(n_surface: int, n_radial: int, radius: float = 20.0):
+    """Return geometric quality indicators for the 2-D NACA0012 O-grid.
+
+    These metrics are diagnostics, not a CFD qualification or a force oracle.
+    Cell area is evaluated from each quadrilateral's polygon; radial spacing
+    is measured between corresponding nodes on adjacent layers.
+    """
+    points, cells, _ = naca_o_grid(n_surface, n_radial, radius)
+    points = np.asarray(points, dtype=np.float64)
+    m = 2 * n_surface + 1
+    planar = points[: (n_radial + 1) * m, :2].reshape(n_radial + 1, m, 2)
+
+    radial_steps = np.linalg.norm(np.diff(planar, axis=0), axis=2)
+    first_layer = radial_steps[0]
+    positive_steps = radial_steps[radial_steps > np.finfo(float).eps]
+    if positive_steps.size != radial_steps.size:
+        raise ValueError("NACA0012 O-grid contains a zero-length radial edge")
+
+    growth = radial_steps[1:] / radial_steps[:-1]
+    signed_areas = []
+    aspect_ratios = []
+    for j in range(n_radial):
+        for i in range(m):
+            quad = np.asarray(
+                (
+                    planar[j, i],
+                    planar[j, (i + 1) % m],
+                    planar[j + 1, (i + 1) % m],
+                    planar[j + 1, i],
+                )
+            )
+            x, y = quad[:, 0], quad[:, 1]
+            signed_areas.append(
+                0.5 * np.sum(x * np.roll(y, -1) - y * np.roll(x, -1))
+            )
+            edge_lengths = np.linalg.norm(np.roll(quad, -1, axis=0) - quad, axis=1)
+            aspect_ratios.append(
+                float(np.max(edge_lengths) / max(np.min(edge_lengths), np.finfo(float).tiny))
+            )
+
+    signed_areas = np.asarray(signed_areas)
+    nonzero_areas = signed_areas[np.abs(signed_areas) > np.finfo(float).eps]
+    dominant_sign = np.sign(np.median(nonzero_areas)) if nonzero_areas.size else 0.0
+    inverted_or_degenerate = int(
+        np.count_nonzero(
+            (np.abs(signed_areas) <= np.finfo(float).eps)
+            | (np.sign(signed_areas) != dominant_sign)
+        )
+    )
+    return {
+        "n_surface": int(n_surface),
+        "n_radial": int(n_radial),
+        "radius": float(radius),
+        "cell_count": int(n_surface * 2 * n_radial + n_radial),
+        "inverted_or_degenerate_cells": inverted_or_degenerate,
+        "minimum_absolute_cell_area": float(np.min(np.abs(signed_areas))),
+        "minimum_first_layer_spacing": float(np.min(first_layer)),
+        "mean_first_layer_spacing": float(np.mean(first_layer)),
+        "maximum_first_layer_spacing": float(np.max(first_layer)),
+        "minimum_radial_growth_ratio": float(np.min(growth)),
+        "maximum_radial_growth_ratio": float(np.max(growth)),
+        "maximum_cell_edge_aspect_ratio": float(np.max(aspect_ratios)),
+    }
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("case", choices=("channel", "bfs", "naca0012", "all"))
@@ -324,9 +391,16 @@ def main():
             write_mesh(out / f"bfs_re200_n{n}.h5", p, c, b)
     if args.case in ("naca0012", "all"):
         levels = ((64, 24),) if args.quick else ((64, 24), (128, 48), (256, 96))
+        quality_reports = []
         for n, nr in levels:
             p, c, b = naca_o_grid(n, nr, 20.0)
             write_mesh(out / f"naca0012_laminar_n{n}.h5", p, c, b)
+            quality = naca_o_grid_quality(n, nr, 20.0)
+            quality_reports.append(quality)
+            print(json.dumps({"mesh": f"naca0012_laminar_n{n}.h5", **quality}, sort_keys=True))
+        report_path = out / "naca0012_mesh_quality.json"
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(quality_reports, indent=2) + "\\n", encoding="utf-8")
     print(f"validation meshes written to {out}")
 
 
