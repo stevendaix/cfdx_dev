@@ -1116,6 +1116,17 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         PROPERTIES
             LABELS "n9;qualification;validation;long;validation-total"
             TIMEOUT 1800)
+    # The unsharded full-matrix invocation keeps the controls the shards
+    # deliberately skip: the five segregated algorithms on the shared
+    # benchmarks, the cross-algorithm physical-equivalence gates and the
+    # per-algorithm skew Couette campaign. It stays the declared
+    # scripts/n9_physical_campaign.py campaign test and a long-validation
+    # campaign; the workflow shards qualify the coupled Schur models in
+    # parallel within their own budgets.
+    add_test(NAME test_n9_physical_matrix COMMAND test_n9_physical_matrix)
+    set_tests_properties(test_n9_physical_matrix PROPERTIES
+        LABELS "n9;qualification;validation;long;validation-total"
+        TIMEOUT 1800)
     set_tests_properties(test_n9_s10_pressure_reference_policies PROPERTIES
         LABELS "n9;qualification;validation;long;validation-total"
         TIMEOUT 300
