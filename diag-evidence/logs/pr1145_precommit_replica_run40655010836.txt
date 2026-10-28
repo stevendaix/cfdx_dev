@@ -1,0 +1,479 @@
+=== ruff version ===
+ruff 0.17.3
+=== ruff check ===
+All checks passed!
+ruff_check_exit=0
+=== ruff format --check ===
+unformatted: File would be reformatted
+   --> scripts/generate_2d_validation_meshes.py:153:15
+    |
+152 |     n = len(nodes2d)
+    -     points = [
+    -         [x, y, span * k / layers]
+    -         for k in range(layers + 1)
+    -         for x, y in nodes2d
+    -     ]
+153 +     points = [[x, y, span * k / layers] for k in range(layers + 1) for x, y in nodes2d]
+154 |     cells = []
+--------------------------------------------------------------------------------
+172 |     bf["back"] = [
+    -         tuple(reversed(tuple(v + layers * n for v in cell)))
+    -         for cell in front_cells
+173 +         tuple(reversed(tuple(v + layers * n for v in cell))) for cell in front_cells
+174 |     ]
+    |
+
+unformatted: File would be reformatted
+  --> tests/python/test_naca_mesh_symmetry_extrusion.py:24:46
+   |
+23 |     return 0.5 * float(
+   -         np.dot(v[:, 0], np.roll(v[:, 1], -1))
+   -         - np.dot(v[:, 1], np.roll(v[:, 0], -1))
+24 +         np.dot(v[:, 0], np.roll(v[:, 1], -1)) - np.dot(v[:, 1], np.roll(v[:, 0], -1))
+25 |     )
+--------------------------------------------------------------------------------
+39 |             mismatch = float(np.max(np.abs(ring[:, 0] - ring[::-1, 0])))
+   -             mismatch = max(
+   -                 mismatch, float(np.max(np.abs(ring[:, 1] + ring[::-1, 1])))
+   -             )
+40 +             mismatch = max(mismatch, float(np.max(np.abs(ring[:, 1] + ring[::-1, 1]))))
+41 |             assert mismatch < 5e-12, (n, nr, layers, j, mismatch)
+   |
+
+2 files would be reformatted
+ruff_format_exit=1
+=== ruff format --diff ===
+--- scripts/generate_2d_validation_meshes.py
++++ scripts/generate_2d_validation_meshes.py
+@@ -150,11 +150,7 @@
+     if layers < 1 or not math.isfinite(span) or span <= 0.0:
+         raise ValueError("layers must be positive and span finite and positive")
+     n = len(nodes2d)
+-    points = [
+-        [x, y, span * k / layers]
+-        for k in range(layers + 1)
+-        for x, y in nodes2d
+-    ]
++    points = [[x, y, span * k / layers] for k in range(layers + 1) for x, y in nodes2d]
+     cells = []
+     for k in range(layers):
+         lo, hi = k * n, (k + 1) * n
+@@ -174,8 +170,7 @@
+     front_cells = boundary2d.get("_front_cells", cells2d)
+     bf["front"] = [tuple(cell) for cell in front_cells]
+     bf["back"] = [
+-        tuple(reversed(tuple(v + layers * n for v in cell)))
+-        for cell in front_cells
++        tuple(reversed(tuple(v + layers * n for v in cell))) for cell in front_cells
+     ]
+     return points, cells, bf
+ 
+
+--- tests/python/test_naca_mesh_symmetry_extrusion.py
++++ tests/python/test_naca_mesh_symmetry_extrusion.py
+@@ -21,8 +21,7 @@
+ def xy_area(points, face):
+     v = np.asarray([points[i][:2] for i in face])
+     return 0.5 * float(
+-        np.dot(v[:, 0], np.roll(v[:, 1], -1))
+-        - np.dot(v[:, 1], np.roll(v[:, 0], -1))
++        np.dot(v[:, 0], np.roll(v[:, 1], -1)) - np.dot(v[:, 1], np.roll(v[:, 0], -1))
+     )
+ 
+ 
+@@ -38,9 +37,7 @@
+         for j in (0, nr):
+             ring = pts[(k * (nr + 1) + j) * m : (k * (nr + 1) + j + 1) * m]
+             mismatch = float(np.max(np.abs(ring[:, 0] - ring[::-1, 0])))
+-            mismatch = max(
+-                mismatch, float(np.max(np.abs(ring[:, 1] + ring[::-1, 1])))
+-            )
++            mismatch = max(mismatch, float(np.max(np.abs(ring[:, 1] + ring[::-1, 1]))))
+             assert mismatch < 5e-12, (n, nr, layers, j, mismatch)
+ 
+     # Positive cell volumes on the mapped hexahedral grid.
+
+2 files would be reformatted
+=== pre-commit run --files ===
+Ruff check...............................................................Passed
+Ruff format check........................................................Failed
+- hook id: ruff-format
+- exit code: 1
+
+unformatted: File would be reformatted
+   --> scripts/generate_2d_validation_meshes.py:153:15
+    |
+152 |     n = len(nodes2d)
+    -     points = [
+    -         [x, y, span * k / layers]
+    -         for k in range(layers + 1)
+    -         for x, y in nodes2d
+    -     ]
+153 +     points = [[x, y, span * k / layers] for k in range(layers + 1) for x, y in nodes2d]
+154 |     cells = []
+--------------------------------------------------------------------------------
+172 |     bf["back"] = [
+    -         tuple(reversed(tuple(v + layers * n for v in cell)))
+    -         for cell in front_cells
+173 +         tuple(reversed(tuple(v + layers * n for v in cell))) for cell in front_cells
+174 |     ]
+    |
+
+unformatted: File would be reformatted
+  --> tests/python/test_naca_mesh_symmetry_extrusion.py:24:46
+   |
+23 |     return 0.5 * float(
+   -         np.dot(v[:, 0], np.roll(v[:, 1], -1))
+   -         - np.dot(v[:, 1], np.roll(v[:, 0], -1))
+24 +         np.dot(v[:, 0], np.roll(v[:, 1], -1)) - np.dot(v[:, 1], np.roll(v[:, 0], -1))
+25 |     )
+--------------------------------------------------------------------------------
+39 |             mismatch = float(np.max(np.abs(ring[:, 0] - ring[::-1, 0])))
+   -             mismatch = max(
+   -                 mismatch, float(np.max(np.abs(ring[:, 1] + ring[::-1, 1])))
+   -             )
+40 +             mismatch = max(mismatch, float(np.max(np.abs(ring[:, 1] + ring[::-1, 1]))))
+41 |             assert mismatch < 5e-12, (n, nr, layers, j, mismatch)
+   |
+
+2 files would be reformatted
+
+CFDX fast build/test guards..............................................Passed
+precommit_exit=1
+=== pre-commit run cfdx-fast --all-files ===
+CFDX fast build/test guards..............................................Failed
+- hook id: cfdx-fast
+- exit code: 1
+
+CFDX pre-commit: 4 changed files
++ /opt/hostedtoolcache/Python/3.10.22/x64/bin/python3 -m compileall -q scripts/generate_2d_validation_meshes.py tests/python/test_naca_mesh_symmetry_extrusion.py
++ ruff check scripts/generate_2d_validation_meshes.py tests/python/test_naca_mesh_symmetry_extrusion.py
+All checks passed!
++ cmake -S . -B /tmp/pr1145_wt/build-precommit -DCMAKE_BUILD_TYPE=Release -G Ninja -DCFDX_BUILD_TESTS=ON -DCFDX_BUILD_RUNTIME_TESTS=ON -DCFDX_ENABLE_GPU=OFF -DCFDX_ENABLE_LONG_VALIDATION=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+-- The CXX compiler identification is GNU 13.3.0
+-- The C compiler identification is GNU 13.3.0
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+CMake Warning at CMakeLists.txt:91 (message):
+  HDF5 not found.  HDF5-dependent features disabled.
+
+
+-- Checking for module 'mpi-c'
+--   Package 'mpi-c', required by 'virtual:world', not found
+-- Checking for module 'mpi-cxx'
+--   Package 'mpi-cxx', required by 'virtual:world', not found
+-- Configuring done (2.4s)
+-- Generating done (0.2s)
+-- Build files have been written to: /tmp/pr1145_wt/build-precommit
++ cmake --build /tmp/pr1145_wt/build-precommit --parallel 4 --target cfdx_core test_convergence_history test_execution_summary test_naca3d_thermal_turbulence_smoke
+[1/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/face.cpp.o
+[2/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/ownership.cpp.o
+[3/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/point.cpp.o
+[4/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/cell.cpp.o
+[5/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/mesh.cpp.o
+[6/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/boundary.cpp.o
+[7/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/face_geometry.cpp.o
+[8/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/application/simulation_controller.cpp.o
+[9/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/cell_geometry.cpp.o
+[10/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_quality.cpp.o
+[11/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/field.cpp.o
+[12/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_validator.cpp.o
+[13/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/storage.cpp.o
+[14/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o
+[15/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/mesh/mesh_importer.cpp.o
+[16/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o
+/tmp/pr1145_wt/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::decompose_polyhedra(const cfdx::core::Mesh&, std::vector<std::vector<long unsigned int> >&, std::vector<cfdx::io::VtkCellType>&, std::vector<unsigned int>&, std::vector<long unsigned int>&, std::vector<long unsigned int>&)’:
+/tmp/pr1145_wt/src/cfdx/io/vtu/vtu_writer.cpp:85:49: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   85 |         const std::uint32_t off = cell_offsets[c];
+      |                                   ~~~~~~~~~~~~~~^
+/tmp/pr1145_wt/src/cfdx/io/vtu/vtu_writer.cpp:86:59: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   86 |         const std::uint32_t n_faces = cell_offsets[c + 1] - off;
+      |                                       ~~~~~~~~~~~~~~~~~~~~^~~~~
+/tmp/pr1145_wt/src/cfdx/io/vtu/vtu_writer.cpp:91:58: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   91 |             const std::uint32_t face = cell_faces[off + k];
+      |                                        ~~~~~~~~~~~~~~~~~~^
+/tmp/pr1145_wt/src/cfdx/io/vtu/vtu_writer.cpp:92:61: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   92 |             const std::uint32_t fv_begin = face_offsets[face];
+      |                                            ~~~~~~~~~~~~~~~~~^
+/tmp/pr1145_wt/src/cfdx/io/vtu/vtu_writer.cpp:93:63: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   93 |             const std::uint32_t fv_end = face_offsets[face + 1];
+      |                                          ~~~~~~~~~~~~~~~~~~~~~^
+/tmp/pr1145_wt/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::write_header(std::ofstream&, const cfdx::core::Mesh&, const std::vector<std::vector<long unsigned int> >&, const std::vector<cfdx::io::VtkCellType>&, double, std::size_t, bool)’:
+/tmp/pr1145_wt/src/cfdx/io/vtu/vtu_writer.cpp:118:62: warning: unused parameter ‘vtk_cell_types’ [-Wunused-parameter]
+  118 |                              const std::vector<VtkCellType>& vtk_cell_types,
+      |                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~
+/tmp/pr1145_wt/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::write_cells(std::ofstream&, const std::vector<std::vector<long unsigned int> >&, const std::vector<cfdx::io::VtkCellType>&, const std::vector<unsigned int>&, const std::vector<long unsigned int>&, const cfdx::core::Mesh&)’:
+/tmp/pr1145_wt/src/cfdx/io/vtu/vtu_writer.cpp:204:40: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+  204 |                 for (std::uint32_t v = fv_begin; v < fv_end; ++v) {
+      |                                        ^~~~~~~~
+[17/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/cfdx_io/gap_analysis.cpp.o
+[18/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_unavailable.cpp.o
+[19/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/cfdx_io/mapping_rules.cpp.o
+[20/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/runtime/gpu/gpu_kernels.cpp.o
+/tmp/pr1145_wt/src/cfdx/runtime/gpu/gpu_kernels.cpp: In function ‘void cfdx::runtime::gpu::divergence_reference(const double*, const double*, const double*, const double*, const std::size_t*, const int64_t*, std::size_t, std::size_t, double*)’:
+/tmp/pr1145_wt/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:19: warning: unused parameter ‘sx’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |     ~~~~~~~~~~~~~~^~
+/tmp/pr1145_wt/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:37: warning: unused parameter ‘sy’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |                       ~~~~~~~~~~~~~~^~
+/tmp/pr1145_wt/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:55: warning: unused parameter ‘sz’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |                                         ~~~~~~~~~~~~~~^~
+[21/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o
+[22/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/linalg/hypre_amg.cpp.o
+In file included from /tmp/pr1145_wt/src/cfdx/core/linalg/hypre_amg.h:4,
+                 from /tmp/pr1145_wt/src/cfdx/core/linalg/hypre_amg.cpp:1:
+/tmp/pr1145_wt/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/tmp/pr1145_wt/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+[23/30] Building CXX object CMakeFiles/test_naca3d_thermal_turbulence_smoke.dir/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp.o
+FAILED: [code=1] CMakeFiles/test_naca3d_thermal_turbulence_smoke.dir/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp.o 
+/usr/bin/c++ -DCFDX_HAS_HDF5=0 -DCFDX_HAS_MPI=0 -I/tmp/pr1145_wt/src -O3 -DNDEBUG -O2 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -O2 -DNDEBUG -MD -MT CMakeFiles/test_naca3d_thermal_turbulence_smoke.dir/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp.o -MF CMakeFiles/test_naca3d_thermal_turbulence_smoke.dir/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp.o.d -o CMakeFiles/test_naca3d_thermal_turbulence_smoke.dir/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp.o -c /tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:45:40: warning: missing terminating ' character
+   45 |               << " Linf_T=" << tmax << '
+      |                                        ^
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:45:40: error: missing terminating ' character
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:46:1: warning: missing terminating ' character
+   46 | ';
+      | ^
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:46:1: error: missing terminating ' character
+   46 | ';
+      | ^~
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:83:72: warning: missing terminating ' character
+   83 |               << " nonfinite=" << turbulence.nonfinite_bound_events << '
+      |                                                                        ^
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:83:72: error: missing terminating ' character
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:84:1: warning: missing terminating ' character
+   84 | ';
+      | ^
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:84:1: error: missing terminating ' character
+   84 | ';
+      | ^~
+In file included from /tmp/pr1145_wt/src/cfdx/core/linalg/cg_solver.h:18,
+                 from /tmp/pr1145_wt/src/cfdx/core/linalg/bicgstab_solver.h:4,
+                 from /tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:7,
+                 from /tmp/pr1145_wt/src/cfdx/physics/energy_solver.h:4,
+                 from /tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:4:
+/tmp/pr1145_wt/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/tmp/pr1145_wt/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+In file included from /tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:9:
+/tmp/pr1145_wt/src/cfdx/core/linalg/gmres_solver.h: In function ‘cfdx::core::SolverResult cfdx::core::solve_gmres(const LinearOperator&, const Vector&, Vector&, int, std::size_t, double, Preconditioner*, KrylovControls, GmresWorkspace*)’:
+/tmp/pr1145_wt/src/cfdx/core/linalg/gmres_solver.h:240:66: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  240 |                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
+      |                                                                  ^
+/tmp/pr1145_wt/src/cfdx/core/linalg/gmres_solver.h:254:31: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  254 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                               ^
+/tmp/pr1145_wt/src/cfdx/core/linalg/gmres_solver.h:254:39: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  254 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                                       ^
+In file included from /tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:15:
+/tmp/pr1145_wt/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/tmp/pr1145_wt/src/cfdx/core/numerics/gradient.h:567:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  567 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/tmp/pr1145_wt/src/cfdx/core/numerics/gradient.h:569:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  569 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::FACE> cfdx::physics::reconstruct_scalar_transport_flux(const cfdx::core::Mesh&, const FvGeometry&, const cfdx::core::Field<double, cfdx::core::Location::FACE>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, double, const ScalarBoundaryConditions&, bool, ConvectionScheme, const ScalarBoundaryFaceConditions*, const std::vector<double>*, const ScalarBoundaryFaceValues*)’:
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:959:10: warning: unused parameter ‘bounded_convection’ [-Wunused-parameter]
+  959 |     bool bounded_convection = true,
+      |     ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_scalar_equation(const ScalarEquation&, cfdx::core::Vector&, const ScalarSolveControls&)’:
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:1154:49: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1154 |                     candidate_residual, relative};
+      |                                                 ^
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:1162:13: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1162 |             };
+      |             ^
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:1175:9: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1175 |         };
+      |         ^
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:1319:17: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1319 |                 };
+      |                 ^
+In file included from /tmp/pr1145_wt/src/cfdx/physics/turbulence_models.h:2,
+                 from /tmp/pr1145_wt/src/cfdx/physics/turbulence_transport.h:6,
+                 from /tmp/pr1145_wt/src/cfdx/physics/turbulence_solver.h:5,
+                 from /tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:5:
+/tmp/pr1145_wt/src/cfdx/physics/thermophysical_models.h: In member function ‘double cfdx::physics::ThermophysicalProperties::enthalpy(double, double, double) const’:
+/tmp/pr1145_wt/src/cfdx/physics/thermophysical_models.h:181:40: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                        ^
+/tmp/pr1145_wt/src/cfdx/physics/thermophysical_models.h:181:42: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                          ^
+/tmp/pr1145_wt/src/cfdx/physics/thermophysical_models.h:181:56: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                      ~~^~~
+/tmp/pr1145_wt/src/cfdx/physics/thermophysical_models.h:181:60: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                            ^
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp: In function ‘int main(int, char**)’:
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:47:5: error: expected primary-expression before ‘if’
+   47 |     if (!energy.converged || tmax > 1e-7)
+      |     ^~
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:85:5: error: expected primary-expression before ‘return’
+   85 |     return 0;
+      |     ^~~~~~
+In file included from /tmp/pr1145_wt/src/cfdx/io/hdf5/hdf5_reader.h:6,
+                 from /tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:3:
+/tmp/pr1145_wt/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::FACE]’:
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:22:19:   required from here
+/tmp/pr1145_wt/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/tmp/pr1145_wt/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/tmp/pr1145_wt/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+/tmp/pr1145_wt/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::CELL]’:
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:28:21:   required from here
+/tmp/pr1145_wt/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/tmp/pr1145_wt/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/tmp/pr1145_wt/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+[24/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o
+[25/30] Building CXX object CMakeFiles/test_execution_summary.dir/tests/unit/test_execution_summary.cpp.o
+[26/30] Building CXX object CMakeFiles/test_convergence_history.dir/tests/unit/test_convergence_history.cpp.o
+In file included from /tmp/pr1145_wt/src/cfdx/core/linalg/cg_solver.h:18,
+                 from /tmp/pr1145_wt/src/cfdx/core/linalg/bicgstab_solver.h:4,
+                 from /tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h:4,
+                 from /tmp/pr1145_wt/src/cfdx/io/runtime/convergence_history.h:3,
+                 from /tmp/pr1145_wt/tests/unit/test_convergence_history.cpp:1:
+/tmp/pr1145_wt/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/tmp/pr1145_wt/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+In file included from /tmp/pr1145_wt/src/cfdx/core/linalg/linear_solver_context.h:4,
+                 from /tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h:7:
+/tmp/pr1145_wt/src/cfdx/core/linalg/gmres_solver.h: In function ‘cfdx::core::SolverResult cfdx::core::solve_gmres(const LinearOperator&, const Vector&, Vector&, int, std::size_t, double, Preconditioner*, KrylovControls, GmresWorkspace*)’:
+/tmp/pr1145_wt/src/cfdx/core/linalg/gmres_solver.h:240:66: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  240 |                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
+      |                                                                  ^
+/tmp/pr1145_wt/src/cfdx/core/linalg/gmres_solver.h:254:31: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  254 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                               ^
+/tmp/pr1145_wt/src/cfdx/core/linalg/gmres_solver.h:254:39: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  254 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                                       ^
+In file included from /tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h:14:
+/tmp/pr1145_wt/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/tmp/pr1145_wt/src/cfdx/core/numerics/gradient.h:567:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  567 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/tmp/pr1145_wt/src/cfdx/core/numerics/gradient.h:569:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  569 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+In file included from /tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h:15:
+/tmp/pr1145_wt/src/cfdx/io/restart/dat_restart.h: In function ‘cfdx::io::DatRestartState cfdx::io::read_dat_restart_fields(const std::string&, const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, DatRestartFields)’:
+/tmp/pr1145_wt/src/cfdx/io/restart/dat_restart.h:284:10: warning: variable ‘read_scalar_field’ set but not used [-Wunused-but-set-variable]
+  284 |     auto read_scalar_field = [&](const char* expected,
+      |          ^~~~~~~~~~~~~~~~~
+In file included from /tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h:17:
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::FACE> cfdx::physics::reconstruct_scalar_transport_flux(const cfdx::core::Mesh&, const FvGeometry&, const cfdx::core::Field<double, cfdx::core::Location::FACE>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, double, const ScalarBoundaryConditions&, bool, ConvectionScheme, const ScalarBoundaryFaceConditions*, const std::vector<double>*, const ScalarBoundaryFaceValues*)’:
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:959:10: warning: unused parameter ‘bounded_convection’ [-Wunused-parameter]
+  959 |     bool bounded_convection = true,
+      |     ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_scalar_equation(const ScalarEquation&, cfdx::core::Vector&, const ScalarSolveControls&)’:
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:1154:49: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1154 |                     candidate_residual, relative};
+      |                                                 ^
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:1162:13: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1162 |             };
+      |             ^
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:1175:9: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1175 |         };
+      |         ^
+/tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:1319:17: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1319 |                 };
+      |                 ^
+In file included from /tmp/pr1145_wt/src/cfdx/physics/turbulence_models.h:2,
+                 from /tmp/pr1145_wt/src/cfdx/physics/turbulence_transport.h:6,
+                 from /tmp/pr1145_wt/src/cfdx/physics/turbulence_solver.h:5,
+                 from /tmp/pr1145_wt/src/cfdx/physics/sst_solver.h:3,
+                 from /tmp/pr1145_wt/src/cfdx/physics/sst_production_coupling.h:4,
+                 from /tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h:22:
+/tmp/pr1145_wt/src/cfdx/physics/thermophysical_models.h: In member function ‘double cfdx::physics::ThermophysicalProperties::enthalpy(double, double, double) const’:
+/tmp/pr1145_wt/src/cfdx/physics/thermophysical_models.h:181:40: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                        ^
+/tmp/pr1145_wt/src/cfdx/physics/thermophysical_models.h:181:42: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                          ^
+/tmp/pr1145_wt/src/cfdx/physics/thermophysical_models.h:181:56: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                      ~~^~~
+/tmp/pr1145_wt/src/cfdx/physics/thermophysical_models.h:181:60: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                            ^
+In file included from /tmp/pr1145_wt/src/cfdx/physics/sst_production_coupling.h:5:
+/tmp/pr1145_wt/src/cfdx/physics/sst_case_contract.h: In function ‘void cfdx::physics::validate_sst_case_prerequisites(const cfdx::io::CaseSetup&, const TurbulenceTransportControls&)’:
+/tmp/pr1145_wt/src/cfdx/physics/sst_case_contract.h:82:41: warning: conversion to ‘unsigned char’ from ‘char’ may change the sign of the result [-Wsign-conversion]
+   82 |     for (const unsigned char ch : setup.turbulence_model) {
+      |                                         ^~~~~~~~~~~~~~~~
+/tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h: In lambda function:
+/tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h:1833:23: warning: unused variable ‘old_component’ [-Wunused-variable]
+ 1833 |         const double* old_component = U_old.component_data(component);
+      |                       ^~~~~~~~~~~~~
+/tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_coupled_momentum_continuity(const cfdx::core::Mesh&, const FvGeometry&, ScalarEquation, ScalarEquation, ScalarEquation, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, double, double, std::size_t, double, std::size_t, double, const DiagnosticsControls&, CoupledSchurModel, const cfdx::core::LinearSolverRequest&, const IncompressibleSolverControls&, double, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::LinearSolverPlan*)’:
+/tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h:1879:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 1878 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 1879 |                     ? nr
+      |                     ^~~~
+ 1880 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h:1968:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 1967 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 1968 |                     ? nr
+      |                     ^~~~
+ 1969 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::physics::IncompressibleSolveResult cfdx::physics::solve_steady_incompressible(const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, const IncompressibleSolverControls&, const std::string&, cfdx::io::DatRestartFields)’:
+/tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h:4552:44: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+ 4552 |                       std::max<std::size_t>(mesh.n_cells(), 1));
+      |                       ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+In file included from /tmp/pr1145_wt/src/cfdx/physics/steady_incompressible_solver.h:3:
+/tmp/pr1145_wt/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::FACE]’:
+/tmp/pr1145_wt/src/cfdx/physics/momentum_viscous_stress.h:38:14:   required from here
+/tmp/pr1145_wt/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/tmp/pr1145_wt/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/tmp/pr1145_wt/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+/tmp/pr1145_wt/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::CELL]’:
+/tmp/pr1145_wt/src/cfdx/physics/momentum_viscous_stress.h:88:16:   required from here
+/tmp/pr1145_wt/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/tmp/pr1145_wt/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/tmp/pr1145_wt/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+ninja: build stopped: subcommand failed.
+
+cfdx_fast_exit=1

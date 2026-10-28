@@ -1,0 +1,4 @@
+run_id=40655010836
+pr1145_head=6d860684e9578f14857c5a60306a1c19ede96864
+pr1145_base=940635ee1ab7853002030680548525be692d2b97
+purpose=exact ruff/precommit findings + C++ build error behind PR1145 CI failures

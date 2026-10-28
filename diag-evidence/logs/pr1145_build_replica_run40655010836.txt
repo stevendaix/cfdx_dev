@@ -1,0 +1,45 @@
+build_exit=0
+=== error excerpt ===
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+[171/519] ccache /usr/bin/c++ -DCFDX_HAS_HDF5=1 -DCFDX_HAS_MPI=1 -I/tmp/pr1145_wt/src -I/usr/include/hdf5/serial -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -O3 -DNDEBUG -O2 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -O2 -DNDEBUG -MD -MT CMakeFiles/test_naca3d_thermal_turbulence_smoke.dir/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp.o -MF CMakeFiles/test_naca3d_thermal_turbulence_smoke.dir/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp.o.d -o CMakeFiles/test_naca3d_thermal_turbulence_smoke.dir/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp.o -c /tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp
+FAILED: [code=1] CMakeFiles/test_naca3d_thermal_turbulence_smoke.dir/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp.o 
+ccache /usr/bin/c++ -DCFDX_HAS_HDF5=1 -DCFDX_HAS_MPI=1 -I/tmp/pr1145_wt/src -I/usr/include/hdf5/serial -isystem /usr/lib/x86_64-linux-gnu/openmpi/include -isystem /usr/lib/x86_64-linux-gnu/openmpi/include/openmpi -O3 -DNDEBUG -O2 -DNDEBUG -std=c++17 -Wall -Wextra -Wpedantic -Wconversion -Wsign-conversion -O2 -DNDEBUG -MD -MT CMakeFiles/test_naca3d_thermal_turbulence_smoke.dir/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp.o -MF CMakeFiles/test_naca3d_thermal_turbulence_smoke.dir/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp.o.d -o CMakeFiles/test_naca3d_thermal_turbulence_smoke.dir/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp.o -c /tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:45:40: warning: missing terminating ' character
+   45 |               << " Linf_T=" << tmax << '
+      |                                        ^
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:45:40: error: missing terminating ' character
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:46:1: warning: missing terminating ' character
+   46 | ';
+      | ^
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:46:1: error: missing terminating ' character
+   46 | ';
+      | ^~
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:83:72: warning: missing terminating ' character
+   83 |               << " nonfinite=" << turbulence.nonfinite_bound_events << '
+      |                                                                        ^
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:83:72: error: missing terminating ' character
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:84:1: warning: missing terminating ' character
+   84 | ';
+      | ^
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:84:1: error: missing terminating ' character
+   84 | ';
+      | ^~
+In file included from /tmp/pr1145_wt/src/cfdx/core/linalg/krylov_reductions.h:6,
+                 from /tmp/pr1145_wt/src/cfdx/core/linalg/cg_solver.h:16,
+                 from /tmp/pr1145_wt/src/cfdx/core/linalg/bicgstab_solver.h:4,
+                 from /tmp/pr1145_wt/src/cfdx/physics/finite_volume_transport.h:7,
+--
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                            ^
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp: In function ‘int main(int, char**)’:
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:47:5: error: expected primary-expression before ‘if’
+   47 |     if (!energy.converged || tmax > 1e-7)
+      |     ^~
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:85:5: error: expected primary-expression before ‘return’
+   85 |     return 0;
+      |     ^~~~~~
+In file included from /tmp/pr1145_wt/src/cfdx/io/hdf5/hdf5_reader.h:6,
+                 from /tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:3:
+/tmp/pr1145_wt/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::FACE]’:
+/tmp/pr1145_wt/tests/validation/test_naca3d_thermal_turbulence_smoke.cpp:22:19:   required from here
