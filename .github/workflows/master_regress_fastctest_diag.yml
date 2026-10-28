@@ -18,10 +18,6 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: master-regress-diag-${{ matrix.ref_label }}
-  cancel-in-progress: false
-
 env:
   EVID: diag-evidence/logs
   TEST_REGEX: 'test_dual_time_navier_stokes|test_couette_quick|test_n8_pressure_velocity_matrix|test_n8_physical_qualification|test_n9_schur_oracle|test_steady_incompressible_solver|test_level_c_coupled_verification|test_m2_m4_solver_validation'
@@ -37,6 +33,9 @@ jobs:
         include:
           - { ref_label: a53331ce_pr1133squash, ref: a53331ce463262cf6167c099e769639d43b0d7ae }
           - { ref_label: 940635ee_master_pr1137, ref: 940635ee1ab7853002030680548525be692d2b97 }
+    concurrency:
+      group: master-regress-diag-${{ matrix.ref_label }}
+      cancel-in-progress: false
     env:
       WDIR: /tmp/regress_wt
     steps:
