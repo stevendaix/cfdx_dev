@@ -360,6 +360,29 @@ void require_physical_convergence(
         throw std::runtime_error(
             std::string(name)+" physical residual gate failed [algorithm="+
             algorithm_name+"]");
+
+    if (algorithm == PressureVelocityAlgorithm::COUPLED) {
+        // The monolithic solve's first post-solve equation residual is not an
+        // independent nonlinear baseline. Its ratio can remain exactly one
+        // at the FP64 floor even when the physical residual gates pass. The
+        // convergence monitor must therefore use the physical metrics below,
+        // while momentum_equation_residual_rhs_relative remains independently
+        // gated by the production solver.
+        const double expected_metric = std::max({
+            h.momentum_residual,
+            h.pressure_residual,
+            h.velocity_change_inf,
+            h.pressure_change_inf});
+        const double metric_scale = std::max({1.0, std::abs(expected_metric),
+                                              std::abs(h.nonlinear_convergence_metric)});
+        if (!std::isfinite(h.nonlinear_convergence_metric) ||
+            std::abs(h.nonlinear_convergence_metric - expected_metric) >
+                16.0 * std::numeric_limits<double>::epsilon() * metric_scale)
+            throw std::runtime_error(
+                std::string(name) +
+                " COUPLED nonlinear monitor incorrectly includes the post-solve "
+                "reference-relative momentum residual");
+    }
 }
 
 double couette_l2(const Run& r, std::size_t nx, std::size_t ny)
