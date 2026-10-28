@@ -21,8 +21,7 @@ SPEC.loader.exec_module(MESHGEN)
 def xy_area(points, face):
     v = np.asarray([points[i][:2] for i in face])
     return 0.5 * float(
-        np.dot(v[:, 0], np.roll(v[:, 1], -1))
-        - np.dot(v[:, 1], np.roll(v[:, 0], -1))
+        np.dot(v[:, 0], np.roll(v[:, 1], -1)) - np.dot(v[:, 1], np.roll(v[:, 0], -1))
     )
 
 
@@ -38,9 +37,7 @@ def verify(n, nr, layers):
         for j in (0, nr):
             ring = pts[(k * (nr + 1) + j) * m : (k * (nr + 1) + j + 1) * m]
             mismatch = float(np.max(np.abs(ring[:, 0] - ring[::-1, 0])))
-            mismatch = max(
-                mismatch, float(np.max(np.abs(ring[:, 1] + ring[::-1, 1])))
-            )
+            mismatch = max(mismatch, float(np.max(np.abs(ring[:, 1] + ring[::-1, 1]))))
             assert mismatch < 5e-12, (n, nr, layers, j, mismatch)
 
     # Positive cell volumes on the mapped hexahedral grid.
