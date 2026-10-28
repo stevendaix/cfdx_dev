@@ -1,0 +1,141 @@
+name: Master regress fast-ctest oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Oracle evidence-only : bisect des tests en echec entre le squash #1133
+# (a53331ce) et le merge #1137 (940635ee = master courant). Cible : les tests
+# rouges signales sur master et sur la CI de #1141 :
+# test_dual_time_navier_stokes, test_couette_quick, test_n8_pressure_velocity_matrix,
+# test_n8_physical_qualification + la suite maturity N9 complete.
+# Replique le job Release (fast CTest -LE long) sur les tests cibles uniquement.
+# Aucun push master, aucune modification de branche PR.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/master_regress_fastctest_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: master-regress-diag-${{ matrix.ref_label }}
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  TEST_REGEX: 'test_dual_time_navier_stokes|test_couette_quick|test_n8_pressure_velocity_matrix|test_n8_physical_qualification|test_n9_schur_oracle|test_steady_incompressible_solver|test_level_c_coupled_verification|test_m2_m4_solver_validation'
+
+jobs:
+  oracle:
+    name: bisect ${{ matrix.ref_label }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { ref_label: a53331ce_pr1133squash, ref: a53331ce463262cf6167c099e769639d43b0d7ae }
+          - { ref_label: 940635ee_master_pr1137, ref: 940635ee1ab7853002030680548525be692d2b97 }
+    env:
+      WDIR: /tmp/regress_wt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pin and worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git cat-file -e "${{ matrix.ref }}^{commit}" || { echo "::error::ref unresolvable"; exit 1; }
+          git worktree add "$WDIR" "${{ matrix.ref }}"
+          cd "$WDIR"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "ref=${{ matrix.ref }}"
+            echo "ref_label=${{ matrix.ref_label }}"
+            echo "purpose=bisect failing tests (dual_time, couette_quick, n8 matrix, n8 physical qualification, maturity N9 set) between #1133 squash and #1137 master"
+            git log --oneline -3
+          } > "$GITHUB_WORKSPACE/$EVID/master_regress_${{ matrix.ref_label }}_meta_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Install Python stack
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Configure (Release replica)
+        run: cmake -S "$WDIR" -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=OFF -DCMAKE_UNITY_BUILD=OFF
+
+      - name: Build
+        run: |
+          set +e
+          cmake --build build --parallel 8 > /tmp/build_raw.log 2>&1
+          rc=$?
+          {
+            echo "build_exit=$rc"
+            tail -n 100 /tmp/build_raw.log
+          } > "$GITHUB_WORKSPACE/$EVID/master_regress_${{ matrix.ref_label }}_build_run$GITHUB_RUN_ID.log"
+          echo "build_exit=$rc"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::build failed - see evidence"
+            exit 1
+          fi
+
+      - name: Run targeted tests (maturity N9 + Release failures replica)
+        run: |
+          set +e
+          ctest --test-dir build -R "$TEST_REGEX" --output-on-failure > "$GITHUB_WORKSPACE/$EVID/master_regress_${{ matrix.ref_label }}_ctest_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "ctest_exit=$rc"
+          echo "ctest_exit=$rc" > "$GITHUB_WORKSPACE/$EVID/master_regress_${{ matrix.ref_label }}_status_run$GITHUB_RUN_ID.txt"
+          grep -E 'tests passed|tests failed|The following tests FAILED' "$GITHUB_WORKSPACE/$EVID/master_regress_${{ matrix.ref_label }}_ctest_run$GITHUB_RUN_ID.log" || true
+
+      - name: Rerun failed with full output
+        if: always()
+        run: |
+          set +e
+          ctest --test-dir build --rerun-failed --output-on-failure > "$GITHUB_WORKSPACE/$EVID/master_regress_${{ matrix.ref_label }}_rerun_run$GITHUB_RUN_ID.log" 2>&1
+          tail -n 50 "$GITHUB_WORKSPACE/$EVID/master_regress_${{ matrix.ref_label }}_rerun_run$GITHUB_RUN_ID.log" || true
+
+      - name: Verdict (evidence-only)
+        if: always()
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/master_regress_${{ matrix.ref_label }}_ctest_run$GITHUB_RUN_ID.log"
+          {
+            echo "ref_label=${{ matrix.ref_label }}"
+            grep -E 'tests passed|tests failed|The following tests FAILED' "$f" || true
+          } > "$GITHUB_WORKSPACE/$EVID/master_regress_${{ matrix.ref_label }}_verdict_run$GITHUB_RUN_ID.txt"
+          cat "$GITHUB_WORKSPACE/$EVID/master_regress_${{ matrix.ref_label }}_verdict_run$GITHUB_RUN_ID.txt" || true
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: master regress oracle ${{ matrix.ref_label }} run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/master_regress_${{ matrix.ref_label }}_verdict_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$f" ]; then
+            echo "::error::no verdict recorded - read oracle evidence"
+            exit 1
+          fi
