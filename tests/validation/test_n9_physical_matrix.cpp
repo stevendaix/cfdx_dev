@@ -454,7 +454,7 @@ const char* schur_model_name(CoupledSchurModel model)
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     std::ios::sync_with_stdio(false);
     std::cin.tie(nullptr);
@@ -462,6 +462,22 @@ int main()
     setvbuf(stderr, nullptr, _IONBF, 0);
     const auto algs=algorithms();
     const auto schur_models=qualified_schur_models();
+    std::string selected_schur_model;
+    if (argc == 3 && std::string(argv[1]) == "--schur-model") {
+        selected_schur_model = argv[2];
+    } else if (argc != 1) {
+        std::cerr << "Usage: test_n9_physical_matrix [--schur-model pcd|lsc|bfbt|simple|simplec]\\n";
+        return 2;
+    }
+    if (!selected_schur_model.empty() &&
+        std::none_of(schur_models.begin(), schur_models.end(),
+            [&](CoupledSchurModel model) {
+                return selected_schur_model == schur_model_name(model);
+            })) {
+        std::cerr << "Unknown N9 physical-matrix Schur model: "
+                  << selected_schur_model << "\\n";
+        return 2;
+    }
 
     // Common physical matrix: Couette, pressure-driven Poiseuille and lid-driven
     // Run this matrix against the active numerical-method base so production fixes
@@ -514,6 +530,9 @@ int main()
     // the N9 physical matrix. Requested and resolved identities are checked
     // explicitly so no silent model substitution can satisfy this campaign.
     for (const auto schur_model : schur_models) {
+        if (!selected_schur_model.empty() &&
+            selected_schur_model != schur_model_name(schur_model))
+            continue;
         std::string msg = "STARTING COUPLED " + std::string(schur_model_name(schur_model)) + "\n";
         write(2, msg.data(), msg.size());
         const auto check_model = [&](const Run& r, const char* case_name) {
