@@ -33,6 +33,7 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/core/numerics/gradient.h"
 #include "cfdx/core/numerics/gradient_stencil.h"
+#include "cfdx/physics/wall_face_reconstruction.h"
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -399,11 +400,68 @@ WallShearAudit run_naca(const std::string& path, std::size_t level)
     return out;
 }
 
+// Face-location manufactured solution on the real NACA mesh: p=0.5+x+0.3*y,
+// U=(0.1*x+1.5*y, 0.7*x-0.2*y, 0). Exact affine gradients imply that
+// pressure/viscous tractions must be reproduced at each boundary face.
+void run_face_reconstruction_mms(const std::string& path)
+{
+    Mesh mesh;
+    if (!cfdx::io::read_mesh_hdf5(path, mesh) || !mesh.topo_validate().ok)
+        throw std::runtime_error("wall-face MMS: cannot read NACA mesh");
+    const auto geometry = build_fv_geometry(mesh);
+    const auto patch_id = mesh.boundary().find("airfoil");
+    if (patch_id >= mesh.boundary().n_patches())
+        throw std::runtime_error("wall-face MMS: no airfoil patch");
+    const std::array<Vec3, 3> grad_u{Vec3{0.1, 1.5, 0.0},
+                                     Vec3{0.7, -0.2, 0.0},
+                                     Vec3{0.0, 0.0, 0.0}};
+    const Vec3 grad_p{1.0, 0.3, 0.0};
+    constexpr double mu = 1.e-3;
+    double max_pressure_error = 0.0, max_force_error = 0.0;
+    double old_owner_pressure_force_x = 0.0, exact_pressure_force_x = 0.0;
+    std::size_t samples = 0;
+    for (const auto face : mesh.boundary().patch(patch_id).face_ids) {
+        const auto owner = mesh.ownership().owner(face);
+        const auto xo = geometry.cell_centres[owner];
+        const auto xf = geometry.face_centres[face];
+        const auto Sf = geometry.face_area_vectors[face];
+        const auto n = Sf.normalized();
+        const auto pressure = [](const Vec3& x) { return 0.5 + x.x + 0.3*x.y; };
+        const auto velocity = [](const Vec3& x) {
+            return Vec3{0.1*x.x + 1.5*x.y, 0.7*x.x - 0.2*x.y, 0.0};
+        };
+        const auto result = reconstruct_wall_face_linear(
+            xo, xf, Sf, pressure(xo), grad_p, velocity(xo), velocity(xf), grad_u, mu);
+        const Vec3 expected_tau_n{
+            mu*(2.0*0.1*n.x + 2.2*n.y),
+            mu*(2.2*n.x - 0.4*n.y), 0.0};
+        const auto expected = n*pressure(xf) - expected_tau_n;
+        max_pressure_error = std::max(max_pressure_error, std::abs(result.pressure-pressure(xf)));
+        max_force_error = std::max(max_force_error, (result.force_per_area - expected).mag());
+        old_owner_pressure_force_x += pressure(xo)*Sf.x;
+        exact_pressure_force_x += pressure(xf)*Sf.x;
+        ++samples;
+    }
+    if (samples == 0 || max_pressure_error > 1e-11 || max_force_error > 1e-11)
+        throw std::runtime_error("wall-face MMS: affine pressure/traction reconstruction failed");
+    std::cout << "NACA_FACE_RECONSTRUCTION_MMS PASS samples=" << samples
+              << " max_pressure_error=" << max_pressure_error
+              << " max_traction_error=" << max_force_error
+              << " owner_minus_face_pressure_force_x="
+              << (old_owner_pressure_force_x-exact_pressure_force_x) << "\n";
+}
+
 } // namespace
 
 int main(int argc, char** argv)
 {
     try {
+        if (argc >= 2 && std::string(argv[1]) == "--face-mms") {
+            if (argc != 3)
+                throw std::invalid_argument("usage: test_naca0012_wall_shear_audit --face-mms naca_mesh.h5");
+            run_face_reconstruction_mms(argv[2]);
+            return 0;
+        }
         const bool quick = argc >= 2 && std::string(argv[1]) == "--quick";
         if (quick) {
             if (argc != 3)
