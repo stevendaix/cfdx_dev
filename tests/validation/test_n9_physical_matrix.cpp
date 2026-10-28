@@ -496,6 +496,10 @@ int main(int argc, char** argv)
     const auto p_open_channel=open_channel_pressure_bc();
 
     for (std::size_t k=0;k<algs.size();++k) {
+        // A Schur-model shard is an isolated COUPLED qualification job. Do not
+        // rerun the five segregated algorithms in every shard; the unsharded
+        // full matrix still runs them all and retains the cross-algorithm gates.
+        if (!selected_schur_model.empty()) break;
         // Skip COUPLED in the first loop - it's tested in the Schur model loop below
         if (algs[k] == PressureVelocityAlgorithm::COUPLED) continue;
         char buf[128];
@@ -586,6 +590,11 @@ int main(int argc, char** argv)
         if (couette_l2(coupled_skew,12,16)>2e-2)
             throw std::runtime_error(std::string("COUPLED skew Couette analytic L2 gate failed: ") + schur_model_name(schur_model));
     }
+
+    // A sharded invocation qualifies only its selected COUPLED Schur model.
+    // The full invocation (without --schur-model) continues into the shared
+    // cross-algorithm and skew-mesh gates below.
+    if (!selected_schur_model.empty()) return 0;
 
     // Cross-algorithm physical-equivalence gate on each benchmark. Every
     // pairwise delta (plus the end-of-run audit of both cavity solutions)
