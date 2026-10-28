@@ -4784,14 +4784,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // nonlinear convergence monitor and keep the reference-relative value
         // available in history for diagnostics/adaptive-relaxation analysis.
         // The first-iteration normalization is useful only when its reference
-        // is resolved relative to the momentum RHS. If the reference is at
-        // round-off, keep it for diagnostics but do not let its ratio dominate
-        // the nonlinear monitor.
-        const double momentum_reference_roundoff =
-            100.0 * std::numeric_limits<double>::epsilon() *
+        // is larger than the already-declared physical RHS-relative tolerance.
+        // Otherwise a negligible nonzero reference can dominate the monitor
+        // with a ratio near one despite the physical equation residual meeting
+        // its actual acceptance criterion.
+        const double momentum_reference_resolution_threshold =
+            std::max(
+                100.0 * std::numeric_limits<double>::epsilon(),
+                controls.convergence.relative_tolerance) *
             std::max(h.momentum_rhs_scale, tiny);
         const bool momentum_reference_ill_conditioned =
-            h.momentum_equation_residual_reference <= momentum_reference_roundoff;
+            h.momentum_equation_residual_reference <=
+            momentum_reference_resolution_threshold;
         double nonlinear_metric = momentum_reference_ill_conditioned
             ? std::max({
                   h.momentum_residual,
