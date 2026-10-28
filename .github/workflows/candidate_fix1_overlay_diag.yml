@@ -1,0 +1,307 @@
+name: Candidate fix1 overlay oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Fix1 candidat : restauration de la relaxation post-solve COUPLED
+# (U = U_old + alpha_u*dU ; p = p_old + alpha_p*dp) supprimee par #1133.
+# Le patch diag-tools/fix1_solver.patch est applique sur un worktree master
+# epingle (940635ee), verifie byte-exact par md5, puis la replica Release
+# complete est jouee : les 8 tests cibles de l'oracle master_regress +
+# fast CTest -LE long complet + pyreg.
+# Push master UNIQUEMENT si verdict VERIFIED ET push_to_master=true dans
+# diag-tools/fix1_push_flag.txt ET master toujours au pin (fail-closed).
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/candidate_fix1_overlay_diag.yml'
+      - 'diag-tools/fix1_solver.patch'
+      - 'diag-tools/fix1_push_flag.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: candidate-fix1-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  MASTER_PIN: 940635ee1ab7853002030680548525be692d2b97
+  EXPECTED_MD5: d4febf7478bff5b684924d987e768960
+  TEST_REGEX: 'test_dual_time_navier_stokes|test_couette_quick|test_n8_pressure_velocity_matrix|test_n8_physical_qualification|test_n9_schur_oracle|test_steady_incompressible_solver|test_level_c_coupled_verification|test_m2_m4_solver_validation'
+
+jobs:
+  overlay:
+    name: fix1 overlay (COUPLED relaxation restore, gated master push)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      WDIR: /tmp/fix1_wt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pin, read push flag, worktree, apply patch (fail-closed)
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin master
+          MASTER_SHA=$(git rev-parse origin/master)
+          if [ "$MASTER_SHA" != "$MASTER_PIN" ]; then
+            echo "::error::master has moved ($MASTER_SHA vs pin $MASTER_PIN) - abort, evidence-only"
+            echo "master_moved=true" >> "$GITHUB_WORKSPACE/$EVID/fix1_overlay_status_run$GITHUB_RUN_ID.txt"
+            exit 1
+          fi
+          if [ ! -f "diag-tools/fix1_solver.patch" ]; then
+            echo "::error::candidate patch missing on diag branch"
+            exit 1
+          fi
+          git worktree add "$WDIR" "$MASTER_PIN"
+          git -C "$WDIR" apply --check "$GITHUB_WORKSPACE/diag-tools/fix1_solver.patch" || { echo "::error::patch does not apply cleanly at pin"; exit 1; }
+          git -C "$WDIR" apply "$GITHUB_WORKSPACE/diag-tools/fix1_solver.patch"
+          PATCHED_MD5=$(md5sum "$WDIR/src/cfdx/physics/steady_incompressible_solver.h" | cut -d' ' -f1)
+          if [ "$PATCHED_MD5" != "$EXPECTED_MD5" ]; then
+            echo "::error::patched solver md5 mismatch ($PATCHED_MD5 vs expected $EXPECTED_MD5)"
+            exit 1
+          fi
+          PUSH_FLAG=$(sed -n 's/^push_to_master=//p' "$GITHUB_WORKSPACE/diag-tools/fix1_push_flag.txt" 2>/dev/null | head -n 1)
+          echo "PUSH_FLAG=$PUSH_FLAG" >> "$GITHUB_ENV"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "master_pin=$MASTER_PIN"
+            echo "master_sha=$MASTER_SHA"
+            echo "patched_solver_md5=$PATCHED_MD5"
+            echo "push_to_master=$PUSH_FLAG"
+            echo "purpose=verify fix1 (restore COUPLED post-solve relaxation removed by #1133): targeted 8 tests + fast CTest -LE long + pyreg on Release replica"
+          } > "$GITHUB_WORKSPACE/$EVID/fix1_overlay_meta_run$GITHUB_RUN_ID.txt"
+          echo "patch_ok=true" >> "$GITHUB_WORKSPACE/$EVID/fix1_overlay_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Install Python stack
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Configure (Release replica)
+        run: cmake -S "$WDIR" -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_LONG_VALIDATION=OFF -DCMAKE_UNITY_BUILD=OFF
+
+      - name: Build
+        run: |
+          set +e
+          cmake --build build --parallel 8 > /tmp/build_raw.log 2>&1
+          rc=$?
+          {
+            echo "build_exit=$rc"
+            tail -n 100 /tmp/build_raw.log
+            grep -E -B2 -A4 'error:|fatal error:|undefined reference|collect2: error|FAILED:' /tmp/build_raw.log | tail -n 120 || true
+          } > "$GITHUB_WORKSPACE/$EVID/fix1_overlay_build_run$GITHUB_RUN_ID.log"
+          echo "build_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/fix1_overlay_status_run$GITHUB_RUN_ID.txt"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::patched build failed - see evidence log"
+            exit 1
+          fi
+
+      - name: Run targeted tests (master_regress oracle set)
+        run: |
+          set +e
+          ctest --test-dir build -R "$TEST_REGEX" --output-on-failure > "$GITHUB_WORKSPACE/$EVID/fix1_overlay_ctest_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "targeted_ctest_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/fix1_overlay_status_run$GITHUB_RUN_ID.txt"
+          grep -E 'tests passed|tests failed|The following tests FAILED' "$GITHUB_WORKSPACE/$EVID/fix1_overlay_ctest_run$GITHUB_RUN_ID.log" || true
+
+      - name: Rerun failed with full output
+        if: always()
+        run: |
+          set +e
+          ctest --test-dir build --rerun-failed --output-on-failure > "$GITHUB_WORKSPACE/$EVID/fix1_overlay_rerun_run$GITHUB_RUN_ID.log" 2>&1
+          tail -n 50 "$GITHUB_WORKSPACE/$EVID/fix1_overlay_rerun_run$GITHUB_RUN_ID.log" || true
+
+      - name: Full fast CTest replica (-LE long)
+        run: |
+          set +e
+          ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4 > "$GITHUB_WORKSPACE/$EVID/fix1_overlay_fullctest_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "full_ctest_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/fix1_overlay_status_run$GITHUB_RUN_ID.txt"
+          grep -E 'tests passed|tests failed|The following tests FAILED' "$GITHUB_WORKSPACE/$EVID/fix1_overlay_fullctest_run$GITHUB_RUN_ID.log" || true
+
+      - name: Run Python regression replica
+        run: |
+          set +e
+          cd "$WDIR"
+          export CFDX_PRODUCTION_SOLVER="$GITHUB_WORKSPACE/build/cfdx_production_solver"
+          export CFDX_THERMAL_SOLVER="$GITHUB_WORKSPACE/build/cfdx_thermal_solver"
+          export PYTHONPATH="$WDIR/src/cfdx/python"
+          python -m pytest -q tests/python --tb=short > "$GITHUB_WORKSPACE/$EVID/fix1_overlay_pyreg_run$GITHUB_RUN_ID.log" 2>&1
+          rc=$?
+          set -e
+          echo "pyreg_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/fix1_overlay_status_run$GITHUB_RUN_ID.txt"
+          {
+            grep -E '^(FAILED|ERROR) ' "$GITHUB_WORKSPACE/$EVID/fix1_overlay_pyreg_run$GITHUB_RUN_ID.log" || true
+            tail -n 5 "$GITHUB_WORKSPACE/$EVID/fix1_overlay_pyreg_run$GITHUB_RUN_ID.log"
+          } > "$GITHUB_WORKSPACE/$EVID/fix1_overlay_pyreg_failed_run$GITHUB_RUN_ID.txt"
+
+      - name: Analyze and classify
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os, re, sys
+
+          evid = os.path.join(os.environ["GITHUB_WORKSPACE"], os.environ["EVID"])
+          run = os.environ["GITHUB_RUN_ID"]
+          def p(kind, ext):
+              return os.path.join(evid, "fix1_overlay_%s_run%s.%s" % (kind, run, ext))
+
+          targeted = os.environ.get("TEST_REGEX", "").split("|")
+          lines = []
+
+          def write(v):
+              with open(p("verdict", "txt"), "w") as f:
+                  f.write("verdict=" + v + "\n")
+                  for l in lines:
+                      f.write(l + "\n")
+              print("verdict=" + v)
+
+          status = {}
+          if os.path.exists(p("status", "txt")):
+              for l in open(p("status", "txt")):
+                  if "=" in l:
+                      k, v = l.split("=", 1)
+                      status[k.strip()] = v.strip()
+
+          if status.get("master_moved") == "true":
+              lines.append("master moved away from the pinned head; nothing verified")
+              write("MASTER_MOVED")
+              sys.exit(0)
+          if status.get("patch_ok") != "true":
+              lines.append("patch step failed or did not run - see job log / evidence")
+              write("PATCH_FAILED")
+              sys.exit(0)
+          if status.get("build_exit") != "0":
+              lines.append("build_exit=" + str(status.get("build_exit")))
+              write("INCONCLUSIVE_BUILD")
+              sys.exit(0)
+
+          def failed_of(kind):
+              log = p(kind, "log")
+              if not os.path.exists(log):
+                  return None, ""
+              text = open(log, errors="replace").read()
+              failed = []
+              idx = text.find("The following tests FAILED:")
+              if idx >= 0:
+                  for line in text[idx:].splitlines()[1:]:
+                      st = line.strip()
+                      if not st:
+                          break
+                      m = re.match(r"(\d+)\s*-\s*(\S+)", st)
+                      if not m:
+                          break
+                      failed.append(m.group(2))
+              return failed, text
+
+          t_failed, t_text = failed_of("ctest")
+          f_failed, f_text = failed_of("fullctest")
+          if t_failed is None:
+              lines.append("no targeted ctest log - run did not reach tests")
+              write("INCONCLUSIVE_NO_CTEST")
+              sys.exit(0)
+          if f_failed is None:
+              lines.append("no full ctest log - run did not reach the full replica")
+              write("INCONCLUSIVE_NO_FULL_CTEST")
+              sys.exit(0)
+
+          not_seen = [t for t in targeted if t not in t_text]
+          pyreg_failed = []
+          if os.path.exists(p("pyreg_failed", "txt")):
+              pyreg_failed = [l for l in open(p("pyreg_failed", "txt"), errors="replace").read().splitlines() if l.startswith("FAILED ") or l.startswith("ERROR ")]
+
+          ok = (not not_seen) and (not t_failed) and (not f_failed) and (not pyreg_failed) and status.get("pyreg_exit") == "0"
+
+          lines.append("targeted_ctest_exit=" + str(status.get("targeted_ctest_exit")))
+          lines.append("targeted_failed=" + str(t_failed))
+          lines.append("targeted_not_seen=" + str(not_seen))
+          lines.append("full_ctest_exit=" + str(status.get("full_ctest_exit")))
+          lines.append("full_failed=" + str(f_failed))
+          lines.append("pyreg_exit=" + str(status.get("pyreg_exit")))
+          lines.append("pyreg_failed=" + str(len(pyreg_failed)))
+          lines += pyreg_failed[:20]
+          lines.append("push_to_master=" + str(status.get("PUSH_FLAG")))
+          write("VERIFIED" if ok else "FAILED")
+          PY
+
+      - name: Push fix to master (gated)
+        if: always()
+        run: |
+          v=$(head -n 1 "$GITHUB_WORKSPACE/$EVID/fix1_overlay_verdict_run$GITHUB_RUN_ID.txt" 2>/dev/null || echo verdict=MISSING)
+          echo "verdict: $v"
+          if [ "$v" != "verdict=VERIFIED" ]; then
+            echo "no push: verdict is not VERIFIED"
+            exit 0
+          fi
+          if [ "$PUSH_FLAG" != "true" ]; then
+            echo "no push: diag-tools/fix1_push_flag.txt is not push_to_master=true"
+            exit 0
+          fi
+          git -C "$WDIR" fetch origin master
+          MASTER_SHA=$(git -C "$WDIR" rev-parse origin/master)
+          if [ "$MASTER_SHA" != "$MASTER_PIN" ]; then
+            echo "::error::master moved before push ($MASTER_SHA) - abort"
+            exit 1
+          fi
+          cd "$WDIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/cfdx/physics/steady_incompressible_solver.h
+          git commit -m "fix(coupled): restore the post-solve Picard relaxation for COUPLED" -m "#1133 removed the explicit damped update of the coupled saddle-point candidate and accepted the raw Krylov candidate as the nonlinear iterate. The Picard fixed-point iteration then stalls at practical dt: the dual-time BE bootstrap retries its first step, and the coupled qualification set (couette quick, full n8 pressure-velocity matrix, n8 physical qualification) misses the momentum rhs-relative gate. Restore the damped update with the caller alpha_u/alpha_p exactly as pre-#1133. The authoritative Rhie-Chow flux is rebuilt after the update from the same relaxed U/p state, so flux/state consistency, the Rhie-Chow identity and the continuity carry-over are preserved; the other #1133 fixes (rAU = 1/A_P, conditional Schur pin, relative-gate bypass, coupled conservation diagnostics) are unchanged. Verified by the candidate fix1 overlay diag run (evidence in diag-evidence/logs on ci/long-campaign-diagnostics)."
+          if git push origin HEAD:master > /tmp/master_push.log 2>&1; then
+            echo "master_push=success"
+            echo "master_pushed=true" >> "$GITHUB_WORKSPACE/$EVID/fix1_overlay_status_run$GITHUB_RUN_ID.txt"
+          else
+            echo "master_push=FAILED - see evidence"
+            cat /tmp/master_push.log
+            cp /tmp/master_push.log "$GITHUB_WORKSPACE/$EVID/fix1_overlay_pushfail_run$GITHUB_RUN_ID.log" || true
+            exit 1
+          fi
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: candidate fix1 overlay run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/fix1_overlay_verdict_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$f" ]; then
+            echo "::error::no verdict recorded - read overlay evidence"
+            exit 1
+          fi
+          cat "$f"
+          v=$(head -n 1 "$f")
+          case "$v" in
+            verdict=VERIFIED|verdict=FAILED)
+              echo "overlay run concluded with a recorded verdict" ;;
+            *)
+              echo "::error::$v - inconclusive or failed overlay run"
+              exit 1 ;;
+          esac

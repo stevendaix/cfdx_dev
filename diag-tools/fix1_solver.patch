@@ -1,0 +1,42 @@
+diff --git a/src/cfdx/physics/steady_incompressible_solver.h b/src/cfdx/physics/steady_incompressible_solver.h
+--- a/src/cfdx/physics/steady_incompressible_solver.h
++++ b/src/cfdx/physics/steady_incompressible_solver.h
+@@ -3791,13 +3791,31 @@
+                           << "\n";
+             }
+ 
+-            // COUPLED solves U and p as one saddle-point system. Do not
+-            // apply independent post-solve relaxation factors to its blocks:
+-            // that destroys the continuity constraint enforced by the
+-            // monolithic solve (the candidate has O(linear-tolerance)
+-            // continuity, while alpha_u != alpha_p introduces finite
+-            // divergence). U and p already contain the coupled candidate.
+-            // Segregated algorithms retain their relaxation logic below.
++            // COUPLED solves U and p as one saddle-point system, but the
++            // solved candidate is still one Picard linearization of the
++            // current nonlinear iterate: the nonlinear field update must
++            // stay explicit and bounded. Accepting the raw Krylov candidate
++            // stalls the Picard fixed-point iteration at practical dt (the
++            // transient BE bootstrap retries its first step and the full
++            // coupled qualification matrix misses the momentum rhs-relative
++            // gate), so the damped update below is part of the method, not an
++            // optional stabilization. The independent alpha_u/alpha_p factors
++            // do not break the monolithic continuity contract here: the
++            // authoritative flux is rebuilt AFTER this update from the same
++            // relaxed U/p state (see make_rhie_chow_flux_from_physical_velocity
++            // below), so flux/state consistency and the Rhie-Chow identity
++            // are preserved and continuity is carried by that rebuild rather
++            // than by accepting the raw candidate. Segregated algorithms
++            // retain their relaxation logic below.
++            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
++                for (std::size_t d = 0; d < 3; ++d)
++                    U.component_data(d)[c] =
++                        U_old.component_data(d)[c] +
++                        retry_controller.alpha_u(effective_alpha_u) *
++                        (U.component_data(d)[c] - U_old.component_data(d)[c]);
++                p(c) = p_old(c) +
++                    retry_controller.alpha_p(effective_alpha_p) * (p(c) - p_old(c));
++            }
+             apply_pressure_gauge_policy(
+                 p, geometry, controls.pressure_gauge_policy,
+                 controls.pressure_reference_cell, controls.pressure_reference_value,
