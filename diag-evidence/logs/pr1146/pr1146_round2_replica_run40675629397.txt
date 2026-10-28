@@ -1,0 +1,136 @@
+=== env ===
+CFDX_PRECOMMIT_RANGE=ecf1d02287b71ee69f118955b31b966e0d3888fe...e41f7cfce20681540a914ffe07341e3ed24c9a19
+=== git diff name-only (py) ===
+scripts/generate_naca_radial_family.py
+scripts/qualify_naca_grid.py
+tests/python/test_qualify_naca_grid.py
+=== ruff version ===
+ruff 0.17.3
+=== pre-commit run --files (EXACT replica) ===
+Ruff check...............................................................Failed
+- hook id: ruff-check
+- exit code: 1
+
+invalid-syntax: Simple statements must be separated by newlines or semicolons
+ --> scripts/generate_naca_radial_family.py:1:14
+  |
+1 | successfully downloaded text file (SHA: d8c17b1821d4e00ebe575e6786ebb080a07c8f79)
+  |              ^^^^^^^^^^
+
+invalid-syntax: Simple statements must be separated by newlines or semicolons
+ --> scripts/generate_naca_radial_family.py:1:25
+  |
+1 | successfully downloaded text file (SHA: d8c17b1821d4e00ebe575e6786ebb080a07c8f79)
+  |                         ^^^^
+
+invalid-syntax: Simple statements must be separated by newlines or semicolons
+ --> scripts/generate_naca_radial_family.py:1:30
+  |
+1 | successfully downloaded text file (SHA: d8c17b1821d4e00ebe575e6786ebb080a07c8f79)
+  |                              ^^^^
+
+invalid-syntax: Expected `,`, found `:`
+ --> scripts/generate_naca_radial_family.py:1:39
+  |
+1 | successfully downloaded text file (SHA: d8c17b1821d4e00ebe575e6786ebb080a07c8f79)
+  |                                       ^
+
+invalid-syntax: Expected an expression
+ --> scripts/qualify_naca_grid.py:1:6
+  |
+1 | repo://stevendaix/cfdx_dev/sha/9ffb69b21148c02e0935154322eea9362b132035/contents/diag-evidence/logs/pr1146/canonical/scripts/qualify_na…
+  |      ^^
+
+invalid-syntax: Simple statements must be separated by newlines or semicolons
+ --> scripts/qualify_naca_grid.py:1:33
+  |
+1 | repo://stevendaix/cfdx_dev/sha/9ffb69b21148c02e0935154322eea9362b132035/contents/diag-evidence/logs/pr1146/canonical/scripts/qualify_na…
+  |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+invalid-syntax: Expected an expression
+ --> tests/python/test_qualify_naca_grid.py:1:6
+  |
+1 | repo://stevendaix/cfdx_dev/sha/9ffb69b21148c02e0935154322eea9362b132035/contents/diag-evidence/logs/pr1146/canonical/tests/python/test_…
+  |      ^^
+
+invalid-syntax: Simple statements must be separated by newlines or semicolons
+ --> tests/python/test_qualify_naca_grid.py:1:33
+  |
+1 | repo://stevendaix/cfdx_dev/sha/9ffb69b21148c02e0935154322eea9362b132035/contents/diag-evidence/logs/pr1146/canonical/tests/python/test_…
+  |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Found 8 errors.
+
+Ruff format check........................................................Failed
+- hook id: ruff-format
+- exit code: 2
+
+invalid-syntax: Simple statements must be separated by newlines or semicolons
+ --> scripts/generate_naca_radial_family.py:1:14
+  |
+1 | successfully downloaded text file (SHA: d8c17b1821d4e00ebe575e6786ebb080a07c8f79)
+  |              ^^^^^^^^^^
+
+invalid-syntax: Expected an expression
+ --> scripts/qualify_naca_grid.py:1:6
+  |
+1 | repo://stevendaix/cfdx_dev/sha/9ffb69b21148c02e0935154322eea9362b132035/contents/diag-evidence/logs/pr1146/canonical/scripts/qualify_na…
+  |      ^^
+
+invalid-syntax: Expected an expression
+ --> tests/python/test_qualify_naca_grid.py:1:6
+  |
+1 | repo://stevendaix/cfdx_dev/sha/9ffb69b21148c02e0935154322eea9362b132035/contents/diag-evidence/logs/pr1146/canonical/tests/python/test_…
+  |      ^^
+
+CFDX fast build/test guards..............................................Failed
+- hook id: cfdx-fast
+- exit code: 1
+
+CFDX pre-commit: 14 changed files
++ /opt/hostedtoolcache/Python/3.10.22/x64/bin/python3 -m compileall -q scripts/generate_naca_radial_family.py scripts/qualify_naca_grid.py tests/python/test_qualify_naca_grid.py
+*** Error compiling 'scripts/generate_naca_radial_family.py'...
+  File "scripts/generate_naca_radial_family.py", line 1
+    successfully downloaded text file (SHA: d8c17b1821d4e00ebe575e6786ebb080a07c8f79)
+                 ^^^^^^^^^^
+SyntaxError: invalid syntax
+
+*** Error compiling 'scripts/qualify_naca_grid.py'...
+  File "scripts/qualify_naca_grid.py", line 1
+    repo://stevendaix/cfdx_dev/sha/9ffb69b21148c02e0935154322eea9362b132035/contents/diag-evidence/logs/pr1146/canonical/scripts/qualify_naca_grid.py
+                                   ^
+SyntaxError: invalid decimal literal
+
+*** Error compiling 'tests/python/test_qualify_naca_grid.py'...
+  File "tests/python/test_qualify_naca_grid.py", line 1
+    repo://stevendaix/cfdx_dev/sha/9ffb69b21148c02e0935154322eea9362b132035/contents/diag-evidence/logs/pr1146/canonical/tests/python/test_qualify_naca_grid.py
+                                   ^
+SyntaxError: invalid decimal literal
+
+precommit_run_exit=1
+=== pre-commit run cfdx-fast --all-files ===
+CFDX fast build/test guards..............................................Failed
+- hook id: cfdx-fast
+- exit code: 1
+
+CFDX pre-commit: 14 changed files
++ /opt/hostedtoolcache/Python/3.10.22/x64/bin/python3 -m compileall -q scripts/generate_naca_radial_family.py scripts/qualify_naca_grid.py tests/python/test_qualify_naca_grid.py
+*** Error compiling 'scripts/generate_naca_radial_family.py'...
+  File "scripts/generate_naca_radial_family.py", line 1
+    successfully downloaded text file (SHA: d8c17b1821d4e00ebe575e6786ebb080a07c8f79)
+                 ^^^^^^^^^^
+SyntaxError: invalid syntax
+
+*** Error compiling 'scripts/qualify_naca_grid.py'...
+  File "scripts/qualify_naca_grid.py", line 1
+    repo://stevendaix/cfdx_dev/sha/9ffb69b21148c02e0935154322eea9362b132035/contents/diag-evidence/logs/pr1146/canonical/scripts/qualify_naca_grid.py
+                                   ^
+SyntaxError: invalid decimal literal
+
+*** Error compiling 'tests/python/test_qualify_naca_grid.py'...
+  File "tests/python/test_qualify_naca_grid.py", line 1
+    repo://stevendaix/cfdx_dev/sha/9ffb69b21148c02e0935154322eea9362b132035/contents/diag-evidence/logs/pr1146/canonical/tests/python/test_qualify_naca_grid.py
+                                   ^
+SyntaxError: invalid decimal literal
+
+cfdx_fast_exit=1
