@@ -42,8 +42,7 @@ int main(int argc, char** argv) {
         tmax = std::max(tmax, std::abs(temperature(c) - 300.0));
     }
     std::cout << "NACA3D_THERMAL cells=" << n << " converged=" << energy.converged
-              << " Linf_T=" << tmax << '
-';
+              << " Linf_T=" << tmax << '\n';
     if (!energy.converged || tmax > 1e-7)
         throw std::runtime_error("NACA3D: isothermal thermal MMS failed");
 
@@ -80,7 +79,6 @@ int main(int argc, char** argv) {
               << " steps=" << turbulence.iterations
               << " k_residual=" << turbulence.k_residual
               << " omega_residual=" << turbulence.second_residual
-              << " nonfinite=" << turbulence.nonfinite_bound_events << '
-';
+              << " nonfinite=" << turbulence.nonfinite_bound_events << '\n';
     return 0;
 }
