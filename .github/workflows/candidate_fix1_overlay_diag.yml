@@ -1,6 +1,7 @@
 name: Candidate fix1 overlay oracle (diag)
 
 # DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Retry trigger note: re-run overlay after byte-exact patch transport correction.
 # Fix1 candidat : restauration de la relaxation post-solve COUPLED
 # (U = U_old + alpha_u*dU ; p = p_old + alpha_p*dp) supprimee par #1133.
 # Le patch diag-tools/fix1_solver.patch est applique sur un worktree master
