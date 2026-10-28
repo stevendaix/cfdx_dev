@@ -314,7 +314,6 @@ def naca_o_grid(n_surface: int, n_radial: int, radius: float = 20.0):
     )
 
 
-
 def naca_o_grid_quality(n_surface: int, n_radial: int, radius: float = 20.0):
     """Return geometric quality indicators for the 2-D NACA0012 O-grid.
 
