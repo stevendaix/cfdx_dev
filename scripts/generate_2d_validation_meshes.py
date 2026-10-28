@@ -268,6 +268,14 @@ def naca0012_surface(n: int):
 
 
 def naca_o_grid(n_surface: int, n_radial: int, radius: float = 20.0):
+    """Build the current deterministic transfinite-blend NACA0012 O-grid."""
+    if n_surface < 2:
+        raise ValueError("n_surface must be at least 2")
+    if n_radial < 1:
+        raise ValueError("n_radial must be positive")
+    if not math.isfinite(radius) or radius <= 0.0:
+        raise ValueError("radius must be finite and positive")
+
     surf = naca0012_surface(n_surface)
     m = len(surf)
     # Parameterize the outer boundary by the same closed-loop index. The
@@ -347,6 +355,42 @@ def naca_o_grid_quality(n_surface: int, n_radial: int, radius: float = 20.0):
                 float(np.max(edge_lengths) / max(np.min(edge_lengths), np.finfo(float).tiny))
             )
 
+    # Measure orthogonality on both families of internal faces. A positive
+    # cell area alone does not detect highly skewed faces that can destabilize
+    # the pressure-correction operator.
+    cell_centres = np.empty((n_radial, m, 2), dtype=np.float64)
+    for j in range(n_radial):
+        for i in range(m):
+            cell_centres[j, i] = 0.25 * (
+                planar[j, i]
+                + planar[j, (i + 1) % m]
+                + planar[j + 1, (i + 1) % m]
+                + planar[j + 1, i]
+            )
+
+    nonorthogonality = []
+    for j in range(1, n_radial):
+        for i in range(m):
+            edge = planar[j, (i + 1) % m] - planar[j, i]
+            normal = np.array((edge[1], -edge[0]))
+            delta = cell_centres[j, i] - cell_centres[j - 1, i]
+            denom = float(np.linalg.norm(normal)) * float(np.linalg.norm(delta))
+            cosine = abs(float(np.dot(normal, delta))) / denom
+            nonorthogonality.append(
+                math.degrees(math.acos(float(np.clip(cosine, -1.0, 1.0))))
+            )
+    for j in range(n_radial):
+        for i in range(m):
+            edge = planar[j + 1, i] - planar[j, i]
+            normal = np.array((edge[1], -edge[0]))
+            delta = cell_centres[j, i] - cell_centres[j, (i - 1) % m]
+            denom = float(np.linalg.norm(normal)) * float(np.linalg.norm(delta))
+            cosine = abs(float(np.dot(normal, delta))) / denom
+            nonorthogonality.append(
+                math.degrees(math.acos(float(np.clip(cosine, -1.0, 1.0))))
+            )
+
+    nonorthogonality = np.asarray(nonorthogonality)
     signed_areas = np.asarray(signed_areas)
     nonzero_areas = signed_areas[np.abs(signed_areas) > np.finfo(float).eps]
     dominant_sign = np.sign(np.median(nonzero_areas)) if nonzero_areas.size else 0.0
@@ -369,6 +413,8 @@ def naca_o_grid_quality(n_surface: int, n_radial: int, radius: float = 20.0):
         "minimum_radial_growth_ratio": float(np.min(growth)),
         "maximum_radial_growth_ratio": float(np.max(growth)),
         "maximum_cell_edge_aspect_ratio": float(np.max(aspect_ratios)),
+        "maximum_nonorthogonality_degrees": float(np.max(nonorthogonality)),
+        "p95_nonorthogonality_degrees": float(np.percentile(nonorthogonality, 95.0)),
     }
 
 
@@ -400,7 +446,7 @@ def main():
             print(json.dumps({"mesh": f"naca0012_laminar_n{n}.h5", **quality}, sort_keys=True))
         report_path = out / "naca0012_mesh_quality.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(json.dumps(quality_reports, indent=2) + "\\n", encoding="utf-8")
+        report_path.write_text(json.dumps(quality_reports, indent=2) + "\n", encoding="utf-8")
     print(f"validation meshes written to {out}")
 
 
