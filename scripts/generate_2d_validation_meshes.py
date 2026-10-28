@@ -347,12 +347,13 @@ def naca_o_grid_quality(n_surface: int, n_radial: int, radius: float = 20.0):
                 )
             )
             x, y = quad[:, 0], quad[:, 1]
-            signed_areas.append(
-                0.5 * np.sum(x * np.roll(y, -1) - y * np.roll(x, -1))
-            )
+            signed_areas.append(0.5 * np.sum(x * np.roll(y, -1) - y * np.roll(x, -1)))
             edge_lengths = np.linalg.norm(np.roll(quad, -1, axis=0) - quad, axis=1)
             aspect_ratios.append(
-                float(np.max(edge_lengths) / max(np.min(edge_lengths), np.finfo(float).tiny))
+                float(
+                    np.max(edge_lengths)
+                    / max(np.min(edge_lengths), np.finfo(float).tiny)
+                )
             )
 
     # Measure orthogonality on both families of internal faces. A positive
@@ -443,10 +444,16 @@ def main():
             write_mesh(out / f"naca0012_laminar_n{n}.h5", p, c, b)
             quality = naca_o_grid_quality(n, nr, 20.0)
             quality_reports.append(quality)
-            print(json.dumps({"mesh": f"naca0012_laminar_n{n}.h5", **quality}, sort_keys=True))
+            print(
+                json.dumps(
+                    {"mesh": f"naca0012_laminar_n{n}.h5", **quality}, sort_keys=True
+                )
+            )
         report_path = out / "naca0012_mesh_quality.json"
         report_path.parent.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(json.dumps(quality_reports, indent=2) + "\n", encoding="utf-8")
+        report_path.write_text(
+            json.dumps(quality_reports, indent=2) + "\n", encoding="utf-8"
+        )
     print(f"validation meshes written to {out}")
 
 
