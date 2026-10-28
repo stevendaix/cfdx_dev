@@ -1,0 +1,46 @@
+=== ruff version ===
+ruff 0.17.3
+=== ruff check ===
+All checks passed!
+ruff_check_exit=0
+=== ruff format --diff (full) ===
+--- scripts/generate_2d_validation_meshes.py
++++ scripts/generate_2d_validation_meshes.py
+@@ -169,7 +169,9 @@
+                 bf[name].append((a + lo, b + lo, b + hi, a + hi))
+     front_cells = boundary2d.get("_front_cells", cells2d)
+     bf["front"] = [tuple(cell) for cell in front_cells]
+-    bf["back"] = [tuple(reversed(tuple(v + layers * n for v in cell))) for cell in front_cells]
++    bf["back"] = [
++        tuple(reversed(tuple(v + layers * n for v in cell))) for cell in front_cells
++    ]
+     return points, cells, bf
+ 
+ 
+
+1 file would be reformatted, 1 file already formatted
+ruff_format_exit=1
+=== pre-commit run --files ===
+Ruff check...............................................................Passed
+Ruff format check........................................................Failed
+- hook id: ruff-format
+- exit code: 1
+
+unformatted: File would be reformatted
+   --> scripts/generate_2d_validation_meshes.py:172:19
+    |
+171 |     bf["front"] = [tuple(cell) for cell in front_cells]
+    -     bf["back"] = [tuple(reversed(tuple(v + layers * n for v in cell))) for cell in front_cells]
+172 +     bf["back"] = [
+173 +         tuple(reversed(tuple(v + layers * n for v in cell))) for cell in front_cells
+174 +     ]
+175 |     return points, cells, bf
+    |
+
+1 file would be reformatted, 1 file already formatted
+
+CFDX fast build/test guards..............................................Passed
+precommit_exit=1
+=== pre-commit run cfdx-fast --all-files ===
+CFDX fast build/test guards..............................................Passed
+cfdx_fast_exit=0
