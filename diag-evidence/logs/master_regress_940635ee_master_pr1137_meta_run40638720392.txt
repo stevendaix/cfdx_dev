@@ -1,0 +1,7 @@
+run_id=40638720392
+ref=940635ee1ab7853002030680548525be692d2b97
+ref_label=940635ee_master_pr1137
+purpose=bisect failing tests (dual_time, couette_quick, n8 matrix, n8 physical qualification, maturity N9 set) between #1133 squash and #1137 master
+940635ee Wire experimental SST case metadata and DAT restart into production driver (#1137)
+a53331ce fix(numerics): repair CI blockers for Rhie-Chow qualification (#1133)
+79131398 Make variable-viscosity stress flux linear-exact on skewed meshes (#1139)
