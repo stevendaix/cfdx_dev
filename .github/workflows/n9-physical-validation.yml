@@ -65,7 +65,7 @@ jobs:
           ctest --test-dir "$BUILD_DIR" \
             --output-on-failure \
             --verbose \
-            -R '^test_n9_physical_matrix_${{ matrix.schur_model }}
+            -R '^test_n9_physical_matrix_${{ matrix.schur_model }}$' \
             2>&1 | tee "$BUILD_DIR/n9-physical-validation.log"
 
       - name: Upload N9 evidence
@@ -73,19 +73,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: n9-s7-physical-validation-${{ matrix.schur_model }}-${{ github.event.pull_request.number }}-${{ github.sha }}
-          path: |
-            ${{ env.BUILD_DIR }}/n9-physical-validation.log
-            ${{ env.BUILD_DIR }}/Testing/
-          if-no-files-found: warn
-          retention-days: 30
- \
-            2>&1 | tee "$BUILD_DIR/n9-physical-validation.log"
-
-      - name: Upload N9 evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: n9-s7-physical-validation-${{ github.event.pull_request.number }}-${{ github.sha }}
           path: |
             ${{ env.BUILD_DIR }}/n9-physical-validation.log
             ${{ env.BUILD_DIR }}/Testing/
