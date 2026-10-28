@@ -1,0 +1,296 @@
+=== ruff version ===
+ruff 0.17.3
+=== ruff check (pre-fix, head pin) ===
+All checks passed!
+ruff_check_exit=0
+=== ruff format --diff (pre-fix) ===
+--- scripts/generate_naca_radial_family.py
++++ scripts/generate_naca_radial_family.py
+@@ -1,4 +1,5 @@
+ """Radial sensitivity family, not by itself a valid uniform refinement series."""
++
+ import argparse
+ import importlib.util
+ from pathlib import Path
+@@ -15,18 +16,18 @@
+ 
+ def main():
+     parser = argparse.ArgumentParser()
+-    parser.add_argument('--output-dir', type=Path, required=True)
+-    parser.add_argument('--surface-points', type=int, default=64)
++    parser.add_argument("--output-dir", type=Path, required=True)
++    parser.add_argument("--surface-points", type=int, default=64)
+     args = parser.parse_args()
+     if args.surface_points < 16:
+-        raise ValueError('at least 16 half-surface points required')
++        raise ValueError("at least 16 half-surface points required")
+     args.output_dir.mkdir(parents=True, exist_ok=True)
+     for nr in (24, 36, 48, 72):
+-        p, c, b = MESHGEN.naca_o_grid(args.surface_points, nr, 20.)
+-        dest = args.output_dir / f'naca0012_n{args.surface_points}_r{nr}.h5'
++        p, c, b = MESHGEN.naca_o_grid(args.surface_points, nr, 20.0)
++        dest = args.output_dir / f"naca0012_n{args.surface_points}_r{nr}.h5"
+         MESHGEN.write_mesh(dest, p, c, b)
+-        print(f'WROTE {dest} cells={len(c)}', flush=True)
++        print(f"WROTE {dest} cells={len(c)}", flush=True)
+ 
+ 
+-if __name__ == '__main__':
++if __name__ == "__main__":
+     main()
+
+--- scripts/qualify_naca_grid.py
++++ scripts/qualify_naca_grid.py
+@@ -4,6 +4,7 @@
+ h must represent the same characteristic mesh spacing along a geometrically
+ similar family (not just the number of radial layers). Rows are sorted by h.
+ """
++
+ import argparse
+ import csv
+ import json
+@@ -11,77 +12,108 @@
+ import sys
+ from pathlib import Path
+ 
+-REQUIRED = ('case', 'h', 'converged', 'res_mom', 'res_mass',
+-            'cd', 'cdp', 'cdv', 'cl', 'cm')
++REQUIRED = (
++    "case",
++    "h",
++    "converged",
++    "res_mom",
++    "res_mass",
++    "cd",
++    "cdp",
++    "cdv",
++    "cl",
++    "cm",
++)
+ 
+ 
+ def qualify(rows, residual_gate=1e-8):
+     if len(rows) != 3:
+-        raise ValueError('GCI requires exactly 3 converged geometrically similar grids')
++        raise ValueError("GCI requires exactly 3 converged geometrically similar grids")
+     for row in rows:
+-        if row['converged'].lower() not in ('yes', 'true', '1'):
+-            raise ValueError(f"{row['case']}: physical nonlinear convergence NOT attained")
++        if row["converged"].lower() not in ("yes", "true", "1"):
++            raise ValueError(
++                f"{row['case']}: physical nonlinear convergence NOT attained"
++            )
+         for key in REQUIRED[1:]:
+-            if key == 'converged':
++            if key == "converged":
+                 continue
+             if not math.isfinite(float(row[key])):
+                 raise ValueError(f"{row['case']}: nonfinite {key}")
+-        if max(float(row['res_mom']), float(row['res_mass'])) > residual_gate:
+-            raise ValueError(f"{row['case']}: physical residual exceeds {residual_gate}")
+-        if abs(float(row['cd']) - float(row['cdp']) - float(row['cdv'])) > 1e-8:
++        if max(float(row["res_mom"]), float(row["res_mass"])) > residual_gate:
++            raise ValueError(
++                f"{row['case']}: physical residual exceeds {residual_gate}"
++            )
++        if abs(float(row["cd"]) - float(row["cdp"]) - float(row["cdv"])) > 1e-8:
+             raise ValueError(f"{row['case']}: Cd != Cd_pressure+Cd_viscous")
+-    ordered = sorted(rows, key=lambda row: float(row['h']), reverse=True)
+-    h = [float(row['h']) for row in ordered]
++    ordered = sorted(rows, key=lambda row: float(row["h"]), reverse=True)
++    h = [float(row["h"]) for row in ordered]
+     if not 0 < h[2] < h[1] < h[0]:
+-        raise ValueError('mesh characteristic sizes must be positive and strictly decreasing')
++        raise ValueError(
++            "mesh characteristic sizes must be positive and strictly decreasing"
++        )
+     r21, r32 = h[0] / h[1], h[1] / h[2]
+-    if abs(r21 - r32) / max(r21, r32) > .05:
+-        raise ValueError('unequal refinement ratios: this estimator requires near-uniform r')
+-    r = (r21 * r32) ** .5
+-    result = {'refinement_ratio': r, 'meshes': [row['case'] for row in ordered], 'quantities': {}}
+-    for key in ('cd', 'cdp', 'cdv', 'cl', 'cm'):
++    if abs(r21 - r32) / max(r21, r32) > 0.05:
++        raise ValueError(
++            "unequal refinement ratios: this estimator requires near-uniform r"
++        )
++    r = (r21 * r32) ** 0.5
++    result = {
++        "refinement_ratio": r,
++        "meshes": [row["case"] for row in ordered],
++        "quantities": {},
++    }
++    for key in ("cd", "cdp", "cdv", "cl", "cm"):
+         f1, f2, f3 = (float(row[key]) for row in ordered)
+         e21, e32 = f1 - f2, f2 - f3
+         if e21 == 0.0 or e32 == 0.0 or e21 * e32 <= 0:
+-            result['quantities'][key] = {'status': 'nonmonotone_or_plateau', 'GCI': None}
++            result["quantities"][key] = {
++                "status": "nonmonotone_or_plateau",
++                "GCI": None,
++            }
+             continue
+         p = math.log(abs(e21 / e32)) / math.log(r)
+         if not (0 < p < 8):
+-            result['quantities'][key] = {'status': 'invalid_observed_order', 'order': p, 'GCI': None}
++            result["quantities"][key] = {
++                "status": "invalid_observed_order",
++                "order": p,
++                "GCI": None,
++            }
+             continue
+-        denom = r ** p - 1.
++        denom = r**p - 1.0
+         extrapolated = f3 + (f3 - f2) / denom
+         absolute_gci = 1.25 * abs(f3 - f2) / denom
+-        result['quantities'][key] = {
+-            'status': 'asymptotic_candidate',
+-            'order': p,
+-            'extrapolated': extrapolated,
+-            'GCI_absolute': absolute_gci,
+-            'GCI_relative': (absolute_gci / abs(f3) if abs(f3) > 1e-14 else None),
++        result["quantities"][key] = {
++            "status": "asymptotic_candidate",
++            "order": p,
++            "extrapolated": extrapolated,
++            "GCI_absolute": absolute_gci,
++            "GCI_relative": (absolute_gci / abs(f3) if abs(f3) > 1e-14 else None),
+         }
+     return result
+ 
+ 
+ def main():
+     ap = argparse.ArgumentParser()
+-    ap.add_argument('csv_path', type=Path)
+-    ap.add_argument('--residual-gate', type=float, default=1e-8)
++    ap.add_argument("csv_path", type=Path)
++    ap.add_argument("--residual-gate", type=float, default=1e-8)
+     args = ap.parse_args()
+-    with args.csv_path.open(newline='') as f:
++    with args.csv_path.open(newline="") as f:
+         reader = csv.DictReader(f)
+         missing = set(REQUIRED) - set(reader.fieldnames or ())
+         if missing:
+-            raise ValueError(f'missing fields: {sorted(missing)}')
++            raise ValueError(f"missing fields: {sorted(missing)}")
+         rows = list(reader)
+     report = qualify(rows, args.residual_gate)
+     print(json.dumps(report, indent=2, sort_keys=True))
+-    if report['quantities']['cd']['status'] != 'asymptotic_candidate':
+-        raise ValueError('drag does not demonstrate monotone convergence; Cd GCI refused')
++    if report["quantities"]["cd"]["status"] != "asymptotic_candidate":
++        raise ValueError(
++            "drag does not demonstrate monotone convergence; Cd GCI refused"
++        )
+ 
+ 
+-if __name__ == '__main__':
++if __name__ == "__main__":
+     try:
+         main()
+     except (ValueError, KeyError) as exc:
+-        print(f'QUALIFICATION FAILED: {exc}', file=sys.stderr)
++        print(f"QUALIFICATION FAILED: {exc}", file=sys.stderr)
+         raise SystemExit(2)
+
+--- tests/python/test_qualify_naca_grid.py
++++ tests/python/test_qualify_naca_grid.py
+@@ -3,8 +3,8 @@
+ from pathlib import Path
+ 
+ ROOT = Path(__file__).resolve().parents[2]
+-SCRIPT = ROOT / 'scripts' / 'qualify_naca_grid.py'
+-SPEC = importlib.util.spec_from_file_location('cfdx_qualify_naca_grid', SCRIPT)
++SCRIPT = ROOT / "scripts" / "qualify_naca_grid.py"
++SPEC = importlib.util.spec_from_file_location("cfdx_qualify_naca_grid", SCRIPT)
+ assert SPEC is not None and SPEC.loader is not None
+ QUALIFYMOD = importlib.util.module_from_spec(SPEC)
+ SPEC.loader.exec_module(QUALIFYMOD)
+@@ -12,47 +12,55 @@
+ 
+ 
+ def row(h):
+-    cd = .12 + 2*h*h
+-    return {'case': str(h), 'h': str(h), 'converged': 'yes',
+-            'res_mom': '1e-10', 'res_mass': '1e-11', 'cd': str(cd),
+-            'cdp': str(.04 + h*h), 'cdv': str(.08 + h*h),
+-            'cl': '0', 'cm': '0'}
++    cd = 0.12 + 2 * h * h
++    return {
++        "case": str(h),
++        "h": str(h),
++        "converged": "yes",
++        "res_mom": "1e-10",
++        "res_mass": "1e-11",
++        "cd": str(cd),
++        "cdp": str(0.04 + h * h),
++        "cdv": str(0.08 + h * h),
++        "cl": "0",
++        "cm": "0",
++    }
+ 
+ 
+ class GridQualificationTests(unittest.TestCase):
+     def test_mms_grid_order_two(self):
+-        q = qualify([row(.25), row(.125), row(.0625)])
+-        self.assertAlmostEqual(q['quantities']['cd']['order'], 2.)
+-        self.assertAlmostEqual(q['quantities']['cd']['extrapolated'], .12)
++        q = qualify([row(0.25), row(0.125), row(0.0625)])
++        self.assertAlmostEqual(q["quantities"]["cd"]["order"], 2.0)
++        self.assertAlmostEqual(q["quantities"]["cd"]["extrapolated"], 0.12)
+ 
+     def test_unconverged_grid_is_rejected(self):
+-        rows = [row(.25), row(.125), row(.0625)]
+-        rows[0]['converged'] = 'no'
+-        with self.assertRaisesRegex(ValueError, 'NOT attained'):
++        rows = [row(0.25), row(0.125), row(0.0625)]
++        rows[0]["converged"] = "no"
++        with self.assertRaisesRegex(ValueError, "NOT attained"):
+             qualify(rows)
+ 
+     def test_bad_residual_is_rejected(self):
+-        rows = [row(.25), row(.125), row(.0625)]
+-        rows[2]['res_mass'] = '1e-5'
+-        with self.assertRaisesRegex(ValueError, 'exceeds'):
++        rows = [row(0.25), row(0.125), row(0.0625)]
++        rows[2]["res_mass"] = "1e-5"
++        with self.assertRaisesRegex(ValueError, "exceeds"):
+             qualify(rows)
+ 
+     def test_nonmonotone_cd_has_no_gci(self):
+-        rows = [row(.25), row(.125), row(.0625)]
+-        rows[2]['cd'] = rows[0]['cd']
+-        rows[2]['cdv'] = str(float(rows[2]['cd']) - float(rows[2]['cdp']))
+-        self.assertIsNone(qualify(rows)['quantities']['cd']['GCI'])
++        rows = [row(0.25), row(0.125), row(0.0625)]
++        rows[2]["cd"] = rows[0]["cd"]
++        rows[2]["cdv"] = str(float(rows[2]["cd"]) - float(rows[2]["cdp"]))
++        self.assertIsNone(qualify(rows)["quantities"]["cd"]["GCI"])
+ 
+     def test_bad_force_partition_is_rejected(self):
+-        rows = [row(.25), row(.125), row(.0625)]
+-        rows[0]['cdv'] = '0.5'
+-        with self.assertRaisesRegex(ValueError, 'Cd !='):
++        rows = [row(0.25), row(0.125), row(0.0625)]
++        rows[0]["cdv"] = "0.5"
++        with self.assertRaisesRegex(ValueError, "Cd !="):
+             qualify(rows)
+ 
+     def test_non_geometric_grid_family_is_rejected(self):
+-        with self.assertRaisesRegex(ValueError, 'unequal refinement'):
+-            qualify([row(.25), row(.11), row(.0625)])
++        with self.assertRaisesRegex(ValueError, "unequal refinement"):
++            qualify([row(0.25), row(0.11), row(0.0625)])
+ 
+ 
+-if __name__ == '__main__':
++if __name__ == "__main__":
+     unittest.main()
+
+3 files would be reformatted
+ruff_format_exit=1
+=== post-format ruff check ===
+All checks passed!
+post_format_check_exit=0
+3 files already formatted
+post_format_check_exit=0

@@ -1,0 +1,4 @@
+run_id=40674748364
+pr1146_head=015c5097ff02c6315998f5653c026cbca8e2e4f6
+pr1146_base=ecf1d02287b71ee69f118955b31b966e0d3888fe
+purpose=ruff canonical (format+check) for PR1146 python files
