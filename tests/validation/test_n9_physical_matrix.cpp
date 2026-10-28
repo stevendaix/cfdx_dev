@@ -466,7 +466,7 @@ int main(int argc, char** argv)
     if (argc == 3 && std::string(argv[1]) == "--schur-model") {
         selected_schur_model = argv[2];
     } else if (argc != 1) {
-        std::cerr << "Usage: test_n9_physical_matrix [--schur-model pcd|lsc|bfbt|simple|simplec]\\n";
+        std::cerr << "Usage: test_n9_physical_matrix [--schur-model pcd|lsc|bfbt|simple|simplec]\n";
         return 2;
     }
     if (!selected_schur_model.empty() &&
@@ -475,7 +475,7 @@ int main(int argc, char** argv)
                 return selected_schur_model == schur_model_name(model);
             })) {
         std::cerr << "Unknown N9 physical-matrix Schur model: "
-                  << selected_schur_model << "\\n";
+                  << selected_schur_model << "\n";
         return 2;
     }
 
