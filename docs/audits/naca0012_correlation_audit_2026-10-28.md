@@ -42,6 +42,13 @@ elles ne constituent pas une qualification d'un écoulement 3D.
 La campagne doit conserver les seuils déjà définis par les tests et produire au moins trois maillages convergés, une estimation d'erreur de discrétisation, `Cd_pressure` et `Cd_viscous` indépendants, `Cl` à incidence nulle, continuité et bilan de quantité de mouvement. Toute comparaison bibliographique doit documenter la géométrie du bord de fuite, le farfield, les conditions aux limites et la convention des coefficients. Aucun seuil ou budget d'itérations ne doit être relâché pour obtenir un résultat vert.
 
 ## 7. Statut d'implémentation CFDX
+
+**Statut : DIAGNOSTIC — la qualification physique n'est pas acquise.**
+
+- Implémenté : symétrie du farfield, garde sur les paramètres du générateur, métriques d'aire, espacement radial, croissance, aspect des arêtes et non-orthogonalité ; rapport JSON testé.
+- Vérifié localement : 13 tests Python de maillage ; contrat C++ NACA0012 quick ; tests composants thermiques/turbulence sélectionnés 7/7.
+- Non démontré : convergence sur les trois maillages, convergence spatiale des forces, calcul 3D externe, voie RANS NACA de production, et cas NACA couplé énergie/CHT/rayonnement.
+- Le générateur rapporte un espacement radial euclidien, pas encore la distance normale à la paroi. Les valeurs élevées de non-orthogonalité et de rapport d'aspect restent des défauts à corriger avant toute qualification.
 ## Audit de corrélation NACA0012 — constats et travaux requis
 
 Date: 2026-10-28
