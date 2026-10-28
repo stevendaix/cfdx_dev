@@ -322,7 +322,7 @@ def naca_o_grid_quality(n_surface: int, n_radial: int, radius: float = 20.0):
     Cell area is evaluated from each quadrilateral's polygon; radial spacing
     is measured between corresponding nodes on adjacent layers.
     """
-    points, cells, _ = naca_o_grid(n_surface, n_radial, radius)
+    points, _cells, _ = naca_o_grid(n_surface, n_radial, radius)
     points = np.asarray(points, dtype=np.float64)
     m = 2 * n_surface + 1
     planar = points[: (n_radial + 1) * m, :2].reshape(n_radial + 1, m, 2)
