@@ -485,21 +485,20 @@ jobs:
           name: cfdx-total-validation-long-evidence
           path: long-evidence
       - name: Verify long-validation evidence is present
-        # upload-artifact@v4 roots the artifact at the least common
-        # ancestor of the matched upload paths. Every long-evidence path
-        # lives under build-validation/, so that directory IS the root of
-        # the archive: after download-artifact to long-evidence/, the log
-        # sits at long-evidence/long-validation.log, NOT under
-        # long-evidence/build-validation/. The previous check tested the
-        # latter and failed every campaign (audit 2026-10-16, plan item 5).
-        # The defensive find pinpoints the actual location if the artifact
-        # structure changes again.
+        # Artifact path layout depends on upload-artifact's common-root
+        # calculation across all matched paths. Resolve the log recursively
+        # rather than assuming it is at the download directory root.
+        shell: bash
         run: |
-          test -s long-evidence/long-validation.log || {
-            echo "::error::long-validation.log not found at the artifact root"
-            find long-evidence -name long-validation.log || true
+          set -euo pipefail
+          LONG_LOG="$(find long-evidence -type f -name long-validation.log -print -quit)"
+          if [[ -z "$LONG_LOG" || ! -s "$LONG_LOG" ]]; then
+            echo "::error::long-validation.log missing or empty in downloaded evidence"
+            find long-evidence -maxdepth 5 -type f -print || true
             exit 1
-          }
+          fi
+          echo "LONG_VALIDATION_LOG=$LONG_LOG" >> "$GITHUB_ENV"
+          echo "Using long validation evidence: $LONG_LOG"
 
       - name: Build numerical validation report
         id: validation_report
@@ -508,8 +507,8 @@ jobs:
           python3 scripts/validation_report.py \
             --build-dir "$BUILD_DIR" \
             --output-dir "$BUILD_DIR/validation-report" \
-            --ghia-log long-evidence/long-validation.log \
-            --vmfl036-log long-evidence/long-validation.log
+            --ghia-log "$LONG_VALIDATION_LOG" \
+            --vmfl036-log "$LONG_VALIDATION_LOG"
       - name: Capture validation metadata
         if: always()
         run: |
