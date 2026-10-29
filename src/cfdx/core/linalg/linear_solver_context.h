@@ -39,7 +39,17 @@ public:
             if (ready) ++stats_.full_setups;
         } else if (!same_values) {
             ready = preconditioner_.update_values(matrix);
-            if (ready) ++stats_.numeric_updates;
+            if (ready) {
+                ++stats_.numeric_updates;
+            } else {
+                // This context owns lifecycle decisions. If a numeric refresh
+                // is rejected (for example, a preconditioner can no longer
+                // certify its retained hierarchy), rebuild from the current
+                // matrix before failing the linear solve. This is explicit
+                // full setup, not a silent solver/preconditioner substitution.
+                ready = preconditioner_.setup(matrix);
+                if (ready) ++stats_.full_setups;
+            }
         } else {
             ready = true;
             ++stats_.unchanged_reuses;

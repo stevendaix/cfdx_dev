@@ -167,7 +167,25 @@ public:
             if (!build_diagonal(refreshed[level + 1])) return false;
         }
 
+        // Numeric refresh can leave the retained interpolation with coarse
+        // operators whose high-frequency spectrum is no longer compatible
+        // with the original fixed Jacobi damping. Bound the normalized spectrum
+        // on every refreshed level and conservatively reduce omega before the
+        // hierarchy is exposed to CG. A non-SPD/unsupported diagonal does not
+        // get reclassified here; the caller's true-residual and Krylov checks
+        // remain authoritative.
+        double maximum_bound = 0.0;
+        for (const auto& level : refreshed) {
+            const double bound = normalized_gershgorin_upper_bound(level);
+            if (std::isfinite(bound) && bound > 0.0)
+                maximum_bound = std::max(maximum_bound, bound);
+        }
+        double refreshed_omega = omega_;
+        if (maximum_bound > 0.0 && std::isfinite(maximum_bound))
+            refreshed_omega = std::min(omega_, 1.8 / maximum_bound);
+
         levels_ = std::move(refreshed);
+        omega_ = refreshed_omega;
         last_footprint_.galerkin_dropped_entries += dropped_entries;
         return true;
     }
@@ -1110,6 +1128,43 @@ private:
         mean /= static_cast<double>(values.size());
         for (std::size_t i = 0; i < values.size(); ++i)
             values(i) -= mean;
+    }
+
+    // A symmetric Jacobi smoother is stable when omega * lambda_max(D^-1/2 A D^-1/2) < 2.
+    // The maximum absolute normalized row sum is a conservative Gershgorin upper bound,
+    // evaluated on the refreshed Galerkin levels (not the stale pre-update operators).
+    static double normalized_gershgorin_upper_bound(const Level& level)
+    {
+        const SparseMatrix& A = level.A;
+        const std::size_t n = A.n_rows();
+        if (level.inv_diag.size() != n || n == 0)
+            return std::numeric_limits<double>::infinity();
+        std::vector<double> diagonal(n, 0.0);
+        for (std::size_t i = 0; i < n; ++i) {
+            if (!(level.inv_diag[i] > 0.0) || !std::isfinite(level.inv_diag[i]))
+                return std::numeric_limits<double>::infinity();
+            diagonal[i] = 1.0 / level.inv_diag[i];
+            if (!(diagonal[i] > 0.0) || !std::isfinite(diagonal[i]))
+                return std::numeric_limits<double>::infinity();
+        }
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        double upper_bound = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            double row_sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                const std::size_t j = col[k];
+                const double scale = std::sqrt(diagonal[i] * diagonal[j]);
+                if (!(scale > 0.0) || !std::isfinite(scale))
+                    return std::numeric_limits<double>::infinity();
+                row_sum += std::abs(val[k]) / scale;
+            }
+            if (!std::isfinite(row_sum))
+                return std::numeric_limits<double>::infinity();
+            upper_bound = std::max(upper_bound, row_sum);
+        }
+        return upper_bound;
     }
 
     static bool build_diagonal(Level& level)

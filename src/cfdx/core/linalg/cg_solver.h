@@ -180,6 +180,11 @@ inline SolverResult solve_cg_impl(
     const double tol_abs = tolerance * std::max(b_norm, 1e-300);
 
     if (!std::isfinite(rsold)) { result.status=SolverStatus::DIVERGED; return result; }
+    // CG requires an SPD preconditioner as well as an SPD operator. A finite
+    // but non-positive initial r^T M^-1 r means that requirement is already
+    // violated; do not take a negative step and corrupt the iterate. Preserve
+    // the independently recomputed true residual in the failure result.
+    if (!(rsold > 0.0)) return not_applicable(0);
 
     const double initial_true_residual =
         krylov_norm2(r_vector, SolverPrecision::FP64, reduction);
