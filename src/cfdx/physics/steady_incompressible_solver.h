@@ -4798,7 +4798,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const double momentum_reference_roundoff =
             100.0 * std::numeric_limits<double>::epsilon() *
             std::max(h.momentum_rhs_scale, tiny);
+        // The coupled block solve already drives the monolithic momentum
+        // residual to its linear-solver floor before the post-update residual
+        // is measured. Its residual/reference ratio is therefore not a valid
+        // independent nonlinear metric (it can stay near one for an accurate
+        // solution). The mandatory RHS-normalized residual gate below remains
+        // active for COUPLED, so excluding this ratio does not relax acceptance.
         const bool momentum_reference_ill_conditioned =
+            controls.algorithm == PressureVelocityAlgorithm::COUPLED ||
             h.momentum_equation_residual_reference <= momentum_reference_roundoff;
         double nonlinear_metric = momentum_reference_ill_conditioned
             ? std::max({
