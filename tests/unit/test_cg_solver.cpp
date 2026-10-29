@@ -177,6 +177,26 @@ int main() {
         EXPECT_TRUE(result.iterations == 0);
     });
 
+    run_case("cg_already_converged_does_not_require_preconditioner_setup", [] {
+        // A zero true residual is already a complete solution. The solver must
+        // not reject it because a preconditioner that would otherwise fail to
+        // set up is unnecessary for a zero-iteration solve.
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+
+        Vector b(2, 0.0);
+        Vector x(2, 0.0);
+        FailingPreconditioner pc(FailurePoint::Setup);
+        const auto result = solve_cg(A, b, x, pc, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_NEAR(result.residual, 0.0, 0.0);
+        EXPECT_NEAR(result.residual_relative, 0.0, 0.0);
+        EXPECT_TRUE(pc.applications == 0);
+    });
+
     run_case("cg_max_iter_reached", []() {
         // Système mal conditionné avec très peu d'itérations.
         SparseMatrix A(2, 2);
