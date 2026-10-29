@@ -4792,15 +4792,26 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             std::max(h.momentum_rhs_scale, tiny);
         const bool momentum_reference_ill_conditioned =
             h.momentum_equation_residual_reference <= momentum_reference_roundoff;
-        double nonlinear_metric = momentum_reference_ill_conditioned
+        // COUPLED has already solved the monolithic momentum-continuity
+        // system before this residual is measured. Its first-iteration
+        // reference is therefore the post-solve residual itself, not an
+        // independent pre-solve baseline. Including the ratio in the monitor
+        // makes an otherwise converged block solve report a metric of 1.0
+        // (round-off residual / same round-off residual) and can prevent
+        // convergence indefinitely. Keep the independently recomputed
+        // RHS-normalized physical residual as a mandatory per-criterion gate.
+        const bool use_reference_relative_metric =
+            !momentum_reference_ill_conditioned &&
+            controls.algorithm != PressureVelocityAlgorithm::COUPLED;
+        const double nonlinear_metric = use_reference_relative_metric
             ? std::max({
                   h.momentum_residual,
+                  h.momentum_equation_residual_relative,
                   h.pressure_residual,
                   h.velocity_change_inf,
                   h.pressure_change_inf})
             : std::max({
                   h.momentum_residual,
-                  h.momentum_equation_residual_relative,
                   h.pressure_residual,
                   h.velocity_change_inf,
                   h.pressure_change_inf});
