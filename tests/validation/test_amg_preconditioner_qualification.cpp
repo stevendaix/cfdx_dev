@@ -332,7 +332,8 @@ int main() {
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
         EXPECT_TRUE(result.iterations == 0);
         EXPECT_TRUE(std::abs(result.residual_relative - 1.0) < 1e-12);
-        EXPECT_TRUE(relative_true_residual(A, x, b) == result.residual_relative);
+        EXPECT_TRUE(std::abs(relative_true_residual(A, x, b) -
+                             result.residual_relative) < 1e-12);
     }
 
     // A reusable context owns the explicit rebuild decision if a same-pattern

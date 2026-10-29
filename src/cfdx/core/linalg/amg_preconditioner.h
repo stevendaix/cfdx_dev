@@ -177,11 +177,13 @@ public:
         double maximum_bound = 0.0;
         for (const auto& level : refreshed) {
             const double bound = normalized_gershgorin_upper_bound(level);
-            if (std::isfinite(bound) && bound > 0.0)
-                maximum_bound = std::max(maximum_bound, bound);
+            if (!std::isfinite(bound) || !(bound > 0.0)) {
+                return false;
+            }
+            maximum_bound = std::max(maximum_bound, bound);
         }
         double refreshed_omega = omega_;
-        if (maximum_bound > 0.0 && std::isfinite(maximum_bound))
+        if (maximum_bound > 0.0)
             refreshed_omega = std::min(omega_, 1.8 / maximum_bound);
 
         levels_ = std::move(refreshed);
