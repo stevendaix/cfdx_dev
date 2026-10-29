@@ -7,51 +7,57 @@
 - Sources : `src/cfdx/core/linalg/amg_preconditioner.h`, `src/cfdx/core/linalg/cg_solver.h`, `src/cfdx/core/linalg/linear_solver_context.h`.
 - Contrat : aucun changement de tolérance, budget d’itérations, discrétisation CFD ou gate physique.
 
-## 1. Références sources
+## 1. Références sources (obligatoire : DOI ou ISBN)
+
 - Y. Saad, *Iterative Methods for Sparse Linear Systems*, 2nd edition, SIAM, 2003, ISBN 978-0-89871-534-7 — méthodes de Krylov et préconditionnement.
 - R. S. Varga, *Matrix Iterative Analysis*, 2nd edition, Springer, 2000, ISBN 978-3-540-66311-8 — rayon spectral, disques de Gershgorin et convergence des méthodes stationnaires.
 
-## 2. Formulation numérique
+## 2. Formulation continue
 
-Pour CG appliqué à (Ax=b), l’opérateur doit être SPD et le préconditionneur doit avoir une action compatible avec une matrice SPD. En particulier, le produit initial
-[
-r_0^T M^{-1}r_0
-]
-doit être strictement positif. Une valeur finie mais non positive ne doit pas être utilisée pour former un pas CG.
+CG résout le système linéaire discret (Ax=b) sous l’hypothèse que l’opérateur est symétrique défini positif (SPD). Le préconditionneur doit également fournir une action compatible avec cette hypothèse. En particulier, le produit initial (r_0^T M^{-1}r_0) doit être strictement positif. Une valeur finie mais non positive ne doit pas être utilisée pour former un pas CG.
 
-Pour le lisseur Jacobi pondéré, le facteur modal est (1-omegalambda), où (lambda) est une valeur propre de (D^{-1/2} A D^{-1/2}). Une condition de stabilité suffisante est
+## 3. Discrétisation Volume Fini
+
+La hiérarchie AMG utilise des opérateurs de Galerkin (A_c=P^T A_f P) et un lisseur Jacobi pondéré. Pour (D=mathrm{diag}(A)), le facteur modal du lisseur est (1-omegalambda), où (lambda) est une valeur propre de (D^{-1/2}AD^{-1/2}). Une condition de stabilité suffisante est
 [
 0 < omega < rac{2}{lambda_{max}}.
 ]
-Le rayon spectral est borné par la norme infinie, donc par la borne conservative
+Lorsque les diagonales sont positives et finies, le rayon spectral est borné par la norme infinie et par la borne conservative
 [
 lambda_{max}leq max_isum_j
-left|rac{A_{ij}}{sqrt{A_{ii}A_{jj}}}ight|
+left|rac{A_{ij}}{sqrt{A_{ii}A_{jj}}}ight|.
 ]
-lorsque les diagonales sont positives et finies.
+La PR #1149 recalcule cette borne pour chaque niveau après actualisation des coefficients et réduit (omega) à (min(omega_{mathrm{ancien}},1.8/lambda_{mathrm{borne}})). Si la borne n’est pas calculable, la mise à jour est refusée.
 
-## 3. Défaut observé et correction
+## 4. Traitement des frontières
 
-L’audit NACA0012 a reproduit un cas où la hiérarchie d’interpolation conservée, suivie d’une mise à jour des opérateurs de Galerkin, produit des niveaux grossiers incompatibles avec le facteur Jacobi fixe. Le premier produit préconditionné devient négatif et CG retourne `NOT_APPLICABLE`. Sur la matrice capturée, le résidu relatif vrai indépendant était environ (3.14\times10^{-2}), alors que les champs de résultat enregistrés étaient nuls. La trace montre également une divergence non linéaire momentum antérieure : le défaut AMG/CG est réel, mais n’explique pas à lui seul la qualification NACA complète.
+Cette correction est algébrique : elle ne modifie aucune condition limite, aucun flux de face, aucune jauge de pression ni aucune ligne de matrice CFD. Elle ne modifie pas la discrétisation SIMPLE/SIMPLEC/COUPLED. Si une matrice de pression ou ses diagonales ne satisfont pas les hypothèses nécessaires au calcul de la borne, l’actualisation numérique échoue explicitement et le contexte propriétaire tente un setup complet ; aucune méthode de solveur de substitution n’est introduite.
 
-La PR #1149 :
-- recalcule la borne normalisée sur chaque niveau rafraîchi ;
-- réduit (omega) à (min(omega_{mathrm{ancien}},1.8/lambda_{mathrm{borne}})) si les diagonales permettent ce calcul ;
-- refuse la mise à jour si un niveau ne peut pas être borné, afin que le contexte propriétaire tente un `setup(A)` complet ;
-- fait rejeter par CG un (r^T M^{-1}rleq0) avant la première mise à jour de la solution, en conservant le résidu (b-Ax) indépendamment recalculé.
+## 5. Pièges connus
 
-Le contexte incrémente les compteurs de setup complet ou de mise à jour numérique selon le chemin réellement exécuté. Aucun solveur alternatif silencieux n’est substitué.
+- L’audit NACA0012 a reproduit une hiérarchie réutilisée dont les niveaux grossiers sont devenus incompatibles avec le facteur Jacobi fixe. Le produit préconditionné initial est devenu négatif et CG a retourné `NOT_APPLICABLE`.
+- Sur la matrice capturée, le résidu relatif vrai indépendant était environ (3.14\times10^{-2}), alors que les champs de résultat enregistrés étaient nuls.
+- La trace montre aussi une divergence non linéaire momentum antérieure à l’échec linéaire. Le défaut AMG/CG est réel mais ne prouve pas que la qualification complète NACA0012 sera réparée.
+- La borne de Gershgorin est conservative et peut réduire le facteur de relaxation plus que nécessaire, augmentant le coût des cycles.
+- Le résidu récursif ou le statut seul ne remplace jamais le calcul indépendant de (b-Ax). Aucun seuil n’est relâché.
 
-## 4. Tests et preuves exigés
+## 6. Ordre de précision attendu et validation exigée
 
-- Régression : préconditionneur à action négative, statut `NOT_APPLICABLE`, itération zéro et résidu vrai non nul correctement rapporté.
-- Régression : refus d’une mise à jour numérique suivi d’un setup complet explicite par le contexte.
-- Qualification AMG native et tests Release / DebugSanitizers sur le SHA exact.
-- Rejouer la campagne NACA0012 complète N64/N128/N256, contrôler résidu vrai de pression, statut CG, résidus momentum RHS-normalisés, continuité, flux-vitesse et coefficients.
-- Rejouer l’étude de profils Ghia séparément et mesurer les coûts AMG/solveur et la décroissance du résidu momentum ; un timeout ne constitue pas à lui seul un échec de comparaison de profil.
+- Tests de régression pour un préconditionneur à action négative : statut `NOT_APPLICABLE`, itération zéro, solution inchangée et résidu vrai correctement rapporté.
+- Test de cycle de vie : refus d’une mise à jour numérique suivi d’un setup complet explicite par le contexte, avec compteurs distincts.
+- CI Release et DebugSanitizers sur le SHA exact, tests numériques et gate d’audit.
+- Rejouer NACA0012 N64/N128/N256 et contrôler statut CG, résidu vrai de pression, résidus momentum RHS-normalisés, continuité, flux-vitesse et coefficients.
+- Rejouer l’étude de profils Ghia séparément ; enregistrer temps des solves de pression/AMG et décroissance momentum. Un timeout n’est pas à lui seul un échec de comparaison des profils.
+- La réussite algébrique ne vaut pas preuve de convergence non linéaire, de conservation, de convergence en maillage ou d’accord physique du Cd/cisaillement.
 
-## 5. Limites et décision
+## 7. Statut d’implémentation
 
-La borne de Gershgorin est conservative ; la baisse de (omega) peut augmenter le coût des cycles. Le succès du test algébrique ne prouve ni convergence non linéaire, ni conservation, ni convergence en maillage, ni accord physique du Cd ou du cisaillement. Si la campagne NACA reste divergente avant l’échec linéaire, la correction de discrétisation / reconstruction près du profil doit être investiguée séparément.
+- Sources modifiées : `src/cfdx/core/linalg/amg_preconditioner.h`, `src/cfdx/core/linalg/cg_solver.h`, `src/cfdx/core/linalg/linear_solver_context.h`.
+- Tests ajoutés : `tests/validation/test_amg_preconditioner_qualification.cpp`.
+- PR candidate : #1149.
+- État des preuves : CI en cours ; la première exécution de la règle de gouvernance a identifié un défaut de structure de cette fiche, corrigé dans cette version. Les résultats numériques de la campagne exacte restent en attente.
+- Décision : **PENDING**. Aucun merge avant CI vert et revue des campagnes ciblées.
 
-Statut final : **PENDING** jusqu’à CI vert, true-residual evidence et revue des campagnes ciblées. Aucun merge avant ces preuves.
+## 8. Journal des modifications
+
+- 2026-10-29 — création dans #1149 pour documenter la stabilité du lisseur sur hiérarchie AMG rafraîchie, le diagnostic de positivité CG et les critères de requalification.
