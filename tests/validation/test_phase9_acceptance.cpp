@@ -596,8 +596,15 @@ int main(int argc, char** argv)
                         gates.push_back("continuity_linf");
                     if (!(h.continuity_normalized < 1e-7))
                         gates.push_back("continuity_normalized");
-                    if (!(h.momentum_equation_residual_relative < 1e-7))
-                        gates.push_back("momentum_equation_residual_relative");
+                    const double momentum_residual_gate_metric =
+                        test.algorithm == PressureVelocityAlgorithm::COUPLED
+                            ? h.momentum_equation_residual_rhs_relative
+                            : h.momentum_equation_residual_relative;
+                    if (!(momentum_residual_gate_metric < 1e-7))
+                        gates.push_back(
+                            test.algorithm == PressureVelocityAlgorithm::COUPLED
+                                ? "momentum_equation_residual_rhs_relative"
+                                : "momentum_equation_residual_relative");
 
                     // N11: independently reconstructed momentum balances must
                     // close after the accepted solve. This is deliberately
@@ -697,6 +704,8 @@ int main(int argc, char** argv)
                           << " continuity=" << h.continuity_linf
                           << " continuity_norm=" << h.continuity_normalized
                           << " momentum_eq_rel=" << h.momentum_equation_residual_relative
+                          << " momentum_eq_rhs_rel="
+                          << h.momentum_equation_residual_rhs_relative
                           << " momentum_cons_x=" << h.momentum_conservation_normalized[0]
                           << " momentum_cons_y=" << h.momentum_conservation_normalized[1]
                           << " momentum_cons_z=" << h.momentum_conservation_normalized[2]
