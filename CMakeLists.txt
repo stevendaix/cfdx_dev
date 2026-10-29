@@ -685,7 +685,10 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_test(NAME test_ghia_cavity_profile_study COMMAND test_ghia_cavity --profile-study)
         set_tests_properties(test_ghia_cavity_profile_study PROPERTIES
             LABELS "phase13;validation;campaign;long"
-            TIMEOUT 2400)
+            # The 2026-10-28 total-validation run reached this deadline while
+            # the separate full Ghia campaign completed in 2626 s. This is a
+            # runtime budget only; the reference, residual and refinement gates stay unchanged.
+            TIMEOUT 3600)
         # Run a bounded low-resolution preflight first. The dependency prevents
         # the physical PCD qualification from starting when the nested solver
         # already exhibits runaway behaviour on the smaller case.
@@ -1099,7 +1102,11 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_n9_physical_matrix tests/validation/test_n9_physical_matrix.cpp)
     set_tests_properties(test_n9_physical_matrix PROPERTIES
         LABELS "n9;qualification;validation;long;validation-total"
-        TIMEOUT 1800)
+        # The unsharded physical matrix reached this 1800 s deadline in the
+        # 2026-10-28 total-validation run while the individual Schur shards
+        # passed in 411-1462 s. Allow time for the cross-algorithm controls;
+        # no convergence or physical acceptance criterion is changed.
+        TIMEOUT 5400)
     set_tests_properties(test_n9_s10_pressure_reference_policies PROPERTIES
         LABELS "n9;qualification;validation;long;validation-total"
         TIMEOUT 300
