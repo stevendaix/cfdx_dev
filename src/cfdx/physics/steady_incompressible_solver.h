@@ -3283,19 +3283,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.pressure_linear_solver);
         result.pressure_linear_plan = pressure_plan;
         result.pressure_linear_plan_resolved = true;
-        // The reference-cell gauge reduction solves an (N-1)-unknown
-        // system, while the reusable pressure context is tied to the full
-        // N-cell operator. Do not bind a full-size preconditioner/context to
-        // the reduced matrix; dispatch each reduced solve with its actual
-        // dimension instead. The projected-null-space path keeps the full N.
-        if (pressure_plan.krylov == KrylovModel::CG && !reduce_pressure_gauge) {
+        // The reusable context is intentionally dimension-agnostic until its
+        // first prepare(matrix). For reference-cell gauge reduction that first
+        // matrix has N-1 rows, so the preconditioner must not be configured to
+        // project a constant null space: the gauge has already removed it.
+        // Project only on the full-size, explicitly projected-null-space path.
+        if (pressure_plan.krylov == KrylovModel::CG) {
+            const bool project_pressure_null_space =
+                pressure_plan.null_space == NullSpaceModel::Constant &&
+                !reduce_pressure_gauge;
             pressure_preconditioner =
                 make_scalar_preconditioner(
                     pressure_plan.preconditioner,
-                    pressure_plan.null_space == NullSpaceModel::Constant);
+                    project_pressure_null_space);
             pressure_context = std::make_unique<ReusableCgContext>(
                 *pressure_preconditioner);
-            if (pressure_plan.null_space == NullSpaceModel::Constant) {
+            if (project_pressure_null_space) {
                 pressure_null_space = std::make_unique<NullSpaceProjector>(
                     NullSpaceProjector::constant(mesh.n_cells()));
             }
