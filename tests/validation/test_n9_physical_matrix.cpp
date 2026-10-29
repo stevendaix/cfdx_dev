@@ -454,7 +454,7 @@ const char* schur_model_name(CoupledSchurModel model)
 
 } // namespace
 
-int main()
+int main(int argc, char** argv)
 {
     std::ios::sync_with_stdio(false);
     std::cin.tie(nullptr);
@@ -462,6 +462,22 @@ int main()
     setvbuf(stderr, nullptr, _IONBF, 0);
     const auto algs=algorithms();
     const auto schur_models=qualified_schur_models();
+    std::string selected_schur_model;
+    if (argc == 3 && std::string(argv[1]) == "--schur-model") {
+        selected_schur_model = argv[2];
+    } else if (argc != 1) {
+        std::cerr << "Usage: test_n9_physical_matrix [--schur-model pcd|lsc|bfbt|simple|simplec]\n";
+        return 2;
+    }
+    if (!selected_schur_model.empty() &&
+        std::none_of(schur_models.begin(), schur_models.end(),
+            [&](CoupledSchurModel model) {
+                return selected_schur_model == schur_model_name(model);
+            })) {
+        std::cerr << "Unknown N9 physical-matrix Schur model: "
+                  << selected_schur_model << "\n";
+        return 2;
+    }
 
     // Common physical matrix: Couette, pressure-driven Poiseuille and lid-driven
     // Run this matrix against the active numerical-method base so production fixes
@@ -480,6 +496,10 @@ int main()
     const auto p_open_channel=open_channel_pressure_bc();
 
     for (std::size_t k=0;k<algs.size();++k) {
+        // A Schur-model shard is an isolated COUPLED qualification job. Do not
+        // rerun the five segregated algorithms in every shard; the unsharded
+        // full matrix still runs them all and retains the cross-algorithm gates.
+        if (!selected_schur_model.empty()) break;
         // Skip COUPLED in the first loop - it's tested in the Schur model loop below
         if (algs[k] == PressureVelocityAlgorithm::COUPLED) continue;
         char buf[128];
@@ -514,6 +534,9 @@ int main()
     // the N9 physical matrix. Requested and resolved identities are checked
     // explicitly so no silent model substitution can satisfy this campaign.
     for (const auto schur_model : schur_models) {
+        if (!selected_schur_model.empty() &&
+            selected_schur_model != schur_model_name(schur_model))
+            continue;
         std::string msg = "STARTING COUPLED " + std::string(schur_model_name(schur_model)) + "\n";
         write(2, msg.data(), msg.size());
         const auto check_model = [&](const Run& r, const char* case_name) {
@@ -567,6 +590,11 @@ int main()
         if (couette_l2(coupled_skew,12,16)>2e-2)
             throw std::runtime_error(std::string("COUPLED skew Couette analytic L2 gate failed: ") + schur_model_name(schur_model));
     }
+
+    // A sharded invocation qualifies only its selected COUPLED Schur model.
+    // The full invocation (without --schur-model) continues into the shared
+    // cross-algorithm and skew-mesh gates below.
+    if (!selected_schur_model.empty()) return 0;
 
     // Cross-algorithm physical-equivalence gate on each benchmark. Every
     // pairwise delta (plus the end-of-run audit of both cavity solutions)

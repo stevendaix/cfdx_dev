@@ -3791,13 +3791,24 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << "\n";
             }
 
-            // COUPLED solves U and p as one saddle-point system. Do not
-            // apply independent post-solve relaxation factors to its blocks:
-            // that destroys the continuity constraint enforced by the
-            // monolithic solve (the candidate has O(linear-tolerance)
-            // continuity, while alpha_u != alpha_p introduces finite
-            // divergence). U and p already contain the coupled candidate.
-            // Segregated algorithms retain their relaxation logic below.
+            // COUPLED solves U and p as one saddle-point system. If
+            // nonlinear damping is needed, apply one shared factor to both
+            // blocks: independent alpha_u/alpha_p values perturb the solved
+            // continuity constraint, while a common factor preserves the
+            // linear coupled constraint when the previous and candidate
+            // states satisfy it. Use the more conservative of the two
+            // configured relaxation factors.
+            const double coupled_relaxation_used = std::min(
+                retry_controller.alpha_u(effective_alpha_u),
+                retry_controller.alpha_p(effective_alpha_p));
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                for (std::size_t d = 0; d < 3; ++d)
+                    U.component_data(d)[c] =
+                        U_old.component_data(d)[c] +
+                        coupled_relaxation_used *
+                            (U.component_data(d)[c] - U_old.component_data(d)[c]);
+                p(c) = p_old(c) + coupled_relaxation_used * (p(c) - p_old(c));
+            }
             apply_pressure_gauge_policy(
                 p, geometry, controls.pressure_gauge_policy,
                 controls.pressure_reference_cell, controls.pressure_reference_value,
@@ -4646,8 +4657,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // Report the relaxation factors actually used on this attempt, including
         // any retry-controller scaling. These are the values needed to replay
         // an accepted iteration deterministically from its history record.
-        h.effective_alpha_u = retry_controller.alpha_u(effective_alpha_u);
-        h.effective_alpha_p = retry_controller.alpha_p(effective_alpha_p);
+        const double coupled_alpha_used = std::min(
+            retry_controller.alpha_u(effective_alpha_u),
+            retry_controller.alpha_p(effective_alpha_p));
+        h.effective_alpha_u = controls.algorithm == PressureVelocityAlgorithm::COUPLED
+            ? coupled_alpha_used : retry_controller.alpha_u(effective_alpha_u);
+        h.effective_alpha_p = controls.algorithm == PressureVelocityAlgorithm::COUPLED
+            ? coupled_alpha_used : retry_controller.alpha_p(effective_alpha_p);
         h.simplec_signed_offdiag_sum_linf = simplec_signed_offdiag_sum_audit;
         h.simplec_abs_offdiag_sum_linf = simplec_abs_offdiag_sum_audit;
         h.simplec_denominator_signed_linf = simplec_denominator_signed_audit;

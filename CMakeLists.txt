@@ -1099,7 +1099,34 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_n8_amg_anisotropy_scaling tests/validation/test_n8_amg_anisotropy_scaling.cpp)
     add_cfdx_test(test_n9_common_schur_qualification tests/validation/test_n9_common_schur_qualification.cpp)
     add_cfdx_test(test_n9_s10_pressure_reference_policies tests/validation/test_n9_s10_pressure_reference_policies.cpp)
-    add_cfdx_test(test_n9_physical_matrix tests/validation/test_n9_physical_matrix.cpp)
+    # Run each production Schur model as an independent physical test.
+    # The 32x32 Ghia cavity is expensive for some preconditioners; splitting
+    # the cases lets CI parallelize them without weakening any physical gate.
+    add_executable(test_n9_physical_matrix tests/validation/test_n9_physical_matrix.cpp)
+    target_link_libraries(test_n9_physical_matrix PRIVATE cfdx_core)
+    target_include_directories(test_n9_physical_matrix PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+    foreach(schur_model IN ITEMS pcd lsc bfbt simple simplec)
+        add_test(
+            NAME test_n9_physical_matrix_${schur_model}
+            COMMAND test_n9_physical_matrix --schur-model ${schur_model})
+    endforeach()
+    set_tests_properties(
+        test_n9_physical_matrix_pcd
+        test_n9_physical_matrix_lsc
+        test_n9_physical_matrix_bfbt
+        test_n9_physical_matrix_simple
+        test_n9_physical_matrix_simplec
+        PROPERTIES
+            LABELS "n9;qualification;validation;long;validation-total"
+            TIMEOUT 1800)
+    # The unsharded full-matrix invocation keeps the controls the shards
+    # deliberately skip: the five segregated algorithms on the shared
+    # benchmarks, the cross-algorithm physical-equivalence gates and the
+    # per-algorithm skew Couette campaign. It stays the declared
+    # scripts/n9_physical_campaign.py campaign test and a long-validation
+    # campaign; the workflow shards qualify the coupled Schur models in
+    # parallel within their own budgets.
+    add_test(NAME test_n9_physical_matrix COMMAND test_n9_physical_matrix)
     set_tests_properties(test_n9_physical_matrix PROPERTIES
         LABELS "n9;qualification;validation;long;validation-total"
         # The unsharded physical matrix reached this 1800 s deadline in the
