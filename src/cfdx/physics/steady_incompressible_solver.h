@@ -4869,6 +4869,34 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             momentum_residual_gate && momentum_equation_residual_gate &&
             pressure_residual_gate && velocity_change_gate && pressure_change_gate;
 
+        // Segregated SIMPLE only: an opt-in physical-residual globalization
+        // guard. The catch below restores U, p, mass_flux, monitor and SST
+        // and shrinks the equation relaxation before replaying this iteration.
+        // Do NOT apply independent post-solve U/p relaxation to COUPLED.
+        if (controls.nonlinear_retry.reject_severe_physical_growth &&
+            controls.algorithm == PressureVelocityAlgorithm::SIMPLE &&
+            !result.history.empty()) {
+            const auto& previous = result.history.back();
+            const bool momentum_growth = severe_physical_residual_growth(
+                previous.momentum_equation_residual_rhs_relative,
+                h.momentum_equation_residual_rhs_relative,
+                controls.convergence.relative_tolerance,
+                controls.nonlinear_retry);
+            const bool continuity_growth = severe_physical_residual_growth(
+                previous.continuity_normalized,
+                h.continuity_normalized,
+                controls.convergence.continuity_tolerance,
+                controls.nonlinear_retry);
+            if (momentum_growth || continuity_growth) {
+                std::ostringstream reason;
+                reason << "SIMPLE severe physical residual growth: momentum="
+                       << previous.momentum_equation_residual_rhs_relative
+                       << "->" << h.momentum_equation_residual_rhs_relative
+                       << ", continuity=" << previous.continuity_normalized
+                       << "->" << h.continuity_normalized;
+                throw NonlinearRetryableFailure(reason.str());
+            }
+        }
         // Reject severe adaptive overshoots before they reach the convergence
         // monitor. A retry is the same nonlinear iteration, so convergence
         // history must only observe the accepted state.

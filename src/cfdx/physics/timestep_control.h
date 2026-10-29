@@ -342,7 +342,28 @@ struct NonlinearRetryControls {
     double relaxation_shrink = 0.5;
     double minimum_alpha_u = 0.1;
     double minimum_alpha_p = 0.05;
+    // Opt-in: reject a nonlinear candidate if actual physical residuals grow
+    // severely. The same iteration is retried with smaller equation relaxation.
+    // This option is intended for segregated SIMPLE, not the monolithic block.
+    bool reject_severe_physical_growth = false;
+    double severe_physical_growth_factor = 4.0;
+    double severe_physical_gate_multiple = 10.0;
 };
+
+// Compare physical residuals in the SAME normalization and accepted state.
+// Absolute tolerance protects against false rejections at machine precision.
+inline bool severe_physical_residual_growth(
+    double accepted, double candidate, double gate,
+    const NonlinearRetryControls& controls)
+{
+    if (!std::isfinite(candidate))
+        return true;
+    if (!(std::isfinite(accepted) && accepted >= 0.0 &&
+          std::isfinite(gate) && gate > 0.0))
+        throw std::invalid_argument("invalid nonlinear physical-residual input");
+    return candidate > controls.severe_physical_gate_multiple * gate &&
+        candidate > controls.severe_physical_growth_factor * std::max(accepted, gate);
+}
 
 inline void validate_nonlinear_retry_controls(const NonlinearRetryControls& c)
 {
@@ -352,7 +373,11 @@ inline void validate_nonlinear_retry_controls(const NonlinearRetryControls& c)
         !std::isfinite(c.minimum_alpha_u) || !(c.minimum_alpha_u > 0.0) ||
         c.minimum_alpha_u > 1.0 ||
         !std::isfinite(c.minimum_alpha_p) || !(c.minimum_alpha_p > 0.0) ||
-        c.minimum_alpha_p > 1.0)
+        c.minimum_alpha_p > 1.0 ||
+        !std::isfinite(c.severe_physical_growth_factor) ||
+        !(c.severe_physical_growth_factor > 1.0) ||
+        !std::isfinite(c.severe_physical_gate_multiple) ||
+        !(c.severe_physical_gate_multiple > 1.0))
         throw std::invalid_argument("invalid nonlinear retry controls");
 }
 

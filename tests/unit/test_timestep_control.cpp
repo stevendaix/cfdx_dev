@@ -101,6 +101,21 @@ int main()
         EXPECT_TRUE(controller.history().back().reason == TimeStepChangeReason::NonlinearFailureRollback);
     });
 
+    run_case("physical_growth_gate_rejects_real_blowup_not_roundoff", [] {
+        NonlinearRetryControls c;
+        c.reject_severe_physical_growth = true;
+        EXPECT_TRUE(severe_physical_residual_growth(1e-4, 1e-2, 1e-8, c));
+        EXPECT_TRUE(severe_physical_residual_growth(1e-12, 1e-4, 1e-8, c));
+        EXPECT_TRUE(!severe_physical_residual_growth(1e-12, 4e-8, 1e-8, c));
+        EXPECT_TRUE(!severe_physical_residual_growth(1e-3, 1.1e-3, 1e-8, c));
+        EXPECT_TRUE(severe_physical_residual_growth(1e-3,
+            std::numeric_limits<double>::infinity(), 1e-8, c));
+        EXPECT_THROW(severe_physical_residual_growth(-1., 1., 1e-8, c),
+            std::invalid_argument);
+        c.severe_physical_growth_factor = 1.;
+        EXPECT_THROW(validate_nonlinear_retry_controls(c), std::invalid_argument);
+    });
+
     run_case("nonlinear_retry_reduces_relaxation_deterministically", [] {
         NonlinearRetryControls c;
         c.max_retries = 2;

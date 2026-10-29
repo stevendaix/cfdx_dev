@@ -12,9 +12,14 @@ using namespace cfdx::core;
 using namespace cfdx::physics;
 
 int main(int argc, char** argv) {
-    if (argc != 2) throw std::invalid_argument("usage: test_naca3d_thermal_turbulence_smoke mesh.h5");
+    const bool diagnose_linear = argc == 3 &&
+        std::string(argv[1]) == "--linear-conduction";
+    if (!(argc == 2 || diagnose_linear))
+        throw std::invalid_argument(
+            "usage: test_naca3d_thermal_turbulence_smoke [--linear-conduction] mesh.h5");
+    const char* mesh_path = diagnose_linear ? argv[2] : argv[1];
     Mesh mesh;
-    if (!cfdx::io::read_mesh_hdf5(argv[1], mesh) || !mesh.topo_validate().ok)
+    if (!cfdx::io::read_mesh_hdf5(mesh_path, mesh) || !mesh.topo_validate().ok)
         throw std::runtime_error("NACA3D: invalid HDF5 mesh");
     const auto geometry = build_fv_geometry(mesh);
     const auto n = mesh.n_cells();
@@ -45,6 +50,62 @@ int main(int argc, char** argv) {
               << " Linf_T=" << tmax << '\n';
     if (!energy.converged || tmax > 1e-7)
         throw std::runtime_error("NACA3D: isothermal thermal MMS failed");
+
+    if (diagnose_linear) {
+    // Nontrivial 3-D exact conduction MMS: T = 300 + 10 z on a span-1
+    // extruded mesh. Lateral patches are adiabatic, end caps Dirichlet.
+    // This checks z-face orientation, internal z couplings and energy BC.
+    Field<double, Location::CELL> Tlinear(n, "Tlinear", "K", 1);
+    for (std::size_t c = 0; c < n; ++c)
+        Tlinear(c) = 300.0 + 10.0 * geometry.cell_centres[c].z;
+    ScalarBoundaryConditions linear_bc;
+    linear_bc["front"] = {ScalarBoundaryType::FIXED_VALUE, 300.0, 0.0};
+    linear_bc["back"] = {ScalarBoundaryType::FIXED_VALUE, 310.0, 0.0};
+    linear_bc["airfoil"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+    linear_bc["farfield"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+    const auto linear_eq = assemble_energy_equation(mesh, geometry, mass_flux,
+        source, Tlinear, ec, linear_bc, nullptr, nullptr, nullptr, nullptr, &Tlinear);
+    double initial_residual_max = 0.;
+    std::size_t worst = 0;
+    for (std::size_t c = 0; c < n; ++c) {
+        double rowres = -linear_eq.rhs(c);
+        for (std::uint32_t j = linear_eq.matrix.row_offsets_data()[c];
+             j < linear_eq.matrix.row_offsets_data()[c+1]; ++j)
+            rowres += linear_eq.matrix.values_data()[j] *
+                Tlinear(linear_eq.matrix.columns_data()[j]);
+        if (std::abs(rowres) > initial_residual_max) {
+            initial_residual_max = std::abs(rowres);
+            worst = c;
+        }
+    }
+    std::cout << "NACA3D_LINEAR_MATRIX_AUDIT residual_max=" << initial_residual_max
+              << " worst_cell=" << worst
+              << " worst_z=" << geometry.cell_centres[worst].z << '\n';
+    const auto conduction = solve_energy(mesh, geometry, mass_flux, Tlinear,
+                                           source, ec, linear_bc);
+    double linear_err = 0.0;
+    for (std::size_t c = 0; c < n; ++c)
+        linear_err = std::max(linear_err,
+            std::abs(Tlinear(c) - (300.0 + 10.0*geometry.cell_centres[c].z)));
+    std::cout << "NACA3D_LINEAR_CONDUCTION converged=" << conduction.converged
+              << " Linf_T=" << linear_err << '\n';
+    if (!conduction.history.empty()) {
+        const auto& final = conduction.history.back();
+        std::cout << "NACA3D_LINEAR_CONDUCTION_AUDIT iterations=" << conduction.iterations
+                  << " solver_status=" << final.linear_solver_status
+                  << " residual=" << final.residual
+                  << " linear_relative=" << final.linear_residual_relative
+                  << " backward_error=" << final.backward_error
+                  << " energy_imbalance=" << final.energy_imbalance
+                  << " independent_energy=" << final.independent_conservation_normalized
+                  << '\n';
+    }
+    if (!conduction.converged || linear_err > 1e-6) {
+        std::cerr << "NACA3D_LINEAR_CONDUCTION FAIL: 3D conduction MMS not qualified\n";
+        return 2;
+    }
+
+    } // Optional failing diagnostic: not part of the default 3-D smoke gate.
 
     // Turbulence: one transport step on the same volume mesh; bounded fields
     // and finite residuals are a smoke condition, NOT validation against TMR.

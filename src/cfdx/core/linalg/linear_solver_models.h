@@ -210,16 +210,26 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     switch (problem) {
         case LinearProblemKind::PressurePoisson:
         case LinearProblemKind::Diffusion:
-            if (characteristics.numerically_symmetric && characteristics.diagonally_dominant) {
+            if (characteristics.numerically_symmetric &&
+                characteristics.diagonally_dominant &&
+                !characteristics.anisotropic &&
+                !characteristics.strongly_scaled) {
                 plan.krylov = KrylovModel::CG;
                 plan.preconditioner = equations < 24 ? PreconditionerModel::Jacobi
                                                      : PreconditionerModel::NativeAMG;
-                plan.reason = "symmetric diagonally-dominant elliptic matrix: CG with an SPD-qualified preconditioner";
+                plan.reason = "symmetric diagonally-dominant, moderately scaled elliptic matrix: CG with an SPD-qualified preconditioner";
             } else {
+                // Symmetry alone is not enough to justify CG with NativeAMG:
+                // high diagonal dynamic range / coefficient scaling can make
+                // the current AMG application non-SPD in practice. Keep the
+                // physical matrix unchanged and choose a nonsymmetric-safe
+                // Krylov/preconditioner pair for this unqualified regime.
                 plan.krylov = KrylovModel::GMRES;
                 plan.preconditioner = equations < 24 ? PreconditionerModel::Jacobi
                                                      : PreconditionerModel::ILU0;
-                plan.reason = "elliptic matrix lacks a verified SPD signature: GMRES with a nonsymmetric-safe preconditioner";
+                plan.reason = (characteristics.anisotropic || characteristics.strongly_scaled)
+                    ? "elliptic matrix is anisotropic or strongly scaled: GMRES with a nonsymmetric-safe preconditioner"
+                    : "elliptic matrix lacks a verified SPD signature: GMRES with a nonsymmetric-safe preconditioner";
             }
             break;
         case LinearProblemKind::Momentum:
