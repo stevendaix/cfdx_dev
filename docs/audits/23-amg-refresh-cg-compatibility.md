@@ -50,7 +50,7 @@ Cette correction est algébrique : elle ne modifie aucune condition limite, aucu
 - Rejouer l’étude de profils Ghia séparément ; enregistrer temps des solves de pression/AMG et décroissance momentum. Un timeout n’est pas à lui seul un échec de comparaison des profils.
 - La réussite algébrique ne vaut pas preuve de convergence non linéaire, de conservation, de convergence en maillage ou d’accord physique du Cd/cisaillement.
 
-## 7. Statut d’implémentation
+## 7. Statut d'implémentation
 
 - Sources modifiées : `src/cfdx/core/linalg/amg_preconditioner.h`, `src/cfdx/core/linalg/cg_solver.h`, `src/cfdx/core/linalg/linear_solver_context.h`.
 - Tests ajoutés : `tests/validation/test_amg_preconditioner_qualification.cpp`.
