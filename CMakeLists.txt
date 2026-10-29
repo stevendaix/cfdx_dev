@@ -685,7 +685,10 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_test(NAME test_ghia_cavity_profile_study COMMAND test_ghia_cavity --profile-study)
         set_tests_properties(test_ghia_cavity_profile_study PROPERTIES
             LABELS "phase13;validation;campaign;long"
-            TIMEOUT 2400)
+            # The 2026-10-28 total-validation run reached this deadline while
+            # the separate full Ghia campaign completed in 2626 s. This is a
+            # runtime budget only; the reference, residual and refinement gates stay unchanged.
+            TIMEOUT 3600)
         # Run a bounded low-resolution preflight first. The dependency prevents
         # the physical PCD qualification from starting when the nested solver
         # already exhibits runaway behaviour on the smaller case.
@@ -823,14 +826,14 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     set_tests_properties(test_vmfl036_reference_case PROPERTIES LABELS "phase14;validation;reference")
     add_executable(test_bfs_qualification tests/validation/test_bfs_driver_smoke.cpp)
     target_link_libraries(test_bfs_qualification PRIVATE cfdx_core)
-    add_test(NAME test_bfs_quick COMMAND test_bfs_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/bfs_re200_n16.h5)
+    add_test(NAME test_bfs_quick COMMAND test_bfs_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/bfs_re200_n16.h5)
     set_tests_properties(test_bfs_quick PROPERTIES LABELS "qualification;validation")
     add_executable(test_naca0012_qualification tests/validation/test_naca0012_geometry.cpp)
     target_link_libraries(test_naca0012_qualification PRIVATE cfdx_core)
-    add_test(NAME test_naca0012_quick COMMAND test_naca0012_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5)
+    add_test(NAME test_naca0012_quick COMMAND test_naca0012_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/naca0012_laminar_n64.h5)
     set_tests_properties(test_naca0012_quick PROPERTIES LABELS "qualification;validation")
     if(Python3_Interpreter_FOUND)
-        set_tests_properties(test_bfs_quick test_naca0012_quick PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes)
+        set_tests_properties(test_bfs_quick test_naca0012_quick PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_quick)
     endif()
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_bfs_qualification COMMAND test_bfs_qualification ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/bfs_re200_n16.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/bfs_re200_n32.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/bfs_re200_n64.h5)
@@ -838,7 +841,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         add_test(NAME test_naca0012_qualification COMMAND test_naca0012_qualification ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n128.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n256.h5)
         set_tests_properties(test_naca0012_qualification PROPERTIES LABELS "qualification;validation;long")
         if(Python3_Interpreter_FOUND)
-            set_tests_properties(test_bfs_qualification test_naca0012_qualification PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes)
+            set_tests_properties(test_bfs_qualification test_naca0012_qualification PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_full)
         endif()
     endif()
     # Wall-shear reconstruction audit (GG vs WLS vs 1D) - post-processing
@@ -848,16 +851,16 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     # (explicitly NOT gated).
     add_executable(test_naca0012_wall_shear_audit tests/validation/test_naca0012_wall_shear_audit.cpp)
     target_link_libraries(test_naca0012_wall_shear_audit PRIVATE cfdx_core)
-    add_test(NAME test_naca0012_wall_shear_audit_quick COMMAND test_naca0012_wall_shear_audit --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5)
+    add_test(NAME test_naca0012_wall_shear_audit_quick COMMAND test_naca0012_wall_shear_audit --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/channel_n16.h5)
     set_tests_properties(test_naca0012_wall_shear_audit_quick PROPERTIES LABELS "qualification;validation")
     if(Python3_Interpreter_FOUND)
-        set_tests_properties(test_naca0012_wall_shear_audit_quick PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes)
+        set_tests_properties(test_naca0012_wall_shear_audit_quick PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_quick)
     endif()
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_naca0012_wall_shear_audit COMMAND test_naca0012_wall_shear_audit ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n128.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n256.h5)
         set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES LABELS "qualification;validation;long")
         if(Python3_Interpreter_FOUND)
-            set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes)
+            set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_full)
         endif()
     endif()
     if(Python3_Interpreter_FOUND)
@@ -866,23 +869,55 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         # not schedule mesh generation for a filtered test invocation.
         # A fixture automatically adds this setup test whenever a mesh-based
         # qualification test is selected, even in an otherwise clean build.
+        # The quick fixtures must never generate the n256 production mesh;
+        # they live in an independent directory to avoid races with long jobs.
+        add_test(NAME test_generate_quick_validation_meshes
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_2d_validation_meshes.py
+                    all --quick --output-dir ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick)
+        set_tests_properties(test_generate_quick_validation_meshes PROPERTIES
+            LABELS "qualification;mesh;validation;quick"
+            FIXTURES_SETUP cfdx_validation_meshes_quick)
         set_tests_properties(test_generate_2d_validation_meshes PROPERTIES
             LABELS "qualification;mesh;validation"
-            FIXTURES_SETUP cfdx_validation_meshes)
+            FIXTURES_SETUP cfdx_validation_meshes_full)
+        add_test(NAME test_naca_mesh_symmetry_extrusion
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_mesh_symmetry_extrusion.py)
+        set_tests_properties(test_naca_mesh_symmetry_extrusion PROPERTIES
+            LABELS "qualification;mesh;validation;3d")
+        add_test(NAME test_generate_naca3d_mesh
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_2d_validation_meshes.py naca3d
+                    --output-dir ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes)
+        set_tests_properties(test_generate_naca3d_mesh PROPERTIES
+            LABELS "qualification;mesh;validation;3d" FIXTURES_SETUP cfdx_naca3d_meshes)
+        add_test(NAME test_naca0012_extruded_3d_quick
+            COMMAND test_naca0012_qualification --quick
+                    ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_extruded_3d_n64_z2.h5)
+        set_tests_properties(test_naca0012_extruded_3d_quick PROPERTIES
+            LABELS "qualification;mesh;validation;3d"
+            FIXTURES_REQUIRED cfdx_naca3d_meshes)
+        add_executable(test_naca3d_thermal_turbulence_smoke
+            tests/validation/test_naca3d_thermal_turbulence_smoke.cpp)
+        target_link_libraries(test_naca3d_thermal_turbulence_smoke PRIVATE cfdx_core)
+        add_test(NAME test_naca3d_thermal_turbulence_smoke
+            COMMAND test_naca3d_thermal_turbulence_smoke
+                ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_extruded_3d_n16_z2.h5)
+        set_tests_properties(test_naca3d_thermal_turbulence_smoke PROPERTIES
+            LABELS "qualification;validation;3d;thermal;turbulence;smoke"
+            FIXTURES_REQUIRED cfdx_naca3d_meshes)
     endif()
     add_executable(test_channel_qualification tests/validation/test_channel_qualification.cpp)
     target_link_libraries(test_channel_qualification PRIVATE cfdx_core)
     target_include_directories(test_channel_qualification PRIVATE ${CMAKE_SOURCE_DIR}/tests)
-    add_test(NAME test_channel_quick COMMAND test_channel_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5)
+    add_test(NAME test_channel_quick COMMAND test_channel_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/channel_n16.h5)
     set_tests_properties(test_channel_quick PROPERTIES LABELS "qualification;validation;sanitizer-slow")
     if(Python3_Interpreter_FOUND)
-        set_tests_properties(test_channel_quick PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes)
+        set_tests_properties(test_channel_quick PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_quick)
     endif()
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_channel_qualification COMMAND test_channel_qualification ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n32.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n64.h5)
         set_tests_properties(test_channel_qualification PROPERTIES LABELS "qualification;validation;long")
         if(Python3_Interpreter_FOUND)
-            set_tests_properties(test_channel_qualification PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes)
+            set_tests_properties(test_channel_qualification PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_full)
         endif()
     endif()
     add_cfdx_test(test_numerical_model_verification tests/validation/test_numerical_model_verification.cpp)
@@ -1067,7 +1102,11 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_n9_physical_matrix tests/validation/test_n9_physical_matrix.cpp)
     set_tests_properties(test_n9_physical_matrix PROPERTIES
         LABELS "n9;qualification;validation;long;validation-total"
-        TIMEOUT 1800)
+        # The unsharded physical matrix reached this 1800 s deadline in the
+        # 2026-10-28 total-validation run while the individual Schur shards
+        # passed in 411-1462 s. Allow time for the cross-algorithm controls;
+        # no convergence or physical acceptance criterion is changed.
+        TIMEOUT 5400)
     set_tests_properties(test_n9_s10_pressure_reference_policies PROPERTIES
         LABELS "n9;qualification;validation;long;validation-total"
         TIMEOUT 300
