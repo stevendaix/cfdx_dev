@@ -121,6 +121,28 @@ inline SolverResult solve_cg_impl(
     const auto* Ac = A.columns_data();
     const auto* Ar = A.row_offsets_data();
 
+    // r = b - A x. Check the true residual before setting up or applying
+    // a preconditioner: an already-converged system (including b = 0, x = 0)
+    // needs no Krylov direction, and must not be rejected because r^T M^-1 r
+    // is zero or because an unused preconditioner cannot be initialized.
+    std::vector<double> r(n);
+    Vector rv(n); mixed_precision_true_residual(A,b,x,rv);
+    if (null_space) null_space->remove(rv);
+    for (std::size_t i=0;i<n;++i) r[i]=rv(i);
+
+    const double b_norm = krylov_norm2(b, SolverPrecision::FP64, reduction);
+    const double initial_true_residual =
+        krylov_norm2(rv, SolverPrecision::FP64, reduction);
+    const double tol_abs = tolerance * std::max(b_norm, 1e-300);
+    if (initial_true_residual <= tol_abs) {
+        result.status = SolverStatus::CONVERGED;
+        result.iterations = 0;
+        result.residual = initial_true_residual;
+        result.residual_relative = b_norm > 0.0
+            ? initial_true_residual / b_norm : 0.0;
+        return result;
+    }
+
     // Preserve the historical Jacobi path when no external preconditioner is
     // supplied. This keeps the native solver behavior and API unchanged.
     std::vector<double> M(n, 0.0);
@@ -141,12 +163,6 @@ inline SolverResult solve_cg_impl(
             }
         }
     }
-
-    // r = b - A x
-    std::vector<double> r(n);
-    Vector rv(n); mixed_precision_true_residual(A,b,x,rv);
-    if (null_space) null_space->remove(rv);
-    for (std::size_t i=0;i<n;++i) r[i]=rv(i);
 
     // z = M^{-1} r
     std::vector<double> z(n);
@@ -176,9 +192,6 @@ inline SolverResult solve_cg_impl(
     for (std::size_t i = 0; i < n; ++i) r_vector(i) = r[i];
     double rsold = krylov_dot(r_vector, z_vector, redp, reduction);
 
-    const double b_norm = krylov_norm2(b, SolverPrecision::FP64, reduction);
-    const double tol_abs = tolerance * std::max(b_norm, 1e-300);
-
     if (!std::isfinite(rsold)) { result.status=SolverStatus::DIVERGED; return result; }
     // CG requires an SPD preconditioner as well as an SPD operator. A finite
     // but non-positive initial r^T M^-1 r means that requirement is already
@@ -186,21 +199,10 @@ inline SolverResult solve_cg_impl(
     // the independently recomputed true residual in the failure result.
     if (!(rsold > 0.0)) return not_applicable(0);
 
-    const double initial_true_residual =
-        krylov_norm2(r_vector, SolverPrecision::FP64, reduction);
     if (preconditioner) {
         result.diagnostics.push_back(
             {0, initial_true_residual, initial_true_residual,
              rsold, 0.0, 0.0, 0.0});
-    }
-    if (initial_true_residual <= tol_abs) {
-        result.status = SolverStatus::CONVERGED;
-        result.iterations = 0;
-        result.residual = preconditioner
-            ? initial_true_residual
-            : krylov_norm2(rv, SolverPrecision::FP64, reduction);
-        result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
-        return result;
     }
 
     // Residual replacement only pays for itself while b-Ax is still
