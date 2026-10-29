@@ -4795,19 +4795,27 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // is resolved relative to the momentum RHS. If the reference is at
         // round-off, keep it for diagnostics but do not let its ratio dominate
         // the nonlinear monitor.
-        const double momentum_reference_roundoff =
-            100.0 * std::numeric_limits<double>::epsilon() *
+        // The reference-relative metric is meaningful only when its
+        // reference is resolved above the declared physical RHS-relative
+        // tolerance (bounded below by the FP64 round-off floor). A tiny but
+        // nonzero reference can otherwise pin the ratio near one despite an
+        // already-satisfied physical residual.
+        const double momentum_reference_resolution_threshold =
+            std::max(
+                100.0 * std::numeric_limits<double>::epsilon(),
+                controls.convergence.relative_tolerance) *
             std::max(h.momentum_rhs_scale, tiny);
-        // The coupled block solve already drives the monolithic momentum
-        // residual to its linear-solver floor before the post-update residual
-        // is measured. Its residual/reference ratio is therefore not a valid
-        // independent nonlinear metric (it can stay near one for an accurate
-        // solution). The mandatory RHS-normalized residual gate below remains
-        // active for COUPLED, so excluding this ratio does not relax acceptance.
         const bool momentum_reference_ill_conditioned =
-            controls.algorithm == PressureVelocityAlgorithm::COUPLED ||
-            h.momentum_equation_residual_reference <= momentum_reference_roundoff;
-        double nonlinear_metric = momentum_reference_ill_conditioned
+            h.momentum_equation_residual_reference <=
+            momentum_reference_resolution_threshold;
+        // COUPLED measures this residual after the monolithic solve, so its
+        // first-iteration reference is not an independent pre-solve baseline.
+        // Exclude that ratio for COUPLED regardless of its magnitude, while
+        // keeping the independently RHS-normalized physical gate mandatory.
+        const bool use_reference_relative_metric =
+            !momentum_reference_ill_conditioned &&
+            controls.algorithm != PressureVelocityAlgorithm::COUPLED;
+        double nonlinear_metric = !use_reference_relative_metric
             ? std::max({
                   h.momentum_residual,
                   h.pressure_residual,
