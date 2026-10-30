@@ -8,6 +8,7 @@
 #include "cfdx/physics/thermophysical_models.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <map>
@@ -59,6 +60,11 @@ inline const char* to_string(ThermalFluidModel value) {
 struct ThermalMaterial {
     std::string name;
     ThermophysicalProperties properties;
+    // Optional dimensionless symmetric anisotropy shape A, ordered
+    // [xx, yy, zz, xy, yz, xz]. The physical tensor is k(T) * A.
+    // Trace(A)=3 fixes the scale in the existing scalar k(T) law.
+    bool anisotropic_conductivity = false;
+    std::array<double, 6> conductivity_shape{{1.0, 1.0, 1.0, 0.0, 0.0, 0.0}};
     double reference_temperature = 300.0;
     double reference_pressure = 101325.0;
     double minimum_temperature = 1.0;
@@ -67,6 +73,33 @@ struct ThermalMaterial {
     void validate() const {
         if (name.empty())
             throw std::invalid_argument("thermal material name must not be empty");
+        for (const double component : conductivity_shape) {
+            if (!std::isfinite(component))
+                throw std::invalid_argument("thermal material '" + name +
+                                            "' has a non-finite conductivity tensor component");
+        }
+        if (anisotropic_conductivity) {
+            const double xx = conductivity_shape[0];
+            const double yy = conductivity_shape[1];
+            const double zz = conductivity_shape[2];
+            const double xy = conductivity_shape[3];
+            const double yz = conductivity_shape[4];
+            const double xz = conductivity_shape[5];
+            const double minor2 = xx * yy - xy * xy;
+            const double determinant =
+                xx * yy * zz + 2.0 * xy * yz * xz -
+                xx * yz * yz - yy * xz * xz - zz * xy * xy;
+            const double trace = xx + yy + zz;
+            if (!(xx > 0.0) || !(minor2 > 0.0) || !(determinant > 0.0) ||
+                !std::isfinite(minor2) || !std::isfinite(determinant) ||
+                std::abs(trace - 3.0) > 1.0e-12)
+                throw std::invalid_argument("thermal material '" + name +
+                                            "' conductivity shape must be symmetric positive-definite with trace 3");
+        } else if (conductivity_shape !=
+                   std::array<double, 6>{{1.0, 1.0, 1.0, 0.0, 0.0, 0.0}}) {
+            throw std::invalid_argument("isotropic thermal material '" + name +
+                                        "' cannot carry an unused anisotropy tensor");
+        }
         if (!std::isfinite(reference_temperature) || reference_temperature <= 0.0 ||
             !std::isfinite(reference_pressure) || reference_pressure <= 0.0 ||
             !std::isfinite(minimum_temperature) || minimum_temperature <= 0.0 ||
