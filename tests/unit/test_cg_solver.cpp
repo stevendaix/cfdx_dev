@@ -183,6 +183,14 @@ int main() {
         EXPECT_TRUE(pc.applications == 0);
     });
 
+    run_case("cg_rejects_empty_system", [] {
+        SparseMatrix A;
+        Vector b(0), x(0);
+        const auto result = solve_cg(A, b, x, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(result.iterations == 0);
+    });
+
     run_case("cg_already_converged", []() {
         // x = 0, b = 0 → déjà convergé.
         SparseMatrix A(2, 2);
