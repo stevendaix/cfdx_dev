@@ -108,6 +108,16 @@ struct ThermalMaterial {
                 throw std::invalid_argument("thermal material '" + name +
                                             "' has an unsupported density model");
         }
+        if (properties.density.model == DensityModel::TABLE) {
+            switch (properties.density.table.extrapolation) {
+                case ExtrapolationPolicy::CLAMP:
+                case ExtrapolationPolicy::LINEAR:
+                case ExtrapolationPolicy::REJECT:
+                    break;
+                default:
+                    throw std::invalid_argument("thermal density table has an unsupported extrapolation policy");
+            }
+        }
         if (properties.conductivity.model == ScalarPropertyModel::TABLE) {
             switch (properties.conductivity.table.extrapolation) {
                 case ExtrapolationPolicy::CLAMP:
@@ -341,7 +351,12 @@ struct ThermalCase {
                 node.initial_temperature > material.maximum_temperature)
                 throw std::invalid_argument("thermal node '" + node.name +
                                             "' initial temperature is outside material range");
-            (void)material.properties.rho(node.initial_temperature, node.pressure);
+            const double density =
+                material.properties.rho(node.initial_temperature, node.pressure);
+            const double mass = density * node.volume;
+            if (!std::isfinite(mass) || mass <= 0.0)
+                throw std::invalid_argument("thermal node '" + node.name +
+                                            "' produces an invalid fluid mass");
         }
 
         std::set<std::string> interface_names;
