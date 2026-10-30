@@ -1,0 +1,172 @@
+probe_id=release_fast_A
+master_sha=05c6a84df145ec3fbcf76bfa904429aa561843ae
+build_exit=0
+ctest_exit=8
+----- failed list -----
+The following tests FAILED:
+	144 - test_bfs_quick (Not Run)                          qualification validation
+	145 - test_naca0012_quick (Not Run)                     qualification validation
+	146 - test_naca0012_wall_shear_audit_quick (Not Run)    qualification validation
+	147 - test_generate_2d_validation_meshes (Failed)       mesh qualification validation
+	148 - test_generate_quick_validation_meshes (Failed)    mesh qualification quick validation
+	149 - test_naca_mesh_symmetry_extrusion (Failed)        3d mesh qualification validation
+	150 - test_generate_naca3d_mesh (Failed)                3d mesh qualification validation
+	151 - test_naca0012_extruded_3d_quick (Not Run)         3d mesh qualification validation
+	152 - test_naca3d_thermal_turbulence_smoke (Not Run)    3d qualification smoke thermal turbulence validation
+	189 - test_production_buoyancy_outer_loop_vv (Failed)   phase13 qualification validation
+	250 - test_cross_import_equivalence (Failed)
+	252 - test_n9_s8_naca0012_contract (Failed)             n9 qualification total-validation validation
+	253 - test_solid_conduction_contract_e2e (Failed)       integration thermal validation
+	254 - test_t2_campaign_verdict (Failed)                 qualification thermal validation
+	255 - test_production_thermal_restart_e2e (Failed)      integration restart thermal
+	256 - test_imported_thermal_contracts (Failed)          integration io thermal
+	257 - test_n9_coupled_schur_case_selection (Failed)     integration n9 schur validation validation-total
+	258 - test_n9_poiseuille_body_force_production (Failed) integration n9 qualification validation validation-total
+	260 - test_openfoam_results_cli_production_e2e (Failed) integration openfoam qualification
+	261 - test_production_solver_e2e (Failed)
+	262 - test_production_solver_numerics_e2e (Failed)
+	263 - test_meshio_bridge (Failed)
+	264 - test_mesh_geometry_matrix (Failed)
+Errors while running CTest
+----- matched lines -----
+5986:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.71163e-10 backward_error=2.13116e-15 linear_relative=8.71118e-15 dT_relative=4.19299e-07 energy_balance=1.56103e-14 accepted_state=1
+5987:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.91038e-10 backward_error=1.06703e-15 linear_relative=3.23902e-15 dT_relative=3.13822e-07 energy_balance=3.81607e-15 accepted_state=1
+5988:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.23869e-10 backward_error=1.95903e-15 linear_relative=8.1409e-15 dT_relative=2.34878e-07 energy_balance=1.48063e-14 accepted_state=1
+5989:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.67525e-10 backward_error=2.0807e-15 linear_relative=6.43615e-15 dT_relative=1.75793e-07 energy_balance=9.94213e-15 accepted_state=1
+5990:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.67525e-10 backward_error=2.10822e-15 linear_relative=7.77112e-15 dT_relative=1.31571e-07 energy_balance=9.33156e-15 accepted_state=1
+5991:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=7.16682e-10 backward_error=2.67413e-15 linear_relative=9.0715e-15 dT_relative=9.84737e-08 energy_balance=1.24048e-14 accepted_state=1
+5992:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.81899e-10 backward_error=6.93249e-16 linear_relative=2.78987e-15 dT_relative=7.3702e-08 energy_balance=5.14915e-15 accepted_state=1
+5993:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.52973e-10 backward_error=1.97491e-15 linear_relative=7.20258e-15 dT_relative=5.51618e-08 energy_balance=6.20747e-15 accepted_state=1
+5994:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.67525e-10 backward_error=2.12926e-15 linear_relative=9.71207e-15 dT_relative=4.12855e-08 energy_balance=1.77066e-14 accepted_state=1
+5995:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.63798e-10 backward_error=1.35349e-15 linear_relative=4.39235e-15 dT_relative=3.08999e-08 energy_balance=3.42937e-15 accepted_state=1
+5996:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.65661e-10 backward_error=1.89751e-15 linear_relative=6.80776e-15 dT_relative=2.31268e-08 energy_balance=2.70686e-15 accepted_state=1
+5997:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.61934e-10 backward_error=7.32685e-16 linear_relative=2.6374e-15 dT_relative=1.73091e-08 energy_balance=1.41449e-15 accepted_state=1
+5998:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=7.23958e-10 backward_error=2.70128e-15 linear_relative=8.90228e-15 dT_relative=1.29549e-08 energy_balance=1.29136e-14 accepted_state=1
+5999:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.76664e-10 backward_error=2.76704e-15 linear_relative=9.02495e-15 dT_relative=9.69606e-09 energy_balance=8.27323e-15 accepted_state=1
+6000:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.67525e-10 backward_error=2.11759e-15 linear_relative=7.89108e-15 dT_relative=7.2569e-09 energy_balance=1.40024e-14 accepted_state=1
+6001:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.63887e-10 backward_error=2.49239e-15 linear_relative=8.86378e-15 dT_relative=5.43141e-09 energy_balance=1.24862e-14 accepted_state=1
+6002:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.36557e-10 backward_error=1.78264e-15 linear_relative=6.67572e-15 dT_relative=4.06511e-09 energy_balance=9.08733e-15 accepted_state=1
+6003:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.94765e-10 backward_error=1.83064e-15 linear_relative=7.9258e-15 dT_relative=3.04249e-09 energy_balance=1.41347e-14 accepted_state=1
+6004:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.92902e-10 backward_error=1.47736e-15 linear_relative=6.31577e-15 dT_relative=2.27715e-09 energy_balance=1.14177e-14 accepted_state=1
+6005:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.20142e-10 backward_error=1.17373e-15 linear_relative=4.70872e-15 dT_relative=1.70432e-09 energy_balance=8.55817e-15 accepted_state=1
+6006:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.25555e-10 backward_error=8.2803e-16 linear_relative=3.51423e-15 dT_relative=1.27559e-09 energy_balance=6.238e-15 accepted_state=1
+6007:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.96451e-10 backward_error=7.20243e-16 linear_relative=2.64006e-15 dT_relative=9.54704e-10 energy_balance=4.77263e-15 accepted_state=1
+6008:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.45519e-10 backward_error=5.33513e-16 linear_relative=2.09639e-15 dT_relative=7.14543e-10 energy_balance=3.62272e-15 accepted_state=1
+6009:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.01863e-10 backward_error=3.95291e-16 linear_relative=1.46987e-15 dT_relative=5.34795e-10 energy_balance=2.59493e-15 accepted_state=1
+6010:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=7.23958e-10 backward_error=2.60171e-15 linear_relative=7.30904e-15 dT_relative=4.00271e-10 energy_balance=2.30999e-15 accepted_state=1
+6011:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.56611e-10 backward_error=2.00031e-15 linear_relative=5.67504e-15 dT_relative=2.99574e-10 energy_balance=1.86224e-15 accepted_state=1
+6012:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.07454e-10 backward_error=1.46428e-15 linear_relative=4.09365e-15 dT_relative=2.24214e-10 energy_balance=1.22114e-15 accepted_state=1
+6013:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=7.567e-10 backward_error=2.13381e-15 linear_relative=8.40286e-15 dT_relative=1.67811e-10 energy_balance=1.14991e-15 accepted_state=1
+6014:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.67525e-10 backward_error=1.66212e-15 linear_relative=6.46001e-15 dT_relative=1.25598e-10 energy_balance=7.02156e-16 accepted_state=1
+6015:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.1473e-10 backward_error=1.28029e-15 linear_relative=4.70866e-15 dT_relative=9.40024e-11 energy_balance=8.03918e-16 accepted_state=1
+6016:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.34694e-10 backward_error=9.36209e-16 linear_relative=3.77214e-15 dT_relative=7.03558e-11 energy_balance=6.9198e-16 accepted_state=1
+6017:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.25555e-10 backward_error=6.73834e-16 linear_relative=2.58559e-15 dT_relative=5.26574e-11 energy_balance=2.23876e-16 accepted_state=1
+6018:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.92813e-10 backward_error=5.39338e-16 linear_relative=2.05975e-15 dT_relative=3.94109e-11 energy_balance=1.42467e-16 accepted_state=1
+6019:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.23691e-10 backward_error=3.81839e-16 linear_relative=1.48265e-15 dT_relative=2.94969e-11 energy_balance=1.62819e-16 accepted_state=1
+6020:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=7.16682e-10 backward_error=2.57556e-15 linear_relative=8.72898e-15 dT_relative=2.20844e-11 energy_balance=7.32685e-16 accepted_state=1
+6021:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.38421e-10 backward_error=2.01345e-15 linear_relative=6.56953e-15 dT_relative=1.65215e-11 energy_balance=1.3229e-16 accepted_state=1
+6022:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.74712e-10 backward_error=1.34661e-15 linear_relative=4.80142e-15 dT_relative=1.23654e-11 energy_balance=1.01762e-16 accepted_state=1
+6023:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.83762e-10 backward_error=1.06114e-15 linear_relative=3.70663e-15 dT_relative=9.25447e-12 energy_balance=1.22114e-16 accepted_state=1
+6024:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.18279e-10 backward_error=8.16262e-16 linear_relative=2.68493e-15 dT_relative=6.9268e-12 energy_balance=1.01762e-16 accepted_state=1
+6025:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.89175e-10 backward_error=6.79844e-16 linear_relative=2.08218e-15 dT_relative=5.18447e-12 energy_balance=1.01762e-16 accepted_state=1
+6026:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.45519e-10 backward_error=5.22957e-16 linear_relative=1.78647e-15 dT_relative=3.87998e-12 energy_balance=8.14094e-17 accepted_state=1
+6027:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.16415e-10 backward_error=4.14815e-16 linear_relative=1.39236e-15 dT_relative=2.904e-12 energy_balance=7.12333e-17 accepted_state=1
+6028:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=7.27596e-11 backward_error=2.87693e-16 linear_relative=1.00903e-15 dT_relative=2.17314e-12 energy_balance=1.11938e-16 accepted_state=1
+6029:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-11 backward_error=1.96109e-16 linear_relative=6.76485e-16 dT_relative=1.62688e-12 energy_balance=4.07047e-17 accepted_state=1
+6030:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.49335e-10 backward_error=2.04262e-15 linear_relative=7.89523e-15 dT_relative=1.22345e-12 energy_balance=3.15462e-16 accepted_state=1
+6031:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.25644e-10 backward_error=1.63985e-15 linear_relative=6.16371e-15 dT_relative=9.09705e-13 energy_balance=1.11938e-16 accepted_state=1
+6032:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.20142e-10 backward_error=1.20831e-15 linear_relative=4.53047e-15 dT_relative=6.80973e-13 energy_balance=7.12333e-17 accepted_state=1
+6033:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.54659e-10 backward_error=1.00693e-15 linear_relative=3.49015e-15 dT_relative=5.09694e-13 energy_balance=5.08809e-17 accepted_state=1
+6034:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.1118e-10 backward_error=1.88674e-15 linear_relative=8.67779e-15 dT_relative=3.79479e-13 energy_balance=2.03524e-17 accepted_state=1
+6035:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=7.13044e-10 backward_error=2.20119e-15 linear_relative=8.94273e-15 dT_relative=2.83664e-13 energy_balance=3.05285e-17 accepted_state=1
+6036:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-10 backward_error=1.68459e-15 linear_relative=6.82189e-15 dT_relative=2.14684e-13 energy_balance=8.14094e-17 accepted_state=1
+6037:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.74712e-10 backward_error=1.12306e-15 linear_relative=5.14219e-15 dT_relative=1.60473e-13 energy_balance=1.62819e-16 accepted_state=1
+6038:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.4756e-10 backward_error=1.98897e-15 linear_relative=7.54636e-15 dT_relative=1.19949e-13 energy_balance=1.01762e-17 accepted_state=1
+6039:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.80213e-10 backward_error=1.74587e-15 linear_relative=5.72465e-15 dT_relative=9.0052e-14 energy_balance=4.07047e-17 accepted_state=1
+6040:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.56522e-10 backward_error=1.33323e-15 linear_relative=4.84363e-15 dT_relative=6.97003e-14 energy_balance=1.83171e-16 accepted_state=1
+6041:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=8.51287e-10 backward_error=3.12105e-15 linear_relative=9.22517e-15 dT_relative=3.92627e-14 energy_balance=7.12333e-17 accepted_state=1
+6042:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=7.71252e-10 backward_error=2.82762e-15 linear_relative=7.61698e-15 dT_relative=4.05234e-14 energy_balance=1.52643e-16 accepted_state=1
+6044:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.0322581 energy_balance=0 accepted_state=1
+6045:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.63798e-11 backward_error=1.46685e-16 linear_relative=4.95152e-16 dT_relative=0.0324044 energy_balance=8.80023e-17 accepted_state=1
+6046:THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.45519e-11 backward_error=6.27203e-17 linear_relative=1.20985e-16 dT_relative=8.5082e-07 energy_balance=1.46671e-17 accepted_state=1
+6049:Results: 4 passed, 1 failed
+6057:91% tests passed, 23 tests failed out of 248
+6106:	147 - test_generate_2d_validation_meshes (Failed)       mesh qualification validation
+6107:	148 - test_generate_quick_validation_meshes (Failed)    mesh qualification quick validation
+6108:	149 - test_naca_mesh_symmetry_extrusion (Failed)        3d mesh qualification validation
+6109:	150 - test_generate_naca3d_mesh (Failed)                3d mesh qualification validation
+6112:	189 - test_production_buoyancy_outer_loop_vv (Failed)   phase13 qualification validation
+6113:	250 - test_cross_import_equivalence (Failed)
+6114:	252 - test_n9_s8_naca0012_contract (Failed)             n9 qualification total-validation validation
+6115:	253 - test_solid_conduction_contract_e2e (Failed)       integration thermal validation
+6116:	254 - test_t2_campaign_verdict (Failed)                 qualification thermal validation
+6117:	255 - test_production_thermal_restart_e2e (Failed)      integration restart thermal
+6118:	256 - test_imported_thermal_contracts (Failed)          integration io thermal
+6119:	257 - test_n9_coupled_schur_case_selection (Failed)     integration n9 schur validation validation-total
+6120:	258 - test_n9_poiseuille_body_force_production (Failed) integration n9 qualification validation validation-total
+6121:	260 - test_openfoam_results_cli_production_e2e (Failed) integration openfoam qualification
+6122:	261 - test_production_solver_e2e (Failed)
+6123:	262 - test_production_solver_numerics_e2e (Failed)
+6124:	263 - test_meshio_bridge (Failed)
+6125:	264 - test_mesh_geometry_matrix (Failed)
+----- tail of ctest log -----
+mms                    =   7.83 sec*proc (5 tests)
+mpi                    =   1.45 sec*proc (2 tests)
+n10                    =  30.35 sec*proc (8 tests)
+n11                    =   0.12 sec*proc (3 tests)
+n12                    =   7.83 sec*proc (5 tests)
+n13                    =   0.47 sec*proc (3 tests)
+n16                    =   0.01 sec*proc (1 test)
+n7                     =   0.00 sec*proc (1 test)
+n8                     =   0.49 sec*proc (1 test)
+n9                     =   3.96 sec*proc (4 tests)
+numerical              =   0.02 sec*proc (2 tests)
+openfoam               =   0.03 sec*proc (1 test)
+phase12                =   0.00 sec*proc (1 test)
+phase13                =   7.09 sec*proc (30 tests)
+phase14                =   0.31 sec*proc (3 tests)
+provenance             =   0.09 sec*proc (1 test)
+qualification          =  41.32 sec*proc (35 tests)
+quick                  =   0.21 sec*proc (1 test)
+recovered              =   1.04 sec*proc (7 tests)
+reference              =   0.00 sec*proc (1 test)
+regression             =   0.06 sec*proc (5 tests)
+restart                =   0.30 sec*proc (1 test)
+schur                  =   0.24 sec*proc (1 test)
+smoke                  =   0.00 sec*proc (1 test)
+test-infrastructure    =   1.97 sec*proc (1 test)
+thermal                =   1.31 sec*proc (7 tests)
+total-validation       =   0.43 sec*proc (1 test)
+turbulence             =   0.04 sec*proc (2 tests)
+unit                   =   1.13 sec*proc (7 tests)
+validation             =  52.29 sec*proc (71 tests)
+validation-total       =   3.53 sec*proc (3 tests)
+verification           =   0.02 sec*proc (2 tests)
+
+Total Test time (real) =  34.86 sec
+
+The following tests FAILED:
+	144 - test_bfs_quick (Not Run)                          qualification validation
+	145 - test_naca0012_quick (Not Run)                     qualification validation
+	146 - test_naca0012_wall_shear_audit_quick (Not Run)    qualification validation
+	147 - test_generate_2d_validation_meshes (Failed)       mesh qualification validation
+	148 - test_generate_quick_validation_meshes (Failed)    mesh qualification quick validation
+	149 - test_naca_mesh_symmetry_extrusion (Failed)        3d mesh qualification validation
+	150 - test_generate_naca3d_mesh (Failed)                3d mesh qualification validation
+	151 - test_naca0012_extruded_3d_quick (Not Run)         3d mesh qualification validation
+	152 - test_naca3d_thermal_turbulence_smoke (Not Run)    3d qualification smoke thermal turbulence validation
+	189 - test_production_buoyancy_outer_loop_vv (Failed)   phase13 qualification validation
+	250 - test_cross_import_equivalence (Failed)
+	252 - test_n9_s8_naca0012_contract (Failed)             n9 qualification total-validation validation
+	253 - test_solid_conduction_contract_e2e (Failed)       integration thermal validation
+	254 - test_t2_campaign_verdict (Failed)                 qualification thermal validation
+	255 - test_production_thermal_restart_e2e (Failed)      integration restart thermal
+	256 - test_imported_thermal_contracts (Failed)          integration io thermal
+	257 - test_n9_coupled_schur_case_selection (Failed)     integration n9 schur validation validation-total
+	258 - test_n9_poiseuille_body_force_production (Failed) integration n9 qualification validation validation-total
+	260 - test_openfoam_results_cli_production_e2e (Failed) integration openfoam qualification
+	261 - test_production_solver_e2e (Failed)
+	262 - test_production_solver_numerics_e2e (Failed)
+	263 - test_meshio_bridge (Failed)
+	264 - test_mesh_geometry_matrix (Failed)
+Errors while running CTest
