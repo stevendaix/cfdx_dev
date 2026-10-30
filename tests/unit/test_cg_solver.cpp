@@ -1,6 +1,7 @@
 // M0.8-T04 — Tests for CG solver
 
 #include "cfdx/core/linalg/cg_solver.h"
+#include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "common/test_harness.h"
@@ -28,7 +29,10 @@ enum class FailurePoint { Setup, InitialApply, IterationApply, ReplacementDot };
 class FailingPreconditioner final : public Preconditioner {
 public:
     explicit FailingPreconditioner(FailurePoint point) : point_(point) {}
-    bool setup(const SparseMatrix&) override { return point_ != FailurePoint::Setup; }
+    bool setup(const SparseMatrix&) override {
+        ++setups;
+        return point_ != FailurePoint::Setup;
+    }
     bool apply(const Vector& r, Vector& z) const override {
         ++applications;
         if ((point_ == FailurePoint::InitialApply && applications == 1) ||
@@ -41,6 +45,7 @@ public:
     }
     const char* name() const override { return "Failure injection"; }
     mutable std::size_t applications = 0;
+    std::size_t setups = 0;
 private:
     FailurePoint point_;
 };
@@ -161,6 +166,21 @@ int main() {
         for (std::size_t i = 0; i < n; ++i) {
             EXPECT_NEAR(Ax[i], b(i), 1e-10);
         }
+    });
+
+    run_case("reusable_cg_context_rejects_empty_system", [] {
+        // The context's zero-iteration shortcut must not turn a vacuous 0x0
+        // system into a successful solve. Empty systems are rejected by the
+        // normal reusable-context preparation contract.
+        SparseMatrix A;
+        Vector b(0), x(0);
+        FailingPreconditioner pc(FailurePoint::Setup);
+        ReusableCgContext context(pc);
+        const auto result = context.solve(A, b, x, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_TRUE(pc.setups == 0);
+        EXPECT_TRUE(pc.applications == 0);
     });
 
     run_case("cg_already_converged", []() {
