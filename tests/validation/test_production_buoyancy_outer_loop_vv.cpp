@@ -380,12 +380,10 @@ int main()
             EXPECT_TRUE(entry.energy_converged);
             EXPECT_FALSE(entry.s2s_ran);
         }
-        // Convergence-at-entry bookkeeping (diag run 39633631822):
-        // only the final (third) iteration is accepted at entry - the
-        // warm carrier re-solve ended STAGNATED at machine-precision
-        // residuals, the entry state was restored and the previously
-        // accepted carrier reused; the first two iterations are full
-        // carrier solves.
+        // Convergence-at-entry is a recovery path, not a required outcome:
+        // the final warm carrier solve may either converge normally or be
+        // accepted at the machine floor. The result-level flag must agree
+        // with the final history entry; the first two solves are full solves.
         EXPECT_TRUE(loop.flow_converged_at_entry ==
                     loop.history[2].flow_converged_at_entry);
         EXPECT_FALSE(loop.history[1].flow_converged_at_entry);
