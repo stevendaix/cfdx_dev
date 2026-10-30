@@ -1,0 +1,53 @@
+probe_id=naca_qual_A
+master_sha=05c6a84df145ec3fbcf76bfa904429aa561843ae
+build_exit=0
+ctest_exit=8
+----- failed list -----
+The following tests FAILED:
+	156 - test_naca0012_qualification (Subprocess aborted)  long qualification validation
+Errors while running CTest
+----- matched lines -----
+7:INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0101564 momentum_residual_reference_relative=1 momentum_residual_raw=0.00989887 momentum_rhs_scale=0.974641 momentum_residual_reference=0.00989887 momentum_rhs_scale_components=(0.974641,0.0100538,1e-300) momentum_rhs_relative_components=(0.0063031,0.984593,0) continuity_normalized=9.42026e-05 velocity_change_inf=0.0890041 pressure_change_inf=0.637091 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=8.57983e-12 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000869199 worst_momentum_cell=179 worst_momentum_patch=
+8:INCOMPRESSIBLE_ITER iter=200 momentum_residual_rhs_relative=3.91874e-07 momentum_residual_reference_relative=3.85433e-05 momentum_residual_raw=3.81535e-07 momentum_rhs_scale=0.973617 momentum_residual_reference=0.00989887 momentum_rhs_scale_components=(0.973617,0.00515787,1e-300) momentum_rhs_relative_components=(3.91874e-07,1.38772e-05,0) continuity_normalized=4.9171e-09 velocity_change_inf=8.77691e-06 pressure_change_inf=6.3932e-07 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=7 pressure_relative_residual=4.61624e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.00446647 worst_momentum_cell=126 worst_momentum_patch=airfoil
+9:INCOMPRESSIBLE_ITER iter=400 momentum_residual_rhs_relative=2.81318e-10 momentum_residual_reference_relative=2.76694e-08 momentum_residual_raw=2.73896e-10 momentum_rhs_scale=0.973617 momentum_residual_reference=0.00989887 momentum_rhs_scale_components=(0.973617,0.00515917,1e-300) momentum_rhs_relative_components=(2.81318e-10,3.75935e-09,0) continuity_normalized=1.20515e-12 velocity_change_inf=2.60382e-09 pressure_change_inf=1.88633e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=7 pressure_relative_residual=4.31157e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00446783 worst_momentum_cell=1 worst_momentum_patch=airfoil
+10:NACA0012_RE1000_A0 level=64 Cd=0.0901496 Cl=-9.14797e-11 Cm=-1.39743e-12 Cd_pressure=0.0344606 Cd_viscous=0.055689 continuity=8.83718e-11 iterations=456
+11:INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0215477 momentum_residual_reference_relative=1 momentum_residual_raw=0.0105589 momentum_rhs_scale=0.490024 momentum_residual_reference=0.0105589 momentum_rhs_scale_components=(0.490024,0.0107375,1e-300) momentum_rhs_relative_components=(0.0147934,0.983366,0) continuity_normalized=5.28231e-05 velocity_change_inf=0.157672 pressure_change_inf=0.537053 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=3.75193e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000259055 worst_momentum_cell=402 worst_momentum_patch=
+12:CFDX nonlinear iteration 20 rejected; retry=1 alpha_u=0.3 alpha_p=0.125 reason=solve_steady_incompressible: pressure-correction solve did not converge (status=1, iterations=534, residual=3.17029475615531283e+02, relative=1.23976458509762067e-09)
+13:CFDX nonlinear iteration 22 rejected; retry=1 alpha_u=0.3 alpha_p=0.125 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=3, iterations=1, residual=1.329e+25, relative=1.936e+01)
+14:CFDX nonlinear iteration 22 rejected; retry=2 alpha_u=0.15 alpha_p=0.0625 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=3, iterations=1, residual=1.329e+25, relative=5.482e+00)
+15:CFDX nonlinear iteration 22 rejected; retry=3 alpha_u=0.1 alpha_p=0.05 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=3, iterations=1, residual=1.329e+25, relative=2.252e+00)
+17:  what():  solve_steady_incompressible: Ux momentum solve did not converge (status=3, iterations=1, residual=1.329e+25, relative=1.417e+00)
+20:50% tests passed, 1 tests failed out of 2
+----- tail of ctest log -----
+Internal ctest changing into directory: /tmp/bdir
+Test project /tmp/bdir
+    Start 159: test_generate_2d_validation_meshes
+1/2 Test #159: test_generate_2d_validation_meshes ...   Passed   41.52 sec
+    Start 156: test_naca0012_qualification
+2/2 Test #156: test_naca0012_qualification ..........Subprocess aborted***Exception: 363.48 sec
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0101564 momentum_residual_reference_relative=1 momentum_residual_raw=0.00989887 momentum_rhs_scale=0.974641 momentum_residual_reference=0.00989887 momentum_rhs_scale_components=(0.974641,0.0100538,1e-300) momentum_rhs_relative_components=(0.0063031,0.984593,0) continuity_normalized=9.42026e-05 velocity_change_inf=0.0890041 pressure_change_inf=0.637091 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=8 pressure_relative_residual=8.57983e-12 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000869199 worst_momentum_cell=179 worst_momentum_patch=
+INCOMPRESSIBLE_ITER iter=200 momentum_residual_rhs_relative=3.91874e-07 momentum_residual_reference_relative=3.85433e-05 momentum_residual_raw=3.81535e-07 momentum_rhs_scale=0.973617 momentum_residual_reference=0.00989887 momentum_rhs_scale_components=(0.973617,0.00515787,1e-300) momentum_rhs_relative_components=(3.91874e-07,1.38772e-05,0) continuity_normalized=4.9171e-09 velocity_change_inf=8.77691e-06 pressure_change_inf=6.3932e-07 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=7 pressure_relative_residual=4.61624e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.00446647 worst_momentum_cell=126 worst_momentum_patch=airfoil
+INCOMPRESSIBLE_ITER iter=400 momentum_residual_rhs_relative=2.81318e-10 momentum_residual_reference_relative=2.76694e-08 momentum_residual_raw=2.73896e-10 momentum_rhs_scale=0.973617 momentum_residual_reference=0.00989887 momentum_rhs_scale_components=(0.973617,0.00515917,1e-300) momentum_rhs_relative_components=(2.81318e-10,3.75935e-09,0) continuity_normalized=1.20515e-12 velocity_change_inf=2.60382e-09 pressure_change_inf=1.88633e-10 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=7 pressure_relative_residual=4.31157e-11 momentum_linear_iterations=1 flux_velocity_mismatch_linf=0.00446783 worst_momentum_cell=1 worst_momentum_patch=airfoil
+NACA0012_RE1000_A0 level=64 Cd=0.0901496 Cl=-9.14797e-11 Cm=-1.39743e-12 Cd_pressure=0.0344606 Cd_viscous=0.055689 continuity=8.83718e-11 iterations=456
+INCOMPRESSIBLE_ITER iter=1 momentum_residual_rhs_relative=0.0215477 momentum_residual_reference_relative=1 momentum_residual_raw=0.0105589 momentum_rhs_scale=0.490024 momentum_residual_reference=0.0105589 momentum_rhs_scale_components=(0.490024,0.0107375,1e-300) momentum_rhs_relative_components=(0.0147934,0.983366,0) continuity_normalized=5.28231e-05 velocity_change_inf=0.157672 pressure_change_inf=0.537053 alpha_u=0.6 alpha_p=0.25 pressure_linear_iterations=9 pressure_relative_residual=3.75193e-11 momentum_linear_iterations=3 flux_velocity_mismatch_linf=0.000259055 worst_momentum_cell=402 worst_momentum_patch=
+CFDX nonlinear iteration 20 rejected; retry=1 alpha_u=0.3 alpha_p=0.125 reason=solve_steady_incompressible: pressure-correction solve did not converge (status=1, iterations=534, residual=3.17029475615531283e+02, relative=1.23976458509762067e-09)
+CFDX nonlinear iteration 22 rejected; retry=1 alpha_u=0.3 alpha_p=0.125 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=3, iterations=1, residual=1.329e+25, relative=1.936e+01)
+CFDX nonlinear iteration 22 rejected; retry=2 alpha_u=0.15 alpha_p=0.0625 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=3, iterations=1, residual=1.329e+25, relative=5.482e+00)
+CFDX nonlinear iteration 22 rejected; retry=3 alpha_u=0.1 alpha_p=0.05 reason=solve_steady_incompressible: Ux momentum solve did not converge (status=3, iterations=1, residual=1.329e+25, relative=2.252e+00)
+terminate called after throwing an instance of 'cfdx::physics::NonlinearRetryableFailure'
+  what():  solve_steady_incompressible: Ux momentum solve did not converge (status=3, iterations=1, residual=1.329e+25, relative=1.417e+00)
+
+
+50% tests passed, 1 tests failed out of 2
+
+Label Time Summary:
+long             = 363.48 sec*proc (1 test)
+mesh             =  41.52 sec*proc (1 test)
+qualification    = 405.01 sec*proc (2 tests)
+validation       = 405.01 sec*proc (2 tests)
+
+Total Test time (real) = 405.10 sec
+
+The following tests FAILED:
+	156 - test_naca0012_qualification (Subprocess aborted)  long qualification validation
+Errors while running CTest
