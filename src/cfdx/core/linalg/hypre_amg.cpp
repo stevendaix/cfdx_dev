@@ -105,6 +105,8 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
         impl_->constant_null_space);
     if (!next_amg->setup(next_op->matrix())) {
         impl_->error = "native AMG hierarchy construction failed";
+        const auto& detail = next_amg->last_setup_error();
+        if (!detail.empty()) impl_->error += ": " + detail;
         return false;
     }
 
