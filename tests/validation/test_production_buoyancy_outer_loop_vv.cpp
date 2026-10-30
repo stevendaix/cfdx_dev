@@ -985,5 +985,23 @@ int main()
         }
     });
 
+    run_case("production_buoyancy_convergence_at_entry_machine_floor_contract", [] {
+        IncompressibleSolveResult flow;
+        IncompressibleIteration floor;
+        floor.pressure_residual = 1e-15;
+        floor.continuity_normalized = 1e-15;
+        floor.corrected_flux_continuity_linf = 1e-15;
+        floor.momentum_equation_residual_rhs_relative = 1e-13;
+        flow.history.push_back(floor);
+        EXPECT_TRUE(detail_buoyancy_stage::carrier_at_machine_equilibrium(flow));
+
+        // One physical residual above its own floor keeps the recovery
+        // path fail-closed, even when the other three residuals are tiny.
+        flow.history.back().corrected_flux_continuity_linf = 1e-12;
+        EXPECT_FALSE(detail_buoyancy_stage::carrier_at_machine_equilibrium(flow));
+        flow.history.clear();
+        EXPECT_FALSE(detail_buoyancy_stage::carrier_at_machine_equilibrium(flow));
+    });
+
     return run_all();
 }
