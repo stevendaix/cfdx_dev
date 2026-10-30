@@ -1,0 +1,4 @@
+7a7cb10ffae22ed38e75de2d87ce7fbb996b3e0d
+7a7cb10f docs(thermal): fix inline code formatting in A1 method fiche
+77490cb0 docs(thermal): align packed anisotropy tensor with typed model
+bc3d8246 docs(thermal): document anisotropic conductivity data semantics

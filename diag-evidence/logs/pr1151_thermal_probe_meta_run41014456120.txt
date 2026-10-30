@@ -1,0 +1,6 @@
+run_id=41014456120
+probe_id=thermal_A
+pr1151_head=7a7cb10ffae22ed38e75de2d87ce7fbb996b3e0d
+master_pin=05c6a84df145ec3fbcf76bfa904429aa561843ae
+master_sha=05c6a84df145ec3fbcf76bfa904429aa561843ae
+purpose=prove verdict of test_thermal_case_contracts on PR head 7a7cb10f (release config, exact CI replication)

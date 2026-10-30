@@ -1,0 +1,81 @@
+build_exit=0
+[3/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/point.cpp.o
+[4/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/cell.cpp.o
+[5/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/mesh.cpp.o
+[6/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/face_geometry.cpp.o
+[7/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/application/simulation_controller.cpp.o
+[8/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/boundary.cpp.o
+[9/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/cell_geometry.cpp.o
+[10/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_quality.cpp.o
+[11/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/field.cpp.o
+[12/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_validator.cpp.o
+[13/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/storage.cpp.o
+[14/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o
+[15/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/mesh/mesh_importer.cpp.o
+[16/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o
+/tmp/wt/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::decompose_polyhedra(const cfdx::core::Mesh&, std::vector<std::vector<long unsigned int> >&, std::vector<cfdx::io::VtkCellType>&, std::vector<unsigned int>&, std::vector<long unsigned int>&, std::vector<long unsigned int>&)’:
+/tmp/wt/src/cfdx/io/vtu/vtu_writer.cpp:85:49: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   85 |         const std::uint32_t off = cell_offsets[c];
+      |                                   ~~~~~~~~~~~~~~^
+/tmp/wt/src/cfdx/io/vtu/vtu_writer.cpp:86:59: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   86 |         const std::uint32_t n_faces = cell_offsets[c + 1] - off;
+      |                                       ~~~~~~~~~~~~~~~~~~~~^~~~~
+/tmp/wt/src/cfdx/io/vtu/vtu_writer.cpp:91:58: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   91 |             const std::uint32_t face = cell_faces[off + k];
+      |                                        ~~~~~~~~~~~~~~~~~~^
+/tmp/wt/src/cfdx/io/vtu/vtu_writer.cpp:92:61: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   92 |             const std::uint32_t fv_begin = face_offsets[face];
+      |                                            ~~~~~~~~~~~~~~~~~^
+/tmp/wt/src/cfdx/io/vtu/vtu_writer.cpp:93:63: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+   93 |             const std::uint32_t fv_end = face_offsets[face + 1];
+      |                                          ~~~~~~~~~~~~~~~~~~~~~^
+/tmp/wt/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::write_header(std::ofstream&, const cfdx::core::Mesh&, const std::vector<std::vector<long unsigned int> >&, const std::vector<cfdx::io::VtkCellType>&, double, std::size_t, bool)’:
+/tmp/wt/src/cfdx/io/vtu/vtu_writer.cpp:118:62: warning: unused parameter ‘vtk_cell_types’ [-Wunused-parameter]
+  118 |                              const std::vector<VtkCellType>& vtk_cell_types,
+      |                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~
+/tmp/wt/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::write_cells(std::ofstream&, const std::vector<std::vector<long unsigned int> >&, const std::vector<cfdx::io::VtkCellType>&, const std::vector<unsigned int>&, const std::vector<long unsigned int>&, const cfdx::core::Mesh&)’:
+/tmp/wt/src/cfdx/io/vtu/vtu_writer.cpp:204:40: warning: conversion from ‘long unsigned int’ to ‘uint32_t’ {aka ‘unsigned int’} may change value [-Wconversion]
+  204 |                 for (std::uint32_t v = fv_begin; v < fv_end; ++v) {
+      |                                        ^~~~~~~~
+[17/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/cfdx_io/gap_analysis.cpp.o
+[18/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o
+[19/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/cfdx_io/mapping_rules.cpp.o
+[20/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_reader.cpp.o
+[21/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o
+[22/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/runtime/gpu/gpu_kernels.cpp.o
+/tmp/wt/src/cfdx/runtime/gpu/gpu_kernels.cpp: In function ‘void cfdx::runtime::gpu::divergence_reference(const double*, const double*, const double*, const double*, const std::size_t*, const int64_t*, std::size_t, std::size_t, double*)’:
+/tmp/wt/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:19: warning: unused parameter ‘sx’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |     ~~~~~~~~~~~~~~^~
+/tmp/wt/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:37: warning: unused parameter ‘sy’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |                       ~~~~~~~~~~~~~~^~
+/tmp/wt/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:55: warning: unused parameter ‘sz’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |                                         ~~~~~~~~~~~~~~^~
+[23/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o
+[24/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/linalg/hypre_amg.cpp.o
+In file included from /tmp/wt/src/cfdx/core/linalg/hypre_amg.h:4,
+                 from /tmp/wt/src/cfdx/core/linalg/hypre_amg.cpp:1:
+/tmp/wt/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/tmp/wt/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+[25/28] Building CXX object CMakeFiles/test_thermal_case_contracts.dir/tests/unit/test_thermal_case_contracts.cpp.o
+In file included from /tmp/wt/src/cfdx/physics/thermal_case.h:8,
+                 from /tmp/wt/tests/unit/test_thermal_case_contracts.cpp:1:
+/tmp/wt/src/cfdx/physics/thermophysical_models.h: In member function ‘double cfdx::physics::ThermophysicalProperties::enthalpy(double, double, double) const’:
+/tmp/wt/src/cfdx/physics/thermophysical_models.h:181:40: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                        ^
+/tmp/wt/src/cfdx/physics/thermophysical_models.h:181:42: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                          ^
+/tmp/wt/src/cfdx/physics/thermophysical_models.h:181:56: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                      ~~^~~
+/tmp/wt/src/cfdx/physics/thermophysical_models.h:181:60: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                            ^
+[26/28] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/case_hdf5_io.cpp.o
+[27/28] Linking CXX static library libcfdx_core.a
+[28/28] Linking CXX executable test_thermal_case_contracts

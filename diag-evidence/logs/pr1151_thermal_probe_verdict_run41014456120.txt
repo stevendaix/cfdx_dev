@@ -1,0 +1,13 @@
+probe_id=thermal_A
+master_sha=05c6a84df145ec3fbcf76bfa904429aa561843ae
+build_exit=0
+ctest_exit=0
+----- tail of ctest log -----
+Internal ctest changing into directory: /tmp/bdir
+Test project /tmp/bdir
+    Start 186: test_thermal_case_contracts
+1/1 Test #186: test_thermal_case_contracts ......   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =   0.01 sec
