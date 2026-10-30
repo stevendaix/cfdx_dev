@@ -1,0 +1,51 @@
+matrix_id=A_prmerge
+master_sha=05c6a84df145ec3fbcf76bfa904429aa561843ae
+build_exit=0
+ctest_exit=8
+----- matched lines -----
+4:1/1 Test #204: test_production_buoyancy_outer_loop_vv ...***Failed    2.09 sec
+5457:Results: 4 passed, 1 failed
+5460:0% tests passed, 1 tests failed out of 1
+5469:The following tests FAILED:
+5470:	204 - test_production_buoyancy_outer_loop_vv (Failed)   phase13 qualification validation
+----- tail of ctest log -----
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.18279e-10 backward_error=8.16262e-16 linear_relative=2.68493e-15 dT_relative=6.9268e-12 energy_balance=1.01762e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.89175e-10 backward_error=6.79844e-16 linear_relative=2.08218e-15 dT_relative=5.18447e-12 energy_balance=1.01762e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.45519e-10 backward_error=5.22957e-16 linear_relative=1.78647e-15 dT_relative=3.87998e-12 energy_balance=8.14094e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.16415e-10 backward_error=4.14815e-16 linear_relative=1.39236e-15 dT_relative=2.904e-12 energy_balance=7.12333e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=7.27596e-11 backward_error=2.87693e-16 linear_relative=1.00903e-15 dT_relative=2.17314e-12 energy_balance=1.11938e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-11 backward_error=1.96109e-16 linear_relative=6.76485e-16 dT_relative=1.62688e-12 energy_balance=4.07047e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.49335e-10 backward_error=2.04262e-15 linear_relative=7.89523e-15 dT_relative=1.22345e-12 energy_balance=3.15462e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.25644e-10 backward_error=1.63985e-15 linear_relative=6.16371e-15 dT_relative=9.09705e-13 energy_balance=1.11938e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.20142e-10 backward_error=1.20831e-15 linear_relative=4.53047e-15 dT_relative=6.80973e-13 energy_balance=7.12333e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.54659e-10 backward_error=1.00693e-15 linear_relative=3.49015e-15 dT_relative=5.09694e-13 energy_balance=5.08809e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.1118e-10 backward_error=1.88674e-15 linear_relative=8.67779e-15 dT_relative=3.79479e-13 energy_balance=2.03524e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=7.13044e-10 backward_error=2.20119e-15 linear_relative=8.94273e-15 dT_relative=2.83664e-13 energy_balance=3.05285e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-10 backward_error=1.68459e-15 linear_relative=6.82189e-15 dT_relative=2.14684e-13 energy_balance=8.14094e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.74712e-10 backward_error=1.12306e-15 linear_relative=5.14219e-15 dT_relative=1.60473e-13 energy_balance=1.62819e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.4756e-10 backward_error=1.98897e-15 linear_relative=7.54636e-15 dT_relative=1.19949e-13 energy_balance=1.01762e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.80213e-10 backward_error=1.74587e-15 linear_relative=5.72465e-15 dT_relative=9.0052e-14 energy_balance=4.07047e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.56522e-10 backward_error=1.33323e-15 linear_relative=4.84363e-15 dT_relative=6.97003e-14 energy_balance=1.83171e-16 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=8.51287e-10 backward_error=3.12105e-15 linear_relative=9.22517e-15 dT_relative=3.92627e-14 energy_balance=7.12333e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=7.71252e-10 backward_error=2.82762e-15 linear_relative=7.61698e-15 dT_relative=4.05234e-14 energy_balance=1.52643e-16 accepted_state=1
+  PASS: production_buoyant_outer_loop_nested_s2s_radiation
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.0322581 energy_balance=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.63798e-11 backward_error=1.46685e-16 linear_relative=4.95152e-16 dT_relative=0.0324044 energy_balance=8.80023e-17 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.45519e-11 backward_error=6.27203e-17 linear_relative=1.20985e-16 dT_relative=8.5082e-07 energy_balance=1.46671e-17 accepted_state=1
+  PASS: production_buoyant_coupling_fail_closed
+
+Results: 4 passed, 1 failed
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+phase13          =   2.09 sec*proc (1 test)
+qualification    =   2.09 sec*proc (1 test)
+validation       =   2.09 sec*proc (1 test)
+
+Total Test time (real) =   2.26 sec
+
+The following tests FAILED:
+	204 - test_production_buoyancy_outer_loop_vv (Failed)   phase13 qualification validation
+Errors while running CTest

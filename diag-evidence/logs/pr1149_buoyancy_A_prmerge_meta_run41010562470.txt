@@ -1,0 +1,6 @@
+run_id=41010562470
+matrix_id=A_prmerge
+pr1149_head=76ceeca8d41e1384c3474db1481e6485fb3d18de
+master_pin=05c6a84df145ec3fbcf76bfa904429aa561843ae
+master_sha=05c6a84df145ec3fbcf76bfa904429aa561843ae
+purpose=reproduce test_production_buoyancy_outer_loop_vv failure (fast-tests exit 8 at 22:29:26Z on 76ceeca8) and attribute PR vs master; capture failing EXPECT + values or timeout-like signature
