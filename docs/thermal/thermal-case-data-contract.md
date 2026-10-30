@@ -83,6 +83,7 @@ The case remains the canonical `.cfdx.h5` setup artifact; transient solution sta
         temperature_range          float64[2] [K]
         properties/
             conductivity/          existing scalar-property model encoding
+            conductivity_shape    optional float64[6] [xx,yy,zz,xy,yz,xz], dimensionless SPD, trace=3
             heat_capacity/          existing scalar-property model encoding
             density/                existing density-model encoding
     regions/<id>/
