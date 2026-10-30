@@ -58,7 +58,7 @@ inline SolverResult solve_cg_impl(
 {
     SolverResult result;
 
-    if (A.n_rows() != A.n_cols()) {
+    if (A.n_rows() == 0 || A.n_rows() != A.n_cols()) {
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
     }
