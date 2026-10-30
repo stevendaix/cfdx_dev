@@ -1,0 +1,262 @@
+name: PR 1149 failing-tests probes (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Directive mainteneur 30/10 : rejeu des tests EXACTEMENT defaillants de la
+# vague 22:11Z sur le head 76ceeca8 (meme SHA), capture des noms + motifs :
+# - naca0012_qualification (A seul ; comportement master documente :
+#   NACA0012_RUNTIME_AUDIT_2026-10-25.md, abort cryptique ~20 s) ->
+#   distinguer : (1) divergence momentum SIMPLE (croissance des residus),
+#   (2) stagnation du lisseur AMG (omega decroissant sur les rafraichissements,
+#       explosion d'iterations a residus bien comportes),
+#   (3) incompatibilite du preconditionneur CG (NOT_APPLICABLE persistant),
+#   (4) residu physique reellement non converge.
+# - ghia_cavity_profile_study (A + B controle master) -> timeout marginal
+#   vs imputable a la PR.
+# - Release fast CTest liste des fautifs (A + B controle master) ->
+#   attribution dual-time (defaut master bootstrap BE vs regression PR).
+# Aucun push master, aucune modification de branche PR, aucune tolerance touchee.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1149_failing_tests_probe_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1149-probes
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR1149_HEAD: 76ceeca8d41e1384c3474db1481e6485fb3d18de
+  MASTER_PIN: 05c6a84df145ec3fbcf76bfa904429aa561843ae
+
+jobs:
+  probe:
+    name: probe ${{ matrix.id }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - id: "naca_qual_A"
+            ref: "A"
+            config: "validation"
+            test: "^test_naca0012_qualification$"
+            watchdog: 5400
+            timeout: 150
+          - id: "ghia_A"
+            ref: "A"
+            config: "validation"
+            test: "^test_ghia_cavity_profile_study$"
+            watchdog: 4200
+            timeout: 130
+          - id: "ghia_B"
+            ref: "B"
+            config: "validation"
+            test: "^test_ghia_cavity_profile_study$"
+            watchdog: 4200
+            timeout: 130
+          - id: "release_fast_A"
+            ref: "A"
+            config: "release"
+            test: "full-fast"
+            watchdog: 3600
+            timeout: 120
+          - id: "release_fast_B"
+            ref: "B"
+            config: "release"
+            test: "full-fast"
+            watchdog: 3600
+            timeout: 120
+    env:
+      WDIR: /tmp/wt
+      BDIR: /tmp/bdir
+      MATRIX_ID: ${{ matrix.id }}
+      MATRIX_REF: ${{ matrix.ref }}
+      MATRIX_CONFIG: ${{ matrix.config }}
+      MATRIX_TEST: ${{ matrix.test }}
+      WATCHDOG_S: ${{ matrix.watchdog }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pins and worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin master
+          MASTER_SHA=$(git rev-parse origin/master)
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "probe_id=$MATRIX_ID"
+            echo "config=$MATRIX_CONFIG test=$MATRIX_TEST watchdog=$WATCHDOG_S"
+            echo "pr1149_head=$PR1149_HEAD"
+            echo "master_pin=$MASTER_PIN"
+            echo "master_sha=$MASTER_SHA"
+            echo "purpose=replay the exact failing tests of the 22:11Z wave on 76ceeca8 and capture names+reasons (maintainer directive)"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_meta_run$GITHUB_RUN_ID.txt"
+          echo "master_sha=$MASTER_SHA" > "$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+          if [ "$MASTER_SHA" != "$MASTER_PIN" ]; then
+            echo "::error::master moved ($MASTER_SHA vs pinned $MASTER_PIN) - abort evidence-only"
+            echo "master_moved=true" >> "$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+            exit 1
+          fi
+          git config user.name "oracle-diag-bot"
+          git config user.email "oracle-diag-bot@users.noreply.github.com"
+          if [ "$MATRIX_REF" = "A" ]; then
+            git cat-file -e "$PR1149_HEAD^{commit}" || { echo "::error::PR1149 head unresolvable"; exit 1; }
+            git worktree add "$WDIR" "$PR1149_HEAD"
+            cd "$WDIR"
+            if ! git merge --no-edit "$MASTER_PIN" > /tmp/merge.log 2>&1; then
+              echo "::error::merge PR1149 head + master failed - conflicts"
+              cp /tmp/merge.log "$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_mergefail_run$GITHUB_RUN_ID.log"
+              exit 1
+            fi
+          else
+            git worktree add "$WDIR" "$MASTER_PIN"
+          fi
+          cd "$WDIR"
+          git rev-parse HEAD > "$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_refsha_run$GITHUB_RUN_ID.txt"
+          git log --oneline -3 >> "$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_refsha_run$GITHUB_RUN_ID.txt"
+
+      - name: Install dependencies (per config)
+        run: |
+          if [ "$MATRIX_CONFIG" = "validation" ]; then
+            sudo apt-get update
+            sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+            python3 -m venv "$RUNNER_TEMP/venv"
+            "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+            "$RUNNER_TEMP/venv/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+            echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          else
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+          fi
+
+      - name: Configure (per config)
+        run: |
+          if [ "$MATRIX_CONFIG" = "validation" ]; then
+            cmake -S "$WDIR" -B "$BDIR" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCFDX_BUILD_TESTS=ON \
+              -DCFDX_ENABLE_LONG_VALIDATION=ON \
+              -DCFDX_ENABLE_MPI=ON \
+              -DCFDX_BUILD_PYTHON=OFF \
+              -DCFDX_USE_HDF5_SERIAL=OFF \
+              -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+              -DPython3_EXECUTABLE="$RUNNER_TEMP/venv/bin/python"
+          else
+            cmake -S "$WDIR" -B "$BDIR" -G Ninja \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCFDX_BUILD_TESTS=ON \
+              -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+              -DCMAKE_UNITY_BUILD=OFF
+          fi
+
+      - name: Build
+        run: |
+          set +e
+          if [ "$MATRIX_CONFIG" = "validation" ]; then
+            echo "full build (fixtures needed by long campaign tests)"
+            cmake --build "$BDIR" --parallel 4 > /tmp/build_raw.log 2>&1
+          else
+            cmake --build "$BDIR" --parallel 4 > /tmp/build_raw.log 2>&1
+          fi
+          rc=$?
+          {
+            echo "build_exit=$rc"
+            tail -n 80 /tmp/build_raw.log
+          } > "$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_build_run$GITHUB_RUN_ID.log"
+          echo "build_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::build failed - see evidence"
+            exit 1
+          fi
+
+      - name: Run the failing test (watchdog)
+        run: |
+          set +e
+          rm -f /tmp/ctest_rc
+          LOG="$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_ctest_run$GITHUB_RUN_ID.log"
+          if [ "$MATRIX_TEST" = "full-fast" ]; then
+            ( ctest --test-dir "$BDIR" -LE 'long|benchmark|campaign|sanitizer-slow' --output-on-failure --parallel 6 > "$LOG" 2>&1; echo $? > /tmp/ctest_rc ) &
+          else
+            ( ctest --test-dir "$BDIR" -R "$MATRIX_TEST" --output-on-failure > "$LOG" 2>&1; echo $? > /tmp/ctest_rc ) &
+          fi
+          CTEST_PID=$!
+          finished=0
+          LOOPS=$((WATCHDOG_S / 10))
+          for i in $(seq 1 "$LOOPS"); do
+            if [ -f /tmp/ctest_rc ]; then finished=1; break; fi
+            sleep 10
+          done
+          S="$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+          if [ "$finished" = "1" ]; then
+            rc=$(cat /tmp/ctest_rc)
+            echo "ctest_exit=$rc" >> "$S"
+            echo "ctest_exit=$rc"
+          else
+            echo "ctest_did_not_finish_within_""$WATCHDOG_S""s" >> "$S"
+            echo "timeout_like=true" >> "$S"
+            echo "::warning::ctest still running after $WATCHDOG_S s - killed for evidence (timeout-like signature)"
+            pkill -TERM -P "$CTEST_PID" 2>/dev/null || true
+            kill -TERM "$CTEST_PID" 2>/dev/null || true
+            sleep 5
+            pkill -KILL -P "$CTEST_PID" 2>/dev/null || true
+          fi
+          grep -E 'tests passed|tests failed|The following tests FAILED' "$LOG" 2>/dev/null || true
+          exit 0
+
+      - name: Extract verdict (evidence-only)
+        if: always()
+        run: |
+          S="$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+          L="$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_ctest_run$GITHUB_RUN_ID.log"
+          V="$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_verdict_run$GITHUB_RUN_ID.txt"
+          {
+            echo "probe_id=$MATRIX_ID"
+            cat "$S" 2>/dev/null || true
+            if [ -f "$L" ]; then
+              echo '----- failed list -----'
+              grep -A 40 'The following tests FAILED' "$L" 2>/dev/null || echo "(no failed list section)"
+              echo '----- matched lines -----'
+              grep -nE 'Timeout|Expected|EXPECT|fields differ|runtime_error|residual|iteration|diverge|stagnat|NOT_APPLICABLE|Failed|passed' "$L" 2>/dev/null | tail -n 80 || true
+              echo '----- tail of ctest log -----'
+              tail -n 60 "$L"
+            else
+              echo 'no ctest log'
+            fi
+          } > "$V"
+          cat "$V"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1149 probe $MATRIX_ID run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          V="$GITHUB_WORKSPACE/$EVID/pr1149_probe_${MATRIX_ID}_verdict_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$V" ]; then
+            echo "::error::no verdict recorded - read probe evidence"
+            exit 1
+          fi
+          echo "verdict recorded for $MATRIX_ID"
