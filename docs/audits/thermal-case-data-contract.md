@@ -35,7 +35,7 @@ Convection/natural circulation is not implied by `stagnant_diffusion`. A prescri
 
 ### 0D nodes
 
-A node stores volume, material, initial absolute temperature and pressure. Its mass is derived from the selected material density at the initial state. A1 represents closed lumped thermal capacitance. Mass-flow network transport and enthalpy advection are deliberately deferred to A5; there is no implicit mass flow in the current model.
+A node stores volume, material, initial absolute temperature and pressure. Fluid regions also carry their initial/reference pressure so pressure-dependent density laws are evaluated explicitly. Its mass is derived from the selected material density at the initial state. A1 represents closed lumped thermal capacitance. Mass-flow network transport and enthalpy advection are deliberately deferred to A5; there is no implicit mass flow in the current model.
 
 ### Interfaces and links
 
@@ -108,7 +108,7 @@ The case remains the canonical `.cfdx.h5` setup artifact; transient solution sta
         conductance                float64 [W/K]
 ```
 
-Stable IDs are references, not array positions. Names are human-readable labels and must be unique within each collection. Required attributes/datasets and their shapes/types are validated by the future HDF5 adapter. Missing mandatory values, unknown enum strings and unsupported versions must fail closed. No HDF5 reader/writer is claimed by A1.
+A1 uses the unique entity names as stable references (never vector indices); the HDF5 adapter must encode names as safe group keys without changing the referenced value. Names are human-readable labels and must be unique within each collection. Required attributes/datasets and their shapes/types are validated by the future HDF5 adapter. Missing mandatory values, unknown enum strings and unsupported versions must fail closed. No HDF5 reader/writer is claimed by A1.
 
 ## 5. Validation performed by A1
 
