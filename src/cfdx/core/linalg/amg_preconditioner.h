@@ -9,6 +9,7 @@
 #include <limits>
 #include <map>
 #include <stdexcept>
+#include <string>
 #include <set>
 #include <utility>
 #include <vector>
@@ -49,6 +50,7 @@ public:
 
     bool setup(const SparseMatrix& A) override
     {
+        last_setup_error_.clear();
         last_footprint_ = AMGSetupFootprint{};
         if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
             A.n_rows() == 0 || !matrix_is_valid(A) ||
@@ -143,7 +145,7 @@ public:
         // value so a previous difficult matrix cannot permanently poison a
         // later full rebuild.
         double safe_omega = 0.0;
-        if (!compute_stable_smoother_omega(levels_, safe_omega)) {
+        if (!compute_stable_smoother_omega(levels_, safe_omega, &last_setup_error_)) {
             levels_.clear();
             first_aggregate_.clear();
             return false;
@@ -197,6 +199,8 @@ public:
     }
 
     double smoother_omega() const noexcept { return omega_; }
+
+    const std::string& last_setup_error() const noexcept { return last_setup_error_; }
 
     std::size_t coarse_size() const noexcept
     {
@@ -1180,24 +1184,42 @@ private:
     }
 
     bool compute_stable_smoother_omega(
-        const std::vector<Level>& hierarchy, double& safe_omega) const
+        const std::vector<Level>& hierarchy, double& safe_omega,
+        std::string* failure_reason = nullptr) const
     {
-        if (hierarchy.empty()) return false;
+        const auto fail = [failure_reason](const std::string& reason) {
+            if (failure_reason) *failure_reason = reason;
+            return false;
+        };
+        if (hierarchy.empty()) return fail("empty AMG hierarchy");
         double maximum_bound = 0.0;
-        for (const auto& level : hierarchy) {
+        for (std::size_t level_index = 0; level_index < hierarchy.size(); ++level_index) {
+            const auto& level = hierarchy[level_index];
+            if (level.inv_diag.size() != level.A.n_rows())
+                return fail("diagonal size mismatch at level " + std::to_string(level_index));
+            for (std::size_t row = 0; row < level.inv_diag.size(); ++row) {
+                if (!(level.inv_diag[row] > 0.0) || !std::isfinite(level.inv_diag[row]))
+                    return fail("Jacobi stability certificate requires positive finite diagonal; level=" +
+                                std::to_string(level_index) + " row=" + std::to_string(row) +
+                                " inverse_diagonal=" + std::to_string(level.inv_diag[row]));
+            }
             const double bound = normalized_gershgorin_upper_bound(level);
-            if (!std::isfinite(bound) || !(bound > 0.0)) return false;
+            if (!std::isfinite(bound) || !(bound > 0.0))
+                return fail("normalized Gershgorin bound is invalid at level " +
+                            std::to_string(level_index) + " bound=" + std::to_string(bound));
             maximum_bound = std::max(maximum_bound, bound);
         }
         if (!(maximum_bound > 0.0) || !std::isfinite(maximum_bound))
-            return false;
+            return fail("maximum normalized Gershgorin bound is invalid");
 
         // Re-evaluate against the configured damping on every setup/refresh.
         // This permits recovery when a later matrix is less restrictive,
         // while retaining the conservative 10% margin below the Jacobi
         // stability limit for the current hierarchy.
         safe_omega = std::min(configured_omega_, 1.8 / maximum_bound);
-        return std::isfinite(safe_omega) && safe_omega > 0.0 && safe_omega < 2.0;
+        if (!std::isfinite(safe_omega) || !(safe_omega > 0.0 && safe_omega < 2.0))
+            return fail("computed Jacobi damping is outside (0,2): " + std::to_string(safe_omega));
+        return true;
     }
 
     static bool build_diagonal(Level& level)
@@ -1972,6 +1994,7 @@ private:
     std::vector<Level> levels_;
     std::vector<std::size_t> first_aggregate_;
     AMGSetupFootprint last_footprint_;
+    std::string last_setup_error_;
 };
 
 using AgglomeratedAMGPreconditioner = MatrixFreeVcyclePreconditioner;
