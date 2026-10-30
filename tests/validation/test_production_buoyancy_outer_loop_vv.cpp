@@ -354,14 +354,11 @@ int main()
         const auto loop = run_production_buoyant_outer_loop(
             mesh, ubc, pbc, controls, setup, U, p);
 
-        // Coupled fixed point reached on the third outer iteration:
-        // the first can never prove it, the second is a full warm
-        // carrier solve whose response still moves, and the third is
-        // accepted at entry (diag run 39633631822: the warm carrier
-        // re-solve ends STAGNATED with every residual at the machine
-        // floor, the entry state is restored and the previously
-        // accepted carrier reused), with all three separate
-        // stationarity gates green and every inner stage green.
+        // Coupled fixed point reached on the third outer iteration.
+        // All three carrier solves use the same uniform 320 K source in
+        // this identity case; the reference below therefore replays the
+        // same cold-start plus two warm-start solves, without assuming
+        // that the third solve must use the convergence-at-entry fallback.
         EXPECT_TRUE(loop.converged);
         EXPECT_TRUE(loop.fixed_point_temperature_passed);
         EXPECT_TRUE(loop.fixed_point_velocity_passed);
@@ -423,12 +420,18 @@ int main()
         const auto ref2 = solve_steady_incompressible(
             mesh, U_ref, p_ref, ubc, pbc, ref_controls);
         EXPECT_TRUE(ref2.converged);
+        const auto ref3 = solve_steady_incompressible(
+            mesh, U_ref, p_ref, ubc, pbc, ref_controls);
+        EXPECT_TRUE(ref3.converged);
 
-        // BIT-IDENTICAL carrier state: the cellwise channel must
-        // reproduce the uniform semantics exactly.
+        // BIT-IDENTICAL carrier state: the reference replays the same three
+        // carrier solves as the outer loop (one cold start, two warm starts).
+        // Comparing after only two reference solves was invalid once the
+        // third outer carrier solve legitimately converged normally rather
+        // than taking the convergence-at-entry recovery path.
         expect_identical_velocity(U, U_ref, "uniform equivalence U");
         expect_identical_fields(p, p_ref, "uniform equivalence p");
-        EXPECT_TRUE(loop.flow.converged == ref2.converged);
+        EXPECT_TRUE(loop.flow.converged == ref3.converged);
     });
 
     // -----------------------------------------------------------------
