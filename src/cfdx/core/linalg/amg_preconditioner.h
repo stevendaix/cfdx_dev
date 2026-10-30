@@ -55,6 +55,7 @@ public:
         if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
             A.n_rows() == 0 || !matrix_is_valid(A) ||
             (constant_null_space_ && !has_constant_null_space(A))) {
+            last_setup_error_ = "invalid finest matrix, dimensions, CSR, or null-space contract";
             levels_.clear();
             first_aggregate_.clear();
             return false;
@@ -66,6 +67,7 @@ public:
         Level fine;
         fine.A = A;
         if (!build_diagonal(fine)) {
+            last_setup_error_ = "invalid or zero diagonal on finest level";
             levels_.clear();
             return false;
         }
@@ -101,6 +103,8 @@ public:
             } else {
                 if (!build_cf_interpolation(levels_.back(), strength_threshold_,
                                             prolongation, aggregate, coarse_n)) {
+                    last_setup_error_ = "Direct-CF interpolation construction failed at level " +
+                                        std::to_string(levels_.size() - 1);
                     levels_.clear();
                     first_aggregate_.clear();
                     return false;
@@ -114,6 +118,8 @@ public:
                 levels_.back().A, prolongation, coarse_n,
                 &last_footprint_.galerkin_dropped_entries);
             if (!matrix_is_valid(coarse)) {
+                last_setup_error_ = "invalid Galerkin coarse matrix from level " +
+                                    std::to_string(levels_.size() - 1);
                 levels_.clear();
                 first_aggregate_.clear();
                 return false;
@@ -126,6 +132,8 @@ public:
             Level next;
             next.A = std::move(coarse);
             if (!build_diagonal(next)) {
+                last_setup_error_ = "invalid or zero diagonal on coarse level " +
+                                    std::to_string(levels_.size());
                 levels_.clear();
                 first_aggregate_.clear();
                 return false;
@@ -136,6 +144,7 @@ public:
         }
 
         if (levels_.empty() || levels_.front().A.n_rows() == 0) {
+            last_setup_error_ = "empty hierarchy after coarsening";
             levels_.clear();
             return false;
         }
