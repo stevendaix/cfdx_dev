@@ -69,6 +69,54 @@ struct ThermalMaterial {
         // Validate the actual thermal properties used by the thermal-only
         // equations. Viscosity and turbulent Prandtl are intentionally not
         // required: a thermal-only fluid is not a momentum/turbulence model.
+        const auto valid_scalar_model = [](ScalarPropertyModel model) {
+            switch (model) {
+                case ScalarPropertyModel::CONSTANT:
+                case ScalarPropertyModel::LINEAR:
+                case ScalarPropertyModel::POLYNOMIAL:
+                case ScalarPropertyModel::POWER_LAW:
+                case ScalarPropertyModel::EXPONENTIAL:
+                case ScalarPropertyModel::ARRHENIUS:
+                case ScalarPropertyModel::TABLE:
+                    return true;
+            }
+            return false;
+        };
+        if (!valid_scalar_model(properties.conductivity.model) ||
+            !valid_scalar_model(properties.heat_capacity.model))
+            throw std::invalid_argument("thermal material '" + name +
+                                        "' has an unsupported scalar property model");
+        switch (properties.density.model) {
+            case DensityModel::CONSTANT:
+            case DensityModel::LINEAR_TEMPERATURE:
+            case DensityModel::BOUSSINESQ:
+            case DensityModel::IDEAL_GAS:
+            case DensityModel::TABLE:
+                break;
+            default:
+                throw std::invalid_argument("thermal material '" + name +
+                                            "' has an unsupported density model");
+        }
+        if (properties.conductivity.model == ScalarPropertyModel::TABLE) {
+            switch (properties.conductivity.table.extrapolation) {
+                case ExtrapolationPolicy::CLAMP:
+                case ExtrapolationPolicy::LINEAR:
+                case ExtrapolationPolicy::REJECT:
+                    break;
+                default:
+                    throw std::invalid_argument("thermal conductivity table has an unsupported extrapolation policy");
+            }
+        }
+        if (properties.heat_capacity.model == ScalarPropertyModel::TABLE) {
+            switch (properties.heat_capacity.table.extrapolation) {
+                case ExtrapolationPolicy::CLAMP:
+                case ExtrapolationPolicy::LINEAR:
+                case ExtrapolationPolicy::REJECT:
+                    break;
+                default:
+                    throw std::invalid_argument("thermal heat-capacity table has an unsupported extrapolation policy");
+            }
+        }
         const double k = properties.k(reference_temperature);
         const double cp = properties.cp(reference_temperature);
         const double rho = properties.rho(reference_temperature, reference_pressure);
