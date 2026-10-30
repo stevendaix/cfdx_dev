@@ -99,12 +99,12 @@ def run_test(executable: Path, log_path: Path) -> tuple[int, str]:
         log_path.write_text(listing.stdout, encoding="utf-8")
         return listing.returncode, listing.stdout
 
-    match = re.search(r"Total Tests:\\s*(\\d+)", listing.stdout)
+    match = re.search(r"Total Tests:\s*(\d+)", listing.stdout)
     test_count = int(match.group(1)) if match else 0
     if test_count > 1:
         output = (
             f"VALIDATION_GATE: expected at most one exact CTest entry for "
-            f"{executable.name}, found {test_count}\\n{listing.stdout}"
+            f"{executable.name}, found {test_count}\n{listing.stdout}"
         )
         log_path.write_text(output, encoding="utf-8")
         return 1, output
