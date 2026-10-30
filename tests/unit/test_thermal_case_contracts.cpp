@@ -141,5 +141,31 @@ int main() {
         EXPECT_TRUE(threw);
     });
 
+    run_case("unsupported_enum_values_are_rejected", [] {
+        auto c = make_case();
+        c.time_mode = static_cast<ThermalTimeMode>(255);
+        bool threw = false;
+        try { c.validate(); } catch (const std::invalid_argument&) { threw = true; }
+        EXPECT_TRUE(threw);
+        c = make_case();
+        c.materials[0].properties.conductivity.model =
+            static_cast<ScalarPropertyModel>(255);
+        threw = false;
+        try { c.validate(); } catch (const std::invalid_argument&) { threw = true; }
+        EXPECT_TRUE(threw);
+    });
+
+    run_case("pressure_dependent_fluid_density_has_explicit_pressure", [] {
+        auto c = make_case();
+        c.materials[0].properties.density.model = DensityModel::IDEAL_GAS;
+        c.materials[0].properties.density.gas_constant = 287.05;
+        c.regions[1].pressure = 202650.0;
+        c.validate();
+        c.regions[1].pressure = 0.0;
+        bool threw = false;
+        try { c.validate(); } catch (const std::invalid_argument&) { threw = true; }
+        EXPECT_TRUE(threw);
+    });
+
     return run_all();
 }
