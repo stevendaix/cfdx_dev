@@ -997,7 +997,8 @@ int main() {
         NativeBoomerAMGPreconditioner amg;
         EXPECT_TRUE(amg.setup(A));
         EXPECT_TRUE(amg.hierarchy_builds() == 1);
-        EXPECT_TRUE(amg.numeric_updates() == 0);        EXPECT_TRUE(amg.update_values(A2));
+        EXPECT_TRUE(amg.numeric_updates() == 0);
+        EXPECT_TRUE(amg.update_values(A2));
         EXPECT_TRUE(amg.hierarchy_builds() == 1);
         EXPECT_TRUE(amg.numeric_updates() == 1);
 
