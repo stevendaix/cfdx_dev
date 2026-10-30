@@ -1163,7 +1163,11 @@ private:
             double row_sum = 0.0;
             for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
                 const std::size_t j = col[k];
-                const double scale = std::sqrt(diagonal[i] * diagonal[j]);
+                // Separate square roots avoid overflow/underflow in
+                // diagonal[i] * diagonal[j] when the normalized scale itself
+                // is representable.
+                const double scale =
+                    std::sqrt(diagonal[i]) * std::sqrt(diagonal[j]);
                 if (!(scale > 0.0) || !std::isfinite(scale))
                     return std::numeric_limits<double>::infinity();
                 row_sum += std::abs(val[k]) / scale;
