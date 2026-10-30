@@ -5,6 +5,7 @@
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
+#include "cfdx/core/linalg/hypre_amg.h"
 #include "cfdx/core/linalg/mgr_preconditioner.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
@@ -2520,10 +2521,19 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             std::shared_ptr<cfdx::core::Preconditioner>(
                 cfdx::core::make_scalar_preconditioner(
                     cfdx::core::PreconditionerModel::NativeAMG).release());
-        if (!pressure_preconditioner ||
-            !pressure_preconditioner->setup(pressure_operator)) {
+        if (!pressure_preconditioner) {
             throw std::runtime_error(
-                "N8 LSC/BFBt pressure AMG setup failed");
+                "N8 LSC/BFBt pressure AMG factory returned a null preconditioner");
+        }
+        if (!pressure_preconditioner->setup(pressure_operator)) {
+            const auto* native_amg =
+                dynamic_cast<const cfdx::core::NativeAMGPreconditioner*>(
+                    pressure_preconditioner.get());
+            const std::string detail = native_amg
+                ? native_amg->last_error()
+                : std::string("preconditioner did not expose a NativeAMG setup diagnostic");
+            throw std::runtime_error(
+                std::string("N8 LSC/BFBt pressure AMG setup failed: ") + detail);
         }
 
         auto solve_pressure = [pressure_operator,
