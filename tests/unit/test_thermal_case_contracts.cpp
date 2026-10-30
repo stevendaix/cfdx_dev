@@ -167,5 +167,13 @@ int main() {
         EXPECT_TRUE(threw);
     });
 
+    run_case("lumped_mass_overflow_is_rejected", [] {
+        auto c = make_case();
+        c.nodes[0].volume = 1.0e308;
+        bool threw = false;
+        try { c.validate(); } catch (const std::invalid_argument&) { threw = true; }
+        EXPECT_TRUE(threw);
+    });
+
     return run_all();
 }
