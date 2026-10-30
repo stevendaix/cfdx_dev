@@ -9,7 +9,7 @@
 
 The thermal case is a solver-independent physics description. It must not require a momentum equation, pressure-velocity coupling, turbulence model, CFD runtime state, or an initialized velocity field.
 
-The implementation reuses `ThermophysicalProperties` from `thermophysical_models.h`. It does not create a second conductivity / heat-capacity / density law system. The thermal material validator intentionally requires only (k(T)), (c_p(T)), and (ho(T,p)); viscosity and turbulent Prandtl are not prerequisites for a thermal-only fluid.
+The implementation reuses `ThermophysicalProperties` from `thermophysical_models.h`. It does not create a second scalar conductivity / heat-capacity / density law system. An optional dimensionless symmetric anisotropy shape `A` is stored separately; the physical tensor is `K(T) = k(T) A`, with `A` positive-definite and `trace(A) = 3` so the existing scalar `k(T)` law retains the scale. The thermal material validator intentionally requires only (k(T)), (c_p(T)), and (ho(T,p)); viscosity and turbulent Prandtl are not prerequisites for a thermal-only fluid.
 
 The data model is in `src/cfdx/physics/thermal_case.h`:
 
