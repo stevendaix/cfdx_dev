@@ -119,7 +119,7 @@ def run_test(executable: Path, log_path: Path) -> tuple[int, str]:
             f"^{test_name}$",
         ]
         if test_count == 1
-        else [str(executable)]
+        else [str(executable.resolve())]
     )
     proc = subprocess.run(
         command,
