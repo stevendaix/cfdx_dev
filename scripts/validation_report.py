@@ -79,15 +79,37 @@ def parse_matrix(path: Path) -> list[Case]:
 
 
 def run_test(executable: Path, log_path: Path) -> tuple[int, str]:
-    """Run a registered validation executable through CTest.
+    """Run a registered validation through CTest, preserving legacy fallback.
 
-    CTest supplies the build-tree execution context and test properties used
-    by the normal CI partitions. Launching the binary directly bypasses that
-    context (notably the runtime loader setup for MPI-linked targets), which
-    can produce false failures such as libmpi_cxx.so.40 not found.
+    CTest supplies build-tree test properties and runtime environment (notably
+    MPI loader paths). Some optional campaigns, such as a locally requested
+    full Ghia run, may have a built executable but no registered CTest entry;
+    retain direct execution only for that unregistered-executable case.
     """
     test_name = re.escape(executable.name)
-    proc = subprocess.run(
+    listing = subprocess.run(
+        ["ctest", "-N", "-R", f"^{test_name}$"],
+        cwd=executable.parent,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if listing.returncode != 0:
+        log_path.write_text(listing.stdout, encoding="utf-8")
+        return listing.returncode, listing.stdout
+
+    match = re.search(r"Total Tests:\\s*(\\d+)", listing.stdout)
+    test_count = int(match.group(1)) if match else 0
+    if test_count > 1:
+        output = (
+            f"VALIDATION_GATE: expected at most one exact CTest entry for "
+            f"{executable.name}, found {test_count}\\n{listing.stdout}"
+        )
+        log_path.write_text(output, encoding="utf-8")
+        return 1, output
+
+    command = (
         [
             "ctest",
             "-V",
@@ -95,7 +117,12 @@ def run_test(executable: Path, log_path: Path) -> tuple[int, str]:
             "--no-tests=error",
             "-R",
             f"^{test_name}$",
-        ],
+        ]
+        if test_count == 1
+        else [str(executable)]
+    )
+    proc = subprocess.run(
+        command,
         cwd=executable.parent,
         text=True,
         stdout=subprocess.PIPE,
