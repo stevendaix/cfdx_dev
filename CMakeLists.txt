@@ -1025,6 +1025,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_cht_validation tests/validation/test_cht_validation.cpp)
     add_cfdx_test(test_thermal_vv tests/validation/test_thermal_vv.cpp)
     add_cfdx_test(test_thermal_zones_vv tests/validation/test_thermal_zones_vv.cpp)
+    add_cfdx_test(test_thermal_case_contracts tests/unit/test_thermal_case_contracts.cpp)
     add_cfdx_test(test_production_energy_stage_vv tests/validation/test_production_energy_stage_vv.cpp)
     add_cfdx_test(test_production_s2s_energy_stage_vv tests/validation/test_production_s2s_energy_stage_vv.cpp)
     add_cfdx_test(test_production_s2s_energy_outer_loop_vv tests/validation/test_production_s2s_energy_outer_loop_vv.cpp)
