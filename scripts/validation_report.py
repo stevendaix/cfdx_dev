@@ -79,8 +79,24 @@ def parse_matrix(path: Path) -> list[Case]:
 
 
 def run_test(executable: Path, log_path: Path) -> tuple[int, str]:
+    """Run a registered validation executable through CTest.
+
+    CTest supplies the build-tree execution context and test properties used
+    by the normal CI partitions. Launching the binary directly bypasses that
+    context (notably the runtime loader setup for MPI-linked targets), which
+    can produce false failures such as libmpi_cxx.so.40 not found.
+    """
+    test_name = re.escape(executable.name)
     proc = subprocess.run(
-        [str(executable)],
+        [
+            "ctest",
+            "-V",
+            "--output-on-failure",
+            "--no-tests=error",
+            "-R",
+            f"^{test_name}$",
+        ],
+        cwd=executable.parent,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
