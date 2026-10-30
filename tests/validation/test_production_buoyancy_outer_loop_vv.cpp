@@ -386,7 +386,8 @@ int main()
         // residuals, the entry state was restored and the previously
         // accepted carrier reused; the first two iterations are full
         // carrier solves.
-        EXPECT_TRUE(loop.history[2].flow_converged_at_entry);
+        EXPECT_TRUE(loop.flow_converged_at_entry ==
+                    loop.history[2].flow_converged_at_entry);
         EXPECT_FALSE(loop.history[1].flow_converged_at_entry);
         EXPECT_FALSE(loop.history[0].flow_converged_at_entry);
         EXPECT_TRUE(loop.flow_converged_at_entry);
