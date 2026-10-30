@@ -7,6 +7,7 @@
 
 #include "cfdx/physics/thermophysical_models.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <map>
