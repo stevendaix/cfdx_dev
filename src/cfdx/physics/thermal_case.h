@@ -95,6 +95,7 @@ struct ThermalRegion {
     std::string mesh_id;
     std::string material;
     double initial_temperature = 300.0;
+    double pressure = 101325.0; // Pa; used by pressure-dependent density laws.
     // Meaningful only for FLUID. SOLID must retain STAGNANT_DIFFUSION.
     ThermalFluidModel fluid_model = ThermalFluidModel::STAGNANT_DIFFUSION;
     // Required for PRESCRIBED_MASS_FLUX; identifies an authoritative face
@@ -104,21 +105,28 @@ struct ThermalRegion {
     void validate() const {
         if (name.empty() || mesh_id.empty() || material.empty())
             throw std::invalid_argument("thermal region requires name, mesh_id and material");
-        if (!std::isfinite(initial_temperature) || initial_temperature <= 0.0)
+        if (!std::isfinite(initial_temperature) || initial_temperature <= 0.0 ||
+            !std::isfinite(pressure) || pressure <= 0.0)
             throw std::invalid_argument("thermal region '" + name +
-                                        "' has invalid initial temperature");
+                                        "' has invalid initial temperature or pressure");
         if (kind == ThermalRegionKind::SOLID) {
             if (fluid_model != ThermalFluidModel::STAGNANT_DIFFUSION ||
                 !mass_flux_field.empty())
                 throw std::invalid_argument("solid region '" + name +
                                             "' cannot declare a fluid transport model");
-        } else if (fluid_model == ThermalFluidModel::PRESCRIBED_MASS_FLUX) {
+        } else if (kind == ThermalRegionKind::FLUID &&
+                   fluid_model == ThermalFluidModel::PRESCRIBED_MASS_FLUX) {
             if (mass_flux_field.empty())
                 throw std::invalid_argument("fluid region '" + name +
                                             "' requires an explicit face mass-flux field");
-        } else if (!mass_flux_field.empty()) {
-            throw std::invalid_argument("stagnant fluid region '" + name +
-                                        "' must not declare a mass-flux field");
+        } else if (kind == ThermalRegionKind::FLUID &&
+                   fluid_model == ThermalFluidModel::STAGNANT_DIFFUSION) {
+            if (!mass_flux_field.empty())
+                throw std::invalid_argument("stagnant fluid region '" + name +
+                                            "' must not declare a mass-flux field");
+        } else {
+            throw std::invalid_argument("thermal region '" + name +
+                                        "' has an unsupported region or fluid model");
         }
     }
 };
@@ -155,9 +163,15 @@ struct ThermalInterface {
         if (name.empty() || region_a.empty() || region_b.empty() ||
             patch_a.empty() || patch_b.empty() || region_a == region_b)
             throw std::invalid_argument("thermal interface requires two distinct regions and patches");
+        if (model != ThermalInterfaceModel::CONJUGATE_CONDUCTION &&
+            model != ThermalInterfaceModel::CONTACT_RESISTANCE)
+            throw std::invalid_argument("thermal interface has an unsupported model");
         if (!std::isfinite(contact_resistance) || contact_resistance < 0.0)
             throw std::invalid_argument("thermal interface '" + name +
                                         "' has invalid contact resistance");
+        if (model == ThermalInterfaceModel::CONTACT_RESISTANCE &&
+            contact_resistance <= 0.0)
+            throw std::invalid_argument("contact-resistance interface requires a positive resistance");
         if (model == ThermalInterfaceModel::CONJUGATE_CONDUCTION &&
             contact_resistance != 0.0)
             throw std::invalid_argument("conjugate interface '" + name +
@@ -185,14 +199,20 @@ struct ThermalLink {
         if (source.kind == target.kind && source.object == target.object &&
             source.patch == target.patch)
             throw std::invalid_argument("thermal link '" + name + "' is self-connected");
+        if (model != ThermalLinkModel::CONDUCTANCE)
+            throw std::invalid_argument("thermal link has an unsupported model");
         for (const ThermalEndpoint* endpoint : {&source, &target}) {
             if (endpoint->kind == ThermalEndpointKind::REGION_PATCH) {
                 if (endpoint->patch.empty())
                     throw std::invalid_argument("thermal link '" + name +
                                                 "' region endpoint requires a patch");
-            } else if (!endpoint->patch.empty()) {
+            } else if (endpoint->kind == ThermalEndpointKind::LUMPED_NODE) {
+                if (!endpoint->patch.empty())
+                    throw std::invalid_argument("thermal link '" + name +
+                                                "' lumped-node endpoint cannot specify a patch");
+            } else {
                 throw std::invalid_argument("thermal link '" + name +
-                                            "' lumped-node endpoint cannot specify a patch");
+                                            "' has an unsupported endpoint kind");
             }
         }
         if (!std::isfinite(conductance) || conductance <= 0.0)
@@ -217,6 +237,8 @@ struct ThermalCase {
             throw std::invalid_argument("unsupported thermal case schema version");
         if (name.empty())
             throw std::invalid_argument("thermal case name must not be empty");
+        if (time_mode != ThermalTimeMode::STEADY && time_mode != ThermalTimeMode::TRANSIENT)
+            throw std::invalid_argument("unsupported thermal time mode");
         if (!std::isfinite(time_step) || time_step < 0.0 ||
             (time_mode == ThermalTimeMode::TRANSIENT && time_step <= 0.0) ||
             (time_mode == ThermalTimeMode::STEADY && time_step != 0.0))
@@ -244,6 +266,7 @@ struct ThermalCase {
                 region.initial_temperature > material.maximum_temperature)
                 throw std::invalid_argument("thermal region '" + region.name +
                                             "' initial temperature is outside material range");
+            (void)material.properties.rho(region.initial_temperature, region.pressure);
         }
 
         std::set<std::string> node_names;
@@ -292,9 +315,14 @@ struct ThermalCase {
                     if (region == regions.end())
                         throw std::invalid_argument("thermal link '" + link.name +
                                                     "' references an unknown region");
-                } else if (node_names.count(endpoint->object) == 0) {
+                } else if (endpoint->kind == ThermalEndpointKind::LUMPED_NODE &&
+                           node_names.count(endpoint->object) == 0) {
                     throw std::invalid_argument("thermal link '" + link.name +
                                                 "' references an unknown lumped node");
+                } else if (endpoint->kind != ThermalEndpointKind::REGION_PATCH &&
+                           endpoint->kind != ThermalEndpointKind::LUMPED_NODE) {
+                    throw std::invalid_argument("thermal link '" + link.name +
+                                                "' has an unsupported endpoint kind");
                 }
             }
         }
