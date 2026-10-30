@@ -185,7 +185,8 @@ public:
         // reusable context to build/update a preconditioner. A converged
         // initial guess needs no Krylov direction and must not fail because
         // an otherwise-unused preconditioner cannot be prepared.
-        if (matrix.n_rows() == matrix.n_cols() &&
+        if (matrix.n_rows() > 0 &&
+            matrix.n_rows() == matrix.n_cols() &&
             rhs.size() == matrix.n_rows() &&
             solution.size() == matrix.n_cols() && matrix.is_consistent()) {
             bool finite_input = true;
