@@ -1,7 +1,7 @@
 # FICHE MÉTHODE 15 — Contrat de données thermique autonome (A1)
 
 **En-tête d'évidence (gouvernance §16.5)**  
-- Scope : contrat typé de cas thermique autonome, séparation matériaux / régions solides et fluides / nœuds fluides 0D / interfaces / liens conductifs. Cette fiche spécifie les sémantiques et invariants de données ; elle ne qualifie aucun opérateur numérique ni solveur.
+- Scope : contrat typé de cas thermique autonome, séparation matériaux / régions solides et fluides / nœuds fluides 0D / interfaces / liens conductifs, avec conductivité isotrope ou tensorielle. Cette fiche spécifie les sémantiques et invariants de données ; elle ne qualifie aucun opérateur numérique ni solveur.
 - Statut : IMPLÉMENTÉ — A1 (contrat en mémoire + validation fail-closed + tests unitaires enregistrés). CI exacte HEAD en cours ; aucune qualification physique revendiquée.
 - Issue / PR : #1150 / #1151.
 - Spécification détaillée : \`docs/thermal/thermal-case-data-contract.md\`.
@@ -48,7 +48,7 @@ A1 ne réalise aucune discrétisation. Il fixe seulement les données nécessair
 - interfaces identifiées par paires $(region, patch)$ ;
 - liens 0D utilisant une conductance $G$ en W/K.
 
-Le futur assemblage devra intégrer chaque flux interne une fois avec signes opposés, et vérifier un bilan énergétique indépendant de la matrice. Aucune précision d'ordre, stabilité ou convergence numérique n'est attribuée à A1.
+Le futur assemblage devra intégrer chaque flux interne une fois avec signes opposés, et vérifier un bilan énergétique indépendant de la matrice. Pour l'anisotropie, le contrat représente $K(T)=k(T)A$, avec $A$ symétrique définie positive, sans dimension et de trace 3 ; cette normalisation conserve l'échelle de la loi scalaire $k(T)$. Aucune précision d'ordre, stabilité ou convergence numérique n'est attribuée à A1.
 
 ## 4. Traitement des frontières
 
@@ -82,6 +82,7 @@ Tests de contrat enregistrés dans \`test_thermal_case_contracts\` :
 - appariement solide-fluide des interfaces CHT ;
 - validation des liens, conductances et références ;
 - rejet des énumérations inconnues ;
+- validation d'un tenseur d'anisotropie défini positif et normalisé ;
 - pression explicite pour densité fluide dépendante de $p$.
 
 Ces tests vérifient des invariants de données, pas la physique du solveur. Les oracles analytiques, bilans globaux, tests HDF5 round-trip et qualification solver-level restent requis en A2–A8. CI exacte HEAD doit être verte avant fusion ; aucun PASS de qualification n'est déduit de cette fiche.
