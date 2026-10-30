@@ -1,0 +1,4 @@
+05c6a84df145ec3fbcf76bfa904429aa561843ae
+05c6a84d ci: fix long validation job and test runtime budgets (#1148)
+ecf1d022 Merge PR #1145: feat(validation): quick/full CTest mesh fixtures, NACA 3-D extrusion geometry and thermal/turbulence smoke
+6cca4b18 fix(scripts): restore full generator content with ruff-format bf["back"] wrap (diag run 40659966472)
