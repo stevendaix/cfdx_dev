@@ -175,5 +175,16 @@ int main() {
         EXPECT_TRUE(threw);
     });
 
+    run_case("anisotropic_conductivity_shape_must_be_spd_and_normalized", [] {
+        auto c = make_case();
+        c.materials[0].anisotropic_conductivity = true;
+        c.materials[0].conductivity_shape = {{1.5, 1.0, 0.5, 0.0, 0.0, 0.0}};
+        c.validate();
+        c.materials[0].conductivity_shape = {{1.5, 1.0, 0.5, 2.0, 0.0, 0.0}};
+        bool threw = false;
+        try { c.validate(); } catch (const std::invalid_argument&) { threw = true; }
+        EXPECT_TRUE(threw);
+    });
+
     return run_all();
 }
