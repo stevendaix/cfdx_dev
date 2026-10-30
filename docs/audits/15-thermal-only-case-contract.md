@@ -4,8 +4,8 @@
 - Scope : contrat typé de cas thermique autonome, séparation matériaux / régions solides et fluides / nœuds fluides 0D / interfaces / liens conductifs, avec conductivité isotrope ou tensorielle. Cette fiche spécifie les sémantiques et invariants de données ; elle ne qualifie aucun opérateur numérique ni solveur.
 - Statut : IMPLÉMENTÉ — A1 (contrat en mémoire + validation fail-closed + tests unitaires enregistrés). CI exacte HEAD en cours ; aucune qualification physique revendiquée.
 - Issue / PR : #1150 / #1151.
-- Spécification détaillée : \`docs/thermal/thermal-case-data-contract.md\`.
-- Sources code : \`src/cfdx/physics/thermal_case.h\`, \`src/cfdx/physics/thermophysical_models.h\`.
+- Spécification détaillée : `docs/thermal/thermal-case-data-contract.md`.
+- Sources code : `src/cfdx/physics/thermal_case.h`, `src/cfdx/physics/thermophysical_models.h`.
 - Limites : pas de sérialisation HDF5, pas de résolution mesh/patch/champ, pas d'assemblage, pas de driver thermique, pas de qualification physique.
 - Convention : SI partout ; température absolue en K ; pression absolue en Pa ; aucun changement d'unité implicite.
 
@@ -13,7 +13,7 @@
 
 - S. V. Patankar, *Numerical Heat Transfer and Fluid Flow*, Hemisphere, 1980 — DOI: 10.1201/9781482234213. Référence de base pour les bilans thermiques et volumes finis.
 - F. Moukalled, L. Mangani, M. Darwish, *The Finite Volume Method in Computational Fluid Dynamics*, Springer, 2016 — ISBN: 978-3-319-16873-9.
-- CFDX, fiches méthodes existantes : \`docs/audits/10-thermique-cht.md\`, \`docs/audits/13-conduction-solide-multimateriaux.md\`, \`docs/audits/14-energie-fluide-production.md\`.
+- CFDX, fiches méthodes existantes : `docs/audits/10-thermique-cht.md`, `docs/audits/13-conduction-solide-multimateriaux.md`, `docs/audits/14-energie-fluide-production.md`.
 
 ## 2. Formulation continue
 
@@ -42,8 +42,8 @@ Une interface thermique entre deux domaines doit échanger des puissances égale
 
 A1 ne réalise aucune discrétisation. Il fixe seulement les données nécessaires pour que les futurs opérateurs puissent conserver les bilans :
 
-- propriétés $k(T)$, $c_p(T)$, $\rho(T,p)$ réutilisées depuis \`ThermophysicalProperties\` ;
-- maillage référencé par \`mesh_id\`, sans dupliquer la topologie ;
+- propriétés $k(T)$, $c_p(T)$, $\rho(T,p)$ réutilisées depuis `ThermophysicalProperties` ;
+- maillage référencé par `mesh_id`, sans dupliquer la topologie ;
 - transport prescrit référencé par un champ massique de faces, dont l'orientation devra être validée contre la convention owner/neighbour du maillage ;
 - interfaces identifiées par paires $(region, patch)$ ;
 - liens 0D utilisant une conductance $G$ en W/K.
@@ -71,7 +71,7 @@ Les interfaces CHT A1 exigent deux régions distinctes et deux patches nommés. 
 
 A1 ne possède pas d'ordre de précision numérique : aucun solveur ni opérateur n'est livré.
 
-Tests de contrat enregistrés dans \`test_thermal_case_contracts\` :
+Tests de contrat enregistrés dans `test_thermal_case_contracts` :
 - cas combinant régions solides, fluide stagnant et nœud 0D ;
 - indépendance vis-à-vis de la viscosité ;
 - cohérence mode temporel / pas de temps ;
@@ -89,11 +89,11 @@ Ces tests vérifient des invariants de données, pas la physique du solveur. Les
 
 ## 7. Statut d'implémentation
 
-- Modèle : \`src/cfdx/physics/thermal_case.h\`.
-- Propriétés réutilisées : \`src/cfdx/physics/thermophysical_models.h\`.
-- Tests : \`tests/unit/test_thermal_case_contracts.cpp\`.
-- Enregistrement : \`CMakeLists.txt\`.
-- Contrat de persistance cible : \`docs/thermal/thermal-case-data-contract.md\`.
+- Modèle : `src/cfdx/physics/thermal_case.h`.
+- Propriétés réutilisées : `src/cfdx/physics/thermophysical_models.h`.
+- Tests : `tests/unit/test_thermal_case_contracts.cpp`.
+- Enregistrement : `CMakeLists.txt`.
+- Contrat de persistance cible : `docs/thermal/thermal-case-data-contract.md`.
 - A1 implémente les types et validations de données. Les groupes HDF5 décrits sont une cible de schéma, pas une sérialisation déjà disponible.
 - Aucun changement de tolérance, de solveur existant, de registre de qualification ou de résultat numérique.
 - Prochaine étape : A2, adaptateur de cas et driver autonome stationnaire/transitoire pour conduction solide et diffusion fluide stagnante.
