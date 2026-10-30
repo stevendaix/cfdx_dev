@@ -91,6 +91,7 @@ The case remains the canonical `.cfdx.h5` setup artifact; transient solution sta
         mesh_id
         material_id
         initial_temperature        float64 [K]
+        pressure                   float64 [Pa]
         fluid_model                "stagnant_diffusion" | "prescribed_mass_flux"
         mass_flux_field            optional field reference
     nodes/<id>/
