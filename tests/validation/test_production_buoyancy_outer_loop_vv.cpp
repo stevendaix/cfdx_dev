@@ -10,8 +10,8 @@
 //     uniform in space (Dirichlet walls at the initial temperature)
 //     builds a constant cellwise Boussinesq source. The loop's final
 //     carrier state is BIT-IDENTICAL to the equivalent uniform
-//     body_force run repeated with the same two-solve sequence
-//     (cold start + warm restart), proving the cellwise channel
+//     body_force run repeated with the same three-solve sequence
+//     (cold start + two warm restarts), proving the cellwise channel
 //     reaches the momentum assembly and the conservation audit with
 //     the exact uniform semantics.
 //   * REFERENCE-TEMPERATURE IDENTITY: at T = T_ref everywhere the
@@ -399,7 +399,7 @@ int main()
 
         // Equivalent uniform body force computed with the SAME
         // expression as build_cell_buoyancy_acceleration (including
-        // the negative-zero components), then the SAME two-solve
+        // the negative-zero components), then the SAME three-solve
         // sequence as the loop (cold start, warm restart).
         const Vec3 gravity = parse_gravity_vector(setup.gravity_vector);
         const double perturbation = 0.001 * (320.0 - 300.0);
