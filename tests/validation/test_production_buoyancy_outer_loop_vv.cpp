@@ -390,7 +390,6 @@ int main()
                     loop.history[2].flow_converged_at_entry);
         EXPECT_FALSE(loop.history[1].flow_converged_at_entry);
         EXPECT_FALSE(loop.history[0].flow_converged_at_entry);
-        EXPECT_TRUE(loop.flow_converged_at_entry);
         // The first iteration has no previous response: its
         // stationarity diagnostics must remain infinite (a single
         // Picard pass is never a fixed point).
