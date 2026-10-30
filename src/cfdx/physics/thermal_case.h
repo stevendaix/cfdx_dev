@@ -34,14 +34,25 @@ enum class ThermalEndpointKind : std::uint8_t { REGION_PATCH, LUMPED_NODE };
 enum class ThermalLinkModel : std::uint8_t { CONDUCTANCE };
 
 inline const char* to_string(ThermalTimeMode value) {
-    return value == ThermalTimeMode::STEADY ? "steady" : "transient";
+    switch (value) {
+        case ThermalTimeMode::STEADY: return "steady";
+        case ThermalTimeMode::TRANSIENT: return "transient";
+    }
+    return "unknown";
 }
 inline const char* to_string(ThermalRegionKind value) {
-    return value == ThermalRegionKind::SOLID ? "solid" : "fluid";
+    switch (value) {
+        case ThermalRegionKind::SOLID: return "solid";
+        case ThermalRegionKind::FLUID: return "fluid";
+    }
+    return "unknown";
 }
 inline const char* to_string(ThermalFluidModel value) {
-    return value == ThermalFluidModel::STAGNANT_DIFFUSION
-        ? "stagnant_diffusion" : "prescribed_mass_flux";
+    switch (value) {
+        case ThermalFluidModel::STAGNANT_DIFFUSION: return "stagnant_diffusion";
+        case ThermalFluidModel::PRESCRIBED_MASS_FLUX: return "prescribed_mass_flux";
+    }
+    return "unknown";
 }
 
 // All numeric properties use SI units. Temperature values are absolute kelvin.
