@@ -1,0 +1,211 @@
+name: PR 1149 buoyancy fastval oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Oracle evidence-only : reproduire l'echec test_production_buoyancy_outer_loop_vv
+# du job "Fast regression and validation tests" (exit 8, 22:29:26Z, vague
+# validation-total 22:11Z sur le head 76ceeca8). Ce test est SIMPLE+upwind
+# (vv_controls : algorithm=SIMPLE, continuite 1e-12, 2000 iterations non
+# lineaires, linear 1e-11/1000, pressure_reference_cell=0 -> systeme de jauge
+# reduit), donc l'imputabilite aux seuls commits COUPLED (fef67ab6/59581f68/
+# 7781c7b6/7123ddd1) est NON EVIDENTE. Suspects alternatifs : jauge reduite
+# (af0445b4/ba3ea64 : null-space seulement sur le chemin pleine taille),
+# sortie CG precoce des systemes deja converges (ef193ccf), ralentissement
+# AMG par rafraichissements successifs (reserve addendum : omega sans plancher).
+# A/B : A = head 76ceeca8 + master 05c6a84d (referentiel CI), B = master
+# 05c6a84d seul (controle). Capture : EXPECT fautif + valeurs, OU signature
+# timeout-like (sondage 2400 s sans --timeout pour ne pas masquer un timeout).
+# Aucun push master, aucune modification de branche PR.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1149_buoyancy_fastval_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1149-buoyancy-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR1149_HEAD: 76ceeca8d41e1384c3474db1481e6485fb3d18de
+  MASTER_PIN: 05c6a84df145ec3fbcf76bfa904429aa561843ae
+
+jobs:
+  oracle:
+    name: replica buoyancy test (${{ matrix.id }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        id: [A_prmerge, B_master]
+    env:
+      WDIR: /tmp/wt
+      BDIR: /tmp/bdir
+      MATRIX_ID: ${{ matrix.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pins and worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin master
+          MASTER_SHA=$(git rev-parse origin/master)
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "matrix_id=$MATRIX_ID"
+            echo "pr1149_head=$PR1149_HEAD"
+            echo "master_pin=$MASTER_PIN"
+            echo "master_sha=$MASTER_SHA"
+            echo "purpose=reproduce test_production_buoyancy_outer_loop_vv failure (fast-tests exit 8 at 22:29:26Z on 76ceeca8) and attribute PR vs master; capture failing EXPECT + values or timeout-like signature"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_meta_run$GITHUB_RUN_ID.txt"
+          echo "master_sha=$MASTER_SHA" > "$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+          if [ "$MASTER_SHA" != "$MASTER_PIN" ]; then
+            echo "::error::master moved ($MASTER_SHA vs pinned $MASTER_PIN) - abort evidence-only"
+            echo "master_moved=true" >> "$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+            exit 1
+          fi
+          git config user.name "oracle-diag-bot"
+          git config user.email "oracle-diag-bot@users.noreply.github.com"
+          if [ "$MATRIX_ID" = "A_prmerge" ]; then
+            git cat-file -e "$PR1149_HEAD^{commit}" || { echo "::error::PR1149 head unresolvable"; exit 1; }
+            git worktree add "$WDIR" "$PR1149_HEAD"
+            cd "$WDIR"
+            if ! git merge --no-edit "$MASTER_PIN" > /tmp/merge.log 2>&1; then
+              echo "::error::merge PR1149 head + master failed - conflicts"
+              cp /tmp/merge.log "$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_mergefail_run$GITHUB_RUN_ID.log"
+              exit 1
+            fi
+          else
+            git worktree add "$WDIR" "$MASTER_PIN"
+          fi
+          cd "$WDIR"
+          git rev-parse HEAD > "$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_refsha_run$GITHUB_RUN_ID.txt"
+          git log --oneline -3 >> "$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_refsha_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies (validation-build replica)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python dependencies (validation-build replica)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Configure (validation-build replica)
+        run: |
+          cmake -S "$WDIR" -B "$BDIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$RUNNER_TEMP/venv/bin/python" > "$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_configure_run$GITHUB_RUN_ID.log" 2>&1 || { cat "$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_configure_run$GITHUB_RUN_ID.log"; exit 1; }
+
+      - name: Build the buoyancy test target
+        run: |
+          set +e
+          if cmake --build "$BDIR" --target help 2>/dev/null | grep -q "test_production_buoyancy_outer_loop_vv"; then
+            echo "building single target test_production_buoyancy_outer_loop_vv"
+            cmake --build "$BDIR" --target test_production_buoyancy_outer_loop_vv --parallel 4 > /tmp/build_raw.log 2>&1
+          else
+            echo "target not listed - full build fallback"
+            cmake --build "$BDIR" --parallel 4 > /tmp/build_raw.log 2>&1
+          fi
+          rc=$?
+          {
+            echo "build_exit=$rc"
+            tail -n 80 /tmp/build_raw.log
+          } > "$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_build_run$GITHUB_RUN_ID.log"
+          echo "build_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::build failed - see evidence"
+            exit 1
+          fi
+
+      - name: Run the buoyancy test (single-test replica, watchdog 2400 s)
+        run: |
+          set +e
+          rm -f /tmp/ctest_rc
+          ( ctest --test-dir "$BDIR" -R '^test_production_buoyancy_outer_loop_vv$' --output-on-failure > "$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_ctest_run$GITHUB_RUN_ID.log" 2>&1; echo $? > /tmp/ctest_rc ) &
+          CTEST_PID=$!
+          finished=0
+          for i in $(seq 1 240); do
+            if [ -f /tmp/ctest_rc ]; then finished=1; break; fi
+            sleep 10
+          done
+          S="$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+          if [ "$finished" = "1" ]; then
+            rc=$(cat /tmp/ctest_rc)
+            echo "ctest_exit=$rc" >> "$S"
+            echo "ctest_exit=$rc"
+          else
+            echo "ctest_did_not_finish_within_2400s" >> "$S"
+            echo "timeout_like=true" >> "$S"
+            echo "::warning::ctest still running after 2400 s - killed for evidence (timeout-like signature)"
+            pkill -TERM -P "$CTEST_PID" 2>/dev/null || true
+            kill -TERM "$CTEST_PID" 2>/dev/null || true
+            sleep 5
+            pkill -KILL -P "$CTEST_PID" 2>/dev/null || true
+          fi
+          L="$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_ctest_run$GITHUB_RUN_ID.log"
+          grep -E 'tests passed|tests failed|The following tests FAILED' "$L" 2>/dev/null || true
+          exit 0
+
+      - name: Extract verdict (evidence-only)
+        if: always()
+        run: |
+          S="$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+          L="$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_ctest_run$GITHUB_RUN_ID.log"
+          V="$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_verdict_run$GITHUB_RUN_ID.txt"
+          {
+            echo "matrix_id=$MATRIX_ID"
+            cat "$S" 2>/dev/null || true
+            if [ -f "$L" ]; then
+              echo '----- matched lines -----'
+              grep -nE 'The following tests FAILED|Timeout|Expected|EXPECT|fields differ|runtime_error|Failed|passed' "$L" | tail -n 60 || true
+              echo '----- tail of ctest log -----'
+              tail -n 40 "$L"
+            else
+              echo 'no ctest log'
+            fi
+          } > "$V"
+          cat "$V"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1149 buoyancy oracle run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          V="$GITHUB_WORKSPACE/$EVID/pr1149_buoyancy_${MATRIX_ID}_verdict_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$V" ]; then
+            echo "::error::no verdict recorded - read oracle evidence"
+            exit 1
+          fi
+          echo "verdict recorded for $MATRIX_ID"
