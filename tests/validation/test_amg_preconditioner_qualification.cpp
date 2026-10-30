@@ -1015,6 +1015,37 @@ int main() {
     }
 
     {
+        // The normalized Gershgorin bound is 2.8 for this SPD matrix
+        // (eigenvalues 2.8, 0.1, 0.1), so the configured omega=0.7
+        // must be reduced below the Jacobi stability limit.
+        SparseMatrix high_bound(3, 3);
+        SparseMatrix low_bound(3, 3);
+        for (std::size_t i = 0; i < 3; ++i) {
+            for (std::size_t j = 0; j < 3; ++j) {
+                high_bound.push_back(i, j, i == j ? 1.0 : 0.9);
+                low_bound.push_back(i, j, i == j ? 1.0 : 0.1);
+            }
+        }
+        high_bound.finalize();
+        low_bound.finalize();
+
+        TestSparseOperator op(high_bound);
+        MatrixFreeVcyclePreconditioner vcycle(op, 0.7);
+        EXPECT_TRUE(vcycle.setup(high_bound));
+        EXPECT_NEAR(vcycle.smoother_omega(), 1.8 / 2.8, 1e-14);
+
+        // A less restrictive refreshed matrix must restore the configured
+        // damping rather than inherit a stale, unnecessarily small omega.
+        EXPECT_TRUE(vcycle.update_values(low_bound));
+        EXPECT_NEAR(vcycle.smoother_omega(), 0.7, 1e-14);
+
+        // A full setup on the original difficult matrix must independently
+        // re-certify its own safe damping.
+        EXPECT_TRUE(vcycle.setup(high_bound));
+        EXPECT_NEAR(vcycle.smoother_omega(), 1.8 / 2.8, 1e-14);
+    }
+
+    {
         const auto A = make_poisson(64);
         const auto A2 = make_poisson(64, 1.25);
         const auto changed = make_poisson_changed_pattern(64, 1.25);
