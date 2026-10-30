@@ -27,7 +27,7 @@ Lorsque les diagonales sont positives et finies, le rayon spectral est borné pa
 lambda_{max}leq max_isum_j
 left|rac{A_{ij}}{sqrt{A_{ii}A_{jj}}}ight|.
 ]
-La PR #1149 recalcule cette borne pour chaque niveau après actualisation des coefficients et réduit (omega) à (min(omega_{mathrm{ancien}},1.8/lambda_{mathrm{borne}})). Si la borne n’est pas calculable, la mise à jour est refusée.
+La PR #1149 recalcule cette borne pour chaque niveau après le montage initial de la hiérarchie et après chaque actualisation numérique. Le facteur est recalculé depuis la valeur configurée (omega_0), soit (omega=min(omega_0,1.8/lambda_borne)) : une matrice ultérieure moins restrictive peut retrouver le facteur configuré, sans conserver une réduction historique devenue inutile. Si la borne n’est pas calculable, le montage ou la mise à jour est refusé.
 
 ## 4. Traitement des frontières
 
@@ -38,7 +38,7 @@ Cette correction est algébrique : elle ne modifie aucune condition limite, aucu
 - L’audit NACA0012 a reproduit une hiérarchie réutilisée dont les niveaux grossiers sont devenus incompatibles avec le facteur Jacobi fixe. Le produit préconditionné initial est devenu négatif et CG a retourné `NOT_APPLICABLE`.
 - Sur la matrice capturée, le résidu relatif vrai indépendant était environ (3.14\times10^{-2}), alors que les champs de résultat enregistrés étaient nuls.
 - La trace montre aussi une divergence non linéaire momentum antérieure à l’échec linéaire. Le défaut AMG/CG est réel mais ne prouve pas que la qualification complète NACA0012 sera réparée.
-- La borne de Gershgorin est conservative et peut réduire le facteur de relaxation plus que nécessaire, augmentant le coût des cycles.
+- La borne de Gershgorin est conservative et peut réduire le facteur de relaxation plus que nécessaire, augmentant le coût des cycles. Le facteur est toutefois recalculé depuis omega_0 à chaque montage/rafraîchissement ; il n'est plus monotone décroissant par accumulation des anciennes matrices. Un opérateur courant réellement très contraignant peut encore imposer un facteur très petit et un lissage lent : cela doit rester visible dans les campagnes, sans plancher arbitraire.
 - Le résidu récursif ou le statut seul ne remplace jamais le calcul indépendant de (b-Ax). Aucun seuil n’est relâché.
 
 ## 6. Ordre de précision attendu et validation exigée
@@ -53,7 +53,8 @@ Cette correction est algébrique : elle ne modifie aucune condition limite, aucu
 ## 7. Statut d'implémentation
 
 - Sources modifiées : `src/cfdx/core/linalg/amg_preconditioner.h`, `src/cfdx/core/linalg/cg_solver.h`, `src/cfdx/core/linalg/linear_solver_context.h`.
-- Tests ajoutés : `tests/validation/test_amg_preconditioner_qualification.cpp`.
+- La borne est maintenant appliquée dès le `setup()` initial et recalculée depuis le damping configuré après chaque `update_values()`. Le calcul du dénominateur normalisé évite le produit direct des diagonales pour limiter les débordements/sous-débordements.
+- Tests ajoutés : `tests/validation/test_amg_preconditioner_qualification.cpp` (matrice SPD à borne 2.8, baisse puis restauration du damping, et requalification sur setup complet).
 - PR candidate : #1149.
 - État des preuves : CI en cours ; la première exécution de la règle de gouvernance a identifié un défaut de structure de cette fiche, corrigé dans cette version. Les résultats numériques de la campagne exacte restent en attente.
 - Décision : **PENDING**. Aucun merge avant CI vert et revue des campagnes ciblées.
