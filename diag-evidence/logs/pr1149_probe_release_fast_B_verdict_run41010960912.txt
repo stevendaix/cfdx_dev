@@ -1,0 +1,138 @@
+probe_id=release_fast_B
+master_sha=05c6a84df145ec3fbcf76bfa904429aa561843ae
+build_exit=0
+ctest_exit=8
+----- failed list -----
+The following tests FAILED:
+	 86 - test_dual_time_navier_stokes (Failed)
+	144 - test_bfs_quick (Not Run)                          qualification validation
+	145 - test_naca0012_quick (Not Run)                     qualification validation
+	146 - test_naca0012_wall_shear_audit_quick (Not Run)    qualification validation
+	147 - test_generate_2d_validation_meshes (Failed)       mesh qualification validation
+	148 - test_generate_quick_validation_meshes (Failed)    mesh qualification quick validation
+	149 - test_naca_mesh_symmetry_extrusion (Failed)        3d mesh qualification validation
+	150 - test_generate_naca3d_mesh (Failed)                3d mesh qualification validation
+	151 - test_naca0012_extruded_3d_quick (Not Run)         3d mesh qualification validation
+	152 - test_naca3d_thermal_turbulence_smoke (Not Run)    3d qualification smoke thermal turbulence validation
+	250 - test_cross_import_equivalence (Failed)
+	252 - test_n9_s8_naca0012_contract (Failed)             n9 qualification total-validation validation
+	253 - test_solid_conduction_contract_e2e (Failed)       integration thermal validation
+	254 - test_t2_campaign_verdict (Failed)                 qualification thermal validation
+	255 - test_production_thermal_restart_e2e (Failed)      integration restart thermal
+	256 - test_imported_thermal_contracts (Failed)          integration io thermal
+	257 - test_n9_coupled_schur_case_selection (Failed)     integration n9 schur validation validation-total
+	258 - test_n9_poiseuille_body_force_production (Failed) integration n9 qualification validation validation-total
+	260 - test_openfoam_results_cli_production_e2e (Failed) integration openfoam qualification
+	261 - test_production_solver_e2e (Failed)
+	262 - test_production_solver_numerics_e2e (Failed)
+	263 - test_meshio_bridge (Failed)
+	264 - test_mesh_geometry_matrix (Failed)
+Errors while running CTest
+----- matched lines -----
+61:        Start  32: test_divergence
+62: 28/248 Test  #32: test_divergence .............................   Passed    0.00 sec
+112: 53/248 Test #150: test_generate_naca3d_mesh ...................***Failed    0.16 sec
+119: 54/248 Test #148: test_generate_quick_validation_meshes .......***Failed    0.17 sec
+224:104/248 Test  #86: test_dual_time_navier_stokes ................***Failed    0.09 sec
+259:        Start 131: test_wall_distance_advection_residual
+260:121/248 Test #131: test_wall_distance_advection_residual .......   Passed    0.00 sec
+280:Failed test dependencies: test_generate_quick_validation_meshes
+283:Failed test dependencies: test_generate_quick_validation_meshes
+286:Failed test dependencies: test_generate_quick_validation_meshes
+292:Failed test dependencies: test_generate_naca3d_mesh
+295:Failed test dependencies: test_generate_naca3d_mesh
+306:141/248 Test #149: test_naca_mesh_symmetry_extrusion ...........***Failed    0.17 sec
+313:142/248 Test #147: test_generate_2d_validation_meshes ..........***Failed    0.29 sec
+490:228/248 Test #250: test_cross_import_equivalence ...............***Failed    0.33 sec
+499:229/248 Test #252: test_n9_s8_naca0012_contract ................***Failed    0.32 sec
+508:230/248 Test #253: test_solid_conduction_contract_e2e ..........***Failed    0.31 sec
+515:231/248 Test #254: test_t2_campaign_verdict ....................***Failed    0.34 sec
+526:232/248 Test #255: test_production_thermal_restart_e2e .........***Failed    0.33 sec
+535:233/248 Test #256: test_imported_thermal_contracts .............***Failed    0.32 sec
+548:234/248 Test #257: test_n9_coupled_schur_case_selection ........***Failed    0.32 sec
+557:236/248 Test #260: test_openfoam_results_cli_production_e2e ....***Failed    0.05 sec
+561:237/248 Test #258: test_n9_poiseuille_body_force_production ....***Failed    0.34 sec
+568:238/248 Test #261: test_production_solver_e2e ..................***Failed    0.31 sec
+575:239/248 Test #262: test_production_solver_numerics_e2e .........***Failed    0.32 sec
+585:242/248 Test #263: test_meshio_bridge ..........................***Failed    0.25 sec
+591:243/248 Test #264: test_mesh_geometry_matrix ...................***Failed    0.27 sec
+605:91% tests passed, 23 tests failed out of 248
+651:	 86 - test_dual_time_navier_stokes (Failed)
+655:	147 - test_generate_2d_validation_meshes (Failed)       mesh qualification validation
+656:	148 - test_generate_quick_validation_meshes (Failed)    mesh qualification quick validation
+657:	149 - test_naca_mesh_symmetry_extrusion (Failed)        3d mesh qualification validation
+658:	150 - test_generate_naca3d_mesh (Failed)                3d mesh qualification validation
+661:	250 - test_cross_import_equivalence (Failed)
+662:	252 - test_n9_s8_naca0012_contract (Failed)             n9 qualification total-validation validation
+663:	253 - test_solid_conduction_contract_e2e (Failed)       integration thermal validation
+664:	254 - test_t2_campaign_verdict (Failed)                 qualification thermal validation
+665:	255 - test_production_thermal_restart_e2e (Failed)      integration restart thermal
+666:	256 - test_imported_thermal_contracts (Failed)          integration io thermal
+667:	257 - test_n9_coupled_schur_case_selection (Failed)     integration n9 schur validation validation-total
+668:	258 - test_n9_poiseuille_body_force_production (Failed) integration n9 qualification validation validation-total
+669:	260 - test_openfoam_results_cli_production_e2e (Failed) integration openfoam qualification
+670:	261 - test_production_solver_e2e (Failed)
+671:	262 - test_production_solver_numerics_e2e (Failed)
+672:	263 - test_meshio_bridge (Failed)
+673:	264 - test_mesh_geometry_matrix (Failed)
+----- tail of ctest log -----
+mms                    =   7.14 sec*proc (5 tests)
+mpi                    =   1.34 sec*proc (2 tests)
+n10                    =  26.09 sec*proc (8 tests)
+n11                    =   0.10 sec*proc (3 tests)
+n12                    =   7.14 sec*proc (5 tests)
+n13                    =   0.44 sec*proc (3 tests)
+n16                    =   0.01 sec*proc (1 test)
+n7                     =   0.00 sec*proc (1 test)
+n8                     =   0.36 sec*proc (1 test)
+n9                     =   3.71 sec*proc (4 tests)
+numerical              =   0.02 sec*proc (2 tests)
+openfoam               =   0.05 sec*proc (1 test)
+phase12                =   0.00 sec*proc (1 test)
+phase13                =   6.31 sec*proc (30 tests)
+phase14                =   0.31 sec*proc (3 tests)
+provenance             =   0.07 sec*proc (1 test)
+qualification          =  35.70 sec*proc (35 tests)
+quick                  =   0.17 sec*proc (1 test)
+recovered              =   1.02 sec*proc (7 tests)
+reference              =   0.00 sec*proc (1 test)
+regression             =   0.05 sec*proc (5 tests)
+restart                =   0.33 sec*proc (1 test)
+schur                  =   0.32 sec*proc (1 test)
+smoke                  =   0.00 sec*proc (1 test)
+test-infrastructure    =   2.03 sec*proc (1 test)
+thermal                =   1.32 sec*proc (7 tests)
+total-validation       =   0.32 sec*proc (1 test)
+turbulence             =   0.03 sec*proc (2 tests)
+unit                   =   1.09 sec*proc (7 tests)
+validation             =  45.64 sec*proc (71 tests)
+validation-total       =   3.40 sec*proc (3 tests)
+verification           =   0.02 sec*proc (2 tests)
+
+Total Test time (real) =  29.92 sec
+
+The following tests FAILED:
+	 86 - test_dual_time_navier_stokes (Failed)
+	144 - test_bfs_quick (Not Run)                          qualification validation
+	145 - test_naca0012_quick (Not Run)                     qualification validation
+	146 - test_naca0012_wall_shear_audit_quick (Not Run)    qualification validation
+	147 - test_generate_2d_validation_meshes (Failed)       mesh qualification validation
+	148 - test_generate_quick_validation_meshes (Failed)    mesh qualification quick validation
+	149 - test_naca_mesh_symmetry_extrusion (Failed)        3d mesh qualification validation
+	150 - test_generate_naca3d_mesh (Failed)                3d mesh qualification validation
+	151 - test_naca0012_extruded_3d_quick (Not Run)         3d mesh qualification validation
+	152 - test_naca3d_thermal_turbulence_smoke (Not Run)    3d qualification smoke thermal turbulence validation
+	250 - test_cross_import_equivalence (Failed)
+	252 - test_n9_s8_naca0012_contract (Failed)             n9 qualification total-validation validation
+	253 - test_solid_conduction_contract_e2e (Failed)       integration thermal validation
+	254 - test_t2_campaign_verdict (Failed)                 qualification thermal validation
+	255 - test_production_thermal_restart_e2e (Failed)      integration restart thermal
+	256 - test_imported_thermal_contracts (Failed)          integration io thermal
+	257 - test_n9_coupled_schur_case_selection (Failed)     integration n9 schur validation validation-total
+	258 - test_n9_poiseuille_body_force_production (Failed) integration n9 qualification validation validation-total
+	260 - test_openfoam_results_cli_production_e2e (Failed) integration openfoam qualification
+	261 - test_production_solver_e2e (Failed)
+	262 - test_production_solver_numerics_e2e (Failed)
+	263 - test_meshio_bridge (Failed)
+	264 - test_mesh_geometry_matrix (Failed)
+Errors while running CTest

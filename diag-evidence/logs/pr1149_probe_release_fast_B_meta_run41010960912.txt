@@ -1,0 +1,7 @@
+run_id=41010960912
+probe_id=release_fast_B
+config=release test=full-fast watchdog=3600
+pr1149_head=76ceeca8d41e1384c3474db1481e6485fb3d18de
+master_pin=05c6a84df145ec3fbcf76bfa904429aa561843ae
+master_sha=05c6a84df145ec3fbcf76bfa904429aa561843ae
+purpose=replay the exact failing tests of the 22:11Z wave on 76ceeca8 and capture names+reasons (maintainer directive)
