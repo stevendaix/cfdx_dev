@@ -992,14 +992,14 @@ int main()
         floor.corrected_flux_continuity_linf = 1e-15;
         floor.momentum_equation_residual_rhs_relative = 1e-13;
         flow.history.push_back(floor);
-        EXPECT_TRUE(detail_buoyancy_stage::carrier_at_machine_equilibrium(flow));
+        EXPECT_TRUE(carrier_at_machine_equilibrium(flow));
 
         // One physical residual above its own floor keeps the recovery
         // path fail-closed, even when the other three residuals are tiny.
         flow.history.back().corrected_flux_continuity_linf = 1e-12;
-        EXPECT_FALSE(detail_buoyancy_stage::carrier_at_machine_equilibrium(flow));
+        EXPECT_FALSE(carrier_at_machine_equilibrium(flow));
         flow.history.clear();
-        EXPECT_FALSE(detail_buoyancy_stage::carrier_at_machine_equilibrium(flow));
+        EXPECT_FALSE(carrier_at_machine_equilibrium(flow));
     });
 
     return run_all();
