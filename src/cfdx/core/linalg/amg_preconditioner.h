@@ -35,7 +35,7 @@ public:
                                    AMGInterpolationPolicy interpolation =
                                        AMGInterpolationPolicy::DirectCF,
                                    bool constant_null_space = false)
-        : op_(op), omega_(omega), pre_(pre), post_(post),
+        : op_(op), configured_omega_(omega), omega_(omega), pre_(pre), post_(post),
           strength_threshold_(strength_threshold), max_levels_(max_levels),
           interpolation_(interpolation),
           constant_null_space_(constant_null_space)
@@ -137,6 +137,18 @@ public:
             levels_.clear();
             return false;
         }
+
+        // A fresh hierarchy needs the same damping certification as a
+        // numerically refreshed hierarchy. Recompute from the constructor
+        // value so a previous difficult matrix cannot permanently poison a
+        // later full rebuild.
+        double safe_omega = 0.0;
+        if (!compute_stable_smoother_omega(levels_, safe_omega)) {
+            levels_.clear();
+            first_aggregate_.clear();
+            return false;
+        }
+        omega_ = safe_omega;
         return true;
     }
 
@@ -174,23 +186,17 @@ public:
         // hierarchy is exposed to CG. A non-SPD/unsupported diagonal does not
         // get reclassified here; the caller's true-residual and Krylov checks
         // remain authoritative.
-        double maximum_bound = 0.0;
-        for (const auto& level : refreshed) {
-            const double bound = normalized_gershgorin_upper_bound(level);
-            if (!std::isfinite(bound) || !(bound > 0.0)) {
-                return false;
-            }
-            maximum_bound = std::max(maximum_bound, bound);
-        }
-        double refreshed_omega = omega_;
-        if (maximum_bound > 0.0)
-            refreshed_omega = std::min(omega_, 1.8 / maximum_bound);
+        double refreshed_omega = 0.0;
+        if (!compute_stable_smoother_omega(refreshed, refreshed_omega))
+            return false;
 
         levels_ = std::move(refreshed);
         omega_ = refreshed_omega;
         last_footprint_.galerkin_dropped_entries += dropped_entries;
         return true;
     }
+
+    double smoother_omega() const noexcept { return omega_; }
 
     std::size_t coarse_size() const noexcept
     {
@@ -1169,6 +1175,27 @@ private:
         return upper_bound;
     }
 
+    bool compute_stable_smoother_omega(
+        const std::vector<Level>& hierarchy, double& safe_omega) const
+    {
+        if (hierarchy.empty()) return false;
+        double maximum_bound = 0.0;
+        for (const auto& level : hierarchy) {
+            const double bound = normalized_gershgorin_upper_bound(level);
+            if (!std::isfinite(bound) || !(bound > 0.0)) return false;
+            maximum_bound = std::max(maximum_bound, bound);
+        }
+        if (!(maximum_bound > 0.0) || !std::isfinite(maximum_bound))
+            return false;
+
+        // Re-evaluate against the configured damping on every setup/refresh.
+        // This permits recovery when a later matrix is less restrictive,
+        // while retaining the conservative 10% margin below the Jacobi
+        // stability limit for the current hierarchy.
+        safe_omega = std::min(configured_omega_, 1.8 / maximum_bound);
+        return std::isfinite(safe_omega) && safe_omega > 0.0 && safe_omega < 2.0;
+    }
+
     static bool build_diagonal(Level& level)
     {
         const std::size_t n = level.A.n_rows();
@@ -1931,6 +1958,7 @@ private:
     }
 
     const LinearOperatorBase& op_;
+    const double configured_omega_;
     double omega_;
     std::size_t pre_, post_;
     double strength_threshold_;
