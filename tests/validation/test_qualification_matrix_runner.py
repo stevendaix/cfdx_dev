@@ -5,9 +5,7 @@ import sys
 import unittest
 from pathlib import Path
 
-SCRIPT = (
-    Path(__file__).resolve().parents[2] / "scripts" / "run_qualification_matrix.py"
-)
+SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "run_qualification_matrix.py"
 spec = importlib.util.spec_from_file_location("qualification_matrix", SCRIPT)
 assert spec is not None and spec.loader is not None
 module = importlib.util.module_from_spec(spec)
