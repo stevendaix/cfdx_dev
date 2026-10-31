@@ -1321,6 +1321,64 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         }
     }
 
+    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
+        // Failure-only microscope: retain assembled-operator and final Krylov
+        // evidence without changing fallback policy or convergence criteria.
+        double matrix_inf = 0.0;
+        double diagonal_min = std::numeric_limits<double>::infinity();
+        double diagonal_max = 0.0;
+        double rhs_inf = 0.0;
+        std::size_t nonfinite_matrix = 0;
+        std::size_t nonfinite_rhs = 0;
+        const auto* row = equation.matrix.row_offsets_data();
+        const auto* col = equation.matrix.columns_data();
+        const auto* val = equation.matrix.values_data();
+        for (std::size_t i = 0; i < equation.matrix.n_rows(); ++i) {
+            double row_sum = 0.0;
+            bool diagonal_found = false;
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+                if (!std::isfinite(val[k])) {
+                    ++nonfinite_matrix;
+                    continue;
+                }
+                row_sum += std::abs(val[k]);
+                if (col[k] == i) {
+                    diagonal_found = true;
+                    diagonal_min = std::min(diagonal_min, val[k]);
+                    diagonal_max = std::max(diagonal_max, val[k]);
+                }
+            }
+            matrix_inf = std::max(matrix_inf, row_sum);
+            if (!diagonal_found) diagonal_min = -std::numeric_limits<double>::infinity();
+            if (!std::isfinite(equation.rhs(i))) ++nonfinite_rhs;
+            else rhs_inf = std::max(rhs_inf, std::abs(equation.rhs(i)));
+        }
+        std::cerr << "SCALAR_LINEAR_FAILURE"
+                  << " n=" << equation.matrix.n_rows()
+                  << " nnz=" << equation.matrix.nnz()
+                  << " status=" << static_cast<int>(result.status)
+                  << " iterations=" << result.iterations
+                  << " residual=" << result.residual
+                  << " relative=" << result.residual_relative
+                  << " rhs_inf=" << rhs_inf
+                  << " matrix_inf=" << matrix_inf
+                  << " diagonal_min=" << diagonal_min
+                  << " diagonal_max=" << diagonal_max
+                  << " nonfinite_matrix=" << nonfinite_matrix
+                  << " nonfinite_rhs=" << nonfinite_rhs
+                  << " krylov_samples=" << result.diagnostics.size() << '\\n';
+        for (const auto& sample : result.diagnostics) {
+            std::cerr << "SCALAR_LINEAR_KRYLOV_SAMPLE"
+                      << " iteration=" << sample.iteration
+                      << " true_residual=" << sample.true_residual
+                      << " recursive_residual=" << sample.recursive_residual
+                      << " rMz=" << sample.preconditioned_dot
+                      << " pAp=" << sample.pAp
+                      << " alpha=" << sample.alpha
+                      << " beta=" << sample.beta << '\\n';
+        }
+    }
+
     if (result.status == cfdx::core::SolverStatus::CONVERGED) {
         for (std::size_t i = 0; i < candidate.size(); ++i) {
             if (!std::isfinite(candidate(i))) {
