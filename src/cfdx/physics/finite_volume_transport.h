@@ -1186,6 +1186,29 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         equation.matrix, equation.rhs, candidate, controls.problem,
         controls.linear_solver, controls.max_iterations, controls.tolerance);
     auto result = selected.result;
+    const auto log_attempt = [](const char* stage,
+                                const cfdx::core::SolverResult& attempt) {
+        if (attempt.status == cfdx::core::SolverStatus::CONVERGED) return;
+        std::cerr << "SCALAR_LINEAR_ATTEMPT"
+                  << " stage=" << stage
+                  << " status=" << static_cast<int>(attempt.status)
+                  << " iterations=" << attempt.iterations
+                  << " residual=" << attempt.residual
+                  << " relative=" << attempt.residual_relative
+                  << " samples=" << attempt.diagnostics.size();
+        if (!attempt.diagnostics.empty()) {
+            const auto& sample = attempt.diagnostics.back();
+            std::cerr << " last_iteration=" << sample.iteration
+                      << " last_true_residual=" << sample.true_residual
+                      << " last_recursive_residual=" << sample.recursive_residual
+                      << " last_rMz=" << sample.preconditioned_dot
+                      << " last_pAp=" << sample.pAp
+                      << " last_alpha=" << sample.alpha
+                      << " last_beta=" << sample.beta;
+        }
+        std::cerr << '\\n';
+    };
+    log_attempt("requested", result);
 
     const bool fallback_allowed = controls.linear_solver.allow_fallback ||
         (controls.linear_solver.krylov == cfdx::core::KrylovModel::Auto &&
@@ -1206,6 +1229,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         result = cfdx::core::solve_gmres(
             equation.matrix, equation.rhs, candidate,
             64, controls.max_iterations, controls.tolerance);
+        log_attempt("fallback_gmres", result);
     }
 
     if (fallback_allowed &&
@@ -1214,6 +1238,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         result = cfdx::core::solve_gauss_seidel(
             equation.matrix, equation.rhs, candidate,
             controls.max_iterations, controls.tolerance);
+        log_attempt("fallback_gauss_seidel", result);
     }
 
     if (fallback_allowed &&
@@ -1222,6 +1247,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         result = cfdx::core::solve_cg(
             equation.matrix, equation.rhs, candidate,
             controls.max_iterations, controls.tolerance);
+        log_attempt("fallback_cg", result);
     }
 
     // Very small coupled momentum systems (notably the analytical
@@ -1325,6 +1351,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         // Failure-only microscope: retain assembled-operator and final Krylov
         // evidence without changing fallback policy or convergence criteria.
         double matrix_inf = 0.0;
+        double symmetry_defect_inf = 0.0;
         double diagonal_min = std::numeric_limits<double>::infinity();
         double diagonal_max = 0.0;
         double rhs_inf = 0.0;
@@ -1350,6 +1377,24 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             }
             matrix_inf = std::max(matrix_inf, row_sum);
             if (!diagonal_found) diagonal_min = -std::numeric_limits<double>::infinity();
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+                if (col[k] == i || !std::isfinite(val[k])) continue;
+                const std::size_t j = col[k];
+                double transpose_value = 0.0;
+                bool transpose_found = false;
+                for (std::uint32_t q = row[j]; q < row[j + 1]; ++q) {
+                    if (col[q] == i) {
+                        transpose_value += val[q];
+                        transpose_found = true;
+                    }
+                }
+                const double defect = std::abs(val[k] -
+                    (transpose_found ? transpose_value : 0.0));
+                if (std::isfinite(defect))
+                    symmetry_defect_inf = std::max(symmetry_defect_inf, defect);
+                else
+                    symmetry_defect_inf = std::numeric_limits<double>::infinity();
+            }
             if (!std::isfinite(equation.rhs(i))) ++nonfinite_rhs;
             else rhs_inf = std::max(rhs_inf, std::abs(equation.rhs(i)));
         }
@@ -1362,6 +1407,10 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                   << " relative=" << result.residual_relative
                   << " rhs_inf=" << rhs_inf
                   << " matrix_inf=" << matrix_inf
+                  << " symmetry_defect_inf=" << symmetry_defect_inf
+                  << " requested_krylov=" << static_cast<int>(selected.plan.krylov)
+                  << " requested_preconditioner=" << static_cast<int>(selected.plan.preconditioner)
+                  << " fallback_allowed=" << (fallback_allowed ? 1 : 0)
                   << " diagonal_min=" << diagonal_min
                   << " diagonal_max=" << diagonal_max
                   << " nonfinite_matrix=" << nonfinite_matrix
