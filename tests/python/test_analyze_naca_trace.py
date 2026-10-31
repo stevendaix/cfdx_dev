@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import unittest
+from pathlib import Path
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "validation" / "analyze_naca_trace.py"
+SCRIPT = (
+    Path(__file__).resolve().parents[2]
+    / "scripts"
+    / "validation"
+    / "analyze_naca_trace.py"
+)
 SPEC = importlib.util.spec_from_file_location("analyze_naca_trace", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)

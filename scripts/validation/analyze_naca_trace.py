@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Triage NACA momentum traces; growth ratios are diagnostic, never gates."""
+
 from __future__ import annotations
 
 import argparse
+import itertools
 import math
 import re
 from pathlib import Path
@@ -22,7 +24,11 @@ def parse_trace(text: str) -> list[dict[str, float | int]]:
         for key in ("seq", "iter"):
             if key in fields:
                 record[key] = int(fields[key])
-        for key in METRICS + ("boundary_flux_sum", "boundary_flux_abs_sum", "nonfinite_total"):
+        for key in METRICS + (
+            "boundary_flux_sum",
+            "boundary_flux_abs_sum",
+            "nonfinite_total",
+        ):
             if key in fields:
                 try:
                     record[key] = float(fields[key])
@@ -36,14 +42,18 @@ def parse_trace(text: str) -> list[dict[str, float | int]]:
 def first_growth(records: list[dict[str, float | int]], ratio: float):
     if not math.isfinite(ratio) or ratio <= 1.0:
         raise ValueError("ratio must be finite and greater than one")
-    for previous, current in zip(records, records[1:]):
+    for previous, current in itertools.pairwise(records):
         for metric in METRICS:
             before = previous.get(metric)
             after = current.get(metric)
-            if (isinstance(before, (int, float)) and
-                    isinstance(after, (int, float)) and
-                    math.isfinite(before) and math.isfinite(after) and
-                    before > 0.0 and after >= ratio * before):
+            if (
+                isinstance(before, (int, float))
+                and isinstance(after, (int, float))
+                and math.isfinite(before)
+                and math.isfinite(after)
+                and before > 0.0
+                and after >= ratio * before
+            ):
                 return {
                     "metric": metric,
                     "previous_seq": previous["seq"],
