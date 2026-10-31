@@ -9,6 +9,7 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cfdx::validation {
@@ -29,8 +30,7 @@ public:
         const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
         const std::vector<double>& effective_viscosity)
     {
-        using cfdx::core::Location;
-        const auto max_abs = [](const auto& values) {
+        const auto max_abs = [](const std::vector<double>& values) {
             double result = 0.0;
             std::size_t nonfinite = 0;
             for (const double value : values) {
@@ -42,24 +42,29 @@ public:
             return std::pair<double, std::size_t>{result, nonfinite};
         };
 
-        const auto p_stats = max_abs(pressure.data());
+        std::vector<double> pressure_values(pressure.size());
+        for (std::size_t i = 0; i < pressure.size(); ++i)
+            pressure_values[i] = pressure(i);
+        const auto p_stats = max_abs(pressure_values);
         const auto mu_stats = max_abs(effective_viscosity);
+
         std::vector<double> grad_values;
         grad_values.reserve(3 * grad_pressure.size());
-        for (std::size_t d = 0; d < 3; ++d)
-            grad_values.insert(grad_values.end(),
-                               grad_pressure.component_data(d).begin(),
-                               grad_pressure.component_data(d).end());
-        const auto grad_stats = max_abs(grad_values);
-
         std::vector<double> velocity_values;
         velocity_values.reserve(3 * velocity.size());
-        for (std::size_t d = 0; d < 3; ++d)
-            velocity_values.insert(velocity_values.end(),
-                                   velocity.component_data(d).begin(),
-                                   velocity.component_data(d).end());
+        for (std::size_t d = 0; d < 3; ++d) {
+            for (std::size_t i = 0; i < grad_pressure.size(); ++i)
+                grad_values.push_back(grad_pressure.component_data(d)[i]);
+            for (std::size_t i = 0; i < velocity.size(); ++i)
+                velocity_values.push_back(velocity.component_data(d)[i]);
+        }
+        const auto grad_stats = max_abs(grad_values);
         const auto u_stats = max_abs(velocity_values);
-        const auto phi_stats = max_abs(mass_flux.data());
+
+        std::vector<double> phi_values(mass_flux.size());
+        for (std::size_t i = 0; i < mass_flux.size(); ++i)
+            phi_values[i] = mass_flux(i);
+        const auto phi_stats = max_abs(phi_values);
 
         std::vector<double> divergence(mesh_.n_cells(), 0.0);
         double boundary_flux = 0.0;
