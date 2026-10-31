@@ -1,0 +1,12 @@
+Internal ctest changing into directory: /tmp/bdir
+Test project /tmp/bdir
+    Start 187: test_thermal_driver_vv
+1/1 Test #187: test_thermal_driver_vv ...........   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Label Time Summary:
+thermal       =   0.00 sec*proc (1 test)
+validation    =   0.00 sec*proc (1 test)
+
+Total Test time (real) =   0.01 sec

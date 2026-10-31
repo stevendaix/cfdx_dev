@@ -1,0 +1,4 @@
+e74735705d94290411d14c57358928008635572c
+e7473570 docs: reference A3 pull request in method sheet 17
+0563f9a6 Add prescribed-mass-flux advection to the thermal driver (A3)
+13d275a0 Add autonomous thermal-only driver (A2) (#1152)
