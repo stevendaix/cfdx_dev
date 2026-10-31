@@ -390,6 +390,16 @@ inline ThermalDriverResult solve_thermal_region(
     energy_controls.relaxation = controls.relaxation;
     energy_controls.max_iterations = controls.max_inner_iterations;
     energy_controls.tolerance = controls.tolerance;
+    // The linear stage stops on a RELATIVE residual scaled by ||rhs||,
+    // but the independent audit closes the balance in absolute watts
+    // against a gross scale floored at 1 W. On a balanced steady state
+    // the signed boundary fluxes cancel (in = out), so that floor becomes
+    // the audit scale and a relative criterion alone can leave an absolute
+    // cell residual of ||rhs||*tolerance that the audit then rejects. Cap
+    // the linear tolerance so the assembled system is solved to an
+    // absolute residual the audit can certify; the temperature-change and
+    // balance gates keep the configured common tolerance.
+    energy_controls.linear_tolerance = std::min(controls.tolerance, 1e-14);
 
     // With a CONSTANT conductivity law and no CONVECTION boundary the
     // assembled system does not depend on the temperature state: a single
@@ -971,3 +981,4 @@ inline ThermalCoupledResult solve_thermal_regions_coupled(
 }
 
 } // namespace cfdx::physics
+
