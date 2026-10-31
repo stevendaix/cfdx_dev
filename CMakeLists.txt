@@ -590,6 +590,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_performance_runtime tests/unit/test_performance_runtime.cpp)
     add_cfdx_test(test_phase6_memory_benchmark tests/benchmark/benchmark_phase6_memory.cpp)
     add_cfdx_test(test_amg_chebyshev tests/unit/test_amg_chebyshev.cpp)
+    add_cfdx_test(test_naca_relaxation_controls tests/unit/test_naca_relaxation_controls.cpp)
     add_cfdx_test(test_native_external_methods tests/unit/test_native_external_methods.cpp)
     add_cfdx_test(test_matrix_characteristics tests/unit/test_matrix_characteristics.cpp)
     add_cfdx_test(test_amg_preconditioner_qualification tests/validation/test_amg_preconditioner_qualification.cpp)
@@ -870,6 +871,10 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         endif()
     endif()
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_naca_controlled_campaign_parser
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_controlled_campaign.py)
+        set_tests_properties(test_naca_controlled_campaign_parser PROPERTIES
+            LABELS "qualification;validation;infrastructure")
         add_test(NAME test_generate_2d_validation_meshes COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_2d_validation_meshes.py all --output-dir ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes)
         # CTest DEPENDS orders only tests explicitly selected by -R; it does
         # not schedule mesh generation for a filtered test invocation.

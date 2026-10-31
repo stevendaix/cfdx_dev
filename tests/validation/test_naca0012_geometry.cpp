@@ -2,6 +2,7 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "qualification_boundary_helpers.h"
 #include "naca_momentum_trace.h"
+#include "naca_relaxation_controls.h"
 #include <cstdlib>
 #include <algorithm>
 #include <cmath>
@@ -49,6 +50,7 @@ static Forces run(const std::string& path,std::size_t level)
     c.convergence.relative_tolerance=1e-8;
     c.convergence.continuity_tolerance=1e-8;
     c.coupling.alpha_u=0.6; c.coupling.alpha_p=0.25;
+    cfdx::validation::apply_naca_relaxation_ab(c);
     c.use_bounded_convection=true;
     c.convection_scheme=ConvectionScheme::UPWIND;
     c.pressure_reference_cell=0;
