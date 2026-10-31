@@ -1,0 +1,4 @@
+1258cac15fbdacb5abc04594bc0e586fbc184fc4
+1258cac1 Add thermal-only case data contract (A1) (#1151)
+05c6a84d ci: fix long validation job and test runtime budgets (#1148)
+ecf1d022 Merge PR #1145: feat(validation): quick/full CTest mesh fixtures, NACA 3-D extrusion geometry and thermal/turbulence smoke
