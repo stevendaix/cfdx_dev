@@ -1,10 +1,11 @@
-// Thermal-only autonomous driver VV (issue #1150, A2).
+// Thermal-only autonomous driver VV (issue #1150, A2+A3).
 //
 // Every physical case is verified against an exact discrete oracle on an
 // orthogonal mesh (the assembled system is small enough to solve by hand)
 // plus the independent energy balance audit. Fail-closed batteries verify
-// the explicit diagnostics of the deferred couplings and of the boundary
-// mapping/value contract. Method sheet: docs/audits/17-thermal-driver.md.
+// the explicit diagnostics of the deferred couplings, of the boundary
+// mapping/value contract, and of the prescribed-mass-flux face field
+// contract. Method sheet: docs/audits/17-thermal-driver.md.
 #include "cfdx/physics/thermal_driver.h"
 #include "common/test_harness.h"
 
@@ -145,6 +146,19 @@ ThermalBoundaryCondition convection(double h, double ambient)
     bc.heat_transfer_coefficient = h;
     bc.ambient_temperature = ambient;
     return bc;
+}
+
+// Unit fluid region driven by a prescribed face mass-flux field (A3):
+// same unit material as solid_case(), FLUID + PRESCRIBED_MASS_FLUX, the
+// face field named by the caller is supplied at solve time.
+ThermalCase fluid_flux_case(const std::string& field_name)
+{
+    ThermalCase c = solid_case();
+    c.regions[0].kind = ThermalRegionKind::FLUID;
+    c.regions[0].fluid_model = ThermalFluidModel::PRESCRIBED_MASS_FLUX;
+    c.regions[0].mass_flux_field = field_name;
+    c.regions[0].name = "water";
+    return c;
 }
 
 } // namespace
@@ -389,7 +403,120 @@ int main()
         EXPECT_TRUE(result.balance.normalized_residual < 1e-9);
     });
 
-    // Fail-closed battery: couplings explicitly out of A2 scope.
+    // Steady advection of a constant state (A3): two cells, phi=-1 on the
+    // left boundary (inflow), phi=+1 on the internal face, phi=+1 on the
+    // right boundary (outflow), all other faces zero. The left wall is at
+    // 320 K, all other walls adiabatic. Advection of a uniform field is
+    // exact in a single pass: the inflow advects 320 K and flushes the
+    // initial 350 K state, so T0 = T1 = 320 K exactly with no conduction.
+    run_case("steady_advection_constant_state", [] {
+        Mesh m = two_cell_1d();
+        auto g = build_fv_geometry(m);
+        ThermalCase c = fluid_flux_case("feed_flux");
+        Field<double,Location::CELL> T(2,"T","K",1), source(2,"source","W/m3",1);
+        T(0)=350.0; T(1)=350.0; source.fill(0.0);
+
+        ThermalFaceFields fields;
+        fields.emplace("feed_flux",
+            Field<double,Location::FACE>(m.n_faces(),"feed_flux","kg/s",1));
+        auto& phi = fields.at("feed_flux");
+        phi.fill(0.0);
+        phi(0) = -1.0;
+        phi(1) = +1.0;
+        phi(6) = +1.0;
+
+        ThermalBoundaryConditions bc;
+        bc["left"] = fixed_temperature(320.0);
+        bc["right"].kind = ThermalBoundaryKind::ADIABATIC;
+        bc["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+
+        const auto result =
+            solve_thermal_region(c,"water",m,g,bc,T,source,{},&fields);
+        EXPECT_TRUE(result.converged);
+        EXPECT_NEAR(T(0),320.0,1e-10);
+        EXPECT_NEAR(T(1),320.0,1e-10);
+        EXPECT_TRUE(result.outer_iterations == 1u);
+        EXPECT_TRUE(result.balance.normalized_residual < 1e-9);
+    });
+
+    // Steady throughflow with generation (A3): one unit cube, inlet at
+    // 300 K with phi=-2, outlet phi=+2 (zero-gradient), walls adiabatic,
+    // q'''=100 W/m3. With m*cp=2 and outlet conductance D=k*A/d=2, the
+    // discrete cell equation is 4*T = 4*300 + 100, hence T = 325 K exactly.
+    run_case("steady_throughflow_generation", [] {
+        Mesh m = one_cell_cube({CubePatchSpec{"inlet",{0}},
+                                CubePatchSpec{"outlet",{1}},
+                                CubePatchSpec{"walls",{2,3,4,5}}});
+        auto g = build_fv_geometry(m);
+        ThermalCase c = fluid_flux_case("feed_flux");
+        Field<double,Location::CELL> T(1,"T","K",1), source(1,"source","W/m3",1);
+        T(0)=300.0; source(0)=100.0;
+
+        ThermalFaceFields fields;
+        fields.emplace("feed_flux",
+            Field<double,Location::FACE>(m.n_faces(),"feed_flux","kg/s",1));
+        auto& phi = fields.at("feed_flux");
+        phi.fill(0.0);
+        phi(0) = -2.0;
+        phi(1) = +2.0;
+
+        ThermalBoundaryConditions bc;
+        bc["inlet"] = fixed_temperature(300.0);
+        bc["outlet"].kind = ThermalBoundaryKind::ADIABATIC;
+        bc["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+
+        const auto result =
+            solve_thermal_region(c,"water",m,g,bc,T,source,{},&fields);
+        EXPECT_TRUE(result.converged);
+        EXPECT_NEAR(T(0),325.0,1e-10);
+        EXPECT_TRUE(result.outer_iterations == 1u);
+        EXPECT_TRUE(result.balance.normalized_residual < 1e-9);
+        EXPECT_NEAR(result.balance.source_integral,100.0,1e-9);
+    });
+
+    // Transient washout (A3): same cube and flux as the steady throughflow,
+    // no source, TRANSIENT dt=1 s, rho=10, cp=1. Backward Euler gives
+    // (a+b)*T^{n+1} = a*T^n + b*300 with a=rho*cp*V/dt=10 and b=m*cp+D=4,
+    // so T^{n+1}-300 = (5/7)*(T^n-300): closed form 300+50*(5/7)^n from
+    // T^0=350, verified over four steps with the audit at every step.
+    run_case("transient_washout_exponential", [] {
+        Mesh m = one_cell_cube({CubePatchSpec{"inlet",{0}},
+                                CubePatchSpec{"outlet",{1}},
+                                CubePatchSpec{"walls",{2,3,4,5}}});
+        auto g = build_fv_geometry(m);
+        ThermalCase c = fluid_flux_case("feed_flux");
+        c.materials[0].properties.density.rho0 = 10.0;
+        c.time_mode = ThermalTimeMode::TRANSIENT;
+        c.time_step = 1.0;
+        Field<double,Location::CELL> T(1,"T","K",1), source(1,"source","W/m3",1);
+        T(0)=350.0; source.fill(0.0);
+
+        ThermalFaceFields fields;
+        fields.emplace("feed_flux",
+            Field<double,Location::FACE>(m.n_faces(),"feed_flux","kg/s",1));
+        auto& phi = fields.at("feed_flux");
+        phi.fill(0.0);
+        phi(0) = -2.0;
+        phi(1) = +2.0;
+
+        ThermalBoundaryConditions bc;
+        bc["inlet"] = fixed_temperature(300.0);
+        bc["outlet"].kind = ThermalBoundaryKind::ADIABATIC;
+        bc["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+
+        double expected = 350.0;
+        for (int step=0; step<4; ++step) {
+            const auto result =
+                solve_thermal_region(c,"water",m,g,bc,T,source,{},&fields);
+            EXPECT_TRUE(result.converged);
+            expected = 300.0 + (expected-300.0)*(5.0/7.0);
+            EXPECT_NEAR(T(0),expected,1e-10);
+            EXPECT_TRUE(result.balance.normalized_residual < 1e-9);
+        }
+        EXPECT_NEAR(T(0),300.0 + 50.0*std::pow(5.0/7.0,4.0),1e-9);
+    });
+
+    // Fail-closed battery: couplings explicitly out of scope.
     run_case("fail_closed_coupled_and_unsupported", [] {
         Mesh m = one_cell_cube();
         auto g = build_fv_geometry(m);
@@ -408,15 +535,6 @@ int main()
             solve_thermal_region(c,"solid",m,g,bc,T,source),
             std::invalid_argument, "references unknown material");
         c.regions[0].material = "unit_solid";
-
-        // Prescribed-mass-flux advection is A3.
-        ThermalCase flux_case = solid_case();
-        flux_case.regions[0].kind = ThermalRegionKind::FLUID;
-        flux_case.regions[0].fluid_model = ThermalFluidModel::PRESCRIBED_MASS_FLUX;
-        flux_case.regions[0].mass_flux_field = "authoritative_face_flux";
-        EXPECT_THROW_WITH(
-            solve_thermal_region(flux_case,"solid",m,g,bc,T,source),
-            std::invalid_argument, "prescribed-mass-flux");
 
         // Conjugate interfaces are A4.
         ThermalCase interface_case = solid_case();
@@ -533,6 +651,85 @@ int main()
         EXPECT_THROW_WITH(
             solve_thermal_region(c,"solid",m,g,bc,T,source),
             std::invalid_argument, "initial temperature is outside the material range");
+    });
+
+    // Fail-closed battery (A3): the prescribed-mass-flux contract must be
+    // supplied, resolved, well-formed and discretely conservative, and an
+    // inflow boundary needs a thermal state to advect in.
+    run_case("fail_closed_prescribed_mass_flux", [] {
+        Mesh m = one_cell_cube({CubePatchSpec{"inlet",{0}},
+                                CubePatchSpec{"outlet",{1}},
+                                CubePatchSpec{"walls",{2,3,4,5}}});
+        auto g = build_fv_geometry(m);
+        ThermalCase c = fluid_flux_case("feed_flux");
+        Field<double,Location::CELL> T(1,"T","K",1), source(1,"source","W/m3",1);
+        T(0)=300.0; source.fill(0.0);
+
+        ThermalBoundaryConditions bc;
+        bc["inlet"] = fixed_temperature(300.0);
+        bc["outlet"].kind = ThermalBoundaryKind::ADIABATIC;
+        bc["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+
+        // No face field map supplied.
+        EXPECT_THROW_WITH(
+            solve_thermal_region(c,"water",m,g,bc,T,source),
+            std::invalid_argument, "requires a face mass-flux field map");
+
+        // Map supplied but the region's field is not in it.
+        ThermalFaceFields wrong_fields;
+        wrong_fields.emplace("other_flux",
+            Field<double,Location::FACE>(m.n_faces(),"other_flux","kg/s",1));
+        EXPECT_THROW_WITH(
+            solve_thermal_region(c,"water",m,g,bc,T,source,{},&wrong_fields),
+            std::invalid_argument, "unknown face mass-flux field");
+
+        // Field size does not match the mesh.
+        ThermalFaceFields short_fields;
+        short_fields.emplace("feed_flux",
+            Field<double,Location::FACE>(3,"feed_flux","kg/s",1));
+        EXPECT_THROW_WITH(
+            solve_thermal_region(c,"water",m,g,bc,T,source,{},&short_fields),
+            std::invalid_argument, "does not match the mesh");
+
+        // Non-finite flux value.
+        ThermalFaceFields nan_fields;
+        nan_fields.emplace("feed_flux",
+            Field<double,Location::FACE>(m.n_faces(),"feed_flux","kg/s",1));
+        nan_fields.at("feed_flux").fill(0.0);
+        nan_fields.at("feed_flux")(0) =
+            std::numeric_limits<double>::quiet_NaN();
+        EXPECT_THROW_WITH(
+            solve_thermal_region(c,"water",m,g,bc,T,source,{},&nan_fields),
+            std::invalid_argument, "non-finite value");
+
+        // Net imbalance: in -2, out +1.
+        ThermalFaceFields bad_fields;
+        bad_fields.emplace("feed_flux",
+            Field<double,Location::FACE>(m.n_faces(),"feed_flux","kg/s",1));
+        auto& bad_phi = bad_fields.at("feed_flux");
+        bad_phi.fill(0.0);
+        bad_phi(0) = -2.0;
+        bad_phi(1) = +1.0;
+        EXPECT_THROW_WITH(
+            solve_thermal_region(c,"water",m,g,bc,T,source,{},&bad_fields),
+            std::invalid_argument, "not discretely conservative");
+
+        // Inflow boundary with a flux-only condition: no thermal state.
+        ThermalFaceFields fields;
+        fields.emplace("feed_flux",
+            Field<double,Location::FACE>(m.n_faces(),"feed_flux","kg/s",1));
+        auto& phi = fields.at("feed_flux");
+        phi.fill(0.0);
+        phi(0) = -2.0;
+        phi(1) = +2.0;
+        ThermalBoundaryConditions flux_bc;
+        flux_bc["inlet"].kind = ThermalBoundaryKind::FIXED_HEAT_FLUX;
+        flux_bc["inlet"].value = 0.0;
+        flux_bc["outlet"].kind = ThermalBoundaryKind::ADIABATIC;
+        flux_bc["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+        EXPECT_THROW_WITH(
+            solve_thermal_region(c,"water",m,g,flux_bc,T,source,{},&fields),
+            std::invalid_argument, "inflow boundary patch");
     });
 
     return run_all();
