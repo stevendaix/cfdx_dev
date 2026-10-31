@@ -420,7 +420,7 @@ int main(int argc, char** argv)
             run_channel_mms(argv[2]);
             run_naca(argv[3], 0);
             std::cout << "NACA0012_WALL_SHEAR_SINGLE: PASS"
-                      << " (one level only; spread remains diagnostic)\\n";
+                      << " (one level only; spread remains diagnostic)\n";
             return 0;
         }
         if (argc != 5)

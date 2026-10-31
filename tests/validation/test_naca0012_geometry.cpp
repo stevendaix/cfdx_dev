@@ -178,7 +178,7 @@ static void run_quick_contract(const std::string& path)
     std::cout<<"NACA0012_QUICK_CONTRACT: PASS cells="<<mesh.n_cells()
              <<" airfoil_faces="<<mesh.boundary().patch(airfoil_id).size()
              <<" farfield_faces="<<mesh.boundary().patch(farfield_id).size()
-             <<" solver_campaign_pending\\n";
+             <<" solver_campaign_pending\n";
 }
 
 int main(int argc,char**argv)
@@ -203,7 +203,7 @@ int main(int argc,char**argv)
             throw std::runtime_error("NACA0012 alpha=0 symmetry gate failed");
         if(!(x.cdp>0.0))
             throw std::runtime_error("NACA0012 pressure drag sign gate failed");
-        std::cout<<"NACA0012_SINGLE: PASS (one level only; not a mesh qualification)\\n";
+        std::cout<<"NACA0012_SINGLE: PASS (one level only; not a mesh qualification)\n";
         return 0;
     }
 
