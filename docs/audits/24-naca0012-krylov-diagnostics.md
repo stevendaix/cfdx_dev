@@ -152,3 +152,25 @@ Ces modes conservent les portes par niveau (continuité, finitude, symétrie,
 signe du Cd pression, MMS canal, positivité des tractions). Ils ne vérifient
 pas la convergence en maillage, ne qualifient pas le spread GG/WLS/1D et ne
 peuvent donc jamais remplacer les tests complets à trois grilles.
+
+
+## 10. Opt-in momentum pre-assembly trace — HEAD d0af5962
+
+Added an observational callback at the exact point after construction of
+`grad_p`, `mu_eff`, and the authoritative `mass_flux`, immediately before
+the three momentum component assemblies. It is called on every predictor
+attempt, including nonlinear retries. The callback is null by default.
+
+Enable only for an isolated NACA replay with
+`CFDX_NACA_FORENSICS=1`. Each `NACA_MOMENTUM_TRACE` record carries a
+monotonic sequence number (to distinguish retries sharing one outer iteration)
+and the outer iteration, plus max absolute pressure, pressure gradient,
+velocity, mass flux, cell flux divergence, boundary flux sum, effective
+viscosity, and per-field non-finite counts. The ratio analyzer is a triage
+utility only; it does not implement a physical acceptance gate.
+
+The callback does not expose the assembled momentum RHS decomposition. If the
+first signal is Ux-only, the next diagnostic must capture the per-cell
+convection, diffusion, pressure and boundary/source contributions from the
+assembled scalar equation. No equation, coefficient, tolerance, iteration
+budget, relaxation factor or qualification criterion is modified here.

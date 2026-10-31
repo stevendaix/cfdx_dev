@@ -297,6 +297,17 @@ struct IncompressibleSolverControls {
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
         const cfdx::core::Field<double, cfdx::core::Location::FACE>&)>;
     MomentumPredictorCallback momentum_predictor_callback;
+    // Opt-in forensic snapshot immediately before each momentum component
+    // assembly. Called for every predictor attempt, including nonlinear retries.
+    // The callback is observational only; references are valid during the call.
+    using MomentumAssemblyForensicCallback = std::function<void(
+        std::size_t,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::FACE>&,
+        const std::vector<double>&)>;
+    MomentumAssemblyForensicCallback momentum_assembly_forensic_callback;
     // Evidence-only hook: invoked at the exact Krylov call point of the
     // coupled solve - after assembly, gauge treatment, finite checks and
     // preconditioner setup - so the snapshot matrix, RHS and initial guess
@@ -3582,6 +3593,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
+        if (controls.momentum_assembly_forensic_callback)
+            controls.momentum_assembly_forensic_callback(
+                iter, p, grad_p, U, mass_flux, mu_eff);
         if (controls.momentum_predictor_callback)
             controls.momentum_predictor_callback(iter, mu_eff, U, mass_flux);
 

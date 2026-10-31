@@ -33,6 +33,8 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/core/numerics/gradient.h"
 #include "cfdx/core/numerics/gradient_stencil.h"
+#include "naca_momentum_trace.h"
+#include <cstdlib>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -281,6 +283,17 @@ WallShearAudit run_naca(const std::string& path, std::size_t level)
     c.diagnostics.iteration_trace_frequency = 200;
 
     const auto geometry = build_fv_geometry(mesh);
+    cfdx::validation::NacaMomentumTrace naca_trace(mesh);
+    if (const char* forensic = std::getenv("CFDX_NACA_FORENSICS");
+        forensic != nullptr && std::string(forensic) == "1") {
+        c.momentum_assembly_forensic_callback =
+            [&naca_trace](std::size_t iteration, const auto& pressure,
+                          const auto& grad_pressure, const auto& velocity,
+                          const auto& mass_flux, const auto& mu_eff) {
+                naca_trace(iteration, pressure, grad_pressure, velocity,
+                           mass_flux, mu_eff);
+            };
+    }
     for (std::size_t i = 0; i < mesh.n_cells(); ++i)
         U.component_data(0)[i] = Uinf;
 
