@@ -53,7 +53,7 @@ inline MatrixScaling to_matrix_scaling(LinearScalingModel model) {
 inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
     PreconditionerModel model,
     bool constant_null_space = false,
-    bool certify_spd_smoother = true) {
+    bool require_smoother_certificate = true) {
     switch (model) {
         case PreconditionerModel::None:
             // CG's legacy null-preconditioner overload installs Jacobi.
@@ -68,11 +68,11 @@ inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
             return std::make_unique<ILU0Preconditioner>();
         case PreconditionerModel::NativeAMG:
             return std::make_unique<NativeBoomerAMGPreconditioner>(
-                constant_null_space, certify_spd_smoother);
+                constant_null_space, require_smoother_certificate);
         case PreconditionerModel::SmoothedAggregationAMG:
             return std::make_unique<
                 NativeSmoothedAggregationAMGPreconditioner>(
-                    constant_null_space, certify_spd_smoother);
+                    constant_null_space, require_smoother_certificate);
         case PreconditionerModel::NativeFieldSplit:
         case PreconditionerModel::CoupledBlockSchur:
             throw std::invalid_argument(
@@ -149,9 +149,14 @@ inline LinearSolveReport solve_linear_system(
         else
             throw std::invalid_argument("coupled dispatch requires an explicit coupled block preconditioner");
     } else {
+        // The SPD/CG certification path keeps the fail-closed smoother
+        // certificate; a general nonsymmetric Krylov solve (GMRES, FGMRES,
+        // BiCGStab) uses the relaxed preconditioner policy whose outer
+        // true-residual checks remain authoritative.
         preconditioner = make_scalar_preconditioner(
             report.plan.preconditioner,
-            report.plan.null_space == NullSpaceModel::Constant);
+            report.plan.null_space == NullSpaceModel::Constant,
+            report.plan.krylov != KrylovModel::CG);
     }
     Preconditioner* pc = preconditioner.get();
     const Vector& solve_rhs =

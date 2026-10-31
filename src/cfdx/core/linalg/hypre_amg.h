@@ -25,9 +25,15 @@ enum class NativeAMGMethod {
 // aggregation recipes. Neither method wraps or copies a third-party runtime.
 class NativeAMGPreconditioner : public Preconditioner {
 public:
+    // require_smoother_certificate keeps the SPD/CG fail-closed Jacobi
+    // stability certificate (positive diagonals + normalized Gershgorin
+    // bound). The general nonsymmetric GMRES-preconditioner path passes
+    // false: structural setup checks stay fail-closed there, but an
+    // uncertifiable smoother damping falls back to the configured value
+    // instead of rejecting the hierarchy.
     explicit NativeAMGPreconditioner(NativeAMGMethod method,
                                      bool constant_null_space = false,
-                                     bool certify_spd_smoother = true);
+                                     bool require_smoother_certificate = true);
     ~NativeAMGPreconditioner() override;
 
     NativeAMGPreconditioner(const NativeAMGPreconditioner&) = delete;
@@ -71,10 +77,10 @@ class NativeBoomerAMGPreconditioner final : public NativeAMGPreconditioner {
 public:
     explicit NativeBoomerAMGPreconditioner(
         bool constant_null_space = false,
-        bool certify_spd_smoother = true)
+        bool require_smoother_certificate = true)
         : NativeAMGPreconditioner(
               NativeAMGMethod::BoomerStyle, constant_null_space,
-              certify_spd_smoother) {}
+              require_smoother_certificate) {}
 };
 
 // Dependency-free smoothed-aggregation AMG following the transferable setup
@@ -84,10 +90,10 @@ class NativeSmoothedAggregationAMGPreconditioner final
 public:
     explicit NativeSmoothedAggregationAMGPreconditioner(
         bool constant_null_space = false,
-        bool certify_spd_smoother = true)
+        bool require_smoother_certificate = true)
         : NativeAMGPreconditioner(
               NativeAMGMethod::SmoothedAggregation, constant_null_space,
-              certify_spd_smoother) {}
+              require_smoother_certificate) {}
 };
 
 } // namespace cfdx::core

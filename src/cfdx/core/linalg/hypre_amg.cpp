@@ -38,14 +38,14 @@ private:
 
 struct NativeAMGPreconditioner::Impl {
     explicit Impl(NativeAMGMethod selected_method, bool use_constant_null_space,
-                  bool certify_spd)
+                 bool require_smoother_certificate)
         : method(selected_method),
           constant_null_space(use_constant_null_space),
-          certify_spd_smoother(certify_spd) {}
+          require_smoother_certificate(require_smoother_certificate) {}
 
     NativeAMGMethod method;
     bool constant_null_space = false;
-    bool certify_spd_smoother = true;
+    bool require_smoother_certificate = true;
     AMGMemoryPolicy policy = AMGMemoryPolicy::Balanced;
     std::unique_ptr<OwnedSparseOperator> op;
     std::unique_ptr<MatrixFreeVcyclePreconditioner> amg;
@@ -55,9 +55,10 @@ struct NativeAMGPreconditioner::Impl {
 };
 
 NativeAMGPreconditioner::NativeAMGPreconditioner(
-    NativeAMGMethod method, bool constant_null_space, bool certify_spd_smoother)
-    : impl_(std::make_unique<Impl>(
-          method, constant_null_space, certify_spd_smoother)) {}
+    NativeAMGMethod method, bool constant_null_space,
+    bool require_smoother_certificate)
+    : impl_(std::make_unique<Impl>(method, constant_null_space,
+                                   require_smoother_certificate)) {}
 
 NativeAMGPreconditioner::~NativeAMGPreconditioner() = default;
 NativeAMGPreconditioner::NativeAMGPreconditioner(
@@ -106,7 +107,8 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
         impl_->method == NativeAMGMethod::SmoothedAggregation
             ? AMGInterpolationPolicy::SmoothedAggregation
             : AMGInterpolationPolicy::DirectCF,
-        impl_->constant_null_space, impl_->certify_spd_smoother);
+        impl_->constant_null_space,
+        impl_->require_smoother_certificate);
     if (!next_amg->setup(next_op->matrix())) {
         impl_->error = "native AMG hierarchy construction failed";
         const auto& detail = next_amg->last_setup_error();

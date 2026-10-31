@@ -36,12 +36,12 @@ public:
                                    AMGInterpolationPolicy interpolation =
                                        AMGInterpolationPolicy::DirectCF,
                                    bool constant_null_space = false,
-                                   bool certify_spd_smoother = true)
+                                   bool require_smoother_certificate = true)
         : op_(op), configured_omega_(omega), omega_(omega), pre_(pre), post_(post),
           strength_threshold_(strength_threshold), max_levels_(max_levels),
           interpolation_(interpolation),
           constant_null_space_(constant_null_space),
-          certify_spd_smoother_(certify_spd_smoother)
+          require_smoother_certificate_(require_smoother_certificate)
     {
         if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0) ||
             !std::isfinite(strength_threshold_) || strength_threshold_ < 0.0 ||
@@ -154,22 +154,24 @@ public:
         // A fresh hierarchy needs the same damping certification as a
         // numerically refreshed hierarchy. Recompute from the constructor
         // value so a previous difficult matrix cannot permanently poison a
-        // later full rebuild.
-        if (certify_spd_smoother_) {
-            double safe_omega = 0.0;
-            if (!compute_stable_smoother_omega(
-                    levels_, safe_omega, &last_setup_error_)) {
-                levels_.clear();
-                first_aggregate_.clear();
-                return false;
-            }
+        // later full rebuild. The certificate is a CG-safety contract: it
+        // stays fail-closed on the SPD/CG path, while the general
+        // nonsymmetric preconditioner path (outer GMRES/FGMRES/BiCGStab,
+        // e.g. the nested LSC/BFBt pressure solve on H = D Q^-1 G - C)
+        // keeps the pre-certificate behaviour -- configured damping, the
+        // outer Krylov true-residual checks remaining authoritative. Every
+        // structural check above is fail-closed on both paths; only the
+        // damping certificate is policy-dependent.
+        double safe_omega = 0.0;
+        if (compute_stable_smoother_omega(levels_, safe_omega, &last_setup_error_)) {
             omega_ = safe_omega;
+        } else if (require_smoother_certificate_) {
+            levels_.clear();
+            first_aggregate_.clear();
+            return false;
         } else {
-            // General GMRES operators (e.g. LSC/BFBT Schur approximations)
-            // need not be SPD and may have a negative diagonal. Preserve the
-            // established signed-Jacobi smoother for that explicit path;
-            // the SPD/CG certificate is not applicable there.
             omega_ = configured_omega_;
+            last_setup_error_.clear();
         }
         return true;
     }
@@ -208,10 +210,16 @@ public:
         // hierarchy is exposed to CG. A non-SPD/unsupported diagonal does not
         // get reclassified here; the caller's true-residual and Krylov checks
         // remain authoritative.
-        double refreshed_omega = configured_omega_;
-        if (certify_spd_smoother_ &&
-            !compute_stable_smoother_omega(refreshed, refreshed_omega))
-            return false;
+        double refreshed_omega = 0.0;
+        if (!compute_stable_smoother_omega(refreshed, refreshed_omega)) {
+            if (require_smoother_certificate_)
+                return false;
+            // General nonsymmetric preconditioner path: every structural
+            // check above passed, so commit the numeric refresh and keep
+            // the previously accepted damping. The outer Krylov
+            // true-residual checks remain authoritative.
+            refreshed_omega = omega_;
+        }
 
         levels_ = std::move(refreshed);
         omega_ = refreshed_omega;
@@ -2012,7 +2020,7 @@ private:
     std::size_t max_levels_;
     AMGInterpolationPolicy interpolation_;
     bool constant_null_space_;
-    bool certify_spd_smoother_;
+    const bool require_smoother_certificate_;
     std::vector<Level> levels_;
     std::vector<std::size_t> first_aggregate_;
     AMGSetupFootprint last_footprint_;

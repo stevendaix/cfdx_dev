@@ -5,7 +5,6 @@
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
-#include "cfdx/core/linalg/hypre_amg.h"
 #include "cfdx/core/linalg/mgr_preconditioner.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
@@ -2517,24 +2516,22 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             ? std::numeric_limits<std::size_t>::max() : reference_cell;
         apply_nested_schur_pressure_gauge(pressure_operator, lsc_gauge_cell);
 
+        // The nested LSC/BFBt operator H = D Q^-1 G - C is nonsymmetric
+        // by construction and is only consumed by the nested GMRES solve
+        // below, whose true-residual checks remain authoritative. Request
+        // the general nonsymmetric preconditioner policy: structural setup
+        // checks stay fail-closed, but the SPD/CG smoother certificate
+        // must not reject the hierarchy for its non-positive diagonals.
         auto pressure_preconditioner =
             std::shared_ptr<cfdx::core::Preconditioner>(
                 cfdx::core::make_scalar_preconditioner(
                     cfdx::core::PreconditionerModel::NativeAMG,
-                    false, false).release());
-        if (!pressure_preconditioner) {
+                    /*constant_null_space=*/false,
+                    /*require_smoother_certificate=*/false).release());
+        if (!pressure_preconditioner ||
+            !pressure_preconditioner->setup(pressure_operator)) {
             throw std::runtime_error(
-                "N8 LSC/BFBt pressure AMG factory returned a null preconditioner");
-        }
-        if (!pressure_preconditioner->setup(pressure_operator)) {
-            const auto* native_amg =
-                dynamic_cast<const cfdx::core::NativeAMGPreconditioner*>(
-                    pressure_preconditioner.get());
-            const std::string detail = native_amg
-                ? native_amg->last_error()
-                : std::string("preconditioner did not expose a NativeAMG setup diagnostic");
-            throw std::runtime_error(
-                std::string("N8 LSC/BFBt pressure AMG setup failed: ") + detail);
+                "N8 LSC/BFBt pressure AMG setup failed");
         }
 
         auto solve_pressure = [pressure_operator,
@@ -2589,8 +2586,16 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     request.preconditioner == cfdx::core::PreconditionerModel::Auto)
                     throw std::invalid_argument(
                         "PCD nested solvers require explicit Krylov and preconditioner models");
+                // SPD/CG nested solves keep the fail-closed smoother
+                // certificate; nested nonsymmetric Krylov solves use the
+                // relaxed policy (outer true-residual checks remain
+                // authoritative).
                 auto preconditioner =
-                    cfdx::core::make_scalar_preconditioner(request.preconditioner);
+                    cfdx::core::make_scalar_preconditioner(
+                        request.preconditioner,
+                        /*constant_null_space=*/false,
+                        /*require_smoother_certificate=*/
+                        request.krylov != cfdx::core::KrylovModel::CG);
                 if (!preconditioner || !preconditioner->setup(matrix))
                     throw std::runtime_error(
                         "PCD nested pressure preconditioner setup failed");
