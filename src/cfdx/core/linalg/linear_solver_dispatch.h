@@ -52,7 +52,8 @@ inline MatrixScaling to_matrix_scaling(LinearScalingModel model) {
 
 inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
     PreconditionerModel model,
-    bool constant_null_space = false) {
+    bool constant_null_space = false,
+    bool certify_spd_smoother = true) {
     switch (model) {
         case PreconditionerModel::None:
             // CG's legacy null-preconditioner overload installs Jacobi.
@@ -67,11 +68,11 @@ inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
             return std::make_unique<ILU0Preconditioner>();
         case PreconditionerModel::NativeAMG:
             return std::make_unique<NativeBoomerAMGPreconditioner>(
-                constant_null_space);
+                constant_null_space, certify_spd_smoother);
         case PreconditionerModel::SmoothedAggregationAMG:
             return std::make_unique<
                 NativeSmoothedAggregationAMGPreconditioner>(
-                    constant_null_space);
+                    constant_null_space, certify_spd_smoother);
         case PreconditionerModel::NativeFieldSplit:
         case PreconditionerModel::CoupledBlockSchur:
             throw std::invalid_argument(
