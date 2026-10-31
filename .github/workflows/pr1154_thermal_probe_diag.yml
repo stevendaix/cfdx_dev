@@ -2,8 +2,10 @@ name: PR 1154 thermal driver probe (diag)
 
 # DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
 # Sonde fail-closed pour la PR #1154 (A4 conjugate interfaces dans le thermal driver).
-# Le head 9c96e4d etend le driver thermique et son test VV existant (test_thermal_driver_vv,
+# Le head 461f2bb etend le driver thermique et son test VV existant (test_thermal_driver_vv,
 # tests/validation/test_thermal_driver_vv.cpp) ; CMakeLists et cibles CTest inchanges.
+# Re-sonde apres le correctif du head 461f2bb (plafond de tolerance lineaire du driver :
+# l'audit en watts absolus du stationnaire couple equilibre rejetait les deux cas steady).
 # La CI Release du head est attendue rouge avec la signature EXACTE de la base master 0082cb5
 # (exit 8 fast CTest, herite, defaut dual-time BE bootstrap documente) ; les logs CI sont
 # inaccessibles (403), donc cette sonde prouve le verdict du test de la PR en repliquant
@@ -27,7 +29,7 @@ concurrency:
 
 env:
   EVID: diag-evidence/logs
-  PR1154_HEAD: 9c96e4d0e1e2c347a042b1f0d6d3b88868d0c71c
+  PR1154_HEAD: 461f2bb145a9c65855ea5e68fbd1b449900918f7
   MASTER_PIN: 0082cb54831974f4e356bb4895d093ad4e100289
 
 jobs:
@@ -54,7 +56,7 @@ jobs:
             echo "pr1154_head=$PR1154_HEAD"
             echo "master_pin=$MASTER_PIN"
             echo "master_sha=$MASTER_SHA"
-            echo "purpose=prove verdict of test_thermal_driver_vv on PR head 9c96e4d (release config, exact CI replication)"
+            echo "purpose=prove verdict of test_thermal_driver_vv on PR head 461f2bb (release config, exact CI replication)"
           } > "$GITHUB_WORKSPACE/$EVID/pr1154_thermal_probe_meta_run$GITHUB_RUN_ID.txt"
           echo "master_sha=$MASTER_SHA" > "$GITHUB_WORKSPACE/$EVID/pr1154_thermal_probe_status_run$GITHUB_RUN_ID.txt"
           if [ "$MASTER_SHA" != "$MASTER_PIN" ]; then
