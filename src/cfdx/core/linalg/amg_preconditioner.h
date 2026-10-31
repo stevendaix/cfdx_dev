@@ -35,11 +35,13 @@ public:
                                    std::size_t max_levels = 25,
                                    AMGInterpolationPolicy interpolation =
                                        AMGInterpolationPolicy::DirectCF,
-                                   bool constant_null_space = false)
+                                   bool constant_null_space = false,
+                                   bool certify_spd_smoother = true)
         : op_(op), configured_omega_(omega), omega_(omega), pre_(pre), post_(post),
           strength_threshold_(strength_threshold), max_levels_(max_levels),
           interpolation_(interpolation),
-          constant_null_space_(constant_null_space)
+          constant_null_space_(constant_null_space),
+          certify_spd_smoother_(certify_spd_smoother)
     {
         if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0) ||
             !std::isfinite(strength_threshold_) || strength_threshold_ < 0.0 ||
@@ -153,13 +155,22 @@ public:
         // numerically refreshed hierarchy. Recompute from the constructor
         // value so a previous difficult matrix cannot permanently poison a
         // later full rebuild.
-        double safe_omega = 0.0;
-        if (!compute_stable_smoother_omega(levels_, safe_omega, &last_setup_error_)) {
-            levels_.clear();
-            first_aggregate_.clear();
-            return false;
+        if (certify_spd_smoother_) {
+            double safe_omega = 0.0;
+            if (!compute_stable_smoother_omega(
+                    levels_, safe_omega, &last_setup_error_)) {
+                levels_.clear();
+                first_aggregate_.clear();
+                return false;
+            }
+            omega_ = safe_omega;
+        } else {
+            // General GMRES operators (e.g. LSC/BFBT Schur approximations)
+            // need not be SPD and may have a negative diagonal. Preserve the
+            // established signed-Jacobi smoother for that explicit path;
+            // the SPD/CG certificate is not applicable there.
+            omega_ = configured_omega_;
         }
-        omega_ = safe_omega;
         return true;
     }
 
@@ -197,8 +208,9 @@ public:
         // hierarchy is exposed to CG. A non-SPD/unsupported diagonal does not
         // get reclassified here; the caller's true-residual and Krylov checks
         // remain authoritative.
-        double refreshed_omega = 0.0;
-        if (!compute_stable_smoother_omega(refreshed, refreshed_omega))
+        double refreshed_omega = configured_omega_;
+        if (certify_spd_smoother_ &&
+            !compute_stable_smoother_omega(refreshed, refreshed_omega))
             return false;
 
         levels_ = std::move(refreshed);
@@ -2000,6 +2012,7 @@ private:
     std::size_t max_levels_;
     AMGInterpolationPolicy interpolation_;
     bool constant_null_space_;
+    bool certify_spd_smoother_;
     std::vector<Level> levels_;
     std::vector<std::size_t> first_aggregate_;
     AMGSetupFootprint last_footprint_;
