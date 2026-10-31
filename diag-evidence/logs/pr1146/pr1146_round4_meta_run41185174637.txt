@@ -1,0 +1,5 @@
+run_id=41185174637
+purpose=round4 repair, early evidence
+pr1146_head=e41f7cfce20681540a914ffe07341e3ed24c9a19
+canonical_source=9ffb69b21148c02e0935154322eea9362b132035
+Sat Oct 31 08:34:58 UTC 2026
