@@ -1,0 +1,156 @@
+name: PR 1152 thermal driver probe (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Sonde fail-closed pour la PR #1152 (A2 thermal-only driver).
+# Le head 5636cbd ajoute au fast CTest QU'UN test C++ (test_thermal_driver_vv,
+# add_cfdx_test tests/validation/test_thermal_driver_vv.cpp, labels thermal;validation).
+# La CI Release du head est rouge avec la signature EXACTE de la base master 1258cac
+# (exit 8 fast CTest, herite, defaut dual-time BE bootstrap documente) ; les logs CI sont
+# inaccessibles (403), donc cette sonde prouve le verdict du test de la PR en repliquant
+# la config Release exacte du job cfdx-ci (build de la cible unique + ctest -R --output-on-failure).
+# Aucun push master, aucune modification de branche PR, aucune tolerance touchee.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1152_thermal_probe_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1152-thermal-probe
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR1152_HEAD: 5636cbd28b07ea4dad2fc516e0177afe3fda24a5
+  MASTER_PIN: 1258cac15fbdacb5abc04594bc0e586fbc184fc4
+
+jobs:
+  probe:
+    name: thermal_driver probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    env:
+      WDIR: /tmp/wt
+      BDIR: /tmp/bdir
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pins and worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin master
+          MASTER_SHA=$(git rev-parse origin/master)
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "probe_id=thermal_driver_A2"
+            echo "pr1152_head=$PR1152_HEAD"
+            echo "master_pin=$MASTER_PIN"
+            echo "master_sha=$MASTER_SHA"
+            echo "purpose=prove verdict of test_thermal_driver_vv on PR head 5636cbd (release config, exact CI replication)"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_meta_run$GITHUB_RUN_ID.txt"
+          echo "master_sha=$MASTER_SHA" > "$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_status_run$GITHUB_RUN_ID.txt"
+          if [ "$MASTER_SHA" != "$MASTER_PIN" ]; then
+            echo "::error::master moved ($MASTER_SHA vs pinned $MASTER_PIN) - abort evidence-only"
+            echo "master_moved=true" >> "$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_status_run$GITHUB_RUN_ID.txt"
+            exit 1
+          fi
+          git config user.name "oracle-diag-bot"
+          git config user.email "oracle-diag-bot@users.noreply.github.com"
+          git cat-file -e "$PR1152_HEAD^{commit}" || { echo "::error::PR1152 head unresolvable"; exit 1; }
+          git worktree add "$WDIR" "$PR1152_HEAD"
+          cd "$WDIR"
+          if ! git merge --no-edit "$MASTER_PIN" > /tmp/merge.log 2>&1; then
+            echo "::error::merge PR1152 head + master failed - conflicts"
+            cp /tmp/merge.log "$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_mergefail_run$GITHUB_RUN_ID.log"
+            exit 1
+          fi
+          git rev-parse HEAD > "$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_refsha_run$GITHUB_RUN_ID.txt"
+          git log --oneline -3 >> "$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_refsha_run$GITHUB_RUN_ID.txt"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
+
+      - name: Configure (release, exact CI replication)
+        run: |
+          cmake -S "$WDIR" -B "$BDIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+            -DCMAKE_UNITY_BUILD=OFF
+
+      - name: Build test target
+        run: |
+          set +e
+          cmake --build "$BDIR" --parallel 4 --target test_thermal_driver_vv > /tmp/build_raw.log 2>&1
+          rc=$?
+          {
+            echo "build_exit=$rc"
+            tail -n 80 /tmp/build_raw.log
+          } > "$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_build_run$GITHUB_RUN_ID.log"
+          echo "build_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_status_run$GITHUB_RUN_ID.txt"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::build failed - see evidence"
+            exit 1
+          fi
+
+      - name: Run the thermal driver test
+        run: |
+          set +e
+          LOG="$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_ctest_run$GITHUB_RUN_ID.log"
+          ctest --test-dir "$BDIR" -R '^test_thermal_driver_vv$' --output-on-failure > "$LOG" 2>&1
+          rc=$?
+          echo "ctest_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_status_run$GITHUB_RUN_ID.txt"
+          exit 0
+
+      - name: Extract verdict (evidence-only)
+        if: always()
+        run: |
+          S="$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_status_run$GITHUB_RUN_ID.txt"
+          L="$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_ctest_run$GITHUB_RUN_ID.log"
+          V="$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_verdict_run$GITHUB_RUN_ID.txt"
+          {
+            echo "probe_id=thermal_driver_A2"
+            cat "$S" 2>/dev/null || true
+            if [ -f "$L" ]; then
+              echo '----- tail of ctest log -----'
+              tail -n 120 "$L"
+            else
+              echo 'no ctest log'
+            fi
+          } > "$V"
+          cat "$V"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1152 thermal probe run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME" 2>&1
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          V="$GITHUB_WORKSPACE/$EVID/pr1152_thermal_probe_verdict_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$V" ]; then
+            echo "::error::no verdict recorded - read probe evidence"
+            exit 1
+          fi
+          echo "verdict recorded"
