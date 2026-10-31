@@ -1,0 +1,61 @@
+matrix_id=A_debug
+probe_sha=7d3bdd0c5e9b77a7a72b9df41d8b37c1dfb93662
+build_exit=0
+ctest_exit=8
+----- certificate rejections -----
+----- failed tests / key lines -----
+4:1/4 Test  #11: test_n8_physical_qualification .......***Failed    6.20 sec
+6986:1/1 Test #120: test_n8_pressure_velocity_matrix ...***Failed    6.05 sec
+13953:0% tests passed, 1 tests failed out of 1
+13963:The following tests FAILED:
+13964:	120 - test_n8_pressure_velocity_matrix (Failed)         n8 qualification sanitizer-slow validation
+13971:2/4 Test #110: test_steady_incompressible_solver ....***Failed    0.01 sec
+14007:3/4 Test #120: test_n8_pressure_velocity_matrix .....***Failed    6.01 sec
+20974:4/4 Test #231: test_n9_common_schur_qualification ...***Failed    0.00 sec
+20996:0% tests passed, 4 tests failed out of 4
+21007:The following tests FAILED:
+21008:	 11 - test_n8_physical_qualification (Failed)           n8 qualification sanitizer-slow validation
+21009:	110 - test_steady_incompressible_solver (Failed)        phase13 validation
+21010:	120 - test_n8_pressure_velocity_matrix (Failed)         n8 qualification sanitizer-slow validation
+21011:	231 - test_n9_common_schur_qualification (Failed)
+----- tail of ctest log -----
+    Start 231: test_n9_common_schur_qualification
+4/4 Test #231: test_n9_common_schur_qualification ...***Failed    0.00 sec
+Running 4 test cases...
+n9_schur_contract cells=4 convection=1 simple_operator_error=0.081144 simplec_operator_error=0.0591972
+n9_schur_contract cells=4 convection=1 lsc_inverse_error=0.977466
+n9_schur_contract cells=4 convection=4 simple_operator_error=0.0888028 simplec_operator_error=0.103594
+n9_schur_contract cells=4 convection=4 lsc_inverse_error=0.978688
+n9_schur_contract cells=6 convection=1 simple_operator_error=0.123113 simplec_operator_error=0.0529842
+n9_schur_contract cells=6 convection=1 lsc_inverse_error=0.973855
+  PASS: n9_common_oseen_schur_contract
+n9_model=simple true_residual=0.620125
+n9_model=simplec true_residual=0.604461
+n9_model=lsc true_residual=0.570603
+n9_model=bfbt true_residual=0.567101
+n9_model=pcd true_residual=0.574593
+n9_model=mgr true_residual=0.620125
+  PASS: n9_common_oseen_full_block_true_residual_multiplex
+  PASS: n9_schur_gauge_row_column_semantics
+  FAIL: n9_schur_gauge_end_to_end_coupled_lsc_bfbt - N8 LSC/BFBt pressure AMG setup failed
+
+Results: 3 passed, 1 failed
+
+
+0% tests passed, 4 tests failed out of 4
+
+Label Time Summary:
+n8                =  12.21 sec*proc (2 tests)
+phase13           =   0.01 sec*proc (1 test)
+qualification     =  12.21 sec*proc (2 tests)
+sanitizer-slow    =  12.21 sec*proc (2 tests)
+validation        =  12.22 sec*proc (3 tests)
+
+Total Test time (real) =  12.26 sec
+
+The following tests FAILED:
+	 11 - test_n8_physical_qualification (Failed)           n8 qualification sanitizer-slow validation
+	110 - test_steady_incompressible_solver (Failed)        phase13 validation
+	120 - test_n8_pressure_velocity_matrix (Failed)         n8 qualification sanitizer-slow validation
+	231 - test_n9_common_schur_qualification (Failed)
+Errors while running CTest
