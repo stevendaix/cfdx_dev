@@ -49,9 +49,7 @@ class TestMatrix(unittest.TestCase):
                 f"1/1 Test #1: test_thermal_vv .... {line}\n"
                 "0% tests passed, 1 tests failed out of 1\n"
             )
-            self.assertFalse(
-                module.check_ctest_output(0, log, "test_thermal_vv")
-            )
+            self.assertFalse(module.check_ctest_output(0, log, "test_thermal_vv"))
 
     def test_long_gate_explicit(self):
         self.assertEqual(len(module.QUICK), 9)
