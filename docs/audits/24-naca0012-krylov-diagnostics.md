@@ -64,7 +64,7 @@ le produit scalaire initial. Le test exige :
 - statut `DIVERGED`, zéro itération ;
 - solution inchangée ;
 - résidu vrai FP64 et résidu relatif correctement renseignés ;
-- échantillon diagnostique contenant le produit préconditionné non fini.
+- échantillon diagnostique conservant le produit préconditionné négatif ou non fini.
 
 ## 4. Prochaine lecture des artefacts
 
