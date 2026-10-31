@@ -50,6 +50,22 @@ private:
     FailurePoint point_;
 };
 
+class NegativeInitialPreconditioner final : public Preconditioner {
+public:
+    bool setup(const SparseMatrix& A) override {
+        size_ = A.n_rows();
+        return A.n_rows() == A.n_cols() && size_ > 0;
+    }
+    bool apply(const Vector& r, Vector& z) const override {
+        if (r.size() != size_ || z.size() != size_) return false;
+        for (std::size_t i = 0; i < size_; ++i) z(i) = -r(i);
+        return true;
+    }
+    const char* name() const override { return "NegativeInitialTest"; }
+private:
+    std::size_t size_ = 0;
+};
+
 class OverflowDotPreconditioner final : public Preconditioner {
 public:
     bool setup(const SparseMatrix& A) override {
@@ -267,6 +283,24 @@ int main() {
         Vector x(3, 0.0);
         auto result = solve_cg(A, b, x);
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("cg_nonpositive_initial_preconditioned_dot_is_reported", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+        Vector b(2, 1.0), x(2, 0.0);
+        NegativeInitialPreconditioner pc;
+        const auto result = solve_cg(A, b, x, pc, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_NEAR(result.residual, std::sqrt(2.0), 1e-14);
+        EXPECT_NEAR(result.residual_relative, 1.0, 1e-14);
+        EXPECT_TRUE(result.diagnostics.size() == 1);
+        EXPECT_TRUE(result.diagnostics.front().preconditioned_dot < 0.0);
+        EXPECT_NEAR(x(0), 0.0, 0.0);
+        EXPECT_NEAR(x(1), 0.0, 0.0);
     });
 
     run_case("cg_nonfinite_initial_preconditioned_dot_reports_true_residual", []() {
