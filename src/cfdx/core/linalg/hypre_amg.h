@@ -26,7 +26,8 @@ enum class NativeAMGMethod {
 class NativeAMGPreconditioner : public Preconditioner {
 public:
     explicit NativeAMGPreconditioner(NativeAMGMethod method,
-                                     bool constant_null_space = false);
+                                     bool constant_null_space = false,
+                                     bool certify_spd_smoother = true);
     ~NativeAMGPreconditioner() override;
 
     NativeAMGPreconditioner(const NativeAMGPreconditioner&) = delete;
@@ -68,9 +69,12 @@ private:
 
 class NativeBoomerAMGPreconditioner final : public NativeAMGPreconditioner {
 public:
-    explicit NativeBoomerAMGPreconditioner(bool constant_null_space = false)
+    explicit NativeBoomerAMGPreconditioner(
+        bool constant_null_space = false,
+        bool certify_spd_smoother = true)
         : NativeAMGPreconditioner(
-              NativeAMGMethod::BoomerStyle, constant_null_space) {}
+              NativeAMGMethod::BoomerStyle, constant_null_space,
+              certify_spd_smoother) {}
 };
 
 // Dependency-free smoothed-aggregation AMG following the transferable setup
@@ -79,9 +83,11 @@ class NativeSmoothedAggregationAMGPreconditioner final
     : public NativeAMGPreconditioner {
 public:
     explicit NativeSmoothedAggregationAMGPreconditioner(
-        bool constant_null_space = false)
+        bool constant_null_space = false,
+        bool certify_spd_smoother = true)
         : NativeAMGPreconditioner(
-              NativeAMGMethod::SmoothedAggregation, constant_null_space) {}
+              NativeAMGMethod::SmoothedAggregation, constant_null_space,
+              certify_spd_smoother) {}
 };
 
 } // namespace cfdx::core
