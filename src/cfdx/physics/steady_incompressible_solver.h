@@ -2595,7 +2595,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                         request.preconditioner,
                         /*constant_null_space=*/false,
                         /*require_smoother_certificate=*/
-                        request.krylov != cfdx::core::KrylovModel::CG);
+                        request.krylov == cfdx::core::KrylovModel::CG);
                 if (!preconditioner || !preconditioner->setup(matrix))
                     throw std::runtime_error(
                         "PCD nested pressure preconditioner setup failed");

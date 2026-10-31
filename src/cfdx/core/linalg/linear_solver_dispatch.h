@@ -156,7 +156,7 @@ inline LinearSolveReport solve_linear_system(
         preconditioner = make_scalar_preconditioner(
             report.plan.preconditioner,
             report.plan.null_space == NullSpaceModel::Constant,
-            report.plan.krylov != KrylovModel::CG);
+            report.plan.krylov == KrylovModel::CG);
     }
     Preconditioner* pc = preconditioner.get();
     const Vector& solve_rhs =
