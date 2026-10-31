@@ -685,10 +685,15 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_test(NAME test_ghia_cavity_profile_study COMMAND test_ghia_cavity --profile-study)
         set_tests_properties(test_ghia_cavity_profile_study PROPERTIES
             LABELS "phase13;validation;campaign;long"
-            # The 2026-10-28 total-validation run reached this deadline while
-            # the separate full Ghia campaign completed in 2626 s. This is a
-            # runtime budget only; the reference, residual and refinement gates stay unchanged.
-            TIMEOUT 3600)
+            # The 2026-10-31 run completed N=20/40/80, then reached N=160
+            # iteration 7450/16000 at the 3600 s timeout. The momentum RHS
+            # residual was still decreasing (1.75e-8 at iteration 7450)
+            # toward the unchanged 1e-8 convergence gate. Run this largest
+            # grid serially to avoid contention with other long campaigns;
+            # this changes only the wall-clock allowance, not any numerical
+            # iteration cap, residual criterion, reference or refinement gate.
+            RUN_SERIAL TRUE
+            TIMEOUT 5400)
         # Run a bounded low-resolution preflight first. The dependency prevents
         # the physical PCD qualification from starting when the nested solver
         # already exhibits runaway behaviour on the smaller case.
