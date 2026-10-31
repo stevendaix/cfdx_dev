@@ -4,7 +4,7 @@ name: PR 1153 thermal driver probe (diag)
 # Sonde fail-closed pour la PR #1153 (A3 prescribed-mass-flux advection dans le thermal driver).
 # Le head e747357 etend le driver thermique et son test VV existant (test_thermal_driver_vv,
 # tests/validation/test_thermal_driver_vv.cpp) ; CMakeLists et cibles CTest inchanges.
-# La CI Release du head est rouge avec la signature EXACTE de la base master 1258cac
+# La CI Release du head est attendue rouge avec la signature EXACTE de la base master 13d275a
 # (exit 8 fast CTest, herite, defaut dual-time BE bootstrap documente) ; les logs CI sont
 # inaccessibles (403), donc cette sonde prouve le verdict du test de la PR en repliquant
 # la config Release exacte du job cfdx-ci (build de la cible unique + ctest -R --output-on-failure).
