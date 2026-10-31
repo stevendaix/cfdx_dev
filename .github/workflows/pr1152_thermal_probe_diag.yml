@@ -9,6 +9,7 @@ name: PR 1152 thermal driver probe (diag)
 # inaccessibles (403), donc cette sonde prouve le verdict du test de la PR en repliquant
 # la config Release exacte du job cfdx-ci (build de la cible unique + ctest -R --output-on-failure).
 # Aucun push master, aucune modification de branche PR, aucune tolerance touchee.
+# NOTE: ne JAMAIS mettre [ci skip] dans le commit qui ajoute ou edite ce fichier (le trigger push serait supprime).
 
 on:
   push:
