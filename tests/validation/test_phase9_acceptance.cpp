@@ -596,8 +596,20 @@ int main(int argc, char** argv)
                         gates.push_back("continuity_linf");
                     if (!(h.continuity_normalized < 1e-7))
                         gates.push_back("continuity_normalized");
-                    if (!(h.momentum_equation_residual_relative < 1e-7))
+                    // COUPLED solves the monolithic system before the
+                    // post-update residual is measured. Its first-iteration
+                    // reference can therefore be at the linear-solver floor,
+                    // making residual/reference ~= 1 even for an accurate
+                    // solution. Gate the independently measured RHS-normalized
+                    // equation residual for COUPLED; retain the reference-ratio
+                    // criterion for segregated algorithms.
+                    if (test.algorithm == PressureVelocityAlgorithm::COUPLED) {
+                        if (!(std::isfinite(h.momentum_equation_residual_rhs_relative) &&
+                              h.momentum_equation_residual_rhs_relative < 1e-7))
+                            gates.push_back("momentum_equation_residual_rhs_relative");
+                    } else if (!(h.momentum_equation_residual_relative < 1e-7)) {
                         gates.push_back("momentum_equation_residual_relative");
+                    }
 
                     // N11: independently reconstructed momentum balances must
                     // close after the accepted solve. This is deliberately

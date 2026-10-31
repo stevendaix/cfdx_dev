@@ -1,6 +1,8 @@
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "qualification_boundary_helpers.h"
+#include "naca_momentum_trace.h"
+#include <cstdlib>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -55,6 +57,17 @@ static Forces run(const std::string& path,std::size_t level)
     c.diagnostics.iteration_trace_frequency=200;
 
     const auto geometry=build_fv_geometry(mesh);
+    cfdx::validation::NacaMomentumTrace naca_trace(mesh);
+    if (const char* forensic = std::getenv("CFDX_NACA_FORENSICS");
+        forensic != nullptr && std::string(forensic) == "1") {
+        c.momentum_assembly_forensic_callback =
+            [&naca_trace](std::size_t iteration, const auto& pressure,
+                          const auto& grad_pressure, const auto& velocity,
+                          const auto& mass_flux, const auto& mu_eff) {
+                naca_trace(iteration, pressure, grad_pressure, velocity,
+                           mass_flux, mu_eff);
+            };
+    }
     for(std::size_t i=0;i<mesh.n_cells();++i)
         U.component_data(0)[i]=Uinf;
 
@@ -178,7 +191,7 @@ static void run_quick_contract(const std::string& path)
     std::cout<<"NACA0012_QUICK_CONTRACT: PASS cells="<<mesh.n_cells()
              <<" airfoil_faces="<<mesh.boundary().patch(airfoil_id).size()
              <<" farfield_faces="<<mesh.boundary().patch(farfield_id).size()
-             <<" solver_campaign_pending\\n";
+             <<" solver_campaign_pending\n";
 }
 
 int main(int argc,char**argv)
@@ -191,9 +204,25 @@ int main(int argc,char**argv)
         return 0;
     }
 
+    // Isolated replay for one refinement level. This does not qualify
+    // mesh convergence; it preserves the per-level physical acceptance gates.
+    if(argc==3 && std::string(argv[1])=="--single") {
+        const Forces x=run(argv[2],0);
+        if(!(x.continuity<1e-7))
+            throw std::runtime_error("NACA0012 continuity gate failed");
+        if(!std::isfinite(x.cd) || !std::isfinite(x.cl))
+            throw std::runtime_error("NACA0012 force integration produced non-finite QoI");
+        if(std::abs(x.cl)>2e-2)
+            throw std::runtime_error("NACA0012 alpha=0 symmetry gate failed");
+        if(!(x.cdp>0.0))
+            throw std::runtime_error("NACA0012 pressure drag sign gate failed");
+        std::cout<<"NACA0012_SINGLE: PASS (one level only; not a mesh qualification)\n";
+        return 0;
+    }
+
     const std::size_t need=3;
     if(argc!=4)
-        throw std::invalid_argument("usage: test_naca0012_qualification mesh_n64.h5 mesh_n128.h5 mesh_n256.h5");
+        throw std::invalid_argument("usage: test_naca0012_qualification [--single mesh.h5 | mesh_n64.h5 mesh_n128.h5 mesh_n256.h5]");
     std::vector<Forces> r;
     for(std::size_t i=0;i<need;++i) r.push_back(run(argv[i+1],64u<<i));
     for(const auto& x:r) {

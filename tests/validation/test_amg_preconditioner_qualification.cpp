@@ -4,6 +4,7 @@
 #include "cfdx/core/linalg/amg_preconditioner.h"
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/advanced_preconditioners.h"
+#include "cfdx/core/linalg/linear_solver_context.h"
 #include "common/test_harness.h"
 
 #include <algorithm>
@@ -21,6 +22,42 @@ using namespace cfdx::core;
 using namespace cfdx::testing;
 
 namespace {
+
+class NegativeIdentityPreconditioner final : public Preconditioner {
+public:
+    bool setup(const SparseMatrix& A) override {
+        size_ = A.n_rows();
+        return A.n_rows() == A.n_cols() && size_ > 0;
+    }
+    bool apply(const Vector& r, Vector& z) const override {
+        if (r.size() != size_ || z.size() != size_) return false;
+        for (std::size_t i = 0; i < size_; ++i) z(i) = -r(i);
+        return true;
+    }
+    const char* name() const override { return "NegativeIdentityTest"; }
+private:
+    std::size_t size_ = 0;
+};
+
+class RejectNumericUpdatePreconditioner final : public Preconditioner {
+public:
+    bool setup(const SparseMatrix& A) override {
+        ++setups;
+        size_ = A.n_rows();
+        return A.n_rows() == A.n_cols() && size_ > 0;
+    }
+    bool update_values(const SparseMatrix&) override { ++updates; return false; }
+    bool apply(const Vector& r, Vector& z) const override {
+        if (r.size() != size_ || z.size() != size_) return false;
+        for (std::size_t i = 0; i < size_; ++i) z(i) = r(i);
+        return true;
+    }
+    const char* name() const override { return "RejectNumericUpdateTest"; }
+    std::size_t setups = 0;
+    std::size_t updates = 0;
+private:
+    std::size_t size_ = 0;
+};
 
 SparseMatrix make_poisson(std::size_t n, double scale = 1.0) {
     SparseMatrix A(n, n);
@@ -283,6 +320,38 @@ bool qualify_multilevel_hierarchy(const AMG& amg,
 
 int main() {
     std::cout << std::setprecision(17);
+
+    // CG must reject a finite but non-positive initial r^T M^-1 r before
+    // changing x, and the failure must report the actual b-Ax residual.
+    {
+        const auto A = make_poisson(8);
+        Vector b = make_rhs(8);
+        Vector x(8, 0.0);
+        NegativeIdentityPreconditioner invalid_preconditioner;
+        const auto result = solve_cg(A, b, x, invalid_preconditioner, 100, 1e-10);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_TRUE(std::abs(result.residual_relative - 1.0) < 1e-12);
+        EXPECT_TRUE(std::abs(relative_true_residual(A, x, b) -
+                             result.residual_relative) < 1e-12);
+    }
+
+    // A reusable context owns the explicit rebuild decision if a same-pattern
+    // numeric refresh is rejected; it must not turn that recoverable lifecycle
+    // event into a failed linear solve.
+    {
+        const auto A = make_poisson(8);
+        const auto A2 = make_poisson(8, 1.25);
+        RejectNumericUpdatePreconditioner preconditioner;
+        ReusablePreconditionerContext context(preconditioner);
+        EXPECT_TRUE(context.prepare(A));
+        EXPECT_TRUE(context.prepare(A2));
+        EXPECT_TRUE(preconditioner.updates == 1);
+        EXPECT_TRUE(preconditioner.setups == 2);
+        EXPECT_TRUE(context.stats().full_setups == 2);
+        EXPECT_TRUE(context.stats().numeric_updates == 0);
+    }
+
     run_case("amg_vs_jacobi_poisson", make_poisson(256), make_rhs(256),
              [](Vector& x) {
                  const auto A = make_poisson(256);
@@ -928,7 +997,8 @@ int main() {
         NativeBoomerAMGPreconditioner amg;
         EXPECT_TRUE(amg.setup(A));
         EXPECT_TRUE(amg.hierarchy_builds() == 1);
-        EXPECT_TRUE(amg.numeric_updates() == 0);        EXPECT_TRUE(amg.update_values(A2));
+        EXPECT_TRUE(amg.numeric_updates() == 0);
+        EXPECT_TRUE(amg.update_values(A2));
         EXPECT_TRUE(amg.hierarchy_builds() == 1);
         EXPECT_TRUE(amg.numeric_updates() == 1);
 
@@ -943,6 +1013,37 @@ int main() {
         Vector x;
         EXPECT_TRUE(amg.apply(b, x));
         EXPECT_TRUE(relative_true_residual(A2, x, b) < 1.0);
+    }
+
+    {
+        // The normalized Gershgorin bound is 2.8 for this SPD matrix
+        // (eigenvalues 2.8, 0.1, 0.1), so the configured omega=0.7
+        // must be reduced below the Jacobi stability limit.
+        SparseMatrix high_bound(3, 3);
+        SparseMatrix low_bound(3, 3);
+        for (std::size_t i = 0; i < 3; ++i) {
+            for (std::size_t j = 0; j < 3; ++j) {
+                high_bound.push_back(i, j, i == j ? 1.0 : 0.9);
+                low_bound.push_back(i, j, i == j ? 1.0 : 0.1);
+            }
+        }
+        high_bound.finalize();
+        low_bound.finalize();
+
+        TestSparseOperator op(high_bound);
+        MatrixFreeVcyclePreconditioner vcycle(op, 0.7);
+        EXPECT_TRUE(vcycle.setup(high_bound));
+        EXPECT_NEAR(vcycle.smoother_omega(), 1.8 / 2.8, 1e-14);
+
+        // A less restrictive refreshed matrix must restore the configured
+        // damping rather than inherit a stale, unnecessarily small omega.
+        EXPECT_TRUE(vcycle.update_values(low_bound));
+        EXPECT_NEAR(vcycle.smoother_omega(), 0.7, 1e-14);
+
+        // A full setup on the original difficult matrix must independently
+        // re-certify its own safe damping.
+        EXPECT_TRUE(vcycle.setup(high_bound));
+        EXPECT_NEAR(vcycle.smoother_omega(), 1.8 / 2.8, 1e-14);
     }
 
     {

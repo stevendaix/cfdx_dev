@@ -45,15 +45,11 @@ Nonsymmetric transport-like systems use BiCGStab. ILU(0) is compared with Jacobi
 
 ## Hierarchy reuse
 
-For an unchanged CSR sparsity pattern:
+For an unchanged CSR sparsity pattern, a successful numeric update preserves the symbolic hierarchy and increments the numeric-update count. The updated operator is still checked with an independently recomputed true residual.
 
-1. setup(A) builds the symbolic hierarchy;
-2. update_values(A_new) refreshes numerical coefficients;
-3. the hierarchy build count must remain unchanged;
-4. the numerical-update count must increase;
-5. a true residual check must still pass.
+A retained AMG hierarchy can become a poor CG preconditioner when refreshed Galerkin levels move outside the stable range of the fixed weighted-Jacobi smoother. The native V-cycle therefore computes a conservative normalized Gershgorin bound on refreshed levels and reduces the damping factor when required. If an update is rejected, the owning reusable context explicitly retries with a full setup on the current matrix; it does not substitute another solver or weaken the residual gate. The full-setup and numeric-update counters distinguish those paths.
 
-If the CSR pattern changes, the coupled Schur numeric-update operation fails explicitly and requires a new setup(). The caller owns the symbolic rebuild decision; the preconditioner must not silently rebuild or substitute another method.
+A changed CSR graph is likewise a symbolic invalidation event and requires a new setup. The context owns that lifecycle decision; the preconditioner itself does not silently rebuild.
 
 ## Selection policy
 

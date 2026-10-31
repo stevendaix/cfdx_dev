@@ -297,6 +297,17 @@ struct IncompressibleSolverControls {
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
         const cfdx::core::Field<double, cfdx::core::Location::FACE>&)>;
     MomentumPredictorCallback momentum_predictor_callback;
+    // Opt-in forensic snapshot immediately before each momentum component
+    // assembly. Called for every predictor attempt, including nonlinear retries.
+    // The callback is observational only; references are valid during the call.
+    using MomentumAssemblyForensicCallback = std::function<void(
+        std::size_t,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::FACE>&,
+        const std::vector<double>&)>;
+    MomentumAssemblyForensicCallback momentum_assembly_forensic_callback;
     // Evidence-only hook: invoked at the exact Krylov call point of the
     // coupled solve - after assembly, gauge treatment, finite checks and
     // preconditioner setup - so the snapshot matrix, RHS and initial guess
@@ -2516,10 +2527,18 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             ? std::numeric_limits<std::size_t>::max() : reference_cell;
         apply_nested_schur_pressure_gauge(pressure_operator, lsc_gauge_cell);
 
+        // The nested LSC/BFBt operator H = D Q^-1 G - C is nonsymmetric
+        // by construction and is only consumed by the nested GMRES solve
+        // below, whose true-residual checks remain authoritative. Request
+        // the general nonsymmetric preconditioner policy: structural setup
+        // checks stay fail-closed, but the SPD/CG smoother certificate
+        // must not reject the hierarchy for its non-positive diagonals.
         auto pressure_preconditioner =
             std::shared_ptr<cfdx::core::Preconditioner>(
                 cfdx::core::make_scalar_preconditioner(
-                    cfdx::core::PreconditionerModel::NativeAMG).release());
+                    cfdx::core::PreconditionerModel::NativeAMG,
+                    /*constant_null_space=*/false,
+                    /*require_smoother_certificate=*/false).release());
         if (!pressure_preconditioner ||
             !pressure_preconditioner->setup(pressure_operator)) {
             throw std::runtime_error(
@@ -2578,8 +2597,16 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     request.preconditioner == cfdx::core::PreconditionerModel::Auto)
                     throw std::invalid_argument(
                         "PCD nested solvers require explicit Krylov and preconditioner models");
+                // SPD/CG nested solves keep the fail-closed smoother
+                // certificate; nested nonsymmetric Krylov solves use the
+                // relaxed policy (outer true-residual checks remain
+                // authoritative).
                 auto preconditioner =
-                    cfdx::core::make_scalar_preconditioner(request.preconditioner);
+                    cfdx::core::make_scalar_preconditioner(
+                        request.preconditioner,
+                        /*constant_null_space=*/false,
+                        /*require_smoother_certificate=*/
+                        request.krylov == cfdx::core::KrylovModel::CG);
                 if (!preconditioner || !preconditioner->setup(matrix))
                     throw std::runtime_error(
                         "PCD nested pressure preconditioner setup failed");
@@ -3283,14 +3310,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.pressure_linear_solver);
         result.pressure_linear_plan = pressure_plan;
         result.pressure_linear_plan_resolved = true;
+        // The reusable context is intentionally dimension-agnostic until its
+        // first prepare(matrix). For reference-cell gauge reduction that first
+        // matrix has N-1 rows, so the preconditioner must not be configured to
+        // project a constant null space: the gauge has already removed it.
+        // Project only on the full-size, explicitly projected-null-space path.
         if (pressure_plan.krylov == KrylovModel::CG) {
+            const bool project_pressure_null_space =
+                pressure_plan.null_space == NullSpaceModel::Constant &&
+                !reduce_pressure_gauge;
             pressure_preconditioner =
                 make_scalar_preconditioner(
                     pressure_plan.preconditioner,
-                    pressure_plan.null_space == NullSpaceModel::Constant);
+                    project_pressure_null_space);
             pressure_context = std::make_unique<ReusableCgContext>(
                 *pressure_preconditioner);
-            if (pressure_plan.null_space == NullSpaceModel::Constant) {
+            if (project_pressure_null_space) {
                 pressure_null_space = std::make_unique<NullSpaceProjector>(
                     NullSpaceProjector::constant(mesh.n_cells()));
             }
@@ -3558,6 +3593,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
+        if (controls.momentum_assembly_forensic_callback)
+            controls.momentum_assembly_forensic_callback(
+                iter, p, grad_p, U, mass_flux, mu_eff);
         if (controls.momentum_predictor_callback)
             controls.momentum_predictor_callback(iter, mu_eff, U, mass_flux);
 
@@ -4787,12 +4825,27 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // is resolved relative to the momentum RHS. If the reference is at
         // round-off, keep it for diagnostics but do not let its ratio dominate
         // the nonlinear monitor.
-        const double momentum_reference_roundoff =
-            100.0 * std::numeric_limits<double>::epsilon() *
+        // The reference-relative metric is meaningful only when its
+        // reference is resolved above the declared physical RHS-relative
+        // tolerance (bounded below by the FP64 round-off floor). A tiny but
+        // nonzero reference can otherwise pin the ratio near one despite an
+        // already-satisfied physical residual.
+        const double momentum_reference_resolution_threshold =
+            std::max(
+                100.0 * std::numeric_limits<double>::epsilon(),
+                controls.convergence.relative_tolerance) *
             std::max(h.momentum_rhs_scale, tiny);
         const bool momentum_reference_ill_conditioned =
-            h.momentum_equation_residual_reference <= momentum_reference_roundoff;
-        double nonlinear_metric = momentum_reference_ill_conditioned
+            h.momentum_equation_residual_reference <=
+            momentum_reference_resolution_threshold;
+        // COUPLED measures this residual after the monolithic solve, so its
+        // first-iteration reference is not an independent pre-solve baseline.
+        // Exclude that ratio for COUPLED regardless of its magnitude, while
+        // keeping the independently RHS-normalized physical gate mandatory.
+        const bool use_reference_relative_metric =
+            !momentum_reference_ill_conditioned &&
+            controls.algorithm != PressureVelocityAlgorithm::COUPLED;
+        double nonlinear_metric = !use_reference_relative_metric
             ? std::max({
                   h.momentum_residual,
                   h.pressure_residual,

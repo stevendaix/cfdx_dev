@@ -919,13 +919,14 @@ int main()
         const auto r = solve_steady_incompressible(m,U,p,ubc,pbc,c);
         EXPECT_TRUE(r.converged);
         EXPECT_TRUE(!r.history.empty());
-        EXPECT_TRUE(r.pressure_linear_context.full_setups == 1);
+        // The zero-state pressure RHS is already satisfied by the initial
+        // guess. ReusableCgContext must return before AMG setup; all three
+        // pressure-correction calls are still accounted as solves.
+        EXPECT_TRUE(r.pressure_linear_context.full_setups == 0);
         EXPECT_TRUE(r.pressure_linear_context.numeric_updates == 0);
+        EXPECT_TRUE(r.pressure_linear_context.unchanged_reuses == 0);
         EXPECT_TRUE(
             r.pressure_linear_context.solves == 3 * r.iterations);
-        EXPECT_TRUE(
-            r.pressure_linear_context.unchanged_reuses + 1 ==
-            r.pressure_linear_context.solves);
     });
 
     run_case("piso_adaptive_acceleration_reduces_inner_work", [] {

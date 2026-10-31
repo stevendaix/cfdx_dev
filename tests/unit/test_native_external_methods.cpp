@@ -96,6 +96,24 @@ int main() {
         EXPECT_TRUE(relative_true_residual(matrix, correction, rhs) < 1.0);
     });
 
+    run_case("general_gmres_amg_accepts_negative_diagonal_operator", [] {
+        // LSC/BFBT pressure approximations can be negative definite. They
+        // are solved by GMRES, so the SPD/CG Jacobi certificate is inapplicable;
+        // retain the signed-diagonal smoother on this explicit general path.
+        SparseMatrix matrix(24, 24);
+        for (std::size_t i = 0; i < 24; ++i) {
+            matrix.push_back(i, i, -2.0);
+            if (i > 0) matrix.push_back(i, i - 1, 1.0);
+            if (i + 1 < 24) matrix.push_back(i, i + 1, 1.0);
+        }
+        matrix.finalize();
+        NativeBoomerAMGPreconditioner amg(false, false);
+        EXPECT_TRUE(amg.setup(matrix));
+        Vector rhs(24, 1.0), correction(24, 0.0);
+        EXPECT_TRUE(amg.apply(rhs, correction));
+        EXPECT_TRUE(correction.is_valid());
+    });
+
     run_case("cg_accepts_native_boomer_style_amg", [] {
         const auto matrix = make_poisson(96);
         Vector exact(96);
@@ -196,6 +214,26 @@ int main() {
         EXPECT_TRUE(context.stats().numeric_updates == 1);
         EXPECT_TRUE(amg.numeric_updates() == 1);
         EXPECT_TRUE(amg.hierarchy_builds() == 1);
+    });
+
+    run_case("reusable_cg_counts_already_converged_zero_iteration_solve", [] {
+        const auto matrix = make_poisson(8);
+        Vector exact(8);
+        for (std::size_t i = 0; i < exact.size(); ++i)
+            exact(i) = 0.1 * static_cast<double>(i + 1);
+        const Vector rhs = multiply(matrix, exact);
+
+        NativeBoomerAMGPreconditioner amg;
+        ReusableCgContext context(amg);
+        Vector solution = exact;
+        const auto result = context.solve(matrix, rhs, solution, 100, 1e-12);
+
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_NEAR(result.residual_relative, 0.0, 1e-14);
+        EXPECT_TRUE(context.stats().solves == 1);
+        EXPECT_TRUE(context.stats().full_setups == 0);
+        EXPECT_TRUE(amg.hierarchy_builds() == 0);
     });
 
     run_case("reusable_cg_updates_amg_without_rebuilding_hierarchy", [] {

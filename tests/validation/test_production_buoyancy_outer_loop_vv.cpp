@@ -10,8 +10,8 @@
 //     uniform in space (Dirichlet walls at the initial temperature)
 //     builds a constant cellwise Boussinesq source. The loop's final
 //     carrier state is BIT-IDENTICAL to the equivalent uniform
-//     body_force run repeated with the same two-solve sequence
-//     (cold start + warm restart), proving the cellwise channel
+//     body_force run repeated with the same three-solve sequence
+//     (cold start + two warm restarts), proving the cellwise channel
 //     reaches the momentum assembly and the conservation audit with
 //     the exact uniform semantics.
 //   * REFERENCE-TEMPERATURE IDENTITY: at T = T_ref everywhere the
@@ -354,14 +354,11 @@ int main()
         const auto loop = run_production_buoyant_outer_loop(
             mesh, ubc, pbc, controls, setup, U, p);
 
-        // Coupled fixed point reached on the third outer iteration:
-        // the first can never prove it, the second is a full warm
-        // carrier solve whose response still moves, and the third is
-        // accepted at entry (diag run 39633631822: the warm carrier
-        // re-solve ends STAGNATED with every residual at the machine
-        // floor, the entry state is restored and the previously
-        // accepted carrier reused), with all three separate
-        // stationarity gates green and every inner stage green.
+        // Coupled fixed point reached on the third outer iteration.
+        // All three carrier solves use the same uniform 320 K source in
+        // this identity case; the reference below therefore replays the
+        // same cold-start plus two warm-start solves, without assuming
+        // that the third solve must use the convergence-at-entry fallback.
         EXPECT_TRUE(loop.converged);
         EXPECT_TRUE(loop.fixed_point_temperature_passed);
         EXPECT_TRUE(loop.fixed_point_velocity_passed);
@@ -380,16 +377,14 @@ int main()
             EXPECT_TRUE(entry.energy_converged);
             EXPECT_FALSE(entry.s2s_ran);
         }
-        // Convergence-at-entry bookkeeping (diag run 39633631822):
-        // only the final (third) iteration is accepted at entry - the
-        // warm carrier re-solve ended STAGNATED at machine-precision
-        // residuals, the entry state was restored and the previously
-        // accepted carrier reused; the first two iterations are full
-        // carrier solves.
-        EXPECT_TRUE(loop.history[2].flow_converged_at_entry);
+        // Convergence-at-entry is a recovery path, not a required outcome:
+        // the final warm carrier solve may either converge normally or be
+        // accepted at the machine floor. The result-level flag must agree
+        // with the final history entry; the first two solves are full solves.
+        EXPECT_TRUE(loop.flow_converged_at_entry ==
+                    loop.history[2].flow_converged_at_entry);
         EXPECT_FALSE(loop.history[1].flow_converged_at_entry);
         EXPECT_FALSE(loop.history[0].flow_converged_at_entry);
-        EXPECT_TRUE(loop.flow_converged_at_entry);
         // The first iteration has no previous response: its
         // stationarity diagnostics must remain infinite (a single
         // Picard pass is never a fixed point).
@@ -404,7 +399,7 @@ int main()
 
         // Equivalent uniform body force computed with the SAME
         // expression as build_cell_buoyancy_acceleration (including
-        // the negative-zero components), then the SAME two-solve
+        // the negative-zero components), then the SAME three-solve
         // sequence as the loop (cold start, warm restart).
         const Vec3 gravity = parse_gravity_vector(setup.gravity_vector);
         const double perturbation = 0.001 * (320.0 - 300.0);
@@ -425,12 +420,18 @@ int main()
         const auto ref2 = solve_steady_incompressible(
             mesh, U_ref, p_ref, ubc, pbc, ref_controls);
         EXPECT_TRUE(ref2.converged);
+        const auto ref3 = solve_steady_incompressible(
+            mesh, U_ref, p_ref, ubc, pbc, ref_controls);
+        EXPECT_TRUE(ref3.converged);
 
-        // BIT-IDENTICAL carrier state: the cellwise channel must
-        // reproduce the uniform semantics exactly.
+        // BIT-IDENTICAL carrier state: the reference replays the same three
+        // carrier solves as the outer loop (one cold start, two warm starts).
+        // Comparing after only two reference solves was invalid once the
+        // third outer carrier solve legitimately converged normally rather
+        // than taking the convergence-at-entry recovery path.
         expect_identical_velocity(U, U_ref, "uniform equivalence U");
         expect_identical_fields(p, p_ref, "uniform equivalence p");
-        EXPECT_TRUE(loop.flow.converged == ref2.converged);
+        EXPECT_TRUE(loop.flow.converged == ref3.converged);
     });
 
     // -----------------------------------------------------------------
@@ -982,6 +983,24 @@ int main()
             EXPECT_TRUE(s2s.converged);
             EXPECT_TRUE(s2s.energy.converged);
         }
+    });
+
+    run_case("production_buoyancy_convergence_at_entry_machine_floor_contract", [] {
+        IncompressibleSolveResult flow;
+        IncompressibleIteration floor;
+        floor.pressure_residual = 1e-15;
+        floor.continuity_normalized = 1e-15;
+        floor.corrected_flux_continuity_linf = 1e-15;
+        floor.momentum_equation_residual_rhs_relative = 1e-13;
+        flow.history.push_back(floor);
+        EXPECT_TRUE(cfdx::physics::carrier_at_machine_equilibrium(flow));
+
+        // One physical residual above its own floor keeps the recovery
+        // path fail-closed, even when the other three residuals are tiny.
+        flow.history.back().corrected_flux_continuity_linf = 1e-12;
+        EXPECT_FALSE(cfdx::physics::carrier_at_machine_equilibrium(flow));
+        flow.history.clear();
+        EXPECT_FALSE(cfdx::physics::carrier_at_machine_equilibrium(flow));
     });
 
     return run_all();

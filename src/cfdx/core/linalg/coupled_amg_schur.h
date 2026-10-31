@@ -84,7 +84,11 @@ public:
         std::size_t reference_cell = std::numeric_limits<std::size_t>::max())
         : n_cells_(n_cells), nv_(3 * n_cells),
           options_(options), reference_cell_(reference_cell),
-          pressure_amg_(false) {}
+          // The pressure AMG preconditions the nonsymmetric Schur
+          // approximation S~ = C - D M_b^-1 G inside the coupled
+          // GMRES/FGMRES outer solve: general nonsymmetric preconditioner
+          // path, not the SPD/CG certification path.
+          pressure_amg_(false, /*require_smoother_certificate=*/false) {}
 
     void set_pcd_schur(std::unique_ptr<PcdSchurApproximation> pcd) {
         pcd_schur_ = std::move(pcd);

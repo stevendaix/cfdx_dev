@@ -391,7 +391,12 @@ private:
     std::unique_ptr<NativeMGRPreconditioner> coarse_mgr_;
     std::vector<std::vector<std::pair<std::size_t,double>>> coarse_to_fine_;
     std::vector<std::vector<std::pair<std::size_t,double>>> fine_to_coarse_;
-    NativeBoomerAMGPreconditioner coarse_amg_;
+    // The coarse AMG preconditions the reduced operator
+    // S~ = ACC - ACF diag(AFF)^-1 AFC, nonsymmetric in general, consumed
+    // by the coupled outer Krylov solve: general nonsymmetric
+    // preconditioner path, relaxed smoother certificate.
+    NativeBoomerAMGPreconditioner coarse_amg_{
+        false, /*require_smoother_certificate=*/false};
     bool ready_{false};
     std::size_t setup_count_{0};
     std::size_t numeric_updates_{0};

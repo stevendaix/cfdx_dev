@@ -58,7 +58,7 @@ inline SolverResult solve_cg_impl(
 {
     SolverResult result;
 
-    if (A.n_rows() != A.n_cols()) {
+    if (A.n_rows() == 0 || A.n_rows() != A.n_cols()) {
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
     }
@@ -96,9 +96,7 @@ inline SolverResult solve_cg_impl(
     // rejected residual replacement). Preserve its current b-A*x diagnostic
     // instead of returning SolverResult's default zero residuals. This helper
     // is used only on failure; it does not change an iterate or a stopping gate.
-    const auto not_applicable = [&](std::size_t iterations) {
-        result.status = SolverStatus::NOT_APPLICABLE;
-        result.iterations = iterations;
+    const auto update_true_residual = [&]() {
         Vector failure_residual(n);
         mixed_precision_true_residual(A, b, x, failure_residual);
         result.residual =
@@ -109,6 +107,24 @@ inline SolverResult solve_cg_impl(
             ? result.residual / rhs_norm
             : (result.residual == 0.0
                 ? 0.0 : std::numeric_limits<double>::infinity());
+    };
+    const auto not_applicable = [&](std::size_t iterations) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        result.iterations = iterations;
+        update_true_residual();
+        return result;
+    };
+    // Preserve the independently recomputed FP64 residual on every numerical
+    // breakdown. Keep the existing public status taxonomy: the sample records
+    // the Krylov scalars that identify the first invalid operation.
+    const auto diverged = [&](std::size_t iterations, double preconditioned_dot,
+                              double pAp, double alpha, double recursive_residual) {
+        result.status = SolverStatus::DIVERGED;
+        result.iterations = iterations;
+        update_true_residual();
+        result.diagnostics.push_back(
+            {iterations, result.residual, recursive_residual,
+             preconditioned_dot, pAp, alpha, 0.0});
         return result;
     };
     const double* Av = A.values_data();
@@ -120,6 +136,28 @@ inline SolverResult solve_cg_impl(
     const SolverPrecision redp = precision.enabled ? precision.reduction_precision : SolverPrecision::FP64;
     const auto* Ac = A.columns_data();
     const auto* Ar = A.row_offsets_data();
+
+    // r = b - A x. Check the true residual before setting up or applying
+    // a preconditioner: an already-converged system (including b = 0, x = 0)
+    // needs no Krylov direction, and must not be rejected because r^T M^-1 r
+    // is zero or because an unused preconditioner cannot be initialized.
+    std::vector<double> r(n);
+    Vector rv(n); mixed_precision_true_residual(A,b,x,rv);
+    if (null_space) null_space->remove(rv);
+    for (std::size_t i=0;i<n;++i) r[i]=rv(i);
+
+    const double b_norm = krylov_norm2(b, SolverPrecision::FP64, reduction);
+    const double initial_true_residual =
+        krylov_norm2(rv, SolverPrecision::FP64, reduction);
+    const double tol_abs = tolerance * std::max(b_norm, 1e-300);
+    if (initial_true_residual <= tol_abs) {
+        result.status = SolverStatus::CONVERGED;
+        result.iterations = 0;
+        result.residual = initial_true_residual;
+        result.residual_relative = b_norm > 0.0
+            ? initial_true_residual / b_norm : 0.0;
+        return result;
+    }
 
     // Preserve the historical Jacobi path when no external preconditioner is
     // supplied. This keeps the native solver behavior and API unchanged.
@@ -141,12 +179,6 @@ inline SolverResult solve_cg_impl(
             }
         }
     }
-
-    // r = b - A x
-    std::vector<double> r(n);
-    Vector rv(n); mixed_precision_true_residual(A,b,x,rv);
-    if (null_space) null_space->remove(rv);
-    for (std::size_t i=0;i<n;++i) r[i]=rv(i);
 
     // z = M^{-1} r
     std::vector<double> z(n);
@@ -176,26 +208,23 @@ inline SolverResult solve_cg_impl(
     for (std::size_t i = 0; i < n; ++i) r_vector(i) = r[i];
     double rsold = krylov_dot(r_vector, z_vector, redp, reduction);
 
-    const double b_norm = krylov_norm2(b, SolverPrecision::FP64, reduction);
-    const double tol_abs = tolerance * std::max(b_norm, 1e-300);
+    if (!std::isfinite(rsold))
+        return diverged(0, rsold, 0.0, 0.0, initial_true_residual);
+    // CG requires an SPD preconditioner as well as an SPD operator. A finite
+    // but non-positive initial r^T M^-1 r means that requirement is already
+    // violated; do not take a negative step and corrupt the iterate. Preserve
+    // the independently recomputed true residual in the failure result.
+    if (!(rsold > 0.0)) {
+        result.diagnostics.push_back(
+            {0, initial_true_residual, initial_true_residual,
+             rsold, 0.0, 0.0, 0.0});
+        return not_applicable(0);
+    }
 
-    if (!std::isfinite(rsold)) { result.status=SolverStatus::DIVERGED; return result; }
-
-    const double initial_true_residual =
-        krylov_norm2(r_vector, SolverPrecision::FP64, reduction);
     if (preconditioner) {
         result.diagnostics.push_back(
             {0, initial_true_residual, initial_true_residual,
              rsold, 0.0, 0.0, 0.0});
-    }
-    if (initial_true_residual <= tol_abs) {
-        result.status = SolverStatus::CONVERGED;
-        result.iterations = 0;
-        result.residual = preconditioner
-            ? initial_true_residual
-            : krylov_norm2(rv, SolverPrecision::FP64, reduction);
-        result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : 0.0;
-        return result;
     }
 
     // Residual replacement only pays for itself while b-Ax is still
@@ -232,10 +261,22 @@ inline SolverResult solve_cg_impl(
         }
         const double pAp = krylov_dot(p_vector, Ap_vector, redp, reduction);
         if (!(pAp > 0.0) || !std::isfinite(pAp)) {
-            return not_applicable(iter);
+            // CG is not applicable when the search curvature is non-positive
+            // (or non-finite). Preserve the first failing Krylov scalars even
+            // when this occurs between periodic diagnostic sampling points.
+            result.status = SolverStatus::NOT_APPLICABLE;
+            result.iterations = iter;
+            update_true_residual();
+            result.diagnostics.push_back(
+                {iter, result.residual,
+                 std::numeric_limits<double>::quiet_NaN(),
+                 rsold, pAp, std::numeric_limits<double>::quiet_NaN(), 0.0});
+            return result;
         }
         const double alpha = rsold / pAp;
-        if (!std::isfinite(alpha)) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
+        if (!std::isfinite(alpha))
+            return diverged(iter, rsold, pAp, alpha,
+                            std::numeric_limits<double>::quiet_NaN());
 
         // x = x + alpha p
         // r = r - alpha Ap
@@ -249,7 +290,9 @@ inline SolverResult solve_cg_impl(
         }
 
         for (std::size_t i = 0; i < n; ++i)
-            if (!std::isfinite(x(i)) || !std::isfinite(r[i])) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
+            if (!std::isfinite(x(i)) || !std::isfinite(r[i]))
+                return diverged(iter, rsold, pAp, alpha,
+                                std::numeric_limits<double>::quiet_NaN());
 
         // z = M^{-1} r
         if (!apply_preconditioner()) {
@@ -263,7 +306,9 @@ inline SolverResult solve_cg_impl(
         }
         const double rsnew = krylov_dot(r_vector, z_vector, redp, reduction);
 
-        if (!std::isfinite(rsnew)) { result.status=SolverStatus::DIVERGED; result.iterations=iter; return result; }
+        if (!std::isfinite(rsnew))
+            return diverged(iter, rsnew, pAp, alpha,
+                            std::numeric_limits<double>::quiet_NaN());
         // A preconditioned norm is not a true residual norm. Re-evaluate
         // b-A*x in FP64 for the external-preconditioner path before deciding
         // convergence, just as the reported final residual is evaluated.
@@ -289,6 +334,19 @@ inline SolverResult solve_cg_impl(
             result.residual = res;
             result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
             return result;
+        }
+        // A finite non-positive r^T M^-1 r is a preconditioner/recurrence
+        // breakdown. Preserve the exact iteration even when it is not one of
+        // the periodic diagnostic sampling points.
+        if (preconditioner && !(rsnew > 0.0) &&
+            (result.diagnostics.empty() ||
+             result.diagnostics.back().iteration != iter)) {
+            const double recursive_residual =
+                std::sqrt(std::max(0.0, krylov_dot(
+                    r_vector, r_vector, SolverPrecision::FP64, reduction)));
+            result.diagnostics.push_back(
+                {iter, res, recursive_residual, rsnew, pAp, alpha,
+                 rsold != 0.0 ? rsnew / rsold : 0.0});
         }
 
         // Internal-Jacobi CG also needs residual replacement when its recursive

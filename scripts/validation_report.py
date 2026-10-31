@@ -79,8 +79,51 @@ def parse_matrix(path: Path) -> list[Case]:
 
 
 def run_test(executable: Path, log_path: Path) -> tuple[int, str]:
+    """Run a registered validation through CTest, preserving legacy fallback.
+
+    CTest supplies build-tree test properties and runtime environment (notably
+    MPI loader paths). Some optional campaigns, such as a locally requested
+    full Ghia run, may have a built executable but no registered CTest entry;
+    retain direct execution only for that unregistered-executable case.
+    """
+    test_name = re.escape(executable.name)
+    listing = subprocess.run(
+        ["ctest", "-N", "-R", f"^{test_name}$"],
+        cwd=executable.parent,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    if listing.returncode != 0:
+        log_path.write_text(listing.stdout, encoding="utf-8")
+        return listing.returncode, listing.stdout
+
+    match = re.search(r"Total Tests:\s*(\d+)", listing.stdout)
+    test_count = int(match.group(1)) if match else 0
+    if test_count > 1:
+        output = (
+            f"VALIDATION_GATE: expected at most one exact CTest entry for "
+            f"{executable.name}, found {test_count}\n{listing.stdout}"
+        )
+        log_path.write_text(output, encoding="utf-8")
+        return 1, output
+
+    command = (
+        [
+            "ctest",
+            "-V",
+            "--output-on-failure",
+            "--no-tests=error",
+            "-R",
+            f"^{test_name}$",
+        ]
+        if test_count == 1
+        else [str(executable.resolve())]
+    )
     proc = subprocess.run(
-        [str(executable)],
+        command,
+        cwd=executable.parent,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
