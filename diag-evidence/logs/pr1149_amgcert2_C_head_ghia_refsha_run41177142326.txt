@@ -1,0 +1,4 @@
+f450026608d1a99fcf1189fe79fc6ef2d256a53e
+f4500266 test(amg): use SPD matrix for relaxed damping refresh
+473ab256 test(piso): expect zero-setup converged pressure solves
+6633f36f fix(amg): separate SPD/CG smoother certificate from nonsymmetric precond path
