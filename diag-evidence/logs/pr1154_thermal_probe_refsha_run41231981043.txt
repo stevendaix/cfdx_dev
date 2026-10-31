@@ -1,0 +1,4 @@
+461f2bb145a9c65855ea5e68fbd1b449900918f7
+461f2bb1 fix(thermal): cap A4 driver linear tolerance for the absolute-watt audit
+9c96e4d0 docs: reference A4 pull request in method sheet 17
+ab0ea6da Add conjugate interfaces to the thermal driver (A4)
