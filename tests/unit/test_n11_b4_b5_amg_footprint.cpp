@@ -279,11 +279,17 @@ int main() {
         // A certifiable hierarchy still gets the reduced damping on the
         // relaxed path: the fresh-rebuild poisoning protection applies to
         // both policies.
+        // Dense positive-correlation matrix: eigenvalues are positive
+        // (1 - 0.9 = 0.1, and 1 + 17*0.9), while its conservative
+        // normalized Gershgorin upper bound exceeds the configured damping
+        // limit. This exercises reduced damping without using an indefinite
+        // tridiagonal matrix.
         SparseMatrix strong(18, 18);
         for (std::size_t i = 0; i < 18; ++i) {
             strong.push_back(i, i, 1.0);
-            if (i > 0) strong.push_back(i, i - 1, -0.9);
-            if (i + 1 < 18) strong.push_back(i, i + 1, -0.9);
+            for (std::size_t j = 0; j < 18; ++j) {
+                if (j != i) strong.push_back(i, j, 0.9);
+            }
         }
         strong.finalize();
         EXPECT_TRUE(amg.setup(strong));
