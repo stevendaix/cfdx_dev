@@ -219,6 +219,9 @@ public:
                     result.residual = residual_norm;
                     result.residual_relative = rhs_norm > 0.0
                         ? residual_norm / rhs_norm : 0.0;
+                    // Count a successful zero-iteration solve exactly like a
+                    // solve that proceeds through preconditioner preparation.
+                    state_.record_solve();
                     return result;
                 }
             }
