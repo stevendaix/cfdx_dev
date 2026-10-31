@@ -102,9 +102,7 @@ def main() -> int:
     parser.add_argument("mesh_n128", type=Path)
     parser.add_argument("mesh_n256", type=Path)
     parser.add_argument("--timeout", type=float, default=3600.0)
-    parser.add_argument(
-        "--output-dir", type=Path, default=Path("naca_campaign_logs")
-    )
+    parser.add_argument("--output-dir", type=Path, default=Path("naca_campaign_logs"))
     args = parser.parse_args()
     if not math.isfinite(args.timeout) or args.timeout <= 0:
         parser.error("--timeout must be positive and finite")
