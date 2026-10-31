@@ -1,0 +1,6 @@
+run_id=41177142326
+matrix_id=B_fix
+probe_sha=f450026608d1a99fcf1189fe79fc6ef2d256a53e
+tests_regex=^(test_n8_pressure_velocity_matrix|test_n9_common_schur_qualification|test_steady_incompressible_solver|test_n8_physical_qualification|test_n11_b4_b5_amg_footprint)$
+master_pin=1258cac15fbdacb5abc04594bc0e586fbc184fc4
+purpose=A_debug=certificate rejection forensics on 7d3bdd0c; B_fix=verify repair + b5 regressions on f4500266; C_head_ghia=capture ghia failure mode on f4500266; D_master_ghia=attribute ghia failure vs master 1258cac1

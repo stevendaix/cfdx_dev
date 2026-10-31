@@ -1,0 +1,31 @@
+matrix_id=B_fix
+probe_sha=f450026608d1a99fcf1189fe79fc6ef2d256a53e
+build_exit=0
+ctest_exit=0
+----- certificate rejections -----
+----- failed tests / key lines -----
+14:100% tests passed, 0 tests failed out of 5
+----- tail of ctest log -----
+Internal ctest changing into directory: /tmp/bdir
+Test project /tmp/bdir
+    Start  11: test_n8_physical_qualification
+1/5 Test  #11: test_n8_physical_qualification .......   Passed    9.32 sec
+    Start 110: test_steady_incompressible_solver
+2/5 Test #110: test_steady_incompressible_solver ....   Passed    0.00 sec
+    Start 120: test_n8_pressure_velocity_matrix
+3/5 Test #120: test_n8_pressure_velocity_matrix .....   Passed    4.40 sec
+    Start 143: test_n11_b4_b5_amg_footprint
+4/5 Test #143: test_n11_b4_b5_amg_footprint .........   Passed    0.00 sec
+    Start 231: test_n9_common_schur_qualification
+5/5 Test #231: test_n9_common_schur_qualification ...   Passed    0.00 sec
+
+100% tests passed, 0 tests failed out of 5
+
+Label Time Summary:
+n8                =  13.72 sec*proc (2 tests)
+phase13           =   0.00 sec*proc (1 test)
+qualification     =  13.72 sec*proc (2 tests)
+sanitizer-slow    =  13.72 sec*proc (2 tests)
+validation        =  13.72 sec*proc (3 tests)
+
+Total Test time (real) =  13.74 sec
