@@ -2520,7 +2520,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         auto pressure_preconditioner =
             std::shared_ptr<cfdx::core::Preconditioner>(
                 cfdx::core::make_scalar_preconditioner(
-                    cfdx::core::PreconditionerModel::NativeAMG).release());
+                    cfdx::core::PreconditionerModel::NativeAMG,
+                    false, false).release());
         if (!pressure_preconditioner) {
             throw std::runtime_error(
                 "N8 LSC/BFBt pressure AMG factory returned a null preconditioner");
