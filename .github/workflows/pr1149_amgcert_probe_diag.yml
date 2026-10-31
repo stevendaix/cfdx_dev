@@ -1,0 +1,212 @@
+name: PR 1149 AMG certificate probe (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Oracle evidence-only : rejouer les 4 tests fautifs du job "Fast regression
+# and validation tests" (exit 8, vague 18:12-18:18Z sur le head debug
+# 7d3bdd0c) : test_n9_common_schur_qualification,
+# test_n8_pressure_velocity_matrix, test_steady_incompressible_solver,
+# test_n8_physical_qualification. Cause racine suspectee (analyse statique) :
+# le certificat Jacobi fail-closed ajoute au fresh setup par c4eebec018,
+# rendu atteignable pour diagonales non positives par 6edd4e52cf (echelle
+# sqrt(d_i)*sqrt(d_j) -> NaN -> +inf), rejette l'operateur de pression
+# stabilise non symetrique H = D Q^-1 G - C (LSC/BFBt, nested preconditioner
+# de steady_incompressible_solver) et les approximations de Schur couplees
+# S~ = C - D M_b^-1 G (CoupledBlockSchurAMGPreconditioner::pressure_amg_).
+# A/B : A_debug = 7d3bdd0c exact (capture le message de rejet precis :
+# niveau, ligne, inverse_diagonal / borne Gershgorin), B_fix = 6633f36f
+# (correctif require_smoother_certificate : chemin SPD/CG strict conserve,
+# chemin preconditioneur non symetrique assoupli, verifie par les 2
+# regressions b5_smoother_certificate_* ajoutees). Capture aussi le verdict
+# de test_n11_b4_b5_amg_footprint sur les deux heads.
+# Aucun push master, aucune modification de branche PR, aucune tolerance
+# modifiee.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1149_amgcert_probe_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1149-amgcert-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR_DEBUG_SHA: 7d3bdd0c5e9b77a7a72b9df41d8b37c1dfb93662
+  PR_FIX_SHA: 6633f36f948b2135eff721de3cb96f532caf727b
+
+jobs:
+  oracle:
+    name: replica amgcert tests (${{ matrix.id }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        id: [A_debug, B_fix]
+    env:
+      WDIR: /tmp/wt
+      BDIR: /tmp/bdir
+      MATRIX_ID: ${{ matrix.id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pins and worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          if [ "$MATRIX_ID" = "A_debug" ]; then
+            PROBE_SHA="$PR_DEBUG_SHA"
+          else
+            PROBE_SHA="$PR_FIX_SHA"
+          fi
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "matrix_id=$MATRIX_ID"
+            echo "probe_sha=$PROBE_SHA"
+            echo "purpose=replay 4 failing fast tests + amg footprint regression; capture exact Jacobi certificate rejection (A_debug=7d3bdd0c) or verify repair (B_fix=6633f36f)"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_meta_run$GITHUB_RUN_ID.txt"
+          echo "probe_sha=$PROBE_SHA" > "$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+          git cat-file -e "$PROBE_SHA^{commit}" || { echo "::error::probe sha unresolvable"; exit 1; }
+          git worktree add "$WDIR" "$PROBE_SHA"
+          cd "$WDIR"
+          git rev-parse HEAD > "$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_refsha_run$GITHUB_RUN_ID.txt"
+          git log --oneline -3 >> "$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_refsha_run$GITHUB_RUN_ID.txt"
+
+      - name: Install build dependencies (validation-build replica)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
+
+      - name: Install Python dependencies (validation-build replica)
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Configure (validation-build replica)
+        run: |
+          cmake -S "$WDIR" -B "$BDIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$RUNNER_TEMP/venv/bin/python" > "$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_configure_run$GITHUB_RUN_ID.log" 2>&1 || { cat "$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_configure_run$GITHUB_RUN_ID.log"; exit 1; }
+
+      - name: Build the probe test targets
+        run: |
+          set +e
+          TARGETS="test_n8_pressure_velocity_matrix test_n9_common_schur_qualification test_steady_incompressible_solver test_n8_physical_qualification test_n11_b4_b5_amg_footprint"
+          ALL_LISTED=1
+          for T in $TARGETS; do
+            if ! cmake --build "$BDIR" --target help 2>/dev/null | grep -q "$T"; then
+              echo "target not listed: $T"
+              ALL_LISTED=0
+            fi
+          done
+          if [ "$ALL_LISTED" = "1" ]; then
+            for T in $TARGETS; do
+              echo "building target $T"
+              cmake --build "$BDIR" --target "$T" --parallel 4 >> /tmp/build_raw.log 2>&1 || { echo "build_failed_target=$T" >> /tmp/build_raw.log; break; }
+            done
+          else
+            echo "full build fallback"
+            cmake --build "$BDIR" --parallel 4 > /tmp/build_raw.log 2>&1
+          fi
+          rc=$?
+          {
+            echo "build_exit=$rc"
+            tail -n 80 /tmp/build_raw.log
+          } > "$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_build_run$GITHUB_RUN_ID.log"
+          echo "build_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::build failed - see evidence"
+            exit 1
+          fi
+
+      - name: Run the probe tests (watchdog 3600 s)
+        run: |
+          set +e
+          rm -f /tmp/ctest_rc
+          ( ctest --test-dir "$BDIR" -R '^(test_n8_pressure_velocity_matrix|test_n9_common_schur_qualification|test_steady_incompressible_solver|test_n8_physical_qualification|test_n11_b4_b5_amg_footprint)$' --output-on-failure > "$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_ctest_run$GITHUB_RUN_ID.log" 2>&1; echo $? > /tmp/ctest_rc ) &
+          CTEST_PID=$!
+          finished=0
+          for i in $(seq 1 240); do
+            if [ -f /tmp/ctest_rc ]; then finished=1; break; fi
+            sleep 15
+          done
+          S="$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+          if [ "$finished" = "1" ]; then
+            rc=$(cat /tmp/ctest_rc)
+            echo "ctest_exit=$rc" >> "$S"
+            echo "ctest_exit=$rc"
+          else
+            echo "ctest_did_not_finish_within_3600s" >> "$S"
+            echo "timeout_like=true" >> "$S"
+            echo "::warning::ctest still running after 3600 s - killed for evidence (timeout-like signature)"
+            pkill -TERM -P "$CTEST_PID" 2>/dev/null || true
+            kill -TERM "$CTEST_PID" 2>/dev/null || true
+            sleep 5
+            pkill -KILL -P "$CTEST_PID" 2>/dev/null || true
+          fi
+          L="$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_ctest_run$GITHUB_RUN_ID.log"
+          grep -E 'tests passed|tests failed|The following tests FAILED' "$L" 2>/dev/null || true
+          exit 0
+
+      - name: Extract verdict (evidence-only)
+        if: always()
+        run: |
+          S="$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_status_run$GITHUB_RUN_ID.txt"
+          L="$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_ctest_run$GITHUB_RUN_ID.log"
+          V="$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_verdict_run$GITHUB_RUN_ID.txt"
+          {
+            echo "matrix_id=$MATRIX_ID"
+            cat "$S" 2>/dev/null || true
+            if [ -f "$L" ]; then
+              echo '----- certificate rejections -----'
+              grep -nE 'Jacobi stability certificate|Gershgorin bound|Jacobi damping|empty AMG hierarchy|diagonal size mismatch' "$L" | head -n 40 || true
+              echo '----- failed tests -----'
+              grep -nE 'The following tests FAILED|Timeout|Expected|EXPECT|runtime_error|Failed|tests passed' "$L" | tail -n 40 || true
+              echo '----- tail of ctest log -----'
+              tail -n 40 "$L"
+            else
+              echo 'no ctest log'
+            fi
+          } > "$V"
+          cat "$V"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1149 amgcert probe run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          V="$GITHUB_WORKSPACE/$EVID/pr1149_amgcert_${MATRIX_ID}_verdict_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$V" ]; then
+            echo "::error::no verdict recorded - read oracle evidence"
+            exit 1
+          fi
+          echo "verdict recorded for $MATRIX_ID"
