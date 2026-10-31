@@ -41,9 +41,7 @@ class ControlledNacaTests(unittest.TestCase):
             mesh = root / "mesh.h5"
             mesh.write_text("fixture")
             script = root / "slow.py"
-            script.write_text(
-                "#!/usr/bin/env python3\nimport time\ntime.sleep(20)\n"
-            )
+            script.write_text("#!/usr/bin/env python3\nimport time\ntime.sleep(20)\n")
             script.chmod(0o755)
             result = run_campaign(script, [mesh, mesh, mesh], 0.1, root / "logs")
             self.assertEqual(result["three_grid_solver_gate"], "FAIL")
