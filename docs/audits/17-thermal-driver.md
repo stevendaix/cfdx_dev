@@ -3,7 +3,7 @@
 **En-tête d'évidence (gouvernance §16.5)**  
 - Scope : driver de résolution thermique autonome pour une région maillée d'un `ThermalCase` (A1) : conduction solide stationnaire ou transitoire et diffusion fluide stagnante, avec conditions limites thermiques typées (Dirichlet, flux imposé, convection/Robin, puissance de patch, adiabatique), conductivité k(T) traitée par Picard externe et audit énergétique indépendant. Aucune initialisation Navier–Stokes : le flux massique est identiquement nul par contrat.
 - Statut : IMPLÉMENTÉ — A2 (driver fail-closed + conditions typées + 13 cas VV enregistrés). CI exacte HEAD en cours ; aucune qualification physique revendiquée.
-- Issue / PR : #1150 / (numéro de PR ajouté à l'ouverture).
+- Issue / PR : #1150 / #1152.
 - Spécification détaillée : `docs/thermal/thermal-case-data-contract.md`.
 - Sources code : `src/cfdx/physics/thermal_driver.h`.
 - Tests : `tests/validation/test_thermal_driver_vv.cpp`.
