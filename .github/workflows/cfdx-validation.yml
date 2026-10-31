@@ -219,7 +219,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          ctest --test-dir "$BUILD_DIR" \
+          CFDX_NACA_FORENSICS=1 ctest --test-dir "$BUILD_DIR" \
             -L long \
             --no-tests=error \
             --parallel 4 \
