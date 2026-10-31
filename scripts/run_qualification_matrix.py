@@ -114,7 +114,7 @@ def check_ctest_output(returncode: int, output: str, test_name: str) -> bool:
 def get_registered_tests(build_dir: Path) -> set[str]:
     p = subprocess.run(
         ["ctest", "--test-dir", str(build_dir), "--show-only=json-v1"],
-        capture_output=True, text=True, check=True, timeout=60,
+        capture_output=True,\n        text=True,\n        check=True,\n        timeout=60,
     )
     return {entry["name"] for entry in json.loads(p.stdout)["tests"]}
 
@@ -134,9 +134,9 @@ def run_case(case: Case, build_dir: Path, logs: Path, jobs: int) -> dict:
                 "-j",
                 str(jobs),
             ],
-            capture_output=True, text=True, timeout=600, check=False,
+            capture_output=True,\n            text=True,\n            timeout=600,\n            check=False,
         )
-        (logs / f"{case.name}.build.log").write_text(build.stdout + build.stderr)
+        (logs / f"{case.name}.build.log").write_text(\n            build.stdout + build.stderr\n        )
         if build.returncode != 0:
             row.update(status="BUILD_FAIL", reason=f"build returned {build.returncode}")
             return row
@@ -151,7 +151,7 @@ def run_case(case: Case, build_dir: Path, logs: Path, jobs: int) -> dict:
                 "--timeout",
                 str(case.timeout),
             ],
-            capture_output=True, text=True, timeout=case.timeout + 90, check=False,
+            capture_output=True,\n            text=True,\n            timeout=case.timeout + 90,\n            check=False,
         )
         output = completed.stdout + completed.stderr
         (logs / f"{case.name}.ctest.log").write_text(output)
@@ -178,7 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--build-dir", type=Path, required=True)
     p.add_argument("--output-dir", type=Path, required=True)
-    p.add_argument("--tier", choices=("quick", "extended", "full"), default="quick")
+    p.add_argument(\n        "--tier", choices=("quick", "extended", "full"), default="quick"\n    )
     p.add_argument("--jobs", type=int, default=2)
     p.add_argument(
         "--preflight-only",
@@ -215,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
                 "REGISTERED_NOT_RUN" if case.name in registered else "NOT_REGISTERED"
             )
             rows.append(
-                {**asdict(case), "status": status, "reason": "preflight-only: no execution"}
+                {\n                    **asdict(case),\n                    "status": status,\n                    "reason": "preflight-only: no execution",\n                }
             )
             print(f"{case.name}: {rows[-1]['status']}", flush=True)
             continue
