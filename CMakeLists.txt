@@ -22,6 +22,7 @@ option(CFDX_USE_HDF5_SERIAL "Use locally-built HDF5 serial" ON)
 option(CFDX_ENABLE_PARALLEL_HDF5 "Enable MPI-enabled HDF5 distributed checkpoints" OFF)
 option(CFDX_BUILD_RUNTIME_TESTS "Build execution/GPU-OOC foundation tests" ON)
 option(CFDX_ENABLE_LONG_VALIDATION "Register full long-running validation campaigns" OFF)
+option(CFDX_ENABLE_EXPERIMENTAL_RAYLEIGH_10000 "Register unqualified Ra=10000 numerical campaign" OFF)
 
 if(CFDX_ENABLE_GPU)
     enable_language(CUDA)
@@ -1043,6 +1044,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_production_s2s_energy_stage_vv tests/validation/test_production_s2s_energy_stage_vv.cpp)
     add_cfdx_test(test_production_s2s_energy_outer_loop_vv tests/validation/test_production_s2s_energy_outer_loop_vv.cpp)
     add_cfdx_test(test_production_buoyancy_outer_loop_vv tests/validation/test_production_buoyancy_outer_loop_vv.cpp)
+    add_cfdx_test(test_natural_convection_de_vahl_davis tests/validation/test_natural_convection_de_vahl_davis.cpp)
     add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
     add_cfdx_test(test_s2s_radiation_vv tests/validation/test_s2s_radiation_vv.cpp)
     add_cfdx_test(test_thermal_radiation_model_matrix tests/validation/test_thermal_radiation_model_matrix.cpp)
@@ -1409,6 +1411,15 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     set_tests_properties(test_production_s2s_energy_stage_vv PROPERTIES LABELS "qualification;validation;phase13")
     set_tests_properties(test_production_s2s_energy_outer_loop_vv PROPERTIES LABELS "qualification;validation;phase13")
     set_tests_properties(test_production_buoyancy_outer_loop_vv PROPERTIES LABELS "qualification;validation;phase13")
+    set_tests_properties(test_natural_convection_de_vahl_davis PROPERTIES LABELS "thermal;buoyancy;benchmark;prequalification;long" TIMEOUT 450)
+    # Ra=10000 is NOT yet qualified. Explicit opt-in avoids conflating a
+    # potentially stalled/failed experimental study with the established gate.
+    if(CFDX_ENABLE_EXPERIMENTAL_RAYLEIGH_10000)
+        add_test(NAME test_natural_convection_de_vahl_davis_ra10000
+            COMMAND $<TARGET_FILE:test_natural_convection_de_vahl_davis> --ra 10000)
+        set_tests_properties(test_natural_convection_de_vahl_davis_ra10000
+            PROPERTIES LABELS "thermal;buoyancy;benchmark;experimental;long" TIMEOUT 1200)
+    endif()
 
 endif()
 
