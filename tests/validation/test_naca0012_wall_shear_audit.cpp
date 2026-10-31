@@ -413,11 +413,21 @@ int main(int argc, char** argv)
             std::cout << "NACA0012_WALL_SHEAR_AUDIT_QUICK: PASS mms_wall_shear_gates_ok\n";
             return 0;
         }
+        // Isolated N128/N256 replay after the channel MMS preflight.
+        // The reported spread remains diagnostic; no mesh qualification is
+        // claimed from a single level.
+        if (argc == 4 && std::string(argv[1]) == "--single") {
+            run_channel_mms(argv[2]);
+            run_naca(argv[3], 0);
+            std::cout << "NACA0012_WALL_SHEAR_SINGLE: PASS"
+                      << " (one level only; spread remains diagnostic)\\n";
+            return 0;
+        }
         if (argc != 5)
             throw std::invalid_argument(
-                "usage: test_naca0012_wall_shear_audit channel_n16.h5"
+                "usage: test_naca0012_wall_shear_audit [--single channel_n16.h5 mesh.h5 | channel_n16.h5"
                 " naca0012_laminar_n64.h5 naca0012_laminar_n128.h5"
-                " naca0012_laminar_n256.h5");
+                " naca0012_laminar_n256.h5]");
         run_channel_mms(argv[1]);
         for (std::size_t i = 0; i < 3; ++i)
             run_naca(argv[i + 2], 64u << i);

@@ -132,3 +132,23 @@ pression/convection/diffusion/source ; la cause d'assemblage reste ouverte.
 le résidu vrai FP64, `r^T M^{-1}r`, `p^T A p` et `alpha` non applicable.
 Une régression exige cet échantillon sur le cas SPD-indéfini de test.
 Aucun algorithme, seuil, budget, fallback ou gate physique n'est modifié.
+
+
+## 9. Rejeu isolé d'un niveau NACA
+
+Les exécutables de qualification acceptent désormais un mode de diagnostic
+pour éviter de recalculer N64 avant d'inspecter N128 ou N256 :
+
+```bash
+build-validation/test_naca0012_qualification --single \
+  build-validation/validation_meshes/naca0012_laminar_n128.h5
+
+build-validation/test_naca0012_wall_shear_audit --single \
+  build-validation/validation_meshes/channel_n16.h5 \
+  build-validation/validation_meshes/naca0012_laminar_n128.h5
+```
+
+Ces modes conservent les portes par niveau (continuité, finitude, symétrie,
+signe du Cd pression, MMS canal, positivité des tractions). Ils ne vérifient
+pas la convergence en maillage, ne qualifient pas le spread GG/WLS/1D et ne
+peuvent donc jamais remplacer les tests complets à trois grilles.

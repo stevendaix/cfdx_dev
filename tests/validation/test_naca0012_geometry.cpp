@@ -191,9 +191,25 @@ int main(int argc,char**argv)
         return 0;
     }
 
+    // Isolated replay for one refinement level. This does not qualify
+    // mesh convergence; it preserves the per-level physical acceptance gates.
+    if(argc==3 && std::string(argv[1])=="--single") {
+        const Forces x=run(argv[2],0);
+        if(!(x.continuity<1e-7))
+            throw std::runtime_error("NACA0012 continuity gate failed");
+        if(!std::isfinite(x.cd) || !std::isfinite(x.cl))
+            throw std::runtime_error("NACA0012 force integration produced non-finite QoI");
+        if(std::abs(x.cl)>2e-2)
+            throw std::runtime_error("NACA0012 alpha=0 symmetry gate failed");
+        if(!(x.cdp>0.0))
+            throw std::runtime_error("NACA0012 pressure drag sign gate failed");
+        std::cout<<"NACA0012_SINGLE: PASS (one level only; not a mesh qualification)\\n";
+        return 0;
+    }
+
     const std::size_t need=3;
     if(argc!=4)
-        throw std::invalid_argument("usage: test_naca0012_qualification mesh_n64.h5 mesh_n128.h5 mesh_n256.h5");
+        throw std::invalid_argument("usage: test_naca0012_qualification [--single mesh.h5 | mesh_n64.h5 mesh_n128.h5 mesh_n256.h5]");
     std::vector<Forces> r;
     for(std::size_t i=0;i<need;++i) r.push_back(run(argv[i+1],64u<<i));
     for(const auto& x:r) {
