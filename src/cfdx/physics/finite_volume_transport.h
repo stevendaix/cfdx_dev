@@ -1206,7 +1206,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                       << " last_alpha=" << sample.alpha
                       << " last_beta=" << sample.beta;
         }
-        std::cerr << '\\n';
+        std::cerr << '\n';
     };
     log_attempt("requested", result);
 
@@ -1415,7 +1415,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                   << " diagonal_max=" << diagonal_max
                   << " nonfinite_matrix=" << nonfinite_matrix
                   << " nonfinite_rhs=" << nonfinite_rhs
-                  << " krylov_samples=" << result.diagnostics.size() << '\\n';
+                  << " krylov_samples=" << result.diagnostics.size() << '\n';
         for (const auto& sample : result.diagnostics) {
             std::cerr << "SCALAR_LINEAR_KRYLOV_SAMPLE"
                       << " iteration=" << sample.iteration
@@ -1424,7 +1424,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                       << " rMz=" << sample.preconditioned_dot
                       << " pAp=" << sample.pAp
                       << " alpha=" << sample.alpha
-                      << " beta=" << sample.beta << '\\n';
+                      << " beta=" << sample.beta << '\n';
         }
     }
 
