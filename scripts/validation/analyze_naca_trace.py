@@ -9,7 +9,7 @@ from pathlib import Path
 
 PREFIX = "NACA_MOMENTUM_TRACE"
 METRICS = ("max_p", "max_gradp", "max_U", "max_phi", "max_divphi", "max_mu_eff")
-TOKEN = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=([^\\s]+)")
+TOKEN = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=([^\s]+)")
 
 
 def parse_trace(text: str) -> list[dict[str, float | int]]:
