@@ -1,14 +1,19 @@
-// Autonomous thermal-only driver (issue #1150, A2).
+// Autonomous thermal-only driver (issue #1150, A2+A3).
 //
 // Solves one mesh region of a ThermalCase without any Navier-Stokes state:
-// steady or transient solid conduction plus stagnant-fluid diffusion, with
-// typed thermal boundary conditions. The operator is exactly the production
-// energy assembly (assemble_energy_equation, fiches 11/14); this driver adds
-// boundary typing, per-cell k(T) outer Picard iteration and fail-closed
-// contract enforcement. Method sheet: docs/audits/17-thermal-driver.md.
+// steady or transient solid conduction, stagnant-fluid diffusion and
+// prescribed-mass-flux advection, with typed thermal boundary conditions.
+// The operator is exactly the production energy assembly (fiches 11/14);
+// this driver adds boundary typing, per-cell k(T) outer Picard iteration
+// and fail-closed contract enforcement.
+// Method sheet: docs/audits/17-thermal-driver.md.
+//
+// A3: PRESCRIBED_MASS_FLUX fluid regions are advected with the authoritative
+// face mass-flux field named by the region (mass_flux_field), supplied by the
+// caller. The field must be discretely conservative and every inflow face
+// must carry a temperature boundary (fixed_temperature or convection).
 //
 // Explicitly deferred (fail-closed with explicit diagnostics):
-//   - PRESCRIBED_MASS_FLUX fluid regions -> A3
 //   - conjugate interfaces              -> A4
 //   - thermal links / lumped nodes      -> A5
 //   - anisotropic conductivity tensors   (tensor diffusion operator)
@@ -98,6 +103,11 @@ struct ThermalBoundaryCondition {
 
 using ThermalBoundaryConditions = std::map<std::string, ThermalBoundaryCondition>;
 
+// Authoritative face mass-flux fields by name [kg/s]. The sign convention is
+// the production one: a positive flux leaves the owner cell of the face.
+using ThermalFaceFields =
+    std::map<std::string, cfdx::core::Field<double, cfdx::core::Location::FACE>>;
+
 struct ThermalDriverControls {
     // Outer Picard convergence on the temperature update.
     double outer_temperature_tolerance = 1e-12;
@@ -134,10 +144,13 @@ struct ThermalDriverResult {
 
 // Advance one region of a thermal-only case by one solve (steady) or one
 // physical time step (transient). temperature is both the input state (T^n,
-// validated against the material range) and the output state. The mass flux
-// is identically zero: A2 covers solid conduction and stagnant-fluid
-// diffusion only. Fail-closed: any unsupported coupling, boundary mapping
-// or value is rejected before assembly with an explicit diagnostic.
+// validated against the material range) and the output state. Solid and
+// stagnant-fluid regions solve with a zero mass flux; a PRESCRIBED_MASS_FLUX
+// fluid region advects the face field named by region->mass_flux_field,
+// resolved in face_fields (fail-closed: present, mesh-sized, finite and
+// discretely conservative; every inflow face needs a temperature boundary).
+// Fail-closed: any unsupported coupling, boundary mapping or value is
+// rejected before assembly with an explicit diagnostic.
 inline ThermalDriverResult solve_thermal_region(
     const ThermalCase& thermal_case,
     const std::string& region_name,
@@ -146,7 +159,8 @@ inline ThermalDriverResult solve_thermal_region(
     const ThermalBoundaryConditions& boundary_conditions,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& source,
-    const ThermalDriverControls& controls = {})
+    const ThermalDriverControls& controls = {},
+    const ThermalFaceFields* face_fields = nullptr)
 {
     controls.validate();
 
@@ -166,11 +180,9 @@ inline ThermalDriverResult solve_thermal_region(
             "solve_thermal_region: region '" + region_name +
             "' references unknown material '" + region->material + "'");
 
-    if (region->kind == ThermalRegionKind::FLUID &&
-        region->fluid_model == ThermalFluidModel::PRESCRIBED_MASS_FLUX)
-        throw std::invalid_argument(
-            "solve_thermal_region: prescribed-mass-flux advection of region '" +
-            region_name + "' is deferred to A3");
+    const bool prescribed_flux =
+        region->kind == ThermalRegionKind::FLUID &&
+        region->fluid_model == ThermalFluidModel::PRESCRIBED_MASS_FLUX;
 
     if (material->anisotropic_conductivity)
         throw std::invalid_argument(
@@ -214,6 +226,62 @@ inline ThermalDriverResult solve_thermal_region(
         !(thermal_case.time_step > 0.0))
         throw std::invalid_argument(
             "solve_thermal_region: transient region requires a positive time step");
+
+    // --- Prescribed mass-flux resolution (A3, fail closed) ------------
+    cfdx::core::Field<double, cfdx::core::Location::FACE> zero_mass_flux(
+        nf, "mass_flux", "kg/s", 1);
+    zero_mass_flux.fill(0.0);
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>* mass_flux =
+        &zero_mass_flux;
+    if (prescribed_flux) {
+        if (!face_fields)
+            throw std::invalid_argument(
+                "solve_thermal_region: prescribed-mass-flux region '" +
+                region_name + "' requires a face mass-flux field map");
+        const auto it = face_fields->find(region->mass_flux_field);
+        if (it == face_fields->end())
+            throw std::invalid_argument(
+                "solve_thermal_region: unknown face mass-flux field '" +
+                region->mass_flux_field + "' for region '" + region_name + "'");
+        const auto& field = it->second;
+        if (field.size() != nf || field.dimension() != 1)
+            throw std::invalid_argument(
+                "solve_thermal_region: face mass-flux field '" +
+                region->mass_flux_field + "' does not match the mesh of region '" +
+                region_name + "'");
+        for (std::size_t f = 0; f < nf; ++f)
+            if (!std::isfinite(field(f)))
+                throw std::invalid_argument(
+                    "solve_thermal_region: face mass-flux field '" +
+                    region->mass_flux_field + "' has a non-finite value");
+        // Discrete conservation: with frozen density a net mass source has
+        // no physical counterpart in this model, so an unbalanced field is
+        // rejected instead of silently creating phantom energy.
+        std::vector<double> net(nc, 0.0);
+        std::vector<double> through(nc, 0.0);
+        for (std::size_t f = 0; f < nf; ++f) {
+            const std::size_t owner = mesh.ownership().owner(f);
+            const double flux = field(f);
+            if (mesh.ownership().neighbour(f) >= 0) {
+                const std::size_t neighbour =
+                    static_cast<std::size_t>(mesh.ownership().neighbour(f));
+                net[owner] += flux;
+                net[neighbour] -= flux;
+                through[owner] += std::abs(flux);
+                through[neighbour] += std::abs(flux);
+            } else {
+                net[owner] += flux;
+                through[owner] += std::abs(flux);
+            }
+        }
+        for (std::size_t i = 0; i < nc; ++i)
+            if (std::abs(net[i]) > 1e-9 * std::max(1.0, through[i]))
+                throw std::invalid_argument(
+                    "solve_thermal_region: face mass-flux field '" +
+                    region->mass_flux_field +
+                    "' is not discretely conservative in region '" + region_name + "'");
+        mass_flux = &field;
+    }
 
     // --- Boundary mapping (fail closed) -------------------------------
     // Every non-EMPTY mesh patch must have exactly one typed condition and
@@ -287,9 +355,6 @@ inline ThermalDriverResult solve_thermal_region(
 
     const cfdx::core::Field<double, cfdx::core::Location::CELL> previous_time =
         temperature;  // T^n for transient; identity for steady.
-    cfdx::core::Field<double, cfdx::core::Location::FACE> zero_mass_flux(
-        nf, "mass_flux", "kg/s", 1);
-    zero_mass_flux.fill(0.0);
 
     ThermalDriverResult result;
     std::vector<double> conductivity(nc, 0.0);
@@ -319,6 +384,16 @@ inline ThermalDriverResult solve_thermal_region(
                     "solve_thermal_region: boundary face without a patch");
             const auto& patch = mesh.boundary().patch(patch_id);
             const ThermalBoundaryCondition& bc = boundary_conditions.at(patch.name);
+            // A3: an inflow face needs an external temperature to advect
+            // in; a flux or adiabatic condition would silently recirculate
+            // the owner state instead.
+            if (prescribed_flux && (*mass_flux)(f) < 0.0 &&
+                bc.kind != ThermalBoundaryKind::FIXED_TEMPERATURE &&
+                bc.kind != ThermalBoundaryKind::CONVECTION)
+                throw std::invalid_argument(
+                    "solve_thermal_region: inflow boundary patch '" + patch.name +
+                    "' of prescribed-mass-flux region '" + region_name +
+                    "' requires a fixed_temperature or convection condition");
             const double k_owner = conductivity[owner];
             ScalarBoundaryFaceCondition resolved;
             switch (bc.kind) {
@@ -374,7 +449,7 @@ inline ThermalDriverResult solve_thermal_region(
         const cfdx::core::Field<double, cfdx::core::Location::CELL> state_before =
             temperature;
         result.energy = solve_energy(
-            mesh, geometry, zero_mass_flux, temperature, source, energy_controls,
+            mesh, geometry, *mass_flux, temperature, source, energy_controls,
             {}, nullptr, nullptr, &previous_time, &conductivity, &face_conditions);
 
         double max_change = 0.0;
@@ -413,7 +488,7 @@ inline ThermalDriverResult solve_thermal_region(
     // final state with the same cell conductivities and face conditions as
     // the final assembly pass.
     result.balance = reconstruct_energy_balance(
-        mesh, geometry, zero_mass_flux, temperature, previous_time, source,
+        mesh, geometry, *mass_flux, temperature, previous_time, source,
         energy_controls, {}, nullptr, nullptr, &conductivity, &face_conditions);
     result.cell_conductivity = conductivity;
     return result;
