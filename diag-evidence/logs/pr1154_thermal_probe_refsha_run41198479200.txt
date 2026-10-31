@@ -1,0 +1,4 @@
+9c96e4d0e1e2c347a042b1f0d6d3b88868d0c71c
+9c96e4d0 docs: reference A4 pull request in method sheet 17
+ab0ea6da Add conjugate interfaces to the thermal driver (A4)
+0082cb54 Add prescribed-mass-flux advection to the thermal driver (A3) (#1153)

@@ -1,0 +1,6 @@
+run_id=41198479200
+probe_id=thermal_driver_A4
+pr1154_head=9c96e4d0e1e2c347a042b1f0d6d3b88868d0c71c
+master_pin=0082cb54831974f4e356bb4895d093ad4e100289
+master_sha=0082cb54831974f4e356bb4895d093ad4e100289
+purpose=prove verdict of test_thermal_driver_vv on PR head 9c96e4d (release config, exact CI replication)
