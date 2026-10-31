@@ -1,0 +1,81 @@
+build_exit=0
+/tmp/wt/src/cfdx/physics/thermophysical_models.h:181:56: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                      ~~^~~
+/tmp/wt/src/cfdx/physics/thermophysical_models.h:181:60: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                            ^
+In file included from /tmp/wt/src/cfdx/core/linalg/krylov_reductions.h:6,
+                 from /tmp/wt/src/cfdx/core/linalg/cg_solver.h:16,
+                 from /tmp/wt/src/cfdx/core/linalg/bicgstab_solver.h:4,
+                 from /tmp/wt/src/cfdx/physics/finite_volume_transport.h:7,
+                 from /tmp/wt/src/cfdx/physics/energy_solver.h:4,
+                 from /tmp/wt/src/cfdx/physics/thermal_driver.h:18:
+/tmp/wt/src/cfdx/core/parallel/mpi_utils.h: In function ‘std::string cfdx::core::parallel::mpi_bcast_string(const std::string&, int, MPI_Comm)’:
+/tmp/wt/src/cfdx/core/parallel/mpi_utils.h:171:24: warning: conversion to ‘std::__cxx11::basic_string<char>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  171 |     std::string result(len, '\0');
+      |                        ^~~
+In file included from /tmp/wt/src/cfdx/core/linalg/cg_solver.h:18:
+/tmp/wt/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/tmp/wt/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+In file included from /tmp/wt/src/cfdx/physics/finite_volume_transport.h:9:
+/tmp/wt/src/cfdx/core/linalg/gmres_solver.h: In function ‘cfdx::core::SolverResult cfdx::core::solve_gmres(const LinearOperator&, const Vector&, Vector&, int, std::size_t, double, Preconditioner*, KrylovControls, GmresWorkspace*)’:
+/tmp/wt/src/cfdx/core/linalg/gmres_solver.h:240:66: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  240 |                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
+      |                                                                  ^
+/tmp/wt/src/cfdx/core/linalg/gmres_solver.h:254:31: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  254 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                               ^
+/tmp/wt/src/cfdx/core/linalg/gmres_solver.h:254:39: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  254 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                                       ^
+In file included from /tmp/wt/src/cfdx/physics/finite_volume_transport.h:15:
+/tmp/wt/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/tmp/wt/src/cfdx/core/numerics/gradient.h:567:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  567 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/tmp/wt/src/cfdx/core/numerics/gradient.h:569:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  569 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+/tmp/wt/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::FACE> cfdx::physics::reconstruct_scalar_transport_flux(const cfdx::core::Mesh&, const FvGeometry&, const cfdx::core::Field<double, cfdx::core::Location::FACE>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, double, const ScalarBoundaryConditions&, bool, ConvectionScheme, const ScalarBoundaryFaceConditions*, const std::vector<double>*, const ScalarBoundaryFaceValues*)’:
+/tmp/wt/src/cfdx/physics/finite_volume_transport.h:959:10: warning: unused parameter ‘bounded_convection’ [-Wunused-parameter]
+  959 |     bool bounded_convection = true,
+      |     ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+/tmp/wt/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_scalar_equation(const ScalarEquation&, cfdx::core::Vector&, const ScalarSolveControls&)’:
+/tmp/wt/src/cfdx/physics/finite_volume_transport.h:1154:49: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1154 |                     candidate_residual, relative};
+      |                                                 ^
+/tmp/wt/src/cfdx/physics/finite_volume_transport.h:1162:13: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1162 |             };
+      |             ^
+/tmp/wt/src/cfdx/physics/finite_volume_transport.h:1175:9: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1175 |         };
+      |         ^
+/tmp/wt/src/cfdx/physics/finite_volume_transport.h:1319:17: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1319 |                 };
+      |                 ^
+In file included from /tmp/wt/src/cfdx/physics/energy_solver.h:3:
+/tmp/wt/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::FACE]’:
+/tmp/wt/src/cfdx/physics/thermal_driver.h:292:24:   required from here
+/tmp/wt/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/tmp/wt/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/tmp/wt/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+/tmp/wt/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::CELL]’:
+/tmp/wt/tests/validation/test_thermal_driver_vv.cpp:162:44:   required from here
+/tmp/wt/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/tmp/wt/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/tmp/wt/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+[28/28] Linking CXX executable test_thermal_driver_vv

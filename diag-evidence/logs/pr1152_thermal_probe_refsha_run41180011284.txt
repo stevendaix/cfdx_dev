@@ -1,0 +1,4 @@
+5636cbd28b07ea4dad2fc516e0177afe3fda24a5
+5636cbd2 docs: reference A2 pull request in method sheet 17
+e4dd0793 Add autonomous thermal-only driver (A2)
+1258cac1 Add thermal-only case data contract (A1) (#1151)
