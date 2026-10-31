@@ -261,7 +261,17 @@ inline SolverResult solve_cg_impl(
         }
         const double pAp = krylov_dot(p_vector, Ap_vector, redp, reduction);
         if (!(pAp > 0.0) || !std::isfinite(pAp)) {
-            return not_applicable(iter);
+            // CG is not applicable when the search curvature is non-positive
+            // (or non-finite). Preserve the first failing Krylov scalars even
+            // when this occurs between periodic diagnostic sampling points.
+            result.status = SolverStatus::NOT_APPLICABLE;
+            result.iterations = iter;
+            update_true_residual();
+            result.diagnostics.push_back(
+                {iter, result.residual,
+                 std::numeric_limits<double>::quiet_NaN(),
+                 rsold, pAp, std::numeric_limits<double>::quiet_NaN(), 0.0});
+            return result;
         }
         const double alpha = rsold / pAp;
         if (!std::isfinite(alpha))

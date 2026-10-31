@@ -157,6 +157,11 @@ int main() {
         EXPECT_NEAR(x(1), 0.0, 0.0);
         EXPECT_NEAR(result.residual, std::sqrt(2.0), 1e-14);
         EXPECT_NEAR(result.residual_relative, 1.0, 1e-14);
+        EXPECT_TRUE(result.diagnostics.size() == 1);
+        EXPECT_TRUE(result.diagnostics.front().iteration == 1);
+        EXPECT_TRUE(result.diagnostics.front().preconditioned_dot > 0.0);
+        EXPECT_TRUE(result.diagnostics.front().pAp < 0.0);
+        EXPECT_TRUE(!std::isfinite(result.diagnostics.front().alpha));
     });
 
     run_case("cg_solve_diagonal", []() {

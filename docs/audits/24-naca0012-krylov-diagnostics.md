@@ -42,8 +42,14 @@ Campagne `CFDX total validation`, job `Long validation campaigns`, commit
 - Une correction de pression échoue à l'itération non linéaire 20 :
   status=1, 457 itérations, résidu=3.021189409e2, relatif=1.181456e-9.
 - À l'itération 22, le solve Ux échoue :
-  status=3 (DIVERGED), itérations=1, résidu rapporté=1.329e25.
-  Les retries suivants rapportent des relatifs 5.482 puis 2.252 avant l'abandon.
+  status=3 (**NOT_APPLICABLE**, et non DIVERGED), itérations=1,
+  résidu rapporté=1.329e25. L'énumération publique vaut
+  CONVERGED=0, MAX_ITER_REACHED=1, DIVERGED=2, NOT_APPLICABLE=3.
+  Le fallback CG retourne NOT_APPLICABLE lorsque la courbure Krylov
+  `p^T A p` est non positive ou non finie. Avant ce correctif, cette branche
+  ne conservait pas d'échantillon, d'où `samples=0` et l'impossibilité
+  de distinguer ces deux cas dans le log. Les retries suivants rapportent
+  des relatifs 5.482 puis 2.252 avant l'abandon.
 - Le test de cisaillement rapporte provisoirement Cd_visqueux GG=0.055689,
   WLS=0.0580625, 1D=0.106308 (spread relatif=0.690069), puis échoue sur le
   même problème Ux. Ce spread doit être réévalué sur des solutions convergées
@@ -102,3 +108,27 @@ physique, convergence en maillage ou validation du cisaillement pariétal.
   pas disponibles et examinés.
 - Décision : **PENDING**. Ne pas fusionner avant CI verte sur le HEAD exact et
   examen des diagnostics NACA ciblés.
+
+
+## 8. Addendum exact-HEAD — campagne CI du 2026-10-31 (HEAD parent `298e4d01`)
+
+Le run `41184306862` échoue uniquement dans les deux campagnes NACA longues :
+`test_naca0012_qualification` et `test_naca0012_wall_shear_audit`.
+La campagne Ghia profils N=20/40/80/160 passe en 3436.25 s (N=160 :
+8600 itérations, résidu momentum vrai `8.31e-11`). Les autres partitions
+de validation-total, dont N9, thermique/rayonnement et wall-distance, passent.
+
+Sur N128, les traces montrent d'abord un échec de correction de pression à
+l'itération non linéaire 20, puis des échecs du prédicteur Ux à l'itération 22.
+Le RHS momentum et la norme de matrice croissent entre les retries alors que
+les solveurs demandés/GMRES/Gauss-Seidel n'atteignent pas la tolérance.
+L'échec final ne doit donc pas être attribué au seul CG : le RHS est déjà
+fortement dégradé avant le fallback CG. Les statistiques globales actuelles
+ne donnent toutefois ni l'indice de la ligne maximale, ni les contributions
+pression/convection/diffusion/source ; la cause d'assemblage reste ouverte.
+
+**Correction de diagnostic incluse dans le HEAD suivant :** sur une courbure
+`p^T A p <= 0` ou non finie, CG conserve désormais un échantillon avec
+le résidu vrai FP64, `r^T M^{-1}r`, `p^T A p` et `alpha` non applicable.
+Une régression exige cet échantillon sur le cas SPD-indéfini de test.
+Aucun algorithme, seuil, budget, fallback ou gate physique n'est modifié.
