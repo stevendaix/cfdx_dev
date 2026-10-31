@@ -1287,6 +1287,16 @@ int main(int argc, char** argv)
         DatRestartFields checkpoint_fields;
         if (energy_ran)
             checkpoint_fields.temperature = &temperature;
+        if (experimental_sst_state) {
+            // The experimental opt-in owns k and omega for the whole run, so
+            // the final checkpoint persists them under their stable DAT v4
+            // named fields. Without this wiring a persisted SST case can
+            // initialize but never restart: the staged DAT reader requires
+            // the named k and omega fields whenever the active runtime
+            // requests them.
+            checkpoint_fields.k = &experimental_sst_state->k;
+            checkpoint_fields.omega = &experimental_sst_state->omega;
+        }
         write_dat_restart_fields(dat.string(), mesh, U, p, checkpoint_fields,
                                  result.iterations, 0.0);
         const auto convergence = options.output_dir / "convergence.json";
