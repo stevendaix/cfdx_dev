@@ -198,6 +198,26 @@ int main() {
         EXPECT_TRUE(amg.hierarchy_builds() == 1);
     });
 
+    run_case("reusable_cg_counts_already_converged_zero_iteration_solve", [] {
+        const auto matrix = make_poisson(8);
+        Vector exact(8);
+        for (std::size_t i = 0; i < exact.size(); ++i)
+            exact(i) = 0.1 * static_cast<double>(i + 1);
+        const Vector rhs = multiply(matrix, exact);
+
+        NativeBoomerAMGPreconditioner amg;
+        ReusableCgContext context(amg);
+        Vector solution = exact;
+        const auto result = context.solve(matrix, rhs, solution, 100, 1e-12);
+
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_NEAR(result.residual_relative, 0.0, 1e-14);
+        EXPECT_TRUE(context.stats().solves == 1);
+        EXPECT_TRUE(context.stats().full_setups == 0);
+        EXPECT_TRUE(amg.hierarchy_builds() == 0);
+    });
+
     run_case("reusable_cg_updates_amg_without_rebuilding_hierarchy", [] {
         const auto matrix = make_poisson(96);
         const auto updated = make_scaled_poisson(96, 1.25);
