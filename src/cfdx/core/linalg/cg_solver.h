@@ -325,6 +325,19 @@ inline SolverResult solve_cg_impl(
             result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
             return result;
         }
+        // A finite non-positive r^T M^-1 r is a preconditioner/recurrence
+        // breakdown. Preserve the exact iteration even when it is not one of
+        // the periodic diagnostic sampling points.
+        if (preconditioner && !(rsnew > 0.0) &&
+            (result.diagnostics.empty() ||
+             result.diagnostics.back().iteration != iter)) {
+            const double recursive_residual =
+                std::sqrt(std::max(0.0, krylov_dot(
+                    r_vector, r_vector, SolverPrecision::FP64, reduction)));
+            result.diagnostics.push_back(
+                {iter, res, recursive_residual, rsnew, pAp, alpha,
+                 rsold != 0.0 ? rsnew / rsold : 0.0});
+        }
 
         // Internal-Jacobi CG also needs residual replacement when its recursive
         // residual claims convergence but the independently recomputed FP64
