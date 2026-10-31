@@ -214,7 +214,12 @@ inline SolverResult solve_cg_impl(
     // but non-positive initial r^T M^-1 r means that requirement is already
     // violated; do not take a negative step and corrupt the iterate. Preserve
     // the independently recomputed true residual in the failure result.
-    if (!(rsold > 0.0)) return not_applicable(0);
+    if (!(rsold > 0.0)) {
+        result.diagnostics.push_back(
+            {0, initial_true_residual, initial_true_residual,
+             rsold, 0.0, 0.0, 0.0});
+        return not_applicable(0);
+    }
 
     if (preconditioner) {
         result.diagnostics.push_back(
