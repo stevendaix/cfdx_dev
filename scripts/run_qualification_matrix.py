@@ -134,7 +134,7 @@ def run_case(case: Case, build_dir: Path, logs: Path, jobs: int) -> dict:
                 "-j",
                 str(jobs),
             ],
-            capture_output=True, text=True, timeout=600,
+            capture_output=True, text=True, timeout=600, check=False,
         )
         (logs / f"{case.name}.build.log").write_text(build.stdout + build.stderr)
         if build.returncode != 0:
@@ -151,7 +151,7 @@ def run_case(case: Case, build_dir: Path, logs: Path, jobs: int) -> dict:
                 "--timeout",
                 str(case.timeout),
             ],
-            capture_output=True, text=True, timeout=case.timeout + 90,
+            capture_output=True, text=True, timeout=case.timeout + 90, check=False,
         )
         output = completed.stdout + completed.stderr
         (logs / f"{case.name}.ctest.log").write_text(output)
