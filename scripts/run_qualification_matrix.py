@@ -100,9 +100,7 @@ LONG = (
 def check_ctest_output(returncode: int, output: str, test_name: str) -> bool:
     """Return success only if CTest actually executed exactly one test."""
     # Do not mistake `No tests were found` or absent binaries for a success.
-    summary = re.search(
-        r"100% tests passed, 0 tests failed out of (\d+)\b", output
-    )
+    summary = re.search(r"100% tests passed, 0 tests failed out of (\d+)\b", output)
     # CTest can auto-add FIXTURES_SETUP / FIXTURES_CLEANUP cases, so the
     # requested test need not be the only one in a successful run.
     target = re.search(
@@ -151,9 +149,7 @@ def run_case(case: Case, build_dir: Path, logs: Path, jobs: int) -> dict:
             timeout=600,
             check=False,
         )
-        (logs / f"{case.name}.build.log").write_text(
-            build.stdout + build.stderr
-        )
+        (logs / f"{case.name}.build.log").write_text(build.stdout + build.stderr)
         if build.returncode != 0:
             row.update(status="BUILD_FAIL", reason=f"build returned {build.returncode}")
             return row
@@ -198,9 +194,7 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--build-dir", type=Path, required=True)
     p.add_argument("--output-dir", type=Path, required=True)
-    p.add_argument(
-        "--tier", choices=("quick", "extended", "full"), default="quick"
-    )
+    p.add_argument("--tier", choices=("quick", "extended", "full"), default="quick")
     p.add_argument("--jobs", type=int, default=2)
     p.add_argument(
         "--preflight-only",
