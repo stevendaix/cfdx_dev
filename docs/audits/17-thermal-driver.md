@@ -3,7 +3,7 @@
 **En-tête d'évidence (gouvernance §16.5)**  
 - Scope : driver de résolution thermique autonome pour une région maillée d'un `ThermalCase` (A1) : conduction solide stationnaire ou transitoire, diffusion fluide stagnante et advection de flux massique facial prescrit (A3), avec conditions limites thermiques typées (Dirichlet, flux imposé, convection/Robin, puissance de patch, adiabatique), conductivité k(T) traitée par Picard externe et audit énergétique indépendant. Aucune initialisation Navier–Stokes : le flux massique est nul par contrat (solide, fluide stagnant) ou fourni par un champ de faces autoritaire (PRESCRIBED_MASS_FLUX, A3).
 - Statut : IMPLÉMENTÉ — A2+A3 (driver fail-closed + conditions typées + advection de flux massique prescrit + 17 cas VV enregistrés). CI exacte HEAD en cours ; aucune qualification physique revendiquée.
-- Issue / PR : #1150 / (numéro de PR ajouté à l'ouverture).
+- Issue / PR : #1150 / #1153.
 - Spécification détaillée : `docs/thermal/thermal-case-data-contract.md`.
 - Sources code : `src/cfdx/physics/thermal_driver.h`.
 - Tests : `tests/validation/test_thermal_driver_vv.cpp`.
