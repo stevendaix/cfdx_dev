@@ -101,14 +101,14 @@ def check_ctest_output(returncode: int, output: str, test_name: str) -> bool:
     """Return success only if CTest actually executed exactly one test."""
     # Do not mistake `No tests were found` or absent binaries for a success.
     summary = re.search(
-        r"100% tests passed, 0 tests failed out of (\\d+)\\b", output
+        r"100% tests passed, 0 tests failed out of (\d+)\b", output
     )
     # CTest can auto-add FIXTURES_SETUP / FIXTURES_CLEANUP cases, so the
     # requested test need not be the only one in a successful run.
     target = re.search(
-        r"\\b\\d+/\\d+ Test\\s+#\\d+:\\s+"
+        r"\b\d+/\d+ Test\s+#\d+:\s+"
         + re.escape(test_name)
-        + r"\\s+\\.{2,}\\s+Passed\\b",
+        + r"\s+\.{2,}\s+Passed\b",
         output,
     )
     return bool(
