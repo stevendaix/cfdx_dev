@@ -4,6 +4,7 @@ The solver's --single mode must satisfy its own physical gates. This runner
 additionally requires mesh-refinement stabilization; it never converts a
 non-converged run, timeout, or missing QoI into PASS.
 """
+
 import argparse
 import json
 import math
