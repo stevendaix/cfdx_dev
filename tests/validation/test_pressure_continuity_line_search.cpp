@@ -31,6 +31,19 @@ int main() {
                 [](double) { return std::numeric_limits<double>::quiet_NaN(); });
         } catch (const std::runtime_error&) { refused = true; }
         require(refused, "accepted NaN");
+        // Regression: near-zero starting residual does not authorize an
+        // arbitrary blow-up from an otherwise finite trial.
+        refused = false;
+        try {
+            (void)select_pressure_continuity_step(1.0, c,
+                [](double alpha) { return alpha == 0.0 ? 1e-15 : 1e6; });
+        } catch (const std::runtime_error&) { refused = true; }
+        require(refused, "accepted explosive pressure step near absolute floor");
+        // A small trial that is still beneath the absolute floor is allowed.
+        const auto near_floor = select_pressure_continuity_step(1.0, c,
+            [](double alpha) { return alpha == 0.0 ? 1e-15 : 2e-14; });
+        require(near_floor.accepted_norm <= c.absolute_floor,
+                "rejected bounded near-floor correction");
         refused = false;
         c.reduction = 1.0;
         try { validate_pressure_continuity_line_search(c); }

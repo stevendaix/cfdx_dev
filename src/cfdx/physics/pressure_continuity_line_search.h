@@ -54,13 +54,15 @@ PressureContinuityLineSearchResult select_pressure_continuity_step(
     const double baseline = score(0.0);
     if (!(baseline >= 0.0) || !std::isfinite(baseline))
         throw std::runtime_error("pressure continuity line search: invalid baseline");
+    // A small baseline is NOT permission to accept an arbitrarily bad trial.
+    // Even near the absolute convergence floor, require a trial that remains
+    // below that floor or decreases the true continuity defect.
     const double required = baseline * (1.0 - c.minimum_relative_improvement);
     double alpha = nominal_alpha;
     for (std::size_t i = 0; i < c.max_trials; ++i) {
         const double value = score(alpha);
         if (std::isfinite(value) && value >= 0.0 &&
-            (baseline <= c.absolute_floor || value <= c.absolute_floor ||
-             value < required))
+            (value <= c.absolute_floor || value < required))
             return {alpha, baseline, value, i + 1};
         alpha *= c.reduction;
     }
