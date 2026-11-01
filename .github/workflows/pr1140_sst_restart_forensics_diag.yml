@@ -1,0 +1,187 @@
+name: PR1140 SST restart forensics (diag)
+
+on:
+  pull_request:
+    branches: [master]
+    paths:
+      - 'diag-tools/pr1140_sani_marker.txt'
+      - '.github/workflows/pr1140_sst_restart_forensics_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1140-sst-forensics
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+
+jobs:
+  forensics:
+    name: sst-restart-forensics-e803a8b6
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      REF_PIN: e803a8b6d01093934badca5fe69f57e8345a3721
+      2026-11-01: 2026-11-01
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv
+
+      - name: Set up Python stack
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+
+      - name: Build Release binaries at pinned PR head
+        run: |
+          git fetch origin "$REF_PIN"
+          git worktree add "$RUNNER_TEMP/ref" "$REF_PIN"
+          ( cd "$RUNNER_TEMP/ref" && \
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=OFF -DCFDX_ENABLE_LONG_VALIDATION=OFF > "$GITHUB_WORKSPACE/$EVID/pr1140_forensics_configure_STAMP.log" 2>&1 && \
+            cmake --build build --target cfdx_production_solver --parallel 8 > "$GITHUB_WORKSPACE/$EVID/pr1140_forensics_build_STAMP.log" 2>&1 )
+
+      - name: Run SST + laminar restart forensics
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          export CFDX_PRODUCTION_SOLVER="$RUNNER_TEMP/ref/build/cfdx_production_solver"
+          export PYTHONPATH="$RUNNER_TEMP/ref/src/cfdx/python"
+          export FORENSICS_OUT="$RUNNER_TEMP/forensics"
+          export PY_TEST_PATH="$RUNNER_TEMP/ref/tests/python/test_sst_persisted_cli_restart_e2e.py"
+          cat > /tmp/forensics.py <<'PYEOF'
+import importlib.util, json, os, shutil, subprocess, sys
+from pathlib import Path
+import h5py
+import numpy as np
+from cfdx.dat_io import read_dat_restart
+from cfdx.io.converter import convert
+
+out = Path(os.environ["FORENSICS_OUT"]); out.mkdir(parents=True, exist_ok=True)
+solver = Path(os.environ["CFDX_PRODUCTION_SOLVER"])
+
+spec = importlib.util.spec_from_file_location("sst_test", os.environ["PY_TEST_PATH"])
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+
+case_dir = out / "case"; case_dir.mkdir()
+source_case = case_dir / "fixture.su2"
+config_case = case_dir / "fixture.cfg"
+source_case.write_text("""NDIME= 2
+NELEM= 2
+5 0 1 2 0
+5 0 2 3 1
+NPOIN= 4
+0.0 0.0 0
+1.0 0.0 1
+1.0 1.0 2
+0.0 1.0 3
+NMARK= 4
+MARKER_TAG= inlet
+MARKER_ELEMS= 1
+3 0 3
+MARKER_TAG= outlet
+MARKER_ELEMS= 1
+3 1 2
+MARKER_TAG= wall_bottom
+MARKER_ELEMS= 1
+3 0 1
+MARKER_TAG= wall_top
+MARKER_ELEMS= 1
+3 2 3
+""", encoding="utf-8")
+config_case.write_text("""SOLVER= INC_RANS
+KIND_TURB_MODEL= SST
+INC_DENSITY_INIT= 1.2
+INC_VELOCITY_INIT= (1.0, 0.0, 0.0)
+MU_CONSTANT= 0.012
+CONV_NUM_METHOD_FLOW= ROE
+MUSCL_FLOW= NO
+NUM_METHOD_GRAD= GREEN_GAUSS
+TIME_DISCRE_FLOW= EULER_IMPLICIT
+ITER= 2
+""", encoding="utf-8")
+
+def make_case(path, laminar=False):
+    convert(source_case, output=path)
+    if not laminar:
+        m._prepare_persisted_sst_case(path)
+        return
+    with h5py.File(path, "r+") as h5:
+        raw = h5.attrs["case_setup_json"]
+        if isinstance(raw, bytes): raw = raw.decode("utf-8")
+        setup = json.loads(str(raw))
+        setup["turbulence_model"] = "none"
+        for bc in setup.get("boundary_conditions", []):
+            bc.pop("sst_scalar_conditions", None)
+        del h5.attrs["case_setup_json"]
+        h5.attrs["case_setup_json"] = json.dumps(setup)
+
+def run(tag, case, iters, restart=None, sst=True):
+    d = out / tag; d.mkdir(exist_ok=True)
+    cmd = [str(solver), "--mesh", str(case), "--output-dir", str(d),
+           "--iterations", str(iters)]
+    if sst: cmd.append("--experimental-sst")
+    if restart is not None: cmd.extend(["--restart", str(restart)])
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    print("[%s] exit=%s" % (tag, r.returncode))
+    if r.returncode not in (0, 1):
+        print("[%s] STDOUT\n%s" % (tag, r.stdout[-3000:]))
+        print("[%s] STDERR\n%s" % (tag, r.stderr[-3000:]))
+        raise SystemExit("%s: execution error %s" % (tag, r.returncode))
+    return d / "restart.dat"
+
+def stats(name, a, b):
+    a = np.asarray(a, float); b = np.asarray(b, float)
+    if a.shape != b.shape:
+        print("  %s: SHAPE MISMATCH %s vs %s" % (name, a.shape, b.shape)); return
+    d = np.abs(a - b)
+    scale = np.maximum(np.abs(a), np.abs(b)); scale[scale == 0] = 1.0
+    print("  %s: max_abs=%.6e max_rel=%.6e allclose(2e-10,2e-12)=%s"
+          % (name, d.max(), (d/scale).max(),
+             np.allclose(a, b, rtol=2e-10, atol=2e-12)))
+
+def cmp_states(label, x, y):
+    sx, sy = read_dat_restart(x), read_dat_restart(y)
+    print("--- %s ---" % label)
+    for f in ("U", "p", "k", "omega"):
+        if f in sx.fields and f in sy.fields:
+            stats(f, sx.fields[f].values, sy.fields[f].values)
+        else:
+            print("  %s: present=%s/%s" % (f, f in sx.fields, f in sy.fields))
+
+print("=== SST fixture forensics ===")
+case = case_dir / "case.cfdx.h5"; make_case(case)
+cont2 = run("cont2", case, 2)
+first1 = run("first1", case, 1)
+cont1 = run("cont1", case, 1)
+resumed1 = run("resumed1", case, 1, restart=first1)
+resumed2 = run("resumed2", case, 1, restart=first1)
+cmp_states("SST cont(2it) vs resumed(1it+restart+1it)", cont2, resumed1)
+cmp_states("SST cont(1it) vs first(1it) [determinism]", cont1, first1)
+cmp_states("SST resumed run1 vs run2 [resumed-path determinism]", resumed1, resumed2)
+print("--- restart.dat head (precision inspection, cont2) ---")
+print("\n".join(cont2.read_text().splitlines()[:25]))
+print("--- restart.dat head (first1) ---")
+print("\n".join(first1.read_text().splitlines()[:25]))
+
+print("=== LAMINAR control (same mesh, no SST) ===")
+lcase = case_dir / "laminar.cfdx.h5"; make_case(lcase, laminar=True)
+l_cont2 = run("l_cont2", lcase, 2, sst=False)
+l_first1 = run("l_first1", lcase, 1, sst=False)
+l_resumed1 = run("l_resumed1", lcase, 1, restart=l_first1, sst=False)
+cmp_states("LAMINAR cont(2it) vs resumed(1it+restart+1it)", l_cont2, l_resumed1)
+print("--- laminar restart.dat head (l_cont2) ---")
+print("\n".join(l_cont2.read_text().splitlines()[:20]))
+print("FORENSICS DONE")
+
+PYEOF
+          "$RUNNER_TEMP/venv/bin/python" /tmp/forensics.py 2>&1 | tee "$E/pr1140_sst_forensics_2026-11-01.log"
