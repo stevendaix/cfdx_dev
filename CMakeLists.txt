@@ -762,6 +762,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_production_turbulence_contract tests/unit/test_production_turbulence_contract.cpp)
     add_cfdx_test(test_solid_conduction_selection tests/unit/test_solid_conduction_selection.cpp)
     add_cfdx_test(test_energy_integration_contracts tests/validation/test_energy_integration_contracts.cpp)
+    add_cfdx_test(test_energy_independent_acceptance tests/unit/test_energy_independent_acceptance.cpp)
+    add_cfdx_test(test_sst_closure_input_contract tests/unit/test_sst_closure_input_contract.cpp)
     add_cfdx_test(test_cht_integration_contracts tests/validation/test_cht_integration_contracts.cpp)
     add_cfdx_test(test_sst_integration_gaps tests/audit/test_sst_integration_gaps.cpp)
     add_cfdx_test(test_production_radiation_contract tests/unit/test_production_radiation_contract.cpp)
