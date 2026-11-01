@@ -219,17 +219,30 @@ inline ThermalDriverResult solve_thermal_region(
             "solve_thermal_region: anisotropic conductivity of material '" +
             material->name + "' requires the tensor diffusion operator (deferred)");
 
+    std::vector<std::string> declared_interface_patches;
     for (const auto& interface : thermal_case.interfaces) {
         if (interface.region_a != region_name && interface.region_b != region_name)
             continue;
         const std::string& patch_name =
             interface.region_a == region_name ? interface.patch_a : interface.patch_b;
+        declared_interface_patches.push_back(patch_name);
         if (!interface_conditions ||
             interface_conditions->find(patch_name) == interface_conditions->end())
             throw std::invalid_argument(
                 "solve_thermal_region: conjugate interface '" + interface.name +
                 "' couples patch '" + patch_name + "' of region '" + region_name +
                 "'; supply interface conditions or use the coupled solver");
+    }
+    if (interface_conditions) {
+        for (const auto& entry : *interface_conditions) {
+            if (std::find(declared_interface_patches.begin(),
+                          declared_interface_patches.end(), entry.first) ==
+                declared_interface_patches.end())
+                throw std::invalid_argument(
+                    "solve_thermal_region: interface conditions reference patch '" +
+                    entry.first + "' of region '" + region_name +
+                    "' that is not a declared thermal interface");
+        }
     }
 
     for (const auto& link : thermal_case.links)
@@ -939,7 +952,10 @@ inline ThermalCoupledResult solve_thermal_regions_coupled(
             }
         }
         result.interface_max_change = max_change;
-        if (max_change <= tolerance) {
+        const bool all_regions_converged = std::all_of(
+            result.regions.begin(), result.regions.end(),
+            [](const auto& entry) { return entry.second.converged; });
+        if (max_change <= tolerance && all_regions_converged) {
             result.converged = true;
             break;
         }
