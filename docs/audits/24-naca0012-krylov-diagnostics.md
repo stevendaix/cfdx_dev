@@ -219,7 +219,7 @@ not change matrix coefficients, relaxation, solver selection, iteration
 budgets, residual tolerances or physical gates.
 
 **Next decision gate:** inspect the new `NACA_MOMENTUM_EQUATION` and
-`NACA_PRESSURE_CORRECTION_FAILURE` records from CI on the exact updated HEAD.
+`NACA_PRESSURE_CORRECTION` (and the failure-only detail record) records from CI on the exact updated HEAD.
 Do not alter the NACA discretization or wall-shear acceptance criteria until
 the first abnormal momentum component, row, RHS contribution and pressure
 operator scale have been identified.
