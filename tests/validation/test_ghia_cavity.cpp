@@ -541,11 +541,14 @@ int main(int argc, char** argv)
         // This test qualifies the pressure line-search contract, not the
         // Ghia profile. A smaller cavity keeps the diagnostic in the fast
         // suite while retaining the independent continuity/residual gates.
-        const auto r32 = run_case({100.0,16,16,2500},
-                                  PressureVelocityAlgorithm::SIMPLE,
-                                  PreconditionerModel::Auto, quick_ls, !quick_ls);
+        const CavityCase quick_case = quick_ls
+            ? CavityCase{100.0,16,16,2500}
+            : CavityCase{100.0,32,32,5000};
+        const auto quick_result = run_case(
+            quick_case, PressureVelocityAlgorithm::SIMPLE,
+            PreconditionerModel::Auto, quick_ls, !quick_ls);
         if (quick_ls) {
-            const auto& history = r32.solution.solve.history;
+            const auto& history = quick_result.solution.solve.history;
             bool evaluated = false;
             for (const auto& entry : history) {
                 if (std::isfinite(entry.pressure_line_search_norm_before)) {
