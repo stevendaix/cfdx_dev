@@ -60,7 +60,9 @@ def make_fixture(root: Path, physics: str = "naca_laminar") -> dict:
     }
     for i, h in enumerate((0.25, 0.125, 0.0625)):
         mesh = root / f"mesh{i}.msh"
-        mesh.write_text(f"synthetic mesh {i} with characteristic h={h}\n", encoding="utf-8")
+        mesh.write_text(
+            f"synthetic mesh {i} with characteristic h={h}\n", encoding="utf-8"
+        )
         qoi = {name: reference[name][0] + amplitude[name] * h * h
                for name in names}
         result = {

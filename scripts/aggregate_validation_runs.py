@@ -6,17 +6,24 @@ import csv
 from pathlib import Path
 
 
-def read_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+def read_rows(
+    path: Path,
+) -> tuple[list[str], list[dict[str, str]]]:
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        if not reader.fieldnames or any(not name or not name.strip() for name in reader.fieldnames):
+        if (
+            not reader.fieldnames
+            or any(not name or not name.strip() for name in reader.fieldnames)
+        ):
             raise ValueError(f"{path}: missing or invalid CSV header")
         if len(set(reader.fieldnames)) != len(reader.fieldnames):
             raise ValueError(f"{path}: duplicate CSV header")
         if "source_file" in reader.fieldnames:
             raise ValueError(f"{path}: input cannot override reserved source_file provenance")
         rows = list(reader)
-        if any(None in row or any(value is None for value in row.values()) for row in rows):
+        if any(
+            None in row or any(value is None for value in row.values()) for row in rows
+        ):
             raise ValueError(f"{path}: row does not match the CSV header")
         return list(reader.fieldnames), rows
 

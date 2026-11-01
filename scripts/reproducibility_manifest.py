@@ -81,13 +81,19 @@ def configured_compiler(build_dir: Path | None = None) -> dict[str, str | None]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", type=Path)
-    parser.add_argument("--build-dir", type=Path, help="read the real CMake C++ compiler")
+    parser.add_argument(
+        "--build-dir", type=Path, help="read the real CMake C++ compiler"
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
     manifest = {
-        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "generated_at": (
+            datetime.datetime.now(datetime.timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        ),
         "cfdx_version": "0.7",
         "schema_version": 1,
         "git": git_metadata(root),
@@ -104,7 +110,9 @@ def main() -> int:
         },
         "hardware": {
             "cpu": platform.processor() or "unknown",
-            "gpu": tool_version("nvidia-smi", "--query-gpu=name", "--format=csv,noheader"),
+            "gpu": tool_version(
+                "nvidia-smi", "--query-gpu=name", "--format=csv,noheader"
+            ),
         },
         "case": None,
     }

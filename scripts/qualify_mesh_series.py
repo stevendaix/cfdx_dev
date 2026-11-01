@@ -87,7 +87,12 @@ def verified_file(root: Path, obj: Any, label: str) -> tuple[Path, str]:
         raise EvidenceError(f"{label}: path and sha256 are required")
     rel = obj.get("path")
     sha = obj.get("sha256")
-    if not isinstance(rel, str) or not rel or not isinstance(sha, str) or not SHA256.fullmatch(sha):
+    if (
+        not isinstance(rel, str)
+        or not rel
+        or not isinstance(sha, str)
+        or not SHA256.fullmatch(sha)
+    ):
         raise EvidenceError(f"{label}: invalid path/sha256")
     if Path(rel).is_absolute():
         raise EvidenceError(f"{label}: absolute paths are forbidden")
@@ -138,7 +143,9 @@ def _metric_order(
     return order, abs(d2) / correction
 
 
-def qualify(case: dict[str, Any], root: Path, expected_source_sha: str) -> dict[str, Any]:
+def qualify(
+    case: dict[str, Any], root: Path, expected_source_sha: str
+) -> dict[str, Any]:
     if case.get("schema_version") != "1.0":
         raise EvidenceError("schema_version must be 1.0")
     case_id = case.get("case_id")
@@ -148,12 +155,20 @@ def qualify(case: dict[str, Any], root: Path, expected_source_sha: str) -> dict[
         raise EvidenceError("case_id is required")
     if physics not in PHYSICS:
         raise EvidenceError("unknown physics family")
-    if not isinstance(sha, str) or not COMMIT.fullmatch(sha) or sha != expected_source_sha:
+    if (
+        not isinstance(sha, str)
+        or not COMMIT.fullmatch(sha)
+        or sha != expected_source_sha
+    ):
         raise EvidenceError("source SHA missing or does not match expected exact revision")
     limits = case.get("criteria")
     references = case.get("references")
     levels = case.get("levels")
-    if not isinstance(limits, dict) or not isinstance(references, dict) or not references:
+    if (
+        not isinstance(limits, dict)
+        or not isinstance(references, dict)
+        or not references
+    ):
         raise EvidenceError("numerical criteria and independent references are mandatory")
     if not isinstance(levels, list) or len(levels) != 3:
         raise EvidenceError("exactly three mesh levels are required")
@@ -198,9 +213,15 @@ def qualify(case: dict[str, Any], root: Path, expected_source_sha: str) -> dict[
         if not isinstance(level, dict):
             raise EvidenceError(f"{label}: missing level")
         mesh_path, mesh_sha = verified_file(root, level.get("mesh"), f"{label}.mesh")
-        result_path, result_sha = verified_file(root, level.get("result"), f"{label}.result")
+        result_path, result_sha = verified_file(
+            root, level.get("result"), f"{label}.result"
+        )
         result = strict_json(result_path)
-        if result.get("source_sha") != sha or result.get("case_id") != case_id or result.get("physics") != physics:
+        if (
+            result.get("source_sha") != sha
+            or result.get("case_id") != case_id
+            or result.get("physics") != physics
+        ):
             raise EvidenceError(f"{label}: wrong source revision or case identity")
         if result.get("mesh_sha256") != mesh_sha:
             raise EvidenceError(f"{label}: result does not reference its input mesh")
@@ -234,7 +255,10 @@ def qualify(case: dict[str, Any], root: Path, expected_source_sha: str) -> dict[
                           "result_path": str(result_path.relative_to(root)),
                           "result_sha256": result_sha})
 
-    if len({a["mesh_sha256"] for a in artifacts}) != 3 or len({a["result_sha256"] for a in artifacts}) != 3:
+    if (
+        len({a["mesh_sha256"] for a in artifacts}) != 3
+        or len({a["result_sha256"] for a in artifacts}) != 3
+    ):
         raise EvidenceError("duplicate meshes or reused run evidence")
     if not (cells[0] < cells[1] < cells[2] and hs[0] > hs[1] > hs[2]):
         raise EvidenceError("cell counts and characteristic h must refine strictly")
@@ -290,10 +314,15 @@ def main() -> int:
             raise EvidenceError("expected exact full 40-character git SHA")
         path = args.input.resolve()
         result = qualify(strict_json(path), path.parent, args.expected_source_sha)
-    except (EvidenceError, ValueError, OSError, json.JSONDecodeError, OverflowError) as exc:
+    except (
+        EvidenceError, ValueError, OSError, json.JSONDecodeError, OverflowError
+    ) as exc:
         result = {"status": "FAIL", "reason": str(exc)}
     args.report.parent.mkdir(parents=True, exist_ok=True)
-    args.report.write_text(json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    args.report.write_text(
+        json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
     print(f"CFDX_THREE_MESH_QUALIFICATION: {result['status']}")
     if result["status"] != "PASS":
         print(result["reason"])
