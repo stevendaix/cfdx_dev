@@ -48,6 +48,10 @@ inline Vec3 cross(const Vec3& a, const Vec3& b) noexcept {
 }
 inline double norm(const Vec3& v) noexcept { return std::sqrt(dot(v,v)); }
 
+inline bool finite(const Vec3& v) noexcept {
+    return std::isfinite(v.x) && std::isfinite(v.y) && std::isfinite(v.z);
+}
+
 inline Vec3 normalized(Vec3 v) {
     const double n=norm(v);
     if (!(n>0.0) || !std::isfinite(n))
@@ -110,8 +114,8 @@ inline void validate_reference(const Reference& r) {
         !std::isfinite(r.length) ||
         !(r.rho_inf>0.0) || !(r.u_inf>0.0) || !(r.area>0.0) || !(r.length>0.0))
         throw std::invalid_argument("forces: invalid reference density, velocity, area or length");
-    if (!std::isfinite(r.pressure_ref))
-        throw std::invalid_argument("forces: non-finite reference pressure");
+    if (!std::isfinite(r.pressure_ref) || !finite(r.moment_center))
+        throw std::invalid_argument("forces: non-finite reference pressure or moment center");
     (void)normalized(r.drag_direction);
     (void)normalized(r.lift_direction);
     (void)normalized(r.side_direction);
@@ -127,6 +131,14 @@ inline Result integrate(const std::vector<SurfaceSample>& samples,
     const double q=0.5*ref.rho_inf*ref.u_inf*ref.u_inf;
     if (!(q>0.0) || !std::isfinite(q))
         throw std::invalid_argument("forces: invalid dynamic pressure");
+    // Validate the dimensional coefficient scales before accumulating any
+    // surface forces. A finite q and positive area/length do not guarantee
+    // that q*A and q*A*L are representable nonzero doubles.
+    const double qA = q * ref.area;
+    const double qAL = qA * ref.length;
+    if (!(qA>0.0) || !std::isfinite(qA) ||
+        !(qAL>0.0) || !std::isfinite(qAL))
+        throw std::invalid_argument("forces: non-representable reference force or moment");
 
     Result out{};
     for(std::size_t i=0;i<samples.size();++i){
@@ -142,10 +154,19 @@ inline Result integrate(const std::vector<SurfaceSample>& samples,
         const Vec3 fp=(-(s.pressure-ref.pressure_ref))*s.normal*s.area;
         const Vec3 fv=s.viscous_traction*s.area;
         const Vec3 r=s.position-ref.moment_center;
+        if (!finite(fp) || !finite(fv) || !finite(r))
+            throw std::overflow_error("forces: non-representable surface force or lever arm");
+        const Vec3 mp = cross(r,fp);
+        const Vec3 mv = cross(r,fv);
+        if (!finite(mp) || !finite(mv))
+            throw std::overflow_error("forces: non-representable surface moment");
         out.pressure_force += fp;
         out.viscous_force += fv;
-        out.pressure_moment += cross(r,fp);
-        out.viscous_moment += cross(r,fv);
+        out.pressure_moment += mp;
+        out.viscous_moment += mv;
+        if (!finite(out.pressure_force) || !finite(out.viscous_force) ||
+            !finite(out.pressure_moment) || !finite(out.viscous_moment))
+            throw std::overflow_error("forces: surface-force accumulation overflow");
     }
 
     out.total_force=out.pressure_force+out.viscous_force;
@@ -159,7 +180,6 @@ inline Result integrate(const std::vector<SurfaceSample>& samples,
     out.side_pressure=dot(out.pressure_force,eS);
     out.side_viscous=dot(out.viscous_force,eS);
     out.side=dot(out.total_force,eS);
-    const double qA=q*ref.area;
     out.cd_pressure=out.drag_pressure/qA;
     out.cd_viscous=out.drag_viscous/qA;
     out.cd=out.drag/qA;
@@ -169,10 +189,24 @@ inline Result integrate(const std::vector<SurfaceSample>& samples,
     out.cs_pressure=out.side_pressure/qA;
     out.cs_viscous=out.side_viscous/qA;
     out.cs=out.side/qA;
-    const double qAL=q*ref.area*ref.length;
     out.cmx=dot(out.total_moment,{1.0,0.0,0.0})/qAL;
     out.cmy=dot(out.total_moment,{0.0,1.0,0.0})/qAL;
     out.cmz=dot(out.total_moment,{0.0,0.0,1.0})/qAL;
+    // Catch overflow from sums/projections as well as from individual faces;
+    // returning a finite Cd alongside a NaN Cm would be a false success.
+    if (!finite(out.total_force) || !finite(out.total_moment) ||
+        !std::isfinite(out.drag_pressure) || !std::isfinite(out.drag_viscous) ||
+        !std::isfinite(out.drag) || !std::isfinite(out.lift_pressure) ||
+        !std::isfinite(out.lift_viscous) || !std::isfinite(out.lift) ||
+        !std::isfinite(out.side_pressure) || !std::isfinite(out.side_viscous) ||
+        !std::isfinite(out.side) || !std::isfinite(out.cd_pressure) ||
+        !std::isfinite(out.cd_viscous) || !std::isfinite(out.cd) ||
+        !std::isfinite(out.cl_pressure) || !std::isfinite(out.cl_viscous) ||
+        !std::isfinite(out.cl) || !std::isfinite(out.cs_pressure) ||
+        !std::isfinite(out.cs_viscous) || !std::isfinite(out.cs) ||
+        !std::isfinite(out.cmx) || !std::isfinite(out.cmy) ||
+        !std::isfinite(out.cmz))
+        throw std::overflow_error("forces: non-representable integrated coefficient");
     return out;
 }
 
@@ -209,6 +243,9 @@ inline AxisymmetricResult integrate_axisymmetric(
     const double q=0.5*rho_inf*u_inf*u_inf;
     if (!std::isfinite(q) || !(q>0.0))
         throw std::invalid_argument("forces: invalid axisymmetric dynamic pressure");
+    const double qA = q * reference_area;
+    if (!std::isfinite(qA) || !(qA>0.0))
+        throw std::invalid_argument("forces: non-representable axisymmetric reference force");
     if(!std::isfinite(pressure_ref))
         throw std::invalid_argument("forces: invalid axisymmetric reference pressure");
     AxisymmetricResult out{};
@@ -226,14 +263,20 @@ inline AxisymmetricResult integrate_axisymmetric(
         // sigma . n, axial component. sigma = -p I + tau.
         const double fp=-(s.pressure-pressure_ref)*s.nx*dS;
         const double fv=(s.tau_xx*s.nx+s.tau_xr*s.nr)*dS;
+        if (!std::isfinite(fp) || !std::isfinite(fv))
+            throw std::overflow_error("forces: non-representable axisymmetric face force");
         out.pressure_force += fp;
         out.viscous_force += fv;
+        if (!std::isfinite(out.pressure_force) || !std::isfinite(out.viscous_force))
+            throw std::overflow_error("forces: axisymmetric force accumulation overflow");
     }
     out.total_force=out.pressure_force+out.viscous_force;
-    const double qA=q*reference_area;
     out.cd_pressure=out.pressure_force/qA;
     out.cd_viscous=out.viscous_force/qA;
     out.cd_total=out.total_force/qA;
+    if (!std::isfinite(out.total_force) || !std::isfinite(out.cd_pressure) ||
+        !std::isfinite(out.cd_viscous) || !std::isfinite(out.cd_total))
+        throw std::overflow_error("forces: non-representable axisymmetric coefficient");
     return out;
 }
 

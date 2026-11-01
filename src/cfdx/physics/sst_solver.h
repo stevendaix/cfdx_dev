@@ -132,8 +132,17 @@ inline SSTCellSources sst_cell_sources(
     double k, double omega, double strain, double F1, double F2,
     double grad_k_dot_grad_omega, const TurbulenceTransportControls& c)
 {
+    // std::clamp(NaN, 0, 1) returns NaN, while std::max(finite, NaN)
+    // returns the finite argument on common C++ implementations. Thus a
+    // corrupted F2 or strain could silently select the omega branch and
+    // manufacture a plausible eddy viscosity. Validate before any clamp.
+    if (!std::isfinite(k) || !std::isfinite(omega) ||
+        !std::isfinite(strain) || strain < 0.0 || !std::isfinite(F1) ||
+        !std::isfinite(F2) || !std::isfinite(grad_k_dot_grad_omega) ||
+        F1 < 0.0 || F1 > 1.0 || F2 < 0.0 || F2 > 1.0)
+        throw std::invalid_argument("SST cell sources: invalid state or blending factors");
     const double ki=std::max(k,c.k_min), wi=std::max(omega,c.omega_min);
-    const double S=std::max(strain,0.0), f1=std::clamp(F1,0.0,1.0), f2=std::clamp(F2,0.0,1.0);
+    const double S=std::max(strain,0.0), f1=F1, f2=F2;
     const auto blend=[f1](double a,double b){return f1*a+(1.0-f1)*b;};
     SSTCellSources s;
     s.nut=c.a1*ki/std::max(c.a1*wi,S*f2);
@@ -151,6 +160,12 @@ inline SSTCellSources sst_cell_sources(
         blend(c.sst_sigma_k1,c.sst_sigma_k2)*s.nut);
     s.gamma_w=c.density*(c.molecular_viscosity+
         blend(c.sst_sigma_w1,c.sst_sigma_w2)*s.nut);
+    if (!std::isfinite(s.nut) || s.nut < 0.0 ||
+        !std::isfinite(s.sk) || !std::isfinite(s.spk) ||
+        !std::isfinite(s.sw) || !std::isfinite(s.spw) ||
+        !std::isfinite(s.gamma_k) || !std::isfinite(s.gamma_w) ||
+        s.gamma_k < 0.0 || s.gamma_w < 0.0)
+        throw std::domain_error("SST cell sources: non-finite transport coefficient");
     return s;
 }
 

@@ -571,6 +571,9 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_conservation_assembly tests/unit/test_conservation_assembly.cpp)
     add_cfdx_test(test_integrate tests/unit/test_integrate.cpp)
     add_cfdx_test(test_forces tests/unit/test_forces.cpp)
+    add_cfdx_test(test_force_finite_contract tests/unit/test_force_finite_contract.cpp)
+    set_tests_properties(test_force_finite_contract PROPERTIES
+        LABELS "validation;forces;regression")
     add_cfdx_test(test_probe_csv tests/unit/test_probe_csv.cpp)
 
     # Unit tests - Linear Algebra
@@ -628,6 +631,10 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_dual_time_field_integrator tests/unit/test_dual_time_field_integrator.cpp)
     add_cfdx_test(test_dual_time_physical_lifecycle tests/unit/test_dual_time_physical_lifecycle.cpp)
     add_cfdx_test(test_dual_time_navier_stokes tests/unit/test_dual_time_navier_stokes.cpp)
+    # Additional independent numerical/transactional regression coverage.
+    add_cfdx_test(test_dual_time_checkpoint_contract tests/unit/test_dual_time_checkpoint_contract.cpp)
+    add_cfdx_test(test_thermal_conductance_finite tests/unit/test_thermal_conductance_finite.cpp)
+    add_cfdx_test(test_thermal_component_anchoring tests/unit/test_thermal_component_anchoring.cpp)
     add_cfdx_test(test_case_numerics_report tests/unit/test_case_numerics_report.cpp)
     add_cfdx_test(test_temporal_history tests/unit/test_temporal_history.cpp)
     add_cfdx_test(test_core_temporal tests/unit/test_core_temporal.cpp)
@@ -637,6 +644,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_timestep_control tests/unit/test_timestep_control.cpp)
     add_cfdx_test(test_continuation tests/unit/test_continuation.cpp)
     add_cfdx_test(test_local_time_stepping tests/unit/test_local_time_stepping.cpp)
+    add_cfdx_test(test_local_cfl_physical_contract tests/unit/test_local_cfl_physical_contract.cpp)
     add_cfdx_test(test_incompressible tests/unit/test_incompressible.cpp)
     add_cfdx_test(test_m1_m4_physics tests/unit/test_m1_m4_physics.cpp)
     add_cfdx_test(test_m1_m4_validation tests/validation/test_m1_m4_validation.cpp)
@@ -769,6 +777,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_production_turbulence_contract tests/unit/test_production_turbulence_contract.cpp)
     add_cfdx_test(test_solid_conduction_selection tests/unit/test_solid_conduction_selection.cpp)
     add_cfdx_test(test_energy_integration_contracts tests/validation/test_energy_integration_contracts.cpp)
+    add_cfdx_test(test_energy_independent_acceptance tests/unit/test_energy_independent_acceptance.cpp)
+    add_cfdx_test(test_sst_closure_input_contract tests/unit/test_sst_closure_input_contract.cpp)
     add_cfdx_test(test_cht_integration_contracts tests/validation/test_cht_integration_contracts.cpp)
     add_cfdx_test(test_sst_integration_gaps tests/audit/test_sst_integration_gaps.cpp)
     add_cfdx_test(test_production_radiation_contract tests/unit/test_production_radiation_contract.cpp)
@@ -1089,9 +1099,17 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_production_s2s_energy_stage_vv tests/validation/test_production_s2s_energy_stage_vv.cpp)
     add_cfdx_test(test_production_s2s_energy_outer_loop_vv tests/validation/test_production_s2s_energy_outer_loop_vv.cpp)
     add_cfdx_test(test_production_buoyancy_outer_loop_vv tests/validation/test_production_buoyancy_outer_loop_vv.cpp)
+    add_cfdx_test(test_buoyancy_acceleration_contract tests/unit/test_buoyancy_acceleration_contract.cpp)
     add_cfdx_test(test_natural_convection_de_vahl_davis tests/validation/test_natural_convection_de_vahl_davis.cpp)
     add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
     add_cfdx_test(test_s2s_radiation_vv tests/validation/test_s2s_radiation_vv.cpp)
+    add_cfdx_test(test_s2s_radiosity_verified tests/unit/test_s2s_radiosity_verified.cpp)
+    add_cfdx_test(test_s2s_area_scale_reciprocity tests/unit/test_s2s_area_scale_reciprocity.cpp)
+    set_tests_properties(test_s2s_area_scale_reciprocity PROPERTIES
+        LABELS "thermal;validation;regression")
+    set_tests_properties(
+        test_buoyancy_acceleration_contract test_s2s_radiosity_verified
+        PROPERTIES LABELS "phase13;thermal;regression")
     add_cfdx_test(test_thermal_radiation_model_matrix tests/validation/test_thermal_radiation_model_matrix.cpp)
     add_cfdx_test(test_thermal_radiation_regression tests/validation/test_thermal_radiation_regression.cpp)
     add_cfdx_test(test_thermal_challenge_vv tests/validation/test_thermal_challenge_vv.cpp)
@@ -1124,6 +1142,12 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                     ${CMAKE_SOURCE_DIR}/docs/validation/CFDX_QUALIFICATION_REGISTRY.json)
         set_tests_properties(test_cfdx_qualification_registry PROPERTIES
             LABELS "qualification;validation")
+        add_test(NAME test_three_mesh_physical_gate_selftest
+            COMMAND ${Python3_EXECUTABLE} -m unittest discover
+                    -s ${CMAKE_SOURCE_DIR}/tests/python
+                    -p test_qualify_mesh_series.py)
+        set_tests_properties(test_three_mesh_physical_gate_selftest PROPERTIES
+            LABELS "qualification;validation;selftest")
     endif()
 
     # Phase 13 verification labels. The campaign driver selects these tests
@@ -1152,6 +1176,9 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_schur_quantitative_qualification tests/unit/test_schur_quantitative_qualification.cpp)
     add_cfdx_test(test_mgr_preconditioner tests/unit/test_mgr_preconditioner.cpp)
     add_cfdx_test(test_wall_distance_turbulence tests/unit/test_wall_distance_turbulence.cpp)
+    add_cfdx_test(test_wall_turbulence_contract_guard tests/unit/test_wall_turbulence_contract_guard.cpp)
+    set_tests_properties(test_wall_turbulence_contract_guard PROPERTIES
+        LABELS "turbulence;validation;regression")
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     add_cfdx_test(test_coupled_block_schur_amg tests/validation/test_coupled_block_schur_amg.cpp)
     add_cfdx_test(test_n8_schur_production_benchmark tests/validation/test_n8_schur_production_benchmark.cpp)
@@ -1305,6 +1332,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_execution_summary tests/unit/test_execution_summary.cpp)
     add_cfdx_test(test_restart_mapping tests/unit/test_restart_mapping.cpp)
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
+    add_cfdx_test(test_transport_field_contract tests/unit/test_transport_field_contract.cpp)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
     add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
     add_cfdx_test(test_thermo_transport_contracts tests/unit/test_thermo_transport_contracts.cpp)

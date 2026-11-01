@@ -57,7 +57,7 @@ private:
     void decompose_polyhedra(const cfdx::core::Mesh& mesh,
                              std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
                              std::vector<VtkCellType>& vtk_cell_types,
-                             std::vector<std::uint32_t>& cell_face_offsets,
+                             std::vector<std::size_t>& cell_face_offsets,
                              std::vector<cfdx::core::FaceIndex>& cell_face_indices,
                              std::vector<std::size_t>& vtk_original_cell_indices);
 
@@ -71,7 +71,7 @@ private:
     void write_cells(std::ofstream& os,
                      const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
                      const std::vector<VtkCellType>& vtk_cell_types,
-                     const std::vector<std::uint32_t>& cell_face_offsets,
+                     const std::vector<std::size_t>& cell_face_offsets,
                      const std::vector<cfdx::core::FaceIndex>& cell_face_indices,
                      const cfdx::core::Mesh& mesh);
 
