@@ -98,7 +98,9 @@ def verified_file(root: Path, obj: Any, label: str) -> tuple[Path, str]:
         raise EvidenceError(f"{label}: absolute paths are forbidden")
     path = (root / rel).resolve()
     if not path.is_relative_to(root) or not path.is_file() or path.stat().st_size == 0:
-        raise EvidenceError(f"{label}: missing, empty or out-of-tree artifact: {rel}")
+        raise EvidenceError(
+            f"{label}: missing, empty or out-of-tree artifact: {rel}"
+        )
     if digest(path) != sha:
         raise EvidenceError(f"{label}: SHA-256 mismatch: {rel}")
     return path, sha
@@ -123,9 +125,9 @@ def _metric_order(
         raise EvidenceError(f"{name}: no positive observed-order solution")
 
     def ratio_at_order(order: float) -> float:
-        return math.expm1(order * math.log(ratio_coarse)) / (
-            -math.expm1(-order * math.log(ratio_fine))
-        )
+        numerator = math.expm1(order * math.log(ratio_coarse))
+        denominator = -math.expm1(-order * math.log(ratio_fine))
+        return numerator / denominator
 
     low, high = 1.e-8, 12.0
     if ratio_at_order(high) < target:
@@ -160,7 +162,9 @@ def qualify(
         or not COMMIT.fullmatch(sha)
         or sha != expected_source_sha
     ):
-        raise EvidenceError("source SHA missing or does not match expected exact revision")
+        raise EvidenceError(
+            "source SHA missing or does not match expected exact revision"
+        )
     limits = case.get("criteria")
     references = case.get("references")
     levels = case.get("levels")
@@ -169,30 +173,36 @@ def qualify(
         or not isinstance(references, dict)
         or not references
     ):
-        raise EvidenceError("numerical criteria and independent references are mandatory")
+        raise EvidenceError(
+            "numerical criteria and independent references are mandatory"
+        )
     if not isinstance(levels, list) or len(levels) != 3:
         raise EvidenceError("exactly three mesh levels are required")
     if physics.startswith("naca") and not NACA_QOIS.issubset(references):
-        raise EvidenceError("NACA needs separate pressure, viscous, total drag and lift references")
+        raise EvidenceError(
+            "NACA needs separate pressure, viscous, total drag and lift references"
+        )
 
     max_res = positive(limits.get("max_true_residual"), "max_true_residual")
     balance_fields = PHYSICS[physics]
-    max_balance = {
-        key: positive(limits.get("max_" + key), "max_" + key)
-        for key in balance_fields
-    }
+    max_balance = {}
+    for key in balance_fields:
+        max_balance[key] = positive(limits.get("max_" + key), "max_" + key)
     min_ratio = positive(limits.get("min_refinement_ratio"), "min_refinement_ratio")
     min_order = positive(limits.get("min_observed_order"), "min_observed_order")
     max_gci = positive(limits.get("max_gci"), "max_gci")
     max_ratio_difference = nonnegative(
-        limits.get("max_refinement_ratio_difference"), "max_refinement_ratio_difference"
+        limits.get("max_refinement_ratio_difference"),
+        "max_refinement_ratio_difference",
     )
     if min_ratio <= 1.0 or max_ratio_difference > 0.10:
         raise EvidenceError("invalid refinement-ratio policy")
     cd_closure = None
     if physics.startswith("naca"):
-        cd_closure = positive(limits.get("max_drag_decomposition_error"),
-                              "max_drag_decomposition_error")
+        cd_closure = positive(
+            limits.get("max_drag_decomposition_error"),
+            "max_drag_decomposition_error",
+        )
 
     reference_values: dict[str, tuple[float, float, float]] = {}
     for name, value in references.items():
@@ -201,7 +211,9 @@ def qualify(
         reference_values[name] = (
             finite(value.get("value"), f"reference {name}"),
             positive(value.get("scale"), f"reference scale {name}"),
-            positive(value.get("max_relative_error"), f"reference tolerance {name}"),
+            positive(
+                value.get("max_relative_error"), f"reference tolerance {name}"
+            ),
         )
 
     measured: dict[str, list[float]] = {name: [] for name in reference_values}
@@ -227,7 +239,10 @@ def qualify(
             raise EvidenceError(f"{label}: result does not reference its input mesh")
         if result.get("converged") is not True or result.get("status") != "COMPLETED":
             raise EvidenceError(f"{label}: solver did not converge and complete")
-        if nonnegative(result.get("true_residual"), f"{label}.true_residual") > max_res:
+        if (
+            nonnegative(result.get("true_residual"), f"{label}.true_residual")
+            > max_res
+        ):
             raise EvidenceError(f"{label}: true linear residual too large")
         balances = result.get("balances")
         if not isinstance(balances, dict):
@@ -241,19 +256,31 @@ def qualify(
             raise EvidenceError(f"{label}: mesh contains too few cells")
         observed = result.get("qoi")
         if not isinstance(observed, dict) or set(observed) != set(reference_values):
-            raise EvidenceError(f"{label}: missing/unexpected QoI; every reference must be evaluated")
+            raise EvidenceError(
+                f"{label}: missing/unexpected QoI; every reference must be evaluated"
+            )
         for name in measured:
             measured[name].append(finite(observed[name], f"{label}.{name}"))
-        if cd_closure is not None and abs(
-            observed["cd_total"] - observed["cd_pressure"] - observed["cd_viscous"]
-        ) > cd_closure:
-            raise EvidenceError(f"{label}: pressure/viscous drag does not sum to total")
+        if cd_closure is not None:
+            decomposition_error = abs(
+                observed["cd_total"]
+                - observed["cd_pressure"]
+                - observed["cd_viscous"]
+            )
+            if decomposition_error > cd_closure:
+                raise EvidenceError(
+                    f"{label}: pressure/viscous drag does not sum to total"
+                )
         hs.append(h)
         cells.append(n)
-        artifacts.append({"mesh_path": str(mesh_path.relative_to(root)),
-                          "mesh_sha256": mesh_sha,
-                          "result_path": str(result_path.relative_to(root)),
-                          "result_sha256": result_sha})
+        artifacts.append(
+            {
+                "mesh_path": str(mesh_path.relative_to(root)),
+                "mesh_sha256": mesh_sha,
+                "result_path": str(result_path.relative_to(root)),
+                "result_sha256": result_sha,
+            }
+        )
 
     if (
         len({a["mesh_sha256"] for a in artifacts}) != 3
@@ -278,7 +305,9 @@ def qualify(
             raise EvidenceError(f"{name}: GCI {gci:.3g} above {max_gci}")
         error = abs(values[2] - reference) / scale
         if error > max_error:
-            raise EvidenceError(f"{name}: physical reference error {error:.3g} above {max_error}")
+            raise EvidenceError(
+                f"{name}: physical reference error {error:.3g} above {max_error}"
+            )
         metrics[name] = {
             "values_coarse_to_fine": values,
             "reference": reference,
