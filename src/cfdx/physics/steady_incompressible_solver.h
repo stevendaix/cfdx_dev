@@ -308,6 +308,18 @@ struct IncompressibleSolverControls {
         const cfdx::core::Field<double, cfdx::core::Location::FACE>&,
         const std::vector<double>&)>;
     MomentumAssemblyForensicCallback momentum_assembly_forensic_callback;
+    // Optional post-assembly evidence hook. The callback sees the exact scalar
+    // equation passed to the momentum solve, with source fields and geometry
+    // needed to compare pressure/body-force scales with the assembled operator.
+    // Null by default; this callback never changes the equation.
+    using MomentumEquationForensicCallback = std::function<void(
+        std::size_t,
+        std::size_t,
+        const ScalarEquation&,
+        const FvGeometry&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&)>;
+    MomentumEquationForensicCallback momentum_equation_forensic_callback;
     // Evidence-only hook: invoked at the exact Krylov call point of the
     // coupled solve - after assembly, gauge treatment, finite checks and
     // preconditioner setup - so the snapshot matrix, RHS and initial guess
@@ -3608,6 +3620,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         auto ez = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_z, mu_eff, ubc_z, 2,
             controls.use_bounded_convection, controls.convection_scheme, &u_z_field);
+
+        if (controls.momentum_equation_forensic_callback) {
+            controls.momentum_equation_forensic_callback(
+                iter, 0, ex, geometry, grad_p, body_x);
+            controls.momentum_equation_forensic_callback(
+                iter, 1, ey, geometry, grad_p, body_y);
+            controls.momentum_equation_forensic_callback(
+                iter, 2, ez, geometry, grad_p, body_z);
+        }
 
         if (controls.transient.enabled) {
             const auto& u_n = *controls.transient.previous;
