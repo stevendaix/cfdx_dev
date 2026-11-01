@@ -19,11 +19,13 @@ namespace cfdx::io {
 //   1 — velocity and pressure only.
 //   2 — adds an optional T / k / second turbulence section.
 //   3 — adds the mesh identity that a restart reader validates against.
-//   4 — adds named omega and an optional authoritative face mass-flux section.
+//   4 — adds the named omega field for production SST restart state.
+//   5 — adds the optional authoritative face mass-flux section.
 enum : int {
     DatRestartVersionFields = 2,
     DatRestartVersionIdentity = 3,
     DatRestartVersionSST = 4,
+    DatRestartVersionFaceFields = 5,
 };
 
 // Geometry identity of the mesh a checkpoint belongs to.
@@ -307,7 +309,8 @@ inline DatRestartState read_dat_restart_fields(
     std::string magic; int version = 0;
     if (!(in >> magic >> version) || magic != "CFDX-DAT" ||
         (version != 1 && version != DatRestartVersionFields &&
-         version != DatRestartVersionIdentity && version != DatRestartVersionSST))
+         version != DatRestartVersionIdentity && version != DatRestartVersionSST &&
+         version != DatRestartVersionFaceFields))
         throw std::runtime_error("read_dat_restart_fields: unsupported DAT format");
     std::size_t cells = 0; std::string key;
     if (!(in >> key >> cells) || key != "cells" || cells != mesh.n_cells())
@@ -362,6 +365,9 @@ inline DatRestartState read_dat_restart_fields(
     bool got_t=false, got_k=false, got_second=false, got_omega=false, got_mdot=false;
     while (in >> key) {
         if (key == "face_fields") {
+            if (version < DatRestartVersionFaceFields)
+                throw std::runtime_error(
+                    "read_dat_restart_fields: face fields require DAT version 5");
             // Facial section: only the face mass flux exists today. The
             // declared count is validated against the mesh before any facial
             // value is read, and nothing may follow the facial fields.
