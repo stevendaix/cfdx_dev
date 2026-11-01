@@ -990,6 +990,17 @@ int main()
                                  {},&fields,&junction),
             std::invalid_argument, "carries a prescribed mass flux");
 
+        // A caller cannot label an ordinary boundary as a conjugate
+        // interface to bypass its typed external boundary condition.
+        auto extra_interface = junction;
+        extra_interface.emplace(
+            "walls", std::vector<ThermalInterfaceFaceCondition>(
+                5, ThermalInterfaceFaceCondition{1.0, 300.0}));
+        EXPECT_THROW_WITH(
+            solve_thermal_region(flux_case,"water",m,g,flux_bc,T,source,
+                                 {},&fields,&extra_interface),
+            std::invalid_argument, "not a declared thermal interface");
+
         // Coupled solver: region inputs must be exact and complete.
         ThermalRegionInputs in_a, in_b;
         in_a.mesh = &mesh_a; in_a.geometry = &g_a;
