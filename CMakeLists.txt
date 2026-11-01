@@ -641,6 +641,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_newton_field tests/unit/test_newton_field.cpp)
     add_cfdx_test(test_simulation_controller tests/unit/test_simulation_controller.cpp)
     add_cfdx_test(test_adaptive_cfl tests/unit/test_adaptive_cfl.cpp)
+    add_cfdx_test(test_n256_continuation tests/unit/test_n256_continuation.cpp)
     add_cfdx_test(test_timestep_control tests/unit/test_timestep_control.cpp)
     add_cfdx_test(test_continuation tests/unit/test_continuation.cpp)
     add_cfdx_test(test_local_time_stepping tests/unit/test_local_time_stepping.cpp)
@@ -1434,6 +1435,15 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
             ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
             TIMEOUT 900)
+    endif()
+
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_compare_naca_continuation
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_compare_naca_continuation.py)
+        set_tests_properties(test_compare_naca_continuation PROPERTIES
+            LABELS "naca;validation;diagnostics"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 30)
     endif()
 
     if(Python3_Interpreter_FOUND)
