@@ -58,9 +58,17 @@ class DatRestart:
 #   2 — adds the optional T / k / second turbulence section.
 #   3 — adds the mesh identity the native restart reader validates.
 #   4 — adds the explicit SST omega field; optional fields remain name-based.
+#   5 — adds the optional authoritative face mass-flux section.
 DAT_TEXT_IDENTITY_VERSION = 3
 DAT_TEXT_SST_VERSION = 4
-_SUPPORTED_TEXT_VERSIONS = (1, 2, DAT_TEXT_IDENTITY_VERSION, DAT_TEXT_SST_VERSION)
+DAT_TEXT_FACE_FIELDS_VERSION = 5
+_SUPPORTED_TEXT_VERSIONS = (
+    1,
+    2,
+    DAT_TEXT_IDENTITY_VERSION,
+    DAT_TEXT_SST_VERSION,
+    DAT_TEXT_FACE_FIELDS_VERSION,
+)
 
 
 def _validate(restart: DatRestart) -> DatRestart:
@@ -89,6 +97,8 @@ def _validate(restart: DatRestart) -> DatRestart:
         if any(cell_id < 0 for cell_id in restart.cell_ids):
             raise ValueError("DAT checkpoint contains negative cell ids")
     if restart.face_fields is not None:
+        if restart.version < DAT_TEXT_FACE_FIELDS_VERSION:
+            raise ValueError("DAT face fields require version 5")
         if restart.mesh_identity is None:
             raise ValueError("DAT facial fields require a mesh identity")
         face_count = restart.mesh_identity[1]
@@ -188,6 +198,8 @@ def _read_text(path: Path) -> DatRestart:
             pos += 1
             continue
         if tokens[pos] == "face_fields":
+            if version < DAT_TEXT_FACE_FIELDS_VERSION:
+                raise ValueError("DAT face fields require version 5")
             # Facial section appended by writers that persist the face mass
             # flux. The declared count is the writer's face count; it must
             # match the recorded mesh identity before any facial value is
