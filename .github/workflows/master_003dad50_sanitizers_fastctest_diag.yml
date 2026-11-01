@@ -29,7 +29,7 @@ env:
 jobs:
   sanitizers-fastctest-diag:
     runs-on: ubuntu-24.04
-    timeout-minutes: 75
+    timeout-minutes: 110
     env:
       HEAD_SHA_PIN: 003dad50df272b1264c395938f73f3e64d96f4fd
     steps:
