@@ -131,11 +131,13 @@ A1 validation is intentionally structural and thermophysical. Mesh existence, pa
 
 ## 6. Deferred work
 
-- A2: typed case adapter/CLI and stationary/transient autonomous driver.
-- A3: mesh-aware conformal CHT assembly and equal/opposite interface heat-flux audit.
-- A4: closed 0D node energy equation and independent analytical transient oracle.
-- A5: mass-flow network and conservative enthalpy transport.
-- A6: imported prescribed face-flux validation and advection-diffusion.
+The numbering below follows issue #1150 and method sheet 17. An earlier revision of this section listed the conjugate interfaces under A3 and the 0D nodes under A4; the executed numbering is authoritative.
+
+- A2: typed case adapter/CLI and stationary/transient autonomous driver — DONE (PR #1152).
+- A3: authoritative prescribed face mass-flux field, validation and advection-diffusion in the driver — DONE (PR #1153).
+- A4: conjugate and contact-resistance interfaces between meshed regions: conformal pairing, series-resistance coupling and equal/opposite interface heat-flux audit.
+- A5: closed 0D node energy equation, links and independent analytical transient oracle.
+- A6: mass-flow network and conservative enthalpy transport.
 - A7: S2S integration and separately qualified extensions.
 
 ## 7. Test target

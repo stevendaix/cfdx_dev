@@ -1,11 +1,12 @@
-// Thermal-only autonomous driver VV (issue #1150, A2+A3).
+// Thermal-only autonomous driver VV (issue #1150, A2+A3+A4).
 //
 // Every physical case is verified against an exact discrete oracle on an
 // orthogonal mesh (the assembled system is small enough to solve by hand)
 // plus the independent energy balance audit. Fail-closed batteries verify
 // the explicit diagnostics of the deferred couplings, of the boundary
-// mapping/value contract, and of the prescribed-mass-flux face field
-// contract. Method sheet: docs/audits/17-thermal-driver.md.
+// mapping/value contract, of the prescribed-mass-flux face field contract,
+// and of the conjugate-interface pairing contract. Method sheet:
+// docs/audits/17-thermal-driver.md.
 #include "cfdx/physics/thermal_driver.h"
 #include "common/test_harness.h"
 
@@ -20,7 +21,7 @@ using namespace cfdx::testing;
 
 namespace {
 
-Mesh two_cell_1d()
+Mesh two_cell_bar(double x0)
 {
     Mesh m;
     m.points().resize(12);
@@ -29,7 +30,7 @@ Mesh two_cell_1d()
         {0.5,0,0},{0.5,1,0},{0.5,1,1},{0.5,0,1},
         {1,0,0},{1,1,0},{1,1,1},{1,0,1}
     };
-    for (std::size_t i=0; i<12; ++i) m.points().set(i,p[i][0],p[i][1],p[i][2]);
+    for (std::size_t i=0; i<12; ++i) m.points().set(i,p[i][0]+x0,p[i][1],p[i][2]);
 
     m.faces().push_face({0,3,2,1});
     m.faces().push_face({4,5,6,7});
@@ -67,6 +68,11 @@ Mesh two_cell_1d()
     m.boundary().add_patch(right);
     m.boundary().add_patch(walls);
     return m;
+}
+
+Mesh two_cell_1d()
+{
+    return two_cell_bar(0.0);
 }
 
 struct CubePatchSpec {
@@ -158,6 +164,57 @@ ThermalCase fluid_flux_case(const std::string& field_name)
     c.regions[0].fluid_model = ThermalFluidModel::PRESCRIBED_MASS_FLUX;
     c.regions[0].mass_flux_field = field_name;
     c.regions[0].name = "water";
+    return c;
+}
+
+// Two 1-D bars of unit cross-section joined by one conjugate or
+// contact-resistance interface (A4): bar a of conductivity ka, bar b of
+// conductivity kb, half-cell distance 0.25 m at the interface plane, so two
+// bars placed side by side pair exactly (coincident centroids, opposed
+// normals, equal areas). A CONJUGATE interface joins a solid and a
+// stagnant fluid; a CONTACT_RESISTANCE interface joins two solids.
+ThermalCase coupled_case(ThermalInterfaceModel model,
+                         double contact_resistance, double ka, double kb)
+{
+    ThermalCase c;
+    c.name = "thermal_driver_vv";
+    ThermalMaterial a_material;
+    a_material.name = "bar_a_material";
+    a_material.properties.conductivity.reference_value = ka;
+    a_material.properties.heat_capacity.reference_value = 1.0;
+    a_material.properties.density.rho0 = 10.0;
+    ThermalMaterial b_material;
+    b_material.name = "bar_b_material";
+    b_material.properties.conductivity.reference_value = kb;
+    b_material.properties.heat_capacity.reference_value = 1.0;
+    b_material.properties.density.rho0 = 10.0;
+    c.materials.push_back(a_material);
+    c.materials.push_back(b_material);
+    ThermalRegion a;
+    a.name = "bar_a";
+    a.mesh_id = "mesh_a";
+    a.material = "bar_a_material";
+    a.initial_temperature = 350.0;
+    ThermalRegion b = a;
+    b.name = "bar_b";
+    b.mesh_id = "mesh_b";
+    b.material = "bar_b_material";
+    if (model == ThermalInterfaceModel::CONJUGATE_CONDUCTION) {
+        b.kind = ThermalRegionKind::FLUID;
+        b.fluid_model = ThermalFluidModel::STAGNANT_DIFFUSION;
+    }
+    c.regions.push_back(a);
+    c.regions.push_back(b);
+    ThermalInterface interface;
+    interface.name = "junction";
+    interface.region_a = "bar_a";
+    interface.patch_a = "right";
+    interface.region_b = "bar_b";
+    interface.patch_b = "left";
+    interface.model = model;
+    interface.contact_resistance = contact_resistance;
+    c.interfaces.push_back(interface);
+    c.validate();
     return c;
 }
 
@@ -516,7 +573,151 @@ int main()
         EXPECT_NEAR(T(0),300.0 + 50.0*std::pow(5.0/7.0,4.0),1e-9);
     });
 
-    // Fail-closed battery: couplings explicitly out of scope.
+    // Steady conjugate two-bar conduction (A4): solid bar a (k=2, unit
+    // cross-section, 0.5 m cells) held at 400 K, stagnant-fluid bar b
+    // (k=0.5) held at 300 K, joined by a CONJUGATE interface. Series
+    // conductances per unit area: 8, 4, 1.6, 1, 2; total resistance 2.5,
+    // hence q = 40 W and (A1,A2,B1,B2) = (395,385,360,320) K exactly.
+    run_case("steady_conjugate_two_bars", [] {
+        Mesh mesh_a = two_cell_bar(0.0), mesh_b = two_cell_bar(1.0);
+        auto g_a = build_fv_geometry(mesh_a);
+        auto g_b = build_fv_geometry(mesh_b);
+        ThermalCase c = coupled_case(
+            ThermalInterfaceModel::CONJUGATE_CONDUCTION, 0.0, 2.0, 0.5);
+        Field<double,Location::CELL>
+            T_a(2,"T","K",1), source_a(2,"source","W/m3",1),
+            T_b(2,"T","K",1), source_b(2,"source","W/m3",1);
+        T_a.fill(350.0); source_a.fill(0.0);
+        T_b.fill(350.0); source_b.fill(0.0);
+
+        ThermalBoundaryConditions bc_a, bc_b;
+        bc_a["left"] = fixed_temperature(400.0);
+        bc_a["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+        bc_b["right"] = fixed_temperature(300.0);
+        bc_b["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+
+        ThermalRegionInputs in_a, in_b;
+        in_a.mesh = &mesh_a; in_a.geometry = &g_a;
+        in_a.temperature = &T_a; in_a.source = &source_a;
+        in_a.boundary_conditions = bc_a;
+        in_b.mesh = &mesh_b; in_b.geometry = &g_b;
+        in_b.temperature = &T_b; in_b.source = &source_b;
+        in_b.boundary_conditions = bc_b;
+        std::map<std::string,ThermalRegionInputs> inputs;
+        inputs.emplace("bar_a", in_a);
+        inputs.emplace("bar_b", in_b);
+
+        const auto result = solve_thermal_regions_coupled(c, inputs);
+        EXPECT_TRUE(result.converged);
+        EXPECT_NEAR(T_a(0),395.0,1e-8);
+        EXPECT_NEAR(T_a(1),385.0,1e-8);
+        EXPECT_NEAR(T_b(0),360.0,1e-8);
+        EXPECT_NEAR(T_b(1),320.0,1e-8);
+        EXPECT_TRUE(result.regions.at("bar_a").converged);
+        EXPECT_TRUE(result.regions.at("bar_b").converged);
+        EXPECT_TRUE(result.regions.at("bar_a").balance.normalized_residual < 1e-9);
+        EXPECT_TRUE(result.regions.at("bar_b").balance.normalized_residual < 1e-9);
+        EXPECT_TRUE(result.interface_flux_imbalance < 1e-9);
+    });
+
+    // Steady contact-resistance jump (A4): two solid bars (k=1) joined by
+    // a CONTACT_RESISTANCE interface with R_c = 0.5 m^2.K/W between 400 K
+    // and 300 K. Series resistance 0.25+0.5+1+0.5+0.25 = 2.5, hence
+    // q = 40 W and (A1,A2,B1,B2) = (390,370,330,310) K exactly, with the
+    // temperature jump (360 -> 340 K) carried by the contact resistance.
+    run_case("steady_contact_resistance_jump", [] {
+        Mesh mesh_a = two_cell_bar(0.0), mesh_b = two_cell_bar(1.0);
+        auto g_a = build_fv_geometry(mesh_a);
+        auto g_b = build_fv_geometry(mesh_b);
+        ThermalCase c = coupled_case(
+            ThermalInterfaceModel::CONTACT_RESISTANCE, 0.5, 1.0, 1.0);
+        Field<double,Location::CELL>
+            T_a(2,"T","K",1), source_a(2,"source","W/m3",1),
+            T_b(2,"T","K",1), source_b(2,"source","W/m3",1);
+        T_a.fill(350.0); source_a.fill(0.0);
+        T_b.fill(350.0); source_b.fill(0.0);
+
+        ThermalBoundaryConditions bc_a, bc_b;
+        bc_a["left"] = fixed_temperature(400.0);
+        bc_a["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+        bc_b["right"] = fixed_temperature(300.0);
+        bc_b["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+
+        ThermalRegionInputs in_a, in_b;
+        in_a.mesh = &mesh_a; in_a.geometry = &g_a;
+        in_a.temperature = &T_a; in_a.source = &source_a;
+        in_a.boundary_conditions = bc_a;
+        in_b.mesh = &mesh_b; in_b.geometry = &g_b;
+        in_b.temperature = &T_b; in_b.source = &source_b;
+        in_b.boundary_conditions = bc_b;
+        std::map<std::string,ThermalRegionInputs> inputs;
+        inputs.emplace("bar_a", in_a);
+        inputs.emplace("bar_b", in_b);
+
+        const auto result = solve_thermal_regions_coupled(c, inputs);
+        EXPECT_TRUE(result.converged);
+        EXPECT_NEAR(T_a(0),390.0,1e-8);
+        EXPECT_NEAR(T_a(1),370.0,1e-8);
+        EXPECT_NEAR(T_b(0),330.0,1e-8);
+        EXPECT_NEAR(T_b(1),310.0,1e-8);
+        EXPECT_TRUE(result.regions.at("bar_a").converged);
+        EXPECT_TRUE(result.regions.at("bar_b").converged);
+        EXPECT_TRUE(result.regions.at("bar_a").balance.normalized_residual < 1e-9);
+        EXPECT_TRUE(result.regions.at("bar_b").balance.normalized_residual < 1e-9);
+        EXPECT_TRUE(result.interface_flux_imbalance < 1e-9);
+    });
+
+    // Transient coupled step (A4): the conjugate bars of the first case as
+    // a TRANSIENT case, dt = 1 s, rho*cp = 10, V = 0.5 m^3 per cell, one
+    // implicit step from T^0 = 350 K. The exact 4x4 backward-Euler system
+    // solves to A1 = 508510/1353, A2 = 486830/1353, B1 = 474130/1353 and
+    // B2 = 456710/1353: every coupling sweep restarts from T^0, so the
+    // coupled solve advances the state by exactly one physical step.
+    run_case("transient_coupled_step", [] {
+        Mesh mesh_a = two_cell_bar(0.0), mesh_b = two_cell_bar(1.0);
+        auto g_a = build_fv_geometry(mesh_a);
+        auto g_b = build_fv_geometry(mesh_b);
+        ThermalCase c = coupled_case(
+            ThermalInterfaceModel::CONJUGATE_CONDUCTION, 0.0, 2.0, 0.5);
+        c.time_mode = ThermalTimeMode::TRANSIENT;
+        c.time_step = 1.0;
+        Field<double,Location::CELL>
+            T_a(2,"T","K",1), source_a(2,"source","W/m3",1),
+            T_b(2,"T","K",1), source_b(2,"source","W/m3",1);
+        T_a.fill(350.0); source_a.fill(0.0);
+        T_b.fill(350.0); source_b.fill(0.0);
+
+        ThermalBoundaryConditions bc_a, bc_b;
+        bc_a["left"] = fixed_temperature(400.0);
+        bc_a["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+        bc_b["right"] = fixed_temperature(300.0);
+        bc_b["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+
+        ThermalRegionInputs in_a, in_b;
+        in_a.mesh = &mesh_a; in_a.geometry = &g_a;
+        in_a.temperature = &T_a; in_a.source = &source_a;
+        in_a.boundary_conditions = bc_a;
+        in_b.mesh = &mesh_b; in_b.geometry = &g_b;
+        in_b.temperature = &T_b; in_b.source = &source_b;
+        in_b.boundary_conditions = bc_b;
+        std::map<std::string,ThermalRegionInputs> inputs;
+        inputs.emplace("bar_a", in_a);
+        inputs.emplace("bar_b", in_b);
+
+        const auto result = solve_thermal_regions_coupled(c, inputs);
+        EXPECT_TRUE(result.converged);
+        EXPECT_NEAR(T_a(0),508510.0/1353.0,1e-8);
+        EXPECT_NEAR(T_a(1),486830.0/1353.0,1e-8);
+        EXPECT_NEAR(T_b(0),474130.0/1353.0,1e-8);
+        EXPECT_NEAR(T_b(1),456710.0/1353.0,1e-8);
+        EXPECT_TRUE(result.regions.at("bar_a").converged);
+        EXPECT_TRUE(result.regions.at("bar_b").converged);
+        EXPECT_TRUE(result.regions.at("bar_a").balance.normalized_residual < 1e-9);
+        EXPECT_TRUE(result.regions.at("bar_b").balance.normalized_residual < 1e-9);
+        EXPECT_TRUE(result.interface_flux_imbalance < 1e-9);
+    });
+
+    // Fail-closed battery: unknown lookups and couplings out of scope.
     run_case("fail_closed_coupled_and_unsupported", [] {
         Mesh m = one_cell_cube();
         auto g = build_fv_geometry(m);
@@ -535,25 +736,6 @@ int main()
             solve_thermal_region(c,"solid",m,g,bc,T,source),
             std::invalid_argument, "references unknown material");
         c.regions[0].material = "unit_solid";
-
-        // Conjugate interfaces are A4.
-        ThermalCase interface_case = solid_case();
-        ThermalRegion air = interface_case.regions[0];
-        air.name = "air";
-        air.kind = ThermalRegionKind::FLUID;
-        air.fluid_model = ThermalFluidModel::STAGNANT_DIFFUSION;
-        interface_case.regions.push_back(air);
-        ThermalInterface interface;
-        interface.name = "wall_air_cht";
-        interface.region_a = "solid";
-        interface.patch_a = "walls";
-        interface.region_b = "air";
-        interface.patch_b = "walls";
-        interface_case.interfaces.push_back(interface);
-        interface_case.validate();
-        EXPECT_THROW_WITH(
-            solve_thermal_region(interface_case,"solid",m,g,bc,T,source),
-            std::invalid_argument, "deferred to A4");
 
         // Thermal links to lumped nodes are A5.
         ThermalCase link_case = solid_case();
@@ -730,6 +912,217 @@ int main()
         EXPECT_THROW_WITH(
             solve_thermal_region(c,"water",m,g,flux_bc,T,source,{},&fields),
             std::invalid_argument, "inflow boundary patch");
+    });
+
+    // Fail-closed battery (A4): an interface touching a region must be
+    // covered by explicit per-face conditions in the single-region solve,
+    // and the coupled solver must find a conformal, exclusively coupled
+    // pairing of every interface patch.
+    run_case("fail_closed_conjugate_interfaces", [] {
+        Mesh mesh_a = two_cell_bar(0.0), mesh_b = two_cell_bar(1.0);
+        auto g_a = build_fv_geometry(mesh_a);
+        auto g_b = build_fv_geometry(mesh_b);
+        ThermalCase c = coupled_case(
+            ThermalInterfaceModel::CONJUGATE_CONDUCTION, 0.0, 2.0, 0.5);
+        Field<double,Location::CELL>
+            T_a(2,"T","K",1), source_a(2,"source","W/m3",1),
+            T_b(2,"T","K",1), source_b(2,"source","W/m3",1);
+        T_a.fill(350.0); source_a.fill(0.0);
+        T_b.fill(350.0); source_b.fill(0.0);
+
+        ThermalBoundaryConditions bc_a, bc_b;
+        bc_a["left"] = fixed_temperature(400.0);
+        bc_a["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+        bc_b["right"] = fixed_temperature(300.0);
+        bc_b["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+
+        // Single-region solve: the case interface is not covered.
+        EXPECT_THROW_WITH(
+            solve_thermal_region(c,"bar_a",mesh_a,g_a,bc_a,T_a,source_a),
+            std::invalid_argument, "conjugate interface");
+
+        // Interface condition vector longer than the patch.
+        ThermalInterfaceFaceConditions oversized;
+        oversized.emplace("right",
+            std::vector<ThermalInterfaceFaceCondition>(2));
+        EXPECT_THROW_WITH(
+            solve_thermal_region(c,"bar_a",mesh_a,g_a,bc_a,T_a,source_a,
+                                 {},nullptr,&oversized),
+            std::invalid_argument, "does not match the patch");
+
+        // A prescribed mass flux crossing an interface face.
+        ThermalCase flux_case = fluid_flux_case("feed_flux");
+        ThermalRegion other = flux_case.regions[0];
+        other.name = "bar_b";
+        other.kind = ThermalRegionKind::SOLID;
+        other.fluid_model = ThermalFluidModel::STAGNANT_DIFFUSION;
+        other.mass_flux_field.clear();
+        flux_case.regions.push_back(other);
+        ThermalInterface flux_interface;
+        flux_interface.name = "junction";
+        flux_interface.region_a = "water";
+        flux_interface.patch_a = "right";
+        flux_interface.region_b = "bar_b";
+        flux_interface.patch_b = "left";
+        flux_case.interfaces.push_back(flux_interface);
+        flux_case.validate();
+        Mesh m = two_cell_1d();
+        auto g = build_fv_geometry(m);
+        Field<double,Location::CELL> T(2,"T","K",1), source(2,"source","W/m3",1);
+        T.fill(350.0); source.fill(0.0);
+        ThermalFaceFields fields;
+        fields.emplace("feed_flux",
+            Field<double,Location::FACE>(m.n_faces(),"feed_flux","kg/s",1));
+        auto& phi = fields.at("feed_flux");
+        phi.fill(0.0);
+        phi(0) = -1.0;
+        phi(1) = +1.0;
+        phi(6) = +1.0;
+        ThermalBoundaryConditions flux_bc;
+        flux_bc["left"] = fixed_temperature(300.0);
+        flux_bc["walls"].kind = ThermalBoundaryKind::ADIABATIC;
+        ThermalInterfaceFaceConditions junction;
+        junction.emplace("right",
+            std::vector<ThermalInterfaceFaceCondition>(
+                1, ThermalInterfaceFaceCondition{1.0, 300.0}));
+        EXPECT_THROW_WITH(
+            solve_thermal_region(flux_case,"water",m,g,flux_bc,T,source,
+                                 {},&fields,&junction),
+            std::invalid_argument, "carries a prescribed mass flux");
+
+        // Coupled solver: region inputs must be exact and complete.
+        ThermalRegionInputs in_a, in_b;
+        in_a.mesh = &mesh_a; in_a.geometry = &g_a;
+        in_a.temperature = &T_a; in_a.source = &source_a;
+        in_a.boundary_conditions = bc_a;
+        in_b.mesh = &mesh_b; in_b.geometry = &g_b;
+        in_b.temperature = &T_b; in_b.source = &source_b;
+        in_b.boundary_conditions = bc_b;
+        std::map<std::string,ThermalRegionInputs> inputs;
+        inputs.emplace("bar_a", in_a);
+        inputs.emplace("bar_b", in_b);
+
+        std::map<std::string,ThermalRegionInputs> ghost_inputs = inputs;
+        ghost_inputs.emplace("ghost", in_a);
+        EXPECT_THROW_WITH(
+            solve_thermal_regions_coupled(c, ghost_inputs),
+            std::invalid_argument, "unknown region input");
+
+        std::map<std::string,ThermalRegionInputs> missing_inputs = inputs;
+        missing_inputs.erase("bar_b");
+        EXPECT_THROW_WITH(
+            solve_thermal_regions_coupled(c, missing_inputs),
+            std::invalid_argument, "missing region input");
+
+        std::map<std::string,ThermalRegionInputs> null_inputs = inputs;
+        null_inputs.at("bar_a").mesh = nullptr;
+        EXPECT_THROW_WITH(
+            solve_thermal_regions_coupled(c, null_inputs),
+            std::invalid_argument, "requires a mesh, a geometry");
+
+        // Coupled solver: unknown interface patch.
+        ThermalCase ghost_patch_case = c;
+        ghost_patch_case.interfaces[0].patch_a = "ghost_patch";
+        EXPECT_THROW_WITH(
+            solve_thermal_regions_coupled(ghost_patch_case, inputs),
+            std::invalid_argument, "references unknown patch");
+
+        // Coupled solver: an interface patch must not also carry an
+        // external boundary condition.
+        ThermalBoundaryConditions bc_a_external = bc_a;
+        bc_a_external["right"] = fixed_temperature(300.0);
+        std::map<std::string,ThermalRegionInputs> external_inputs = inputs;
+        external_inputs.at("bar_a").boundary_conditions = bc_a_external;
+        EXPECT_THROW_WITH(
+            solve_thermal_regions_coupled(c, external_inputs),
+            std::invalid_argument, "also has an external boundary condition");
+
+        // Coupled solver: non-conformal patches (two faces against one).
+        Mesh wide_a = one_cell_cube({CubePatchSpec{"iface",{0,1}},
+                                     CubePatchSpec{"walls",{2,3,4,5}}});
+        auto wide_g = build_fv_geometry(wide_a);
+        Mesh narrow_b = one_cell_cube({CubePatchSpec{"iface",{0}},
+                                       CubePatchSpec{"walls",{1,2,3,4,5}}});
+        auto narrow_g = build_fv_geometry(narrow_b);
+        ThermalCase cubes = solid_case();
+        cubes.regions[0].name = "cube_a";
+        ThermalRegion cube_b_region = cubes.regions[0];
+        cube_b_region.name = "cube_b";
+        cubes.regions.push_back(cube_b_region);
+        ThermalInterface cube_interface;
+        cube_interface.name = "cube_junction";
+        cube_interface.region_a = "cube_a";
+        cube_interface.patch_a = "iface";
+        cube_interface.region_b = "cube_b";
+        cube_interface.patch_b = "iface";
+        cubes.interfaces.push_back(cube_interface);
+        Field<double,Location::CELL>
+            T_wide(1,"T","K",1), source_wide(1,"source","W/m3",1),
+            T_narrow(1,"T","K",1), source_narrow(1,"source","W/m3",1);
+        T_wide.fill(300.0); source_wide.fill(0.0);
+        T_narrow.fill(300.0); source_narrow.fill(0.0);
+        ThermalBoundaryConditions bc_wide, bc_narrow;
+        bc_wide["walls"] = fixed_temperature(310.0);
+        bc_narrow["walls"] = fixed_temperature(310.0);
+        ThermalRegionInputs in_wide, in_narrow;
+        in_wide.mesh = &wide_a; in_wide.geometry = &wide_g;
+        in_wide.temperature = &T_wide; in_wide.source = &source_wide;
+        in_wide.boundary_conditions = bc_wide;
+        in_narrow.mesh = &narrow_b; in_narrow.geometry = &narrow_g;
+        in_narrow.temperature = &T_narrow; in_narrow.source = &source_narrow;
+        in_narrow.boundary_conditions = bc_narrow;
+        std::map<std::string,ThermalRegionInputs> cube_inputs;
+        cube_inputs.emplace("cube_a", in_wide);
+        cube_inputs.emplace("cube_b", in_narrow);
+        EXPECT_THROW_WITH(
+            solve_thermal_regions_coupled(cubes, cube_inputs),
+            std::invalid_argument, "not conformal (different face counts)");
+
+        // Coupled solver: paired faces of mismatched areas (unit cube
+        // against the same face squashed to half the cross-section, so the
+        // centroids still coincide).
+        Mesh squashed_b;
+        squashed_b.points().resize(8);
+        const double q[8][3] = {{0,0.25,0},{1,0.25,0},{1,0.75,0},{0,0.75,0},
+                                {0,0.25,1},{1,0.25,1},{1,0.75,1},{0,0.75,1}};
+        for (std::size_t i=0;i<8;++i)
+            squashed_b.points().set(i,q[i][0],q[i][1],q[i][2]);
+        squashed_b.faces().push_face({0,3,2,1});
+        squashed_b.faces().push_face({4,5,6,7});
+        squashed_b.faces().push_face({0,1,5,4});
+        squashed_b.faces().push_face({3,7,6,2});
+        squashed_b.faces().push_face({0,4,7,3});
+        squashed_b.faces().push_face({1,2,6,5});
+        squashed_b.ownership().resize(6);
+        for (std::size_t f=0;f<6;++f) {
+            squashed_b.ownership().set_owner(f,0);
+            squashed_b.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);
+        }
+        squashed_b.cells().push_cell({0,1,2,3,4,5});
+        Patch squash_iface;
+        squash_iface.name = "iface";
+        squash_iface.type = PatchType::WALL;
+        squash_iface.face_ids = {0};
+        Patch squash_walls;
+        squash_walls.name = "walls";
+        squash_walls.type = PatchType::WALL;
+        squash_walls.face_ids = {1,2,3,4,5};
+        squashed_b.boundary().add_patch(squash_iface);
+        squashed_b.boundary().add_patch(squash_walls);
+        auto squash_g = build_fv_geometry(squashed_b);
+        Field<double,Location::CELL>
+            T_sq(1,"T","K",1), source_sq(1,"source","W/m3",1);
+        T_sq.fill(300.0); source_sq.fill(0.0);
+        ThermalRegionInputs in_sq;
+        in_sq.mesh = &squashed_b; in_sq.geometry = &squash_g;
+        in_sq.temperature = &T_sq; in_sq.source = &source_sq;
+        in_sq.boundary_conditions = bc_narrow;
+        std::map<std::string,ThermalRegionInputs> area_inputs;
+        area_inputs.emplace("cube_a", in_narrow);
+        area_inputs.emplace("cube_b", in_sq);
+        EXPECT_THROW_WITH(
+            solve_thermal_regions_coupled(cubes, area_inputs),
+            std::invalid_argument, "mismatched areas");
     });
 
     return run_all();
