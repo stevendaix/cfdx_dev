@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Aggregate validation CSV files deterministically with provenance checks."""
 from __future__ import annotations
 
@@ -10,11 +9,15 @@ from pathlib import Path
 def read_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        if not reader.fieldnames or any(not name for name in reader.fieldnames):
+        if not reader.fieldnames or any(not name or not name.strip() for name in reader.fieldnames):
             raise ValueError(f"{path}: missing or invalid CSV header")
+        if len(set(reader.fieldnames)) != len(reader.fieldnames):
+            raise ValueError(f"{path}: duplicate CSV header")
+        if "source_file" in reader.fieldnames:
+            raise ValueError(f"{path}: input cannot override reserved source_file provenance")
         rows = list(reader)
-        if any(None in row for row in rows):
-            raise ValueError(f"{path}: row has more fields than the header")
+        if any(None in row or any(value is None for value in row.values()) for row in rows):
+            raise ValueError(f"{path}: row does not match the CSV header")
         return list(reader.fieldnames), rows
 
 
@@ -50,14 +53,16 @@ def main() -> int:
             missing = [key for key in args.key if key not in row]
             if missing:
                 raise ValueError(f"{path}: missing key columns: {', '.join(missing)}")
-            key = tuple(row[key] for key in args.key)
+            key = tuple(row[key].strip() for key in args.key)
+            if any(not part for part in key):
+                raise ValueError(f"{path}: validation key contains an empty value")
             if key in seen:
                 raise ValueError(
                     f"duplicate validation key {key} found while reading {path}"
                 )
             seen.add(key)
             row = dict(row)
-            row["source_file"] = str(path)
+            row["source_file"] = str(path.relative_to(args.input_dir))
             if "source_file" not in fields:
                 fields.append("source_file")
             rows.append(row)

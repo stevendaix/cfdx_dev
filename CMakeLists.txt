@@ -625,6 +625,9 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_dual_time_field_integrator tests/unit/test_dual_time_field_integrator.cpp)
     add_cfdx_test(test_dual_time_physical_lifecycle tests/unit/test_dual_time_physical_lifecycle.cpp)
     add_cfdx_test(test_dual_time_navier_stokes tests/unit/test_dual_time_navier_stokes.cpp)
+    # Additional independent numerical/transactional regression coverage.
+    add_cfdx_test(test_dual_time_checkpoint_contract tests/unit/test_dual_time_checkpoint_contract.cpp)
+    add_cfdx_test(test_thermal_conductance_finite tests/unit/test_thermal_conductance_finite.cpp)
     add_cfdx_test(test_case_numerics_report tests/unit/test_case_numerics_report.cpp)
     add_cfdx_test(test_temporal_history tests/unit/test_temporal_history.cpp)
     add_cfdx_test(test_core_temporal tests/unit/test_core_temporal.cpp)
@@ -1066,6 +1069,12 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                     ${CMAKE_SOURCE_DIR}/docs/validation/CFDX_QUALIFICATION_REGISTRY.json)
         set_tests_properties(test_cfdx_qualification_registry PROPERTIES
             LABELS "qualification;validation")
+        add_test(NAME test_three_mesh_physical_gate_selftest
+            COMMAND ${Python3_EXECUTABLE} -m unittest discover
+                    -s ${CMAKE_SOURCE_DIR}/tests/python
+                    -p test_qualify_mesh_series.py)
+        set_tests_properties(test_three_mesh_physical_gate_selftest PROPERTIES
+            LABELS "qualification;validation;selftest")
     endif()
 
     # Phase 13 verification labels. The campaign driver selects these tests

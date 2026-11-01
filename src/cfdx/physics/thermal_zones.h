@@ -197,8 +197,17 @@ inline double thermal_interface_conductance(
         !std::isfinite(k_neighbour) || k_neighbour <= 0.0 ||
         !std::isfinite(contact_resistance) || contact_resistance < 0.0)
         throw std::invalid_argument("thermal_interface_conductance: invalid interface data");
-    return area / (d_owner / k_owner + contact_resistance +
-                   d_neighbour / k_neighbour);
+    const double resistance = d_owner / k_owner + contact_resistance +
+                              d_neighbour / k_neighbour;
+    // Extreme yet finite inputs can overflow this series resistance, or
+    // underflow the conductance to zero. Do not silently assemble a missing
+    // interface connection into an otherwise well-posed thermal system.
+    const double conductance = area / resistance;
+    if (!std::isfinite(resistance) || resistance <= 0.0 ||
+        !std::isfinite(conductance) || conductance <= 0.0)
+        throw std::invalid_argument(
+            "thermal_interface_conductance: unrepresentable interface conductance");
+    return conductance;
 }
 
 inline ScalarEquation assemble_thermal_conduction(
