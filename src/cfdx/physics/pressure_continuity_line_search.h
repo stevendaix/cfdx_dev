@@ -13,6 +13,10 @@ namespace cfdx::physics {
 // boundary conditions and pressure-response terms, not a matrix surrogate.
 struct PressureContinuityLineSearchControls {
     bool enabled = false;
+    // Optional exact-affine evaluation of face-flux continuity over a frozen
+    // pressure-correction step. The selected flux is always re-derived and
+    // compared face by face against the interpolated flux before use.
+    bool affine_flux_trials = false;
     std::size_t max_trials = 5;
     double reduction = 0.5;
     double minimum_relative_improvement = 1e-8;

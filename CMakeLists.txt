@@ -967,6 +967,17 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_wls_intrinsic_dimension tests/validation/test_wls_intrinsic_dimension.cpp)
     add_cfdx_test(test_pressure_flux_split tests/validation/test_pressure_flux_split.cpp)
     add_cfdx_test(test_pressure_continuity_line_search tests/validation/test_pressure_continuity_line_search.cpp)
+    add_cfdx_test(test_pressure_affine_flux_trials tests/validation/test_pressure_affine_flux_trials.cpp)
+    add_cfdx_test(test_wall_face_traction_mms tests/validation/test_wall_face_traction_mms.cpp)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_naca_split_farfield_generator
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_split_farfield_generator.py)
+        add_test(NAME test_naca_ab_qualification_contract
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_ab_qualification.py)
+        set_tests_properties(test_naca_split_farfield_generator
+            test_naca_ab_qualification_contract
+            PROPERTIES LABELS "validation;contract;quick")
+    endif()
     add_cfdx_test(test_pressure_split_skew_poisson_mms tests/validation/test_pressure_split_skew_poisson_mms.cpp)
     add_cfdx_test(test_nonorthogonal_skew_campaign tests/validation/test_nonorthogonal_skew_campaign.cpp)
     add_cfdx_test(test_nonorthogonal_laplacian_campaign tests/validation/test_nonorthogonal_laplacian_campaign.cpp)

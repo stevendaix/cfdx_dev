@@ -19,6 +19,7 @@
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/pressure_velocity_system.h"
 #include "cfdx/physics/pressure_continuity_line_search.h"
+#include "cfdx/physics/pressure_affine_flux_trials.h"
 #include "cfdx/physics/solver_control.h"
 #include "cfdx/physics/sst_production_coupling.h"
 #include "cfdx/physics/timestep_control.h"
@@ -4927,12 +4928,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // cell and creating an artificial local pressure jump.
             const double nominal_alpha_p = retry_controller.alpha_p(effective_alpha_p);
             double alpha_p = nominal_alpha_p;
+            std::optional<PressureAffineFluxTrials> affine_line_search;
             if (controls.pressure_continuity_line_search.enabled) {
                 std::vector<double> base_pressure(nc);
                 for (std::size_t c = 0; c < nc; ++c) base_pressure[c] = p(c);
-                const auto score = [&](double candidate_alpha) {
+                const auto restore_base_pressure = [&]() {
+                    for (std::size_t c = 0; c < nc; ++c) p(c) = base_pressure[c];
+                };
+                const auto trial_flux_at = [&](double candidate_alpha) {
                     for (std::size_t c = 0; c < nc; ++c)
-                        p(c) = base_pressure[c] + candidate_alpha*p_corr(c);
+                        p(c) = base_pressure[c] + candidate_alpha * p_corr(c);
                     apply_pressure_gauge_policy(
                         p, geometry, controls.pressure_gauge_policy,
                         controls.pressure_reference_cell, controls.pressure_reference_value,
@@ -4945,32 +4950,60 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         controls.pressure_skew_corrected_gradient);
                     if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                         add_simplec_consistent_response(trial_flux);
-                    std::vector<double> cell_balance(nc, 0.0);
+                    return trial_flux;
+                };
+                const auto continuity_score = [&](const auto& flux) {
+                    std::vector<double> balance(nc, 0.0);
                     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
-                        const double value = trial_flux(f);
+                        const double value = flux(f);
                         if (!std::isfinite(value))
                             return std::numeric_limits<double>::infinity();
-                        cell_balance[mesh.ownership().owner(f)] += value;
+                        balance[mesh.ownership().owner(f)] += value;
                         const auto neighbour = mesh.ownership().neighbour(f);
                         if (neighbour >= 0)
-                            cell_balance[static_cast<std::size_t>(neighbour)] -= value;
+                            balance[static_cast<std::size_t>(neighbour)] -= value;
                     }
-                    double sum = 0.0;
-                    for (const double residual : cell_balance) {
-                        if (!std::isfinite(residual))
-                            return std::numeric_limits<double>::infinity();
-                        sum += std::abs(residual);
+                    double norm = 0.0;
+                    for (double v : balance) {
+                        if (!std::isfinite(v)) return std::numeric_limits<double>::infinity();
+                        norm += std::abs(v);
                     }
-                    return sum;
+                    return norm;
                 };
-                // Transactional evaluation: each trial reconstructs the same
-                // Rhie-Chow operator; commit only the selected pressure state.
-                const auto selection = select_pressure_continuity_step(
-                    nominal_alpha_p, controls.pressure_continuity_line_search, score);
-                alpha_p = selection.alpha;
-                last_line_search_before = selection.baseline_norm;
-                last_line_search_after = selection.accepted_norm;
-                for (std::size_t c = 0; c < nc; ++c) p(c) = base_pressure[c];
+                // All trial pressure evaluations are transactional. On ANY
+                // rejected selection or unexpected exception, p is restored.
+                try {
+                    if (controls.pressure_continuity_line_search.affine_flux_trials) {
+                        const auto f0 = trial_flux_at(0.0);
+                        const auto f1 = trial_flux_at(nominal_alpha_p);
+                        std::vector<double> v0, v1;
+                        std::vector<std::size_t> owner;
+                        std::vector<std::int64_t> neighbour;
+                        v0.reserve(mesh.n_faces()); v1.reserve(mesh.n_faces());
+                        owner.reserve(mesh.n_faces()); neighbour.reserve(mesh.n_faces());
+                        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                            v0.push_back(f0(f)); v1.push_back(f1(f));
+                            owner.push_back(mesh.ownership().owner(f));
+                            neighbour.push_back(mesh.ownership().neighbour(f));
+                        }
+                        affine_line_search.emplace(v0, v1, owner, neighbour, nc,
+                                                   nominal_alpha_p);
+                    }
+                    const auto score = [&](double candidate_alpha) {
+                        if (affine_line_search)
+                            return affine_line_search->continuity_norm(candidate_alpha);
+                        return continuity_score(trial_flux_at(candidate_alpha));
+                    };
+                    const auto selection = select_pressure_continuity_step(
+                        nominal_alpha_p, controls.pressure_continuity_line_search, score);
+                    alpha_p = selection.alpha;
+                    last_line_search_before = selection.baseline_norm;
+                    last_line_search_after = selection.accepted_norm;
+                } catch (...) {
+                    restore_base_pressure();
+                    throw;
+                }
+                restore_base_pressure();
             }
             last_selected_pressure_alpha = alpha_p;
             for (std::size_t c = 0; c < nc; ++c)
@@ -5012,6 +5045,19 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                 add_simplec_consistent_response(mass_flux);
+
+            // Final authoritative reconstruction. This independent check
+            // refuses a nonlinear boundary/response path rather than quietly
+            // accepting an invalid affine trial on an unsupported contract.
+            if (affine_line_search) {
+                std::vector<double> exact_flux;
+                exact_flux.reserve(mesh.n_faces());
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+                    exact_flux.push_back(mass_flux(f));
+                if (!affine_line_search->agrees_with_flux(alpha_p, exact_flux))
+                    throw NonlinearRetryableFailure(
+                        "pressure affine line-search: authoritative flux mismatch");
+            }
 
             // Issa corrector form: every pressure corrector is driven by the
             // ORIGINAL predictor flux together with the current pressure,

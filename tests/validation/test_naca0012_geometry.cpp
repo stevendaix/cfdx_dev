@@ -3,10 +3,13 @@
 #include "qualification_boundary_helpers.h"
 #include "naca_momentum_trace.h"
 #include "naca_relaxation_controls.h"
+#include "cfdx/physics/wall_face_traction_reconstruction.h"
 #include <cstdlib>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <fstream>
+#include <iomanip>
 #include <limits>
 #include <stdexcept>
 #include <sstream>
@@ -31,13 +34,29 @@ static Forces run(const std::string& path,std::size_t level)
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
     Field<double,Location::CELL> p(mesh.n_cells(),"p","Pa",1);
     U.fill(0.0); p.fill(0.0);
+    const bool split_farfield = mesh.boundary().find("farfield_inlet") <
+                                mesh.boundary().n_patches() &&
+                                mesh.boundary().find("farfield_outlet") <
+                                mesh.boundary().n_patches();
     VelocityBoundaryConditions ubc;
-    ubc["farfield"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{Uinf,0,0}};
+    if (split_farfield) {
+        ubc["farfield_inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,
+                                  {Uinf,0,0}};
+        ubc["farfield_outlet"] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,
+                                   {0,0,0}};
+    } else {
+        ubc["farfield"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{Uinf,0,0}};
+    }
     ubc["airfoil"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
     ubc["front"]={VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
     ubc["back"]={VelocityBoundaryCondition::Type::ZERO_GRADIENT,{0,0,0}};
     ScalarBoundaryConditions pbc;
-    pbc["farfield"]={ScalarBoundaryType::FIXED_VALUE,0,0};
+    if (split_farfield) {
+        pbc["farfield_inlet"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+        pbc["farfield_outlet"]={ScalarBoundaryType::FIXED_VALUE,0,0};
+    } else {
+        pbc["farfield"]={ScalarBoundaryType::FIXED_VALUE,0,0};
+    }
     pbc["airfoil"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
     pbc["front"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
     pbc["back"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
@@ -64,8 +83,23 @@ static Forces run(const std::string& path,std::size_t level)
         c.pressure_continuity_line_search.enabled = true;
     }
 
+    // A/B only: TVD is an existing bounded CFDX convection scheme. Keep the
+    // unchanged UPWIND reference for all default NACA qualification gates.
     c.use_bounded_convection=true;
     c.convection_scheme=ConvectionScheme::UPWIND;
+    if (const char* tvd = std::getenv("CFDX_NACA_CONVECTION_TVD")) {
+        if (std::string(tvd) != "1")
+            throw std::invalid_argument("CFDX_NACA_CONVECTION_TVD must be 1");
+        c.convection_scheme=ConvectionScheme::TVD;
+    }
+    if (const char* affine = std::getenv("CFDX_NACA_AFFINE_FLUX_TRIALS")) {
+        if (std::string(affine) != "1")
+            throw std::invalid_argument("CFDX_NACA_AFFINE_FLUX_TRIALS must be 1");
+        // The fast path requires the globally enabled line-search.
+        if (!c.pressure_continuity_line_search.enabled)
+            throw std::invalid_argument("affine flux trials require line-search");
+        c.pressure_continuity_line_search.affine_flux_trials = true;
+    }
     c.pressure_reference_cell=0;
     c.pressure_reference_value=0.0;
     c.diagnostics.iteration_trace=true;
@@ -96,9 +130,20 @@ static Forces run(const std::string& path,std::size_t level)
     // Exercise the strict mathematical BC/FVM path before the production solve.
     // The legacy maps below are retained for the current steady-solver compatibility API.
     cfdx::physics::BoundaryConstraintMap strict_bc;
-    cfdx::validation::add_velocity_dirichlet(strict_bc, "farfield", {Uinf, 0.0, 0.0});
+    if (split_farfield)
+        cfdx::validation::add_velocity_dirichlet(
+            strict_bc, "farfield_inlet", {Uinf, 0.0, 0.0});
+    else
+        cfdx::validation::add_velocity_dirichlet(
+            strict_bc, "farfield", {Uinf, 0.0, 0.0});
+    if (split_farfield) {
+        cfdx::validation::add_velocity_flux_dependent(
+            strict_bc, "farfield_outlet", {Uinf,0.0,0.0}, {0.0,0.0,0.0});
+        cfdx::validation::add_pressure_neumann(strict_bc, "farfield_inlet", 0.0);
+    }
     cfdx::validation::add_velocity_dirichlet(strict_bc, "airfoil", {0.0, 0.0, 0.0});
-    cfdx::validation::add_pressure_dirichlet(strict_bc, "farfield", 0.0);
+    cfdx::validation::add_pressure_dirichlet(
+        strict_bc, split_farfield ? "farfield_outlet" : "farfield", 0.0);
     cfdx::validation::add_pressure_neumann(strict_bc, "airfoil", 0.0);
     const auto validation_flux = cfdx::validation::make_validation_face_flux(mesh, geometry, U);
     cfdx::validation::exercise_new_velocity_bc_contract(
@@ -128,11 +173,17 @@ static Forces run(const std::string& path,std::size_t level)
     }
 
     ScalarBoundaryConditions gx,gy;
-    gx["farfield"]={ScalarBoundaryType::FIXED_VALUE,Uinf,0};
+    if (split_farfield) {
+        gx["farfield_inlet"]={ScalarBoundaryType::FIXED_VALUE,Uinf,0};
+        gx["farfield_outlet"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+    } else gx["farfield"]={ScalarBoundaryType::FIXED_VALUE,Uinf,0};
     gx["airfoil"]={ScalarBoundaryType::FIXED_VALUE,0,0};
     gx["front"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
     gx["back"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
-    gy["farfield"]={ScalarBoundaryType::FIXED_VALUE,0,0};
+    if (split_farfield) {
+        gy["farfield_inlet"]={ScalarBoundaryType::FIXED_VALUE,0,0};
+        gy["farfield_outlet"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
+    } else gy["farfield"]={ScalarBoundaryType::FIXED_VALUE,0,0};
     gy["airfoil"]={ScalarBoundaryType::FIXED_VALUE,0,0};
     gy["front"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
     gy["back"]={ScalarBoundaryType::ZERO_GRADIENT,0,0};
@@ -140,18 +191,80 @@ static Forces run(const std::string& path,std::size_t level)
     for(std::size_t i=0;i<mesh.n_cells();++i){ux(i)=U.component_data(0)[i];uy(i)=U.component_data(1)[i];}
     const auto gux=gauss_gradient_with_boundary(ux,mesh,geometry,gx);
     const auto guy=gauss_gradient_with_boundary(uy,mesh,geometry,gy);
+    // Optional face-traction A/B; no modification to the historical force
+    // gate.  This evaluation remains experimental until MMS + grid studies.
+    bool face_traction = false;
+    if (const char* mode = std::getenv("CFDX_NACA_WALL_TRACTION_FACE")) {
+        if (std::string(mode) != "1")
+            throw std::invalid_argument("CFDX_NACA_WALL_TRACTION_FACE must be 1");
+        face_traction = true;
+    }
+    Field<double, Location::CELL> wall_pressure_gradient;
+    if (face_traction)
+        wall_pressure_gradient = gauss_gradient_with_boundary(
+            p, mesh, geometry, pbc, c.pressure_skew_corrected_gradient);
 
     const auto& patch=mesh.boundary().patch(mesh.boundary().find("airfoil"));
+    std::ofstream face_profiles;
+    if (const char* output = std::getenv("CFDX_NACA_FACE_PROFILES_CSV")) {
+        if (!face_traction || std::string(output).empty())
+            throw std::invalid_argument("NACA Cp/Cf profiles require face traction and a path");
+        face_profiles.open(output);
+        if (!face_profiles)
+            throw std::runtime_error("cannot open NACA face profiles CSV");
+        face_profiles << std::setprecision(17);
+        face_profiles << "face,x_over_c,y_over_c,Cp,Cf_tangent,Cd_pressure_face,Cd_viscous_face\n";
+    }
     double Fx=0,Fy=0,Mz=0,Fxp=0,Fyp=0,Fxv=0,Fyv=0;
     const double q=0.5*rho*Uinf*Uinf;
     for(const auto f:patch.face_ids){
         const std::size_t o=mesh.ownership().owner(f);
         const auto Sf=geometry.face_area_vectors[f];
         const auto n=Sf.normalized();
-        const double pp=p(o);
-        const double txx=2.0*rho*nu*gux.component_data(0)[o];
-        const double tyy=2.0*rho*nu*guy.component_data(1)[o];
-        const double txy=rho*nu*(gux.component_data(1)[o]+guy.component_data(0)[o]);
+        double pp=p(o);
+        double txx=2.0*rho*nu*gux.component_data(0)[o];
+        double tyy=2.0*rho*nu*guy.component_data(1)[o];
+        double txy=rho*nu*(gux.component_data(1)[o]+guy.component_data(0)[o]);
+        if (face_traction) {
+            const auto wall = reconstruct_wall_face_traction(
+                geometry.face_centres[f] - geometry.cell_centres[o], n,
+                p(o),
+                {wall_pressure_gradient.component_data(0)[o],
+                 wall_pressure_gradient.component_data(1)[o],
+                 wall_pressure_gradient.component_data(2)[o]},
+                {ux(o), uy(o), 0.0}, {0.0,0.0,0.0},
+                {{{gux.component_data(0)[o],gux.component_data(1)[o],
+                   gux.component_data(2)[o]},
+                  {guy.component_data(0)[o],guy.component_data(1)[o],
+                   guy.component_data(2)[o]},
+                  {0.0,0.0,0.0}}}, rho*nu);
+            pp = wall.pressure;
+            // Existing total-force integration uses the traction components
+            // of the symmetric stress tensor contracted with n.
+            // Reconstruct stress components by evaluating the wall gradient;
+            // the returned traction is the physically authoritative vector.
+            const double face_txv = wall.viscous_on_fluid_normal.x;
+            const double face_tyv = wall.viscous_on_fluid_normal.y;
+            const double tx = (pp*n.x-face_txv)*Sf.mag();
+            const double ty = (pp*n.y-face_tyv)*Sf.mag();
+            Fx += tx; Fy += ty;
+            Fxp += pp*n.x*Sf.mag(); Fyp += pp*n.y*Sf.mag();
+            Fxv -= face_txv*Sf.mag(); Fyv -= face_tyv*Sf.mag();
+            const auto r = geometry.face_centres[f]-Vec3{0.25,0,0};
+            Mz += r.x*ty-r.y*tx;
+            if (face_profiles) {
+                Vec3 tangent{-n.y,n.x,0.0};
+                if (tangent.x < 0.0) tangent *= -1.0;
+                const double cf_tangent =
+                    -(face_txv*tangent.x + face_tyv*tangent.y) / q;
+                face_profiles << f << ',' << geometry.face_centres[f].x/chord
+                              << ',' << geometry.face_centres[f].y/chord
+                              << ',' << pp/q << ',' << cf_tangent
+                              << ',' << (pp*n.x*Sf.mag())/q
+                              << ',' << (-face_txv*Sf.mag())/q << '\n';
+            }
+            continue;
+        }
         // Face normal convention: n = Sf/|Sf| points out of the fluid domain
         // (into the body) on wall faces, because build_fv_geometry()
         // enforces Sf.(Cf - C_owner) > 0 on boundary faces. With this
@@ -169,6 +282,8 @@ static Forces run(const std::string& path,std::size_t level)
         const auto r=geometry.face_centres[f]-Vec3{0.25,0,0};
         Mz+=r.x*ty-r.y*tx;
     }
+    if (face_profiles && !face_profiles.good())
+        throw std::runtime_error("failed to write NACA face profiles CSV");
     const double cd=Fx/q, cl=Fy/q, cm=Mz/q;
     const auto& last=solve.history.back();
     std::cout<<"NACA0012_RE1000_A0 level="<<level
@@ -195,9 +310,20 @@ static void run_quick_contract(const std::string& path)
         U.component_data(0)[i]=1.0;
 
     cfdx::physics::BoundaryConstraintMap strict_bc;
-    cfdx::validation::add_velocity_dirichlet(strict_bc, "farfield", {1.0, 0.0, 0.0});
+    const auto split_in = mesh.boundary().find("farfield_inlet");
+    const auto split_out = mesh.boundary().find("farfield_outlet");
+    const bool split_farfield = split_in < mesh.boundary().n_patches() &&
+                                split_out < mesh.boundary().n_patches();
+    cfdx::validation::add_velocity_dirichlet(
+        strict_bc, split_farfield ? "farfield_inlet" : "farfield", {1.0, 0.0, 0.0});
+    if (split_farfield) {
+        cfdx::validation::add_velocity_flux_dependent(
+            strict_bc, "farfield_outlet", {1.0,0.0,0.0}, {0.0,0.0,0.0});
+        cfdx::validation::add_pressure_neumann(strict_bc, "farfield_inlet", 0.0);
+    }
     cfdx::validation::add_velocity_dirichlet(strict_bc, "airfoil", {0.0, 0.0, 0.0});
-    cfdx::validation::add_pressure_dirichlet(strict_bc, "farfield", 0.0);
+    cfdx::validation::add_pressure_dirichlet(
+        strict_bc, split_farfield ? "farfield_outlet" : "farfield", 0.0);
     cfdx::validation::add_pressure_neumann(strict_bc, "airfoil", 0.0);
     const auto validation_flux =
         cfdx::validation::make_validation_face_flux(mesh, geometry, U);
@@ -207,12 +333,15 @@ static void run_quick_contract(const std::string& path)
     const auto airfoil_id=mesh.boundary().find("airfoil");
     const auto farfield_id=mesh.boundary().find("farfield");
     if(airfoil_id>=mesh.boundary().n_patches() ||
-       farfield_id>=mesh.boundary().n_patches())
+       (!split_farfield && farfield_id>=mesh.boundary().n_patches()))
         throw std::runtime_error("NACA0012 required boundary patches are missing");
 
     std::cout<<"NACA0012_QUICK_CONTRACT: PASS cells="<<mesh.n_cells()
              <<" airfoil_faces="<<mesh.boundary().patch(airfoil_id).size()
-             <<" farfield_faces="<<mesh.boundary().patch(farfield_id).size()
+             <<" farfield_faces="<<(split_farfield ?
+                 mesh.boundary().patch(split_in).size() +
+                 mesh.boundary().patch(split_out).size() :
+                 mesh.boundary().patch(farfield_id).size())
              <<" solver_campaign_pending\n";
 }
 
@@ -265,7 +394,7 @@ int main(int argc,char**argv)
     }
     std::cout<<"NACA0012_QUALIFICATION: DIAGNOSTIC solver_converged forces_conservation_symmetry_reference_gate_pending\n";
     } catch (const std::exception& error) {
-        std::cerr << "NACA0012_QUALIFICATION: FAIL: " << error.what() << '\\n';
+        std::cerr << "NACA0012_QUALIFICATION: FAIL: " << error.what() << '\n';
         return 1;
     }
 }

@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <cstdlib>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
@@ -140,6 +141,11 @@ CavityResult solve_cavity(
     controls.coupling.alpha_u=0.7;
     controls.coupling.alpha_p=0.3;
     controls.pressure_continuity_line_search.enabled = pressure_line_search;
+    if (const char* affine = std::getenv("CFDX_GHIA_AFFINE_FLUX_TRIALS")) {
+        if (std::string(affine) != "1" || !pressure_line_search)
+            throw std::invalid_argument("Ghia affine trials require --quick-line-search and env=1");
+        controls.pressure_continuity_line_search.affine_flux_trials = true;
+    }
     controls.coupling.coupled_max_iterations=5000;
     controls.coupling.coupled_linear_tolerance=1e-10;
     controls.coupled_linear_solver.krylov=KrylovModel::FGMRES;
