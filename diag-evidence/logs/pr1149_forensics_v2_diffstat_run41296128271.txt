@@ -1,0 +1,5 @@
+ M CMakeLists.txt
+ M docs/validation/NACA0012_RUNTIME_FORENSIC_AUDIT_2026-10-31.md
+ M src/cfdx/physics/steady_incompressible_solver.h
+?? scripts/validation/analyze_naca_pressure_chronology.py
+?? tests/python/test_analyze_naca_pressure_chronology.py

@@ -1,0 +1,4 @@
+run_id=41296128271
+pinned_head=b5b34ce8df265b8dcb5d019c4d2b22e935e21a01
+pr_branch=fix/amg-reuse-cg-stability
+purpose=forensics v2: chronology analyzer, LS stencil audit, iter-62 dump (evidence-only)
