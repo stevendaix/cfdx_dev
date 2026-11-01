@@ -157,10 +157,119 @@ public:
         output_.flush();
     }
 
+    void equation(
+        std::size_t iteration,
+        std::size_t component,
+        const cfdx::physics::ScalarEquation& equation,
+        const cfdx::physics::FvGeometry& geometry,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>& grad_pressure,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>& body_force)
+    {
+        const auto& matrix = equation.matrix;
+        const auto* offsets = matrix.row_offsets_data();
+        const auto* columns = matrix.columns_data();
+        const auto* values = matrix.values_data();
+        double rhs_linf = 0.0;
+        double diagonal_min = std::numeric_limits<double>::infinity();
+        double diagonal_max = 0.0;
+        double off_diagonal_linf = 0.0;
+        double row_sum_linf = 0.0;
+        double row_abs_sum_linf = 0.0;
+        double pressure_force_linf = 0.0;
+        double body_force_linf = 0.0;
+        std::size_t rhs_cell = 0;
+        std::size_t diagonal_cell = 0;
+        std::size_t pressure_cell = 0;
+        std::size_t body_cell = 0;
+        std::size_t nonfinite_matrix = 0;
+        std::size_t nonfinite_rhs = 0;
+        for (std::size_t row = 0; row < matrix.n_rows(); ++row) {
+            const double rhs = equation.rhs(row);
+            if (std::isfinite(rhs)) {
+                if (std::abs(rhs) > rhs_linf) {
+                    rhs_linf = std::abs(rhs);
+                    rhs_cell = row;
+                }
+            } else {
+                ++nonfinite_rhs;
+            }
+            double diagonal = 0.0;
+            double row_sum = 0.0;
+            double row_abs_sum = 0.0;
+            for (std::uint32_t k = offsets[row]; k < offsets[row + 1]; ++k) {
+                const double value = values[k];
+                if (!std::isfinite(value)) {
+                    ++nonfinite_matrix;
+                    continue;
+                }
+                row_sum += value;
+                row_abs_sum += std::abs(value);
+                if (columns[k] == row) {
+                    diagonal = value;
+                } else {
+                    off_diagonal_linf = std::max(off_diagonal_linf, std::abs(value));
+                }
+            }
+            if (std::isfinite(diagonal)) {
+                if (diagonal < diagonal_min) diagonal_min = diagonal;
+                if (std::abs(diagonal) > diagonal_max) {
+                    diagonal_max = std::abs(diagonal);
+                    diagonal_cell = row;
+                }
+            } else {
+                ++nonfinite_matrix;
+            }
+            row_sum_linf = std::max(row_sum_linf, std::abs(row_sum));
+            row_abs_sum_linf = std::max(row_abs_sum_linf, row_abs_sum);
+            const double volume = geometry.cell_volumes[row];
+            const double pressure_force = grad_pressure.component_data(component)[row] * volume;
+            const double body = body_force(row) * volume;
+            if (std::isfinite(pressure_force) &&
+                std::abs(pressure_force) > pressure_force_linf) {
+                pressure_force_linf = std::abs(pressure_force);
+                pressure_cell = row;
+            }
+            if (std::isfinite(body) && std::abs(body) > body_force_linf) {
+                body_force_linf = std::abs(body);
+                body_cell = row;
+            }
+        }
+        const auto& rhs_point = geometry.cell_centres[rhs_cell];
+        const auto& pressure_point = geometry.cell_centres[pressure_cell];
+        std::ostringstream line;
+        line << std::setprecision(17)
+             << "NACA_MOMENTUM_EQUATION"
+             << " seq=" << equation_sequence_++
+             << " iter=" << iteration
+             << " component=" << component
+             << " rows=" << matrix.n_rows()
+             << " nnz=" << matrix.nnz()
+             << " rhs_linf=" << rhs_linf
+             << " rhs_cell=" << rhs_cell
+             << " rhs_xyz=" << rhs_point.x << ":" << rhs_point.y << ":" << rhs_point.z
+             << " diag_min=" << diagonal_min
+             << " diag_abs_max=" << diagonal_max
+             << " diag_cell=" << diagonal_cell
+             << " offdiag_abs_max=" << off_diagonal_linf
+             << " row_sum_linf=" << row_sum_linf
+             << " row_abs_sum_linf=" << row_abs_sum_linf
+             << " pressure_force_linf=" << pressure_force_linf
+             << " pressure_cell=" << pressure_cell
+             << " pressure_xyz=" << pressure_point.x << ":" << pressure_point.y << ":" << pressure_point.z
+             << " body_force_linf=" << body_force_linf
+             << " body_cell=" << body_cell
+             << " nonfinite_matrix=" << nonfinite_matrix
+             << " nonfinite_rhs=" << nonfinite_rhs
+             << '\n';
+        output_ << line.str();
+        output_.flush();
+    }
+
 private:
     const cfdx::core::Mesh& mesh_;
     std::ostream& output_;
     std::size_t sequence_ = 0;
+    std::size_t equation_sequence_ = 0;
 };
 
 } // namespace cfdx::validation
