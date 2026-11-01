@@ -315,6 +315,92 @@ void run_cases()
         std::filesystem::remove(dat);
     });
 
+    run_case("dat_restart_round_trips_authoritative_face_mass_flux", [] {
+        const Mesh m = make_cube(1.0);
+        const auto dat = temp_dat("face_mass_flux");
+        Field<double,Location::FACE> mdot(6, "mdot", "kg/s", 1);
+        for (std::size_t f = 0; f < m.n_faces(); ++f)
+            mdot(f) = 0.125 * static_cast<double>(f + 1);
+        DatRestartFields write_fields;
+        write_fields.face_mass_flux = &mdot;
+        write_dat_restart_fields(
+            dat.string(), m, seeded_u(0.25), seeded_p(37.5), write_fields, 23, 4.5);
+
+        Field<double,Location::CELL> u(1, "U", "m/s", 3);
+        Field<double,Location::CELL> p(1, "p", "Pa", 1);
+        Field<double,Location::FACE> restored(6, "mdot", "kg/s", 1);
+        DatRestartFields read_fields;
+        read_fields.face_mass_flux = &restored;
+        read_dat_restart_fields(dat.string(), m, u, p, read_fields);
+        for (std::size_t f = 0; f < m.n_faces(); ++f)
+            EXPECT_NEAR(restored(f), mdot(f), 1e-14);
+        std::filesystem::remove(dat);
+    });
+
+    run_case("dat_restart_rejects_non_finite_unrequested_face_mass_flux", [] {
+        const Mesh m = make_cube(1.0);
+        const auto dat = temp_dat("non_finite_face_mass_flux");
+        Field<double,Location::FACE> mdot(6, "mdot", "kg/s", 1);
+        for (std::size_t f = 0; f < m.n_faces(); ++f)
+            mdot(f) = 0.25;
+        DatRestartFields write_fields;
+        write_fields.face_mass_flux = &mdot;
+        write_dat_restart_fields(
+            dat.string(), m, seeded_u(0.25), seeded_p(37.5), write_fields, 1, 0.0);
+
+        std::string contents;
+        {
+            std::ifstream in(dat);
+            std::ostringstream buffer;
+            buffer << in.rdbuf();
+            contents = buffer.str();
+        }
+        const auto last_newline = contents.find_last_of('\\n');
+        EXPECT_TRUE(last_newline != std::string::npos);
+        const auto previous_newline = contents.find_last_of('\\n', last_newline - 1);
+        EXPECT_TRUE(previous_newline != std::string::npos);
+        contents.replace(previous_newline + 1, last_newline - previous_newline - 1, "nan");
+        {
+            std::ofstream out(dat);
+            out << contents;
+        }
+
+        Field<double,Location::CELL> u(1, "U", "m/s", 3);
+        Field<double,Location::CELL> p(1, "p", "Pa", 1);
+        EXPECT_THROW_WITH(
+            read_dat_restart_fields(dat.string(), m, u, p, {}),
+            std::runtime_error, "face value");
+        std::filesystem::remove(dat);
+    });
+
+    run_case("dat_restart_rejects_duplicate_face_mass_flux", [] {
+        const Mesh m = make_cube(1.0);
+        const auto dat = temp_dat("duplicate_face_mass_flux");
+        Field<double,Location::FACE> mdot(6, "mdot", "kg/s", 1);
+        for (std::size_t f = 0; f < m.n_faces(); ++f)
+            mdot(f) = 0.25;
+        DatRestartFields write_fields;
+        write_fields.face_mass_flux = &mdot;
+        write_dat_restart_fields(
+            dat.string(), m, seeded_u(0.25), seeded_p(37.5), write_fields, 1, 0.0);
+        {
+            std::ofstream out(dat, std::ios::app);
+            out << "field mdot 1\\n";
+            for (std::size_t f = 0; f < m.n_faces(); ++f)
+                out << "0.5\\n";
+        }
+
+        Field<double,Location::CELL> u(1, "U", "m/s", 3);
+        Field<double,Location::CELL> p(1, "p", "Pa", 1);
+        Field<double,Location::FACE> restored(6, "mdot", "kg/s", 1);
+        DatRestartFields read_fields;
+        read_fields.face_mass_flux = &restored;
+        EXPECT_THROW_WITH(
+            read_dat_restart_fields(dat.string(), m, u, p, read_fields),
+            std::runtime_error, "duplicate face field mdot");
+        std::filesystem::remove(dat);
+    });
+
     run_case("dat_restart_identity_rejects_non_finite_geometry", [] {
         Mesh broken = make_cube(1.0);
         broken.points().set(0, std::nan(""), 0.0, 0.0);
