@@ -244,9 +244,24 @@ inline void build_cell_buoyancy_acceleration(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& temperature,
     const ProductionBuoyancyCoupling& coupling)
 {
-    const std::size_t n_cells = temperature.size();
-    acceleration.assign(n_cells, cfdx::core::Vec3{0.0, 0.0, 0.0});
-    for (std::size_t cell = 0; cell < n_cells; ++cell) {
+    if (temperature.dimension() != 1)
+        throw std::invalid_argument(
+            "production buoyancy stage: temperature must be a scalar field");
+    if (!std::isfinite(coupling.beta) || !(coupling.beta > 0.0) ||
+        !std::isfinite(coupling.reference_temperature) ||
+        !(coupling.reference_temperature > 0.0) ||
+        !std::isfinite(coupling.gravity.x) ||
+        !std::isfinite(coupling.gravity.y) ||
+        !std::isfinite(coupling.gravity.z) ||
+        (coupling.gravity.x == 0.0 && coupling.gravity.y == 0.0 &&
+         coupling.gravity.z == 0.0))
+        throw std::invalid_argument(
+            "production buoyancy stage: invalid Boussinesq coupling");
+
+    // Two passes make the update transactional for all physical/input
+    // failures while reusing the existing output capacity. This avoids a
+    // second O(n_cells) vector allocation on every production outer step.
+    for (std::size_t cell = 0; cell < temperature.size(); ++cell) {
         const double value = temperature(cell);
         if (!std::isfinite(value) || !(value > 0.0))
             throw std::invalid_argument(
@@ -254,6 +269,24 @@ inline void build_cell_buoyancy_acceleration(
                 "positive (kelvin)");
         const double perturbation =
             coupling.beta * (value - coupling.reference_temperature);
+        if (!std::isfinite(perturbation))
+            throw std::runtime_error(
+                "production buoyancy stage: non-representable density perturbation");
+        const cfdx::core::Vec3 force{
+            -perturbation * coupling.gravity.x,
+            -perturbation * coupling.gravity.y,
+            -perturbation * coupling.gravity.z};
+        if (!std::isfinite(force.x) || !std::isfinite(force.y) ||
+            !std::isfinite(force.z))
+            throw std::runtime_error(
+                "production buoyancy stage: non-representable body acceleration");
+    }
+    // Every input and derived force has now passed the full-domain checks.
+    // All operations in this publication pass are non-throwing arithmetic.
+    acceleration.resize(temperature.size());
+    for (std::size_t cell = 0; cell < temperature.size(); ++cell) {
+        const double perturbation =
+            coupling.beta * (temperature(cell) - coupling.reference_temperature);
         acceleration[cell] = cfdx::core::Vec3{
             -perturbation * coupling.gravity.x,
             -perturbation * coupling.gravity.y,

@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <sstream>
+#include <utility>
 #include <stdexcept>
 #include <string>
 
@@ -72,6 +74,28 @@ public:
     }
 
     void restore(const DualTimeNavierStokesCheckpoint& checkpoint) {
+        // Check the entire incoming transaction before touching the accepted
+        // state. A rejected checkpoint must not poison future time steps.
+        if (checkpoint.U.dimension() != 3 || checkpoint.p.dimension() != 1 ||
+            checkpoint.U.size() != U_.size() ||
+            checkpoint.p.size() != p_.size() ||
+            !fields_finite_and_admissible(checkpoint.U, checkpoint.p))
+            throw std::invalid_argument("dual-time checkpoint state is invalid");
+        if (!std::isfinite(checkpoint.physical_time))
+            throw std::invalid_argument("dual-time checkpoint physical time is invalid");
+        if (checkpoint.history_valid) {
+            if (!(checkpoint.dt_previous > 0.0) || !std::isfinite(checkpoint.dt_previous) ||
+                checkpoint.step == 0 ||
+                checkpoint.U_previous.dimension() != 3 ||
+                checkpoint.U_previous.size() != U_.size())
+                throw std::invalid_argument("dual-time checkpoint history is invalid");
+            for (std::size_t d = 0; d < 3; ++d)
+                for (std::size_t c = 0; c < checkpoint.U_previous.size(); ++c)
+                    if (!std::isfinite(checkpoint.U_previous.component_data(d)[c]))
+                        throw std::invalid_argument("dual-time checkpoint prior velocity is invalid");
+        } else if (checkpoint.step != 0 || checkpoint.dt_previous != 0.0) {
+            throw std::invalid_argument("dual-time checkpoint history flags are inconsistent");
+        }
         U_ = checkpoint.U;
         p_ = checkpoint.p;
         U_previous_ = checkpoint.U_previous;
@@ -79,11 +103,6 @@ public:
         physical_time_ = checkpoint.physical_time;
         dt_previous_ = checkpoint.dt_previous;
         step_ = checkpoint.step;
-        validate_state();
-        if (!std::isfinite(physical_time_))
-            throw std::invalid_argument("dual-time checkpoint physical time is invalid");
-        if (history_valid_ && (!(dt_previous_ > 0.0) || !std::isfinite(dt_previous_)))
-            throw std::invalid_argument("dual-time checkpoint previous dt is invalid");
     }
 
     DualTimeNavierStokesStepReport advance(
@@ -135,9 +154,20 @@ public:
             auto high_result = solve_steady_incompressible(
                 mesh_, high_U, high_p, velocity_bcs_, pressure_bcs_,
                 high_controls);
-            auto low_result = solve_steady_incompressible(
-                mesh_, low_U, low_p, velocity_bcs_, pressure_bcs_,
-                low_controls);
+            // During BE bootstrap both orders are the *same discretization*
+            // with the same initial fields. Reuse the one computed trajectory
+            // instead of doing a redundant full nonlinear solve. On later
+            // steps, the independent BE solve is needed for BDF2 error control.
+            IncompressibleSolveResult low_result;
+            if (use_bdf2) {
+                low_result = solve_steady_incompressible(
+                    mesh_, low_U, low_p, velocity_bcs_, pressure_bcs_,
+                    low_controls);
+            } else {
+                low_U = high_U;
+                low_p = high_p;
+                low_result = high_result;
+            }
 
             const double error = velocity_temporal_error(
                 high_U, low_U, controls.temporal_absolute_tolerance,
