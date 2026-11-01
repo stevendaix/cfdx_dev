@@ -868,7 +868,12 @@ int main(int argc, char** argv)
         // state: it is read from the DAT into this caller-owned field and
         // consumed by the solver after its own initialization transaction.
         std::optional<Field<double, Location::FACE>> restart_face_flux;
-        if (!options.restart.empty()) {
+        if (!options.restart.empty() && options.experimental_sst) {
+            // DAT v4 checkpoints created before the optional face_fields
+            // section remain valid for every established non-SST restart
+            // path. The experimental SST equivalence contract explicitly
+            // requires mdot; other restart modes retain their legacy
+            // reconstruction unless they opt into the face-field contract.
             restart_face_flux.emplace(mesh.n_faces(), "mdot", "kg/s", 1);
             solver_restart_fields.face_mass_flux = &*restart_face_flux;
         }
