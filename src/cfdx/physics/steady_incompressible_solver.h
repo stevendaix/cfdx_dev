@@ -4342,6 +4342,49 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     p_corr(ref) = 0.0;
                 }
             }
+            if (controls.momentum_assembly_forensic_callback) {
+                double correction_linf = 0.0;
+                double pressure_linf = 0.0;
+                double rhs_linf = 0.0;
+                double diagonal_min = std::numeric_limits<double>::infinity();
+                double diagonal_max = 0.0;
+                double row_sum_linf = 0.0;
+                for (std::size_t cell = 0; cell < nc; ++cell) {
+                    correction_linf = std::max(correction_linf, std::abs(p_corr(cell)));
+                    pressure_linf = std::max(pressure_linf, std::abs(p(cell)));
+                    rhs_linf = std::max(rhs_linf, std::abs(b(cell)));
+                }
+                const auto* offsets = A.row_offsets_data();
+                const auto* columns = A.columns_data();
+                const auto* values = A.values_data();
+                for (std::size_t row = 0; row < A.n_rows(); ++row) {
+                    double diagonal = 0.0;
+                    double row_sum = 0.0;
+                    for (std::uint32_t k = offsets[row]; k < offsets[row + 1]; ++k) {
+                        row_sum += values[k];
+                        if (columns[k] == row) diagonal = values[k];
+                    }
+                    diagonal_min = std::min(diagonal_min, diagonal);
+                    diagonal_max = std::max(diagonal_max, std::abs(diagonal));
+                    row_sum_linf = std::max(row_sum_linf, std::abs(row_sum));
+                }
+                std::cerr << std::setprecision(17)
+                          << "NACA_PRESSURE_CORRECTION"
+                          << " iter=" << iter
+                          << " status=" << static_cast<int>(rp.status)
+                          << " iterations=" << rp.iterations
+                          << " residual=" << rp.residual
+                          << " relative=" << rp.residual_relative
+                          << " rows=" << A.n_rows()
+                          << " nnz=" << A.nnz()
+                          << " rhs_linf=" << rhs_linf
+                          << " correction_linf=" << correction_linf
+                          << " pressure_before_linf=" << pressure_linf
+                          << " diagonal_min=" << diagonal_min
+                          << " diagonal_abs_max=" << diagonal_max
+                          << " row_sum_linf=" << row_sum_linf
+                          << '\\n';
+            }
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
             if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
