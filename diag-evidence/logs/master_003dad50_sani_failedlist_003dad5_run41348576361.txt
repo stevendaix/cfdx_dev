@@ -1,0 +1,49 @@
+The following tests FAILED:
+	155 - test_bfs_quick (Not Run)                          qualification validation
+	156 - test_naca0012_quick (Not Run)                     qualification validation
+	157 - test_naca0012_wall_shear_audit_quick (Not Run)    qualification validation
+	160 - test_generate_2d_validation_meshes (Failed)       mesh qualification validation
+	161 - test_generate_quick_validation_meshes (Failed)    mesh qualification quick validation
+	162 - test_naca_mesh_symmetry_extrusion (Failed)        3d mesh qualification validation
+	163 - test_generate_naca3d_mesh (Failed)                3d mesh qualification validation
+	164 - test_naca0012_extruded_3d_quick (Not Run)         3d mesh qualification validation
+	165 - test_naca3d_thermal_turbulence_smoke (Not Run)    3d qualification smoke thermal turbulence validation
+	179 - test_naca_split_farfield_generator (Failed)       contract quick validation
+	286 - test_cross_import_equivalence (Failed)
+	288 - test_n9_s8_naca0012_contract (Failed)             n9 qualification total-validation validation
+	289 - test_solid_conduction_contract_e2e (Failed)       integration thermal validation
+	290 - test_t2_campaign_verdict (Failed)                 qualification thermal validation
+	291 - test_production_thermal_restart_e2e (Failed)      integration restart thermal
+	292 - test_imported_thermal_contracts (Failed)          integration io thermal
+	293 - test_n9_coupled_schur_case_selection (Failed)     integration n9 schur validation validation-total
+	294 - test_n9_poiseuille_body_force_production (Failed) integration n9 qualification validation validation-total
+	296 - test_openfoam_results_cli_production_e2e (Failed) integration openfoam qualification
+	297 - test_production_solver_e2e (Failed)
+	298 - test_production_solver_numerics_e2e (Failed)
+	299 - test_meshio_bridge (Failed)
+	300 - test_mesh_geometry_matrix (Failed)
+Errors while running CTest
+=== LastTestsFailed.log (if present) ===
+155:test_bfs_quick
+156:test_naca0012_quick
+157:test_naca0012_wall_shear_audit_quick
+160:test_generate_2d_validation_meshes
+161:test_generate_quick_validation_meshes
+162:test_naca_mesh_symmetry_extrusion
+163:test_generate_naca3d_mesh
+164:test_naca0012_extruded_3d_quick
+165:test_naca3d_thermal_turbulence_smoke
+179:test_naca_split_farfield_generator
+286:test_cross_import_equivalence
+288:test_n9_s8_naca0012_contract
+289:test_solid_conduction_contract_e2e
+290:test_t2_campaign_verdict
+291:test_production_thermal_restart_e2e
+292:test_imported_thermal_contracts
+293:test_n9_coupled_schur_case_selection
+294:test_n9_poiseuille_body_force_production
+296:test_openfoam_results_cli_production_e2e
+297:test_production_solver_e2e
+298:test_production_solver_numerics_e2e
+299:test_meshio_bridge
+300:test_mesh_geometry_matrix

@@ -1,0 +1,754 @@
+Internal ctest changing into directory: /home/runner/work/cfdx_dev/cfdx_dev/build
+Test project /home/runner/work/cfdx_dev/cfdx_dev/build
+        Start 161: test_generate_quick_validation_meshes
+        Start 163: test_generate_naca3d_mesh
+        Start   1: test_audit_cht_time
+        Start   2: test_audit_energy_boundary_metric
+        Start   3: test_temporal
+        Start   4: test_discretization_verification
+  1/284 Test #161: test_generate_quick_validation_meshes .......***Failed    0.11 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/scripts/generate_2d_validation_meshes.py", line 15, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+  2/284 Test #163: test_generate_naca3d_mesh ...................***Failed    0.12 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/scripts/generate_2d_validation_meshes.py", line 15, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+        Start   5: test_matrix_diagnostics
+        Start   6: test_application_layer
+  3/284 Test   #3: test_temporal ...............................   Passed    0.25 sec
+        Start   7: test_memory_budget
+  4/284 Test   #2: test_audit_energy_boundary_metric ...........   Passed    0.26 sec
+        Start   8: test_memory_planner
+  5/284 Test   #4: test_discretization_verification ............   Passed    0.26 sec
+  6/284 Test   #5: test_matrix_diagnostics .....................   Passed    0.15 sec
+  7/284 Test   #6: test_application_layer ......................   Passed    0.15 sec
+        Start   9: test_mpi_deterministic_fused
+        Start  13: test_n11_campaign_integrity
+  8/284 Test   #7: test_memory_budget ..........................   Passed    0.02 sec
+        Start  14: test_audit_flux_contract
+  9/284 Test   #8: test_memory_planner .........................   Passed    0.04 sec
+        Start  15: test_audit_helper_terms
+ 10/284 Test  #13: test_n11_campaign_integrity .................   Passed    0.07 sec
+        Start  16: test_point
+ 11/284 Test  #14: test_audit_flux_contract ....................   Passed    0.06 sec
+        Start  17: test_face
+ 12/284 Test  #15: test_audit_helper_terms .....................   Passed    0.05 sec
+        Start  18: test_ownership
+ 13/284 Test  #16: test_point ..................................   Passed    0.04 sec
+        Start  19: test_cell
+ 14/284 Test  #17: test_face ...................................   Passed    0.04 sec
+        Start  20: test_boundary
+ 15/284 Test  #18: test_ownership ..............................   Passed    0.04 sec
+        Start  21: test_mesh
+ 16/284 Test  #20: test_boundary ...............................   Passed    0.03 sec
+        Start  22: test_field
+ 17/284 Test  #19: test_cell ...................................   Passed    0.04 sec
+        Start  23: test_field_storage
+ 18/284 Test   #1: test_audit_cht_time .........................   Passed    0.43 sec
+        Start  24: test_field_wall_hardening
+ 19/284 Test  #21: test_mesh ...................................   Passed    0.05 sec
+        Start  25: test_boundary_field
+ 20/284 Test  #22: test_field ..................................   Passed    0.04 sec
+        Start  26: test_boundary_contract
+ 21/284 Test  #23: test_field_storage ..........................   Passed    0.04 sec
+        Start  27: test_boundary_fvm_constraints
+ 22/284 Test  #24: test_field_wall_hardening ...................   Passed    0.03 sec
+        Start  28: test_boundary_validator
+ 23/284 Test  #28: test_boundary_validator .....................   Passed    0.03 sec
+        Start  29: test_interpolation
+ 24/284 Test  #25: test_boundary_field .........................   Passed    0.06 sec
+        Start  30: test_gradient
+ 25/284 Test  #26: test_boundary_contract ......................   Passed    0.05 sec
+        Start  31: test_pressure_velocity_system
+ 26/284 Test  #27: test_boundary_fvm_constraints ...............   Passed    0.06 sec
+        Start  32: test_oriented_numerics
+ 27/284 Test  #29: test_interpolation ..........................   Passed    0.06 sec
+        Start  33: test_divergence
+ 28/284 Test  #30: test_gradient ...............................   Passed    0.05 sec
+ 29/284 Test  #31: test_pressure_velocity_system ...............   Passed    0.05 sec
+        Start  10: test_mpi_runtime_control
+ 30/284 Test  #32: test_oriented_numerics ......................   Passed    0.05 sec
+        Start  34: test_flux
+ 31/284 Test  #33: test_divergence .............................   Passed    0.03 sec
+ 32/284 Test  #34: test_flux ...................................   Passed    0.03 sec
+        Start  35: test_spatial_scheme_contract
+        Start  36: test_conservation_boundedness
+ 33/284 Test  #36: test_conservation_boundedness ...............   Passed    0.03 sec
+        Start  37: test_transport_conservation
+ 34/284 Test  #35: test_spatial_scheme_contract ................   Passed    0.03 sec
+        Start  38: test_conservation_assembly
+ 35/284 Test  #38: test_conservation_assembly ..................   Passed    0.02 sec
+        Start  39: test_integrate
+ 36/284 Test  #37: test_transport_conservation .................   Passed    0.03 sec
+        Start  40: test_forces
+ 37/284 Test  #40: test_forces .................................   Passed    0.02 sec
+        Start  41: test_force_finite_contract
+ 38/284 Test  #39: test_integrate ..............................   Passed    0.03 sec
+        Start  42: test_probe_csv
+ 39/284 Test  #41: test_force_finite_contract ..................   Passed    0.02 sec
+        Start  43: test_sparse_matrix
+ 40/284 Test  #43: test_sparse_matrix ..........................   Passed    0.02 sec
+        Start  44: test_vector
+ 41/284 Test  #44: test_vector .................................   Passed    0.02 sec
+        Start  45: test_linear_system
+ 42/284 Test  #45: test_linear_system ..........................   Passed    0.02 sec
+        Start  46: test_cg_solver
+ 43/284 Test  #42: test_probe_csv ..............................   Passed    0.08 sec
+        Start  47: test_amg_dispatch_certificate
+ 44/284 Test  #46: test_cg_solver ..............................   Passed    0.04 sec
+        Start  48: test_null_space
+ 45/284 Test  #47: test_amg_dispatch_certificate ...............   Passed    0.08 sec
+        Start  49: test_n8_pinned_pressure_gauge
+ 46/284 Test  #49: test_n8_pinned_pressure_gauge ...............   Passed    0.06 sec
+        Start  50: test_bicgstab_solver
+ 47/284 Test  #48: test_null_space .............................   Passed    0.12 sec
+        Start  51: test_gmres_solver
+ 48/284 Test  #50: test_bicgstab_solver ........................   Passed    0.04 sec
+        Start  52: test_fgmres_solver
+ 49/284 Test  #51: test_gmres_solver ...........................   Passed    0.07 sec
+        Start  53: test_krylov_preconditioning
+ 50/284 Test  #52: test_fgmres_solver ..........................   Passed    0.06 sec
+        Start  54: test_krylov_diagnostics
+ 51/284 Test  #53: test_krylov_preconditioning .................   Passed    0.05 sec
+        Start  55: test_stationary_solvers
+ 52/284 Test  #54: test_krylov_diagnostics .....................   Passed    0.05 sec
+        Start  56: test_performance_foundations
+ 53/284 Test  #56: test_performance_foundations ................   Passed    0.02 sec
+        Start  57: test_performance_runtime
+ 54/284 Test  #55: test_stationary_solvers .....................   Passed    0.07 sec
+        Start  58: test_phase6_memory_benchmark
+ 55/284 Test  #57: test_performance_runtime ....................   Passed    0.03 sec
+        Start  59: test_amg_chebyshev
+ 56/284 Test  #58: test_phase6_memory_benchmark ................   Passed    0.07 sec
+        Start  60: test_naca_relaxation_controls
+ 57/284 Test  #60: test_naca_relaxation_controls ...............   Passed    0.02 sec
+        Start  61: test_native_external_methods
+ 58/284 Test  #61: test_native_external_methods ................   Passed    0.10 sec
+        Start  62: test_matrix_characteristics
+ 59/284 Test  #62: test_matrix_characteristics .................   Passed    0.03 sec
+        Start  63: test_amg_preconditioner_qualification
+ 60/284 Test  #59: test_amg_chebyshev ..........................   Passed    0.55 sec
+        Start  64: test_matrix_free_fv_operator
+ 61/284 Test  #64: test_matrix_free_fv_operator ................   Passed    0.02 sec
+        Start  65: test_n11_scaling_equivalence
+ 62/284 Test  #65: test_n11_scaling_equivalence ................   Passed    0.02 sec
+        Start  66: test_n11_production_scaling
+ 63/284 Test  #66: test_n11_production_scaling .................   Passed    0.04 sec
+        Start  67: test_n11_unit_invariance_robustness
+ 64/284 Test  #67: test_n11_unit_invariance_robustness .........   Passed    0.05 sec
+        Start  68: test_backend_equivalence
+ 65/284 Test  #68: test_backend_equivalence ....................   Passed    0.04 sec
+        Start  69: test_n13_restart_equivalence
+ 66/284 Test  #69: test_n13_restart_equivalence ................   Passed    0.02 sec
+        Start  70: test_laplacian
+ 67/284 Test  #70: test_laplacian ..............................   Passed    0.03 sec
+        Start  71: test_diffusion_diagnostics
+ 68/284 Test  #71: test_diffusion_diagnostics ..................   Passed    0.03 sec
+        Start  72: test_phase123_regression
+ 69/284 Test  #72: test_phase123_regression ....................   Passed    0.04 sec
+        Start  73: test_phase12_radiation_vv
+ 70/284 Test  #73: test_phase12_radiation_vv ...................   Passed    0.03 sec
+        Start  74: test_scalar_diffusion
+ 71/284 Test  #74: test_scalar_diffusion .......................   Passed    0.03 sec
+        Start  75: test_advanced_preconditioners
+ 72/284 Test  #75: test_advanced_preconditioners ...............   Passed    0.02 sec
+        Start  76: test_schur_preconditioner
+ 73/284 Test  #76: test_schur_preconditioner ...................   Passed    0.05 sec
+        Start  77: test_face_geometry
+ 74/284 Test  #77: test_face_geometry ..........................   Passed    0.04 sec
+        Start  78: test_cell_geometry
+ 75/284 Test  #78: test_cell_geometry ..........................   Passed    0.04 sec
+        Start  79: test_mesh_quality
+ 76/284 Test  #79: test_mesh_quality ...........................   Passed    0.04 sec
+        Start  80: test_geometry_invariants
+ 77/284 Test  #80: test_geometry_invariants ....................   Passed    0.06 sec
+        Start  81: test_dat_restart_identity
+ 78/284 Test  #81: test_dat_restart_identity ...................   Passed    0.17 sec
+        Start  82: test_mesh_family_volumes
+ 79/284 Test  #82: test_mesh_family_volumes ....................   Passed    0.02 sec
+        Start  83: test_source_term
+ 80/284 Test  #83: test_source_term ............................   Passed    0.03 sec
+        Start  84: test_temporal_physics
+ 81/284 Test  #84: test_temporal_physics .......................   Passed    0.03 sec
+        Start  85: test_dual_time_stepping
+ 82/284 Test  #85: test_dual_time_stepping .....................   Passed    0.02 sec
+        Start  86: test_dual_time_adaptive
+ 83/284 Test  #86: test_dual_time_adaptive .....................   Passed    0.02 sec
+        Start  87: test_dual_time_field_driver
+ 84/284 Test  #87: test_dual_time_field_driver .................   Passed    0.02 sec
+        Start  88: test_dual_time_field_integrator
+ 85/284 Test  #88: test_dual_time_field_integrator .............   Passed    0.03 sec
+        Start  89: test_dual_time_physical_lifecycle
+ 86/284 Test  #89: test_dual_time_physical_lifecycle ...........   Passed    0.04 sec
+        Start  90: test_dual_time_navier_stokes
+ 87/284 Test  #90: test_dual_time_navier_stokes ................   Passed    1.82 sec
+        Start  91: test_dual_time_checkpoint_contract
+ 88/284 Test  #91: test_dual_time_checkpoint_contract ..........   Passed    0.06 sec
+        Start  92: test_thermal_conductance_finite
+ 89/284 Test  #92: test_thermal_conductance_finite .............   Passed    0.06 sec
+        Start  93: test_thermal_component_anchoring
+ 90/284 Test  #93: test_thermal_component_anchoring ............   Passed    0.07 sec
+        Start  94: test_case_numerics_report
+ 91/284 Test  #94: test_case_numerics_report ...................   Passed    0.17 sec
+        Start  95: test_temporal_history
+ 92/284 Test  #95: test_temporal_history .......................   Passed    0.08 sec
+        Start  96: test_core_temporal
+ 93/284 Test  #96: test_core_temporal ..........................   Passed    0.05 sec
+        Start  97: test_newton_field
+ 94/284 Test  #97: test_newton_field ...........................   Passed    0.05 sec
+        Start  98: test_simulation_controller
+ 95/284 Test  #98: test_simulation_controller ..................   Passed    0.05 sec
+        Start  99: test_adaptive_cfl
+ 96/284 Test  #99: test_adaptive_cfl ...........................   Passed    0.07 sec
+        Start 100: test_timestep_control
+ 97/284 Test #100: test_timestep_control .......................   Passed    0.06 sec
+        Start 101: test_continuation
+ 98/284 Test #101: test_continuation ...........................   Passed    0.18 sec
+        Start 102: test_local_time_stepping
+ 99/284 Test #102: test_local_time_stepping ....................   Passed    0.06 sec
+        Start 103: test_local_cfl_physical_contract
+100/284 Test #103: test_local_cfl_physical_contract ............   Passed    0.06 sec
+        Start 104: test_incompressible
+101/284 Test #104: test_incompressible .........................   Passed    0.07 sec
+        Start 105: test_m1_m4_physics
+102/284 Test #105: test_m1_m4_physics ..........................   Passed    0.07 sec
+        Start 106: test_m1_m4_validation
+103/284 Test #106: test_m1_m4_validation .......................   Passed    0.09 sec
+        Start 107: test_solver_control
+104/284 Test #107: test_solver_control .........................   Passed    0.07 sec
+        Start 108: test_convergence_monitor
+105/284 Test #108: test_convergence_monitor ....................   Passed    0.06 sec
+        Start 109: test_initialization
+106/284 Test #109: test_initialization .........................   Passed    0.19 sec
+        Start 112: test_n7_causal_overshoot_regression
+107/284 Test #112: test_n7_causal_overshoot_regression .........   Passed    0.08 sec
+        Start 113: test_n11_scalar_conservation
+108/284 Test #113: test_n11_scalar_conservation ................   Passed    0.15 sec
+        Start 114: test_finite_volume_transport
+109/284 Test #114: test_finite_volume_transport ................   Passed    0.15 sec
+        Start 115: test_vof_curvature_contract
+110/284 Test #115: test_vof_curvature_contract .................   Passed    0.07 sec
+        Start 116: test_variable_viscosity_transpose_stress
+111/284 Test #116: test_variable_viscosity_transpose_stress ....   Passed    3.64 sec
+        Start 117: test_steady_incompressible_solver
+112/284 Test #117: test_steady_incompressible_solver ...........   Passed    0.18 sec
+        Start 118: test_vtu_writer_validation
+113/284 Test #118: test_vtu_writer_validation ..................   Passed    0.09 sec
+        Start 119: test_solver_vtu_provenance
+114/284 Test #119: test_solver_vtu_provenance ..................   Passed    0.10 sec
+        Start 121: test_ghia_cavity_pressure_line_search
+115/284 Test  #10: test_mpi_runtime_control ....................   Passed   11.54 sec
+        Start 125: test_m2_m4_solver_validation
+        Start 126: test_phase10_turbulence_hardening
+116/284 Test #126: test_phase10_turbulence_hardening ...........   Passed    0.09 sec
+        Start 127: test_turbulence_qualification_equations
+117/284 Test #127: test_turbulence_qualification_equations .....   Passed    0.03 sec
+        Start 128: test_production_turbulence_contract
+118/284 Test #128: test_production_turbulence_contract .........   Passed    0.03 sec
+        Start 129: test_solid_conduction_selection
+119/284 Test #125: test_m2_m4_solver_validation ................   Passed    0.16 sec
+        Start 130: test_energy_integration_contracts
+120/284 Test   #9: test_mpi_deterministic_fused ................   Passed   12.03 sec
+        Start 131: test_energy_independent_acceptance
+        Start 132: test_sst_closure_input_contract
+121/284 Test #129: test_solid_conduction_selection .............   Passed    0.06 sec
+        Start 133: test_cht_integration_contracts
+122/284 Test #132: test_sst_closure_input_contract .............   Passed    0.05 sec
+        Start 134: test_sst_integration_gaps
+123/284 Test #133: test_cht_integration_contracts ..............   Passed    0.08 sec
+        Start 135: test_production_radiation_contract
+124/284 Test #131: test_energy_independent_acceptance ..........   Passed    0.11 sec
+        Start 136: test_n11_sa_negative_nu_tilde_policy
+125/284 Test #130: test_energy_integration_contracts ...........   Passed    0.16 sec
+        Start 137: test_n11_bound_reporting_hardening
+126/284 Test #135: test_production_radiation_contract ..........   Passed    0.04 sec
+        Start 138: test_phase10_model_registry
+127/284 Test #136: test_n11_sa_negative_nu_tilde_policy ........   Passed    0.08 sec
+        Start 139: test_wall_distance_methods
+128/284 Test #138: test_phase10_model_registry .................   Passed    0.05 sec
+        Start 140: test_wall_distance_invalid_results
+129/284 Test #140: test_wall_distance_invalid_results ..........   Passed    0.06 sec
+        Start 141: test_wall_distance_godunov_ridges
+130/284 Test #137: test_n11_bound_reporting_hardening ..........   Passed    0.14 sec
+        Start 142: test_wall_distance_advection_residual
+131/284 Test #141: test_wall_distance_godunov_ridges ...........   Passed    0.08 sec
+        Start 144: test_n11_fw1_nearest_normal_fallback
+132/284 Test #142: test_wall_distance_advection_residual .......   Passed    0.08 sec
+        Start 145: test_n11_fw2_positivity_clamp_counter
+133/284 Test #134: test_sst_integration_gaps ...................   Passed    0.31 sec
+        Start 146: test_n11_b1_b2_b3_linalg_guards
+134/284 Test #146: test_n11_b1_b2_b3_linalg_guards .............   Passed    0.06 sec
+        Start 147: test_n11_b4_b5_amg_footprint
+135/284 Test #144: test_n11_fw1_nearest_normal_fallback ........   Passed    0.19 sec
+        Start 150: test_phase10_sst_limiter
+136/284 Test #147: test_n11_b4_b5_amg_footprint ................   Passed    0.13 sec
+        Start 151: test_analytical_benchmarks
+137/284 Test #150: test_phase10_sst_limiter ....................   Passed    0.05 sec
+        Start 152: test_vmfl036_reference_case
+138/284 Test #152: test_vmfl036_reference_case .................   Passed    0.05 sec
+        Start 153: test_axisymmetric_vmfl036_kernel
+139/284 Test #153: test_axisymmetric_vmfl036_kernel ............   Passed    0.05 sec
+        Start 154: test_vmfl036_axisymmetric_quick
+140/284 Test #151: test_analytical_benchmarks ..................   Passed    0.18 sec
+        Start 155: test_bfs_quick
+Failed test dependencies: test_generate_quick_validation_meshes
+141/284 Test #155: test_bfs_quick ..............................***Not Run   0.00 sec
+        Start 156: test_naca0012_quick
+Failed test dependencies: test_generate_quick_validation_meshes
+142/284 Test #156: test_naca0012_quick .........................***Not Run   0.00 sec
+        Start 157: test_naca0012_wall_shear_audit_quick
+Failed test dependencies: test_generate_quick_validation_meshes
+143/284 Test #157: test_naca0012_wall_shear_audit_quick ........***Not Run   0.00 sec
+        Start 158: test_naca_controlled_campaign_parser
+144/284 Test #145: test_n11_fw2_positivity_clamp_counter .......   Passed    0.50 sec
+        Start 159: test_analyze_naca_pressure_spectrum
+145/284 Test #159: test_analyze_naca_pressure_spectrum .........   Passed    0.14 sec
+        Start 160: test_generate_2d_validation_meshes
+146/284 Test #158: test_naca_controlled_campaign_parser ........   Passed    0.29 sec
+        Start 162: test_naca_mesh_symmetry_extrusion
+147/284 Test #139: test_wall_distance_methods ..................   Passed    0.95 sec
+        Start 164: test_naca0012_extruded_3d_quick
+Failed test dependencies: test_generate_naca3d_mesh
+148/284 Test #164: test_naca0012_extruded_3d_quick .............***Not Run   0.00 sec
+        Start 165: test_naca3d_thermal_turbulence_smoke
+Failed test dependencies: test_generate_naca3d_mesh
+149/284 Test #165: test_naca3d_thermal_turbulence_smoke ........***Not Run   0.00 sec
+        Start 167: test_numerical_model_verification
+150/284 Test #167: test_numerical_model_verification ...........   Passed    0.12 sec
+        Start 168: test_poiseuille_quick
+151/284 Test #160: test_generate_2d_validation_meshes ..........***Failed    0.29 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/scripts/generate_2d_validation_meshes.py", line 15, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+        Start 169: test_mms_scalar_diffusion
+152/284 Test #162: test_naca_mesh_symmetry_extrusion ...........***Failed    0.25 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_naca_mesh_symmetry_extrusion.py", line 9, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
+
+        Start 170: test_wls_planar_field
+153/284 Test #168: test_poiseuille_quick .......................   Passed    0.07 sec
+        Start 171: test_wls_intrinsic_dimension
+154/284 Test #170: test_wls_planar_field .......................   Passed    0.06 sec
+        Start 172: test_pressure_flux_split
+155/284 Test #171: test_wls_intrinsic_dimension ................   Passed    0.06 sec
+        Start 173: test_pressure_continuity_line_search
+156/284 Test #154: test_vmfl036_axisymmetric_quick .............   Passed    0.73 sec
+        Start 174: test_pressure_affine_flux_trials
+157/284 Test #172: test_pressure_flux_split ....................   Passed    0.07 sec
+        Start 175: test_wall_face_traction_mms
+158/284 Test #173: test_pressure_continuity_line_search ........   Passed    0.05 sec
+        Start 176: test_wall_shear_quadratic_fit
+159/284 Test #174: test_pressure_affine_flux_trials ............   Passed    0.06 sec
+        Start 177: test_naca_state_io
+160/284 Test #176: test_wall_shear_quadratic_fit ...............   Passed    0.05 sec
+        Start 178: test_naca_wall_pressure_grid_audit
+161/284 Test #177: test_naca_state_io ..........................   Passed    0.05 sec
+        Start 179: test_naca_split_farfield_generator
+162/284 Test #175: test_wall_face_traction_mms .................   Passed    0.08 sec
+        Start 180: test_naca_wall_profiles_symmetry
+163/284 Test #178: test_naca_wall_pressure_grid_audit ..........   Passed    0.16 sec
+        Start 181: test_naca_wall_shear_independent
+164/284 Test #180: test_naca_wall_profiles_symmetry ............   Passed    0.15 sec
+        Start 182: test_naca_ab_qualification_contract
+165/284 Test #179: test_naca_split_farfield_generator ..........***Failed    0.16 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/validation/test_naca_split_farfield_generator.py", line 6, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+        Start 183: test_pressure_split_skew_poisson_mms
+166/284 Test #181: test_naca_wall_shear_independent ............   Passed    0.16 sec
+        Start 184: test_nonorthogonal_skew_campaign
+167/284 Test #184: test_nonorthogonal_skew_campaign ............   Passed    0.08 sec
+        Start 185: test_nonorthogonal_laplacian_campaign
+168/284 Test #183: test_pressure_split_skew_poisson_mms ........   Passed    0.78 sec
+        Start 186: test_transient_mms
+169/284 Test #182: test_naca_ab_qualification_contract .........   Passed    1.10 sec
+        Start 187: test_transient_mms_closure
+170/284 Test #186: test_transient_mms ..........................   Passed    1.49 sec
+        Start 188: test_transient_mms_3d_stiff
+171/284 Test #188: test_transient_mms_3d_stiff .................   Passed    0.13 sec
+        Start 189: test_n12_momentum_mms
+172/284 Test #189: test_n12_momentum_mms .......................   Passed    0.12 sec
+        Start 190: test_n12_pressure_continuity_mms
+173/284 Test #190: test_n12_pressure_continuity_mms ............   Passed    0.10 sec
+        Start 192: test_polyhedral_laplacian_campaign
+174/284 Test #169: test_mms_scalar_diffusion ...................   Passed    3.69 sec
+        Start 194: test_convection_scheme_verification
+175/284 Test #194: test_convection_scheme_verification .........   Passed    0.09 sec
+        Start 195: test_convection_3d_verification
+176/284 Test #185: test_nonorthogonal_laplacian_campaign .......   Passed    3.52 sec
+        Start 196: test_convection_blending
+177/284 Test #196: test_convection_blending ....................   Passed    3.61 sec
+        Start 197: test_n16_weno5z
+178/284 Test #197: test_n16_weno5z .............................   Passed    0.06 sec
+        Start 198: test_temporal_order_matrix
+179/284 Test #198: test_temporal_order_matrix ..................   Passed    0.09 sec
+        Start 199: test_gradient_verification
+180/284 Test #199: test_gradient_verification ..................   Passed    4.22 sec
+        Start 200: test_polyhedral_gradient_campaign
+181/284 Test #192: test_polyhedral_laplacian_campaign ..........   Passed   12.93 sec
+        Start 201: test_n10_difficult_mesh_robustness
+182/284 Test #201: test_n10_difficult_mesh_robustness ..........   Passed    0.73 sec
+        Start 203: test_n10_mesh_fixture_manifest
+183/284 Test #203: test_n10_mesh_fixture_manifest ..............   Passed    0.04 sec
+        Start 204: test_convection_polyhedral_campaign
+184/284 Test #204: test_convection_polyhedral_campaign .........   Passed    0.13 sec
+        Start 205: test_convection_solver_qualification
+185/284 Test #205: test_convection_solver_qualification ........   Passed    1.00 sec
+        Start 206: test_fluent_vmfl_reference
+186/284 Test #206: test_fluent_vmfl_reference ..................   Passed    0.06 sec
+        Start 207: test_benchmark_matrix
+187/284 Test #207: test_benchmark_matrix .......................   Passed    0.08 sec
+        Start 208: test_level_b_reference_benchmarks
+188/284 Test #208: test_level_b_reference_benchmarks ...........   Passed    0.06 sec
+        Start 209: test_level_c_coupled_verification
+189/284 Test #209: test_level_c_coupled_verification ...........   Passed    0.30 sec
+        Start 210: test_cht_validation
+190/284 Test #210: test_cht_validation .........................   Passed    0.10 sec
+        Start 211: test_thermal_vv
+191/284 Test #211: test_thermal_vv .............................   Passed    0.09 sec
+        Start 212: test_thermal_zones_vv
+192/284 Test #212: test_thermal_zones_vv .......................   Passed    0.15 sec
+        Start 213: test_thermal_case_contracts
+193/284 Test #213: test_thermal_case_contracts .................   Passed    0.07 sec
+        Start 214: test_thermal_driver_vv
+194/284 Test #214: test_thermal_driver_vv ......................   Passed    0.24 sec
+        Start 215: test_production_energy_stage_vv
+195/284 Test  #63: test_amg_preconditioner_qualification .......   Passed   31.28 sec
+        Start 216: test_production_s2s_energy_stage_vv
+196/284 Test #216: test_production_s2s_energy_stage_vv .........   Passed    0.29 sec
+        Start 217: test_production_s2s_energy_outer_loop_vv
+197/284 Test #217: test_production_s2s_energy_outer_loop_vv ....   Passed    0.33 sec
+        Start 218: test_production_buoyancy_outer_loop_vv
+198/284 Test #215: test_production_energy_stage_vv .............   Passed    1.65 sec
+        Start 219: test_buoyancy_acceleration_contract
+199/284 Test #219: test_buoyancy_acceleration_contract .........   Passed    0.05 sec
+        Start 221: test_radiation_vv
+200/284 Test #221: test_radiation_vv ...........................   Passed    0.11 sec
+        Start 222: test_s2s_radiation_vv
+201/284 Test #222: test_s2s_radiation_vv .......................   Passed    0.21 sec
+        Start 223: test_s2s_radiosity_verified
+202/284 Test #223: test_s2s_radiosity_verified .................   Passed    0.06 sec
+        Start 224: test_s2s_area_scale_reciprocity
+203/284 Test #224: test_s2s_area_scale_reciprocity .............   Passed    0.11 sec
+        Start 225: test_thermal_radiation_model_matrix
+204/284 Test #225: test_thermal_radiation_model_matrix .........   Passed    0.06 sec
+        Start 226: test_thermal_radiation_regression
+205/284 Test #226: test_thermal_radiation_regression ...........   Passed    0.08 sec
+        Start 227: test_thermal_challenge_vv
+206/284 Test #227: test_thermal_challenge_vv ...................   Passed    0.59 sec
+        Start 228: test_thermophysical_models_vv
+207/284 Test #228: test_thermophysical_models_vv ...............   Passed    0.07 sec
+        Start 229: test_turbulence_qualification_matrix
+208/284 Test #229: test_turbulence_qualification_matrix ........   Passed    0.03 sec
+        Start 230: test_cfdx_qualification_registry
+209/284 Test #230: test_cfdx_qualification_registry ............   Passed    0.04 sec
+        Start 231: test_three_mesh_physical_gate_selftest
+210/284 Test #231: test_three_mesh_physical_gate_selftest ......   Passed    2.28 sec
+        Start 232: test_schur_infrastructure
+211/284 Test #232: test_schur_infrastructure ...................   Passed    0.06 sec
+        Start 233: test_exact_schur
+212/284 Test #233: test_exact_schur ............................   Passed    0.06 sec
+        Start 234: test_n9_schur_oracle
+213/284 Test #234: test_n9_schur_oracle ........................   Passed    0.06 sec
+        Start 235: test_simplerc_schur
+214/284 Test #235: test_simplerc_schur .........................   Passed    0.06 sec
+        Start 236: test_lsc_bfbt_schur
+215/284 Test #236: test_lsc_bfbt_schur .........................   Passed    0.06 sec
+        Start 237: test_pcd_schur
+216/284 Test #237: test_pcd_schur ..............................   Passed    0.07 sec
+        Start 238: test_coupled_schur_selection
+217/284 Test #238: test_coupled_schur_selection ................   Passed    0.05 sec
+        Start 239: test_lsc_bfbt_schur_null_space
+218/284 Test #239: test_lsc_bfbt_schur_null_space ..............   Passed    0.06 sec
+        Start 240: test_schur_approximation_comparison
+219/284 Test #240: test_schur_approximation_comparison .........   Passed    0.05 sec
+        Start 241: test_schur_quantitative_qualification
+220/284 Test #241: test_schur_quantitative_qualification .......   Passed    0.07 sec
+        Start 242: test_mgr_preconditioner
+221/284 Test #242: test_mgr_preconditioner .....................   Passed    0.11 sec
+        Start 243: test_wall_distance_turbulence
+222/284 Test #243: test_wall_distance_turbulence ...............   Passed    0.10 sec
+        Start 244: test_wall_turbulence_contract_guard
+223/284 Test #244: test_wall_turbulence_contract_guard .........   Passed    0.04 sec
+        Start 245: test_geometry_cache
+224/284 Test #245: test_geometry_cache .........................   Passed    0.08 sec
+        Start 246: test_coupled_block_schur_amg
+225/284 Test #246: test_coupled_block_schur_amg ................   Passed    0.13 sec
+        Start 247: test_n8_schur_production_benchmark
+226/284 Test #247: test_n8_schur_production_benchmark ..........   Passed    0.16 sec
+        Start 248: test_n8_schur_representative_cfd
+227/284 Test #248: test_n8_schur_representative_cfd ............   Passed    0.37 sec
+        Start 249: test_n8_schur_complete_krylov
+228/284 Test #249: test_n8_schur_complete_krylov ...............   Passed    0.46 sec
+        Start 250: test_n8_amg_anisotropy_scaling
+229/284 Test #195: test_convection_3d_verification .............   Passed   24.70 sec
+        Start 251: test_n9_common_schur_qualification
+230/284 Test #251: test_n9_common_schur_qualification ..........   Passed    0.30 sec
+        Start 256: test_mpi_deterministic
+231/284 Test #256: test_mpi_deterministic ......................   Passed    0.61 sec
+        Start 257: test_n13_mpi_equivalence
+232/284 Test #250: test_n8_amg_anisotropy_scaling ..............   Passed    3.29 sec
+        Start 258: test_mpi_partition
+233/284 Test #257: test_n13_mpi_equivalence ....................   Passed    0.64 sec
+        Start 259: test_mpi_fused_reduction
+234/284 Test #258: test_mpi_partition ..........................   Passed    0.58 sec
+        Start 260: test_mpi_krylov_reduction
+235/284 Test #259: test_mpi_fused_reduction ....................   Passed    0.60 sec
+        Start 261: test_phase8_mpi_poisson
+236/284 Test #260: test_mpi_krylov_reduction ...................   Passed    0.67 sec
+        Start 262: test_n8_mpi_boundary
+237/284 Test #261: test_phase8_mpi_poisson .....................   Passed    0.61 sec
+        Start 263: test_convergence_history
+238/284 Test #263: test_convergence_history ....................   Passed    0.07 sec
+        Start 264: test_execution_summary
+239/284 Test #264: test_execution_summary ......................   Passed    0.06 sec
+        Start 265: test_restart_mapping
+240/284 Test #265: test_restart_mapping ........................   Passed    0.06 sec
+        Start 266: test_transport_models
+241/284 Test #266: test_transport_models .......................   Passed    0.07 sec
+        Start 267: test_transport_field_contract
+242/284 Test #267: test_transport_field_contract ...............   Passed    0.06 sec
+        Start 268: test_equation_of_state_consistency
+243/284 Test #262: test_n8_mpi_boundary ........................   Passed    0.63 sec
+        Start 269: test_sst_blending
+244/284 Test #268: test_equation_of_state_consistency ..........   Passed    0.06 sec
+        Start 270: test_thermo_transport_contracts
+245/284 Test #270: test_thermo_transport_contracts .............   Passed    0.06 sec
+        Start 271: test_thermophysical_models
+246/284 Test #269: test_sst_blending ...........................   Passed    0.14 sec
+        Start 272: test_m5_m7_foundations
+247/284 Test #271: test_thermophysical_models ..................   Passed    0.08 sec
+        Start 273: test_runtime_execution_ooc
+248/284 Test #272: test_m5_m7_foundations ......................   Passed    0.05 sec
+        Start 274: test_runtime_pipeline
+249/284 Test #273: test_runtime_execution_ooc ..................   Passed    0.09 sec
+        Start 275: test_phase6_runtime_acceptance
+250/284 Test #274: test_runtime_pipeline .......................   Passed    0.08 sec
+        Start 276: test_ooc_pipeline
+251/284 Test #275: test_phase6_runtime_acceptance ..............   Passed    0.05 sec
+        Start 277: test_phase7_ooc_validation
+252/284 Test #276: test_ooc_pipeline ...........................   Passed    0.09 sec
+        Start 278: test_hdf5_writer
+253/284 Test #277: test_phase7_ooc_validation ..................   Passed    0.09 sec
+        Start 279: test_hdf5_roundtrip
+254/284 Test #278: test_hdf5_writer ............................   Passed    0.18 sec
+        Start 280: test_field_roundtrip
+255/284 Test #279: test_hdf5_roundtrip .........................   Passed    0.18 sec
+        Start 281: test_case_hdf5_io
+256/284 Test #280: test_field_roundtrip ........................   Passed    0.14 sec
+        Start 282: test_memory_planner_validation
+257/284 Test #282: test_memory_planner_validation ..............   Passed    0.11 sec
+        Start 283: test_plan_complet
+258/284 Test #283: test_plan_complet ...........................   Passed    0.07 sec
+        Start 284: test_validation_simple
+259/284 Test #281: test_case_hdf5_io ...........................   Passed    0.32 sec
+        Start 285: test_openfoam_importer
+260/284 Test #284: test_validation_simple ......................   Passed    0.09 sec
+        Start 286: test_cross_import_equivalence
+261/284 Test #285: test_openfoam_importer ......................   Passed    0.12 sec
+        Start 287: test_cpp_harness_execution_contract
+262/284 Test #286: test_cross_import_equivalence ...............***Failed    0.47 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/scripts/meshio_import.py", line 5, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+Gmsh/meshio import failed
+  imported-mesh faces=0 cells=0
+
+        Start 288: test_n9_s8_naca0012_contract
+263/284 Test #288: test_n9_s8_naca0012_contract ................***Failed    0.38 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_n9_s8_naca0012_contract.py", line 7, in <module>
+    from import_tmr_naca0012 import infer_dimensions
+  File "/home/runner/work/_temp/head/scripts/import_tmr_naca0012.py", line 16, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+        Start 289: test_solid_conduction_contract_e2e
+264/284 Test #289: test_solid_conduction_contract_e2e ..........***Failed    0.32 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_solid_conduction_contract_e2e.py", line 12, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+        Start 290: test_t2_campaign_verdict
+265/284 Test #290: test_t2_campaign_verdict ....................***Failed    0.46 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_t2_campaign_verdict.py", line 12, in <module>
+    spec.loader.exec_module(campaign)
+  File "<frozen importlib._bootstrap_external>", line 995, in exec_module
+  File "<frozen importlib._bootstrap>", line 488, in _call_with_frames_removed
+  File "/home/runner/work/_temp/head/scripts/t2_heated_channel_calibration.py", line 42, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+        Start 291: test_production_thermal_restart_e2e
+266/284 Test #291: test_production_thermal_restart_e2e .........***Failed    0.15 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_production_thermal_restart_e2e.py", line 12, in <module>
+    from test_solid_conduction_contract_e2e import write_cube
+  File "/home/runner/work/_temp/head/tests/python/test_solid_conduction_contract_e2e.py", line 12, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+        Start 292: test_imported_thermal_contracts
+267/284 Test #292: test_imported_thermal_contracts .............***Failed    0.33 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_imported_thermal_contracts.py", line 7, in <module>
+    from cfdx.io.adapters.fluent import _extract_cas_h5_reference_values
+  File "/home/runner/work/_temp/head/src/cfdx/python/cfdx/__init__.py", line 19, in <module>
+    from cfdx.io.interfaces import (
+  File "/home/runner/work/_temp/head/src/cfdx/python/cfdx/io/__init__.py", line 3, in <module>
+    from cfdx.io.interfaces import SolverAdapter, ConversionResult, SourceInfo
+  File "/home/runner/work/_temp/head/src/cfdx/python/cfdx/io/interfaces.py", line 18, in <module>
+    import numpy as np
+ModuleNotFoundError: No module named 'numpy'
+
+        Start 293: test_n9_coupled_schur_case_selection
+268/284 Test #293: test_n9_coupled_schur_case_selection ........***Failed    0.13 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_n9_coupled_schur_case_selection.py", line 8, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+        Start 294: test_n9_poiseuille_body_force_production
+269/284 Test #294: test_n9_poiseuille_body_force_production ....***Failed    0.13 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_n9_poiseuille_body_force_production.py", line 10, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+        Start 295: test_missing_qualification_case_contracts
+270/284 Test #295: test_missing_qualification_case_contracts ...   Passed    0.03 sec
+        Start 296: test_openfoam_results_cli_production_e2e
+271/284 Test #296: test_openfoam_results_cli_production_e2e ....***Failed    0.04 sec
+/usr/bin/python3.12: No module named pytest
+
+        Start 297: test_production_solver_e2e
+272/284 Test #287: test_cpp_harness_execution_contract .........   Passed    2.61 sec
+        Start 298: test_production_solver_numerics_e2e
+273/284 Test #297: test_production_solver_e2e ..................***Failed    0.30 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_production_solver_e2e.py", line 9, in <module>
+    import pytest
+ModuleNotFoundError: No module named 'pytest'
+
+        Start 299: test_meshio_bridge
+274/284 Test #298: test_production_solver_numerics_e2e .........***Failed    0.19 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/python/test_production_solver_numerics_e2e.py", line 7, in <module>
+    import pytest
+ModuleNotFoundError: No module named 'pytest'
+
+        Start 300: test_mesh_geometry_matrix
+275/284 Test #299: test_meshio_bridge ..........................***Failed    0.24 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/mesh/test_meshio_bridge.py", line 3, in <module>
+    import h5py
+ModuleNotFoundError: No module named 'h5py'
+
+        Start 301: test_gap_analysis
+276/284 Test #301: test_gap_analysis ...........................   Passed    0.05 sec
+        Start 302: test_pressure_skew_gradient_affine
+277/284 Test #302: test_pressure_skew_gradient_affine ..........   Passed    0.06 sec
+278/284 Test #300: test_mesh_geometry_matrix ...................***Failed    0.31 sec
+Traceback (most recent call last):
+  File "/home/runner/work/_temp/head/tests/mesh/test_mesh_geometry_matrix.py", line 5, in <module>
+    import meshio
+ModuleNotFoundError: No module named 'meshio'
+
+279/284 Test #200: test_polyhedral_gradient_campaign ...........   Passed   45.53 sec
+280/284 Test #218: test_production_buoyancy_outer_loop_vv ......   Passed   40.29 sec
+281/284 Test #187: test_transient_mms_closure ..................   Passed   61.53 sec
+282/284 Test #121: test_ghia_cavity_pressure_line_search .......   Passed  104.20 sec
+        Start 202: test_n10_qualification
+283/284 Test #202: test_n10_qualification ......................   Passed  179.34 sec
+        Start 255: test_n9_negative_diagnostics
+284/284 Test #255: test_n9_negative_diagnostics ................   Passed   26.41 sec
+
+92% tests passed, 23 tests failed out of 284
+
+Label Time Summary:
+3d                     =   0.37 sec*proc (4 tests)
+audit                  =   3.41 sec*proc (5 tests)
+axisymmetric           =   0.78 sec*proc (2 tests)
+contract               =   1.25 sec*proc (2 tests)
+experimental           = 104.26 sec*proc (2 tests)
+forces                 =   0.02 sec*proc (1 test)
+infrastructure         =   0.44 sec*proc (2 tests)
+integration            =   1.10 sec*proc (6 tests)
+io                     =   0.33 sec*proc (1 test)
+mesh                   =   0.80 sec*proc (6 tests)
+mms                    =  63.37 sec*proc (5 tests)
+mpi                    =  47.77 sec*proc (3 tests)
+n10                    = 246.39 sec*proc (8 tests)
+n11                    =   0.27 sec*proc (3 tests)
+n12                    =  63.37 sec*proc (5 tests)
+n13                    =   0.70 sec*proc (3 tests)
+n16                    =   0.06 sec*proc (1 test)
+n7                     =   0.08 sec*proc (1 test)
+n8                     =   0.63 sec*proc (1 test)
+n9                     =  27.05 sec*proc (4 tests)
+numerical              =   0.51 sec*proc (2 tests)
+openfoam               =   0.04 sec*proc (1 test)
+phase12                =   0.03 sec*proc (1 test)
+phase13                =  51.41 sec*proc (32 tests)
+phase14                =   0.83 sec*proc (3 tests)
+pressure               = 104.20 sec*proc (1 test)
+provenance             =   0.04 sec*proc (1 test)
+qualification          = 322.11 sec*proc (38 tests)
+quick                  =   1.36 sec*proc (3 tests)
+recovered              =  48.00 sec*proc (8 tests)
+reference              =   0.05 sec*proc (1 test)
+regression             =   1.15 sec*proc (10 tests)
+restart                =   0.15 sec*proc (1 test)
+schur                  =   0.13 sec*proc (1 test)
+selftest               =   2.28 sec*proc (1 test)
+smoke                  =   0.00 sec*proc (1 test)
+test-infrastructure    =   2.61 sec*proc (1 test)
+thermal                =   2.40 sec*proc (11 tests)
+total-validation       =   0.38 sec*proc (1 test)
+turbulence             =   0.08 sec*proc (3 tests)
+unit                   =  47.64 sec*proc (8 tests)
+validation             = 500.26 sec*proc (81 tests)
+validation-total       =  26.67 sec*proc (3 tests)
+verification           =   0.51 sec*proc (2 tests)
+
+Total Test time (real) = 320.54 sec
+
+The following tests FAILED:
+	155 - test_bfs_quick (Not Run)                          qualification validation
+	156 - test_naca0012_quick (Not Run)                     qualification validation
+	157 - test_naca0012_wall_shear_audit_quick (Not Run)    qualification validation
+	160 - test_generate_2d_validation_meshes (Failed)       mesh qualification validation
+	161 - test_generate_quick_validation_meshes (Failed)    mesh qualification quick validation
+	162 - test_naca_mesh_symmetry_extrusion (Failed)        3d mesh qualification validation
+	163 - test_generate_naca3d_mesh (Failed)                3d mesh qualification validation
+	164 - test_naca0012_extruded_3d_quick (Not Run)         3d mesh qualification validation
+	165 - test_naca3d_thermal_turbulence_smoke (Not Run)    3d qualification smoke thermal turbulence validation
+	179 - test_naca_split_farfield_generator (Failed)       contract quick validation
+	286 - test_cross_import_equivalence (Failed)
+	288 - test_n9_s8_naca0012_contract (Failed)             n9 qualification total-validation validation
+	289 - test_solid_conduction_contract_e2e (Failed)       integration thermal validation
+	290 - test_t2_campaign_verdict (Failed)                 qualification thermal validation
+	291 - test_production_thermal_restart_e2e (Failed)      integration restart thermal
+	292 - test_imported_thermal_contracts (Failed)          integration io thermal
+	293 - test_n9_coupled_schur_case_selection (Failed)     integration n9 schur validation validation-total
+	294 - test_n9_poiseuille_body_force_production (Failed) integration n9 qualification validation validation-total
+	296 - test_openfoam_results_cli_production_e2e (Failed) integration openfoam qualification
+	297 - test_production_solver_e2e (Failed)
+	298 - test_production_solver_numerics_e2e (Failed)
+	299 - test_meshio_bridge (Failed)
+	300 - test_mesh_geometry_matrix (Failed)
+Errors while running CTest
