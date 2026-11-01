@@ -1096,3 +1096,322 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         test_temporal_physics test_core_temporal
         PROPERTIES LABELS "phase13;validation")
     add_cfdx_test(test_schur_infrastructure tests/unit/test_schur_infrastructure.cpp)
+    add_cfdx_test(test_exact_schur tests/unit/test_exact_schur.cpp)
+    add_cfdx_test(test_n9_schur_oracle tests/unit/test_n9_schur_oracle.cpp)
+    add_cfdx_test(test_simplerc_schur tests/unit/test_simplerc_schur.cpp)
+    add_cfdx_test(test_lsc_bfbt_schur tests/unit/test_lsc_bfbt_schur.cpp)
+    add_cfdx_test(test_pcd_schur tests/unit/test_pcd_schur.cpp)
+    add_cfdx_test(test_coupled_schur_selection tests/unit/test_coupled_schur_selection.cpp)
+    add_cfdx_test(test_lsc_bfbt_schur_null_space tests/unit/test_lsc_bfbt_schur_null_space.cpp)
+    add_cfdx_test(test_schur_approximation_comparison tests/unit/test_schur_approximation_comparison.cpp)
+    add_cfdx_test(test_schur_quantitative_qualification tests/unit/test_schur_quantitative_qualification.cpp)
+    add_cfdx_test(test_mgr_preconditioner tests/unit/test_mgr_preconditioner.cpp)
+    add_cfdx_test(test_wall_distance_turbulence tests/unit/test_wall_distance_turbulence.cpp)
+    add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
+    add_cfdx_test(test_coupled_block_schur_amg tests/validation/test_coupled_block_schur_amg.cpp)
+    add_cfdx_test(test_n8_schur_production_benchmark tests/validation/test_n8_schur_production_benchmark.cpp)
+    add_cfdx_test(test_n8_schur_representative_cfd tests/validation/test_n8_schur_representative_cfd.cpp)
+    add_cfdx_test(test_n8_schur_complete_krylov tests/validation/test_n8_schur_complete_krylov.cpp)
+    add_cfdx_test(test_n8_amg_anisotropy_scaling tests/validation/test_n8_amg_anisotropy_scaling.cpp)
+    add_cfdx_test(test_n9_common_schur_qualification tests/validation/test_n9_common_schur_qualification.cpp)
+    add_cfdx_test(test_n9_s10_pressure_reference_policies tests/validation/test_n9_s10_pressure_reference_policies.cpp)
+    add_cfdx_test(test_n9_physical_matrix tests/validation/test_n9_physical_matrix.cpp)
+    set_tests_properties(test_n9_physical_matrix PROPERTIES
+        LABELS "n9;qualification;validation;long;validation-total"
+        # The unsharded physical matrix reached this 1800 s deadline in the
+        # 2026-10-28 total-validation run while the individual Schur shards
+        # passed in 411-1462 s. Allow time for the cross-algorithm controls;
+        # no convergence or physical acceptance criterion is changed.
+        TIMEOUT 5400)
+    set_tests_properties(test_n9_s10_pressure_reference_policies PROPERTIES
+        LABELS "n9;qualification;validation;long;validation-total"
+        TIMEOUT 300
+        RUN_SERIAL TRUE)
+    add_cfdx_test(test_n9_s9_rhie_chow_consistency tests/validation/test_n9_s9_rhie_chow_consistency.cpp)
+    set_tests_properties(test_n9_s9_rhie_chow_consistency PROPERTIES
+        LABELS "n9;qualification;validation;long;validation-total"
+        TIMEOUT 300
+        RUN_SERIAL TRUE)
+    add_cfdx_test(test_n9_negative_diagnostics tests/validation/test_n9_negative_diagnostics.cpp)
+    set_tests_properties(test_n9_negative_diagnostics PROPERTIES
+        LABELS "n9;qualification;validation;validation-total"
+        TIMEOUT 600
+        RUN_SERIAL TRUE)
+    if(CFDX_ENABLE_MPI AND MPI_FOUND)
+        add_executable(test_mpi_partition tests/unit/test_mpi_partition.cpp)
+        add_executable(test_n13_mpi_equivalence tests/validation/test_n13_mpi_equivalence.cpp)
+        add_executable(test_mpi_deterministic tests/unit/test_mpi_deterministic.cpp)
+        add_executable(test_mpi_fused_reduction tests/unit/test_mpi_fused_reduction.cpp)
+        add_executable(test_mpi_krylov_reduction tests/unit/test_mpi_krylov_reduction.cpp)
+        add_executable(test_phase8_mpi_poisson tests/validation/test_phase8_mpi_poisson.cpp)
+        add_executable(test_n8_mpi_boundary tests/validation/test_n8_mpi_boundary.cpp)
+        if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
+            add_executable(cfdx_mpi_poisson_restart apps/mpi_poisson_restart/main.cpp)
+            target_link_libraries(cfdx_mpi_poisson_restart PRIVATE cfdx_core MPI::MPI_CXX)
+            add_executable(test_phase5_distributed tests/unit/test_phase5_distributed.cpp)
+            add_executable(test_phase5_restart_writer tests/unit/test_phase5_restart_writer.cpp)
+            add_executable(test_phase5_restart_reader tests/unit/test_phase5_restart_reader.cpp)
+            target_link_libraries(test_phase5_distributed PRIVATE cfdx_core MPI::MPI_CXX)
+            target_link_libraries(test_phase5_restart_writer PRIVATE cfdx_core MPI::MPI_CXX)
+            target_link_libraries(test_phase5_restart_reader PRIVATE cfdx_core MPI::MPI_CXX)
+            target_include_directories(test_phase5_distributed PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+            target_include_directories(test_phase5_restart_writer PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+            target_include_directories(test_phase5_restart_reader PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        endif()
+        target_link_libraries(test_mpi_deterministic PRIVATE cfdx_core MPI::MPI_CXX)
+        target_include_directories(test_mpi_deterministic PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        target_link_libraries(test_mpi_partition PRIVATE cfdx_core MPI::MPI_CXX)
+        target_link_libraries(test_n13_mpi_equivalence PRIVATE cfdx_core MPI::MPI_CXX)
+        target_link_libraries(test_mpi_fused_reduction PRIVATE cfdx_core MPI::MPI_CXX)
+        target_link_libraries(test_mpi_krylov_reduction PRIVATE cfdx_core MPI::MPI_CXX)
+        target_link_libraries(test_phase8_mpi_poisson PRIVATE cfdx_core MPI::MPI_CXX)
+        target_link_libraries(test_n8_mpi_boundary PRIVATE cfdx_core MPI::MPI_CXX)
+        target_include_directories(test_mpi_partition PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        target_include_directories(test_n13_mpi_equivalence PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        target_include_directories(test_mpi_fused_reduction PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        target_include_directories(test_mpi_krylov_reduction PRIVATE ${CMAKE_SOURCE_DIR}/tests)
+        set(CFDX_MPIEXEC_NUMPROCS_FLAG "${MPIEXEC_NUMPROCS_FLAG}")
+        if(CFDX_MPIEXEC_NUMPROCS_FLAG STREQUAL "")
+            set(CFDX_MPIEXEC_NUMPROCS_FLAG "-n")
+        endif()
+        # Only Open MPI accepts --oversubscribe. MPICH/Hydra rejects it
+        # before starting the restart reader. Preserve three-rank readers on
+        # two-core Open MPI CI workers without sending a vendor flag to all MPI.
+        set(CFDX_MPIEXEC_OVERSUBSCRIBE_FLAG "")
+        execute_process(COMMAND "${MPIEXEC_EXECUTABLE}" --version
+            OUTPUT_VARIABLE CFDX_MPIEXEC_VERSION_OUTPUT
+            ERROR_VARIABLE CFDX_MPIEXEC_VERSION_ERROR
+            RESULT_VARIABLE CFDX_MPIEXEC_VERSION_RESULT)
+        if(CFDX_MPIEXEC_VERSION_RESULT EQUAL 0 AND
+           "${CFDX_MPIEXEC_VERSION_OUTPUT}${CFDX_MPIEXEC_VERSION_ERROR}" MATCHES "Open MPI|OpenRTE")
+            set(CFDX_MPIEXEC_OVERSUBSCRIBE_FLAG "--oversubscribe")
+        endif()
+        add_test(NAME test_mpi_deterministic
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_deterministic> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_n13_mpi_equivalence
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_n13_mpi_equivalence> ${MPIEXEC_POSTFLAGS})
+        set_tests_properties(test_n13_mpi_equivalence PROPERTIES
+            LABELS "phase13;validation;n13"
+            ENVIRONMENT "LSAN_OPTIONS=suppressions=${CMAKE_SOURCE_DIR}/tests/sanitizers/lsan_mpi.supp")
+        add_test(NAME test_mpi_partition
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_partition> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_mpi_fused_reduction
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_fused_reduction> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_mpi_krylov_reduction
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_mpi_krylov_reduction> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_phase8_mpi_poisson
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase8_mpi_poisson> ${MPIEXEC_POSTFLAGS})
+        add_test(NAME test_n8_mpi_boundary
+                 COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                         ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_n8_mpi_boundary> ${MPIEXEC_POSTFLAGS})
+        set_tests_properties(test_n8_mpi_boundary PROPERTIES
+            LABELS "n8;qualification;validation;mpi")
+        set_tests_properties(test_phase8_mpi_poisson PROPERTIES LABELS "phase13;validation")
+        if(CFDX_ENABLE_PARALLEL_HDF5 AND HDF5_FOUND)
+            add_test(NAME test_phase5_distributed
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                             ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_distributed> ${MPIEXEC_POSTFLAGS})
+            add_test(NAME test_production_mpi_poisson_writer
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                             ${MPIEXEC_PREFLAGS} $<TARGET_FILE:cfdx_mpi_poisson_restart>
+                             --mode writer
+                             --checkpoint ${CMAKE_BINARY_DIR}/production_poisson_checkpoint.h5
+                             --reference ${CMAKE_BINARY_DIR}/production_poisson_reference.h5
+                             ${MPIEXEC_POSTFLAGS})
+            add_test(NAME test_production_mpi_poisson_reader
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_OVERSUBSCRIBE_FLAG} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
+                             ${MPIEXEC_PREFLAGS} $<TARGET_FILE:cfdx_mpi_poisson_restart>
+                             --mode reader
+                             --checkpoint ${CMAKE_BINARY_DIR}/production_poisson_checkpoint.h5
+                             --reference ${CMAKE_BINARY_DIR}/production_poisson_reference.h5
+                             ${MPIEXEC_POSTFLAGS})
+            set_tests_properties(test_production_mpi_poisson_reader PROPERTIES
+                DEPENDS test_production_mpi_poisson_writer)
+            add_test(NAME test_phase5_restart_writer
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 2
+                             ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_restart_writer> ${MPIEXEC_POSTFLAGS})
+            add_test(NAME test_phase5_restart_reader
+                     COMMAND ${MPIEXEC_EXECUTABLE} ${CFDX_MPIEXEC_OVERSUBSCRIBE_FLAG} ${CFDX_MPIEXEC_NUMPROCS_FLAG} 3
+                             ${MPIEXEC_PREFLAGS} $<TARGET_FILE:test_phase5_restart_reader> ${MPIEXEC_POSTFLAGS})
+            set_tests_properties(test_phase5_restart_reader PROPERTIES DEPENDS test_phase5_restart_writer)
+        endif()
+        if(CMAKE_BUILD_TYPE STREQUAL "DebugSanitizers")
+            # OpenMPI/hwloc allocates process-global state during MPI_Init which
+            # is reported as a leak after MPI_Finalize by LeakSanitizer. Keep
+            # ASan/UBSan active for the MPI regression, but exclude those
+            # external-library teardown allocations from the leak check.
+            # N13 has the same external OpenMPI/hwloc teardown behavior as the
+            # other MPI sanitizer tests. Its numerical equivalence and reduction
+            # assertions remain active; only LeakSanitizer's process-global
+            # external-library teardown check is disabled for these MPI tests.
+            set_tests_properties(test_n13_mpi_equivalence test_mpi_deterministic
+                test_mpi_partition test_mpi_fused_reduction test_mpi_krylov_reduction
+                test_phase8_mpi_poisson test_n8_mpi_boundary PROPERTIES
+                ENVIRONMENT "LSAN_OPTIONS=detect_leaks=0")
+        endif()
+    endif()
+    add_cfdx_test(test_convergence_history tests/unit/test_convergence_history.cpp)
+    add_cfdx_test(test_execution_summary tests/unit/test_execution_summary.cpp)
+    add_cfdx_test(test_restart_mapping tests/unit/test_restart_mapping.cpp)
+    add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
+    add_cfdx_test(test_transport_field_contract tests/unit/test_transport_field_contract.cpp)
+    add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
+    add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
+    add_cfdx_test(test_thermo_transport_contracts tests/unit/test_thermo_transport_contracts.cpp)
+    add_cfdx_test(test_thermophysical_models tests/unit/test_thermophysical_models.cpp)
+    add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)
+    if(CFDX_BUILD_RUNTIME_TESTS)
+        add_cfdx_test(test_runtime_execution_ooc tests/unit/test_runtime_execution_ooc.cpp)
+        add_cfdx_test(test_runtime_pipeline tests/unit/test_runtime_pipeline.cpp)
+        add_cfdx_test(test_phase6_runtime_acceptance tests/validation/test_phase6_runtime_acceptance.cpp)
+        add_cfdx_test(test_ooc_pipeline tests/unit/test_ooc_pipeline.cpp)
+        add_cfdx_test(test_phase7_ooc_validation tests/validation/test_phase7_ooc_validation.cpp)
+    endif()
+    if(CFDX_ENABLE_GPU)
+        add_cfdx_test(test_cuda_runtime tests/unit/test_cuda_runtime.cpp)
+        add_cfdx_test(test_phase8_cuda_poisson tests/validation/test_phase8_cuda_poisson.cpp)
+        add_executable(test_n13_cuda_equivalence tests/validation/test_n13_cuda_equivalence.cpp)
+        target_link_libraries(test_n13_cuda_equivalence PRIVATE cfdx_core)
+        add_test(NAME test_n13_cuda_equivalence COMMAND test_n13_cuda_equivalence)
+        set_tests_properties(test_n13_cuda_equivalence PROPERTIES LABELS "phase13;validation;n13;hardware")
+    endif()
+
+    # HDF5 tests require the native reader/writer implementation.
+    if(CFDX_HAS_HDF5)
+        add_cfdx_test(test_hdf5_writer tests/unit/test_hdf5_writer.cpp)
+        add_cfdx_test(test_hdf5_roundtrip tests/unit/test_hdf5_roundtrip.cpp)
+        add_cfdx_test(test_field_roundtrip tests/unit/test_field_roundtrip.cpp)
+        add_cfdx_test(test_case_hdf5_io tests/unit/test_case_hdf5_io.cpp)
+    else()
+        add_cfdx_test(test_hdf5_unavailable tests/unit/test_hdf5_unavailable.cpp)
+    endif()
+
+    # Memory Planner tests
+    add_cfdx_test(test_memory_planner_validation tests/unit/test_memory_planner_validation.cpp)
+
+    # Plan completion tests
+    add_cfdx_test(test_plan_complet tests/unit/test_plan_complet.cpp)
+
+    # Module validation tests (M0.8-T06 to T10, M0.9-T05, M0.10-T01)
+    add_cfdx_test(test_validation_simple tests/unit/test_validation_simple.cpp)
+    add_cfdx_test(test_openfoam_importer tests/unit/test_openfoam_importer.cpp)
+    if(CFDX_HAS_HDF5)
+        add_cfdx_test(test_cross_import_equivalence tests/unit/test_cross_import_equivalence.cpp)
+    endif()
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_cpp_harness_execution_contract
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/scripts/check_cpp_test_execution.py
+                    --root ${CMAKE_SOURCE_DIR} --self-test)
+        set_tests_properties(test_cpp_harness_execution_contract PROPERTIES
+            LABELS "audit;test-infrastructure"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        add_test(NAME test_n9_s8_naca0012_contract
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_s8_naca0012_contract.py)
+        set_tests_properties(test_n9_s8_naca0012_contract PROPERTIES
+            LABELS "n9;qualification;validation;total-validation"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+    endif()
+    if(Python3_Interpreter_FOUND AND CFDX_HAS_HDF5)
+        add_test(NAME test_solid_conduction_contract_e2e
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_solid_conduction_contract_e2e.py)
+        set_tests_properties(test_solid_conduction_contract_e2e PROPERTIES
+            LABELS "thermal;integration;validation"
+            ENVIRONMENT "CFDX_THERMAL_SOLVER=$<TARGET_FILE:cfdx_thermal_solver>"
+            TIMEOUT 120)
+        add_test(NAME test_t2_campaign_verdict
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_t2_campaign_verdict.py)
+        set_tests_properties(test_t2_campaign_verdict PROPERTIES
+            LABELS "thermal;qualification;validation"
+            TIMEOUT 30)
+        add_test(NAME test_production_thermal_restart_e2e
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_production_thermal_restart_e2e.py)
+        set_tests_properties(test_production_thermal_restart_e2e PROPERTIES
+            LABELS "thermal;integration;restart"
+            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>"
+            TIMEOUT 120)
+        add_test(NAME test_imported_thermal_contracts
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_imported_thermal_contracts.py)
+        set_tests_properties(test_imported_thermal_contracts PROPERTIES
+            LABELS "thermal;integration;io"
+            ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+            TIMEOUT 30)
+        add_test(NAME test_n9_coupled_schur_case_selection
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_coupled_schur_case_selection.py)
+        set_tests_properties(test_n9_coupled_schur_case_selection PROPERTIES
+            LABELS "n9;schur;integration;validation;validation-total"
+            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+        add_test(NAME test_n9_poiseuille_body_force_production
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_n9_poiseuille_body_force_production.py)
+        set_tests_properties(test_n9_poiseuille_body_force_production PROPERTIES
+            LABELS "n9;qualification;integration;validation;validation-total"
+            ENVIRONMENT "CFDX_PRODUCTION_SOLVER=\$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 900)
+    endif()
+
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_missing_qualification_case_contracts COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/test_missing_qualification_case_contracts.py)
+        set_tests_properties(test_missing_qualification_case_contracts PROPERTIES LABELS "qualification;validation")
+    endif()
+
+    if(Python3_Interpreter_FOUND)
+        if(CFDX_HAS_HDF5)
+            # End-to-end OpenFOAM result import through the production executable.
+            # This is intentionally bounded: each subprocess has a 30 s timeout.
+            add_test(NAME test_openfoam_results_cli_production_e2e
+                     COMMAND ${Python3_EXECUTABLE} -m pytest -q
+                             ${CMAKE_SOURCE_DIR}/tests/python/test_openfoam_results_cli.py)
+            set_tests_properties(test_openfoam_results_cli_production_e2e PROPERTIES
+                LABELS "openfoam;integration;qualification"
+                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+                WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+                TIMEOUT 120)
+            add_test(NAME test_production_solver_e2e
+                     COMMAND ${Python3_EXECUTABLE}
+                             ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py)
+            set_tests_properties(test_production_solver_e2e PROPERTIES
+                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python")
+            add_test(NAME test_production_solver_numerics_e2e
+                     COMMAND ${Python3_EXECUTABLE}
+                             ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_numerics_e2e.py)
+            set_tests_properties(test_production_solver_numerics_e2e PROPERTIES
+                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python")
+        endif()
+        add_test(NAME test_meshio_bridge
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tests/mesh/test_meshio_bridge.py
+                         ${CMAKE_SOURCE_DIR}/scripts/meshio_import.py)
+        add_test(NAME test_mesh_geometry_matrix
+                 COMMAND ${Python3_EXECUTABLE}
+                         ${CMAKE_SOURCE_DIR}/tests/mesh/test_mesh_geometry_matrix.py
+                         ${CMAKE_SOURCE_DIR}/scripts/meshio_import.py)
+    endif()
+
+    # I/O adapter tests (M0.10-T03)
+    # C++ solver adapters are now thin stubs (format parsing moved to Python).
+    add_cfdx_test(test_gap_analysis tests/unit/test_gap_analysis.cpp)
+
+    # Thermal production-path qualification label (T1 / issue #880).
+    set_tests_properties(test_thermal_zones_vv PROPERTIES LABELS "qualification;validation;phase13")
+    set_tests_properties(test_production_energy_stage_vv PROPERTIES LABELS "qualification;validation;phase13")
+    set_tests_properties(test_production_s2s_energy_stage_vv PROPERTIES LABELS "qualification;validation;phase13")
+    set_tests_properties(test_production_s2s_energy_outer_loop_vv PROPERTIES LABELS "qualification;validation;phase13")
+    set_tests_properties(test_production_buoyancy_outer_loop_vv PROPERTIES LABELS "qualification;validation;phase13")
+
+endif()
+
