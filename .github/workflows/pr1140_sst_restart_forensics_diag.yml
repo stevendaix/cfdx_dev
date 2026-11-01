@@ -185,3 +185,26 @@ print("FORENSICS DONE")
 
 PYEOF
           "$RUNNER_TEMP/venv/bin/python" /tmp/forensics.py 2>&1 | tee "$E/pr1140_sst_forensics_2026-11-01.log"
+
+      - name: Write meta
+        if: always()
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "target=PR #1140 head e803a8b6 SST restart forensics"
+            echo "probes=SST cont(2it) vs resumed(1it+restart+1it) per-field (U/p/k/omega); cont(1) vs first(1) raw determinism; resumed x2 path determinism; LAMINAR control same mesh without SST; restart.dat head dump (write precision)"
+            echo "rule=EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL"
+          } > "$E/pr1140_forensics_meta_2026-11-01.txt"
+
+      - name: Publish evidence to dedicated branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: PR1140 SST restart forensics evidence (2026-11-01) [ci skip]"
+            git push --force origin HEAD:refs/heads/diag-evidence/pr1140-sst-forensics
+          fi
