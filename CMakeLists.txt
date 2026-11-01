@@ -570,6 +570,9 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_conservation_assembly tests/unit/test_conservation_assembly.cpp)
     add_cfdx_test(test_integrate tests/unit/test_integrate.cpp)
     add_cfdx_test(test_forces tests/unit/test_forces.cpp)
+    add_cfdx_test(test_force_finite_contract tests/unit/test_force_finite_contract.cpp)
+    set_tests_properties(test_force_finite_contract PROPERTIES
+        LABELS "validation;forces;regression")
     add_cfdx_test(test_probe_csv tests/unit/test_probe_csv.cpp)
 
     # Unit tests - Linear Algebra
@@ -1039,8 +1042,16 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_production_s2s_energy_stage_vv tests/validation/test_production_s2s_energy_stage_vv.cpp)
     add_cfdx_test(test_production_s2s_energy_outer_loop_vv tests/validation/test_production_s2s_energy_outer_loop_vv.cpp)
     add_cfdx_test(test_production_buoyancy_outer_loop_vv tests/validation/test_production_buoyancy_outer_loop_vv.cpp)
+    add_cfdx_test(test_buoyancy_acceleration_contract tests/unit/test_buoyancy_acceleration_contract.cpp)
     add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
     add_cfdx_test(test_s2s_radiation_vv tests/validation/test_s2s_radiation_vv.cpp)
+    add_cfdx_test(test_s2s_radiosity_verified tests/unit/test_s2s_radiosity_verified.cpp)
+    add_cfdx_test(test_s2s_area_scale_reciprocity tests/unit/test_s2s_area_scale_reciprocity.cpp)
+    set_tests_properties(test_s2s_area_scale_reciprocity PROPERTIES
+        LABELS "thermal;validation;regression")
+    set_tests_properties(
+        test_buoyancy_acceleration_contract test_s2s_radiosity_verified
+        PROPERTIES LABELS "phase13;thermal;regression")
     add_cfdx_test(test_thermal_radiation_model_matrix tests/validation/test_thermal_radiation_model_matrix.cpp)
     add_cfdx_test(test_thermal_radiation_regression tests/validation/test_thermal_radiation_regression.cpp)
     add_cfdx_test(test_thermal_challenge_vv tests/validation/test_thermal_challenge_vv.cpp)
@@ -1107,6 +1118,9 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_schur_quantitative_qualification tests/unit/test_schur_quantitative_qualification.cpp)
     add_cfdx_test(test_mgr_preconditioner tests/unit/test_mgr_preconditioner.cpp)
     add_cfdx_test(test_wall_distance_turbulence tests/unit/test_wall_distance_turbulence.cpp)
+    add_cfdx_test(test_wall_turbulence_contract_guard tests/unit/test_wall_turbulence_contract_guard.cpp)
+    set_tests_properties(test_wall_turbulence_contract_guard PROPERTIES
+        LABELS "turbulence;validation;regression")
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     add_cfdx_test(test_coupled_block_schur_amg tests/validation/test_coupled_block_schur_amg.cpp)
     add_cfdx_test(test_n8_schur_production_benchmark tests/validation/test_n8_schur_production_benchmark.cpp)
