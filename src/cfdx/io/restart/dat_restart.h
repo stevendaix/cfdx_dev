@@ -220,7 +220,7 @@ inline void write_dat_restart_fields(
     std::ofstream out(tmp_path);
     if (!out) throw std::runtime_error("write_dat_restart_fields: cannot open " + path);
     out.precision(std::numeric_limits<double>::max_digits10);
-    out << "CFDX-DAT " << DatRestartVersionSST << "\n";
+    out << "CFDX-DAT " << DatRestartVersionFaceFields << "\n";
     out << "cells " << mesh.n_cells() << "\n";
     out << "iteration " << iteration << "\n";
     out << "time " << time << "\n";
