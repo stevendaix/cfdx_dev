@@ -355,9 +355,9 @@ void run_cases()
             buffer << in.rdbuf();
             contents = buffer.str();
         }
-        const auto last_newline = contents.find_last_of('\\n');
+        const auto last_newline = contents.find_last_of('\n');
         EXPECT_TRUE(last_newline != std::string::npos);
-        const auto previous_newline = contents.find_last_of('\\n', last_newline - 1);
+        const auto previous_newline = contents.find_last_of('\n', last_newline - 1);
         EXPECT_TRUE(previous_newline != std::string::npos);
         contents.replace(previous_newline + 1, last_newline - previous_newline - 1, "nan");
         {
@@ -385,9 +385,9 @@ void run_cases()
             dat.string(), m, seeded_u(0.25), seeded_p(37.5), write_fields, 1, 0.0);
         {
             std::ofstream out(dat, std::ios::app);
-            out << "field mdot 1\\n";
+            out << "field mdot 1\n";
             for (std::size_t f = 0; f < m.n_faces(); ++f)
-                out << "0.5\\n";
+                out << "0.5\n";
         }
 
         Field<double,Location::CELL> u(1, "U", "m/s", 3);
