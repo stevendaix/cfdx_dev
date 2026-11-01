@@ -1,1 +1,2 @@
 go forensics-v6 yaml-indent-fix 2026-11-01T20:45Z
+go app-trigger forensics-v6 wave2
