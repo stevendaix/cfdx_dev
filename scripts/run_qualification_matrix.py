@@ -4,6 +4,7 @@ This tool runs the actual CFDX binaries and does not reimplement physics.
 A CTest PASS means a test's own gates passed; model-level qualification
 requires all associated independent physical gates and refinements.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -104,9 +105,7 @@ def check_ctest_output(returncode: int, output: str, test_name: str) -> bool:
     # CTest can auto-add FIXTURES_SETUP / FIXTURES_CLEANUP cases, so the
     # requested test need not be the only one in a successful run.
     target = re.search(
-        r"\b\d+/\d+ Test\s+#\d+:\s+"
-        + re.escape(test_name)
-        + r"\s+\.{2,}\s+Passed\b",
+        r"\b\d+/\d+ Test\s+#\d+:\s+" + re.escape(test_name) + r"\s+\.{2,}\s+Passed\b",
         output,
     )
     return bool(
