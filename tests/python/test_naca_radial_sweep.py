@@ -5,8 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from generate_2d_validation_meshes import naca_o_grid, naca_o_grid_quality
-from naca_radial_sweep import sweep
+from generate_2d_validation_meshes import naca_o_grid  # noqa: E402
+from naca_radial_sweep import sweep  # noqa: E402
 
 
 class SweepTests(unittest.TestCase):
