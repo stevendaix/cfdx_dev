@@ -174,3 +174,51 @@ first signal is Ux-only, the next diagnostic must capture the per-cell
 convection, diffusion, pressure and boundary/source contributions from the
 assembled scalar equation. No equation, coefficient, tolerance, iteration
 budget, relaxation factor or qualification criterion is modified here.
+
+## 11. Exact-HEAD forensic findings — CI run 41247304749
+
+The long-validation log separates the two NACA test outcomes more precisely:
+
+- N64 converges and reports Cd=0.0901496, Cl=-9.15e-11, continuity
+  8.84e-11 in 456 iterations.
+- The N128 solve becomes catastrophically unstable around nonlinear iteration
+  20. Before the pressure-correction solve is rejected, the pre-assembly trace
+  reports max pressure about 1.41e14, max pressure gradient about 7.38e16,
+  max velocity about 1.57e9 and max face flux about 7.68e10. These are
+  non-finite-free but physically unbounded values; absence of NaN/Inf is not
+  evidence of a valid state.
+- Retries reduce relaxation but do not recover the state. The next rejected
+  attempts show max velocity about 2.20e12 and max flux about 3.55e16.
+- The reported pressure relative residual (for example 7.94e-10) is therefore
+  not sufficient to diagnose the event: its absolute residual is 8.07e5 and
+  the underlying RHS/operator scales must be inspected.
+
+The wall-shear audit passes its channel MMS checks and records the N64
+reconstructions (GG=0.055689, WLS=0.0580625, 1D=0.106308). It then fails while
+solving N128 with the same pressure-correction failure. Consequently this run
+does **not** establish a separate N128 wall-shear reconstruction defect:
+there is no converged N128 flow field on which to compare the three methods.
+The spread on N64 remains an observed diagnostic, not a qualified wall-shear
+error estimate.
+
+## 12. Added assembly-level diagnostics
+
+The solver now exposes an optional post-assembly callback for each momentum
+component. When the NACA forensic environment flag is enabled, it records the
+actual assembled matrix/RHS statistics together with the integrated pressure
+and body-force scales and their worst cells. On pressure-correction failure,
+it also records the actual pressure matrix and RHS dimensions, nonzero count,
+diagonal range, row-sum scales, RHS maximum/location, and current pressure,
+pressure-gradient and predictor-flux maxima.
+
+The qualification executable catches the nonlinear retry exception and
+reports it as a normal test failure rather than allowing an uncaught exception
+to abort the process. These diagnostics are observational and opt-in; they do
+not change matrix coefficients, relaxation, solver selection, iteration
+budgets, residual tolerances or physical gates.
+
+**Next decision gate:** inspect the new `NACA_MOMENTUM_EQUATION` and
+`NACA_PRESSURE_CORRECTION_FAILURE` records from CI on the exact updated HEAD.
+Do not alter the NACA discretization or wall-shear acceptance criteria until
+the first abnormal momentum component, row, RHS contribution and pressure
+operator scale have been identified.
