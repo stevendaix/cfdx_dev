@@ -1,0 +1,67 @@
+=== SST fixture forensics ===
+[cont2] exit=1
+[first1] exit=1
+[cont1] exit=1
+[resumed1] exit=1
+[resumed2] exit=1
+--- SST cont(2it) vs resumed(1it+restart+1it) ---
+  U: max_abs=4.393607e-03 max_rel=1.692799e-02 allclose(2e-10,2e-12)=False
+  p: max_abs=6.233712e-03 max_rel=9.025262e-03 allclose(2e-10,2e-12)=False
+  k: max_abs=6.088063e-06 max_rel=4.992053e-04 allclose(2e-10,2e-12)=False
+  omega: max_abs=6.341953e-03 max_rel=1.639795e-03 allclose(2e-10,2e-12)=False
+--- SST cont(1it) vs first(1it) [determinism] ---
+  U: max_abs=0.000000e+00 max_rel=0.000000e+00 allclose(2e-10,2e-12)=True
+  p: max_abs=0.000000e+00 max_rel=0.000000e+00 allclose(2e-10,2e-12)=True
+  k: max_abs=0.000000e+00 max_rel=0.000000e+00 allclose(2e-10,2e-12)=True
+  omega: max_abs=0.000000e+00 max_rel=0.000000e+00 allclose(2e-10,2e-12)=True
+--- SST resumed run1 vs run2 [resumed-path determinism] ---
+  U: max_abs=0.000000e+00 max_rel=0.000000e+00 allclose(2e-10,2e-12)=True
+  p: max_abs=0.000000e+00 max_rel=0.000000e+00 allclose(2e-10,2e-12)=True
+  k: max_abs=0.000000e+00 max_rel=0.000000e+00 allclose(2e-10,2e-12)=True
+  omega: max_abs=0.000000e+00 max_rel=0.000000e+00 allclose(2e-10,2e-12)=True
+--- restart.dat head (precision inspection, cont2) ---
+CFDX-DAT 4
+cells 2
+iteration 2
+time 0
+identity 9 5 2 1249148228459298828
+field U 3
+1.3132541486056664 -0.24869903268271765 0
+1.3182939150075881 -0.21494421458364202 0
+field p 1
+0
+0.68446220351010489
+optional_fields
+field k 1
+0.015680972538434101
+0.012195509436219505
+field omega 1
+6.9397416725435184
+3.8675276000975445
+--- restart.dat head (first1) ---
+CFDX-DAT 4
+cells 2
+iteration 1
+time 0
+identity 9 5 2 1249148228459298828
+field U 3
+1.0902125625195922 -0.077893714335167286 0
+1.1805918046501447 -0.11963749270395345 0
+field p 1
+0
+0.47740094388883358
+optional_fields
+field k 1
+0.015176405805096877
+0.011778212877600683
+field omega 1
+6.0964399155785642
+3.4501363133670502
+=== LAMINAR control (same mesh, no SST) ===
+[l_cont2] exit=2
+[l_cont2] STDOUT
+
+[l_cont2] STDERR
+CFDX production solver error: production solver: transient evolution is not implemented by this steady executable; the declared time integration cannot be silently ignored
+
+l_cont2: execution error 2

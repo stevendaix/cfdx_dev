@@ -1,0 +1,3 @@
+target=PR #1140 head e803a8b6 SST restart forensics
+probes=SST cont(2it) vs resumed(1it+restart+1it) per-field (U/p/k/omega); cont(1) vs first(1) raw determinism; resumed x2 path determinism; LAMINAR control same mesh without SST; restart.dat head dump (write precision)
+rule=EVIDENCE_COMPLETE is a diagnostic evidence verdict, never a numerical PASS/FAIL
