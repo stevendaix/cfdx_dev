@@ -46,6 +46,11 @@ class DatRestart:
     # mesh to compare against and only carries it. Absent for DAT versions
     # before the identity contract.
     mesh_identity: tuple[int, int, int, int] | None = None
+    # Facial fields (e.g. the authoritative Rhie-Chow face mass flux "mdot")
+    # appended after the cellular optional fields. Their value count is the
+    # face count of the writer's mesh, recorded in mesh_identity, not the
+    # cell count. None when the checkpoint carries no facial section.
+    face_fields: dict[str, DatField] | None = None
 
 
 # DAT text versions understood by this reader.
@@ -53,9 +58,17 @@ class DatRestart:
 #   2 — adds the optional T / k / second turbulence section.
 #   3 — adds the mesh identity the native restart reader validates.
 #   4 — adds the explicit SST omega field; optional fields remain name-based.
+#   5 — adds the optional authoritative face mass-flux section.
 DAT_TEXT_IDENTITY_VERSION = 3
 DAT_TEXT_SST_VERSION = 4
-_SUPPORTED_TEXT_VERSIONS = (1, 2, DAT_TEXT_IDENTITY_VERSION, DAT_TEXT_SST_VERSION)
+DAT_TEXT_FACE_FIELDS_VERSION = 5
+_SUPPORTED_TEXT_VERSIONS = (
+    1,
+    2,
+    DAT_TEXT_IDENTITY_VERSION,
+    DAT_TEXT_SST_VERSION,
+    DAT_TEXT_FACE_FIELDS_VERSION,
+)
 
 
 def _validate(restart: DatRestart) -> DatRestart:
@@ -83,6 +96,19 @@ def _validate(restart: DatRestart) -> DatRestart:
             raise ValueError("DAT checkpoint contains duplicate cell ids")
         if any(cell_id < 0 for cell_id in restart.cell_ids):
             raise ValueError("DAT checkpoint contains negative cell ids")
+    if restart.face_fields is not None:
+        if restart.version < DAT_TEXT_FACE_FIELDS_VERSION:
+            raise ValueError("DAT face fields require version 5")
+        if restart.mesh_identity is None:
+            raise ValueError("DAT facial fields require a mesh identity")
+        face_count = restart.mesh_identity[1]
+        for name, field in restart.face_fields.items():
+            if not name or field.dimension <= 0:
+                raise ValueError(f"invalid facial field {name!r}")
+            if len(field.values) != face_count * field.dimension:
+                raise ValueError(f"facial field {name!r} has an invalid value count")
+            if not all(math.isfinite(v) for v in field.values):
+                raise ValueError(f"facial field {name!r} contains non-finite values")
     for name, field in restart.fields.items():
         if not name or field.dimension <= 0:
             raise ValueError(f"invalid field {name!r}")
@@ -162,6 +188,7 @@ def _read_text(path: Path) -> DatRestart:
         mesh_identity = (components[0], components[1], components[2], components[3])
 
     fields: dict[str, DatField] = {}
+    face_fields: dict[str, DatField] | None = None
     while pos < len(tokens):
         # The native writer marks the optional-field section between the
         # mandatory fields and the optional ones. It is consumed here wherever
@@ -170,6 +197,45 @@ def _read_text(path: Path) -> DatRestart:
         if tokens[pos] == "optional_fields":
             pos += 1
             continue
+        if tokens[pos] == "face_fields":
+            if version < DAT_TEXT_FACE_FIELDS_VERSION:
+                raise ValueError("DAT face fields require version 5")
+            # Facial section appended by writers that persist the face mass
+            # flux. The declared count is the writer's face count; it must
+            # match the recorded mesh identity before any facial value is
+            # consumed, and only facial fields may follow.
+            pos += 1
+            try:
+                declared_faces = int(take("face count"))
+            except ValueError as exc:
+                raise ValueError("invalid face count") from exc
+            if mesh_identity is None or declared_faces != mesh_identity[1]:
+                raise ValueError("DAT face count differs from mesh identity")
+            face_fields = {}
+            while pos < len(tokens):
+                if take("field key") != "field":
+                    raise ValueError("expected 'field' in facial section")
+                face_name = take("face field name")
+                if face_name in face_fields:
+                    raise ValueError(f"duplicate facial field name: {face_name!r}")
+                try:
+                    face_dimension = int(take(f"{face_name} dimension"))
+                except ValueError as exc:
+                    raise ValueError(
+                        f"invalid dimension for facial field {face_name!r}"
+                    ) from exc
+                face_values: list[float] = []
+                for _ in range(declared_faces * face_dimension):
+                    try:
+                        face_values.append(float(take(f"{face_name} values")))
+                    except ValueError as exc:
+                        raise ValueError(
+                            f"invalid value in facial field {face_name!r}"
+                        ) from exc
+                face_fields[face_name] = DatField(
+                    face_name, face_dimension, face_values
+                )
+            break
         if take("field key") != "field":
             raise ValueError("expected 'field'")
         name = take("field name")
@@ -188,7 +254,9 @@ def _read_text(path: Path) -> DatRestart:
         fields[name] = DatField(name, dimension, values)
 
     return _validate(
-        DatRestart(version, cells, iteration, time, fields, None, mesh_identity)
+        DatRestart(
+            version, cells, iteration, time, fields, None, mesh_identity, face_fields
+        )
     )
 
 
