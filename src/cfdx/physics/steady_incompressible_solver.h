@@ -40,6 +40,8 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <fstream>
+#include <cstdlib>
 
 namespace cfdx::physics {
 
@@ -4271,6 +4273,251 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     deferred_boundary);
             }
 
+            // Read-only decomposition of the exact pressure RHS. The
+            // production continuity assembly above is deliberately left
+            // untouched; this second pass attributes its terms per cell/face.
+            if (controls.momentum_assembly_forensic_callback) {
+                std::vector<double> rhs_predictor(nc, 0.0);
+                std::vector<double> rhs_pressure_implicit(nc, 0.0);
+                std::vector<double> rhs_pressure_deferred(nc, 0.0);
+                std::vector<double> rhs_boundary_source(nc, 0.0);
+                double predictor_internal_linf = 0.0;
+                double predictor_boundary_linf = 0.0;
+                double pressure_implicit_linf = 0.0;
+                double pressure_deferred_linf = 0.0;
+                double boundary_source_linf = 0.0;
+                double pressure_coefficient_min = std::numeric_limits<double>::infinity();
+                double pressure_coefficient_max = 0.0;
+                std::size_t predictor_internal_face = 0;
+                std::size_t predictor_boundary_face = 0;
+                std::size_t pressure_implicit_face = 0;
+                std::size_t pressure_deferred_face = 0;
+                std::size_t boundary_source_face = 0;
+                const auto& pressure_coeff =
+                    controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
+
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                    const std::size_t o = mesh.ownership().owner(f);
+                    const auto nr = mesh.ownership().neighbour(f);
+                    const double predictor = phiHbyA(f);
+                    rhs_predictor[o] -= predictor;
+                    if (nr >= 0) {
+                        const std::size_t n = static_cast<std::size_t>(nr);
+                        rhs_predictor[n] += predictor;
+                        predictor_internal_linf = std::max(
+                            predictor_internal_linf, std::abs(predictor));
+                        if (std::abs(predictor) == predictor_internal_linf)
+                            predictor_internal_face = f;
+
+                        const Vec3 Sf = geometry.face_area_vectors[f];
+                        const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+                        const double coeff = controls.density *
+                            directional_face_coefficient(pressure_coeff, o, n, Sf, dvec);
+                        const Vec3 dAU{
+                            0.5 * (geometry.cell_volumes[o] * pressure_coeff[0][o] +
+                                   geometry.cell_volumes[n] * pressure_coeff[0][n]),
+                            0.5 * (geometry.cell_volumes[o] * pressure_coeff[1][o] +
+                                   geometry.cell_volumes[n] * pressure_coeff[1][n]),
+                            0.5 * (geometry.cell_volumes[o] * pressure_coeff[2][o] +
+                                   geometry.cell_volumes[n] * pressure_coeff[2][n])};
+                        const Vec3 grad_face{
+                            0.5 * (current_grad_p.component_data(0)[o] +
+                                   current_grad_p.component_data(0)[n]),
+                            0.5 * (current_grad_p.component_data(1)[o] +
+                                   current_grad_p.component_data(1)[n]),
+                            0.5 * (current_grad_p.component_data(2)[o] +
+                                   current_grad_p.component_data(2)[n])};
+                        const double implicit_flux = coeff * (p(n) - p(o));
+                        const double deferred_flux = controls.density *
+                            pressure_face_nonorthogonal_flux(Sf, dvec, dAU, grad_face);
+                        rhs_pressure_implicit[o] += implicit_flux;
+                        rhs_pressure_implicit[n] -= implicit_flux;
+                        rhs_pressure_deferred[o] += deferred_flux;
+                        rhs_pressure_deferred[n] -= deferred_flux;
+                        if (std::abs(implicit_flux) > pressure_implicit_linf) {
+                            pressure_implicit_linf = std::abs(implicit_flux);
+                            pressure_implicit_face = f;
+                        }
+                        if (std::abs(deferred_flux) > pressure_deferred_linf) {
+                            pressure_deferred_linf = std::abs(deferred_flux);
+                            pressure_deferred_face = f;
+                        }
+                        pressure_coefficient_min = std::min(
+                            pressure_coefficient_min, coeff);
+                        pressure_coefficient_max = std::max(
+                            pressure_coefficient_max, std::abs(coeff));
+                    } else {
+                        predictor_boundary_linf = std::max(
+                            predictor_boundary_linf, std::abs(predictor));
+                        if (std::abs(predictor) == predictor_boundary_linf)
+                            predictor_boundary_face = f;
+                        const std::size_t patch = geometry.face_patch[f];
+                        if (patch >= mesh.boundary().n_patches()) continue;
+                        const auto& name = mesh.boundary().patch(patch).name;
+                        const auto pbc = pressure_bcs.find(name);
+                        if (pbc == pressure_bcs.end() ||
+                            pbc->second.type != ScalarBoundaryType::FIXED_VALUE)
+                            continue;
+                        const Vec3 dvec =
+                            geometry.face_centres[f] - geometry.cell_centres[o];
+                        const Vec3 Sf = geometry.face_area_vectors[f];
+                        const Vec3 dAU{
+                            geometry.cell_volumes[o] * pressure_coeff[0][o],
+                            geometry.cell_volumes[o] * pressure_coeff[1][o],
+                            geometry.cell_volumes[o] * pressure_coeff[2][o]};
+                        const double coeff = controls.density *
+                            pressure_face_orthogonal_coefficient(Sf, dvec, dAU);
+                        const Vec3 grad_boundary{
+                            current_grad_p.component_data(0)[o],
+                            current_grad_p.component_data(1)[o],
+                            current_grad_p.component_data(2)[o]};
+                        const double deferred = controls.density *
+                            pressure_face_nonorthogonal_flux(
+                                Sf, dvec, dAU, grad_boundary);
+                        const double source = coeff * (pbc->second.value - p(o)) +
+                                              deferred;
+                        rhs_boundary_source[o] += source;
+                        if (std::abs(source) > boundary_source_linf) {
+                            boundary_source_linf = std::abs(source);
+                            boundary_source_face = f;
+                        }
+                    }
+                }
+
+                std::size_t rhs_cell = 0;
+                double rhs_linf = 0.0;
+                double continuity_linf = 0.0;
+                double decomposition_error = 0.0;
+                for (std::size_t c = 0; c < nc; ++c) {
+                    if (std::abs(b(c)) > rhs_linf) {
+                        rhs_linf = std::abs(b(c));
+                        rhs_cell = c;
+                    }
+                    continuity_linf = std::max(continuity_linf, std::abs(continuity[c]));
+                    const double reconstructed = rhs_predictor[c] +
+                        rhs_pressure_implicit[c] + rhs_pressure_deferred[c] +
+                        rhs_boundary_source[c];
+                    decomposition_error = std::max(
+                        decomposition_error, std::abs(b(c) - reconstructed));
+                }
+                const auto& rhs_point = geometry.cell_centres[rhs_cell];
+                std::cerr << std::setprecision(17)
+                          << "NACA_PRESSURE_RHS"
+                          << " iter=" << iter
+                          << " corrector=" << corr
+                          << " rhs_linf=" << rhs_linf
+                          << " rhs_cell=" << rhs_cell
+                          << " rhs_xyz=" << rhs_point.x << ":" << rhs_point.y << ":" << rhs_point.z
+                          << " continuity_linf=" << continuity_linf
+                          << " predictor_rhs_cell=" << rhs_predictor[rhs_cell]
+                          << " implicit_pressure_rhs_cell=" << rhs_pressure_implicit[rhs_cell]
+                          << " deferred_pressure_rhs_cell=" << rhs_pressure_deferred[rhs_cell]
+                          << " boundary_source_rhs_cell=" << rhs_boundary_source[rhs_cell]
+                          << " decomposition_error_linf=" << decomposition_error
+                          << " predictor_internal_linf=" << predictor_internal_linf
+                          << " predictor_internal_face=" << predictor_internal_face
+                          << " predictor_boundary_linf=" << predictor_boundary_linf
+                          << " predictor_boundary_face=" << predictor_boundary_face
+                          << " pressure_implicit_linf=" << pressure_implicit_linf
+                          << " pressure_implicit_face=" << pressure_implicit_face
+                          << " pressure_deferred_linf=" << pressure_deferred_linf
+                          << " pressure_deferred_face=" << pressure_deferred_face
+                          << " boundary_source_linf=" << boundary_source_linf
+                          << " boundary_source_face=" << boundary_source_face
+                          << " pressure_coeff_min=" << pressure_coefficient_min
+                          << " pressure_coeff_abs_max=" << pressure_coefficient_max
+                          << '\n';
+
+                if (iter == 1 || iter % 10 == 0) {
+                    const auto* cell_faces = mesh.cells().faces_data();
+                    const auto* cell_offsets = mesh.cells().offsets_data();
+                    const Offset off = cell_offsets[rhs_cell];
+                    const Offset count = cell_offsets[rhs_cell + 1] - off;
+                    for (Offset k = 0; k < count; ++k) {
+                        const std::size_t f = cell_faces[off + k];
+                        const std::size_t o = mesh.ownership().owner(f);
+                        const auto nr = mesh.ownership().neighbour(f);
+                        const bool is_owner = o == rhs_cell;
+                        const double orientation = is_owner ? 1.0 : -1.0;
+                        const double rhs_phi = -orientation * phiHbyA(f);
+                        double implicit_flux = 0.0;
+                        double deferred_flux = 0.0;
+                        double boundary_source = 0.0;
+                        double coeff = 0.0;
+                        std::string patch_name = "internal";
+                        if (nr >= 0) {
+                            const std::size_t n = static_cast<std::size_t>(nr);
+                            const Vec3 Sf = geometry.face_area_vectors[f];
+                            const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+                            const Vec3 dAU{
+                                0.5 * (geometry.cell_volumes[o] * pressure_coeff[0][o] +
+                                       geometry.cell_volumes[n] * pressure_coeff[0][n]),
+                                0.5 * (geometry.cell_volumes[o] * pressure_coeff[1][o] +
+                                       geometry.cell_volumes[n] * pressure_coeff[1][n]),
+                                0.5 * (geometry.cell_volumes[o] * pressure_coeff[2][o] +
+                                       geometry.cell_volumes[n] * pressure_coeff[2][n])};
+                            const Vec3 grad_face{
+                                0.5 * (current_grad_p.component_data(0)[o] +
+                                       current_grad_p.component_data(0)[n]),
+                                0.5 * (current_grad_p.component_data(1)[o] +
+                                       current_grad_p.component_data(1)[n]),
+                                0.5 * (current_grad_p.component_data(2)[o] +
+                                       current_grad_p.component_data(2)[n])};
+                            coeff = controls.density *
+                                pressure_face_orthogonal_coefficient(Sf, dvec, dAU);
+                            implicit_flux = coeff * (p(n) - p(o));
+                            deferred_flux = controls.density *
+                                pressure_face_nonorthogonal_flux(Sf, dvec, dAU, grad_face);
+                        } else {
+                            const std::size_t patch = geometry.face_patch[f];
+                            if (patch < mesh.boundary().n_patches()) {
+                                patch_name = mesh.boundary().patch(patch).name;
+                                const auto pbc = pressure_bcs.find(patch_name);
+                                if (pbc != pressure_bcs.end() &&
+                                    pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                                    const Vec3 dvec =
+                                        geometry.face_centres[f] - geometry.cell_centres[o];
+                                    const Vec3 Sf = geometry.face_area_vectors[f];
+                                    const Vec3 dAU{
+                                        geometry.cell_volumes[o] * pressure_coeff[0][o],
+                                        geometry.cell_volumes[o] * pressure_coeff[1][o],
+                                        geometry.cell_volumes[o] * pressure_coeff[2][o]};
+                                    coeff = controls.density *
+                                        pressure_face_orthogonal_coefficient(Sf, dvec, dAU);
+                                    const Vec3 grad_boundary{
+                                        current_grad_p.component_data(0)[o],
+                                        current_grad_p.component_data(1)[o],
+                                        current_grad_p.component_data(2)[o]};
+                                    deferred_flux = controls.density *
+                                        pressure_face_nonorthogonal_flux(
+                                            Sf, dvec, dAU, grad_boundary);
+                                    boundary_source = coeff * (pbc->second.value - p(o)) +
+                                                      deferred_flux;
+                                }
+                            }
+                        }
+                        std::cerr << std::setprecision(17)
+                                  << "NACA_PRESSURE_FACE"
+                                  << " iter=" << iter
+                                  << " corrector=" << corr
+                                  << " cell=" << rhs_cell
+                                  << " face=" << f
+                                  << " owner=" << o
+                                  << " neighbour=" << (nr >= 0 ? std::to_string(nr) : "boundary")
+                                  << " patch=" << patch_name
+                                  << " phiHbyA=" << phiHbyA(f)
+                                  << " rhs_phi=" << rhs_phi
+                                  << " implicit_pressure_flux=" << implicit_flux
+                                  << " rhs_implicit=" << orientation * implicit_flux
+                                  << " deferred_pressure_flux=" << deferred_flux
+                                  << " rhs_deferred=" << orientation * deferred_flux
+                                  << " boundary_pressure_source=" << boundary_source
+                                  << " pressure_coeff=" << coeff
+                                  << '\n';
+                    }
+                }
+            }
+
             Vector p_corr(nc, 0.0);
             cfdx::core::SolverResult rp;
             const auto solve_pressure_system =
@@ -4291,6 +4538,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         controls.linear_max_iterations,
                         linear_tolerance).result;
                 };
+            std::unique_ptr<SparseMatrix> reduced_pressure_matrix;
+            std::unique_ptr<Vector> reduced_pressure_rhs;
+            const SparseMatrix* solved_pressure_matrix = &A;
+            const Vector* solved_pressure_rhs = &b;
             if (has_fixed_pressure_boundary ||
                 use_projected_pressure_null_space) {
                 // With a prescribed pressure boundary the pressure-correction
@@ -4316,25 +4567,30 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // connected cavity and remains eligible for the pressure
                 // solver policy and its true-residual convergence checks.
                 const std::size_t ref = controls.pressure_reference_cell;
-                SparseMatrix reduced(nc - 1, nc - 1);
-                Vector reduced_b(nc - 1, 0.0);
+                reduced_pressure_matrix =
+                    std::make_unique<SparseMatrix>(nc - 1, nc - 1);
+                reduced_pressure_rhs =
+                    std::make_unique<Vector>(nc - 1, 0.0);
                 const auto reduced_index = [ref](std::size_t cell) {
                     return cell < ref ? cell : cell - 1;
                 };
                 for (std::size_t row = 0; row < nc; ++row) {
                     if (row == ref) continue;
                     const std::size_t rr = reduced_index(row);
-                    reduced_b(rr) = b(row);
+                    (*reduced_pressure_rhs)(rr) = b(row);
                     for (const auto& [col, value] : rows[row]) {
                         if (col == ref) continue;
-                        reduced.push_back(rr, reduced_index(col), value);
+                        reduced_pressure_matrix->push_back(
+                            rr, reduced_index(col), value);
                     }
                 }
-                reduced.finalize();
+                reduced_pressure_matrix->finalize();
+                solved_pressure_matrix = reduced_pressure_matrix.get();
+                solved_pressure_rhs = reduced_pressure_rhs.get();
 
                 Vector reduced_corr(nc - 1, 0.0);
                 rp = solve_pressure_system(
-                    reduced, reduced_b, reduced_corr);
+                    *solved_pressure_matrix, *solved_pressure_rhs, reduced_corr);
                 if (rp.status == cfdx::core::SolverStatus::CONVERGED) {
                     for (std::size_t cell = 0; cell < nc; ++cell)
                         if (cell != ref)
@@ -4342,7 +4598,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     p_corr(ref) = 0.0;
                 }
             }
+            const auto pressure_row_to_cell = [&](std::size_t row) {
+                if (solved_pressure_matrix->n_rows() == nc) return row;
+                const std::size_t ref = controls.pressure_reference_cell;
+                return row < ref ? row : row + 1;
+            };
             if (controls.momentum_assembly_forensic_callback) {
+                const auto& matrix = *solved_pressure_matrix;
+                const auto& rhs = *solved_pressure_rhs;
                 double correction_linf = 0.0;
                 double pressure_linf = 0.0;
                 double rhs_linf = 0.0;
@@ -4350,9 +4613,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 std::size_t correction_cell = 0;
                 std::size_t pressure_cell = 0;
                 std::size_t rhs_cell = 0;
+                std::size_t diagonal_cell = 0;
                 double diagonal_min = std::numeric_limits<double>::infinity();
                 double diagonal_max = 0.0;
                 double row_sum_linf = 0.0;
+                const auto* offsets = matrix.row_offsets_data();
+                const auto* columns = matrix.columns_data();
+                const auto* values = matrix.values_data();
                 for (std::size_t cell = 0; cell < nc; ++cell) {
                     if (std::abs(p_corr(cell)) > correction_linf) {
                         correction_linf = std::abs(p_corr(cell));
@@ -4363,38 +4630,37 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         pressure_cell = cell;
                     }
                 }
-                for (std::size_t row = 0; row < b.size(); ++row)
-                    if (std::abs(b(row)) > rhs_linf) {
-                        rhs_linf = std::abs(b(row));
-                        rhs_cell = row;
+                for (std::size_t row = 0; row < rhs.size(); ++row) {
+                    if (std::abs(rhs(row)) > rhs_linf) {
+                        rhs_linf = std::abs(rhs(row));
+                        rhs_cell = pressure_row_to_cell(row);
                     }
-                const auto* offsets = A.row_offsets_data();
-                const auto* columns = A.columns_data();
-                const auto* values = A.values_data();
-                for (std::size_t row = 0; row < A.n_rows(); ++row) {
                     double diagonal = 0.0;
                     double row_sum = 0.0;
+                    double row_abs_sum = 0.0;
                     for (std::uint32_t k = offsets[row]; k < offsets[row + 1]; ++k) {
                         row_sum += values[k];
+                        row_abs_sum += std::abs(values[k]);
                         if (columns[k] == row) diagonal = values[k];
                     }
                     diagonal_min = std::min(diagonal_min, diagonal);
-                    diagonal_max = std::max(diagonal_max, std::abs(diagonal));
+                    if (std::abs(diagonal) > diagonal_max) {
+                        diagonal_max = std::abs(diagonal);
+                        diagonal_cell = pressure_row_to_cell(row);
+                    }
                     row_sum_linf = std::max(row_sum_linf, std::abs(row_sum));
-                    double row_abs_sum = 0.0;
-                    for (std::uint32_t k = offsets[row]; k < offsets[row + 1]; ++k)
-                        row_abs_sum += std::abs(values[k]);
                     row_abs_sum_linf = std::max(row_abs_sum_linf, row_abs_sum);
                 }
                 std::cerr << std::setprecision(17)
                           << "NACA_PRESSURE_CORRECTION"
                           << " iter=" << iter
+                          << " corrector=" << corr
                           << " status=" << static_cast<int>(rp.status)
                           << " iterations=" << rp.iterations
                           << " residual=" << rp.residual
                           << " relative=" << rp.residual_relative
-                          << " rows=" << A.n_rows()
-                          << " nnz=" << A.nnz()
+                          << " rows=" << matrix.n_rows()
+                          << " nnz=" << matrix.nnz()
                           << " rhs_linf=" << rhs_linf
                           << " rhs_cell=" << rhs_cell
                           << " correction_linf=" << correction_linf
@@ -4403,14 +4669,45 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " pressure_cell=" << pressure_cell
                           << " diagonal_min=" << diagonal_min
                           << " diagonal_abs_max=" << diagonal_max
+                          << " diagonal_cell=" << diagonal_cell
                           << " row_sum_linf=" << row_sum_linf
                           << " row_abs_sum_linf=" << row_abs_sum_linf
                           << '\n';
+
+                // Optional Matrix-Market snapshot of the exact matrix and
+                // RHS passed to Krylov. No dump is written unless requested.
+                const char* dump_prefix = std::getenv("CFDX_NACA_MATRIX_DUMP_PREFIX");
+                if (dump_prefix && *dump_prefix && iter == 1 && corr == 0) {
+                    std::ofstream matrix_file(std::string(dump_prefix) + ".mtx");
+                    std::ofstream rhs_file(std::string(dump_prefix) + ".rhs.csv");
+                    if (matrix_file && rhs_file) {
+                        matrix_file << "%%MatrixMarket matrix coordinate real general\n";
+                        matrix_file << matrix.n_rows() << " " << matrix.n_rows()
+                                    << " " << matrix.nnz() << "\n";
+                        for (std::size_t row = 0; row < matrix.n_rows(); ++row) {
+                            for (std::uint32_t k = offsets[row]; k < offsets[row + 1]; ++k)
+                                matrix_file << row + 1 << " " << columns[k] + 1
+                                            << " " << std::setprecision(17) << values[k] << "\n";
+                        }
+                        rhs_file << "row,cell,rhs\n";
+                        for (std::size_t row = 0; row < rhs.size(); ++row)
+                            rhs_file << row << "," << pressure_row_to_cell(row) << ","
+                                     << std::setprecision(17) << rhs(row) << "\n";
+                        std::cerr << "NACA_PRESSURE_MATRIX_DUMP prefix="
+                                  << dump_prefix << " rows=" << matrix.n_rows()
+                                  << " nnz=" << matrix.nnz() << '\n';
+                    } else {
+                        std::cerr << "NACA_PRESSURE_MATRIX_DUMP_ERROR prefix="
+                                  << dump_prefix << '\n';
+                    }
+                }
             }
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
             if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
                 if (controls.momentum_assembly_forensic_callback) {
+                    const auto& matrix = *solved_pressure_matrix;
+                    const auto& rhs = *solved_pressure_rhs;
                     double rhs_linf = 0.0;
                     double diagonal_min = std::numeric_limits<double>::infinity();
                     double diagonal_max = 0.0;
@@ -4420,15 +4717,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     std::size_t diagonal_cell = 0;
                     std::size_t nonfinite_matrix = 0;
                     std::size_t nonfinite_rhs = 0;
-                    const auto* offsets = A.row_offsets_data();
-                    const auto* columns = A.columns_data();
-                    const auto* values = A.values_data();
-                    for (std::size_t row = 0; row < A.n_rows(); ++row) {
-                        const double rhs_value = b(row);
+                    const auto* offsets = matrix.row_offsets_data();
+                    const auto* columns = matrix.columns_data();
+                    const auto* values = matrix.values_data();
+                    for (std::size_t row = 0; row < matrix.n_rows(); ++row) {
+                        const double rhs_value = rhs(row);
                         if (std::isfinite(rhs_value)) {
                             if (std::abs(rhs_value) > rhs_linf) {
                                 rhs_linf = std::abs(rhs_value);
-                                rhs_cell = row;
+                                rhs_cell = pressure_row_to_cell(row);
                             }
                         } else {
                             ++nonfinite_rhs;
@@ -4450,7 +4747,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             diagonal_min = std::min(diagonal_min, diagonal);
                             if (std::abs(diagonal) > diagonal_max) {
                                 diagonal_max = std::abs(diagonal);
-                                diagonal_cell = row;
+                                diagonal_cell = pressure_row_to_cell(row);
                             }
                         } else {
                             ++nonfinite_matrix;
@@ -4458,8 +4755,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         row_sum_linf = std::max(row_sum_linf, std::abs(row_sum));
                         row_abs_sum_linf = std::max(row_abs_sum_linf, row_abs_sum);
                     }
-                    const auto& rhs_point = geometry.cell_centres[
-                        std::min(rhs_cell, geometry.cell_centres.size() - 1)];
+                    const auto& rhs_point = geometry.cell_centres[rhs_cell];
                     double pressure_linf = 0.0;
                     double grad_pressure_linf = 0.0;
                     double predictor_flux_linf = 0.0;
@@ -4476,12 +4772,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     std::cerr << std::setprecision(17)
                               << "NACA_PRESSURE_CORRECTION_FAILURE"
                               << " iter=" << iter
+                              << " corrector=" << corr
                               << " status=" << static_cast<int>(rp.status)
                               << " iterations=" << rp.iterations
                               << " residual=" << rp.residual
                               << " relative=" << rp.residual_relative
-                              << " rows=" << A.n_rows()
-                              << " nnz=" << A.nnz()
+                              << " rows=" << matrix.n_rows()
+                              << " nnz=" << matrix.nnz()
                               << " rhs_linf=" << rhs_linf
                               << " rhs_cell=" << rhs_cell
                               << " rhs_xyz=" << rhs_point.x << ":" << rhs_point.y << ":" << rhs_point.z
