@@ -232,7 +232,7 @@ void run_cases()
         std::ifstream in(dat);
         std::string header;
         std::getline(in, header);
-        EXPECT_TRUE(header == "CFDX-DAT 4");
+        EXPECT_TRUE(header == "CFDX-DAT 5");
         std::filesystem::remove(dat);
     });
 
