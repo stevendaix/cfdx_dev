@@ -19,7 +19,9 @@ def read_rows(
         if len(set(reader.fieldnames)) != len(reader.fieldnames):
             raise ValueError(f"{path}: duplicate CSV header")
         if "source_file" in reader.fieldnames:
-            raise ValueError(f"{path}: input cannot override reserved source_file provenance")
+            raise ValueError(
+                f"{path}: input cannot override reserved source_file provenance"
+            )
         rows = list(reader)
         if any(
             None in row or any(value is None for value in row.values()) for row in rows
@@ -59,7 +61,9 @@ def main() -> int:
         for row in file_rows:
             missing = [key for key in args.key if key not in row]
             if missing:
-                raise ValueError(f"{path}: missing key columns: {', '.join(missing)}")
+                raise ValueError(
+                    f"{path}: missing key columns: {', '.join(missing)}"
+                )
             key = tuple(row[key].strip() for key in args.key)
             if any(not part for part in key):
                 raise ValueError(f"{path}: validation key contains an empty value")
