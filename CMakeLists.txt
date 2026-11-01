@@ -1443,6 +1443,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         set_tests_properties(test_compare_naca_continuation PROPERTIES
             LABELS "naca;validation;diagnostics"
             WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            ENVIRONMENT "PYTHONPATH=${CMAKE_SOURCE_DIR}"
             TIMEOUT 30)
     endif()
 
