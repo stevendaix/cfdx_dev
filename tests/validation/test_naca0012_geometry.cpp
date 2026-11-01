@@ -4,7 +4,10 @@
 #include "naca_momentum_trace.h"
 #include "naca_relaxation_controls.h"
 #include "cfdx/physics/wall_face_traction_reconstruction.h"
+#include "cfdx/physics/wall_shear_quadratic_fit.h"
+#include "naca_qualification_state_io.h"
 #include <cstdlib>
+#include <cstdio>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -106,6 +109,32 @@ static Forces run(const std::string& path,std::size_t level)
     c.diagnostics.iteration_trace_frequency=200;
 
     const auto geometry=build_fv_geometry(mesh);
+    if (const char* checkpoint = std::getenv("CFDX_NACA_CHECKPOINT_STATE_CSV")) {
+        const char* frequency = std::getenv("CFDX_NACA_CHECKPOINT_EVERY");
+        if (!frequency || !*checkpoint)
+            throw std::invalid_argument("NACA checkpoints require a nonempty path and frequency");
+        const std::string raw(frequency);
+        std::size_t n_read = 0;
+        const auto interval = std::stoull(raw, &n_read);
+        if (n_read != raw.size() || interval < 10 || interval > 10000)
+            throw std::invalid_argument("NACA checkpoint frequency must be in [10,10000]");
+        c.iteration_output_callback = [checkpoint_path=std::string(checkpoint),
+                                       interval, &geometry](
+            std::size_t iteration, double, const Mesh&, const auto& velocity,
+            const auto& pressure) {
+            if (iteration % interval != 0) return true;
+            std::vector<cfdx::validation::NacaStateRow> values;
+            values.reserve(geometry.cell_centres.size());
+            for (std::size_t i=0;i<geometry.cell_centres.size();++i)
+                values.push_back({geometry.cell_centres[i],
+                                  velocity.component_data(0)[i],
+                                  velocity.component_data(1)[i], pressure(i)});
+            cfdx::validation::naca_write_state_csv_atomic(checkpoint_path, values);
+            std::cout << "NACA_CHECKPOINT iteration=" << iteration
+                      << " status=STATE_ONLY_NOT_CONVERGED\n";
+            return true;
+        };
+    }
     cfdx::validation::NacaMomentumTrace naca_trace(mesh);
     if (const char* forensic = std::getenv("CFDX_NACA_FORENSICS");
         forensic != nullptr && std::string(forensic) == "1") {
@@ -126,6 +155,20 @@ static Forces run(const std::string& path,std::size_t level)
     }
     for(std::size_t i=0;i<mesh.n_cells();++i)
         U.component_data(0)[i]=Uinf;
+    // Experimental coarse-to-fine continuation; strict mesh alignment.
+    // The solver still needs to satisfy every ordinary nonlinear/force gate.
+    if (const char* path = std::getenv("CFDX_NACA_IMPORT_INITIAL_STATE_CSV")) {
+        const auto init = cfdx::validation::naca_read_state_csv(
+            path, geometry.cell_centres);
+        for (std::size_t i=0;i<init.size();++i) {
+            U.component_data(0)[i] = init[i].ux;
+            U.component_data(1)[i] = init[i].uy;
+            U.component_data(2)[i] = 0.0;
+            p(i) = init[i].pressure;
+        }
+        std::cout << "NACA_INITIAL_STATE: INTERPOLATED_GUESS_NOT_VALIDATED"
+                  << " cells=" << init.size() << "\n";
+    }
 
     // Exercise the strict mathematical BC/FVM path before the production solve.
     // The legacy maps below are retained for the current steady-solver compatibility API.
@@ -170,6 +213,17 @@ static Forces run(const std::string& path,std::size_t level)
                     << " alpha_p=" << last.effective_alpha_p;
         }
         throw std::runtime_error(message.str());
+    }
+
+    if (const char* path = std::getenv("CFDX_NACA_EXPORT_CONVERGED_STATE_CSV")) {
+        std::vector<cfdx::validation::NacaStateRow> state;
+        state.reserve(mesh.n_cells());
+        for (std::size_t i=0;i<mesh.n_cells();++i)
+            state.push_back({geometry.cell_centres[i], U.component_data(0)[i],
+                             U.component_data(1)[i], p(i)});
+        cfdx::validation::naca_write_state_csv(path, state);
+        std::cout << "NACA_CONVERGED_STATE: EXPORTED_ONLY_AFTER_PASS cells="
+                  << state.size() << "\n";
     }
 
     ScalarBoundaryConditions gx,gy;
@@ -282,6 +336,95 @@ static Forces run(const std::string& path,std::size_t level)
         const auto r=geometry.face_centres[f]-Vec3{0.25,0,0};
         Mz+=r.x*ty-r.y*tx;
     }
+    // Independent, experimental two-depth wall-shear diagnostic. Does not
+    // change the qualified force coefficient or hide missing near-wall cells.
+    if (const char* fit = std::getenv("CFDX_NACA_WALL_SHEAR_QUADRATIC")) {
+        if (std::string(fit) != "1")
+            throw std::invalid_argument("CFDX_NACA_WALL_SHEAR_QUADRATIC must be 1");
+        const auto* offsets = mesh.cells().offsets_data();
+        const auto* faces = mesh.cells().faces_data();
+        double integrated_cd_viscous = 0.0;
+        std::ofstream quadratic_profiles;
+        if (const char* path = std::getenv("CFDX_NACA_WALL_SHEAR_QUADRATIC_CSV")) {
+            quadratic_profiles.open(path);
+            if (!quadratic_profiles)
+                throw std::runtime_error("cannot open NACA quadratic wall shear CSV");
+            quadratic_profiles << std::setprecision(std::numeric_limits<double>::max_digits10)
+                               << "face,x_over_c,y_over_c,owner,second_cell,"
+                                  "h1,h2,Cf_tangent,Cd_viscous_face\n";
+        }
+        std::size_t accepted = 0;
+        std::size_t missing = 0;
+        for (const auto f : patch.face_ids) {
+            const std::size_t owner = mesh.ownership().owner(f);
+            const Vec3 sf = geometry.face_area_vectors[f];
+            const Vec3 outward = sf.normalized();
+            Vec3 tangent{-outward.y, outward.x, 0.0};
+            if (tangent.x < 0.0) tangent *= -1.0;
+            if (!(tangent.mag2() > 0.0)) {
+                ++missing;
+                continue;
+            }
+            tangent = tangent.normalized();
+            const Vec3 face = geometry.face_centres[f];
+            const Vec3 inward = outward * -1.0;
+            const double h1 = (geometry.cell_centres[owner]-face).dot(inward);
+            double best_score = std::numeric_limits<double>::infinity();
+            std::size_t deeper = mesh.n_cells();
+            if (!(h1 > 0.0)) { ++missing; continue; }
+            for (Offset k = offsets[owner]; k < offsets[owner + 1]; ++k) {
+                const auto other_face = faces[k];
+                const auto neighbour = mesh.ownership().neighbour(other_face);
+                if (neighbour < 0) continue;
+                const auto candidate = mesh.ownership().owner(other_face) == owner
+                    ? static_cast<std::size_t>(neighbour)
+                    : mesh.ownership().owner(other_face);
+                if (candidate == owner) continue;
+                const Vec3 displacement = geometry.cell_centres[candidate] - face;
+                const double h2 = displacement.dot(inward);
+                if (!(h2 >= 1.5*h1 && h2 <= 6.0*h1)) continue;
+                const Vec3 skew = displacement - inward * h2;
+                const double score = std::abs(h2/h1 - 2.0) + 0.3*skew.mag()/h2;
+                if (score < best_score) {best_score=score; deeper=candidate;}
+            }
+            if (deeper == mesh.n_cells()) { ++missing; continue; }
+            const auto sample = [&](std::size_t cell) {
+                return WallShearSample{
+                    geometry.cell_centres[cell],
+                    {ux(cell),uy(cell),0.0},
+                    {{{gux.component_data(0)[cell],gux.component_data(1)[cell],
+                       gux.component_data(2)[cell]},
+                      {guy.component_data(0)[cell],guy.component_data(1)[cell],
+                       guy.component_data(2)[cell]}, {0.0,0.0,0.0}}}};
+            };
+            try {
+                const auto value = reconstruct_wall_shear_quadratic(
+                    face, outward, tangent, {0,0,0},
+                    sample(owner), sample(deeper), rho*nu);
+                const double drag_face = value.shear_on_body_tangent *
+                    tangent.x * sf.mag() / q;
+                integrated_cd_viscous += drag_face;
+                if (quadratic_profiles)
+                    quadratic_profiles << f << ',' << face.x/chord << ','
+                        << face.y/chord << ',' << owner << ',' << deeper << ','
+                        << value.first_distance << ',' << value.second_distance << ','
+                        << value.shear_on_body_tangent/q << ',' << drag_face << '\n';
+                ++accepted;
+            } catch (const std::invalid_argument&) {
+                ++missing;
+            }
+        }
+        if (quadratic_profiles && (!quadratic_profiles.good() || missing != 0))
+            throw std::runtime_error("NACA quadratic wall shear CSV incomplete");
+        std::cout << std::setprecision(std::numeric_limits<double>::max_digits10)
+                  << "NACA_WALL_SHEAR_QUADRATIC"
+                  << " covered_faces=" << accepted
+                  << " missing_faces=" << missing
+                  << " total_faces=" << patch.face_ids.size()
+                  << " Cd_viscous_partial=" << integrated_cd_viscous
+                  << " status=" << (missing == 0 ? "COVERED_NOT_VALIDATED" : "INSUFFICIENT_COVERAGE")
+                  << "\n";
+    }
     if (face_profiles && !face_profiles.good())
         throw std::runtime_error("failed to write NACA face profiles CSV");
     const double cd=Fx/q, cl=Fy/q, cm=Mz/q;
@@ -306,6 +449,9 @@ static void run_quick_contract(const std::string& path)
     const auto geometry=build_fv_geometry(mesh);
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
     U.fill(0.0);
+    if (const char* path = std::getenv("CFDX_NACA_EXPORT_CENTERS_CSV"))
+        cfdx::validation::naca_write_centers_csv(
+            path, geometry.cell_centres);
     for(std::size_t i=0;i<mesh.n_cells();++i)
         U.component_data(0)[i]=1.0;
 

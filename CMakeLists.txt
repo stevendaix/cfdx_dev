@@ -969,9 +969,28 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_pressure_continuity_line_search tests/validation/test_pressure_continuity_line_search.cpp)
     add_cfdx_test(test_pressure_affine_flux_trials tests/validation/test_pressure_affine_flux_trials.cpp)
     add_cfdx_test(test_wall_face_traction_mms tests/validation/test_wall_face_traction_mms.cpp)
+    add_cfdx_test(test_wall_shear_quadratic_fit tests/validation/test_wall_shear_quadratic_fit.cpp)
+    add_cfdx_test(test_naca_state_io tests/validation/test_naca_state_io.cpp)
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_naca_wall_pressure_grid_audit
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_wall_pressure_grid_audit.py)
+        # Optional diagnostic dependency only; not required by CFDX production.
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} -c "import numpy, scipy.spatial"
+            RESULT_VARIABLE CFDX_NACA_SCIPY_STATUS
+            OUTPUT_QUIET ERROR_QUIET)
+        if(CFDX_NACA_SCIPY_STATUS EQUAL 0)
+            add_test(NAME test_naca_prolong_initial_state
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_prolong_initial_state.py)
+        else()
+            message(STATUS "NACA optional prolongation test not registered (SciPy unavailable)")
+        endif()
         add_test(NAME test_naca_split_farfield_generator
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_split_farfield_generator.py)
+        add_test(NAME test_naca_wall_profiles_symmetry
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_analyze_naca_wall_profiles.py)
+        add_test(NAME test_naca_wall_shear_independent
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_wall_shear_independent.py)
         add_test(NAME test_naca_ab_qualification_contract
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_ab_qualification.py)
         set_tests_properties(test_naca_split_farfield_generator
