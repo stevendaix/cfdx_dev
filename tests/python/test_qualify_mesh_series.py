@@ -1,4 +1,5 @@
 """Negative and positive self-tests, never physical CFD qualification evidence."""
+
 from __future__ import annotations
 
 import hashlib
@@ -40,8 +41,7 @@ def make_fixture(root: Path, physics: str = "naca_laminar") -> dict:
         names = ("heat_flux", "temperature_mean")
     if not naca:
         reference = {
-            name: (float(i + 1), float(i + 1), 0.02)
-            for i, name in enumerate(names)
+            name: (float(i + 1), float(i + 1), 0.02) for i, name in enumerate(names)
         }
         amplitude = {name: 0.02 for name in names}
     criteria = {
@@ -204,9 +204,7 @@ class ThreeMeshEvidenceTests(unittest.TestCase):
     def test_reject_nonfinite_json(self) -> None:
         path = self.root / "run2.json"
         text = path.read_text()
-        path.write_text(
-            text.replace('"true_residual": 1e-10', '"true_residual": NaN')
-        )
+        path.write_text(text.replace('"true_residual": 1e-10', '"true_residual": NaN'))
         self.case["levels"][2]["result"]["sha256"] = sha256(path)
         self.fail_with("non-finite JSON")
 

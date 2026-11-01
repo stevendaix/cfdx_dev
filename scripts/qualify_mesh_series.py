@@ -5,6 +5,7 @@ solver, result extractor, CFD reference database, or replacement for CTest.
 See docs/validation/THREE_MESH_PHYSICAL_QUALIFICATION.md for the schema and
 exact meaning of normalized residual and conservation measurements.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -98,9 +99,7 @@ def verified_file(root: Path, obj: Any, label: str) -> tuple[Path, str]:
         raise EvidenceError(f"{label}: absolute paths are forbidden")
     path = (root / rel).resolve()
     if not path.is_relative_to(root) or not path.is_file() or path.stat().st_size == 0:
-        raise EvidenceError(
-            f"{label}: missing, empty or out-of-tree artifact: {rel}"
-        )
+        raise EvidenceError(f"{label}: missing, empty or out-of-tree artifact: {rel}")
     if digest(path) != sha:
         raise EvidenceError(f"{label}: SHA-256 mismatch: {rel}")
     return path, sha
@@ -129,7 +128,7 @@ def _metric_order(
         denominator = -math.expm1(-order * math.log(ratio_fine))
         return numerator / denominator
 
-    low, high = 1.e-8, 12.0
+    low, high = 1.0e-8, 12.0
     if ratio_at_order(high) < target:
         raise EvidenceError(f"{name}: implausibly high observed order")
     for _ in range(80):
@@ -211,9 +210,7 @@ def qualify(
         reference_values[name] = (
             finite(value.get("value"), f"reference {name}"),
             positive(value.get("scale"), f"reference scale {name}"),
-            positive(
-                value.get("max_relative_error"), f"reference tolerance {name}"
-            ),
+            positive(value.get("max_relative_error"), f"reference tolerance {name}"),
         )
 
     measured: dict[str, list[float]] = {name: [] for name in reference_values}
@@ -239,10 +236,7 @@ def qualify(
             raise EvidenceError(f"{label}: result does not reference its input mesh")
         if result.get("converged") is not True or result.get("status") != "COMPLETED":
             raise EvidenceError(f"{label}: solver did not converge and complete")
-        if (
-            nonnegative(result.get("true_residual"), f"{label}.true_residual")
-            > max_res
-        ):
+        if nonnegative(result.get("true_residual"), f"{label}.true_residual") > max_res:
             raise EvidenceError(f"{label}: true linear residual too large")
         balances = result.get("balances")
         if not isinstance(balances, dict):
@@ -259,13 +253,11 @@ def qualify(
             raise EvidenceError(
                 f"{label}: missing/unexpected QoI; every reference must be evaluated"
             )
-        for name in measured:
-            measured[name].append(finite(observed[name], f"{label}.{name}"))
+        for name, samples in measured.items():
+            samples.append(finite(observed[name], f"{label}.{name}"))
         if cd_closure is not None:
             decomposition_error = abs(
-                observed["cd_total"]
-                - observed["cd_pressure"]
-                - observed["cd_viscous"]
+                observed["cd_total"] - observed["cd_pressure"] - observed["cd_viscous"]
             )
             if decomposition_error > cd_closure:
                 raise EvidenceError(
@@ -344,7 +336,11 @@ def main() -> int:
         path = args.input.resolve()
         result = qualify(strict_json(path), path.parent, args.expected_source_sha)
     except (
-        EvidenceError, ValueError, OSError, json.JSONDecodeError, OverflowError
+        EvidenceError,
+        ValueError,
+        OSError,
+        json.JSONDecodeError,
+        OverflowError,
     ) as exc:
         result = {"status": "FAIL", "reason": str(exc)}
     args.report.parent.mkdir(parents=True, exist_ok=True)

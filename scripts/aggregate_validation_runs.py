@@ -1,4 +1,5 @@
 """Aggregate validation CSV files deterministically with provenance checks."""
+
 from __future__ import annotations
 
 import argparse
@@ -11,9 +12,8 @@ def read_rows(
 ) -> tuple[list[str], list[dict[str, str]]]:
     with path.open(newline="", encoding="utf-8") as handle:
         reader = csv.DictReader(handle)
-        if (
-            not reader.fieldnames
-            or any(not name or not name.strip() for name in reader.fieldnames)
+        if not reader.fieldnames or any(
+            not name or not name.strip() for name in reader.fieldnames
         ):
             raise ValueError(f"{path}: missing or invalid CSV header")
         if len(set(reader.fieldnames)) != len(reader.fieldnames):
@@ -43,7 +43,8 @@ def main() -> int:
 
     output = args.output.resolve()
     files = sorted(
-        p for p in args.input_dir.glob(args.pattern)
+        p
+        for p in args.input_dir.glob(args.pattern)
         if p.is_file() and p.resolve() != output
     )
     if not files:
@@ -61,9 +62,7 @@ def main() -> int:
         for row in file_rows:
             missing = [key for key in args.key if key not in row]
             if missing:
-                raise ValueError(
-                    f"{path}: missing key columns: {', '.join(missing)}"
-                )
+                raise ValueError(f"{path}: missing key columns: {', '.join(missing)}")
             key = tuple(row[key].strip() for key in args.key)
             if any(not part for part in key):
                 raise ValueError(f"{path}: validation key contains an empty value")
