@@ -13,9 +13,9 @@
 //     internal faces separating two *different* declared zones. When both
 //     sides declare a contact resistance the two values must be identical.
 //   * Every cell must map onto a declared zone id.
-//   * A conduction system with no fixed-temperature boundary anywhere is
-//     singular (its constant null space leaves the temperature level
-//     unpinned) and is rejected at assembly time.
+//   * Every connected component of a steady conduction domain requires its
+//     own fixed-temperature boundary; otherwise that component retains an
+//     independent constant null space and assembly is rejected.
 //
 // Discretization: standard two-point finite volumes on orthogonal meshes.
 // Internal faces use the series-resistance conductance
@@ -35,6 +35,7 @@
 #include <cstddef>
 #include <limits>
 #include <map>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -332,6 +333,48 @@ inline ScalarEquation assemble_thermal_conduction(
             "found in the system; the pure conduction operator is singular "
             "(constant null space, temperature level unpinned). Declare at "
             "least one fixed-temperature patch");
+
+    // A domain may have multiple disconnected solid regions. One global
+    // Dirichlet boundary is NOT enough to remove the constant null space in
+    // every disconnected region. Check the graph of positive-conductance
+    // internal faces (already validated above) before publishing the matrix.
+    // Union-find is O(n_cells + n_faces * alpha(n_cells)) and does not need a
+    // dense graph or additional geometric searches.
+    std::vector<std::size_t> component_parent(nc);
+    std::iota(component_parent.begin(), component_parent.end(), std::size_t{0});
+    const auto component_root = [&](std::size_t cell) {
+        while (component_parent[cell] != cell) {
+            component_parent[cell] = component_parent[component_parent[cell]];
+            cell = component_parent[cell];
+        }
+        return cell;
+    };
+    for (std::size_t f = 0; f < nf; ++f) {
+        const auto neighbour = own.neighbour(f);
+        if (neighbour < 0) continue;
+        const std::size_t a = component_root(own.owner(f));
+        const std::size_t b = component_root(static_cast<std::size_t>(neighbour));
+        if (a != b) component_parent[b] = a;
+    }
+    std::vector<unsigned char> component_anchored(nc, 0);
+    for (std::size_t f = 0; f < nf; ++f) {
+        if (own.neighbour(f) >= 0) continue;
+        const std::size_t patch = geometry.face_patch[f];
+        if (patch >= mesh.boundary().n_patches()) continue;
+        const auto& bp = mesh.boundary().patch(patch);
+        if (bp.type == PatchType::EMPTY) continue;
+        const auto it = boundary_conditions.find(bp.name);
+        if (it != boundary_conditions.end() &&
+            it->second.type == ScalarBoundaryType::FIXED_VALUE)
+            component_anchored[component_root(own.owner(f))] = 1;
+    }
+    for (std::size_t c = 0; c < nc; ++c) {
+        if (component_anchored[component_root(c)] == 0)
+            throw std::runtime_error(
+                "assemble_thermal_conduction: unanchored connected component "
+                "has no fixed-temperature boundary (cell " +
+                std::to_string(c) + ")");
+    }
 
     ScalarEquation eq{
         cfdx::core::SparseMatrix(nc, nc), cfdx::core::Vector(nc, 0.0), {}, 0.0};
