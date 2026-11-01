@@ -880,6 +880,10 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_controlled_campaign.py)
         set_tests_properties(test_naca_controlled_campaign_parser PROPERTIES
             LABELS "qualification;validation;infrastructure")
+        add_test(NAME test_analyze_naca_pressure_spectrum
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_analyze_naca_pressure_spectrum.py)
+        set_tests_properties(test_analyze_naca_pressure_spectrum PROPERTIES
+            LABELS "qualification;validation;infrastructure")
         add_test(NAME test_generate_2d_validation_meshes COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_2d_validation_meshes.py all --output-dir ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes)
         # CTest DEPENDS orders only tests explicitly selected by -R; it does
         # not schedule mesh generation for a filtered test invocation.
