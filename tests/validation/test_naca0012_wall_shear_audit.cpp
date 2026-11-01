@@ -308,7 +308,7 @@ WallShearAudit run_naca(const std::string& path, std::size_t level)
 
     const auto solve = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
     if (!solve.converged || solve.history.empty())
-        throw std::runtime_error("NACA0012 audit solve did not converge");
+        throw std::runtime_error("NACA0012 audit solve did not converge at N" + std::to_string(level));
     WallShearAudit out;
     out.continuity = solve.history.back().continuity_linf;
     out.iterations = solve.iterations;
