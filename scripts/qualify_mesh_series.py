@@ -87,7 +87,12 @@ def verified_file(root: Path, obj: Any, label: str) -> tuple[Path, str]:
         raise EvidenceError(f"{label}: path and sha256 are required")
     rel = obj.get("path")
     sha = obj.get("sha256")
-    if not isinstance(rel, str) or not rel or not isinstance(sha, str) or not SHA256.fullmatch(sha):
+    if (
+        not isinstance(rel, str)
+        or not rel
+        or not isinstance(sha, str)
+        or not SHA256.fullmatch(sha)
+    ):
         raise EvidenceError(f"{label}: invalid path/sha256")
     if Path(rel).is_absolute():
         raise EvidenceError(f"{label}: absolute paths are forbidden")
@@ -122,7 +127,7 @@ def _metric_order(
             -math.expm1(-order * math.log(ratio_fine))
         )
 
-    low, high = 1.e-8, 12.0
+    low, high = 1.0e-8, 12.0
     if ratio_at_order(high) < target:
         raise EvidenceError(f"{name}: implausibly high observed order")
     for _ in range(80):
@@ -138,7 +143,9 @@ def _metric_order(
     return order, abs(d2) / correction
 
 
-def qualify(case: dict[str, Any], root: Path, expected_source_sha: str) -> dict[str, Any]:
+def qualify(
+    case: dict[str, Any], root: Path, expected_source_sha: str
+) -> dict[str, Any]:
     if case.get("schema_version") != "1.0":
         raise EvidenceError("schema_version must be 1.0")
     case_id = case.get("case_id")
@@ -176,8 +183,10 @@ def qualify(case: dict[str, Any], root: Path, expected_source_sha: str) -> dict[
         raise EvidenceError("invalid refinement-ratio policy")
     cd_closure = None
     if physics.startswith("naca"):
-        cd_closure = positive(limits.get("max_drag_decomposition_error"),
-                              "max_drag_decomposition_error")
+        cd_closure = positive(
+            limits.get("max_drag_decomposition_error"),
+            "max_drag_decomposition_error",
+        )
 
     reference_values: dict[str, tuple[float, float, float]] = {}
     for name, value in references.items():
@@ -221,18 +230,22 @@ def qualify(case: dict[str, Any], root: Path, expected_source_sha: str) -> dict[
         observed = result.get("qoi")
         if not isinstance(observed, dict) or set(observed) != set(reference_values):
             raise EvidenceError(f"{label}: missing/unexpected QoI; every reference must be evaluated")
-        for name in measured:
-            measured[name].append(finite(observed[name], f"{label}.{name}"))
+        for name, values in measured.items():
+            values.append(finite(observed[name], f"{label}.{name}"))
         if cd_closure is not None and abs(
             observed["cd_total"] - observed["cd_pressure"] - observed["cd_viscous"]
         ) > cd_closure:
             raise EvidenceError(f"{label}: pressure/viscous drag does not sum to total")
         hs.append(h)
         cells.append(n)
-        artifacts.append({"mesh_path": str(mesh_path.relative_to(root)),
-                          "mesh_sha256": mesh_sha,
-                          "result_path": str(result_path.relative_to(root)),
-                          "result_sha256": result_sha})
+        artifacts.append(
+            {
+                "mesh_path": str(mesh_path.relative_to(root)),
+                "mesh_sha256": mesh_sha,
+                "result_path": str(result_path.relative_to(root)),
+                "result_sha256": result_sha,
+            }
+        )
 
     if len({a["mesh_sha256"] for a in artifacts}) != 3 or len({a["result_sha256"] for a in artifacts}) != 3:
         raise EvidenceError("duplicate meshes or reused run evidence")
