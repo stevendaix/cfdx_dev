@@ -19,7 +19,7 @@ namespace cfdx::io {
 //   1 — velocity and pressure only.
 //   2 — adds an optional T / k / second turbulence section.
 //   3 — adds the mesh identity that a restart reader validates against.
-//   4 — adds a named omega field for production SST restart state.
+//   4 — adds named omega and an optional authoritative face mass-flux section.
 enum : int {
     DatRestartVersionFields = 2,
     DatRestartVersionIdentity = 3,
