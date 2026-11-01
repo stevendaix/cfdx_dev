@@ -25,7 +25,7 @@ jobs:
     timeout-minutes: 90
     env:
       REF_PIN: e803a8b6d01093934badca5fe69f57e8345a3721
-      2026-11-01: 2026-11-01
+      STAMP: "2026-11-01"
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,8 +48,8 @@ jobs:
           git fetch origin "$REF_PIN"
           git worktree add "$RUNNER_TEMP/ref" "$REF_PIN"
           ( cd "$RUNNER_TEMP/ref" && \
-            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=OFF -DCFDX_ENABLE_LONG_VALIDATION=OFF > "$GITHUB_WORKSPACE/$EVID/pr1140_forensics_configure_STAMP.log" 2>&1 && \
-            cmake --build build --target cfdx_production_solver --parallel 8 > "$GITHUB_WORKSPACE/$EVID/pr1140_forensics_build_STAMP.log" 2>&1 )
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=OFF -DCFDX_ENABLE_LONG_VALIDATION=OFF > "$GITHUB_WORKSPACE/$EVID/pr1140_forensics_configure_2026-11-01.log" 2>&1 && \
+            cmake --build build --target cfdx_production_solver --parallel 8 > "$GITHUB_WORKSPACE/$EVID/pr1140_forensics_build_2026-11-01.log" 2>&1 )
 
       - name: Run SST + laminar restart forensics
         run: |
