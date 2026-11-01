@@ -961,6 +961,9 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         set_tests_properties(test_mesh_refinement_order PROPERTIES
             LABELS "phase13;validation;long")
     endif()
+    add_cfdx_test(test_wls_planar_field tests/validation/test_wls_planar_field.cpp)
+    add_cfdx_test(test_wls_intrinsic_dimension tests/validation/test_wls_intrinsic_dimension.cpp)
+    add_cfdx_test(test_pressure_flux_split tests/validation/test_pressure_flux_split.cpp)
     add_cfdx_test(test_nonorthogonal_skew_campaign tests/validation/test_nonorthogonal_skew_campaign.cpp)
     add_cfdx_test(test_nonorthogonal_laplacian_campaign tests/validation/test_nonorthogonal_laplacian_campaign.cpp)
     add_cfdx_test(test_transient_mms tests/validation/test_transient_mms.cpp)
