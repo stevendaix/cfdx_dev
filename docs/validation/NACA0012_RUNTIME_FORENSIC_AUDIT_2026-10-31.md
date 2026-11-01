@@ -158,19 +158,22 @@ local matrix object, which is not the matrix passed to Krylov in that path.
 The forensic hook now retains the actual solve matrix and RHS, including the
 reduced objects, and all matrix summaries refer to those exact arguments.
 
-To save the first pressure system for each mesh, set
-`CFDX_NACA_MATRIX_DUMP_PREFIX` to a writable file prefix when running the
-NACA validation executable. The hook writes:
+To save the first pressure system for each mesh, enable the forensic hook with
+`CFDX_NACA_FORENSICS=1` and set `CFDX_NACA_MATRIX_DUMP_PREFIX` to a writable
+file prefix when running the NACA validation executable. The hook appends the
+cell count to the prefix so sequential N64/N128/N256 runs cannot overwrite one
+another. It writes:
 
-- `<prefix>.mtx`: the exact CSR pressure operator passed to Krylov, in
-  Matrix-Market coordinate format;
-- `<prefix>.rhs.csv`: the matching RHS and the reduced-row to physical-cell
-  mapping.
+- `<prefix>.cells<cell-count>.mtx`: the exact CSR pressure operator passed to
+  Krylov, in Matrix-Market coordinate format;
+- `<prefix>.cells<cell-count>.rhs.csv`: the matching RHS and the reduced-row
+  to physical-cell mapping.
 
 For example, use a distinct prefix for each mesh:
-`CFDX_NACA_MATRIX_DUMP_PREFIX=artifacts/naca-N256-pressure-first`.
-The output directory must already exist. No matrix file is written when the
-variable is unset.
+`CFDX_NACA_FORENSICS=1` and
+`CFDX_NACA_MATRIX_DUMP_PREFIX=artifacts/naca-pressure-first`.
+The output directory must already exist. No matrix file is written when either
+the forensic hook is disabled or the prefix variable is unset.
 
 Run the Jacobi-scaled spectrum diagnostic with:
 
