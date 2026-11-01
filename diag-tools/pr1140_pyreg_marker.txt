@@ -1,1 +1,1 @@
-PR1140 pyreg oracle v3 2026-11-01 e803a8b6 (full build + CI-identical env)
+go 2026-11-01T21:00Z (trigger attempt 1)
