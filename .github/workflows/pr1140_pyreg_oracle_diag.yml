@@ -13,78 +13,75 @@ permissions:
 
 jobs:
   oracle:
-    name: pyreg-diff-e803a8b6-vs-003dad50
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+    name: pyreg-full-build-e803a8b6
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
     env:
       EVID: diag-evidence/logs
       REF_BAD: e803a8b6d01093934badca5fe69f57e8345a3721
-      REF_GOOD: 003dad50df272b1264c395938f73f3e64d96f4fd
       STAMP: 2026-11-01
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv
+
       - name: Set up Python stack (identical to CI Release Python regression)
         run: |
           python3 -m venv "$RUNNER_TEMP/venv"
           "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
           "$RUNNER_TEMP/venv/bin/python" -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
           "$RUNNER_TEMP/venv/bin/python" -c "import importlib.util as u; print('PySide6 installed:', u.find_spec('PySide6') is not None)" | tee "$GITHUB_WORKSPACE/$EVID/pr1140_pyreg_env_$STAMP.txt"
 
-      - name: Run pytest on both pinned refs
+      - name: Build Release binaries at pinned PR head
         run: |
-          mkdir -p "$GITHUB_WORKSPACE/$EVID"
-          VP="$RUNNER_TEMP/venv/bin/python"
-          for REF in "$REF_BAD" "$REF_GOOD"; do
-            SHORT="${REF:0:7}"
-            git fetch origin "$REF"
-            git worktree add "$RUNNER_TEMP/ref-$SHORT" "$REF"
-            ( cd "$RUNNER_TEMP/ref-$SHORT" && \
-              export PYTHONPATH="$RUNNER_TEMP/ref-$SHORT/src/cfdx/python" && \
-              "$VP" -m pytest -q tests/python --tb=no > "$GITHUB_WORKSPACE/$EVID/pr1140_pyreg_${SHORT}_$STAMP.log" 2>&1 ; \
-              echo "exit_code=$?" >> "$GITHUB_WORKSPACE/$EVID/pr1140_pyreg_${SHORT}_$STAMP.log" )
-            cd "$GITHUB_WORKSPACE"
-            git worktree remove --force "$RUNNER_TEMP/ref-$SHORT"
-          done
+          git fetch origin "$REF_BAD"
+          git worktree add "$RUNNER_TEMP/ref-bad" "$REF_BAD"
+          ( cd "$RUNNER_TEMP/ref-bad" && \
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCFDX_BUILD_TESTS=OFF -DCFDX_ENABLE_LONG_VALIDATION=OFF > "$GITHUB_WORKSPACE/$EVID/pr1140_pyreg_configure_$STAMP.log" 2>&1 && \
+            cmake --build build --target cfdx_production_solver cfdx_thermal_solver --parallel 8 > "$GITHUB_WORKSPACE/$EVID/pr1140_pyreg_build_$STAMP.log" 2>&1 )
+          ls -la "$RUNNER_TEMP/ref-bad/build/cfdx_production_solver" "$RUNNER_TEMP/ref-bad/build/cfdx_thermal_solver" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1140_pyreg_build_$STAMP.log"
 
-      - name: Diff failing tests between refs
+      - name: Run full Python regression at PR head (CI-identical env)
         if: always()
         run: |
           E="$GITHUB_WORKSPACE/$EVID"
-          BAD="$E/pr1140_pyreg_${REF_BAD:0:7}_$STAMP.log"
-          GOOD="$E/pr1140_pyreg_${REF_GOOD:0:7}_$STAMP.log"
+          VP="$RUNNER_TEMP/venv/bin/python"
+          ( cd "$RUNNER_TEMP/ref-bad" && \
+            export CFDX_PRODUCTION_SOLVER="$RUNNER_TEMP/ref-bad/build/cfdx_production_solver" && \
+            export CFDX_THERMAL_SOLVER="$RUNNER_TEMP/ref-bad/build/cfdx_thermal_solver" && \
+            export PYTHONPATH="$RUNNER_TEMP/ref-bad/src/cfdx/python" && \
+            "$VP" -m pytest -q tests/python --tb=no > "$E/pr1140_pyreg_full_e803a8b6_$STAMP.log" 2>&1 ; \
+            echo "exit_code=$?" >> "$E/pr1140_pyreg_full_e803a8b6_$STAMP.log" )
+          grep -E "^(FAILED|ERROR)" "$E/pr1140_pyreg_full_e803a8b6_$STAMP.log" | sort > "$E/pr1140_pyreg_bad_failed_$STAMP.txt" || true
           {
             echo "=== failures on $REF_BAD (PR #1140 head, Release pyreg exit 1, job 124941783617) ==="
-            grep -E "^(FAILED|ERROR)" "$BAD" | sort > "$E/pr1140_pyreg_bad_failed_$STAMP.txt" || true
             cat "$E/pr1140_pyreg_bad_failed_$STAMP.txt"
-            echo "=== failures on $REF_GOOD (master post-#1158) ==="
-            grep -E "^(FAILED|ERROR)" "$GOOD" | sort > "$E/pr1140_pyreg_good_failed_$STAMP.txt" || true
-            cat "$E/pr1140_pyreg_good_failed_$STAMP.txt"
-            echo "=== failures ONLY on the PR head ==="
-            comm -23 "$E/pr1140_pyreg_bad_failed_$STAMP.txt" "$E/pr1140_pyreg_good_failed_$STAMP.txt"
+            echo "=== tail of the pytest log ==="
+            tail -n 60 "$E/pr1140_pyreg_full_e803a8b6_$STAMP.log"
           } | tee "$E/pr1140_pyreg_diff_$STAMP.txt"
 
-      - name: Rerun failing tests with tracebacks (bad ref)
+      - name: Rerun failing tests with tracebacks
         if: always()
         run: |
           E="$GITHUB_WORKSPACE/$EVID"
           VP="$RUNNER_TEMP/venv/bin/python"
-          SHORT="${REF_BAD:0:7}"
           FAILED_LIST="$E/pr1140_pyreg_bad_failed_$STAMP.txt"
           if [ -s "$FAILED_LIST" ]; then
-            git fetch origin "$REF_BAD"
-            git worktree add "$RUNNER_TEMP/ref-tb-$SHORT" "$REF_BAD"
             TESTS=$(sed -E 's/^FAILED ([^ ]+) - .*$/\1/' "$FAILED_LIST" | sort -u | tr '\n' ' ')
-            ( cd "$RUNNER_TEMP/ref-tb-$SHORT" && \
-              export PYTHONPATH="$RUNNER_TEMP/ref-tb-$SHORT/src/cfdx/python" && \
-              "$VP" -m pytest -q $TESTS --tb=long > "$E/pr1140_pyreg_tb_${SHORT}_$STAMP.log" 2>&1 ; \
-              echo "exit_code=$?" >> "$E/pr1140_pyreg_tb_${SHORT}_$STAMP.log" )
-            cd "$GITHUB_WORKSPACE"
-            git worktree remove --force "$RUNNER_TEMP/ref-tb-$SHORT"
+            ( cd "$RUNNER_TEMP/ref-bad" && \
+              export CFDX_PRODUCTION_SOLVER="$RUNNER_TEMP/ref-bad/build/cfdx_production_solver" && \
+              export CFDX_THERMAL_SOLVER="$RUNNER_TEMP/ref-bad/build/cfdx_thermal_solver" && \
+              export PYTHONPATH="$RUNNER_TEMP/ref-bad/src/cfdx/python" && \
+              "$VP" -m pytest -q $TESTS --tb=long -vv > "$E/pr1140_pyreg_tb_e803a8b6_$STAMP.log" 2>&1 ; \
+              echo "exit_code=$?" >> "$E/pr1140_pyreg_tb_e803a8b6_$STAMP.log" )
           else
-            echo "no failing tests to rerun" > "$E/pr1140_pyreg_tb_${SHORT}_$STAMP.log"
+            echo "no failing tests to rerun" > "$E/pr1140_pyreg_tb_e803a8b6_$STAMP.log"
           fi
 
       - name: Write meta
@@ -92,11 +89,11 @@ jobs:
         run: |
           E="$GITHUB_WORKSPACE/$EVID"
           {
-            echo "target=PR #1140 head e803a8b6 Release python regression (job 124941783617, step Run Python regression, exit 1)"
+            echo "target=PR #1140 head e803a8b6 Release python regression (job 124941783617, step Run Python regression, exit 1; CI run 41337988194)"
             echo "ref_bad=$REF_BAD (PR #1140 head after merge of master 003dad50)"
-            echo "ref_good=$REF_GOOD (master post-#1158)"
-            echo "note=no CFDX_PRODUCTION_SOLVER/CFDX_THERMAL_SOLVER: binaries not built here; binary-dependent failures cancel out in the diff"
-            echo "pytest=-q tests/python --tb=no; traceback rerun: --tb=long"
+            echo "ref_good=003dad50 master pyreg is GREEN in its own CI wave (job 124941941470 Build and test (Release) success) so no REF_GOOD run here"
+            echo "env=CFDX_PRODUCTION_SOLVER + CFDX_THERMAL_SOLVER + PYTHONPATH, identical to cfdx-ci.yml Run Python regression"
+            echo "pytest=-q tests/python --tb=no; traceback rerun: --tb=long -vv"
           } > "$E/pr1140_pyreg_meta_$STAMP.txt"
 
       - name: Publish evidence to dedicated branch
@@ -108,6 +105,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "no evidence changes"
           else
-            git commit -m "diag: PR1140 head Python regression oracle evidence (2026-11-01) [ci skip]"
+            git commit -m "diag: PR1140 head full pyreg oracle evidence (2026-11-01) [ci skip]"
             git push --force origin HEAD:refs/heads/diag-evidence/pr1140-pyreg
           fi
