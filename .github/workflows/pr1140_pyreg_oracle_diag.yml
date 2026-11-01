@@ -1,7 +1,7 @@
 name: PR1140 head Python regression oracle (diag)
 
 on:
-  push:
+  pull_request:
     branches: [ci/long-campaign-diagnostics]
     paths:
       - 'diag-tools/pr1140_pyreg_marker.txt'
@@ -99,7 +99,7 @@ jobs:
             echo "pytest=-q tests/python --tb=no; traceback rerun: --tb=long"
           } > "$E/pr1140_pyreg_meta_$STAMP.txt"
 
-      - name: Commit evidence
+      - name: Publish evidence to dedicated branch
         if: always()
         run: |
           git config user.name "github-actions[bot]"
@@ -109,5 +109,5 @@ jobs:
             echo "no evidence changes"
           else
             git commit -m "diag: PR1140 head Python regression oracle evidence (2026-11-01) [ci skip]"
-            (git push || (git pull --rebase && git push))
+            git push --force origin HEAD:refs/heads/diag-evidence/pr1140-pyreg
           fi
