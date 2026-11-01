@@ -310,14 +310,33 @@ def naca_o_grid(
     # Parameterize the outer boundary by the same closed-loop index. The
     # surface itself is not a mesh oracle; this is only a deterministic,
     # Gmsh-free body-fitted starting mesh.
+    # Build a wall-normal first layer and blend it smoothly into the
+    # circular farfield.  The surface ordering is clockwise, so (ty, -tx)
+    # is the outward unit normal on both sides of the airfoil.
+    normals = []
+    for i in range(m):
+        x0, y0 = surf[(i - 1) % m]
+        x1, y1 = surf[(i + 1) % m]
+        tx, ty = x1 - x0, y1 - y0
+        length = math.hypot(tx, ty)
+        if not math.isfinite(length) or length <= 0.0:
+            raise ValueError("degenerate NACA0012 surface tangent")
+        normals.append((ty / length, -tx / length))
+
     pts = []
     for j in range(n_radial + 1):
         eta = j / n_radial
         rfac = eta**1.8
+        normal_weight = (1.0 - eta)**10
         for i, (x, y) in enumerate(surf):
             theta = 2.0 * math.pi * (i + 0.5) / m
             xo, yo = radius * math.cos(theta), radius * math.sin(theta)
-            pts.append(((1 - rfac) * x + rfac * xo, (1 - rfac) * y + rfac * yo))
+            dx, dy = xo - x, yo - y
+            radial_length = math.hypot(dx, dy)
+            nx, ny = normals[i]
+            vx = (1.0 - normal_weight) * dx + normal_weight * radial_length * nx
+            vy = (1.0 - normal_weight) * dy + normal_weight * radial_length * ny
+            pts.append((x + rfac * vx, y + rfac * vy))
 
     def P(j, i):
         return j * m + (i % m)
