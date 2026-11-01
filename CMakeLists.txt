@@ -848,6 +848,8 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         set_tests_properties(test_bfs_qualification PROPERTIES LABELS "qualification;validation;long")
         add_test(NAME test_naca0012_qualification COMMAND test_naca0012_qualification ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n128.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n256.h5)
         set_tests_properties(test_naca0012_qualification PROPERTIES LABELS "qualification;validation;long")
+        set_tests_properties(test_naca0012_qualification PROPERTIES
+            ENVIRONMENT "CFDX_NACA_MATRIX_DUMP_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/naca-pressure-qualification")
         if(Python3_Interpreter_FOUND)
             set_tests_properties(test_bfs_qualification test_naca0012_qualification PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_full)
         endif()
@@ -867,6 +869,8 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_naca0012_wall_shear_audit COMMAND test_naca0012_wall_shear_audit ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n128.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n256.h5)
         set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES LABELS "qualification;validation;long")
+        set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES
+            ENVIRONMENT "CFDX_NACA_MATRIX_DUMP_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/naca-pressure-wall-shear")
         if(Python3_Interpreter_FOUND)
             set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_full)
         endif()
