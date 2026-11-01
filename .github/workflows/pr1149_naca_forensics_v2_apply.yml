@@ -1,0 +1,172 @@
+name: PR 1149 NACA forensics v2 apply (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Applique sur la branche PR fix/amg-reuse-cg-stability les diagnostics
+# forensics v2 evidence-only (aucune tolerance/gate/oracle modifie) :
+# 1. analyze_naca_pressure_chronology.py + son test : triage
+#    NACA_PRESSURE_CORRECTION (FIRST_GROWTH, LARGEST_CLEAN_SOLVE) pour
+#    distinguer instabilite du systeme lineaire vs RHS/couplage deja enorme
+#    avant le solveur (le rejeu N256 montre iter 62 : solveur converge en 14
+#    iterations, relative 1.6e-11, correction ~2.97e4).
+# 2. Trace NACA_LS_STENCIL_QUALITY/_WORST : audit geometrique one-shot du
+#    stencil LS EXCLUDE_BOUNDARY (conditionnement purement geometrique).
+# 3. CFDX_NACA_MATRIX_DUMP_AT=62 sur les 2 tests longs NACA : dump
+#    Matrix-Market <prefix>.cells<N>.iter62.mtx en plus du dump iter 1.
+# Fail-closed : head PR épingle (ls-remote vs PINNED_HEAD), ancres uniques
+# (apply_edits.py), build leger (test_naca_relaxation_controls compile le
+# header solver modifie), ruff + pytest AVANT le push. Le commit de push ne
+# porte PAS [ci skip] : il doit redeclencher la CI de la PR pour regenerer
+# l'evidence avec les nouveaux dumps ; seul le commit d'evidence final
+# l'utilise.
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1149_naca_forensics_v2_apply.yml'
+      - 'diag-tools/pr1149_naca_forensics_v2/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1149-naca-forensics-v2-apply
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR_BRANCH: fix/amg-reuse-cg-stability
+  PINNED_HEAD: b5b34ce8df265b8dcb5d019c4d2b22e935e21a01
+  DT: diag-tools/pr1149_naca_forensics_v2
+
+jobs:
+  apply:
+    name: Apply forensics v2 to PR branch (evidence-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify pinned PR head (fail-closed)
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "pinned_head=$PINNED_HEAD"
+            echo "pr_branch=$PR_BRANCH"
+            echo "purpose=forensics v2: chronology analyzer, LS stencil audit, iter-62 dump (evidence-only)"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1149_forensics_v2_meta_run$GITHUB_RUN_ID.txt"
+          ACTUAL=$(git ls-remote origin "refs/heads/$PR_BRANCH" | cut -f1)
+          echo "actual_head=$ACTUAL" >> "$GITHUB_WORKSPACE/$EVID/pr1149_forensics_v2_status_run$GITHUB_RUN_ID.txt"
+          if [ "$ACTUAL" != "$PINNED_HEAD" ]; then
+            echo "::error::PR head moved ($ACTUAL vs pinned $PINNED_HEAD) - abort evidence-only apply"
+            exit 1
+          fi
+          git worktree add /tmp/pr "$PINNED_HEAD"
+
+      - name: Install build dependencies (light build)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ python3 python3-venv
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -m pip install --upgrade pip
+          "$RUNNER_TEMP/venv/bin/python" -m pip install pytest ruff
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      - name: Copy analyzers and apply anchored splices (fail-closed)
+        run: |
+          cd /tmp/pr
+          cp "$GITHUB_WORKSPACE/$DT/analyze_naca_pressure_chronology.py" scripts/validation/
+          cp "$GITHUB_WORKSPACE/$DT/test_analyze_naca_pressure_chronology.py" tests/python/
+          cp "$GITHUB_WORKSPACE/$DT/docs_appendix.md" /tmp/pr1149_docs_appendix.md
+          python3 "$GITHUB_WORKSPACE/$DT/apply_edits.py" /tmp/pr1149_docs_appendix.md
+          git status --porcelain | tee "$GITHUB_WORKSPACE/$EVID/pr1149_forensics_v2_diffstat_run$GITHUB_RUN_ID.txt"
+
+      - name: Ruff (same hooks as PR pre-commit)
+        run: |
+          cd /tmp/pr
+          ruff format scripts/validation/analyze_naca_pressure_chronology.py tests/python/test_analyze_naca_pressure_chronology.py
+          ruff check scripts/validation/analyze_naca_pressure_chronology.py tests/python/test_analyze_naca_pressure_chronology.py
+          ruff format --check scripts/validation/analyze_naca_pressure_chronology.py tests/python/test_analyze_naca_pressure_chronology.py
+
+      - name: Pytest (chronology analyzer)
+        run: |
+          cd /tmp/pr
+          pytest -q tests/python/test_analyze_naca_pressure_chronology.py 2>&1 | tee "$GITHUB_WORKSPACE/$EVID/pr1149_forensics_v2_pytest_run$GITHUB_RUN_ID.log"
+
+      - name: Light build (compiles the edited solver header)
+        run: |
+          cd /tmp/pr
+          cmake -S . -B /tmp/bld -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=OFF \
+            -DCFDX_ENABLE_MPI=OFF \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF > "$GITHUB_WORKSPACE/$EVID/pr1149_forensics_v2_configure_run$GITHUB_RUN_ID.log" 2>&1 || { cat "$GITHUB_WORKSPACE/$EVID/pr1149_forensics_v2_configure_run$GITHUB_RUN_ID.log"; exit 1; }
+          cmake --build /tmp/bld --target test_naca_relaxation_controls --parallel 4 > "$GITHUB_WORKSPACE/$EVID/pr1149_forensics_v2_build_run$GITHUB_RUN_ID.log" 2>&1 || { tail -n 80 "$GITHUB_WORKSPACE/$EVID/pr1149_forensics_v2_build_run$GITHUB_RUN_ID.log"; exit 1; }
+          ctest --test-dir /tmp/bld -R '^test_naca_relaxation_controls$' --output-on-failure 2>&1 | tee -a "$GITHUB_WORKSPACE/$EVID/pr1149_forensics_v2_build_run$GITHUB_RUN_ID.log"
+
+      - name: Commit and push to the PR branch
+        run: |
+          cd /tmp/pr
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/cfdx/physics/steady_incompressible_solver.h CMakeLists.txt \
+            docs/validation/NACA0012_RUNTIME_FORENSIC_AUDIT_2026-10-31.md \
+            scripts/validation/analyze_naca_pressure_chronology.py \
+            tests/python/test_analyze_naca_pressure_chronology.py
+          git commit -m "diag: NACA pressure chronology, LS stencil audit and iter-62 matrix dump"
+          git push origin "HEAD:$PR_BRANCH"
+          echo "pushed_sha=$(git rev-parse HEAD)" >> "$GITHUB_WORKSPACE/$EVID/pr1149_forensics_v2_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Verify push (byte-exact, fail-closed)
+        run: |
+          cd /tmp/pr
+          git fetch origin "$PR_BRANCH"
+          REMOTE=$(git ls-remote origin "refs/heads/$PR_BRANCH" | cut -f1)
+          if [ "$REMOTE" != "$(git rev-parse HEAD)" ]; then
+            echo "::error::remote branch does not match the pushed commit"
+            exit 1
+          fi
+          git diff --exit-code FETCH_HEAD HEAD -- . || {
+            echo "::error::tree mismatch after push"
+            exit 1
+          }
+          echo "push_verified=byte_exact" >> "$GITHUB_WORKSPACE/$EVID/pr1149_forensics_v2_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1149 forensics v2 apply run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          S="$GITHUB_WORKSPACE/$EVID/pr1149_forensics_v2_status_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$S" ]; then
+            echo "::error::no status recorded - read forensics v2 evidence"
+            exit 1
+          fi
+          cat "$S"
+          if ! grep -q "push_verified=byte_exact" "$S"; then
+            echo "::error::push not verified - see evidence"
+            exit 1
+          fi

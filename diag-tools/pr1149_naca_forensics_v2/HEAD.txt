@@ -1,0 +1,4 @@
+pr_branch=fix/amg-reuse-cg-stability
+pinned_head=b5b34ce8df265b8dcb5d019c4d2b22e935e21a01
+pinned_at=2026-11-01T10:15Z
+purpose=evidence-only forensics v2: chronology analyzer + LS stencil audit + iter-62 matrix dump
