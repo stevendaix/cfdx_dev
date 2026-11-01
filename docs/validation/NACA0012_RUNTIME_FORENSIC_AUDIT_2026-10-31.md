@@ -129,3 +129,74 @@ read-only and is null unless the forensic environment flag is enabled.
 - The negative CG curvature is not the primary root cause of the NACA run:
   the nonsymmetric momentum operator and the failed nonsymmetric-capable
   fallbacks must be considered first.
+
+
+## Follow-up pressure-equation forensics (2026-11-01)
+
+The next diagnostic pass adds a per-cell decomposition of the pressure RHS.
+For each pressure corrector, `NACA_PRESSURE_RHS` reports the maximum RHS
+cell and the signed contributions at that cell from:
+
+- predictor mass flux `phiHbyA`;
+- implicit orthogonal pressure flux evaluated from the current pressure;
+- deferred non-orthogonal pressure flux;
+- fixed-pressure boundary source.
+
+The reported `decomposition_error_linf` checks that these independently
+reconstructed contributions sum to the assembled RHS. This is an internal
+diagnostic consistency check, not a physical acceptance gate.
+`NACA_PRESSURE_FACE` records the incident faces of the maximum-RHS cell
+during the first system and every tenth nonlinear iteration, including owner,
+neighbour, patch, predictor flux, implicit/deferred pressure flux and boundary
+source. The summary is emitted on every pressure corrector.
+
+### Exact pressure matrix snapshot
+
+The pressure solver uses a gauge-reduced principal submatrix for the default
+pure-Neumann/reference-cell path. Earlier diagnostics inspected the full-size
+local matrix object, which is not the matrix passed to Krylov in that path.
+The forensic hook now retains the actual solve matrix and RHS, including the
+reduced objects, and all matrix summaries refer to those exact arguments.
+
+To save the first pressure system for each mesh, set
+`CFDX_NACA_MATRIX_DUMP_PREFIX` to a writable file prefix when running the
+NACA validation executable. The hook writes:
+
+- `<prefix>.mtx`: the exact CSR pressure operator passed to Krylov, in
+  Matrix-Market coordinate format;
+- `<prefix>.rhs.csv`: the matching RHS and the reduced-row to physical-cell
+  mapping.
+
+For example, use a distinct prefix for each mesh:
+`CFDX_NACA_MATRIX_DUMP_PREFIX=artifacts/naca-N256-pressure-first`.
+The output directory must already exist. No matrix file is written when the
+variable is unset.
+
+Run the Jacobi-scaled spectrum diagnostic with:
+
+```bash
+python3 scripts/validation/analyze_naca_pressure_spectrum.py \
+  artifacts/naca-N256-pressure-first.mtx \
+  --rhs artifacts/naca-N256-pressure-first.rhs.csv
+```
+
+The analyzer reports matrix symmetry, graph connectivity, diagonal range,
+and (only for a connected symmetric matrix with positive diagonal) the
+extreme eigenvalues of `D^{-1/2} A D^{-1/2}`, their residuals, and the
+resulting condition estimate. It does not modify the solver or promote any
+qualification status. NumPy and SciPy are required for the spectrum step.
+
+### Interpretation protocol
+
+Compare N64, N128 and N256 snapshots from the same solver revision and
+initialization. First inspect `decomposition_error_linf`; it should be near
+round-off relative to the RHS scale. Then compare the four RHS contributions
+at the maximum-RHS cell and its incident faces. A large predictor term points
+upstream toward HbyA/face interpolation; a large deferred term points toward
+the explicit non-orthogonal pressure response; a large boundary source points
+toward fixed-pressure boundary reconstruction. Only if these terms are
+well-scaled while the correction remains anomalous should the matrix spectrum
+and local diagonal/RHS ratios become the primary focus.
+
+These diagnostics remain evidence-only. No relaxation, discretization,
+iteration limit, tolerance, or qualification gate is changed.
