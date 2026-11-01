@@ -179,7 +179,10 @@ jobs:
     name: Long validation campaigns
     needs: prepare
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    # This partition hit the 120-minute Actions deadline on 2026-10-29
+    # without a reported test failure. Extend only the job wall-clock budget;
+    # CTest per-test limits, numerical tolerances, and physical gates are unchanged.
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
       - name: Install runtime dependencies

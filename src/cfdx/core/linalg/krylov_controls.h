@@ -1,6 +1,7 @@
 #pragma once
 #include "krylov_reductions.h"
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <stdexcept>
 
@@ -24,7 +25,9 @@ inline int choose_gmres_restart(
     double cycle_reduction,
     const KrylovControls& c = {}) {
     if (c.restart_min <= 0 || c.restart_min > c.restart_max ||
+        !std::isfinite(c.target_reduction_per_cycle) ||
         c.target_reduction_per_cycle <= 0.0 || c.target_reduction_per_cycle >= 1.0 ||
+        !std::isfinite(cycle_reduction) || cycle_reduction < 0.0 ||
         current <= 0) {
         throw std::invalid_argument("invalid Krylov controls");
     }
@@ -33,8 +36,10 @@ inline int choose_gmres_restart(
     // sufficient. A ratio near one is poor convergence: retain more Krylov
     // directions. The previous implementation did the opposite and made
     // difficult coupled systems less robust.
-    if (cycle_reduction > c.target_reduction_per_cycle * 2.0)
-        return std::min(c.restart_max, current + 5);
+    if (cycle_reduction > c.target_reduction_per_cycle * 2.0) {
+        // Avoid signed overflow when current is close to INT_MAX.
+        return current > c.restart_max - 5 ? c.restart_max : current + 5;
+    }
     if (cycle_reduction < c.target_reduction_per_cycle * 0.5)
         return std::max(c.restart_min, current - 5);
     return std::clamp(current, c.restart_min, c.restart_max);

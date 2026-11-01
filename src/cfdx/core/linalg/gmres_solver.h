@@ -38,17 +38,30 @@ inline SolverResult solve_gmres(
 {
     SolverResult result;
     if (op.size == 0 || !op.apply || b.size() != op.size || x.size() != op.size ||
-        restart <= 0 || max_iter == 0 || tolerance <= 0.0) {
+        restart <= 0 || max_iter == 0 || !std::isfinite(tolerance) || tolerance <= 0.0) {
+        result.status = SolverStatus::NOT_APPLICABLE;
+        return result;
+    }
+
+    // Validate the bounds before std::clamp: its precondition requires
+    // restart_min <= restart_max. Reject malformed controls rather than
+    // invoking undefined behavior or silently changing the requested policy.
+    if (controls.restart_min <= 0 ||
+        controls.restart_max < controls.restart_min ||
+        !std::isfinite(controls.target_reduction_per_cycle) ||
+        controls.target_reduction_per_cycle <= 0.0 ||
+        controls.target_reduction_per_cycle >= 1.0 ||
+        controls.reduction.local_begin > controls.reduction.end_for(op.size)) {
         result.status = SolverStatus::NOT_APPLICABLE;
         return result;
     }
 
     const std::size_t n = op.size;
     int current_restart = std::clamp(restart, controls.restart_min, controls.restart_max);
-    current_restart = std::min<int>(current_restart, static_cast<int>(n));
-    if (!std::isfinite(tolerance) || tolerance <= 0.0 || max_iter == 0) {
-        result.status = SolverStatus::NOT_APPLICABLE;
-        return result;
+    // Avoid narrowing n to int: a large operator dimension may exceed INT_MAX.
+    // The cast is safe only in the branch where n is smaller than an int value.
+    if (n < static_cast<std::size_t>(current_restart)) {
+        current_restart = static_cast<int>(n);
     }
 
     const double b_norm = krylov_norm2(b, SolverPrecision::FP64, controls.reduction);
@@ -73,6 +86,12 @@ inline SolverResult solve_gmres(
         }
         const double ax0_norm =
             krylov_norm2(ax0, SolverPrecision::FP64, controls.reduction);
+        if (!std::isfinite(ax0_norm)) {
+            result.status = SolverStatus::DIVERGED;
+            result.residual = ax0_norm;
+            result.residual_relative = ax0_norm;
+            return result;
+        }
         if (ax0_norm > 0.0) {
             Vector shifted_rhs(n, 0.0);
             for (std::size_t i = 0; i < n; ++i) shifted_rhs(i) = -ax0(i);
@@ -88,16 +107,23 @@ inline SolverResult solve_gmres(
                 if (op.apply_fp64) op.apply_fp64(x_in, ax);
                 else op.apply(x_in, ax);
             }
-            double residual_sq = 0.0;
-            for (std::size_t i = 0; i < n; ++i) {
-                const double r_i = b(i) - ax(i);
-                residual_sq += r_i * r_i;
-            }
-            const double residual = std::sqrt(residual_sq);
-            result.status = shifted.status;
+            Vector true_residual(n, 0.0);
+            for (std::size_t i = 0; i < n; ++i)
+                true_residual(i) = b(i) - ax(i);
+            const double residual =
+                krylov_norm2(true_residual, SolverPrecision::FP64, controls.reduction);
+            const double relative_residual = residual / ax0_norm;
+            // A shifted solve's status is not sufficient: certify the final
+            // iterate using the original homogeneous system's true residual.
+            const bool certified = std::isfinite(residual) &&
+                std::isfinite(relative_residual) && relative_residual <= tolerance;
+            result.status = certified
+                ? SolverStatus::CONVERGED
+                : (shifted.status == SolverStatus::NOT_APPLICABLE
+                    ? SolverStatus::NOT_APPLICABLE : SolverStatus::DIVERGED);
             result.iterations = shifted.iterations;
             result.residual = residual;
-            result.residual_relative = residual / ax0_norm;
+            result.residual_relative = relative_residual;
             result.residual_replacements = shifted.residual_replacements;
             result.first_residual_replacement = shifted.first_residual_replacement;
             result.last_residual_replacement = shifted.last_residual_replacement;
@@ -188,6 +214,14 @@ inline SolverResult solve_gmres(
     while (iterations < max_iter) {
         w.resize(n, static_cast<std::size_t>(current_restart));
         beta = true_residual();
+        if (!std::isfinite(beta)) {
+            x = best_x;
+            result.status = SolverStatus::DIVERGED;
+            result.iterations = iterations;
+            result.residual = best_residual;
+            result.residual_relative = best_residual / rhs_scale;
+            return result;
+        }
         if (beta <= tol) break;
 
         for (std::size_t i = 0; i < n; ++i) w.v(0)[i] = w.r(i) / beta;
@@ -208,8 +242,11 @@ inline SolverResult solve_gmres(
                     if (krylov_diagnostics_enabled())
                         std::cerr << "PRECOND_APPLY_GAUGE FAIL at iteration "
                                   << iterations << "\n";
+                    x = best_x;
                     result.status = SolverStatus::NOT_APPLICABLE;
                     result.iterations = iterations;
+                    result.residual = best_residual;
+                    result.residual_relative = best_residual / rhs_scale;
                     return result;
                 }
                 for (std::size_t i = 0; i < n; ++i) w.zv(static_cast<std::size_t>(j))[i] = w.vout(i);
@@ -220,7 +257,15 @@ inline SolverResult solve_gmres(
             apply_operator(w.zv(static_cast<std::size_t>(j)), w.w);
             const double arnoldi_action_norm =
                 krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
-                // Modified Gram-Schmidt once is vulnerable to loss of
+            if (!std::isfinite(arnoldi_action_norm)) {
+                x = best_x;
+                result.status = SolverStatus::DIVERGED;
+                result.iterations = iterations;
+                result.residual = best_residual;
+                result.residual_relative = best_residual / rhs_scale;
+                return result;
+            }
+            // Modified Gram-Schmidt once is vulnerable to loss of
             // orthogonality on nonsymmetric saddle-point systems. A second
             // orthogonalization pass is inexpensive for the small acceptance
             // systems and substantially improves the Hessenberg relation.
@@ -250,6 +295,14 @@ inline SolverResult solve_gmres(
             // absolute epsilon floor would then misclassify a valid Krylov
             // vector as a breakdown.
             const double hnext = krylov_norm2(w.w, SolverPrecision::FP64, controls.reduction);
+            if (!std::isfinite(hnext)) {
+                x = best_x;
+                result.status = SolverStatus::DIVERGED;
+                result.iterations = iterations;
+                result.residual = best_residual;
+                result.residual_relative = best_residual / rhs_scale;
+                return result;
+            }
             w.H(static_cast<std::size_t>(j + 1), static_cast<std::size_t>(j)) = hnext;
             // Arnoldi vectors are normalized, so loss of the new direction is
             // a breakdown. Use a relative test against the current operator
@@ -302,6 +355,14 @@ inline SolverResult solve_gmres(
                 controls.residual_replacement_period > 0 &&
                 iterations % controls.residual_replacement_period == 0) {
                 const double exact = true_residual();
+                if (!std::isfinite(exact)) {
+                    x = best_x;
+                    result.status = SolverStatus::DIVERGED;
+                    result.iterations = iterations;
+                    result.residual = best_residual;
+                    result.residual_relative = best_residual / rhs_scale;
+                    return result;
+                }
                 if (exact <= tol) {
                     result.status = SolverStatus::CONVERGED;
                     result.iterations = iterations;
@@ -358,15 +419,15 @@ inline SolverResult solve_gmres(
                 // non-happy breakdown. It is not the physical residual.
                 // Report the true ||b-Ax||_2 at the last admissible iterate.
                 double breakdown_residual = true_residual();
-                if (best_residual < breakdown_residual) {
+                if (!std::isfinite(breakdown_residual) ||
+                    best_residual < breakdown_residual) {
                     x = best_x;
                     breakdown_residual = best_residual;
                 }
                 result.status = SolverStatus::DIVERGED;
                 result.iterations = iterations;
                 result.residual = breakdown_residual;
-                result.residual_relative =
-                    breakdown_residual / rhs_scale;
+                result.residual_relative = breakdown_residual / rhs_scale;
                 return result;
             }
             w.y[static_cast<std::size_t>(i)] = sum / diag;
@@ -379,6 +440,14 @@ inline SolverResult solve_gmres(
         }
 
         beta = true_residual();
+        if (!std::isfinite(beta)) {
+            x = best_x;
+            result.status = SolverStatus::DIVERGED;
+            result.iterations = iterations;
+            result.residual = best_residual;
+            result.residual_relative = best_residual / rhs_scale;
+            return result;
+        }
         if (beta < best_residual) {
             best_residual = beta;
             best_x = x;
@@ -409,8 +478,23 @@ inline SolverResult solve_gmres(
         }
 
         const double reduction = beta / std::max(previous_cycle_residual, 1e-300);
-        if (controls.adaptive_restart)
+        if (!std::isfinite(reduction)) {
+            x = best_x;
+            result.status = SolverStatus::DIVERGED;
+            result.iterations = iterations;
+            result.residual = best_residual;
+            result.residual_relative = best_residual / rhs_scale;
+            return result;
+        }
+        if (controls.adaptive_restart) {
             current_restart = choose_gmres_restart(current_restart, reduction, controls);
+            // The adaptive policy may raise restart_min above the operator
+            // dimension. Keep every subsequent cycle bounded by the actual
+            // Krylov space, not only the initial cycle.
+            if (n < static_cast<std::size_t>(current_restart)) {
+                current_restart = static_cast<int>(n);
+            }
+        }
         previous_cycle_residual = beta;
     }
 
