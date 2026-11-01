@@ -61,4 +61,4 @@ Contrat de persistance :
 Portée de la preuve : la régression CLI de la PR #1140 vérifie la trajectoire continue et la trajectoire interrompue/reprise sur un cas SST persistant, en comparant les champs cellulaires communs $U$, $p$, $k$ et $\omega$ selon les tolérances déjà définies par le test. Cette preuve d'équivalence de reprise ne vaut pas qualification physique du modèle SST. La qualification de la formulation et des flux reste soumise aux validations de la présente fiche et aux campagnes N9 correspondantes.
 
 ## 10. Journal complémentaire
-- 2026-11-01 — PR #1140 : formalisation du contrat de persistance du flux facial autoritaire mdot dans le DAT v4 et de sa restauration au redémarrage. Le changement conserve l'état d'itération ; il ne revendique aucune modification de la formulation ni qualification physique supplémentaire.
+- 2026-11-01 — PR #1140 : formalisation du contrat de persistance du flux facial autoritaire mdot dans le DAT v5 et de sa restauration au redémarrage. Le changement conserve l'état d'itération ; il ne revendique aucune modification de la formulation ni qualification physique supplémentaire.
