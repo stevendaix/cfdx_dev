@@ -1252,3 +1252,5088 @@ inline std::vector<double> momentum_transpose_diffusion_face_fluxes(
             }
             if (internal_neighbours >= 3) {
                 for (std::size_t direction = 0; direction < 3; ++direction)
+                    grad.component_data(direction)[cell] =
+                        grad_ls.component_data(direction)[cell];
+            }
+        }
+        gradient[component].resize(nc);
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            for (std::size_t direction = 0; direction < 3; ++direction) {
+                const double value = grad.component_data(direction)[cell];
+                if (!std::isfinite(value))
+                    throw std::runtime_error(
+                        "momentum_transpose_diffusion_face_fluxes: non-finite velocity gradient");
+                gradient[component][cell][direction] = value;
+            }
+        }
+    }
+
+    // Reconstruct the cellwise viscosity gradient once per flux field.
+    // Normal-distance weighting alone is not linear-exact on a skewed face:
+    // the face centroid is generally not on the owner-neighbour centre line.
+    Field<double, Location::CELL> mu_cell(
+        nc, "transpose_stress_mu", "Pa s", 1);
+    for (std::size_t cell = 0; cell < nc; ++cell)
+        mu_cell(cell) = cell_effective_dynamic_viscosity[cell];
+    Field<double, Location::CELL> mu_gradient(
+        nc, "transpose_stress_mu_gradient", "Pa", 3);
+    mu_gradient.fill(0.0);
+    const bool uniform_face_viscosity =
+        cell_effective_dynamic_viscosity.size() <= 1 ||
+        std::all_of(
+            cell_effective_dynamic_viscosity.begin() + 1,
+            cell_effective_dynamic_viscosity.end(),
+            [&](double value) {
+                return value == cell_effective_dynamic_viscosity.front();
+            });
+    if (!uniform_face_viscosity) {
+        mu_gradient = cfdx::core::compute_gradient_least_squares(
+            mu_cell, mesh,
+            cfdx::core::BoundaryGradientPolicy::EXCLUDE_BOUNDARY);
+    }
+
+    std::vector<double> face_fluxes(nf, 0.0);
+    for (std::size_t face = 0; face < nf; ++face) {
+        const std::size_t owner = mesh.ownership().owner(face);
+        if (owner >= nc)
+            throw std::runtime_error(
+                "momentum_transpose_diffusion_face_fluxes: invalid face owner");
+        const auto neighbour_index = mesh.ownership().neighbour(face);
+        const auto& sf = geometry.face_area_vectors[face];
+        const double area = sf.mag();
+        if (!(area > 0.0) || !std::isfinite(area))
+            throw std::runtime_error(
+                "momentum_transpose_diffusion_face_fluxes: invalid face area");
+        double mu_face = cell_effective_dynamic_viscosity[owner];
+        std::array<double, 3> grad_face{};
+        if (neighbour_index >= 0) {
+            const std::size_t neighbour = static_cast<std::size_t>(neighbour_index);
+            if (neighbour >= nc || neighbour == owner)
+                throw std::runtime_error(
+                    "momentum_transpose_diffusion_face_fluxes: invalid face neighbour");
+            const auto d_owner_vec = geometry.face_centres[face] -
+                                     geometry.cell_centres[owner];
+            const auto d_neighbour_vec = geometry.cell_centres[neighbour] -
+                                         geometry.face_centres[face];
+            const double d_owner = std::abs(d_owner_vec.dot(sf)) / area;
+            const double d_neighbour = std::abs(d_neighbour_vec.dot(sf)) / area;
+            const double d_sum = d_owner + d_neighbour;
+            if (!(d_owner > 0.0) || !(d_neighbour > 0.0) ||
+                !(d_sum > 0.0) || !std::isfinite(d_sum))
+                throw std::runtime_error(
+                    "momentum_transpose_diffusion_face_fluxes: invalid face interpolation distance");
+            const double w_owner = d_neighbour / d_sum;
+            const double w_neighbour = d_owner / d_sum;
+            const auto& face_centre = geometry.face_centres[face];
+            const auto& owner_centre = geometry.cell_centres[owner];
+            const auto& neighbour_centre = geometry.cell_centres[neighbour];
+            const double mu_owner_at_face =
+                cell_effective_dynamic_viscosity[owner] +
+                mu_gradient.component_data(0)[owner] * (face_centre.x - owner_centre.x) +
+                mu_gradient.component_data(1)[owner] * (face_centre.y - owner_centre.y) +
+                mu_gradient.component_data(2)[owner] * (face_centre.z - owner_centre.z);
+            const double mu_neighbour_at_face =
+                cell_effective_dynamic_viscosity[neighbour] +
+                mu_gradient.component_data(0)[neighbour] * (face_centre.x - neighbour_centre.x) +
+                mu_gradient.component_data(1)[neighbour] * (face_centre.y - neighbour_centre.y) +
+                mu_gradient.component_data(2)[neighbour] * (face_centre.z - neighbour_centre.z);
+            mu_face = w_owner * mu_owner_at_face +
+                      w_neighbour * mu_neighbour_at_face;
+            if (!std::isfinite(mu_face) || mu_face < 0.0)
+                throw std::runtime_error(
+                    "momentum_transpose_diffusion_face_fluxes: reconstructed face viscosity is invalid");
+            for (std::size_t velocity_component = 0; velocity_component < 3;
+                 ++velocity_component) {
+                grad_face[velocity_component] =
+                    w_owner * gradient[velocity_component][owner][momentum_component] +
+                    w_neighbour * gradient[velocity_component][neighbour][momentum_component];
+            }
+            const double flux = mu_face * (
+                grad_face[0] * sf.x + grad_face[1] * sf.y +
+                grad_face[2] * sf.z);
+            if (!std::isfinite(flux))
+                throw std::runtime_error(
+                    "momentum_transpose_diffusion_face_fluxes: non-finite internal stress flux");
+            face_fluxes[face] = flux;
+        } else {
+            // Preserve prescribed boundary-value information in the boundary
+            // stress flux; least-squares reconstruction is used for internal
+            // faces only.
+            for (std::size_t velocity_component = 0; velocity_component < 3;
+                 ++velocity_component)
+                grad_face[velocity_component] =
+                    boundary_gradient[velocity_component][owner][momentum_component];
+            const double flux = mu_face * (
+                grad_face[0] * sf.x + grad_face[1] * sf.y +
+                grad_face[2] * sf.z);
+            if (!std::isfinite(flux))
+                throw std::runtime_error(
+                    "momentum_transpose_diffusion_face_fluxes: non-finite boundary stress flux");
+            face_fluxes[face] = flux;
+        }
+    }
+    return face_fluxes;
+}
+
+inline std::vector<double> momentum_transpose_diffusion_rhs(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+    const VelocityBoundaryConditions& velocity_bcs,
+    const std::vector<double>& cell_effective_dynamic_viscosity,
+    std::size_t momentum_component)
+{
+    const auto face_fluxes = momentum_transpose_diffusion_face_fluxes(
+        mesh, geometry, velocity, velocity_bcs,
+        cell_effective_dynamic_viscosity, momentum_component);
+    std::vector<double> rhs(mesh.n_cells(), 0.0);
+    for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+        const std::size_t owner = mesh.ownership().owner(face);
+        rhs[owner] += face_fluxes[face];
+        const auto neighbour = mesh.ownership().neighbour(face);
+        if (neighbour >= 0)
+            rhs[static_cast<std::size_t>(neighbour)] -= face_fluxes[face];
+    }
+    return rhs;
+}
+
+inline ScalarEquation assemble_momentum_component(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure_gradient_component,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& body_component,
+    const std::vector<double>& cell_effective_dynamic_viscosity,
+    const ScalarBoundaryConditions& velocity_bcs,
+    std::size_t component,
+    bool bounded,
+    ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
+    const std::vector<double>* extra_rhs = nullptr)
+{
+    const std::size_t nc = mesh.n_cells();
+    if (extra_rhs != nullptr && extra_rhs->size() != nc)
+        throw std::invalid_argument(
+            "assemble_momentum_component: extra RHS size does not match mesh");
+    if (cell_effective_dynamic_viscosity.size() != nc)
+        throw std::invalid_argument(
+            "assemble_momentum_component: cell viscosity size does not match mesh");
+    for (const double viscosity : cell_effective_dynamic_viscosity) {
+        if (!std::isfinite(viscosity) || viscosity < 0.0)
+            throw std::invalid_argument(
+                "assemble_momentum_component: cell viscosity must be finite and non-negative");
+    }
+    if (component >= 3)
+        throw std::invalid_argument("assemble_momentum_component: component index out of range");
+    if (pressure_gradient_component.dimension() != 3 ||
+        pressure_gradient_component.size() != nc ||
+        body_component.size() != nc || body_component.dimension() != 1)
+        throw std::invalid_argument(
+            "assemble_momentum_component: source/pressure-gradient field shape mismatch");
+
+    cfdx::core::Field<double, cfdx::core::Location::CELL> source(
+        nc, "momentum_source", "N/m3", 1);
+    cfdx::core::Field<double, cfdx::core::Location::CELL> sp(
+        nc, "momentum_sp", "kg/m3/s", 1);
+    for (std::size_t c = 0; c < nc; ++c) {
+        source(c) = body_component(c) -
+                    pressure_gradient_component.component_data(component)[c];
+        sp(c) = 0.0;
+    }
+    return assemble_scalar_equation(
+        mesh, geometry, mass_flux, 0.0, source, sp, velocity_bcs, bounded,
+        nullptr, nullptr, extra_rhs, &cell_effective_dynamic_viscosity,
+        convection_scheme, convected_field);
+}
+
+// Production wrapper: the full velocity tensor and vector boundary conditions
+// are required so the transpose-stress term cannot be silently omitted.
+inline ScalarEquation assemble_momentum_component_with_transpose_diffusion(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure_gradient_component,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& body_component,
+    const std::vector<double>& cell_effective_dynamic_viscosity,
+    const ScalarBoundaryConditions& component_boundary_conditions,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& full_velocity,
+    const VelocityBoundaryConditions& velocity_bcs,
+    std::size_t component,
+    bool bounded,
+    ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
+{
+    // In the constant-viscosity incompressible limit, the transpose
+    // contribution is equivalent to zero when continuity is satisfied.
+    // Avoid feeding the finite discrete continuity defect back as an
+    // explicit source into the established constant-viscosity solver.
+    const bool uniform_viscosity =
+        cell_effective_dynamic_viscosity.size() <= 1 ||
+        std::all_of(
+            cell_effective_dynamic_viscosity.begin() + 1,
+            cell_effective_dynamic_viscosity.end(),
+            [&](double mu) { return mu == cell_effective_dynamic_viscosity.front(); });
+    const auto transpose_rhs = uniform_viscosity
+        ? std::vector<double>(mesh.n_cells(), 0.0)
+        : momentum_transpose_diffusion_rhs(
+              mesh, geometry, full_velocity, velocity_bcs,
+              cell_effective_dynamic_viscosity, component);
+    return assemble_momentum_component(
+        mesh, geometry, mass_flux, pressure_gradient_component, body_component,
+        cell_effective_dynamic_viscosity, component_boundary_conditions, component,
+        bounded, convection_scheme, convected_field, &transpose_rhs);
+}
+
+inline ScalarEquation assemble_momentum_component(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>& mass_flux,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure_gradient_component,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& body_component,
+    double effective_dynamic_viscosity,
+    const BoundaryConstraintMap& boundary_constraints,
+    std::size_t component,
+    bool bounded,
+    double time = 0.0,
+    ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
+{
+    if (component >= 3)
+        throw std::invalid_argument("assemble_momentum_component: component index out of range");
+    if (pressure_gradient_component.dimension() != 3 ||
+        pressure_gradient_component.size() != mesh.n_cells())
+        throw std::invalid_argument("assemble_momentum_component: pressure gradient must be a 3-component cell field");
+    cfdx::core::Field<double, cfdx::core::Location::CELL> source(
+        mesh.n_cells(), "momentum_source", "N/m3", 1);
+    cfdx::core::Field<double, cfdx::core::Location::CELL> sp(
+        mesh.n_cells(), "momentum_sp", "kg/m3/s", 1);
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+        source(c) = body_component(c) - pressure_gradient_component.component_data(component)[c];
+        sp(c) = 0.0;
+    }
+    const std::string field = "U." + std::string(1, static_cast<char>('x' + component));
+    const auto face_conditions = resolve_scalar_boundary_constraints(
+        mesh, geometry.face_centres, boundary_constraints, field, time, &mass_flux);
+    return assemble_scalar_equation(
+        mesh, geometry, mass_flux, effective_dynamic_viscosity,
+        source, sp, {}, bounded, nullptr, nullptr, nullptr, nullptr,
+        convection_scheme, convected_field, &face_conditions);
+}
+
+inline void add_dual_time_mass_term(
+    ScalarEquation& equation,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& u_n,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& u_nm1,
+    const FvGeometry& geometry,
+    double rho,
+    double dt,
+    double dt_previous,
+    bool bdf2,
+    std::size_t component)
+{
+    if (!(dt > 0.0) || !std::isfinite(dt) || !(rho > 0.0) || !std::isfinite(rho))
+        throw std::invalid_argument("add_dual_time_mass_term: invalid rho/dt");
+    if (u_n.dimension() != 3 || u_nm1.dimension() != 3 ||
+        u_n.size() != equation.rhs.size() || u_nm1.size() != equation.rhs.size())
+        throw std::invalid_argument("add_dual_time_mass_term: history shape mismatch");
+    if (component >= 3) throw std::invalid_argument("add_dual_time_mass_term: invalid component");
+
+    double a0 = 1.0, a1 = 0.0, denom = 1.0, b = dt;
+    if (bdf2) {
+        if (!(dt_previous > 0.0) || !std::isfinite(dt_previous))
+            throw std::invalid_argument("add_dual_time_mass_term: invalid previous dt for BDF2");
+        cfdx::core::bdf2_coefficients(dt_previous, dt, a0, a1, denom, b);
+    }
+    for (std::size_t c = 0; c < equation.rhs.size(); ++c) {
+        const double mass = rho * geometry.cell_volumes[c] * denom / b;
+        const double source = rho * geometry.cell_volumes[c] *
+            (a0 * u_n.component_data(component)[c] -
+             a1 * u_nm1.component_data(component)[c]) / b;
+        if (!(mass > 0.0) || !std::isfinite(mass) || !std::isfinite(source))
+            throw std::runtime_error("add_dual_time_mass_term: non-finite temporal coefficient");
+        auto* rows = equation.matrix.row_offsets_data();
+        auto* cols = equation.matrix.columns_data();
+        auto* values = equation.matrix.values_data();
+        bool found = false;
+        for (std::uint32_t k = rows[c]; k < rows[c + 1]; ++k) {
+            if (cols[k] == c) {
+                values[k] += mass;
+                found = true;
+                break;
+            }
+        }
+        if (!found) throw std::runtime_error("add_dual_time_mass_term: missing momentum diagonal");
+        equation.diagonal[c] += mass;
+        equation.rhs(c) += source;
+    }
+}
+
+inline void apply_velocity_boundary_conditions(
+    const cfdx::core::Mesh& mesh,
+    const VelocityBoundaryConditions& bcs,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& U)
+{
+    // Cell-centred finite-volume fields have no independent patch storage.
+    // Fixed-value conditions are therefore enforced through the matrix and
+    // the face flux; no cell overwrite is performed here.
+    (void)mesh;
+    (void)bcs;
+    (void)U;
+}
+
+inline double sample_incompressible_probe(
+    const IncompressiblePointProbe& probe,
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& p)
+{
+    if (mesh.n_cells() == 0)
+        throw std::invalid_argument("sample_incompressible_probe: mesh has no cells");
+    std::size_t nearest = 0;
+    double best_distance = std::numeric_limits<double>::infinity();
+    for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+        const auto delta = geometry.cell_centres[c] - probe.location;
+        const double distance = delta.mag2();
+        if (distance < best_distance) {
+            best_distance = distance;
+            nearest = c;
+        }
+    }
+    switch (probe.field) {
+    case IncompressibleProbeField::PRESSURE: return p(nearest);
+    case IncompressibleProbeField::U_X: { cfdx::core::Vec3 v; U.get(nearest, v.x, v.y, v.z); return v.x; }
+    case IncompressibleProbeField::U_Y: { cfdx::core::Vec3 v; U.get(nearest, v.x, v.y, v.z); return v.y; }
+    case IncompressibleProbeField::U_Z: { cfdx::core::Vec3 v; U.get(nearest, v.x, v.y, v.z); return v.z; }
+    case IncompressibleProbeField::U_MAGNITUDE: {
+        cfdx::core::Vec3 velocity;
+        U.get(nearest, velocity.x, velocity.y, velocity.z);
+        return velocity.mag();
+    }
+    }
+    throw std::invalid_argument("sample_incompressible_probe: unsupported field");
+}
+
+inline void relax_momentum_equation(
+    ScalarEquation& equation,
+    const cfdx::core::Vector& old_field,
+    double alpha)
+{
+    if (!(alpha > 0.0 && alpha <= 1.0) ||
+        old_field.size() != equation.rhs.size())
+        throw std::invalid_argument("relax_momentum_equation: invalid relaxation");
+
+    if (alpha == 1.0) return;
+
+    const auto* rows = equation.matrix.row_offsets_data();
+    const auto* cols = equation.matrix.columns_data();
+    auto* values = equation.matrix.values_data();
+
+    // Standard equation relaxation:
+    //
+    //   A u = b
+    //
+    // becomes
+    //
+    //   [A_off + A_P/alpha] u
+    //       = b + (1-alpha)/alpha A_P u_old.
+    //
+    // This preserves the exact algebraic relation used later to construct
+    // HbyA and rAU. A field blend after the solve would break that relation.
+    for (std::size_t c = 0; c < old_field.size(); ++c) {
+        const double a = equation.diagonal[c];
+        if (!(a > 0.0) || !std::isfinite(a))
+            throw std::runtime_error("relax_momentum_equation: invalid diagonal");
+
+        double* diagonal_value = nullptr;
+        for (std::uint32_t k = rows[c]; k < rows[c + 1]; ++k) {
+            if (cols[k] == c) {
+                diagonal_value = &values[k];
+                break;
+            }
+        }
+        if (!diagonal_value)
+            throw std::runtime_error("relax_momentum_equation: missing diagonal entry");
+
+        const double added = a * (1.0 / alpha - 1.0);
+        *diagonal_value += added;
+        equation.diagonal[c] += added;
+        equation.rhs(c) += added * old_field(c);
+    }
+}
+
+struct PcdPressureOperators {
+    cfdx::core::SparseMatrix mass;
+    cfdx::core::SparseMatrix laplacian;
+    cfdx::core::SparseMatrix convection_diffusion;
+    std::unique_ptr<cfdx::core::Preconditioner> laplacian_preconditioner;
+    std::unique_ptr<cfdx::core::Preconditioner> convection_diffusion_preconditioner;
+};
+
+inline cfdx::core::SparseMatrix impose_pcd_reference_row(
+    const cfdx::core::SparseMatrix& input, std::size_t reference_cell)
+{
+    const std::size_t n = input.n_rows();
+    if (n == 0 || reference_cell >= n)
+        throw std::invalid_argument("PCD reference cell is outside pressure operator");
+    cfdx::core::SparseMatrix result(n, n);
+    const auto* ro = input.row_offsets_data();
+    const auto* co = input.columns_data();
+    const auto* va = input.values_data();
+    for (std::size_t r = 0; r < n; ++r) {
+        if (r == reference_cell) {
+            result.push_back(r, r, 1.0);
+            continue;
+        }
+        for (std::uint32_t k = ro[r]; k < ro[r + 1]; ++k)
+            result.push_back(r, co[k], va[k]);
+    }
+    result.finalize();
+    return result;
+}
+
+// PCD pressure-side operators. The convection_scheme parameter is accepted
+// but deliberately NOT forwarded to assemble_scalar_equation, and this is
+// not a TODO. Every ConvectionScheme except UPWIND is implemented in
+// assemble_scalar_equation as a DEFERRED CORRECTION: an explicit
+// right-hand-side term evaluated on the convected field, riding the SAME
+// conservative first-order upwind matrix. These operators are matrix-only
+// preconditioner ingredients, so the assembled matrix is identical for
+// every scheme and ConvectionScheme::UPWIND below is not an approximation
+// of the true pressure operator but its exact matrix for every scheme
+// setting. Forwarding a non-UPWIND scheme would also throw, because a
+// preconditioner assembly has no convected field to evaluate the deferred
+// correction against. Audit context: issue #663 (NACA0012 convection-scheme
+// sensitivity campaign).
+inline PcdPressureOperators assemble_pcd_pressure_operators(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
+    double rho,
+    double kinematic_viscosity,
+    const VelocityBoundaryConditions& velocity_bcs,
+    const ScalarBoundaryConditions& pressure_bcs,
+    std::size_t reference_cell,
+    ConvectionScheme /*convection_scheme — unused by design, see comment above*/)
+{
+    using namespace cfdx::core;
+    const std::size_t nc = mesh.n_cells();
+    if (velocity.size() != nc || velocity.dimension() != 3)
+        throw std::invalid_argument("PCD pressure operator assembly: invalid velocity field");
+    if (!(rho > 0.0) || !std::isfinite(rho) ||
+        !(kinematic_viscosity >= 0.0) || !std::isfinite(kinematic_viscosity))
+        throw std::invalid_argument("PCD pressure operator assembly: invalid fluid properties");
+
+    PcdPressureOperators result;
+    result.mass = SparseMatrix(nc, nc);
+    for (std::size_t c = 0; c < nc; ++c)
+        result.mass.push_back(c, c, geometry.cell_volumes[c]);
+    result.mass.finalize();
+
+    Field<double, Location::FACE> zero_flux(mesh.n_faces(), "pcd_zero_flux", "", 1);
+    auto mass_flux = make_mass_flux(mesh, geometry, velocity, rho, velocity_bcs);
+
+    Field<double, Location::CELL> zero_source(nc, "pcd_zero_source", "", 1);
+    Field<double, Location::CELL> zero_implicit(nc, "pcd_zero_implicit", "", 1);
+
+    const auto diffusion = assemble_scalar_equation(
+        mesh, geometry, zero_flux, 1.0,
+        zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);
+
+    const auto convection_diffusion = assemble_scalar_equation(
+        mesh, geometry, mass_flux, rho * kinematic_viscosity,
+        zero_source, zero_implicit, pressure_bcs, true, nullptr, nullptr,
+        nullptr, nullptr, ConvectionScheme::UPWIND, nullptr, nullptr, false);
+
+    // A fixed pressure boundary already removes the constant null mode of
+    // the pressure operators, so the gauge reference row is imposed only
+    // when no such boundary exists. The fixed-pressure decision is made
+    // here, from pressure_bcs, so every caller passes its true reference
+    // cell and the caller-side gauge policy cannot drift from the
+    // assembly. A gauge sentinel (>= nc) still leaves the operators
+    // untouched for direct callers that pass one.
+    bool fixed_pressure_gauge = false;
+    for (const auto& [bc_name, bc] : pressure_bcs) {
+        (void)bc_name;
+        fixed_pressure_gauge = fixed_pressure_gauge ||
+            bc.type == ScalarBoundaryType::FIXED_VALUE;
+    }
+    const std::size_t gauge_cell = fixed_pressure_gauge
+        ? std::numeric_limits<std::size_t>::max() : reference_cell;
+    if (gauge_cell < nc) {
+        result.laplacian = impose_pcd_reference_row(diffusion.matrix, gauge_cell);
+        result.convection_diffusion =
+            impose_pcd_reference_row(convection_diffusion.matrix, gauge_cell);
+    } else {
+        result.laplacian = diffusion.matrix;
+        result.convection_diffusion = convection_diffusion.matrix;
+    }
+    return result;
+}
+
+// Coherent gauge for the nested algebraic-Schur pressure operators
+// (the LSC/BFBt stabilized operator). The coupled production system
+// imposes the pressure reference by eliminating the reference row AND
+// column and inserting a unit diagonal (see the reduced coupled
+// assembly), so the nested operator mirrors exactly that structure.
+//
+// The reference right-hand side entry is deliberately NOT zeroed and
+// the nested correction at the reference is deliberately NOT pinned to
+// zero: the outer Krylov iteration needs the gauge component of the
+// preconditioned residual to correct the coupled gauge row (see the
+// PR #832 note on the initial gauge row, and the measured
+// frozen-residual failure documented in pcd_schur.h). A fixed pressure
+// boundary already removes the constant null mode, so the caller
+// passes a sentinel (>= n) and this function is a no-op in that case.
+inline void apply_nested_schur_pressure_gauge(
+    cfdx::core::SparseMatrix& pressure_operator, std::size_t gauge_cell)
+{
+    const std::size_t n = pressure_operator.n_rows();
+    if (n == 0 || gauge_cell >= n)
+        return;
+    for (std::size_t k = pressure_operator.row_offsets_data()[gauge_cell];
+         k < pressure_operator.row_offsets_data()[gauge_cell + 1]; ++k) {
+        pressure_operator.values_data()[k] = 0.0;
+    }
+    for (std::size_t row = 0; row < n; ++row) {
+        if (row == gauge_cell)
+            continue;
+        for (std::size_t k = pressure_operator.row_offsets_data()[row];
+             k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
+            if (pressure_operator.columns_data()[k] == gauge_cell)
+                pressure_operator.values_data()[k] = 0.0;
+        }
+    }
+    bool ref_diag_set = false;
+    for (std::size_t k = pressure_operator.row_offsets_data()[gauge_cell];
+         k < pressure_operator.row_offsets_data()[gauge_cell + 1]; ++k) {
+        if (pressure_operator.columns_data()[k] == gauge_cell) {
+            pressure_operator.values_data()[k] = 1.0;
+            ref_diag_set = true;
+            break;
+        }
+    }
+    if (!ref_diag_set) {
+        cfdx::core::SparseMatrix rebuilt(n, n);
+        for (std::size_t row = 0; row < n; ++row) {
+            if (row == gauge_cell) {
+                rebuilt.push_back(row, row, 1.0);
+                continue;
+            }
+            for (std::size_t k = pressure_operator.row_offsets_data()[row];
+                 k < pressure_operator.row_offsets_data()[row + 1]; ++k) {
+                rebuilt.push_back(row, pressure_operator.columns_data()[k],
+                                  pressure_operator.values_data()[k]);
+            }
+        }
+        rebuilt.finalize();
+        pressure_operator = std::move(rebuilt);
+    }
+}
+
+// Best-effort contract for the nested pressure solves invoked inside a
+// coupled Schur approximation action (PCD Fp/Kp, LSC/BFBt H). These
+// callbacks are preconditioner applications, not standalone solves: the
+// Schur action itself is only an approximation of the true Schur inverse
+// (pcd_schur.h, lsc_bfbt_schur.h), and the outer coupled FGMRES owns the
+// final accuracy through its independently recomputed true-residual gate.
+// Requiring strict CONVERGED turns a single benign inner shortfall into a
+// total outer NOT_APPLICABLE abort: on the N9 Couette campaign one Fp apply
+// that could not reach the last digit of its relative tolerance killed the
+// whole coupled solve after 168 successful applies, because by then the
+// outer residual had shrunk enough for the nested rhs direction to hit its
+// own rounding floor. A nested run that exhausted its iteration budget but
+// produced a finite best iterate (the Krylov drivers restore the iterate
+// with the best verified true residual) remains a valid preconditioner
+// action. Only a genuinely unusable result fails the action: divergence,
+// breakdown, an inapplicable inner setup, or a non-finite iterate.
+inline bool nested_schur_pressure_solve_usable(
+    const cfdx::core::SolverResult& result,
+    const cfdx::core::Vector& x,
+    std::size_t expected_size)
+{
+    if (result.status == cfdx::core::SolverStatus::CONVERGED)
+        return true;
+    if (result.status != cfdx::core::SolverStatus::MAX_ITER_REACHED)
+        return false;
+    if (x.size() != expected_size || !x.is_valid())
+        return false;
+    for (std::size_t i = 0; i < x.size(); ++i)
+        if (!std::isfinite(x(i)))
+            return false;
+    return true;
+}
+
+inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    ScalarEquation ex,
+    ScalarEquation ey,
+    ScalarEquation ez,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& U_old,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& p_old,
+    const VelocityBoundaryConditions& velocity_bcs,
+    const ScalarBoundaryConditions& pressure_bcs,
+    double rho,
+    double kinematic_viscosity,
+    std::size_t reference_cell,
+    double reference_value,
+    std::size_t max_iterations,
+    double tolerance,
+    const DiagnosticsControls& diagnostics,
+    CoupledSchurModel schur_model,
+    const cfdx::core::LinearSolverRequest& solver_request,
+    const IncompressibleSolverControls& controls,
+    // Live momentum under-relaxation consumed only by the coupled SIMPLEC
+    // Schur approximation. The coupled matrix itself stays unrelaxed;
+    // Picard relaxation is applied to the field update after the solve.
+    double momentum_under_relaxation,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
+    cfdx::core::LinearSolverPlan* resolved_linear_plan = nullptr)
+{
+    using namespace cfdx::core;
+    const std::size_t nc = mesh.n_cells();
+    const std::size_t nv = 3 * nc;
+    const std::size_t np = nc;
+    const std::size_t n = nv + np;
+
+    SparseMatrix A(n, n);
+    Vector b(n, 0.0);
+
+    // The momentum equations received the current pressure explicitly during
+    // segregated assembly. Undo that explicit contribution here: the coupled
+    // matrix contains the pressure gradient implicitly instead.
+    const auto grad_p_old =
+        gauss_gradient_with_boundary(
+            p_old, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
+    auto add_momentum_block = [&](const ScalarEquation& eq, std::size_t component) {
+        const std::size_t row_base = component * nc;
+        const auto* ro = eq.matrix.row_offsets_data();
+        const auto* co = eq.matrix.columns_data();
+        const auto* va = eq.matrix.values_data();
+        const double* old_component = U_old.component_data(component);
+        for (std::size_t r = 0; r < nc; ++r) {
+            const double diagonal = eq.diagonal[r];
+            if (!(diagonal > 0.0) || !std::isfinite(diagonal))
+                throw std::runtime_error(
+                    "solve_coupled_momentum_continuity: invalid momentum diagonal at cell " +
+                    std::to_string(r) + " component " + std::to_string(component));
+
+            bool has_diagonal = false;
+            for (std::uint32_t k = ro[r]; k < ro[r + 1]; ++k) {
+                const std::size_t column = component * nc + co[k];
+                A.push_back(row_base + r, column, va[k]);
+                has_diagonal = has_diagonal || (column == row_base + r);
+            }
+            // The scalar equation keeps its authoritative diagonal separately
+            // from the CSR entries. If a transport row reaches the coupled
+            // assembler without an explicit diagonal entry, restore that
+            // coefficient from the authoritative metadata instead of creating
+            // an empty coupled momentum row.
+            if (!has_diagonal)
+                A.push_back(row_base + r, row_base + r, diagonal);
+            b(row_base + r) =
+                eq.rhs(r) + grad_p_old.component_data(component)[r] * geometry.cell_volumes[r];
+        }
+    };
+    add_momentum_block(ex, 0);
+    add_momentum_block(ey, 1);
+    add_momentum_block(ez, 2);
+
+    // Move the current explicit pressure term from b back into the linear
+    // system. The FV Gauss gradient is linear in the pressure field, so its
+    // coefficients can be assembled face-by-face.
+    for (std::size_t c = 0; c < nc; ++c) {
+        const Offset off = mesh.cells().offsets_data()[c];
+        const Offset count = mesh.cells().offsets_data()[c + 1] - off;
+        for (Offset k = 0; k < count; ++k) {
+            const std::size_t f = mesh.cells().faces_data()[off + k];
+            const bool owner = mesh.ownership().owner(f) == c;
+            const double sign = owner ? 1.0 : -1.0;
+            const Vec3 Sf = geometry.face_area_vectors[f] * sign;
+            const auto nr = mesh.ownership().neighbour(f);
+
+            if (nr >= 0) {
+                // Same owner/neighbour rule as the continuity block below:
+                // if c is the neighbour, nr points back to c itself.
+                const int other_cell = owner
+                    ? nr
+                    : static_cast<int>(mesh.ownership().owner(f));
+                if (other_cell < 0 ||
+                    static_cast<std::size_t>(other_cell) >= nc ||
+                    static_cast<std::size_t>(other_cell) == c)
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face topology on face " +
+                        std::to_string(f) + " cell " + std::to_string(c));
+                const std::size_t ncell = static_cast<std::size_t>(other_cell);
+                // Match gauss_gradient_with_boundary() exactly: the
+                // cell-centred pressure gradient uses a distance-weighted
+                // face value, not an unconditional arithmetic average.
+                // On a skewed mesh dc and dn need not be equal. Using 0.5 here
+                // therefore assembled a different pressure-gradient operator
+                // from the one used by the segregated momentum equation and
+                // from the independent final momentum audit.
+                const double dc =
+                    (geometry.face_centres[f] - geometry.cell_centres[c]).mag();
+                const double dn =
+                    (geometry.cell_centres[ncell] - geometry.face_centres[f]).mag();
+                if (!(dc > 0.0) || !(dn > 0.0) || !std::isfinite(dc) ||
+                    !std::isfinite(dn))
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face-centre distances on face " +
+                        std::to_string(f));
+                const double weight_c = dn / (dc + dn);
+                const double weight_n = dc / (dc + dn);
+                A.push_back(c, 3*nc + c, Sf.x * weight_c);
+                A.push_back(c, 3*nc + ncell, Sf.x * weight_n);
+                A.push_back(nc + c, 3*nc + c, Sf.y * weight_c);
+                A.push_back(nc + c, 3*nc + ncell, Sf.y * weight_n);
+                A.push_back(2*nc + c, 3*nc + c, Sf.z * weight_c);
+                A.push_back(2*nc + c, 3*nc + ncell, Sf.z * weight_n);
+            } else {
+                const std::size_t patch = geometry.face_patch[f];
+                const ScalarBoundaryCondition* bc = nullptr;
+                ScalarBoundaryCondition local_bc;
+                if (patch < mesh.boundary().n_patches()) {
+                    const auto& name = mesh.boundary().patch(patch).name;
+                    const auto it = pressure_bcs.find(name);
+                    if (it != pressure_bcs.end()) {
+                        local_bc = it->second;
+                        bc = &local_bc;
+                    }
+                }
+                if (bc && bc->type == ScalarBoundaryType::FIXED_VALUE) {
+                    // Known boundary pressure is moved to the momentum RHS.
+                    b(c) -= Sf.x * bc->value;
+                    b(nc + c) -= Sf.y * bc->value;
+                    b(2*nc + c) -= Sf.z * bc->value;
+                } else {
+                    // The transport-layer Gauss gradient treats zero-gradient
+                    // pressure as owner-cell extrapolation. Retain that exact
+                    // operator here so the coupled and segregated residuals
+                    // remain comparable.
+                    A.push_back(c, 3*nc + c, Sf.x);
+                    A.push_back(nc + c, 3*nc + c, Sf.y);
+                    A.push_back(2*nc + c, 3*nc + c, Sf.z);
+                }
+            }
+        }
+    }
+
+    // Continuity is assembled from the same face velocity interpolation used
+    // by the pressure-based solver. The pressure Schur diagonal below is the
+    // exact diagonal of the same momentum-weighted (Rhie-Chow) face-flux
+    // derivative and is passed explicitly to the coupled preconditioner.
+    std::vector<double> coupled_pressure_schur_diagonal(nc, 0.0);
+    // Preserve the exact deferred continuity RHS contribution at the point
+    // where it is assembled. This audit channel must not re-evaluate the
+    // correction from a later pressure iterate.
+    std::vector<double> coupled_explicit_continuity_correction(nc, 0.0);
+    for (std::size_t c = 0; c < nc; ++c) {
+        const std::size_t row = nv + c;
+        const Offset off = mesh.cells().offsets_data()[c];
+        const Offset count = mesh.cells().offsets_data()[c + 1] - off;
+        for (Offset k = 0; k < count; ++k) {
+            const std::size_t f = mesh.cells().faces_data()[off + k];
+            const bool owner = mesh.ownership().owner(f) == c;
+            const double sign = owner ? 1.0 : -1.0;
+            const Vec3 Sf = geometry.face_area_vectors[f] * sign;
+            const auto nr = mesh.ownership().neighbour(f);
+
+            if (nr >= 0) {
+                // neighbour(f) is the opposite cell only on the owner side.
+                // When c is the neighbour, neighbour(f) == c; using it directly
+                // creates a self-coupled face (zero centre distance) and corrupts
+                // the coupled pressure Schur coefficient.
+                const int other_cell = owner
+                    ? nr
+                    : static_cast<int>(mesh.ownership().owner(f));
+                if (other_cell < 0 ||
+                    static_cast<std::size_t>(other_cell) >= nc ||
+                    static_cast<std::size_t>(other_cell) == c)
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face topology on face " +
+                        std::to_string(f) + " cell " + std::to_string(c));
+                const std::size_t ncell = static_cast<std::size_t>(other_cell);
+                const double half_rho = 0.5 * rho;
+                A.push_back(row, c, half_rho * Sf.x);
+                A.push_back(row, ncell, half_rho * Sf.x);
+                A.push_back(row, nc + c, half_rho * Sf.y);
+                A.push_back(row, nc + ncell, half_rho * Sf.y);
+                A.push_back(row, 2*nc + c, half_rho * Sf.z);
+                A.push_back(row, 2*nc + ncell, half_rho * Sf.z);
+
+                const Vec3 rawSf = geometry.face_area_vectors[f];
+                const double area = rawSf.mag();
+                // Keep the geometric direction aligned with the stored
+                // owner-to-neighbour face orientation even when this row is
+                // the neighbour cell; the matrix coefficient must be positive
+                // and identical in both continuity rows.
+                const std::size_t face_owner = mesh.ownership().owner(f);
+                const std::size_t face_neighbour = static_cast<std::size_t>(nr);
+                const Vec3 dvec = geometry.cell_centres[face_neighbour] -
+                                  geometry.cell_centres[face_owner];
+                const double d = dvec.mag();
+                if (!(area > 0.0) || !std::isfinite(area) ||
+                    !(d > 0.0) || !std::isfinite(d))
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face geometry on face " +
+                        std::to_string(f));
+                const Vec3 e{dvec.x / d, dvec.y / d, dvec.z / d};
+                const double aox = ex.diagonal[c], anx = ex.diagonal[ncell];
+                const double aoy = ey.diagonal[c], any = ey.diagonal[ncell];
+                const double aoz = ez.diagonal[c], anz = ez.diagonal[ncell];
+                if (!(aox > 0.0) || !(anx > 0.0) ||
+                    !(aoy > 0.0) || !(any > 0.0) ||
+                    !(aoz > 0.0) || !(anz > 0.0) ||
+                    !std::isfinite(aox) || !std::isfinite(anx) ||
+                    !std::isfinite(aoy) || !std::isfinite(any) ||
+                    !std::isfinite(aoz) || !std::isfinite(anz))
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid momentum diagonal on face " +
+                        std::to_string(f) + " cells " + std::to_string(c) + "/" +
+                        std::to_string(ncell));
+                // The coupled Schur complement uses the same dAU = V/A_P
+                // pressure response as the segregated Rhie-Chow operator.
+                const double rAUx_f = 0.5 * (
+                    geometry.cell_volumes[c] / aox +
+                    geometry.cell_volumes[ncell] / anx);
+                const double rAUy_f = 0.5 * (
+                    geometry.cell_volumes[c] / aoy +
+                    geometry.cell_volumes[ncell] / any);
+                const double rAUz_f = 0.5 * (
+                    geometry.cell_volumes[c] / aoz +
+                    geometry.cell_volumes[ncell] / anz);
+                const double rfn = rAUx_f*e.x*e.x + rAUy_f*e.y*e.y + rAUz_f*e.z*e.z;
+                if (!(rfn > 0.0) || !std::isfinite(rfn))
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid face rAU on face " +
+                        std::to_string(f));
+                const double D = rho * pressure_face_orthogonal_coefficient(
+                    rawSf, dvec, {rAUx_f, rAUy_f, rAUz_f});
+                if (!(d > 0.0) || !(area > 0.0) ||
+                    !std::isfinite(d) || !std::isfinite(area) ||
+                    !(D > 0.0) || !std::isfinite(D)) {
+                    if (diagnostics.coupled_matrix_summary) {
+                        std::cerr << "COUPLED_FACE_DEBUG face=" << f
+                                  << " cells=" << c << "/" << ncell
+                                  << " area=" << area
+                                  << " distance=" << d
+                                  << " a=(" << aox << "," << anx
+                                  << ";" << aoy << "," << any
+                                  << ";" << aoz << "," << anz << ")"
+                                  << " rAU=(" << rAUx_f << "," << rAUy_f
+                                  << "," << rAUz_f << ")"
+                                  << " rfn=" << rfn
+                                  << " D=" << D << "\n";
+                    }
+                    throw std::runtime_error(
+                        "solve_coupled_momentum_continuity: invalid pressure coefficient on face " +
+                        std::to_string(f) + " cells " + std::to_string(c) + "/" +
+                        std::to_string(ncell));
+                }
+                // phi_p = D (p_P - p_N). Only this orthogonal derivative is
+                // implicit in the coupled matrix. The non-orthogonal remainder
+                // is a deferred correction evaluated from p_old below, exactly
+                // as in the segregated Rhie-Chow operator.
+                A.push_back(row, nv + c, D);
+                A.push_back(row, nv + ncell, -D);
+                coupled_pressure_schur_diagonal[c] += D;
+
+                const Vec3 gp{
+                    0.5*(grad_p_old.component_data(0)[c] +
+                         grad_p_old.component_data(0)[ncell]),
+                    0.5*(grad_p_old.component_data(1)[c] +
+                         grad_p_old.component_data(1)[ncell]),
+                    0.5*(grad_p_old.component_data(2)[c] +
+                         grad_p_old.component_data(2)[ncell])};
+                // Reuse the same deferred tensor-response operator as SIMPLE
+                // and the pressure-flux reconstruction.
+                const double nonorth_flux = rho * pressure_face_nonorthogonal_flux(
+                    rawSf, dvec, {rAUx_f, rAUy_f, rAUz_f}, gp);
+                // The continuity equation is div(phi)=0 and the pressure
+                // correction is written as phi = phi_U - D grad(p).
+                // Therefore the explicit non-orthogonal pressure flux is
+                // subtracted from the current continuity residual.
+                // nonorth_flux is evaluated with the raw owner->neighbour
+                // face orientation, so the neighbour-side visit must flip
+                // its sign: like the implicit pressure part, which enters
+                // every row as D*(p_self - p_other), the deferred flux
+                // must enter this cell's outward divergence with the
+                // face sign.
+                const double compensation = rho * (
+                    rAUx_f * gp.x * rawSf.x +
+                    rAUy_f * gp.y * rawSf.y +
+                    rAUz_f * gp.z * rawSf.z);
+                const double explicit_correction = sign * (nonorth_flux - compensation);
+                b(row) += explicit_correction;
+                coupled_explicit_continuity_correction[c] += explicit_correction;
+            } else {
+                const std::size_t patch = geometry.face_patch[f];
+                if (patch < mesh.boundary().n_patches() &&
+                    mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                    continue;
+                const VelocityBoundaryCondition* vbc = nullptr;
+                VelocityBoundaryCondition local_vbc;
+                const ScalarBoundaryCondition* pbc = nullptr;
+                ScalarBoundaryCondition local_pbc;
+                if (patch < mesh.boundary().n_patches()) {
+                    const auto& name = mesh.boundary().patch(patch).name;
+                    const auto vit = velocity_bcs.find(name);
+                    if (vit != velocity_bcs.end()) {
+                        local_vbc = vit->second;
+                        vbc = &local_vbc;
+                    }
+                    const auto pit = pressure_bcs.find(name);
+                    if (pit != pressure_bcs.end()) {
+                        local_pbc = pit->second;
+                        pbc = &local_pbc;
+                    }
+                }
+
+                if (vbc && vbc->type == VelocityBoundaryCondition::Type::FIXED_VALUE) {
+                    b(row) -= rho * vbc->value.dot(Sf);
+                } else {
+                    A.push_back(row, c, rho * Sf.x);
+                    A.push_back(row, nc + c, rho * Sf.y);
+                    A.push_back(row, 2*nc + c, rho * Sf.z);
+                }
+
+                if (pbc && pbc->type == ScalarBoundaryType::FIXED_VALUE) {
+                    const Vec3 rawSf = geometry.face_area_vectors[f];
+                    const Vec3 dvec = geometry.face_centres[f] -
+                                      geometry.cell_centres[c];
+                    const double a_x = ex.diagonal[c];
+                    const double a_y = ey.diagonal[c];
+                    const double a_z = ez.diagonal[c];
+                    if (!(a_x > 0.0) || !(a_y > 0.0) || !(a_z > 0.0) ||
+                        !std::isfinite(a_x) || !std::isfinite(a_y) || !std::isfinite(a_z))
+                        throw std::runtime_error(
+                            "solve_coupled_momentum_continuity: invalid boundary momentum diagonal on face " +
+                            std::to_string(f) + " cell " + std::to_string(c));
+                    const double rAUx = geometry.cell_volumes[c] / a_x;
+                    const double rAUy = geometry.cell_volumes[c] / a_y;
+                    const double rAUz = geometry.cell_volumes[c] / a_z;
+                    const double D = rho * pressure_face_orthogonal_coefficient(
+                        rawSf, dvec, {rAUx, rAUy, rAUz});
+                    if (!(D > 0.0) || !std::isfinite(D))
+                        throw std::runtime_error(
+                            "solve_coupled_momentum_continuity: invalid boundary pressure coefficient on face " +
+                            std::to_string(f));
+                    A.push_back(row, nv + c, D);
+                    coupled_pressure_schur_diagonal[c] += D;
+                    b(row) += D * pbc->value;
+                    const Vec3 gp_boundary{
+                        grad_p_old.component_data(0)[c],
+                        grad_p_old.component_data(1)[c],
+                        grad_p_old.component_data(2)[c]};
+                    const double deferred_boundary = pressure_face_nonorthogonal_flux(
+                        rawSf, dvec, {rAUx, rAUy, rAUz}, gp_boundary);
+                    // Match the boundary's deferred pressure response to the
+                    // internal-face treatment; otherwise COUPLED drops the
+                    // tangential pressure flux at fixed-pressure boundaries.
+                    const double compensation_boundary = rho * (
+                        rAUx * gp_boundary.x * rawSf.x +
+                        rAUy * gp_boundary.y * rawSf.y +
+                        rAUz * gp_boundary.z * rawSf.z);
+                    const double explicit_boundary_correction =
+                        rho * deferred_boundary - compensation_boundary;
+                    b(row) += explicit_boundary_correction;
+                    coupled_explicit_continuity_correction[c] += explicit_boundary_correction;
+                }
+            }
+        }
+    }
+
+    // A pure-Neumann pressure field has one gauge null mode. Eliminate the
+    // reference pressure column and replace the reference continuity row by
+    // p_ref = reference_value. This keeps the coupled system deterministic.
+    bool has_fixed_pressure = false;
+    for (const auto& [name, bc] : pressure_bcs) {
+        (void)name;
+        has_fixed_pressure = has_fixed_pressure ||
+            bc.type == ScalarBoundaryType::FIXED_VALUE;
+    }
+
+    if (!has_fixed_pressure) {
+        // Finalize the assembled COO matrix before reading its CSR arrays.
+        // Without this explicit finalize(), row_offsets_/values_/columns_ still
+        // describe an empty CSR shell, so gauge elimination would silently
+        // discard every assembled momentum and continuity coefficient.
+        A.finalize();
+
+        // Rebuild the matrix while eliminating the known gauge column.
+        SparseMatrix reduced(n, n);
+        const auto* ro = A.row_offsets_data();
+        const auto* co = A.columns_data();
+        const auto* va = A.values_data();
+        for (std::size_t r = 0; r < n; ++r) {
+            if (r == nv + reference_cell) {
+                reduced.push_back(r, nv + reference_cell, 1.0);
+                b(r) = reference_value;
+                continue;
+            }
+            for (std::uint32_t k = ro[r]; k < ro[r + 1]; ++k) {
+                const std::size_t col = co[k];
+                if (col == nv + reference_cell) {
+                    b(r) -= va[k] * reference_value;
+                } else {
+                    reduced.push_back(r, col, va[k]);
+                }
+            }
+        }
+        reduced.finalize();
+        A = std::move(reduced);
+    } else {
+        A.finalize();
+    }
+
+    Vector x(n, 0.0);
+    for (std::size_t c = 0; c < nc; ++c) {
+        x(c) = U_old.component_data(0)[c];
+        x(nc + c) = U_old.component_data(1)[c];
+        x(2*nc + c) = U_old.component_data(2)[c];
+        x(nv + c) = p_old(c);
+    }
+
+    // PR #832 fix: zero the gauge row of the initial guess before GMRES.
+    // The gauge row is an identity row with rhs = reference_value (default 0.0).
+    // If x0(gauge) = p_old(reference_cell) is non-zero, the right-preconditioned
+    // GMRES may struggle to correct it because the preconditioner preserves
+    // the gauge component. Setting x0(gauge) = 0.0 gives the solver the correct
+    // starting point and avoids the stagnation observed in PR #830.
+    x(nv + reference_cell) = controls.pressure_reference_value;
+
+    // Reject non-finite coefficients before entering GMRES. A bad local
+    // coefficient must be diagnosed at assembly time rather than surfacing as
+    // an opaque Krylov failure.
+    {
+        const auto* values = A.values_data();
+        for (std::size_t k = 0; k < A.nnz(); ++k) {
+            if (!std::isfinite(values[k]))
+                throw std::runtime_error(
+                    "solve_coupled_momentum_continuity: non-finite matrix coefficient at nnz " +
+                    std::to_string(k));
+        }
+        for (std::size_t i = 0; i < n; ++i) {
+            if (!std::isfinite(b(i)))
+                throw std::runtime_error(
+                    "solve_coupled_momentum_continuity: non-finite RHS at row " +
+                    std::to_string(i));
+        }
+    }
+
+    // Evidence-only: preserve the raw (pre-pin) Rhie-Chow diagonal for the
+    // coupled_assembly_callback when one is installed. The pinned form
+    // stored in coupled_pressure_schur_diagonal is diagnostic-only and is
+    // never consumed by production preconditioning.
+    std::vector<double> pressure_schur_diagonal_raw_copy;
+    if (controls.coupled_assembly_callback)
+        pressure_schur_diagonal_raw_copy = coupled_pressure_schur_diagonal;
+
+    // Optional algebraic microscope. It is deliberately computed from
+    // the exact post-gauge matrix passed to GMRES, so it exposes the actual
+    // M/G/D/C blocks rather than reconstructed proxy operators.
+    if (diagnostics.coupled_matrix_summary) {
+        double m2 = 0.0, g2 = 0.0, d2 = 0.0, c2 = 0.0;
+        std::size_t zero_rows = 0;
+        std::vector<std::size_t> row_nnz(n, 0);
+        std::vector<std::size_t> col_nnz(n, 0);
+        const auto* ro = A.row_offsets_data();
+        const auto* co = A.columns_data();
+        const auto* va = A.values_data();
+
+        for (std::size_t r = 0; r < n; ++r) {
+            row_nnz[r] = ro[r + 1] - ro[r];
+            if (row_nnz[r] == 0) ++zero_rows;
+            for (std::size_t k = ro[r]; k < ro[r + 1]; ++k) {
+                const std::size_t col = co[k];
+                const double value = va[k];
+                col_nnz[col]++;
+                if (r < nv && col < nv)
+                    m2 += value * value;
+                else if (r < nv && col >= nv)
+                    g2 += value * value;
+                else if (r >= nv && col < nv)
+                    d2 += value * value;
+                else
+                    c2 += value * value;
+            }
+        }
+        std::size_t zero_cols = 0;
+        for (const auto count : col_nnz)
+            if (count == 0) ++zero_cols;
+
+        double schur_diag_min = std::numeric_limits<double>::infinity();
+        double schur_diag_max = 0.0;
+        double schur_mismatch_max = 0.0;
+        std::size_t schur_near_zero = 0;
+        for (std::size_t c = 0; c < nc; ++c) {
+            const std::size_t pr = nv + c;
+            double effective = 0.0;
+            for (std::size_t k = ro[pr]; k < ro[pr + 1]; ++k) {
+                const std::size_t u = co[k];
+                if (u >= nv) continue;
+                const double d = va[k];
+                double inv_m = 0.0;
+                bool found = false;
+                for (std::size_t mk = ro[u]; mk < ro[u + 1]; ++mk) {
+                    if (co[mk] == u) {
+                        const double diag = va[mk];
+                        if (std::isfinite(diag) && std::abs(diag) > 1e-30) {
+                            inv_m = 1.0 / diag;
+                            found = true;
+                        }
+                        break;
+                    }
+                }
+                if (!found) continue;
+                for (std::size_t gk = ro[u]; gk < ro[u + 1]; ++gk) {
+                    const std::size_t q = co[gk];
+                    if (q == pr)
+                        effective -= d * inv_m * va[gk];
+                }
+            }
+            for (std::size_t k = ro[pr]; k < ro[pr + 1]; ++k)
+                if (co[k] == pr) effective += va[k];
+
+            schur_diag_min = std::min(schur_diag_min, effective);
+            schur_diag_max = std::max(schur_diag_max, std::abs(effective));
+            if (std::abs(effective) <=
+                1e-12 * std::max(1.0, schur_diag_max))
+                ++schur_near_zero;
+            if (c < coupled_pressure_schur_diagonal.size() &&
+                std::isfinite(coupled_pressure_schur_diagonal[c]))
+                schur_mismatch_max = std::max(
+                    schur_mismatch_max,
+                    std::abs(effective - coupled_pressure_schur_diagonal[c]));
+        }
+
+        std::cerr << "COUPLED_MATRIX_SUMMARY n=" << n
+                  << " nnz=" << A.nnz()
+                  << " M_l2=" << std::sqrt(m2)
+                  << " G_l2=" << std::sqrt(g2)
+                  << " D_l2=" << std::sqrt(d2)
+                  << " C_l2=" << std::sqrt(c2)
+                  << " zero_rows=" << zero_rows
+                  << " zero_cols=" << zero_cols
+                  << " schur_diag_min=" << schur_diag_min
+                  << " schur_diag_absmax=" << schur_diag_max
+                  << " schur_near_zero=" << schur_near_zero
+                  << " rhie_chow_schur_vs_algebraic_diag_delta=" << schur_mismatch_max
+                  << " gauge_row=" << (nv + reference_cell)
+                  << "\n";
+    }
+
+    // The coupled matrix is a saddle-point system. A cell-local 4x4
+    // inverse is generally singular because continuity rows have no
+    // pressure-pressure diagonal. Select the N8 linear plan before constructing
+    // its preconditioner so the production path uses exactly the resolved policy.
+    // Only a pure-Neumann system has the reference continuity row replaced by
+    // the pressure gauge equation. With a fixed-pressure boundary all continuity
+    // rows remain physical, so retain the assembled Rhie-Chow Schur diagonal.
+    if (!has_fixed_pressure)
+        coupled_pressure_schur_diagonal[reference_cell] = 1.0;
+    // The production Couette system is only 512 unknowns. A restart of
+    // 128 can stagnate on the nonsymmetric saddle-point spectrum even when
+    // the assembled system is nonsingular. Use one full Krylov space for
+    // small/medium coupled systems so a restart boundary cannot manufacture
+    // an artificial MAX_ITER failure.
+    // Feed the dispatcher the characteristics measured from the assembled
+    // production CSR matrix. The convenience overload only knows the problem
+    // kind and equation count; it cannot see coefficient scaling, symmetry,
+    // diagonal dominance or the actual sparsity pattern.
+    const auto matrix_characteristics =
+        cfdx::core::measure_matrix_characteristics(A, true);
+    const auto solver_plan = select_linear_solver(
+        LinearProblemKind::CoupledPressureVelocity,
+        matrix_characteristics,
+        solver_request);
+    if (solver_plan.krylov != KrylovModel::GMRES &&
+        solver_plan.krylov != KrylovModel::FGMRES)
+        throw std::invalid_argument("coupled solver currently requires GMRES or FGMRES");
+    if (solver_plan.preconditioner != PreconditionerModel::CoupledBlockSchur &&
+        solver_plan.preconditioner != PreconditionerModel::PCD &&
+        solver_plan.preconditioner != PreconditionerModel::MGR)
+        throw std::invalid_argument(
+            "coupled solver requires coupled_block_schur, pcd, or mgr");
+
+    // N8 owns the linear-solver/preconditioner policy. The coupled FV
+    // assembler remains N9-owned, but an explicit BlockSchur request must use
+    // the N8 AMG-backed Schur implementation rather than the legacy scalar
+    // preconditioner. MGR remains a separate N8-qualified path until its
+    // coupled dispatch metadata is integrated.
+    //
+    // Selection reads the *resolved* plan, not the request, so an automatically
+    // resolved policy takes the same branch an explicit one would.
+    const bool use_n8_block_schur =
+        solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur;
+    // The Schur family is the production method selector. The outer
+    // preconditioner family selects the surrounding block infrastructure;
+    // PCD therefore remains reachable even when the outer plan is the generic
+    // coupled-block Schur container.
+    const bool use_pcd =
+        schur_model == CoupledSchurModel::PCD;
+    const bool use_lsc_bfbt =
+        schur_model == CoupledSchurModel::LSC ||
+        schur_model == CoupledSchurModel::BFBT;
+    const bool use_simple_schur =
+        schur_model == CoupledSchurModel::SIMPLE ||
+        schur_model == CoupledSchurModel::SIMPLEC;
+    std::unique_ptr<Preconditioner> coupled_preconditioner;
+    // Evidence-only alias of the production PCD pressure operators, kept
+    // alive for the coupled_assembly_callback (the branch-local pcd_ops
+    // shared_ptr goes out of scope below). Assigned only when a callback is
+    // installed and the plan resolves to PCD; null otherwise.
+    std::shared_ptr<PcdPressureOperators> evidence_pcd_ops;
+    const auto extract_coupled_block = [&](std::size_t row_block,
+                                           std::size_t col_block,
+                                           std::size_t row_size,
+                                           std::size_t col_size) {
+        SparseMatrix block(row_size, col_size);
+        const std::size_t velocity_size = 3 * nc;
+        const std::size_t row_offset = row_block == 0 ? 0 : velocity_size;
+        const std::size_t col_offset = col_block == 0 ? 0 : velocity_size;
+        for (std::size_t r = 0; r < row_size; ++r) {
+            const std::size_t gr = row_offset + r;
+            for (std::size_t k = A.row_offsets_data()[gr];
+                 k < A.row_offsets_data()[gr + 1]; ++k) {
+                const std::size_t gc = A.columns_data()[k];
+                if (gc >= col_offset && gc < col_offset + col_size)
+                    block.push_back(r, gc - col_offset, A.values_data()[k]);
+            }
+        }
+        block.finalize();
+        return block;
+    };
+    if (use_simple_schur) {
+        if (!use_n8_block_schur)
+            throw std::invalid_argument(
+                "SIMPLE/SIMPLEC coupled Schur models require the coupled_block_schur linear plan");
+
+        const auto mode =
+            schur_model == CoupledSchurModel::SIMPLE
+                ? SimplerSchurMode::SIMPLE
+                : SimplerSchurMode::SIMPLEC;
+        // The coupled matrix is deliberately unrelaxed, but the SIMPLEC
+        // consistent denominator is defined on the under-relaxed momentum
+        // row A_P/alpha - sum(a_PN), exactly as the segregated SIMPLEC
+        // assembles it from relax_momentum_equation() output. On the
+        // unrelaxed steady row the plain row sum A_P - sum(a_PN) is
+        // numerically zero for interior cells (only boundary/source terms
+        // survive), which made SimplerSchurApproximation::setup() reject
+        // the matrix and abort the N9 campaign at the first COUPLED
+        // simplec case. Feed the live momentum under-relaxation to the
+        // SIMPLEC Schur approximation; SIMPLE keeps its plain diag(Auu)
+        // denominator unchanged.
+        auto simpler = std::make_unique<SimplerSchurApproximation>(
+            mode, std::nullopt,
+            schur_model == CoupledSchurModel::SIMPLEC
+                ? momentum_under_relaxation
+                : 1.0);
+        CoupledBlockSchurOptions options;
+        options.factorization = CoupledSchurFactorization::Full;
+        options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
+        options.schur_approximation =
+            schur_model == CoupledSchurModel::SIMPLE
+                ? CoupledSchurApproximationModel::SIMPLE
+                : CoupledSchurApproximationModel::SIMPLEC;
+
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, options, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
+        schur->set_simpler_schur(std::move(simpler));
+        if (!schur->setup(A)) {
+            throw std::runtime_error(
+                std::string("N9 SIMPLE/SIMPLEC Schur setup failed: ") +
+                schur->last_error());
+        }
+        coupled_preconditioner = std::move(schur);
+    } else if (use_lsc_bfbt) {
+        if (!use_n8_block_schur)
+            throw std::invalid_argument(
+                "LSC/BFBt coupled Schur models require the coupled_block_schur linear plan");
+
+        const SparseMatrix Auu = extract_coupled_block(0, 0, 3 * nc, 3 * nc);
+        const SparseMatrix G = extract_coupled_block(0, 1, 3 * nc, nc);
+        const SparseMatrix D = extract_coupled_block(1, 0, nc, 3 * nc);
+        const SparseMatrix C = extract_coupled_block(1, 1, nc, nc);
+
+        std::vector<double> q_diagonal(3 * nc, 1.0);
+        if (schur_model == CoupledSchurModel::LSC) {
+            for (std::size_t i = 0; i < 3 * nc; ++i) {
+                double diagonal = 0.0;
+                for (std::size_t k = Auu.row_offsets_data()[i];
+                     k < Auu.row_offsets_data()[i + 1]; ++k) {
+                    if (Auu.columns_data()[k] == i)
+                        diagonal += Auu.values_data()[k];
+                }
+                if (!(diagonal > 0.0) || !std::isfinite(diagonal))
+                    throw std::runtime_error(
+                        "LSC Schur setup requires positive finite momentum diagonal");
+                q_diagonal[i] = diagonal;
+            }
+        }
+
+        const BlockOperator lsc_blocks(Auu, G, D, C);
+        SparseMatrix pressure_operator =
+            LscBfbtSchurApproximation::assemble_stabilized_pressure_operator(
+                lsc_blocks,
+                schur_model == CoupledSchurModel::LSC
+                    ? LscBfbtSchurApproximation::Mode::LSC
+                    : LscBfbtSchurApproximation::Mode::BFBT,
+                q_diagonal);
+
+        // Gauge the nested LSC/BFBt pressure operator ONLY when no fixed
+        // pressure boundary already removes the constant null mode (same
+        // sentinel policy as the reduced coupled system and the outer
+        // preconditioner), and mirror that reduced system exactly:
+        // reference row AND reference column eliminated with a unit
+        // diagonal. The nested solve keeps the raw right-hand side, so
+        // the gauge component passes through to the outer Krylov
+        // iteration (pinning it freezes the coupled gauge row residual;
+        // see apply_nested_schur_pressure_gauge).
+        const std::size_t lsc_gauge_cell = has_fixed_pressure
+            ? std::numeric_limits<std::size_t>::max() : reference_cell;
+        apply_nested_schur_pressure_gauge(pressure_operator, lsc_gauge_cell);
+
+        // The nested LSC/BFBt operator H = D Q^-1 G - C is nonsymmetric
+        // by construction and is only consumed by the nested GMRES solve
+        // below, whose true-residual checks remain authoritative. Request
+        // the general nonsymmetric preconditioner policy: structural setup
+        // checks stay fail-closed, but the SPD/CG smoother certificate
+        // must not reject the hierarchy for its non-positive diagonals.
+        auto pressure_preconditioner =
+            std::shared_ptr<cfdx::core::Preconditioner>(
+                cfdx::core::make_scalar_preconditioner(
+                    cfdx::core::PreconditionerModel::NativeAMG,
+                    /*constant_null_space=*/false,
+                    /*require_smoother_certificate=*/false).release());
+        if (!pressure_preconditioner ||
+            !pressure_preconditioner->setup(pressure_operator)) {
+            throw std::runtime_error(
+                "N8 LSC/BFBt pressure AMG setup failed");
+        }
+
+        auto solve_pressure = [pressure_operator,
+                               pressure_preconditioner,
+                               max_iterations, tolerance](
+            const Vector& rhs, Vector& x) mutable {
+            const int restart = static_cast<int>(std::min<std::size_t>(
+                64, pressure_operator.n_rows()));
+            const auto result = solve_gmres(
+                pressure_operator, rhs, x, restart,
+                max_iterations, tolerance,
+                pressure_preconditioner.get());
+            return nested_schur_pressure_solve_usable(
+                result, x, pressure_operator.n_rows());
+        };
+
+        auto algebraic_schur = std::make_unique<LscBfbtSchurApproximation>(
+            schur_model == CoupledSchurModel::LSC
+                ? LscBfbtSchurApproximation::Mode::LSC
+                : LscBfbtSchurApproximation::Mode::BFBT,
+            std::move(solve_pressure),
+            std::move(q_diagonal));
+
+        CoupledBlockSchurOptions options;
+        options.factorization = CoupledSchurFactorization::Full;
+        options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
+        options.schur_approximation =
+            schur_model == CoupledSchurModel::LSC
+                ? CoupledSchurApproximationModel::LSC
+                : CoupledSchurApproximationModel::BFBT;
+
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, options, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
+        schur->set_algebraic_schur(std::move(algebraic_schur));
+        if (!schur->setup(A)) {
+            throw std::runtime_error(
+                std::string("N9 LSC/BFBt Schur setup failed: ") +
+                schur->last_error());
+        }
+        coupled_preconditioner = std::move(schur);
+    } else if (use_pcd) {
+        auto pcd_ops = std::make_shared<PcdPressureOperators>(
+            assemble_pcd_pressure_operators(
+                mesh, geometry, U_old, rho, kinematic_viscosity, velocity_bcs, pressure_bcs,
+                reference_cell, ConvectionScheme::UPWIND/* exact matrix for every scheme, see assemble_pcd_pressure_operators */));
+
+        const auto prepare_pcd_solver =
+            [](const cfdx::core::SparseMatrix& matrix,
+               const cfdx::core::LinearSolverRequest& request) {
+                if (request.krylov == cfdx::core::KrylovModel::Auto ||
+                    request.preconditioner == cfdx::core::PreconditionerModel::Auto)
+                    throw std::invalid_argument(
+                        "PCD nested solvers require explicit Krylov and preconditioner models");
+                // SPD/CG nested solves keep the fail-closed smoother
+                // certificate; nested nonsymmetric Krylov solves use the
+                // relaxed policy (outer true-residual checks remain
+                // authoritative).
+                auto preconditioner =
+                    cfdx::core::make_scalar_preconditioner(
+                        request.preconditioner,
+                        /*constant_null_space=*/false,
+                        /*require_smoother_certificate=*/
+                        request.krylov == cfdx::core::KrylovModel::CG);
+                if (!preconditioner || !preconditioner->setup(matrix))
+                    throw std::runtime_error(
+                        "PCD nested pressure preconditioner setup failed");
+                return preconditioner;
+            };
+
+        pcd_ops->laplacian_preconditioner =
+            prepare_pcd_solver(pcd_ops->laplacian, controls.pcd_laplacian_linear_solver);
+        pcd_ops->convection_diffusion_preconditioner =
+            prepare_pcd_solver(
+                pcd_ops->convection_diffusion,
+                controls.pcd_convection_diffusion_linear_solver);
+
+        const auto solve_kp = [pcd_ops, controls](
+            const Vector& rhs, Vector& x) {
+            const auto& matrix = pcd_ops->laplacian;
+            auto* preconditioner = pcd_ops->laplacian_preconditioner.get();
+            const int restart = std::min<int>(
+                controls.pcd_laplacian_linear_solver.gmres_restart,
+                static_cast<int>(matrix.n_rows()));
+            cfdx::core::SolverResult result;
+            if (controls.pcd_laplacian_linear_solver.krylov ==
+                cfdx::core::KrylovModel::CG) {
+                result = solve_cg_prepared(
+                    matrix, rhs, x, *preconditioner,
+                    controls.pcd_laplacian_max_iterations,
+                    controls.pcd_laplacian_tolerance);
+            } else if (controls.pcd_laplacian_linear_solver.krylov ==
+                       cfdx::core::KrylovModel::GMRES) {
+                result = solve_gmres(
+                    matrix, rhs, x, restart,
+                    controls.pcd_laplacian_max_iterations,
+                    controls.pcd_laplacian_tolerance,
+                    preconditioner, {}, {}, false);
+            } else if (controls.pcd_laplacian_linear_solver.krylov ==
+                       cfdx::core::KrylovModel::FGMRES) {
+                result = solve_fgmres(
+                    matrix, rhs, x, restart,
+                    controls.pcd_laplacian_max_iterations,
+                    controls.pcd_laplacian_tolerance,
+                    preconditioner, {}, {}, false);
+            } else {
+                throw std::invalid_argument(
+                    "unsupported PCD Laplacian Krylov model");
+            }
+            return nested_schur_pressure_solve_usable(
+                result, x, matrix.n_rows());
+        };
+
+        const auto solve_fp = [pcd_ops, controls](
+            const Vector& rhs, Vector& x) {
+            const auto& matrix = pcd_ops->convection_diffusion;
+            auto* preconditioner = pcd_ops->convection_diffusion_preconditioner.get();
+            const int restart = std::min<int>(
+                controls.pcd_convection_diffusion_linear_solver.gmres_restart,
+                static_cast<int>(matrix.n_rows()));
+            const Vector x_initial = x;
+            cfdx::core::SolverResult result;
+            if (controls.pcd_convection_diffusion_linear_solver.krylov ==
+                cfdx::core::KrylovModel::GMRES) {
+                result = solve_gmres(
+                    matrix, rhs, x, restart,
+                    controls.pcd_convection_diffusion_max_iterations,
+                    controls.pcd_convection_diffusion_tolerance,
+                    preconditioner, {}, {}, false);
+            } else if (controls.pcd_convection_diffusion_linear_solver.krylov ==
+                       cfdx::core::KrylovModel::FGMRES) {
+                result = solve_fgmres(
+                    matrix, rhs, x, restart,
+                    controls.pcd_convection_diffusion_max_iterations,
+                    controls.pcd_convection_diffusion_tolerance,
+                    preconditioner, {}, {}, false);
+            } else {
+                throw std::invalid_argument(
+                    "PCD convection-diffusion solve requires GMRES or FGMRES");
+            }
+            if (controls.diagnostics.coupled_matrix_summary) {
+                // Recompute the inner Fp true residual from the exact matrix,
+                // RHS and best iterate returned by the Krylov driver. Preserve
+                // the initial-guess residual as the denominator used by GMRES/
+                // FGMRES for their reported relative residual. This is
+                // diagnostic only; do not alter solver status or acceptance.
+                double initial_residual_sq = 0.0;
+                double true_residual_sq = 0.0;
+                double rhs_norm_sq = 0.0;
+                double true_residual_linf = 0.0;
+                for (std::size_t row = 0; row < matrix.n_rows(); ++row) {
+                    double ax_initial = 0.0;
+                    double ax = 0.0;
+                    for (std::size_t k = matrix.row_offsets_data()[row];
+                         k < matrix.row_offsets_data()[row + 1]; ++k) {
+                        const double a = matrix.values_data()[k];
+                        const std::size_t column = matrix.columns_data()[k];
+                        ax_initial += a * x_initial(column);
+                        ax += a * x(column);
+                    }
+                    const double initial_residual = rhs(row) - ax_initial;
+                    const double residual = rhs(row) - ax;
+                    initial_residual_sq += initial_residual * initial_residual;
+                    true_residual_sq += residual * residual;
+                    rhs_norm_sq += rhs(row) * rhs(row);
+                    true_residual_linf = std::max(true_residual_linf, std::abs(residual));
+                }
+                const double initial_residual_norm = std::sqrt(initial_residual_sq);
+                const double true_residual = std::sqrt(true_residual_sq);
+                const double rhs_norm = std::sqrt(rhs_norm_sq);
+                const double true_relative_initial = true_residual /
+                    (initial_residual_norm > 0.0 ? initial_residual_norm : 1.0);
+                const double true_relative_rhs = true_residual /
+                    (rhs_norm > 0.0 ? rhs_norm : 1.0);
+                if (result.status != SolverStatus::CONVERGED) {
+                    std::cerr << "COUPLED_NESTED_PCD_BEST_EFFORT operator=Fp"
+                              << " status=" << static_cast<int>(result.status)
+                              << " iterations=" << result.iterations
+                              << " reported_residual=" << result.residual
+                              << " reported_relative=" << result.residual_relative
+                              << " initial_residual_l2=" << initial_residual_norm
+                              << " true_residual_l2=" << true_residual
+                              << " true_relative_initial_l2=" << true_relative_initial
+                              << " true_relative_rhs_l2=" << true_relative_rhs
+                              << " true_residual_linf=" << true_residual_linf
+                              << "\n";
+                }
+            }
+            return nested_schur_pressure_solve_usable(
+                result, x, matrix.n_rows());
+        };
+
+        auto pcd = std::make_unique<PcdSchurApproximation>(
+            pcd_ops->mass, pcd_ops->laplacian, pcd_ops->convection_diffusion,
+            std::move(solve_kp), std::move(solve_fp),
+            std::nullopt,
+            has_fixed_pressure ? std::optional<std::size_t>()
+                               : std::optional<std::size_t>(reference_cell));
+        // Evidence-only: expose the production operators to the
+        // coupled_assembly_callback when one is installed (kept alive via
+        // evidence_pcd_ops past this branch scope).
+        if (controls.coupled_assembly_callback)
+            evidence_pcd_ops = pcd_ops;
+
+        CoupledBlockSchurOptions options;
+        options.factorization = CoupledSchurFactorization::Full;
+        options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
+        switch (schur_model) {
+            case CoupledSchurModel::BlockLocal:
+                options.schur_approximation = CoupledSchurApproximationModel::BlockLocal;
+                break;
+            case CoupledSchurModel::PCD:
+                options.schur_approximation = CoupledSchurApproximationModel::PCD;
+                break;
+            case CoupledSchurModel::LSC:
+            case CoupledSchurModel::BFBT:
+            case CoupledSchurModel::SIMPLE:
+            case CoupledSchurModel::SIMPLEC:
+                throw std::invalid_argument(
+                    "selected algebraic Schur model is handled by its dedicated production path");
+            default:
+                throw std::invalid_argument("unsupported coupled Schur model");
+        }
+
+        auto schur = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, options, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
+        if (schur_model == CoupledSchurModel::PCD)
+            schur->set_pcd_schur(std::move(pcd));
+        // Set the preconditioner up here for the same reason the BlockSchur
+        // branch below does. solve_fgmres also calls setup() on its
+        // preconditioner before the first apply, so this is not what makes PCD
+        // reachable; performing it explicitly is what makes a setup failure
+        // report its own cause. Without it, a rejected PCD setup surfaces only
+        // as SolverStatus::NOT_APPLICABLE from the Krylov driver and the
+        // PcdSchurApproximation last_error() is lost. reset() preserves
+        // pcd_schur_, so the driver's second setup is clean.
+        if (!schur->setup(A)) {
+            throw std::runtime_error(
+                std::string("N8 coupled PCD Schur setup failed: ") +
+                schur->last_error());
+        }
+        coupled_preconditioner = std::move(schur);
+    } else if (use_n8_block_schur) {
+        auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+            nc, CoupledBlockSchurOptions{}, has_fixed_pressure
+                ? std::numeric_limits<std::size_t>::max() : reference_cell);
+        if (!schur_amg->setup(A)) {
+            throw std::runtime_error(
+                std::string("N8 coupled BlockSchur AMG setup failed: ") +
+                schur_amg->last_error());
+        }
+        coupled_preconditioner = std::move(schur_amg);
+    } else {
+        std::vector<std::size_t> fine_variables(nv);
+        std::vector<std::size_t> coarse_variables(np);
+        std::iota(fine_variables.begin(), fine_variables.end(), 0);
+        std::iota(coarse_variables.begin(), coarse_variables.end(), nv);
+        coupled_preconditioner =
+            std::make_unique<NativeMGRPreconditioner>(
+                std::move(fine_variables), std::move(coarse_variables));
+    }
+
+    const bool automatic_coupled = solver_request.krylov == KrylovModel::Auto &&
+        solver_request.preconditioner == PreconditionerModel::Auto;
+    if (resolved_linear_plan != nullptr)
+        *resolved_linear_plan = solver_plan;
+    const int gmres_restart = automatic_coupled
+        ? static_cast<int>(A.n_rows() <= 4096
+                               ? std::min<std::size_t>(A.n_rows(),
+                                                       std::max<std::size_t>(1024, max_iterations))
+                               : std::min<std::size_t>(A.n_rows(), 512))
+        : std::min<int>(solver_request.gmres_restart, static_cast<int>(A.n_rows()));
+    // The coupled acceptance problem is small enough for a full Krylov space.
+    // Do not let the global adaptive-restart policy silently clamp the restart
+    // back to its generic [10,40] range: that was the direct cause of the
+    // observed residual plateau around 1.33e-6. The restart must also be the
+    // FULL space for small/medium coupled systems (<= 1024 unknowns): the
+    // 12x16 channel system has 768 unknowns, so a 512 cap truncated the
+    // Krylov space below the system dimension and manufactured a plateau
+    // near 1e-7 on the Poiseuille Picard system, converting a solvable
+    // 1e-12 gate into an artificial MAX_ITER failure. Medium coupled systems
+    // (1024 < n <= 4096) get a restart of max(1024, max_iterations), capped
+    // by the system dimension: the 16x32 cavity Picard system has 4096
+    // unknowns, and a 512 cap truncated the Krylov space mid-budget
+    // (1000 iterations = 512 + 488), stalling the true relative residual at
+    // 3.66e-12 against the 1e-12 gate with three identical relaxation
+    // retries. A 1024 restart is never truncated within the iteration
+    // budget, so convergence is decided by the budget, not by a restart
+    // boundary. Systems above 4096 unknowns keep the 512 cap for memory.
+    // Keep the restart fixed for this block solve; adaptive restart remains
+    // available to generic GMRES callers.
+    cfdx::core::KrylovControls coupled_gmres_controls;
+    coupled_gmres_controls.restart_min = gmres_restart;
+    coupled_gmres_controls.restart_max = gmres_restart;
+    coupled_gmres_controls.adaptive_restart = false;
+    if (diagnostics.coupled_matrix_summary) {
+        std::cerr << "COUPLED_PRECONDITIONER name=" << coupled_preconditioner->name()
+                  << " restart=" << gmres_restart
+                  << " adaptive_restart=0\n";
+    }
+
+    // Evidence-only capture hook, at the exact Krylov call point (null by
+    // default; see IncompressibleSolverControls::coupled_assembly_callback).
+    // Everything the solver consumes is now final: assembly, gauge
+    // treatment, finite checks and preconditioner setup are done, and no
+    // mutation happens between this hook and the solve calls below. The
+    // snapshot therefore aliases the very A, b and x objects handed to the
+    // Krylov driver - the captured system IS the solved system, by
+    // construction rather than by convention. The consumer must still copy
+    // anything it wants to keep: the references die with this scope, and x
+    // becomes the solution below.
+    if (controls.coupled_assembly_callback) {
+        const CoupledAssemblySnapshot snapshot{
+            &A, &b, &x,
+            &coupled_pressure_schur_diagonal,
+            &pressure_schur_diagonal_raw_copy,
+            evidence_pcd_ops ? &evidence_pcd_ops->mass : nullptr,
+            evidence_pcd_ops ? &evidence_pcd_ops->laplacian : nullptr,
+            evidence_pcd_ops ? &evidence_pcd_ops->convection_diffusion : nullptr,
+            &U_old, reference_cell, has_fixed_pressure};
+        controls.coupled_assembly_callback(snapshot);
+    }
+
+    SolverResult result;
+    if (solver_plan.krylov == KrylovModel::FGMRES) {
+        result = solve_fgmres(
+            A, b, x, gmres_restart, max_iterations, tolerance,
+            coupled_preconditioner.get(), coupled_gmres_controls);
+    } else {
+        result = solve_gmres(
+            A, b, x, gmres_restart, max_iterations, tolerance,
+            coupled_preconditioner.get(), coupled_gmres_controls);
+    }
+
+    // Evidence-only: inspect the pressure/continuity rows on the exact
+    // monolithic candidate returned by Krylov, before the caller applies
+    // separate U/p relaxation. Exclude the pinned reference row for pure
+    // Neumann pressure, because that row is a gauge equation, not continuity.
+    // This is deliberately diagnostic only: it does not alter SolverResult
+    // or any physical acceptance criterion.
+    if (diagnostics.coupled_matrix_summary) {
+        double continuity_row_linf = 0.0;
+        double continuity_row_signed = 0.0;
+        std::size_t continuity_row_cell = 0;
+        for (std::size_t c = 0; c < nc; ++c) {
+            if (!has_fixed_pressure && c == reference_cell)
+                continue;
+            const std::size_t row = nv + c;
+            double ax = 0.0;
+            for (std::size_t k = A.row_offsets_data()[row];
+                 k < A.row_offsets_data()[row + 1]; ++k)
+                ax += A.values_data()[k] * x(A.columns_data()[k]);
+            const double residual = ax - b(row);
+            if (std::abs(residual) > continuity_row_linf) {
+                continuity_row_linf = std::abs(residual);
+                continuity_row_signed = residual;
+                continuity_row_cell = c;
+            }
+        }
+        std::cerr << "COUPLED_PRE_RELAXATION_CONTINUITY_ROW"
+                  << " linf=" << std::scientific << std::setprecision(8)
+                  << continuity_row_linf
+                  << " signed=" << continuity_row_signed
+                  << " cell=" << continuity_row_cell
+                  << " status=" << static_cast<int>(result.status)
+                  << " iterations=" << result.iterations
+                  << " reported_relative=" << result.residual_relative
+                  << "\n";
+        {
+            const std::size_t row = nv + continuity_row_cell;
+            double velocity_block = 0.0;
+            double pressure_block = 0.0;
+            for (std::size_t k = A.row_offsets_data()[row];
+                 k < A.row_offsets_data()[row + 1]; ++k) {
+                const std::size_t column = A.columns_data()[k];
+                const double term = A.values_data()[k] * x(column);
+                if (column < nv) velocity_block += term;
+                else pressure_block += term;
+            }
+            std::cerr << "COUPLED_CONTINUITY_ROW_BREAKDOWN"
+                      << " cell=" << continuity_row_cell
+                      << " velocity_block=" << velocity_block
+                      << " pressure_block=" << pressure_block
+                      << " rhs_including_explicit_correction=" << b(row)
+                      << " lhs_minus_rhs=" << (velocity_block + pressure_block - b(row))
+                      << "\n";
+        }
+    }
+
+    // Keep coupled-solver failures visible. Do not replace a failed Schur
+    // setup by identity-preconditioned GMRES: that would hide the defect in
+    // the production preconditioner and make the numerical gate non-diagnostic.
+    if (result.status != SolverStatus::CONVERGED)
+        return result;
+
+    // Independently recompute ||b-Ax|| after the linear solve.  The Krylov
+    // result already carries a true residual, but keeping an explicit
+    // post-solve matrix check here makes the coupled algebraic gate independent
+    // from the nonlinear FV diagnostics and exposes any stale/inconsistent
+    // solver bookkeeping.
+    double coupled_matrix_residual_sq = 0.0;
+    double coupled_rhs_norm_sq = 0.0;
+    for (std::size_t row = 0; row < A.n_rows(); ++row) {
+        double ax = 0.0;
+        const auto rb = A.row_offsets_data()[row];
+        const auto re = A.row_offsets_data()[row + 1];
+        for (std::size_t k = rb; k < re; ++k)
+            ax += A.values_data()[k] * x(A.columns_data()[k]);
+        const double r = b(row) - ax;
+        coupled_matrix_residual_sq += r * r;
+        coupled_rhs_norm_sq += b(row) * b(row);
+    }
+    const double coupled_matrix_residual = std::sqrt(coupled_matrix_residual_sq);
+    const double coupled_rhs_norm = std::sqrt(coupled_rhs_norm_sq);
+    const double coupled_matrix_relative =
+        coupled_matrix_residual / (coupled_rhs_norm > 0.0 ? coupled_rhs_norm : 1.0);
+    if (!std::isfinite(coupled_matrix_residual) ||
+        !std::isfinite(coupled_matrix_relative)) {
+        result.status = SolverStatus::DIVERGED;
+        result.residual = std::numeric_limits<double>::infinity();
+        result.residual_relative = std::numeric_limits<double>::infinity();
+        return result;
+    }
+    // The independently recomputed residual is the authoritative algebraic
+    // gate. Never accept a Krylov-reported convergence if b-Ax is still above
+    // the requested coupled linear tolerance.
+    result.residual = coupled_matrix_residual;
+    result.residual_relative = coupled_matrix_relative;
+    if (coupled_matrix_relative > tolerance) {
+        result.status = SolverStatus::DIVERGED;
+        return result;
+    }
+    if (diagnostics.coupled_matrix_summary) {
+        std::cerr << "COUPLED_LINEAR_TRUE_RESIDUAL norm="
+                  << coupled_matrix_residual
+                  << " relative=" << coupled_matrix_relative
+                  << " gmres_reported=" << result.residual
+                  << "\n";
+    }
+
+    for (std::size_t c = 0; c < nc; ++c) {
+        U.component_data(0)[c] = x(c);
+        U.component_data(1)[c] = x(nc + c);
+        U.component_data(2)[c] = x(2*nc + c);
+        p(c) = x(nv + c);
+    }
+
+    // Cellwise operator accounting for the exact monolithic candidate. This
+    // is diagnostic-only: decompose A*x-b and the conservative Rhie-Chow
+    // flux on the same U,p state, without changing acceptance or solver data.
+    if (diagnostics.coupled_matrix_summary) {
+        std::size_t row_cell = 0;
+        double row_linf = -1.0;
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            if (!has_fixed_pressure && cell == reference_cell)
+                continue;
+            const std::size_t row = nv + cell;
+            double ax = 0.0;
+            for (std::size_t k = A.row_offsets_data()[row];
+                 k < A.row_offsets_data()[row + 1]; ++k)
+                ax += A.values_data()[k] * x(A.columns_data()[k]);
+            const double residual = ax - b(row);
+            if (std::abs(residual) > row_linf) {
+                row_linf = std::abs(residual);
+                row_cell = cell;
+            }
+        }
+
+        std::array<std::vector<double>, 3> rAU;
+        for (auto& component : rAU)
+            component.resize(nc);
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            rAU[0][cell] = 1.0 / ex.diagonal[cell];
+            rAU[1][cell] = 1.0 / ey.diagonal[cell];
+            rAU[2][cell] = 1.0 / ez.diagonal[cell];
+        }
+        const auto grad_p = gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
+        const auto flux = make_rhie_chow_flux_from_physical_velocity(
+            mesh, geometry, U, p, rAU, rho, velocity_bcs, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
+        const auto* cell_faces = mesh.cells().faces_data();
+        const auto* cell_offsets = mesh.cells().offsets_data();
+
+        auto report_cell = [&](std::size_t cell, const char* role) {
+            const std::size_t row = nv + cell;
+            double matrix_velocity = 0.0;
+            double matrix_pressure = 0.0;
+            for (std::size_t k = A.row_offsets_data()[row];
+                 k < A.row_offsets_data()[row + 1]; ++k) {
+                const std::size_t column = A.columns_data()[k];
+                const double contribution = A.values_data()[k] * x(column);
+                if (column < nv)
+                    matrix_velocity += contribution;
+                else
+                    matrix_pressure += contribution;
+            }
+            const double matrix_residual = matrix_velocity + matrix_pressure - b(row);
+            double flux_velocity = 0.0;
+            double flux_pressure_orthogonal = 0.0;
+            double flux_pressure_nonorthogonal = 0.0;
+            double flux_pressure_compensation = 0.0;
+            double flux_total = 0.0;
+
+            for (Offset k = cell_offsets[cell]; k < cell_offsets[cell + 1]; ++k) {
+                const std::size_t face = cell_faces[k];
+                const double face_sign = mesh.ownership().owner(face) == cell ? 1.0 : -1.0;
+                const std::size_t owner = mesh.ownership().owner(face);
+                const auto neighbour = mesh.ownership().neighbour(face);
+                const Vec3 sf = geometry.face_area_vectors[face];
+                Vec3 uf{};
+                U.get(owner, uf.x, uf.y, uf.z);
+                if (neighbour >= 0) {
+                    const std::size_t n = static_cast<std::size_t>(neighbour);
+                    Vec3 un{};
+                    U.get(n, un.x, un.y, un.z);
+                    uf = (uf + un) * 0.5;
+                    const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[owner];
+                    const Vec3 dAU{
+                        0.5 * (geometry.cell_volumes[owner] * rAU[0][owner] +
+                               geometry.cell_volumes[n] * rAU[0][n]),
+                        0.5 * (geometry.cell_volumes[owner] * rAU[1][owner] +
+                               geometry.cell_volumes[n] * rAU[1][n]),
+                        0.5 * (geometry.cell_volumes[owner] * rAU[2][owner] +
+                               geometry.cell_volumes[n] * rAU[2][n])};
+                    const Vec3 gp{
+                        0.5 * (grad_p.component_data(0)[owner] + grad_p.component_data(0)[n]),
+                        0.5 * (grad_p.component_data(1)[owner] + grad_p.component_data(1)[n]),
+                        0.5 * (grad_p.component_data(2)[owner] + grad_p.component_data(2)[n])};
+                    const double coefficient = pressure_face_orthogonal_coefficient(sf, dvec, dAU);
+                    const double deferred = pressure_face_nonorthogonal_flux(sf, dvec, dAU, gp);
+                    flux_velocity += face_sign * rho * uf.dot(sf);
+                    flux_pressure_orthogonal -= face_sign * rho * coefficient * (p(n) - p(owner));
+                    flux_pressure_nonorthogonal -= face_sign * rho * deferred;
+                    flux_pressure_compensation += face_sign * rho *
+                        (dAU.x * gp.x * sf.x + dAU.y * gp.y * sf.y + dAU.z * gp.z * sf.z);
+                } else {
+                    const std::size_t patch = geometry.face_patch[face];
+                    if (patch < mesh.boundary().n_patches() &&
+                        mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                        continue;
+                    if (patch < mesh.boundary().n_patches()) {
+                        const auto& name = mesh.boundary().patch(patch).name;
+                        const auto ubc = velocity_bcs.find(name);
+                        if (ubc != velocity_bcs.end() &&
+                            ubc->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                            uf = ubc->second.value;
+                        const auto pbc = pressure_bcs.find(name);
+                        if (pbc != pressure_bcs.end() &&
+                            pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                            const Vec3 dvec = geometry.face_centres[face] -
+                                              geometry.cell_centres[owner];
+                            const Vec3 dAU{
+                                geometry.cell_volumes[owner] * rAU[0][owner],
+                                geometry.cell_volumes[owner] * rAU[1][owner],
+                                geometry.cell_volumes[owner] * rAU[2][owner]};
+                            const Vec3 gp{
+                                grad_p.component_data(0)[owner],
+                                grad_p.component_data(1)[owner],
+                                grad_p.component_data(2)[owner]};
+                            const double coefficient =
+                                pressure_face_orthogonal_coefficient(sf, dvec, dAU);
+                            const double deferred = pressure_face_nonorthogonal_flux(sf, dvec, dAU, gp);
+                            flux_pressure_orthogonal -= face_sign * rho * coefficient *
+                                (pbc->second.value - p(owner));
+                            flux_pressure_nonorthogonal -= face_sign * rho * deferred;
+                            flux_pressure_compensation += face_sign * rho *
+                                (dAU.x * gp.x * sf.x + dAU.y * gp.y * sf.y + dAU.z * gp.z * sf.z);
+                        }
+                    }
+                    flux_velocity += face_sign * rho * uf.dot(sf);
+                }
+                flux_total += face_sign * flux(face);
+            }
+            std::cerr << "COUPLED_CELL_OPERATOR_AUDIT role=" << role
+                      << " cell=" << cell
+                      << " matrix_velocity=" << matrix_velocity
+                      << " matrix_pressure_orthogonal=" << matrix_pressure
+                      << " matrix_rhs=" << b(row)
+                      << " explicit_deferred_rhs=" << coupled_explicit_continuity_correction[cell]
+                      << " rhs_without_deferred=" << (b(row) - coupled_explicit_continuity_correction[cell])
+                      << " matrix_residual=" << matrix_residual
+                      << " flux_velocity=" << flux_velocity
+                      << " flux_pressure_orthogonal=" << flux_pressure_orthogonal
+                      << " flux_pressure_nonorthogonal=" << flux_pressure_nonorthogonal
+                      << " flux_pressure_compensation=" << flux_pressure_compensation
+                      << " flux_sum_components=" << (flux_velocity + flux_pressure_orthogonal +
+                            flux_pressure_nonorthogonal + flux_pressure_compensation)
+                      << " flux_authoritative=" << flux_total << "\n";
+        };
+
+        double flux_linf = -1.0;
+        std::size_t flux_cell = 0;
+        for (std::size_t cell = 0; cell < nc; ++cell) {
+            double divergence = 0.0;
+            for (Offset k = cell_offsets[cell]; k < cell_offsets[cell + 1]; ++k) {
+                const std::size_t face = cell_faces[k];
+                divergence += mesh.ownership().owner(face) == cell ? flux(face) : -flux(face);
+            }
+            if (std::abs(divergence) > flux_linf) {
+                flux_linf = std::abs(divergence);
+                flux_cell = cell;
+            }
+        }
+        report_cell(row_cell, "continuity_row_argmax");
+        if (flux_cell != row_cell)
+            report_cell(flux_cell, "flux_divergence_argmax");
+        std::cerr << "COUPLED_CELL_OPERATOR_AUDIT_MAXIMA"
+                  << " continuity_row_cell=" << row_cell
+                  << " continuity_row_linf=" << row_linf
+                  << " flux_cell=" << flux_cell
+                  << " flux_divergence_linf=" << flux_linf << "\n";
+    }
+    return result;
+}
+
+inline IncompressibleSolveResult solve_steady_incompressible(
+    const cfdx::core::Mesh& mesh,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
+    cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
+    const VelocityBoundaryConditions& velocity_bcs,
+    const ScalarBoundaryConditions& pressure_bcs,
+    const IncompressibleSolverControls& controls = {},
+    const std::string& restart_path = {},
+    cfdx::io::DatRestartFields restart_fields = {})
+{
+    using namespace cfdx::core;
+    if (U.dimension() != 3 || U.size() != mesh.n_cells() ||
+        p.dimension() != 1 || p.size() != mesh.n_cells())
+        throw std::invalid_argument("solve_steady_incompressible: invalid fields");
+
+    // Validate all controls and derived material properties before initialization
+    // can mutate the caller-provided solution fields.
+    validate_incompressible_controls(controls, mesh.n_cells());
+    // Validate the caller-owned SST bundle before initialization can mutate
+    // the carrier fields. Derived SST quantities must be refreshed only after
+    // initialization/restart has established the actual velocity field.
+    const FvGeometry geometry = build_fv_geometry(mesh);
+    if (controls.sst_runtime) {
+        validate_sst_production_state(*controls.sst_runtime->state, mesh.n_cells());
+        const auto& runtime = *controls.sst_runtime;
+        const SSTRuntimeBoundaryContract boundary_contract{
+            runtime.k_boundary_conditions, runtime.omega_boundary_conditions,
+            runtime.wall_omega_sst_patches};
+        require_supported_sst_runtime_boundaries(
+            boundary_contract, mesh, geometry, &runtime.omega_face_values);
+    }
+
+    // In an explicitly opted-in SST restart, the DAT checkpoint is the
+    // source of truth for k and omega just as it is for U and p. Wire those
+    // named fields into the same atomic reader instead of requiring callers
+    // to remember a separate restore helper. Preserve unrelated optional
+    // fields (e.g. temperature) supplied by the caller.
+    auto effective_restart_fields = restart_fields;
+    if (controls.sst_runtime &&
+        controls.initialization.mode == InitializationMode::Restart) {
+        auto& sst_state = *controls.sst_runtime->state;
+        if (effective_restart_fields.k && effective_restart_fields.k != &sst_state.k)
+            throw std::invalid_argument(
+                "SST DAT restart k target must be the active runtime state");
+        if (effective_restart_fields.omega &&
+            effective_restart_fields.omega != &sst_state.omega)
+            throw std::invalid_argument(
+                "SST DAT restart omega target must be the active runtime state");
+        effective_restart_fields.k = &sst_state.k;
+        effective_restart_fields.omega = &sst_state.omega;
+    }
+
+    apply_initialization(
+        controls.initialization, mesh, U, p, effective_restart_fields, restart_path);
+    if (controls.initialized_state_callback)
+        controls.initialized_state_callback(mesh, U, p);
+
+    // Authoritative dynamic viscosity used by predictor assembly, nonlinear
+    // acceptance residuals, and the independent momentum conservation audit.
+    std::vector<double> mu_eff(mesh.n_cells());
+    // The legacy uniform-viscosity incompressible path uses mu*Laplacian(U).
+    // Cellwise/SST viscosity requires the full symmetric stress; its transpose
+    // term is conservative and explicit in each nonlinear predictor.
+    const bool include_transpose_stress = controls.sst_runtime != nullptr ||
+        !controls.cell_turbulent_viscosity.empty();
+    if (controls.sst_runtime) {
+        std::map<std::string, std::array<double, 3>> fixed_velocity_values;
+        for (const auto& [patch, bc] : velocity_bcs) {
+            if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                fixed_velocity_values.emplace(
+                    patch, std::array<double, 3>{bc.value.x, bc.value.y, bc.value.z});
+        }
+        // Initialization may replace U (uniform, profile, or DAT restart).
+        // Refresh wall distance, strain and nu_t against that final field so
+        // the very first momentum predictor cannot use stale SST viscosity.
+        refresh_sst_production_derived_state_from_mesh(
+            *controls.sst_runtime->state, mesh, controls.sst_runtime->transport,
+            U, fixed_velocity_values, controls.sst_runtime->wall_patch_names);
+    }
+    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+        const double nu_t = controls.sst_runtime
+            ? controls.sst_runtime->state->nu_t(cell)
+            : (controls.cell_turbulent_viscosity.empty()
+                ? controls.turbulent_viscosity
+                : controls.cell_turbulent_viscosity[cell]);
+        mu_eff[cell] = controls.density * (controls.kinematic_viscosity + nu_t);
+        if (!(mu_eff[cell] >= 0.0) || !std::isfinite(mu_eff[cell]))
+            throw std::invalid_argument(
+                "effective cellwise dynamic viscosity must be finite and non-negative");
+    }
+
+    cfdx::core::ConvergenceMonitorControls monitor_controls;
+    monitor_controls.residual.absolute_tolerance = controls.convergence.absolute_tolerance;
+    monitor_controls.residual.relative_tolerance = controls.convergence.relative_tolerance;
+    monitor_controls.conservation_tolerance = controls.convergence.continuity_tolerance;
+    monitor_controls.minimum_iterations = std::min<std::size_t>(2, controls.convergence.max_iterations);
+    monitor_controls.max_iterations = controls.convergence.max_iterations;
+    // Conservative defaults: stagnation is diagnostic, not a shortcut around
+    // the configured residual/conservation gates. Divergence is detected only
+    // after repeated growth and never by relaxing a tolerance.
+    monitor_controls.stagnation_window = 10;
+    monitor_controls.stagnation_relative_improvement =
+        controls.convergence.stagnation_relative_improvement;
+    monitor_controls.divergence_window = 3;
+    monitor_controls.divergence_growth_factor = 10.0;
+    monitor_controls.qoi_gates = controls.qoi_gates;
+    cfdx::core::ConvergenceMonitor convergence_monitor(monitor_controls);
+
+    bool has_fixed_pressure_boundary = false;
+    for (const auto& [name, bc] : pressure_bcs) {
+        (void)name;
+        if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
+            has_fixed_pressure_boundary = true;
+            break;
+        }
+    }
+
+    const std::size_t configured_pcorr =
+        (controls.algorithm == PressureVelocityAlgorithm::PISO ||
+         controls.algorithm == PressureVelocityAlgorithm::PIMPLE)
+            ? static_cast<std::size_t>(controls.coupling.n_pressure_correctors)
+            : (controls.algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP
+                ? static_cast<std::size_t>(controls.coupling.n_fractional_steps)
+                : 1u);
+    const std::size_t minimum_outer_correctors =
+        controls.algorithm == PressureVelocityAlgorithm::PIMPLE
+            ? static_cast<std::size_t>(controls.coupling.n_outer_correctors)
+            : 1u;
+
+    IncompressibleSolveResult result;
+    result.requested_coupled_schur_model = controls.coupling.schur_model;
+    result.resolved_coupled_schur_model = controls.coupling.schur_model;
+    result.coupled_schur_model_resolved = true;
+    LinearSolverPlan pressure_plan;
+    std::unique_ptr<Preconditioner> pressure_preconditioner;
+    std::unique_ptr<ReusableCgContext> pressure_context;
+    std::unique_ptr<NullSpaceProjector> pressure_null_space;
+    const bool use_projected_pressure_null_space =
+        !has_fixed_pressure_boundary &&
+        controls.pressure_linear_solver.null_space ==
+            NullSpaceModel::Constant;
+    const bool reduce_pressure_gauge =
+        !has_fixed_pressure_boundary &&
+        !use_projected_pressure_null_space &&
+        mesh.n_cells() > 1;
+    if (controls.algorithm != PressureVelocityAlgorithm::COUPLED) {
+        pressure_plan = select_linear_solver(
+            LinearProblemKind::PressurePoisson,
+            reduce_pressure_gauge ? mesh.n_cells() - 1 : mesh.n_cells(),
+            controls.pressure_linear_solver);
+        result.pressure_linear_plan = pressure_plan;
+        result.pressure_linear_plan_resolved = true;
+        // The reusable context is intentionally dimension-agnostic until its
+        // first prepare(matrix). For reference-cell gauge reduction that first
+        // matrix has N-1 rows, so the preconditioner must not be configured to
+        // project a constant null space: the gauge has already removed it.
+        // Project only on the full-size, explicitly projected-null-space path.
+        if (pressure_plan.krylov == KrylovModel::CG) {
+            const bool project_pressure_null_space =
+                pressure_plan.null_space == NullSpaceModel::Constant &&
+                !reduce_pressure_gauge;
+            pressure_preconditioner =
+                make_scalar_preconditioner(
+                    pressure_plan.preconditioner,
+                    project_pressure_null_space);
+            pressure_context = std::make_unique<ReusableCgContext>(
+                *pressure_preconditioner);
+            if (project_pressure_null_space) {
+                pressure_null_space = std::make_unique<NullSpaceProjector>(
+                    NullSpaceProjector::constant(mesh.n_cells()));
+            }
+        }
+    }
+
+    auto build_hbya = [&](const ScalarEquation& eq,
+                          const Vector& field,
+                          const Field<double, Location::CELL>& gradp,
+                          std::size_t component,
+                          const std::vector<double>& rAU) {
+        std::vector<double> hbya(mesh.n_cells(), 0.0);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            double h = eq.rhs(c) + gradp.component_data(component)[c] * geometry.cell_volumes[c];
+            const auto begin = eq.matrix.row_offsets_data()[c];
+            const auto end = eq.matrix.row_offsets_data()[c + 1];
+            for (std::uint32_t k = begin; k < end; ++k) {
+                const auto col = eq.matrix.columns_data()[k];
+                if (col != c)
+                    h -= eq.matrix.values_data()[k] * field(col);
+            }
+            // HbyA is always the plain momentum-inverse combination
+            // rAU*H, for SIMPLEC included. The SIMPLEC consistent
+            // operator (rAtU) belongs to the pressure equation and its
+            // face fluxes only: the over-relaxation terms added to
+            // phiHbyA and to the corrected flux are sized so that
+            // (dAtU - dAU) cancels the rAtU response of the pressure
+            // operator, which collapses the SIMPLEC fixed point back
+            // onto the plain Rhie-Chow state built with rAU. Folding
+            // (rAtU - rAU)*grad(p) into the cell HbyA instead leaves
+            // the converged state on a displaced continuity operator
+            // carrying the spurious source
+            // div(rho*(dAtU - dAU)*snGrad(p)*|Sf|) of O(Laplacian(p))
+            // scale: invisible on Couette (constant p) and Poiseuille
+            // (linear p) but far outside the algorithm-equivalence
+            // gate on the lid-driven cavity.
+            hbya[c] = rAU[c] * h;
+            if (!std::isfinite(hbya[c]))
+                throw std::runtime_error("solve_steady_incompressible: non-finite HbyA");
+        }
+        return hbya;
+    };
+
+    auto make_hbya_field = [&](const std::array<std::vector<double>,3>& hbya) {
+        Field<double, Location::CELL> field(
+            mesh.n_cells(), "HbyA", "m/s", 3);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            field.component_data(0)[c] = hbya[0][c];
+            field.component_data(1)[c] = hbya[1][c];
+            field.component_data(2)[c] = hbya[2][c];
+        }
+        return field;
+    };
+
+    // Face pressure projection coefficient.
+    //
+    // Momentum diagonals are integrated finite-volume coefficients A_P [N s/m].
+    // rAU = 1/A_P therefore has units of m/(N s), while the velocity response
+    // to a pressure gradient is dAU = V*rAU.  The same dAU operator must be
+    // used by cell velocity reconstruction, Rhie-Chow face fluxes and the
+    // pressure-correction matrix.
+    auto directional_face_coefficient =
+        [&](const std::array<std::vector<double>,3>& coeff,
+            std::size_t o, std::size_t n,
+            const Vec3& Sf, const Vec3& dvec) {
+            const double cx = 0.5 * (
+                geometry.cell_volumes[o] * coeff[0][o] +
+                geometry.cell_volumes[n] * coeff[0][n]);
+            const double cy = 0.5 * (
+                geometry.cell_volumes[o] * coeff[1][o] +
+                geometry.cell_volumes[n] * coeff[1][n]);
+            const double cz = 0.5 * (
+                geometry.cell_volumes[o] * coeff[2][o] +
+                geometry.cell_volumes[n] * coeff[2][n]);
+            return pressure_face_orthogonal_coefficient(Sf, dvec, {cx, cy, cz});
+        };
+
+    Field<double, Location::FACE> mass_flux =
+        make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
+
+    // A restart must replay the continuous iteration sequence. Iteration n+1
+    // assembles momentum from the Rhie-Chow flux reconstructed with
+    // iteration n's rAU; that flux is not re-derivable from the restored U and
+    // p, so a checkpoint that carries it (DatRestartFields::face_mass_flux)
+    // replaces the simple-interpolation initial flux. Without this, a
+    // restart produces a different second iteration than the continuous run.
+    if (controls.initialization.mode == InitializationMode::Restart &&
+        effective_restart_fields.face_mass_flux) {
+        const auto& restored_flux = *effective_restart_fields.face_mass_flux;
+        if (restored_flux.dimension() != 1 || restored_flux.size() != mesh.n_faces())
+            throw std::invalid_argument(
+                "solve_steady_incompressible: restart face mass flux does not match mesh");
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+            if (!std::isfinite(restored_flux(f)))
+                throw std::invalid_argument(
+                    "solve_steady_incompressible: restart face mass flux has non-finite value");
+        mass_flux = restored_flux;
+    }
+
+    const bool freeze_state = controls.diagnostics.freeze_state_probe;
+    Field<double, Location::FACE> phi_used_in_momentum;
+    std::array<std::vector<double>, 3> frozen_rAU;
+    std::array<std::vector<double>, 3> frozen_hbyA;
+    Field<double, Location::CELL> frozen_grad_p;
+    bool frozen_state_valid = false;
+
+    double effective_alpha_u = controls.coupling.alpha_u;
+    double effective_alpha_p = controls.coupling.alpha_p;
+    std::size_t adaptive_u_improvement_streak = 0;
+    std::size_t adaptive_u_degradation_streak = 0;
+    std::size_t adaptive_p_improvement_streak = 0;
+    std::size_t adaptive_p_degradation_streak = 0;
+    std::size_t adaptive_u_recovery_cooldown = 0;
+    std::size_t adaptive_p_recovery_cooldown = 0;
+
+    for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
+        bool stop_after_iteration = false;
+        NonlinearRetryController retry_controller(controls.nonlinear_retry);
+        NonlinearStateRollback transaction(U, p);
+        const auto mass_flux_snapshot = mass_flux;
+        bool iteration_completed = false;
+        while (!iteration_completed) {
+            // A retry must restore not only physical fields but also any
+            // convergence/history state tentatively updated before the outer
+            // transaction commits.
+            stop_after_iteration = false;
+            transaction.begin();
+            const auto convergence_monitor_snapshot = convergence_monitor;
+            const auto result_history_size = result.history.size();
+            const auto probe_samples_size = result.probe_samples.size();
+            const auto previous_result_converged = result.converged;
+            const auto previous_result_status = result.convergence_status;
+            const auto previous_result_reason = result.convergence_reason;
+            const auto previous_result_iterations = result.iterations;
+            const auto sst_attempt_snapshot = controls.sst_runtime
+                ? std::optional<SSTProductionState>(
+                    snapshot_sst_production_state(*controls.sst_runtime->state))
+                : std::nullopt;
+            try {
+        double linear_tolerance = controls.linear_tolerance;
+        if (controls.acceleration.adaptive_linear_tolerance) {
+            const auto& forcing = controls.acceleration.linear_forcing;
+            if (result.history.empty()) {
+                linear_tolerance = forcing.eta_max;
+            } else {
+                const auto nonlinear_residual = std::max(
+                    result.history.back().momentum_residual,
+                    result.history.back().continuity_normalized);
+                const auto previous_residual = result.history.size() > 1
+                    ? std::max(result.history[result.history.size()-2].momentum_residual,
+                               result.history[result.history.size()-2].continuity_normalized)
+                    : std::max(nonlinear_residual, forcing.residual_floor);
+                linear_tolerance = nonlinear_forcing_tolerance(
+                    nonlinear_residual,
+                    std::max(previous_residual, forcing.residual_floor), forcing);
+            }
+        }
+
+        if (controls.adaptive_relaxation.enabled) {
+            // Adapt the momentum and pressure relaxation independently. SIMPLE
+            // couples the two equations, but their residuals measure different
+            // numerical mechanisms: momentum relaxation is controlled from the
+            // momentum-equation residual, while pressure relaxation is
+            // controlled from the normalized continuity imbalance. A single
+            // aggregate metric must not force both factors in the same direction.
+            const auto window = controls.adaptive_relaxation.adaptation_window;
+            if (window > 0 && result.history.size() > window &&
+                (result.history.size() - 1) % window == 0) {
+                const auto& current = result.history.back();
+                const auto& reference = result.history[result.history.size() - 1 - window];
+
+                if (adaptive_u_recovery_cooldown > 0) {
+                    --adaptive_u_recovery_cooldown;
+                    adaptive_u_improvement_streak = 0;
+                    adaptive_u_degradation_streak = 0;
+                } else if (std::isfinite(current.momentum_equation_residual_relative) &&
+                           std::isfinite(reference.momentum_equation_residual_relative) &&
+                           reference.momentum_equation_residual_relative > 0.0) {
+                    effective_alpha_u = adapt_relaxation_factor_windowed(
+                        effective_alpha_u,
+                        reference.momentum_equation_residual_relative,
+                        current.momentum_equation_residual_relative,
+                        controls.adaptive_relaxation.min_alpha_u,
+                        controls.adaptive_relaxation.max_alpha_u,
+                        controls.adaptive_relaxation,
+                        adaptive_u_improvement_streak,
+                        adaptive_u_degradation_streak);
+                } else {
+                    adaptive_u_improvement_streak = 0;
+                    adaptive_u_degradation_streak = 0;
+                }
+
+                if (adaptive_p_recovery_cooldown > 0) {
+                    --adaptive_p_recovery_cooldown;
+                    adaptive_p_improvement_streak = 0;
+                    adaptive_p_degradation_streak = 0;
+                } else if (std::isfinite(current.continuity_normalized) &&
+                           std::isfinite(reference.continuity_normalized) &&
+                           reference.continuity_normalized > 0.0) {
+                    effective_alpha_p = adapt_relaxation_factor_windowed(
+                        effective_alpha_p,
+                        reference.continuity_normalized,
+                        current.continuity_normalized,
+                        controls.adaptive_relaxation.min_alpha_p,
+                        controls.adaptive_relaxation.max_alpha_p,
+                        controls.adaptive_relaxation,
+                        adaptive_p_improvement_streak,
+                        adaptive_p_degradation_streak);
+                } else {
+                    adaptive_p_improvement_streak = 0;
+                    adaptive_p_degradation_streak = 0;
+                }
+            }
+        }
+
+        double last_selected_pressure_alpha = std::numeric_limits<double>::quiet_NaN();
+        double last_line_search_before = std::numeric_limits<double>::quiet_NaN();
+        double last_line_search_after = std::numeric_limits<double>::quiet_NaN();
+        std::size_t pressure_correctors = configured_pcorr;
+        const bool supports_multiple_pressure_corrections =
+            controls.algorithm == PressureVelocityAlgorithm::PISO ||
+            controls.algorithm == PressureVelocityAlgorithm::PIMPLE ||
+            controls.algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP;
+        if (supports_multiple_pressure_corrections &&
+            controls.acceleration.adaptive_pressure_correctors) {
+            pressure_correctors = result.history.empty()
+                ? controls.acceleration.pressure_correctors.max_correctors
+                : choose_pressure_correctors(
+                      result.history.back().continuity_normalized,
+                      controls.acceleration.pressure_correctors);
+        }
+        const auto U_old = U;
+        const auto p_old = p;
+
+        // Exact conservative flux consumed by the momentum assembly.
+        if (freeze_state)
+            phi_used_in_momentum = mass_flux;
+
+        auto grad_p = gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
+
+        Field<double, Location::CELL> body_x(mesh.n_cells(), "body_x", "N/m3", 1);
+        Field<double, Location::CELL> body_y(mesh.n_cells(), "body_y", "N/m3", 1);
+        Field<double, Location::CELL> body_z(mesh.n_cells(), "body_z", "N/m3", 1);
+        const bool cellwise_body_force = !controls.cell_body_force.empty();
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            const auto& cell_force = cellwise_body_force
+                ? controls.cell_body_force[c]
+                : controls.body_force;
+            body_x(c) = controls.density * cell_force.x;
+            body_y(c) = controls.density * cell_force.y;
+            body_z(c) = controls.density * cell_force.z;
+        }
+
+        ScalarBoundaryConditions ubc_x, ubc_y, ubc_z;
+        Field<double, Location::CELL> u_x_field(mesh.n_cells(), "Ux_reconstruction", "m/s", 1);
+        Field<double, Location::CELL> u_y_field(mesh.n_cells(), "Uy_reconstruction", "m/s", 1);
+        Field<double, Location::CELL> u_z_field(mesh.n_cells(), "Uz_reconstruction", "m/s", 1);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            u_x_field(c) = U.component_data(0)[c];
+            u_y_field(c) = U.component_data(1)[c];
+            u_z_field(c) = U.component_data(2)[c];
+        }
+        for (const auto& [name, bc] : velocity_bcs) {
+            ubc_x[name] = {bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE
+                               ? ScalarBoundaryType::FIXED_VALUE : ScalarBoundaryType::ZERO_GRADIENT,
+                           bc.value.x, 0.0};
+            ubc_y[name] = {bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE
+                               ? ScalarBoundaryType::FIXED_VALUE : ScalarBoundaryType::ZERO_GRADIENT,
+                           bc.value.y, 0.0};
+            ubc_z[name] = {bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE
+                               ? ScalarBoundaryType::FIXED_VALUE : ScalarBoundaryType::ZERO_GRADIENT,
+                           bc.value.z, 0.0};
+        }
+
+        // Momentum predictor uses the conservative corrected flux from the
+        // previous outer iteration. This preserves the SIMPLE phi state.
+
+        Field<double, Location::CELL> transpose_force;
+        if (include_transpose_stress) {
+            const auto stress_flux = transpose_viscous_stress_flux(
+                mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z});
+            transpose_force = viscous_face_flux_divergence(mesh, geometry, stress_flux);
+            for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
+                body_x(cell) += transpose_force(cell,0);
+                body_y(cell) += transpose_force(cell,1);
+                body_z(cell) += transpose_force(cell,2);
+            }
+        }
+
+        if (controls.momentum_assembly_forensic_callback)
+            controls.momentum_assembly_forensic_callback(
+                iter, p, grad_p, U, mass_flux, mu_eff);
+        if (controls.momentum_predictor_callback)
+            controls.momentum_predictor_callback(iter, mu_eff, U, mass_flux);
+
+        auto ex = assemble_momentum_component(
+            mesh, geometry, mass_flux, grad_p, body_x, mu_eff, ubc_x, 0,
+            controls.use_bounded_convection, controls.convection_scheme, &u_x_field);
+        auto ey = assemble_momentum_component(
+            mesh, geometry, mass_flux, grad_p, body_y, mu_eff, ubc_y, 1,
+            controls.use_bounded_convection, controls.convection_scheme, &u_y_field);
+        auto ez = assemble_momentum_component(
+            mesh, geometry, mass_flux, grad_p, body_z, mu_eff, ubc_z, 2,
+            controls.use_bounded_convection, controls.convection_scheme, &u_z_field);
+
+        if (controls.momentum_equation_forensic_callback) {
+            controls.momentum_equation_forensic_callback(
+                iter, 0, ex, geometry, grad_p, body_x);
+            controls.momentum_equation_forensic_callback(
+                iter, 1, ey, geometry, grad_p, body_y);
+            controls.momentum_equation_forensic_callback(
+                iter, 2, ez, geometry, grad_p, body_z);
+        }
+
+        if (controls.transient.enabled) {
+            const auto& u_n = *controls.transient.previous;
+            const auto& u_nm1 = controls.transient.history_valid
+                ? *controls.transient.previous_previous : u_n;
+            const bool use_bdf2 = controls.transient.scheme == cfdx::core::TimeScheme::BDF2 &&
+                                  controls.transient.history_valid;
+            add_dual_time_mass_term(ex, u_n, u_nm1, geometry, controls.density,
+                                    controls.transient.dt, controls.transient.dt_previous,
+                                    use_bdf2, 0);
+            add_dual_time_mass_term(ey, u_n, u_nm1, geometry, controls.density,
+                                    controls.transient.dt, controls.transient.dt_previous,
+                                    use_bdf2, 1);
+            add_dual_time_mass_term(ez, u_n, u_nm1, geometry, controls.density,
+                                    controls.transient.dt, controls.transient.dt_previous,
+                                    use_bdf2, 2);
+        }
+
+        // Preserve the pre-solve velocity for equation relaxation. HbyA is
+        // reconstructed after the momentum solve from the solved neighbour
+        // values, which is the algebraic H/A split of the assembled equation.
+        // The pre-solve state is used only for the under-relaxation source term.
+        Vector ux(mesh.n_cells()), uy(mesh.n_cells()), uz(mesh.n_cells());
+        Vector ux_old(mesh.n_cells()), uy_old(mesh.n_cells()), uz_old(mesh.n_cells());
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            ux(c) = U.component_data(0)[c];
+            uy(c) = U.component_data(1)[c];
+            uz(c) = U.component_data(2)[c];
+            ux_old(c) = ux(c);
+            uy_old(c) = uy(c);
+            uz_old(c) = uz(c);
+        }
+
+        cfdx::core::SolverResult rx{}, ry{}, rz{};
+        double pressure_residual = std::numeric_limits<double>::infinity();
+        std::size_t pressure_iterations = 0;
+        std::array<double, 3> simplec_signed_offdiag_sum_audit{0.0, 0.0, 0.0};
+        std::array<double, 3> simplec_abs_offdiag_sum_audit{0.0, 0.0, 0.0};
+        std::array<double, 3> simplec_denominator_signed_audit{0.0, 0.0, 0.0};
+        std::array<double, 3> simplec_denominator_abs_audit{0.0, 0.0, 0.0};
+        std::array<double, 3> simplec_denominator_gap_audit{0.0, 0.0, 0.0};
+        std::array<std::size_t, 3> simplec_denominator_worst_cell_audit{0, 0, 0};
+        // Rhie-Chow operator identity audit (common scope): each algorithm
+        // branch evaluates it right after its authoritative flux rebuild.
+        // Evidence channel only; no acceptance criterion consumes it.
+        bool rhie_chow_identity_evaluated = false;
+        double rhie_chow_identity_audit_linf = 0.0;
+        if (controls.algorithm == PressureVelocityAlgorithm::COUPLED) {
+            const auto coupled_result = solve_coupled_momentum_continuity(
+                mesh, geometry, ex, ey, ez, U_old, p_old,
+                velocity_bcs, pressure_bcs, controls.density,
+                controls.kinematic_viscosity,
+                controls.pressure_reference_cell,
+                controls.pressure_reference_value,
+                controls.coupling.coupled_max_iterations,
+                controls.coupling.coupled_linear_tolerance,
+                controls.diagnostics,
+                controls.coupling.schur_model,
+                controls.coupled_linear_solver,
+                controls,
+                retry_controller.alpha_u(effective_alpha_u),
+                U, p, &result.coupled_linear_plan);
+            result.coupled_linear_plan_resolved = true;
+            if (coupled_result.status != cfdx::core::SolverStatus::CONVERGED) {
+                // Report the stalled linear state in scientific notation.
+                // std::to_string truncates to six fixed decimals, so a
+                // MAX_ITER stall printed as "residual=0.000000" hid the
+                // plateau level and made the failure impossible to calibrate
+                // against the coupled linear gate or the nested PCD budget.
+                const auto coupled_linear_failure_value = [](double value) {
+                    std::ostringstream out;
+                    out << std::scientific << std::setprecision(6) << value;
+                    return out.str();
+                };
+                throw NonlinearRetryableFailure(
+                    "solve_steady_incompressible: coupled momentum-continuity solve did not converge "
+                    "(status=" + std::to_string(static_cast<int>(coupled_result.status)) +
+                    ", iterations=" + std::to_string(coupled_result.iterations) +
+                    ", residual=" + coupled_linear_failure_value(coupled_result.residual) +
+                    ", relative=" + coupled_linear_failure_value(coupled_result.residual_relative) + ")");
+            }
+
+            // Diagnose the full monolithic candidate before independent U/p
+            // under-relaxation. This separates a block/flux inconsistency from
+            // continuity loss introduced by the nonlinear update itself.
+            if (controls.diagnostics.coupled_matrix_summary) {
+                const auto* cell_faces = mesh.cells().faces_data();
+                const auto* cell_offsets = mesh.cells().offsets_data();
+                std::array<std::vector<double>, 3> candidate_rAU;
+                for (auto& component : candidate_rAU)
+                    component.resize(mesh.n_cells());
+                for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                    candidate_rAU[0][c] = 1.0 / ex.diagonal[c];
+                    candidate_rAU[1][c] = 1.0 / ey.diagonal[c];
+                    candidate_rAU[2][c] = 1.0 / ez.diagonal[c];
+                }
+                const auto candidate_flux = make_rhie_chow_flux_from_physical_velocity(
+                    mesh, geometry, U, p, candidate_rAU,
+                    controls.density, velocity_bcs, pressure_bcs,
+                    controls.pressure_skew_corrected_gradient);
+                double candidate_continuity_linf = 0.0;
+                double candidate_continuity_signed = 0.0;
+                std::size_t candidate_continuity_cell = 0;
+                double candidate_global_divergence_sum = 0.0;
+                double candidate_boundary_flux_sum = 0.0;
+                double candidate_boundary_flux_abs_sum = 0.0;
+                double candidate_gauge_cell_divergence = 0.0;
+                for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                    double divergence = 0.0;
+                    for (Offset k = cell_offsets[c]; k < cell_offsets[c + 1]; ++k) {
+                        const std::size_t face = cell_faces[k];
+                        divergence += mesh.ownership().owner(face) == c
+                            ? candidate_flux(face) : -candidate_flux(face);
+                    }
+                    candidate_global_divergence_sum += divergence;
+                    if (c == controls.pressure_reference_cell)
+                        candidate_gauge_cell_divergence = divergence;
+                    if (std::abs(divergence) > candidate_continuity_linf) {
+                        candidate_continuity_linf = std::abs(divergence);
+                        candidate_continuity_signed = divergence;
+                        candidate_continuity_cell = c;
+                    }
+                }
+                // Every internal face cancels exactly in the global signed
+                // divergence sum. The remaining sum must equal the signed
+                // boundary flux; report both independently to audit topology,
+                // face orientation, and the reference-pressure cell.
+                for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+                    if (mesh.ownership().neighbour(face) >= 0) continue;
+                    // Include every topological boundary face. Empty/extruded
+                    // faces should contribute zero geometrically; excluding
+                    // them here would hide a mesh/flux inconsistency.
+                    candidate_boundary_flux_sum += candidate_flux(face);
+                    candidate_boundary_flux_abs_sum += std::abs(candidate_flux(face));
+                }
+                std::cerr << "COUPLED_GLOBAL_CONSERVATION_AUDIT"
+                          << " divergence_sum=" << candidate_global_divergence_sum
+                          << " signed_boundary_flux_sum=" << candidate_boundary_flux_sum
+                          << " boundary_flux_abs_sum=" << candidate_boundary_flux_abs_sum
+                          << " divergence_minus_boundary_flux="
+                          << (candidate_global_divergence_sum - candidate_boundary_flux_sum)
+                          << " gauge_cell=" << controls.pressure_reference_cell
+                          << " gauge_cell_divergence=" << candidate_gauge_cell_divergence
+                          << " max_cell=" << candidate_continuity_cell
+                          << " max_cell_divergence_signed=" << candidate_continuity_signed
+                          << " max_cell_divergence_linf=" << candidate_continuity_linf
+                          << "\n";
+
+                const auto candidate_grad_p =
+                    gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
+                double velocity_flux_div = 0.0;
+                double pressure_orth_div = 0.0;
+                double pressure_nonorth_div = 0.0;
+                double physical_velocity_compensation_div = 0.0;
+                for (Offset k = cell_offsets[candidate_continuity_cell];
+                     k < cell_offsets[candidate_continuity_cell + 1]; ++k) {
+                    const std::size_t face = cell_faces[k];
+                    const bool owner = mesh.ownership().owner(face) == candidate_continuity_cell;
+                    const double sign = owner ? 1.0 : -1.0;
+                    const auto nr = mesh.ownership().neighbour(face);
+                    double orth = 0.0;
+                    double nonorth = 0.0;
+                    double compensation = 0.0;
+                    if (nr >= 0) {
+                        const std::size_t face_owner = mesh.ownership().owner(face);
+                        const std::size_t face_neighbour = static_cast<std::size_t>(nr);
+                        const Vec3 sf = geometry.face_area_vectors[face];
+                        const Vec3 dvec = geometry.cell_centres[face_neighbour] -
+                                          geometry.cell_centres[face_owner];
+                        const Vec3 cx{
+                            0.5 * (geometry.cell_volumes[face_owner] * candidate_rAU[0][face_owner] +
+                                   geometry.cell_volumes[face_neighbour] * candidate_rAU[0][face_neighbour]),
+                            0.5 * (geometry.cell_volumes[face_owner] * candidate_rAU[1][face_owner] +
+                                   geometry.cell_volumes[face_neighbour] * candidate_rAU[1][face_neighbour]),
+                            0.5 * (geometry.cell_volumes[face_owner] * candidate_rAU[2][face_owner] +
+                                   geometry.cell_volumes[face_neighbour] * candidate_rAU[2][face_neighbour])};
+                        const Vec3 gp{
+                            0.5 * (candidate_grad_p.component_data(0)[face_owner] +
+                                   candidate_grad_p.component_data(0)[face_neighbour]),
+                            0.5 * (candidate_grad_p.component_data(1)[face_owner] +
+                                   candidate_grad_p.component_data(1)[face_neighbour]),
+                            0.5 * (candidate_grad_p.component_data(2)[face_owner] +
+                                   candidate_grad_p.component_data(2)[face_neighbour])};
+                        // In the PHYSICAL_VELOCITY contract the authoritative
+                        // flux is U_f.Sf minus the pressure jump and deferred
+                        // pressure flux, plus the dAU*grad(p) compensation.
+                        // Keep these signs identical to make_rhie_chow_mass_flux.
+                        orth = -controls.density *
+                            pressure_face_orthogonal_coefficient(sf, dvec, cx) *
+                            (p(face_neighbour) - p(face_owner));
+                        nonorth = -controls.density *
+                            pressure_face_nonorthogonal_flux(sf, dvec, cx, gp);
+                        compensation = controls.density *
+                            (cx.x * gp.x * sf.x + cx.y * gp.y * sf.y +
+                             cx.z * gp.z * sf.z);
+                    }
+                    pressure_orth_div += sign * orth;
+                    pressure_nonorth_div += sign * nonorth;
+                    physical_velocity_compensation_div += sign * compensation;
+                    velocity_flux_div += sign *
+                        (candidate_flux(face) - orth - nonorth - compensation);
+                }
+                std::cerr << "COUPLED_PRE_RELAXATION_FLUX_BREAKDOWN"
+                          << " cell=" << candidate_continuity_cell
+                          << " velocity_interpolation_div=" << velocity_flux_div
+                          << " pressure_orthogonal_div=" << pressure_orth_div
+                          << " pressure_nonorthogonal_div=" << pressure_nonorth_div
+                          << " physical_velocity_compensation_div=" << physical_velocity_compensation_div
+                          << " sum=" << (velocity_flux_div + pressure_orth_div +
+                                         pressure_nonorth_div + physical_velocity_compensation_div)
+                          << " authoritative_div=" << candidate_continuity_signed
+                          << "\n";
+                std::cerr << "COUPLED_PRE_RELAXATION_FLUX_CONTINUITY linf="
+                          << std::scientific << std::setprecision(8)
+                          << candidate_continuity_linf
+                          << " signed=" << candidate_continuity_signed
+                          << " cell=" << candidate_continuity_cell
+                          << " alpha_u=" << retry_controller.alpha_u(effective_alpha_u)
+                          << " alpha_p=" << retry_controller.alpha_p(effective_alpha_p)
+                          << "\n";
+            }
+
+            // COUPLED solves U and p as one saddle-point system. Do not
+            // apply independent post-solve relaxation factors to its blocks:
+            // that destroys the continuity constraint enforced by the
+            // monolithic solve (the candidate has O(linear-tolerance)
+            // continuity, while alpha_u != alpha_p introduces finite
+            // divergence). U and p already contain the coupled candidate.
+            // Segregated algorithms retain their relaxation logic below.
+            apply_pressure_gauge_policy(
+                p, geometry, controls.pressure_gauge_policy,
+                controls.pressure_reference_cell, controls.pressure_reference_value,
+                has_fixed_pressure_boundary);
+
+            // The coupled solve has already enforced the discrete continuity
+            // equation. Rebuild the authoritative flux from the same RC
+            // interpolation used by the block matrix for diagnostics and for
+            // the next nonlinear iteration.
+            std::array<std::vector<double>,3> coupled_rAU;
+            coupled_rAU[0].resize(mesh.n_cells());
+            coupled_rAU[1].resize(mesh.n_cells());
+            coupled_rAU[2].resize(mesh.n_cells());
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                if (!(ex.diagonal[c] > 0.0) || !std::isfinite(ex.diagonal[c]) ||
+                    !(ey.diagonal[c] > 0.0) || !std::isfinite(ey.diagonal[c]) ||
+                    !(ez.diagonal[c] > 0.0) || !std::isfinite(ez.diagonal[c]))
+                    throw std::runtime_error(
+                        "solve_steady_incompressible: invalid coupled momentum diagonal after solve");
+                // make_rhie_chow_mass_flux() and rhie_chow_pressure_flux_internal()
+                // take the INVERSE momentum diagonal rAU = 1/A_P and apply the
+                // cell volume internally (cx = 0.5*(V*rAU) = dAU). Passing V/A_P
+                // here double-counted the volume and shrank the Rhie-Chow
+                // pressure correction of the authoritative coupled flux by a
+                // factor V, silently removing the checkerboard suppression.
+                // On the constant/linear-pressure channel cases the correction
+                // vanishes and the defect was invisible (Couette/Poiseuille
+                // passed); on the lid-driven cavity the assembled continuity
+                // rows and the authoritative flux disagreed by div(interp(U)),
+                // a permanent continuity floor (~8.5e-3 against the 1e-7 gate)
+                // that no iteration budget or linear tolerance could remove:
+                // the velocity froze at the Picard fixed point and the
+                // stagnation detector terminated the case.
+                coupled_rAU[0][c] = 1.0 / ex.diagonal[c];
+                coupled_rAU[1][c] = 1.0 / ey.diagonal[c];
+                coupled_rAU[2][c] = 1.0 / ez.diagonal[c];
+            }
+            mass_flux = make_rhie_chow_flux_from_physical_velocity(
+                mesh, geometry, U, p, coupled_rAU,
+                controls.density, velocity_bcs, pressure_bcs,
+                    controls.pressure_skew_corrected_gradient);
+
+            // Operator identity audit: re-derive the authoritative flux from
+            // the same state through the same production call and compare
+            // against the stored field. Zero unless the stored flux was
+            // mutated after the rebuild.
+            {
+                const auto rederived_flux = make_rhie_chow_flux_from_physical_velocity(
+                    mesh, geometry, U, p, coupled_rAU,
+                    controls.density, velocity_bcs, pressure_bcs,
+                    controls.pressure_skew_corrected_gradient);
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+                    rhie_chow_identity_audit_linf = std::max(
+                        rhie_chow_identity_audit_linf,
+                        std::abs(mass_flux(f) - rederived_flux(f)));
+                rhie_chow_identity_evaluated = true;
+            }
+
+            // A coupled iteration has no segregated momentum/pressure Krylov
+            // sub-solves. The block residual is the authoritative linear metric.
+            // The independent nonlinear momentum residual below remains the
+            // final physical acceptance metric.
+        } else {
+        relax_momentum_equation(ex, ux_old, retry_controller.alpha_u(effective_alpha_u));
+        relax_momentum_equation(ey, uy_old, retry_controller.alpha_u(effective_alpha_u));
+        relax_momentum_equation(ez, uz_old, retry_controller.alpha_u(effective_alpha_u));
+
+        // Equation relaxation is already part of the matrix. The Krylov solve
+        // therefore returns the solution of the relaxed equation directly;
+        // applying alpha_u again here would double-relax the predictor.
+        ScalarSolveControls momentum_solve_controls;
+        momentum_solve_controls.max_iterations = controls.linear_max_iterations;
+        momentum_solve_controls.tolerance = linear_tolerance;
+        momentum_solve_controls.relaxation = 1.0;
+        momentum_solve_controls.problem = LinearProblemKind::Momentum;
+        momentum_solve_controls.linear_solver = controls.momentum_linear_solver;
+        rx = solve_scalar_equation(ex, ux, momentum_solve_controls);
+        ry = solve_scalar_equation(ey, uy, momentum_solve_controls);
+        rz = solve_scalar_equation(ez, uz, momentum_solve_controls);
+
+        auto require_linear_convergence = [](const char* component, const auto& solve) {
+            if (solve.status != cfdx::core::SolverStatus::CONVERGED) {
+                std::ostringstream message;
+                message << "solve_steady_incompressible: " << component
+                        << " momentum solve did not converge (status="
+                        << static_cast<int>(solve.status)
+                        << ", iterations=" << solve.iterations
+                        << ", residual=" << std::scientific << std::setprecision(3)
+                        << solve.residual
+                        << ", relative=" << solve.residual_relative << ")";
+                throw NonlinearRetryableFailure(message.str());
+            }
+        };
+        require_linear_convergence("Ux", rx);
+        require_linear_convergence("Uy", ry);
+        require_linear_convergence("Uz", rz);
+
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            U.component_data(0)[c] = ux(c);
+            U.component_data(1)[c] = uy(c);
+            U.component_data(2)[c] = uz(c);
+        }
+
+        std::array<std::vector<double>,3> rAU, rAtU, hbya;
+        for (std::size_t d = 0; d < 3; ++d) {
+            rAU[d].resize(mesh.n_cells());
+            rAtU[d].resize(mesh.n_cells());
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                const ScalarEquation* eqs[3] = {&ex, &ey, &ez};
+                const double a = eqs[d]->diagonal[c];
+                if (!(a > 0.0) || !std::isfinite(a))
+                    throw std::runtime_error(
+                        "solve_steady_incompressible: invalid momentum diagonal");
+                rAU[d][c] = 1.0 / a;
+                rAtU[d][c] = rAU[d][c];
+                if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
+                    double signed_offdiag_sum = 0.0;
+                    double abs_offdiag_sum = 0.0;
+                    const auto begin = eqs[d]->matrix.row_offsets_data()[c];
+                    const auto end = eqs[d]->matrix.row_offsets_data()[c + 1];
+                    for (std::uint32_t k = begin; k < end; ++k) {
+                        const auto col = eqs[d]->matrix.columns_data()[k];
+                        // Boundary contributions are assembled into the owner
+                        // diagonal/source; off-diagonal entries are therefore
+                        // genuine internal neighbour coefficients.
+                        if (col != c) {
+                            const double value = eqs[d]->matrix.values_data()[k];
+                            signed_offdiag_sum += value;
+                            abs_offdiag_sum += std::abs(value);
+                        }
+                    }
+                    const double diagonal = 1.0 / rAU[d][c];
+                    const double denom =
+                        simplec_consistent_diagonal(diagonal, signed_offdiag_sum);
+                    // Independent audit counterpart. With the expected non-positive
+                    // stored off-diagonals this equals the signed-contract
+                    // denominator; a nonzero gap flags a matrix-sign mismatch.
+                    const double abs_denom =
+                        diagonal - abs_offdiag_sum;
+                    simplec_signed_offdiag_sum_audit[d] =
+                        std::max(simplec_signed_offdiag_sum_audit[d],
+                                 std::abs(signed_offdiag_sum));
+                    simplec_abs_offdiag_sum_audit[d] =
+                        std::max(simplec_abs_offdiag_sum_audit[d], abs_offdiag_sum);
+                    simplec_denominator_signed_audit[d] =
+                        std::max(simplec_denominator_signed_audit[d], std::abs(denom));
+                    simplec_denominator_abs_audit[d] =
+                        std::max(simplec_denominator_abs_audit[d], std::abs(abs_denom));
+                    const double gap = std::abs(denom - abs_denom);
+                    if (gap > simplec_denominator_gap_audit[d])
+                        simplec_denominator_worst_cell_audit[d] = c;
+                    simplec_denominator_gap_audit[d] =
+                        std::max(simplec_denominator_gap_audit[d], gap);
+                    rAtU[d][c] = 1.0 / denom;
+                }
+            }
+        }
+
+        hbya[0] = build_hbya(ex, ux, grad_p, 0, rAU[0]);
+        hbya[1] = build_hbya(ey, uy, grad_p, 1, rAU[1]);
+        hbya[2] = build_hbya(ez, uz, grad_p, 2, rAU[2]);
+        auto HbyA = make_hbya_field(hbya);
+
+        if (freeze_state) {
+            frozen_rAU = rAU;
+            frozen_hbyA = hbya;
+            frozen_grad_p = grad_p;
+            frozen_state_valid = true;
+        }
+
+        // rAU is the inverse integrated momentum diagonal (1/A_P).
+        // Pressure-gradient terms in the integrated momentum equation therefore
+        // carry the cell volume explicitly when reconstructing cell velocity.
+        // phiHbyA is the authoritative predictor flux. The Rhie-Chow term
+        // uses the same directional inverse momentum coefficient as the
+        // pressure equation, avoiding a second, incompatible face operator.
+        auto phiHbyA = make_mass_flux(
+            mesh, geometry, HbyA, controls.density, velocity_bcs);
+
+        if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
+            for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                const auto nr = mesh.ownership().neighbour(f);
+                const std::size_t o = mesh.ownership().owner(f);
+                if (nr < 0) {
+                    const std::size_t patch = geometry.face_patch[f];
+                    if (patch >= mesh.boundary().n_patches() ||
+                        mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                        continue;
+                    const auto pbc = pressure_bcs.find(
+                        mesh.boundary().patch(patch).name);
+                    if (pbc == pressure_bcs.end() ||
+                        pbc->second.type != ScalarBoundaryType::FIXED_VALUE)
+                        continue;
+                    const Vec3 Sf = geometry.face_area_vectors[f];
+                    const Vec3 dvec = geometry.face_centres[f] -
+                                      geometry.cell_centres[o];
+                    const Vec3 delta_dAU{
+                        geometry.cell_volumes[o] * (rAtU[0][o] - rAU[0][o]),
+                        geometry.cell_volumes[o] * (rAtU[1][o] - rAU[1][o]),
+                        geometry.cell_volumes[o] * (rAtU[2][o] - rAU[2][o])};
+                    const Vec3 grad_p_cell{
+                        grad_p.component_data(0)[o],
+                        grad_p.component_data(1)[o],
+                        grad_p.component_data(2)[o]};
+                    const double correction_coeff = pressure_face_orthogonal_coefficient(
+                        Sf, dvec, delta_dAU);
+                    const double correction_deferred = pressure_face_nonorthogonal_flux(
+                        Sf, dvec, delta_dAU, grad_p_cell);
+                    phiHbyA(f) += controls.density * (
+                        correction_coeff * (pbc->second.value - p(o)) +
+                        correction_deferred);
+                    continue;
+                }
+                const std::size_t n = static_cast<std::size_t>(nr);
+                const auto Sf = geometry.face_area_vectors[f];
+                const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+                const double dx = 0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
+                                       geometry.cell_volumes[n]*rAtU[0][n]) -
+                                  0.5*(geometry.cell_volumes[o]*rAU[0][o] +
+                                       geometry.cell_volumes[n]*rAU[0][n]);
+                const double dy = 0.5*(geometry.cell_volumes[o]*rAtU[1][o] +
+                                       geometry.cell_volumes[n]*rAtU[1][n]) -
+                                  0.5*(geometry.cell_volumes[o]*rAU[1][o] +
+                                       geometry.cell_volumes[n]*rAU[1][n]);
+                const double dz = 0.5*(geometry.cell_volumes[o]*rAtU[2][o] +
+                                       geometry.cell_volumes[n]*rAtU[2][n]) -
+                                  0.5*(geometry.cell_volumes[o]*rAU[2][o] +
+                                       geometry.cell_volumes[n]*rAU[2][n]);
+                const Vec3 delta_dAU{dx, dy, dz};
+                const double correction_coeff = pressure_face_orthogonal_coefficient(
+                    Sf, dvec, delta_dAU);
+                const Vec3 grad_p_face{
+                    0.5 * (grad_p.component_data(0)[o] + grad_p.component_data(0)[n]),
+                    0.5 * (grad_p.component_data(1)[o] + grad_p.component_data(1)[n]),
+                    0.5 * (grad_p.component_data(2)[o] + grad_p.component_data(2)[n])};
+                // SIMPLEC changes the full face response, not only its
+                // centre-line coefficient. Include the matching deferred
+                // difference or skewed-face continuity retains an O(grad p)
+                // mismatch between rAtU and rAU.
+                const double correction_deferred = pressure_face_nonorthogonal_flux(
+                    Sf, dvec, delta_dAU, grad_p_face);
+                phiHbyA(f) += controls.density * (
+                    correction_coeff * (p(n)-p(o)) + correction_deferred);
+            }
+        }
+
+    // SIMPLEC's pressure equation uses the consistent response
+            // rAtU, while the corrected cell velocity uses rAU. Convert the
+            // reconstructed rAtU Rhie-Chow flux back to the rAU response by
+            // adding the full directional difference (rAtU-rAU), not only
+            // its orthogonal pressure-jump part. Omitting the deferred
+            // non-orthogonal remainder leaves a continuity floor on skewed
+            // meshes. Fixed-pressure boundary faces require the same response
+            // conversion; EMPTY and zero-gradient-pressure faces contribute
+            // no pressure correction.
+    const auto add_simplec_consistent_response =
+        [&](cfdx::core::Field<double, cfdx::core::Location::FACE>& flux) {
+            const auto response_grad_p =
+                gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
+            for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                    const auto nr = mesh.ownership().neighbour(f);
+                    const std::size_t o = mesh.ownership().owner(f);
+                    const Vec3 Sf = geometry.face_area_vectors[f];
+                    if (nr >= 0) {
+                        const std::size_t n = static_cast<std::size_t>(nr);
+                        const Vec3 dvec =
+                            geometry.cell_centres[n] - geometry.cell_centres[o];
+                        const Vec3 delta_dAU{
+                            0.5*(geometry.cell_volumes[o]*rAtU[0][o] +
+                                 geometry.cell_volumes[n]*rAtU[0][n]) -
+                            0.5*(geometry.cell_volumes[o]*rAU[0][o] +
+                                 geometry.cell_volumes[n]*rAU[0][n]),
+                            0.5*(geometry.cell_volumes[o]*rAtU[1][o] +
+                                 geometry.cell_volumes[n]*rAtU[1][n]) -
+                            0.5*(geometry.cell_volumes[o]*rAU[1][o] +
+                                 geometry.cell_volumes[n]*rAU[1][n]),
+                            0.5*(geometry.cell_volumes[o]*rAtU[2][o] +
+                                 geometry.cell_volumes[n]*rAtU[2][n]) -
+                            0.5*(geometry.cell_volumes[o]*rAU[2][o] +
+                                 geometry.cell_volumes[n]*rAU[2][n])};
+                        const double orthogonal = pressure_face_orthogonal_coefficient(
+                            Sf, dvec, delta_dAU);
+                        const Vec3 grad_p_face{
+                            0.5*(response_grad_p.component_data(0)[o] +
+                                 response_grad_p.component_data(0)[n]),
+                            0.5*(response_grad_p.component_data(1)[o] +
+                                 response_grad_p.component_data(1)[n]),
+                            0.5*(response_grad_p.component_data(2)[o] +
+                                 response_grad_p.component_data(2)[n])};
+                        const double deferred = pressure_face_nonorthogonal_flux(
+                            Sf, dvec, delta_dAU, grad_p_face);
+                        flux(f) += controls.density *
+                            (orthogonal * (p(n)-p(o)) + deferred);
+                        continue;
+                    }
+
+                    const std::size_t patch = geometry.face_patch[f];
+                    if (patch >= mesh.boundary().n_patches() ||
+                        mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                        continue;
+                    const auto pbc = pressure_bcs.find(
+                        mesh.boundary().patch(patch).name);
+                    if (pbc == pressure_bcs.end() ||
+                        pbc->second.type != ScalarBoundaryType::FIXED_VALUE)
+                        continue;
+                    const Vec3 dvec =
+                        geometry.face_centres[f] - geometry.cell_centres[o];
+                    const Vec3 delta_dAU{
+                        geometry.cell_volumes[o] * (rAtU[0][o] - rAU[0][o]),
+                        geometry.cell_volumes[o] * (rAtU[1][o] - rAU[1][o]),
+                        geometry.cell_volumes[o] * (rAtU[2][o] - rAU[2][o])};
+                    const double orthogonal = pressure_face_orthogonal_coefficient(
+                        Sf, dvec, delta_dAU);
+                    const Vec3 grad_p_boundary{
+                        response_grad_p.component_data(0)[o],
+                        response_grad_p.component_data(1)[o],
+                        response_grad_p.component_data(2)[o]};
+                    const double deferred = pressure_face_nonorthogonal_flux(
+                        Sf, dvec, delta_dAU, grad_p_boundary);
+                    flux(f) += controls.density *
+                        (orthogonal * (pbc->second.value - p(o)) + deferred);
+                }
+            };
+
+
+        for (std::size_t corr = 0; corr < pressure_correctors; ++corr) {
+            const std::size_t nc = mesh.n_cells();
+            SparseMatrix A(nc, nc);
+            Vector b(nc, 0.0);
+            std::vector<std::map<std::size_t, double>> rows(nc);
+            std::vector<double> diag(nc, 0.0);
+            std::vector<double> continuity(nc, 0.0);
+            const auto current_grad_p =
+                gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
+
+            const auto* cell_faces = mesh.cells().faces_data();
+            const auto* cell_offsets = mesh.cells().offsets_data();
+            for (std::size_t c = 0; c < nc; ++c) {
+                const Offset off = cell_offsets[c];
+                const Offset count = cell_offsets[c + 1] - off;
+                for (Offset k = 0; k < count; ++k) {
+                    const std::size_t f = cell_faces[off+k];
+                    continuity[c] += mesh.ownership().owner(f) == c
+                        ? phiHbyA(f) : -phiHbyA(f);
+                    if (mesh.ownership().neighbour(f) >= 0) {
+                        const double phi_nonorth = rhie_chow_pressure_flux_internal(
+                            mesh, geometry, f, p, current_grad_p,
+                            controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
+                            controls.density);
+                        continuity[c] += mesh.ownership().owner(f) == c
+                            ? -phi_nonorth : phi_nonorth;
+                    }
+                }
+            }
+
+            for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                const auto nr = mesh.ownership().neighbour(f);
+                if (nr < 0) continue;
+                const std::size_t o = mesh.ownership().owner(f);
+                const std::size_t n = static_cast<std::size_t>(nr);
+                const Vec3 Sf = geometry.face_area_vectors[f];
+                const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+                const auto& pressure_coeff =
+                    controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
+                const double coeff = controls.density * directional_face_coefficient(
+                    pressure_coeff, o, n, Sf, dvec);
+                diag[o] += coeff;
+                diag[n] += coeff;
+                rows[o][n] -= coeff;
+                rows[n][o] -= coeff;
+            }
+
+            for (std::size_t c = 0; c < nc; ++c) {
+                rows[c][c] += diag[c];
+                b(c) = -continuity[c];
+            }
+
+            for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                if (mesh.ownership().neighbour(f) >= 0) continue;
+                const std::size_t patch = geometry.face_patch[f];
+                if (patch >= mesh.boundary().n_patches()) continue;
+                const auto& name = mesh.boundary().patch(patch).name;
+                const auto it = pressure_bcs.find(name);
+                if (it == pressure_bcs.end() ||
+                    it->second.type != ScalarBoundaryType::FIXED_VALUE) continue;
+                const std::size_t o = mesh.ownership().owner(f);
+                const Vec3 dvec = geometry.face_centres[f] - geometry.cell_centres[o];
+                const Vec3 Sf = geometry.face_area_vectors[f];
+                const auto& pressure_coeff =
+                    controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
+                const Vec3 dAU_boundary{
+                    geometry.cell_volumes[o] * pressure_coeff[0][o],
+                    geometry.cell_volumes[o] * pressure_coeff[1][o],
+                    geometry.cell_volumes[o] * pressure_coeff[2][o]};
+                const double boundary_coeff = pressure_face_orthogonal_coefficient(
+                    Sf, dvec, dAU_boundary);
+                rows[o][o] += controls.density * boundary_coeff;
+                // Explicit pressure flux at fixed-pressure boundaries (#894):
+                // the half-Dirichlet diagonal term above is only consistent
+                // when the boundary mass flux is reconstructed as
+                //   phi_b = phiHbyA_b - rho*boundary_coeff*(p_bc - p_P).
+                // boundary_coeff uses the same centre-line projection as the
+                // boundary flux reconstruction below. Without the matching
+                // source term the discretised equation forces the boundary
+                // flux to zero and continuity stalls on a nonzero floor.
+                const Vec3 gp_boundary{
+                    current_grad_p.component_data(0)[o],
+                    current_grad_p.component_data(1)[o],
+                    current_grad_p.component_data(2)[o]};
+                const double deferred_boundary = pressure_face_nonorthogonal_flux(
+                    Sf, dvec, dAU_boundary, gp_boundary);
+                b(o) += controls.density * (
+                    boundary_coeff * (it->second.value - p(o)) +
+                    deferred_boundary);
+            }
+
+            // Read-only decomposition of the exact pressure RHS. The
+            // production continuity assembly above is deliberately left
+            // untouched; this second pass attributes its terms per cell/face.
+            if (controls.momentum_assembly_forensic_callback) {
+                std::vector<double> rhs_predictor(nc, 0.0);
+                std::vector<double> rhs_pressure_implicit(nc, 0.0);
+                std::vector<double> rhs_pressure_deferred(nc, 0.0);
+                std::vector<double> rhs_boundary_source(nc, 0.0);
+                double predictor_internal_linf = 0.0;
+                double predictor_boundary_linf = 0.0;
+                double pressure_implicit_linf = 0.0;
+                double pressure_deferred_linf = 0.0;
+                double boundary_source_linf = 0.0;
+                double pressure_coefficient_min = std::numeric_limits<double>::infinity();
+                double pressure_coefficient_max = 0.0;
+                std::size_t predictor_internal_face = 0;
+                std::size_t predictor_boundary_face = 0;
+                std::size_t pressure_implicit_face = 0;
+                std::size_t pressure_deferred_face = 0;
+                std::size_t boundary_source_face = 0;
+                const auto& pressure_coeff =
+                    controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
+
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                    const std::size_t o = mesh.ownership().owner(f);
+                    const auto nr = mesh.ownership().neighbour(f);
+                    const double predictor = phiHbyA(f);
+                    rhs_predictor[o] -= predictor;
+                    if (nr >= 0) {
+                        const std::size_t n = static_cast<std::size_t>(nr);
+                        rhs_predictor[n] += predictor;
+                        predictor_internal_linf = std::max(
+                            predictor_internal_linf, std::abs(predictor));
+                        if (std::abs(predictor) == predictor_internal_linf)
+                            predictor_internal_face = f;
+
+                        const Vec3 Sf = geometry.face_area_vectors[f];
+                        const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+                        const double coeff = controls.density *
+                            directional_face_coefficient(pressure_coeff, o, n, Sf, dvec);
+                        const Vec3 dAU{
+                            0.5 * (geometry.cell_volumes[o] * pressure_coeff[0][o] +
+                                   geometry.cell_volumes[n] * pressure_coeff[0][n]),
+                            0.5 * (geometry.cell_volumes[o] * pressure_coeff[1][o] +
+                                   geometry.cell_volumes[n] * pressure_coeff[1][n]),
+                            0.5 * (geometry.cell_volumes[o] * pressure_coeff[2][o] +
+                                   geometry.cell_volumes[n] * pressure_coeff[2][n])};
+                        const Vec3 grad_face{
+                            0.5 * (current_grad_p.component_data(0)[o] +
+                                   current_grad_p.component_data(0)[n]),
+                            0.5 * (current_grad_p.component_data(1)[o] +
+                                   current_grad_p.component_data(1)[n]),
+                            0.5 * (current_grad_p.component_data(2)[o] +
+                                   current_grad_p.component_data(2)[n])};
+                        const double implicit_flux = coeff * (p(n) - p(o));
+                        const double deferred_flux = controls.density *
+                            pressure_face_nonorthogonal_flux(Sf, dvec, dAU, grad_face);
+                        rhs_pressure_implicit[o] += implicit_flux;
+                        rhs_pressure_implicit[n] -= implicit_flux;
+                        rhs_pressure_deferred[o] += deferred_flux;
+                        rhs_pressure_deferred[n] -= deferred_flux;
+                        if (std::abs(implicit_flux) > pressure_implicit_linf) {
+                            pressure_implicit_linf = std::abs(implicit_flux);
+                            pressure_implicit_face = f;
+                        }
+                        if (std::abs(deferred_flux) > pressure_deferred_linf) {
+                            pressure_deferred_linf = std::abs(deferred_flux);
+                            pressure_deferred_face = f;
+                        }
+                        pressure_coefficient_min = std::min(
+                            pressure_coefficient_min, coeff);
+                        pressure_coefficient_max = std::max(
+                            pressure_coefficient_max, std::abs(coeff));
+                    } else {
+                        predictor_boundary_linf = std::max(
+                            predictor_boundary_linf, std::abs(predictor));
+                        if (std::abs(predictor) == predictor_boundary_linf)
+                            predictor_boundary_face = f;
+                        const std::size_t patch = geometry.face_patch[f];
+                        if (patch >= mesh.boundary().n_patches()) continue;
+                        const auto& name = mesh.boundary().patch(patch).name;
+                        const auto pbc = pressure_bcs.find(name);
+                        if (pbc == pressure_bcs.end() ||
+                            pbc->second.type != ScalarBoundaryType::FIXED_VALUE)
+                            continue;
+                        const Vec3 dvec =
+                            geometry.face_centres[f] - geometry.cell_centres[o];
+                        const Vec3 Sf = geometry.face_area_vectors[f];
+                        const Vec3 dAU{
+                            geometry.cell_volumes[o] * pressure_coeff[0][o],
+                            geometry.cell_volumes[o] * pressure_coeff[1][o],
+                            geometry.cell_volumes[o] * pressure_coeff[2][o]};
+                        const double coeff = controls.density *
+                            pressure_face_orthogonal_coefficient(Sf, dvec, dAU);
+                        const Vec3 grad_boundary{
+                            current_grad_p.component_data(0)[o],
+                            current_grad_p.component_data(1)[o],
+                            current_grad_p.component_data(2)[o]};
+                        const double deferred = controls.density *
+                            pressure_face_nonorthogonal_flux(
+                                Sf, dvec, dAU, grad_boundary);
+                        const double source = coeff * (pbc->second.value - p(o)) +
+                                              deferred;
+                        rhs_boundary_source[o] += source;
+                        if (std::abs(source) > boundary_source_linf) {
+                            boundary_source_linf = std::abs(source);
+                            boundary_source_face = f;
+                        }
+                    }
+                }
+
+                std::size_t rhs_cell = 0;
+                double rhs_linf = 0.0;
+                double continuity_linf = 0.0;
+                double decomposition_error = 0.0;
+                for (std::size_t c = 0; c < nc; ++c) {
+                    if (std::abs(b(c)) > rhs_linf) {
+                        rhs_linf = std::abs(b(c));
+                        rhs_cell = c;
+                    }
+                    continuity_linf = std::max(continuity_linf, std::abs(continuity[c]));
+                    const double reconstructed = rhs_predictor[c] +
+                        rhs_pressure_implicit[c] + rhs_pressure_deferred[c] +
+                        rhs_boundary_source[c];
+                    decomposition_error = std::max(
+                        decomposition_error, std::abs(b(c) - reconstructed));
+                }
+                const auto& rhs_point = geometry.cell_centres[rhs_cell];
+                std::cerr << std::setprecision(17)
+                          << "NACA_PRESSURE_RHS"
+                          << " iter=" << iter
+                          << " corrector=" << corr
+                          << " rhs_linf=" << rhs_linf
+                          << " rhs_cell=" << rhs_cell
+                          << " rhs_xyz=" << rhs_point.x << ":" << rhs_point.y << ":" << rhs_point.z
+                          << " continuity_linf=" << continuity_linf
+                          << " predictor_rhs_cell=" << rhs_predictor[rhs_cell]
+                          << " implicit_pressure_rhs_cell=" << rhs_pressure_implicit[rhs_cell]
+                          << " deferred_pressure_rhs_cell=" << rhs_pressure_deferred[rhs_cell]
+                          << " boundary_source_rhs_cell=" << rhs_boundary_source[rhs_cell]
+                          << " decomposition_error_linf=" << decomposition_error
+                          << " predictor_internal_linf=" << predictor_internal_linf
+                          << " predictor_internal_face=" << predictor_internal_face
+                          << " predictor_boundary_linf=" << predictor_boundary_linf
+                          << " predictor_boundary_face=" << predictor_boundary_face
+                          << " pressure_implicit_linf=" << pressure_implicit_linf
+                          << " pressure_implicit_face=" << pressure_implicit_face
+                          << " pressure_deferred_linf=" << pressure_deferred_linf
+                          << " pressure_deferred_face=" << pressure_deferred_face
+                          << " boundary_source_linf=" << boundary_source_linf
+                          << " boundary_source_face=" << boundary_source_face
+                          << " pressure_coeff_min=" << pressure_coefficient_min
+                          << " pressure_coeff_abs_max=" << pressure_coefficient_max
+                          << '\n';
+
+                if (iter == 1 || iter % 10 == 0) {
+                    const auto* cell_faces = mesh.cells().faces_data();
+                    const auto* cell_offsets = mesh.cells().offsets_data();
+                    const Offset off = cell_offsets[rhs_cell];
+                    const Offset count = cell_offsets[rhs_cell + 1] - off;
+                    for (Offset k = 0; k < count; ++k) {
+                        const std::size_t f = cell_faces[off + k];
+                        const std::size_t o = mesh.ownership().owner(f);
+                        const auto nr = mesh.ownership().neighbour(f);
+                        const bool is_owner = o == rhs_cell;
+                        const double orientation = is_owner ? 1.0 : -1.0;
+                        const double rhs_phi = -orientation * phiHbyA(f);
+                        double implicit_flux = 0.0;
+                        double deferred_flux = 0.0;
+                        double boundary_source = 0.0;
+                        double coeff = 0.0;
+                        std::string patch_name = "internal";
+                        if (nr >= 0) {
+                            const std::size_t n = static_cast<std::size_t>(nr);
+                            const Vec3 Sf = geometry.face_area_vectors[f];
+                            const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
+                            const Vec3 dAU{
+                                0.5 * (geometry.cell_volumes[o] * pressure_coeff[0][o] +
+                                       geometry.cell_volumes[n] * pressure_coeff[0][n]),
+                                0.5 * (geometry.cell_volumes[o] * pressure_coeff[1][o] +
+                                       geometry.cell_volumes[n] * pressure_coeff[1][n]),
+                                0.5 * (geometry.cell_volumes[o] * pressure_coeff[2][o] +
+                                       geometry.cell_volumes[n] * pressure_coeff[2][n])};
+                            const Vec3 grad_face{
+                                0.5 * (current_grad_p.component_data(0)[o] +
+                                       current_grad_p.component_data(0)[n]),
+                                0.5 * (current_grad_p.component_data(1)[o] +
+                                       current_grad_p.component_data(1)[n]),
+                                0.5 * (current_grad_p.component_data(2)[o] +
+                                       current_grad_p.component_data(2)[n])};
+                            coeff = controls.density *
+                                pressure_face_orthogonal_coefficient(Sf, dvec, dAU);
+                            implicit_flux = coeff * (p(n) - p(o));
+                            deferred_flux = controls.density *
+                                pressure_face_nonorthogonal_flux(Sf, dvec, dAU, grad_face);
+                        } else {
+                            const std::size_t patch = geometry.face_patch[f];
+                            if (patch < mesh.boundary().n_patches()) {
+                                patch_name = mesh.boundary().patch(patch).name;
+                                const auto pbc = pressure_bcs.find(patch_name);
+                                if (pbc != pressure_bcs.end() &&
+                                    pbc->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                                    const Vec3 dvec =
+                                        geometry.face_centres[f] - geometry.cell_centres[o];
+                                    const Vec3 Sf = geometry.face_area_vectors[f];
+                                    const Vec3 dAU{
+                                        geometry.cell_volumes[o] * pressure_coeff[0][o],
+                                        geometry.cell_volumes[o] * pressure_coeff[1][o],
+                                        geometry.cell_volumes[o] * pressure_coeff[2][o]};
+                                    coeff = controls.density *
+                                        pressure_face_orthogonal_coefficient(Sf, dvec, dAU);
+                                    const Vec3 grad_boundary{
+                                        current_grad_p.component_data(0)[o],
+                                        current_grad_p.component_data(1)[o],
+                                        current_grad_p.component_data(2)[o]};
+                                    deferred_flux = controls.density *
+                                        pressure_face_nonorthogonal_flux(
+                                            Sf, dvec, dAU, grad_boundary);
+                                    boundary_source = coeff * (pbc->second.value - p(o)) +
+                                                      deferred_flux;
+                                }
+                            }
+                        }
+                        std::cerr << std::setprecision(17)
+                                  << "NACA_PRESSURE_FACE"
+                                  << " iter=" << iter
+                                  << " corrector=" << corr
+                                  << " cell=" << rhs_cell
+                                  << " face=" << f
+                                  << " owner=" << o
+                                  << " neighbour=" << (nr >= 0 ? std::to_string(nr) : "boundary")
+                                  << " patch=" << patch_name
+                                  << " phiHbyA=" << phiHbyA(f)
+                                  << " rhs_phi=" << rhs_phi
+                                  << " implicit_pressure_flux=" << implicit_flux
+                                  << " rhs_implicit=" << orientation * implicit_flux
+                                  << " deferred_pressure_flux=" << deferred_flux
+                                  << " rhs_deferred=" << orientation * deferred_flux
+                                  << " boundary_pressure_source=" << boundary_source
+                                  << " pressure_coeff=" << coeff
+                                  << '\n';
+                    }
+                }
+            }
+
+            Vector p_corr(nc, 0.0);
+            cfdx::core::SolverResult rp;
+            const auto solve_pressure_system =
+                [&](const SparseMatrix& matrix,
+                    const Vector& rhs,
+                    Vector& correction) {
+                    if (pressure_context) {
+                        return pressure_context->solve(
+                            matrix, rhs, correction,
+                            controls.linear_max_iterations,
+                            linear_tolerance, {}, {},
+                            pressure_null_space.get());
+                    }
+                    return solve_linear_system(
+                        matrix, rhs, correction,
+                        LinearProblemKind::PressurePoisson,
+                        controls.pressure_linear_solver,
+                        controls.linear_max_iterations,
+                        linear_tolerance).result;
+                };
+            std::unique_ptr<SparseMatrix> reduced_pressure_matrix;
+            std::unique_ptr<Vector> reduced_pressure_rhs;
+            const SparseMatrix* solved_pressure_matrix = &A;
+            const Vector* solved_pressure_rhs = &b;
+            if (has_fixed_pressure_boundary ||
+                use_projected_pressure_null_space) {
+                // With a prescribed pressure boundary the pressure-correction
+                // operator is SPD. For pure Neumann pressure, an explicitly
+                // requested constant null-space model instead keeps the
+                // singular operator and projects every CG vector.
+                for (std::size_t row = 0; row < nc; ++row)
+                    for (const auto& [col, value] : rows[row])
+                        A.push_back(row, col, value);
+                A.finalize();
+                rp = solve_pressure_system(A, b, p_corr);
+            } else if (nc == 1) {
+                // Eliminating the only pressure unknown would produce an empty
+                // linear system. Keep the trivial gauge equation instead.
+                A.push_back(0, 0, 1.0);
+                A.finalize();
+                b(0) = 0.0;
+                rp = solve_pressure_system(A, b, p_corr);
+            } else {
+                // Pure-Neumann pressure has one gauge null mode. Replacing one
+                // row by p_ref=0 breaks symmetry. Eliminate the reference DOF
+                // instead: the remaining principal submatrix is SPD for a
+                // connected cavity and remains eligible for the pressure
+                // solver policy and its true-residual convergence checks.
+                const std::size_t ref = controls.pressure_reference_cell;
+                reduced_pressure_matrix =
+                    std::make_unique<SparseMatrix>(nc - 1, nc - 1);
+                reduced_pressure_rhs =
+                    std::make_unique<Vector>(nc - 1, 0.0);
+                const auto reduced_index = [ref](std::size_t cell) {
+                    return cell < ref ? cell : cell - 1;
+                };
+                for (std::size_t row = 0; row < nc; ++row) {
+                    if (row == ref) continue;
+                    const std::size_t rr = reduced_index(row);
+                    (*reduced_pressure_rhs)(rr) = b(row);
+                    for (const auto& [col, value] : rows[row]) {
+                        if (col == ref) continue;
+                        reduced_pressure_matrix->push_back(
+                            rr, reduced_index(col), value);
+                    }
+                }
+                reduced_pressure_matrix->finalize();
+                solved_pressure_matrix = reduced_pressure_matrix.get();
+                solved_pressure_rhs = reduced_pressure_rhs.get();
+
+                Vector reduced_corr(nc - 1, 0.0);
+                rp = solve_pressure_system(
+                    *solved_pressure_matrix, *solved_pressure_rhs, reduced_corr);
+                if (rp.status == cfdx::core::SolverStatus::CONVERGED) {
+                    for (std::size_t cell = 0; cell < nc; ++cell)
+                        if (cell != ref)
+                            p_corr(cell) = reduced_corr(reduced_index(cell));
+                    p_corr(ref) = 0.0;
+                }
+            }
+            const auto pressure_row_to_cell = [&](std::size_t row) {
+                if (solved_pressure_matrix->n_rows() == nc) return row;
+                const std::size_t ref = controls.pressure_reference_cell;
+                return row < ref ? row : row + 1;
+            };
+            if (controls.momentum_assembly_forensic_callback) {
+                const auto& matrix = *solved_pressure_matrix;
+                const auto& rhs = *solved_pressure_rhs;
+                double correction_linf = 0.0;
+                double pressure_linf = 0.0;
+                double rhs_linf = 0.0;
+                double row_abs_sum_linf = 0.0;
+                std::size_t correction_cell = 0;
+                std::size_t pressure_cell = 0;
+                std::size_t rhs_cell = 0;
+                std::size_t diagonal_cell = 0;
+                std::size_t minimum_diagonal_cell = 0;
+                std::size_t rhs_diagonal_ratio_cell = 0;
+                std::size_t minimum_dominance_cell = 0;
+                double diagonal_min = std::numeric_limits<double>::infinity();
+                double diagonal_max = 0.0;
+                double minimum_diagonal_rhs = 0.0;
+                double minimum_diagonal_correction = 0.0;
+                double rhs_diagonal_ratio_linf = 0.0;
+                double diagonal_dominance_min = std::numeric_limits<double>::infinity();
+                double row_sum_linf = 0.0;
+                const auto* offsets = matrix.row_offsets_data();
+                const auto* columns = matrix.columns_data();
+                const auto* values = matrix.values_data();
+                for (std::size_t cell = 0; cell < nc; ++cell) {
+                    if (std::abs(p_corr(cell)) > correction_linf) {
+                        correction_linf = std::abs(p_corr(cell));
+                        correction_cell = cell;
+                    }
+                    if (std::abs(p(cell)) > pressure_linf) {
+                        pressure_linf = std::abs(p(cell));
+                        pressure_cell = cell;
+                    }
+                }
+                for (std::size_t row = 0; row < rhs.size(); ++row) {
+                    if (std::abs(rhs(row)) > rhs_linf) {
+                        rhs_linf = std::abs(rhs(row));
+                        rhs_cell = pressure_row_to_cell(row);
+                    }
+                    double diagonal = 0.0;
+                    double row_sum = 0.0;
+                    double row_abs_sum = 0.0;
+                    double off_diagonal_abs_sum = 0.0;
+                    for (std::uint32_t k = offsets[row]; k < offsets[row + 1]; ++k) {
+                        row_sum += values[k];
+                        row_abs_sum += std::abs(values[k]);
+                        if (columns[k] == row) {
+                            diagonal = values[k];
+                        } else {
+                            off_diagonal_abs_sum += std::abs(values[k]);
+                        }
+                    }
+                    if (diagonal < diagonal_min) {
+                        diagonal_min = diagonal;
+                        minimum_diagonal_cell = pressure_row_to_cell(row);
+                        minimum_diagonal_rhs = rhs(row);
+                        minimum_diagonal_correction =
+                            p_corr(minimum_diagonal_cell);
+                    }
+                    if (std::abs(diagonal) > diagonal_max) {
+                        diagonal_max = std::abs(diagonal);
+                        diagonal_cell = pressure_row_to_cell(row);
+                    }
+                    if (std::abs(diagonal) > 0.0 &&
+                        std::isfinite(rhs(row))) {
+                        const double ratio = std::abs(rhs(row)) / std::abs(diagonal);
+                        if (ratio > rhs_diagonal_ratio_linf) {
+                            rhs_diagonal_ratio_linf = ratio;
+                            rhs_diagonal_ratio_cell = pressure_row_to_cell(row);
+                        }
+                    }
+                    const double dominance = std::abs(diagonal) /
+                        std::max(off_diagonal_abs_sum,
+                                 std::numeric_limits<double>::min());
+                    if (dominance < diagonal_dominance_min) {
+                        diagonal_dominance_min = dominance;
+                        minimum_dominance_cell = pressure_row_to_cell(row);
+                    }
+                    row_sum_linf = std::max(row_sum_linf, std::abs(row_sum));
+                    row_abs_sum_linf = std::max(row_abs_sum_linf, row_abs_sum);
+                }
+                std::cerr << std::setprecision(17)
+                          << "NACA_PRESSURE_CORRECTION"
+                          << " iter=" << iter
+                          << " corrector=" << corr
+                          << " status=" << static_cast<int>(rp.status)
+                          << " iterations=" << rp.iterations
+                          << " residual=" << rp.residual
+                          << " relative=" << rp.residual_relative
+                          << " rows=" << matrix.n_rows()
+                          << " nnz=" << matrix.nnz()
+                          << " rhs_linf=" << rhs_linf
+                          << " rhs_cell=" << rhs_cell
+                          << " correction_linf=" << correction_linf
+                          << " correction_cell=" << correction_cell
+                          << " pressure_before_linf=" << pressure_linf
+                          << " pressure_cell=" << pressure_cell
+                          << " diagonal_min=" << diagonal_min
+                          << " diagonal_abs_max=" << diagonal_max
+                          << " diagonal_cell=" << diagonal_cell
+                          << " minimum_diagonal_cell=" << minimum_diagonal_cell
+                          << " minimum_diagonal_rhs=" << minimum_diagonal_rhs
+                          << " minimum_diagonal_correction=" << minimum_diagonal_correction
+                          << " rhs_diagonal_ratio_linf=" << rhs_diagonal_ratio_linf
+                          << " rhs_diagonal_ratio_cell=" << rhs_diagonal_ratio_cell
+                          << " diagonal_dominance_min=" << diagonal_dominance_min
+                          << " minimum_dominance_cell=" << minimum_dominance_cell
+                          << " row_sum_linf=" << row_sum_linf
+                          << " row_abs_sum_linf=" << row_abs_sum_linf
+                          << '\n';
+
+                // Optional Matrix-Market snapshot of the exact matrix and
+                // RHS passed to Krylov. No dump is written unless requested.
+                const char* dump_prefix = std::getenv("CFDX_NACA_MATRIX_DUMP_PREFIX");
+                if (dump_prefix && *dump_prefix && iter == 1 && corr == 0) {
+                    const std::string dump_stem =
+                        std::string(dump_prefix) + ".cells" + std::to_string(nc);
+                    std::ofstream matrix_file(dump_stem + ".mtx");
+                    std::ofstream rhs_file(dump_stem + ".rhs.csv");
+                    if (matrix_file && rhs_file) {
+                        matrix_file << "%%MatrixMarket matrix coordinate real general\n";
+                        matrix_file << matrix.n_rows() << " " << matrix.n_rows()
+                                    << " " << matrix.nnz() << "\n";
+                        for (std::size_t row = 0; row < matrix.n_rows(); ++row) {
+                            for (std::uint32_t k = offsets[row]; k < offsets[row + 1]; ++k)
+                                matrix_file << row + 1 << " " << columns[k] + 1
+                                            << " " << std::setprecision(17) << values[k] << "\n";
+                        }
+                        rhs_file << "row,cell,rhs\n";
+                        for (std::size_t row = 0; row < rhs.size(); ++row)
+                            rhs_file << row << "," << pressure_row_to_cell(row) << ","
+                                     << std::setprecision(17) << rhs(row) << "\n";
+                        std::cerr << "NACA_PRESSURE_MATRIX_DUMP prefix="
+                                  << dump_stem << " rows=" << matrix.n_rows()
+                                  << " nnz=" << matrix.nnz() << '\n';
+                    } else {
+                        std::cerr << "NACA_PRESSURE_MATRIX_DUMP_ERROR prefix="
+                                  << dump_prefix << '\n';
+                    }
+                }
+            }
+            pressure_residual = rp.residual_relative;
+            pressure_iterations = rp.iterations;
+            if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
+                if (controls.momentum_assembly_forensic_callback) {
+                    const auto& matrix = *solved_pressure_matrix;
+                    const auto& rhs = *solved_pressure_rhs;
+                    double rhs_linf = 0.0;
+                    double diagonal_min = std::numeric_limits<double>::infinity();
+                    double diagonal_max = 0.0;
+                    double row_sum_linf = 0.0;
+                    double row_abs_sum_linf = 0.0;
+                    std::size_t rhs_cell = 0;
+                    std::size_t diagonal_cell = 0;
+                    std::size_t nonfinite_matrix = 0;
+                    std::size_t nonfinite_rhs = 0;
+                    const auto* offsets = matrix.row_offsets_data();
+                    const auto* columns = matrix.columns_data();
+                    const auto* values = matrix.values_data();
+                    for (std::size_t row = 0; row < matrix.n_rows(); ++row) {
+                        const double rhs_value = rhs(row);
+                        if (std::isfinite(rhs_value)) {
+                            if (std::abs(rhs_value) > rhs_linf) {
+                                rhs_linf = std::abs(rhs_value);
+                                rhs_cell = pressure_row_to_cell(row);
+                            }
+                        } else {
+                            ++nonfinite_rhs;
+                        }
+                        double diagonal = 0.0;
+                        double row_sum = 0.0;
+                        double row_abs_sum = 0.0;
+                        for (std::uint32_t k = offsets[row]; k < offsets[row + 1]; ++k) {
+                            const double value = values[k];
+                            if (!std::isfinite(value)) {
+                                ++nonfinite_matrix;
+                                continue;
+                            }
+                            row_sum += value;
+                            row_abs_sum += std::abs(value);
+                            if (columns[k] == row) diagonal = value;
+                        }
+                        if (std::isfinite(diagonal)) {
+                            diagonal_min = std::min(diagonal_min, diagonal);
+                            if (std::abs(diagonal) > diagonal_max) {
+                                diagonal_max = std::abs(diagonal);
+                                diagonal_cell = pressure_row_to_cell(row);
+                            }
+                        } else {
+                            ++nonfinite_matrix;
+                        }
+                        row_sum_linf = std::max(row_sum_linf, std::abs(row_sum));
+                        row_abs_sum_linf = std::max(row_abs_sum_linf, row_abs_sum);
+                    }
+                    const auto& rhs_point = geometry.cell_centres[rhs_cell];
+                    double pressure_linf = 0.0;
+                    double grad_pressure_linf = 0.0;
+                    double predictor_flux_linf = 0.0;
+                    for (std::size_t cell = 0; cell < nc; ++cell) {
+                        pressure_linf = std::max(pressure_linf, std::abs(p(cell)));
+                        for (std::size_t d = 0; d < 3; ++d)
+                            grad_pressure_linf = std::max(
+                                grad_pressure_linf,
+                                std::abs(current_grad_p.component_data(d)[cell]));
+                    }
+                    for (std::size_t face = 0; face < mesh.n_faces(); ++face)
+                        predictor_flux_linf = std::max(
+                            predictor_flux_linf, std::abs(phiHbyA(face)));
+                    std::cerr << std::setprecision(17)
+                              << "NACA_PRESSURE_CORRECTION_FAILURE"
+                              << " iter=" << iter
+                              << " corrector=" << corr
+                              << " status=" << static_cast<int>(rp.status)
+                              << " iterations=" << rp.iterations
+                              << " residual=" << rp.residual
+                              << " relative=" << rp.residual_relative
+                              << " rows=" << matrix.n_rows()
+                              << " nnz=" << matrix.nnz()
+                              << " rhs_linf=" << rhs_linf
+                              << " rhs_cell=" << rhs_cell
+                              << " rhs_xyz=" << rhs_point.x << ":" << rhs_point.y << ":" << rhs_point.z
+                              << " diag_min=" << diagonal_min
+                              << " diag_abs_max=" << diagonal_max
+                              << " diag_cell=" << diagonal_cell
+                              << " row_sum_linf=" << row_sum_linf
+                              << " row_abs_sum_linf=" << row_abs_sum_linf
+                              << " max_pressure=" << pressure_linf
+                              << " max_grad_pressure=" << grad_pressure_linf
+                              << " max_predictor_flux=" << predictor_flux_linf
+                              << " nonfinite_matrix=" << nonfinite_matrix
+                              << " nonfinite_rhs=" << nonfinite_rhs
+                              << '\n';
+                }
+                std::ostringstream message;
+                message << "solve_steady_incompressible: pressure-correction solve did not converge "
+                        << "(status=" << static_cast<int>(rp.status)
+                        << ", iterations=" << rp.iterations
+                        << ", residual=" << std::scientific
+                        << std::setprecision(std::numeric_limits<double>::max_digits10)
+                        << rp.residual
+                        << ", relative=" << rp.residual_relative << ")";
+                throw NonlinearRetryableFailure(message.str());
+            }
+
+            // Relax the physical pressure exactly once. The reference is a
+            // gauge: enforce it by a uniform shift, never by overwriting one
+            // cell and creating an artificial local pressure jump.
+            const double nominal_alpha_p = retry_controller.alpha_p(effective_alpha_p);
+            double alpha_p = nominal_alpha_p;
+            std::optional<PressureAffineFluxTrials> affine_line_search;
+            if (controls.pressure_continuity_line_search.enabled) {
+                std::vector<double> base_pressure(nc);
+                for (std::size_t c = 0; c < nc; ++c) base_pressure[c] = p(c);
+                const auto restore_base_pressure = [&]() {
+                    for (std::size_t c = 0; c < nc; ++c) p(c) = base_pressure[c];
+                };
+                const auto trial_flux_at = [&](double candidate_alpha) {
+                    for (std::size_t c = 0; c < nc; ++c)
+                        p(c) = base_pressure[c] + candidate_alpha * p_corr(c);
+                    apply_pressure_gauge_policy(
+                        p, geometry, controls.pressure_gauge_policy,
+                        controls.pressure_reference_cell, controls.pressure_reference_value,
+                        has_fixed_pressure_boundary);
+                    auto trial_flux = make_rhie_chow_mass_flux(
+                        mesh, geometry, HbyA, p,
+                        controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
+                        controls.density, velocity_bcs, pressure_bcs,
+                        RhieChowVelocityContract::HBYA_PREDICTOR,
+                        controls.pressure_skew_corrected_gradient);
+                    if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
+                        add_simplec_consistent_response(trial_flux);
+                    return trial_flux;
+                };
+                const auto continuity_score = [&](const auto& flux) {
+                    std::vector<double> balance(nc, 0.0);
+                    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                        const double value = flux(f);
+                        if (!std::isfinite(value))
+                            return std::numeric_limits<double>::infinity();
+                        balance[mesh.ownership().owner(f)] += value;
+                        const auto neighbour = mesh.ownership().neighbour(f);
+                        if (neighbour >= 0)
+                            balance[static_cast<std::size_t>(neighbour)] -= value;
+                    }
+                    double norm = 0.0;
+                    for (double v : balance) {
+                        if (!std::isfinite(v)) return std::numeric_limits<double>::infinity();
+                        norm += std::abs(v);
+                    }
+                    return norm;
+                };
+                // All trial pressure evaluations are transactional. On ANY
+                // rejected selection or unexpected exception, p is restored.
+                try {
+                    if (controls.pressure_continuity_line_search.affine_flux_trials) {
+                        const auto f0 = trial_flux_at(0.0);
+                        const auto f1 = trial_flux_at(nominal_alpha_p);
+                        std::vector<double> v0, v1;
+                        std::vector<std::size_t> owner;
+                        std::vector<std::int64_t> neighbour;
+                        v0.reserve(mesh.n_faces()); v1.reserve(mesh.n_faces());
+                        owner.reserve(mesh.n_faces()); neighbour.reserve(mesh.n_faces());
+                        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                            v0.push_back(f0(f)); v1.push_back(f1(f));
+                            owner.push_back(mesh.ownership().owner(f));
+                            neighbour.push_back(mesh.ownership().neighbour(f));
+                        }
+                        affine_line_search.emplace(v0, v1, owner, neighbour, nc,
+                                                   nominal_alpha_p);
+                    }
+                    const auto score = [&](double candidate_alpha) {
+                        if (affine_line_search)
+                            return affine_line_search->continuity_norm(candidate_alpha);
+                        return continuity_score(trial_flux_at(candidate_alpha));
+                    };
+                    const auto selection = select_pressure_continuity_step(
+                        nominal_alpha_p, controls.pressure_continuity_line_search, score);
+                    alpha_p = selection.alpha;
+                    last_line_search_before = selection.baseline_norm;
+                    last_line_search_after = selection.accepted_norm;
+                } catch (...) {
+                    restore_base_pressure();
+                    throw;
+                }
+                restore_base_pressure();
+            }
+            last_selected_pressure_alpha = alpha_p;
+            for (std::size_t c = 0; c < nc; ++c)
+                p(c) += alpha_p * p_corr(c);
+            apply_pressure_gauge_policy(
+                p, geometry, controls.pressure_gauge_policy,
+                controls.pressure_reference_cell, controls.pressure_reference_value,
+                has_fixed_pressure_boundary);
+
+            auto corrected_grad_p =
+                gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
+
+            // Rebuild the corrected velocity from the same rAU operator
+            // that built the cell HbyA, so the converged velocity
+            // satisfies the momentum equation. The SIMPLEC consistent
+            // operator (rAtU) belongs to the pressure equation and its
+            // face fluxes only. This is the momentum correction; no
+            // least-squares flux fitting is permitted.
+            for (std::size_t c = 0; c < nc; ++c) {
+                U.component_data(0)[c] =
+                    HbyA.component_data(0)[c] - rAU[0][c] * corrected_grad_p.component_data(0)[c] * geometry.cell_volumes[c];
+                U.component_data(1)[c] =
+                    HbyA.component_data(1)[c] - rAU[1][c] * corrected_grad_p.component_data(1)[c] * geometry.cell_volumes[c];
+                U.component_data(2)[c] =
+                    HbyA.component_data(2)[c] - rAU[2][c] * corrected_grad_p.component_data(2)[c] * geometry.cell_volumes[c];
+            }
+
+            // The conservative face flux is rebuilt from the same
+            // momentum-weighted interpolation used by the pressure equation.
+            // This is the single authoritative phi state for continuity.
+            mass_flux = make_rhie_chow_mass_flux(
+                mesh, geometry, HbyA, p,
+                controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
+                controls.density, velocity_bcs, pressure_bcs,
+                RhieChowVelocityContract::HBYA_PREDICTOR,
+                controls.pressure_skew_corrected_gradient);
+
+            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
+                add_simplec_consistent_response(mass_flux);
+
+            // Final authoritative reconstruction. This independent check
+            // refuses a nonlinear boundary/response path rather than quietly
+            // accepting an invalid affine trial on an unsupported contract.
+            if (affine_line_search) {
+                std::vector<double> exact_flux;
+                exact_flux.reserve(mesh.n_faces());
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+                    exact_flux.push_back(mass_flux(f));
+                if (!affine_line_search->agrees_with_flux(alpha_p, exact_flux))
+                    throw NonlinearRetryableFailure(
+                        "pressure affine line-search: authoritative flux mismatch");
+            }
+
+            // Issa corrector form: every pressure corrector is driven by the
+            // ORIGINAL predictor flux together with the current pressure,
+            // div(phiHbyA - RC(p)); the assembly at the top of this loop
+            // already subtracts the Rhie-Chow pressure flux of the current
+            // p. Overwriting phiHbyA with the corrected flux here would
+            // subtract RC(p) twice in the next corrector's continuity source
+            // (div(phiHbyA) - 2*div(RC(p))), which displaces the fixed point
+            // and leaves a permanent continuity floor on every
+            // multi-corrector algorithm (PISO, PIMPLE, FRACTIONAL_STEP).
+            // The momentum matrix stays frozen inside the inner loop; the
+            // relaxed pressure update is what carries the first correction
+            // into the next one.
+        }
+
+        // Operator identity audit: re-derive the authoritative flux from the
+        // CURRENT HbyA/p/rAtU(rAU) state through the same operator primitives
+        // the pressure equation balanced (including the SIMPLEC
+        // consistent-response term) and compare with the stored mass_flux.
+        // Expected zero up to round-off; a nonzero value flags a stale or
+        // mutated flux, or an omitted/duplicated SIMPLEC response term.
+        {
+            auto rederived_flux = make_rhie_chow_mass_flux(
+                mesh, geometry, HbyA, p,
+                controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                    ? rAtU : rAU,
+                controls.density, velocity_bcs, pressure_bcs,
+                RhieChowVelocityContract::HBYA_PREDICTOR,
+                controls.pressure_skew_corrected_gradient);
+            if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
+                add_simplec_consistent_response(rederived_flux);
+            for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+                rhie_chow_identity_audit_linf = std::max(
+                    rhie_chow_identity_audit_linf,
+                    std::abs(mass_flux(f) - rederived_flux(f)));
+            rhie_chow_identity_evaluated = true;
+        }
+
+        }
+        
+        // Independent final momentum residual: evaluate the actual corrected
+        // state against freshly assembled equations. Do not use a U reconstructed
+        // from the conservative flux as the residual state.
+        Field<double, Location::CELL> final_ux_field(mesh.n_cells(), "Ux_final", "m/s", 1);
+        Field<double, Location::CELL> final_uy_field(mesh.n_cells(), "Uy_final", "m/s", 1);
+        Field<double, Location::CELL> final_uz_field(mesh.n_cells(), "Uz_final", "m/s", 1);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            final_ux_field(c) = U.component_data(0)[c];
+            final_uy_field(c) = U.component_data(1)[c];
+            final_uz_field(c) = U.component_data(2)[c];
+        }
+        auto final_grad_p = gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
+        if (include_transpose_stress) {
+            const auto final_stress_flux = transpose_viscous_stress_flux(
+                mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z});
+            const auto final_transpose_force = viscous_face_flux_divergence(
+                mesh, geometry, final_stress_flux);
+            for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
+                body_x(cell) += final_transpose_force(cell,0)-transpose_force(cell,0);
+                body_y(cell) += final_transpose_force(cell,1)-transpose_force(cell,1);
+                body_z(cell) += final_transpose_force(cell,2)-transpose_force(cell,2);
+            }
+        }
+        auto final_ex = assemble_momentum_component(
+            mesh, geometry, mass_flux, final_grad_p, body_x, mu_eff, ubc_x, 0,
+            controls.use_bounded_convection, controls.convection_scheme, &final_ux_field);
+        auto final_ey = assemble_momentum_component(
+            mesh, geometry, mass_flux, final_grad_p, body_y, mu_eff, ubc_y, 1,
+            controls.use_bounded_convection, controls.convection_scheme, &final_uy_field);
+        auto final_ez = assemble_momentum_component(
+            mesh, geometry, mass_flux, final_grad_p, body_z, mu_eff, ubc_z, 2,
+            controls.use_bounded_convection, controls.convection_scheme, &final_uz_field);
+
+        // The final nonlinear acceptance residual must represent the same
+        // production equation that was solved. For transient runs the
+        // physical-time derivative is part of that equation; omitting it here
+        // would measure only the steady spatial operator and reject every
+        // legitimate transient state whose temporal acceleration balances the
+        // spatial momentum residual. Reuse the exact production mass-term
+        // assembly, including variable-step BDF2 coefficients and the accepted
+        // history, so the acceptance metric is algebraically consistent with
+        // the coupled solve above.
+        if (controls.transient.enabled) {
+            const auto& u_n = *controls.transient.previous;
+            const auto& u_nm1 = controls.transient.history_valid
+                ? *controls.transient.previous_previous : u_n;
+            const bool use_bdf2 =
+                controls.transient.scheme == cfdx::core::TimeScheme::BDF2 &&
+                controls.transient.history_valid;
+            add_dual_time_mass_term(
+                final_ex, u_n, u_nm1, geometry, controls.density,
+                controls.transient.dt, controls.transient.dt_previous,
+                use_bdf2, 0);
+            add_dual_time_mass_term(
+                final_ey, u_n, u_nm1, geometry, controls.density,
+                controls.transient.dt, controls.transient.dt_previous,
+                use_bdf2, 1);
+            add_dual_time_mass_term(
+                final_ez, u_n, u_nm1, geometry, controls.density,
+                controls.transient.dt, controls.transient.dt_previous,
+                use_bdf2, 2);
+        }
+
+        Vector final_ux(mesh.n_cells()), final_uy(mesh.n_cells()), final_uz(mesh.n_cells());
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            final_ux(c) = U.component_data(0)[c];
+            final_uy(c) = U.component_data(1)[c];
+            final_uz(c) = U.component_data(2)[c];
+        }
+        const double final_momentum_residual = std::max({
+            scalar_equation_residual_inf(final_ex, final_ux),
+            scalar_equation_residual_inf(final_ey, final_uy),
+            scalar_equation_residual_inf(final_ez, final_uz)
+        });
+
+        // Recompute the cell-wise residuals explicitly so a large independent
+        // residual can be localized to a component and to an interior/boundary
+        // cell. This is intentionally redundant with scalar_equation_residual_inf:
+        // the purpose is forensic diagnostics, not a second numerical path.
+        const auto cell_has_boundary_face = [&](std::size_t cell) {
+            const Offset off = mesh.cells().offsets_data()[cell];
+            const Offset count = mesh.cells().offsets_data()[cell + 1] - off;
+            for (Offset k = 0; k < count; ++k) {
+                const std::size_t face = mesh.cells().faces_data()[off + k];
+                if (mesh.ownership().neighbour(face) < 0) {
+                    const std::size_t patch = geometry.face_patch[face];
+                    if (patch < mesh.boundary().n_patches() &&
+                        mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                        continue;
+                    return true;
+                }
+            }
+            return false;
+        };
+        struct ResidualDiagnostic {
+            double global = 0.0;
+            double interior = 0.0;
+            double boundary = 0.0;
+            std::size_t max_cell = 0;
+            double no_pressure = 0.0;
+            double pressure_contribution = 0.0;
+            std::string patch;
+        };
+        const auto residual_diagnostics =
+            [&](const ScalarEquation& equation,
+                const Vector& solution,
+                std::size_t component) {
+                ResidualDiagnostic diagnostic;
+                for (std::size_t row = 0; row < mesh.n_cells(); ++row) {
+                    double ax = 0.0;
+                    const auto begin = equation.matrix.row_offsets_data()[row];
+                    const auto end = equation.matrix.row_offsets_data()[row + 1];
+                    for (std::uint32_t k = begin; k < end; ++k)
+                        ax += equation.matrix.values_data()[k] *
+                              solution(equation.matrix.columns_data()[k]);
+                    const double full_signed = ax - equation.rhs(row);
+                    const double residual = std::abs(full_signed);
+                    if (residual > diagnostic.global) {
+                        diagnostic.global = residual;
+                        diagnostic.max_cell = row;
+                    }
+                    if (cell_has_boundary_face(row))
+                        diagnostic.boundary = std::max(diagnostic.boundary, residual);
+                    else
+                        diagnostic.interior = std::max(diagnostic.interior, residual);
+
+                    // final_ex is assembled with source = body - grad(p).
+                    // Remove the pressure source only for diagnosis, never for
+                    // the acceptance metric, to distinguish pressure/transport
+                    // inconsistency from boundary transport inconsistency.
+                    const double pressure = final_grad_p.component_data(component)[row] *
+                                            geometry.cell_volumes[row];
+                    const double transport_signed = full_signed - pressure;
+                    diagnostic.no_pressure =
+                        std::max(diagnostic.no_pressure, std::abs(transport_signed));
+                    diagnostic.pressure_contribution =
+                        std::max(diagnostic.pressure_contribution, std::abs(pressure));
+                }
+                const std::size_t row = diagnostic.max_cell;
+                const Offset off = mesh.cells().offsets_data()[row];
+                const Offset count = mesh.cells().offsets_data()[row + 1] - off;
+                for (Offset k = 0; k < count; ++k) {
+                    const std::size_t face = mesh.cells().faces_data()[off + k];
+                    if (mesh.ownership().neighbour(face) < 0) {
+                        const std::size_t patch = geometry.face_patch[face];
+                        if (patch >= mesh.boundary().n_patches())
+                            continue;
+                        // EMPTY faces are geometric extrusion faces, not
+                        // physical boundary patches. Do not let the first
+                        // front/back face mask the physical patch adjacent to
+                        // the worst momentum-residual cell.
+                        if (mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                            continue;
+                        diagnostic.patch = mesh.boundary().patch(patch).name;
+                        break;
+                    }
+                }
+                return diagnostic;
+            };
+        const auto rx_diag = residual_diagnostics(final_ex, final_ux, 0);
+        const auto ry_diag = residual_diagnostics(final_ey, final_uy, 1);
+        const auto rz_diag = residual_diagnostics(final_ez, final_uz, 2);
+
+        double pressure_gradient_linf = 0.0;
+        double pressure_gradient_l2_sum = 0.0;
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            const double gx = final_grad_p.component_data(0)[c];
+            const double gy = final_grad_p.component_data(1)[c];
+            const double gz = final_grad_p.component_data(2)[c];
+            const double gp2 = gx*gx + gy*gy + gz*gz;
+            pressure_gradient_linf = std::max(pressure_gradient_linf, std::sqrt(gp2));
+            pressure_gradient_l2_sum += gp2;
+        }
+        const double pressure_gradient_l2 =
+            std::sqrt(pressure_gradient_l2_sum /
+                      std::max<std::size_t>(mesh.n_cells(), 1));
+
+        double l1 = 0.0, linf = 0.0;
+        const auto* cell_faces = mesh.cells().faces_data();
+        const auto* cell_offsets = mesh.cells().offsets_data();
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            double div = 0.0;
+            const Offset off = cell_offsets[c];
+            const Offset count = cell_offsets[c+1] - off;
+            for (Offset k = 0; k < count; ++k) {
+                const std::size_t f = cell_faces[off+k];
+                div += mesh.ownership().owner(f) == c ? mass_flux(f) : -mass_flux(f);
+            }
+            l1 += std::abs(div);
+            linf = std::max(linf, std::abs(div));
+        }
+
+        constexpr double tiny = 1e-300;
+        double velocity_change_inf = 0.0, pressure_change_inf = 0.0;
+        double velocity_scale = 0.0;
+        double pressure_min = std::numeric_limits<double>::infinity();
+        double pressure_max = -std::numeric_limits<double>::infinity();
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            for (std::size_t d = 0; d < 3; ++d) {
+                velocity_change_inf = std::max(
+                    velocity_change_inf,
+                    std::abs(U.component_data(d)[c]-U_old.component_data(d)[c]));
+                velocity_scale = std::max(
+                    velocity_scale, std::abs(U.component_data(d)[c]));
+            }
+            const double pressure_delta = has_fixed_pressure_boundary
+                ? std::abs(p(c) - p_old(c))
+                : std::abs((p(c) - p(controls.pressure_reference_cell)) -
+                            (p_old(c) - p_old(controls.pressure_reference_cell)));
+            pressure_change_inf = std::max(pressure_change_inf, pressure_delta);
+            pressure_min = std::min(pressure_min, p(c));
+            pressure_max = std::max(pressure_max, p(c));
+        }
+        velocity_change_inf /= std::max(velocity_scale, tiny);
+        const double pressure_range = pressure_max - pressure_min;
+        // Use a physical pressure scale when the converged solution is nearly uniform.
+        // Otherwise round-off-level pressure changes are divided by a vanishing range
+        // and can prevent convergence forever on constant-pressure cases.
+        const double pressure_scale = std::max(
+            {pressure_range, controls.density * velocity_scale * velocity_scale, 1.0e-30});
+        pressure_change_inf /= pressure_scale;
+
+        const std::array<const ScalarEquation*, 3> momentum_equations{
+            &final_ex, &final_ey, &final_ez};
+        std::array<double, 3> momentum_rhs_scale_components{0.0, 0.0, 0.0};
+        for (std::size_t d = 0; d < momentum_equations.size(); ++d) {
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                momentum_rhs_scale_components[d] = std::max(
+                    momentum_rhs_scale_components[d],
+                    std::abs(momentum_equations[d]->rhs(c)));
+            }
+            momentum_rhs_scale_components[d] =
+                std::max(momentum_rhs_scale_components[d], tiny);
+        }
+        const double momentum_rhs_scale = std::max({
+            momentum_rhs_scale_components[0],
+            momentum_rhs_scale_components[1],
+            momentum_rhs_scale_components[2]});
+
+        IncompressibleIteration h;
+        h.selected_pressure_alpha = last_selected_pressure_alpha;
+        h.pressure_line_search_norm_before = last_line_search_before;
+        h.pressure_line_search_norm_after = last_line_search_after;
+        h.iteration = iter;
+        h.momentum_residual = final_momentum_residual / momentum_rhs_scale;
+        h.pressure_residual = pressure_residual;
+        h.continuity_l1 = l1;
+        h.continuity_linf = linf;
+        h.momentum_equation_residual = final_momentum_residual;
+        h.momentum_rhs_scale = momentum_rhs_scale;
+        h.momentum_rhs_scale_components = momentum_rhs_scale_components;
+        h.momentum_equation_residual_rhs_relative =
+            final_momentum_residual / momentum_rhs_scale;
+        h.momentum_equation_residual_rhs_relative_components = {
+            rx_diag.global / momentum_rhs_scale_components[0],
+            ry_diag.global / momentum_rhs_scale_components[1],
+            rz_diag.global / momentum_rhs_scale_components[2]};
+        double flux_reference = 0.0;
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+            flux_reference += std::abs(mass_flux(f));
+        h.continuity_normalized = l1 / std::max(flux_reference, tiny);
+        if (controls.algorithm == PressureVelocityAlgorithm::COUPLED)
+            h.pressure_residual = h.continuity_normalized;
+        if (iter == 1)
+            result.reference_momentum_residual =
+                std::max(final_momentum_residual, tiny);
+        h.momentum_equation_residual_reference =
+            std::max(result.reference_momentum_residual, tiny);
+        h.momentum_equation_residual_relative =
+            final_momentum_residual / h.momentum_equation_residual_reference;
+        h.velocity_change_inf = velocity_change_inf;
+        h.pressure_change_inf = pressure_change_inf;
+        // Report the relaxation factors actually used on this attempt, including
+        // any retry-controller scaling. These are the values needed to replay
+        // an accepted iteration deterministically from its history record.
+        h.effective_alpha_u = retry_controller.alpha_u(effective_alpha_u);
+        h.effective_alpha_p = retry_controller.alpha_p(effective_alpha_p);
+        h.simplec_signed_offdiag_sum_linf = simplec_signed_offdiag_sum_audit;
+        h.simplec_abs_offdiag_sum_linf = simplec_abs_offdiag_sum_audit;
+        h.simplec_denominator_signed_linf = simplec_denominator_signed_audit;
+        h.simplec_denominator_abs_linf = simplec_denominator_abs_audit;
+        h.simplec_denominator_gap_linf = simplec_denominator_gap_audit;
+        h.simplec_denominator_worst_cell = simplec_denominator_worst_cell_audit;
+        h.momentum_linear_iterations =
+            controls.algorithm == PressureVelocityAlgorithm::COUPLED
+                ? 0 : std::max({rx.iterations, ry.iterations, rz.iterations});
+        h.pressure_linear_iterations =
+            controls.algorithm == PressureVelocityAlgorithm::COUPLED ? 0 : pressure_iterations;
+        h.pressure_correctors_used =
+            controls.algorithm == PressureVelocityAlgorithm::COUPLED ? 0 : pressure_correctors;
+        h.linear_tolerance_used = controls.algorithm == PressureVelocityAlgorithm::COUPLED
+            ? controls.coupling.coupled_linear_tolerance : linear_tolerance;
+        h.corrected_flux_continuity_linf = linf;
+        // Independent flux/velocity audit (restores the measurement channel
+        // that commit 7c7dadf5 made tautological with
+        // reconstructed_flux = mass_flux). Two reconstruction paths are
+        // compared:
+        //   channel RC (authoritative): mass_flux, the Rhie-Chow flux built
+        //     from HbyA/p plus, for SIMPLEC, the consistent-response term;
+        //   channel U (independent): the flux rebuilt from the corrected
+        //     cell velocity with the plain linear interpolation of
+        //     make_mass_flux, which shares no operator with Rhie-Chow.
+        // The mismatch is split internal / fixed-pressure boundary faces:
+        // on fixed-pressure boundary faces the two channels differ
+        // analytically by the Rhie-Chow boundary correction plus the
+        // predictor/corrector velocity response, so a persistent value there
+        // is an expected artifact of the boundary contract, not a
+        // conservation error. A persistent internal-face mismatch at
+        // convergence is an evidence channel about the interpolation
+        // identity. Neither channel is an acceptance metric: no criterion
+        // consumes them (see the N9/S9 test suite for the sensitivity
+        // proofs).
+        auto reconstructed_flux = make_mass_flux(
+            mesh, geometry, U, controls.density, velocity_bcs);
+        double reconstructed_linf = 0.0;
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            double div_reconstructed = 0.0;
+            const Offset off = cell_offsets[c];
+            const Offset count = cell_offsets[c+1] - off;
+            for (Offset k = 0; k < count; ++k) {
+                const std::size_t f = cell_faces[off+k];
+                div_reconstructed +=
+                    mesh.ownership().owner(f) == c ? reconstructed_flux(f) : -reconstructed_flux(f);
+            }
+            reconstructed_linf = std::max(reconstructed_linf, std::abs(div_reconstructed));
+        }
+        double flux_mismatch_linf = 0.0;
+        double flux_mismatch_boundary_linf = 0.0;
+        double flux_mismatch_scale = 0.0;
+        double max_velocity_abs = 0.0;
+        double max_face_area = 0.0;
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+            for (std::size_t d = 0; d < 3; ++d)
+                max_velocity_abs = std::max(
+                    max_velocity_abs, std::abs(U.component_data(d)[c]));
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            const double mismatch =
+                std::abs(mass_flux(f) - reconstructed_flux(f));
+            flux_mismatch_scale = std::max(flux_mismatch_scale, std::abs(mass_flux(f)));
+            max_face_area = std::max(
+                max_face_area, geometry.face_area_vectors[f].mag());
+            if (mesh.ownership().neighbour(f) >= 0) {
+                flux_mismatch_linf = std::max(flux_mismatch_linf, mismatch);
+                continue;
+            }
+            const std::size_t patch = geometry.face_patch[f];
+            if (patch >= mesh.boundary().n_patches())
+                continue;
+            if (mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                continue;
+            const auto& patch_name = mesh.boundary().patch(patch).name;
+            const auto pbc = pressure_bcs.find(patch_name);
+            if (pbc != pressure_bcs.end() &&
+                pbc->second.type == ScalarBoundaryType::FIXED_VALUE)
+                flux_mismatch_boundary_linf =
+                    std::max(flux_mismatch_boundary_linf, mismatch);
+        }
+        // Normalized internal mismatch with an explicit physical floor:
+        // E_phi = ||phi_RC - phi_U||_inf / max(||phi_RC||_inf,
+        // rho * max|U| * max|Sf|). Never divides by a vanishing scale.
+        const double flux_mismatch_denominator = std::max(
+            flux_mismatch_scale,
+            controls.density * max_velocity_abs * max_face_area);
+        const double flux_mismatch_normalized =
+            flux_mismatch_denominator > 0.0
+                ? flux_mismatch_linf / flux_mismatch_denominator
+                : 0.0;
+        h.reconstructed_velocity_continuity_linf = reconstructed_linf;
+        h.flux_velocity_mismatch_linf = flux_mismatch_linf;
+        h.flux_velocity_mismatch_boundary_linf = flux_mismatch_boundary_linf;
+        h.flux_velocity_mismatch_normalized = flux_mismatch_normalized;
+        h.rhie_chow_identity_linf =
+            rhie_chow_identity_evaluated ? rhie_chow_identity_audit_linf : 0.0;
+        h.momentum_equation_residual_components =
+            std::array<double, 3>{rx_diag.global, ry_diag.global, rz_diag.global};
+        h.momentum_equation_residual_internal =
+            std::max({rx_diag.interior, ry_diag.interior, rz_diag.interior});
+        h.momentum_equation_residual_boundary =
+            std::max({rx_diag.boundary, ry_diag.boundary, rz_diag.boundary});
+        h.pressure_gradient_linf = pressure_gradient_linf;
+        h.pressure_gradient_l2 = pressure_gradient_l2;
+        const ResidualDiagnostic* worst_diag = &rx_diag;
+        if (ry_diag.global > worst_diag->global) worst_diag = &ry_diag;
+        if (rz_diag.global > worst_diag->global) worst_diag = &rz_diag;
+        h.momentum_residual_cell = worst_diag->max_cell;
+        h.momentum_residual_no_pressure = worst_diag->no_pressure;
+        h.momentum_pressure_contribution = worst_diag->pressure_contribution;
+        h.momentum_residual_patch = worst_diag->patch;
+
+        // Optional forensic microscope for one cell. This is deliberately
+        // disabled unless CFDX_DEBUG_CELL is set, so production/CI output is
+        // unchanged. Use CFDX_DEBUG_CELL=<index> for a fixed cell or
+        // CFDX_DEBUG_CELL=auto to inspect the independently reassembled
+        // worst-residual cell. The dump is emitted once per algorithm at
+        // convergence or at the configured iteration limit.
+        const bool debug_cell_auto = controls.diagnostics.debug_cell_auto;
+        std::size_t debug_cell = 0;
+        const bool debug_cell_enabled =
+            debug_cell_auto ||
+            (controls.diagnostics.debug_cell >= 0 &&
+             static_cast<std::size_t>(controls.diagnostics.debug_cell) < mesh.n_cells());
+        if (debug_cell_auto)
+            debug_cell = h.momentum_residual_cell;
+        else if (debug_cell_enabled)
+            debug_cell = static_cast<std::size_t>(controls.diagnostics.debug_cell);
+
+        // The first-iteration-relative equation residual is diagnostic only:
+        // if the initial residual is already at round-off, its denominator is
+        // ill-conditioned and the ratio can grow while the actual equation
+        // residual remains negligible. Use the RHS-normalized residual for the
+        // nonlinear convergence monitor and keep the reference-relative value
+        // available in history for diagnostics/adaptive-relaxation analysis.
+        // The first-iteration normalization is useful only when its reference
+        // is resolved relative to the momentum RHS. If the reference is at
+        // round-off, keep it for diagnostics but do not let its ratio dominate
+        // the nonlinear monitor.
+        // The reference-relative metric is meaningful only when its
+        // reference is resolved above the declared physical RHS-relative
+        // tolerance (bounded below by the FP64 round-off floor). A tiny but
+        // nonzero reference can otherwise pin the ratio near one despite an
+        // already-satisfied physical residual.
+        const double momentum_reference_resolution_threshold =
+            std::max(
+                100.0 * std::numeric_limits<double>::epsilon(),
+                controls.convergence.relative_tolerance) *
+            std::max(h.momentum_rhs_scale, tiny);
+        const bool momentum_reference_ill_conditioned =
+            h.momentum_equation_residual_reference <=
+            momentum_reference_resolution_threshold;
+        // COUPLED measures this residual after the monolithic solve, so its
+        // first-iteration reference is not an independent pre-solve baseline.
+        // Exclude that ratio for COUPLED regardless of its magnitude, while
+        // keeping the independently RHS-normalized physical gate mandatory.
+        const bool use_reference_relative_metric =
+            !momentum_reference_ill_conditioned &&
+            controls.algorithm != PressureVelocityAlgorithm::COUPLED;
+        double nonlinear_metric = !use_reference_relative_metric
+            ? std::max({
+                  h.momentum_residual,
+                  h.pressure_residual,
+                  h.velocity_change_inf,
+                  h.pressure_change_inf})
+            : std::max({
+                  h.momentum_residual,
+                  h.momentum_equation_residual_relative,
+                  h.pressure_residual,
+                  h.velocity_change_inf,
+                  h.pressure_change_inf});
+        h.nonlinear_convergence_metric = nonlinear_metric;
+
+        if (controls.diagnostics.iteration_trace &&
+            (iter == 1 ||
+             iter % std::max<std::size_t>(1, controls.diagnostics.iteration_trace_frequency) == 0)) {
+            // Diagnostic-only trace: expose the authoritative nonlinear history
+            // before the convergence gate. No criterion or tolerance is changed.
+            std::cerr << "INCOMPRESSIBLE_ITER iter=" << iter
+                      << " momentum_residual_rhs_relative=" << h.momentum_equation_residual_rhs_relative
+                      << " momentum_residual_reference_relative=" << h.momentum_equation_residual_relative
+                      << " momentum_residual_raw=" << h.momentum_equation_residual
+                      << " momentum_rhs_scale=" << h.momentum_rhs_scale
+                      << " momentum_residual_reference=" << h.momentum_equation_residual_reference
+                      << " momentum_rhs_scale_components=("
+                      << h.momentum_rhs_scale_components[0] << ","
+                      << h.momentum_rhs_scale_components[1] << ","
+                      << h.momentum_rhs_scale_components[2] << ")"
+                      << " momentum_rhs_relative_components=("
+                      << h.momentum_equation_residual_rhs_relative_components[0] << ","
+                      << h.momentum_equation_residual_rhs_relative_components[1] << ","
+                      << h.momentum_equation_residual_rhs_relative_components[2] << ")"
+                      << " continuity_normalized=" << h.continuity_normalized
+                      << " velocity_change_inf=" << h.velocity_change_inf
+                      << " pressure_change_inf=" << h.pressure_change_inf
+                      << " alpha_u=" << h.effective_alpha_u
+                      << " alpha_p=" << h.effective_alpha_p
+                      << " pressure_linear_iterations=" << pressure_iterations
+                      << " pressure_relative_residual=" << pressure_residual
+                      << " momentum_linear_iterations="
+                      << ((controls.algorithm == PressureVelocityAlgorithm::COUPLED)
+                              ? 0 : std::max({rx.iterations, ry.iterations, rz.iterations}))
+                      << " flux_velocity_mismatch_linf=" << h.flux_velocity_mismatch_linf
+                      << " worst_momentum_cell=" << h.momentum_residual_cell
+                      << " worst_momentum_patch=" << h.momentum_residual_patch
+                      << "\n";
+        }
+        // Acceptance stays per-criterion. The monitor divides its synthetic
+        // maximum by the maximum seen at the first iteration, so a metric whose
+        // absolute scale sits far below that first maximum would be exempted
+        // from the gate. nonlinear_metric is therefore a diagnostic summary and
+        // never a replacement for the individual physical criteria.
+        const bool momentum_residual_gate =
+            h.momentum_equation_residual_rhs_relative <= controls.convergence.relative_tolerance;
+        // COUPLED solves the monolithic momentum-continuity system before
+        // this post-update residual is measured. Using that already-solved
+        // residual as its own first-iteration reference makes the ratio
+        // approximately one even when the independently recomputed true
+        // residual is at the linear-solver floor. The RHS-normalized physical
+        // residual gate above remains mandatory for COUPLED; the
+        // post-update/reference ratio is not an independent convergence test
+        // for this direct block solve.
+        const bool momentum_equation_residual_gate =
+            controls.algorithm == PressureVelocityAlgorithm::COUPLED ||
+            momentum_reference_ill_conditioned ||
+            h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance;
+        const bool pressure_residual_gate =
+            h.pressure_residual <= controls.convergence.relative_tolerance;
+        const bool velocity_change_gate =
+            h.velocity_change_inf <= controls.convergence.relative_tolerance;
+        const bool pressure_change_gate =
+            h.pressure_change_inf <= controls.convergence.relative_tolerance;
+        const bool per_criterion_gates_ok =
+            momentum_residual_gate && momentum_equation_residual_gate &&
+            pressure_residual_gate && velocity_change_gate && pressure_change_gate;
+
+        // Reject severe adaptive overshoots before they reach the convergence
+        // monitor. A retry is the same nonlinear iteration, so convergence
+        // history must only observe the accepted state.
+        if (controls.adaptive_relaxation.enabled && !result.history.empty()) {
+            const auto& previous = result.history.back();
+            const bool severe_u =
+                std::isfinite(previous.momentum_equation_residual_relative) &&
+                std::isfinite(h.momentum_equation_residual_relative) &&
+                previous.momentum_equation_residual_relative > 0.0 &&
+                adaptive_relaxation_severe_degradation(
+                    previous.momentum_equation_residual_relative,
+                    h.momentum_equation_residual_relative,
+                    previous.effective_alpha_u,
+                    h.effective_alpha_u,
+                    controls.adaptive_relaxation);
+            const bool severe_p =
+                std::isfinite(previous.continuity_normalized) &&
+                std::isfinite(h.continuity_normalized) &&
+                previous.continuity_normalized > 0.0 &&
+                adaptive_relaxation_severe_degradation(
+                    previous.continuity_normalized,
+                    h.continuity_normalized,
+                    previous.effective_alpha_p,
+                    h.effective_alpha_p,
+                    controls.adaptive_relaxation);
+
+            if (severe_u || severe_p) {
+                if (!retry_controller.can_retry())
+                    throw NonlinearRetryableFailure(
+                        "solve_steady_incompressible: adaptive relaxation severe overshoot "
+                        "retry limit exhausted");
+                if (severe_u) {
+                    effective_alpha_u = std::max(
+                        controls.adaptive_relaxation.min_alpha_u,
+                        effective_alpha_u - controls.adaptive_relaxation.decrease_step);
+                    adaptive_u_improvement_streak = 0;
+                    adaptive_u_degradation_streak = 0;
+                    adaptive_u_recovery_cooldown =
+                        controls.adaptive_relaxation.recovery_cooldown_windows;
+                }
+                if (severe_p) {
+                    effective_alpha_p = std::max(
+                        controls.adaptive_relaxation.min_alpha_p,
+                        effective_alpha_p - controls.adaptive_relaxation.decrease_step);
+                    adaptive_p_improvement_streak = 0;
+                    adaptive_p_degradation_streak = 0;
+                    adaptive_p_recovery_cooldown =
+                        controls.adaptive_relaxation.recovery_cooldown_windows;
+                }
+                transaction.reject();
+                mass_flux = mass_flux_snapshot;
+                if (controls.sst_runtime && sst_attempt_snapshot)
+                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                frozen_state_valid = false;
+                // The severe guard has already reduced the responsible effective
+                // relaxation factor. Count the retry without applying the generic
+                // retry-controller shrink a second time.
+                retry_controller.retry_without_relaxation();
+                continue;
+            }
+        }
+        std::map<std::string, double> qoi_values;
+        if (!controls.qoi_gates.empty()) {
+            for (const auto& gate : controls.qoi_gates)
+                qoi_values[gate.name] =
+                    sample_incompressible_probe(
+                        *std::find_if(
+                            controls.probes.begin(), controls.probes.end(),
+                            [&](const IncompressiblePointProbe& probe) {
+                                return probe.name == gate.name;
+                            }),
+                        mesh, geometry, U, p);
+        }
+        SSTProductionStepResult sst_step;
+        double sst_nu_t_relative_change = 0.0;
+        if (controls.sst_runtime) {
+            std::map<std::string, std::array<double, 3>> fixed_velocity_values;
+            for (const auto& [patch, bc] : velocity_bcs) {
+                if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                    fixed_velocity_values.emplace(
+                        patch, std::array<double, 3>{bc.value.x, bc.value.y, bc.value.z});
+            }
+            sst_step = advance_sst_production_iterate_transactionally(
+                mesh, U, p, mass_flux, *controls.sst_runtime->state,
+                controls.sst_runtime->transport, fixed_velocity_values,
+                controls.sst_runtime->wall_patch_names,
+                controls.sst_runtime->k_boundary_conditions,
+                controls.sst_runtime->omega_boundary_conditions,
+                controls.sst_runtime->max_transport_iterations,
+                controls.sst_runtime->transport_tolerance,
+                &controls.sst_runtime->omega_face_values);
+            if (!sst_step.committed)
+                throw NonlinearRetryableFailure(
+                    "solve_steady_incompressible: SST update rejected: " + sst_step.reason);
+            // Turbulence convergence is an additional gate; it never relaxes
+            // the existing carrier residual, continuity, or QoI criteria.
+            if (!std::isfinite(sst_step.transport.k_residual) ||
+                !std::isfinite(sst_step.transport.second_residual) ||
+                sst_step.transport.nonfinite_bound_events != 0)
+                throw NonlinearRetryableFailure(
+                    "solve_steady_incompressible: SST residual/boundedness gate failed");
+            // The transport solver's converged flag is based on its linear
+            // solver status, bound audit, and field-update criterion. Its raw
+            // equation residuals have dimensional scales and must not be mixed
+            // directly with the normalized carrier convergence metric.
+            if (!sst_attempt_snapshot)
+                throw std::logic_error("SST production attempt is missing its state snapshot");
+            sst_nu_t_relative_change = sst_relative_eddy_viscosity_change(
+                *sst_attempt_snapshot, *controls.sst_runtime->state,
+                controls.kinematic_viscosity);
+        }
+        const auto convergence_report = convergence_monitor.update({
+            iter,
+            nonlinear_metric,
+            h.continuity_normalized,
+            std::move(qoi_values)});
+        const bool sst_residual_gate = !controls.sst_runtime ||
+            (sst_step.committed && sst_step.transport.converged &&
+             std::isfinite(sst_step.transport.k_residual) &&
+             std::isfinite(sst_step.transport.second_residual) &&
+             sst_step.transport.nonfinite_bound_events == 0 &&
+             std::isfinite(sst_nu_t_relative_change) &&
+             sst_nu_t_relative_change <= controls.convergence.relative_tolerance);
+        const bool converged_now =
+            iter >= minimum_outer_correctors &&
+            convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
+            per_criterion_gates_ok && sst_residual_gate;
+        if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
+            std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
+                      << " cell_source=" << (debug_cell_auto ? "auto_worst" : "explicit")
+                      << " algorithm=" << static_cast<int>(controls.algorithm)
+                      << " iteration=" << iter << " ===\n";
+            const auto dump_equation = [&](const char* name,
+                                           const ScalarEquation& eq,
+                                           const Vector& solution) {
+                double ax = 0.0;
+                const auto begin = eq.matrix.row_offsets_data()[debug_cell];
+                const auto end = eq.matrix.row_offsets_data()[debug_cell + 1];
+                std::cerr << name << " matrix row: rhs=" << eq.rhs(debug_cell)
+                          << " diagonal=" << eq.diagonal[debug_cell]
+                          << " nnz=" << (end - begin) << "\n";
+                for (std::uint32_t k = begin; k < end; ++k) {
+                    const auto col = eq.matrix.columns_data()[k];
+                    const auto value = eq.matrix.values_data()[k];
+                    ax += value * solution(col);
+                    std::cerr << "  col=" << col << " a=" << value
+                              << " x=" << solution(col)
+                              << " ax=" << value * solution(col) << "\n";
+                }
+                const double residual = ax - eq.rhs(debug_cell);
+                std::cerr << "  exact_row_ax=" << ax
+                          << " exact_row_residual=" << residual
+                          << " abs=" << std::abs(residual) << "\n";
+            };
+            dump_equation("Ux", final_ex, final_ux);
+            dump_equation("Uy", final_ey, final_uy);
+            dump_equation("Uz", final_ez, final_uz);
+
+            // Reconstruct the same momentum predictor used by the pressure-
+            // velocity coupling from the final, independently assembled
+            // momentum rows. This is diagnostic only; it does not alter the
+            // converged state. dAU = V/A_P is the exact pressure-response
+            // coefficient used by the segregated Rhie-Chow operator.
+            std::array<std::vector<double>, 3> diag_rAU;
+            std::array<std::vector<double>, 3> hbyA;
+            const ScalarEquation* final_eqs[3] = {&final_ex, &final_ey, &final_ez};
+            const Vector* final_u[3] = {&final_ux, &final_uy, &final_uz};
+            for (std::size_t d = 0; d < 3; ++d) {
+                diag_rAU[d].resize(mesh.n_cells());
+                hbyA[d].resize(mesh.n_cells());
+                for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                    const double ap = final_eqs[d]->diagonal[c];
+                    if (!(ap > 0.0) || !std::isfinite(ap))
+                        throw std::runtime_error(
+                            "CFDX momentum microscope: invalid final momentum diagonal");
+                    diag_rAU[d][c] = 1.0 / ap;
+                    double h_explicit = final_eqs[d]->rhs(c) +
+                        final_grad_p.component_data(d)[c] * geometry.cell_volumes[c];
+                    const auto begin = final_eqs[d]->matrix.row_offsets_data()[c];
+                    const auto end = final_eqs[d]->matrix.row_offsets_data()[c + 1];
+                    for (std::uint32_t k = begin; k < end; ++k) {
+                        const auto col = final_eqs[d]->matrix.columns_data()[k];
+                        if (col != c)
+                            h_explicit -=
+                                final_eqs[d]->matrix.values_data()[k] * (*final_u[d])(col);
+                    }
+                    hbyA[d][c] = diag_rAU[d][c] * h_explicit;
+                }
+            }
+
+            const auto reconstructed_flux =
+                make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
+            double local_div_authoritative = 0.0;
+            double local_div_reconstructed = 0.0;
+            double max_delta_phi = 0.0;
+            double max_delta_grad_p = 0.0;
+            double max_delta_u_face = 0.0;
+            double max_momentum_pressure_flux = 0.0;
+            double max_correction_pressure_flux = 0.0;
+            double max_rhie_chow_actual = 0.0;
+            double max_rhie_chow_expected = 0.0;
+            double max_rhie_chow_mismatch = 0.0;
+            if (freeze_state && frozen_state_valid) {
+                double phi_delta_linf = 0.0;
+                double hbyA_delta_linf = 0.0;
+                std::size_t hbyA_delta_cell = 0;
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+                    phi_delta_linf = std::max(phi_delta_linf,
+                        std::abs(mass_flux(f) - phi_used_in_momentum(f)));
+                for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                    double delta = 0.0;
+                    for (std::size_t d = 0; d < 3; ++d)
+                        delta = std::max(delta, std::abs(hbyA[d][c] - frozen_hbyA[d][c]));
+                    if (delta > hbyA_delta_linf) {
+                        hbyA_delta_linf = delta;
+                        hbyA_delta_cell = c;
+                    }
+                }
+                const std::size_t comparison_cell =
+                    debug_cell == 33 && mesh.n_cells() > 70 ? 70 : 33;
+                auto dump_state_cell = [&](std::size_t cell, const char* label) {
+                    if (cell >= mesh.n_cells()) return;
+                    double phi_delta_l1 = 0.0;
+                    double phi_used_l1 = 0.0;
+                    double phi_reassembled_l1 = 0.0;
+                    double hbyA_delta = 0.0;
+                    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                        const auto owner = mesh.ownership().owner(f);
+                        const auto neighbour = mesh.ownership().neighbour(f);
+                        if (owner != cell && (neighbour < 0 || static_cast<std::size_t>(neighbour) != cell)) continue;
+                        const double sign = owner == cell ? 1.0 : -1.0;
+                        const double used = sign * phi_used_in_momentum(f);
+                        const double current = sign * mass_flux(f);
+                        phi_used_l1 += std::abs(used);
+                        phi_reassembled_l1 += std::abs(current);
+                        phi_delta_l1 += std::abs(used-current);
+                    }
+                    for (std::size_t d = 0; d < 3; ++d)
+                        hbyA_delta = std::max(hbyA_delta,
+                            std::abs(hbyA[d][cell] - frozen_hbyA[d][cell]));
+                    std::cerr << "FROZEN_STATE_CELL label=" << label
+                              << " cell=" << cell
+                              << " phi_used_in_momentum_assembly=" << phi_used_l1
+                              << " phi_used_in_reassembly=" << phi_reassembled_l1
+                              << " phi_delta_l1=" << phi_delta_l1
+                              << " HbyA_delta_linf=" << hbyA_delta
+                              << " frozen_rAU=(" << frozen_rAU[0][cell] << ","
+                              << frozen_rAU[1][cell] << "," << frozen_rAU[2][cell] << ")"
+                              << " final_rAU=(" << diag_rAU[0][cell] << ","
+                              << diag_rAU[1][cell] << "," << diag_rAU[2][cell] << ")\n";
+                };
+                std::cerr << "FROZEN_STATE_COMPARE phi_global_linf=" << phi_delta_linf
+                          << " HbyA_global_linf=" << hbyA_delta_linf
+                          << " HbyA_max_cell=" << hbyA_delta_cell << "\n";
+                dump_state_cell(debug_cell, "debug");
+                if (comparison_cell != debug_cell)
+                    dump_state_cell(comparison_cell, "comparison");
+            }
+            const Offset off = mesh.cells().offsets_data()[debug_cell];
+            const Offset count = mesh.cells().offsets_data()[debug_cell + 1] - off;
+            std::cerr << "faces=" << count << "\n";
+            for (Offset k = 0; k < count; ++k) {
+                const std::size_t face = mesh.cells().faces_data()[off + k];
+                const auto owner = mesh.ownership().owner(face);
+                const auto neighbour = mesh.ownership().neighbour(face);
+                const bool owner_side = owner == debug_cell;
+                const double sign = owner_side ? 1.0 : -1.0;
+                const double phi_auth = sign * mass_flux(face);
+                const double phi_reconstructed = sign * reconstructed_flux(face);
+                local_div_authoritative += phi_auth;
+                local_div_reconstructed += phi_reconstructed;
+                const Vec3 Sf = geometry.face_area_vectors[face] * sign;
+                std::size_t patch = geometry.face_patch[face];
+                std::string patch_name = "INTERNAL";
+                int patch_type = -1;
+                if (neighbour < 0 && patch < mesh.boundary().n_patches()) {
+                    patch_name = mesh.boundary().patch(patch).name;
+                    patch_type = static_cast<int>(mesh.boundary().patch(patch).type);
+                }
+
+                Vec3 u_face_auth{0.0, 0.0, 0.0};
+                Vec3 u_face_reconstructed{0.0, 0.0, 0.0};
+                Vec3 grad_face_momentum{0.0, 0.0, 0.0};
+                Vec3 grad_face_correction{0.0, 0.0, 0.0};
+                Vec3 hbyA_face{0.0, 0.0, 0.0};
+                double dAU_n = 0.0;
+                double pressure_flux_correction = 0.0;
+                double rhie_chow_expected = 0.0;
+                double rhie_chow_actual = 0.0;
+
+                if (neighbour >= 0) {
+                    const std::size_t ncell = static_cast<std::size_t>(neighbour);
+                    u_face_auth = Vec3{
+                        0.5 * (final_ux(debug_cell) + final_ux(ncell)),
+                        0.5 * (final_uy(debug_cell) + final_uy(ncell)),
+                        0.5 * (final_uz(debug_cell) + final_uz(ncell))};
+                    hbyA_face = Vec3{
+                        0.5 * (hbyA[0][debug_cell] + hbyA[0][ncell]),
+                        0.5 * (hbyA[1][debug_cell] + hbyA[1][ncell]),
+                        0.5 * (hbyA[2][debug_cell] + hbyA[2][ncell])};
+                    // Build the local face frame from the debug-cell side.
+                    // For a neighbour-side debug cell, the global owner-oriented
+                    // face vector and the centre-to-centre vector have opposite
+                    // orientations. Mixing those frames was the source of the
+                    // NaN/incorrect pressure-flux microscope records and could
+                    // make a valid internal face look non-commuting.
+                    const std::size_t other_cell = owner_side
+                        ? ncell : owner;
+                    const Vec3 dvec = geometry.cell_centres[other_cell] -
+                                      geometry.cell_centres[debug_cell];
+                    const double d = dvec.mag();
+                    if (!(d > 0.0) || !std::isfinite(d))
+                        throw std::runtime_error(
+                            "CFDX momentum microscope: degenerate internal face distance");
+                    const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
+                    const double cx = 0.5 * (
+                        geometry.cell_volumes[debug_cell] * diag_rAU[0][debug_cell] +
+                        geometry.cell_volumes[other_cell] * diag_rAU[0][other_cell]);
+                    const double cy = 0.5 * (
+                        geometry.cell_volumes[debug_cell] * diag_rAU[1][debug_cell] +
+                        geometry.cell_volumes[other_cell] * diag_rAU[1][other_cell]);
+                    const double cz = 0.5 * (
+                        geometry.cell_volumes[debug_cell] * diag_rAU[2][debug_cell] +
+                        geometry.cell_volumes[other_cell] * diag_rAU[2][other_cell]);
+                    dAU_n = cx*e.x*e.x + cy*e.y*e.y + cz*e.z*e.z;
+                    const Vec3 gp{
+                        0.5 * (final_grad_p.component_data(0)[debug_cell] +
+                               final_grad_p.component_data(0)[other_cell]),
+                        0.5 * (final_grad_p.component_data(1)[debug_cell] +
+                               final_grad_p.component_data(1)[other_cell]),
+                        0.5 * (final_grad_p.component_data(2)[debug_cell] +
+                               final_grad_p.component_data(2)[other_cell])};
+                    // Compare the authoritative face-flux correction against
+                    // the exact Rhie-Chow operator used by the pressure equation.
+                    // This is deliberately evaluated from HbyA, not the final
+                    // velocity, because phi = HbyA_f.Sf - RC(p) is the
+                    // conservative pressure-velocity coupling operator.
+                    // Use the exact inverse momentum diagonals reconstructed
+                    // above from the final momentum rows.  The microscope is
+                    // diagnostic only and must not introduce a separate
+                    // SIMPLEC/SIMPLE coefficient path.
+                    rhie_chow_expected = rhie_chow_pressure_flux_internal(
+                        mesh, geometry, face, p, final_grad_p,
+                        diag_rAU, controls.density);
+                    const double hbyA_flux = controls.density * hbyA_face.dot(Sf);
+                    rhie_chow_actual = hbyA_flux - phi_auth;
+                    max_rhie_chow_actual = std::max(
+                        max_rhie_chow_actual, std::abs(rhie_chow_actual));
+                    max_rhie_chow_expected = std::max(
+                        max_rhie_chow_expected, std::abs(rhie_chow_expected));
+                    max_rhie_chow_mismatch = std::max(
+                        max_rhie_chow_mismatch,
+                        std::abs(rhie_chow_actual - rhie_chow_expected));
+                    const Vec3 localSf = Sf;
+                    const double normal_dp = (p(other_cell) - p(debug_cell)) / d;
+                    const Vec3 dAU_face{cx, cy, cz};
+                    grad_face_correction =
+                        e * normal_dp + gp - e * gp.dot(e);
+                    grad_face_momentum = gp;
+                    pressure_flux_correction = controls.density * (
+                        pressure_face_orthogonal_coefficient(
+                            localSf, dvec, dAU_face) *
+                            (p(other_cell) - p(debug_cell)) +
+                        pressure_face_nonorthogonal_flux(
+                            localSf, dvec, dAU_face, gp));
+                    u_face_reconstructed = hbyA_face -
+                        Vec3{cx * gp.x, cy * gp.y, cz * gp.z};
+                } else {
+                    if (patch < mesh.boundary().n_patches()) {
+                        const auto& name = mesh.boundary().patch(patch).name;
+                        const auto pit = pressure_bcs.find(name);
+                        const auto uit = velocity_bcs.find(name);
+                        if (uit != velocity_bcs.end() &&
+                            uit->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                            u_face_auth = uit->second.value;
+                        else
+                            u_face_auth = Vec3{
+                                final_ux(debug_cell), final_uy(debug_cell), final_uz(debug_cell)};
+                        if (pit != pressure_bcs.end() &&
+                            pit->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                            const Vec3 Sf_raw = geometry.face_area_vectors[face];
+                            const Vec3 dvec = geometry.face_centres[face] -
+                                              geometry.cell_centres[debug_cell];
+                            const double d = dvec.mag();
+                            if (!(d > 0.0) || !std::isfinite(d))
+                                throw std::runtime_error(
+                                    "CFDX momentum microscope: degenerate boundary face distance");
+                            const Vec3 e{dvec.x/d, dvec.y/d, dvec.z/d};
+                            const Vec3 dAU_boundary{
+                                geometry.cell_volumes[debug_cell] * diag_rAU[0][debug_cell],
+                                geometry.cell_volumes[debug_cell] * diag_rAU[1][debug_cell],
+                                geometry.cell_volumes[debug_cell] * diag_rAU[2][debug_cell]};
+                            dAU_n = dAU_boundary.x*e.x*e.x +
+                                    dAU_boundary.y*e.y*e.y +
+                                    dAU_boundary.z*e.z*e.z;
+                            const double normal_dp =
+                                (pit->second.value - p(debug_cell)) / d;
+                            const Vec3 gp{
+                                final_grad_p.component_data(0)[debug_cell],
+                                final_grad_p.component_data(1)[debug_cell],
+                                final_grad_p.component_data(2)[debug_cell]};
+                            pressure_flux_correction = controls.density * (
+                                pressure_face_orthogonal_coefficient(
+                                    Sf_raw, dvec, dAU_boundary) *
+                                    (pit->second.value - p(debug_cell)) +
+                                pressure_face_nonorthogonal_flux(
+                                    Sf_raw, dvec, dAU_boundary, gp));
+                            grad_face_correction = e * normal_dp + gp - e * gp.dot(e);
+                        } else {
+                            grad_face_correction = Vec3{
+                                final_grad_p.component_data(0)[debug_cell],
+                                final_grad_p.component_data(1)[debug_cell],
+                                final_grad_p.component_data(2)[debug_cell]};
+                        }
+                        grad_face_momentum = Vec3{
+                            final_grad_p.component_data(0)[debug_cell],
+                            final_grad_p.component_data(1)[debug_cell],
+                            final_grad_p.component_data(2)[debug_cell]};
+                        hbyA_face = Vec3{
+                            hbyA[0][debug_cell],
+                            hbyA[1][debug_cell],
+                            hbyA[2][debug_cell]};
+                        const Vec3 gp = grad_face_momentum;
+                        u_face_reconstructed = hbyA_face -
+                            Vec3{dAU_n*gp.x, dAU_n*gp.y, dAU_n*gp.z};
+                    }
+                }
+
+                const double momentum_pressure_flux = grad_face_momentum.dot(Sf);
+                max_delta_phi = std::max(
+                    max_delta_phi, std::abs(phi_auth - phi_reconstructed));
+                max_delta_grad_p = std::max(
+                    max_delta_grad_p,
+                    (grad_face_momentum - grad_face_correction).mag());
+                max_delta_u_face = std::max(
+                    max_delta_u_face, (u_face_auth - u_face_reconstructed).mag());
+                max_momentum_pressure_flux = std::max(
+                    max_momentum_pressure_flux, std::abs(momentum_pressure_flux));
+                max_correction_pressure_flux = std::max(
+                    max_correction_pressure_flux, std::abs(pressure_flux_correction));
+
+                std::cerr << "  face=" << face
+                          << " owner=" << owner
+                          << " neighbour=" << neighbour
+                          << " patch=" << patch_name
+                          << " patch_type=" << patch_type
+                          << " Sf=(" << Sf.x << "," << Sf.y << "," << Sf.z << ")"
+                          << " phi_authoritative=" << phi_auth
+                          << " phi_reconstructed_from_Uface=" << phi_reconstructed
+                          << " delta_phi=" << (phi_auth - phi_reconstructed)
+                          << " U_face_authoritative=(" << u_face_auth.x << ","
+                          << u_face_auth.y << "," << u_face_auth.z << ")"
+                          << " U_face_reconstructed_HbyA_dAUgradp=("
+                          << u_face_reconstructed.x << "," << u_face_reconstructed.y
+                          << "," << u_face_reconstructed.z << ")"
+                          << " delta_U_face=" << (u_face_auth-u_face_reconstructed).mag()
+                          << " dAU=" << dAU_n
+                          << " gradp_face_momentum=(" << grad_face_momentum.x << ","
+                          << grad_face_momentum.y << "," << grad_face_momentum.z << ")"
+                          << " gradp_face_correction=(" << grad_face_correction.x << ","
+                          << grad_face_correction.y << "," << grad_face_correction.z << ")"
+                          << " delta_gradp="
+                          << (grad_face_momentum-grad_face_correction).mag()
+                          << " momentum_pressure_flux=" << momentum_pressure_flux
+                          << " correction_pressure_flux=" << pressure_flux_correction
+                          << " rhie_chow_expected=" << rhie_chow_expected
+                          << " rhie_chow_actual=" << rhie_chow_actual
+                          << " delta_rhie_chow="
+                          << (rhie_chow_actual-rhie_chow_expected)
+                          << "\n";
+            }
+
+            std::cerr << "local_mass_flux_divergence=" << local_div_authoritative
+                      << " local_reconstructed_flux_divergence=" << local_div_reconstructed
+                      << " reconstructed_velocity_continuity_linf="
+                      << h.reconstructed_velocity_continuity_linf
+                      << " delta_phi_linf=" << max_delta_phi
+                      << " delta_u_face_linf=" << max_delta_u_face
+                      << " delta_gradp_linf=" << max_delta_grad_p
+                      << " momentum_pressure_flux_linf=" << max_momentum_pressure_flux
+                      << " correction_pressure_flux_linf=" << max_correction_pressure_flux
+                      << " rhie_chow_expected_linf=" << max_rhie_chow_expected
+                      << " rhie_chow_actual_linf=" << max_rhie_chow_actual
+                      << " delta_rhie_chow_linf=" << max_rhie_chow_mismatch
+                      << "\n";
+            std::cerr << "diagnostic_global=(" << h.momentum_equation_residual_components[0]
+                      << "," << h.momentum_equation_residual_components[1]
+                      << "," << h.momentum_equation_residual_components[2] << ")"
+                      << " internal=" << h.momentum_equation_residual_internal
+                      << " boundary=" << h.momentum_equation_residual_boundary
+                      << " worst_cell=" << h.momentum_residual_cell
+                      << " worst_patch=" << h.momentum_residual_patch << "\n";
+            std::cerr << "no_pressure=" << h.momentum_residual_no_pressure
+                      << " pressure_contribution=" << h.momentum_pressure_contribution
+                      << " gradp_linf=" << h.pressure_gradient_linf
+                      << "\n";
+            std::cerr << "=== END CFDX MOMENTUM MICROSCOPE ===\n";
+        }
+        {
+            const auto conservation =
+                cfdx::core::audit_face_flux_conservation(mesh, mass_flux);
+            const double scale =
+                std::max(conservation.global_abs_boundary_flux,
+                         std::max(conservation.l1_local_imbalance, 1.0));
+            h.mass_boundary_flux = conservation.global_boundary_flux;
+            h.mass_global_cell_balance = conservation.global_cell_balance;
+            h.mass_local_l1 = conservation.l1_local_imbalance;
+            h.mass_local_linf = conservation.max_local_imbalance;
+            h.mass_local_l2 = conservation.l2_local_imbalance;
+            h.mass_normalized_imbalance =
+                conservation.l1_local_imbalance / scale;
+            h.mass_worst_cell = conservation.worst_cell;
+            h.mass_nonfinite_faces = conservation.nonfinite_faces;
+            for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+                for (std::size_t d = 0; d < 3; ++d) {
+                    if (!std::isfinite(U.component_data(d)[c]))
+                        ++h.boundedness_nonfinite_velocity;
+                }
+            }
+
+            // Independent post-solve momentum conservation reconstruction.
+            // The flux is rebuilt from the accepted final field, independently
+            // of the assembled matrix residual. Internal faces therefore have
+            // one owner-oriented flux and are audited separately for balance.
+            Field<double, Location::FACE> audit_transpose_flux;
+            if (include_transpose_stress)
+                audit_transpose_flux = transpose_viscous_stress_flux(
+                    mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z});
+            for (std::size_t d = 0; d < 3; ++d) {
+                cfdx::core::Field<double, cfdx::core::Location::CELL> component(
+                    mesh.n_cells(), "U_reconstructed", "m/s", 1);
+                cfdx::core::Field<double, cfdx::core::Location::CELL> source(
+                    mesh.n_cells(), "momentum_source_reconstructed", "N/m3", 1);
+                ScalarBoundaryConditions scalar_bcs;
+                for (const auto& [name, bc] : velocity_bcs) {
+                    if (bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                        scalar_bcs[name] = {ScalarBoundaryType::FIXED_VALUE, bc.value.x, 0.0};
+                    else
+                        scalar_bcs[name] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+                    if (d == 1 && bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                        scalar_bcs[name].value = bc.value.y;
+                    if (d == 2 && bc.type == VelocityBoundaryCondition::Type::FIXED_VALUE)
+                        scalar_bcs[name].value = bc.value.z;
+                }
+                for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                    component(cell) = U.component_data(d)[cell];
+                    // Same channel selection as the momentum assembly
+                    // (cellwise replaces the uniform vector when
+                    // supplied), preserving this audit's own convention
+                    // for the source term.
+                    const bool cellwise_body_force =
+                        !controls.cell_body_force.empty();
+                    const double body_component =
+                        cellwise_body_force
+                            ? (d == 0
+                                   ? controls.cell_body_force[cell].x
+                                   : (d == 1
+                                          ? controls.cell_body_force[cell].y
+                                          : controls.cell_body_force[cell].z))
+                            : (d == 0
+                                   ? controls.body_force.x
+                                   : (d == 1
+                                          ? controls.body_force.y
+                                          : controls.body_force.z));
+                    // audit_integrated_balance sums outward flux + source.
+                    // The physical equation is div(convective-viscous flux)
+                    // + grad(p*) - rho*f = 0.
+                    source(cell) = final_grad_p.component_data(d)[cell] -
+                                   controls.density * body_component;
+                }
+                auto flux = reconstruct_scalar_transport_flux(
+                    mesh, geometry, mass_flux, component, 0.0, scalar_bcs,
+                    controls.use_bounded_convection, controls.convection_scheme,
+                    nullptr, &mu_eff);
+                // Transport flux is convection minus viscous stress. Rebuild
+                // the transpose contribution from final U independently of
+                // the predictor source and assembled matrix residual.
+                if (include_transpose_stress)
+                    for (std::size_t face=0; face<mesh.n_faces(); ++face)
+                        flux(face) -= audit_transpose_flux(face,d);
+                const auto balance = cfdx::core::audit_integrated_balance(
+                    mesh, flux, source, geometry.cell_volumes);
+                h.momentum_conservation_residual[d] = balance.residual;
+                h.momentum_conservation_normalized[d] = balance.normalized_residual;
+                h.momentum_conservation_worst_cell[d] = balance.worst_cell;
+            }
+        }
+        result.history.push_back(h);
+
+        // Samples are retained regardless of probe_callback. A probe that was
+        // requested and sampled but not retained left no artifact behind, so
+        // there was nothing to export or validate after the run.
+        for (const auto& probe : controls.probes) {
+            if (probe.name.empty())
+                throw std::invalid_argument("solve_steady_incompressible: probe name must not be empty");
+            const double value = sample_incompressible_probe(probe, mesh, geometry, U, p);
+            if (!std::isfinite(value))
+                throw std::runtime_error("solve_steady_incompressible: probe value is not finite");
+            result.probe_samples.push_back(
+                IncompressibleProbeSample{probe.name, iter, 0.0, value});
+            if (controls.probe_callback)
+                controls.probe_callback(result.probe_samples.back());
+        }
+
+        if (controls.iteration_output_callback &&
+            !controls.iteration_output_callback(iter, 0.0, mesh, U, p)) {
+            result.iterations = iter;
+            stop_after_iteration = true;
+        }
+
+        result.convergence_status = convergence_report.status;
+        result.convergence_reason = convergence_report.reason;
+        if ((convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED ||
+             convergence_report.status == cfdx::core::ConvergenceStatus::MAX_ITERATIONS) &&
+            !sst_residual_gate) {
+            // The carrier monitor does not know about the additional SST
+            // closure/transport gate. Do not publish a converged status while
+            // the accepted momentum residual still corresponds to an earlier
+            // effective-viscosity field.
+            result.convergence_status =
+                iter == controls.convergence.max_iterations
+                    ? cfdx::core::ConvergenceStatus::MAX_ITERATIONS
+                    : cfdx::core::ConvergenceStatus::CONTINUE;
+            result.convergence_reason =
+                "carrier criteria satisfied but SST transport/closure convergence gate is not satisfied";
+        }
+        if (converged_now) {
+            result.converged = true;
+            result.iterations = iter;
+            stop_after_iteration = true;
+        }
+        if (convergence_report.status == cfdx::core::ConvergenceStatus::DIVERGED ||
+            convergence_report.status == cfdx::core::ConvergenceStatus::STAGNATED) {
+            result.iterations = iter;
+            stop_after_iteration = true;
+        }
+        result.iterations = iter;
+            transaction.commit();
+            if (controls.sst_runtime) {
+                for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                    mu_eff[cell] = controls.density *
+                        (controls.kinematic_viscosity +
+                         controls.sst_runtime->state->nu_t(cell));
+            }
+            // Only publish a face flux after the nonlinear transaction has
+            // accepted the corresponding U/p state. mass_flux is mutable during
+            // a tentative iteration and is not part of NonlinearStateRollback;
+            // publishing it after a rejected attempt would therefore expose a
+            // flux belonging to a state that was rolled back.
+            result.authoritative_mass_flux = mass_flux;
+            iteration_completed = true;
+            } catch (const NonlinearRetryableFailure& error) {
+                transaction.reject();
+                mass_flux = mass_flux_snapshot;
+                if (controls.sst_runtime && sst_attempt_snapshot)
+                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                if (controls.sst_runtime) {
+                    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                        mu_eff[cell] = controls.density *
+                            (controls.kinematic_viscosity +
+                             controls.sst_runtime->state->nu_t(cell));
+                }
+                // The monitor and exported iteration evidence are tentative
+                // until the carrier/SST transaction commits. Replaying a retry
+                // with the same iteration index must not see stale samples or
+                // a previously published converged flag.
+                convergence_monitor = convergence_monitor_snapshot;
+                result.history.resize(result_history_size);
+                result.probe_samples.resize(probe_samples_size);
+                result.converged = previous_result_converged;
+                result.convergence_status = previous_result_status;
+                result.convergence_reason = previous_result_reason;
+                result.iterations = previous_result_iterations;
+                stop_after_iteration = false;
+                frozen_state_valid = false;
+                if (!retry_controller.can_retry())
+                    throw;
+                retry_controller.reject();
+                std::cerr << "CFDX nonlinear iteration " << iter
+                          << " rejected; retry=" << retry_controller.retries()
+                          << " alpha_u=" << retry_controller.alpha_u(effective_alpha_u)
+                          << " alpha_p=" << retry_controller.alpha_p(effective_alpha_p)
+                          << " reason=" << error.what() << "\n";
+            } catch (...) {
+                transaction.reject();
+                mass_flux = mass_flux_snapshot;
+                if (controls.sst_runtime && sst_attempt_snapshot)
+                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                throw;
+            }
+        }
+        if (stop_after_iteration)
+            break;
+    }
+
+    // authoritative_mass_flux is updated only after an accepted nonlinear
+    // transaction above. In particular, a rejected retry cannot overwrite the
+    // evidence for the last accepted U/p state. Do not reconstruct it from U.
+    if (pressure_context)
+        result.pressure_linear_context = pressure_context->stats();
+    return result;
+}
+
+} // namespace cfdx::physics
+

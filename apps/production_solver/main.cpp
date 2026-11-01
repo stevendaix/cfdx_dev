@@ -1240,3 +1240,125 @@ int main(int argc, char** argv)
                     radiation_s2s_json(s2s_outer_result));
                 std::cout << "S2S radiation outer loop "
                           << (s2s_outer_result.converged
+                                  ? "converged"
+                                  : "NOT converged")
+                          << " outer iterations "
+                          << s2s_outer_result.outer_iterations
+                          << " surfaces "
+                          << s2s_outer_result.radiation.surface_count
+                          << " flux fixed point "
+                          << s2s_outer_result
+                                 .max_flux_fixed_point_normalized
+                          << " wall temperature stationarity "
+                          << s2s_outer_result
+                                 .max_wall_temperature_change_normalized
+                          << " balance_normalized "
+                          << s2s_outer_result.radiation.balance_normalized
+                          << " surface_identity_normalized "
+                          << s2s_outer_result.radiation
+                                 .max_surface_identity_normalized
+                          << "\n";
+                std::cout << "S2S last wall temperature lag "
+                          << s2s_outer_result.max_wall_temperature_lag
+                          << " K\n";
+                std::cout << "S2S radiation summary "
+                          << (options.output_dir / "radiation_s2s.json")
+                                 .string()
+                          << "\n";
+            }
+        }
+        const bool overall_converged =
+            result.converged &&
+            (!buoyancy_ran || buoyancy_result.converged) &&
+            (!energy_requested ||
+             (energy_ran && energy_result.converged &&
+              (!s2s_ran || s2s_outer_result.converged)));
+        const auto solver_exit_code =
+            execution_exit_code_for_solver(overall_converged);
+        auto overall_status = result.convergence_status;
+        std::string overall_reason = result.convergence_reason;
+        if (result.converged && !overall_converged) {
+            overall_status = cfdx::core::ConvergenceStatus::DIVERGED;
+            if (energy_ran && !energy_result.temperature_admissibility_passed)
+                overall_reason = "energy temperature admissibility gate failed";
+            else if (energy_ran && !energy_result.converged)
+                overall_reason = "energy stage linear or conservation gate failed";
+            else if (s2s_ran && !s2s_outer_result.converged)
+                overall_reason = "energy-radiation fixed point did not converge";
+            else if (buoyancy_ran && !buoyancy_result.converged)
+                overall_reason = "flow-energy buoyancy fixed point did not converge";
+            else
+                overall_reason = "requested energy stage did not complete";
+        }
+
+        const auto dat = options.output_dir / "restart.dat";
+        DatRestartFields checkpoint_fields;
+        if (energy_ran)
+            checkpoint_fields.temperature = &temperature;
+        if (experimental_sst_state) {
+            // The experimental opt-in owns k and omega for the whole run, so
+            // the final checkpoint persists them under their stable DAT v4
+            // named fields. Without this wiring a persisted SST case can
+            // initialize but never restart: the staged DAT reader requires
+            // the named k and omega fields whenever the active runtime
+            // requests them.
+            checkpoint_fields.k = &experimental_sst_state->k;
+            checkpoint_fields.omega = &experimental_sst_state->omega;
+        }
+        // Persist the authoritative face mass flux so the next run replays
+        // the same iteration sequence instead of re-deriving a different
+        // initial flux from the restored U and p.
+        if (result.authoritative_mass_flux.dimension() == 1 &&
+            result.authoritative_mass_flux.size() == mesh.n_faces())
+            checkpoint_fields.face_mass_flux = &result.authoritative_mass_flux;
+        write_dat_restart_fields(dat.string(), mesh, U, p, checkpoint_fields,
+                                 result.iterations, 0.0);
+        const auto convergence = options.output_dir / "convergence.json";
+        write_convergence_history(convergence.string(), result);
+        write_execution_summary(execution.string(), ExecutionSummary{
+            solver_exit_code,
+            overall_converged,
+            result.iterations,
+            static_cast<int>(overall_status),
+            overall_reason,
+            std::filesystem::is_regular_file(dat),
+            std::filesystem::is_regular_file(convergence)});
+        std::cout << "Checkpoint " << dat.string() << "\n";
+        std::cout << "Convergence history " << convergence.string() << "\n";
+        std::cout << "Execution summary " << execution.string() << "\n";
+
+        if (!options.probe_csv.empty()) {
+            write_probe_csv(options.probe_csv.string(), result.probe_samples, options.probes);
+            std::cout << "Probe CSV " << options.probe_csv.string() << " ("
+                      << result.probe_samples.size() << " samples)\n";
+        }
+
+        std::cout << "Converged " << (overall_converged ? "YES" : "NO")
+                  << " Iterations " << result.iterations << "\n";
+        return solver_exit_code;
+    } catch (const std::exception& exc) {
+        std::cerr << "CFDX production solver error: " << exc.what() << "\n";
+        if (!execution_output_dir.empty()) {
+            try {
+                const auto execution = execution_output_dir / "execution.json";
+                const bool has_restart =
+                    std::filesystem::is_regular_file(execution_output_dir / "restart.dat");
+                const bool has_convergence =
+                    std::filesystem::is_regular_file(execution_output_dir / "convergence.json");
+                write_execution_summary(execution.string(), ExecutionSummary{
+                    kExecutionExitError,
+                    false,
+                    execution_result.has_value() ? execution_result->iterations : 0,
+                    static_cast<int>(cfdx::core::ConvergenceStatus::DIVERGED),
+                    exc.what(),
+                    has_restart,
+                    has_convergence});
+            } catch (const std::exception& summary_exc) {
+                std::cerr << "CFDX production solver: failed to persist execution summary: "
+                          << summary_exc.what() << "\n";
+            }
+        }
+        return kExecutionExitError;
+    }
+}
+

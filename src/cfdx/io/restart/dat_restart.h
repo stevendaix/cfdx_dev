@@ -468,4 +468,4 @@ inline DatRestartState read_dat_restart(
     return read_dat_restart_fields(path, mesh, U, p, DatRestartFields{});
 }
 
-} // namespace c
+} // namespace cfdx::io
