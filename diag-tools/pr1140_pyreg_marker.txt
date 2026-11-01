@@ -1,0 +1,3 @@
+go retry-all-oracles 2026-11-01T22:30Z
+go app-trigger forensics-v6 wave1
+go app-trigger forensics-v6 wave2
