@@ -1,4 +1,5 @@
 """Emit a machine-readable CFDX reproducibility manifest (metadata, not a PASS gate)."""
+
 from __future__ import annotations
 
 import argparse
@@ -45,9 +46,13 @@ def tool_version(command: str, *args: str) -> str:
     if not executable:
         return "unavailable"
     try:
-        return subprocess.check_output(
-            [executable, *args], text=True, stderr=subprocess.STDOUT
-        ).strip().splitlines()[0]
+        return (
+            subprocess.check_output(
+                [executable, *args], text=True, stderr=subprocess.STDOUT
+            )
+            .strip()
+            .splitlines()[0]
+        )
     except (OSError, subprocess.CalledProcessError, IndexError):
         return "unknown"
 
@@ -60,8 +65,8 @@ def configured_compiler(build_dir: Path | None = None) -> dict[str, str | None]:
         if not cache.is_file():
             raise ValueError(f"CMake cache not found: {cache}")
         for line in cache.read_text(encoding="utf-8").splitlines():
-            if line.startswith("CMAKE_CXX_COMPILER:FILEPATH=") or line.startswith(
-                "CMAKE_CXX_COMPILER:STRING="
+            if line.startswith(
+                ("CMAKE_CXX_COMPILER:FILEPATH=", "CMAKE_CXX_COMPILER:STRING=")
             ):
                 compiler = line.split("=", 1)[1].strip()
                 source = "CMakeCache.txt"
@@ -81,13 +86,19 @@ def configured_compiler(build_dir: Path | None = None) -> dict[str, str | None]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", type=Path)
-    parser.add_argument("--build-dir", type=Path, help="read the real CMake C++ compiler")
+    parser.add_argument(
+        "--build-dir", type=Path, help="read the real CMake C++ compiler"
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
     root = Path(__file__).resolve().parents[1]
     manifest = {
-        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "generated_at": (
+            datetime.datetime.now(datetime.timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        ),
         "cfdx_version": "0.7",
         "schema_version": 1,
         "git": git_metadata(root),
@@ -104,7 +115,9 @@ def main() -> int:
         },
         "hardware": {
             "cpu": platform.processor() or "unknown",
-            "gpu": tool_version("nvidia-smi", "--query-gpu=name", "--format=csv,noheader"),
+            "gpu": tool_version(
+                "nvidia-smi", "--query-gpu=name", "--format=csv,noheader"
+            ),
         },
         "case": None,
     }

@@ -5,6 +5,7 @@ solver, result extractor, CFD reference database, or replacement for CTest.
 See docs/validation/THREE_MESH_PHYSICAL_QUALIFICATION.md for the schema and
 exact meaning of normalized residual and conservation measurements.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -87,7 +88,12 @@ def verified_file(root: Path, obj: Any, label: str) -> tuple[Path, str]:
         raise EvidenceError(f"{label}: path and sha256 are required")
     rel = obj.get("path")
     sha = obj.get("sha256")
-    if not isinstance(rel, str) or not rel or not isinstance(sha, str) or not SHA256.fullmatch(sha):
+    if (
+        not isinstance(rel, str)
+        or not rel
+        or not isinstance(sha, str)
+        or not SHA256.fullmatch(sha)
+    ):
         raise EvidenceError(f"{label}: invalid path/sha256")
     if Path(rel).is_absolute():
         raise EvidenceError(f"{label}: absolute paths are forbidden")
@@ -118,11 +124,11 @@ def _metric_order(
         raise EvidenceError(f"{name}: no positive observed-order solution")
 
     def ratio_at_order(order: float) -> float:
-        return math.expm1(order * math.log(ratio_coarse)) / (
-            -math.expm1(-order * math.log(ratio_fine))
-        )
+        numerator = math.expm1(order * math.log(ratio_coarse))
+        denominator = -math.expm1(-order * math.log(ratio_fine))
+        return numerator / denominator
 
-    low, high = 1.e-8, 12.0
+    low, high = 1.0e-8, 12.0
     if ratio_at_order(high) < target:
         raise EvidenceError(f"{name}: implausibly high observed order")
     for _ in range(80):
@@ -138,7 +144,9 @@ def _metric_order(
     return order, abs(d2) / correction
 
 
-def qualify(case: dict[str, Any], root: Path, expected_source_sha: str) -> dict[str, Any]:
+def qualify(
+    case: dict[str, Any], root: Path, expected_source_sha: str
+) -> dict[str, Any]:
     if case.get("schema_version") != "1.0":
         raise EvidenceError("schema_version must be 1.0")
     case_id = case.get("case_id")
@@ -148,36 +156,52 @@ def qualify(case: dict[str, Any], root: Path, expected_source_sha: str) -> dict[
         raise EvidenceError("case_id is required")
     if physics not in PHYSICS:
         raise EvidenceError("unknown physics family")
-    if not isinstance(sha, str) or not COMMIT.fullmatch(sha) or sha != expected_source_sha:
-        raise EvidenceError("source SHA missing or does not match expected exact revision")
+    if (
+        not isinstance(sha, str)
+        or not COMMIT.fullmatch(sha)
+        or sha != expected_source_sha
+    ):
+        raise EvidenceError(
+            "source SHA missing or does not match expected exact revision"
+        )
     limits = case.get("criteria")
     references = case.get("references")
     levels = case.get("levels")
-    if not isinstance(limits, dict) or not isinstance(references, dict) or not references:
-        raise EvidenceError("numerical criteria and independent references are mandatory")
+    if (
+        not isinstance(limits, dict)
+        or not isinstance(references, dict)
+        or not references
+    ):
+        raise EvidenceError(
+            "numerical criteria and independent references are mandatory"
+        )
     if not isinstance(levels, list) or len(levels) != 3:
         raise EvidenceError("exactly three mesh levels are required")
     if physics.startswith("naca") and not NACA_QOIS.issubset(references):
-        raise EvidenceError("NACA needs separate pressure, viscous, total drag and lift references")
+        raise EvidenceError(
+            "NACA needs separate pressure, viscous, total drag and lift references"
+        )
 
     max_res = positive(limits.get("max_true_residual"), "max_true_residual")
     balance_fields = PHYSICS[physics]
-    max_balance = {
-        key: positive(limits.get("max_" + key), "max_" + key)
-        for key in balance_fields
-    }
+    max_balance = {}
+    for key in balance_fields:
+        max_balance[key] = positive(limits.get("max_" + key), "max_" + key)
     min_ratio = positive(limits.get("min_refinement_ratio"), "min_refinement_ratio")
     min_order = positive(limits.get("min_observed_order"), "min_observed_order")
     max_gci = positive(limits.get("max_gci"), "max_gci")
     max_ratio_difference = nonnegative(
-        limits.get("max_refinement_ratio_difference"), "max_refinement_ratio_difference"
+        limits.get("max_refinement_ratio_difference"),
+        "max_refinement_ratio_difference",
     )
     if min_ratio <= 1.0 or max_ratio_difference > 0.10:
         raise EvidenceError("invalid refinement-ratio policy")
     cd_closure = None
     if physics.startswith("naca"):
-        cd_closure = positive(limits.get("max_drag_decomposition_error"),
-                              "max_drag_decomposition_error")
+        cd_closure = positive(
+            limits.get("max_drag_decomposition_error"),
+            "max_drag_decomposition_error",
+        )
 
     reference_values: dict[str, tuple[float, float, float]] = {}
     for name, value in references.items():
@@ -198,9 +222,15 @@ def qualify(case: dict[str, Any], root: Path, expected_source_sha: str) -> dict[
         if not isinstance(level, dict):
             raise EvidenceError(f"{label}: missing level")
         mesh_path, mesh_sha = verified_file(root, level.get("mesh"), f"{label}.mesh")
-        result_path, result_sha = verified_file(root, level.get("result"), f"{label}.result")
+        result_path, result_sha = verified_file(
+            root, level.get("result"), f"{label}.result"
+        )
         result = strict_json(result_path)
-        if result.get("source_sha") != sha or result.get("case_id") != case_id or result.get("physics") != physics:
+        if (
+            result.get("source_sha") != sha
+            or result.get("case_id") != case_id
+            or result.get("physics") != physics
+        ):
             raise EvidenceError(f"{label}: wrong source revision or case identity")
         if result.get("mesh_sha256") != mesh_sha:
             raise EvidenceError(f"{label}: result does not reference its input mesh")
@@ -220,21 +250,34 @@ def qualify(case: dict[str, Any], root: Path, expected_source_sha: str) -> dict[
             raise EvidenceError(f"{label}: mesh contains too few cells")
         observed = result.get("qoi")
         if not isinstance(observed, dict) or set(observed) != set(reference_values):
-            raise EvidenceError(f"{label}: missing/unexpected QoI; every reference must be evaluated")
-        for name in measured:
-            measured[name].append(finite(observed[name], f"{label}.{name}"))
-        if cd_closure is not None and abs(
-            observed["cd_total"] - observed["cd_pressure"] - observed["cd_viscous"]
-        ) > cd_closure:
-            raise EvidenceError(f"{label}: pressure/viscous drag does not sum to total")
+            raise EvidenceError(
+                f"{label}: missing/unexpected QoI; every reference must be evaluated"
+            )
+        for name, samples in measured.items():
+            samples.append(finite(observed[name], f"{label}.{name}"))
+        if cd_closure is not None:
+            decomposition_error = abs(
+                observed["cd_total"] - observed["cd_pressure"] - observed["cd_viscous"]
+            )
+            if decomposition_error > cd_closure:
+                raise EvidenceError(
+                    f"{label}: pressure/viscous drag does not sum to total"
+                )
         hs.append(h)
         cells.append(n)
-        artifacts.append({"mesh_path": str(mesh_path.relative_to(root)),
-                          "mesh_sha256": mesh_sha,
-                          "result_path": str(result_path.relative_to(root)),
-                          "result_sha256": result_sha})
+        artifacts.append(
+            {
+                "mesh_path": str(mesh_path.relative_to(root)),
+                "mesh_sha256": mesh_sha,
+                "result_path": str(result_path.relative_to(root)),
+                "result_sha256": result_sha,
+            }
+        )
 
-    if len({a["mesh_sha256"] for a in artifacts}) != 3 or len({a["result_sha256"] for a in artifacts}) != 3:
+    if (
+        len({a["mesh_sha256"] for a in artifacts}) != 3
+        or len({a["result_sha256"] for a in artifacts}) != 3
+    ):
         raise EvidenceError("duplicate meshes or reused run evidence")
     if not (cells[0] < cells[1] < cells[2] and hs[0] > hs[1] > hs[2]):
         raise EvidenceError("cell counts and characteristic h must refine strictly")
@@ -254,7 +297,9 @@ def qualify(case: dict[str, Any], root: Path, expected_source_sha: str) -> dict[
             raise EvidenceError(f"{name}: GCI {gci:.3g} above {max_gci}")
         error = abs(values[2] - reference) / scale
         if error > max_error:
-            raise EvidenceError(f"{name}: physical reference error {error:.3g} above {max_error}")
+            raise EvidenceError(
+                f"{name}: physical reference error {error:.3g} above {max_error}"
+            )
         metrics[name] = {
             "values_coarse_to_fine": values,
             "reference": reference,
@@ -290,10 +335,19 @@ def main() -> int:
             raise EvidenceError("expected exact full 40-character git SHA")
         path = args.input.resolve()
         result = qualify(strict_json(path), path.parent, args.expected_source_sha)
-    except (EvidenceError, ValueError, OSError, json.JSONDecodeError, OverflowError) as exc:
+    except (
+        EvidenceError,
+        ValueError,
+        OSError,
+        json.JSONDecodeError,
+        OverflowError,
+    ) as exc:
         result = {"status": "FAIL", "reason": str(exc)}
     args.report.parent.mkdir(parents=True, exist_ok=True)
-    args.report.write_text(json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    args.report.write_text(
+        json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
     print(f"CFDX_THREE_MESH_QUALIFICATION: {result['status']}")
     if result["status"] != "PASS":
         print(result["reason"])
