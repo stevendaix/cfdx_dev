@@ -127,14 +127,166 @@ enum class GradientWeighting {
     INVERSE_DISTANCE_SQUARED
 };
 
+// Explicit robust WLS: one-sided Jacobi decomposition of the weighted design
+// matrix (not normal equations). Dimension=2 returns the minimum-norm
+// tangent-plane gradient on an embedded planar mesh; dimension=3 requires a
+// full 3-D stencil. Never silently infer dimension from rank loss.
+inline Vec3 weighted_least_squares_gradient_robust(
+    const Vec3& centre,
+    double value,
+    const std::vector<Vec3>& neighbour_centres,
+    const std::vector<double>& neighbour_values,
+    GradientWeighting weighting,
+    int requested_dimension,
+    StencilQuality* quality = nullptr)
+{
+    if (requested_dimension != 2 && requested_dimension != 3)
+        throw std::invalid_argument("robust WLS: dimension must be 2 or 3");
+    if (neighbour_centres.size() != neighbour_values.size())
+        throw std::invalid_argument("robust WLS: size mismatch");
+    StencilQuality q;
+    q.dimension = requested_dimension;
+    q.samples = neighbour_centres.size();
+    auto fail = [&](const char* message) -> void {
+        if (quality) *quality = q;
+        throw std::runtime_error(message);
+    };
+    if (!std::isfinite(value) || !std::isfinite(centre.x) ||
+        !std::isfinite(centre.y) || !std::isfinite(centre.z)) {
+        q.finite = false;
+        fail("weighted_least_squares_gradient_planar: non-finite input");
+    }
+
+    std::vector<std::array<double, 3>> design;
+    std::vector<double> rhs;
+    design.reserve(q.samples);
+    rhs.reserve(q.samples);
+    for (std::size_t i = 0; i < q.samples; ++i) {
+        const Vec3 d = neighbour_centres[i] - centre;
+        const double r2 = d.mag2();
+        const double dv = neighbour_values[i] - value;
+        if (!(r2 > 0.0) || !std::isfinite(r2) || !std::isfinite(dv)) {
+            q.finite = false;
+            fail("weighted_least_squares_gradient_planar: non-finite or duplicate sample");
+        }
+        double factor = 1.0;
+        if (weighting == GradientWeighting::INVERSE_DISTANCE)
+            factor = 1.0 / std::sqrt(std::sqrt(r2));
+        else if (weighting == GradientWeighting::INVERSE_DISTANCE_SQUARED)
+            factor = 1.0 / std::sqrt(r2);
+        if (!std::isfinite(factor)) {
+            q.finite = false;
+            fail("weighted_least_squares_gradient_planar: invalid weight");
+        }
+        design.push_back({factor*d.x, factor*d.y, factor*d.z});
+        rhs.push_back(factor*dv);
+    }
+
+    // Right-singular vector matrix. Orthogonalize all three design columns
+    // by one-sided Jacobi sweeps; no squared condition number is formed.
+    std::array<std::array<double,3>,3> V{{
+        {{1.0,0.0,0.0}}, {{0.0,1.0,0.0}}, {{0.0,0.0,1.0}}}};
+    for (int sweep = 0; sweep < 40; ++sweep) {
+        bool changed = false;
+        for (int p = 0; p < 2; ++p) {
+            for (int k = p+1; k < 3; ++k) {
+                double alpha = 0.0, beta = 0.0, gamma = 0.0;
+                for (const auto& row : design) {
+                    alpha += row[p]*row[p];
+                    beta += row[k]*row[k];
+                    gamma += row[p]*row[k];
+                }
+                if (!(alpha > 0.0) || !(beta > 0.0)) continue;
+                if (std::abs(gamma) <= 8.0 *
+                    std::numeric_limits<double>::epsilon() * std::sqrt(alpha*beta))
+                    continue;
+                const double tau = (beta-alpha)/(2.0*gamma);
+                const double t = std::copysign(1.0, tau) /
+                    (std::abs(tau) + std::sqrt(1.0+tau*tau));
+                const double c = 1.0/std::sqrt(1.0+t*t);
+                const double sn = c*t;
+                for (auto& row : design) {
+                    const double old_p=row[p], old_k=row[k];
+                    row[p] = c*old_p-sn*old_k;
+                    row[k] = sn*old_p+c*old_k;
+                }
+                for (auto& row : V) {
+                    const double old_p=row[p], old_k=row[k];
+                    row[p] = c*old_p-sn*old_k;
+                    row[k] = sn*old_p+c*old_k;
+                }
+                changed = true;
+            }
+        }
+        if (!changed) break;
+    }
+    std::array<double,3> sigma{};
+    for (int j=0;j<3;++j) {
+        for (const auto& row:design) sigma[j] += row[j]*row[j];
+        sigma[j] = std::sqrt(sigma[j]);
+    }
+    std::array<int,3> order{{0,1,2}};
+    std::sort(order.begin(),order.end(),
+              [&](int a,int b){return sigma[a]>sigma[b];});
+    q.scale = sigma[order[0]];
+    q.max_pivot = q.scale;
+    const double cutoff = 128.0*std::numeric_limits<double>::epsilon()*q.scale;
+    for (int j : order)
+        if (sigma[j] > cutoff) ++q.rank;
+    // Rounding of polyhedral centres can produce a tiny spurious third
+    // singular value on a geometrically planar 2-D extrusion. Do not reject
+    // an otherwise full-rank 2-D stencil for that numerical noise. True 3-D
+    // stencils are still rejected explicitly (fail-closed) in 2-D mode.
+    if (requested_dimension == 2 && q.rank == 3 &&
+        sigma[order[2]] <= 1e-10 * sigma[order[0]])
+        q.rank = 2;
+    q.full_rank = (q.rank == requested_dimension);
+    q.min_pivot = q.rank >= requested_dimension
+        ? sigma[order[requested_dimension-1]] : 0.0;
+    q.condition_estimate = q.full_rank && q.min_pivot > 0.0
+        ? q.max_pivot/q.min_pivot
+        : std::numeric_limits<double>::infinity();
+    if (quality) *quality = q;
+    if (q.rank != requested_dimension)
+        fail("robust WLS: stencil rank differs from requested dimension");
+    std::array<double,3> g{{0.0,0.0,0.0}};
+    for (int oi=0;oi<requested_dimension;++oi) {
+        const int j=order[oi];
+        double proj=0.0;
+        for (std::size_t row=0;row<design.size();++row)
+            proj += design[row][j]*rhs[row];
+        const double coeff = proj/(sigma[j]*sigma[j]);
+        for (int k=0;k<3;++k) g[k] += V[k][j]*coeff;
+    }
+    if (!std::isfinite(g[0]) || !std::isfinite(g[1]) || !std::isfinite(g[2]))
+        fail("robust WLS: non-finite gradient");
+    return {g[0],g[1],g[2]};
+}
+
+inline Vec3 weighted_least_squares_gradient_planar(
+    const Vec3& centre, double value,
+    const std::vector<Vec3>& neighbour_centres,
+    const std::vector<double>& neighbour_values,
+    GradientWeighting weighting, StencilQuality* quality = nullptr)
+{
+    return weighted_least_squares_gradient_robust(
+        centre, value, neighbour_centres, neighbour_values, weighting, 2, quality);
+}
+
 inline Vec3 weighted_least_squares_gradient(
     const Vec3& centre,
     double value,
     const std::vector<Vec3>& neighbour_centres,
     const std::vector<double>& neighbour_values,
     GradientWeighting weighting,
-    StencilQuality* quality = nullptr)
+    StencilQuality* quality = nullptr,
+    int requested_dimension = 3)
 {
+    if (requested_dimension == 2)
+        return weighted_least_squares_gradient_planar(
+            centre, value, neighbour_centres, neighbour_values, weighting, quality);
+    if (requested_dimension != 3)
+        throw std::invalid_argument("weighted_least_squares_gradient: dimension must be 2 or 3");
     if (neighbour_centres.size() != neighbour_values.size())
         throw std::invalid_argument("weighted_least_squares_gradient: neighbour dimensions do not match");
 

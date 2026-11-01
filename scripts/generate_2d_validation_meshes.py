@@ -99,6 +99,8 @@ def write_mesh(path: Path, points, cells, boundary_faces):
             "wall": 0,
             "airfoil": 0,
             "farfield": 7,
+            "farfield_inlet": 1,
+            "farfield_outlet": 2,
             "front": 6,
             "back": 6,
         }.get(name, 7)
@@ -289,8 +291,13 @@ def naca_o_grid(
     radius: float = 20.0,
     n_spanwise: int = 1,
     span: float = 1.0,
+    split_farfield: bool = False,
 ):
-    """Build the current deterministic transfinite-blend NACA0012 O-grid."""
+    """Build the deterministic transfinite-blend NACA0012 O-grid.
+
+    Splitting farfield by the sign of the outer-face x-normal is an
+    experimental A/B setup; the standard qualification mesh is unchanged.
+    """
     if n_surface < 2:
         raise ValueError("n_surface must be at least 2")
     if n_radial < 1:
@@ -322,6 +329,18 @@ def naca_o_grid(
 
     airfoil = [(P(0, i + 1), P(0, i)) for i in range(m)]
     farfield = [(P(n_radial, i), P(n_radial, i + 1)) for i in range(m)]
+    if split_farfield:
+        inflow, outflow = [], []
+        for edge in farfield:
+            # On the circular outer boundary the x-coordinate of the face
+            # midpoint has the same sign as the outward normal x-component.
+            x_mid = 0.5 * (pts[edge[0]][0] + pts[edge[1]][0])
+            (outflow if x_mid >= 0.0 else inflow).append(edge)
+        if not inflow or not outflow or len(inflow)+len(outflow) != len(farfield):
+            raise RuntimeError("NACA farfield split produced invalid patches")
+        outer_patches = {"farfield_inlet": inflow, "farfield_outlet": outflow}
+    else:
+        outer_patches = {"farfield": farfield}
     # Periodic seams are interior topology because i is wrapped; the only
     # physical boundaries are the airfoil and farfield.
     nodes2d = pts
@@ -330,7 +349,7 @@ def naca_o_grid(
         cells2d,
         {
             "airfoil": airfoil,
-            "farfield": farfield,
+            **outer_patches,
             "_front_cells": cells2d,
         },
         layers=n_spanwise,
@@ -447,6 +466,8 @@ def main():
     ap.add_argument("case", choices=("channel", "bfs", "naca0012", "naca3d", "all"))
     ap.add_argument("--output-dir", type=Path, default=Path("build/validation_meshes"))
     ap.add_argument("--quick", action="store_true")
+    ap.add_argument("--split-naca-farfield", action="store_true",
+                    help="experimental inlet/outlet outer patches; distinct mesh filenames")
     args = ap.parse_args()
 
     out = args.output_dir
@@ -463,16 +484,21 @@ def main():
         levels = ((64, 24),) if args.quick else ((64, 24), (128, 48), (256, 96))
         quality_reports = []
         for n, nr in levels:
-            p, c, b = naca_o_grid(n, nr, 20.0)
-            write_mesh(out / f"naca0012_laminar_n{n}.h5", p, c, b)
+            p, c, b = naca_o_grid(
+                n, nr, 20.0, split_farfield=args.split_naca_farfield)
+            suffix = "_split" if args.split_naca_farfield else ""
+            write_mesh(out / f"naca0012_laminar_n{n}{suffix}.h5", p, c, b)
             quality = naca_o_grid_quality(n, nr, 20.0)
             quality_reports.append(quality)
             print(
                 json.dumps(
-                    {"mesh": f"naca0012_laminar_n{n}.h5", **quality}, sort_keys=True
+                    {"mesh": f"naca0012_laminar_n{n}{suffix}.h5", **quality}, sort_keys=True
                 )
             )
-        report_path = out / "naca0012_mesh_quality.json"
+        report_path = out / (
+            "naca0012_mesh_quality_split.json"
+            if args.split_naca_farfield else "naca0012_mesh_quality.json"
+        )
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
             json.dumps(quality_reports, indent=2) + "\n", encoding="utf-8"

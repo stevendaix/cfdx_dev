@@ -230,5 +230,71 @@ int main() {
         EXPECT_TRUE(f.galerkin_dropped_entries == 0);
     });
 
+    run_case("b5_smoother_certificate_strict_on_spd_path", [] {
+        // A hierarchy with a non-positive diagonal cannot be certified for
+        // damped Jacobi smoothing. On the default SPD/CG policy the setup
+        // stays fail-closed and reports the exact certificate stage.
+        SparseMatrix A(18, 18);
+        for (std::size_t i = 0; i < 18; ++i) {
+            A.push_back(i, i, i == 9 ? -2.0 : 2.0);
+            if (i > 0) A.push_back(i, i - 1, -1.0);
+            if (i + 1 < 18) A.push_back(i, i + 1, -1.0);
+        }
+        A.finalize();
+        const auto op = make_operator(A);
+        MatrixFreeVcyclePreconditioner amg(
+            op, 0.7, 4, 4, 0.25, 25, AMGInterpolationPolicy::DirectCF);
+        EXPECT_TRUE(!amg.setup(A));
+        EXPECT_TRUE(amg.last_setup_error().find(
+                        "Jacobi stability certificate") !=
+                    std::string::npos);
+        Vector r(18, 1.0), z(18, 0.0);
+        EXPECT_TRUE(!amg.apply(r, z));
+    });
+
+    run_case("b5_smoother_certificate_relaxed_on_nonsymmetric_path", [] {
+        // The general nonsymmetric preconditioner path (outer
+        // GMRES/FGMRES/BiCGStab, e.g. the nested LSC/BFBt pressure solve)
+        // keeps the pre-certificate behaviour on the same hierarchy: the
+        // setup is accepted with the configured damping and the V-cycle
+        // applies. Structural checks stay fail-closed on both paths.
+        SparseMatrix A(18, 18);
+        for (std::size_t i = 0; i < 18; ++i) {
+            A.push_back(i, i, i == 9 ? -2.0 : 2.0);
+            if (i > 0) A.push_back(i, i - 1, -1.0);
+            if (i + 1 < 18) A.push_back(i, i + 1, -1.0);
+        }
+        A.finalize();
+        const auto op = make_operator(A);
+        MatrixFreeVcyclePreconditioner amg(
+            op, 0.7, 4, 4, 0.25, 25, AMGInterpolationPolicy::DirectCF,
+            /*constant_null_space=*/false,
+            /*require_smoother_certificate=*/false);
+        EXPECT_TRUE(amg.setup(A));
+        EXPECT_TRUE(amg.last_setup_error().empty());
+        EXPECT_TRUE(amg.smoother_omega() == 0.7);
+        Vector r(18, 1.0), z(18, 0.0);
+        EXPECT_TRUE(amg.apply(r, z));
+
+        // A certifiable hierarchy still gets the reduced damping on the
+        // relaxed path: the fresh-rebuild poisoning protection applies to
+        // both policies.
+        // Dense positive-correlation matrix: eigenvalues are positive
+        // (1 - 0.9 = 0.1, and 1 + 17*0.9), while its conservative
+        // normalized Gershgorin upper bound exceeds the configured damping
+        // limit. This exercises reduced damping without using an indefinite
+        // tridiagonal matrix.
+        SparseMatrix strong(18, 18);
+        for (std::size_t i = 0; i < 18; ++i) {
+            strong.push_back(i, i, 1.0);
+            for (std::size_t j = 0; j < 18; ++j) {
+                if (j != i) strong.push_back(i, j, 0.9);
+            }
+        }
+        strong.finalize();
+        EXPECT_TRUE(amg.setup(strong));
+        EXPECT_TRUE(amg.smoother_omega() < 0.7);
+    });
+
     return run_all();
 }

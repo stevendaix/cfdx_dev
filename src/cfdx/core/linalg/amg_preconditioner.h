@@ -9,6 +9,7 @@
 #include <limits>
 #include <map>
 #include <stdexcept>
+#include <string>
 #include <set>
 #include <utility>
 #include <vector>
@@ -34,11 +35,13 @@ public:
                                    std::size_t max_levels = 25,
                                    AMGInterpolationPolicy interpolation =
                                        AMGInterpolationPolicy::DirectCF,
-                                   bool constant_null_space = false)
-        : op_(op), omega_(omega), pre_(pre), post_(post),
+                                   bool constant_null_space = false,
+                                   bool require_smoother_certificate = true)
+        : op_(op), configured_omega_(omega), omega_(omega), pre_(pre), post_(post),
           strength_threshold_(strength_threshold), max_levels_(max_levels),
           interpolation_(interpolation),
-          constant_null_space_(constant_null_space)
+          constant_null_space_(constant_null_space),
+          require_smoother_certificate_(require_smoother_certificate)
     {
         if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0) ||
             !std::isfinite(strength_threshold_) || strength_threshold_ < 0.0 ||
@@ -49,10 +52,12 @@ public:
 
     bool setup(const SparseMatrix& A) override
     {
+        last_setup_error_.clear();
         last_footprint_ = AMGSetupFootprint{};
         if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
             A.n_rows() == 0 || !matrix_is_valid(A) ||
             (constant_null_space_ && !has_constant_null_space(A))) {
+            last_setup_error_ = "invalid finest matrix, dimensions, CSR, or null-space contract";
             levels_.clear();
             first_aggregate_.clear();
             return false;
@@ -64,6 +69,7 @@ public:
         Level fine;
         fine.A = A;
         if (!build_diagonal(fine)) {
+            last_setup_error_ = "invalid or zero diagonal on finest level";
             levels_.clear();
             return false;
         }
@@ -99,6 +105,8 @@ public:
             } else {
                 if (!build_cf_interpolation(levels_.back(), strength_threshold_,
                                             prolongation, aggregate, coarse_n)) {
+                    last_setup_error_ = "Direct-CF interpolation construction failed at level " +
+                                        std::to_string(levels_.size() - 1);
                     levels_.clear();
                     first_aggregate_.clear();
                     return false;
@@ -112,6 +120,8 @@ public:
                 levels_.back().A, prolongation, coarse_n,
                 &last_footprint_.galerkin_dropped_entries);
             if (!matrix_is_valid(coarse)) {
+                last_setup_error_ = "invalid Galerkin coarse matrix from level " +
+                                    std::to_string(levels_.size() - 1);
                 levels_.clear();
                 first_aggregate_.clear();
                 return false;
@@ -124,6 +134,8 @@ public:
             Level next;
             next.A = std::move(coarse);
             if (!build_diagonal(next)) {
+                last_setup_error_ = "invalid or zero diagonal on coarse level " +
+                                    std::to_string(levels_.size());
                 levels_.clear();
                 first_aggregate_.clear();
                 return false;
@@ -134,8 +146,32 @@ public:
         }
 
         if (levels_.empty() || levels_.front().A.n_rows() == 0) {
+            last_setup_error_ = "empty hierarchy after coarsening";
             levels_.clear();
             return false;
+        }
+
+        // A fresh hierarchy needs the same damping certification as a
+        // numerically refreshed hierarchy. Recompute from the constructor
+        // value so a previous difficult matrix cannot permanently poison a
+        // later full rebuild. The certificate is a CG-safety contract: it
+        // stays fail-closed on the SPD/CG path, while the general
+        // nonsymmetric preconditioner path (outer GMRES/FGMRES/BiCGStab,
+        // e.g. the nested LSC/BFBt pressure solve on H = D Q^-1 G - C)
+        // keeps the pre-certificate behaviour -- configured damping, the
+        // outer Krylov true-residual checks remaining authoritative. Every
+        // structural check above is fail-closed on both paths; only the
+        // damping certificate is policy-dependent.
+        double safe_omega = 0.0;
+        if (compute_stable_smoother_omega(levels_, safe_omega, &last_setup_error_)) {
+            omega_ = safe_omega;
+        } else if (require_smoother_certificate_) {
+            levels_.clear();
+            first_aggregate_.clear();
+            return false;
+        } else {
+            omega_ = configured_omega_;
+            last_setup_error_.clear();
         }
         return true;
     }
@@ -167,10 +203,33 @@ public:
             if (!build_diagonal(refreshed[level + 1])) return false;
         }
 
+        // Numeric refresh can leave the retained interpolation with coarse
+        // operators whose high-frequency spectrum is no longer compatible
+        // with the original fixed Jacobi damping. Bound the normalized spectrum
+        // on every refreshed level and conservatively reduce omega before the
+        // hierarchy is exposed to CG. A non-SPD/unsupported diagonal does not
+        // get reclassified here; the caller's true-residual and Krylov checks
+        // remain authoritative.
+        double refreshed_omega = 0.0;
+        if (!compute_stable_smoother_omega(refreshed, refreshed_omega)) {
+            if (require_smoother_certificate_)
+                return false;
+            // General nonsymmetric preconditioner path: every structural
+            // check above passed, so commit the numeric refresh and keep
+            // the previously accepted damping. The outer Krylov
+            // true-residual checks remain authoritative.
+            refreshed_omega = omega_;
+        }
+
         levels_ = std::move(refreshed);
+        omega_ = refreshed_omega;
         last_footprint_.galerkin_dropped_entries += dropped_entries;
         return true;
     }
+
+    double smoother_omega() const noexcept { return omega_; }
+
+    const std::string& last_setup_error() const noexcept { return last_setup_error_; }
 
     std::size_t coarse_size() const noexcept
     {
@@ -1112,6 +1171,86 @@ private:
             values(i) -= mean;
     }
 
+    // A symmetric Jacobi smoother is stable when omega * lambda_max(D^-1/2 A D^-1/2) < 2.
+    // The maximum absolute normalized row sum is a conservative Gershgorin upper bound,
+    // evaluated on the refreshed Galerkin levels (not the stale pre-update operators).
+    static double normalized_gershgorin_upper_bound(const Level& level)
+    {
+        const SparseMatrix& A = level.A;
+        const std::size_t n = A.n_rows();
+        if (level.inv_diag.size() != n || n == 0)
+            return std::numeric_limits<double>::infinity();
+        std::vector<double> diagonal(n, 0.0);
+        for (std::size_t i = 0; i < n; ++i) {
+            if (!(level.inv_diag[i] > 0.0) || !std::isfinite(level.inv_diag[i]))
+                return std::numeric_limits<double>::infinity();
+            diagonal[i] = 1.0 / level.inv_diag[i];
+            if (!(diagonal[i] > 0.0) || !std::isfinite(diagonal[i]))
+                return std::numeric_limits<double>::infinity();
+        }
+        const auto* row = A.row_offsets_data();
+        const auto* col = A.columns_data();
+        const auto* val = A.values_data();
+        double upper_bound = 0.0;
+        for (std::size_t i = 0; i < n; ++i) {
+            double row_sum = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                const std::size_t j = col[k];
+                // Separate square roots avoid overflow/underflow in
+                // diagonal[i] * diagonal[j] when the normalized scale itself
+                // is representable.
+                const double scale =
+                    std::sqrt(diagonal[i]) * std::sqrt(diagonal[j]);
+                if (!(scale > 0.0) || !std::isfinite(scale))
+                    return std::numeric_limits<double>::infinity();
+                row_sum += std::abs(val[k]) / scale;
+            }
+            if (!std::isfinite(row_sum))
+                return std::numeric_limits<double>::infinity();
+            upper_bound = std::max(upper_bound, row_sum);
+        }
+        return upper_bound;
+    }
+
+    bool compute_stable_smoother_omega(
+        const std::vector<Level>& hierarchy, double& safe_omega,
+        std::string* failure_reason = nullptr) const
+    {
+        const auto fail = [failure_reason](const std::string& reason) {
+            if (failure_reason) *failure_reason = reason;
+            return false;
+        };
+        if (hierarchy.empty()) return fail("empty AMG hierarchy");
+        double maximum_bound = 0.0;
+        for (std::size_t level_index = 0; level_index < hierarchy.size(); ++level_index) {
+            const auto& level = hierarchy[level_index];
+            if (level.inv_diag.size() != level.A.n_rows())
+                return fail("diagonal size mismatch at level " + std::to_string(level_index));
+            for (std::size_t row = 0; row < level.inv_diag.size(); ++row) {
+                if (!(level.inv_diag[row] > 0.0) || !std::isfinite(level.inv_diag[row]))
+                    return fail("Jacobi stability certificate requires positive finite diagonal; level=" +
+                                std::to_string(level_index) + " row=" + std::to_string(row) +
+                                " inverse_diagonal=" + std::to_string(level.inv_diag[row]));
+            }
+            const double bound = normalized_gershgorin_upper_bound(level);
+            if (!std::isfinite(bound) || !(bound > 0.0))
+                return fail("normalized Gershgorin bound is invalid at level " +
+                            std::to_string(level_index) + " bound=" + std::to_string(bound));
+            maximum_bound = std::max(maximum_bound, bound);
+        }
+        if (!(maximum_bound > 0.0) || !std::isfinite(maximum_bound))
+            return fail("maximum normalized Gershgorin bound is invalid");
+
+        // Re-evaluate against the configured damping on every setup/refresh.
+        // This permits recovery when a later matrix is less restrictive,
+        // while retaining the conservative 10% margin below the Jacobi
+        // stability limit for the current hierarchy.
+        safe_omega = std::min(configured_omega_, 1.8 / maximum_bound);
+        if (!std::isfinite(safe_omega) || !(safe_omega > 0.0 && safe_omega < 2.0))
+            return fail("computed Jacobi damping is outside (0,2): " + std::to_string(safe_omega));
+        return true;
+    }
+
     static bool build_diagonal(Level& level)
     {
         const std::size_t n = level.A.n_rows();
@@ -1874,15 +2013,18 @@ private:
     }
 
     const LinearOperatorBase& op_;
+    const double configured_omega_;
     double omega_;
     std::size_t pre_, post_;
     double strength_threshold_;
     std::size_t max_levels_;
     AMGInterpolationPolicy interpolation_;
     bool constant_null_space_;
+    const bool require_smoother_certificate_;
     std::vector<Level> levels_;
     std::vector<std::size_t> first_aggregate_;
     AMGSetupFootprint last_footprint_;
+    std::string last_setup_error_;
 };
 
 using AgglomeratedAMGPreconditioner = MatrixFreeVcyclePreconditioner;
