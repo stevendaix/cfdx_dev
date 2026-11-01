@@ -4614,8 +4614,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 std::size_t pressure_cell = 0;
                 std::size_t rhs_cell = 0;
                 std::size_t diagonal_cell = 0;
+                std::size_t minimum_diagonal_cell = 0;
+                std::size_t rhs_diagonal_ratio_cell = 0;
+                std::size_t minimum_dominance_cell = 0;
                 double diagonal_min = std::numeric_limits<double>::infinity();
                 double diagonal_max = 0.0;
+                double minimum_diagonal_rhs = 0.0;
+                double minimum_diagonal_correction = 0.0;
+                double rhs_diagonal_ratio_linf = 0.0;
+                double diagonal_dominance_min = std::numeric_limits<double>::infinity();
                 double row_sum_linf = 0.0;
                 const auto* offsets = matrix.row_offsets_data();
                 const auto* columns = matrix.columns_data();
@@ -4638,15 +4645,41 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     double diagonal = 0.0;
                     double row_sum = 0.0;
                     double row_abs_sum = 0.0;
+                    double off_diagonal_abs_sum = 0.0;
                     for (std::uint32_t k = offsets[row]; k < offsets[row + 1]; ++k) {
                         row_sum += values[k];
                         row_abs_sum += std::abs(values[k]);
-                        if (columns[k] == row) diagonal = values[k];
+                        if (columns[k] == row) {
+                            diagonal = values[k];
+                        } else {
+                            off_diagonal_abs_sum += std::abs(values[k]);
+                        }
                     }
-                    diagonal_min = std::min(diagonal_min, diagonal);
+                    if (diagonal < diagonal_min) {
+                        diagonal_min = diagonal;
+                        minimum_diagonal_cell = pressure_row_to_cell(row);
+                        minimum_diagonal_rhs = rhs(row);
+                        minimum_diagonal_correction =
+                            p_corr(minimum_diagonal_cell);
+                    }
                     if (std::abs(diagonal) > diagonal_max) {
                         diagonal_max = std::abs(diagonal);
                         diagonal_cell = pressure_row_to_cell(row);
+                    }
+                    if (std::abs(diagonal) > 0.0 &&
+                        std::isfinite(rhs(row))) {
+                        const double ratio = std::abs(rhs(row)) / std::abs(diagonal);
+                        if (ratio > rhs_diagonal_ratio_linf) {
+                            rhs_diagonal_ratio_linf = ratio;
+                            rhs_diagonal_ratio_cell = pressure_row_to_cell(row);
+                        }
+                    }
+                    const double dominance = std::abs(diagonal) /
+                        std::max(off_diagonal_abs_sum,
+                                 std::numeric_limits<double>::min());
+                    if (dominance < diagonal_dominance_min) {
+                        diagonal_dominance_min = dominance;
+                        minimum_dominance_cell = pressure_row_to_cell(row);
                     }
                     row_sum_linf = std::max(row_sum_linf, std::abs(row_sum));
                     row_abs_sum_linf = std::max(row_abs_sum_linf, row_abs_sum);
@@ -4670,6 +4703,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " diagonal_min=" << diagonal_min
                           << " diagonal_abs_max=" << diagonal_max
                           << " diagonal_cell=" << diagonal_cell
+                          << " minimum_diagonal_cell=" << minimum_diagonal_cell
+                          << " minimum_diagonal_rhs=" << minimum_diagonal_rhs
+                          << " minimum_diagonal_correction=" << minimum_diagonal_correction
+                          << " rhs_diagonal_ratio_linf=" << rhs_diagonal_ratio_linf
+                          << " rhs_diagonal_ratio_cell=" << rhs_diagonal_ratio_cell
+                          << " diagonal_dominance_min=" << diagonal_dominance_min
+                          << " minimum_dominance_cell=" << minimum_dominance_cell
                           << " row_sum_linf=" << row_sum_linf
                           << " row_abs_sum_linf=" << row_abs_sum_linf
                           << '\n';
@@ -4678,8 +4718,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // RHS passed to Krylov. No dump is written unless requested.
                 const char* dump_prefix = std::getenv("CFDX_NACA_MATRIX_DUMP_PREFIX");
                 if (dump_prefix && *dump_prefix && iter == 1 && corr == 0) {
-                    std::ofstream matrix_file(std::string(dump_prefix) + ".mtx");
-                    std::ofstream rhs_file(std::string(dump_prefix) + ".rhs.csv");
+                    const std::string dump_stem =
+                        std::string(dump_prefix) + ".cells" + std::to_string(nc);
+                    std::ofstream matrix_file(dump_stem + ".mtx");
+                    std::ofstream rhs_file(dump_stem + ".rhs.csv");
                     if (matrix_file && rhs_file) {
                         matrix_file << "%%MatrixMarket matrix coordinate real general\n";
                         matrix_file << matrix.n_rows() << " " << matrix.n_rows()
@@ -4694,7 +4736,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                             rhs_file << row << "," << pressure_row_to_cell(row) << ","
                                      << std::setprecision(17) << rhs(row) << "\n";
                         std::cerr << "NACA_PRESSURE_MATRIX_DUMP prefix="
-                                  << dump_prefix << " rows=" << matrix.n_rows()
+                                  << dump_stem << " rows=" << matrix.n_rows()
                                   << " nnz=" << matrix.nnz() << '\n';
                     } else {
                         std::cerr << "NACA_PRESSURE_MATRIX_DUMP_ERROR prefix="
