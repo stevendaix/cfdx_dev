@@ -46,9 +46,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=64)
     parser.add_argument("--nr", type=int, default=24)
-    parser.add_argument(
-        "--powers", type=float, nargs="+", default=[1.4, 1.6, 1.8, 2.0]
-    )
+    parser.add_argument("--powers", type=float, nargs="+", default=[1.4, 1.6, 1.8, 2.0])
     parser.add_argument("--max-nonorth", type=float, default=65.0)
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
