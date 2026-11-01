@@ -5,8 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from generate_2d_validation_meshes import naca_o_grid  # noqa: E402
-from naca_radial_sweep import sweep  # noqa: E402
+from generate_2d_validation_meshes import naca_o_grid
+from naca_radial_sweep import sweep
 
 
 class SweepTests(unittest.TestCase):
@@ -18,9 +18,8 @@ class SweepTests(unittest.TestCase):
 
     def test_invalid_power_rejected(self):
         for power in (float("nan"), float("inf"), 0.99, 3.01):
-            with self.subTest(power=power):
-                with self.assertRaises(ValueError):
-                    naca_o_grid(16, 8, radial_power=power)
+            with self.subTest(power=power), self.assertRaises(ValueError):
+                naca_o_grid(16, 8, radial_power=power)
 
     def test_sweep_and_metrics(self):
         result = sweep(16, 8, [1.5, 1.8])
