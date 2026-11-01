@@ -60,9 +60,7 @@ def configured_compiler(build_dir: Path | None = None) -> dict[str, str | None]:
         if not cache.is_file():
             raise ValueError(f"CMake cache not found: {cache}")
         for line in cache.read_text(encoding="utf-8").splitlines():
-            if line.startswith("CMAKE_CXX_COMPILER:FILEPATH=") or line.startswith(
-                "CMAKE_CXX_COMPILER:STRING="
-            ):
+            if line.startswith(("CMAKE_CXX_COMPILER:FILEPATH=", "CMAKE_CXX_COMPILER:STRING=")):
                 compiler = line.split("=", 1)[1].strip()
                 source = "CMakeCache.txt"
                 break
@@ -87,7 +85,11 @@ def main() -> int:
 
     root = Path(__file__).resolve().parents[1]
     manifest = {
-        "generated_at": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "generated_at": (
+            datetime.datetime.now(datetime.timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z")
+        ),
         "cfdx_version": "0.7",
         "schema_version": 1,
         "git": git_metadata(root),
