@@ -62,9 +62,7 @@ def test_naca0012_first_layer_follows_outward_surface_normal(n_surface, n_radial
 
 
 @pytest.mark.parametrize(("n_surface", "n_radial"), [(64, 24), (128, 48), (256, 96)])
-def test_naca0012_wall_normal_grid_controls_peak_nonorthogonality(
-    n_surface, n_radial
-):
+def test_naca0012_wall_normal_grid_controls_peak_nonorthogonality(n_surface, n_radial):
     report = MESHGEN.naca_o_grid_quality(n_surface, n_radial, radius=20.0)
 
     # The former radial-blend family reached 73.24 degrees at N256.
