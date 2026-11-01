@@ -327,7 +327,7 @@ def naca_o_grid(
     for j in range(n_radial + 1):
         eta = j / n_radial
         rfac = eta**1.8
-        normal_weight = (1.0 - eta)**10
+        normal_weight = (1.0 - eta) ** 10
         for i, (x, y) in enumerate(surf):
             theta = 2.0 * math.pi * (i + 0.5) / m
             xo, yo = radius * math.cos(theta), radius * math.sin(theta)
@@ -355,7 +355,7 @@ def naca_o_grid(
             # midpoint has the same sign as the outward normal x-component.
             x_mid = 0.5 * (pts[edge[0]][0] + pts[edge[1]][0])
             (outflow if x_mid >= 0.0 else inflow).append(edge)
-        if not inflow or not outflow or len(inflow)+len(outflow) != len(farfield):
+        if not inflow or not outflow or len(inflow) + len(outflow) != len(farfield):
             raise RuntimeError("NACA farfield split produced invalid patches")
         outer_patches = {"farfield_inlet": inflow, "farfield_outlet": outflow}
     else:
@@ -485,8 +485,11 @@ def main():
     ap.add_argument("case", choices=("channel", "bfs", "naca0012", "naca3d", "all"))
     ap.add_argument("--output-dir", type=Path, default=Path("build/validation_meshes"))
     ap.add_argument("--quick", action="store_true")
-    ap.add_argument("--split-naca-farfield", action="store_true",
-                    help="experimental inlet/outlet outer patches; distinct mesh filenames")
+    ap.add_argument(
+        "--split-naca-farfield",
+        action="store_true",
+        help="experimental inlet/outlet outer patches; distinct mesh filenames",
+    )
     args = ap.parse_args()
 
     out = args.output_dir
@@ -503,20 +506,21 @@ def main():
         levels = ((64, 24),) if args.quick else ((64, 24), (128, 48), (256, 96))
         quality_reports = []
         for n, nr in levels:
-            p, c, b = naca_o_grid(
-                n, nr, 20.0, split_farfield=args.split_naca_farfield)
+            p, c, b = naca_o_grid(n, nr, 20.0, split_farfield=args.split_naca_farfield)
             suffix = "_split" if args.split_naca_farfield else ""
             write_mesh(out / f"naca0012_laminar_n{n}{suffix}.h5", p, c, b)
             quality = naca_o_grid_quality(n, nr, 20.0)
             quality_reports.append(quality)
             print(
                 json.dumps(
-                    {"mesh": f"naca0012_laminar_n{n}{suffix}.h5", **quality}, sort_keys=True
+                    {"mesh": f"naca0012_laminar_n{n}{suffix}.h5", **quality},
+                    sort_keys=True,
                 )
             )
         report_path = out / (
             "naca0012_mesh_quality_split.json"
-            if args.split_naca_farfield else "naca0012_mesh_quality.json"
+            if args.split_naca_farfield
+            else "naca0012_mesh_quality.json"
         )
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
