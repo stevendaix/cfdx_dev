@@ -4346,15 +4346,28 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 double correction_linf = 0.0;
                 double pressure_linf = 0.0;
                 double rhs_linf = 0.0;
+                double row_abs_sum_linf = 0.0;
+                std::size_t correction_cell = 0;
+                std::size_t pressure_cell = 0;
+                std::size_t rhs_cell = 0;
                 double diagonal_min = std::numeric_limits<double>::infinity();
                 double diagonal_max = 0.0;
                 double row_sum_linf = 0.0;
                 for (std::size_t cell = 0; cell < nc; ++cell) {
-                    correction_linf = std::max(correction_linf, std::abs(p_corr(cell)));
-                    pressure_linf = std::max(pressure_linf, std::abs(p(cell)));
+                    if (std::abs(p_corr(cell)) > correction_linf) {
+                        correction_linf = std::abs(p_corr(cell));
+                        correction_cell = cell;
+                    }
+                    if (std::abs(p(cell)) > pressure_linf) {
+                        pressure_linf = std::abs(p(cell));
+                        pressure_cell = cell;
+                    }
                 }
                 for (std::size_t row = 0; row < b.size(); ++row)
-                    rhs_linf = std::max(rhs_linf, std::abs(b(row)));
+                    if (std::abs(b(row)) > rhs_linf) {
+                        rhs_linf = std::abs(b(row));
+                        rhs_cell = row;
+                    }
                 const auto* offsets = A.row_offsets_data();
                 const auto* columns = A.columns_data();
                 const auto* values = A.values_data();
@@ -4368,6 +4381,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     diagonal_min = std::min(diagonal_min, diagonal);
                     diagonal_max = std::max(diagonal_max, std::abs(diagonal));
                     row_sum_linf = std::max(row_sum_linf, std::abs(row_sum));
+                    double row_abs_sum = 0.0;
+                    for (std::uint32_t k = offsets[row]; k < offsets[row + 1]; ++k)
+                        row_abs_sum += std::abs(values[k]);
+                    row_abs_sum_linf = std::max(row_abs_sum_linf, row_abs_sum);
                 }
                 std::cerr << std::setprecision(17)
                           << "NACA_PRESSURE_CORRECTION"
@@ -4379,11 +4396,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " rows=" << A.n_rows()
                           << " nnz=" << A.nnz()
                           << " rhs_linf=" << rhs_linf
+                          << " rhs_cell=" << rhs_cell
                           << " correction_linf=" << correction_linf
+                          << " correction_cell=" << correction_cell
                           << " pressure_before_linf=" << pressure_linf
+                          << " pressure_cell=" << pressure_cell
                           << " diagonal_min=" << diagonal_min
                           << " diagonal_abs_max=" << diagonal_max
                           << " row_sum_linf=" << row_sum_linf
+                          << " row_abs_sum_linf=" << row_abs_sum_linf
                           << '\\n';
             }
             pressure_residual = rp.residual_relative;
