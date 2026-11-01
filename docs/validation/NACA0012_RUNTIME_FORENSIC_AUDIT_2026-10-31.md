@@ -203,3 +203,12 @@ and local diagonal/RHS ratios become the primary focus.
 
 These diagnostics remain evidence-only. No relaxation, discretization,
 iteration limit, tolerance, or qualification gate is changed.
+
+
+The two long NACA CTest entries use test-local environment overrides
+`CFDX_NACA_AB_ALPHA_U=0.60` and `CFDX_NACA_AB_ALPHA_P=0.10` to reproduce
+the controlled N256 experiment reported on 2026-11-01. These are diagnostic
+run settings only: the solver defaults are unchanged, the physical gates are
+unchanged, and this run cannot promote NACA qualification. The overrides are
+kept local to the two NACA long tests; other CFD validation cases do not inherit
+them.
