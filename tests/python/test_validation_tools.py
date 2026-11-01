@@ -115,3 +115,38 @@ def test_aggregator_rejects_duplicate_keys(tmp_path: Path) -> None:
     )
     assert result.returncode != 0
     assert "duplicate validation key" in result.stderr
+
+
+def test_aggregator_rejects_forged_source_file(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    (runs / "fake.csv").write_text(
+        "case,Cd,source_file\ncase1,0.1,official_reference.csv\n", encoding="utf-8"
+    )
+    result = run(AGG, "--input-dir", str(runs), "--output", str(tmp_path / "out.csv"))
+    assert result.returncode != 0
+    assert "reserved source_file provenance" in result.stderr
+
+
+def test_aggregator_rejects_duplicate_headers_and_missing_cells(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    output = tmp_path / "out.csv"
+    (runs / "bad.csv").write_text("case,case,Cd\na,b,0.1\n", encoding="utf-8")
+    result = run(AGG, "--input-dir", str(runs), "--output", str(output))
+    assert result.returncode != 0
+    assert "duplicate CSV header" in result.stderr
+    (runs / "bad.csv").write_text("case,Cd,Cl\na,0.1\n", encoding="utf-8")
+    result = run(AGG, "--input-dir", str(runs), "--output", str(output))
+    assert result.returncode != 0
+    assert "row does not match" in result.stderr
+    assert not output.exists()
+
+
+def test_aggregator_rejects_empty_key_values(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    write_csv(runs / "a.csv", [{"case": "  ", "Cd": "0.1", "Cl": "0"}])
+    result = run(AGG, "--input-dir", str(runs), "--output", str(tmp_path / "out.csv"))
+    assert result.returncode != 0
+    assert "empty value" in result.stderr

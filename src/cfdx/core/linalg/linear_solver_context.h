@@ -4,8 +4,10 @@
 #include "cfdx/core/linalg/gmres_solver.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <vector>
 
 namespace cfdx::core {
@@ -39,7 +41,17 @@ public:
             if (ready) ++stats_.full_setups;
         } else if (!same_values) {
             ready = preconditioner_.update_values(matrix);
-            if (ready) ++stats_.numeric_updates;
+            if (ready) {
+                ++stats_.numeric_updates;
+            } else {
+                // This context owns lifecycle decisions. If a numeric refresh
+                // is rejected (for example, a preconditioner can no longer
+                // certify its retained hierarchy), rebuild from the current
+                // matrix before failing the linear solve. This is explicit
+                // full setup, not a silent solver/preconditioner substitution.
+                ready = preconditioner_.setup(matrix);
+                if (ready) ++stats_.full_setups;
+            }
         } else {
             ready = true;
             ++stats_.unchanged_reuses;
@@ -169,9 +181,71 @@ public:
         PrecisionPolicy precision = {},
         KrylovReductionPolicy reduction = {},
         const NullSpaceProjector* null_space = nullptr) {
+        // Match solve_cg_impl's zero-iteration contract before asking the
+        // reusable context to build/update a preconditioner. A converged
+        // initial guess needs no Krylov direction and must not fail because
+        // an otherwise-unused preconditioner cannot be prepared.
+        if (matrix.n_rows() > 0 &&
+            matrix.n_rows() == matrix.n_cols() &&
+            rhs.size() == matrix.n_rows() &&
+            solution.size() == matrix.n_cols() && matrix.is_consistent()) {
+            bool finite_input = true;
+            for (std::size_t k = 0; k < matrix.nnz(); ++k)
+                finite_input = finite_input &&
+                    std::isfinite(matrix.values_data()[k]);
+            for (std::size_t i = 0; i < rhs.size(); ++i)
+                finite_input = finite_input && std::isfinite(rhs(i)) &&
+                    std::isfinite(solution(i));
+            const bool compatible_null_space = !null_space ||
+                (null_space->dimension() == matrix.n_rows() &&
+                 null_space->is_compatible(rhs) &&
+                 null_space->is_null_space(matrix));
+            if (finite_input && compatible_null_space) {
+                if (null_space) null_space->remove(solution);
+                Vector initial_residual(rhs.size());
+                mixed_precision_true_residual(
+                    matrix, rhs, solution, initial_residual);
+                if (null_space) null_space->remove(initial_residual);
+                const double rhs_norm = krylov_norm2(
+                    rhs, SolverPrecision::FP64, reduction);
+                const double residual_norm = krylov_norm2(
+                    initial_residual, SolverPrecision::FP64, reduction);
+                const double tolerance_absolute =
+                    tolerance * std::max(rhs_norm, 1e-300);
+                if (residual_norm <= tolerance_absolute) {
+                    SolverResult result;
+                    result.status = SolverStatus::CONVERGED;
+                    result.iterations = 0;
+                    result.residual = residual_norm;
+                    result.residual_relative = rhs_norm > 0.0
+                        ? residual_norm / rhs_norm : 0.0;
+                    // Count a successful zero-iteration solve exactly like a
+                    // solve that proceeds through preconditioner preparation.
+                    state_.record_solve();
+                    return result;
+                }
+            }
+        }
+
         if (!state_.prepare(matrix)) {
             SolverResult result;
             result.status = SolverStatus::NOT_APPLICABLE;
+            result.iterations = 0;
+            if (matrix.n_rows() == matrix.n_cols() &&
+                rhs.size() == matrix.n_rows() &&
+                solution.size() == matrix.n_cols() && matrix.is_consistent()) {
+                Vector failure_residual(rhs.size());
+                mixed_precision_true_residual(
+                    matrix, rhs, solution, failure_residual);
+                result.residual = krylov_norm2(
+                    failure_residual, SolverPrecision::FP64, reduction);
+                const double rhs_norm = krylov_norm2(
+                    rhs, SolverPrecision::FP64, reduction);
+                result.residual_relative = rhs_norm > 0.0
+                    ? result.residual / rhs_norm
+                    : (result.residual == 0.0
+                        ? 0.0 : std::numeric_limits<double>::infinity());
+            }
             return result;
         }
         state_.record_solve();

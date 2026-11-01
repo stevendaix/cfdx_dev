@@ -22,6 +22,7 @@ option(CFDX_USE_HDF5_SERIAL "Use locally-built HDF5 serial" ON)
 option(CFDX_ENABLE_PARALLEL_HDF5 "Enable MPI-enabled HDF5 distributed checkpoints" OFF)
 option(CFDX_BUILD_RUNTIME_TESTS "Build execution/GPU-OOC foundation tests" ON)
 option(CFDX_ENABLE_LONG_VALIDATION "Register full long-running validation campaigns" OFF)
+option(CFDX_ENABLE_EXPERIMENTAL_RAYLEIGH_10000 "Register unqualified Ra=10000 numerical campaign" OFF)
 
 if(CFDX_ENABLE_GPU)
     enable_language(CUDA)
@@ -570,6 +571,9 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_conservation_assembly tests/unit/test_conservation_assembly.cpp)
     add_cfdx_test(test_integrate tests/unit/test_integrate.cpp)
     add_cfdx_test(test_forces tests/unit/test_forces.cpp)
+    add_cfdx_test(test_force_finite_contract tests/unit/test_force_finite_contract.cpp)
+    set_tests_properties(test_force_finite_contract PROPERTIES
+        LABELS "validation;forces;regression")
     add_cfdx_test(test_probe_csv tests/unit/test_probe_csv.cpp)
 
     # Unit tests - Linear Algebra
@@ -577,6 +581,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_vector tests/unit/test_vector.cpp)
     add_cfdx_test(test_linear_system tests/unit/test_linear_system.cpp)
     add_cfdx_test(test_cg_solver tests/unit/test_cg_solver.cpp)
+    add_cfdx_test(test_amg_dispatch_certificate tests/unit/test_amg_dispatch_certificate.cpp)
     add_cfdx_test(test_null_space tests/unit/test_null_space.cpp)
     add_cfdx_test(test_n8_pinned_pressure_gauge tests/unit/test_n8_pinned_pressure_gauge.cpp)
     add_cfdx_test(test_bicgstab_solver tests/unit/test_bicgstab_solver.cpp)
@@ -589,6 +594,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_performance_runtime tests/unit/test_performance_runtime.cpp)
     add_cfdx_test(test_phase6_memory_benchmark tests/benchmark/benchmark_phase6_memory.cpp)
     add_cfdx_test(test_amg_chebyshev tests/unit/test_amg_chebyshev.cpp)
+    add_cfdx_test(test_naca_relaxation_controls tests/unit/test_naca_relaxation_controls.cpp)
     add_cfdx_test(test_native_external_methods tests/unit/test_native_external_methods.cpp)
     add_cfdx_test(test_matrix_characteristics tests/unit/test_matrix_characteristics.cpp)
     add_cfdx_test(test_amg_preconditioner_qualification tests/validation/test_amg_preconditioner_qualification.cpp)
@@ -625,6 +631,10 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_dual_time_field_integrator tests/unit/test_dual_time_field_integrator.cpp)
     add_cfdx_test(test_dual_time_physical_lifecycle tests/unit/test_dual_time_physical_lifecycle.cpp)
     add_cfdx_test(test_dual_time_navier_stokes tests/unit/test_dual_time_navier_stokes.cpp)
+    # Additional independent numerical/transactional regression coverage.
+    add_cfdx_test(test_dual_time_checkpoint_contract tests/unit/test_dual_time_checkpoint_contract.cpp)
+    add_cfdx_test(test_thermal_conductance_finite tests/unit/test_thermal_conductance_finite.cpp)
+    add_cfdx_test(test_thermal_component_anchoring tests/unit/test_thermal_component_anchoring.cpp)
     add_cfdx_test(test_case_numerics_report tests/unit/test_case_numerics_report.cpp)
     add_cfdx_test(test_temporal_history tests/unit/test_temporal_history.cpp)
     add_cfdx_test(test_core_temporal tests/unit/test_core_temporal.cpp)
@@ -634,6 +644,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_timestep_control tests/unit/test_timestep_control.cpp)
     add_cfdx_test(test_continuation tests/unit/test_continuation.cpp)
     add_cfdx_test(test_local_time_stepping tests/unit/test_local_time_stepping.cpp)
+    add_cfdx_test(test_local_cfl_physical_contract tests/unit/test_local_cfl_physical_contract.cpp)
     add_cfdx_test(test_incompressible tests/unit/test_incompressible.cpp)
     add_cfdx_test(test_m1_m4_physics tests/unit/test_m1_m4_physics.cpp)
     add_cfdx_test(test_m1_m4_validation tests/validation/test_m1_m4_validation.cpp)
@@ -674,6 +685,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     target_link_libraries(test_ghia_cavity PRIVATE cfdx_core)
     target_include_directories(test_ghia_cavity PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     add_test(NAME test_ghia_cavity_quick COMMAND test_ghia_cavity --quick)
+    add_test(NAME test_ghia_cavity_pressure_line_search COMMAND test_ghia_cavity --quick-line-search)
+    set_tests_properties(test_ghia_cavity_pressure_line_search PROPERTIES LABELS "experimental;pressure;validation" TIMEOUT 120)
     set_tests_properties(test_ghia_cavity_quick PROPERTIES
         LABELS "phase13;validation")
     # Production PCD is an explicit N8 qualification test. It must never be
@@ -685,10 +698,15 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
         add_test(NAME test_ghia_cavity_profile_study COMMAND test_ghia_cavity --profile-study)
         set_tests_properties(test_ghia_cavity_profile_study PROPERTIES
             LABELS "phase13;validation;campaign;long"
-            # The 2026-10-28 total-validation run reached this deadline while
-            # the separate full Ghia campaign completed in 2626 s. This is a
-            # runtime budget only; the reference, residual and refinement gates stay unchanged.
-            TIMEOUT 3600)
+            # The 2026-10-31 run completed N=20/40/80, then reached N=160
+            # iteration 7450/16000 at the 3600 s timeout. The momentum RHS
+            # residual was still decreasing (1.75e-8 at iteration 7450)
+            # toward the unchanged 1e-8 convergence gate. Run this largest
+            # grid serially to avoid contention with other long campaigns;
+            # this changes only the wall-clock allowance, not any numerical
+            # iteration cap, residual criterion, reference or refinement gate.
+            RUN_SERIAL TRUE
+            TIMEOUT 5400)
         # Run a bounded low-resolution preflight first. The dependency prevents
         # the physical PCD qualification from starting when the nested solver
         # already exhibits runaway behaviour on the smaller case.
@@ -759,6 +777,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_production_turbulence_contract tests/unit/test_production_turbulence_contract.cpp)
     add_cfdx_test(test_solid_conduction_selection tests/unit/test_solid_conduction_selection.cpp)
     add_cfdx_test(test_energy_integration_contracts tests/validation/test_energy_integration_contracts.cpp)
+    add_cfdx_test(test_energy_independent_acceptance tests/unit/test_energy_independent_acceptance.cpp)
+    add_cfdx_test(test_sst_closure_input_contract tests/unit/test_sst_closure_input_contract.cpp)
     add_cfdx_test(test_cht_integration_contracts tests/validation/test_cht_integration_contracts.cpp)
     add_cfdx_test(test_sst_integration_gaps tests/audit/test_sst_integration_gaps.cpp)
     add_cfdx_test(test_production_radiation_contract tests/unit/test_production_radiation_contract.cpp)
@@ -840,6 +860,8 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         set_tests_properties(test_bfs_qualification PROPERTIES LABELS "qualification;validation;long")
         add_test(NAME test_naca0012_qualification COMMAND test_naca0012_qualification ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n128.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n256.h5)
         set_tests_properties(test_naca0012_qualification PROPERTIES LABELS "qualification;validation;long")
+        set_tests_properties(test_naca0012_qualification PROPERTIES
+            ENVIRONMENT "CFDX_NACA_MATRIX_DUMP_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/naca-pressure-qualification;CFDX_NACA_AB_ALPHA_U=0.60;CFDX_NACA_AB_ALPHA_P=0.10")
         if(Python3_Interpreter_FOUND)
             set_tests_properties(test_bfs_qualification test_naca0012_qualification PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_full)
         endif()
@@ -859,11 +881,21 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     if(CFDX_ENABLE_LONG_VALIDATION)
         add_test(NAME test_naca0012_wall_shear_audit COMMAND test_naca0012_wall_shear_audit ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n128.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n256.h5)
         set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES LABELS "qualification;validation;long")
+        set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES
+            ENVIRONMENT "CFDX_NACA_MATRIX_DUMP_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/naca-pressure-wall-shear;CFDX_NACA_AB_ALPHA_U=0.60;CFDX_NACA_AB_ALPHA_P=0.10")
         if(Python3_Interpreter_FOUND)
             set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_full)
         endif()
     endif()
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_naca_controlled_campaign_parser
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_controlled_campaign.py)
+        set_tests_properties(test_naca_controlled_campaign_parser PROPERTIES
+            LABELS "qualification;validation;infrastructure")
+        add_test(NAME test_analyze_naca_pressure_spectrum
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_analyze_naca_pressure_spectrum.py)
+        set_tests_properties(test_analyze_naca_pressure_spectrum PROPERTIES
+            LABELS "qualification;validation;infrastructure")
         add_test(NAME test_generate_2d_validation_meshes COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_2d_validation_meshes.py all --output-dir ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes)
         # CTest DEPENDS orders only tests explicitly selected by -R; it does
         # not schedule mesh generation for a filtered test invocation.
@@ -941,6 +973,41 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         set_tests_properties(test_mesh_refinement_order PROPERTIES
             LABELS "phase13;validation;long")
     endif()
+    add_cfdx_test(test_wls_planar_field tests/validation/test_wls_planar_field.cpp)
+    add_cfdx_test(test_wls_intrinsic_dimension tests/validation/test_wls_intrinsic_dimension.cpp)
+    add_cfdx_test(test_pressure_flux_split tests/validation/test_pressure_flux_split.cpp)
+    add_cfdx_test(test_pressure_continuity_line_search tests/validation/test_pressure_continuity_line_search.cpp)
+    add_cfdx_test(test_pressure_affine_flux_trials tests/validation/test_pressure_affine_flux_trials.cpp)
+    add_cfdx_test(test_wall_face_traction_mms tests/validation/test_wall_face_traction_mms.cpp)
+    add_cfdx_test(test_wall_shear_quadratic_fit tests/validation/test_wall_shear_quadratic_fit.cpp)
+    add_cfdx_test(test_naca_state_io tests/validation/test_naca_state_io.cpp)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_naca_wall_pressure_grid_audit
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_wall_pressure_grid_audit.py)
+        # Optional diagnostic dependency only; not required by CFDX production.
+        execute_process(
+            COMMAND ${Python3_EXECUTABLE} -c "import numpy, scipy.spatial"
+            RESULT_VARIABLE CFDX_NACA_SCIPY_STATUS
+            OUTPUT_QUIET ERROR_QUIET)
+        if(CFDX_NACA_SCIPY_STATUS EQUAL 0)
+            add_test(NAME test_naca_prolong_initial_state
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_prolong_initial_state.py)
+        else()
+            message(STATUS "NACA optional prolongation test not registered (SciPy unavailable)")
+        endif()
+        add_test(NAME test_naca_split_farfield_generator
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_split_farfield_generator.py)
+        add_test(NAME test_naca_wall_profiles_symmetry
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_analyze_naca_wall_profiles.py)
+        add_test(NAME test_naca_wall_shear_independent
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_wall_shear_independent.py)
+        add_test(NAME test_naca_ab_qualification_contract
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_ab_qualification.py)
+        set_tests_properties(test_naca_split_farfield_generator
+            test_naca_ab_qualification_contract
+            PROPERTIES LABELS "validation;contract;quick")
+    endif()
+    add_cfdx_test(test_pressure_split_skew_poisson_mms tests/validation/test_pressure_split_skew_poisson_mms.cpp)
     add_cfdx_test(test_nonorthogonal_skew_campaign tests/validation/test_nonorthogonal_skew_campaign.cpp)
     add_cfdx_test(test_nonorthogonal_laplacian_campaign tests/validation/test_nonorthogonal_laplacian_campaign.cpp)
     add_cfdx_test(test_transient_mms tests/validation/test_transient_mms.cpp)
@@ -1032,8 +1099,17 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_production_s2s_energy_stage_vv tests/validation/test_production_s2s_energy_stage_vv.cpp)
     add_cfdx_test(test_production_s2s_energy_outer_loop_vv tests/validation/test_production_s2s_energy_outer_loop_vv.cpp)
     add_cfdx_test(test_production_buoyancy_outer_loop_vv tests/validation/test_production_buoyancy_outer_loop_vv.cpp)
+    add_cfdx_test(test_buoyancy_acceleration_contract tests/unit/test_buoyancy_acceleration_contract.cpp)
+    add_cfdx_test(test_natural_convection_de_vahl_davis tests/validation/test_natural_convection_de_vahl_davis.cpp)
     add_cfdx_test(test_radiation_vv tests/validation/test_radiation_vv.cpp)
     add_cfdx_test(test_s2s_radiation_vv tests/validation/test_s2s_radiation_vv.cpp)
+    add_cfdx_test(test_s2s_radiosity_verified tests/unit/test_s2s_radiosity_verified.cpp)
+    add_cfdx_test(test_s2s_area_scale_reciprocity tests/unit/test_s2s_area_scale_reciprocity.cpp)
+    set_tests_properties(test_s2s_area_scale_reciprocity PROPERTIES
+        LABELS "thermal;validation;regression")
+    set_tests_properties(
+        test_buoyancy_acceleration_contract test_s2s_radiosity_verified
+        PROPERTIES LABELS "phase13;thermal;regression")
     add_cfdx_test(test_thermal_radiation_model_matrix tests/validation/test_thermal_radiation_model_matrix.cpp)
     add_cfdx_test(test_thermal_radiation_regression tests/validation/test_thermal_radiation_regression.cpp)
     add_cfdx_test(test_thermal_challenge_vv tests/validation/test_thermal_challenge_vv.cpp)
@@ -1066,6 +1142,12 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                     ${CMAKE_SOURCE_DIR}/docs/validation/CFDX_QUALIFICATION_REGISTRY.json)
         set_tests_properties(test_cfdx_qualification_registry PROPERTIES
             LABELS "qualification;validation")
+        add_test(NAME test_three_mesh_physical_gate_selftest
+            COMMAND ${Python3_EXECUTABLE} -m unittest discover
+                    -s ${CMAKE_SOURCE_DIR}/tests/python
+                    -p test_qualify_mesh_series.py)
+        set_tests_properties(test_three_mesh_physical_gate_selftest PROPERTIES
+            LABELS "qualification;validation;selftest")
     endif()
 
     # Phase 13 verification labels. The campaign driver selects these tests
@@ -1094,6 +1176,9 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_schur_quantitative_qualification tests/unit/test_schur_quantitative_qualification.cpp)
     add_cfdx_test(test_mgr_preconditioner tests/unit/test_mgr_preconditioner.cpp)
     add_cfdx_test(test_wall_distance_turbulence tests/unit/test_wall_distance_turbulence.cpp)
+    add_cfdx_test(test_wall_turbulence_contract_guard tests/unit/test_wall_turbulence_contract_guard.cpp)
+    set_tests_properties(test_wall_turbulence_contract_guard PROPERTIES
+        LABELS "turbulence;validation;regression")
     add_cfdx_test(test_geometry_cache tests/unit/test_geometry_cache.cpp)
     add_cfdx_test(test_coupled_block_schur_amg tests/validation/test_coupled_block_schur_amg.cpp)
     add_cfdx_test(test_n8_schur_production_benchmark tests/validation/test_n8_schur_production_benchmark.cpp)
@@ -1247,6 +1332,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_execution_summary tests/unit/test_execution_summary.cpp)
     add_cfdx_test(test_restart_mapping tests/unit/test_restart_mapping.cpp)
     add_cfdx_test(test_transport_models tests/unit/test_transport_models.cpp)
+    add_cfdx_test(test_transport_field_contract tests/unit/test_transport_field_contract.cpp)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
     add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
     add_cfdx_test(test_thermo_transport_contracts tests/unit/test_thermo_transport_contracts.cpp)
@@ -1405,6 +1491,33 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     set_tests_properties(test_production_s2s_energy_stage_vv PROPERTIES LABELS "qualification;validation;phase13")
     set_tests_properties(test_production_s2s_energy_outer_loop_vv PROPERTIES LABELS "qualification;validation;phase13")
     set_tests_properties(test_production_buoyancy_outer_loop_vv PROPERTIES LABELS "qualification;validation;phase13")
+    set_tests_properties(test_natural_convection_de_vahl_davis PROPERTIES LABELS "thermal;buoyancy;benchmark;prequalification;long" TIMEOUT 450)
+    # Ra=10000 is NOT yet qualified. Explicit opt-in avoids conflating a
+    # potentially stalled/failed experimental study with the established gate.
+    if(CFDX_ENABLE_EXPERIMENTAL_RAYLEIGH_10000)
+        add_test(NAME test_natural_convection_de_vahl_davis_ra10000
+            COMMAND $<TARGET_FILE:test_natural_convection_de_vahl_davis> --ra 10000)
+        set_tests_properties(test_natural_convection_de_vahl_davis_ra10000
+            PROPERTIES LABELS "thermal;buoyancy;benchmark;experimental;long" TIMEOUT 1200)
+    endif()
 
 endif()
 
+
+# Experimental pressure-gradient skewness correction: affine face reconstruction.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_pressure_skew_gradient_affine tests/validation/test_pressure_skew_gradient_affine.cpp)
+endif()
+
+# NACA 3-grid trailing-edge affine MMS: gradient verification, NOT flow validation.
+if(CFDX_BUILD_TESTS AND CFDX_ENABLE_LONG_VALIDATION)
+    add_executable(test_naca_trailing_edge_gradient_mms tests/validation/test_naca_trailing_edge_gradient_mms.cpp)
+    target_link_libraries(test_naca_trailing_edge_gradient_mms PRIVATE cfdx_core)
+    add_test(NAME test_naca_trailing_edge_gradient_mms COMMAND test_naca_trailing_edge_gradient_mms
+        ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5
+        ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n128.h5
+        ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n256.h5)
+    set_tests_properties(test_naca_trailing_edge_gradient_mms PROPERTIES
+        LABELS "numerics;gradient;validation;long"
+        FIXTURES_REQUIRED cfdx_validation_meshes_full)
+endif()

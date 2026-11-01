@@ -391,12 +391,17 @@ inline double realizable_kepsilon_eddy_viscosity(double k,double epsilon,double 
 }
 inline double komega_eddy_viscosity(double k,double omega,double betaStar=.09){if(k<0||omega<=0||betaStar<=0||!std::isfinite(k)||!std::isfinite(omega))throw std::invalid_argument("k-omega invalid inputs");return k/omega;}
 inline double sst_eddy_viscosity(double k,double omega,double strain,double a1=.31,double F2=1.0){
- if(k<0||omega<=0||strain<0||a1<=0||!std::isfinite(F2)||F2<0.0||F2>1.0)
+ if(k<0||omega<=0||strain<0||a1<=0||!std::isfinite(k)||
+    !std::isfinite(omega)||!std::isfinite(strain)||!std::isfinite(a1)||
+    !std::isfinite(F2)||F2<0.0||F2>1.0)
      throw std::invalid_argument("SST invalid inputs");
  // Menter SST: the strain-rate branch is limited by F2 in the eddy-viscosity
  // denominator. Keeping F2 explicit avoids silently using the outer-layer form
  // in the near-wall branch.
- return a1*k/std::max(a1*omega,strain*F2);
+ const double nu_t=a1*k/std::max(a1*omega,strain*F2);
+ if(!std::isfinite(nu_t))
+     throw std::domain_error("SST non-finite eddy viscosity");
+ return nu_t;
 }
 enum class NegativeNuTildePolicy { CLAMP_ZERO, REJECT };
 inline double spalart_allmaras_nu_t(double nu_tilde,double distance,double molecular_nu,

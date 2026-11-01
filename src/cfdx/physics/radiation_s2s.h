@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <limits>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace cfdx::physics {
@@ -46,6 +47,10 @@ struct S2SResult {
     std::vector<double> net_flux;
     double total_power = 0.0;
     double energy_balance_error = 0.0;
+    // True residual of the original, unmodified radiosity linear system.
+    // A direct solver returning finite iterates is not proof of convergence.
+    double radiosity_backward_error = std::numeric_limits<double>::infinity();
+    std::size_t worst_radiosity_row = 0;
 };
 
 inline void validate_s2s_view_factors(
@@ -79,9 +84,16 @@ inline void validate_s2s_view_factors(
 
     for (std::size_t i=0; i<n; ++i)
         for (std::size_t j=i+1; j<n; ++j) {
-            const double lhs=areas[i]*F[i*n+j];
-            const double rhs=areas[j]*F[j*n+i];
-            if (std::abs(lhs-rhs) > tolerance*std::max(1.0,std::max(std::abs(lhs),std::abs(rhs))))
+            // Reciprocity must be independent of geometric scale. In
+            // particular, a 1 m^2 absolute floor silently accepts arbitrary
+            // A_i F_ij != A_j F_ji on small surface patches. Normalizing by
+            // the larger *area* also avoids overflow of A_i*F_ij and keeps
+            // subnormal but representable double areas comparable.
+            const double area_scale = std::max(areas[i], areas[j]);
+            const double lhs = (areas[i]/area_scale) * F[i*n+j];
+            const double rhs = (areas[j]/area_scale) * F[j*n+i];
+            if (std::abs(lhs-rhs) >
+                tolerance*std::max(std::abs(lhs),std::abs(rhs)))
                 throw std::invalid_argument("S2S view factors violate reciprocity");
         }
 }
@@ -112,6 +124,10 @@ inline S2SResult solve_s2s_radiosity(
             !std::isfinite(temperatures[i]) || temperatures[i]<=0.0)
             throw std::invalid_argument("invalid S2S surface state");
         const double E=STEFAN_BOLTZMANN*std::pow(temperatures[i],4);
+        if (!(E > 0.0) || !std::isfinite(E))
+            throw std::runtime_error(
+                "S2S: non-representable blackbody emission at surface " +
+                std::to_string(i));
         const double Gext=s2s_external_irradiation(
             view_factors,n,i,controls,external_irradiation);
         if (!std::isfinite(Gext) || Gext<0.0)
@@ -120,6 +136,11 @@ inline S2SResult solve_s2s_radiosity(
         b[i]=emissivities[i]*E+rho*Gext;
         M[i*n+i]=1.0;
         for (std::size_t j=0;j<n;++j) M[i*n+j]-=rho*view_factors[i*n+j];
+        if (!(b[i] > 0.0) || !std::isfinite(b[i]))
+            throw std::runtime_error("S2S: non-representable radiosity right-hand side");
+        for (std::size_t j=0;j<n;++j)
+            if (!std::isfinite(M[i*n+j]))
+                throw std::runtime_error("S2S: non-finite radiosity matrix");
     }
 
     // Dense pivoted Gaussian elimination is intentional here: the S2S
@@ -150,9 +171,35 @@ inline S2SResult solve_s2s_radiosity(
         x[i]=s/A[i*n+i];
     }
 
+    // Certify the *unmodified* system M*J=b after elimination. This is
+    // independent of the triangular residual and remains meaningful for
+    // ill-scaled surface areas or very reflective enclosures.
     S2SResult r;
-    r.converged=true;
     r.radiosity=x;
+    for (std::size_t i=0; i<n; ++i) {
+        if (!std::isfinite(x[i]) || x[i] < 0.0)
+            throw std::runtime_error("S2S: non-finite or negative radiosity");
+        double residual = -b[i];
+        double scale = std::abs(b[i]);
+        for (std::size_t j=0; j<n; ++j) {
+            const double term = M[i*n+j]*x[j];
+            if (!std::isfinite(term))
+                throw std::runtime_error("S2S: non-finite linear-system product");
+            residual += term;
+            scale += std::abs(term);
+        }
+        if (!std::isfinite(residual) || !std::isfinite(scale))
+            throw std::runtime_error("S2S: non-representable linear residual");
+        const double backward_error = std::abs(residual) /
+            std::max(scale, std::numeric_limits<double>::min());
+        if (!std::isfinite(backward_error))
+            throw std::runtime_error("S2S: non-finite linear backward error");
+        if (backward_error > r.radiosity_backward_error || i == 0) {
+            r.radiosity_backward_error = backward_error;
+            r.worst_radiosity_row = i;
+        }
+    }
+    r.converged = r.radiosity_backward_error <= controls.tolerance;
     r.irradiation.resize(n,0.0);
     r.net_flux.resize(n,0.0);
     double absorbed=0.0, emitted=0.0;
@@ -162,12 +209,20 @@ inline S2SResult solve_s2s_radiosity(
         for (std::size_t j=0;j<n;++j) r.irradiation[i]+=view_factors[i*n+j]*x[j];
         r.irradiation[i]+=Gext;
         r.net_flux[i]=x[i]-r.irradiation[i];
-        r.total_power+=areas[i]*r.net_flux[i];
+        const double power = areas[i]*r.net_flux[i];
+        r.total_power+=power;
         emitted+=areas[i]*emissivities[i]*STEFAN_BOLTZMANN*std::pow(temperatures[i],4);
         absorbed+=areas[i]*emissivities[i]*r.irradiation[i];
+        if (!std::isfinite(r.irradiation[i]) || r.irradiation[i] < 0.0 ||
+            !std::isfinite(r.net_flux[i]) || !std::isfinite(power) ||
+            !std::isfinite(r.total_power) || !std::isfinite(emitted) ||
+            !std::isfinite(absorbed))
+            throw std::runtime_error("S2S: non-representable irradiation or surface power");
     }
     r.energy_balance_error=std::abs(r.total_power)/
         std::max(1.0,std::max(emitted,absorbed));
+    if (!std::isfinite(r.energy_balance_error))
+        throw std::runtime_error("S2S: non-finite integrated energy balance");
     return r;
 }
 
