@@ -251,6 +251,7 @@ jobs:
             ${{ env.BUILD_DIR }}/Testing/
             ${{ env.BUILD_DIR }}/**/*.log
             ${{ env.BUILD_DIR }}/long-validation.log
+            ${{ env.BUILD_DIR }}/naca-pressure-*
           if-no-files-found: warn
           retention-days: 30
       - name: Final long-test gate
