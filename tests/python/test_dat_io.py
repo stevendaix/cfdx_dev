@@ -138,23 +138,23 @@ def test_read_dat_accepts_native_v5_checkpoint_with_face_mass_flux(
 ) -> None:
     path = tmp_path / "face-flux-v5.dat"
     path.write_text(
-        "CFDX-DAT 5\\n"
-        "cells 2\\n"
-        "iteration 24\\n"
-        "time 4.75\\n"
-        "identity 8 6 2 12345678901234567890\\n"
-        "field U 3\\n"
-        "0.25 -0.15 0.05 0.5 -0.3 0.1\\n"
-        "field p 1\\n"
-        "37.5 38.5\\n"
-        "optional_fields\\n"
-        "field k 1\\n"
-        "0.42 0.43\\n"
-        "field omega 1\\n"
-        "125.0 126.0\\n"
-        "face_fields 6\\n"
-        "field mdot 1\\n"
-        "0.1 0.2 0.3 0.4 0.5 0.6\\n",
+        "CFDX-DAT 5\n"
+        "cells 2\n"
+        "iteration 24\n"
+        "time 4.75\n"
+        "identity 8 6 2 12345678901234567890\n"
+        "field U 3\n"
+        "0.25 -0.15 0.05 0.5 -0.3 0.1\n"
+        "field p 1\n"
+        "37.5 38.5\n"
+        "optional_fields\n"
+        "field k 1\n"
+        "0.42 0.43\n"
+        "field omega 1\n"
+        "125.0 126.0\n"
+        "face_fields 6\n"
+        "field mdot 1\n"
+        "0.1 0.2 0.3 0.4 0.5 0.6\n",
         encoding="utf-8",
     )
 
@@ -172,19 +172,19 @@ def test_read_dat_accepts_native_v5_checkpoint_with_face_mass_flux(
 def test_read_dat_rejects_face_fields_in_v4_checkpoint(tmp_path: Path) -> None:
     path = tmp_path / "invalid-v4-face-fields.dat"
     path.write_text(
-        "CFDX-DAT 4\\n"
-        "cells 1\\n"
-        "iteration 1\\n"
-        "time 0\\n"
-        "identity 8 6 1 42\\n"
-        "field U 3\\n"
-        "1 2 3\\n"
-        "field p 1\\n"
-        "4\\n"
-        "optional_fields\\n"
-        "face_fields 6\\n"
-        "field mdot 1\\n"
-        "0 0 0 0 0 0\\n",
+        "CFDX-DAT 4\n"
+        "cells 1\n"
+        "iteration 1\n"
+        "time 0\n"
+        "identity 8 6 1 42\n"
+        "field U 3\n"
+        "1 2 3\n"
+        "field p 1\n"
+        "4\n"
+        "optional_fields\n"
+        "face_fields 6\n"
+        "field mdot 1\n"
+        "0 0 0 0 0 0\n",
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="require version 5"):
