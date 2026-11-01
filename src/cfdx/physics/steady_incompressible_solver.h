@@ -4352,8 +4352,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 for (std::size_t cell = 0; cell < nc; ++cell) {
                     correction_linf = std::max(correction_linf, std::abs(p_corr(cell)));
                     pressure_linf = std::max(pressure_linf, std::abs(p(cell)));
-                    rhs_linf = std::max(rhs_linf, std::abs(b(cell)));
                 }
+                for (std::size_t row = 0; row < b.size(); ++row)
+                    rhs_linf = std::max(rhs_linf, std::abs(b(row)));
                 const auto* offsets = A.row_offsets_data();
                 const auto* columns = A.columns_data();
                 const auto* values = A.values_data();
