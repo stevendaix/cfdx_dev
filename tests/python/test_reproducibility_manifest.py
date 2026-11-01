@@ -45,8 +45,12 @@ def test_manifest_reports_hashed_case(tmp_path: Path) -> None:
     case = tmp_path / "small.case"
     case.write_text("laminar test case\n", encoding="utf-8")
     output = tmp_path / "manifest.json"
-    p = subprocess.run([sys.executable, str(SRC), "--case", str(case),
-                        "--output", str(output)], capture_output=True, text=True)
+    p = subprocess.run(
+        [sys.executable, str(SRC), "--case", str(case), "--output", str(output)],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
     assert p.returncode == 0, p.stderr
     result = json.loads(output.read_text(encoding="utf-8"))
     assert result["case"]["sha256"] == manifest.file_sha256(case)
