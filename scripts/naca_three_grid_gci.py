@@ -23,7 +23,7 @@ def verify_three_grid(summary: dict) -> dict:
             raise ValueError(f"N{n}: missing physical PASS")
         metrics = row.get("metrics")
         if not isinstance(metrics, dict):
-            raise ValueError(f"N{n}: missing quantities of interest")
+            raise TypeError(f"N{n}: metrics must be a mapping")
         for key in ("Cd", "Cl", "continuity", "Cd_pressure"):
             value = metrics.get(key)
             if not isinstance(value, (int, float)) or not math.isfinite(value):
