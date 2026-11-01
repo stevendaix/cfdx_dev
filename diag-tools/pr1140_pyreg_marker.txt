@@ -1,1 +1,1 @@
-PR1140 pyreg oracle 2026-11-01 e803a8b6 vs 003dad50
+PR1140 pyreg oracle 2026-11-01 e803a8b6 vs 003dad50 (bump 2)
