@@ -4345,6 +4345,93 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
             if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
+                if (controls.momentum_assembly_forensic_callback) {
+                    double rhs_linf = 0.0;
+                    double diagonal_min = std::numeric_limits<double>::infinity();
+                    double diagonal_max = 0.0;
+                    double row_sum_linf = 0.0;
+                    double row_abs_sum_linf = 0.0;
+                    std::size_t rhs_cell = 0;
+                    std::size_t diagonal_cell = 0;
+                    std::size_t nonfinite_matrix = 0;
+                    std::size_t nonfinite_rhs = 0;
+                    const auto* offsets = A.row_offsets_data();
+                    const auto* columns = A.columns_data();
+                    const auto* values = A.values_data();
+                    for (std::size_t row = 0; row < A.n_rows(); ++row) {
+                        const double rhs_value = b(row);
+                        if (std::isfinite(rhs_value)) {
+                            if (std::abs(rhs_value) > rhs_linf) {
+                                rhs_linf = std::abs(rhs_value);
+                                rhs_cell = row;
+                            }
+                        } else {
+                            ++nonfinite_rhs;
+                        }
+                        double diagonal = 0.0;
+                        double row_sum = 0.0;
+                        double row_abs_sum = 0.0;
+                        for (std::uint32_t k = offsets[row]; k < offsets[row + 1]; ++k) {
+                            const double value = values[k];
+                            if (!std::isfinite(value)) {
+                                ++nonfinite_matrix;
+                                continue;
+                            }
+                            row_sum += value;
+                            row_abs_sum += std::abs(value);
+                            if (columns[k] == row) diagonal = value;
+                        }
+                        if (std::isfinite(diagonal)) {
+                            diagonal_min = std::min(diagonal_min, diagonal);
+                            if (std::abs(diagonal) > diagonal_max) {
+                                diagonal_max = std::abs(diagonal);
+                                diagonal_cell = row;
+                            }
+                        } else {
+                            ++nonfinite_matrix;
+                        }
+                        row_sum_linf = std::max(row_sum_linf, std::abs(row_sum));
+                        row_abs_sum_linf = std::max(row_abs_sum_linf, row_abs_sum);
+                    }
+                    const auto& rhs_point = geometry.cell_centres[
+                        std::min(rhs_cell, geometry.cell_centres.size() - 1)];
+                    double pressure_linf = 0.0;
+                    double grad_pressure_linf = 0.0;
+                    double predictor_flux_linf = 0.0;
+                    for (std::size_t cell = 0; cell < nc; ++cell) {
+                        pressure_linf = std::max(pressure_linf, std::abs(p(cell)));
+                        for (std::size_t d = 0; d < 3; ++d)
+                            grad_pressure_linf = std::max(
+                                grad_pressure_linf,
+                                std::abs(current_grad_p.component_data(d)[cell]));
+                    }
+                    for (std::size_t face = 0; face < mesh.n_faces(); ++face)
+                        predictor_flux_linf = std::max(
+                            predictor_flux_linf, std::abs(phiHbyA(face)));
+                    std::cerr << std::setprecision(17)
+                              << "NACA_PRESSURE_CORRECTION_FAILURE"
+                              << " iter=" << iter
+                              << " status=" << static_cast<int>(rp.status)
+                              << " iterations=" << rp.iterations
+                              << " residual=" << rp.residual
+                              << " relative=" << rp.residual_relative
+                              << " rows=" << A.n_rows()
+                              << " nnz=" << A.nnz()
+                              << " rhs_linf=" << rhs_linf
+                              << " rhs_cell=" << rhs_cell
+                              << " rhs_xyz=" << rhs_point.x << ":" << rhs_point.y << ":" << rhs_point.z
+                              << " diag_min=" << diagonal_min
+                              << " diag_abs_max=" << diagonal_max
+                              << " diag_cell=" << diagonal_cell
+                              << " row_sum_linf=" << row_sum_linf
+                              << " row_abs_sum_linf=" << row_abs_sum_linf
+                              << " max_pressure=" << pressure_linf
+                              << " max_grad_pressure=" << grad_pressure_linf
+                              << " max_predictor_flux=" << predictor_flux_linf
+                              << " nonfinite_matrix=" << nonfinite_matrix
+                              << " nonfinite_rhs=" << nonfinite_rhs
+                              << '\\n';
+                }
                 std::ostringstream message;
                 message << "solve_steady_incompressible: pressure-correction solve did not converge "
                         << "(status=" << static_cast<int>(rp.status)
