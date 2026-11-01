@@ -18,6 +18,7 @@
 #include "cfdx/physics/momentum_viscous_stress.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/pressure_velocity_system.h"
+#include "cfdx/physics/pressure_continuity_line_search.h"
 #include "cfdx/physics/solver_control.h"
 #include "cfdx/physics/sst_production_coupling.h"
 #include "cfdx/physics/timestep_control.h"
@@ -272,6 +273,9 @@ struct IncompressibleSolverControls {
     // misconfiguration and is rejected rather than silently never satisfied.
     std::vector<cfdx::core::QoIGate> qoi_gates;
     AdaptiveRelaxationControls adaptive_relaxation;
+    // Opt-in: minimise the true conservative face-flux continuity after each
+    // pressure update. Defaults unchanged; requires physical A/B qualification.
+    PressureContinuityLineSearchControls pressure_continuity_line_search;
     std::function<void(const IncompressibleProbeSample&)> probe_callback;
     // Called after each completed nonlinear iteration with the authoritative solver state.
     // Return false to stop the solve after the current iteration.
@@ -362,6 +366,9 @@ struct IncompressibleIteration {
     std::size_t momentum_linear_iterations = 0;
     std::size_t pressure_linear_iterations = 0;
     std::size_t pressure_correctors_used = 0;
+    double selected_pressure_alpha = std::numeric_limits<double>::quiet_NaN();
+    double pressure_line_search_norm_before = std::numeric_limits<double>::quiet_NaN();
+    double pressure_line_search_norm_after = std::numeric_limits<double>::quiet_NaN();
     double linear_tolerance_used = std::numeric_limits<double>::quiet_NaN();
     // Conservative pressure-corrected flux continuity at the end of the iteration.
     double corrected_flux_continuity_linf = std::numeric_limits<double>::infinity();
@@ -529,6 +536,7 @@ inline void validate_incompressible_controls(
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
     validate_nonlinear_retry_controls(c.nonlinear_retry);
+    validate_pressure_continuity_line_search(c.pressure_continuity_line_search);
     if (c.sst_runtime) {
         if (!c.sst_runtime->state)
             throw std::invalid_argument("SST production runtime requires an initialized state");
@@ -3536,6 +3544,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
         }
 
+        double last_selected_pressure_alpha = std::numeric_limits<double>::quiet_NaN();
+        double last_line_search_before = std::numeric_limits<double>::quiet_NaN();
+        double last_line_search_after = std::numeric_limits<double>::quiet_NaN();
         std::size_t pressure_correctors = configured_pcorr;
         const bool supports_multiple_pressure_corrections =
             controls.algorithm == PressureVelocityAlgorithm::PISO ||
@@ -4850,7 +4861,52 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // Relax the physical pressure exactly once. The reference is a
             // gauge: enforce it by a uniform shift, never by overwriting one
             // cell and creating an artificial local pressure jump.
-            const double alpha_p = retry_controller.alpha_p(effective_alpha_p);
+            const double nominal_alpha_p = retry_controller.alpha_p(effective_alpha_p);
+            double alpha_p = nominal_alpha_p;
+            if (controls.pressure_continuity_line_search.enabled) {
+                std::vector<double> base_pressure(nc);
+                for (std::size_t c = 0; c < nc; ++c) base_pressure[c] = p(c);
+                const auto score = [&](double candidate_alpha) {
+                    for (std::size_t c = 0; c < nc; ++c)
+                        p(c) = base_pressure[c] + candidate_alpha*p_corr(c);
+                    apply_pressure_gauge_policy(
+                        p, geometry, controls.pressure_gauge_policy,
+                        controls.pressure_reference_cell, controls.pressure_reference_value,
+                        has_fixed_pressure_boundary);
+                    auto trial_flux = make_rhie_chow_mass_flux(
+                        mesh, geometry, HbyA, p,
+                        controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
+                        controls.density, velocity_bcs, pressure_bcs);
+                    if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
+                        add_simplec_consistent_response(trial_flux);
+                    std::vector<double> cell_balance(nc, 0.0);
+                    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                        const double value = trial_flux(f);
+                        if (!std::isfinite(value))
+                            return std::numeric_limits<double>::infinity();
+                        cell_balance[mesh.ownership().owner(f)] += value;
+                        const auto neighbour = mesh.ownership().neighbour(f);
+                        if (neighbour >= 0)
+                            cell_balance[static_cast<std::size_t>(neighbour)] -= value;
+                    }
+                    double sum = 0.0;
+                    for (const double residual : cell_balance) {
+                        if (!std::isfinite(residual))
+                            return std::numeric_limits<double>::infinity();
+                        sum += std::abs(residual);
+                    }
+                    return sum;
+                };
+                // Transactional evaluation: each trial reconstructs the same
+                // Rhie-Chow operator; commit only the selected pressure state.
+                const auto selection = select_pressure_continuity_step(
+                    nominal_alpha_p, controls.pressure_continuity_line_search, score);
+                alpha_p = selection.alpha;
+                last_line_search_before = selection.baseline_norm;
+                last_line_search_after = selection.accepted_norm;
+                for (std::size_t c = 0; c < nc; ++c) p(c) = base_pressure[c];
+            }
+            last_selected_pressure_alpha = alpha_p;
             for (std::size_t c = 0; c < nc; ++c)
                 p(c) += alpha_p * p_corr(c);
             apply_pressure_gauge_policy(
@@ -5164,6 +5220,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             momentum_rhs_scale_components[2]});
 
         IncompressibleIteration h;
+        h.selected_pressure_alpha = last_selected_pressure_alpha;
+        h.pressure_line_search_norm_before = last_line_search_before;
+        h.pressure_line_search_norm_after = last_line_search_after;
         h.iteration = iter;
         h.momentum_residual = final_momentum_residual / momentum_rhs_scale;
         h.pressure_residual = pressure_residual;

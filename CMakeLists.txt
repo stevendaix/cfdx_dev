@@ -677,6 +677,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     target_link_libraries(test_ghia_cavity PRIVATE cfdx_core)
     target_include_directories(test_ghia_cavity PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     add_test(NAME test_ghia_cavity_quick COMMAND test_ghia_cavity --quick)
+    add_test(NAME test_ghia_cavity_pressure_line_search COMMAND test_ghia_cavity --quick-line-search)
+    set_tests_properties(test_ghia_cavity_pressure_line_search PROPERTIES LABELS "experimental;pressure;validation" TIMEOUT 120)
     set_tests_properties(test_ghia_cavity_quick PROPERTIES
         LABELS "phase13;validation")
     # Production PCD is an explicit N8 qualification test. It must never be
@@ -964,6 +966,8 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_wls_planar_field tests/validation/test_wls_planar_field.cpp)
     add_cfdx_test(test_wls_intrinsic_dimension tests/validation/test_wls_intrinsic_dimension.cpp)
     add_cfdx_test(test_pressure_flux_split tests/validation/test_pressure_flux_split.cpp)
+    add_cfdx_test(test_pressure_continuity_line_search tests/validation/test_pressure_continuity_line_search.cpp)
+    add_cfdx_test(test_pressure_split_skew_poisson_mms tests/validation/test_pressure_split_skew_poisson_mms.cpp)
     add_cfdx_test(test_nonorthogonal_skew_campaign tests/validation/test_nonorthogonal_skew_campaign.cpp)
     add_cfdx_test(test_nonorthogonal_laplacian_campaign tests/validation/test_nonorthogonal_laplacian_campaign.cpp)
     add_cfdx_test(test_transient_mms tests/validation/test_transient_mms.cpp)

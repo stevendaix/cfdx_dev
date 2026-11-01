@@ -51,6 +51,13 @@ static Forces run(const std::string& path,std::size_t level)
     c.convergence.continuity_tolerance=1e-8;
     c.coupling.alpha_u=0.6; c.coupling.alpha_p=0.25;
     cfdx::validation::apply_naca_relaxation_ab(c);
+    // Experimental A/B only: the normal production and CI path is unchanged.
+    if (const char* line_search = std::getenv("CFDX_NACA_PRESSURE_LINE_SEARCH")) {
+        if (std::string(line_search) != "1")
+            throw std::invalid_argument("CFDX_NACA_PRESSURE_LINE_SEARCH must be 1");
+        c.pressure_continuity_line_search.enabled = true;
+    }
+
     c.use_bounded_convection=true;
     c.convection_scheme=ConvectionScheme::UPWIND;
     c.pressure_reference_cell=0;
