@@ -46,7 +46,7 @@ def analyze(path):
         for key in FIELDS[3:]:
             value = float(row[key])
             if not math.isfinite(value):
-                raise ValueError(f'{row["mesh"]}: {key} nonfinite')
+                raise ValueError(f"{row['mesh']}: {key} nonfinite")
             numeric[key] = value
 
         nonnegative = (
@@ -85,10 +85,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     try:
         report = analyze(args.csv)
-        Path(args.out).write_text(
-            json.dumps(report, indent=2) + "\n", encoding="utf-8"
-        )
-        print(f'Validated {len(report["results"])} rows; wrote {args.out}')
+        Path(args.out).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        print(f"Validated {len(report['results'])} rows; wrote {args.out}")
     except (ValueError, OSError) as error:
         print(str(error), file=sys.stderr)
         sys.exit(2)
