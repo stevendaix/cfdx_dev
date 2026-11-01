@@ -1048,6 +1048,24 @@ int main()
             solve_thermal_regions_coupled(c, external_inputs),
             std::invalid_argument, "also has an external boundary condition");
 
+        // Interface-temperature convergence must not hide a failed regional
+        // energy solve. A deliberately permissive interface tolerance makes
+        // this specifically exercise the regional convergence gate.
+        T_a.fill(350.0);
+        T_b.fill(350.0);
+        ThermalDriverControls limited_energy;
+        limited_energy.max_inner_iterations = 1;
+        limited_energy.max_outer_iterations = 1;
+        limited_energy.tolerance = 1e-30;
+        ThermalCoupledControls permissive_interface;
+        permissive_interface.interface_temperature_tolerance = 1e9;
+        permissive_interface.max_interface_iterations = 1;
+        const auto incomplete = solve_thermal_regions_coupled(
+            c, inputs, limited_energy, permissive_interface);
+        EXPECT_TRUE(!incomplete.regions.at("bar_a").converged ||
+                    !incomplete.regions.at("bar_b").converged);
+        EXPECT_TRUE(!incomplete.converged);
+
         // Coupled solver: non-conformal patches (two faces against one).
         Mesh wide_a = one_cell_cube({CubePatchSpec{"iface",{0,1}},
                                      CubePatchSpec{"walls",{2,3,4,5}}});
