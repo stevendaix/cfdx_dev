@@ -52,4 +52,10 @@ int main() {
     assert(neighbor_volume_ratio(0.00543, 1.0) > 0.0054);
     const std::vector<double> h{1.0, 1.2, 1.4};
     assert(std::abs(max_adjacent_growth(h.begin(), h.end()) - 1.2) < 1e-12);
+
+    Continuation zero_residual;
+    zero_residual.observe(0.0, true);
+    const double cfl_before_growth = zero_residual.controls().cfl;
+    const auto after_residual_jump = zero_residual.observe(1.0, true);
+    assert(after_residual_jump.cfl < cfl_before_growth);
 }
