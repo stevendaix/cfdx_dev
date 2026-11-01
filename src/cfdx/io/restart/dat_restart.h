@@ -381,13 +381,16 @@ inline DatRestartState read_dat_restart_fields(
                 if (face_name != "mdot")
                     throw std::runtime_error(
                         "read_dat_restart_fields: unknown face field " + face_name);
+                if (got_mdot)
+                    throw std::runtime_error(
+                        "read_dat_restart_fields: duplicate face field mdot");
                 got_mdot = true;
                 if (!fields.face_mass_flux) {
                     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                         double ignored;
-                        if (!(in >> ignored))
+                        if (!(in >> ignored) || !std::isfinite(ignored))
                             throw std::runtime_error(
-                                "read_dat_restart_fields: invalid face values");
+                                "read_dat_restart_fields: invalid face value");
                     }
                 } else {
                     for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
