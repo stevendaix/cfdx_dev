@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Estimate the Jacobi-scaled pressure-matrix spectrum from a Matrix-Market dump.
 
 This is a forensic diagnostic, not a qualification gate. It checks matrix
@@ -68,7 +67,9 @@ def analyze_matrix(path: Path, rhs_path: Path | None = None) -> dict[str, Any]:
     matrix = mmread(path)
     matrix = matrix.tocsr() if issparse(matrix) else csr_matrix(matrix)
     if matrix.shape[0] != matrix.shape[1] or matrix.shape[0] == 0:
-        raise ValueError(f"{path}: expected a non-empty square matrix, got {matrix.shape}")
+        raise ValueError(
+            f"{path}: expected a non-empty square matrix, got {matrix.shape}"
+        )
     if not np.isfinite(matrix.data).all():
         raise ValueError(f"{path}: matrix contains non-finite coefficients")
 
