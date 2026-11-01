@@ -206,10 +206,11 @@ error estimate.
 The solver now exposes an optional post-assembly callback for each momentum
 component. When the NACA forensic environment flag is enabled, it records the
 actual assembled matrix/RHS statistics together with the integrated pressure
-and body-force scales and their worst cells. On pressure-correction failure,
-it also records the actual pressure matrix and RHS dimensions, nonzero count,
-diagonal range, row-sum scales, RHS maximum/location, and current pressure,
-pressure-gradient and predictor-flux maxima.
+and body-force scales and their worst cells. On every pressure-correction solve,
+it records the correction norm, pre-correction pressure norm, RHS norm,
+diagonal range and row-sum scale. On failure it additionally records the actual
+pressure matrix and RHS dimensions, nonzero count, RHS maximum/location, and
+current pressure, pressure-gradient and predictor-flux maxima.
 
 The qualification executable catches the nonlinear retry exception and
 reports it as a normal test failure rather than allowing an uncaught exception
