@@ -4405,7 +4405,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " diagonal_abs_max=" << diagonal_max
                           << " row_sum_linf=" << row_sum_linf
                           << " row_abs_sum_linf=" << row_abs_sum_linf
-                          << '\\n';
+                          << '\n';
             }
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
@@ -4495,7 +4495,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                               << " max_predictor_flux=" << predictor_flux_linf
                               << " nonfinite_matrix=" << nonfinite_matrix
                               << " nonfinite_rhs=" << nonfinite_rhs
-                              << '\\n';
+                              << '\n';
                 }
                 std::ostringstream message;
                 message << "solve_steady_incompressible: pressure-correction solve did not converge "
