@@ -57,7 +57,7 @@ def analyze_matrix(path: Path, rhs_path: Path | None = None) -> dict[str, Any]:
     try:
         import numpy as np
         from scipy.io import mmread
-        from scipy.sparse import diags, issparse
+        from scipy.sparse import csr_matrix, diags, issparse
         from scipy.sparse.csgraph import connected_components
         from scipy.sparse.linalg import ArpackNoConvergence, eigsh
     except ImportError as exc:
@@ -66,10 +66,7 @@ def analyze_matrix(path: Path, rhs_path: Path | None = None) -> dict[str, Any]:
         ) from exc
 
     matrix = mmread(path)
-    if not issparse(matrix):
-        matrix = matrix.tocsr()
-    else:
-        matrix = matrix.tocsr()
+    matrix = matrix.tocsr() if issparse(matrix) else csr_matrix(matrix)
     if matrix.shape[0] != matrix.shape[1] or matrix.shape[0] == 0:
         raise ValueError(f"{path}: expected a non-empty square matrix, got {matrix.shape}")
     if not np.isfinite(matrix.data).all():
@@ -136,8 +133,10 @@ def analyze_matrix(path: Path, rhs_path: Path | None = None) -> dict[str, Any]:
         result["spectrum_status"] = "NOT_ESTIMATED_MATRIX_STRUCTURE"
         return result
 
-    if n == 1:
-        eigen_min = eigen_max = float(scaled[0, 0])
+    if n <= 2:
+        dense_eigenvalues = np.linalg.eigvalsh(scaled.toarray())
+        eigen_min = float(dense_eigenvalues[0])
+        eigen_max = float(dense_eigenvalues[-1])
         residual_min = residual_max = 0.0
     else:
         ncv = min(80, n - 1)
