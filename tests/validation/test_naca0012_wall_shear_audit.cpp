@@ -295,6 +295,13 @@ WallShearAudit run_naca(const std::string& path, std::size_t level)
                 naca_trace(iteration, pressure, grad_pressure, velocity,
                            mass_flux, mu_eff);
             };
+        c.momentum_equation_forensic_callback =
+            [&naca_trace](std::size_t iteration, std::size_t component,
+                          const auto& equation, const auto& geometry,
+                          const auto& grad_pressure, const auto& body_force) {
+                naca_trace.equation(iteration, component, equation, geometry,
+                                    grad_pressure, body_force);
+            };
     }
     for (std::size_t i = 0; i < mesh.n_cells(); ++i)
         U.component_data(0)[i] = Uinf;
