@@ -55,7 +55,7 @@ def main():
     result = sweep(args.n, args.nr, args.powers, args.max_nonorth)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(
-        json.dumps(result, indent=2, allow_nan=False) + "\\n", encoding="utf-8"
+        json.dumps(result, indent=2, allow_nan=False) + "\n", encoding="utf-8"
     )
     print(
         json.dumps(
