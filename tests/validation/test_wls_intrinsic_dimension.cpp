@@ -83,6 +83,34 @@ int main() {
         } catch (const std::runtime_error&) { rejected = true; }
         require(rejected, "intrinsic 2-D must reject collinear stencil");
 
+        // Affine 2-D extrusion: round-off perturbations in its nominally
+        // constant normal coordinate must not masquerade as genuine 3-D rank.
+        {
+            std::vector<Vec3> near_planar = {
+                {1.0,0.0,1e-13}, {-1.0,0.0,-1e-13},
+                {0.0,1.0,2e-13}, {0.0,-1.0,-2e-13},
+                {1.0,1.0,-1e-13}, {-1.0,-1.0,1e-13}};
+            std::vector<double> near_values;
+            for (const auto& pt : near_planar)
+                near_values.push_back(2.0*pt.x - 3.0*pt.y);
+            StencilQuality q;
+            const auto grad=weighted_least_squares_gradient_robust(
+                {0,0,0},0,near_planar,near_values,
+                GradientWeighting::INVERSE_DISTANCE_SQUARED,2,&q);
+            require(q.full_rank && q.rank==2 && close(grad.x,2.0,1e-9) &&
+                    close(grad.y,-3.0,1e-9),
+                    "near-planar numerical round-off must preserve intrinsic 2-D");
+            // Conversely, genuinely volumetric 3-D samples must be rejected
+            // by an explicitly 2-D request.
+            near_planar[0].z=0.3;
+            rejected=false;
+            try {
+                (void)weighted_least_squares_gradient_robust(
+                    {0,0,0},0,near_planar,near_values,
+                    GradientWeighting::INVERSE_DISTANCE_SQUARED,2);
+            } catch (const std::runtime_error&) { rejected=true; }
+            require(rejected,"2-D request must reject a true 3-D stencil");
+        }
         vals[0] = std::numeric_limits<double>::quiet_NaN();
         rejected = false;
         try {

@@ -233,6 +233,13 @@ inline Vec3 weighted_least_squares_gradient_robust(
     const double cutoff = 128.0*std::numeric_limits<double>::epsilon()*q.scale;
     for (int j : order)
         if (sigma[j] > cutoff) ++q.rank;
+    // Rounding of polyhedral centres can produce a tiny spurious third
+    // singular value on a geometrically planar 2-D extrusion. Do not reject
+    // an otherwise full-rank 2-D stencil for that numerical noise. True 3-D
+    // stencils are still rejected explicitly (fail-closed) in 2-D mode.
+    if (requested_dimension == 2 && q.rank == 3 &&
+        sigma[order[2]] <= 1e-10 * sigma[order[0]])
+        q.rank = 2;
     q.full_rank = (q.rank == requested_dimension);
     q.min_pivot = q.rank >= requested_dimension
         ? sigma[order[requested_dimension-1]] : 0.0;

@@ -276,6 +276,10 @@ struct IncompressibleSolverControls {
     // Opt-in: minimise the true conservative face-flux continuity after each
     // pressure update. Defaults unchanged; requires physical A/B qualification.
     PressureContinuityLineSearchControls pressure_continuity_line_search;
+    // Experimental: skew-corrected Green-Gauss pressure gradient used by
+    // momentum, pressure assembly AND authoritative Rhie-Chow reconstruction.
+    // Keep off until three-grid NACA and N9 physical qualification pass.
+    bool pressure_skew_corrected_gradient = false;
     std::function<void(const IncompressibleProbeSample&)> probe_callback;
     // Called after each completed nonlinear iteration with the authoritative solver state.
     // Return false to stop the solve after the current iteration.
@@ -537,6 +541,14 @@ inline void validate_incompressible_controls(
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
     validate_nonlinear_retry_controls(c.nonlinear_retry);
     validate_pressure_continuity_line_search(c.pressure_continuity_line_search);
+    // The monolithic U-p block still assembles its analytical G operator
+    // with the historical face weights. Until that block is augmented with
+    // the skew-correction Jacobian, activating this option would make the
+    // coupled matrix inconsistent with the reconstructed Rhie-Chow flux.
+    if (c.pressure_skew_corrected_gradient &&
+        c.algorithm == PressureVelocityAlgorithm::COUPLED)
+        throw std::invalid_argument(
+            "skew-corrected pressure gradient is not qualified for COUPLED");
     if (c.sst_runtime) {
         if (!c.sst_runtime->state)
             throw std::invalid_argument("SST production runtime requires an initialized state");
@@ -669,7 +681,8 @@ gauss_gradient_with_boundary(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
-    const ScalarBoundaryConditions& bcs)
+    const ScalarBoundaryConditions& bcs,
+    bool skew_correct = false)
 {
     using namespace cfdx::core;
     if (field.dimension() != 1 || field.size() != mesh.n_cells())
@@ -679,6 +692,14 @@ gauss_gradient_with_boundary(
         mesh.n_cells(), field.name() + "_grad_bc", field.metadata().unit + "/m", 3);
     const auto& own = mesh.ownership();
 
+    // Opt-in fixed-point correction for skewed internal faces. Every face
+    // is assembled once per cell, preserving the conservative orientation.
+    // The default one-sweep Green-Gauss implementation remains unchanged.
+    const std::size_t sweeps = skew_correct ? 8 : 1;
+    for (std::size_t sweep = 0; sweep < sweeps; ++sweep) {
+    // Avoid copying a vector field on the default (single sweep) path.
+    std::optional<Field<double, Location::CELL>> previous;
+    if (skew_correct && sweep > 0) previous.emplace(grad);
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
         Vec3 sum{0.0, 0.0, 0.0};
         const Offset off = mesh.cells().offsets_data()[c];
@@ -706,6 +727,17 @@ gauss_gradient_with_boundary(
                         "gauss_gradient_with_boundary: degenerate face distance");
                 const double w = dn / (dc + dn);
                 vf = w * field(c) + (1.0 - w) * field(other);
+                if (skew_correct && sweep > 0) {
+                    const Vec3 interpolated_centre =
+                        geometry.cell_centres[c] * w +
+                        geometry.cell_centres[other] * (1.0 - w);
+                    const Vec3 skew = geometry.face_centres[f] - interpolated_centre;
+                    const Vec3 grad_face{
+                        0.5 * (previous->component_data(0)[c] + previous->component_data(0)[other]),
+                        0.5 * (previous->component_data(1)[c] + previous->component_data(1)[other]),
+                        0.5 * (previous->component_data(2)[c] + previous->component_data(2)[other])};
+                    vf += grad_face.dot(skew);
+                }
             } else {
                 const std::size_t p = geometry.face_patch[f];
                 if (p < mesh.boundary().n_patches() &&
@@ -716,6 +748,13 @@ gauss_gradient_with_boundary(
                     const auto it = bcs.find(name);
                     if (it != bcs.end() && it->second.type == ScalarBoundaryType::FIXED_VALUE)
                         vf = it->second.value;
+                    else if (skew_correct && it != bcs.end() &&
+                             it->second.type == ScalarBoundaryType::FIXED_GRADIENT) {
+                        const Vec3 outward = Sf * (1.0 / Sf.mag());
+                        const Vec3 centre_to_face =
+                            geometry.face_centres[f] - geometry.cell_centres[c];
+                        vf += it->second.gradient * centre_to_face.dot(outward);
+                    }
                 }
             }
             sum += Sf * vf;
@@ -724,6 +763,11 @@ gauss_gradient_with_boundary(
         grad.component_data(0)[c] = sum.x * invV;
         grad.component_data(1)[c] = sum.y * invV;
         grad.component_data(2)[c] = sum.z * invV;
+        for (std::size_t d = 0; d < 3; ++d)
+            if (!std::isfinite(grad.component_data(d)[c]))
+                throw std::runtime_error(
+                    "gauss_gradient_with_boundary: non-finite skew-corrected gradient");
+    }
     }
     return grad;
 }
@@ -908,7 +952,8 @@ make_rhie_chow_mass_flux(
     const VelocityBoundaryConditions& bcs,
     const ScalarBoundaryConditions& pressure_bcs = {},
     RhieChowVelocityContract velocity_contract =
-        RhieChowVelocityContract::HBYA_PREDICTOR)
+        RhieChowVelocityContract::HBYA_PREDICTOR,
+    bool skew_correct_gradient = false)
 ;
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
@@ -936,7 +981,8 @@ make_rhie_chow_mass_flux(
     double rho,
     const VelocityBoundaryConditions& bcs,
     const ScalarBoundaryConditions& pressure_bcs,
-    RhieChowVelocityContract velocity_contract)
+    RhieChowVelocityContract velocity_contract,
+    bool skew_correct_gradient)
 {
     using namespace cfdx::core;
     const bool coupled_physical_velocity =
@@ -948,7 +994,7 @@ make_rhie_chow_mass_flux(
     // boundary face has no neighbour coefficient: any dAU/rAU interpolation
     // must therefore use the owner-cell value rather than a ghost/zero entry.
     const auto grad_p = gauss_gradient_with_boundary(
-        p, mesh, geometry, pressure_bcs);
+        p, mesh, geometry, pressure_bcs, skew_correct_gradient);
     for (const auto& component : rAU) {
         if (component.size() != mesh.n_cells())
             throw std::invalid_argument("make_rhie_chow_mass_flux: inverse momentum diagonal size mismatch");
@@ -1075,11 +1121,12 @@ make_rhie_chow_flux_from_hbya(
     const std::array<std::vector<double>, 3>& rAU,
     double rho,
     const VelocityBoundaryConditions& bcs,
-    const ScalarBoundaryConditions& pressure_bcs = {})
+    const ScalarBoundaryConditions& pressure_bcs = {},
+    bool skew_correct_gradient = false)
 {
     return make_rhie_chow_mass_flux(
         mesh, geometry, h_by_a, p, rAU, rho, bcs, pressure_bcs,
-        RhieChowVelocityContract::HBYA_PREDICTOR);
+        RhieChowVelocityContract::HBYA_PREDICTOR, skew_correct_gradient);
 }
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
@@ -1091,11 +1138,12 @@ make_rhie_chow_flux_from_physical_velocity(
     const std::array<std::vector<double>, 3>& rAU,
     double rho,
     const VelocityBoundaryConditions& bcs,
-    const ScalarBoundaryConditions& pressure_bcs = {})
+    const ScalarBoundaryConditions& pressure_bcs = {},
+    bool skew_correct_gradient = false)
 {
     return make_rhie_chow_mass_flux(
         mesh, geometry, physical_velocity, p, rAU, rho, bcs, pressure_bcs,
-        RhieChowVelocityContract::PHYSICAL_VELOCITY);
+        RhieChowVelocityContract::PHYSICAL_VELOCITY, skew_correct_gradient);
 }
 
 inline ScalarEquation assemble_momentum_component(
@@ -1857,7 +1905,9 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // segregated assembly. Undo that explicit contribution here: the coupled
     // matrix contains the pressure gradient implicitly instead.
     const auto grad_p_old =
-        gauss_gradient_with_boundary(p_old, mesh, geometry, pressure_bcs);
+        gauss_gradient_with_boundary(
+            p_old, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
     auto add_momentum_block = [&](const ScalarEquation& eq, std::size_t component) {
         const std::size_t row_base = component * nc;
         const auto* ro = eq.matrix.row_offsets_data();
@@ -3042,9 +3092,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             rAU[1][cell] = 1.0 / ey.diagonal[cell];
             rAU[2][cell] = 1.0 / ez.diagonal[cell];
         }
-        const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+        const auto grad_p = gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
         const auto flux = make_rhie_chow_flux_from_physical_velocity(
-            mesh, geometry, U, p, rAU, rho, velocity_bcs, pressure_bcs);
+            mesh, geometry, U, p, rAU, rho, velocity_bcs, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
         const auto* cell_faces = mesh.cells().faces_data();
         const auto* cell_offsets = mesh.cells().offsets_data();
 
@@ -3567,7 +3620,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (freeze_state)
             phi_used_in_momentum = mass_flux;
 
-        auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+        auto grad_p = gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
 
         Field<double, Location::CELL> body_x(mesh.n_cells(), "body_x", "N/m3", 1);
         Field<double, Location::CELL> body_y(mesh.n_cells(), "body_y", "N/m3", 1);
@@ -3740,7 +3795,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 }
                 const auto candidate_flux = make_rhie_chow_flux_from_physical_velocity(
                     mesh, geometry, U, p, candidate_rAU,
-                    controls.density, velocity_bcs, pressure_bcs);
+                    controls.density, velocity_bcs, pressure_bcs,
+                    controls.pressure_skew_corrected_gradient);
                 double candidate_continuity_linf = 0.0;
                 double candidate_continuity_signed = 0.0;
                 std::size_t candidate_continuity_cell = 0;
@@ -3790,7 +3846,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << "\n";
 
                 const auto candidate_grad_p =
-                    gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+                    gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
                 double velocity_flux_div = 0.0;
                 double pressure_orth_div = 0.0;
                 double pressure_nonorth_div = 0.0;
@@ -3909,7 +3967,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
             mass_flux = make_rhie_chow_flux_from_physical_velocity(
                 mesh, geometry, U, p, coupled_rAU,
-                controls.density, velocity_bcs, pressure_bcs);
+                controls.density, velocity_bcs, pressure_bcs,
+                    controls.pressure_skew_corrected_gradient);
 
             // Operator identity audit: re-derive the authoritative flux from
             // the same state through the same production call and compare
@@ -3918,7 +3977,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             {
                 const auto rederived_flux = make_rhie_chow_flux_from_physical_velocity(
                     mesh, geometry, U, p, coupled_rAU,
-                    controls.density, velocity_bcs, pressure_bcs);
+                    controls.density, velocity_bcs, pressure_bcs,
+                    controls.pressure_skew_corrected_gradient);
                 for (std::size_t f = 0; f < mesh.n_faces(); ++f)
                     rhie_chow_identity_audit_linf = std::max(
                         rhie_chow_identity_audit_linf,
@@ -4126,7 +4186,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     const auto add_simplec_consistent_response =
         [&](cfdx::core::Field<double, cfdx::core::Location::FACE>& flux) {
             const auto response_grad_p =
-                gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+                gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
                     const auto nr = mesh.ownership().neighbour(f);
                     const std::size_t o = mesh.ownership().owner(f);
@@ -4201,7 +4263,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             std::vector<double> diag(nc, 0.0);
             std::vector<double> continuity(nc, 0.0);
             const auto current_grad_p =
-                gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+                gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
 
             const auto* cell_faces = mesh.cells().faces_data();
             const auto* cell_offsets = mesh.cells().offsets_data();
@@ -4876,7 +4940,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     auto trial_flux = make_rhie_chow_mass_flux(
                         mesh, geometry, HbyA, p,
                         controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
-                        controls.density, velocity_bcs, pressure_bcs);
+                        controls.density, velocity_bcs, pressure_bcs,
+                        RhieChowVelocityContract::HBYA_PREDICTOR,
+                        controls.pressure_skew_corrected_gradient);
                     if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                         add_simplec_consistent_response(trial_flux);
                     std::vector<double> cell_balance(nc, 0.0);
@@ -4915,7 +4981,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 has_fixed_pressure_boundary);
 
             auto corrected_grad_p =
-                gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+                gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
 
             // Rebuild the corrected velocity from the same rAU operator
             // that built the cell HbyA, so the converged velocity
@@ -4938,7 +5006,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             mass_flux = make_rhie_chow_mass_flux(
                 mesh, geometry, HbyA, p,
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
-                controls.density, velocity_bcs, pressure_bcs);
+                controls.density, velocity_bcs, pressure_bcs,
+                RhieChowVelocityContract::HBYA_PREDICTOR,
+                controls.pressure_skew_corrected_gradient);
 
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                 add_simplec_consistent_response(mass_flux);
@@ -4968,7 +5038,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 mesh, geometry, HbyA, p,
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
                     ? rAtU : rAU,
-                controls.density, velocity_bcs, pressure_bcs);
+                controls.density, velocity_bcs, pressure_bcs,
+                RhieChowVelocityContract::HBYA_PREDICTOR,
+                controls.pressure_skew_corrected_gradient);
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                 add_simplec_consistent_response(rederived_flux);
             for (std::size_t f = 0; f < mesh.n_faces(); ++f)
@@ -4991,7 +5063,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             final_uy_field(c) = U.component_data(1)[c];
             final_uz_field(c) = U.component_data(2)[c];
         }
-        auto final_grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pressure_bcs);
+        auto final_grad_p = gauss_gradient_with_boundary(
+            p, mesh, geometry, pressure_bcs,
+            controls.pressure_skew_corrected_gradient);
         if (include_transpose_stress) {
             const auto final_stress_flux = transpose_viscous_stress_flux(
                 mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z});

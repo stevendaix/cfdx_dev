@@ -1438,3 +1438,21 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
 
 endif()
 
+
+# Experimental pressure-gradient skewness correction: affine face reconstruction.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_pressure_skew_gradient_affine tests/validation/test_pressure_skew_gradient_affine.cpp)
+endif()
+
+# NACA 3-grid trailing-edge affine MMS: gradient verification, NOT flow validation.
+if(CFDX_BUILD_TESTS AND CFDX_ENABLE_LONG_VALIDATION)
+    add_executable(test_naca_trailing_edge_gradient_mms tests/validation/test_naca_trailing_edge_gradient_mms.cpp)
+    target_link_libraries(test_naca_trailing_edge_gradient_mms PRIVATE cfdx_core)
+    add_test(NAME test_naca_trailing_edge_gradient_mms COMMAND test_naca_trailing_edge_gradient_mms
+        ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5
+        ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n128.h5
+        ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n256.h5)
+    set_tests_properties(test_naca_trailing_edge_gradient_mms PROPERTIES
+        LABELS "numerics;gradient;validation;long"
+        FIXTURES_REQUIRED cfdx_validation_meshes_full)
+endif()
