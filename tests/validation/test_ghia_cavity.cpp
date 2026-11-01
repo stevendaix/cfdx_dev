@@ -106,8 +106,7 @@ CavityResult solve_cavity(
     const CavityCase& test,
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE,
     PreconditionerModel preconditioner = PreconditionerModel::Auto,
-    bool pressure_line_search = false,
-    bool check_reference_profile = true)
+    bool pressure_line_search = false)
 {
     Mesh mesh=make_cavity_mesh(test.nx,test.ny);
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
@@ -351,7 +350,8 @@ ValidationResult run_case(
     const CavityCase& test,
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE,
     PreconditionerModel preconditioner = PreconditionerModel::Auto,
-    bool pressure_line_search = false)
+    bool pressure_line_search = false,
+    bool check_reference_profile = true)
 {
     auto result=solve_cavity(test, algorithm, preconditioner, pressure_line_search);
     const auto u=compare(result.velocity,result.geometry,test.nx,test.ny,true,u_reference(test.reynolds));
