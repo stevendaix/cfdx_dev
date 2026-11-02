@@ -71,6 +71,12 @@ def validate_case(case_id: str) -> dict[str, Any]:
                 "TH-03: mean-velocity uncertainty mismatch")
         require(close(data["qoi"]["uncertainty"]["reynolds_stress_relative"], 0.12),
                 "TH-03: Reynolds-stress uncertainty mismatch")
+        require(close(data["qoi"]["reference_targets"]["reattachment_x_over_h"], 6.26),
+                "TH-03: reattachment reference mismatch")
+        require(close(data["qoi"]["reference_targets"]["reattachment_uncertainty_absolute"], 0.10),
+                "TH-03: reattachment uncertainty mismatch")
+        derived["reattachment_x_over_h"] = 6.26
+        derived["reattachment_uncertainty"] = 0.10
         derived["reference_reynolds"] = flow["reynolds_step"]
         derived["reattachment_gate"] = "zero crossing of tau_w/Cf from negative to positive; value loaded from CMP32 data, not guessed"
 
@@ -89,6 +95,8 @@ def validate_case(case_id: str) -> dict[str, Any]:
         require(close(targets["Gr_6.4e5"]["cooled"], 0.0041), "TH-07: cooled-wall tau mismatch")
         require(close(targets["Gr_1.6e6"]["heated"], 0.0059), "TH-07: high-Gr heated tau mismatch")
         require(close(targets["Gr_1.6e6"]["cooled"], 0.0039), "TH-07: high-Gr cooled tau mismatch")
+        require(close(data["physics"]["geometry"]["channel_height_over_delta"], 1.0),
+                "TH-07: channel gap normalization mismatch")
         derived["richardson_numbers"] = calculated
         derived["reference_bulk_reynolds"] = re_b
         derived["reference_prandtl"] = dim["prandtl"]
