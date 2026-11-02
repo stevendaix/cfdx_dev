@@ -567,6 +567,13 @@ int main(int argc, char** argv)
             return 0;
         }
 
+        // The full campaign consumes the 32x32 result solved above: the
+        // non-quick path already ran it with the reference-profile gate,
+        // exactly like master solved 32x32 once for both consumers.
+        // Re-declaring a fresh run_case here would re-solve the cavity
+        // and double that cost; the previous restructure dropped the
+        // binding, leaving r32 undeclared on this path.
+        const auto& r32 = quick_result;
         const auto r64 = run_case({100.0,64,64,5000});
         const auto r128 = run_case({100.0,128,128,12000});
         run_case({400.0,64,64,9000});
