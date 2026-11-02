@@ -1,0 +1,9 @@
+EXE001 Shebang is present but file is not executable
+ --> fmt_vtr.py:1:1
+  |
+1 | #!/usr/bin/env python3
+  | ^^^^^^^^^^^^^^^^^^^^^^
+2 | """Validate frozen thermohydraulic benchmark reference contracts.
+  |
+
+Found 1 error.

@@ -1,0 +1,28 @@
+=== ruff check --fix --diff (canonical I001/EXE001-safe fixes) ===
+--- /tmp/ttrc.py
++++ /tmp/ttrc.py
+@@ -7,7 +7,6 @@
+ import sys
+ from pathlib import Path
+ 
+-
+ ROOT = Path(__file__).resolve().parents[2]
+ RUNNER = ROOT / "scripts" / "validate_thermohydraulic_reference.py"
+ 
+
+Would fix 1 error.
+ruff_check_fixdiff_exit=1
+=== ruff check --fix --diff --unsafe-fixes (EXE001 has no autofix; informational) ===
+--- /tmp/ttrc.py
++++ /tmp/ttrc.py
+@@ -7,7 +7,6 @@
+ import sys
+ from pathlib import Path
+ 
+-
+ ROOT = Path(__file__).resolve().parents[2]
+ RUNNER = ROOT / "scripts" / "validate_thermohydraulic_reference.py"
+ 
+
+Would fix 1 error.
+ruff_check_fixdiff_unsafe_exit=1

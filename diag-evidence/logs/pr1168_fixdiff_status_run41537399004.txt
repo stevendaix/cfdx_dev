@@ -1,0 +1,3 @@
+check_fixdiff_exit=0
+postfix_format_exit=0
+postfix_check_exit=1
