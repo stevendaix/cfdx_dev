@@ -622,6 +622,20 @@ int main()
         EXPECT_TRUE(result.regions.at("bar_a").balance.normalized_residual < 1e-9);
         EXPECT_TRUE(result.regions.at("bar_b").balance.normalized_residual < 1e-9);
         EXPECT_TRUE(result.interface_flux_imbalance < 1e-9);
+        EXPECT_TRUE(result.interface_flux_relative_imbalance <= 1e-9);
+
+        // A loose temperature fixed-point tolerance must not allow a
+        // one-sweep state with a non-conservative interface flux to pass.
+        T_a.fill(350.0);
+        T_b.fill(350.0);
+        ThermalCoupledControls loose_temperature_controls;
+        loose_temperature_controls.interface_temperature_tolerance = 1e6;
+        loose_temperature_controls.interface_flux_relative_tolerance = 1e-14;
+        loose_temperature_controls.max_interface_iterations = 1;
+        const auto incomplete = solve_thermal_regions_coupled(
+            c, inputs, {}, loose_temperature_controls);
+        EXPECT_FALSE(incomplete.converged);
+        EXPECT_TRUE(incomplete.interface_flux_relative_imbalance > 1e-14);
     });
 
     // Steady contact-resistance jump (A4): two solid bars (k=1) joined by
