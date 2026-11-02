@@ -1,0 +1,216 @@
+name: PR 1146 resolve-and-merge oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Oracle DE-CONFLICT : merge 002aa348 (PR #1146) + master 2bd250ac,
+# resolution des 2 fichiers en conflit selon la resolution validee par Steven,
+# renumerotation fiche 26-globalisation -> 27 (collision avec
+# 26-continuation-adaptative-naca.md mergee par #1160), push du merge commit
+# sur la branche PR. Fail-closed si master ou la branche PR a bouge.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1146_resolve_merge_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1146-resolve-merge
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR1146_HEAD: 002aa3480306b7ca78be5d58b95334ad1eabf4ae
+  PR1146_BRANCH: fix/p0-p1-physical-guards-wall-forces
+  MASTER_PIN: 2bd250ac484aba637f58b2499ad4168bc01b9f63
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Meta (commit early)
+        run: |
+          mkdir -p "$EVID"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "pr1146_head=$PR1146_HEAD"
+            echo "master_pin=$MASTER_PIN"
+          } > "$EVID/pr1146_rm_meta_run$GITHUB_RUN_ID.txt"
+
+      - name: Commit meta
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          git diff --cached --quiet || (git commit -m "diag: pr1146 resolve-merge meta run $GITHUB_RUN_ID [ci skip]" && (git push origin "HEAD:$GITHUB_REF_NAME" || (git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME")))
+
+      - name: Resolve conflicts and push merge commit to PR branch
+        run: |
+          set -x
+          git fetch origin master "$PR1146_BRANCH"
+          MASTER_SHA=$(git rev-parse origin/master)
+          if [ "$MASTER_SHA" != "$MASTER_PIN" ]; then
+            echo "::error::master moved ($MASTER_SHA vs pinned $MASTER_PIN) - abort"
+            exit 1
+          fi
+          BRANCH_SHA=$(git rev-parse "origin/$PR1146_BRANCH")
+          if [ "$BRANCH_SHA" != "$PR1146_HEAD" ]; then
+            echo "::error::PR branch moved ($BRANCH_SHA vs pinned $PR1146_HEAD) - abort"
+            exit 1
+          fi
+          rm -rf /tmp/pr1146_wt
+          git worktree add --detach /tmp/pr1146_wt "$PR1146_HEAD"
+          cd /tmp/pr1146_wt
+          git config user.name "oracle-diag-bot"
+          git config user.email "oracle-diag-bot@users.noreply.github.com"
+          git merge --no-commit --no-ff "$MASTER_PIN" || true
+          masterpin="$MASTER_PIN" python3 - <<'PYEOF'
+          import sys
+
+          def resolve(path, pairs):
+              with open(path, 'r', encoding='utf-8') as f:
+                  text = f.read()
+              for old, new in pairs:
+                  count = text.count(old)
+                  if count != 1:
+                      print('FATAL: block occurs %d times (expected 1) in %s' % (count, path))
+                      print('--- block start ---')
+                      print(old[:200])
+                      sys.exit(1)
+                  text = text.replace(old, new)
+              if '<<<<<<<' in text or '>>>>>>>' in text:
+                  print('FATAL: conflict markers remain in %s' % path)
+                  sys.exit(1)
+              with open(path, 'w', encoding='utf-8') as f:
+                  f.write(text)
+              print('RESOLVED %s (%d blocks)' % (path, len(pairs)))
+
+          WALL = '''<<<<<<< HEAD
+          #include "cfdx/physics/wall_face_reconstruction.h"
+          =======
+          #include "naca_momentum_trace.h"
+          #include "naca_relaxation_controls.h"
+          #include <cstdlib>
+          >>>>>>> ${masterpin}
+          '''
+          WALL_NEW = '''#include "cfdx/physics/wall_face_reconstruction.h"
+          #include "naca_momentum_trace.h"
+          #include "naca_relaxation_controls.h"
+          #include <cstdlib>
+          '''
+
+          CFG = '''<<<<<<< HEAD
+              c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
+              c.nonlinear_retry.reject_severe_physical_growth=growth_guard;
+          =======
+              c.coupling.alpha_u=0.6; c.coupling.alpha_p=0.25;
+              cfdx::validation::apply_naca_relaxation_ab(c);
+              // A/B only: the default NACA qualification is unchanged.
+              if (const char* value = std::getenv("CFDX_NACA_SKEW_GRADIENT")) {
+                  if (std::string(value) != "1")
+                      throw std::invalid_argument("CFDX_NACA_SKEW_GRADIENT must be 1");
+                  c.pressure_skew_corrected_gradient = true;
+              }
+              // Experimental A/B only: the normal production and CI path is unchanged.
+              if (const char* line_search = std::getenv("CFDX_NACA_PRESSURE_LINE_SEARCH")) {
+                  if (std::string(line_search) != "1")
+                      throw std::invalid_argument("CFDX_NACA_PRESSURE_LINE_SEARCH must be 1");
+                  c.pressure_continuity_line_search.enabled = true;
+              }
+
+              // A/B only: TVD is an existing bounded CFDX convection scheme. Keep the
+              // unchanged UPWIND reference for all default NACA qualification gates.
+          >>>>>>> ${masterpin}
+          '''
+          CFG_NEW = '''    c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
+              c.nonlinear_retry.reject_severe_physical_growth=growth_guard;
+              cfdx::validation::apply_naca_relaxation_ab(c);
+              // A/B only: the default NACA qualification is unchanged.
+              if (const char* value = std::getenv("CFDX_NACA_SKEW_GRADIENT")) {
+                  if (std::string(value) != "1")
+                      throw std::invalid_argument("CFDX_NACA_SKEW_GRADIENT must be 1");
+                  c.pressure_skew_corrected_gradient = true;
+              }
+              // Experimental A/B only: the normal production and CI path is unchanged.
+              if (const char* line_search = std::getenv("CFDX_NACA_PRESSURE_LINE_SEARCH")) {
+                  if (std::string(line_search) != "1")
+                      throw std::invalid_argument("CFDX_NACA_PRESSURE_LINE_SEARCH must be 1");
+                  c.pressure_continuity_line_search.enabled = true;
+              }
+
+              // A/B only: TVD is an existing bounded CFDX convection scheme. Keep the
+              // unchanged UPWIND reference for all default NACA qualification gates.
+          '''
+
+          MAIN = '''<<<<<<< HEAD
+              // Isolated quantitative r24/r36/r48/r72 experiment. The complete 3-grid
+              // qualification remains separate and may not be promoted by this mode.
+              if (argc >= 2 && std::string(argv[1]) == "--single") {
+                  if (argc != 6)
+                      throw std::invalid_argument(
+                          "usage: test_naca0012_qualification --single mesh.h5 alpha_u alpha_p max_iterations");
+                  const auto alpha_u = std::stod(argv[3]);
+                  const auto alpha_p = std::stod(argv[4]);
+                  const auto maxit = static_cast<std::size_t>(std::stoull(argv[5]));
+                  if (!(std::isfinite(alpha_u) && alpha_u > 0. && alpha_u <= 1. &&
+                        std::isfinite(alpha_p) && alpha_p > 0. && alpha_p <= 1. &&
+                        maxit > 0))
+                      throw std::invalid_argument("invalid NACA diagnostic continuation controls");
+                  (void)run(argv[2],64,true,alpha_u,alpha_p,maxit);
+                  return 0;
+              }
+          =======
+              try {
+          >>>>>>> ${masterpin}
+          '''
+          MAIN_NEW = '''    // Isolated quantitative r24/r36/r48/r72 experiment. The complete 3-grid
+              // qualification remains separate and may not be promoted by this mode.
+              // argc==6 dispatch preserves the 3-arg --single replay defined below.
+              if (argc == 6 && std::string(argv[1]) == "--single") {
+                  if (argc != 6)
+                      throw std::invalid_argument(
+                          "usage: test_naca0012_qualification --single mesh.h5 alpha_u alpha_p max_iterations");
+                  const auto alpha_u = std::stod(argv[3]);
+                  const auto alpha_p = std::stod(argv[4]);
+                  const auto maxit = static_cast<std::size_t>(std::stoull(argv[5]));
+                  if (!(std::isfinite(alpha_u) && alpha_u > 0. && alpha_u <= 1. &&
+                        std::isfinite(alpha_p) && alpha_p > 0. && alpha_p <= 1. &&
+                        maxit > 0))
+                      throw std::invalid_argument("invalid NACA diagnostic continuation controls");
+                  (void)run(argv[2],64,true,alpha_u,alpha_p,maxit);
+                  return 0;
+              }
+              try {
+          '''
+
+          resolve('tests/validation/test_naca0012_wall_shear_audit.cpp', [(WALL, WALL_NEW)])
+          resolve('tests/validation/test_naca0012_geometry.cpp', [(CFG, CFG_NEW), (MAIN, MAIN_NEW)])
+          print('ALL CONFLICTS RESOLVED')
+
+          PYEOF
+          git mv docs/audits/26-globalisation-simple-retry-et-faces-de-paroi.md docs/audits/27-globalisation-simple-retry-et-faces-de-paroi.md
+          git add -A
+          if git status --porcelain | grep -Eq '^(UU|AA|DU|UD|AU|UA|DD)'; then echo "::error::unmerged paths remain"; exit 1; fi
+          git commit -m "Merge master 2bd250ac into fix/p0-p1-physical-guards-wall-forces (resolve wall-shear includes + geometry config/main; renumber fiche 26->27)"
+          NEWHEAD=$(git rev-parse HEAD)
+          {
+            echo "new_head=$NEWHEAD"
+            git log --oneline -3
+            git diff --stat HEAD~1 HEAD | tail -5 || true
+          } > "$GITHUB_WORKSPACE/$EVID/pr1146_rm_newhead_run$GITHUB_RUN_ID.txt"
+          git push origin "HEAD:$PR1146_BRANCH"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          git diff --cached --quiet || (git commit -m "diag: pr1146 resolve-merge run $GITHUB_RUN_ID (evidence-only) [ci skip]" && (git push origin "HEAD:$GITHUB_REF_NAME" || (git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME")))
