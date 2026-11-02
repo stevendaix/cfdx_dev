@@ -1,21 +1,29 @@
 """Qt adapter for the application-level point-probe catalogue."""
-from __future__ import annotations
 
-from .application import Application, ApplicationStateChanged
-from .application.commands import ConfigureProbes
-from .probe import Probe, ProbeCatalog, ProbeField
+from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QHBoxLayout,
     QComboBox,
+    QFileDialog,
+    QGroupBox,
+    QHBoxLayout,
     QHeaderView,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
+
+from .application import Application, ApplicationStateChanged
+from .application.commands import ConfigureProbes
+from .probe import Probe, ProbeCatalog, ProbeField
+from .probe_plot import create_probe_plot, update_probe_plot
+from .probe_validation import ProbeSeries
 
 _FIELD_CHOICES = [field.cli for field in ProbeField]
 
@@ -44,11 +52,43 @@ class ProbesPanel(QWidget):
         self._remove_button = QPushButton("Remove")
         self._remove_button.clicked.connect(self._remove_selected)
         self._remove_button.setEnabled(False)
-        self._table.selectionModel().selectionChanged.connect(self._on_selection_changed)
+        self._table.selectionModel().selectionChanged.connect(
+            self._on_selection_changed
+        )
 
         self._apply_button = QPushButton("Apply to case")
         self._apply_button.setEnabled(False)
         self._apply_button.clicked.connect(self._apply)
+
+        self._load_results_button = QPushButton("Load results CSV…")
+        self._load_results_button.clicked.connect(self._load_results)
+        self._export_results_button = QPushButton("Export results CSV…")
+        self._export_results_button.setEnabled(False)
+        self._export_results_button.clicked.connect(self._export_results)
+        self._results_summary = QLabel("No probe results loaded")
+        self._results_summary.setObjectName("workbench.probes.results_summary")
+        self._results_summary.setProperty("role", "secondary")
+        self._loaded_probe_series: tuple[ProbeSeries, ...] = ()
+        self._plot_field_selector = QComboBox()
+        self._plot_field_selector.setObjectName("workbench.probes.plot_field")
+        self._plot_field_selector.setEnabled(False)
+        self._plot_axis_selector = QComboBox()
+        self._plot_axis_selector.setObjectName("workbench.probes.plot_axis")
+        self._plot_axis_selector.addItem("Physical time", "time")
+        self._plot_axis_selector.addItem("Iteration", "iteration")
+        self._plot_axis_selector.currentIndexChanged.connect(self._redraw_probe_plot)
+        self._plot_probe_list = QListWidget()
+        self._plot_probe_list.setObjectName("workbench.probes.plot_series")
+        self._plot_probe_list.setMaximumHeight(100)
+        self._plot_probe_list.itemChanged.connect(self._redraw_probe_plot)
+        try:
+            self._probe_plot = create_probe_plot()
+        except RuntimeError as exc:
+            self._probe_plot = None
+            self._probe_plot_unavailable = QLabel(str(exc))
+            self._probe_plot_unavailable.setWordWrap(True)
+        else:
+            self._probe_plot_unavailable = None
 
         self._dirty = False
 
@@ -58,7 +98,30 @@ class ProbesPanel(QWidget):
 
         layout = QVBoxLayout(self)
         layout.addLayout(controls)
+        results_controls = QHBoxLayout()
+        results_controls.addWidget(self._load_results_button)
+        results_controls.addWidget(self._export_results_button)
+        results_controls.addWidget(self._results_summary, 1)
+        layout.addLayout(results_controls)
+        plot_controls = QHBoxLayout()
+        plot_controls.addWidget(QLabel("Field / unit"))
+        plot_controls.addWidget(self._plot_field_selector, 1)
+        plot_controls.addWidget(QLabel("X axis"))
+        plot_controls.addWidget(self._plot_axis_selector)
+        self._plot_group = QGroupBox("Interactive probe history")
+        plot_layout = QVBoxLayout(self._plot_group)
+        plot_layout.addLayout(plot_controls)
+        plot_layout.addWidget(self._plot_probe_list)
+        if self._probe_plot is not None:
+            plot_layout.addWidget(self._probe_plot, 1)
+        else:
+            plot_layout.addWidget(self._probe_plot_unavailable)
+        layout.addWidget(self._plot_group, 2)
         layout.addWidget(self._table)
+
+        self._plot_field_selector.currentIndexChanged.connect(
+            self._populate_probe_choices
+        )
 
         self.application.events.subscribe(ApplicationStateChanged, self._refresh)
         self._refresh()
@@ -98,7 +161,9 @@ class ProbesPanel(QWidget):
         self._set_dirty(True)
 
     def _on_selection_changed(self) -> None:
-        self._remove_button.setEnabled(bool(self._table.selectionModel().selectedRows()))
+        self._remove_button.setEnabled(
+            bool(self._table.selectionModel().selectedRows())
+        )
 
     def _set_dirty(self, dirty: bool) -> None:
         self._dirty = dirty
@@ -118,7 +183,9 @@ class ProbesPanel(QWidget):
             field_token = combo.currentText() if combo is not None else ""
             if not name or field_token not in _FIELD_CHOICES:
                 continue
-            catalog.add(Probe(name=name, x=x, y=y, z=z, field=ProbeField.from_cli(field_token)))
+            catalog.add(
+                Probe(name=name, x=x, y=y, z=z, field=ProbeField.from_cli(field_token))
+            )
         try:
             self.application.execute(ConfigureProbes(catalog))
         except ValueError as exc:
@@ -126,3 +193,122 @@ class ProbesPanel(QWidget):
             if parent is not None and hasattr(parent, "statusBar"):
                 parent.statusBar().showMessage(f"Probes: {exc}")
         self._set_dirty(False)
+
+    def _load_results(self) -> None:
+        """Load a solver probe CSV through the shared application contract."""
+        source, _selected_filter = QFileDialog.getOpenFileName(
+            self,
+            "Load probe results",
+            "",
+            "CFDX probe CSV (*.csv);;All files (*)",
+        )
+        if not source:
+            return
+        self._loaded_probe_series = ()
+        self._export_results_button.setEnabled(False)
+        self._results_summary.setText("No probe results loaded")
+        self._populate_probe_plot_controls()
+        try:
+            series = self.application.read_probe_results(source)
+        except (OSError, ValueError) as exc:
+            self._show_results_message(f"Could not load probe results: {exc}")
+            return
+        self._loaded_probe_series = series
+        self._populate_probe_plot_controls()
+        sample_count = sum(len(probe.samples) for probe in series)
+        iterations = [sample.iteration for probe in series for sample in probe.samples]
+        interval = (
+            f"iterations {min(iterations)}–{max(iterations)}"
+            if iterations
+            else "no samples"
+        )
+        probe_label = "probe" if len(series) == 1 else "probes"
+        self._results_summary.setText(
+            f"{len(series)} {probe_label} · {sample_count} samples · {interval}"
+        )
+        self._export_results_button.setEnabled(bool(series))
+        self._show_results_message(f"Loaded probe results: {source}")
+
+    def _probe_group(self, probe: ProbeSeries) -> tuple[str, str]:
+        return (probe.field or "value", probe.unit or "")
+
+    def _populate_probe_plot_controls(self) -> None:
+        groups = sorted(
+            {self._probe_group(probe) for probe in self._loaded_probe_series}
+        )
+        self._plot_field_selector.blockSignals(True)
+        self._plot_field_selector.clear()
+        for field, unit in groups:
+            label = f"{field} ({unit})" if unit else field
+            self._plot_field_selector.addItem(label, (field, unit))
+        self._plot_field_selector.setEnabled(
+            bool(groups) and self._probe_plot is not None
+        )
+        self._plot_field_selector.blockSignals(False)
+        self._populate_probe_choices()
+
+    def _populate_probe_choices(self, *_args: object) -> None:
+        group = self._plot_field_selector.currentData()
+        self._plot_probe_list.blockSignals(True)
+        self._plot_probe_list.clear()
+        if group is not None:
+            for probe in self._loaded_probe_series:
+                if self._probe_group(probe) != tuple(group):
+                    continue
+                item = QListWidgetItem(probe.name)
+                item.setData(Qt.ItemDataRole.UserRole, probe.name)
+                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                item.setCheckState(Qt.CheckState.Checked)
+                self._plot_probe_list.addItem(item)
+        self._plot_probe_list.setEnabled(self._plot_probe_list.count() > 0)
+        self._plot_probe_list.blockSignals(False)
+        self._redraw_probe_plot()
+
+    def _redraw_probe_plot(self, *_args: object) -> None:
+        if self._probe_plot is None:
+            return
+        group = self._plot_field_selector.currentData()
+        selected = {
+            self._plot_probe_list.item(row).data(Qt.ItemDataRole.UserRole)
+            for row in range(self._plot_probe_list.count())
+            if self._plot_probe_list.item(row).checkState() == Qt.CheckState.Checked
+        }
+        visible = tuple(
+            probe
+            for probe in self._loaded_probe_series
+            if group is not None
+            and self._probe_group(probe) == tuple(group)
+            and probe.name in selected
+        )
+        update_probe_plot(
+            self._probe_plot,
+            visible,
+            x_axis=self._plot_axis_selector.currentData() or "time",
+        )
+
+    def _export_results(self) -> None:
+        """Write the loaded history using the canonical native CSV schema."""
+        if not self._loaded_probe_series:
+            self._show_results_message("Load probe results before exporting")
+            return
+        destination, _selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export probe results",
+            "cfdx-probes.csv",
+            "CFDX probe CSV (*.csv);;All files (*)",
+        )
+        if not destination:
+            return
+        try:
+            exported = self.application.export_probe_results(
+                destination, self._loaded_probe_series
+            )
+        except (OSError, ValueError) as exc:
+            self._show_results_message(f"Could not export probe results: {exc}")
+            return
+        self._show_results_message(f"Exported probe results: {exported}")
+
+    def _show_results_message(self, message: str) -> None:
+        parent = self.window()
+        if parent is not None and hasattr(parent, "statusBar"):
+            parent.statusBar().showMessage(message)

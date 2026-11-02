@@ -95,6 +95,19 @@ The GUI exposes the same persistence contract as the headless API:
 There is no GUI-specific checkpoint format. A modified case is marked in the
 window and the GUI asks whether to save before Run or Close.
 
+## Probe results
+
+The Probes panel can load and re-export native `cfdx-probe-csv v1` histories.
+It reports the probe count, sample count and iteration range after loading,
+then plots the selected histories interactively. Curves can be toggled
+individually, grouped by field and unit, and displayed against physical time or
+iteration; the plot supports normal pan and zoom interactions. Reading and
+writing use the shared Application API and canonical CSV schema. The current
+native output contract supplies completed CSV histories, not a live probe
+stream during solver execution, so the plot is not advertised as real-time.
+The GUI does not introduce a second format or treat a CSV round-trip as solver
+qualification.
+
 ## Execution controls
 
 Run, Pause, Resume and Stop are routed through ExecutionController.
