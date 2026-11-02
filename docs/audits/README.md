@@ -47,6 +47,7 @@ Ce dossier **ne duplique aucun registre existant** (cf. `docs/validation/CFDX_VV
 | [11-rayonnement.md](11-rayonnement.md) | Rayonnement : Rosseland, P1, S2S, DOM | APPROUVÉE (2026-10-12, PR #861) ; reste requis (Phase 3, audit du code Phase 12) |
 | [12-parallelisme-gpu-ooc.md](12-parallelisme-gpu-ooc.md) | Parité CPU/MPI/GPU/OOC (Règle d’Or 4) | APPROUVÉE (2026-10-12, PR #861) ; reste requis (Phases 6–7, N13) |
 | [25-vof-curvature.md](25-vof-curvature.md) | Courbure d’interface VOF par divergence de la normale (F27) | PARTIEL — contrat du helper seulement ; intégration de production et qualification géométrique en attente |
+| [26-continuation-adaptative-naca.md](26-continuation-adaptative-naca.md) | Pilotage adaptatif NACA (CFL, non-orthogonalité, ordre) | DRAFT — contrôleur autonome ; intégration solveur et qualification en attente |
 | [20-distance-geometrique-bvh.md](20-distance-geometrique-bvh.md) | Distance géométrique aux parois, intersections rayon-triangle et accélération BVH | DRAFT (2026-10-19, PR #979) ; équivalence exhaustive et benchmark à qualifier |
 
 Les fiches à venir (VOF/PLIC, maillage dynamique, FSI, GUI) seront créées **avant** toute implémentation correspondante (Phase 4 de la roadmap). Les fiches 09–12 couvrant les Phases 1–3 du Plan Directeur sont approuvées (2026-10-12, PR #861) : l'audit du code contre chaque fiche reste requis avant toute promotion multiphysique (statuts BLOCKED du registre de qualification).
