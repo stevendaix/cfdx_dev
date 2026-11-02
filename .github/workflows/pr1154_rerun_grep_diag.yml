@@ -1,0 +1,68 @@
+name: PR 1154 rerun-grep oracle round2 (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Round 2 evidence-only : le rerun log de l'oracle round 1 (run 41450836300,
+# 21 MB) est trop gros pour la page job. Ce workflow checkout la branche diag,
+# grep les lignes d'assertion en echec du test_thermal_driver_vv dans
+# diag-evidence/logs/pr1154_fastctest_rerun_run41450836300.log et commite
+# un extrait compact. Aucun build, aucune modification de branche PR.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1154_rerun_grep_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1154-rerun-grep-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+
+jobs:
+  grep:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Grep failure lines from round1 rerun log
+        run: |
+          mkdir -p "$EVID"
+          SRC="$EVID/pr1154_fastctest_rerun_run41450836300.log"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "source=pr1154_fastctest_rerun_run41450836300.log"
+          } > "$EVID/pr1154_rerungrep_meta_run$GITHUB_RUN_ID.txt"
+          {
+            echo "== tail 60 =="
+            tail -n 60 "$SRC"
+            echo "== assertion-like lines (first 120) =="
+            grep -n -E 'FAILED|Failed|failure|Expected|expected|actual|Actual|assert|Assert|MISMATCH|mismatch|case_|Case |Run [0-9]+|PASS|FAIL[ :]' "$SRC" | head -n 120
+            echo "== last FAIL block (context 40 lines before each FAIL) =="
+            grep -n -E 'FAIL|Failed' "$SRC" | tail -n 5 | while IFS=: read -r ln rest; do
+              start=$(( ln > 40 ? ln - 40 : 1 ))
+              end=$(( ln + 10 ))
+              echo "---- lines $start-$end ----"
+              sed -n "$start,$end p" "$SRC"
+            done
+          } > "$EVID/pr1154_rerungrep_extract_run$GITHUB_RUN_ID.log"
+          cat "$EVID/pr1154_rerungrep_extract_run$GITHUB_RUN_ID.log"
+
+      - name: Commit evidence
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1154 rerun-grep round2 run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            git push origin "HEAD:$GITHUB_REF_NAME"
+          fi
