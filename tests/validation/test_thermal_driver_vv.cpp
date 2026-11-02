@@ -615,6 +615,8 @@ int main()
         EXPECT_NEAR(T_b(1),320.0,1e-8);
         EXPECT_TRUE(result.regions.at("bar_a").converged);
         EXPECT_TRUE(result.regions.at("bar_b").converged);
+        EXPECT_TRUE(result.regions.at("bar_a").balance.boundary_flux_magnitude > 79.0);
+        EXPECT_TRUE(result.regions.at("bar_b").balance.boundary_flux_magnitude > 79.0);
         EXPECT_TRUE(result.regions.at("bar_a").balance.normalized_residual < 1e-9);
         EXPECT_TRUE(result.regions.at("bar_b").balance.normalized_residual < 1e-9);
         EXPECT_TRUE(result.interface_flux_imbalance < 1e-9);
