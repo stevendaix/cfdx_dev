@@ -11,11 +11,11 @@
   "physics": {
     "model": "Incompressible Boussinesq DNS; vertical plane channel; heated wall and cooled wall; periodic axial and spanwise directions; no-slip, impermeable walls.",
     "geometry": {
-      "height_over_delta": 2,
       "axial_length_over_delta": "2.5*pi",
       "spanwise_width_over_delta": "pi",
       "heated_wall_dimensionless_temperature": 0.5,
-      "cooled_wall_dimensionless_temperature": -0.5
+      "cooled_wall_dimensionless_temperature": -0.5,
+      "channel_height_over_delta": 1
     },
     "dimensionless": {
       "bulk_reynolds": 4328,
@@ -103,6 +103,24 @@
         0.00000855,
         0.00000863,
         0.00000893
+      ]
+    },
+    "wall_shear_stress_normalization": "Dimensionless tau_w/(rho*Ub^2), as used by the DNS nondimensionalization; do not compare to dimensional Pa without restoring rho and Ub.",
+    "relative_wall_shear_change_percent": {
+      "heated_aiding": [
+        5.3,
+        11.6,
+        21
+      ],
+      "cooled_opposing": [
+        -8.3,
+        -11.6,
+        -19.9
+      ],
+      "grashof_cases": [
+        640000,
+        950000,
+        1600000
       ]
     }
   },
