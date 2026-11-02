@@ -45,6 +45,7 @@ def validate_case(case_id: str) -> dict[str, Any]:
     if case_id == "TH-01":
         physics = data["physics"]
         require(physics["re_tau_targets"] == [180, 395, 590], "TH-01: Re_tau matrix mismatch")
+        require(physics["re_tau_nominal_targets"] == [180, 395, 590], "TH-01: nominal Re_tau labels mismatch")
         require(len(data["reference"]["datasets"]) == 3, "TH-01: missing DNS datasets")
         required = {"mean profiles", "Reynolds-stress profiles", "spectra", "two-point correlations"}
         require(required.issubset(set(data["reference"]["data_contents"])),
@@ -77,6 +78,8 @@ def validate_case(case_id: str) -> dict[str, Any]:
                 "TH-03: mean-velocity uncertainty mismatch")
         require(close(data["qoi"]["uncertainty"]["reynolds_stress_relative"], 0.12),
                 "TH-03: Reynolds-stress uncertainty mismatch")
+        require(close(data["qoi"]["uncertainty"]["pressure_coefficient_absolute"], 0.0002),
+                "TH-03: pressure-coefficient uncertainty mismatch")
         require(close(data["qoi"]["reference_targets"]["reattachment_x_over_h"], 6.26),
                 "TH-03: reattachment reference mismatch")
         require(close(data["qoi"]["reference_targets"]["reattachment_uncertainty_absolute"], 0.10),
@@ -88,6 +91,9 @@ def validate_case(case_id: str) -> dict[str, Any]:
 
     elif case_id == "TH-07":
         dim = data["physics"]["dimensionless"]
+        require(dim["bulk_reynolds"] == 4328, "TH-07: bulk Reynolds number mismatch")
+        require(close(dim["prandtl"], 0.71), "TH-07: Prandtl number mismatch")
+        require(dim["grashof_cases"] == [0, 640000, 950000, 1600000], "TH-07: Grashof matrix mismatch")
         re_b = float(dim["bulk_reynolds"])
         gr_values = [float(v) for v in dim["grashof_cases"]]
         ri_values = [float(v) for v in dim["richardson_cases"]]
@@ -126,6 +132,12 @@ def validate_case(case_id: str) -> dict[str, Any]:
                 "TH-08: reported spectral peak mismatch")
         require(data["measurement_uncertainty"]["normalized_mean_temperature_absolute"] == 0.03,
                 "TH-08: normalized temperature uncertainty mismatch")
+        require(data["qoi"]["velocity_stations"]["ldv_downstream_x_over_D"] == [2.6, 6.6],
+                "TH-08: LDV station matrix mismatch")
+        require(data["qoi"]["velocity_stations"]["piv_downstream_x_over_D"] == [1.6, 2.6, 3.6, 4.6],
+                "TH-08: PIV station matrix mismatch")
+        require(close(data["measurement_uncertainty"]["temperature_rms_relative"], 0.08),
+                "TH-08: RMS temperature uncertainty mismatch")
         derived["bulk_velocity_main_m_s"] = main_u
         derived["bulk_velocity_branch_m_s"] = branch_u
         derived["fully_mixed_temperature_star"] = 0.38
