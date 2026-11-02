@@ -160,7 +160,8 @@ struct MatrixCharacteristics {
     bool numerically_symmetric = false;
     bool diagonally_dominant = false;
     bool strongly_scaled = false;
-    bool anisotropic = false;
+    // Large diagonal coefficient spread; this is not a geometric anisotropy metric.
+    bool large_diagonal_dynamic_range = false;
     bool saddle_point = false;
 };
 
@@ -212,7 +213,7 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
         case LinearProblemKind::Diffusion:
             if (characteristics.numerically_symmetric &&
                 characteristics.diagonally_dominant &&
-                !characteristics.anisotropic &&
+                !characteristics.large_diagonal_dynamic_range &&
                 !characteristics.strongly_scaled) {
                 plan.krylov = KrylovModel::CG;
                 plan.preconditioner = equations < 24 ? PreconditionerModel::Jacobi
@@ -227,8 +228,8 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
                 plan.krylov = KrylovModel::GMRES;
                 plan.preconditioner = equations < 24 ? PreconditionerModel::Jacobi
                                                      : PreconditionerModel::ILU0;
-                plan.reason = (characteristics.anisotropic || characteristics.strongly_scaled)
-                    ? "elliptic matrix is anisotropic or strongly scaled: GMRES with a nonsymmetric-safe preconditioner"
+                plan.reason = (characteristics.large_diagonal_dynamic_range || characteristics.strongly_scaled)
+                    ? "elliptic matrix has a large diagonal dynamic range or coefficient spread: GMRES with a nonsymmetric-safe preconditioner"
                     : "elliptic matrix lacks a verified SPD signature: GMRES with a nonsymmetric-safe preconditioner";
             }
             break;
@@ -257,8 +258,8 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
             break;
     }
 
-    if (characteristics.anisotropic)
-        plan.reason += "; anisotropy detected — dedicated AMG anisotropy qualification remains required";
+    if (characteristics.large_diagonal_dynamic_range)
+        plan.reason += "; large diagonal dynamic range detected — AMG qualification remains required";
     if (characteristics.strongly_scaled)
         plan.reason += "; coefficient scaling detected";
 
