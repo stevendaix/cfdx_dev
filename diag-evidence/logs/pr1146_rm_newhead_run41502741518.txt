@@ -1,0 +1,9 @@
+new_head=9bec0637d7d3a3e8a0921204d5aba4cc848a2a40
+9bec0637 Merge master 2bd250ac into fix/p0-p1-physical-guards-wall-forces (resolve wall-shear includes + geometry config/main; renumber fiche 26->27)
+2bd250ac Merge pull request #1160 from stevendaix/feat/n256-continuation-controller
+f06c9e2c Merge branch 'master' into feat/n256-continuation-controller
+ tests/validation/test_wall_face_traction_mms.cpp   |  44 ++
+ tests/validation/test_wall_shear_quadratic_fit.cpp |  73 ++
+ tests/validation/test_wls_intrinsic_dimension.cpp  | 127 ++++
+ tests/validation/test_wls_planar_field.cpp         | 157 ++++
+ 139 files changed, 14042 insertions(+), 353 deletions(-)
