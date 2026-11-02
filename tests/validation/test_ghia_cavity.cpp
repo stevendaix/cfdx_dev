@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <cstdlib>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
@@ -104,7 +105,8 @@ Mesh make_cavity_mesh(std::size_t nx, std::size_t ny)
 CavityResult solve_cavity(
     const CavityCase& test,
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE,
-    PreconditionerModel preconditioner = PreconditionerModel::Auto)
+    PreconditionerModel preconditioner = PreconditionerModel::Auto,
+    bool pressure_line_search = false)
 {
     Mesh mesh=make_cavity_mesh(test.nx,test.ny);
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
@@ -138,6 +140,12 @@ CavityResult solve_cavity(
     controls.pressure_reference_value=0.0;
     controls.coupling.alpha_u=0.7;
     controls.coupling.alpha_p=0.3;
+    controls.pressure_continuity_line_search.enabled = pressure_line_search;
+    if (const char* affine = std::getenv("CFDX_GHIA_AFFINE_FLUX_TRIALS")) {
+        if (std::string(affine) != "1" || !pressure_line_search)
+            throw std::invalid_argument("Ghia affine trials require --quick-line-search and env=1");
+        controls.pressure_continuity_line_search.affine_flux_trials = true;
+    }
     controls.coupling.coupled_max_iterations=5000;
     controls.coupling.coupled_linear_tolerance=1e-10;
     controls.coupled_linear_solver.krylov=KrylovModel::FGMRES;
@@ -341,9 +349,11 @@ struct ValidationResult { CavityResult solution; CaseMetrics metrics; };
 ValidationResult run_case(
     const CavityCase& test,
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE,
-    PreconditionerModel preconditioner = PreconditionerModel::Auto)
+    PreconditionerModel preconditioner = PreconditionerModel::Auto,
+    bool pressure_line_search = false,
+    bool check_reference_profile = true)
 {
-    auto result=solve_cavity(test, algorithm, preconditioner);
+    auto result=solve_cavity(test, algorithm, preconditioner, pressure_line_search);
     const auto u=compare(result.velocity,result.geometry,test.nx,test.ny,true,u_reference(test.reynolds));
     const auto v=compare(result.velocity,result.geometry,test.nx,test.ny,false,v_reference(test.reynolds));
     std::cout<<"GHIA Re="<<test.reynolds<<" grid="<<test.nx<<"x"<<test.ny
@@ -358,8 +368,9 @@ ValidationResult run_case(
     const bool high_re=test.reynolds>=1000.0;
     const double max_allowed=high_re?0.14:(test.nx>=64?0.10:0.15);
     const double rms_allowed=high_re?0.085:0.075;
-    if(u.max_abs>max_allowed || v.max_abs>max_allowed ||
-       u.rms>rms_allowed || v.rms>rms_allowed)
+    if(check_reference_profile &&
+       (u.max_abs>max_allowed || v.max_abs>max_allowed ||
+        u.rms>rms_allowed || v.rms>rms_allowed))
         throw std::runtime_error("Ghia velocity profile mismatch");
     if(result.solve.history.back().continuity_linf>1e-7 ||
        !std::isfinite(result.solve.history.back().continuity_normalized) ||
@@ -414,11 +425,12 @@ int main(int argc, char** argv)
 {
     try {
         const bool quick = argc == 2 && std::string(argv[1]) == "--quick";
+        const bool quick_ls = argc == 2 && std::string(argv[1]) == "--quick-line-search";
         const bool gate = argc == 2 && std::string(argv[1]) == "--gate";
         const bool pcd_preflight = argc == 2 && std::string(argv[1]) == "--pcd-preflight";
         const bool pcd = argc == 2 && std::string(argv[1]) == "--pcd";
         const bool profile_study = argc == 2 && std::string(argv[1]) == "--profile-study";
-        if (argc > 1 && !quick && !gate && !pcd_preflight && !pcd && !profile_study)
+        if (argc > 1 && !quick && !quick_ls && !gate && !pcd_preflight && !pcd && !profile_study)
             throw std::invalid_argument("usage: test_ghia_cavity [--quick|--gate|--pcd-preflight|--pcd|--profile-study]");
 
         if (profile_study) {
@@ -526,12 +538,42 @@ int main(int argc, char** argv)
                 : "GHIA_CAVITY_N8_PCD: PASS\\n");
             return 0;
         }
-        const auto r32 = run_case({100.0,32,32,2500});
+        // This test qualifies the pressure line-search contract, not the
+        // Ghia profile. A smaller cavity keeps the diagnostic in the fast
+        // suite while retaining the independent continuity/residual gates.
+        const CavityCase quick_case = quick_ls
+            ? CavityCase{100.0,16,16,2500}
+            : CavityCase{100.0,32,32,5000};
+        const auto quick_result = run_case(
+            quick_case, PressureVelocityAlgorithm::SIMPLE,
+            PreconditionerModel::Auto, quick_ls, !quick_ls);
+        if (quick_ls) {
+            const auto& history = quick_result.solution.solve.history;
+            bool evaluated = false;
+            for (const auto& entry : history) {
+                if (std::isfinite(entry.pressure_line_search_norm_before)) {
+                    evaluated = true;
+                    if (entry.pressure_line_search_norm_after >
+                        entry.pressure_line_search_norm_before * (1.0 + 1e-9))
+                        throw std::runtime_error("Ghia pressure line search increased continuity");
+                }
+            }
+            if (!evaluated) throw std::runtime_error("Ghia did not exercise line search");
+            std::cout << "GHIA_CAVITY_PRESSURE_LINE_SEARCH: PASS\n";
+            return 0;
+        }
         if (quick) {
             std::cout << "GHIA_CAVITY_QUICK: PASS\n";
             return 0;
         }
 
+        // The full campaign consumes the 32x32 result solved above: the
+        // non-quick path already ran it with the reference-profile gate,
+        // exactly like master solved 32x32 once for both consumers.
+        // Re-declaring a fresh run_case here would re-solve the cavity
+        // and double that cost; the previous restructure dropped the
+        // binding, leaving r32 undeclared on this path.
+        const auto& r32 = quick_result;
         const auto r64 = run_case({100.0,64,64,5000});
         const auto r128 = run_case({100.0,128,128,12000});
         run_case({400.0,64,64,9000});

@@ -99,6 +99,8 @@ def write_mesh(path: Path, points, cells, boundary_faces):
             "wall": 0,
             "airfoil": 0,
             "farfield": 7,
+            "farfield_inlet": 1,
+            "farfield_outlet": 2,
             "front": 6,
             "back": 6,
         }.get(name, 7)
@@ -289,28 +291,55 @@ def naca_o_grid(
     radius: float = 20.0,
     n_spanwise: int = 1,
     span: float = 1.0,
+    split_farfield: bool = False,
+    radial_power: float = 1.8,
 ):
-    """Build the current deterministic transfinite-blend NACA0012 O-grid."""
+    """Build the deterministic transfinite-blend NACA0012 O-grid.
+
+    Splitting farfield by the sign of the outer-face x-normal is an
+    experimental A/B setup; the standard qualification mesh is unchanged.
+    """
     if n_surface < 2:
         raise ValueError("n_surface must be at least 2")
     if n_radial < 1:
         raise ValueError("n_radial must be positive")
     if not math.isfinite(radius) or radius <= 0.0:
         raise ValueError("radius must be finite and positive")
+    if not math.isfinite(radial_power) or not 1.0 <= radial_power <= 3.0:
+        raise ValueError("radial_power must be finite in [1, 3]")
 
     surf = naca0012_surface(n_surface)
     m = len(surf)
     # Parameterize the outer boundary by the same closed-loop index. The
     # surface itself is not a mesh oracle; this is only a deterministic,
     # Gmsh-free body-fitted starting mesh.
+    # Build a wall-normal first layer and blend it smoothly into the
+    # circular farfield.  The surface ordering is clockwise, so (ty, -tx)
+    # is the outward unit normal on both sides of the airfoil.
+    normals = []
+    for i in range(m):
+        x0, y0 = surf[(i - 1) % m]
+        x1, y1 = surf[(i + 1) % m]
+        tx, ty = x1 - x0, y1 - y0
+        length = math.hypot(tx, ty)
+        if not math.isfinite(length) or length <= 0.0:
+            raise ValueError("degenerate NACA0012 surface tangent")
+        normals.append((ty / length, -tx / length))
+
     pts = []
     for j in range(n_radial + 1):
         eta = j / n_radial
-        rfac = eta**1.8
+        rfac = eta**radial_power
+        normal_weight = (1.0 - eta) ** 10
         for i, (x, y) in enumerate(surf):
             theta = 2.0 * math.pi * (i + 0.5) / m
             xo, yo = radius * math.cos(theta), radius * math.sin(theta)
-            pts.append(((1 - rfac) * x + rfac * xo, (1 - rfac) * y + rfac * yo))
+            dx, dy = xo - x, yo - y
+            radial_length = math.hypot(dx, dy)
+            nx, ny = normals[i]
+            vx = (1.0 - normal_weight) * dx + normal_weight * radial_length * nx
+            vy = (1.0 - normal_weight) * dy + normal_weight * radial_length * ny
+            pts.append((x + rfac * vx, y + rfac * vy))
 
     def P(j, i):
         return j * m + (i % m)
@@ -322,6 +351,18 @@ def naca_o_grid(
 
     airfoil = [(P(0, i + 1), P(0, i)) for i in range(m)]
     farfield = [(P(n_radial, i), P(n_radial, i + 1)) for i in range(m)]
+    if split_farfield:
+        inflow, outflow = [], []
+        for edge in farfield:
+            # On the circular outer boundary the x-coordinate of the face
+            # midpoint has the same sign as the outward normal x-component.
+            x_mid = 0.5 * (pts[edge[0]][0] + pts[edge[1]][0])
+            (outflow if x_mid >= 0.0 else inflow).append(edge)
+        if not inflow or not outflow or len(inflow) + len(outflow) != len(farfield):
+            raise RuntimeError("NACA farfield split produced invalid patches")
+        outer_patches = {"farfield_inlet": inflow, "farfield_outlet": outflow}
+    else:
+        outer_patches = {"farfield": farfield}
     # Periodic seams are interior topology because i is wrapped; the only
     # physical boundaries are the airfoil and farfield.
     nodes2d = pts
@@ -330,7 +371,7 @@ def naca_o_grid(
         cells2d,
         {
             "airfoil": airfoil,
-            "farfield": farfield,
+            **outer_patches,
             "_front_cells": cells2d,
         },
         layers=n_spanwise,
@@ -338,14 +379,18 @@ def naca_o_grid(
     )
 
 
-def naca_o_grid_quality(n_surface: int, n_radial: int, radius: float = 20.0):
+def naca_o_grid_quality(
+    n_surface: int, n_radial: int, radius: float = 20.0, radial_power: float = 1.8
+):
     """Return geometric quality indicators for the 2-D NACA0012 O-grid.
 
     These metrics are diagnostics, not a CFD qualification or a force oracle.
     Cell area is evaluated from each quadrilateral's polygon; radial spacing
     is measured between corresponding nodes on adjacent layers.
     """
-    points, _cells, _ = naca_o_grid(n_surface, n_radial, radius)
+    points, _cells, _ = naca_o_grid(
+        n_surface, n_radial, radius, radial_power=radial_power
+    )
     points = np.asarray(points, dtype=np.float64)
     m = 2 * n_surface + 1
     planar = points[: (n_radial + 1) * m, :2].reshape(n_radial + 1, m, 2)
@@ -428,6 +473,7 @@ def naca_o_grid_quality(n_surface: int, n_radial: int, radius: float = 20.0):
         "n_surface": int(n_surface),
         "n_radial": int(n_radial),
         "radius": float(radius),
+        "radial_power": float(radial_power),
         "cell_count": int(n_surface * 2 * n_radial + n_radial),
         "inverted_or_degenerate_cells": inverted_or_degenerate,
         "minimum_absolute_cell_area": float(np.min(np.abs(signed_areas))),
@@ -447,6 +493,17 @@ def main():
     ap.add_argument("case", choices=("channel", "bfs", "naca0012", "naca3d", "all"))
     ap.add_argument("--output-dir", type=Path, default=Path("build/validation_meshes"))
     ap.add_argument("--quick", action="store_true")
+    ap.add_argument(
+        "--naca-radial-power",
+        type=float,
+        default=1.8,
+        help="experimental O-grid radial spacing power; baseline 1.8",
+    )
+    ap.add_argument(
+        "--split-naca-farfield",
+        action="store_true",
+        help="experimental inlet/outlet outer patches; distinct mesh filenames",
+    )
     args = ap.parse_args()
 
     out = args.output_dir
@@ -463,16 +520,32 @@ def main():
         levels = ((64, 24),) if args.quick else ((64, 24), (128, 48), (256, 96))
         quality_reports = []
         for n, nr in levels:
-            p, c, b = naca_o_grid(n, nr, 20.0)
-            write_mesh(out / f"naca0012_laminar_n{n}.h5", p, c, b)
-            quality = naca_o_grid_quality(n, nr, 20.0)
+            p, c, b = naca_o_grid(
+                n,
+                nr,
+                20.0,
+                split_farfield=args.split_naca_farfield,
+                radial_power=args.naca_radial_power,
+            )
+            suffix = "_split" if args.split_naca_farfield else ""
+            if args.naca_radial_power != 1.8:
+                suffix += "_rp" + str(args.naca_radial_power).replace(".", "p")
+            write_mesh(out / f"naca0012_laminar_n{n}{suffix}.h5", p, c, b)
+            quality = naca_o_grid_quality(
+                n, nr, 20.0, radial_power=args.naca_radial_power
+            )
             quality_reports.append(quality)
             print(
                 json.dumps(
-                    {"mesh": f"naca0012_laminar_n{n}.h5", **quality}, sort_keys=True
+                    {"mesh": f"naca0012_laminar_n{n}{suffix}.h5", **quality},
+                    sort_keys=True,
                 )
             )
-        report_path = out / "naca0012_mesh_quality.json"
+        report_path = out / (
+            "naca0012_mesh_quality_split.json"
+            if args.split_naca_farfield
+            else "naca0012_mesh_quality.json"
+        )
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
             json.dumps(quality_reports, indent=2) + "\n", encoding="utf-8"

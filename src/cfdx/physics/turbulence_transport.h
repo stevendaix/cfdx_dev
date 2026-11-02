@@ -184,9 +184,16 @@ inline double turbulence_nu_t(
         const double chi3=std::pow(nt/c.molecular_viscosity,3.0);
         return nt*chi3/(chi3+std::pow(c.sa_cv1,3.0));
     }
-    case TurbulenceModel::SST:
-        if(F2<0.0 || F2>1.0) throw std::invalid_argument("SST F2 must lie in [0,1]");
-        return c.a1*k/std::max(c.a1*second,std::max(strain,0.0)*F2);
+    case TurbulenceModel::SST: {
+        if (!std::isfinite(F2) || F2 < 0.0 || F2 > 1.0 ||
+            !std::isfinite(strain) || strain < 0.0 || !std::isfinite(k) ||
+            !std::isfinite(second) || !std::isfinite(c.a1) || c.a1 <= 0.0)
+            throw std::invalid_argument("SST invalid strain, state or F2 blending factor");
+        const double nu_t = c.a1*k/std::max(c.a1*second,strain*F2);
+        if (!std::isfinite(nu_t) || nu_t < 0.0)
+            throw std::domain_error("SST non-finite eddy viscosity");
+        return nu_t;
+    }
     case TurbulenceModel::SMAGORINSKY:
         if(!(cell_volume>0.0) || !std::isfinite(cell_volume))
             throw std::invalid_argument("Smagorinsky requires positive cell volume");

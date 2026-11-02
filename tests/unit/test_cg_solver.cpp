@@ -1,6 +1,7 @@
 // M0.8-T04 — Tests for CG solver
 
 #include "cfdx/core/linalg/cg_solver.h"
+#include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
 #include "common/test_harness.h"
@@ -28,7 +29,10 @@ enum class FailurePoint { Setup, InitialApply, IterationApply, ReplacementDot };
 class FailingPreconditioner final : public Preconditioner {
 public:
     explicit FailingPreconditioner(FailurePoint point) : point_(point) {}
-    bool setup(const SparseMatrix&) override { return point_ != FailurePoint::Setup; }
+    bool setup(const SparseMatrix&) override {
+        ++setups;
+        return point_ != FailurePoint::Setup;
+    }
     bool apply(const Vector& r, Vector& z) const override {
         ++applications;
         if ((point_ == FailurePoint::InitialApply && applications == 1) ||
@@ -41,8 +45,41 @@ public:
     }
     const char* name() const override { return "Failure injection"; }
     mutable std::size_t applications = 0;
+    std::size_t setups = 0;
 private:
     FailurePoint point_;
+};
+
+class NegativeInitialPreconditioner final : public Preconditioner {
+public:
+    bool setup(const SparseMatrix& A) override {
+        size_ = A.n_rows();
+        return A.n_rows() == A.n_cols() && size_ > 0;
+    }
+    bool apply(const Vector& r, Vector& z) const override {
+        if (r.size() != size_ || z.size() != size_) return false;
+        for (std::size_t i = 0; i < size_; ++i) z(i) = -r(i);
+        return true;
+    }
+    const char* name() const override { return "NegativeInitialTest"; }
+private:
+    std::size_t size_ = 0;
+};
+
+class OverflowDotPreconditioner final : public Preconditioner {
+public:
+    bool setup(const SparseMatrix& A) override {
+        size_ = A.n_rows();
+        return A.n_rows() == A.n_cols() && size_ > 0;
+    }
+    bool apply(const Vector& r, Vector& z) const override {
+        if (r.size() != size_ || z.size() != size_) return false;
+        for (std::size_t i = 0; i < size_; ++i) z(i) = r(i) * 1.0e200;
+        return true;
+    }
+    const char* name() const override { return "OverflowDotTest"; }
+private:
+    std::size_t size_ = 0;
 };
 
 void check_preconditioner_failure_residual(FailurePoint point) {
@@ -120,6 +157,11 @@ int main() {
         EXPECT_NEAR(x(1), 0.0, 0.0);
         EXPECT_NEAR(result.residual, std::sqrt(2.0), 1e-14);
         EXPECT_NEAR(result.residual_relative, 1.0, 1e-14);
+        EXPECT_TRUE(result.diagnostics.size() == 1);
+        EXPECT_TRUE(result.diagnostics.front().iteration == 1);
+        EXPECT_TRUE(result.diagnostics.front().preconditioned_dot > 0.0);
+        EXPECT_TRUE(result.diagnostics.front().pAp < 0.0);
+        EXPECT_TRUE(!std::isfinite(result.diagnostics.front().alpha));
     });
 
     run_case("cg_solve_diagonal", []() {
@@ -163,6 +205,29 @@ int main() {
         }
     });
 
+    run_case("reusable_cg_context_rejects_empty_system", [] {
+        // The context's zero-iteration shortcut must not turn a vacuous 0x0
+        // system into a successful solve. Empty systems are rejected by the
+        // normal reusable-context preparation contract.
+        SparseMatrix A;
+        Vector b(0), x(0);
+        FailingPreconditioner pc(FailurePoint::Setup);
+        ReusableCgContext context(pc);
+        const auto result = context.solve(A, b, x, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_TRUE(pc.setups == 0);
+        EXPECT_TRUE(pc.applications == 0);
+    });
+
+    run_case("cg_rejects_empty_system", [] {
+        SparseMatrix A;
+        Vector b(0), x(0);
+        const auto result = solve_cg(A, b, x, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(result.iterations == 0);
+    });
+
     run_case("cg_already_converged", []() {
         // x = 0, b = 0 → déjà convergé.
         SparseMatrix A(2, 2);
@@ -175,6 +240,26 @@ int main() {
         auto result = solve_cg(A, b, x);
         EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
         EXPECT_TRUE(result.iterations == 0);
+    });
+
+    run_case("cg_already_converged_does_not_require_preconditioner_setup", [] {
+        // A zero true residual is already a complete solution. The solver must
+        // not reject it because a preconditioner that would otherwise fail to
+        // set up is unnecessary for a zero-iteration solve.
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+
+        Vector b(2, 0.0);
+        Vector x(2, 0.0);
+        FailingPreconditioner pc(FailurePoint::Setup);
+        const auto result = solve_cg(A, b, x, pc, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_NEAR(result.residual, 0.0, 0.0);
+        EXPECT_NEAR(result.residual_relative, 0.0, 0.0);
+        EXPECT_TRUE(pc.applications == 0);
     });
 
     run_case("cg_max_iter_reached", []() {
@@ -203,6 +288,42 @@ int main() {
         Vector x(3, 0.0);
         auto result = solve_cg(A, b, x);
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+    });
+
+    run_case("cg_nonpositive_initial_preconditioned_dot_is_reported", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+        Vector b(2, 1.0), x(2, 0.0);
+        NegativeInitialPreconditioner pc;
+        const auto result = solve_cg(A, b, x, pc, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_NEAR(result.residual, std::sqrt(2.0), 1e-14);
+        EXPECT_NEAR(result.residual_relative, 1.0, 1e-14);
+        EXPECT_TRUE(result.diagnostics.size() == 1);
+        EXPECT_TRUE(result.diagnostics.front().preconditioned_dot < 0.0);
+        EXPECT_NEAR(x(0), 0.0, 0.0);
+        EXPECT_NEAR(x(1), 0.0, 0.0);
+    });
+
+    run_case("cg_nonfinite_initial_preconditioned_dot_reports_true_residual", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 1.0);
+        A.push_back(1, 1, 1.0);
+        A.finalize();
+        Vector b(2, 1.0e100), x(2, 0.0);
+        OverflowDotPreconditioner pc;
+        const auto result = solve_cg(A, b, x, pc, 10, 1e-12);
+        EXPECT_TRUE(result.status == SolverStatus::DIVERGED);
+        EXPECT_TRUE(result.iterations == 0);
+        EXPECT_NEAR(result.residual, std::sqrt(2.0) * 1.0e100, 1.0e85);
+        EXPECT_NEAR(result.residual_relative, 1.0, 1e-14);
+        EXPECT_TRUE(result.diagnostics.size() == 1);
+        EXPECT_TRUE(!std::isfinite(result.diagnostics.front().preconditioned_dot));
+        EXPECT_NEAR(x(0), 0.0, 0.0);
+        EXPECT_NEAR(x(1), 0.0, 0.0);
     });
 
     run_case("cg_rejects_nonfinite_system", []() {
