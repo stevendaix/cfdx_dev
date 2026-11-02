@@ -917,6 +917,13 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_mesh_symmetry_extrusion.py)
         set_tests_properties(test_naca_mesh_symmetry_extrusion PROPERTIES
             LABELS "qualification;mesh;validation;3d")
+
+        add_test(NAME test_naca_radial_sweep
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_radial_sweep.py)
+        set_tests_properties(test_naca_radial_sweep PROPERTIES
+            LABELS "mesh;validation;diagnostics"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 60)
         add_test(NAME test_generate_naca3d_mesh
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_2d_validation_meshes.py naca3d
                     --output-dir ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes)
@@ -1469,6 +1476,13 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                              ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_e2e.py)
             set_tests_properties(test_production_solver_e2e PROPERTIES
                 ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;CFDX_PRODUCTION_MESH=${CMAKE_SOURCE_DIR}/tests/data/cavity_with_patches.msh;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python")
+            add_test(NAME test_sst_persisted_cli_restart_e2e
+                     COMMAND ${Python3_EXECUTABLE} -m pytest -q
+                             ${CMAKE_SOURCE_DIR}/tests/python/test_sst_persisted_cli_restart_e2e.py)
+            set_tests_properties(test_sst_persisted_cli_restart_e2e PROPERTIES
+                LABELS "sst;integration;regression"
+                ENVIRONMENT "CFDX_PRODUCTION_SOLVER=$<TARGET_FILE:cfdx_production_solver>;PYTHONPATH=${CMAKE_SOURCE_DIR}/src/cfdx/python"
+                TIMEOUT 300)
             add_test(NAME test_production_solver_numerics_e2e
                      COMMAND ${Python3_EXECUTABLE}
                              ${CMAKE_SOURCE_DIR}/tests/python/test_production_solver_numerics_e2e.py)

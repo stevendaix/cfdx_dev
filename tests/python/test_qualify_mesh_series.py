@@ -1,4 +1,5 @@
 """Negative and positive self-tests, never physical CFD qualification evidence."""
+
 from __future__ import annotations
 
 import hashlib
@@ -20,19 +21,28 @@ def sha256(path: Path) -> str:
 
 def make_fixture(root: Path, physics: str = "naca_laminar") -> dict:
     naca = physics.startswith("naca")
-    names = ("cd_pressure", "cd_viscous", "cd_total", "cl") if naca else (
-        ("cf", "delta99") if physics == "sst" else ("heat_flux", "temperature_mean")
-    )
     if naca:
-        reference = {"cd_pressure": (0.02, 0.02, 0.02),
-                     "cd_viscous": (0.04, 0.04, 0.02),
-                     "cd_total": (0.06, 0.06, 0.02),
-                     "cl": (0.0, 0.001, 0.02)}
-        amplitude = {"cd_pressure": 0.02, "cd_viscous": 0.01,
-                     "cd_total": 0.03, "cl": 0.002}
+        names = ("cd_pressure", "cd_viscous", "cd_total", "cl")
+        reference = {
+            "cd_pressure": (0.02, 0.02, 0.02),
+            "cd_viscous": (0.04, 0.04, 0.02),
+            "cd_total": (0.06, 0.06, 0.02),
+            "cl": (0.0, 0.001, 0.02),
+        }
+        amplitude = {
+            "cd_pressure": 0.02,
+            "cd_viscous": 0.01,
+            "cd_total": 0.03,
+            "cl": 0.002,
+        }
+    elif physics == "sst":
+        names = ("cf", "delta99")
     else:
-        reference = {name: (float(i + 1), float(i + 1), 0.02)
-                     for i, name in enumerate(names)}
+        names = ("heat_flux", "temperature_mean")
+    if not naca:
+        reference = {
+            name: (float(i + 1), float(i + 1), 0.02) for i, name in enumerate(names)
+        }
         amplitude = {name: 0.02 for name in names}
     criteria = {
         "max_true_residual": 1e-8,
@@ -41,28 +51,36 @@ def make_fixture(root: Path, physics: str = "naca_laminar") -> dict:
         "min_observed_order": 1.5,
         "max_gci": 0.02,
     }
-    balance_keys = ("energy_global", "energy_local") if physics == "thermal" else (
-        "mass_global", "mass_local"
+    balance_keys = (
+        ("energy_global", "energy_local")
+        if physics == "thermal"
+        else ("mass_global", "mass_local")
     )
     criteria.update({"max_" + key: 1e-7 for key in balance_keys})
     if naca:
         criteria["max_drag_decomposition_error"] = 1e-12
+    references = {}
+    for name, v in reference.items():
+        references[name] = {
+            "value": v[0],
+            "scale": v[1],
+            "max_relative_error": v[2],
+        }
     case = {
         "schema_version": "1.0",
         "case_id": "synthetic-only",
         "physics": physics,
         "source_sha": SHA,
         "criteria": criteria,
-        "references": {name: {"value": v[0], "scale": v[1],
-                              "max_relative_error": v[2]}
-                       for name, v in reference.items()},
+        "references": references,
         "levels": [],
     }
     for i, h in enumerate((0.25, 0.125, 0.0625)):
         mesh = root / f"mesh{i}.msh"
-        mesh.write_text(f"synthetic mesh {i} with characteristic h={h}\n", encoding="utf-8")
-        qoi = {name: reference[name][0] + amplitude[name] * h * h
-               for name in names}
+        mesh.write_text(
+            f"synthetic mesh {i} with characteristic h={h}\n", encoding="utf-8"
+        )
+        qoi = {name: reference[name][0] + amplitude[name] * h * h for name in names}
         result = {
             "case_id": "synthetic-only",
             "source_sha": SHA,
@@ -78,10 +96,12 @@ def make_fixture(root: Path, physics: str = "naca_laminar") -> dict:
         }
         rp = root / f"run{i}.json"
         rp.write_text(json.dumps(result, sort_keys=True), encoding="utf-8")
-        case["levels"].append({
-            "mesh": {"path": mesh.name, "sha256": sha256(mesh)},
-            "result": {"path": rp.name, "sha256": sha256(rp)},
-        })
+        case["levels"].append(
+            {
+                "mesh": {"path": mesh.name, "sha256": sha256(mesh)},
+                "result": {"path": rp.name, "sha256": sha256(rp)},
+            }
+        )
     return case
 
 
@@ -89,9 +109,21 @@ def call(root: Path, case: dict, sha: str = SHA):
     path = root / "case.json"
     path.write_text(json.dumps(case, sort_keys=True), encoding="utf-8")
     report = root / "verdict.json"
-    proc = subprocess.run([sys.executable, str(RUNNER), "--input", str(path),
-                           "--expected-source-sha", sha, "--report", str(report)],
-                          capture_output=True, text=True, check=False)
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(RUNNER),
+            "--input",
+            str(path),
+            "--expected-source-sha",
+            sha,
+            "--report",
+            str(report),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     return proc, json.loads(report.read_text(encoding="utf-8"))
 
 

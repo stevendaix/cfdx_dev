@@ -864,6 +864,19 @@ int main(int argc, char** argv)
         std::optional<SSTProductionState> experimental_sst_state;
         SSTProductionRuntime experimental_sst_runtime;
         DatRestartFields solver_restart_fields{};
+        // The restored Rhie-Chow face mass flux is part of the iteration
+        // state: it is read from the DAT into this caller-owned field and
+        // consumed by the solver after its own initialization transaction.
+        std::optional<Field<double, Location::FACE>> restart_face_flux;
+        if (!options.restart.empty() && options.experimental_sst) {
+            // DAT v4 checkpoints created before the optional face_fields
+            // section remain valid for every established non-SST restart
+            // path. The experimental SST equivalence contract explicitly
+            // requires mdot; other restart modes retain their legacy
+            // reconstruction unless they opt into the face-field contract.
+            restart_face_flux.emplace(mesh.n_faces(), "mdot", "kg/s", 1);
+            solver_restart_fields.face_mass_flux = &*restart_face_flux;
+        }
         if (options.experimental_sst) {
             if (production_energy_requested(case_setup) ||
                 production_buoyancy_requested(case_setup) ||
@@ -1287,6 +1300,22 @@ int main(int argc, char** argv)
         DatRestartFields checkpoint_fields;
         if (energy_ran)
             checkpoint_fields.temperature = &temperature;
+        if (experimental_sst_state) {
+            // The experimental opt-in owns k and omega for the whole run, so
+            // the final checkpoint persists them under their stable DAT v4
+            // named fields. Without this wiring a persisted SST case can
+            // initialize but never restart: the staged DAT reader requires
+            // the named k and omega fields whenever the active runtime
+            // requests them.
+            checkpoint_fields.k = &experimental_sst_state->k;
+            checkpoint_fields.omega = &experimental_sst_state->omega;
+        }
+        // Persist the authoritative face mass flux so the next run replays
+        // the same iteration sequence instead of re-deriving a different
+        // initial flux from the restored U and p.
+        if (result.authoritative_mass_flux.dimension() == 1 &&
+            result.authoritative_mass_flux.size() == mesh.n_faces())
+            checkpoint_fields.face_mass_flux = &result.authoritative_mass_flux;
         write_dat_restart_fields(dat.string(), mesh, U, p, checkpoint_fields,
                                  result.iterations, 0.0);
         const auto convergence = options.output_dir / "convergence.json";
