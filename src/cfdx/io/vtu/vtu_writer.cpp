@@ -21,27 +21,28 @@ bool VtuWriter::write(const std::string& filename,
                       std::size_t iteration,
                       bool write_time_metadata)
 {
-    std::ofstream os(filename);
-    if (!os.is_open()) {
-        std::cerr << "VtuWriter: cannot open " << filename << " for writing\n";
-        return false;
-    }
-
-    os << std::setprecision(12) << std::scientific;
-
-    std::vector<std::vector<cfdx::core::PointIndex>> vtk_cells;
-    std::vector<VtkCellType> vtk_cell_types;
-    std::vector<std::uint32_t> cell_face_offsets;
-    std::vector<cfdx::core::FaceIndex> cell_face_indices;
-    std::vector<std::size_t> vtk_original_cell_indices;
-
-    decompose_polyhedra(mesh, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices, vtk_original_cell_indices);
-
+    // Reject invalid metadata before opening (and truncating) any existing
+    // successful visualization. Topology decomposition must also succeed
+    // before a new file is created.
     if (write_time_metadata && !std::isfinite(physical_time)) {
         std::cerr << "VtuWriter: physical_time must be finite\n";
         return false;
     }
 
+    std::vector<std::vector<cfdx::core::PointIndex>> vtk_cells;
+    std::vector<VtkCellType> vtk_cell_types;
+    std::vector<std::size_t> cell_face_offsets;
+    std::vector<cfdx::core::FaceIndex> cell_face_indices;
+    std::vector<std::size_t> vtk_original_cell_indices;
+
+    decompose_polyhedra(mesh, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices, vtk_original_cell_indices);
+
+    std::ofstream os(filename);
+    if (!os.is_open()) {
+        std::cerr << "VtuWriter: cannot open " << filename << " for writing\n";
+        return false;
+    }
+    os << std::setprecision(12) << std::scientific;
     write_header(os, mesh, vtk_cells, vtk_cell_types, physical_time, iteration, write_time_metadata);
     write_cells(os, vtk_cells, vtk_cell_types, cell_face_offsets, cell_face_indices, mesh);
 
@@ -63,7 +64,7 @@ bool VtuWriter::write(const std::string& filename,
 void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
                                     std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
                                     std::vector<VtkCellType>& vtk_cell_types,
-                                    std::vector<std::uint32_t>& cell_face_offsets,
+                                    std::vector<std::size_t>& cell_face_offsets,
                                     std::vector<cfdx::core::FaceIndex>& cell_face_indices,
                                     std::vector<std::size_t>& vtk_original_cell_indices)
 {
@@ -82,22 +83,22 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
     const auto* face_offsets = mesh.faces().offsets_data();
 
     for (std::size_t c = 0; c < n_cells; ++c) {
-        const std::uint32_t off = cell_offsets[c];
-        const std::uint32_t n_faces = cell_offsets[c + 1] - off;
+        const std::size_t off = cell_offsets[c];
+        const std::size_t n_faces = cell_offsets[c + 1] - off;
 
         std::vector<cfdx::core::PointIndex> connectivity;
         connectivity.reserve(1 + n_faces * 5);
-                for (std::uint32_t k = 0; k < n_faces; ++k) {
-            const std::uint32_t face = cell_faces[off + k];
-            const std::uint32_t fv_begin = face_offsets[face];
-            const std::uint32_t fv_end = face_offsets[face + 1];
-            const std::uint32_t n_vertices = fv_end - fv_begin;
+                for (std::size_t k = 0; k < n_faces; ++k) {
+            const auto face = cell_faces[off + k];
+            const std::size_t fv_begin = face_offsets[face];
+            const std::size_t fv_end = face_offsets[face + 1];
+            const std::size_t n_vertices = fv_end - fv_begin;
 
             if (n_vertices < 3) {
                 throw std::runtime_error("VTU export: cell face has fewer than three vertices");
             }
 
-            for (std::uint32_t v = fv_begin; v < fv_end; ++v) {
+            for (std::size_t v = fv_begin; v < fv_end; ++v) {
                 const auto point = face_vertices[v];
                 if (std::find(connectivity.begin(), connectivity.end(), point) == connectivity.end()) {
                     connectivity.push_back(point);
@@ -106,7 +107,7 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
             cell_face_indices.push_back(face);
         }
 
-        cell_face_offsets.push_back(static_cast<std::uint32_t>(cell_face_indices.size()));
+        cell_face_offsets.push_back(cell_face_indices.size());
         vtk_cells.push_back(std::move(connectivity));
         vtk_cell_types.push_back(VtkCellType::POLYHEDRON);
         vtk_original_cell_indices.push_back(c);
@@ -153,7 +154,7 @@ void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
 void VtuWriter::write_cells(std::ofstream& os,
                             const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
                             const std::vector<VtkCellType>& vtk_cell_types,
-                            const std::vector<std::uint32_t>& cell_face_offsets,
+                            const std::vector<std::size_t>& cell_face_offsets,
                             const std::vector<cfdx::core::FaceIndex>& cell_face_indices,
                             const cfdx::core::Mesh& mesh)
 {
@@ -195,13 +196,13 @@ void VtuWriter::write_cells(std::ofstream& os,
             const auto end = cell_face_offsets[c + 1];
             os << "     " << (end - begin) << " ";
             face_offset += 1;
-            for (std::uint32_t i = begin; i < end; ++i) {
+            for (std::size_t i = begin; i < end; ++i) {
                 const auto face = cell_face_indices[i];
                 const auto fv_begin = mesh.faces().offsets_data()[face];
                 const auto fv_end = mesh.faces().offsets_data()[face + 1];
                 os << (fv_end - fv_begin) << " ";
                 face_offset += 1;
-                for (std::uint32_t v = fv_begin; v < fv_end; ++v) {
+                for (std::size_t v = fv_begin; v < fv_end; ++v) {
                     os << mesh.faces().vertices_data()[v] << " ";
                     ++face_offset;
                 }
@@ -215,7 +216,7 @@ void VtuWriter::write_cells(std::ofstream& os,
             const auto begin = cell_face_offsets[c];
             const auto end = cell_face_offsets[c + 1];
             face_offset += 1;
-            for (std::uint32_t i = begin; i < end; ++i) {
+            for (std::size_t i = begin; i < end; ++i) {
                 const auto face = cell_face_indices[i];
                 const auto fv_begin = mesh.faces().offsets_data()[face];
                 const auto fv_end = mesh.faces().offsets_data()[face + 1];

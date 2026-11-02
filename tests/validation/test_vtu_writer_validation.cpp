@@ -89,6 +89,23 @@ int main()
         EXPECT_TRUE(metadata_xml.find("Name=\"iteration\" NumberOfTuples=\"1\" format=\"ascii\">\n    17\n") != std::string::npos);
     });
 
+    run_case("vtu_rejected_time_does_not_truncate_valid_existing_file", [] {
+        const Mesh mesh = make_unit_cube();
+        const auto path = unique_temp_path(".vtu");
+        {
+            std::ofstream out(path);
+            out << "previous-valid-export";
+        }
+        VtuWriter writer;
+        EXPECT_FALSE(writer.write(path.string(), mesh, {}, {}, {},
+                                  std::nan(""), 5, true));
+        std::ifstream input(path);
+        const std::string data((std::istreambuf_iterator<char>(input)),
+                               std::istreambuf_iterator<char>());
+        std::filesystem::remove(path);
+        EXPECT_TRUE(data == "previous-valid-export");
+    });
+
     // `fields_face` used to be accepted and discarded, so no face quantity
     // could ever reach the file. It is documented as being interpolated to cell
     // centres, and that is now what happens.
