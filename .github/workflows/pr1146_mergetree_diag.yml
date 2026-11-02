@@ -1,0 +1,86 @@
+name: PR 1146 mergetree conflict oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Oracle evidence-only : relever la liste EXACTE des fichiers en conflit entre
+# le head 002aa3480306b7ca78be5d58b95334ad1eabf4ae de la PR #1146 et master
+# 2bd250ac484aba637f58b2499ad4168bc01b9f63 (update_pull_request_branch refuse :
+# merge conflict). Aucun build, aucune modification de branche PR.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1146_mergetree_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1146-mergetree-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR1146_HEAD: 002aa3480306b7ca78be5d58b95334ad1eabf4ae
+  MASTER_PIN: 2bd250ac484aba637f58b2499ad4168bc01b9f63
+
+jobs:
+  mergetree:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Merge probe in worktree
+        run: |
+          mkdir -p "$EVID"
+          git fetch origin master
+          MASTER_SHA=$(git rev-parse origin/master)
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "pr1146_head=$PR1146_HEAD"
+            echo "master_pin=$MASTER_PIN"
+            echo "master_sha=$MASTER_SHA"
+          } > "$EVID/pr1146_mergetree_meta_run$GITHUB_RUN_ID.txt"
+          if [ "$MASTER_SHA" != "$MASTER_PIN" ]; then
+            echo "::error::master moved ($MASTER_SHA vs pinned $MASTER_PIN)"
+            exit 1
+          fi
+          git worktree add /tmp/pr1146_wt "$PR1146_HEAD"
+          cd /tmp/pr1146_wt
+          git config user.name "oracle-diag-bot"
+          git config user.email "oracle-diag-bot@users.noreply.github.com"
+          set +e
+          git merge --no-commit --no-ff "$MASTER_PIN" > /tmp/merge.log 2>&1
+          rc=$?
+          set -e
+          echo "merge_exit=$rc" >> "$GITHUB_WORKSPACE/$EVID/pr1146_mergetree_meta_run$GITHUB_RUN_ID.txt"
+          {
+            echo "merge_exit=$rc"
+            echo "== conflicted files (git status) =="
+            git status --porcelain | grep -E '^(UU|AA|DU|UD|AU|UA|DD)' || echo "(none)"
+            echo "== merge log tail =="
+            tail -n 30 /tmp/merge.log
+          } > "$GITHUB_WORKSPACE/$EVID/pr1146_mergetree_conflicts_run$GITHUB_RUN_ID.txt"
+          for f in $(git diff --name-only --diff-filter=U); do
+            echo "==== $f ====" >> "$GITHUB_WORKSPACE/$EVID/pr1146_mergetree_conflicts_run$GITHUB_RUN_ID.txt"
+            grep -n -A 12 -B 2 '^<<<<<<<' "$f" | head -n 200 >> "$GITHUB_WORKSPACE/$EVID/pr1146_mergetree_conflicts_run$GITHUB_RUN_ID.txt" || true
+          done
+          cat "$GITHUB_WORKSPACE/$EVID/pr1146_mergetree_conflicts_run$GITHUB_RUN_ID.txt"
+          cd "$GITHUB_WORKSPACE"
+          git worktree remove --force /tmp/pr1146_wt || true
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1146 mergetree run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            git push origin "HEAD:$GITHUB_REF_NAME"
+          fi
