@@ -1,6 +1,12 @@
 name: TH-01 Turbulent channel DNS (Moser–Kim–Mansour) — reference contract CI
 
 on:
+  push:
+    branches: [ci/thermohydraulic-independent-benchmarks]
+    paths:
+      - 'docs/validation/14-benchmarks/09-thermohydraulics/*.json'
+      - 'scripts/validate_thermohydraulic_reference.py'
+      - '.github/workflows/th01-channel-dns.yml'
   pull_request:
     paths:
       - 'docs/validation/14-benchmarks/09-thermohydraulics/TH-01.json'
