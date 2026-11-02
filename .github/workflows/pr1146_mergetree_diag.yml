@@ -58,7 +58,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A diag-evidence/logs
-          git diff --cached --quiet || (git commit -m "diag: pr1146 mergetree meta run $GITHUB_RUN_ID [ci skip]" && git push origin "HEAD:$GITHUB_REF_NAME")
+          git diff --cached --quiet || (git commit -m "diag: pr1146 mergetree meta run $GITHUB_RUN_ID [ci skip]" && (git push origin "HEAD:$GITHUB_REF_NAME" || (git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME")))
 
       - name: Merge probe (trace, evidence)
         run: |
@@ -96,4 +96,4 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A diag-evidence/logs
-          git diff --cached --quiet || (git commit -m "diag: pr1146 mergetree run $GITHUB_RUN_ID (evidence-only) [ci skip]" && git push origin "HEAD:$GITHUB_REF_NAME")
+          git diff --cached --quiet || (git commit -m "diag: pr1146 mergetree run $GITHUB_RUN_ID (evidence-only) [ci skip]" && (git push origin "HEAD:$GITHUB_REF_NAME" || (git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME")))
