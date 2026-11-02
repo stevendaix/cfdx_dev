@@ -7,7 +7,17 @@
     "citation": "Driver & Seegmiller (1985), AIAA Journal 23, 163-171; AGARD-AR-345 data sheet CMP32",
     "primary_url": "https://torroja.dmt.upm.es/turbdata/agard/docs/AGARD-AR-345.pdf",
     "data_sheet": "CMP32, pages 197-198",
-    "data_policy": "Use the original CMP32 machine-readable time-averaged data file where available. Freeze source, units, stations, coordinates and SHA-256. Do not digitize figures as a substitute."
+    "data_policy": "Use the original CMP32 machine-readable time-averaged data file where available. Freeze source, units, stations, coordinates and SHA-256. Do not digitize figures as a substitute.",
+    "secondary_sources": [
+      {
+        "citation": "Morsbach (2017), Reynolds Stress Modelling for Turbomachinery Flow Applications, Table 5.2",
+        "url": "https://elib.dlr.de/113258/1/diss_Morsbach_Druck_20170110.pdf"
+      },
+      {
+        "citation": "NASA comparison report, Driver–Seegmiller reattachment length 6.25",
+        "url": "https://ntrs.nasa.gov/api/citations/19940019197/downloads/19940019197.pdf"
+      }
+    ]
   },
   "physics": {
     "geometry": {
@@ -45,7 +55,12 @@
       "reynolds_stress_relative": 0.12,
       "pressure_coefficient_absolute": 0.0002
     },
-    "reattachment_definition": "Interpolate the first downstream zero crossing of tau_w(x) from negative to positive; also report the zero crossing of Cf. Do not infer x_r visually from a velocity contour."
+    "reattachment_definition": "Interpolate the first downstream zero crossing of tau_w(x) from negative to positive; also report the zero crossing of Cf. Do not infer x_r visually from a velocity contour.",
+    "reference_targets": {
+      "reattachment_x_over_h": 6.26,
+      "reattachment_uncertainty_absolute": 0.1,
+      "reattachment_source": "Driver–Seegmiller value compiled in Morsbach (2017) and NASA backward-step comparison report; use CMP32 wall-shear profile as primary zero-crossing oracle."
+    }
   },
   "boundary_conditions": {
     "inlet": "Measured turbulent boundary-layer profile at x=-4h; prescribe measured turbulence quantities or document a reproducible reconstruction and quantify its uncertainty. A uniform inlet is not acceptable.",
