@@ -1,10 +1,10 @@
-# FICHE MÉTHODE 26 — Globalisation non linéaire SIMPLE (garde de croissance physique) et reconstruction pression/traction aux faces de paroi
+# FICHE MÉTHODE 27 — Globalisation non linéaire SIMPLE (garde de croissance physique) et reconstruction pression/traction aux faces de paroi
 
 **En-tête d'évidence**
 - Scope : (a) garde opt-in de rejet des itérations non linéaires SIMPLE dont les résidus physiques (QDM relatif RHS, continuité normalisée) croissent sévèrement, avant publication au moniteur de convergence, avec restauration transactionnelle et rejeu par la reduction de sous-relaxation existante ; (b) reconstruction affine de la pression et de la traction visqueuse au centre des faces de paroi (post-traitement d'audit, hors solveur).
 - Statut : DRAFT (2026-10-28, PR #1146 — port byte-exact du patch audité P0/P1 du 2026-10-28)
 - Issues liées : audit cinq chantiers (garde SIMPLE, reconstruction aux faces, NACA --single, GCI fail-closed, diagnostic 3D) ; PRs #1145 (fixtures, base du port), #1146 (cette PR).
-- Dernier commit vérifié : 015c5097ff02c6315998f5653c026cbca8e2e4f6 (branche PR #1146) ; base master ecf1d022.
+- Dernier commit de référence avant rebase : 015c5097ff02c6315998f5653c026cbca8e2e4f6 ; HEAD après rebase : 3ac182e64e4911137d29b375929ec9405d1a815d ; base master : 2bd250ac484aba637f58b2499ad4168bc01b9f63.
 - Limitations : aucune qualification physique n'est revendiquée (r48/r72 non convergés, Cd non validé, conduction linéaire 3D FAIL documenté). La traction pariétale du composant de face est d'ordre 1 en champ quadratique.
 
 ## 1. Références sources
@@ -40,4 +40,5 @@ La reconstruction est locale à chaque face du patch de paroi (owner uniquement,
 - Gaps assumés : qualification r48/r72 et n128/n256 non produites (r48 : MAX_ITERATIONS documenté) ; conduction linéaire 3D T=300+10z FAIL documenté (résidu matriciel ~290, diagnostic opt-in --linear-conduction fail-closed, exit 2) ; pas de promotion du composant d'ordre 2 en traction.
 
 ## 8. Journal
-- 2026-10-28 — création (PR #1146) : synthèse le l'audit cinq chantiers P0/P1 ; statut DRAFT en attente de review, aucune qualification revendiquée.
+- 2026-10-28 — création (PR #1146) : synthèse de l'audit cinq chantiers P0/P1 ; statut DRAFT, aucune qualification revendiquée.
+- 2026-11-02 — rebase sur master ; correction de l'identifiant de fiche et des métadonnées de référence. Le diagnostic de grande dynamique diagonale est explicitement distingué de l'anisotropie géométrique.
