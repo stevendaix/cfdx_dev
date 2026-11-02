@@ -1,0 +1,60 @@
+merge_exit=1
+== conflicted files ==
+UU tests/validation/test_naca0012_geometry.cpp
+UU tests/validation/test_naca0012_wall_shear_audit.cpp
+== merge log tail ==
+Auto-merging CMakeLists.txt
+Auto-merging src/cfdx/physics/steady_incompressible_solver.h
+Auto-merging tests/validation/test_naca0012_geometry.cpp
+CONFLICT (content): Merge conflict in tests/validation/test_naca0012_geometry.cpp
+Auto-merging tests/validation/test_naca0012_wall_shear_audit.cpp
+CONFLICT (content): Merge conflict in tests/validation/test_naca0012_wall_shear_audit.cpp
+Automatic merge failed; fix conflicts and then commit the result.
+==== tests/validation/test_naca0012_geometry.cpp ====
+74-    c.convergence.relative_tolerance=1e-8;
+75-    c.convergence.continuity_tolerance=1e-8;
+76:<<<<<<< HEAD
+77-    c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
+78-    c.nonlinear_retry.reject_severe_physical_growth=growth_guard;
+79-=======
+80-    c.coupling.alpha_u=0.6; c.coupling.alpha_p=0.25;
+81-    cfdx::validation::apply_naca_relaxation_ab(c);
+82-    // A/B only: the default NACA qualification is unchanged.
+83-    if (const char* value = std::getenv("CFDX_NACA_SKEW_GRADIENT")) {
+84-        if (std::string(value) != "1")
+85-            throw std::invalid_argument("CFDX_NACA_SKEW_GRADIENT must be 1");
+86-        c.pressure_skew_corrected_gradient = true;
+87-    }
+88-    // Experimental A/B only: the normal production and CI path is unchanged.
+--
+501-int main(int argc,char**argv)
+502-{
+503:<<<<<<< HEAD
+504-    // Isolated quantitative r24/r36/r48/r72 experiment. The complete 3-grid
+505-    // qualification remains separate and may not be promoted by this mode.
+506-    if (argc >= 2 && std::string(argv[1]) == "--single") {
+507-        if (argc != 6)
+508-            throw std::invalid_argument(
+509-                "usage: test_naca0012_qualification --single mesh.h5 alpha_u alpha_p max_iterations");
+510-        const auto alpha_u = std::stod(argv[3]);
+511-        const auto alpha_p = std::stod(argv[4]);
+512-        const auto maxit = static_cast<std::size_t>(std::stoull(argv[5]));
+513-        if (!(std::isfinite(alpha_u) && alpha_u > 0. && alpha_u <= 1. &&
+514-              std::isfinite(alpha_p) && alpha_p > 0. && alpha_p <= 1. &&
+515-              maxit > 0))
+==== tests/validation/test_naca0012_wall_shear_audit.cpp ====
+34-#include "cfdx/core/numerics/gradient.h"
+35-#include "cfdx/core/numerics/gradient_stencil.h"
+36:<<<<<<< HEAD
+37-#include "cfdx/physics/wall_face_reconstruction.h"
+38-=======
+39-#include "naca_momentum_trace.h"
+40-#include "naca_relaxation_controls.h"
+41-#include <cstdlib>
+42->>>>>>> 2bd250ac484aba637f58b2499ad4168bc01b9f63
+43-#include <algorithm>
+44-#include <cmath>
+45-#include <iostream>
+46-#include <limits>
+47-#include <stdexcept>
+48-#include <string>
