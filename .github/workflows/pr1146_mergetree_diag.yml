@@ -36,7 +36,7 @@ jobs:
       - name: Merge probe in worktree
         run: |
           mkdir -p "$EVID"
-          git fetch origin master
+          git fetch origin master fix/p0-p1-physical-guards-wall-forces
           MASTER_SHA=$(git rev-parse origin/master)
           {
             echo "run_id=$GITHUB_RUN_ID"
@@ -60,7 +60,7 @@ jobs:
           {
             echo "merge_exit=$rc"
             echo "== conflicted files (git status) =="
-            git status --porcelain | grep -E '^(UU|AA|DU|UD|AU|UA|DD)' || echo "(none)"
+            git status --porcelain | grep -E '^(UU|AA|DU|UD|AU|UA|DD)' || true || echo "(none)"
             echo "== merge log tail =="
             tail -n 30 /tmp/merge.log
           } > "$GITHUB_WORKSPACE/$EVID/pr1146_mergetree_conflicts_run$GITHUB_RUN_ID.txt"
