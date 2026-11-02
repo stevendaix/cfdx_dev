@@ -54,7 +54,9 @@ def validate_case(case_id: str) -> dict[str, Any]:
         derived["re_tau_cases"] = physics["re_tau_targets"]
         actual = [entry["re_tau_actual"] for entry in physics["reference_cases"]]
         require(actual == [178.13, 392.24, 587.19], "TH-01: actual DNS Re_tau values mismatch")
-        require([entry["spectral_grid"] for entry in physics["reference_cases"]] ==\n                ["128x129x128", "256x193x192", "384x257x384"],\n                "TH-01: DNS spectral grid inventory mismatch")
+        require([entry["spectral_grid"] for entry in physics["reference_cases"]] ==
+                ["128x129x128", "256x193x192", "384x257x384"],
+                "TH-01: DNS spectral grid inventory mismatch")
         derived["actual_re_tau"] = actual
         derived["solver_validation"] = "BLOCKED: RANS/LES production coupling and exact DNS data ingestion"
 
@@ -151,7 +153,8 @@ def main() -> int:
         "not_a_solver_validation": True,
         "cases": results,
     }
-    rendered = json.dumps(report, indent=2) + "\n"
+    rendered = json.dumps(report, indent=2) + "
+"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(rendered, encoding="utf-8")
