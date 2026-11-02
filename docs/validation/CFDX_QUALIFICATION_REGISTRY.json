@@ -211,7 +211,7 @@
       "id": "TUR-CHANNEL",
       "domain": "Turbulence",
       "case": "Turbulent channel",
-      "status": "PLANNED",
+      "status": "BLOCKED",
       "reference": "Moser, Kim & Mansour (1999), Physics of Fluids 11(4), 943–945; UT Austin DNS database, Re_tau=180/395/590; exact source files and SHA-256 must be frozen before execution.",
       "parameters": "Fully developed incompressible plane channel; Re_tau=u_tau*h/nu = 180, 395, 590; periodic streamwise/spanwise; no-slip at y=±h; pressure-gradient or body-force convention fixed per run.",
       "mesh": "At least three wall-normal and homogeneous-direction resolutions; report Δy+ including first-cell y+, Δx+, Δz+; RANS wall treatment or LES/DNS resolution contract stated separately.",
@@ -225,7 +225,7 @@
       "error": "Profile L2/Linf and integral QoI errors with reference sampling/interpolation documented; no universal tolerance until data uncertainty and model applicability are reviewed.",
       "observed_order": "At least three spatial resolutions; report observed order/GCI only when asymptotic assumptions hold; turbulence-model error is reported separately from discretization error.",
       "runtime": "Per Re_tau, mesh, model and averaging window; include physical time, samples and wall-clock.",
-      "regression_status": "PLANNED: reference identified; exact files/checksums, production turbulence path, mesh campaign and solver-level comparison remain outstanding."
+      "regression_status": "BLOCKED: production turbulence coupling is not yet qualified; exact DNS files/checksums, solver execution, mesh campaign and quantitative comparison remain outstanding."
     },
     {
       "id": "TUR-NACA0012",
@@ -453,7 +453,7 @@
       "id": "SEP-BFS-DRIVER",
       "domain": "Turbulence / separation",
       "case": "Backward-facing step — Driver & Seegmiller straight-wall experiment",
-      "status": "PLANNED",
+      "status": "BLOCKED",
       "reference": "Driver & Seegmiller (1985), AIAA Journal 23, 163–171; AGARD-AR-345 CMP32 dataset; use straight-wall case only.",
       "parameters": "h=12.7 mm; expansion ratio 1.125; upstream channel height 8h; reported width 12h; Re_h=U_ref*h/nu≈37,500 with U_ref≈44.2 m/s; inlet boundary layer at x=-4h: delta≈19 mm, delta*=2.7 mm, theta=1.9 mm, H≈1.42, Cf≈0.0029.",
       "mesh": "At least three systematically refined meshes; resolve incoming boundary layer, step corner, separated shear layer and reattachment wall; report y+, streamwise growth, cell skewness and near-wall spacing.",
@@ -467,13 +467,13 @@
       "error": "Profile norms and QoI errors with measurement uncertainty; interpolation and station mapping frozen before runs.",
       "observed_order": "Three-mesh sensitivity; observed order only when asymptotic behaviour is demonstrated.",
       "runtime": "Per mesh/model; include mesh generation and convergence iterations.",
-      "regression_status": "PLANNED: separate from existing SEP-BFS Armaly/VMFL064 (Re_D=200); measured inlet profile and reference data ingestion remain required."
+      "regression_status": "BLOCKED: reference contract is documented, but the production turbulence/thermal solver path and reproducible campaign execution are not yet demonstrated."
     },
     {
       "id": "TH-MIXED-CONVECTION",
       "domain": "Thermohydraulics / mixed convection",
       "case": "Buoyancy-affected turbulent upflow in a heated vertical pipe",
-      "status": "PLANNED",
+      "status": "BLOCKED",
       "reference": "Upflow turbulent mixed convection heat transfer in vertical pipes, International Journal of Heat and Mass Transfer 41 (1998), 4037–4054, DOI 10.1016/S0017-9310(98)00177-X; supplemental 2026 high-fidelity dataset DOI 10.57745/6CGPI4 is numerical, not experimental.",
       "parameters": "Water upflow in heated vertical pipe; Re=Ub*D/nu, Pr=nu/alpha, Gr=g*beta*DeltaT*D^3/nu^2, Ri=Gr/Re^2; exact operating points and reference-property convention transcribed from the selected experiment.",
       "mesh": "At least three refinements; near-wall thermal/hydrodynamic boundary-layer resolution; report y+, radial resolution, axial development length and outlet sensitivity.",
@@ -487,13 +487,13 @@
       "error": "Profile and integral QoI errors with experimental uncertainty; compare at identical axial stations and property definitions.",
       "observed_order": "At least three spatial resolutions; report spatial and model-form sensitivities separately.",
       "runtime": "Per Re/Ri point, mesh and turbulence model.",
-      "regression_status": "PLANNED: physical reference identified; exact test matrix, tabulated reference data and buoyancy-capable production turbulence path must be audited before qualification."
+      "regression_status": "BLOCKED: reference contract is documented, but the production turbulence/thermal solver path and reproducible campaign execution are not yet demonstrated."
     },
     {
       "id": "TH-TJUNCTION",
       "domain": "Thermohydraulics / turbulent mixing",
       "case": "OECD/NEA–Vattenfall turbulent thermal mixing in a T-junction",
-      "status": "PLANNED",
+      "status": "BLOCKED",
       "reference": "OECD/NEA Vattenfall T-junction benchmark, NEA/CSNI/R(2011)5; Smith, Mahaffy & Angele (2013), Nuclear Engineering and Design 264, 80–88, DOI 10.1016/j.nucengdes.2013.02.030.",
       "parameters": "1:2 scale water experiment; cold main inlet 19 °C, hot branch inlet 36 °C (DeltaT=17 K); reported flow rates 9 L/s and 6 L/s, Re≈80,000 and 100,000; exact diameters, coordinates and uncertainty from official report.",
       "mesh": "Three refinements minimum; resolve junction shear layers, branch lip, wall thermal gradients and downstream mixing; assess outlet length and wall resolution.",
@@ -507,7 +507,7 @@
       "error": "Mean profile and time-series metrics with experimental uncertainty; frequency-domain metrics only where sampling metadata and raw signals are available.",
       "observed_order": "Three mesh refinements; at least three time steps for unsteady claims; statistical uncertainty assessed independently.",
       "runtime": "Per mesh, model, physical time and sampling window.",
-      "regression_status": "PLANNED: public benchmark identified; geometry/probe data ingestion and transient production capability audit remain required."
+      "regression_status": "BLOCKED: reference contract is documented, but the production turbulence/thermal solver path and reproducible campaign execution are not yet demonstrated."
     }
   ]
 }
