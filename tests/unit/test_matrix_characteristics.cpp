@@ -67,7 +67,10 @@ int main() {
         const auto plan = select_linear_solver(
             LinearProblemKind::PressurePoisson, characteristics);
         EXPECT_TRUE(plan.krylov == KrylovModel::GMRES);
-        EXPECT_TRUE(plan.preconditioner == PreconditionerModel::ILU0);
+        // A measured 2x2 system reports equations = 2 (< 24), so the audited
+        // dispatch policy pairs GMRES with Jacobi here; ILU0 applies only to
+        // larger nonsymmetric-safe systems.
+        EXPECT_TRUE(plan.preconditioner == PreconditionerModel::Jacobi);
     });
 
     return run_all();
