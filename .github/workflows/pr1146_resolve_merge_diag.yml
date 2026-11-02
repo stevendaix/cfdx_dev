@@ -1,11 +1,13 @@
 name: PR 1146 resolve-and-merge oracle (diag)
 
 # DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# v2: fix marker env (os.environ au lieu du litteral ${masterpin}), dump
+# d'evidence en cas d'echec de resolution.
 # Oracle DE-CONFLICT : merge 002aa348 (PR #1146) + master 2bd250ac,
-# resolution des 2 fichiers en conflit selon la resolution validee par Steven,
-# renumerotation fiche 26-globalisation -> 27 (collision avec
-# 26-continuation-adaptative-naca.md mergee par #1160), push du merge commit
-# sur la branche PR. Fail-closed si master ou la branche PR a bouge.
+# resolution des 2 fichiers en conflit (union includes ; alphas parametres +
+# gardes PR puis controls A/B master ; --single argc==6 PR puis try master),
+# renumerotation fiche 26-globalisation -> 27, push du merge commit sur la
+# branche PR. Fail-closed si master ou la branche PR a bouge.
 on:
   push:
     branches: [ci/long-campaign-diagnostics]
@@ -71,8 +73,11 @@ jobs:
           git config user.name "oracle-diag-bot"
           git config user.email "oracle-diag-bot@users.noreply.github.com"
           git merge --no-commit --no-ff "$MASTER_PIN" || true
-          masterpin="$MASTER_PIN" python3 - <<'PYEOF'
-          import sys
+          EVID_DIR="$GITHUB_WORKSPACE/$EVID" masterpin="$MASTER_PIN" python3 - <<'PYEOF'
+          import os, sys
+
+          MARKER = '>>>>>>> ' + os.environ['masterpin'] + '\n'
+          EVID_DIR = os.environ.get('EVID_DIR', '/tmp')
 
           def resolve(path, pairs):
               with open(path, 'r', encoding='utf-8') as f:
@@ -81,8 +86,11 @@ jobs:
                   count = text.count(old)
                   if count != 1:
                       print('FATAL: block occurs %d times (expected 1) in %s' % (count, path))
-                      print('--- block start ---')
-                      print(old[:200])
+                      try:
+                          with open(os.path.join(EVID_DIR, 'pr1146_resolve_fail_%s.txt' % os.path.basename(path)), 'w', encoding='utf-8') as g:
+                              g.write(text[:30000])
+                      except OSError:
+                          pass
                       sys.exit(1)
                   text = text.replace(old, new)
               if '<<<<<<<' in text or '>>>>>>>' in text:
@@ -98,8 +106,7 @@ jobs:
           #include "naca_momentum_trace.h"
           #include "naca_relaxation_controls.h"
           #include <cstdlib>
-          >>>>>>> ${masterpin}
-          '''
+          ''' + MARKER
           WALL_NEW = '''#include "cfdx/physics/wall_face_reconstruction.h"
           #include "naca_momentum_trace.h"
           #include "naca_relaxation_controls.h"
@@ -127,8 +134,7 @@ jobs:
 
               // A/B only: TVD is an existing bounded CFDX convection scheme. Keep the
               // unchanged UPWIND reference for all default NACA qualification gates.
-          >>>>>>> ${masterpin}
-          '''
+          ''' + MARKER
           CFG_NEW = '''    c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
               c.nonlinear_retry.reject_severe_physical_growth=growth_guard;
               cfdx::validation::apply_naca_relaxation_ab(c);
@@ -168,8 +174,7 @@ jobs:
               }
           =======
               try {
-          >>>>>>> ${masterpin}
-          '''
+          ''' + MARKER
           MAIN_NEW = '''    // Isolated quantitative r24/r36/r48/r72 experiment. The complete 3-grid
               // qualification remains separate and may not be promoted by this mode.
               // argc==6 dispatch preserves the 3-arg --single replay defined below.
