@@ -40,6 +40,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <utility>
 
 namespace cfdx::physics {
 
@@ -637,11 +638,15 @@ inline ThermalDriverResult solve_thermal_region(
 struct ThermalCoupledControls {
     // Convergence of the injected interface ambient temperatures [K].
     double interface_temperature_tolerance = 1e-10;
+    // Pairwise relative equal/opposite heat-flux defect at every interface.
+    double interface_flux_relative_tolerance = 1e-9;
     std::size_t max_interface_iterations = 200;
 
     void validate() const {
         if (!std::isfinite(interface_temperature_tolerance) ||
             !(interface_temperature_tolerance > 0.0) ||
+            !std::isfinite(interface_flux_relative_tolerance) ||
+            !(interface_flux_relative_tolerance > 0.0) ||
             max_interface_iterations == 0)
             throw std::invalid_argument(
                 "invalid thermal coupled controls");
@@ -664,10 +669,10 @@ struct ThermalCoupledResult {
     std::size_t interface_iterations = 0;
     // Largest ambient-temperature change of the final sweep [K].
     double interface_max_change = 0.0;
-    // Largest violation of the equal/opposite interface flux audit [W],
-    // reconstructed from the final states with the conditions the final
-    // passes actually used.
-    double interface_flux_imbalance = 0.0;
+    // Largest absolute and pairwise-relative equal/opposite interface flux
+    // defects, reconstructed with the conditions actually used by each pass.
+    double interface_flux_imbalance = 0.0;  // W
+    double interface_flux_relative_imbalance = 0.0;  // dimensionless
     std::map<std::string, ThermalDriverResult> regions;
 };
 
@@ -868,6 +873,43 @@ inline ThermalCoupledResult solve_thermal_regions_coupled(
 
     ThermalCoupledResult result;
     const double tolerance = coupled_controls.interface_temperature_tolerance;
+    const auto audit_interface_fluxes = [&]() {
+        std::pair<double, double> audit{0.0, 0.0};
+        for (std::size_t ii = 0; ii < interfaces.size(); ++ii) {
+            const ThermalInterface& iface = *interfaces[ii].interface;
+            const auto& in_a = region_inputs.at(iface.region_a);
+            const auto& in_b = region_inputs.at(iface.region_b);
+            const auto& res_a = result.regions.at(iface.region_a);
+            const auto& res_b = result.regions.at(iface.region_b);
+            for (std::size_t pi = 0; pi < interfaces[ii].pairs.size(); ++pi) {
+                const InterfacePair& pair = interfaces[ii].pairs[pi];
+                const double k_a = res_a.cell_conductivity[pair.cell_a];
+                const double k_b = res_b.cell_conductivity[pair.cell_b];
+                const double t_a = (*in_a.temperature)(pair.cell_a);
+                const double t_b = (*in_b.temperature)(pair.cell_b);
+                const double face_a =
+                    (k_a * t_a + h_a[ii][pi] * pair.distance_a * ambient_a[ii][pi]) /
+                    (k_a + h_a[ii][pi] * pair.distance_a);
+                const double face_b =
+                    (k_b * t_b + h_b[ii][pi] * pair.distance_b * ambient_b[ii][pi]) /
+                    (k_b + h_b[ii][pi] * pair.distance_b);
+                const double q_out_a =
+                    k_a * pair.area * (face_a - t_a) / pair.distance_a;
+                const double q_out_b =
+                    k_b * pair.area * (face_b - t_b) / pair.distance_b;
+                if (!std::isfinite(q_out_a) || !std::isfinite(q_out_b)) {
+                    audit.first = std::numeric_limits<double>::infinity();
+                    audit.second = std::numeric_limits<double>::infinity();
+                    continue;
+                }
+                const double defect = std::abs(q_out_a + q_out_b);
+                const double scale = std::max({1.0, std::abs(q_out_a), std::abs(q_out_b)});
+                audit.first = std::max(audit.first, defect);
+                audit.second = std::max(audit.second, defect / scale);
+            }
+        }
+        return audit;
+    };
     for (std::size_t sweep = 1; sweep <= coupled_controls.max_interface_iterations;
          ++sweep) {
         result.interface_iterations = sweep;
@@ -955,43 +997,30 @@ inline ThermalCoupledResult solve_thermal_regions_coupled(
         const bool all_regions_converged = std::all_of(
             result.regions.begin(), result.regions.end(),
             [](const auto& entry) { return entry.second.converged; });
-        if (max_change <= tolerance && all_regions_converged) {
+        const auto flux_audit = audit_interface_fluxes();
+        result.interface_flux_imbalance = flux_audit.first;
+        result.interface_flux_relative_imbalance = flux_audit.second;
+        if (max_change <= tolerance && all_regions_converged &&
+            std::isfinite(result.interface_flux_relative_imbalance) &&
+            result.interface_flux_relative_imbalance <=
+                coupled_controls.interface_flux_relative_tolerance) {
             result.converged = true;
             break;
         }
     }
 
-    // --- Equal/opposite interface flux audit ---------------------------
-    // Reconstruct the boundary flux each final pass embedded at every
-    // paired face: the Robin fixed point resolved with the final Picard
-    // conductivity and the actually used film coefficient and ambient.
-    double imbalance = 0.0;
-    for (std::size_t ii = 0; ii < interfaces.size(); ++ii) {
-        const ThermalInterface& iface = *interfaces[ii].interface;
-        const auto& in_a = region_inputs.at(iface.region_a);
-        const auto& in_b = region_inputs.at(iface.region_b);
-        const auto& res_a = result.regions.at(iface.region_a);
-        const auto& res_b = result.regions.at(iface.region_b);
-        for (std::size_t pi = 0; pi < interfaces[ii].pairs.size(); ++pi) {
-            const InterfacePair& pair = interfaces[ii].pairs[pi];
-            const double k_a = res_a.cell_conductivity[pair.cell_a];
-            const double k_b = res_b.cell_conductivity[pair.cell_b];
-            const double t_a = (*in_a.temperature)(pair.cell_a);
-            const double t_b = (*in_b.temperature)(pair.cell_b);
-            const double face_a =
-                (k_a * t_a + h_a[ii][pi] * pair.distance_a * ambient_a[ii][pi]) /
-                (k_a + h_a[ii][pi] * pair.distance_a);
-            const double face_b =
-                (k_b * t_b + h_b[ii][pi] * pair.distance_b * ambient_b[ii][pi]) /
-                (k_b + h_b[ii][pi] * pair.distance_b);
-            const double q_out_a =
-                k_a * pair.area * (face_a - t_a) / pair.distance_a;
-            const double q_out_b =
-                k_b * pair.area * (face_b - t_b) / pair.distance_b;
-            imbalance = std::max(imbalance, std::abs(q_out_a + q_out_b));
-        }
+    // Re-evaluate the final accepted states. A failed flux audit cannot be
+    // reported as a converged coupled solution, even if the temperature
+    // fixed-point criterion alone was satisfied.
+    if (!result.regions.empty()) {
+        const final_flux_audit = audit_interface_fluxes();
+        result.interface_flux_imbalance = final_flux_audit.first;
+        result.interface_flux_relative_imbalance = final_flux_audit.second;
+        result.converged = result.converged &&
+            std::isfinite(result.interface_flux_relative_imbalance) &&
+            result.interface_flux_relative_imbalance <=
+                coupled_controls.interface_flux_relative_tolerance;
     }
-    result.interface_flux_imbalance = imbalance;
 
     return result;
 }
