@@ -1,6 +1,12 @@
 name: TH-03 Backward-facing step (Driver–Seegmiller) — reference contract CI
 
 on:
+  push:
+    branches: [ci/thermohydraulic-independent-benchmarks]
+    paths:
+      - 'docs/validation/14-benchmarks/09-thermohydraulics/*.json'
+      - 'scripts/validate_thermohydraulic_reference.py'
+      - '.github/workflows/th03-backward-facing-step.yml'
   pull_request:
     paths:
       - 'docs/validation/14-benchmarks/09-thermohydraulics/TH-03.json'
