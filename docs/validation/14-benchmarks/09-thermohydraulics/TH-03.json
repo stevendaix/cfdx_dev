@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "case_id": "TH-03",
+  "title": "Backward-facing step — Driver & Seegmiller straight-wall experiment",
+  "reference": {
+    "type": "EXPERIMENT",
+    "citation": "Driver & Seegmiller (1985), AIAA Journal 23, 163-171; AGARD-AR-345 data sheet CMP32",
+    "primary_url": "https://torroja.dmt.upm.es/turbdata/agard/docs/AGARD-AR-345.pdf",
+    "data_sheet": "CMP32, pages 197-198",
+    "data_policy": "Use the original CMP32 machine-readable time-averaged data file where available. Freeze source, units, stations, coordinates and SHA-256. Do not digitize figures as a substitute."
+  },
+  "physics": {
+    "geometry": {
+      "step_height_m": 0.0127,
+      "expansion_ratio": 1.125,
+      "upstream_channel_height_over_h": 8,
+      "channel_width_over_h": 12,
+      "opposite_wall": "Straight and parallel; exclude the divergent 6-degree configuration."
+    },
+    "flow": {
+      "reynolds_step": 37500,
+      "velocity_reference_m_s": 44.2,
+      "approach_boundary_layer_re_theta": 5000,
+      "mach": 0.128
+    },
+    "inlet_boundary_layer_at_x_over_h_minus4": {
+      "delta_m": 0.019,
+      "displacement_thickness_m": 0.0027,
+      "momentum_thickness_m": 0.0019,
+      "shape_factor": 1.42,
+      "skin_friction_coefficient": 0.0029
+    }
+  },
+  "qoi": {
+    "primary": [
+      "reattachment location x_r/h from zero crossing of measured wall shear stress",
+      "Cf(x/h)",
+      "Cp(x/h)",
+      "U1/Uref and U2/Uref profiles at all published stations",
+      "<u1'u1'>, <u2'u2'>, <u1'u2'> at all published stations",
+      "wall shear stress and pressure recovery"
+    ],
+    "uncertainty": {
+      "mean_velocity_relative": 0.015,
+      "reynolds_stress_relative": 0.12,
+      "pressure_coefficient_absolute": 0.0002
+    },
+    "reattachment_definition": "Interpolate the first downstream zero crossing of tau_w(x) from negative to positive; also report the zero crossing of Cf. Do not infer x_r visually from a velocity contour."
+  },
+  "boundary_conditions": {
+    "inlet": "Measured turbulent boundary-layer profile at x=-4h; prescribe measured turbulence quantities or document a reproducible reconstruction and quantify its uncertainty. A uniform inlet is not acceptable.",
+    "walls": "No-slip; reproduce straight upper wall and test-section dimensions.",
+    "outlet": "Long straight recovery duct; outlet sensitivity must be checked."
+  },
+  "models": {
+    "primary": "k-omega SST, wall-resolved baseline",
+    "comparison": "realizable k-epsilon with a wall treatment consistent with its formulation",
+    "unsteady": "URANS/LES only if unsteady quantities are added; original CMP32 target is time-averaged."
+  },
+  "verification": {
+    "mesh": "Three levels; refine inlet boundary layer, step corner, separated shear layer, reattachment region and downstream recovery. Report y+ and non-orthogonality.",
+    "gates": [
+      "Mass imbalance",
+      "inlet boundary-layer profile match before step",
+      "x_r/h mesh sensitivity",
+      "Cp and Cf curves",
+      "velocity and Reynolds-stress profile errors normalized by measurement uncertainty"
+    ]
+  },
+  "status": {
+    "contract": "READY_FOR_CONTRACT_CI",
+    "physical_validation": "BLOCKED_UNTIL_TURBULENCE_PRODUCTION_PATH_AND_CMP32_RAW_DATA_INGESTION",
+    "reason": "The existing SEP-BFS Armaly/Re=200 test is not this case and cannot be used as its substitute."
+  }
+}
