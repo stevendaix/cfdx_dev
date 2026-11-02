@@ -1013,7 +1013,7 @@ inline ThermalCoupledResult solve_thermal_regions_coupled(
     // reported as a converged coupled solution, even if the temperature
     // fixed-point criterion alone was satisfied.
     if (!result.regions.empty()) {
-        const final_flux_audit = audit_interface_fluxes();
+        const auto final_flux_audit = audit_interface_fluxes();
         result.interface_flux_imbalance = final_flux_audit.first;
         result.interface_flux_relative_imbalance = final_flux_audit.second;
         result.converged = result.converged &&
