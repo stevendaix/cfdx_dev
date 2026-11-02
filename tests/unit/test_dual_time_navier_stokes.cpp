@@ -150,6 +150,14 @@ int main()
 
         const auto first=lifecycle.advance(0.02,solver,tc);
         require(first.retries==0,"first step must use BE bootstrap without retry");
+        require(!first.high_order.history.empty(),
+                "first backward-Euler bootstrap must record nonlinear iterations");
+        for (const auto& iteration : first.high_order.history) {
+            require(std::abs(iteration.effective_alpha_u - 1.0) < 1e-14,
+                    "COUPLED must apply the monolithic velocity candidate without post-solve damping");
+            require(std::abs(iteration.effective_alpha_p - 1.0) < 1e-14,
+                    "COUPLED must apply the monolithic pressure candidate without post-solve damping");
+        }
         require(lifecycle.step()==1 && lifecycle.history_valid(),"first accepted step must commit history");
         const auto checkpoint=lifecycle.checkpoint();
 

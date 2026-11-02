@@ -20,10 +20,14 @@ env:
 
 jobs:
   n9-physical-validation:
-    name: N9 Physical Validation
+    name: N9 Physical Validation (${{ matrix.schur_model }})
     if: contains(github.event.pull_request.labels.*.name, 'validation-total')
     runs-on: ubuntu-24.04
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        schur_model: [pcd, lsc, bfbt, simple, simplec]
 
     steps:
       - name: Checkout PR
@@ -61,14 +65,14 @@ jobs:
           ctest --test-dir "$BUILD_DIR" \
             --output-on-failure \
             --verbose \
-            -R '^test_n9_physical_matrix$' \
+            -R '^test_n9_physical_matrix_${{ matrix.schur_model }}$' \
             2>&1 | tee "$BUILD_DIR/n9-physical-validation.log"
 
       - name: Upload N9 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: n9-s7-physical-validation-${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: n9-s7-physical-validation-${{ matrix.schur_model }}-${{ github.event.pull_request.number }}-${{ github.sha }}
           path: |
             ${{ env.BUILD_DIR }}/n9-physical-validation.log
             ${{ env.BUILD_DIR }}/Testing/

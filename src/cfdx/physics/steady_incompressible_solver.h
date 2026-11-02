@@ -3941,13 +3941,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << "\n";
             }
 
-            // COUPLED solves U and p as one saddle-point system. Do not
-            // apply independent post-solve relaxation factors to its blocks:
-            // that destroys the continuity constraint enforced by the
-            // monolithic solve (the candidate has O(linear-tolerance)
-            // continuity, while alpha_u != alpha_p introduces finite
-            // divergence). U and p already contain the coupled candidate.
-            // Segregated algorithms retain their relaxation logic below.
+            // COUPLED has already solved the monolithic U/p saddle-point
+            // system. Do not post-relax its solution: even a shared factor
+            // changes the nonlinear fixed-point trajectory and can prevent
+            // the transient high-/low-order pair from converging. The block
+            // solve's candidate is the state to accept; segregated algorithms
+            // retain their equation/pressure relaxation below.
             apply_pressure_gauge_policy(
                 p, geometry, controls.pressure_gauge_policy,
                 controls.pressure_reference_cell, controls.pressure_reference_value,
@@ -5394,8 +5393,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // Report the relaxation factors actually used on this attempt, including
         // any retry-controller scaling. These are the values needed to replay
         // an accepted iteration deterministically from its history record.
-        h.effective_alpha_u = retry_controller.alpha_u(effective_alpha_u);
-        h.effective_alpha_p = retry_controller.alpha_p(effective_alpha_p);
+        // The monolithic COUPLED candidate is applied without post-solve
+        // damping. Report its actual update factor, not the segregated
+        // alpha_u/alpha_p controls, which do not scale this block solution.
+        h.effective_alpha_u = controls.algorithm == PressureVelocityAlgorithm::COUPLED
+            ? 1.0 : retry_controller.alpha_u(effective_alpha_u);
+        h.effective_alpha_p = controls.algorithm == PressureVelocityAlgorithm::COUPLED
+            ? 1.0 : retry_controller.alpha_p(effective_alpha_p);
         h.simplec_signed_offdiag_sum_linf = simplec_signed_offdiag_sum_audit;
         h.simplec_abs_offdiag_sum_linf = simplec_abs_offdiag_sum_audit;
         h.simplec_denominator_signed_linf = simplec_denominator_signed_audit;
