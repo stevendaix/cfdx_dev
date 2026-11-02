@@ -916,6 +916,13 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_mesh_symmetry_extrusion.py)
         set_tests_properties(test_naca_mesh_symmetry_extrusion PROPERTIES
             LABELS "qualification;mesh;validation;3d")
+
+        add_test(NAME test_naca_radial_sweep
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_radial_sweep.py)
+        set_tests_properties(test_naca_radial_sweep PROPERTIES
+            LABELS "mesh;validation;diagnostics"
+            WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+            TIMEOUT 60)
         add_test(NAME test_generate_naca3d_mesh
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/generate_2d_validation_meshes.py naca3d
                     --output-dir ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes)
