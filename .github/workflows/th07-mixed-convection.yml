@@ -1,6 +1,12 @@
 name: TH-07 Mixed convection DNS (Wagner–Wetzel) — reference contract CI
 
 on:
+  push:
+    branches: [ci/thermohydraulic-independent-benchmarks]
+    paths:
+      - 'docs/validation/14-benchmarks/09-thermohydraulics/*.json'
+      - 'scripts/validate_thermohydraulic_reference.py'
+      - '.github/workflows/th07-mixed-convection.yml'
   pull_request:
     paths:
       - 'docs/validation/14-benchmarks/09-thermohydraulics/TH-07.json'
