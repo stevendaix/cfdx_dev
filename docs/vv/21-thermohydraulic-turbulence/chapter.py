@@ -169,7 +169,7 @@
 # ## Références scientifiques principales
 #
 # - Moser, R. D., Kim, J. & Mansour, N. N. (1999), Physics of Fluids 11(4),
-#   943–945, DOI: 10.1063/1.869 Re.
+#   943–945, DOI: 10.1063/1.869966.
 # - Driver, D. M. & Seegmiller, H. L. (1985), AIAA Journal 23, 163–171.
 # - OECD/NEA (2011), Vattenfall T-junction benchmark, NEA/CSNI/R(2011)5.
 # - Upflow turbulent mixed convection heat transfer in vertical pipes (1998),
