@@ -47,6 +47,9 @@ def validate_case(case_id: str) -> dict[str, Any]:
         require(physics["re_tau_targets"] == [180, 395, 590], "TH-01: Re_tau matrix mismatch")
         require(physics["re_tau_nominal_targets"] == [180, 395, 590], "TH-01: nominal Re_tau labels mismatch")
         require(len(data["reference"]["datasets"]) == 3, "TH-01: missing DNS datasets")
+        require(data["reference"]["data_url"] == "https://turbulence.oden.utexas.edu/data/MKM/",
+                "TH-01: official DNS data portal mismatch")
+        require(len(data["reference"]["profile_files"]) == 6, "TH-01: missing mean/Reynolds-stress profile filenames")
         required = {"mean profiles", "Reynolds-stress profiles", "spectra", "two-point correlations"}
         require(required.issubset(set(data["reference"]["data_contents"])),
                 "TH-01: incomplete DNS data inventory")
