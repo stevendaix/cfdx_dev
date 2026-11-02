@@ -50,5 +50,25 @@ int main() {
         EXPECT_TRUE(characteristics.coefficient_range > 1.0e10);
     });
 
+    run_case("measured_diagonal_dynamic_range_avoids_unqualified_cg_amg", [] {
+        SparseMatrix matrix(2, 2);
+        matrix.push_back(0, 0, 1.0e5);
+        matrix.push_back(0, 1, -1.0e-1);
+        matrix.push_back(1, 0, -1.0e-1);
+        matrix.push_back(1, 1, 1.0);
+        matrix.finalize();
+
+        const auto characteristics = measure_matrix_characteristics(matrix);
+        EXPECT_TRUE(characteristics.numerically_symmetric);
+        EXPECT_TRUE(characteristics.diagonally_dominant);
+        EXPECT_TRUE(characteristics.large_diagonal_dynamic_range);
+        EXPECT_TRUE(!characteristics.strongly_scaled);
+
+        const auto plan = select_linear_solver(
+            LinearProblemKind::PressurePoisson, characteristics);
+        EXPECT_TRUE(plan.krylov == KrylovModel::GMRES);
+        EXPECT_TRUE(plan.preconditioner == PreconditionerModel::ILU0);
+    });
+
     return run_all();
 }
