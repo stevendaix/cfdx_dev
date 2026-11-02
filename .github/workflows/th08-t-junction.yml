@@ -4,7 +4,7 @@ on:
   push:
     branches: [ci/thermohydraulic-independent-benchmarks]
     paths:
-      - 'docs/validation/14-benchmarks/09-thermohydraulics/*.json'
+      - 'docs/validation/14-benchmarks/09-thermohydraulics/TH-08.json'
       - 'scripts/validate_thermohydraulic_reference.py'
       - '.github/workflows/th08-t-junction.yml'
   pull_request:
