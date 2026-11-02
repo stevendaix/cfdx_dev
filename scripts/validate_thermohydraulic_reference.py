@@ -49,9 +49,13 @@ def validate_case(case_id: str) -> dict[str, Any]:
         required = {"mean profiles", "Reynolds-stress profiles", "spectra", "two-point correlations"}
         require(required.issubset(set(data["reference"]["data_contents"])),
                 "TH-01: incomplete DNS data inventory")
-        require("constant bulk mass flux" in physics["forcing"],
+        require("constant mass flux" in physics["forcing"],
                 "TH-01: forcing convention must match Moser DNS")
         derived["re_tau_cases"] = physics["re_tau_targets"]
+        actual = [entry["re_tau_actual"] for entry in physics["reference_cases"]]
+        require(actual == [178.13, 392.24, 587.19], "TH-01: actual DNS Re_tau values mismatch")
+        require([entry["spectral_grid"] for entry in physics["reference_cases"]] ==\n                ["128x129x128", "256x193x192", "384x257x384"],\n                "TH-01: DNS spectral grid inventory mismatch")
+        derived["actual_re_tau"] = actual
         derived["solver_validation"] = "BLOCKED: RANS/LES production coupling and exact DNS data ingestion"
 
     elif case_id == "TH-03":
