@@ -153,8 +153,7 @@ def main() -> int:
         "not_a_solver_validation": True,
         "cases": results,
     }
-    rendered = json.dumps(report, indent=2) + "
-"
+    rendered = json.dumps(report, indent=2) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(rendered, encoding="utf-8")
