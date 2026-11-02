@@ -3482,6 +3482,25 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     Field<double, Location::FACE> mass_flux =
         make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
 
+    // A restart must replay the continuous iteration sequence. Iteration n+1
+    // assembles momentum from the Rhie-Chow flux reconstructed with
+    // iteration n's rAU; that flux is not re-derivable from the restored U and
+    // p, so a checkpoint that carries it (DatRestartFields::face_mass_flux)
+    // replaces the simple-interpolation initial flux. Without this, a
+    // restart produces a different second iteration than the continuous run.
+    if (controls.initialization.mode == InitializationMode::Restart &&
+        effective_restart_fields.face_mass_flux) {
+        const auto& restored_flux = *effective_restart_fields.face_mass_flux;
+        if (restored_flux.dimension() != 1 || restored_flux.size() != mesh.n_faces())
+            throw std::invalid_argument(
+                "solve_steady_incompressible: restart face mass flux does not match mesh");
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+            if (!std::isfinite(restored_flux(f)))
+                throw std::invalid_argument(
+                    "solve_steady_incompressible: restart face mass flux has non-finite value");
+        mass_flux = restored_flux;
+    }
+
     const bool freeze_state = controls.diagnostics.freeze_state_probe;
     Field<double, Location::FACE> phi_used_in_momentum;
     std::array<std::vector<double>, 3> frozen_rAU;

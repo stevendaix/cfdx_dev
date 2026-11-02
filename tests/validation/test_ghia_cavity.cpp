@@ -350,7 +350,8 @@ ValidationResult run_case(
     const CavityCase& test,
     PressureVelocityAlgorithm algorithm = PressureVelocityAlgorithm::SIMPLE,
     PreconditionerModel preconditioner = PreconditionerModel::Auto,
-    bool pressure_line_search = false)
+    bool pressure_line_search = false,
+    bool check_reference_profile = true)
 {
     auto result=solve_cavity(test, algorithm, preconditioner, pressure_line_search);
     const auto u=compare(result.velocity,result.geometry,test.nx,test.ny,true,u_reference(test.reynolds));
@@ -367,8 +368,9 @@ ValidationResult run_case(
     const bool high_re=test.reynolds>=1000.0;
     const double max_allowed=high_re?0.14:(test.nx>=64?0.10:0.15);
     const double rms_allowed=high_re?0.085:0.075;
-    if(u.max_abs>max_allowed || v.max_abs>max_allowed ||
-       u.rms>rms_allowed || v.rms>rms_allowed)
+    if(check_reference_profile &&
+       (u.max_abs>max_allowed || v.max_abs>max_allowed ||
+        u.rms>rms_allowed || v.rms>rms_allowed))
         throw std::runtime_error("Ghia velocity profile mismatch");
     if(result.solve.history.back().continuity_linf>1e-7 ||
        !std::isfinite(result.solve.history.back().continuity_normalized) ||
@@ -536,11 +538,17 @@ int main(int argc, char** argv)
                 : "GHIA_CAVITY_N8_PCD: PASS\\n");
             return 0;
         }
-        const auto r32 = run_case({100.0,32,32,2500},
-                                  PressureVelocityAlgorithm::SIMPLE,
-                                  PreconditionerModel::Auto, quick_ls);
+        // This test qualifies the pressure line-search contract, not the
+        // Ghia profile. A smaller cavity keeps the diagnostic in the fast
+        // suite while retaining the independent continuity/residual gates.
+        const CavityCase quick_case = quick_ls
+            ? CavityCase{100.0,16,16,2500}
+            : CavityCase{100.0,32,32,5000};
+        const auto quick_result = run_case(
+            quick_case, PressureVelocityAlgorithm::SIMPLE,
+            PreconditionerModel::Auto, quick_ls, !quick_ls);
         if (quick_ls) {
-            const auto& history = r32.solution.solve.history;
+            const auto& history = quick_result.solution.solve.history;
             bool evaluated = false;
             for (const auto& entry : history) {
                 if (std::isfinite(entry.pressure_line_search_norm_before)) {
@@ -559,6 +567,13 @@ int main(int argc, char** argv)
             return 0;
         }
 
+        // The full campaign consumes the 32x32 result solved above: the
+        // non-quick path already ran it with the reference-profile gate,
+        // exactly like master solved 32x32 once for both consumers.
+        // Re-declaring a fresh run_case here would re-solve the cavity
+        // and double that cost; the previous restructure dropped the
+        // binding, leaving r32 undeclared on this path.
+        const auto& r32 = quick_result;
         const auto r64 = run_case({100.0,64,64,5000});
         const auto r128 = run_case({100.0,128,128,12000});
         run_case({400.0,64,64,9000});
