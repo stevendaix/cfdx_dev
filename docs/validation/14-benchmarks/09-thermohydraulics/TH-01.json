@@ -26,14 +26,66 @@
   },
   "physics": {
     "geometry": "Plane channel of half-height h; walls y=±h; periodic streamwise x and spanwise z; no-slip walls.",
-    "forcing": "Constant bulk mass flux in the reference DNS; pressure gradient adjusted dynamically. CFDX must reproduce the same mass-flux control for direct integral comparison.",
-    "re_tau_definition": "Re_tau = u_tau*h/nu, u_tau=sqrt(abs(tau_w)/rho).",
+    "forcing": "Pressure-gradient driven, statistically stationary channel flow; the streamwise pressure gradient is varied in time to maintain constant mass flux.",
+    "re_tau_definition": "Use actual Re_tau values 178.13, 392.24 and 587.19 from the published table; nominal case labels are 180, 395 and 590.",
     "re_tau_targets": [
       180,
       395,
       590
     ],
-    "re_tau_180_caveat": "The Re_tau=180 database has pronounced low-Reynolds-number effects and a very short/absent logarithmic region. Do not enforce a universal log-law fit at this Reynolds number."
+    "re_tau_180_caveat": "The Re_tau=180 database has pronounced low-Reynolds-number effects and a very short/absent logarithmic region. Do not enforce a universal log-law fit at this Reynolds number.",
+    "re_tau_nominal_targets": [
+      180,
+      395,
+      590
+    ],
+    "reference_cases": [
+      {
+        "re_tau_nominal": 180,
+        "re_tau_actual": 178.13,
+        "bulk_reynolds_approx": 2800,
+        "domain_half_height_units": {
+          "Lx": "4*pi*h",
+          "Lz": "(4/3)*pi*h"
+        },
+        "spectral_grid": "128x129x128",
+        "resolution_wall_units": {
+          "delta_x_plus": 17.7,
+          "delta_z_plus": 5.9,
+          "delta_y_center_plus": 4.4
+        }
+      },
+      {
+        "re_tau_nominal": 395,
+        "re_tau_actual": 392.24,
+        "bulk_reynolds": 6875,
+        "domain_half_height_units": {
+          "Lx": "2*pi*h",
+          "Lz": "pi*h"
+        },
+        "spectral_grid": "256x193x192",
+        "resolution_wall_units": {
+          "delta_x_plus": 10,
+          "delta_z_plus": 6.5,
+          "delta_y_center_plus": 6.5
+        }
+      },
+      {
+        "re_tau_nominal": 590,
+        "re_tau_actual": 587.19,
+        "bulk_reynolds": 10935,
+        "domain_half_height_units": {
+          "Lx": "2*pi*h",
+          "Lz": "pi*h"
+        },
+        "spectral_grid": "384x257x384",
+        "resolution_wall_units": {
+          "delta_x_plus": 9.7,
+          "delta_z_plus": 4.8,
+          "delta_y_center_plus": 7.2
+        }
+      }
+    ]
   },
   "qoi": {
     "primary": [
