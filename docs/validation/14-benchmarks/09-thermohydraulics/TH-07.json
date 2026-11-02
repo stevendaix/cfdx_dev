@@ -106,7 +106,7 @@
       ]
     },
     "wall_shear_stress_normalization": "Dimensionless tau_w/(rho*Ub^2), as used by the DNS nondimensionalization; do not compare to dimensional Pa without restoring rho and Ub.",
-    "relative_wall_shear_change_percent": {
+    "relative_wall_shear_rate_change_percent": {
       "heated_aiding": [
         5.3,
         11.6,
