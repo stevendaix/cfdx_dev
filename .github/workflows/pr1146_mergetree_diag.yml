@@ -83,6 +83,10 @@ jobs:
             echo "==== $f ====" >> "$GITHUB_WORKSPACE/$EVID/pr1146_mt_conflicts_run$GITHUB_RUN_ID.txt"
             grep -n -B 2 -A 12 '^<<<<<<<' "$f" | head -n 200 >> "$GITHUB_WORKSPACE/$EVID/pr1146_mt_conflicts_run$GITHUB_RUN_ID.txt" || true
           done
+          cd /tmp/pr1146_wt
+          for f in tests/validation/test_naca0012_geometry.cpp tests/validation/test_naca0012_wall_shear_audit.cpp; do
+            base64 -w 200 "$f" > "$GITHUB_WORKSPACE/$EVID/pr1146_mt_full_$(basename "$f")_run$GITHUB_RUN_ID.b64"
+          done
           cd "$GITHUB_WORKSPACE"
           git worktree remove --force /tmp/pr1146_wt || true
 
