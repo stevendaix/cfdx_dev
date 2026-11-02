@@ -129,13 +129,13 @@ int main() {
         EXPECT_TRUE(null_space.is_null_space(A));
     });
 
-    run_case("pressure_dispatch_avoids_unqualified_amg_for_anisotropic_systems", [] {
+    run_case("pressure_dispatch_avoids_unqualified_amg_for_large_diagonal_dynamic_range", [] {
         MatrixCharacteristics characteristics;
         characteristics.equations = 4096;
         characteristics.square = true;
         characteristics.numerically_symmetric = true;
         characteristics.diagonally_dominant = true;
-        characteristics.anisotropic = true;
+        characteristics.large_diagonal_dynamic_range = true;
 
         const auto plan = select_linear_solver(
             LinearProblemKind::PressurePoisson, characteristics);
