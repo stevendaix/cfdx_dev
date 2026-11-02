@@ -27,6 +27,8 @@ REQUIRED = (
 
 
 def qualify(rows, residual_gate=1e-8):
+    if not math.isfinite(residual_gate) or residual_gate <= 0.0:
+        raise ValueError("physical residual gate must be finite and strictly positive")
     if len(rows) != 3:
         raise ValueError("GCI requires exactly 3 converged geometrically similar grids")
     for row in rows:
