@@ -13,6 +13,7 @@ Current campaign slots:
 - backward-facing step
 - NACA0012
 - thermal benchmarks
+- thermohydraulic turbulence (MKM channel, Driver–Seegmiller BFS, mixed convection, Vattenfall T-junction)
 - radiation benchmarks
 
 These names are campaign targets, not claims that the current CFDX implementation passes them. Current status must come from retained execution evidence.
