@@ -275,6 +275,10 @@ struct IndependentEnergyBalance {
     double max_cell_residual_normalized = 0.0;
     std::size_t worst_cell_normalized = 0;
     double boundary_flux = 0.0;
+    // Gross boundary throughput is the correct global normalization when
+    // large equal-and-opposite boundary/interface fluxes nearly cancel.
+    // Keep the signed integral above for conservation diagnostics.
+    double boundary_flux_magnitude = 0.0;
     double source_integral = 0.0;
     double accumulation = 0.0;
     std::size_t nonfinite_faces = 0;
@@ -321,6 +325,7 @@ inline IndependentEnergyBalance reconstruct_energy_balance(
             cell_gross_flux[static_cast<std::size_t>(n)]+=std::abs(q);
         } else {
             r.boundary_flux+=q;
+            r.boundary_flux_magnitude+=std::abs(q);
         }
     }
 
@@ -359,7 +364,12 @@ inline IndependentEnergyBalance reconstruct_energy_balance(
         }
         sum2+=rc*rc;
     }
-    const double scale=std::max({1.0,std::abs(r.boundary_flux),
+    // Normalize the global closure by gross physical throughput, not the
+    // signed boundary sum: balanced inlet/outlet (or conjugate-interface)
+    // fluxes otherwise collapse the scale to 1 W and amplify round-off.
+    // The per-cell normalized gate remains in place to prevent cancellation
+    // from hiding a local conservation defect.
+    const double scale=std::max({1.0,r.boundary_flux_magnitude,
                                  std::abs(r.source_integral),std::abs(r.accumulation)});
     r.normalized_residual=std::abs(r.residual)/scale;
     return r;
