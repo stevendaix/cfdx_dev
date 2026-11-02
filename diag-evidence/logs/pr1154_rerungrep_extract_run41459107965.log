@@ -1,0 +1,332 @@
+== tail 60 ==
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=3.55872e-17 linear_relative=0 dT_relative=6.29377e-05 energy_balance=3.55872e-17 independent_global=1.9142e-15 independent_local=2.65861e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43446e-17 linear_relative=1.34411e-16 dT_relative=2.50827e-05 energy_balance=5.33805e-17 independent_global=2.87037e-15 independent_local=3.98971e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43438e-17 linear_relative=1.90084e-16 dT_relative=9.99631e-06 energy_balance=1.77935e-17 independent_global=2.23222e-15 independent_local=3.10367e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.27374e-13 backward_error=1.77934e-17 linear_relative=0 dT_relative=3.98387e-06 energy_balance=1.77934e-17 independent_global=5.73969e-15 independent_local=4.87754e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43434e-17 linear_relative=1.90084e-16 dT_relative=1.58771e-06 energy_balance=1.42347e-16 independent_global=8.29049e-15 independent_local=5.3211e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43433e-17 linear_relative=1.34409e-16 dT_relative=6.32758e-07 energy_balance=8.89671e-17 independent_global=8.29042e-15 independent_local=6.65146e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43433e-17 linear_relative=1.34409e-16 dT_relative=2.52176e-07 energy_balance=5.33803e-17 independent_global=9.56583e-16 independent_local=3.99089e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=1.00501e-07 energy_balance=0 independent_global=2.23203e-15 independent_local=1.77373e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43433e-17 linear_relative=1.34409e-16 dT_relative=4.00531e-08 energy_balance=5.33803e-17 independent_global=5.73949e-15 independent_local=7.53837e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.82121e-13 backward_error=5.33803e-17 linear_relative=1.34409e-16 dT_relative=1.59626e-08 energy_balance=5.33803e-17 independent_global=4.14519e-15 independent_local=1.76451e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43433e-17 linear_relative=1.34409e-16 dT_relative=6.36164e-09 energy_balance=7.11737e-17 independent_global=2.23202e-15 independent_local=5.3212e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.27374e-13 backward_error=1.77934e-17 linear_relative=0 dT_relative=2.53533e-09 energy_balance=1.77934e-17 independent_global=2.55088e-15 independent_local=1.32338e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=1.34409e-16 dT_relative=1.01042e-09 energy_balance=0 independent_global=3.1886e-15 independent_local=3.54747e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=3.55869e-17 linear_relative=0 dT_relative=4.02687e-10 energy_balance=3.55869e-17 independent_global=6.37721e-16 independent_local=8.86867e-16 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43433e-17 linear_relative=1.34409e-16 dT_relative=1.60485e-10 energy_balance=7.11737e-17 independent_global=6.37721e-16 independent_local=1.77373e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.11737e-17 linear_relative=1.34409e-16 dT_relative=6.39587e-11 energy_balance=7.11737e-17 independent_global=3.1886e-16 independent_local=5.3212e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.27374e-13 backward_error=1.77934e-17 linear_relative=0 dT_relative=2.54899e-11 energy_balance=1.77934e-17 independent_global=4.78291e-15 independent_local=3.10404e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43433e-17 linear_relative=1.90084e-16 dT_relative=1.01585e-11 energy_balance=1.77934e-17 independent_global=3.1886e-16 independent_local=4.87777e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.82121e-13 backward_error=5.33803e-17 linear_relative=1.34409e-16 dT_relative=4.0485e-12 energy_balance=5.33803e-17 independent_global=1.5943e-15 independent_local=4.87777e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=3.55869e-17 linear_relative=0 dT_relative=1.61362e-12 energy_balance=3.55869e-17 independent_global=3.1886e-15 independent_local=4.43434e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43433e-17 linear_relative=1.34409e-16 dT_relative=6.4309e-13 energy_balance=1.06761e-16 independent_global=6.05835e-15 independent_local=4.43434e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.56208e-13 energy_balance=0 independent_global=3.1886e-16 independent_local=1.47043e-16 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.18323e-11 backward_error=2.60201e-15 linear_relative=4.82565e-15 dT_relative=9.64937e-14 energy_balance=3.09606e-15 independent_global=2.23521e-13 independent_local=2.4921e-13 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.34373e-11 backward_error=4.96437e-15 linear_relative=9.41249e-15 dT_relative=4.18946e-14 energy_balance=4.82202e-15 independent_global=3.45645e-13 independent_local=1.63364e-13 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.13687e-11 backward_error=8.89671e-16 linear_relative=2.01614e-15 dT_relative=1.9813e-14 energy_balance=2.49108e-16 independent_global=1.8175e-14 independent_local=6.65151e-14 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.91083e-11 backward_error=3.19676e-15 linear_relative=6.00044e-15 dT_relative=0 energy_balance=3.95014e-15 independent_global=2.86018e-13 independent_local=3.05969e-13 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.97904e-13 backward_error=7.09718e-17 linear_relative=1.33506e-16 dT_relative=0.0355277 energy_balance=7.09718e-17 independent_global=7.55254e-15 independent_local=1.71784e-14 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.68434e-14 backward_error=1.01382e-17 linear_relative=0 dT_relative=5.89796e-05 energy_balance=1.01382e-17 independent_global=0 independent_local=1.89327e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.27374e-13 backward_error=4.05528e-17 linear_relative=0 dT_relative=2.99578e-06 energy_balance=4.05528e-17 independent_global=1.89197e-15 independent_local=7.56831e-16 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.7053e-13 backward_error=3.04146e-17 linear_relative=0 dT_relative=1.52167e-07 energy_balance=3.04146e-17 independent_global=3.78397e-15 independent_local=1.89245e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=8.41991e-17 linear_relative=1.33501e-16 dT_relative=7.7291e-09 energy_balance=5.0691e-17 independent_global=5.67595e-15 independent_local=2.64891e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.97904e-13 backward_error=7.09674e-17 linear_relative=1.33501e-16 dT_relative=3.92589e-10 energy_balance=7.09674e-17 independent_global=1.22979e-14 independent_local=2.08169e-14 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.13687e-13 backward_error=2.02764e-17 linear_relative=0 dT_relative=1.99413e-11 energy_balance=2.02764e-17 independent_global=1.89198e-15 independent_local=3.7849e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.13687e-13 backward_error=2.02764e-17 linear_relative=0 dT_relative=1.01285e-12 energy_balance=2.02764e-17 independent_global=3.78397e-15 independent_local=1.51366e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.81899e-11 backward_error=3.36796e-15 linear_relative=5.34004e-15 dT_relative=5.06099e-14 energy_balance=3.2645e-15 independent_global=3.00825e-13 independent_local=1.19579e-13 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.81899e-11 backward_error=3.36796e-15 linear_relative=5.70316e-15 dT_relative=0 energy_balance=4.48108e-15 independent_global=4.18128e-13 independent_local=2.38449e-13 independent_accepted=1 accepted_state=1
+  PASS: transient_coupled_step
+  PASS: fail_closed_coupled_and_unsupported
+  PASS: fail_closed_invalid_boundary_mapping
+  PASS: fail_closed_invalid_boundary_values
+  PASS: fail_closed_prescribed_mass_flux
+SCALAR_LINEAR_ATTEMPT stage=requested status=1 iterations=2000 residual=1.28622e-12 relative=3.02493e-16 samples=0
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.0967742 energy_balance=0 independent_global=0 independent_local=0 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.101449 energy_balance=0 independent_global=0 independent_local=0 independent_accepted=1 accepted_state=1
+  PASS: fail_closed_conjugate_interfaces
+
+Results: 19 passed, 2 failed
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+thermal       =   2.61 sec*proc (1 test)
+validation    =   2.61 sec*proc (1 test)
+
+Total Test time (real) =   2.67 sec
+
+The following tests FAILED:
+	215 - test_thermal_driver_vv (Failed)                   thermal validation
+Errors while running CTest
+== assertion-like lines (first 120) ==
+4:1/1 Test #215: test_thermal_driver_vv ...........***Failed    2.61 sec
+7:  PASS: steady_conduction_linear_profile
+9:  PASS: steady_uniform_generation
+11:  PASS: steady_fixed_heat_flux
+13:  PASS: steady_power_patch
+15:  PASS: steady_convection_equilibrium
+91:  PASS: steady_convection_robin_fixed_point
+96:  PASS: transient_insulated_heating
+102:  PASS: transient_dirichlet_relaxation
+104:  PASS: stagnant_fluid_diffusion
+113:  PASS: conductivity_picard
+115:  PASS: steady_advection_constant_state
+117:  PASS: steady_throughflow_generation
+122:  PASS: transient_washout_exponential
+40123:  FAILED: result.converged in operator() at /tmp/pr1154_wt/tests/validation/test_thermal_driver_vv.cpp:611
+40124:  FAIL: steady_conjugate_two_bars - Assertion failed: result.converged
+80125:  FAILED: result.converged in operator() at /tmp/pr1154_wt/tests/validation/test_thermal_driver_vv.cpp:658
+80126:  FAIL: steady_contact_resistance_jump - Assertion failed: result.converged
+80463:  PASS: transient_coupled_step
+80464:  PASS: fail_closed_coupled_and_unsupported
+80465:  PASS: fail_closed_invalid_boundary_mapping
+80466:  PASS: fail_closed_invalid_boundary_values
+80467:  PASS: fail_closed_prescribed_mass_flux
+80471:  PASS: fail_closed_conjugate_interfaces
+80484:The following tests FAILED:
+80485:	215 - test_thermal_driver_vv (Failed)                   thermal validation
+== last FAIL block (context 40 lines before each FAIL) ==
+---- lines 40084-40134 ----
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.45697e-12 backward_error=2.84217e-15 linear_relative=5.83866e-15 dT_relative=0 energy_balance=3.18428e-15 independent_global=6.9349e-12 independent_local=6.82121e-14 independent_accepted=0 accepted_state=1
+  FAILED: result.converged in operator() at /tmp/pr1154_wt/tests/validation/test_thermal_driver_vv.cpp:611
+  FAIL: steady_conjugate_two_bars - Assertion failed: result.converged
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=1.0454e-16 linear_relative=3.02493e-16 dT_relative=0.0967742 energy_balance=1.71141e-16 independent_global=4.54747e-13 independent_local=2.27374e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=1.0255e-16 linear_relative=2.98995e-16 dT_relative=0.0180361 energy_balance=1.70113e-16 independent_global=4.54747e-13 independent_local=2.79845e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=1.01465e-16 linear_relative=2.9704e-16 dT_relative=0.0101111 energy_balance=1.69539e-16 independent_global=4.54747e-13 independent_local=3.21589e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=1.00864e-16 linear_relative=2.95945e-16 dT_relative=0.00567673 energy_balance=1.69218e-16 independent_global=4.54747e-13 independent_local=3.51045e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=1.00529e-16 linear_relative=2.9533e-16 dT_relative=0.00318977 energy_balance=1.69038e-16 independent_global=4.54747e-13 independent_local=3.70114e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=1.00342e-16 linear_relative=2.94985e-16 dT_relative=0.00179317 energy_balance=1.68937e-16 independent_global=4.54747e-13 independent_local=3.81779e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=1.00236e-16 linear_relative=2.94791e-16 dT_relative=0.00100832 energy_balance=1.68881e-16 independent_global=4.54747e-13 independent_local=3.8867e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=1.00177e-16 linear_relative=2.94682e-16 dT_relative=0.000567072 energy_balance=1.68849e-16 independent_global=4.54747e-13 independent_local=3.92657e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=1.00144e-16 linear_relative=2.94621e-16 dT_relative=0.000318944 energy_balance=1.68831e-16 independent_global=4.54747e-13 independent_local=3.94935e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=1.00126e-16 linear_relative=2.94586e-16 dT_relative=0.000179395 energy_balance=1.68821e-16 independent_global=4.54747e-13 independent_local=3.96229e-15 independent_accepted=1 accepted_state=1
+---- lines 80085-80135 ----
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+  FAILED: result.converged in operator() at /tmp/pr1154_wt/tests/validation/test_thermal_driver_vv.cpp:658
+  FAIL: steady_contact_resistance_jump - Assertion failed: result.converged
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.13687e-12 backward_error=8.91879e-17 linear_relative=1.91303e-16 dT_relative=0.0664387 energy_balance=1.78376e-17 independent_global=3.69482e-16 independent_local=4.84945e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.46792e-17 linear_relative=1.34762e-16 dT_relative=0.00622103 energy_balance=5.34344e-17 independent_global=6.08049e-15 independent_local=6.9978e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.27374e-13 backward_error=1.78011e-17 linear_relative=0 dT_relative=0.00247785 energy_balance=1.78011e-17 independent_global=1.63322e-15 independent_local=5.58143e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.27374e-13 backward_error=1.7797e-17 linear_relative=0 dT_relative=0.00098728 energy_balance=1.7797e-17 independent_global=3.54639e-15 independent_local=3.0578e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.27374e-13 backward_error=1.77953e-17 linear_relative=0 dT_relative=0.000393429 energy_balance=1.77953e-17 independent_global=3.52812e-15 independent_local=4.83875e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=3.55893e-17 linear_relative=0 dT_relative=0.000156789 energy_balance=3.55893e-17 independent_global=2.88073e-15 independent_local=7.9401e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43612e-17 linear_relative=1.34428e-16 dT_relative=6.24851e-05 energy_balance=1.06766e-16 independent_global=8.63513e-15 independent_local=9.7154e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.11771e-17 linear_relative=1.34426e-16 dT_relative=2.49024e-05 energy_balance=7.11771e-17 independent_global=4.47602e-15 independent_local=2.64478e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43585e-17 linear_relative=1.34425e-16 dT_relative=9.92443e-06 energy_balance=7.1177e-17 independent_global=2.87707e-15 independent_local=3.53507e-15 independent_accepted=1 accepted_state=1
+---- lines 80086-80136 ----
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.77707e-12 backward_error=2.46896e-15 linear_relative=5.66912e-15 dT_relative=0 energy_balance=3.2728e-15 independent_global=1.31877e-11 independent_local=1.23634e-13 independent_accepted=0 accepted_state=1
+  FAILED: result.converged in operator() at /tmp/pr1154_wt/tests/validation/test_thermal_driver_vv.cpp:658
+  FAIL: steady_contact_resistance_jump - Assertion failed: result.converged
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.13687e-12 backward_error=8.91879e-17 linear_relative=1.91303e-16 dT_relative=0.0664387 energy_balance=1.78376e-17 independent_global=3.69482e-16 independent_local=4.84945e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.46792e-17 linear_relative=1.34762e-16 dT_relative=0.00622103 energy_balance=5.34344e-17 independent_global=6.08049e-15 independent_local=6.9978e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.27374e-13 backward_error=1.78011e-17 linear_relative=0 dT_relative=0.00247785 energy_balance=1.78011e-17 independent_global=1.63322e-15 independent_local=5.58143e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.27374e-13 backward_error=1.7797e-17 linear_relative=0 dT_relative=0.00098728 energy_balance=1.7797e-17 independent_global=3.54639e-15 independent_local=3.0578e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.27374e-13 backward_error=1.77953e-17 linear_relative=0 dT_relative=0.000393429 energy_balance=1.77953e-17 independent_global=3.52812e-15 independent_local=4.83875e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=3.55893e-17 linear_relative=0 dT_relative=0.000156789 energy_balance=3.55893e-17 independent_global=2.88073e-15 independent_local=7.9401e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43612e-17 linear_relative=1.34428e-16 dT_relative=6.24851e-05 energy_balance=1.06766e-16 independent_global=8.63513e-15 independent_local=9.7154e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.11771e-17 linear_relative=1.34426e-16 dT_relative=2.49024e-05 energy_balance=7.11771e-17 independent_global=4.47602e-15 independent_local=2.64478e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43585e-17 linear_relative=1.34425e-16 dT_relative=9.92443e-06 energy_balance=7.1177e-17 independent_global=2.87707e-15 independent_local=3.53507e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43582e-17 linear_relative=0 dT_relative=3.95523e-06 energy_balance=3.55885e-17 independent_global=0 independent_local=2.65149e-15 independent_accepted=1 accepted_state=1
+---- lines 80444-80494 ----
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43433e-17 linear_relative=1.90084e-16 dT_relative=1.01585e-11 energy_balance=1.77934e-17 independent_global=3.1886e-16 independent_local=4.87777e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.82121e-13 backward_error=5.33803e-17 linear_relative=1.34409e-16 dT_relative=4.0485e-12 energy_balance=5.33803e-17 independent_global=1.5943e-15 independent_local=4.87777e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=3.55869e-17 linear_relative=0 dT_relative=1.61362e-12 energy_balance=3.55869e-17 independent_global=3.1886e-15 independent_local=4.43434e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43433e-17 linear_relative=1.34409e-16 dT_relative=6.4309e-13 energy_balance=1.06761e-16 independent_global=6.05835e-15 independent_local=4.43434e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.56208e-13 energy_balance=0 independent_global=3.1886e-16 independent_local=1.47043e-16 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.18323e-11 backward_error=2.60201e-15 linear_relative=4.82565e-15 dT_relative=9.64937e-14 energy_balance=3.09606e-15 independent_global=2.23521e-13 independent_local=2.4921e-13 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.34373e-11 backward_error=4.96437e-15 linear_relative=9.41249e-15 dT_relative=4.18946e-14 energy_balance=4.82202e-15 independent_global=3.45645e-13 independent_local=1.63364e-13 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.13687e-11 backward_error=8.89671e-16 linear_relative=2.01614e-15 dT_relative=1.9813e-14 energy_balance=2.49108e-16 independent_global=1.8175e-14 independent_local=6.65151e-14 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.91083e-11 backward_error=3.19676e-15 linear_relative=6.00044e-15 dT_relative=0 energy_balance=3.95014e-15 independent_global=2.86018e-13 independent_local=3.05969e-13 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.97904e-13 backward_error=7.09718e-17 linear_relative=1.33506e-16 dT_relative=0.0355277 energy_balance=7.09718e-17 independent_global=7.55254e-15 independent_local=1.71784e-14 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.68434e-14 backward_error=1.01382e-17 linear_relative=0 dT_relative=5.89796e-05 energy_balance=1.01382e-17 independent_global=0 independent_local=1.89327e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.27374e-13 backward_error=4.05528e-17 linear_relative=0 dT_relative=2.99578e-06 energy_balance=4.05528e-17 independent_global=1.89197e-15 independent_local=7.56831e-16 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.7053e-13 backward_error=3.04146e-17 linear_relative=0 dT_relative=1.52167e-07 energy_balance=3.04146e-17 independent_global=3.78397e-15 independent_local=1.89245e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=8.41991e-17 linear_relative=1.33501e-16 dT_relative=7.7291e-09 energy_balance=5.0691e-17 independent_global=5.67595e-15 independent_local=2.64891e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.97904e-13 backward_error=7.09674e-17 linear_relative=1.33501e-16 dT_relative=3.92589e-10 energy_balance=7.09674e-17 independent_global=1.22979e-14 independent_local=2.08169e-14 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.13687e-13 backward_error=2.02764e-17 linear_relative=0 dT_relative=1.99413e-11 energy_balance=2.02764e-17 independent_global=1.89198e-15 independent_local=3.7849e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.13687e-13 backward_error=2.02764e-17 linear_relative=0 dT_relative=1.01285e-12 energy_balance=2.02764e-17 independent_global=3.78397e-15 independent_local=1.51366e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.81899e-11 backward_error=3.36796e-15 linear_relative=5.34004e-15 dT_relative=5.06099e-14 energy_balance=3.2645e-15 independent_global=3.00825e-13 independent_local=1.19579e-13 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.81899e-11 backward_error=3.36796e-15 linear_relative=5.70316e-15 dT_relative=0 energy_balance=4.48108e-15 independent_global=4.18128e-13 independent_local=2.38449e-13 independent_accepted=1 accepted_state=1
+  PASS: transient_coupled_step
+  PASS: fail_closed_coupled_and_unsupported
+  PASS: fail_closed_invalid_boundary_mapping
+  PASS: fail_closed_invalid_boundary_values
+  PASS: fail_closed_prescribed_mass_flux
+SCALAR_LINEAR_ATTEMPT stage=requested status=1 iterations=2000 residual=1.28622e-12 relative=3.02493e-16 samples=0
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.0967742 energy_balance=0 independent_global=0 independent_local=0 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.101449 energy_balance=0 independent_global=0 independent_local=0 independent_accepted=1 accepted_state=1
+  PASS: fail_closed_conjugate_interfaces
+
+Results: 19 passed, 2 failed
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+thermal       =   2.61 sec*proc (1 test)
+validation    =   2.61 sec*proc (1 test)
+
+Total Test time (real) =   2.67 sec
+
+The following tests FAILED:
+	215 - test_thermal_driver_vv (Failed)                   thermal validation
+Errors while running CTest
+---- lines 80445-80495 ----
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.82121e-13 backward_error=5.33803e-17 linear_relative=1.34409e-16 dT_relative=4.0485e-12 energy_balance=5.33803e-17 independent_global=1.5943e-15 independent_local=4.87777e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=3.55869e-17 linear_relative=0 dT_relative=1.61362e-12 energy_balance=3.55869e-17 independent_global=3.1886e-15 independent_local=4.43434e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=9.09495e-13 backward_error=7.43433e-17 linear_relative=1.34409e-16 dT_relative=6.4309e-13 energy_balance=1.06761e-16 independent_global=6.05835e-15 independent_local=4.43434e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=2.56208e-13 energy_balance=0 independent_global=3.1886e-16 independent_local=1.47043e-16 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.18323e-11 backward_error=2.60201e-15 linear_relative=4.82565e-15 dT_relative=9.64937e-14 energy_balance=3.09606e-15 independent_global=2.23521e-13 independent_local=2.4921e-13 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=6.34373e-11 backward_error=4.96437e-15 linear_relative=9.41249e-15 dT_relative=4.18946e-14 energy_balance=4.82202e-15 independent_global=3.45645e-13 independent_local=1.63364e-13 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.13687e-11 backward_error=8.89671e-16 linear_relative=2.01614e-15 dT_relative=1.9813e-14 energy_balance=2.49108e-16 independent_global=1.8175e-14 independent_local=6.65151e-14 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.91083e-11 backward_error=3.19676e-15 linear_relative=6.00044e-15 dT_relative=0 energy_balance=3.95014e-15 independent_global=2.86018e-13 independent_local=3.05969e-13 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.97904e-13 backward_error=7.09718e-17 linear_relative=1.33506e-16 dT_relative=0.0355277 energy_balance=7.09718e-17 independent_global=7.55254e-15 independent_local=1.71784e-14 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=5.68434e-14 backward_error=1.01382e-17 linear_relative=0 dT_relative=5.89796e-05 energy_balance=1.01382e-17 independent_global=0 independent_local=1.89327e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=2.27374e-13 backward_error=4.05528e-17 linear_relative=0 dT_relative=2.99578e-06 energy_balance=4.05528e-17 independent_global=1.89197e-15 independent_local=7.56831e-16 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.7053e-13 backward_error=3.04146e-17 linear_relative=0 dT_relative=1.52167e-07 energy_balance=3.04146e-17 independent_global=3.78397e-15 independent_local=1.89245e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=4.54747e-13 backward_error=8.41991e-17 linear_relative=1.33501e-16 dT_relative=7.7291e-09 energy_balance=5.0691e-17 independent_global=5.67595e-15 independent_local=2.64891e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=3.97904e-13 backward_error=7.09674e-17 linear_relative=1.33501e-16 dT_relative=3.92589e-10 energy_balance=7.09674e-17 independent_global=1.22979e-14 independent_local=2.08169e-14 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.13687e-13 backward_error=2.02764e-17 linear_relative=0 dT_relative=1.99413e-11 energy_balance=2.02764e-17 independent_global=1.89198e-15 independent_local=3.7849e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.13687e-13 backward_error=2.02764e-17 linear_relative=0 dT_relative=1.01285e-12 energy_balance=2.02764e-17 independent_global=3.78397e-15 independent_local=1.51366e-15 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.81899e-11 backward_error=3.36796e-15 linear_relative=5.34004e-15 dT_relative=5.06099e-14 energy_balance=3.2645e-15 independent_global=3.00825e-13 independent_local=1.19579e-13 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=1.81899e-11 backward_error=3.36796e-15 linear_relative=5.70316e-15 dT_relative=0 energy_balance=4.48108e-15 independent_global=4.18128e-13 independent_local=2.38449e-13 independent_accepted=1 accepted_state=1
+  PASS: transient_coupled_step
+  PASS: fail_closed_coupled_and_unsupported
+  PASS: fail_closed_invalid_boundary_mapping
+  PASS: fail_closed_invalid_boundary_values
+  PASS: fail_closed_prescribed_mass_flux
+SCALAR_LINEAR_ATTEMPT stage=requested status=1 iterations=2000 residual=1.28622e-12 relative=3.02493e-16 samples=0
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.0967742 energy_balance=0 independent_global=0 independent_local=0 independent_accepted=1 accepted_state=1
+THERMAL_RESIDUAL: iteration=1 linear_status=0 residual=0 backward_error=0 linear_relative=0 dT_relative=0.101449 energy_balance=0 independent_global=0 independent_local=0 independent_accepted=1 accepted_state=1
+  PASS: fail_closed_conjugate_interfaces
+
+Results: 19 passed, 2 failed
+
+
+0% tests passed, 1 tests failed out of 1
+
+Label Time Summary:
+thermal       =   2.61 sec*proc (1 test)
+validation    =   2.61 sec*proc (1 test)
+
+Total Test time (real) =   2.67 sec
+
+The following tests FAILED:
+	215 - test_thermal_driver_vv (Failed)                   thermal validation
+Errors while running CTest
