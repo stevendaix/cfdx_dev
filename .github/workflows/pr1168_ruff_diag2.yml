@@ -1,0 +1,119 @@
+name: PR 1168 ruff pre-commit oracle v2 (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Evidence-only : fix canonique exact (ruff check --fix --diff) pour EXE001 + I001
+# et format canonique du script, sur le head PR #1168 d7838830.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1168_ruff_diag2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1168-ruff-diag2
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR1168_HEAD: d78388304f053d668a0265eebe1a7269108646c8
+
+jobs:
+  oracle:
+    name: ruff canonical fix diff on PR1168 head
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      WDIR: /tmp/pr1168_wt2
+      FILES: scripts/validate_thermohydraulic_reference.py tests/python/test_thermohydraulic_reference_contracts.py
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pins and worktree PR head
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "pr1168_head=$PR1168_HEAD"
+            echo "purpose=canonical ruff fix diff for EXE001 + I001 + format on PR #1168 head d7838830"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1168_fixdiff_meta_run$GITHUB_RUN_ID.txt"
+          git cat-file -e "$PR1168_HEAD^{commit}" || { echo "::error::PR1168 head unresolvable"; exit 1; }
+          git worktree add "$WDIR" "$PR1168_HEAD"
+
+      - name: Install ruff
+        run: python3 -m pip install --upgrade ruff
+
+      - name: Ruff check fix-diff replica
+        run: |
+          set +e
+          cd "$WDIR"
+          ruff --version > "$GITHUB_WORKSPACE/$EVID/pr1168_fixdiff_version_run$GITHUB_RUN_ID.txt"
+          # make a disposable copy so --fix evidence never mutates the worktree
+          cp scripts/validate_thermohydraulic_reference.py /tmp/vtr.py
+          cp tests/python/test_thermohydraulic_reference_contracts.py /tmp/ttrc.py
+          {
+            echo "=== ruff check --fix --diff (canonical I001/EXE001-safe fixes) ==="
+            ruff check --fix --diff /tmp/vtr.py /tmp/ttrc.py
+            echo "ruff_check_fixdiff_exit=$?"
+            echo "=== ruff check --fix --diff --unsafe-fixes (EXE001 has no autofix; informational) ==="
+            ruff check --fix --diff --unsafe-fixes /tmp/vtr.py /tmp/ttrc.py
+            echo "ruff_check_fixdiff_unsafe_exit=$?"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1168_fixdiff_check_run$GITHUB_RUN_ID.txt" 2>&1
+          rc=$?
+          set -e
+          echo "check_fixdiff_exit=$rc" | tee "$GITHUB_WORKSPACE/$EVID/pr1168_fixdiff_status_run$GITHUB_RUN_ID.txt"
+          cat "$GITHUB_WORKSPACE/$EVID/pr1168_fixdiff_check_run$GITHUB_RUN_ID.txt"
+
+      - name: Canonical formatted files (post-fix bytes)
+        run: |
+          set +e
+          cd "$WDIR"
+          cp scripts/validate_thermohydraulic_reference.py /tmp/fmt_vtr.py
+          cp tests/python/test_thermohydraulic_reference_contracts.py /tmp/fmt_ttrc.py
+          ruff format /tmp/fmt_vtr.py /tmp/fmt_ttrc.py
+          ruff check --fix /tmp/fmt_vtr.py /tmp/fmt_ttrc.py || true
+          ruff format --check /tmp/fmt_vtr.py /tmp/fmt_ttrc.py
+          echo "postfix_format_exit=$?" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1168_fixdiff_status_run$GITHUB_RUN_ID.txt"
+          cp /tmp/fmt_vtr.py "$GITHUB_WORKSPACE/$EVID/pr1168_canonical_validate_thermohydraulic_reference_run$GITHUB_RUN_ID.py"
+          cp /tmp/fmt_ttrc.py "$GITHUB_WORKSPACE/$EVID/pr1168_canonical_test_thermohydraulic_reference_contracts_run$GITHUB_RUN_ID.py"
+          set -e
+
+      - name: Post-fix ruff verdict
+        run: |
+          set +e
+          cd /tmp
+          ruff check fmt_vtr.py fmt_ttrc.py > "$GITHUB_WORKSPACE/$EVID/pr1168_postfix_check_run$GITHUB_RUN_ID.txt" 2>&1
+          echo "postfix_check_exit=$?" | tee -a "$GITHUB_WORKSPACE/$EVID/pr1168_fixdiff_status_run$GITHUB_RUN_ID.txt"
+          cat "$GITHUB_WORKSPACE/$EVID/pr1168_postfix_check_run$GITHUB_RUN_ID.txt"
+          set -e
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1168 ruff canonical fix diff run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/pr1168_fixdiff_status_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$f" ]; then
+            echo "::error::no status recorded - read oracle evidence"
+            exit 1
+          fi
+          cat "$f"
