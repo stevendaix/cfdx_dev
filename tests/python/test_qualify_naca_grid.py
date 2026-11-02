@@ -48,9 +48,10 @@ class GridQualificationTests(unittest.TestCase):
     def test_invalid_residual_gate_is_rejected(self):
         rows = [row(0.25), row(0.125), row(0.0625)]
         for gate in (float("nan"), float("inf"), 0.0, -1.0):
-            with self.subTest(gate=gate):
-                with self.assertRaisesRegex(ValueError, "finite and strictly positive"):
-                    qualify(rows, gate)
+            with self.subTest(gate=gate), self.assertRaisesRegex(
+                ValueError, "finite and strictly positive"
+            ):
+                qualify(rows, gate)
 
     def test_nonmonotone_cd_has_no_gci(self):
         rows = [row(0.25), row(0.125), row(0.0625)]
