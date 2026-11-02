@@ -1,0 +1,29 @@
+EXE001 Shebang is present but file is not executable
+ --> scripts/validate_thermohydraulic_reference.py:1:1
+  |
+1 | #!/usr/bin/env python3
+  | ^^^^^^^^^^^^^^^^^^^^^^
+2 | """Validate frozen thermohydraulic benchmark reference contracts.
+  |
+
+I001 [*] Import block is un-sorted or un-formatted
+ --> tests/python/test_thermohydraulic_reference_contracts.py:3:1
+  |
+1 |   """Regression tests for frozen turbulent thermohydraulic reference contracts."""
+2 |
+3 | / from __future__ import annotations
+4 | |
+5 | | import json
+6 | | import subprocess
+7 | | import sys
+8 | | from pathlib import Path
+  | |________________________^
+help: Organize imports
+   |
+9  |
+   -
+10 | ROOT = Path(__file__).resolve().parents[2]
+   |
+
+Found 2 errors.
+[*] 1 fixable with `--fix`.

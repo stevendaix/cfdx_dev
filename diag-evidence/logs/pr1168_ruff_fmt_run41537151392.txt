@@ -1,0 +1,571 @@
+unformatted: File would be reformatted
+   --> scripts/validate_thermohydraulic_reference.py:8:1
+    |
+7   | """
+8   +
+9   | from __future__ import annotations
+--------------------------------------------------------------------------------
+38  |     require(bool(data["reference"].get("citation")), f"{case_id}: missing citation")
+    -     require(bool(data["reference"].get("primary_url")), f"{case_id}: missing primary source")
+    -     require(data["status"].get("contract") == "READY_FOR_CONTRACT_CI",
+    -             f"{case_id}: contract must be explicitly ready for contract CI")
+    -     require(data["status"].get("physical_validation", "").startswith("BLOCKED_"),
+    -             f"{case_id}: physical validation must remain fail-closed/blocked")
+39  +     require(
+40  +         bool(data["reference"].get("primary_url")), f"{case_id}: missing primary source"
+41  +     )
+42  +     require(
+43  +         data["status"].get("contract") == "READY_FOR_CONTRACT_CI",
+44  +         f"{case_id}: contract must be explicitly ready for contract CI",
+45  +     )
+46  +     require(
+47  +         data["status"].get("physical_validation", "").startswith("BLOCKED_"),
+48  +         f"{case_id}: physical validation must remain fail-closed/blocked",
+49  +     )
+50  |
+51  |     derived: dict[str, Any] = {}
+52  |     if case_id == "TH-01":
+53  |         physics = data["physics"]
+    -         require(physics["re_tau_targets"] == [180, 395, 590], "TH-01: Re_tau matrix mismatch")
+    -         require(physics["re_tau_nominal_targets"] == [180, 395, 590], "TH-01: nominal Re_tau labels mismatch")
+54  +         require(
+55  +             physics["re_tau_targets"] == [180, 395, 590],
+56  +             "TH-01: Re_tau matrix mismatch",
+57  +         )
+58  +         require(
+59  +             physics["re_tau_nominal_targets"] == [180, 395, 590],
+60  +             "TH-01: nominal Re_tau labels mismatch",
+61  +         )
+62  |         require(len(data["reference"]["datasets"]) == 3, "TH-01: missing DNS datasets")
+    -         require(data["reference"]["data_url"] == "https://turbulence.oden.utexas.edu/data/MKM/",
+    -                 "TH-01: official DNS data portal mismatch")
+    -         require(len(data["reference"]["profile_files"]) == 6, "TH-01: missing mean/Reynolds-stress profile filenames")
+    -         required = {"mean profiles", "Reynolds-stress profiles", "spectra", "two-point correlations"}
+    -         require(required.issubset(set(data["reference"]["data_contents"])),
+    -                 "TH-01: incomplete DNS data inventory")
+    -         require("constant mass flux" in physics["forcing"],
+    -                 "TH-01: forcing convention must match Moser DNS")
+63  +         require(
+64  +             data["reference"]["data_url"]
+65  +             == "https://turbulence.oden.utexas.edu/data/MKM/",
+66  +             "TH-01: official DNS data portal mismatch",
+67  +         )
+68  +         require(
+69  +             len(data["reference"]["profile_files"]) == 6,
+70  +             "TH-01: missing mean/Reynolds-stress profile filenames",
+71  +         )
+72  +         required = {
+73  +             "mean profiles",
+74  +             "Reynolds-stress profiles",
+75  +             "spectra",
+76  +             "two-point correlations",
+77  +         }
+78  +         require(
+79  +             required.issubset(set(data["reference"]["data_contents"])),
+80  +             "TH-01: incomplete DNS data inventory",
+81  +         )
+82  +         require(
+83  +             "constant mass flux" in physics["forcing"],
+84  +             "TH-01: forcing convention must match Moser DNS",
+85  +         )
+86  |         derived["re_tau_cases"] = physics["re_tau_targets"]
+87  |         actual = [entry["re_tau_actual"] for entry in physics["reference_cases"]]
+    -         require(actual == [178.13, 392.24, 587.19], "TH-01: actual DNS Re_tau values mismatch")
+    -         require([entry["spectral_grid"] for entry in physics["reference_cases"]] ==
+    -                 ["128x129x128", "256x193x192", "384x257x384"],
+    -                 "TH-01: DNS spectral grid inventory mismatch")
+88  +         require(
+89  +             actual == [178.13, 392.24, 587.19],
+90  +             "TH-01: actual DNS Re_tau values mismatch",
+91  +         )
+92  +         require(
+93  +             [entry["spectral_grid"] for entry in physics["reference_cases"]]
+94  +             == ["128x129x128", "256x193x192", "384x257x384"],
+95  +             "TH-01: DNS spectral grid inventory mismatch",
+96  +         )
+97  |         derived["actual_re_tau"] = actual
+    -         derived["solver_validation"] = "BLOCKED: RANS/LES production coupling and exact DNS data ingestion"
+98  +         derived["solver_validation"] = (
+99  +             "BLOCKED: RANS/LES production coupling and exact DNS data ingestion"
+100 +         )
+101 |
+--------------------------------------------------------------------------------
+107 |         require(close(geom["step_height_m"], 0.0127), "TH-03: step height mismatch")
+    -         require(close(geom["expansion_ratio"], 1.125), "TH-03: expansion ratio mismatch")
+108 +         require(
+109 +             close(geom["expansion_ratio"], 1.125), "TH-03: expansion ratio mismatch"
+110 +         )
+111 |         require(flow["reynolds_step"] == 37500, "TH-03: Re_h mismatch")
+    -         require(close(flow["velocity_reference_m_s"], 44.2, atol=1e-9),
+    -                 "TH-03: U_ref mismatch")
+112 +         require(
+113 +             close(flow["velocity_reference_m_s"], 44.2, atol=1e-9),
+114 +             "TH-03: U_ref mismatch",
+115 +         )
+116 |         require(close(inlet["delta_m"], 0.019), "TH-03: inlet delta mismatch")
+    -         require(close(inlet["displacement_thickness_m"], 0.0027), "TH-03: delta-star mismatch")
+117 +         require(
+118 +             close(inlet["displacement_thickness_m"], 0.0027),
+119 +             "TH-03: delta-star mismatch",
+120 +         )
+121 |         require(close(inlet["momentum_thickness_m"], 0.0019), "TH-03: theta mismatch")
+    -         require(close(data["qoi"]["uncertainty"]["mean_velocity_relative"], 0.015),
+    -                 "TH-03: mean-velocity uncertainty mismatch")
+    -         require(close(data["qoi"]["uncertainty"]["reynolds_stress_relative"], 0.12),
+    -                 "TH-03: Reynolds-stress uncertainty mismatch")
+    -         require(close(data["qoi"]["uncertainty"]["pressure_coefficient_absolute"], 0.0002),
+    -                 "TH-03: pressure-coefficient uncertainty mismatch")
+    -         require(close(data["qoi"]["reference_targets"]["reattachment_x_over_h"], 6.26),
+    -                 "TH-03: reattachment reference mismatch")
+    -         require(close(data["qoi"]["reference_targets"]["reattachment_uncertainty_absolute"], 0.10),
+    -                 "TH-03: reattachment uncertainty mismatch")
+122 +         require(
+123 +             close(data["qoi"]["uncertainty"]["mean_velocity_relative"], 0.015),
+124 +             "TH-03: mean-velocity uncertainty mismatch",
+125 +         )
+126 +         require(
+127 +             close(data["qoi"]["uncertainty"]["reynolds_stress_relative"], 0.12),
+128 +             "TH-03: Reynolds-stress uncertainty mismatch",
+129 +         )
+130 +         require(
+131 +             close(data["qoi"]["uncertainty"]["pressure_coefficient_absolute"], 0.0002),
+132 +             "TH-03: pressure-coefficient uncertainty mismatch",
+133 +         )
+134 +         require(
+135 +             close(data["qoi"]["reference_targets"]["reattachment_x_over_h"], 6.26),
+136 +             "TH-03: reattachment reference mismatch",
+137 +         )
+138 +         require(
+139 +             close(
+140 +                 data["qoi"]["reference_targets"]["reattachment_uncertainty_absolute"],
+141 +                 0.10,
+142 +             ),
+143 +             "TH-03: reattachment uncertainty mismatch",
+144 +         )
+145 |         derived["reattachment_x_over_h"] = 6.26
+146 |         derived["reattachment_uncertainty"] = 0.10
+147 |         derived["reference_reynolds"] = flow["reynolds_step"]
+    -         derived["reattachment_gate"] = "zero crossing of tau_w/Cf from negative to positive; value loaded from CMP32 data, not guessed"
+148 +         derived["reattachment_gate"] = (
+149 +             "zero crossing of tau_w/Cf from negative to positive; value loaded from CMP32 data, not guessed"
+150 +         )
+151 |
+--------------------------------------------------------------------------------
+155 |         require(close(dim["prandtl"], 0.71), "TH-07: Prandtl number mismatch")
+    -         require(dim["grashof_cases"] == [0, 640000, 950000, 1600000], "TH-07: Grashof matrix mismatch")
+156 +         require(
+157 +             dim["grashof_cases"] == [0, 640000, 950000, 1600000],
+158 +             "TH-07: Grashof matrix mismatch",
+159 +         )
+160 |         re_b = float(dim["bulk_reynolds"])
+161 |         gr_values = [float(v) for v in dim["grashof_cases"]]
+162 |         ri_values = [float(v) for v in dim["richardson_cases"]]
+163 |         calculated = [g / (re_b * re_b) for g in gr_values]
+    -         require(len(calculated) == len(ri_values), "TH-07: Richardson list length mismatch")
+    -         for index, (actual, expected) in enumerate(zip(calculated, ri_values, strict=True)):
+    -             require(close(actual, expected, atol=5.0e-7),
+    -                     f"TH-07: Ri mismatch at Gr index {index}: {actual} != {expected}")
+164 +         require(
+165 +             len(calculated) == len(ri_values), "TH-07: Richardson list length mismatch"
+166 +         )
+167 +         for index, (actual, expected) in enumerate(
+168 +             zip(calculated, ri_values, strict=True)
+169 +         ):
+170 +             require(
+171 +                 close(actual, expected, atol=5.0e-7),
+172 +                 f"TH-07: Ri mismatch at Gr index {index}: {actual} != {expected}",
+173 +             )
+174 |         targets = data["reference_targets"]["wall_shear_stress_mean"]
+    -         require(close(targets["Gr_6.4e5"]["heated"], 0.0047), "TH-07: heated-wall tau mismatch")
+    -         require(close(targets["Gr_6.4e5"]["cooled"], 0.0041), "TH-07: cooled-wall tau mismatch")
+    -         require(close(targets["Gr_1.6e6"]["heated"], 0.0059), "TH-07: high-Gr heated tau mismatch")
+    -         require(close(targets["Gr_1.6e6"]["cooled"], 0.0039), "TH-07: high-Gr cooled tau mismatch")
+    -         require(close(data["physics"]["geometry"]["channel_height_over_delta"], 1.0),
+    -                 "TH-07: channel gap normalization mismatch")
+175 +         require(
+176 +             close(targets["Gr_6.4e5"]["heated"], 0.0047),
+177 +             "TH-07: heated-wall tau mismatch",
+178 +         )
+179 +         require(
+180 +             close(targets["Gr_6.4e5"]["cooled"], 0.0041),
+181 +             "TH-07: cooled-wall tau mismatch",
+182 +         )
+183 +         require(
+184 +             close(targets["Gr_1.6e6"]["heated"], 0.0059),
+185 +             "TH-07: high-Gr heated tau mismatch",
+186 +         )
+187 +         require(
+188 +             close(targets["Gr_1.6e6"]["cooled"], 0.0039),
+189 +             "TH-07: high-Gr cooled tau mismatch",
+190 +         )
+191 +         require(
+192 +             close(data["physics"]["geometry"]["channel_height_over_delta"], 1.0),
+193 +             "TH-07: channel gap normalization mismatch",
+194 +         )
+195 |         derived["richardson_numbers"] = calculated
+--------------------------------------------------------------------------------
+203 |         branch = inlets["branch_hot"]
+    -         main_u = main["volumetric_flow_m3_s"] / (math.pi * main["diameter_m"] ** 2 / 4.0)
+    -         branch_u = branch["volumetric_flow_m3_s"] / (math.pi * branch["diameter_m"] ** 2 / 4.0)
+    -         require(close(main_u, physics["derived"]["bulk_velocity_main_m_s"], atol=2.0e-7),
+    -                 "TH-08: main bulk velocity mismatch")
+    -         require(close(branch_u, physics["derived"]["bulk_velocity_branch_m_s"], atol=2.0e-7),
+    -                 "TH-08: branch bulk velocity mismatch")
+    -         require(close(branch["temperature_C"] - main["temperature_C"], 17.0),
+    -                 "TH-08: inlet delta-T mismatch")
+    -         require(close(physics["derived"]["mixed_temperature_star_fully_mixed"], 0.38),
+    -                 "TH-08: fully mixed T* target mismatch")
+    -         require(data["qoi"]["frequency"]["reported_temperature_spectral_peak_Hz"] == 3.5,
+    -                 "TH-08: reported spectral peak mismatch")
+    -         require(data["measurement_uncertainty"]["normalized_mean_temperature_absolute"] == 0.03,
+    -                 "TH-08: normalized temperature uncertainty mismatch")
+    -         require(data["qoi"]["velocity_stations"]["ldv_downstream_x_over_D"] == [2.6, 6.6],
+    -                 "TH-08: LDV station matrix mismatch")
+    -         require(data["qoi"]["velocity_stations"]["piv_downstream_x_over_D"] == [1.6, 2.6, 3.6, 4.6],
+    -                 "TH-08: PIV station matrix mismatch")
+    -         require(close(data["measurement_uncertainty"]["temperature_rms_relative"], 0.08),
+    -                 "TH-08: RMS temperature uncertainty mismatch")
+204 +         main_u = main["volumetric_flow_m3_s"] / (
+205 +             math.pi * main["diameter_m"] ** 2 / 4.0
+206 +         )
+207 +         branch_u = branch["volumetric_flow_m3_s"] / (
+208 +             math.pi * branch["diameter_m"] ** 2 / 4.0
+209 +         )
+210 +         require(
+211 +             close(main_u, physics["derived"]["bulk_velocity_main_m_s"], atol=2.0e-7),
+212 +             "TH-08: main bulk velocity mismatch",
+213 +         )
+214 +         require(
+215 +             close(
+216 +                 branch_u, physics["derived"]["bulk_velocity_branch_m_s"], atol=2.0e-7
+217 +             ),
+218 +             "TH-08: branch bulk velocity mismatch",
+219 +         )
+220 +         require(
+221 +             close(branch["temperature_C"] - main["temperature_C"], 17.0),
+222 +             "TH-08: inlet delta-T mismatch",
+223 +         )
+224 +         require(
+225 +             close(physics["derived"]["mixed_temperature_star_fully_mixed"], 0.38),
+226 +             "TH-08: fully mixed T* target mismatch",
+227 +         )
+228 +         require(
+229 +             data["qoi"]["frequency"]["reported_temperature_spectral_peak_Hz"] == 3.5,
+230 +             "TH-08: reported spectral peak mismatch",
+231 +         )
+232 +         require(
+233 +             data["measurement_uncertainty"]["normalized_mean_temperature_absolute"]
+234 +             == 0.03,
+235 +             "TH-08: normalized temperature uncertainty mismatch",
+236 +         )
+237 +         require(
+238 +             data["qoi"]["velocity_stations"]["ldv_downstream_x_over_D"] == [2.6, 6.6],
+239 +             "TH-08: LDV station matrix mismatch",
+240 +         )
+241 +         require(
+242 +             data["qoi"]["velocity_stations"]["piv_downstream_x_over_D"]
+243 +             == [1.6, 2.6, 3.6, 4.6],
+244 +             "TH-08: PIV station matrix mismatch",
+245 +         )
+246 +         require(
+247 +             close(data["measurement_uncertainty"]["temperature_rms_relative"], 0.08),
+248 +             "TH-08: RMS temperature uncertainty mismatch",
+249 +         )
+250 |         derived["bulk_velocity_main_m_s"] = main_u
+    |
+
+1 file would be reformatted, 1 file already formatted
+--- scripts/validate_thermohydraulic_reference.py
++++ scripts/validate_thermohydraulic_reference.py
+@@ -5,6 +5,7 @@
+ validation remains BLOCKED until a production turbulence/energy path exists
+ and solver results are compared with the pinned reference data.
+ """
++
+ from __future__ import annotations
+ 
+ import argparse
+@@ -35,34 +36,68 @@
+     for key in ("reference", "physics", "qoi", "status"):
+         require(key in data, f"{case_id}: missing top-level {key}")
+     require(bool(data["reference"].get("citation")), f"{case_id}: missing citation")
+-    require(bool(data["reference"].get("primary_url")), f"{case_id}: missing primary source")
+-    require(data["status"].get("contract") == "READY_FOR_CONTRACT_CI",
+-            f"{case_id}: contract must be explicitly ready for contract CI")
+-    require(data["status"].get("physical_validation", "").startswith("BLOCKED_"),
+-            f"{case_id}: physical validation must remain fail-closed/blocked")
++    require(
++        bool(data["reference"].get("primary_url")), f"{case_id}: missing primary source"
++    )
++    require(
++        data["status"].get("contract") == "READY_FOR_CONTRACT_CI",
++        f"{case_id}: contract must be explicitly ready for contract CI",
++    )
++    require(
++        data["status"].get("physical_validation", "").startswith("BLOCKED_"),
++        f"{case_id}: physical validation must remain fail-closed/blocked",
++    )
+ 
+     derived: dict[str, Any] = {}
+     if case_id == "TH-01":
+         physics = data["physics"]
+-        require(physics["re_tau_targets"] == [180, 395, 590], "TH-01: Re_tau matrix mismatch")
+-        require(physics["re_tau_nominal_targets"] == [180, 395, 590], "TH-01: nominal Re_tau labels mismatch")
++        require(
++            physics["re_tau_targets"] == [180, 395, 590],
++            "TH-01: Re_tau matrix mismatch",
++        )
++        require(
++            physics["re_tau_nominal_targets"] == [180, 395, 590],
++            "TH-01: nominal Re_tau labels mismatch",
++        )
+         require(len(data["reference"]["datasets"]) == 3, "TH-01: missing DNS datasets")
+-        require(data["reference"]["data_url"] == "https://turbulence.oden.utexas.edu/data/MKM/",
+-                "TH-01: official DNS data portal mismatch")
+-        require(len(data["reference"]["profile_files"]) == 6, "TH-01: missing mean/Reynolds-stress profile filenames")
+-        required = {"mean profiles", "Reynolds-stress profiles", "spectra", "two-point correlations"}
+-        require(required.issubset(set(data["reference"]["data_contents"])),
+-                "TH-01: incomplete DNS data inventory")
+-        require("constant mass flux" in physics["forcing"],
+-                "TH-01: forcing convention must match Moser DNS")
++        require(
++            data["reference"]["data_url"]
++            == "https://turbulence.oden.utexas.edu/data/MKM/",
++            "TH-01: official DNS data portal mismatch",
++        )
++        require(
++            len(data["reference"]["profile_files"]) == 6,
++            "TH-01: missing mean/Reynolds-stress profile filenames",
++        )
++        required = {
++            "mean profiles",
++            "Reynolds-stress profiles",
++            "spectra",
++            "two-point correlations",
++        }
++        require(
++            required.issubset(set(data["reference"]["data_contents"])),
++            "TH-01: incomplete DNS data inventory",
++        )
++        require(
++            "constant mass flux" in physics["forcing"],
++            "TH-01: forcing convention must match Moser DNS",
++        )
+         derived["re_tau_cases"] = physics["re_tau_targets"]
+         actual = [entry["re_tau_actual"] for entry in physics["reference_cases"]]
+-        require(actual == [178.13, 392.24, 587.19], "TH-01: actual DNS Re_tau values mismatch")
+-        require([entry["spectral_grid"] for entry in physics["reference_cases"]] ==
+-                ["128x129x128", "256x193x192", "384x257x384"],
+-                "TH-01: DNS spectral grid inventory mismatch")
++        require(
++            actual == [178.13, 392.24, 587.19],
++            "TH-01: actual DNS Re_tau values mismatch",
++        )
++        require(
++            [entry["spectral_grid"] for entry in physics["reference_cases"]]
++            == ["128x129x128", "256x193x192", "384x257x384"],
++            "TH-01: DNS spectral grid inventory mismatch",
++        )
+         derived["actual_re_tau"] = actual
+-        derived["solver_validation"] = "BLOCKED: RANS/LES production coupling and exact DNS data ingestion"
++        derived["solver_validation"] = (
++            "BLOCKED: RANS/LES production coupling and exact DNS data ingestion"
++        )
+ 
+     elif case_id == "TH-03":
+         physics = data["physics"]
+@@ -70,48 +105,93 @@
+         flow = physics["flow"]
+         inlet = physics["inlet_boundary_layer_at_x_over_h_minus4"]
+         require(close(geom["step_height_m"], 0.0127), "TH-03: step height mismatch")
+-        require(close(geom["expansion_ratio"], 1.125), "TH-03: expansion ratio mismatch")
++        require(
++            close(geom["expansion_ratio"], 1.125), "TH-03: expansion ratio mismatch"
++        )
+         require(flow["reynolds_step"] == 37500, "TH-03: Re_h mismatch")
+-        require(close(flow["velocity_reference_m_s"], 44.2, atol=1e-9),
+-                "TH-03: U_ref mismatch")
++        require(
++            close(flow["velocity_reference_m_s"], 44.2, atol=1e-9),
++            "TH-03: U_ref mismatch",
++        )
+         require(close(inlet["delta_m"], 0.019), "TH-03: inlet delta mismatch")
+-        require(close(inlet["displacement_thickness_m"], 0.0027), "TH-03: delta-star mismatch")
++        require(
++            close(inlet["displacement_thickness_m"], 0.0027),
++            "TH-03: delta-star mismatch",
++        )
+         require(close(inlet["momentum_thickness_m"], 0.0019), "TH-03: theta mismatch")
+-        require(close(data["qoi"]["uncertainty"]["mean_velocity_relative"], 0.015),
+-                "TH-03: mean-velocity uncertainty mismatch")
+-        require(close(data["qoi"]["uncertainty"]["reynolds_stress_relative"], 0.12),
+-                "TH-03: Reynolds-stress uncertainty mismatch")
+-        require(close(data["qoi"]["uncertainty"]["pressure_coefficient_absolute"], 0.0002),
+-                "TH-03: pressure-coefficient uncertainty mismatch")
+-        require(close(data["qoi"]["reference_targets"]["reattachment_x_over_h"], 6.26),
+-                "TH-03: reattachment reference mismatch")
+-        require(close(data["qoi"]["reference_targets"]["reattachment_uncertainty_absolute"], 0.10),
+-                "TH-03: reattachment uncertainty mismatch")
++        require(
++            close(data["qoi"]["uncertainty"]["mean_velocity_relative"], 0.015),
++            "TH-03: mean-velocity uncertainty mismatch",
++        )
++        require(
++            close(data["qoi"]["uncertainty"]["reynolds_stress_relative"], 0.12),
++            "TH-03: Reynolds-stress uncertainty mismatch",
++        )
++        require(
++            close(data["qoi"]["uncertainty"]["pressure_coefficient_absolute"], 0.0002),
++            "TH-03: pressure-coefficient uncertainty mismatch",
++        )
++        require(
++            close(data["qoi"]["reference_targets"]["reattachment_x_over_h"], 6.26),
++            "TH-03: reattachment reference mismatch",
++        )
++        require(
++            close(
++                data["qoi"]["reference_targets"]["reattachment_uncertainty_absolute"],
++                0.10,
++            ),
++            "TH-03: reattachment uncertainty mismatch",
++        )
+         derived["reattachment_x_over_h"] = 6.26
+         derived["reattachment_uncertainty"] = 0.10
+         derived["reference_reynolds"] = flow["reynolds_step"]
+-        derived["reattachment_gate"] = "zero crossing of tau_w/Cf from negative to positive; value loaded from CMP32 data, not guessed"
++        derived["reattachment_gate"] = (
++            "zero crossing of tau_w/Cf from negative to positive; value loaded from CMP32 data, not guessed"
++        )
+ 
+     elif case_id == "TH-07":
+         dim = data["physics"]["dimensionless"]
+         require(dim["bulk_reynolds"] == 4328, "TH-07: bulk Reynolds number mismatch")
+         require(close(dim["prandtl"], 0.71), "TH-07: Prandtl number mismatch")
+-        require(dim["grashof_cases"] == [0, 640000, 950000, 1600000], "TH-07: Grashof matrix mismatch")
++        require(
++            dim["grashof_cases"] == [0, 640000, 950000, 1600000],
++            "TH-07: Grashof matrix mismatch",
++        )
+         re_b = float(dim["bulk_reynolds"])
+         gr_values = [float(v) for v in dim["grashof_cases"]]
+         ri_values = [float(v) for v in dim["richardson_cases"]]
+         calculated = [g / (re_b * re_b) for g in gr_values]
+-        require(len(calculated) == len(ri_values), "TH-07: Richardson list length mismatch")
+-        for index, (actual, expected) in enumerate(zip(calculated, ri_values, strict=True)):
+-            require(close(actual, expected, atol=5.0e-7),
+-                    f"TH-07: Ri mismatch at Gr index {index}: {actual} != {expected}")
++        require(
++            len(calculated) == len(ri_values), "TH-07: Richardson list length mismatch"
++        )
++        for index, (actual, expected) in enumerate(
++            zip(calculated, ri_values, strict=True)
++        ):
++            require(
++                close(actual, expected, atol=5.0e-7),
++                f"TH-07: Ri mismatch at Gr index {index}: {actual} != {expected}",
++            )
+         targets = data["reference_targets"]["wall_shear_stress_mean"]
+-        require(close(targets["Gr_6.4e5"]["heated"], 0.0047), "TH-07: heated-wall tau mismatch")
+-        require(close(targets["Gr_6.4e5"]["cooled"], 0.0041), "TH-07: cooled-wall tau mismatch")
+-        require(close(targets["Gr_1.6e6"]["heated"], 0.0059), "TH-07: high-Gr heated tau mismatch")
+-        require(close(targets["Gr_1.6e6"]["cooled"], 0.0039), "TH-07: high-Gr cooled tau mismatch")
+-        require(close(data["physics"]["geometry"]["channel_height_over_delta"], 1.0),
+-                "TH-07: channel gap normalization mismatch")
++        require(
++            close(targets["Gr_6.4e5"]["heated"], 0.0047),
++            "TH-07: heated-wall tau mismatch",
++        )
++        require(
++            close(targets["Gr_6.4e5"]["cooled"], 0.0041),
++            "TH-07: cooled-wall tau mismatch",
++        )
++        require(
++            close(targets["Gr_1.6e6"]["heated"], 0.0059),
++            "TH-07: high-Gr heated tau mismatch",
++        )
++        require(
++            close(targets["Gr_1.6e6"]["cooled"], 0.0039),
++            "TH-07: high-Gr cooled tau mismatch",
++        )
++        require(
++            close(data["physics"]["geometry"]["channel_height_over_delta"], 1.0),
++            "TH-07: channel gap normalization mismatch",
++        )
+         derived["richardson_numbers"] = calculated
+         derived["reference_bulk_reynolds"] = re_b
+         derived["reference_prandtl"] = dim["prandtl"]
+@@ -121,26 +201,52 @@
+         inlets = physics["inlets"]
+         main = inlets["main_cold"]
+         branch = inlets["branch_hot"]
+-        main_u = main["volumetric_flow_m3_s"] / (math.pi * main["diameter_m"] ** 2 / 4.0)
+-        branch_u = branch["volumetric_flow_m3_s"] / (math.pi * branch["diameter_m"] ** 2 / 4.0)
+-        require(close(main_u, physics["derived"]["bulk_velocity_main_m_s"], atol=2.0e-7),
+-                "TH-08: main bulk velocity mismatch")
+-        require(close(branch_u, physics["derived"]["bulk_velocity_branch_m_s"], atol=2.0e-7),
+-                "TH-08: branch bulk velocity mismatch")
+-        require(close(branch["temperature_C"] - main["temperature_C"], 17.0),
+-                "TH-08: inlet delta-T mismatch")
+-        require(close(physics["derived"]["mixed_temperature_star_fully_mixed"], 0.38),
+-                "TH-08: fully mixed T* target mismatch")
+-        require(data["qoi"]["frequency"]["reported_temperature_spectral_peak_Hz"] == 3.5,
+-                "TH-08: reported spectral peak mismatch")
+-        require(data["measurement_uncertainty"]["normalized_mean_temperature_absolute"] == 0.03,
+-                "TH-08: normalized temperature uncertainty mismatch")
+-        require(data["qoi"]["velocity_stations"]["ldv_downstream_x_over_D"] == [2.6, 6.6],
+-                "TH-08: LDV station matrix mismatch")
+-        require(data["qoi"]["velocity_stations"]["piv_downstream_x_over_D"] == [1.6, 2.6, 3.6, 4.6],
+-                "TH-08: PIV station matrix mismatch")
+-        require(close(data["measurement_uncertainty"]["temperature_rms_relative"], 0.08),
+-                "TH-08: RMS temperature uncertainty mismatch")
++        main_u = main["volumetric_flow_m3_s"] / (
++            math.pi * main["diameter_m"] ** 2 / 4.0
++        )
++        branch_u = branch["volumetric_flow_m3_s"] / (
++            math.pi * branch["diameter_m"] ** 2 / 4.0
++        )
++        require(
++            close(main_u, physics["derived"]["bulk_velocity_main_m_s"], atol=2.0e-7),
++            "TH-08: main bulk velocity mismatch",
++        )
++        require(
++            close(
++                branch_u, physics["derived"]["bulk_velocity_branch_m_s"], atol=2.0e-7
++            ),
++            "TH-08: branch bulk velocity mismatch",
++        )
++        require(
++            close(branch["temperature_C"] - main["temperature_C"], 17.0),
++            "TH-08: inlet delta-T mismatch",
++        )
++        require(
++            close(physics["derived"]["mixed_temperature_star_fully_mixed"], 0.38),
++            "TH-08: fully mixed T* target mismatch",
++        )
++        require(
++            data["qoi"]["frequency"]["reported_temperature_spectral_peak_Hz"] == 3.5,
++            "TH-08: reported spectral peak mismatch",
++        )
++        require(
++            data["measurement_uncertainty"]["normalized_mean_temperature_absolute"]
++            == 0.03,
++            "TH-08: normalized temperature uncertainty mismatch",
++        )
++        require(
++            data["qoi"]["velocity_stations"]["ldv_downstream_x_over_D"] == [2.6, 6.6],
++            "TH-08: LDV station matrix mismatch",
++        )
++        require(
++            data["qoi"]["velocity_stations"]["piv_downstream_x_over_D"]
++            == [1.6, 2.6, 3.6, 4.6],
++            "TH-08: PIV station matrix mismatch",
++        )
++        require(
++            close(data["measurement_uncertainty"]["temperature_rms_relative"], 0.08),
++            "TH-08: RMS temperature uncertainty mismatch",
++        )
+         derived["bulk_velocity_main_m_s"] = main_u
+         derived["bulk_velocity_branch_m_s"] = branch_u
+         derived["fully_mixed_temperature_star"] = 0.38
+
+1 file would be reformatted, 1 file already formatted

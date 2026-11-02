@@ -1,0 +1,3 @@
+ruff_check_exit=1
+ruff_format_exit=1
+cfdx_fast_exit=1
