@@ -34,6 +34,9 @@
 #include "cfdx/core/numerics/gradient.h"
 #include "cfdx/core/numerics/gradient_stencil.h"
 #include "cfdx/physics/wall_face_reconstruction.h"
+#include "naca_momentum_trace.h"
+#include "naca_relaxation_controls.h"
+#include <cstdlib>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -274,6 +277,7 @@ WallShearAudit run_naca(const std::string& path, std::size_t level)
     c.convergence.continuity_tolerance = 1e-8;
     c.coupling.alpha_u = 0.6;
     c.coupling.alpha_p = 0.25;
+    cfdx::validation::apply_naca_relaxation_ab(c);
     c.use_bounded_convection = true;
     c.convection_scheme = ConvectionScheme::UPWIND;
     c.pressure_reference_cell = 0;
@@ -282,12 +286,30 @@ WallShearAudit run_naca(const std::string& path, std::size_t level)
     c.diagnostics.iteration_trace_frequency = 200;
 
     const auto geometry = build_fv_geometry(mesh);
+    cfdx::validation::NacaMomentumTrace naca_trace(mesh);
+    if (const char* forensic = std::getenv("CFDX_NACA_FORENSICS");
+        forensic != nullptr && std::string(forensic) == "1") {
+        c.momentum_assembly_forensic_callback =
+            [&naca_trace](std::size_t iteration, const auto& pressure,
+                          const auto& grad_pressure, const auto& velocity,
+                          const auto& mass_flux, const auto& mu_eff) {
+                naca_trace(iteration, pressure, grad_pressure, velocity,
+                           mass_flux, mu_eff);
+            };
+        c.momentum_equation_forensic_callback =
+            [&naca_trace](std::size_t iteration, std::size_t component,
+                          const auto& equation, const auto& geometry,
+                          const auto& grad_pressure, const auto& body_force) {
+                naca_trace.equation(iteration, component, equation, geometry,
+                                    grad_pressure, body_force);
+            };
+    }
     for (std::size_t i = 0; i < mesh.n_cells(); ++i)
         U.component_data(0)[i] = Uinf;
 
     const auto solve = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
     if (!solve.converged || solve.history.empty())
-        throw std::runtime_error("NACA0012 audit solve did not converge");
+        throw std::runtime_error("NACA0012 audit solve did not converge at N" + std::to_string(level));
     WallShearAudit out;
     out.continuity = solve.history.back().continuity_linf;
     out.iterations = solve.iterations;
@@ -471,11 +493,21 @@ int main(int argc, char** argv)
             std::cout << "NACA0012_WALL_SHEAR_AUDIT_QUICK: PASS mms_wall_shear_gates_ok\n";
             return 0;
         }
+        // Isolated N128/N256 replay after the channel MMS preflight.
+        // The reported spread remains diagnostic; no mesh qualification is
+        // claimed from a single level.
+        if (argc == 4 && std::string(argv[1]) == "--single") {
+            run_channel_mms(argv[2]);
+            run_naca(argv[3], 0);
+            std::cout << "NACA0012_WALL_SHEAR_SINGLE: PASS"
+                      << " (one level only; spread remains diagnostic)\n";
+            return 0;
+        }
         if (argc != 5)
             throw std::invalid_argument(
-                "usage: test_naca0012_wall_shear_audit channel_n16.h5"
+                "usage: test_naca0012_wall_shear_audit [--single channel_n16.h5 mesh.h5 | channel_n16.h5"
                 " naca0012_laminar_n64.h5 naca0012_laminar_n128.h5"
-                " naca0012_laminar_n256.h5");
+                " naca0012_laminar_n256.h5]");
         run_channel_mms(argv[1]);
         for (std::size_t i = 0; i < 3; ++i)
             run_naca(argv[i + 2], 64u << i);

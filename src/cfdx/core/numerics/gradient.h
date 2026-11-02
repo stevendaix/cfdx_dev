@@ -859,8 +859,12 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
     GradientWeighting weighting = GradientWeighting::INVERSE_DISTANCE_SQUARED,
     double condition_limit = std::numeric_limits<double>::infinity(),
     BoundaryGradientPolicy boundary_policy = BoundaryGradientPolicy::ZERO_GRADIENT_GHOST,
-    const std::vector<BoundaryGradientCondition>* boundary_conditions = nullptr)
+    const std::vector<BoundaryGradientCondition>* boundary_conditions = nullptr,
+    int intrinsic_dimension = 3,
+    bool robust_svd = false)
 {
+    if (intrinsic_dimension != 2 && intrinsic_dimension != 3)
+        throw std::invalid_argument("WLS field gradient: dimension must be 2 or 3");
     const std::size_t n_cells = mesh.n_cells();
     if (cell_field.size() != n_cells)
         throw std::runtime_error("compute_gradient_weighted_least_squares: field size != n_cells");
@@ -943,8 +947,13 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares(
             }
         }
         StencilQuality q;
-        const Vec3 g=weighted_least_squares_gradient(
-            geometry.cell_centres[c], values[c], centres, vals, weighting, &q);
+        const Vec3 g = robust_svd
+            ? weighted_least_squares_gradient_robust(
+                geometry.cell_centres[c], values[c], centres, vals,
+                weighting, intrinsic_dimension, &q)
+            : weighted_least_squares_gradient(
+                geometry.cell_centres[c], values[c], centres, vals,
+                weighting, &q, intrinsic_dimension);
         if (!q.full_rank)
             throw std::runtime_error("compute_gradient_weighted_least_squares: rank-deficient stencil at cell "
                                      + std::to_string(c));
@@ -961,8 +970,12 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares_ext
     const Field<double, Location::CELL>& cell_field,
     const Mesh& mesh,
     GradientWeighting weighting = GradientWeighting::INVERSE_DISTANCE_SQUARED,
-    double condition_limit = std::numeric_limits<double>::infinity())
+    double condition_limit = std::numeric_limits<double>::infinity(),
+    int intrinsic_dimension = 3,
+    bool robust_svd = false)
 {
+    if (intrinsic_dimension != 2 && intrinsic_dimension != 3)
+        throw std::invalid_argument("WLS extended gradient: dimension must be 2 or 3");
     const std::size_t n_cells = mesh.n_cells();
     if (cell_field.size() != n_cells)
         throw std::runtime_error("compute_gradient_weighted_least_squares_extended: field size != n_cells");
@@ -1012,8 +1025,13 @@ inline Field<double, Location::CELL> compute_gradient_weighted_least_squares_ext
             for (const auto nb2 : ring1[nb]) add(nb2);
 
         StencilQuality q;
-        const Vec3 g = weighted_least_squares_gradient(
-            geometry.cell_centres[c], values[c], centres, vals, weighting, &q);
+        const Vec3 g = robust_svd
+            ? weighted_least_squares_gradient_robust(
+                geometry.cell_centres[c], values[c], centres, vals,
+                weighting, intrinsic_dimension, &q)
+            : weighted_least_squares_gradient(
+                geometry.cell_centres[c], values[c], centres, vals,
+                weighting, &q, intrinsic_dimension);
         if (!q.full_rank)
             throw std::runtime_error(
                 "compute_gradient_weighted_least_squares_extended: rank-deficient stencil at cell "

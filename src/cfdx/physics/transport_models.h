@@ -11,6 +11,8 @@
 #include "cfdx/core/field/storage.h"
 #include "equation_of_state.h"
 #include <cstddef>
+#include <array>
+#include <vector>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -61,13 +63,19 @@ inline double constant_viscosity(double mu) {
 inline double prandtl_conductivity(double mu, double Cp, double Pr) {
     if (!std::isfinite(mu) || mu < 0.0 || !std::isfinite(Cp) || Cp <= 0.0 || !std::isfinite(Pr) || Pr <= 0.0)
         throw std::invalid_argument("prandtl_conductivity: invalid transport parameters");
-    return mu * Cp / Pr;
+    const double value = mu * Cp / Pr;
+    if (!std::isfinite(value))
+        throw std::runtime_error("prandtl_conductivity: non-representable conductivity");
+    return value;
 }
 
 inline double schmidt_diffusivity(double mu, double rho, double Sc) {
     if (!std::isfinite(mu) || mu < 0.0 || !std::isfinite(rho) || rho <= 0.0 ||
         !std::isfinite(Sc) || Sc <= 0.0) throw std::invalid_argument("schmidt_diffusivity: invalid transport parameters");
-    return mu / (rho * Sc);
+    const double value = mu / (rho * Sc);
+    if (!std::isfinite(value))
+        throw std::runtime_error("schmidt_diffusivity: non-representable diffusivity");
+    return value;
 }
 
 inline TransportProperties compute_transport(double T, double rho,
@@ -107,18 +115,38 @@ inline TransportProperties compute_transport(double T,
     return tp;
 }
 
-inline void compute_transport_fields(const Field<double, Location::CELL>& T,
-                                      Field<double, Location::CELL>& mu,
-                                      Field<double, Location::CELL>& k,
-                                      Field<double, Location::CELL>& D,
-                                      const IdealGasEOS& eos,
-                                      const Field<double, Location::CELL>& p) {
+// For array-based updates every input is checked and every property is
+// calculated before any output field is changed.  One O(n) scratch allocation
+// avoids both partial material updates and a second expensive Sutherland pass.
+inline void validate_transport_field_shapes(
+    const Field<double, Location::CELL>& T,
+    Field<double, Location::CELL>& mu,
+    Field<double, Location::CELL>& k,
+    Field<double, Location::CELL>& D,
+    const Field<double, Location::CELL>* pressure = nullptr)
+{
     const std::size_t n = T.size();
-    for (std::size_t c = 0; c < n; ++c) {
-        TransportProperties tp = compute_transport(T(c), eos, p(c));
-        mu(c) = tp.mu;
-        k(c) = tp.k;
-        D(c) = tp.D;
+    if (T.dimension() != 1 || mu.dimension() != 1 ||
+        k.dimension() != 1 || D.dimension() != 1 ||
+        mu.size() != n || k.size() != n || D.size() != n ||
+        (pressure && (pressure->size() != n || pressure->dimension() != 1)))
+        throw std::invalid_argument("compute_transport_fields: field shape mismatch");
+    if (&mu == &k || &mu == &D || &k == &D ||
+        &T == &mu || &T == &k || &T == &D ||
+        (pressure && (pressure == &mu || pressure == &k || pressure == &D)))
+        throw std::invalid_argument("compute_transport_fields: aliased output field");
+}
+
+inline void store_transport_results(
+    const std::vector<std::array<double, 3>>& values,
+    Field<double, Location::CELL>& mu,
+    Field<double, Location::CELL>& k,
+    Field<double, Location::CELL>& D)
+{
+    for (std::size_t c = 0; c < values.size(); ++c) {
+        mu(c) = values[c][0];
+        k(c)  = values[c][1];
+        D(c)  = values[c][2];
     }
 }
 
@@ -126,14 +154,33 @@ inline void compute_transport_fields(const Field<double, Location::CELL>& T,
                                       Field<double, Location::CELL>& mu,
                                       Field<double, Location::CELL>& k,
                                       Field<double, Location::CELL>& D,
-                                      double rho) {
-    const std::size_t n = T.size();
-    for (std::size_t c = 0; c < n; ++c) {
-        TransportProperties tp = compute_transport(T(c), rho);
-        mu(c) = tp.mu;
-        k(c) = tp.k;
-        D(c) = tp.D;
+                                      const IdealGasEOS& eos,
+                                      const Field<double, Location::CELL>& p)
+{
+    validate_transport_field_shapes(T, mu, k, D, &p);
+    std::vector<std::array<double, 3>> values(T.size());
+    for (std::size_t c = 0; c < T.size(); ++c) {
+        const TransportProperties tp = compute_transport(T(c), eos, p(c));
+        values[c] = {tp.mu, tp.k, tp.D};
     }
+    store_transport_results(values, mu, k, D);
+}
+
+inline void compute_transport_fields(const Field<double, Location::CELL>& T,
+                                      Field<double, Location::CELL>& mu,
+                                      Field<double, Location::CELL>& k,
+                                      Field<double, Location::CELL>& D,
+                                      double rho)
+{
+    validate_transport_field_shapes(T, mu, k, D);
+    if (!std::isfinite(rho) || !(rho > 0.0))
+        throw std::invalid_argument("compute_transport_fields: invalid density");
+    std::vector<std::array<double, 3>> values(T.size());
+    for (std::size_t c = 0; c < T.size(); ++c) {
+        const TransportProperties tp = compute_transport(T(c), rho);
+        values[c] = {tp.mu, tp.k, tp.D};
+    }
+    store_transport_results(values, mu, k, D);
 }
 
 }  // namespace physics

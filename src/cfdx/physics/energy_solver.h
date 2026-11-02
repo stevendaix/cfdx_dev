@@ -39,7 +39,15 @@ struct EnergyIteration {
     double energy_imbalance = 0.0;
     double independent_conservation_residual = 0.0;
     double independent_conservation_normalized = 0.0;
+    // An individually violated cell must never be hidden by signed cancellation
+    // in the global balance. This uses that cell's own gross power scale.
+    double independent_conservation_local_normalized = 0.0;
+    // Retain the absolute-residual worst-cell meaning for existing consumers.
     std::size_t independent_conservation_worst_cell = 0;
+    std::size_t independent_conservation_worst_cell_normalized = 0;
+    std::size_t independent_nonfinite_faces = 0;
+    std::size_t independent_nonfinite_cells = 0;
+    bool independent_conservation_accepted = false;
     double minimum_temperature = std::numeric_limits<double>::infinity();
     double maximum_temperature = -std::numeric_limits<double>::infinity();
     std::size_t nonfinite_temperature = 0;
@@ -396,6 +404,10 @@ inline EnergySolveResult solve_energy(
         controls.temperature_tolerance > 0.0 ? controls.temperature_tolerance : controls.tolerance;
     const double energy_balance_tolerance =
         controls.energy_balance_tolerance > 0.0 ? controls.energy_balance_tolerance : controls.tolerance;
+    // Start with the requested Krylov tolerance. Only refine it when the
+    // independently reconstructed physical balance proves that the accepted
+    // state needs greater accuracy; never relax the configured gates.
+    double requested_linear_tolerance = linear_tolerance;
     for(std::size_t iter=1;iter<=controls.max_iterations;++iter) {
         auto eq=assemble_energy_equation(
             mesh,geometry,mass_flux,source,T_previous_time,controls,bcs,face_values,
@@ -411,7 +423,7 @@ inline EnergySolveResult solve_energy(
         // tighter than the independent backward-error gate and could make
         // the solve numerically unattainable. Use the configured tolerance
         // consistently with the post-solve relative-residual check below.
-        sc.tolerance = linear_tolerance;
+        sc.tolerance = requested_linear_tolerance;
         // solve_scalar_equation returns the fully solved linear predictor;
         // nonlinear temperature relaxation is applied exactly once below.
         sc.relaxation=1.0;
@@ -498,7 +510,26 @@ inline EnergySolveResult solve_energy(
         iteration_report.energy_imbalance = imbalance;
         iteration_report.independent_conservation_residual = independent_energy.residual;
         iteration_report.independent_conservation_normalized = independent_energy.normalized_residual;
-        iteration_report.independent_conservation_worst_cell = independent_energy.worst_cell;
+        iteration_report.independent_conservation_local_normalized =
+            independent_energy.max_cell_residual_normalized;
+        iteration_report.independent_conservation_worst_cell =
+            independent_energy.worst_cell;
+        iteration_report.independent_conservation_worst_cell_normalized =
+            independent_energy.worst_cell_normalized;
+        iteration_report.independent_nonfinite_faces = independent_energy.nonfinite_faces;
+        iteration_report.independent_nonfinite_cells = independent_energy.nonfinite_cells;
+        // The assembled matrix uses bounded convection (which subtracts
+        // div(m_dot)*T). A small Ax-b therefore does not prove that the
+        // conservative physical face flux closes if the carrier mass flux
+        // has nonzero divergence. Check both global and per-cell physical
+        // balances, independently of the assembled operator.
+        iteration_report.independent_conservation_accepted =
+            independent_energy.nonfinite_faces == 0 &&
+            independent_energy.nonfinite_cells == 0 &&
+            std::isfinite(independent_energy.normalized_residual) &&
+            std::isfinite(independent_energy.max_cell_residual_normalized) &&
+            independent_energy.normalized_residual <= energy_balance_tolerance &&
+            independent_energy.max_cell_residual_normalized <= energy_balance_tolerance;
         for (std::size_t i=0; i<temperature.size(); ++i) {
             const double t=temperature(i);
             if (!std::isfinite(t)) ++iteration_report.nonfinite_temperature;
@@ -518,12 +549,17 @@ inline EnergySolveResult solve_energy(
                       << " linear_relative=" << linear.residual_relative
                       << " dT_relative=" << relative_temperature_change
                       << " energy_balance=" << imbalance
+                      << " independent_global=" << independent_energy.normalized_residual
+                      << " independent_local=" << independent_energy.max_cell_residual_normalized
+                      << " independent_accepted=" << iteration_report.independent_conservation_accepted
                       << " accepted_state=" << accepted_state_converged
                       << '\n';
         }
         if(linear_converged &&
            accepted_state_converged &&
-           imbalance<=energy_balance_tolerance) {
+           std::isfinite(imbalance) &&
+           imbalance<=energy_balance_tolerance &&
+           iteration_report.independent_conservation_accepted) {
             result.converged=true;
             break;
         }
@@ -534,6 +570,29 @@ inline EnergySolveResult solve_energy(
         // times cannot improve it. Preserve the failure diagnostics and fail
         // fast instead of recording hundreds of duplicate nonlinear states.
         if (linear.status != cfdx::core::SolverStatus::CONVERGED)
+            break;
+        if (!iteration_report.independent_conservation_accepted &&
+            accepted_state_converged &&
+            controls.relaxation >= 1.0 - 10.0*std::numeric_limits<double>::epsilon()) {
+            // Refining a mathematically exact Ax=b cannot repair a genuine
+            // nonconservative carrier mass flux (or an inconsistent face
+            // reconstruction). Reject that case instead of retrying the same
+            // matrix hundreds of times. Otherwise, ask Krylov for one extra
+            // digit; do not globally multiply its tolerance by 1e-3.
+            if ((linear.residual_relative == 0.0 &&
+                 linear_backward_error == 0.0) ||
+                requested_linear_tolerance <=
+                    64.0*std::numeric_limits<double>::epsilon())
+                break;
+            requested_linear_tolerance = std::max(
+                64.0*std::numeric_limits<double>::epsilon(),
+                requested_linear_tolerance * 0.1);
+        }
+        // If Picard/under-relaxation no longer moves the state at machine
+        // precision, further identical solves cannot repair a genuine mass
+        // or energy mismatch. Return a failed physical verdict promptly.
+        if (!iteration_report.independent_conservation_accepted &&
+            temperature_change == 0.0)
             break;
         // T_previous_time remains fixed for transient physics. T_iterate is
         // updated above and is the state used for nonlinear/Picard relaxation.

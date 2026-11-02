@@ -19,11 +19,13 @@ namespace cfdx::io {
 //   1 — velocity and pressure only.
 //   2 — adds an optional T / k / second turbulence section.
 //   3 — adds the mesh identity that a restart reader validates against.
-//   4 — adds a named omega field for production SST restart state.
+//   4 — adds the named omega field for production SST restart state.
+//   5 — adds the optional authoritative face mass-flux section.
 enum : int {
     DatRestartVersionFields = 2,
     DatRestartVersionIdentity = 3,
     DatRestartVersionSST = 4,
+    DatRestartVersionFaceFields = 5,
 };
 
 // Geometry identity of the mesh a checkpoint belongs to.
@@ -137,6 +139,12 @@ struct DatRestartFields {
     // Explicit SST specific dissipation rate. Unlike second_turbulence, this
     // field has a stable on-disk name and is required when an SST restart is requested.
     cfdx::core::Field<double, cfdx::core::Location::CELL>* omega = nullptr;
+    // Authoritative face mass flux (kg/s). Restoring U and p alone cannot
+    // reproduce the continuous iteration sequence: the next iteration
+    // assembles momentum from the Rhie-Chow flux reconstructed with the
+    // previous iteration's rAU, which is not re-derivable from U and p.
+    // Persisting the flux makes a restart replay the same sequence.
+    cfdx::core::Field<double, cfdx::core::Location::FACE>* face_mass_flux = nullptr;
 };
 
 inline void validate_optional_restart_field(
@@ -146,6 +154,16 @@ inline void validate_optional_restart_field(
 {
     if (!field) return;
     if (field->dimension() != 1 || field->size() != mesh.n_cells())
+        throw std::invalid_argument(std::string("DAT restart: invalid ") + name + " field");
+}
+
+inline void validate_optional_restart_face_field(
+    const cfdx::core::Mesh& mesh,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>* field,
+    const char* name)
+{
+    if (!field) return;
+    if (field->dimension() != 1 || field->size() != mesh.n_faces())
         throw std::invalid_argument(std::string("DAT restart: invalid ") + name + " field");
 }
 
@@ -168,6 +186,7 @@ inline void write_dat_restart_fields(
     validate_optional_restart_field(mesh, fields.k, "k");
     validate_optional_restart_field(mesh, fields.second_turbulence, "second turbulence");
     validate_optional_restart_field(mesh, fields.omega, "omega");
+    validate_optional_restart_face_field(mesh, fields.face_mass_flux, "face mass flux");
 
     for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
         if (!std::isfinite(U.component_data(0)[c]) || !std::isfinite(U.component_data(1)[c]) ||
@@ -189,13 +208,19 @@ inline void write_dat_restart_fields(
     reject_non_finite(fields.k, "k");
     reject_non_finite(fields.second_turbulence, "second turbulence");
     reject_non_finite(fields.omega, "omega");
+    if (fields.face_mass_flux) {
+        for (std::size_t f = 0; f < fields.face_mass_flux->size(); ++f)
+            if (!std::isfinite((*fields.face_mass_flux)(f)))
+                throw std::invalid_argument(
+                    "write_dat_restart_fields: non-finite face mass flux");
+    }
 
     const auto identity = dat_restart_identity(mesh);
     const std::string tmp_path = path + ".tmp";
     std::ofstream out(tmp_path);
     if (!out) throw std::runtime_error("write_dat_restart_fields: cannot open " + path);
     out.precision(std::numeric_limits<double>::max_digits10);
-    out << "CFDX-DAT " << DatRestartVersionSST << "\n";
+    out << "CFDX-DAT " << DatRestartVersionFaceFields << "\n";
     out << "cells " << mesh.n_cells() << "\n";
     out << "iteration " << iteration << "\n";
     out << "time " << time << "\n";
@@ -216,6 +241,16 @@ inline void write_dat_restart_fields(
     write_field("k", fields.k);
     write_field("second_turbulence", fields.second_turbulence);
     write_field("omega", fields.omega);
+    // Facial section: appended after the cellular optional fields so cellular
+    // readers stop before it. The declared face count lets a reader reject a
+    // checkpoint written on a mesh with a different face count before any
+    // facial value is consumed.
+    if (fields.face_mass_flux) {
+        out << "face_fields " << mesh.n_faces() << "\n";
+        out << "field mdot 1\n";
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+            out << (*fields.face_mass_flux)(f) << "\n";
+    }
     if (!out) {
         out.close();
         std::remove(tmp_path.c_str());
@@ -242,6 +277,7 @@ inline DatRestartState read_dat_restart_fields(
     validate_optional_restart_field(mesh, fields.k, "k");
     validate_optional_restart_field(mesh, fields.second_turbulence, "second turbulence");
     validate_optional_restart_field(mesh, fields.omega, "omega");
+    validate_optional_restart_face_field(mesh, fields.face_mass_flux, "face mass flux");
 
     // Parse into candidates: malformed/truncated checkpoints must not leave
     // caller-owned carrier or optional fields partially overwritten.
@@ -255,11 +291,15 @@ inline DatRestartState read_dat_restart_fields(
         : cfdx::core::Field<double, cfdx::core::Location::CELL>{};
     auto candidate_omega = fields.omega ? *fields.omega
         : cfdx::core::Field<double, cfdx::core::Location::CELL>{};
+    auto candidate_face_flux = fields.face_mass_flux
+        ? *fields.face_mass_flux
+        : cfdx::core::Field<double, cfdx::core::Location::FACE>{};
     const auto target_fields = fields;
     if (fields.temperature) fields.temperature = &candidate_temperature;
     if (fields.k) fields.k = &candidate_k;
     if (fields.second_turbulence) fields.second_turbulence = &candidate_second;
     if (fields.omega) fields.omega = &candidate_omega;
+    if (fields.face_mass_flux) fields.face_mass_flux = &candidate_face_flux;
     auto& U = candidate_U;
     auto& p = candidate_p;
 
@@ -269,7 +309,8 @@ inline DatRestartState read_dat_restart_fields(
     std::string magic; int version = 0;
     if (!(in >> magic >> version) || magic != "CFDX-DAT" ||
         (version != 1 && version != DatRestartVersionFields &&
-         version != DatRestartVersionIdentity && version != DatRestartVersionSST))
+         version != DatRestartVersionIdentity && version != DatRestartVersionSST &&
+         version != DatRestartVersionFaceFields))
         throw std::runtime_error("read_dat_restart_fields: unsupported DAT format");
     std::size_t cells = 0; std::string key;
     if (!(in >> key >> cells) || key != "cells" || cells != mesh.n_cells())
@@ -321,8 +362,54 @@ inline DatRestartState read_dat_restart_fields(
     // the optional-fields section, so the former v1/v2 tails are unreachable.
     if (!(in >> key) || key != "optional_fields")
         throw std::runtime_error("read_dat_restart_fields: missing optional fields section");
-    bool got_t=false, got_k=false, got_second=false, got_omega=false;
+    bool got_t=false, got_k=false, got_second=false, got_omega=false, got_mdot=false;
     while (in >> key) {
+        if (key == "face_fields") {
+            if (version < DatRestartVersionFaceFields)
+                throw std::runtime_error(
+                    "read_dat_restart_fields: face fields require DAT version 5");
+            // Facial section: only the face mass flux exists today. The
+            // declared count is validated against the mesh before any facial
+            // value is read, and nothing may follow the facial fields.
+            std::size_t declared_faces = 0;
+            if (!(in >> declared_faces) || declared_faces != mesh.n_faces())
+                throw std::runtime_error(
+                    "read_dat_restart_fields: face count mismatch");
+            while (in >> key) {
+                if (key != "field")
+                    throw std::runtime_error(
+                        "read_dat_restart_fields: invalid face section");
+                std::string face_name;
+                std::size_t face_dimension = 0;
+                if (!(in >> face_name >> face_dimension) || face_dimension != 1)
+                    throw std::runtime_error(
+                        "read_dat_restart_fields: invalid face field header");
+                if (face_name != "mdot")
+                    throw std::runtime_error(
+                        "read_dat_restart_fields: unknown face field " + face_name);
+                if (got_mdot)
+                    throw std::runtime_error(
+                        "read_dat_restart_fields: duplicate face field mdot");
+                got_mdot = true;
+                if (!fields.face_mass_flux) {
+                    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                        double ignored;
+                        if (!(in >> ignored) || !std::isfinite(ignored))
+                            throw std::runtime_error(
+                                "read_dat_restart_fields: invalid face value");
+                    }
+                } else {
+                    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                        double value;
+                        if (!(in >> value) || !std::isfinite(value))
+                            throw std::runtime_error(
+                                "read_dat_restart_fields: invalid face value");
+                        (*fields.face_mass_flux)(f) = value;
+                    }
+                }
+            }
+            break;
+        }
         if (key != "field") throw std::runtime_error("read_dat_restart_fields: invalid optional section");
         std::string name; if (!(in >> name >> dimension) || dimension != 1)
             throw std::runtime_error("read_dat_restart_fields: invalid optional field header");
@@ -348,12 +435,15 @@ inline DatRestartState read_dat_restart_fields(
     if (fields.k && !got_k) throw std::runtime_error("read_dat_restart_fields: requested k but DAT has none");
     if (fields.second_turbulence && !got_second) throw std::runtime_error("read_dat_restart_fields: requested turbulence field but DAT has none");
     if (fields.omega && !got_omega) throw std::runtime_error("read_dat_restart_fields: requested omega but DAT has none");
+    if (fields.face_mass_flux && !got_mdot)
+        throw std::runtime_error("read_dat_restart_fields: requested mdot but DAT has none");
     target_U = candidate_U;
     target_p = candidate_p;
     if (target_fields.temperature) *target_fields.temperature = candidate_temperature;
     if (target_fields.k) *target_fields.k = candidate_k;
     if (target_fields.second_turbulence) *target_fields.second_turbulence = candidate_second;
     if (target_fields.omega) *target_fields.omega = candidate_omega;
+    if (target_fields.face_mass_flux) *target_fields.face_mass_flux = candidate_face_flux;
     return state;
 }
 
