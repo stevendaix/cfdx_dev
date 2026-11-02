@@ -4,13 +4,12 @@
 - Scope : (a) garde opt-in de rejet des itérations non linéaires SIMPLE dont les résidus physiques (QDM relatif RHS, continuité normalisée) croissent sévèrement, avant publication au moniteur de convergence, avec restauration transactionnelle et rejeu par la reduction de sous-relaxation existante ; (b) reconstruction affine de la pression et de la traction visqueuse au centre des faces de paroi (post-traitement d'audit, hors solveur).
 - Statut : DRAFT (2026-10-28, PR #1146 — port byte-exact du patch audité P0/P1 du 2026-10-28)
 - Issues liées : audit cinq chantiers (garde SIMPLE, reconstruction aux faces, NACA --single, GCI fail-closed, diagnostic 3D) ; PRs #1145 (fixtures, base du port), #1146 (cette PR).
-- Dernier commit de référence avant rebase : 015c5097ff02c6315998f5653c026cbca8e2e4f6 ; HEAD après rebase : 3ac182e64e4911137d29b375929ec9405d1a815d ; base master : 2bd250ac484aba637f58b2499ad4168bc01b9f63.
+- Référence de rebase historique : patch initial `015c5097ff02c6315998f5653c026cbca8e2e4f6`, rebase initial `3ac182e64e4911137d29b375929ec9405d1a815d`. Base de la PR : `2bd250ac484aba637f58b2499ad4168bc01b9f63`. HEAD contrôlé avant cette correction documentaire : `280e5a5d3dee2417c83ec44277381bfec158a8ab`. La PR devra être remise à jour sur `master` après intégration de #1142.
 - Limitations : aucune qualification physique n'est revendiquée (r48/r72 non convergés, Cd non validé, conduction linéaire 3D FAIL documenté). La traction pariétale du composant de face est d'ordre 1 en champ quadratique.
 
 ## 1. Références sources
 - F. Moukalled, L. Mangani, M. Darwish (2016), ISBN 978-3-319-16873-9, ch. 10–12 (SIMPLE, sous-relaxation, critères de convergence des schémas segregés).
 - J. H. Ferziger, M. Perić (2002), DOI 10.1007/978-3-642-56026-2, § 5.4 et § 8.4 (procédés itératifs imbriqués, rejet d'itération et globalisation).
-- P. L. Roe (1986), « Characteristic-based schemes for the Euler equations », Annual Review of Fluid Mechanics 18, DOI 10.1146/annurev.fl.18.010186.002233 (motivation : ne jamais publier un état aux grandeurs physiques non physiquement croissantes sans diagnostic).
 
 ## 2. Formulation continue
 Le point fixe de SIMPLE n'est pas modifié : la correction de pression et la sous-relaxation déterminent le chemin d'itération, pas l'équilibre continu. Le garde est un critère d'acceptation de candidat d'itération : un candidat dont les résidus physiques (équation de quantité de mouvement relative, continuité normalisée) croissent sévèrement entre deux itérations acceptées successives est rejeté avant toute publication au moniteur de convergence, et l'itération est rejouée avec une relaxation d'équation réduite par le contrôleur de retry existant. La reconstruction aux faces de paroi évalue la traction continue tau = mu (grad u + grad u^T) n et la pression au centre géométrique de face, exactes pour des champs affines.
@@ -41,4 +40,4 @@ La reconstruction est locale à chaque face du patch de paroi (owner uniquement,
 
 ## 8. Journal
 - 2026-10-28 — création (PR #1146) : synthèse de l'audit cinq chantiers P0/P1 ; statut DRAFT, aucune qualification revendiquée.
-- 2026-11-02 — rebase sur master ; correction de l'identifiant de fiche et des métadonnées de référence. Le diagnostic de grande dynamique diagonale est explicitement distingué de l'anisotropie géométrique.
+- 2026-11-02 — correction des métadonnées : distinction entre les SHAs historiques, la base de PR et le HEAD réellement audité ; intégration de #1142 non encore effectuée. Le diagnostic de grande dynamique diagonale est explicitement distingué de l'anisotropie géométrique. Les tests Release et DebugSanitizers sont verts sur le HEAD audité ; les campagnes N9 dédiées et validation totale ne sont pas exécutées par ce déclenchement.
