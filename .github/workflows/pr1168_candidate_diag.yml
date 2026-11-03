@@ -1,0 +1,118 @@
+name: PR 1168 candidate/canonical compare oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Evidence-only : comparaison byte-exacte des candidats pr1168 (fix ruff EXE001/I001/format
+# + insertion toctree sphinx) contre les canoniques commits par l'oracle run 41537399004
+# et contre l'original README du head PR d7838830.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1168_candidate_diag.yml'
+      - 'diag-tools/pr1168/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1168-candidate-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  EVID_SHA: 6a7b37c7b1c2a8c623aa80654058e6b94cf64a10
+  PR1168_HEAD: d78388304f053d668a0265eebe1a7269108646c8
+
+jobs:
+  oracle:
+    name: candidate vs canonical byte compare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      WDIR: /tmp/pr1168_evidwt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Worktree at canonical evidence SHA
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git cat-file -e "$EVID_SHA^{commit}" || { echo "::error::EVID_SHA unresolvable"; exit 1; }
+          git cat-file -e "$PR1168_HEAD^{commit}" || { echo "::error::PR1168 head unresolvable"; exit 1; }
+          git worktree add "$WDIR" "$EVID_SHA"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "purpose=candidate vs canonical byte compare for pr1168 ruff+sphinx fix"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1168_candidate_meta_run$GITHUB_RUN_ID.txt"
+
+      - name: Install ruff
+        run: python3 -m pip install --upgrade ruff
+
+      - name: Compare candidates vs canonicals
+        run: |
+          set +e
+          {
+            CAND="$GITHUB_WORKSPACE/diag-tools/pr1168"
+            CANON="$WDIR/diag-evidence/logs"
+            sed '1{/^#!/d;}' "$CANON/pr1168_canonical_validate_thermohydraulic_reference_run41537399004.py" > /tmp/canon_script_nsb.py
+            echo "=== SCRIPT cmp (candidate vs canonical-minus-shebang) ==="
+            cmp "$CAND/candidate_validate_thermohydraulic_reference.py" /tmp/canon_script_nsb.py && echo "SCRIPT_MATCHES_CANONICAL" || { echo "SCRIPT_DIFF_BELOW"; diff -u /tmp/canon_script_nsb.py "$CAND/candidate_validate_thermohydraulic_reference.py"; }
+            echo "=== TEST cmp (candidate vs canonical) ==="
+            cmp "$CAND/candidate_test_thermohydraulic_reference_contracts.py" "$CANON/pr1168_canonical_test_thermohydraulic_reference_contracts_run41537399004.py" && echo "TEST_MATCHES_CANONICAL" || { echo "TEST_DIFF_BELOW"; diff -u "$CANON/pr1168_canonical_test_thermohydraulic_reference_contracts_run41537399004.py" "$CAND/candidate_test_thermohydraulic_reference_contracts.py"; }
+            echo "=== README diff (PR-head original vs candidate; expected: single toctree insertion) ==="
+            git show "$PR1168_HEAD:docs/validation/README.md" > /tmp/orig_readme.md
+            diff -u /tmp/orig_readme.md "$CAND/candidate_validation_README.md" && echo "README_IDENTICAL_UNEXPECTED" || true
+            echo "=== ruff gate replica on candidates ==="
+            ruff check "$CAND/candidate_validate_thermohydraulic_reference.py" "$CAND/candidate_test_thermohydraulic_reference_contracts.py"
+            echo "ruff_check_exit=$?"
+            ruff format --check "$CAND/candidate_validate_thermohydraulic_reference.py" "$CAND/candidate_test_thermohydraulic_reference_contracts.py"
+            echo "ruff_fmt_exit=$?"
+            echo "=== byte sizes ==="
+            wc -c /tmp/canon_script_nsb.py "$CAND/candidate_validate_thermohydraulic_reference.py" "$CANON/pr1168_canonical_test_thermohydraulic_reference_contracts_run41537399004.py" "$CAND/candidate_test_thermohydraulic_reference_contracts.py" /tmp/orig_readme.md "$CAND/candidate_validation_README.md"
+            echo "=== unambiguous blank dumps (sed -n l) ==="
+            echo "--- ORIGINAL test (PR head) lines 1-14 ---"
+            git show "$PR1168_HEAD:tests/python/test_thermohydraulic_reference_contracts.py" | sed -n '1,14l'
+            echo "--- CANONICAL test lines 1-14 ---"
+            sed -n '1,14l' "$CANON/pr1168_canonical_test_thermohydraulic_reference_contracts_run41537399004.py"
+            echo "--- CANDIDATE test lines 1-14 ---"
+            sed -n '1,14l' "$CAND/candidate_test_thermohydraulic_reference_contracts.py"
+            echo "--- CANDIDATE readme toctree region lines 25-48 ---"
+            sed -n '25,48l' "$CAND/candidate_validation_README.md"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1168_candidate_cmp_run$GITHUB_RUN_ID.txt" 2>&1
+          set -e
+
+      - name: Verdict
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/pr1168_candidate_cmp_run$GITHUB_RUN_ID.txt"
+          v=FAIL
+          grep -q "SCRIPT_MATCHES_CANONICAL" "$f" && grep -q "TEST_MATCHES_CANONICAL" "$f" && grep -q "ruff_check_exit=0" "$f" && grep -q "ruff_fmt_exit=0" "$f" && v=PASS
+          echo "candidate_verdict=$v" | tee "$GITHUB_WORKSPACE/$EVID/pr1168_candidate_status_run$GITHUB_RUN_ID.txt"
+          grep -E "MATCHES|DIFF_BELOW|ruff_check_exit|ruff_fmt_exit" "$f" || true
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1168 candidate compare run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/pr1168_candidate_status_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$f" ]; then
+            echo "::error::no status recorded - read oracle evidence"
+            exit 1
+          fi
+          cat "$f"
