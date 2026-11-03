@@ -59,13 +59,19 @@ class CaseFilePanel(QWidget):
                 ("Cells", summary.n_cells),
                 ("Regions", len(summary.regions) if summary.regions else 1),
             ):
-                QTreeWidgetItem(mesh, [label, str(value) if value is not None else "not declared"])
+                QTreeWidgetItem(
+                    mesh,
+                    [label, str(value) if value is not None else "not declared"],
+                )
             for region in summary.regions:
                 QTreeWidgetItem(mesh, ["Region", region])
         else:
             QTreeWidgetItem(mesh, ["Status", "No recognised mesh topology"])
         fields = QTreeWidgetItem(self.tree, ["Fields", str(summary.total_field_count)])
-        for label, names in (("Scalar", summary.scalar_fields), ("Vector", summary.vector_fields)):
+        for label, names in (
+            ("Scalar", summary.scalar_fields),
+            ("Vector", summary.vector_fields),
+        ):
             group = QTreeWidgetItem(fields, [label, str(len(names))])
             for name in names:
                 QTreeWidgetItem(group, [name, ""])
@@ -79,7 +85,9 @@ class CaseFilePanel(QWidget):
             group = QTreeWidgetItem(self.tree, [label, str(len(names))])
             for name in names:
                 QTreeWidgetItem(group, [name, ""])
-        datasets = QTreeWidgetItem(self.tree, ["HDF5 datasets", str(len(summary.datasets))])
+        datasets = QTreeWidgetItem(
+            self.tree, ["HDF5 datasets", str(len(summary.datasets))]
+        )
         for dataset in summary.datasets:
             item = QTreeWidgetItem(
                 datasets,
@@ -95,7 +103,9 @@ class CaseFilePanel(QWidget):
                 datasets,
                 ["Dataset listing", "Truncated at the configured metadata limit"],
             )
-        attributes = QTreeWidgetItem(self.tree, ["Attributes", str(len(summary.attributes))])
+        attributes = QTreeWidgetItem(
+            self.tree, ["Attributes", str(len(summary.attributes))]
+        )
         for name, value in summary.attributes:
             item = QTreeWidgetItem(attributes, [name, value])
             item.setToolTip(1, value)
