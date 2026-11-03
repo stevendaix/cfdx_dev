@@ -24,7 +24,9 @@ using namespace cfdx::physics;
 
 struct Forces { double cd,cl,cm,cdp,cdv,continuity; };
 
-static Forces run(const std::string& path,std::size_t level)
+static Forces run(const std::string& path,std::size_t level,
+                  bool growth_guard=false, double alpha_u=0.6,
+                  double alpha_p=0.25, std::size_t max_iterations=8000)
 {
     Mesh mesh;
     if(!cfdx::io::read_mesh_hdf5(path,mesh))
@@ -68,10 +70,11 @@ static Forces run(const std::string& path,std::size_t level)
     c.algorithm=PressureVelocityAlgorithm::SIMPLE;
     c.density=rho; c.kinematic_viscosity=nu;
     c.linear_max_iterations=4000; c.linear_tolerance=1e-10;
-    c.convergence.max_iterations=8000;
+    c.convergence.max_iterations=max_iterations;
     c.convergence.relative_tolerance=1e-8;
     c.convergence.continuity_tolerance=1e-8;
-    c.coupling.alpha_u=0.6; c.coupling.alpha_p=0.25;
+    c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
+    c.nonlinear_retry.reject_severe_physical_growth=growth_guard;
     cfdx::validation::apply_naca_relaxation_ab(c);
     // A/B only: the default NACA qualification is unchanged.
     if (const char* value = std::getenv("CFDX_NACA_SKEW_GRADIENT")) {
@@ -106,7 +109,7 @@ static Forces run(const std::string& path,std::size_t level)
     c.pressure_reference_cell=0;
     c.pressure_reference_value=0.0;
     c.diagnostics.iteration_trace=true;
-    c.diagnostics.iteration_trace_frequency=200;
+    c.diagnostics.iteration_trace_frequency=growth_guard ? 10 : 200;
 
     const auto geometry=build_fv_geometry(mesh);
     if (const char* checkpoint = std::getenv("CFDX_NACA_CHECKPOINT_STATE_CSV")) {
@@ -493,6 +496,23 @@ static void run_quick_contract(const std::string& path)
 
 int main(int argc,char**argv)
 {
+    // Isolated quantitative r24/r36/r48/r72 experiment. The complete 3-grid
+    // qualification remains separate and may not be promoted by this mode.
+    // argc==6 dispatch preserves the 3-arg --single replay defined below.
+    if (argc == 6 && std::string(argv[1]) == "--single") {
+        if (argc != 6)
+            throw std::invalid_argument(
+                "usage: test_naca0012_qualification --single mesh.h5 alpha_u alpha_p max_iterations");
+        const auto alpha_u = std::stod(argv[3]);
+        const auto alpha_p = std::stod(argv[4]);
+        const auto maxit = static_cast<std::size_t>(std::stoull(argv[5]));
+        if (!(std::isfinite(alpha_u) && alpha_u > 0. && alpha_u <= 1. &&
+              std::isfinite(alpha_p) && alpha_p > 0. && alpha_p <= 1. &&
+              maxit > 0))
+            throw std::invalid_argument("invalid NACA diagnostic continuation controls");
+        (void)run(argv[2],64,true,alpha_u,alpha_p,maxit);
+        return 0;
+    }
     try {
     const bool quick=argc>=2 && std::string(argv[1])=="--quick";
     if(quick) {

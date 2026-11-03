@@ -302,8 +302,8 @@ inline MatrixCharacteristics measure_matrix_characteristics(
             -1e-14 * std::max(1.0, d.max_abs_diagonal);
     c.strongly_scaled = std::isfinite(c.coefficient_range) &&
                         c.coefficient_range >= 1.0e8;
-    c.anisotropic = std::isfinite(d.diagonal_dynamic_range) &&
-                    d.diagonal_dynamic_range >= 1.0e4;
+    c.large_diagonal_dynamic_range = std::isfinite(d.diagonal_dynamic_range) &&
+                                    d.diagonal_dynamic_range >= 1.0e4;
     c.saddle_point = saddle_point;
 
     if (c.square && matrix.n_rows() > 0) {
