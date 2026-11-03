@@ -167,6 +167,8 @@ class CaseFilePanel(QWidget):
             self.sample.setPlainText(f"Sample unavailable: {exc}")
             return
         values = ", ".join(sample.values) if sample.values else "<empty dataset>"
+        if len(values) > 4000:
+            values = values[:3997] + "..."
         self.sample.setPlainText(
             f"{sample.path}\n"
             f"Shape: {sample.shape} · dtype: {sample.dtype}\n"
