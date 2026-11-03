@@ -23,8 +23,18 @@ def fnv1a(values: np.ndarray, h: int = 1469598103934665603) -> int:
     return h
 
 
-def write_mesh(path: Path, points, cells, boundary_faces):
-    """Write a structured hexahedral mesh to the CFDX mesh-v1 HDF5 schema."""
+def write_mesh(
+    path: Path,
+    points,
+    cells,
+    boundary_faces,
+    patch_type_overrides=None,
+):
+    """Write a structured hexahedral mesh to the CFDX mesh-v1 HDF5 schema.
+
+    ``patch_type_overrides`` supports fixtures whose physical boundary
+    semantics differ from the default extrusion (e.g. thermal end caps).
+    """
     points = np.asarray(points, dtype=np.float64)
     faces = []
     owner = []
@@ -104,6 +114,10 @@ def write_mesh(path: Path, points, cells, boundary_faces):
             "front": 6,
             "back": 6,
         }.get(name, 7)
+        if patch_type_overrides and name in patch_type_overrides:
+            ptype = int(patch_type_overrides[name])
+        if ptype not in range(8):
+            raise ValueError(f"invalid patch type {ptype} for patch {name}")
         patch_meta.append(f"{name}:{ids[0] if ids else 0}:{len(ids)}:{ptype}")
 
     topo_hash = fnv1a(fv)
@@ -557,6 +571,15 @@ def main():
         write_mesh(out / "naca0012_extruded_3d_n64_z2.h5", p, c, b)
         p, c, b = naca_o_grid(16, 8, 20.0, n_spanwise=2, span=1.0)
         write_mesh(out / "naca0012_extruded_3d_n16_z2.h5", p, c, b)
+        # Thermal through-span MMS needs physical end caps; the fluid
+        # extrusion fixture intentionally retains EMPTY front/back patches.
+        write_mesh(
+            out / "naca0012_extruded_3d_thermal_n16_z2.h5",
+            p,
+            c,
+            b,
+            patch_type_overrides={"front": 0, "back": 0},
+        )
     print(f"validation meshes written to {out}")
 
 

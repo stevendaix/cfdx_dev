@@ -81,6 +81,50 @@ int main(int argc, char** argv) {
     std::cout << "NACA3D_LINEAR_MATRIX_AUDIT residual_max=" << initial_residual_max
               << " worst_cell=" << worst
               << " worst_z=" << geometry.cell_centres[worst].z << '\n';
+    // Expand the scalar residual into the exact matrix row and face geometry.
+    // Diagnostic-only: this does not alter the assembled operator.
+    const auto boundary_gradient = compute_scalar_gradient_with_boundary(
+        Tlinear, mesh, geometry, linear_bc);
+    const auto nonorthogonal_flux = compute_nonorthogonal_diffusion_face_fluxes(
+        mesh, geometry, Tlinear, ec.conductivity, linear_bc);
+    std::cout << "NACA3D_LINEAR_GRADIENT cell=" << worst
+              << " gx=" << boundary_gradient.component_data(0)[worst]
+              << " gy=" << boundary_gradient.component_data(1)[worst]
+              << " gz=" << boundary_gradient.component_data(2)[worst] << '\n';
+    std::cout << "NACA3D_LINEAR_ROW cell=" << worst
+              << " rhs=" << linear_eq.rhs(worst) << " terms=";
+    for (std::uint32_t j = linear_eq.matrix.row_offsets_data()[worst];
+         j < linear_eq.matrix.row_offsets_data()[worst+1]; ++j) {
+        const auto column = linear_eq.matrix.columns_data()[j];
+        std::cout << " [" << column << ":" << linear_eq.matrix.values_data()[j]
+                  << "*" << Tlinear(column) << "]";
+    }
+    std::cout << '\n';
+    const auto row_off = mesh.cells().offsets_data()[worst];
+    const auto row_count = mesh.cells().offsets_data()[worst+1] - row_off;
+    for (Offset k = 0; k < row_count; ++k) {
+        const auto face = static_cast<std::size_t>(mesh.cells().faces_data()[row_off+k]);
+        const auto owner = mesh.ownership().owner(face);
+        const auto neighbour = mesh.ownership().neighbour(face);
+        const auto sf = geometry.face_area_vectors[face];
+        const auto d = neighbour >= 0
+            ? geometry.cell_centres[static_cast<std::size_t>(neighbour)] - geometry.cell_centres[owner]
+            : geometry.face_centres[face] - geometry.cell_centres[owner];
+        const double area = sf.mag();
+        const double sd = sf.dot(d);
+        const double alpha = sd > 0.0 ? area*area/sd : 0.0;
+        const auto tangential = sf - d*alpha;
+        std::cout << "NACA3D_LINEAR_FACE cell=" << worst << " face=" << face
+                  << " owner=" << owner << " neighbour=" << neighbour
+                  << " area=" << area << " Sf_dot_d=" << sd
+                  << " tangential_area=" << tangential.mag()
+                  << " nonorth_flux=" << nonorthogonal_flux[face]
+                  << " Cf_z=" << geometry.face_centres[face].z
+                  << " Co_z=" << geometry.cell_centres[owner].z;
+        if (neighbour >= 0)
+            std::cout << " Cn_z=" << geometry.cell_centres[static_cast<std::size_t>(neighbour)].z;
+        std::cout << '\n';
+    }
     const auto conduction = solve_energy(mesh, geometry, mass_flux, Tlinear,
                                            source, ec, linear_bc);
     double linear_err = 0.0;
