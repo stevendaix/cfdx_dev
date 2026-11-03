@@ -56,6 +56,7 @@ class CaseFileSummary:
     has_case_config: bool
     has_project_config: bool
     has_mesh: bool
+    mesh_counts_complete: bool
     preview_supported: bool
     preview_block_reason: str | None
     n_points: int | None
@@ -453,6 +454,7 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             has_case_config=config is not None,
             has_project_config=has_project_config,
             has_mesh=has_mesh,
+            mesh_counts_complete=not regions_truncated,
             preview_supported=preview_supported,
             preview_block_reason=preview_block_reason,
             n_points=n_points,
