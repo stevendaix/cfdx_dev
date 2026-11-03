@@ -118,6 +118,7 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
         "/metadata/labels", Qt.MatchFlag.MatchExactly, 0
     )
     assert label_items
+    assert "variable/unknown size" in label_items[0].text(1)
     window.case_file_panel.tree.itemClicked.emit(point_items[0], 0)
     assert "shape: (4, 3)" in window.case_file_panel.preview.toPlainText()
     window.close()
