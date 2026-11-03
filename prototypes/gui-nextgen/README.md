@@ -19,10 +19,10 @@ No npm install, build step, browser extension, or network access is required.
 - **Viewport-first workspace:** the simulation is the main surface; controls appear as contextual overlays.
 - **Workspace contexts:** Setup, Mesh, Run and Analyze update the active workspace context and viewport title.
 - **Movable contextual panels:** drag the workflow and selection inspector by their headers; show/hide them from the workspace controls.
-- **Command palette:** press `Ctrl+K` (or click the search field) to filter demo commands.
+- **Command palette:** press `Ctrl+K` (or click the search field) to filter and execute demo actions: panel visibility, comparison, theme switch, and clearly labelled non-connected case/validation actions.
 - **Run cockpit:** residual-history hierarchy, iteration/time and solver status appear together.
 - **Comparison layout:** switch to a two-viewport comparison concept.
-- **Theme:** switch between graphite/cyan dark and cool neutral light themes.
+- **Theme:** switch between graphite/cyan dark and cool neutral light themes; the selected theme is persisted locally in the browser.
 - **Run button:** deliberately does not launch a solver.
 
 ## Data and integration boundary
