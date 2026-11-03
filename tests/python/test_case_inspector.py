@@ -4,7 +4,7 @@ import h5py
 import numpy as np
 import pytest
 from cfdx.application import Application
-from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample, read_dataset_preview
+from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample
 from cfdx.case_io import save_case
 from cfdx.session import CFDXSession
 
@@ -124,6 +124,10 @@ def test_dataset_sample_is_bounded_and_rejects_variable_length_values(tmp_path):
 
     with pytest.raises(ValueError, match="sampling dtype"):
         read_hdf5_dataset_sample(path, "/strings")
+    with pytest.raises(ValueError, match="safe HDF5 path"):
+        read_hdf5_dataset_sample(path, "/../outside")
+    with pytest.raises(ValueError, match="between 1 and 256"):
+        read_hdf5_dataset_sample(path, "/values", max_values=512)
 
 
 def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
@@ -181,38 +185,6 @@ def test_inspect_bounds_root_attribute_payloads_and_count(tmp_path):
     assert summary.is_cfdx
     assert summary.attributes_truncated
     assert len(summary.attributes) == 100
-
-
-def test_dataset_preview_reads_a_bounded_numeric_slice(tmp_path):
-    path = tmp_path / "field.h5"
-    with h5py.File(path, "w") as h5:
-        dataset = h5.create_dataset(
-            "fields/vector/U",
-            shape=(10_000_000, 3),
-            dtype=np.float64,
-            chunks=(128, 3),
-        )
-        dataset[:2] = [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
-
-    preview = read_dataset_preview(path, "/fields/vector/U", max_elements=6)
-
-    assert "shape: (10000000, 3)" in preview
-    assert "[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]" in preview
-    assert "preview truncated" in preview
-
-
-def test_dataset_preview_rejects_unsafe_paths_and_skips_strings(tmp_path):
-    path = tmp_path / "metadata.h5"
-    with h5py.File(path, "w") as h5:
-        h5.create_dataset("cell_ids", data=np.asarray(["cell-0", "cell-1"], dtype="S"))
-
-    with pytest.raises(ValueError, match="absolute HDF5 path"):
-        read_dataset_preview(path, "cell_ids")
-    with pytest.raises(ValueError, match="safe HDF5 path"):
-        read_dataset_preview(path, "/../outside")
-    preview = read_dataset_preview(path, "/cell_ids")
-    assert "Preview disabled for non-numeric" in preview
-
 
 
 def test_inspect_falls_back_to_cell_offsets_for_invalid_count_attribute(tmp_path):
