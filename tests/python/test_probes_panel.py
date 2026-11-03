@@ -212,3 +212,64 @@ def test_live_probe_stream_exports_buffered_samples_as_csv_or_json(
     ]
     panel.close()
     app.processEvents()
+
+
+def test_probe_comparison_overlays_same_probe_from_multiple_csv_runs(
+    tmp_path, monkeypatch
+) -> None:
+    pytest.importorskip("pyqtgraph")
+    from cfdx.probes_panel import ProbesPanel
+    from PySide6.QtWidgets import QApplication, QFileDialog
+
+    app = QApplication.instance() or QApplication(["cfdx-probe-comparison-test"])
+    application = Application(CFDXSession())
+    first_dir = tmp_path / "baseline"
+    second_dir = tmp_path / "candidate"
+    first_dir.mkdir()
+    second_dir.mkdir()
+    first_path = first_dir / "case.probes.csv"
+    second_path = second_dir / "case.probes.csv"
+    application.export_probe_results(
+        first_path,
+        (
+            ProbeSeries(
+                "pressure",
+                (0.5, 0.0, 0.0),
+                (ProbeSample(1, 0.1, 101325.0), ProbeSample(2, 0.2, 101326.0)),
+                field="p",
+                unit="Pa",
+            ),
+        ),
+    )
+    application.export_probe_results(
+        second_path,
+        (
+            ProbeSeries(
+                "pressure",
+                (0.5, 0.0, 0.0),
+                (ProbeSample(1, 0.1, 101300.0), ProbeSample(2, 0.2, 101301.0)),
+                field="p",
+                unit="Pa",
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileNames",
+        lambda *_args: ([str(first_path), str(second_path)], "CFDX probe CSV (*.csv)"),
+    )
+    panel = ProbesPanel(application)
+
+    panel._compare_results()
+
+    assert panel._results_summary.text() == (
+        "Comparison · 2 files · 2 probes · 4 samples · iterations 1–2"
+    )
+    assert {probe.name for probe in panel._display_probe_series} == {
+        "case.probes / pressure",
+        "case.probes (2) / pressure",
+    }
+    assert len(panel._probe_plot.plotItem.listDataItems()) == 2
+    assert panel._export_results_button.isEnabled()
+    panel.close()
+    app.processEvents()

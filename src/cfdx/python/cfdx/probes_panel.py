@@ -71,6 +71,8 @@ class ProbesPanel(QWidget):
 
         self._load_results_button = QPushButton("Load results CSV…")
         self._load_results_button.clicked.connect(self._load_results)
+        self._compare_results_button = QPushButton("Compare CSV runs…")
+        self._compare_results_button.clicked.connect(self._compare_results)
         self._export_results_button = QPushButton("Export results CSV…")
         self._export_results_button.setEnabled(False)
         self._export_results_button.clicked.connect(self._export_results)
@@ -121,6 +123,7 @@ class ProbesPanel(QWidget):
         layout.addLayout(controls)
         results_controls = QHBoxLayout()
         results_controls.addWidget(self._load_results_button)
+        results_controls.addWidget(self._compare_results_button)
         results_controls.addWidget(self._export_results_button)
         results_controls.addWidget(self._export_live_button)
         results_controls.addWidget(self._results_summary, 1)
@@ -375,6 +378,73 @@ class ProbesPanel(QWidget):
         )
         self._export_results_button.setEnabled(bool(series))
         self._show_results_message(f"Loaded probe results: {source}")
+
+    def _compare_results(self) -> None:
+        """Load several CSV runs and overlay their compatible probe series."""
+        sources, _selected_filter = QFileDialog.getOpenFileNames(
+            self,
+            "Compare probe runs",
+            "",
+            "CFDX probe CSV (*.csv);;All files (*)",
+        )
+        if not sources:
+            return
+
+        try:
+            runs = [
+                (Path(source), self.application.read_probe_results(source))
+                for source in sources
+            ]
+        except (OSError, ValueError) as exc:
+            self._show_results_message(f"Could not compare probe results: {exc}")
+            return
+
+        label_counts: dict[str, int] = {}
+        comparison: list[ProbeSeries] = []
+        for source, series in runs:
+            base_label = source.stem or source.name
+            base_label = (
+                base_label.replace(",", " ").replace("\r", " ").replace("\n", " ")
+            )
+            label_counts[base_label] = label_counts.get(base_label, 0) + 1
+            run_label = (
+                base_label
+                if label_counts[base_label] == 1
+                else f"{base_label} ({label_counts[base_label]})"
+            )
+            comparison.extend(
+                ProbeSeries(
+                    name=f"{run_label} / {probe.name}",
+                    point=probe.point,
+                    samples=probe.samples,
+                    field=probe.field,
+                    unit=probe.unit,
+                )
+                for probe in series
+            )
+
+        combined = tuple(comparison)
+        self._loaded_probe_series = combined
+        self._display_probe_series = combined
+        self._populate_probe_plot_controls()
+        sample_count = sum(len(probe.samples) for probe in combined)
+        iterations = [
+            sample.iteration for probe in combined for sample in probe.samples
+        ]
+        interval = (
+            f"iterations {min(iterations)}–{max(iterations)}"
+            if iterations
+            else "no samples"
+        )
+        probe_label = "probe" if len(combined) == 1 else "probes"
+        self._results_summary.setText(
+            f"Comparison · {len(runs)} files · {len(combined)} {probe_label} · "
+            f"{sample_count} samples · {interval}"
+        )
+        self._export_results_button.setEnabled(bool(combined))
+        self._show_results_message(
+            f"Comparing {len(combined)} probe series from {len(runs)} files"
+        )
 
     def _probe_group(self, probe: ProbeSeries) -> tuple[str, str]:
         return (probe.field or "value", probe.unit or "")

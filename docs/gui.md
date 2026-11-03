@@ -98,10 +98,13 @@ window and the GUI asks whether to save before Run or Close.
 ## Probe results
 
 The Probes panel can load and re-export native `cfdx-probe-csv v1` histories.
-It reports the probe count, sample count and iteration range after loading,
-then plots the selected histories interactively. Curves can be toggled
-individually, grouped by field and unit, and displayed against physical time or
-iteration; the plot supports normal pan and zoom interactions. During a
+It reports the probe count, sample count and iteration range after loading.
+**Compare CSV runs** multi-selects completed simulation files and overlays their
+histories in the same plot. Curve labels include the source filename, so probes
+with the same name in different runs stay distinguishable. Curves can be toggled
+individually and are grouped by field and unit so incompatible quantities are
+not overlaid; the x-axis can show physical time or iteration, with normal
+pan/zoom interactions. During a
 `cfdx_production_solver` run, the application enables `--probe-stream` and
 receives versioned stdout records for samples from committed iterations. The Qt
 panel batches redraws at 10 Hz and retains the latest 2,000 points per probe in
