@@ -825,7 +825,7 @@ if QMainWindow is not object:
                     raise ValueError("file does not contain a recognised CFDX mesh")
                 self.case_file_panel.set_summary(summary)
                 if not summary.preview_supported:
-                    self.application.mesh_catalog = None
+                    self.application.clear_mesh_catalog()
                     self.mesh_browser.clear()
                     if self.view3d is not None:
                         self.view3d.clear()
