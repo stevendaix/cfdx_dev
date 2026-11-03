@@ -1,0 +1,27 @@
+Internal ctest changing into directory: /tmp/pr1168_v3wt/build/th-preflight
+Test project /tmp/pr1168_v3wt/build/th-preflight
+    Start 132: test_thermohydraulic_observables
+1/5 Test #132: test_thermohydraulic_observables .........   Passed    0.00 sec
+    Start 133: test_production_sst_thermal_coupling
+2/5 Test #133: test_production_sst_thermal_coupling .....   Passed    0.00 sec
+    Start 222: test_thermal_driver_vv
+3/5 Test #222: test_thermal_driver_vv ...................   Passed    0.11 sec
+    Start 226: test_production_buoyancy_outer_loop_vv
+4/5 Test #226: test_production_buoyancy_outer_loop_vv ...   Passed    1.59 sec
+    Start 228: test_natural_convection_de_vahl_davis
+5/5 Test #228: test_natural_convection_de_vahl_davis ....   Passed   31.46 sec
+
+100% tests passed, 0 tests failed out of 5
+
+Label Time Summary:
+benchmark           =  31.46 sec*proc (1 test)
+buoyancy            =  31.46 sec*proc (1 test)
+long                =  31.46 sec*proc (1 test)
+phase13             =   1.59 sec*proc (1 test)
+prequalification    =  31.46 sec*proc (1 test)
+qualification       =   1.59 sec*proc (1 test)
+thermal             =  31.57 sec*proc (2 tests)
+validation          =   1.69 sec*proc (2 tests)
+
+Total Test time (real) =  33.48 sec
+CTEST_EXIT=0

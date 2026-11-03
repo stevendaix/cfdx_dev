@@ -1,0 +1,5 @@
+ruff=FAIL
+sphinx=FAIL
+build=PASS
+ctest=PASS
+oracle_verdict=DIAGNOSTIC_COMPLETE
