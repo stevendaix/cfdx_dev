@@ -214,6 +214,8 @@ def _case_config(h5: h5py.File) -> dict[str, Any] | None:
         return None
     if isinstance(raw, bytes):
         raw = raw.decode("utf-8")
+    if isinstance(raw, str) and len(raw.encode("utf-8")) > 1_048_576:
+        return None
     try:
         value = json.loads(str(raw))
     except (TypeError, ValueError, json.JSONDecodeError):
