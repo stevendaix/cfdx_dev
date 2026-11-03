@@ -435,12 +435,14 @@ if QMainWindow is not object:
                 "setup": {
                     "workbench.dock.workflow",
                     "workbench.dock.mesh",
+                    "workbench.dock.case_file",
                     "workbench.dock.setup",
                     "workbench.dock.properties",
                 },
                 "mesh": {
                     "workbench.dock.workflow",
                     "workbench.dock.mesh",
+                    "workbench.dock.case_file",
                     "workbench.dock.properties",
                 },
                 "run": {
@@ -505,11 +507,18 @@ if QMainWindow is not object:
                     )
                 elif summary.has_mesh:
                     self.mesh_browser.clear()
+                    if self.view3d is not None:
+                        self.view3d.clear()
+                        self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
                     self.statusBar().showMessage(
                         f"CFDX file opened metadata-only: {summary.n_cells or 'unknown'} cells; "
                         "3D preview deferred to protect memory"
                     )
                 else:
+                    self.mesh_browser.clear()
+                    if self.view3d is not None:
+                        self.view3d.clear()
+                        self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
                     self.statusBar().showMessage(
                         f"CFDX project opened: {summary.path.name} · no embedded mesh topology"
                     )
@@ -808,6 +817,10 @@ if QMainWindow is not object:
                     raise ValueError("file does not contain a recognised CFDX mesh")
                 self.case_file_panel.set_summary(summary)
                 if not summary.preview_supported:
+                    self.mesh_browser.clear()
+                    if self.view3d is not None:
+                        self.view3d.clear()
+                        self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
                     self.statusBar().showMessage(
                         f"Mesh metadata loaded ({summary.n_cells or 'unknown'} cells); "
                         "full in-memory preview is disabled above the 100k entity safety limit"
