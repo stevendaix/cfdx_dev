@@ -16,8 +16,12 @@ def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
         h5.create_dataset("points", shape=(50_000_000, 3), dtype="f8", chunks=(1024, 3))
         h5.create_dataset("owner", shape=(120_000_000,), dtype="u8", chunks=(4096,))
         h5.create_dataset("cell_offsets", data=np.arange(5, dtype=np.uint64))
-        h5.create_dataset("face_vertices", shape=(360_000_000,), dtype="u8", chunks=(4096,))
-        h5.create_dataset("face_offsets", shape=(120_000_001,), dtype="u8", chunks=(4096,))
+        h5.create_dataset(
+            "face_vertices", shape=(360_000_000,), dtype="u8", chunks=(4096,)
+        )
+        h5.create_dataset(
+            "face_offsets", shape=(120_000_001,), dtype="u8", chunks=(4096,)
+        )
         h5.create_dataset("patch_face_ids", shape=(10,), dtype="u8")
         h5.create_dataset("patch_face_offsets", data=[0, 10])
         h5.attrs["boundary_patches"] = "wall:0:10:0"
