@@ -240,6 +240,28 @@ def test_inspect_falls_back_to_cell_offsets_for_invalid_count_attribute(tmp_path
     assert summary.n_cells == 4
 
 
+
+def test_inspect_marks_region_totals_as_partial_when_catalog_is_truncated(tmp_path):
+    path = tmp_path / "many-regions.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        for index in range(301):
+            group = h5.create_group(f"regions/region_{index:03d}")
+            group.attrs["n_cells"] = 1
+            group.create_dataset("points", shape=(4, 3), dtype="f8")
+            group.create_dataset("owner", shape=(4,), dtype="u8")
+            group.create_dataset("cell_offsets", data=[0, 4])
+
+    summary = inspect_cfdx_file(path)
+
+    assert summary.has_mesh
+    assert len(summary.regions) == 300
+    assert summary.regions_truncated
+    assert not summary.mesh_counts_complete
+    assert summary.n_cells == 300
+
+
+
 def test_inspect_bounds_field_catalogs(tmp_path):
     path = tmp_path / "many-fields.h5"
     with h5py.File(path, "w") as h5:
