@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .case_inspector import CaseFileSummary, read_dataset_preview
+from .case_inspector import CaseFileSummary, read_hdf5_dataset_sample
 
 
 class CaseFilePanel(QWidget):
@@ -30,7 +30,7 @@ class CaseFilePanel(QWidget):
         self.preview.setObjectName("workbench.case_file.dataset_preview")
         self.preview.setReadOnly(True)
         self.preview.setMaximumBlockCount(40)
-        self.preview.setPlainText("Select a numeric dataset to inspect a bounded sample.")
+        self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         layout = QVBoxLayout(self)
         layout.addWidget(self.status)
         layout.addWidget(self.tree, 3)
@@ -40,7 +40,7 @@ class CaseFilePanel(QWidget):
     def clear(self) -> None:
         self.summary = None
         self.tree.clear()
-        self.preview.setPlainText("Select a numeric dataset to inspect a bounded sample.")
+        self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         self.status.setText("No CFDX file inspected")
 
     def _preview_dataset(self, item: QTreeWidgetItem, _column: int) -> None:
@@ -49,9 +49,21 @@ class CaseFilePanel(QWidget):
         if not dataset_path or self.summary is None:
             return
         try:
-            preview = read_dataset_preview(self.summary.path, dataset_path)
+            sample = read_hdf5_dataset_sample(
+                self.summary.path, dataset_path, max_values=32
+            )
+            values = ", ".join(sample.values) or "(empty dataset)"
+            truncated = (
+                f"\\nshowing {len(sample.values)} of {sample.total_values:,} values"
+                if sample.total_values > len(sample.values)
+                else ""
+            )
+            preview = (
+                f"{sample.path}\\nshape: {sample.shape}\\ndtype: {sample.dtype}"
+                f"\\nfirst values: {values}{truncated}"
+            )
         except (OSError, RuntimeError, TypeError, ValueError, KeyError) as exc:
-            preview = f"Unable to read dataset preview: {exc}"
+            preview = f"Unable to read dataset sample: {exc}"
         self.preview.setPlainText(preview)
 
     def set_summary(self, summary: CaseFileSummary) -> None:
