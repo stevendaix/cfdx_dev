@@ -882,6 +882,15 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         set_tests_properties(test_naca0012_wall_shear_audit_quick PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_quick)
     endif()
     if(CFDX_ENABLE_LONG_VALIDATION)
+        add_test(NAME test_naca0012_wall_face_reconstruction_mms
+            COMMAND test_naca0012_wall_shear_audit --face-mms
+                ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5)
+        set_tests_properties(test_naca0012_wall_face_reconstruction_mms PROPERTIES
+            LABELS "qualification;validation;long")
+        if(Python3_Interpreter_FOUND)
+            set_tests_properties(test_naca0012_wall_face_reconstruction_mms PROPERTIES
+                FIXTURES_REQUIRED cfdx_validation_meshes_full)
+        endif()
         add_test(NAME test_naca0012_wall_shear_audit COMMAND test_naca0012_wall_shear_audit ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/channel_n16.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n64.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n128.h5 ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_laminar_n256.h5)
         set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES LABELS "qualification;validation;long")
         set_tests_properties(test_naca0012_wall_shear_audit PROPERTIES
