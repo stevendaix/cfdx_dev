@@ -13,7 +13,7 @@ Each benchmark has an independent GitHub Actions workflow and a machine-readable
 
 The four workflows are deliberately **reference-contract CIs**: they validate that the frozen reference conditions, units, uncertainties, normalizations and derived dimensionless values are internally consistent. They do not run CFDX and do not claim a physical-validation PASS.
 
-The physical status remains BLOCKED until the production turbulence model is coupled to momentum, energy and (where required) buoyancy, then run against the reference on mesh/time-step refinement levels. A successful reference-contract CI must never be promoted to a solver qualification.
+The physical status remains BLOCKED: production has an explicit **experimental SST momentum path** (`--experimental-sst`), but that path rejects coupled energy, buoyancy and radiation, and is not physically qualified. These models and (where applicable) transient statistics still require full reference runs on mesh/time-step refinement levels. A successful reference-contract CI must never be promoted to a solver qualification.
 
 ## Comparison and uncertainty policy
 
@@ -31,3 +31,7 @@ The physical status remains BLOCKED until the production turbulence model is cou
 - Driver & Seegmiller CMP32: https://torroja.dmt.upm.es/turbdata/agard/docs/AGARD-AR-345.pdf
 - Wagner & Wetzel (2022): https://doi.org/10.1002/gamm.202200006
 - OECD/NEA Vattenfall (2011): https://www.oecd-nea.org/upload/docs/application/pdf/2021-03/csni-r2011-5.pdf
+
+## Running physical benchmarks (fail-closed)
+
+The solver-evidence prequalification gate and execution instructions are described in [PHYSICAL_QUALIFICATION_RUNBOOK.md](PHYSICAL_QUALIFICATION_RUNBOOK.md). All four original reference-contract checks remain separate from actual CFDX execution. The shared production prerequisite workflow covers Ghia/thermal/buoyancy/de Vahl Davis, not turbulent TH validation.

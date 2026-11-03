@@ -8,6 +8,7 @@ and solver results are compared with the pinned reference data.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -65,8 +66,12 @@ def validate_case(case_id: str) -> dict[str, Any]:
             "TH-01: official DNS data portal mismatch",
         )
         require(
-            len(data["reference"]["profile_files"]) == 6,
-            "TH-01: missing mean/Reynolds-stress profile filenames",
+            data["reference"]["profile_files"] == [
+                f"chan{re}/profiles/chan{re}.{ext}"
+                for re in (180, 395, 590)
+                for ext in ("means", "reystress")
+            ],
+            "TH-01: official MKM relative profile paths mismatch",
         )
         required = {
             "mean profiles",
@@ -85,7 +90,7 @@ def validate_case(case_id: str) -> dict[str, Any]:
         derived["re_tau_cases"] = physics["re_tau_targets"]
         actual = [entry["re_tau_actual"] for entry in physics["reference_cases"]]
         require(
-            actual == [178.13, 392.24, 587.19],
+            actual == [178.12, 392.24, 587.19],
             "TH-01: actual DNS Re_tau values mismatch",
         )
         require(
@@ -94,6 +99,10 @@ def validate_case(case_id: str) -> dict[str, Any]:
             "TH-01: DNS spectral grid inventory mismatch",
         )
         derived["actual_re_tau"] = actual
+        derived["profile_files"] = data["reference"]["profile_files"]
+        derived["profile_note"] = (
+            "chan180.means header gives 178.12; nominal label is 180"
+        )
         derived["solver_validation"] = (
             "BLOCKED: RANS/LES production coupling and exact DNS data ingestion"
         )
@@ -143,7 +152,19 @@ def validate_case(case_id: str) -> dict[str, Any]:
         )
         derived["reattachment_x_over_h"] = 6.26
         derived["reattachment_uncertainty"] = 0.10
-        derived["reference_reynolds"] = flow["reynolds_step"]
+        # Independently recompute Re_h from the dimensional inputs, and H1.
+        computed_re = (
+            flow["velocity_reference_m_s"] * geom["step_height_m"]
+            / flow["kinematic_viscosity_m2_s"]
+        )
+        require(close(computed_re, float(flow["reynolds_step"]), atol=0.1),
+                f"TH-03: inconsistent Re_h versus nu/U/h ({computed_re})")
+        computed_shape = inlet["displacement_thickness_m"] / inlet["momentum_thickness_m"]
+        require(close(computed_shape, inlet["shape_factor"], atol=0.01),
+                "TH-03: inlet H1 != delta*/theta")
+        derived["reference_reynolds"] = computed_re
+        derived["inlet_shape_factor_from_thicknesses"] = computed_shape
+        derived["implied_kinematic_viscosity_m2_s"] = flow["kinematic_viscosity_m2_s"]
         derived["reattachment_gate"] = (
             "zero crossing of tau_w/Cf from negative to positive; value loaded from CMP32 data, not guessed"
         )
@@ -194,6 +215,41 @@ def validate_case(case_id: str) -> dict[str, Any]:
         derived["richardson_numbers"] = calculated
         derived["reference_bulk_reynolds"] = re_b
         derived["reference_prandtl"] = dim["prandtl"]
+        # Check the actual DNS table rather than comparing only hard-coded
+        # copies of the wall-shear values. Re_tau scales with sqrt(tau_wall).
+        friction = data["reference_targets"]["friction_reynolds"]
+        baseline_re = float(friction["Gr_0"]["global"])
+        require(close(baseline_re, 284.02, atol=0.005),
+                "TH-07: incorrect isothermal friction Reynolds baseline")
+        baseline_tau = float(targets["Gr_0"]["reference_isothermal"])
+        require(baseline_tau > 0.0, "TH-07: invalid base wall shear")
+        percent_changes = {}
+        for name, gr in (("Gr_6.4e5", 640000), ("Gr_9.5e5", 950000),
+                         ("Gr_1.6e6", 1600000)):
+            tabulated = friction[name]
+            pair = targets[name]
+            heated = float(tabulated["heated"])
+            cooled = float(tabulated["cooled"])
+            global_re = float(tabulated["global"])
+            expected_global = math.sqrt((heated * heated + cooled * cooled) / 2)
+            require(close(global_re, expected_global, atol=0.02),
+                    f"TH-07: global Re_tau is not consistent at Gr={gr}")
+            measured_ratio = float(pair["heated"]) / float(pair["cooled"])
+            expected_ratio = (heated / cooled) ** 2
+            require(math.isclose(measured_ratio, expected_ratio, rel_tol=0.05),
+                    f"TH-07: shear ratios disagree with friction Re at Gr={gr}")
+            percent_changes[str(gr)] = {
+                "heated_friction_re_change_percent": 100 * (heated / baseline_re - 1),
+                "cooled_friction_re_change_percent": 100 * (cooled / baseline_re - 1),
+                "heated_shear_change_percent_from_rounded_table":
+                    100 * (float(pair["heated"]) / baseline_tau - 1),
+                "cooled_shear_change_percent_from_rounded_table":
+                    100 * (float(pair["cooled"]) / baseline_tau - 1),
+            }
+        derived["corrected_wall_changes"] = percent_changes
+        expected_width = [3.80, 3.85, 3.90, 4.10]
+        require(data["reference_targets"]["grid_reference"]["mean_cell_width_star"]
+                == expected_width, "TH-07: reference grid mean spacing mismatch")
 
     elif case_id == "TH-08":
         physics = data["physics"]
@@ -248,7 +304,27 @@ def validate_case(case_id: str) -> dict[str, Any]:
         )
         derived["bulk_velocity_main_m_s"] = main_u
         derived["bulk_velocity_branch_m_s"] = branch_u
-        derived["fully_mixed_temperature_star"] = 0.38
+        volume_weighted = (
+            branch["volumetric_flow_m3_s"] /
+            (main["volumetric_flow_m3_s"] + branch["volumetric_flow_m3_s"])
+        )
+        require(close(physics["derived"]["flow_ratio_main_over_branch"],
+                      main["volumetric_flow_m3_s"] / branch["volumetric_flow_m3_s"]),
+                "TH-08: main/branch volume-flow ratio mismatch")
+        require(close(physics["derived"]["constant_property_volume_weighted_temperature_star"],
+                      volume_weighted),
+                "TH-08: constant-property volume mixing fraction mismatch")
+        require(close(physics["derived"]["delta_temperature_K"],
+                      branch["temperature_C"] - main["temperature_C"]),
+                "TH-08: inlet temperature difference mismatch")
+        derived["fully_mixed_temperature_star_published"] = 0.38
+        derived["constant_property_volume_mixing_star"] = volume_weighted
+        derived["reference_minus_constant_property_mixing"] = 0.38 - volume_weighted
+        derived["mixing_note"] = (
+            "0.38 is the value in OECD/NEA 2011 p.48, not the 0.40 "
+            "equal-property volume-weighted inlet estimate; verify properties "
+            "and mass/enthalpy balance before solver qualification"
+        )
 
     return {
         "case_id": case_id,
@@ -257,6 +333,7 @@ def validate_case(case_id: str) -> dict[str, Any]:
         "reference": data["reference"]["citation"],
         "derived_checks": derived,
         "source_file": str(path.relative_to(ROOT)),
+        "contract_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
     }
 
 

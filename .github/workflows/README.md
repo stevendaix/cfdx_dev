@@ -59,7 +59,12 @@ These are optional, case-scoped benchmark checks, not repository-wide required c
 - `.github/workflows/th07-mixed-convection.yml` — Wagner–Wetzel mixed-convection DNS.
 - `.github/workflows/th08-t-junction.yml` — OECD/NEA–Vattenfall T-junction.
 
-Each workflow runs on changes to its own reference contract, its own workflow, or the shared reference-contract checker; it can also be dispatched manually. They validate reference metadata and derived dimensionless values only. Their artifacts explicitly state that CFDX physical validation remains BLOCKED. They must not be configured as mandatory branch-protection checks until solver-level campaigns exist.
+The `.github/workflows/th-physical-prerequisites.yml` workflow executes Ghia,
+thermal, buoyancy and de Vahl Davis production preflight plus the comparator
+mutation tests. It does not run TH-01/03/07/08 turbulent CFDX simulations and
+must not be counted as their physical validation.
+
+Each reference-contract workflow runs on changes to its own reference contract, its own workflow, or the shared reference-contract checker; it can also be dispatched manually. They validate reference metadata and derived dimensionless values only. Their artifacts explicitly state that CFDX physical validation remains BLOCKED and include a fail-closed solver-evidence status report. They must not be configured as mandatory branch-protection checks until solver-level campaigns exist.
 
 ## Required-check policy
 

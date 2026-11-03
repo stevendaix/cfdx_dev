@@ -25,19 +25,19 @@
     "data_policy": "Download original text files; record exact filenames, retrieval timestamp and SHA-256. Never digitize plots or silently substitute the old AGARD CD data.",
     "mirror_data_url": "https://torroja.dmt.upm.es/turbdata/agard/chapter5/PCH10/",
     "profile_files": [
-      "chan180.means",
-      "chan180.reystress",
-      "chan395.means",
-      "chan395.reystress",
-      "chan590.means",
-      "chan590.reystress"
+      "chan180/profiles/chan180.means",
+      "chan180/profiles/chan180.reystress",
+      "chan395/profiles/chan395.means",
+      "chan395/profiles/chan395.reystress",
+      "chan590/profiles/chan590.means",
+      "chan590/profiles/chan590.reystress"
     ],
-    "data_change_note": "The UT Austin history records a 2000 correction to z cross-correlations; do not use the superseded chan*.zccorr files from before that correction."
+    "data_change_note": "The UT Austin history records a 2000 correction to z cross-correlations; do not use the superseded chan*.zccorr files from before that correction. The chan180.means numerical header states Re_tau=178.12; do not substitute the rounded 178.13 from secondary tables."
   },
   "physics": {
     "geometry": "Plane channel of half-height h; walls y=±h; periodic streamwise x and spanwise z; no-slip walls.",
     "forcing": "Pressure-gradient driven, statistically stationary channel flow; the streamwise pressure gradient is varied in time to maintain constant mass flux.",
-    "re_tau_definition": "Use actual Re_tau values 178.13, 392.24 and 587.19 from the published table; nominal case labels are 180, 395 and 590.",
+    "re_tau_definition": "Read actual profile Re_tau from original MKM .means headers (178.12, 392.24, 587.19). Nominal labels are not measured values.",
     "re_tau_targets": [
       180,
       395,
@@ -52,7 +52,7 @@
     "reference_cases": [
       {
         "re_tau_nominal": 180,
-        "re_tau_actual": 178.13,
+        "re_tau_actual": 178.12,
         "bulk_reynolds_approx": 2800,
         "domain_half_height_units": {
           "Lx": "4*pi*h",

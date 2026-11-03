@@ -71,6 +71,9 @@
         "heated": 331.41,
         "global": 301.21,
         "cooled": 267.63
+      },
+      "Gr_0": {
+        "global": 284.02
       }
     },
     "grid_reference": {
@@ -99,30 +102,20 @@
         3.84
       ],
       "dt_star": [
-        0.00000842,
-        0.00000855,
-        0.00000863,
-        0.00000893
+        8.42e-06,
+        8.55e-06,
+        8.63e-06,
+        8.93e-06
+      ],
+      "mean_cell_width_star": [
+        3.8,
+        3.85,
+        3.9,
+        4.1
       ]
     },
     "wall_shear_stress_normalization": "Dimensionless tau_w/(rho*Ub^2), as used by the DNS nondimensionalization; do not compare to dimensional Pa without restoring rho and Ub.",
-    "relative_wall_shear_rate_change_percent": {
-      "heated_aiding": [
-        5.3,
-        11.6,
-        21
-      ],
-      "cooled_opposing": [
-        -8.3,
-        -11.6,
-        -19.9
-      ],
-      "grashof_cases": [
-        640000,
-        950000,
-        1600000
-      ]
-    }
+    "derived_change_policy": "Derive Re_tau percentage changes from the tabulated values and the Gr=0 baseline 284.02. Do not confuse percent change in Re_tau with percent change in tau_w, which scales as Re_tau squared. The previously recorded [5.3,11.6,21]/[-8.3,-11.6,-19.9] arrays are not consistent with the tabulated source."
   },
   "qoi": {
     "primary": [

@@ -45,7 +45,9 @@
       "ldv_downstream_stations_x_over_D": [
         2.6,
         6.6
-      ]
+      ],
+      "constant_property_volume_weighted_temperature_star": 0.4,
+      "mixing_reference_warning": "OECD/NEA 2011 p.48 reports T* approximately 0.38 from a heat balance, whereas the stated inlet volumetric flows give 0.40 if density and heat capacity are assumed equal. Do not silently overwrite the reported target or identify the two as equal: verify water property model and inlet flow measurement before applying a tight enthalpy gate."
     }
   },
   "measurement_uncertainty": {

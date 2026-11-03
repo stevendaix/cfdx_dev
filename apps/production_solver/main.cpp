@@ -15,6 +15,7 @@
 #include "cfdx/io/vtu/vtu_writer.h"
 #include "cfdx/physics/production_time_contract.h"
 #include "cfdx/physics/wall_quadratic_forces.h"
+#include "cfdx/physics/thermohydraulic_observables.h"
 
 #include <algorithm>
 #include <array>
@@ -52,6 +53,7 @@ struct Options {
     bool wall_forces_quadratic = false;
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
+    bool benchmark_export = false;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
 };
@@ -650,6 +652,7 @@ Options parse(int argc, char** argv)
         else if (arg == "--initial-velocity-field") o.initial_velocity_field = true;
         else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
+        else if (arg == "--benchmark-export") o.benchmark_export = true;
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
         else if (arg == "--help") {
@@ -658,6 +661,7 @@ Options parse(int argc, char** argv)
                          "  [--initial-velocity-field] (initialize U from /fields/vector/U)\n"
                          "  [--wall-forces-quadratic] (opt-in 3-D quadratic WLS wall-force artifact; rank-deficient stencils fail)\n"
                          "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
+                         "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::exit(0);
@@ -1147,13 +1151,22 @@ int main(int argc, char** argv)
 
         controls.iteration_output_callback =
             [&](std::size_t iteration, double time, const Mesh& state_mesh,
-                const Field<double, Location::CELL>&,
+                const Field<double, Location::CELL>& state_u,
                 const Field<double, Location::CELL>& state_p) {
                 ScalarCellField pressure(state_p);
+                ScalarCellField ux(state_u.size(), "u_x", "m/s");
+                ScalarCellField uy(state_u.size(), "u_y", "m/s");
+                ScalarCellField uz(state_u.size(), "u_z", "m/s");
+                for (std::size_t c = 0; c < state_u.size(); ++c) {
+                    ux(c) = state_u(c, 0);
+                    uy(c) = state_u(c, 1);
+                    uz(c) = state_u(c, 2);
+                }
                 const auto path = options.output_dir /
                     ("result_" + std::to_string(iteration) + ".vtu");
                 VtuWriter writer;
-                if (!writer.write(path.string(), state_mesh, {{"p", pressure}},
+                if (!writer.write(path.string(), state_mesh,
+                                  {{"p", pressure}, {"u_x", ux}, {"u_y", uy}, {"u_z", uz}},
                                   {}, {}, time, iteration, true))
                     return false;
                 std::cout << "Iteration " << iteration
@@ -1412,6 +1425,21 @@ int main(int argc, char** argv)
                                  .string()
                           << "\n";
             }
+        }
+        // Native benchmark fields are emitted only from the accepted final
+        // solver state, never from the intermediate p-only iteration VTU.
+        // A failed flow remains marked unqualified in the manifest; the
+        // exports are still useful for diagnosing why it failed.
+        if (options.benchmark_export) {
+            const auto evidence = write_thermohydraulic_observables(
+                options.output_dir / "benchmark_observables",
+                mesh, U, p, result.authoritative_mass_flux, ubc,
+                controls.density, controls.kinematic_viscosity,
+                experimental_sst_state ? &*experimental_sst_state : nullptr,
+                energy_ran ? &temperature : nullptr);
+            std::cout << "Benchmark raw evidence: " << evidence.cells
+                      << " cells, global face-flux mass imbalance="
+                      << evidence.global_mass_imbalance_relative << "\n";
         }
         const bool overall_converged =
             result.converged &&

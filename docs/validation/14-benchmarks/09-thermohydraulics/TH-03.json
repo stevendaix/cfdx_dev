@@ -31,7 +31,9 @@
       "reynolds_step": 37500,
       "velocity_reference_m_s": 44.2,
       "approach_boundary_layer_re_theta": 5000,
-      "mach": 0.128
+      "mach": 0.128,
+      "kinematic_viscosity_m2_s": 1.4969066666666669e-05,
+      "comparison_caveat": "NASA TMR computational surrogate often specifies nominal Re_h=36000; this frozen experiment contract declares Re_h=37500. They are distinct flow states and must not be cross-compared without re-normalization."
     },
     "inlet_boundary_layer_at_x_over_h_minus4": {
       "delta_m": 0.019,
