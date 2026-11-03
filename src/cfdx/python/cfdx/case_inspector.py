@@ -96,16 +96,21 @@ def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
             points = group.get("points")
             owner = group.get("owner")
             offsets = group.get("cell_offsets")
-            counts.append((
-                int(points.shape[0]) if isinstance(points, h5py.Dataset) else 0,
-                int(owner.shape[0]) if isinstance(owner, h5py.Dataset) else 0,
-                int(group.attrs.get("n_cells", offsets.shape[0] - 1 if isinstance(offsets, h5py.Dataset) else 0)),
-            ))
+            if not isinstance(points, h5py.Dataset) or not isinstance(owner, h5py.Dataset):
+                return None, None, None
+            raw_cells = group.attrs.get(
+                "n_cells",
+                offsets.shape[0] - 1 if isinstance(offsets, h5py.Dataset) else 0,
+            )
+            counts.append((int(points.shape[0]), int(owner.shape[0]), int(raw_cells)))
         return tuple(sum(item[i] for item in counts) for i in range(3))
 
     points = _first_dataset(h5, ("points", "mesh/points", "mesh/topology/points"))
     owner = _first_dataset(h5, ("owner", "mesh/owner", "mesh/topology/owner"))
-    offsets = _first_dataset(h5, ("cell_offsets", "mesh/cell_offsets", "mesh/topology/cell_offsets"))
+    offsets = _first_dataset(
+        h5,
+        ("cell_offsets", "mesh/cell_offsets", "mesh/topology/cell_offsets"),
+    )
     n_points = int(points.shape[0]) if points is not None and points.ndim else None
     n_faces = int(owner.shape[0]) if owner is not None and owner.ndim else None
     raw_cells = h5.attrs.get("n_cells")
@@ -163,7 +168,7 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
         n_points, n_faces, n_cells = _mesh_counts(h5, regions)
         has_mesh = n_points is not None and n_faces is not None
         config = _case_config(h5)
-        has_project_config = "case/config" in h5
+        has_project_config = "case/config" in h5 and config is not None
         scalar_fields = _field_names(h5, "scalar")
         vector_fields = _field_names(h5, "vector")
 
@@ -196,7 +201,18 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             and n_points is not None and n_faces is not None
             and n_points <= 1_000_000 and n_faces <= 1_000_000
             and (n_cells is None or n_cells <= 1_000_000)
-            and all(name in h5 for name in ("points", "face_vertices", "face_offsets", "patch_face_ids", "patch_face_offsets"))
+            and all(
+                name in h5
+                for name in (
+                    "points",
+                    "face_vertices",
+                    "face_offsets",
+                    "owner",
+                    "neighbour",
+                    "patch_face_ids",
+                    "patch_face_offsets",
+                )
+            )
         )
         return CaseFileSummary(
             path=source.resolve(),
@@ -213,10 +229,20 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             regions=regions,
             scalar_fields=scalar_fields,
             vector_fields=vector_fields,
-            case_name=str(config.get("name")) if config and config.get("name") else attr_map.get("source_case_name"),
-            physics=tuple(sorted(config.get("physics", {}).keys())) if config and isinstance(config.get("physics"), dict) else (),
-            numerics=tuple(sorted(config.get("numerics", {}).keys())) if config and isinstance(config.get("numerics"), dict) else (),
-            boundaries=tuple(sorted(config.get("boundaries", {}).keys())) if config and isinstance(config.get("boundaries"), dict) else (),
+            case_name=(
+                str(config["name"])
+                if config and config.get("name")
+                else attr_map.get("source_case_name")
+            ),
+            physics=tuple(sorted(config["physics"]))
+            if config and isinstance(config.get("physics"), dict)
+            else (),
+            numerics=tuple(sorted(config["numerics"]))
+            if config and isinstance(config.get("numerics"), dict)
+            else (),
+            boundaries=tuple(sorted(config["boundaries"]))
+            if config and isinstance(config.get("boundaries"), dict)
+            else (),
             attributes=attrs,
             datasets=tuple(datasets),
             omitted_datasets=omitted,
