@@ -66,8 +66,9 @@ Opening a file does not slice mesh/field datasets. Only an explicit dataset
 selection reads a bounded sample. Chunked datasets whose individual chunks
 exceed the 1 MiB decompression budget, virtual datasets, external storage and
 non-internal HDF5 links are not sampled.
-Dataset discovery stops at 300 entries by default (5,000 hard maximum),
-scalar/vector field
+Dataset discovery stops at 300 entries by default (5,000 hard maximum) and
+the HDF5 object-tree walk is capped independently at 20,000 objects. This also
+bounds files containing very large numbers of empty groups. Scalar/vector field
 catalogs and region names are each capped at 300 entries, and root attribute
 display is bounded to 100 entries and 4 KiB per value. Truncated region
 catalogs display lower-bound counts rather than presenting partial sums as
