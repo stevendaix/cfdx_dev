@@ -502,9 +502,49 @@ def naca_o_grid_quality(
     }
 
 
+def wall3d_box(n: int = 3):
+    """Build a small structured 3-D box with one physical WALL patch."""
+    points = []
+    point_id = lambda i, j, k: (i * (n + 1) + j) * (n + 1) + k
+    for i in range(n + 1):
+        for j in range(n + 1):
+            for k in range(n + 1):
+                points.append((i / n, j / n, k / n))
+
+    cells = []
+    boundary_faces = {"wall": []}
+    for i in range(n):
+        for j in range(n):
+            for k in range(n):
+                v = [
+                    point_id(i, j, k),
+                    point_id(i + 1, j, k),
+                    point_id(i + 1, j + 1, k),
+                    point_id(i, j + 1, k),
+                    point_id(i, j, k + 1),
+                    point_id(i + 1, j, k + 1),
+                    point_id(i + 1, j + 1, k + 1),
+                    point_id(i, j + 1, k + 1),
+                ]
+                cells.append(v)
+                if k == 0:
+                    boundary_faces["wall"].append([v[0], v[3], v[2], v[1]])
+                if k == n - 1:
+                    boundary_faces["wall"].append([v[4], v[5], v[6], v[7]])
+                if j == 0:
+                    boundary_faces["wall"].append([v[0], v[1], v[5], v[4]])
+                if i == n - 1:
+                    boundary_faces["wall"].append([v[1], v[2], v[6], v[5]])
+                if j == n - 1:
+                    boundary_faces["wall"].append([v[2], v[3], v[7], v[6]])
+                if i == 0:
+                    boundary_faces["wall"].append([v[3], v[0], v[4], v[7]])
+    return np.asarray(points, dtype=np.float64), cells, boundary_faces
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("case", choices=("channel", "bfs", "naca0012", "naca3d", "all"))
+    ap.add_argument("case", choices=("channel", "bfs", "naca0012", "naca3d", "wall3d", "all"))
     ap.add_argument("--output-dir", type=Path, default=Path("build/validation_meshes"))
     ap.add_argument("--quick", action="store_true")
     ap.add_argument(
@@ -564,6 +604,9 @@ def main():
         report_path.write_text(
             json.dumps(quality_reports, indent=2) + "\n", encoding="utf-8"
         )
+    if args.case == "wall3d":
+        points, cells, boundaries = wall3d_box(3)
+        write_mesh(out / "wall3d_cube_n3.h5", points, cells, boundaries)
     if args.case == "naca3d":
         # Two layers: 3-D topology/planar-extrusion smoke only. Not a
         # finite-span wing or a thermal/turbulence physical qualification.
