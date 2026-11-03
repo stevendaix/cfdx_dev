@@ -56,17 +56,30 @@ class CaseFilePanel(QWidget):
                 QTreeWidgetItem(group, [name, ""])
         if summary.case_name:
             QTreeWidgetItem(self.tree, ["Case name", summary.case_name])
-        for label, names in (("Physics", summary.physics), ("Numerics", summary.numerics), ("Boundaries", summary.boundaries)):
+        for label, names in (
+            ("Physics", summary.physics),
+            ("Numerics", summary.numerics),
+            ("Boundaries", summary.boundaries),
+        ):
             group = QTreeWidgetItem(self.tree, [label, str(len(names))])
             for name in names:
                 QTreeWidgetItem(group, [name, ""])
         datasets = QTreeWidgetItem(self.tree, ["HDF5 datasets", str(len(summary.datasets))])
         for dataset in summary.datasets:
-            item = QTreeWidgetItem(datasets, [dataset.path, f"{dataset.shape} · {dataset.dtype} · {dataset.size_bytes:,} bytes"])
+            item = QTreeWidgetItem(
+                datasets,
+                [
+                    dataset.path,
+                    f"{dataset.shape} · {dataset.dtype} · {dataset.size_bytes:,} bytes",
+                ],
+            )
             item.setToolTip(0, dataset.path)
             item.setData(0, Qt.ItemDataRole.UserRole, dataset.path)
         if summary.omitted_datasets:
-            QTreeWidgetItem(datasets, ["Additional datasets omitted", str(summary.omitted_datasets)])
+            QTreeWidgetItem(
+                datasets,
+                ["Additional datasets omitted", str(summary.omitted_datasets)],
+            )
         attributes = QTreeWidgetItem(self.tree, ["Attributes", str(len(summary.attributes))])
         for name, value in summary.attributes:
             item = QTreeWidgetItem(attributes, [name, value])
