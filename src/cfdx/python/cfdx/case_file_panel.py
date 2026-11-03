@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QLabel,
+    QLineEdit,
     QPlainTextEdit,
     QTreeWidget,
     QTreeWidgetItem,
@@ -29,6 +30,12 @@ class CaseFilePanel(QWidget):
         self.tree.setObjectName("workbench.case_file.tree")
         self.tree.setHeaderLabels(["Case file", "Details"])
         self.tree.setColumnWidth(0, 260)
+        self.filter_input = QLineEdit()
+        self.filter_input.setObjectName("workbench.case_file.filter")
+        self.filter_input.setPlaceholderText(
+            "Filter datasets, fields, regions and metadata…"
+        )
+        self.filter_input.setClearButtonEnabled(True)
         self.preview = QPlainTextEdit()
         self.preview.setObjectName("workbench.case_file.dataset_preview")
         self.preview.setReadOnly(True)
@@ -36,15 +43,35 @@ class CaseFilePanel(QWidget):
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         layout = QVBoxLayout(self)
         layout.addWidget(self.status)
+        layout.addWidget(self.filter_input)
         layout.addWidget(self.tree, 3)
         layout.addWidget(self.preview, 1)
         self.tree.itemClicked.connect(self._preview_dataset)
+        self.filter_input.textChanged.connect(self._filter_tree)
 
     def clear(self) -> None:
         self.summary = None
+        self.filter_input.clear()
         self.tree.clear()
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         self.status.setText("No CFDX file inspected")
+
+    def _filter_tree(self, text: str) -> None:
+        """Filter the metadata tree while retaining matching ancestor nodes."""
+        query = text.strip().casefold()
+        for index in range(self.tree.topLevelItemCount()):
+            self._filter_item(self.tree.topLevelItem(index), query)
+
+    def _filter_item(self, item: QTreeWidgetItem, query: str) -> bool:
+        own_match = not query or any(
+            query in item.text(column).casefold() for column in range(2)
+        )
+        child_match = False
+        for index in range(item.childCount()):
+            child_match = self._filter_item(item.child(index), query) or child_match
+        visible = own_match or child_match
+        item.setHidden(not visible)
+        return visible
 
     def _preview_dataset(self, item: QTreeWidgetItem, _column: int) -> None:
         """Display a bounded sample only when a dataset row is selected."""
@@ -73,6 +100,7 @@ class CaseFilePanel(QWidget):
 
     def set_summary(self, summary: CaseFileSummary) -> None:
         self.summary = summary
+        self.filter_input.clear()
         self.tree.clear()
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         state = "CFDX" if summary.is_cfdx else "HDF5 (unrecognised CFDX layout)"
