@@ -20,6 +20,9 @@ _FORMATS = {"CFDX", "CFDX-HDF5-mesh-v1"}
 def _text(value: Any) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
+    shape = getattr(value, "shape", ())
+    if shape:
+        return str(value.tolist() if hasattr(value, "tolist") else value)
     if hasattr(value, "item"):
         value = value.item()
     return str(value)
@@ -136,7 +139,9 @@ def _case_config(h5: h5py.File) -> dict[str, Any] | None:
         dataset = h5["case/config"]
         if not isinstance(dataset, h5py.Dataset) or dataset.size != 1:
             return None
-        if dataset.dtype.kind not in "SUO" or dataset.dtype.itemsize > 1_048_576:
+        if dataset.dtype.kind not in "SUO":
+            return None
+        if dataset.id.get_storage_size() > 1_048_576:
             return None
         raw = dataset[()]
     elif "case_setup_json" in h5.attrs:
