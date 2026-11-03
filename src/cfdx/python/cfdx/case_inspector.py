@@ -72,6 +72,9 @@ class CaseFileSummary:
     datasets: tuple[Hdf5DatasetInfo, ...]
     datasets_truncated: bool = False
     attributes_truncated: bool = False
+    regions_truncated: bool = False
+    scalar_fields_truncated: bool = False
+    vector_fields_truncated: bool = False
 
     @property
     def total_field_count(self) -> int:
@@ -136,16 +139,21 @@ def _first_dataset(h5: h5py.File, candidates: tuple[str, ...]):
     return None
 
 
-def _region_names(h5: h5py.File) -> tuple[str, ...]:
+def _region_names(
+    h5: h5py.File, *, max_items: int = 300
+) -> tuple[tuple[str, ...], bool]:
     if "regions" not in h5 or not isinstance(h5["regions"], h5py.Group):
-        return ()
-    return tuple(
-        sorted(
-            name
-            for name, value in h5["regions"].items()
-            if isinstance(value, h5py.Group)
-        )
-    )
+        return (), False
+    names = []
+    truncated = False
+    for name, value in h5["regions"].items():
+        if not isinstance(value, h5py.Group):
+            continue
+        if len(names) >= max_items:
+            truncated = True
+            break
+        names.append(name)
+    return tuple(sorted(names)), truncated
 
 
 def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
@@ -183,15 +191,22 @@ def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
     return n_points, n_faces, n_cells
 
 
-def _field_names(h5: h5py.File, kind: str) -> tuple[str, ...]:
+def _field_names(
+    h5: h5py.File, kind: str, *, max_items: int = 300
+) -> tuple[tuple[str, ...], bool]:
     path = f"fields/{kind}"
     if path not in h5 or not isinstance(h5[path], h5py.Group):
-        return ()
-    return tuple(
-        sorted(
-            name for name, value in h5[path].items() if isinstance(value, h5py.Dataset)
-        )
-    )
+        return (), False
+    names = []
+    truncated = False
+    for name, value in h5[path].items():
+        if not isinstance(value, h5py.Dataset):
+            continue
+        if len(names) >= max_items:
+            truncated = True
+            break
+        names.append(name)
+    return tuple(sorted(names)), truncated
 
 
 def _case_config(h5: h5py.File) -> dict[str, Any] | None:
@@ -358,21 +373,21 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
     source = Path(path)
     if not source.is_file():
         raise FileNotFoundError(source)
-    if max_datasets < 1:
-        raise ValueError("max_datasets must be positive")
+    if not 1 <= max_datasets <= 5000:
+        raise ValueError("max_datasets must be between 1 and 5000")
 
     with h5py.File(source, "r") as h5:
         attrs, attributes_truncated = _root_attributes(h5)
         attr_map = dict(attrs)
         file_format = attr_map.get("format")
         schema = attr_map.get("schema_version")
-        regions = _region_names(h5)
+        regions, regions_truncated = _region_names(h5)
         n_points, n_faces, n_cells = _mesh_counts(h5, regions)
         has_mesh = n_points is not None and n_faces is not None
         config = _case_config(h5)
         has_project_config = "case/config" in h5 and config is not None
-        scalar_fields = _field_names(h5, "scalar")
-        vector_fields = _field_names(h5, "vector")
+        scalar_fields, scalar_fields_truncated = _field_names(h5, "scalar")
+        vector_fields, vector_fields_truncated = _field_names(h5, "vector")
 
         datasets: list[Hdf5DatasetInfo] = []
         datasets_truncated = False
@@ -501,4 +516,7 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             datasets=tuple(datasets),
             datasets_truncated=datasets_truncated,
             attributes_truncated=attributes_truncated,
+            regions_truncated=regions_truncated,
+            scalar_fields_truncated=scalar_fields_truncated,
+            vector_fields_truncated=vector_fields_truncated,
         )
