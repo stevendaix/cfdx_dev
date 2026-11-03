@@ -8,12 +8,13 @@ attributes, group and dataset names, dataset shapes, dtypes, chunking and
 compression metadata. It does not read coordinate, connectivity, cell-ID or
 field-array payloads merely to open the file.
 
-Selecting a numeric dataset in the Case File dock reads a bounded preview
-(default maximum 256 values, hard maximum 4,096). The preview is read-only,
-uses HDF5 slicing, preserves trailing vector components where possible, and
-never materializes the full dataset. Text, variable-length, object and
-compound datasets are not previewed. This is a diagnostic sample, not a
-replacement for a full field reader or post-processing pipeline.
+Selecting a dataset in the Case File dock reads a bounded sample (32 values
+by default, hard maximum 256). The sample is read-only, uses HDF5 slicing,
+preserves trailing vector components where possible, and never materializes
+the full dataset. Numeric and fixed-width string datasets are supported;
+variable-length, object and compound datasets are rejected. This is a
+diagnostic sample, not a replacement for a full field reader or
+post-processing pipeline.
 
 This distinction matters for production cases whose topology contains tens of
 millions of entities. Opening a file must not implicitly allocate a second copy
@@ -63,9 +64,10 @@ case does not load or activate a restart checkpoint.
 The metadata inspector does not slice mesh/field datasets. Dataset discovery
 stops at 300 entries by default (5,000 hard maximum), scalar/vector field
 catalogs and region names are each capped at 300 entries, and root attribute
-display is bounded to 100 entries and 4 KiB per value. Known small format/provenance attributes and the
-case setup JSON are read for identification; the setup JSON is rejected when
-its reported payload exceeds 1 MiB.
+display is bounded to 100 entries and 4 KiB per value. Known small
+format/provenance attributes and the case setup JSON are read for
+identification; the setup JSON is rejected when its reported payload exceeds
+1 MiB.
 
 The current PyVista mesh loader still materializes full topology and creates
 Python-side face objects. It is therefore deliberately not used for large
@@ -79,7 +81,7 @@ peak RSS, GPU memory, frame rate and selection/cut latency.
 
 `tests/python/test_case_inspector.py` covers canonical and interchange
 metadata, bounded dataset/field discovery, malformed count attributes,
-bounded numeric previews and unsafe preview paths, plus a sparse HDF5 fixture
+bounded numeric/fixed-string samples and unsafe sample paths, plus a sparse HDF5 fixture
 whose logical coordinate/connectivity arrays represent a 50-million point
 case. The fixture verifies metadata inspection without materializing those
 arrays.
