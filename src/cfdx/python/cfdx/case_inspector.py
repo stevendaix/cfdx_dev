@@ -4,6 +4,7 @@ The inspector deliberately reads HDF5 metadata only. It never materializes mesh
 coordinates, connectivity, cell IDs, or field arrays, so opening a large case
 does not imply loading its scientific payload into RAM.
 """
+
 from __future__ import annotations
 
 import json
@@ -138,10 +139,13 @@ def _first_dataset(h5: h5py.File, candidates: tuple[str, ...]):
 def _region_names(h5: h5py.File) -> tuple[str, ...]:
     if "regions" not in h5 or not isinstance(h5["regions"], h5py.Group):
         return ()
-    return tuple(sorted(
-        name for name, value in h5["regions"].items()
-        if isinstance(value, h5py.Group)
-    ))
+    return tuple(
+        sorted(
+            name
+            for name, value in h5["regions"].items()
+            if isinstance(value, h5py.Group)
+        )
+    )
 
 
 def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
@@ -152,17 +156,14 @@ def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
             points = group.get("points")
             owner = group.get("owner")
             offsets = group.get("cell_offsets")
-            if (
-                not isinstance(points, h5py.Dataset)
-                or not isinstance(owner, h5py.Dataset)
+            if not isinstance(points, h5py.Dataset) or not isinstance(
+                owner, h5py.Dataset
             ):
                 return None, None, None
             raw_cells = _safe_attribute(group, "n_cells")
             if raw_cells is None:
                 raw_cells = (
-                    offsets.shape[0] - 1
-                    if isinstance(offsets, h5py.Dataset)
-                    else 0
+                    offsets.shape[0] - 1 if isinstance(offsets, h5py.Dataset) else 0
                 )
             counts.append((int(points.shape[0]), int(owner.shape[0]), int(raw_cells)))
         return tuple(sum(item[i] for item in counts) for i in range(3))
@@ -186,10 +187,13 @@ def _field_names(h5: h5py.File, kind: str) -> tuple[str, ...]:
     path = f"fields/{kind}"
     if path not in h5 or not isinstance(h5[path], h5py.Group):
         return ()
-    return tuple(sorted(
-        name for name, value in h5[path].items()
-        if isinstance(value, h5py.Dataset)
-    ))
+    return tuple(
+        sorted(
+            name
+            for name, value in h5[path].items()
+            if isinstance(value, h5py.Dataset)
+        )
+    )
 
 
 def _case_config(h5: h5py.File) -> dict[str, Any] | None:
@@ -260,14 +264,18 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
                 return 1
             shape = tuple(int(size) for size in obj.shape)
             size_bytes = int(prod(shape) * obj.dtype.itemsize)
-            datasets.append(Hdf5DatasetInfo(
-                path="/" + name,
-                shape=shape,
-                dtype=str(obj.dtype),
-                size_bytes=size_bytes,
-                chunks=tuple(int(size) for size in obj.chunks) if obj.chunks else None,
-                compression=str(obj.compression) if obj.compression else None,
-            ))
+            datasets.append(
+                Hdf5DatasetInfo(
+                    path="/" + name,
+                    shape=shape,
+                    dtype=str(obj.dtype),
+                    size_bytes=size_bytes,
+                    chunks=tuple(int(size) for size in obj.chunks)
+                    if obj.chunks
+                    else None,
+                    compression=str(obj.compression) if obj.compression else None,
+                )
+            )
 
         h5.visititems(collect)
         is_cfdx = file_format in _FORMATS or config is not None or has_mesh
@@ -284,7 +292,9 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
         if not has_mesh:
             preview_block_reason = "mesh topology metadata is incomplete"
         elif regions:
-            preview_block_reason = "region-grouped meshes require the streaming renderer"
+            preview_block_reason = (
+                "region-grouped meshes require the streaming renderer"
+            )
         elif n_points is None or n_faces is None or n_cells is None:
             preview_block_reason = "point, face and cell counts must all be declared"
         elif max(n_points, n_faces, n_cells) > 100_000:
@@ -305,11 +315,17 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             if points_dataset.ndim != 2 or points_dataset.shape[1] != 3:
                 preview_block_reason = "points must have shape (n_points, 3)"
             elif face_vertices_dataset.ndim != 1:
-                preview_block_reason = "face connectivity must be a one-dimensional array"
+                preview_block_reason = (
+                    "face connectivity must be a one-dimensional array"
+                )
             elif face_offsets_dataset.shape != (n_faces + 1,):
                 preview_block_reason = "face offsets do not match the face count"
-            elif owner_dataset.shape != (n_faces,) or neighbour_dataset.shape != (n_faces,):
-                preview_block_reason = "owner/neighbour arrays do not match the face count"
+            elif owner_dataset.shape != (n_faces,) or neighbour_dataset.shape != (
+                n_faces,
+            ):
+                preview_block_reason = (
+                    "owner/neighbour arrays do not match the face count"
+                )
             elif patch_offsets_dataset.ndim != 1 or patch_offsets_dataset.shape[0] < 1:
                 preview_block_reason = "patch offsets are malformed"
             elif patch_ids_dataset.ndim != 1 or patch_offsets_dataset.shape[0] < 2:
@@ -321,9 +337,13 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
                 )
                 connectivity_entries = int(face_vertices_dataset.shape[0])
                 if source_bytes > 32 * 1024 * 1024:
-                    preview_block_reason = "surface topology exceeds the 32 MiB eager-load budget"
+                    preview_block_reason = (
+                        "surface topology exceeds the 32 MiB eager-load budget"
+                    )
                 elif connectivity_entries > 2_000_000:
-                    preview_block_reason = "surface connectivity exceeds the 2M-entry eager-load budget"
+                    preview_block_reason = (
+                        "surface connectivity exceeds the 2M-entry eager-load budget"
+                    )
         preview_supported = preview_block_reason is None
         return CaseFileSummary(
             path=source.resolve(),
