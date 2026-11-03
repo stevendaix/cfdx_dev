@@ -1,0 +1,43 @@
+=== before (corrupted) ===
+--- scripts/generate_naca_radial_family.py
+successfully downloaded text file (SHA: d8c17b1821d4e00ebe575e6786ebb080a07c8f79)--- scripts/qualify_naca_grid.py
+repo://stevendaix/cfdx_dev/sha/9ffb69b21148c02e0935154322eea9362b132035/contents/diag-evidence/logs/pr1146/canonical/scripts/qualify_naca_grid.py--- tests/python/test_qualify_naca_grid.py
+repo://stevendaix/cfdx_dev/sha/9ffb69b21148c02e0935154322eea9362b132035/contents/diag-evidence/logs/pr1146/canonical/tests/python/test_qualify_naca_grid.py=== canonical git hash-object ===
+d8c17b1821d4e00ebe575e6786ebb080a07c8f79
+09d3542b2acb5c6e788e1ab29380f1bf1ce71745
+aa25a18913227f44058f39cc37b10f8822cc573d
+=== restore ===
+restored scripts/generate_naca_radial_family.py
+restored scripts/qualify_naca_grid.py
+restored tests/python/test_qualify_naca_grid.py
+=== ruff version ===
+ruff 0.17.3
+=== heal: ruff check --fix ===
+All checks passed!
+checkfix_exit=0
+=== heal: ruff format ===
+3 files left unchanged
+format_exit=0
+=== verify ===
+All checks passed!
+check_exit=0
+3 files already formatted
+formatcheck_exit=0
+compile_exit=0
+=== git hash-object (final) ===
+d8c17b1821d4e00ebe575e6786ebb080a07c8f79
+09d3542b2acb5c6e788e1ab29380f1bf1ce71745
+aa25a18913227f44058f39cc37b10f8822cc573d
+=== first lines ===
+--- scripts/generate_naca_radial_family.py
+"""Radial sensitivity family, not by itself a valid uniform refinement series."""
+
+import argparse
+--- scripts/qualify_naca_grid.py
+"""Fail-closed NACA 3-grid verification. Never manufactures missing CFD data.
+
+CSV columns: case,h,converged,res_mom,res_mass,cd,cdp,cdv,cl,cm
+--- tests/python/test_qualify_naca_grid.py
+import importlib.util
+import unittest
+from pathlib import Path
