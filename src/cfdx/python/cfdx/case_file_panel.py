@@ -90,10 +90,10 @@ class CaseFilePanel(QWidget):
             )
             item.setToolTip(0, dataset.path)
             item.setData(0, Qt.ItemDataRole.UserRole, dataset.path)
-        if summary.omitted_datasets:
+        if summary.datasets_truncated:
             QTreeWidgetItem(
                 datasets,
-                ["Additional datasets omitted", str(summary.omitted_datasets)],
+                ["Dataset listing", "Truncated at the configured metadata limit"],
             )
         attributes = QTreeWidgetItem(self.tree, ["Attributes", str(len(summary.attributes))])
         for name, value in summary.attributes:
