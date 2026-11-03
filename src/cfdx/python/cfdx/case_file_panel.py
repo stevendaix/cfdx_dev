@@ -141,14 +141,26 @@ class CaseFilePanel(QWidget):
             self.tree, ["HDF5 datasets", str(len(summary.datasets))]
         )
         for dataset in summary.datasets:
-            item = QTreeWidgetItem(
-                datasets,
-                [
-                    dataset.path,
-                    f"{dataset.shape} · {dataset.dtype} · {dataset.size_bytes:,} bytes",
-                ],
+            size_label = (
+                f"{dataset.size_bytes:,} bytes"
+                if dataset.size_bytes is not None
+                else "variable/unknown size"
             )
+            chunk_label = (
+                f"chunks={dataset.chunks}" if dataset.chunks is not None else "contiguous"
+            )
+            compression_label = (
+                f"compression={dataset.compression}"
+                if dataset.compression is not None
+                else "uncompressed"
+            )
+            details = (
+                f"{dataset.shape} · {dataset.dtype} · {size_label} · "
+                f"{chunk_label} · {compression_label}"
+            )
+            item = QTreeWidgetItem(datasets, [dataset.path, details])
             item.setToolTip(0, dataset.path)
+            item.setToolTip(1, details)
             item.setData(0, Qt.ItemDataRole.UserRole, dataset.path)
         if summary.datasets_truncated:
             QTreeWidgetItem(
