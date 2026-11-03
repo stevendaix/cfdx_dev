@@ -137,6 +137,10 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
     from PySide6.QtWidgets import QApplication
 
     assert QApplication.clipboard().text() == "/points"
+    window.case_file_panel.tree.setCurrentItem(metadata_groups[0])
+    assert "Select a dataset" in window.case_file_panel.preview.toPlainText()
+    assert not window.case_file_panel.copy_path_button.isEnabled()
+    window.case_file_panel.tree.setCurrentItem(point_items[0])
     window.case_file_panel.filter_input.setText("points")
     assert not point_items[0].isHidden()
     assert label_items[0].isHidden()
