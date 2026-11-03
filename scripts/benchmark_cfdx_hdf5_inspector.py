@@ -4,6 +4,7 @@ The generated datasets have production-scale logical dimensions but contain no
 materialized mesh payload. This isolates HDF5 metadata traversal and bounded
 sampling; it is not a PyVista rendering benchmark.
 """
+
 from __future__ import annotations
 
 import argparse
