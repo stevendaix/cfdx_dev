@@ -372,7 +372,8 @@ class ProbesPanel(QWidget):
     def _populate_probe_plot_controls(
         self, *, preserve_selection: bool = False
     ) -> None:
-        current_group = self._plot_field_selector.currentData()
+        group_data = self._plot_field_selector.currentData()
+        current_group = tuple(group_data) if group_data is not None else None
         selected_names = (
             {
                 self._plot_probe_list.item(row).data(Qt.ItemDataRole.UserRole)
@@ -394,9 +395,16 @@ class ProbesPanel(QWidget):
             bool(groups) and self._probe_plot is not None
         )
         if preserve_selection and current_group in groups:
-            self._plot_field_selector.setCurrentIndex(
-                self._plot_field_selector.findData(current_group)
+            matching_index = next(
+                (
+                    index
+                    for index in range(self._plot_field_selector.count())
+                    if tuple(self._plot_field_selector.itemData(index)) == current_group
+                ),
+                -1,
             )
+            if matching_index >= 0:
+                self._plot_field_selector.setCurrentIndex(matching_index)
         elif preserve_selection and current_group is not None:
             selected_names = None
         self._plot_field_selector.blockSignals(False)

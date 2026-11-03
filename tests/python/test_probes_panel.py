@@ -129,5 +129,29 @@ def test_live_probe_samples_update_interactive_plot_from_worker_thread() -> None
     x_values, y_values = panel._probe_plot.plotItem.listDataItems()[0].getData()
     assert list(x_values) == pytest.approx([1, 2])
     assert list(y_values) == pytest.approx([101325.0, 101326.0])
+
+    # The live axis selector must redraw immediately and retain the chosen
+    # physical-time axis across later batched stream updates.
+    panel._plot_axis_selector.setCurrentIndex(
+        panel._plot_axis_selector.findData("time")
+    )
+    x_values, _y_values = panel._probe_plot.plotItem.listDataItems()[0].getData()
+    assert list(x_values) == pytest.approx([0.1, 0.2])
+
+    thread = Thread(target=publish, args=(3, 101327.0))
+    thread.start()
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+    app.processEvents()
+    panel._flush_live_plot()
+    x_values, y_values = panel._probe_plot.plotItem.listDataItems()[0].getData()
+    assert list(x_values) == pytest.approx([0.1, 0.2, 0.3])
+    assert list(y_values) == pytest.approx([101325.0, 101326.0, 101327.0])
+
+    panel._plot_axis_selector.setCurrentIndex(
+        panel._plot_axis_selector.findData("iteration")
+    )
+    x_values, _y_values = panel._probe_plot.plotItem.listDataItems()[0].getData()
+    assert list(x_values) == pytest.approx([1, 2, 3])
     panel.close()
     app.processEvents()

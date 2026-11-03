@@ -106,11 +106,13 @@ iteration; the plot supports normal pan and zoom interactions. During a
 receives versioned stdout records for samples from committed iterations. The Qt
 panel batches redraws at 10 Hz and retains the latest 2,000 points per probe in
 memory; the live view defaults to iteration (steady samples have constant
-physical time). Rejected nonlinear attempts are not published. The canonical CSV stays
-a separate final, atomically written artifact; the GUI never tails a partial
-CSV file. Reading and writing use the shared Application API and canonical CSV
-schema. The GUI does not introduce a second file format or treat a CSV
-round-trip as solver qualification.
+physical time). The X-axis selector can switch the live curve between iteration
+and physical time at any point in the run, and the selected axis is retained as
+new batches arrive. Rejected nonlinear attempts are not published. The canonical
+CSV stays a separate final, atomically written artifact; the GUI never tails a
+partial CSV file. Reading and writing use the shared Application API and
+canonical CSV schema. The GUI does not introduce a second file format or treat a
+CSV round-trip as solver qualification.
 
 ## Execution controls
 
