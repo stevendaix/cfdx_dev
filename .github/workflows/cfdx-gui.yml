@@ -101,6 +101,7 @@ jobs:
               tests/python/test_capabilities.py \
               tests/python/test_specialized_setup.py \
               tests/python/test_workbench.py \
+              tests/python/test_case_inspector.py \
               tests/python/test_gui_browser_widgets.py \
               tests/python/test_renderer.py \
               tests/python/test_renderer_headless_contract.py \
