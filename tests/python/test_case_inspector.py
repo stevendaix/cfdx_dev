@@ -3,12 +3,10 @@ from __future__ import annotations
 import h5py
 import numpy as np
 import pytest
-from cfdx.case_inspector import inspect_cfdx_file
-
 from cfdx.application import Application
+from cfdx.case_inspector import inspect_cfdx_file
 from cfdx.case_io import save_case
 from cfdx.session import CFDXSession
-
 
 def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
     path = tmp_path / "channel.cfdx.h5"
@@ -58,7 +56,6 @@ def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
         for item in summary.datasets
     )
 
-
 def test_inspect_case_written_by_canonical_case_io(tmp_path):
     path = tmp_path / "roundtrip.cfdx.h5"
     session = CFDXSession()
@@ -74,7 +71,6 @@ def test_inspect_case_written_by_canonical_case_io(tmp_path):
     assert summary.boundaries == tuple(sorted(session.case.boundaries))
     assert not summary.has_mesh
     assert not summary.preview_supported
-
 
 def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     path = tmp_path / "mesh.h5"
@@ -108,7 +104,6 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     assert summary.preview_supported
     assert summary.n_cells == 1
 
-
 def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     path = tmp_path / "oversized-connectivity.h5"
     with h5py.File(path, "w") as h5:
@@ -132,7 +127,6 @@ def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     assert not summary.preview_supported
     assert "connectivity" in summary.preview_block_reason
 
-
 def test_inspect_bounds_dataset_tree(tmp_path):
     path = tmp_path / "many.h5"
     with h5py.File(path, "w") as h5:
@@ -144,7 +138,6 @@ def test_inspect_bounds_dataset_tree(tmp_path):
 
     assert len(summary.datasets) == 3
     assert summary.datasets_truncated
-
 
 def test_inspect_bounds_root_attribute_payloads_and_count(tmp_path):
     oversized_path = tmp_path / "oversized-attribute.h5"
@@ -166,7 +159,6 @@ def test_inspect_bounds_root_attribute_payloads_and_count(tmp_path):
     assert summary.is_cfdx
     assert summary.attributes_truncated
     assert len(summary.attributes) == 100
-
 
 def test_inspect_rejects_non_hdf5_file(tmp_path):
     path = tmp_path / "not-a-case.cfdx.h5"
