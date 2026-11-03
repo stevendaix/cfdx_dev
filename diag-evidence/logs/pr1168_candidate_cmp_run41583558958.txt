@@ -1,0 +1,106 @@
+=== SCRIPT cmp (candidate vs canonical-minus-shebang) ===
+SCRIPT_MATCHES_CANONICAL
+=== TEST cmp (candidate vs canonical) ===
+TEST_MATCHES_CANONICAL
+=== README diff (PR-head original vs candidate; expected: single toctree insertion) ===
+--- /tmp/orig_readme.md	2026-11-03 05:23:00.074321001 +0000
++++ /home/runner/work/cfdx_dev/cfdx_dev/diag-tools/pr1168/candidate_validation_README.md	2026-11-03 05:22:57.567783498 +0000
+@@ -40,6 +40,7 @@
+ 14-benchmarks/06-naca0012/chapter
+ 14-benchmarks/07-thermal/chapter
+ 14-benchmarks/08-radiation/chapter
++14-benchmarks/09-thermohydraulics/README
+ 15-qualification/README
+ ```
+ 
+=== ruff gate replica on candidates ===
+All checks passed!
+ruff_check_exit=0
+2 files already formatted
+ruff_fmt_exit=0
+=== byte sizes ===
+11010 /tmp/canon_script_nsb.py
+11010 /home/runner/work/cfdx_dev/cfdx_dev/diag-tools/pr1168/candidate_validate_thermohydraulic_reference.py
+ 1237 /tmp/pr1168_evidwt/diag-evidence/logs/pr1168_canonical_test_thermohydraulic_reference_contracts_run41537399004.py
+ 1237 /home/runner/work/cfdx_dev/cfdx_dev/diag-tools/pr1168/candidate_test_thermohydraulic_reference_contracts.py
+ 2822 /tmp/orig_readme.md
+ 2863 /home/runner/work/cfdx_dev/cfdx_dev/diag-tools/pr1168/candidate_validation_README.md
+30179 total
+=== unambiguous blank dumps (sed -n l) ===
+--- ORIGINAL test (PR head) lines 1-14 ---
+"""Regression tests for frozen turbulent thermohydraulic reference co\
+ntracts."""$
+$
+from __future__ import annotations$
+$
+import json$
+import subprocess$
+import sys$
+from pathlib import Path$
+$
+$
+ROOT = Path(__file__).resolve().parents[2]$
+RUNNER = ROOT / "scripts" / "validate_thermohydraulic_reference.py"$
+$
+$
+--- CANONICAL test lines 1-14 ---
+"""Regression tests for frozen turbulent thermohydraulic reference co\
+ntracts."""$
+$
+from __future__ import annotations$
+$
+import json$
+import subprocess$
+import sys$
+from pathlib import Path$
+$
+ROOT = Path(__file__).resolve().parents[2]$
+RUNNER = ROOT / "scripts" / "validate_thermohydraulic_reference.py"$
+$
+$
+def test_all_thermohydraulic_reference_contracts_are_consistent(tmp_p\
+ath: Path) -> None:$
+--- CANDIDATE test lines 1-14 ---
+"""Regression tests for frozen turbulent thermohydraulic reference co\
+ntracts."""$
+$
+from __future__ import annotations$
+$
+import json$
+import subprocess$
+import sys$
+from pathlib import Path$
+$
+ROOT = Path(__file__).resolve().parents[2]$
+RUNNER = ROOT / "scripts" / "validate_thermohydraulic_reference.py"$
+$
+$
+def test_all_thermohydraulic_reference_contracts_are_consistent(tmp_p\
+ath: Path) -> None:$
+--- CANDIDATE readme toctree region lines 25-48 ---
+$
+## Campaign domains$
+$
+```{toctree}$
+:maxdepth: 2$
+$
+03-conservation/chapter$
+04-boundedness/chapter$
+14-benchmarks/README$
+14-benchmarks/00-benchmark-protocol/chapter$
+14-benchmarks/01-couette/chapter$
+14-benchmarks/02-poiseuille/chapter$
+14-benchmarks/03-ghia/chapter$
+14-benchmarks/04-vmfl036/chapter$
+14-benchmarks/05-bfs/chapter$
+14-benchmarks/06-naca0012/chapter$
+14-benchmarks/07-thermal/chapter$
+14-benchmarks/08-radiation/chapter$
+14-benchmarks/09-thermohydraulics/README$
+15-qualification/README$
+```$
+$
+The numbered directories are the campaign taxonomy. A directory recei\
+ves a `chapter.py` when executable evidence is actually implemented; \
+we do not create empty Python notebooks merely to satisfy the layout.$
+$
