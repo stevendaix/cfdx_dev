@@ -59,7 +59,6 @@ def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
     )
 
 
-
 def test_inspect_case_written_by_canonical_case_io(tmp_path):
     path = tmp_path / "roundtrip.cfdx.h5"
     session = CFDXSession()
@@ -75,7 +74,6 @@ def test_inspect_case_written_by_canonical_case_io(tmp_path):
     assert summary.boundaries == tuple(sorted(session.case.boundaries))
     assert not summary.has_mesh
     assert not summary.preview_supported
-
 
 
 def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
