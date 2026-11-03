@@ -810,7 +810,7 @@ if QMainWindow is not object:
                 if not summary.preview_supported:
                     self.statusBar().showMessage(
                         f"Mesh metadata loaded ({summary.n_cells or 'unknown'} cells); "
-                        "full in-memory preview is disabled above the 1M entity safety limit"
+                        "full in-memory preview is disabled above the 100k entity safety limit"
                     )
                     return
                 catalog = self.application.load_mesh(path)
