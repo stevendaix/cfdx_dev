@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .case_inspector import CaseFileSummary, read_hdf5_dataset_sample
+from .case_inspector import (\n    CaseFileSummary,\n    read_hdf5_dataset_sample,\n)
 
 
 class CaseFilePanel(QWidget):
