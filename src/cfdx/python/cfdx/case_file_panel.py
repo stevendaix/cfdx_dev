@@ -158,7 +158,10 @@ class CaseFilePanel(QWidget):
             if summary.regions_truncated:
                 QTreeWidgetItem(
                     mesh,
-                    ["Regions", "Listing incomplete (safety cap or non-internal links)"],
+                    [
+                        "Regions",
+                        "Listing incomplete (safety cap or non-internal links)",
+                    ],
                 )
         else:
             QTreeWidgetItem(mesh, ["Status", "No recognised mesh topology"])
@@ -167,9 +170,7 @@ class CaseFilePanel(QWidget):
         )
         field_count_is_lower_bound = (
             summary.scalar_fields_truncated and len(summary.scalar_fields) == 300
-        ) or (
-            summary.vector_fields_truncated and len(summary.vector_fields) == 300
-        )
+        ) or (summary.vector_fields_truncated and len(summary.vector_fields) == 300)
         field_total = (
             f"{summary.total_field_count}+"
             if fields_truncated and field_count_is_lower_bound
@@ -200,7 +201,10 @@ class CaseFilePanel(QWidget):
             if truncated:
                 QTreeWidgetItem(
                     group,
-                    ["Field listing", "Listing incomplete (safety cap or non-internal links)"],
+                    [
+                        "Field listing",
+                        "Listing incomplete (safety cap or non-internal links)",
+                    ],
                 )
         if summary.case_name:
             QTreeWidgetItem(self.tree, ["Case name", summary.case_name])
