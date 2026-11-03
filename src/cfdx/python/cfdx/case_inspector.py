@@ -244,6 +244,8 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             patch_offsets_dataset = h5["patch_face_offsets"]
             if points_dataset.ndim != 2 or points_dataset.shape[1] != 3:
                 preview_block_reason = "points must have shape (n_points, 3)"
+            elif face_vertices_dataset.ndim != 1:
+                preview_block_reason = "face connectivity must be a one-dimensional array"
             elif face_offsets_dataset.shape != (n_faces + 1,):
                 preview_block_reason = "face offsets do not match the face count"
             elif owner_dataset.shape != (n_faces,) or neighbour_dataset.shape != (n_faces,):
