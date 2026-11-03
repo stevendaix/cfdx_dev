@@ -34,7 +34,7 @@ static std::array<double, 2> errors(double h) {
 }
 int main() {
     const auto e1 = errors(.5), e2 = errors(.25), e3 = errors(.125);
-    for (int j = 0; j < 2; ++j) {
+    for (std::size_t j = 0; j < e1.size(); ++j) {
         if (!(std::isfinite(e1[j]) && e1[j] > 1e-10 &&
               e2[j] > 0. && e3[j] > 0.))
             throw std::runtime_error("invalid quadratic MMS errors");
