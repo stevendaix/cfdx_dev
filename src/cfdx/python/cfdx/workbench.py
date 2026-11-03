@@ -503,7 +503,7 @@ if QMainWindow is not object:
                     catalog = self.application.load_mesh(path)
                     self.mesh_browser.set_catalog(catalog)
                     if self.view3d is not None:
-                        self.view3d.load_cfdx_mesh(path)
+                        self.view3d.load_cfdx_mesh(path, summary=summary)
                         self._show_viewport()
                     self._refresh_action_availability()
                     self.statusBar().showMessage(
@@ -863,20 +863,32 @@ if QMainWindow is not object:
             if not path:
                 return
             try:
+                case_path = Path(self.application.project_path)
+                summary = self.application.inspect_case_file(case_path)
                 loaded = self.application.load_dat(
                     path, use_for_restart=use_for_restart
                 )
                 fields = []
+                viewport_note = ""
                 if self.view3d is not None:
-                    fields = self.view3d.load_cfdx_dat(
-                        str(self.application.project_path), path
-                    )
-                    self._show_viewport()
+                    if summary.preview_supported:
+                        fields = self.view3d.load_cfdx_dat(
+                            str(case_path), path, summary=summary
+                        )
+                        self._show_viewport()
+                    else:
+                        self.view3d.clear()
+                        self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
+                        viewport_note = (
+                            " | viewport deferred: "
+                            f"{summary.preview_block_reason or 'mesh is not previewable'}"
+                        )
                     self._refresh_action_availability()
                 self.statusBar().showMessage(
                     f"DAT loaded: {Path(path).name} | iteration={loaded.iteration} | "
                     f"time={loaded.time:g} | fields={len(fields or loaded.fields)}"
                     + (" | restart enabled" if use_for_restart else "")
+                    + viewport_note
                 )
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"DAT error: {exc}")
