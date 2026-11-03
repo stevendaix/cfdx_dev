@@ -87,6 +87,14 @@ spatially accelerated picking, and on-demand field transfer. The correct
 acceptance benchmark is at least 1M, 10M and 50M cells, recording load latency,
 peak RSS, GPU memory, frame rate and selection/cut latency.
 
+The GUI CI also runs `scripts/benchmark_cfdx_hdf5_inspector.py` at logical
+sizes of 1M, 10M and 50M cells. It records metadata-inspection latency,
+bounded-sample latency, peak RSS, logical dataset bytes and physical sparse-file
+size. The JSON report is published as the
+`cfdx-hdf5-inspector-benchmark` workflow artifact. These sparse fixtures
+measure the file-browser path only; they do not simulate geometry rendering,
+GPU upload or interactive picking.
+
 ## Validation
 
 `tests/python/test_case_inspector.py` covers canonical and interchange
