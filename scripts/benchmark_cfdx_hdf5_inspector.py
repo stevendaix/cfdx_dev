@@ -154,6 +154,14 @@ def main() -> int:
 
     report = {
         "scope": "metadata inspection and bounded HDF5 sampling only; no rendering",
+        "environment": {
+            "python": sys.version.split()[0],
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "logical_cpus": os.cpu_count(),
+            "h5py": h5py.__version__,
+            "hdf5": h5py.version.hdf5_version,
+        },
         "results": results,
     }
     rendered = json.dumps(report, indent=2)
