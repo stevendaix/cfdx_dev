@@ -1,0 +1,176 @@
+name: PR 1168 V3 CI-failure diagnostic oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Reproduit sur le head PR #1168 (4316b238) les 4 familles d'echecs CI du
+# 2026-11-03 : Pre-commit ruff, Sphinx -W, build th-preflight (production-
+# prerequisites), tests C++ nouveaux. Evidence-only, aucun fix pousse ici.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1168_v3_ci_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1168-v3-ci-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR1168_HEAD: 4316b2388561f0cfeb5d9910104d1b6477c04542
+  PR1168_BASE: e0e59e5e3cf96e70ad2c179040953879bcd44ffb
+  WDIR: /tmp/pr1168_v3wt
+
+jobs:
+  oracle:
+    name: reproduce CI failures on PR1168 head 4316b238
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pins and worktree
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          git fetch origin ci/thermohydraulic-independent-benchmarks
+          for s in "$PR1168_HEAD" "$PR1168_BASE"; do
+            git cat-file -e "$s^{commit}" || { echo "::error::$s unresolvable"; exit 1; }
+          done
+          git worktree add "$WDIR" "$PR1168_HEAD"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "purpose=reproduce pr1168 head 4316b238 CI failures (ruff, sphinx, th-preflight build, new cxx tests)"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1168_v3_meta_run$GITHUB_RUN_ID.txt"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: A) Pre-commit/ruff replication
+        run: |
+          set +e
+          cd "$WDIR"
+          python -m pip install --upgrade pre-commit ruff > /tmp/pip.log 2>&1
+          mapfile -t python_files < <(git diff --name-only "$PR1168_BASE...$PR1168_HEAD" -- '*.py')
+          echo "changed python files:" > "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt"
+          printf '  %s\n' "${python_files[@]}" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt"
+          export CFDX_PRECOMMIT_RANGE="$PR1168_BASE...$PR1168_HEAD"
+          if ((${#python_files[@]} > 0)); then
+            pre-commit run --files "${python_files[@]}" --show-diff-on-failure >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt" 2>&1
+            echo "PRECOMMIT_EXIT=$?" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt"
+            echo "--- ruff check ---" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt"
+            ruff check "${python_files[@]}" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt" 2>&1
+            echo "RUFF_CHECK_EXIT=$?" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt"
+            echo "--- ruff format --check ---" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt"
+            ruff format --check "${python_files[@]}" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt" 2>&1
+            echo "RUFF_FORMAT_EXIT=$?" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt"
+            echo "--- ruff format --diff (first 400 lines) ---" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt"
+            ruff format --diff "${python_files[@]}" 2>&1 | head -n 400 >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt"
+          else
+            echo "NO_CHANGED_PY_FILES" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt"
+          fi
+          set -e
+
+      - name: B) Sphinx -W replication
+        run: |
+          set +e
+          cd "$WDIR"
+          python -m pip install -r docs/requirements.txt >> /tmp/pipdocs.log 2>&1
+          sphinx-build -W -b html docs /tmp/pr1168_docs_build > "$GITHUB_WORKSPACE/$EVID/pr1168_v3_sphinx_run$GITHUB_RUN_ID.txt" 2>&1
+          echo "SPHINX_EXIT=$?" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_sphinx_run$GITHUB_RUN_ID.txt"
+          set -e
+
+      - name: Install C++ toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ libhdf5-dev zlib1g-dev
+
+      - name: C) th-preflight build replication
+        run: |
+          set +e
+          cd "$WDIR"
+          cmake -S . -B build/th-preflight -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_ENABLE_MPI=OFF -DCFDX_BUILD_RUNTIME_TESTS=OFF \
+            > "$GITHUB_WORKSPACE/$EVID/pr1168_v3_build_run$GITHUB_RUN_ID.txt" 2>&1
+          echo "CONFIGURE_EXIT=$?" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_build_run$GITHUB_RUN_ID.txt"
+          cmake --build build/th-preflight --parallel 2 --target \
+            cfdx_production_solver \
+            test_ghia_cavity \
+            test_thermohydraulic_observables \
+            test_production_sst_thermal_coupling \
+            test_thermal_driver_vv \
+            test_production_buoyancy_outer_loop_vv \
+            test_natural_convection_de_vahl_davis \
+            >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_build_run$GITHUB_RUN_ID.txt" 2>&1
+          echo "BUILD_EXIT=$?" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_build_run$GITHUB_RUN_ID.txt"
+          echo "--- build error digest ---" >> "$GITHUB_WORKSPACE/$EVID/pr1168_v3_build_run$GITHUB_RUN_ID.txt"
+          grep -E -B2 -A6 'error:|fatal error:|undefined reference|collect2: error|FAILED:' "$GITHUB_WORKSPACE/$EVID/pr1168_v3_build_run$GITHUB_RUN_ID.txt" | head -n 300 > "$GITHUB_WORKSPACE/$EVID/pr1168_v3_build_err_run$GITHUB_RUN_ID.txt" || true
+          set -e
+
+      - name: D) New C++ tests (only if build succeeded)
+        run: |
+          set +e
+          f="$GITHUB_WORKSPACE/$EVID/pr1168_v3_ctest_run$GITHUB_RUN_ID.txt"
+          if grep -q "^BUILD_EXIT=0$" "$GITHUB_WORKSPACE/$EVID/pr1168_v3_build_run$GITHUB_RUN_ID.txt"; then
+            cd "$WDIR"
+            ctest --test-dir build/th-preflight --output-on-failure --no-tests=error \
+              -R '^(test_thermohydraulic_observables|test_production_sst_thermal_coupling|test_thermal_driver_vv|test_production_buoyancy_outer_loop_vv|test_natural_convection_de_vahl_davis)$' \
+              > "$f" 2>&1
+            echo "CTEST_EXIT=$?" >> "$f"
+          else
+            echo "SKIPPED_BUILD_FAILED" > "$f"
+          fi
+          set -e
+
+      - name: Verdict
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          R="$E/pr1168_v3_ruff_run$GITHUB_RUN_ID.txt"
+          S="$E/pr1168_v3_sphinx_run$GITHUB_RUN_ID.txt"
+          B="$E/pr1168_v3_build_run$GITHUB_RUN_ID.txt"
+          C="$E/pr1168_v3_ctest_run$GITHUB_RUN_ID.txt"
+          v_ruff=PASS; v_sphinx=PASS; v_build=PASS; v_ctest=PASS
+          grep -q "^PRECOMMIT_EXIT=0" "$R" 2>/dev/null || grep -q "NO_CHANGED_PY_FILES" "$R" 2>/dev/null || v_ruff=FAIL
+          grep -q "^SPHINX_EXIT=0" "$S" 2>/dev/null || v_sphinx=FAIL
+          grep -q "^BUILD_EXIT=0" "$B" 2>/dev/null || v_build=FAIL
+          grep -q "^CTEST_EXIT=0" "$C" 2>/dev/null || v_ctest=FAIL
+          {
+            echo "ruff=$v_ruff"
+            echo "sphinx=$v_sphinx"
+            echo "build=$v_build"
+            echo "ctest=$v_ctest"
+            echo "oracle_verdict=DIAGNOSTIC_COMPLETE"
+          } | tee "$E/pr1168_v3_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1168 v3 CI-failure reproduction run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/pr1168_v3_status_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$f" ]; then
+            echo "::error::no status recorded - read oracle evidence"
+            exit 1
+          fi
+          cat "$f"
+          grep -q "ruff=PASS" "$f" && grep -q "sphinx=PASS" "$f" && grep -q "build=PASS" "$f" && grep -q "ctest=PASS" "$f"
