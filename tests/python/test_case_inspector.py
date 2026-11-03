@@ -190,7 +190,8 @@ def test_inspect_does_not_preview_when_region_group_contains_soft_links(tmp_path
         h5.create_dataset("face_offsets", data=[0, 2, 4, 6, 8])
         h5.create_dataset("patch_face_ids", data=[0, 1, 2, 3])
         h5.create_dataset("patch_face_offsets", data=[0, 4])
-        h5["regions/linked"] = h5py.SoftLink("/missing")
+        regions = h5.create_group("regions")
+        regions["linked"] = h5py.SoftLink("/missing")
 
     summary = inspect_cfdx_file(path)
 
