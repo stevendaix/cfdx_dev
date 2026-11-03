@@ -367,6 +367,8 @@ def test_production_solver_quadratic_wall_forces_are_exported(
     assert document["method"] == "quadratic_wls_3d"
     assert document["surface_face_count"] == 54
     assert document["wall_patches"] == ["wall"]
+    assert document["moment_center_m"] == [0, 0, 0]
+    assert document["force_definition"] == "fluid_on_body = -p*n_body + tau*n_body"
     assert document["nondimensional_coefficients"] is None
     for key in ("pressure_force_n", "viscous_force_n", "total_force_n"):
         assert max(abs(value) for value in document[key]) < 1e-10
