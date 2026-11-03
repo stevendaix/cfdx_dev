@@ -122,6 +122,10 @@ class CaseFilePanel(QWidget):
         """Display a bounded sample only when a dataset row is selected."""
         dataset_path = item.data(0, Qt.ItemDataRole.UserRole)
         if not dataset_path or self.summary is None:
+            self.preview.setPlainText(
+                "Select a dataset to inspect a bounded sample."
+            )
+            self._update_selection_actions()
             return
         try:
             sample = read_hdf5_dataset_sample(
@@ -147,6 +151,7 @@ class CaseFilePanel(QWidget):
         self.summary = summary
         self.filter_input.clear()
         self.tree.clear()
+        self.copy_path_button.setEnabled(False)
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         state = "CFDX" if summary.is_cfdx else "HDF5 (unrecognised CFDX layout)"
         self.status.setText(f"{summary.path.name} · {state}")
@@ -293,9 +298,6 @@ class CaseFilePanel(QWidget):
                 group_item = dataset_groups.get(parent_path)
                 if group_item is None:
                     group_item = QTreeWidgetItem(parent, [group_name, "HDF5 group"])
-                    group_item.setData(
-                        0, Qt.ItemDataRole.UserRole, f"group:{parent_path}"
-                    )
                     dataset_groups[parent_path] = group_item
                 parent = group_item
             item = QTreeWidgetItem(parent, [dataset.path, details])
