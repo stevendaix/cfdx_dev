@@ -3,8 +3,9 @@ from __future__ import annotations
 import h5py
 import numpy as np
 import pytest
-from cfdx.application import Application
 from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample
+
+from cfdx.application import Application
 from cfdx.case_io import save_case
 from cfdx.session import CFDXSession
 
@@ -55,6 +56,10 @@ def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
         item.path == "/points" and item.size_bytes == 1_200_000_000
         for item in summary.datasets
     )
+    sample = read_hdf5_dataset_sample(path, "/points", max_values=30)
+    assert len(sample.values) == 30
+    assert sample.total_values == 150_000_000
+    assert set(sample.values) == {"0.0"}
 
 def test_inspect_case_written_by_canonical_case_io(tmp_path):
     path = tmp_path / "roundtrip.cfdx.h5"
@@ -105,7 +110,6 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     assert summary.n_cells == 1
 
 
-
 def test_dataset_sample_is_bounded_and_rejects_unsafe_or_expensive_reads(tmp_path):
     path = tmp_path / "samples.h5"
     with h5py.File(path, "w") as h5:
@@ -132,7 +136,6 @@ def test_dataset_sample_is_bounded_and_rejects_unsafe_or_expensive_reads(tmp_pat
         read_hdf5_dataset_sample(path, "/../outside")
     with pytest.raises(ValueError, match="between 1 and 256"):
         read_hdf5_dataset_sample(path, "/values", max_values=512)
-
 
 
 def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
