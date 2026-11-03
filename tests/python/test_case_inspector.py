@@ -37,6 +37,7 @@ def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
     assert summary.vector_fields == ("U",)
     assert summary.case_name == "channel"
     assert summary.physics == ("energy",)
+    assert summary.has_project_config
     assert summary.numerics == ("cfl",)
     assert summary.boundaries == ("wall",)
     assert any(item.path == "/points" and item.size_bytes == 1_200_000_000 for item in summary.datasets)
@@ -77,7 +78,7 @@ def test_inspect_bounds_dataset_tree(tmp_path):
     summary = inspect_cfdx_file(path, max_datasets=3)
 
     assert len(summary.datasets) == 3
-    assert summary.omitted_datasets == 7
+    assert summary.datasets_truncated
 
 
 def test_inspect_rejects_non_hdf5_file(tmp_path):
