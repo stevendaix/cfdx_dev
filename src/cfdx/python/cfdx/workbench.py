@@ -505,7 +505,7 @@ if QMainWindow is not object:
                     if self.view3d is not None:
                         self.view3d.load_cfdx_mesh(path)
                         self._show_viewport()
-                        self._refresh_action_availability()
+                    self._refresh_action_availability()
                     self.statusBar().showMessage(
                         f"CFDX file inspected: {summary.n_cells:,} cells · "
                         f"{summary.n_faces:,} faces · "
@@ -516,6 +516,7 @@ if QMainWindow is not object:
                     if self.view3d is not None:
                         self.view3d.clear()
                         self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
+                    self._refresh_action_availability()
                     self.statusBar().showMessage(
                         "CFDX file opened metadata-only: "
                         f"{summary.n_cells or 'unknown'} cells; "
@@ -526,6 +527,7 @@ if QMainWindow is not object:
                     if self.view3d is not None:
                         self.view3d.clear()
                         self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
+                    self._refresh_action_availability()
                     self.statusBar().showMessage(
                         f"CFDX project opened: {summary.path.name} · "
                         "no embedded mesh topology"
@@ -841,7 +843,7 @@ if QMainWindow is not object:
                 if self.view3d is not None:
                     self.view3d.load_cfdx_mesh(path)
                     self._show_viewport()
-                    self._refresh_action_availability()
+                self._refresh_action_availability()
                 self.statusBar().showMessage(f"Mesh loaded: {path}")
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Mesh error: {exc}")
