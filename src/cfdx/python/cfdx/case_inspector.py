@@ -38,7 +38,7 @@ class Hdf5DatasetInfo:
     path: str
     shape: tuple[int, ...]
     dtype: str
-    size_bytes: int
+    size_bytes: int | None
     chunks: tuple[int, ...] | None
     compression: str | None
 
@@ -358,7 +358,11 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
                 datasets_truncated = True
                 return 1
             shape = tuple(int(size) for size in obj.shape)
-            size_bytes = int(prod(shape) * obj.dtype.itemsize)
+            size_bytes = (
+                None
+                if obj.dtype.kind == "O"
+                else int(prod(shape) * obj.dtype.itemsize)
+            )
             datasets.append(
                 Hdf5DatasetInfo(
                     path="/" + name,
