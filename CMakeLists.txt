@@ -645,6 +645,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_timestep_control tests/unit/test_timestep_control.cpp)
     add_cfdx_test(test_wall_face_reconstruction_mms tests/unit/test_wall_face_reconstruction_mms.cpp)
     add_cfdx_test(test_wall_face_reconstruction_quadratic tests/unit/test_wall_face_reconstruction_quadratic.cpp)
+    add_cfdx_test(test_wall_face_reconstruction_quadratic_3d tests/unit/test_wall_face_reconstruction_quadratic_3d.cpp)
+    add_cfdx_test(test_wall_quadratic_stencil tests/unit/test_wall_quadratic_stencil.cpp)
     add_cfdx_test(test_continuation tests/unit/test_continuation.cpp)
     add_cfdx_test(test_local_time_stepping tests/unit/test_local_time_stepping.cpp)
     add_cfdx_test(test_local_cfl_physical_contract tests/unit/test_local_cfl_physical_contract.cpp)
@@ -955,6 +957,27 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         set_tests_properties(test_naca3d_thermal_turbulence_smoke PROPERTIES
             LABELS "qualification;validation;3d;thermal;turbulence;smoke"
             FIXTURES_REQUIRED cfdx_naca3d_meshes)
+        # This is the previously failing non-trivial 3-D conduction MMS.
+        # Keep it in the Release PR gate and preserve its diagnostic output
+        # on failure; sanitizer runs omit it only because the mesh solve is
+        # classified as a sanitizer-slow qualification workload.
+        add_test(NAME test_naca3d_linear_conduction_mms
+            COMMAND test_naca3d_thermal_turbulence_smoke --linear-conduction
+                ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_extruded_3d_thermal_n16_z2.h5)
+        set_tests_properties(test_naca3d_linear_conduction_mms PROPERTIES
+            LABELS "qualification;validation;3d;thermal;conduction;sanitizer-slow"
+            FIXTURES_REQUIRED cfdx_naca3d_meshes
+            TIMEOUT 180)
+        add_executable(test_naca3d_wall_quadratic_mesh
+            tests/validation/test_naca3d_wall_quadratic_mesh.cpp)
+        target_link_libraries(test_naca3d_wall_quadratic_mesh PRIVATE cfdx_core)
+        add_test(NAME test_naca3d_wall_quadratic_mesh
+            COMMAND test_naca3d_wall_quadratic_mesh
+                ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_extruded_3d_wall_n16_z4.h5)
+        set_tests_properties(test_naca3d_wall_quadratic_mesh PROPERTIES
+            LABELS "qualification;validation;3d;wall;quadratic;mesh"
+            FIXTURES_REQUIRED cfdx_naca3d_meshes
+            TIMEOUT 120)
     endif()
     add_executable(test_channel_qualification tests/validation/test_channel_qualification.cpp)
     target_link_libraries(test_channel_qualification PRIVATE cfdx_core)

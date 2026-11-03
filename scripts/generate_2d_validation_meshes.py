@@ -23,8 +23,18 @@ def fnv1a(values: np.ndarray, h: int = 1469598103934665603) -> int:
     return h
 
 
-def write_mesh(path: Path, points, cells, boundary_faces):
-    """Write a structured hexahedral mesh to the CFDX mesh-v1 HDF5 schema."""
+def write_mesh(
+    path: Path,
+    points,
+    cells,
+    boundary_faces,
+    patch_type_overrides=None,
+):
+    """Write a structured hexahedral mesh to the CFDX mesh-v1 HDF5 schema.
+
+    ``patch_type_overrides`` supports fixtures whose physical boundary
+    semantics differ from the default extrusion (e.g. thermal end caps).
+    """
     points = np.asarray(points, dtype=np.float64)
     faces = []
     owner = []
@@ -104,6 +114,10 @@ def write_mesh(path: Path, points, cells, boundary_faces):
             "front": 6,
             "back": 6,
         }.get(name, 7)
+        if patch_type_overrides and name in patch_type_overrides:
+            ptype = int(patch_type_overrides[name])
+        if ptype not in range(8):
+            raise ValueError(f"invalid patch type {ptype} for patch {name}")
         patch_meta.append(f"{name}:{ids[0] if ids else 0}:{len(ids)}:{ptype}")
 
     topo_hash = fnv1a(fv)
@@ -488,9 +502,55 @@ def naca_o_grid_quality(
     }
 
 
+def wall3d_box(n: int = 3):
+    """Build a small structured 3-D box with one physical WALL patch."""
+    points = []
+
+    def point_id(i: int, j: int, k: int) -> int:
+        return (i * (n + 1) + j) * (n + 1) + k
+
+    for i in range(n + 1):
+        for j in range(n + 1):
+            for k in range(n + 1):
+                points.append((i / n, j / n, k / n))
+
+    cells = []
+    boundary_faces = {"wall": []}
+    for i in range(n):
+        for j in range(n):
+            for k in range(n):
+                v = [
+                    point_id(i, j, k),
+                    point_id(i + 1, j, k),
+                    point_id(i + 1, j + 1, k),
+                    point_id(i, j + 1, k),
+                    point_id(i, j, k + 1),
+                    point_id(i + 1, j, k + 1),
+                    point_id(i + 1, j + 1, k + 1),
+                    point_id(i, j + 1, k + 1),
+                ]
+                cells.append(v)
+                if k == 0:
+                    boundary_faces["wall"].append([v[0], v[3], v[2], v[1]])
+                if k == n - 1:
+                    boundary_faces["wall"].append([v[4], v[5], v[6], v[7]])
+                if j == 0:
+                    boundary_faces["wall"].append([v[0], v[1], v[5], v[4]])
+                if i == n - 1:
+                    boundary_faces["wall"].append([v[1], v[2], v[6], v[5]])
+                if j == n - 1:
+                    boundary_faces["wall"].append([v[2], v[3], v[7], v[6]])
+                if i == 0:
+                    boundary_faces["wall"].append([v[3], v[0], v[4], v[7]])
+    return np.asarray(points, dtype=np.float64), cells, boundary_faces
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("case", choices=("channel", "bfs", "naca0012", "naca3d", "all"))
+    ap.add_argument(
+        "case",
+        choices=("channel", "bfs", "naca0012", "naca3d", "wall3d", "all"),
+    )
     ap.add_argument("--output-dir", type=Path, default=Path("build/validation_meshes"))
     ap.add_argument("--quick", action="store_true")
     ap.add_argument(
@@ -550,6 +610,9 @@ def main():
         report_path.write_text(
             json.dumps(quality_reports, indent=2) + "\n", encoding="utf-8"
         )
+    if args.case == "wall3d":
+        points, cells, boundaries = wall3d_box(3)
+        write_mesh(out / "wall3d_cube_n3.h5", points, cells, boundaries)
     if args.case == "naca3d":
         # Two layers: 3-D topology/planar-extrusion smoke only. Not a
         # finite-span wing or a thermal/turbulence physical qualification.
@@ -557,6 +620,20 @@ def main():
         write_mesh(out / "naca0012_extruded_3d_n64_z2.h5", p, c, b)
         p, c, b = naca_o_grid(16, 8, 20.0, n_spanwise=2, span=1.0)
         write_mesh(out / "naca0012_extruded_3d_n16_z2.h5", p, c, b)
+        # Thermal through-span MMS needs physical end caps; the fluid
+        # extrusion fixture intentionally retains EMPTY front/back patches.
+        write_mesh(
+            out / "naca0012_extruded_3d_thermal_n16_z2.h5",
+            p,
+            c,
+            b,
+            patch_type_overrides={"front": 0, "back": 0},
+        )
+        # A four-layer spanwise fixture is required to identify the complete
+        # 3-D quadratic basis at wall faces (the two-layer smoke mesh is rank
+        # deficient for this purpose).
+        p, c, b = naca_o_grid(16, 8, 20.0, n_spanwise=4, span=1.0)
+        write_mesh(out / "naca0012_extruded_3d_wall_n16_z4.h5", p, c, b)
     print(f"validation meshes written to {out}")
 
 
