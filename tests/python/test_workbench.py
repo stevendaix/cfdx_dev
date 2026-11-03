@@ -122,6 +122,50 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
 @pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
 )
+def test_metadata_only_mesh_open_clears_stale_mesh_catalog(
+    tmp_path, monkeypatch
+) -> None:
+    import h5py
+    from cfdx.gui import create_application
+    from cfdx.mesh_model import MeshCatalog, MeshPatch, MeshRegion
+    from PySide6.QtWidgets import QFileDialog
+
+    app = create_application(["cfdx-workbench-large-mesh-test"])
+    window = CFDXWorkbenchWindow(CFDXSession())
+    patch = MeshPatch(0, "wall", "wall", 1, "fluid")
+    region = MeshRegion("fluid", 4, 1, 1, (patch,), ("cell:0",))
+    catalog = MeshCatalog(4, 1, 1, (patch,), (region,))
+    window.application.mesh_catalog = catalog
+    window.mesh_browser.set_catalog(catalog)
+
+    path = tmp_path / "large-mesh.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        h5.attrs["n_cells"] = 1
+        h5.create_dataset(
+            "points", shape=(100_001, 3), dtype="f8", chunks=(1024, 3)
+        )
+        h5.create_dataset("owner", shape=(1,), dtype="u8")
+        h5.create_dataset("cell_offsets", data=[0, 1])
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        lambda *args, **kwargs: (str(path), "CFDX/HDF5 mesh"),
+    )
+
+    window._open_mesh()
+
+    assert window.application.mesh_catalog is None
+    assert window.mesh_browser.patches.topLevelItemCount() == 0
+    assert "preview deferred" in window.statusBar().currentMessage()
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
 def test_workbench_has_stable_docks() -> None:
     from cfdx.gui import create_application
     from cfdx.session import SimulationState
