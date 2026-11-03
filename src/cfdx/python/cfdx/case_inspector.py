@@ -284,7 +284,8 @@ def read_hdf5_dataset_sample(
         dtype = dataset.dtype
         if dtype.kind not in "biufcS":
             raise ValueError(
-                f"sampling dtype {dtype} is disabled; only numeric and fixed strings are supported"
+                f"sampling dtype {dtype} is disabled; only numeric and fixed "
+                "strings are supported"
             )
         if dtype.itemsize * max_values > 1_048_576:
             raise ValueError("dataset element width exceeds the 1 MiB sample budget")
