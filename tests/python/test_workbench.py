@@ -71,6 +71,49 @@ def test_workbench_is_importable_without_qt() -> None:
 @pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
 )
+def test_workbench_inspects_mesh_interchange_without_replacing_project(
+    tmp_path, monkeypatch
+) -> None:
+    import h5py
+    import numpy as np
+
+    from cfdx.gui import create_application
+    from PySide6.QtWidgets import QFileDialog
+
+    create_application(["cfdx-workbench-inspector-test"])
+    session = CFDXSession()
+    window = CFDXWorkbenchWindow(session)
+    path = tmp_path / "mesh.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        h5.attrs["n_cells"] = 1
+        h5.attrs["boundary_patches"] = "wall:0:4:0"
+        h5.create_dataset("points", data=np.zeros((4, 3)))
+        h5.create_dataset("owner", data=np.zeros(4, dtype=np.int64))
+        h5.create_dataset("neighbour", data=-np.ones(4, dtype=np.int64))
+        h5.create_dataset("face_vertices", data=[0, 1, 1, 2, 2, 3, 3, 0])
+        h5.create_dataset("face_offsets", data=[0, 2, 4, 6, 8])
+        h5.create_dataset("patch_face_ids", data=[0, 1, 2, 3])
+        h5.create_dataset("patch_face_offsets", data=[0, 4])
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        lambda *args, **kwargs: (str(path), "CFDX/HDF5 files"),
+    )
+
+    window._open_case()
+
+    assert window.case_file_panel.summary is not None
+    assert window.case_file_panel.summary.n_cells == 1
+    assert window.application.session is session
+    assert window.application.project_path is None
+    assert "active project unchanged" in window.statusBar().currentMessage()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
 def test_workbench_has_stable_docks() -> None:
     from cfdx.gui import create_application
     from cfdx.session import SimulationState
