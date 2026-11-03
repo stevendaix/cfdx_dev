@@ -3,7 +3,6 @@ from __future__ import annotations
 import h5py
 import numpy as np
 import pytest
-
 from cfdx.case_inspector import inspect_cfdx_file
 
 from cfdx.application import Application
