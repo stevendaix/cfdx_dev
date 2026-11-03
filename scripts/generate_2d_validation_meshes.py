@@ -505,6 +505,7 @@ def naca_o_grid_quality(
 def wall3d_box(n: int = 3):
     """Build a small structured 3-D box with one physical WALL patch."""
     points = []
+
     def point_id(i: int, j: int, k: int) -> int:
         return (i * (n + 1) + j) * (n + 1) + k
 
@@ -546,7 +547,10 @@ def wall3d_box(n: int = 3):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("case", choices=("channel", "bfs", "naca0012", "naca3d", "wall3d", "all"))
+    ap.add_argument(
+        "case",
+        choices=("channel", "bfs", "naca0012", "naca3d", "wall3d", "all"),
+    )
     ap.add_argument("--output-dir", type=Path, default=Path("build/validation_meshes"))
     ap.add_argument("--quick", action="store_true")
     ap.add_argument(
