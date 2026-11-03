@@ -12,7 +12,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .case_inspector import CaseFileSummary, read_hdf5_dataset_sample, read_dataset_preview
+from .case_inspector import CaseFileSummary, read_dataset_preview
 
 
 class CaseFilePanel(QWidget):
@@ -57,7 +57,9 @@ class CaseFilePanel(QWidget):
     def set_summary(self, summary: CaseFileSummary) -> None:
         self.summary = summary
         self.tree.clear()
-        self.sample.clear()
+        self.preview.setPlainText(
+            "Select a numeric dataset to inspect a bounded sample."
+        )
         state = "CFDX" if summary.is_cfdx else "HDF5 (unrecognised CFDX layout)"
         self.status.setText(f"{summary.path.name} · {state}")
         root = QTreeWidgetItem(self.tree, ["File", str(summary.path)])
@@ -154,24 +156,3 @@ class CaseFilePanel(QWidget):
             )
         self.tree.expandToDepth(1)
 
-    def _dataset_selected(self, current, _previous) -> None:
-        """Read at most 32 values from the selected HDF5 dataset."""
-        dataset_path = (
-            current.data(0, Qt.ItemDataRole.UserRole) if current is not None else None
-        )
-        if not dataset_path or self.summary is None:
-            return
-        try:
-            sample = read_hdf5_dataset_sample(self.summary.path, dataset_path)
-        except (OSError, RuntimeError, TypeError, ValueError, KeyError) as exc:
-            self.sample.setPlainText(f"Sample unavailable: {exc}")
-            return
-        values = ", ".join(sample.values) if sample.values else "<empty dataset>"
-        if len(values) > 4000:
-            values = values[:3997] + "..."
-        self.sample.setPlainText(
-            f"{sample.path}\n"
-            f"Shape: {sample.shape} · dtype: {sample.dtype}\n"
-            f"Showing {len(sample.values)} of {sample.total_values:,} values\n"
-            f"{values}"
-        )
