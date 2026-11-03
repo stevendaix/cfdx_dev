@@ -519,7 +519,7 @@ if QMainWindow is not object:
                     self.statusBar().showMessage(
                         "CFDX file opened metadata-only: "
                         f"{summary.n_cells or 'unknown'} cells; "
-                        "3D preview deferred to protect memory"
+                        f"3D preview deferred: {summary.preview_block_reason}"
                     )
                 else:
                     self.mesh_browser.clear()
@@ -831,8 +831,7 @@ if QMainWindow is not object:
                         self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
                     self.statusBar().showMessage(
                         f"Mesh metadata loaded ({summary.n_cells or 'unknown'} cells); "
-                        "full in-memory preview is disabled above "
-                        "the 100k entity safety limit"
+                        f"full in-memory preview deferred: {summary.preview_block_reason}"
                     )
                     return
                 catalog = self.application.load_mesh(path)
