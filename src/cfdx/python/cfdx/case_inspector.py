@@ -454,7 +454,12 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             has_case_config=config is not None,
             has_project_config=has_project_config,
             has_mesh=has_mesh,
-            mesh_counts_complete=not regions_truncated,
+            mesh_counts_complete=(
+                not regions_truncated
+                and n_points is not None
+                and n_faces is not None
+                and n_cells is not None
+            ),
             preview_supported=preview_supported,
             preview_block_reason=preview_block_reason,
             n_points=n_points,
