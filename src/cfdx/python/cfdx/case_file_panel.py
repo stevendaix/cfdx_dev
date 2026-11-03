@@ -35,7 +35,7 @@ class CaseFilePanel(QWidget):
         root = QTreeWidgetItem(self.tree, ["File", str(summary.path)])
         QTreeWidgetItem(root, ["Format", summary.format or "not declared"])
         QTreeWidgetItem(root, ["Schema", summary.schema_version or "not declared"])
-        QTreeWidgetItem(root, ["Case configuration", "available" if summary.has_case_config else "not present"])
+        QTreeWidgetItem(root, ["Project configuration", "available" if summary.has_project_config else "not present"])\n        QTreeWidgetItem(root, ["Imported case metadata", "available" if summary.has_case_config and not summary.has_project_config else "not present"])
         mesh = QTreeWidgetItem(self.tree, ["Mesh", ""])
         if summary.has_mesh:
             for label, value in (
