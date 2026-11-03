@@ -41,17 +41,23 @@ The Open action first inspects the HDF5 metadata. It then:
    why the full in-memory preview was not attempted.
 
 The 100,000-entity threshold is a conservative guard for the current renderer,
-not a CFDX file-format limit. It must not be raised until measured memory and
-latency benchmarks justify doing so.
+not a CFDX file-format limit. Preview eligibility also checks the topology
+dataset shapes, caps eager source topology at 32 MiB and caps face connectivity
+at two million entries. These limits are deliberately conservative because
+the current PyVista adapter creates additional Python-side connectivity lists.
+They must not be raised until measured peak-RSS and latency benchmarks justify
+doing so.
 
 The numerical checkpoint remains a separate `.dat.h5` artifact. Inspecting a
 case does not load or activate a restart checkpoint.
 
 ## Performance contract
 
-The metadata inspector must not call HDF5 dataset slicing or conversion on
-mesh/field datasets. The dataset browser is bounded (300 entries by default)
-so a pathological file cannot create an unbounded Qt tree.
+The metadata inspector does not slice mesh/field datasets. Dataset discovery
+stops at 300 entries by default, and root attribute display is bounded to 100
+entries and 4 KiB per value. Known small format/provenance attributes and the
+case setup JSON are read for identification; the setup JSON is rejected when
+its reported payload exceeds 1 MiB.
 
 The current PyVista mesh loader still materializes full topology and creates
 Python-side face objects. It is therefore deliberately not used for large
