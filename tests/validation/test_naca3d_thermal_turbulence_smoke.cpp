@@ -3,6 +3,7 @@
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/physics/energy_solver.h"
 #include "cfdx/physics/turbulence_solver.h"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -39,6 +40,9 @@ int main(int argc, char** argv) {
     EnergySolverControls ec;
     ec.conductivity = 2.0; ec.relaxation = 1.0;
     ec.max_iterations = 6; ec.tolerance = 1e-9;
+    ec.linear_tolerance = 1e-9;
+    ec.temperature_tolerance = 1e-9;
+    ec.energy_balance_tolerance = 1e-9;
     const auto energy = solve_energy(mesh, geometry, mass_flux,
                                       temperature, source, ec, tbc);
     double tmax = 0.0;
@@ -131,8 +135,47 @@ int main(int argc, char** argv) {
     for (std::size_t c = 0; c < n; ++c)
         linear_err = std::max(linear_err,
             std::abs(Tlinear(c) - (300.0 + 10.0*geometry.cell_centres[c].z)));
+    const auto reconstructed_flux = reconstruct_scalar_transport_flux(
+        mesh, geometry, mass_flux, Tlinear, ec.conductivity, linear_bc);
+    const auto front_id = mesh.boundary().find("front");
+    const auto back_id = mesh.boundary().find("back");
+    if (front_id >= mesh.boundary().n_patches() ||
+        back_id >= mesh.boundary().n_patches())
+        throw std::runtime_error("NACA3D_LINEAR_CONDUCTION: missing end-cap patches");
+    double front_flux = 0.0, back_flux = 0.0;
+    double front_area = 0.0, back_area = 0.0;
+    for (const auto face : mesh.boundary().patch(front_id).face_ids) {
+        front_flux += reconstructed_flux(face);
+        front_area += geometry.face_area_vectors[face].mag();
+    }
+    for (const auto face : mesh.boundary().patch(back_id).face_ids) {
+        back_flux += reconstructed_flux(face);
+        back_area += geometry.face_area_vectors[face].mag();
+    }
+    if (!(front_area > 0.0) || !(back_area > 0.0))
+        throw std::runtime_error("NACA3D_LINEAR_CONDUCTION: invalid end-cap area");
+    const double expected_front_flux = 10.0*ec.conductivity*front_area;
+    const double expected_back_flux = -10.0*ec.conductivity*back_area;
+    const double front_flux_relative = std::abs(front_flux-expected_front_flux) /
+        std::max(std::abs(expected_front_flux), 1.0);
+    const double back_flux_relative = std::abs(back_flux-expected_back_flux) /
+        std::max(std::abs(expected_back_flux), 1.0);
+    const double cap_area_relative = std::abs(front_area-back_area) /
+        std::max(front_area, back_area);
+    const bool flux_audit_passed =
+        front_flux_relative <= 1e-8 && back_flux_relative <= 1e-8 &&
+        cap_area_relative <= 1e-12;
     std::cout << "NACA3D_LINEAR_CONDUCTION converged=" << conduction.converged
-              << " Linf_T=" << linear_err << '\n';
+              << " Linf_T=" << linear_err
+              << " front_flux=" << front_flux
+              << " expected_front_flux=" << expected_front_flux
+              << " back_flux=" << back_flux
+              << " expected_back_flux=" << expected_back_flux
+              << " front_flux_relative=" << front_flux_relative
+              << " back_flux_relative=" << back_flux_relative
+              << " cap_area_relative=" << cap_area_relative
+              << " flux_audit_passed=" << flux_audit_passed << '\n';
+    bool energy_audit_passed = false;
     if (!conduction.history.empty()) {
         const auto& final = conduction.history.back();
         std::cout << "NACA3D_LINEAR_CONDUCTION_AUDIT iterations=" << conduction.iterations
@@ -142,9 +185,22 @@ int main(int argc, char** argv) {
                   << " backward_error=" << final.backward_error
                   << " energy_imbalance=" << final.energy_imbalance
                   << " independent_energy=" << final.independent_conservation_normalized
-                  << '\n';
+                  << " independent_local_energy="
+                  << final.independent_conservation_local_normalized << '\n';
+        energy_audit_passed =
+            std::isfinite(final.linear_residual_relative) &&
+            final.linear_residual_relative <= ec.linear_tolerance &&
+            std::isfinite(final.backward_error) &&
+            final.backward_error <= ec.linear_tolerance &&
+            std::isfinite(final.energy_imbalance) &&
+            final.energy_imbalance <= ec.energy_balance_tolerance &&
+            std::isfinite(final.independent_conservation_normalized) &&
+            final.independent_conservation_normalized <= ec.energy_balance_tolerance &&
+            std::isfinite(final.independent_conservation_local_normalized) &&
+            final.independent_conservation_local_normalized <= ec.energy_balance_tolerance;
     }
-    if (!conduction.converged || linear_err > 1e-6) {
+    if (!conduction.converged || linear_err > 1e-6 ||
+        !flux_audit_passed || !energy_audit_passed) {
         std::cerr << "NACA3D_LINEAR_CONDUCTION FAIL: 3D conduction MMS not qualified\n";
         return 2;
     }
