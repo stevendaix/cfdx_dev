@@ -12,7 +12,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .case_inspector import (\n    CaseFileSummary,\n    read_hdf5_dataset_sample,\n)
+from .case_inspector import (
+    CaseFileSummary,
+    read_hdf5_dataset_sample,
+)
 
 
 class CaseFilePanel(QWidget):
@@ -53,6 +56,8 @@ class CaseFilePanel(QWidget):
                 self.summary.path, dataset_path, max_values=32
             )
             values = ", ".join(sample.values) or "(empty dataset)"
+            if len(values) > 4000:
+                values = values[:3997] + "..."
             truncated = (
                 f"\nshowing {len(sample.values)} of {sample.total_values:,} values"
                 if sample.total_values > len(sample.values)
