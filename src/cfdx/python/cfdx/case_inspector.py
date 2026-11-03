@@ -70,10 +70,40 @@ class CaseFileSummary:
     attributes: tuple[tuple[str, str], ...]
     datasets: tuple[Hdf5DatasetInfo, ...]
     datasets_truncated: bool = False
+    attributes_truncated: bool = False
 
     @property
     def total_field_count(self) -> int:
         return len(self.scalar_fields) + len(self.vector_fields)
+
+
+def _safe_attribute(h5: h5py.Group, name: str, *, max_bytes: int = 4096):
+    """Read one attribute only when its stored payload is explicitly bounded."""
+    if name not in h5.attrs:
+        return None
+    attribute_id = h5.attrs.get_id(name)
+    if attribute_id.get_storage_size() > max_bytes:
+        return None
+    return h5.attrs[name]
+
+
+def _root_attributes(
+    h5: h5py.File, *, max_count: int = 100, max_value_bytes: int = 4096
+) -> tuple[tuple[tuple[str, str], ...], bool]:
+    """Return a bounded, display-safe snapshot of root attributes."""
+    attributes = []
+    truncated = False
+    for index, name in enumerate(h5.attrs):
+        if index >= max_count:
+            truncated = True
+            break
+        size = h5.attrs.get_id(name).get_storage_size()
+        if size > max_value_bytes:
+            value = f"<omitted: {size:,} bytes>"
+        else:
+            value = _text(h5.attrs[name])
+        attributes.append((str(name), value))
+    return tuple(sorted(attributes)), truncated
 
 
 def _first_dataset(h5: h5py.File, candidates: tuple[str, ...]):
@@ -105,10 +135,13 @@ def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
                 or not isinstance(owner, h5py.Dataset)
             ):
                 return None, None, None
-            raw_cells = group.attrs.get(
-                "n_cells",
-                offsets.shape[0] - 1 if isinstance(offsets, h5py.Dataset) else 0,
-            )
+            raw_cells = _safe_attribute(group, "n_cells")
+            if raw_cells is None:
+                raw_cells = (
+                    offsets.shape[0] - 1
+                    if isinstance(offsets, h5py.Dataset)
+                    else 0
+                )
             counts.append((int(points.shape[0]), int(owner.shape[0]), int(raw_cells)))
         return tuple(sum(item[i] for item in counts) for i in range(3))
 
@@ -120,7 +153,7 @@ def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
     )
     n_points = int(points.shape[0]) if points is not None and points.ndim else None
     n_faces = int(owner.shape[0]) if owner is not None and owner.ndim else None
-    raw_cells = h5.attrs.get("n_cells")
+    raw_cells = _safe_attribute(h5, "n_cells")
     if raw_cells is None and offsets is not None and offsets.shape[0]:
         raw_cells = offsets.shape[0] - 1
     n_cells = int(raw_cells) if raw_cells is not None else None
@@ -149,7 +182,7 @@ def _case_config(h5: h5py.File) -> dict[str, Any] | None:
             return None
         raw = dataset[()]
     elif "case_setup_json" in h5.attrs:
-        raw = h5.attrs["case_setup_json"]
+        raw = _safe_attribute(h5, "case_setup_json", max_bytes=1_048_576)
     if raw is None:
         return None
     if isinstance(raw, bytes):
@@ -174,9 +207,7 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
         raise ValueError("max_datasets must be positive")
 
     with h5py.File(source, "r") as h5:
-        attrs = tuple(
-            sorted((str(key), _text(value)) for key, value in h5.attrs.items())
-        )
+        attrs, attributes_truncated = _root_attributes(h5)
         attr_map = dict(attrs)
         file_format = attr_map.get("format")
         schema = attr_map.get("schema_version")
@@ -298,4 +329,5 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             attributes=attrs,
             datasets=tuple(datasets),
             datasets_truncated=datasets_truncated,
+            attributes_truncated=attributes_truncated,
         )
