@@ -77,6 +77,7 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
     import h5py
     import numpy as np
     from cfdx.gui import create_application
+    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QFileDialog
 
     create_application(["cfdx-workbench-inspector-test"])
@@ -108,6 +109,12 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
     assert window.application.session is session
     assert window.application.project_path is None
     assert "active project unchanged" in window.statusBar().currentMessage()
+    point_items = window.case_file_panel.tree.findItems(
+        "/points", Qt.MatchFlag.MatchExactly, 0
+    )
+    assert point_items
+    window.case_file_panel.tree.itemClicked.emit(point_items[0], 0)
+    assert "shape: (4, 3)" in window.case_file_panel.preview.toPlainText()
 
 
 @pytest.mark.skipif(
