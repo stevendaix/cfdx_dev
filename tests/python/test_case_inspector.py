@@ -207,6 +207,27 @@ def test_inspect_bounds_dataset_tree(tmp_path):
     assert summary.datasets_truncated
 
 
+
+def test_inspect_bounds_soft_link_scans_in_region_and_field_groups(tmp_path):
+    path = tmp_path / "many-soft-links.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        regions = h5.create_group("regions")
+        scalar_fields = h5.create_group("fields/scalar")
+        for index in range(1_205):
+            link_name = f"link_{index:04d}"
+            regions[link_name] = h5py.SoftLink("/missing")
+            scalar_fields[link_name] = h5py.SoftLink("/missing")
+
+    summary = inspect_cfdx_file(path)
+
+    assert summary.regions == ()
+    assert summary.regions_truncated
+    assert summary.scalar_fields == ()
+    assert summary.scalar_fields_truncated
+
+
+
 def test_inspect_bounds_hdf5_group_only_trees(tmp_path):
     path = tmp_path / "many-groups.h5"
     with h5py.File(path, "w") as h5:
