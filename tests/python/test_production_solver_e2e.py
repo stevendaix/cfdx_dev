@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -307,6 +308,68 @@ def test_production_solver_full_application_e2e(tmp_path: Path) -> None:
     xml = outputs[-1].read_text(encoding="utf-8")
     assert 'Name="physical_time"' in xml
     assert 'Name="iteration"' in xml
+
+
+def test_production_solver_quadratic_wall_forces_are_exported(
+    tmp_path: Path,
+) -> None:
+    solver = os.environ.get("CFDX_PRODUCTION_SOLVER")
+    if not solver:
+        pytest.skip("CFDX_PRODUCTION_SOLVER is provided by ctest")
+
+    source_root = Path(__file__).resolve().parents[2]
+    generator = source_root / "scripts" / "generate_2d_validation_meshes.py"
+    mesh_dir = tmp_path / "mesh"
+    generated = subprocess.run(
+        [
+            sys.executable,
+            str(generator),
+            "wall3d",
+            "--output-dir",
+            str(mesh_dir),
+        ],
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    assert generated.returncode == 0, generated.stderr
+    mesh = mesh_dir / "wall3d_cube_n3.h5"
+    assert mesh.is_file()
+
+    output_dir = tmp_path / "quadratic_wall_forces"
+    completed = subprocess.run(
+        [
+            solver,
+            "--mesh",
+            str(mesh),
+            "--output-dir",
+            str(output_dir),
+            "--iterations",
+            "2",
+            "--wall-forces-quadratic",
+        ],
+        text=True,
+        capture_output=True,
+        timeout=30,
+        check=False,
+    )
+    assert completed.returncode == 0, (
+        f"quadratic wall-force export failed: stdout={completed.stdout[-40:]!r}; "
+        f"stderr={completed.stderr[-40:]!r}"
+    )
+
+    artifact = output_dir / "wall_forces.json"
+    assert artifact.is_file()
+    document = json.loads(artifact.read_text(encoding="utf-8"))
+    assert document["format"] == "CFDX-WALL-FORCES"
+    assert document["schema_version"] == 1
+    assert document["method"] == "quadratic_wls_3d"
+    assert document["surface_face_count"] == 54
+    assert document["wall_patches"] == ["wall"]
+    assert document["nondimensional_coefficients"] is None
+    for key in ("pressure_force_n", "viscous_force_n", "total_force_n"):
+        assert max(abs(value) for value in document[key]) < 1e-10
 
 
 if __name__ == "__main__":
