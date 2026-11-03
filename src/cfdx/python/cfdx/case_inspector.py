@@ -312,7 +312,9 @@ def read_hdf5_dataset_sample(
     with h5py.File(Path(path), "r") as h5:
         dataset = _internal_object(h5, dataset_path)
         if dataset is None:
-            raise ValueError("dataset path must resolve through internal HDF5 hard links")
+            raise ValueError(
+                "dataset path must resolve through internal HDF5 hard links"
+            )
         if not isinstance(dataset, h5py.Dataset):
             raise ValueError(f"{dataset_path} is not an HDF5 dataset")
         shape = tuple(int(size) for size in dataset.shape)
