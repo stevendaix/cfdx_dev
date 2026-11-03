@@ -14,6 +14,7 @@
 #include "cfdx/io/runtime/execution_summary.h"
 #include "cfdx/io/vtu/vtu_writer.h"
 #include "cfdx/physics/production_time_contract.h"
+#include "cfdx/physics/wall_quadratic_forces.h"
 
 #include <algorithm>
 #include <array>
@@ -48,6 +49,7 @@ struct Options {
     std::size_t iterations = 2;
     bool adaptive_convergence = false;
     bool initial_velocity_field = false;
+    bool wall_forces_quadratic = false;
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
     std::vector<IncompressiblePointProbe> probes;
@@ -503,6 +505,132 @@ std::string radiation_s2s_json(const ProductionS2SOuterLoopResult& stage)
     return out.str();
 }
 
+void write_quadratic_wall_forces(
+    const Mesh& mesh,
+    const Field<double, Location::CELL>& velocity,
+    const Field<double, Location::CELL>& pressure,
+    const VelocityBoundaryConditions& velocity_bcs,
+    const ScalarBoundaryConditions& pressure_bcs,
+    double dynamic_viscosity,
+    const std::filesystem::path& output_dir)
+{
+    if (!(dynamic_viscosity > 0.0) || !std::isfinite(dynamic_viscosity))
+        throw std::invalid_argument(
+            "quadratic wall forces require finite positive dynamic viscosity");
+
+    const auto geometry = build_fv_geometry(mesh);
+    std::vector<double> cell_pressure(mesh.n_cells());
+    std::vector<Vec3> cell_velocity(mesh.n_cells());
+    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+        cell_pressure[cell] = pressure(cell);
+        cell_velocity[cell] = Vec3{
+            velocity(cell, 0), velocity(cell, 1), velocity(cell, 2)};
+    }
+
+    std::vector<forces::SurfaceSample> surface;
+    std::vector<std::string> wall_patch_names;
+    double total_area = 0.0;
+    for (std::size_t patch_id = 0;
+         patch_id < mesh.boundary().n_patches(); ++patch_id) {
+        const auto& patch = mesh.boundary().patch(patch_id);
+        if (patch.type != PatchType::WALL)
+            continue;
+
+        const auto velocity_it = velocity_bcs.find(patch.name);
+        if (velocity_it == velocity_bcs.end() ||
+            velocity_it->second.type != VelocityBoundaryCondition::Type::FIXED_VALUE)
+            throw std::invalid_argument(
+                "quadratic wall forces require prescribed FIXED_VALUE velocity on WALL patch '" +
+                patch.name + "'");
+        const auto pressure_it = pressure_bcs.find(patch.name);
+        if (pressure_it == pressure_bcs.end())
+            throw std::invalid_argument(
+                "quadratic wall forces have no pressure boundary contract for WALL patch '" +
+                patch.name + "'");
+
+        std::vector<double> wall_pressure(mesh.n_faces(), 0.0);
+        std::vector<Vec3> wall_velocity(mesh.n_faces());
+        for (const auto face : patch.face_ids) {
+            if (face >= mesh.n_faces())
+                throw std::invalid_argument(
+                    "quadratic wall forces: patch face index is out of range");
+            const auto owner = mesh.ownership().owner(face);
+            if (owner >= mesh.n_cells())
+                throw std::invalid_argument(
+                    "quadratic wall forces: invalid owner cell");
+            if (pressure_it->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                wall_pressure[face] = pressure_it->second.value;
+            } else if (pressure_it->second.type == ScalarBoundaryType::ZERO_GRADIENT) {
+                wall_pressure[face] = pressure(owner);
+            } else {
+                throw std::invalid_argument(
+                    "quadratic wall forces do not support FIXED_GRADIENT pressure on WALL patch '" +
+                    patch.name + "'");
+            }
+            wall_velocity[face] = velocity_it->second.value;
+        }
+
+        auto patch_surface = reconstruct_quadratic_wall_surface(
+            mesh, geometry, patch_id, cell_pressure, cell_velocity,
+            wall_pressure, wall_velocity, dynamic_viscosity, 4);
+        for (const auto& sample : patch_surface)
+            total_area += sample.area;
+        surface.insert(surface.end(), patch_surface.begin(), patch_surface.end());
+        wall_patch_names.push_back(patch.name);
+    }
+
+    if (surface.empty() || !(total_area > 0.0) || !std::isfinite(total_area))
+        throw std::invalid_argument(
+            "quadratic wall forces found no finite, positive-area WALL surface");
+
+    // The artifact reports dimensional forces/moments only. A user-defined
+    // rho_inf/U_inf/reference area is required before publishing Cd/Cl/Cm.
+    forces::Reference reference;
+    reference.area = total_area;
+    reference.length = 1.0;
+    reference.pressure_ref = 0.0;
+    const auto integrated = forces::integrate(surface, reference);
+
+    std::ostringstream out;
+    out << "{\n"
+        << "  \"format\": \"CFDX-WALL-FORCES\",\n"
+        << "  \"schema_version\": 1,\n"
+        << "  \"method\": \"quadratic_wls_3d\",\n"
+        << "  \"normal_convention\": \"body_to_fluid\",\n"
+        << "  \"pressure_reference_pa\": 0,\n"
+        << "  \"dynamic_viscosity_pa_s\": " << json_number(dynamic_viscosity) << ",\n"
+        << "  \"surface_face_count\": " << surface.size() << ",\n"
+        << "  \"surface_area_m2\": " << json_number(total_area) << ",\n"
+        << "  \"wall_patches\": [";
+    for (std::size_t i = 0; i < wall_patch_names.size(); ++i) {
+        if (i != 0) out << ", ";
+        out << "\"" << json_escape(wall_patch_names[i]) << "\"";
+    }
+    out << "],\n"
+        << "  \"pressure_force_n\": ["
+        << json_number(integrated.pressure_force.x) << ", "
+        << json_number(integrated.pressure_force.y) << ", "
+        << json_number(integrated.pressure_force.z) << "],\n"
+        << "  \"viscous_force_n\": ["
+        << json_number(integrated.viscous_force.x) << ", "
+        << json_number(integrated.viscous_force.y) << ", "
+        << json_number(integrated.viscous_force.z) << "],\n"
+        << "  \"total_force_n\": ["
+        << json_number(integrated.total_force.x) << ", "
+        << json_number(integrated.total_force.y) << ", "
+        << json_number(integrated.total_force.z) << "],\n"
+        << "  \"total_moment_nm\": ["
+        << json_number(integrated.total_moment.x) << ", "
+        << json_number(integrated.total_moment.y) << ", "
+        << json_number(integrated.total_moment.z) << "],\n"
+        << "  \"nondimensional_coefficients\": null\n"
+        << "}\n";
+    write_text_file_atomic(output_dir / "wall_forces.json", out.str());
+    std::cout << "Quadratic 3-D wall forces: " << surface.size()
+              << " faces, area " << total_area
+              << " m2; wrote wall_forces.json\n";
+}
+
 Options parse(int argc, char** argv)
 {
     Options o;
@@ -518,6 +646,7 @@ Options parse(int argc, char** argv)
         else if (arg == "--iterations") o.iterations = std::stoull(value("--iterations"));
         else if (arg == "--adaptive-convergence") o.adaptive_convergence = true;
         else if (arg == "--initial-velocity-field") o.initial_velocity_field = true;
+        else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
@@ -1099,6 +1228,15 @@ int main(int argc, char** argv)
             result.convergence_reason,
             false,
             false});
+        if (options.wall_forces_quadratic) {
+            if (!result.converged)
+                throw std::runtime_error(
+                    "--wall-forces-quadratic requires a converged flow solution");
+            write_quadratic_wall_forces(
+                mesh, U, p, ubc, pbc,
+                controls.density * controls.kinematic_viscosity,
+                options.output_dir);
+        }
         if (!options.restart.empty())
             std::cout << "Restart checkpoint " << options.restart.string() << "\n";
 
