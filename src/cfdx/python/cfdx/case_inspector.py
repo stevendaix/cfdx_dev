@@ -77,16 +77,25 @@ class CaseFileSummary:
         return len(self.scalar_fields) + len(self.vector_fields)
 
 
-def _safe_attribute(h5: h5py.Group, name: str, *, max_bytes: int = 4096):
+def _safe_attribute(
+    h5: h5py.Group,
+    name: str,
+    *,
+    max_bytes: int = 4096,
+    allow_variable_length: bool = False,
+):
     """Read one attribute only when its stored payload is explicitly bounded."""
     if name not in h5.attrs:
         return None
     attribute_id = h5.attrs.get_id(name)
-    if attribute_id.dtype.kind == "O":
+    if attribute_id.dtype.kind == "O" and not allow_variable_length:
         return None
     if attribute_id.get_storage_size() > max_bytes:
         return None
-    return h5.attrs[name]
+    value = h5.attrs[name]
+    if isinstance(value, str) and len(value.encode("utf-8")) > max_bytes:
+        return None
+    return value
 
 
 def _root_attributes(
@@ -101,12 +110,20 @@ def _root_attributes(
             break
         attribute_id = h5.attrs.get_id(name)
         size = attribute_id.get_storage_size()
-        if attribute_id.dtype.kind == "O":
+        if attribute_id.dtype.kind == "O" and name not in {
+            "format",
+            "schema_version",
+            "source_case_name",
+        }:
             value = "<omitted: variable-length attribute>"
         elif size > max_value_bytes:
             value = f"<omitted: {size:,} bytes>"
         else:
-            value = _text(h5.attrs[name])
+            raw = h5.attrs[name]
+            if isinstance(raw, str) and len(raw.encode("utf-8")) > max_value_bytes:
+                value = "<omitted: oversized variable-length attribute>"
+            else:
+                value = _text(raw)
         attributes.append((str(name), value))
     return tuple(sorted(attributes)), truncated
 
@@ -187,7 +204,12 @@ def _case_config(h5: h5py.File) -> dict[str, Any] | None:
             return None
         raw = dataset[()]
     elif "case_setup_json" in h5.attrs:
-        raw = _safe_attribute(h5, "case_setup_json", max_bytes=1_048_576)
+        raw = _safe_attribute(
+            h5,
+            "case_setup_json",
+            max_bytes=1_048_576,
+            allow_variable_length=True,
+        )
     if raw is None:
         return None
     if isinstance(raw, bytes):
