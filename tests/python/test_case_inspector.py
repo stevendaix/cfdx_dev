@@ -221,6 +221,15 @@ def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     assert not summary.preview_supported
     assert "connectivity" in summary.preview_block_reason
 
+    from cfdx.gui_3d import PyVistaQtView
+
+    with pytest.raises(ValueError, match="preview deferred"):
+        PyVistaQtView.load_cfdx_mesh(None, str(path), summary=summary)
+    with pytest.raises(ValueError, match="preview deferred"):
+        PyVistaQtView.load_cfdx_dat(
+            None, str(path), "unused.dat", summary=summary
+        )
+
 
 def test_preview_rejects_non_integer_surface_connectivity(tmp_path):
     path = tmp_path / "invalid-connectivity-dtype.h5"
