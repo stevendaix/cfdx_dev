@@ -491,6 +491,13 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
                 preview_block_reason = (
                     "neighbour indices must use a signed integer dtype"
                 )
+            elif any(
+                dataset.is_virtual or dataset.external
+                for dataset in integer_topology + (points_dataset,)
+            ):
+                preview_block_reason = (
+                    "virtual or externally stored topology datasets are not previewed"
+                )
             elif face_vertices_dataset.ndim != 1:
                 preview_block_reason = (
                     "face connectivity must be a one-dimensional array"
