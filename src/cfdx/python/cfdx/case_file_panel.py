@@ -140,11 +140,15 @@ class CaseFilePanel(QWidget):
                 ):
                     display_value = f"≥{display_value}"
                 if label == "Regions" and summary.regions_truncated:
-                    display_value = f"{len(summary.regions)}+"
+                    display_value = (
+                        f"{len(summary.regions)}+"
+                        if len(summary.regions) == 300
+                        else "incomplete"
+                    )
                 QTreeWidgetItem(mesh, [label, display_value])
             if not summary.mesh_counts_complete:
                 count_note = (
-                    "Partial: first 300 regions only"
+                    "Region catalog incomplete; totals may be lower bounds"
                     if summary.regions_truncated
                     else "Incomplete topology count metadata"
                 )
@@ -152,7 +156,10 @@ class CaseFilePanel(QWidget):
             for region in summary.regions:
                 QTreeWidgetItem(mesh, ["Region", region])
             if summary.regions_truncated:
-                QTreeWidgetItem(mesh, ["Regions", "Listing truncated at 300 entries"])
+                QTreeWidgetItem(
+                    mesh,
+                    ["Regions", "Listing incomplete (safety cap or non-internal links)"],
+                )
         else:
             QTreeWidgetItem(mesh, ["Status", "No recognised mesh topology"])
         fields_truncated = (
@@ -160,6 +167,8 @@ class CaseFilePanel(QWidget):
         )
         field_total = (
             f"{summary.total_field_count}+"
+            if fields_truncated and summary.total_field_count >= 600
+            else "incomplete"
             if fields_truncated
             else str(summary.total_field_count)
         )
@@ -173,12 +182,21 @@ class CaseFilePanel(QWidget):
                 if label == "Scalar"
                 else summary.vector_fields_truncated
             )
-            count_label = f"{len(names)}+" if truncated else str(len(names))
+            count_label = (
+                f"{len(names)}+"
+                if truncated and len(names) == 300
+                else "incomplete"
+                if truncated
+                else str(len(names))
+            )
             group = QTreeWidgetItem(fields, [label, count_label])
             for name in names:
                 QTreeWidgetItem(group, [name, ""])
             if truncated:
-                QTreeWidgetItem(group, ["Field listing", "Truncated at 300 entries"])
+                QTreeWidgetItem(
+                    group,
+                    ["Field listing", "Listing incomplete (safety cap or non-internal links)"],
+                )
         if summary.case_name:
             QTreeWidgetItem(self.tree, ["Case name", summary.case_name])
         for label, names in (
