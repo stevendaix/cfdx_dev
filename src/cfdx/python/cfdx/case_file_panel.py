@@ -3,9 +3,16 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QLabel, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QLabel,
+    QPlainTextEdit,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
 
-from .case_inspector import CaseFileSummary
+from .case_inspector import CaseFileSummary, read_dataset_preview
 
 
 class CaseFilePanel(QWidget):
@@ -19,14 +26,33 @@ class CaseFilePanel(QWidget):
         self.tree.setObjectName("workbench.case_file.tree")
         self.tree.setHeaderLabels(["Case file", "Details"])
         self.tree.setColumnWidth(0, 260)
+        self.preview = QPlainTextEdit()
+        self.preview.setObjectName("workbench.case_file.dataset_preview")
+        self.preview.setReadOnly(True)
+        self.preview.setMaximumBlockCount(40)
+        self.preview.setPlainText("Select a numeric dataset to inspect a bounded sample.")
         layout = QVBoxLayout(self)
         layout.addWidget(self.status)
-        layout.addWidget(self.tree)
+        layout.addWidget(self.tree, 3)
+        layout.addWidget(self.preview, 1)
+        self.tree.itemClicked.connect(self._preview_dataset)
 
     def clear(self) -> None:
         self.summary = None
         self.tree.clear()
+        self.preview.setPlainText("Select a numeric dataset to inspect a bounded sample.")
         self.status.setText("No CFDX file inspected")
+
+    def _preview_dataset(self, item: QTreeWidgetItem, _column: int) -> None:
+        """Display a bounded sample only when a dataset row is selected."""
+        dataset_path = item.data(0, Qt.ItemDataRole.UserRole)
+        if not dataset_path or self.summary is None:
+            return
+        try:
+            preview = read_dataset_preview(self.summary.path, dataset_path)
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError) as exc:
+            preview = f"Unable to read dataset preview: {exc}"
+        self.preview.setPlainText(preview)
 
     def set_summary(self, summary: CaseFileSummary) -> None:
         self.summary = summary
