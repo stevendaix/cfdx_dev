@@ -1,0 +1,103 @@
+name: PR 1168 post-push byte verify oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Evidence-only : verification byte-exact POST-PUSH des fichiers du head PR #1168
+# ed4f0f46 contre les canoniques ruff (run 41537399004) et l'original README
+# du head pre-fix d7838830.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1168_postpush_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1168-postpush-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  EVID_SHA: 6a7b37c7b1c2a8c623aa80654058e6b94cf64a10
+  PR1168_NEW_HEAD: ed4f0f46630d20d0d052578fab781d16df31b56e
+  PR1168_OLD_HEAD: d78388304f053d668a0265eebe1a7269108646c8
+
+jobs:
+  oracle:
+    name: post-push byte verify on PR1168 head ed4f0f46
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      WDIR: /tmp/pr1168_evidwt
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pins
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          for s in "$EVID_SHA" "$PR1168_NEW_HEAD" "$PR1168_OLD_HEAD"; do
+            git cat-file -e "$s^{commit}" || { echo "::error::$s unresolvable"; exit 1; }
+          done
+          git worktree add "$WDIR" "$EVID_SHA"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "purpose=post-push byte verify of pr1168 fix commit ed4f0f46"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1168_postpush_meta_run$GITHUB_RUN_ID.txt"
+
+      - name: Byte compare pushed PR files vs canonicals
+        run: |
+          set +e
+          {
+            CANON="$WDIR/diag-evidence/logs"
+            echo "=== SCRIPT (pushed ed4f0f46 vs canonical-minus-shebang) ==="
+            sed '1{/^#!/d;}' "$CANON/pr1168_canonical_validate_thermohydraulic_reference_run41537399004.py" > /tmp/canon_script_nsb.py
+            git show "$PR1168_NEW_HEAD:scripts/validate_thermohydraulic_reference.py" > /tmp/pushed_script.py
+            cmp /tmp/pushed_script.py /tmp/canon_script_nsb.py && echo "PUSHED_SCRIPT_MATCHES_CANONICAL" || { echo "PUSHED_SCRIPT_DIFF"; diff -u /tmp/canon_script_nsb.py /tmp/pushed_script.py; }
+            echo "=== TEST (pushed ed4f0f46 vs canonical) ==="
+            git show "$PR1168_NEW_HEAD:tests/python/test_thermohydraulic_reference_contracts.py" > /tmp/pushed_test.py
+            cmp /tmp/pushed_test.py "$CANON/pr1168_canonical_test_thermohydraulic_reference_contracts_run41537399004.py" && echo "PUSHED_TEST_MATCHES_CANONICAL" || { echo "PUSHED_TEST_DIFF"; diff -u "$CANON/pr1168_canonical_test_thermohydraulic_reference_contracts_run41537399004.py" /tmp/pushed_test.py; }
+            echo "=== README (pushed ed4f0f46 vs old-head + single toctree insertion) ==="
+            git show "$PR1168_OLD_HEAD:docs/validation/README.md" > /tmp/orig_readme.md
+            git show "$PR1168_NEW_HEAD:docs/validation/README.md" > /tmp/pushed_readme.md
+            diff -u /tmp/orig_readme.md /tmp/pushed_readme.md
+            echo "=== sizes ==="
+            wc -c /tmp/pushed_script.py /tmp/canon_script_nsb.py /tmp/pushed_test.py /tmp/pushed_readme.md
+          } > "$GITHUB_WORKSPACE/$EVID/pr1168_postpush_cmp_run$GITHUB_RUN_ID.txt" 2>&1
+          set -e
+
+      - name: Verdict
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/pr1168_postpush_cmp_run$GITHUB_RUN_ID.txt"
+          v=FAIL
+          grep -q "PUSHED_SCRIPT_MATCHES_CANONICAL" "$f" && grep -q "PUSHED_TEST_MATCHES_CANONICAL" "$f" && v=PASS
+          echo "postpush_verdict=$v" | tee "$GITHUB_WORKSPACE/$EVID/pr1168_postpush_status_run$GITHUB_RUN_ID.txt"
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1168 post-push verify run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/pr1168_postpush_status_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$f" ]; then
+            echo "::error::no status recorded - read oracle evidence"
+            exit 1
+          fi
+          cat "$f"
