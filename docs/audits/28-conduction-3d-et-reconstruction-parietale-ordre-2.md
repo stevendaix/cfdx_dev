@@ -18,7 +18,7 @@ Pour un fluide newtonien, la traction pariétale est évaluée avec tau=mu(grad(
 
 ## 3. Discrétisation Volume Fini
 
-Le diagnostic 3D existant assemble l'équation sur le champ exact puis mesure le résidu A T-b. Le résidu absolu annoncé (~290) n'est pas interprétable sans sa décomposition par ligne et par face. Les contributions à auditer sont la conductance orthogonale, la correction tangente non-orthogonale, les distances normales, les gradients et les termes de frontière.
+Le diagnostic 3D assemble l'équation sur le champ exact puis mesure le résidu A T-b. Il décompose la ligne la plus défavorable en contributions de faces, rapporte la correction non-orthogonale, les distances normales et le gradient. Après résolution, le flux scalaire reconstruit est intégré séparément sur les deux caps et comparé au flux analytique ±10 kA ; la fermeture globale et la conservation locale indépendantes sont également des critères bloquants.
 
 La nouvelle API wall_face_reconstruction_quadratic.h ajuste les dix monômes 3D par moindres carrés pondérés, avec coordonnées normalisées et factorisation QR de Householder à pivotement de colonnes. Le rapport des diagonales de R fournit un indicateur conservateur de rang/conditionnement ; ce n'est pas une estimation SVD du conditionnement spectral. Les gradients au centre de face sont les coefficients linéaires du polynôme centré en ce point. La contrainte visqueuse est calculée avec le tenseur symétrique complet.
 
