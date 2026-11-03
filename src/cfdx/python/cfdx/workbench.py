@@ -820,7 +820,7 @@ if QMainWindow is not object:
             if not path:
                 return
             try:
-                summary = inspect_cfdx_file(path)
+                summary = self.application.inspect_case_file(path)
                 if not summary.is_cfdx or not summary.has_mesh:
                     raise ValueError("file does not contain a recognised CFDX mesh")
                 self.case_file_panel.set_summary(summary)
