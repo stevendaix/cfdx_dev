@@ -825,10 +825,12 @@ if QMainWindow is not object:
                     raise ValueError("file does not contain a recognised CFDX mesh")
                 self.case_file_panel.set_summary(summary)
                 if not summary.preview_supported:
+                    self.application.mesh_catalog = None
                     self.mesh_browser.clear()
                     if self.view3d is not None:
                         self.view3d.clear()
                         self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
+                    self._refresh_action_availability()
                     self.statusBar().showMessage(
                         f"Mesh metadata loaded ({summary.n_cells or 'unknown'} cells); "
                         f"full in-memory preview deferred: {summary.preview_block_reason}"
