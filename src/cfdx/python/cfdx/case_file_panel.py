@@ -1,4 +1,5 @@
 """Qt panel for metadata-first CFDX HDF5 inspection."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
