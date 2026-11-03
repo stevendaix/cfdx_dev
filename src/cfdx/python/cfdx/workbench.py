@@ -585,6 +585,14 @@ if QMainWindow is not object:
                 self.mesh_browser,
                 Qt.DockWidgetArea.LeftDockWidgetArea,
             )
+            self.case_file_panel = CaseFilePanel()
+            self.case_file_panel.setObjectName("workbench.case_file_panel")
+            self._add_dock(
+                "Case File",
+                "workbench.dock.case_file",
+                self.case_file_panel,
+                Qt.DockWidgetArea.LeftDockWidgetArea,
+            )
             self.results_panel = ResultsPanel(self.application)
             self.results_panel.on_open = self._open_results_directory
             self._add_dock(
