@@ -91,8 +91,6 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     assert summary.n_cells == 1
 
 
-
-
 def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     path = tmp_path / "oversized-connectivity.h5"
     with h5py.File(path, "w") as h5:
@@ -117,8 +115,6 @@ def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     assert "connectivity" in summary.preview_block_reason
 
 
-
-
 def test_inspect_bounds_dataset_tree(tmp_path):
     path = tmp_path / "many.h5"
     with h5py.File(path, "w") as h5:
@@ -130,8 +126,6 @@ def test_inspect_bounds_dataset_tree(tmp_path):
 
     assert len(summary.datasets) == 3
     assert summary.datasets_truncated
-
-
 
 
 def test_inspect_bounds_root_attribute_payloads_and_count(tmp_path):
@@ -154,7 +148,6 @@ def test_inspect_bounds_root_attribute_payloads_and_count(tmp_path):
     assert summary.is_cfdx
     assert summary.attributes_truncated
     assert len(summary.attributes) == 100
-
 
 
 def test_inspect_rejects_non_hdf5_file(tmp_path):
