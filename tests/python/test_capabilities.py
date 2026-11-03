@@ -210,7 +210,7 @@ def test_palette_lists_the_registry_and_only_the_registry() -> None:
     named_actions = {
         action.objectName()
         for action in window.findChildren(QAction)
-        if action.objectName()
+        if action.objectName() and not action.objectName().startswith("_q_")
     }
     assert named_actions - set(CAPABILITIES) == {"workbench.action.search"}
 
