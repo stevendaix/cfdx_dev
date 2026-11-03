@@ -4,6 +4,7 @@ import h5py
 import numpy as np
 import pytest
 
+from cfdx.application import Application
 from cfdx.case_inspector import inspect_cfdx_file
 
 
@@ -35,7 +36,7 @@ def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
         h5.create_dataset("fields/scalar/p", shape=(4,), dtype="f8")
         h5.create_dataset("fields/vector/U", shape=(4, 3), dtype="f8")
 
-    summary = inspect_cfdx_file(path)
+    summary = Application().inspect_case_file(path)
 
     assert summary.is_cfdx
     assert summary.has_case_config
