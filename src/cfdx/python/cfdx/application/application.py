@@ -6,8 +6,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from ..dat_io import DatRestart, read_dat_restart
 from ..case_inspector import CaseFileSummary, inspect_cfdx_file
+from ..dat_io import DatRestart, read_dat_restart
 from ..execution import ExecutionController
 from ..mesh_model import MeshCatalog, read_mesh_catalog
 from ..probe import ProbeCatalog
