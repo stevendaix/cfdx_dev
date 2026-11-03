@@ -122,10 +122,17 @@ def test_inspect_bounds_dataset_tree(tmp_path):
 
 
 def test_inspect_bounds_root_attribute_payloads_and_count(tmp_path):
-    path = tmp_path / "attributes.h5"
-    with h5py.File(path, "w") as h5:
+    oversized_path = tmp_path / "oversized-attribute.h5"
+    with h5py.File(oversized_path, "w") as h5:
         h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
         h5.attrs["oversized"] = "x" * 8192
+
+    oversized_summary = inspect_cfdx_file(oversized_path)
+    assert dict(oversized_summary.attributes)["oversized"].startswith("<omitted:")
+
+    path = tmp_path / "many-attributes.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
         for index in range(105):
             h5.attrs[f"metadata_{index:03d}"] = index
 
@@ -134,8 +141,6 @@ def test_inspect_bounds_root_attribute_payloads_and_count(tmp_path):
     assert summary.is_cfdx
     assert summary.attributes_truncated
     assert len(summary.attributes) == 100
-    oversized = dict(summary.attributes).get("oversized")
-    assert oversized is None or oversized.startswith("<omitted:")
 
 
 
