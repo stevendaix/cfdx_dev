@@ -199,8 +199,8 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
         preview_supported = (
             has_mesh and not regions
             and n_points is not None and n_faces is not None
-            and n_points <= 1_000_000 and n_faces <= 1_000_000
-            and (n_cells is None or n_cells <= 1_000_000)
+            and n_points <= 100_000 and n_faces <= 100_000
+            and (n_cells is None or n_cells <= 100_000)
             and all(
                 name in h5
                 for name in (
