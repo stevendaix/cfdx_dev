@@ -64,6 +64,11 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
         h5.attrs["n_points"] = 4
         h5.attrs["n_faces"] = 4
         h5.attrs["n_cells"] = 1
+        h5.attrs["source_case_name"] = "converted-channel"
+        h5.attrs["case_setup_json"] = (
+            '{"name":"converted-channel","physics":{"energy":true},'
+            '"numerics":{"scheme":"SIMPLE"},"boundaries":{"wall":{}}}'
+        )
         h5.create_dataset("points", data=np.zeros((4, 3)))
         h5.create_dataset("owner", data=[0, 0, 0, 0])
         h5.create_dataset("neighbour", data=[-1, -1, -1, -1])
@@ -76,7 +81,11 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
 
     assert summary.is_cfdx
     assert summary.has_mesh
-    assert not summary.has_case_config
+    assert summary.has_case_config
+    assert not summary.has_project_config
+    assert summary.case_name == "converted-channel"
+    assert summary.physics == ("energy",)
+    assert summary.numerics == ("scheme",)
     assert summary.preview_supported
     assert summary.n_cells == 1
 
