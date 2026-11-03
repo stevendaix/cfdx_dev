@@ -9,10 +9,10 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from pathlib import Path
 from time import perf_counter
 from typing import Any
 
@@ -102,9 +102,7 @@ def _benchmark_one(n_cells: int) -> dict[str, Any]:
         if not sample.values or len(sample.values) > 32:
             raise RuntimeError("bounded dataset sample violated its 32-value cap")
 
-        logical_bytes = sum(
-            item.size_bytes or 0 for item in summary.datasets
-        )
+        logical_bytes = sum(item.size_bytes or 0 for item in summary.datasets)
         return {
             "cells": n_cells,
             "points": summary.n_points,
