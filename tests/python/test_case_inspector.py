@@ -138,6 +138,12 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     assert summary.preview_supported
     assert summary.n_cells == 1
 
+    application = Application()
+    application.select("patch:stale", "mesh", "Stale patch")
+    catalog = application.load_mesh(path)
+    assert catalog.n_cells == 1
+    assert application.selection.stable_id is None
+
 
 def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     path = tmp_path / "oversized-connectivity.h5"
