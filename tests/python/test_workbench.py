@@ -122,7 +122,21 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
         0
     )
     assert label_items
+    metadata_groups = window.case_file_panel.tree.findItems(
+        "metadata",
+        Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive,
+        0,
+    )
+    assert metadata_groups
+    assert label_items[0].parent() is metadata_groups[0]
     assert "variable/unknown size" in label_items[0].text(1)
+    window.case_file_panel.tree.setCurrentItem(point_items[0])
+    assert "shape: (4, 3)" in window.case_file_panel.preview.toPlainText()
+    assert window.case_file_panel.copy_path_button.isEnabled()
+    window.case_file_panel.copy_selected_dataset_path()
+    from PySide6.QtWidgets import QApplication
+
+    assert QApplication.clipboard().text() == "/points"
     window.case_file_panel.filter_input.setText("points")
     assert not point_items[0].isHidden()
     assert label_items[0].isHidden()
