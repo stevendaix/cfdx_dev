@@ -107,7 +107,7 @@ class CaseFilePanel(QWidget):
                 if label == "Scalar"
                 else summary.vector_fields_truncated
             )
-            count_label = f"≥{len(names)}" if truncated else str(len(names))
+            count_label = f"{len(names)}+" if truncated else str(len(names))
             group = QTreeWidgetItem(fields, [label, count_label])
             for name in names:
                 QTreeWidgetItem(group, [name, ""])
