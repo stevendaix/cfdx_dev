@@ -99,7 +99,10 @@ def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
             points = group.get("points")
             owner = group.get("owner")
             offsets = group.get("cell_offsets")
-            if not isinstance(points, h5py.Dataset) or not isinstance(owner, h5py.Dataset):
+            if (
+                not isinstance(points, h5py.Dataset)
+                or not isinstance(owner, h5py.Dataset)
+            ):
                 return None, None, None
             raw_cells = group.attrs.get(
                 "n_cells",
@@ -170,7 +173,9 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
         raise ValueError("max_datasets must be positive")
 
     with h5py.File(source, "r") as h5:
-        attrs = tuple(sorted((str(key), _text(value)) for key, value in h5.attrs.items()))
+        attrs = tuple(
+            sorted((str(key), _text(value)) for key, value in h5.attrs.items())
+        )
         attr_map = dict(attrs)
         file_format = attr_map.get("format")
         schema = attr_map.get("schema_version")
