@@ -28,7 +28,6 @@ from .solver_states import session_state_view
 from .theme import TOKENS, apply_workbench_theme
 from .visualization_pipeline import VisualizationOperation
 
-
 try:
     from PySide6.QtCore import QSettings, Qt, Signal
     from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor
