@@ -27,6 +27,8 @@ from .session import CFDXSession
 from .solver_states import session_state_view
 from .theme import TOKENS, apply_workbench_theme
 from .visualization_pipeline import VisualizationOperation
+from .case_inspector import inspect_cfdx_file
+
 
 try:
     from PySide6.QtCore import QSettings, Qt, Signal
@@ -61,6 +63,7 @@ except ImportError:  # pragma: no cover
 if QMainWindow is not object:
     from .gui_3d import PyVistaQtView
     from .mesh_browser_panel import MeshBrowserPanel
+    from .case_file_panel import CaseFilePanel
     from .probes_panel import ProbesPanel
     from .properties_panel import PropertiesPanel
     from .results_panel import ResultsPanel
