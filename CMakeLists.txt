@@ -968,6 +968,16 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
             LABELS "qualification;validation;3d;thermal;conduction;sanitizer-slow"
             FIXTURES_REQUIRED cfdx_naca3d_meshes
             TIMEOUT 180)
+        add_executable(test_naca3d_wall_quadratic_mesh
+            tests/validation/test_naca3d_wall_quadratic_mesh.cpp)
+        target_link_libraries(test_naca3d_wall_quadratic_mesh PRIVATE cfdx_core)
+        add_test(NAME test_naca3d_wall_quadratic_mesh
+            COMMAND test_naca3d_wall_quadratic_mesh
+                ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes/naca0012_extruded_3d_wall_n16_z4.h5)
+        set_tests_properties(test_naca3d_wall_quadratic_mesh PROPERTIES
+            LABELS "qualification;validation;3d;wall;quadratic;mesh"
+            FIXTURES_REQUIRED cfdx_naca3d_meshes
+            TIMEOUT 120)
     endif()
     add_executable(test_channel_qualification tests/validation/test_channel_qualification.cpp)
     target_link_libraries(test_channel_qualification PRIVATE cfdx_core)
