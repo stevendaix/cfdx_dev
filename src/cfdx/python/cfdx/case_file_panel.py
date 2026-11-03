@@ -110,7 +110,7 @@ class CaseFilePanel(QWidget):
                     str(value) if value is not None else "not declared"
                 )
                 if (
-                    not summary.mesh_counts_complete
+                    summary.regions_truncated
                     and label != "Regions"
                     and value is not None
                 ):
