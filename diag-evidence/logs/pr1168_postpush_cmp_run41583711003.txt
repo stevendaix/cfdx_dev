@@ -1,0 +1,21 @@
+=== SCRIPT (pushed ed4f0f46 vs canonical-minus-shebang) ===
+PUSHED_SCRIPT_MATCHES_CANONICAL
+=== TEST (pushed ed4f0f46 vs canonical) ===
+PUSHED_TEST_MATCHES_CANONICAL
+=== README (pushed ed4f0f46 vs old-head + single toctree insertion) ===
+--- /tmp/orig_readme.md	2026-11-03 05:24:41.963962550 +0000
++++ /tmp/pushed_readme.md	2026-11-03 05:24:41.965962560 +0000
+@@ -40,6 +40,7 @@
+ 14-benchmarks/06-naca0012/chapter
+ 14-benchmarks/07-thermal/chapter
+ 14-benchmarks/08-radiation/chapter
++14-benchmarks/09-thermohydraulics/README
+ 15-qualification/README
+ ```
+ 
+=== sizes ===
+11010 /tmp/pushed_script.py
+11010 /tmp/canon_script_nsb.py
+ 1237 /tmp/pushed_test.py
+ 2863 /tmp/pushed_readme.md
+26120 total
