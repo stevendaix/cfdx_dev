@@ -489,7 +489,9 @@ if QMainWindow is not object:
                     self._refresh_setup_case()
                     self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
                 elif not summary.has_mesh:
-                    raise ValueError(\n                        "CFDX HDF5 file has neither a project configuration nor readable mesh topology"\n                    )
+                    raise ValueError(
+                        "CFDX HDF5 file has neither a project configuration nor readable mesh topology"
+                    )
                 if summary.preview_supported:
                     catalog = self.application.load_mesh(path)
                     self.mesh_browser.set_catalog(catalog)
