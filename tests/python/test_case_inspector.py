@@ -3,8 +3,9 @@ from __future__ import annotations
 import h5py
 import numpy as np
 import pytest
-from cfdx.application import Application
 from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample
+
+from cfdx.application import Application
 from cfdx.case_io import save_case
 from cfdx.session import CFDXSession
 
@@ -90,7 +91,6 @@ def test_dataset_sample_is_bounded_and_rejects_unsafe_or_expensive_reads(tmp_pat
         read_hdf5_dataset_sample(path, "/values", max_values=512)
 
 
-
 def test_inspect_case_written_by_canonical_case_io(tmp_path):
     path = tmp_path / "roundtrip.cfdx.h5"
     session = CFDXSession()
@@ -138,34 +138,6 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     assert summary.numerics == ("scheme",)
     assert summary.preview_supported
     assert summary.n_cells == 1
-
-
-def test_dataset_sample_is_bounded_and_rejects_unsafe_or_expensive_reads(tmp_path):
-    path = tmp_path / "samples.h5"
-    with h5py.File(path, "w") as h5:
-        h5.create_dataset("values", data=np.arange(1_000_000, dtype=np.float64))
-        h5.create_dataset("strings", data=["one", "two"])
-        h5.create_dataset(
-            "oversized_chunk",
-            shape=(1_000_000,),
-            dtype=np.float64,
-            chunks=(200_000,),
-        )
-
-    sample = read_hdf5_dataset_sample(path, "/values", max_values=12)
-    assert len(sample.values) == 12
-    assert sample.total_values == 1_000_000
-    assert sample.values[0] == "0.0"
-    assert sample.values[-1] == "11.0"
-
-    with pytest.raises(ValueError, match="sampling dtype"):
-        read_hdf5_dataset_sample(path, "/strings")
-    with pytest.raises(ValueError, match="decompression sample budget"):
-        read_hdf5_dataset_sample(path, "/oversized_chunk")
-    with pytest.raises(ValueError, match="safe HDF5 path"):
-        read_hdf5_dataset_sample(path, "/../outside")
-    with pytest.raises(ValueError, match="between 1 and 256"):
-        read_hdf5_dataset_sample(path, "/values", max_values=512)
 
 
 def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
@@ -240,7 +212,6 @@ def test_inspect_falls_back_to_cell_offsets_for_invalid_count_attribute(tmp_path
     assert summary.n_cells == 4
 
 
-
 def test_inspect_marks_region_totals_as_partial_when_catalog_is_truncated(tmp_path):
     path = tmp_path / "many-regions.h5"
     with h5py.File(path, "w") as h5:
@@ -259,7 +230,6 @@ def test_inspect_marks_region_totals_as_partial_when_catalog_is_truncated(tmp_pa
     assert summary.regions_truncated
     assert not summary.mesh_counts_complete
     assert summary.n_cells == 300
-
 
 
 def test_inspect_bounds_field_catalogs(tmp_path):
