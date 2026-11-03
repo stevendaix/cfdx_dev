@@ -105,6 +105,36 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     assert summary.n_cells == 1
 
 
+
+def test_dataset_sample_is_bounded_and_rejects_unsafe_or_expensive_reads(tmp_path):
+    path = tmp_path / "samples.h5"
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset("values", data=np.arange(1_000_000, dtype=np.float64))
+        h5.create_dataset("strings", data=["one", "two"])
+        h5.create_dataset(
+            "oversized_chunk",
+            shape=(1_000_000,),
+            dtype=np.float64,
+            chunks=(200_000,),
+        )
+
+    sample = read_hdf5_dataset_sample(path, "/values", max_values=12)
+    assert len(sample.values) == 12
+    assert sample.total_values == 1_000_000
+    assert sample.values[0] == "0.0"
+    assert sample.values[-1] == "11.0"
+
+    with pytest.raises(ValueError, match="sampling dtype"):
+        read_hdf5_dataset_sample(path, "/strings")
+    with pytest.raises(ValueError, match="decompression sample budget"):
+        read_hdf5_dataset_sample(path, "/oversized_chunk")
+    with pytest.raises(ValueError, match="safe HDF5 path"):
+        read_hdf5_dataset_sample(path, "/../outside")
+    with pytest.raises(ValueError, match="between 1 and 256"):
+        read_hdf5_dataset_sample(path, "/values", max_values=512)
+
+
+
 def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     path = tmp_path / "oversized-connectivity.h5"
     with h5py.File(path, "w") as h5:
