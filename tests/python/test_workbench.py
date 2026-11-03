@@ -148,9 +148,7 @@ def test_metadata_only_mesh_open_clears_stale_mesh_catalog(
     with h5py.File(path, "w") as h5:
         h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
         h5.attrs["n_cells"] = 1
-        h5.create_dataset(
-            "points", shape=(100_001, 3), dtype="f8", chunks=(1024, 3)
-        )
+        h5.create_dataset("points", shape=(100_001, 3), dtype="f8", chunks=(1024, 3))
         h5.create_dataset("owner", shape=(1,), dtype="u8")
         h5.create_dataset("cell_offsets", data=[0, 1])
 
