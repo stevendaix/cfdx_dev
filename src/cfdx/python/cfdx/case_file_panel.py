@@ -104,15 +104,22 @@ class CaseFilePanel(QWidget):
                 display_value = (
                     str(value) if value is not None else "not declared"
                 )
-                if not summary.mesh_counts_complete and label != "Regions":
+                if (
+                    not summary.mesh_counts_complete
+                    and label != "Regions"
+                    and value is not None
+                ):
                     display_value = f"≥{display_value}"
                 if label == "Regions" and summary.regions_truncated:
                     display_value = f"{len(summary.regions)}+"
                 QTreeWidgetItem(mesh, [label, display_value])
             if not summary.mesh_counts_complete:
-                QTreeWidgetItem(
-                    mesh, ["Count status", "Partial: first 300 regions only"]
+                count_note = (
+                    "Partial: first 300 regions only"
+                    if summary.regions_truncated
+                    else "Incomplete topology count metadata"
                 )
+                QTreeWidgetItem(mesh, ["Count status", count_note])
             for region in summary.regions:
                 QTreeWidgetItem(mesh, ["Region", region])
             if summary.regions_truncated:
