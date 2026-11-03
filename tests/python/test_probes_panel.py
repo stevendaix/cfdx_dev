@@ -1,4 +1,5 @@
 import importlib.util
+import json
 
 import pytest
 from cfdx.probe import Probe, ProbeField
@@ -153,5 +154,61 @@ def test_live_probe_samples_update_interactive_plot_from_worker_thread() -> None
     )
     x_values, _y_values = panel._probe_plot.plotItem.listDataItems()[0].getData()
     assert list(x_values) == pytest.approx([1, 2, 3])
+    panel.close()
+    app.processEvents()
+
+
+def test_live_probe_stream_exports_buffered_samples_as_csv_or_json(
+    tmp_path, monkeypatch
+) -> None:
+    pytest.importorskip("pyqtgraph")
+    from cfdx.probes_panel import ProbesPanel
+    from PySide6.QtWidgets import QApplication, QFileDialog
+
+    app = QApplication.instance() or QApplication(["cfdx-live-probe-export-test"])
+    session = CFDXSession()
+    session.case.probes.append(Probe("pressure", 0.5, 0.0, 0.0, ProbeField.PRESSURE))
+    application = Application(session)
+    panel = ProbesPanel(application)
+    assert not panel._export_live_button.isEnabled()
+
+    for iteration, value in ((1, 101325.0), (2, 101326.0)):
+        application.events.publish(
+            ProbeSampleReceived(
+                application.state,
+                ProbeStreamSample(
+                    "pressure", "p", "Pa", iteration, iteration / 10, value
+                ),
+            )
+        )
+    panel._flush_live_plot()
+    assert panel._export_live_button.isEnabled()
+
+    csv_path = tmp_path / "live_snapshot.csv"
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *_args: (str(csv_path), "CFDX probe CSV (*.csv)"),
+    )
+    panel._export_live_stream()
+    csv_series = application.read_probe_results(csv_path)
+    assert len(csv_series) == 1
+    assert csv_series[0].name == "pressure"
+    assert [sample.iteration for sample in csv_series[0].samples] == [1, 2]
+
+    json_path = tmp_path / "live_snapshot.json"
+    monkeypatch.setattr(
+        QFileDialog,
+        "getSaveFileName",
+        lambda *_args: (str(json_path), "CFDX probe JSON (*.json)"),
+    )
+    panel._export_live_stream()
+    document = json.loads(json_path.read_text(encoding="utf-8"))
+    assert document["source"] == "live-stream-buffer"
+    assert document["probes"][0]["name"] == "pressure"
+    assert [sample["iteration"] for sample in document["probes"][0]["samples"]] == [
+        1,
+        2,
+    ]
     panel.close()
     app.processEvents()

@@ -108,11 +108,14 @@ panel batches redraws at 10 Hz and retains the latest 2,000 points per probe in
 memory; the live view defaults to iteration (steady samples have constant
 physical time). The X-axis selector can switch the live curve between iteration
 and physical time at any point in the run, and the selected axis is retained as
-new batches arrive. Rejected nonlinear attempts are not published. The canonical
-CSV stays a separate final, atomically written artifact; the GUI never tails a
-partial CSV file. Reading and writing use the shared Application API and
-canonical CSV schema. The GUI does not introduce a second file format or treat a
-CSV round-trip as solver qualification.
+new batches arrive. The separate **Export live stream** action saves the
+complete retained buffer as canonical probe CSV or versioned `cfdx-probe-json`
+v1 JSON; it exports all probes, not only visible curves. Since each live series
+is bounded to 2,000 samples, older samples are not included after they roll out
+of memory. Rejected nonlinear attempts are not published. The solver's final
+canonical CSV stays a separate artifact; the GUI never tails a partial CSV
+file. Reading and writing use the shared Application API and canonical CSV
+schema. The GUI does not treat a CSV round-trip as solver qualification.
 
 ## Execution controls
 

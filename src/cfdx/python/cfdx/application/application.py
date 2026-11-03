@@ -11,7 +11,12 @@ from ..execution import ExecutionController
 from ..mesh_model import MeshCatalog, read_mesh_catalog
 from ..probe import ProbeCatalog
 from ..probe_stream import ProbeStreamSample
-from ..probe_validation import ProbeSeries, read_probe_csv, write_probe_csv
+from ..probe_validation import (
+    ProbeSeries,
+    read_probe_csv,
+    write_probe_csv,
+    write_probe_json,
+)
 from ..project import Project
 from ..results_series import ResultSeries, discover_result_series
 from ..runner import SolverRunner
@@ -397,6 +402,18 @@ class Application:
     ) -> Path:
         """Export probe history using the canonical native CSV schema."""
         return write_probe_csv(Path(path), tuple(series))
+
+    def export_probe_results_json(
+        self,
+        path: str | Path,
+        series: Iterable[ProbeSeries],
+        *,
+        max_samples_per_probe: int | None = None,
+    ) -> Path:
+        """Export probe histories as versioned JSON, optionally identifying a live buffer."""
+        return write_probe_json(
+            Path(path), tuple(series), max_samples_per_probe=max_samples_per_probe
+        )
 
     def set_results(
         self, series: ResultSeries | None, *, directory: str | Path | None = None

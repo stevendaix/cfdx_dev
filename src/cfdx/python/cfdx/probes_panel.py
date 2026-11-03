@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+from pathlib import Path
 from weakref import ref
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -73,6 +74,12 @@ class ProbesPanel(QWidget):
         self._export_results_button = QPushButton("Export results CSV…")
         self._export_results_button.setEnabled(False)
         self._export_results_button.clicked.connect(self._export_results)
+        self._export_live_button = QPushButton("Export live stream…")
+        self._export_live_button.setEnabled(False)
+        self._export_live_button.setToolTip(
+            "Export all samples retained in the live buffer, not only visible curves"
+        )
+        self._export_live_button.clicked.connect(self._export_live_stream)
         self._results_summary = QLabel("No probe results loaded")
         self._results_summary.setObjectName("workbench.probes.results_summary")
         self._results_summary.setProperty("role", "secondary")
@@ -115,6 +122,7 @@ class ProbesPanel(QWidget):
         results_controls = QHBoxLayout()
         results_controls.addWidget(self._load_results_button)
         results_controls.addWidget(self._export_results_button)
+        results_controls.addWidget(self._export_live_button)
         results_controls.addWidget(self._results_summary, 1)
         layout.addLayout(results_controls)
         plot_controls = QHBoxLayout()
@@ -201,6 +209,7 @@ class ProbesPanel(QWidget):
         self._live_metadata.clear()
         self._display_probe_series = ()
         self._live_dirty = False
+        self._export_live_button.setEnabled(False)
         self._results_summary.setText("Waiting for live probe samples…")
         iteration_index = self._plot_axis_selector.findData("iteration")
         if iteration_index >= 0:
@@ -250,6 +259,7 @@ class ProbesPanel(QWidget):
             return
         history.append(ProbeSample(sample.iteration, sample.time, sample.value))
         self._live_dirty = True
+        self._export_live_button.setEnabled(True)
 
     def _flush_live_plot(self) -> None:
         if not self._live_dirty:
@@ -478,6 +488,59 @@ class ProbesPanel(QWidget):
             self._show_results_message(f"Could not export probe results: {exc}")
             return
         self._show_results_message(f"Exported probe results: {exported}")
+
+    def _live_probe_series(self) -> tuple[ProbeSeries, ...]:
+        """Return every sample retained by the live buffers, independent of plot filtering."""
+        return tuple(
+            ProbeSeries(
+                name,
+                self._live_metadata[name][0],
+                tuple(self._live_samples[name]),
+                field=self._live_metadata[name][1],
+                unit=self._live_metadata[name][2],
+            )
+            for name in sorted(self._live_samples)
+            if self._live_samples[name]
+        )
+
+    def _export_live_stream(self) -> None:
+        """Export the bounded live-stream snapshot as canonical CSV or versioned JSON."""
+        series = self._live_probe_series()
+        if not series:
+            self._show_results_message("No live probe samples are available to export")
+            self._export_live_button.setEnabled(False)
+            return
+
+        destination, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export live probe stream",
+            "cfdx-live-probes.csv",
+            "CFDX probe CSV (*.csv);;CFDX probe JSON (*.json)",
+        )
+        if not destination:
+            return
+        export_json = "JSON" in selected_filter.upper()
+        target = Path(destination)
+        expected_suffix = ".json" if export_json else ".csv"
+        if target.suffix.lower() != expected_suffix:
+            target = target.with_suffix(expected_suffix)
+
+        try:
+            if export_json:
+                exported = self.application.export_probe_results_json(
+                    target,
+                    series,
+                    max_samples_per_probe=_MAX_LIVE_SAMPLES_PER_PROBE,
+                )
+            else:
+                exported = self.application.export_probe_results(target, series)
+        except (OSError, ValueError) as exc:
+            self._show_results_message(f"Could not export live probe stream: {exc}")
+            return
+        sample_count = sum(len(probe.samples) for probe in series)
+        self._show_results_message(
+            f"Exported {sample_count} buffered live probe samples: {exported}"
+        )
 
     def _show_results_message(self, message: str) -> None:
         parent = self.window()
