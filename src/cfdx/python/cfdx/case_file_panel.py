@@ -54,13 +54,13 @@ class CaseFilePanel(QWidget):
             )
             values = ", ".join(sample.values) or "(empty dataset)"
             truncated = (
-                f"\\nshowing {len(sample.values)} of {sample.total_values:,} values"
+                f"\nshowing {len(sample.values)} of {sample.total_values:,} values"
                 if sample.total_values > len(sample.values)
                 else ""
             )
             preview = (
-                f"{sample.path}\\nshape: {sample.shape}\\ndtype: {sample.dtype}"
-                f"\\nfirst values: {values}{truncated}"
+                f"{sample.path}\nshape: {sample.shape}\ndtype: {sample.dtype}"
+                f"\nfirst values: {values}{truncated}"
             )
         except (OSError, RuntimeError, TypeError, ValueError, KeyError) as exc:
             preview = f"Unable to read dataset sample: {exc}"
