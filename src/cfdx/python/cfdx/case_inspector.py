@@ -172,7 +172,13 @@ def _region_names(
         return (), False
     names = []
     truncated = False
+    scanned = 0
+    scan_limit = max_items * 4
     for name in region_group:
+        scanned += 1
+        if scanned > scan_limit:
+            truncated = True
+            break
         if not isinstance(region_group.get(name, getlink=True), h5py.HardLink):
             continue
         value = region_group[name]
@@ -244,7 +250,13 @@ def _field_names(
         return (), False
     names = []
     truncated = False
+    scanned = 0
+    scan_limit = max_items * 4
     for name in field_group:
+        scanned += 1
+        if scanned > scan_limit:
+            truncated = True
+            break
         if not isinstance(field_group.get(name, getlink=True), h5py.HardLink):
             continue
         value = field_group[name]
