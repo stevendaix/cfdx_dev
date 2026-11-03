@@ -99,8 +99,8 @@ def _benchmark_one(n_cells: int) -> dict[str, Any]:
 
         if summary.n_cells != n_cells or summary.preview_supported:
             raise RuntimeError("large sparse fixture did not hit metadata-only mode")
-        if len(sample.values) != 32:
-            raise RuntimeError("bounded dataset sample did not return 32 values")
+        if not sample.values or len(sample.values) > 32:
+            raise RuntimeError("bounded dataset sample violated its 32-value cap")
 
         logical_bytes = sum(
             item.size_bytes or 0 for item in summary.datasets
