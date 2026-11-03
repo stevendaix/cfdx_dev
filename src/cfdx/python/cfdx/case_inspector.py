@@ -180,9 +180,11 @@ def _region_names(
             truncated = True
             break
         if not isinstance(region_group.get(name, getlink=True), h5py.HardLink):
+            truncated = True
             continue
         value = region_group[name]
         if not isinstance(value, h5py.Group):
+            truncated = True
             continue
         if len(names) >= max_items:
             truncated = True
@@ -258,9 +260,11 @@ def _field_names(
             truncated = True
             break
         if not isinstance(field_group.get(name, getlink=True), h5py.HardLink):
+            truncated = True
             continue
         value = field_group[name]
         if not isinstance(value, h5py.Dataset):
+            truncated = True
             continue
         if len(names) >= max_items:
             truncated = True
@@ -452,6 +456,10 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             preview_block_reason = "mesh topology metadata is incomplete"
         elif region_link is not None and not isinstance(region_object, h5py.Group):
             preview_block_reason = "region catalog must be an internal HDF5 group"
+        elif regions_truncated:
+            preview_block_reason = (
+                "region catalog is incomplete or contains non-internal links"
+            )
         elif regions:
             preview_block_reason = (
                 "region-grouped meshes require the streaming renderer"
