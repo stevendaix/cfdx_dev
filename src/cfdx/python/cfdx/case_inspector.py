@@ -225,6 +225,70 @@ def _case_config(h5: h5py.File) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def read_dataset_preview(
+    path: str | Path,
+    dataset_path: str,
+    *,
+    max_elements: int = 256,
+    max_text_chars: int = 2048,
+) -> str:
+    """Read a small numeric preview from one dataset without loading its full array.
+
+    Preview reads are deliberately capped. Text, object and compound datasets
+    are not materialized because a single variable-length element can be huge.
+    """
+    if not 1 <= max_elements <= 4096:
+        raise ValueError("max_elements must be between 1 and 4096")
+    if not 128 <= max_text_chars <= 8192:
+        raise ValueError("max_text_chars must be between 128 and 8192")
+    if not dataset_path.startswith("/"):
+        raise ValueError("dataset_path must be an absolute HDF5 path")
+    parts = dataset_path.strip("/").split("/")
+    if not parts or any(part in {"", ".", ".."} for part in parts):
+        raise ValueError("dataset_path is not a safe HDF5 path")
+
+    with h5py.File(Path(path), "r") as h5:
+        if dataset_path.strip("/") not in h5:
+            raise KeyError(dataset_path)
+        dataset = h5[dataset_path.strip("/")]
+        if not isinstance(dataset, h5py.Dataset):
+            raise TypeError(f"{dataset_path} is not an HDF5 dataset")
+        if dataset.dtype.kind not in "biufc":
+            return (
+                f"{dataset_path}\\nshape: {dataset.shape}\\ndtype: {dataset.dtype}"
+                "\\nPreview disabled for non-numeric or variable-length data."
+            )
+
+        shape = tuple(int(size) for size in dataset.shape)
+        if not shape:
+            values = dataset[()]
+            truncated = False
+        elif any(size == 0 for size in shape):
+            values = []
+            truncated = False
+        else:
+            selection = []
+            remaining = max_elements
+            for size in shape:
+                count = min(size, max(1, remaining))
+                selection.append(slice(0, count))
+                remaining = max(1, remaining // count)
+            values = dataset[tuple(selection)].tolist()
+            truncated = any(
+                selected.stop < size
+                for selected, size in zip(selection, shape, strict=True)
+            )
+
+        rendered = repr(values)
+        if len(rendered) > max_text_chars:
+            rendered = rendered[: max_text_chars - 3] + "..."
+        suffix = "\\n(preview truncated; source dataset was not modified)" if truncated else ""
+        return (
+            f"{dataset_path}\\nshape: {shape}\\ndtype: {dataset.dtype}"
+            f"\\nfirst values: {rendered}{suffix}"
+        )
+
+
 def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileSummary:
     """Inspect CFDX HDF5 metadata without reading any scientific array values.
 
