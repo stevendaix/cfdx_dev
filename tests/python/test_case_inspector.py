@@ -4,10 +4,10 @@ import h5py
 import numpy as np
 import pytest
 from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample
-
-from cfdx.application import Application
 from cfdx.case_io import save_case
 from cfdx.session import CFDXSession
+
+from cfdx.application import Application
 
 
 def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
@@ -113,6 +113,7 @@ def test_inspect_case_written_by_canonical_case_io(tmp_path):
     assert not summary.has_mesh
     assert not summary.preview_supported
 
+
 def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     path = tmp_path / "mesh.h5"
     with h5py.File(path, "w") as h5:
@@ -175,6 +176,7 @@ def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     assert not summary.preview_supported
     assert "connectivity" in summary.preview_block_reason
 
+
 def test_preview_rejects_non_integer_surface_connectivity(tmp_path):
     path = tmp_path / "invalid-connectivity-dtype.h5"
     with h5py.File(path, "w") as h5:
@@ -224,7 +226,6 @@ def test_inspect_bounds_soft_link_scans_in_region_and_field_groups(tmp_path):
     assert summary.regions_truncated
     assert summary.scalar_fields == ()
     assert summary.scalar_fields_truncated
-
 
 def test_inspect_bounds_hdf5_group_only_trees(tmp_path):
     path = tmp_path / "many-groups.h5"
