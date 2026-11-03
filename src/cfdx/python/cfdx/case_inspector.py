@@ -446,8 +446,12 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             "patch_face_offsets",
         )
         preview_block_reason = None
+        region_link = h5.get("regions", getlink=True)
+        region_object = _internal_object(h5, "regions")
         if not has_mesh:
             preview_block_reason = "mesh topology metadata is incomplete"
+        elif region_link is not None and not isinstance(region_object, h5py.Group):
+            preview_block_reason = "region catalog must be an internal HDF5 group"
         elif regions:
             preview_block_reason = (
                 "region-grouped meshes require the streaming renderer"
