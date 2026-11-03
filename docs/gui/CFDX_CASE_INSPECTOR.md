@@ -11,7 +11,8 @@ field-array payloads merely to open the file.
 Selecting a dataset in the Case File dock reads a bounded sample (32 values
 by default, hard maximum 256). The sample is read-only, uses HDF5 slicing,
 preserves trailing vector components where possible, and never materializes
-the full dataset. Numeric and fixed-width string datasets are supported;
+the full dataset. Numeric and fixed-width string datasets stored through internal HDF5 hard
+links are supported; soft/external links, external raw storage, virtual,
 variable-length, object and compound datasets are rejected. This is a
 diagnostic sample, not a replacement for a full field reader or
 post-processing pipeline.
@@ -63,7 +64,8 @@ case does not load or activate a restart checkpoint.
 
 Opening a file does not slice mesh/field datasets. Only an explicit dataset
 selection reads a bounded sample. Chunked datasets whose individual chunks
-exceed the 1 MiB decompression budget and virtual datasets are not sampled.
+exceed the 1 MiB decompression budget, virtual datasets, external storage and
+non-internal HDF5 links are not sampled.
 Dataset discovery stops at 300 entries by default (5,000 hard maximum),
 scalar/vector field
 catalogs and region names are each capped at 300 entries, and root attribute
@@ -73,8 +75,8 @@ exact mesh totals. Variable-length
 dataset storage is reported as unknown rather than estimated from pointer
 size. Known small
 format/provenance attributes and the case setup JSON are read for
-identification; the setup JSON is rejected when its reported payload exceeds
-1 MiB.
+identification; decoded setup JSON larger than 1 MiB is rejected before
+parsing.
 
 The current PyVista mesh loader still materializes full topology and creates
 Python-side face objects. It is therefore deliberately not used for large
