@@ -65,7 +65,7 @@ class CaseFileSummary:
     boundaries: tuple[str, ...]
     attributes: tuple[tuple[str, str], ...]
     datasets: tuple[Hdf5DatasetInfo, ...]
-    omitted_datasets: int = 0
+    datasets_truncated: bool = False
 
     @property
     def total_field_count(self) -> int:
@@ -133,7 +133,12 @@ def _field_names(h5: h5py.File, kind: str) -> tuple[str, ...]:
 def _case_config(h5: h5py.File) -> dict[str, Any] | None:
     raw = None
     if "case/config" in h5:
-        raw = h5["case/config"][()]
+        dataset = h5["case/config"]
+        if not isinstance(dataset, h5py.Dataset) or dataset.size != 1:
+            return None
+        if dataset.dtype.kind not in "SUO" or dataset.dtype.itemsize > 1_048_576:
+            return None
+        raw = dataset[()]
     elif "case_setup_json" in h5.attrs:
         raw = h5.attrs["case_setup_json"]
     if raw is None:
@@ -173,15 +178,15 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
         vector_fields = _field_names(h5, "vector")
 
         datasets: list[Hdf5DatasetInfo] = []
-        total_datasets = 0
+        datasets_truncated = False
 
-        def collect(name: str, obj: Any) -> None:
-            nonlocal total_datasets
+        def collect(name: str, obj: Any):
+            nonlocal datasets_truncated
             if not isinstance(obj, h5py.Dataset):
-                return
-            total_datasets += 1
+                return None
             if len(datasets) >= max_datasets:
-                return
+                datasets_truncated = True
+                return 1
             shape = tuple(int(size) for size in obj.shape)
             size_bytes = int(prod(shape) * obj.dtype.itemsize)
             datasets.append(Hdf5DatasetInfo(
@@ -194,13 +199,13 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             ))
 
         h5.visititems(collect)
-        omitted = max(0, total_datasets - len(datasets))
         is_cfdx = file_format in _FORMATS or config is not None or has_mesh
         preview_supported = (
             has_mesh and not regions
             and n_points is not None and n_faces is not None
             and n_points <= 100_000 and n_faces <= 100_000
-            and (n_cells is None or n_cells <= 100_000)
+            and n_cells is not None
+            and n_cells <= 100_000
             and all(
                 name in h5
                 for name in (
@@ -245,5 +250,5 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             else (),
             attributes=attrs,
             datasets=tuple(datasets),
-            omitted_datasets=omitted,
+            datasets_truncated=datasets_truncated,
         )
