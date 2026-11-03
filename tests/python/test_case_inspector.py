@@ -196,6 +196,30 @@ def test_preview_rejects_non_integer_surface_connectivity(tmp_path):
     assert "integer dtypes" in summary.preview_block_reason
 
 
+def test_preview_rejects_externally_stored_topology(tmp_path):
+    path = tmp_path / "external-topology.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        h5.attrs["n_cells"] = 1
+        h5.create_dataset(
+            "points",
+            shape=(4, 3),
+            dtype=np.float64,
+            external=[("external-points.raw", 0, h5py.h5f.UNLIMITED)],
+        )
+        h5.create_dataset("owner", data=np.zeros(4, dtype=np.int64))
+        h5.create_dataset("neighbour", data=-np.ones(4, dtype=np.int64))
+        h5.create_dataset("face_vertices", data=[0, 1, 1, 2, 2, 3, 3, 0])
+        h5.create_dataset("face_offsets", data=[0, 2, 4, 6, 8])
+        h5.create_dataset("patch_face_ids", data=[0, 1, 2, 3])
+        h5.create_dataset("patch_face_offsets", data=[0, 4])
+
+    summary = inspect_cfdx_file(path)
+
+    assert not summary.preview_supported
+    assert "externally stored" in summary.preview_block_reason
+
+
 def test_inspect_bounds_dataset_tree(tmp_path):
     path = tmp_path / "many.h5"
     with h5py.File(path, "w") as h5:
