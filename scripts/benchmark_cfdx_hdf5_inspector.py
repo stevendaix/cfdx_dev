@@ -44,7 +44,6 @@ def _create_sparse_case(path: Path, n_cells: int) -> None:
             shape=(n_points, 3),
             dtype="f8",
             chunks=(1024, 3),
-            fill_time="never",
         )
         for name, dtype in (
             ("owner", "i8"),
@@ -56,21 +55,18 @@ def _create_sparse_case(path: Path, n_cells: int) -> None:
                 shape=(n_faces,),
                 dtype=dtype,
                 chunks=(4096,),
-                fill_time="never",
-            )
+                )
         h5.create_dataset(
             "face_vertices",
             shape=(n_connectivity,),
             dtype="u8",
             chunks=(4096,),
-            fill_time="never",
         )
         h5.create_dataset(
             "face_offsets",
             shape=(n_faces + 1,),
             dtype="u8",
             chunks=(4096,),
-            fill_time="never",
         )
         h5.create_dataset("patch_face_offsets", data=[0, n_faces])
         h5.create_dataset(
@@ -78,7 +74,6 @@ def _create_sparse_case(path: Path, n_cells: int) -> None:
             shape=(n_cells,),
             dtype="f8",
             chunks=(4096,),
-            fill_time="never",
         )
 
 
