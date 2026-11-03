@@ -95,6 +95,7 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
         h5.create_dataset("face_offsets", data=[0, 2, 4, 6, 8])
         h5.create_dataset("patch_face_ids", data=[0, 1, 2, 3])
         h5.create_dataset("patch_face_offsets", data=[0, 4])
+        h5.create_dataset("metadata/labels", data=["wall"])
 
     monkeypatch.setattr(
         QFileDialog,
@@ -113,6 +114,10 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
         "/points", Qt.MatchFlag.MatchExactly, 0
     )
     assert point_items
+    label_items = window.case_file_panel.tree.findItems(
+        "/metadata/labels", Qt.MatchFlag.MatchExactly, 0
+    )
+    assert label_items
     window.case_file_panel.tree.itemClicked.emit(point_items[0], 0)
     assert "shape: (4, 3)" in window.case_file_panel.preview.toPlainText()
     window.close()
