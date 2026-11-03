@@ -459,8 +459,22 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             neighbour_dataset = _internal_object(h5, "neighbour")
             patch_ids_dataset = _internal_object(h5, "patch_face_ids")
             patch_offsets_dataset = _internal_object(h5, "patch_face_offsets")
+            integer_topology = (
+                face_vertices_dataset,
+                face_offsets_dataset,
+                owner_dataset,
+                neighbour_dataset,
+                patch_ids_dataset,
+                patch_offsets_dataset,
+            )
             if points_dataset.ndim != 2 or points_dataset.shape[1] != 3:
                 preview_block_reason = "points must have shape (n_points, 3)"
+            elif points_dataset.dtype.kind != "f":
+                preview_block_reason = "point coordinates must use a floating-point dtype"
+            elif any(dataset.dtype.kind not in "iu" for dataset in integer_topology):
+                preview_block_reason = "surface connectivity datasets must use integer dtypes"
+            elif neighbour_dataset.dtype.kind != "i":
+                preview_block_reason = "neighbour indices must use a signed integer dtype"
             elif face_vertices_dataset.ndim != 1:
                 preview_block_reason = (
                     "face connectivity must be a one-dimensional array"
@@ -473,7 +487,7 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
                 preview_block_reason = (
                     "owner/neighbour arrays do not match the face count"
                 )
-            elif patch_offsets_dataset.ndim != 1 or patch_offsets_dataset.shape[0] < 1:
+            elif patch_offsets_dataset.ndim != 1:
                 preview_block_reason = "patch offsets are malformed"
             elif patch_ids_dataset.ndim != 1 or patch_offsets_dataset.shape[0] < 2:
                 preview_block_reason = "patch face metadata is missing"
