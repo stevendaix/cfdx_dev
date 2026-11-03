@@ -6,11 +6,11 @@ does not imply loading its scientific payload into RAM.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from math import prod
 from pathlib import Path
 from typing import Any
-import json
 
 import h5py
 
@@ -82,6 +82,8 @@ def _safe_attribute(h5: h5py.Group, name: str, *, max_bytes: int = 4096):
     if name not in h5.attrs:
         return None
     attribute_id = h5.attrs.get_id(name)
+    if attribute_id.dtype.kind == "O":
+        return None
     if attribute_id.get_storage_size() > max_bytes:
         return None
     return h5.attrs[name]
@@ -97,8 +99,11 @@ def _root_attributes(
         if index >= max_count:
             truncated = True
             break
-        size = h5.attrs.get_id(name).get_storage_size()
-        if size > max_value_bytes:
+        attribute_id = h5.attrs.get_id(name)
+        size = attribute_id.get_storage_size()
+        if attribute_id.dtype.kind == "O":
+            value = "<omitted: variable-length attribute>"
+        elif size > max_value_bytes:
             value = f"<omitted: {size:,} bytes>"
         else:
             value = _text(h5.attrs[name])
