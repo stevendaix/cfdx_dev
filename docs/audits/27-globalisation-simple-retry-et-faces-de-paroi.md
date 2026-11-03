@@ -29,7 +29,7 @@ La reconstruction est locale à chaque face du patch de paroi (owner uniquement,
 
 ## 6. Ordre de précision attendu et validation exigée
 - Garde SIMPLE : propriétés testées en unitaire (tests/unit/test_timestep_control.cpp) — rejet d'un blowup réel, non-rejet du bruit d'arrondi, rejet des non-finis ; comportement par défaut strictement inchangé (opt-in via NonlinearRetryControls).
-- Reconstruction aux faces : MMS affine sur le maillage NACA réel (tests/unit/test_wall_face_reconstruction_mms.cpp, --face-mms de l'audit de cisaillement) — erreur < 1e-11 sur pression et traction ; géométrie dégénérée rejetée. Ordre mesuré quadratique : pression 2, traction 1 (tests/unit/test_wall_face_reconstruction_quadratic.cpp, ratios exacts 4/2 documentés, la promotion d'ordre 2 en traction échoue volontairement).
+- Reconstruction aux faces : le MMS affine unitaire (tests/unit/test_wall_face_reconstruction_mms.cpp) utilise un cas synthétique oblique et vérifie l'exactitude affine ainsi que le rejet d'une géométrie dégénérée ; il est maintenant enregistré dans CTest. Le mode `--face-mms` applique séparément ce contrôle au vrai maillage NACA n64 et vient d'être ajouté à la campagne longue CTest ; résultat en attente sur le HEAD courant. Ordre mesuré quadratique : pression 2, traction 1 (tests/unit/test_wall_face_reconstruction_quadratic.cpp, ratios exacts 4/2 documentés, la promotion d'ordre 2 en traction échoue volontairement).
 - Toute qualification physique (GCI NACA, Cd, campagnes r*) reste hors scope de cette fiche : l'estimateur GCI (scripts/qualify_naca_grid.py) est fail-closed (3 grilles convergées, ratios quasi uniformes, Cd = Cdp + Cdv) et aucune campagne n'est revendiquée ici.
 
 ## 7. Statut d'implémentation CFDX
