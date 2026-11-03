@@ -73,6 +73,8 @@ def test_dataset_sample_is_bounded_and_rejects_unsafe_or_expensive_reads(tmp_pat
             dtype=np.float64,
             chunks=(200_000,),
         )
+        h5["soft_values"] = h5py.SoftLink("/values")
+        h5["external_values"] = h5py.ExternalLink("external.h5", "/values")
 
     sample = read_hdf5_dataset_sample(path, "/values", max_values=12)
     assert len(sample.values) == 12
@@ -88,6 +90,10 @@ def test_dataset_sample_is_bounded_and_rejects_unsafe_or_expensive_reads(tmp_pat
         read_hdf5_dataset_sample(path, "/../outside")
     with pytest.raises(ValueError, match="between 1 and 256"):
         read_hdf5_dataset_sample(path, "/values", max_values=512)
+    with pytest.raises(ValueError, match="internal HDF5 hard links"):
+        read_hdf5_dataset_sample(path, "/soft_values")
+    with pytest.raises(ValueError, match="internal HDF5 hard links"):
+        read_hdf5_dataset_sample(path, "/external_values")
 
 
 def test_inspect_case_written_by_canonical_case_io(tmp_path):
