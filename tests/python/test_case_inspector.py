@@ -4,7 +4,7 @@ import h5py
 import numpy as np
 import pytest
 from cfdx.application import Application
-from cfdx.case_inspector import inspect_cfdx_file, read_dataset_preview
+from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample, read_dataset_preview
 from cfdx.case_io import save_case
 from cfdx.session import CFDXSession
 
@@ -55,6 +55,10 @@ def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
         item.path == "/points" and item.size_bytes == 1_200_000_000
         for item in summary.datasets
     )
+    sample = read_hdf5_dataset_sample(path, "/points", max_values=30)
+    assert len(sample.values) == 30
+    assert sample.total_values == 150_000_000
+    assert set(sample.values) == {"0.0"}
 
 def test_inspect_case_written_by_canonical_case_io(tmp_path):
     path = tmp_path / "roundtrip.cfdx.h5"
@@ -103,6 +107,24 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     assert summary.numerics == ("scheme",)
     assert summary.preview_supported
     assert summary.n_cells == 1
+
+
+def test_dataset_sample_is_bounded_and_rejects_variable_length_values(tmp_path):
+    path = tmp_path / "samples.h5"
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset("values", data=np.arange(1_000_000, dtype=np.float64))
+        h5.create_dataset("strings", data=["one", "two"])
+
+    sample = read_hdf5_dataset_sample(path, "/values", max_values=12)
+
+    assert len(sample.values) == 12
+    assert sample.total_values == 1_000_000
+    assert sample.values[0] == "0.0"
+    assert sample.values[-1] == "11.0"
+
+    with pytest.raises(ValueError, match="sampling dtype"):
+        read_hdf5_dataset_sample(path, "/strings")
+
 
 def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     path = tmp_path / "oversized-connectivity.h5"
@@ -192,8 +214,6 @@ def test_dataset_preview_rejects_unsafe_paths_and_skips_strings(tmp_path):
     assert "Preview disabled for non-numeric" in preview
 
 
-
-
 def test_inspect_bounds_field_catalogs(tmp_path):
     path = tmp_path / "many-fields.h5"
     with h5py.File(path, "w") as h5:
@@ -207,7 +227,6 @@ def test_inspect_bounds_field_catalogs(tmp_path):
     assert summary.scalar_fields_truncated
     with pytest.raises(ValueError, match="between 1 and 5000"):
         inspect_cfdx_file(path, max_datasets=10_000)
-
 
 
 def test_inspect_rejects_non_hdf5_file(tmp_path):
