@@ -109,4 +109,9 @@ class CaseFilePanel(QWidget):
         for name, value in summary.attributes:
             item = QTreeWidgetItem(attributes, [name, value])
             item.setToolTip(1, value)
+        if summary.attributes_truncated:
+            QTreeWidgetItem(
+                attributes,
+                ["Attribute listing", "Truncated at the configured metadata limit"],
+            )
         self.tree.expandToDepth(1)
