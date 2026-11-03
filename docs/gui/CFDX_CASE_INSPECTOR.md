@@ -59,6 +59,12 @@ doing so.
 
 The numerical checkpoint remains a separate `.dat.h5` artifact. Inspecting a
 case does not load or activate a restart checkpoint.
+The Case File dock displays datasets as a hierarchical HDF5 tree. Its filter
+retains matching ancestor groups; dataset samples can be opened by mouse or
+keyboard selection. The Copy dataset path action copies the selected absolute
+HDF5 path without reading its payload. Expand all and Collapse all controls
+support navigation of large metadata trees.
+
 
 ## Performance contract
 
