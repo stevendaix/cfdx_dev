@@ -56,7 +56,10 @@ static Mesh make_cartesian_3x3x3()
     for(std::size_t i=0;i<=n;++i)
         for(std::size_t j=0;j<=n;++j)
             for(std::size_t k=0;k<=n;++k)
-                mesh.points().set(point_id(i,j,k),static_cast<double>(i),
+                // Affine shear x = i + 0.2 j creates a genuinely non-orthogonal
+                // hexahedral mesh while preserving a planar x_min WALL.
+                mesh.points().set(point_id(i,j,k),
+                    static_cast<double>(i) + 0.2*static_cast<double>(j),
                     static_cast<double>(j),static_cast<double>(k));
 
     std::map<std::array<std::uint32_t,4>,std::size_t> face_lookup;
@@ -102,7 +105,8 @@ static Mesh make_cartesian_3x3x3()
         bool on_x_min=true;
         for(std::size_t v=off;v<mesh.faces().offsets_data()[face+1];++v) {
             const auto point=mesh.faces().vertices_data()[v];
-            if(std::abs(mesh.points().x_data()[point])>1e-14) on_x_min=false;
+            if(std::abs(mesh.points().x_data()[point] -
+                        0.2*mesh.points().y_data()[point])>1e-14) on_x_min=false;
         }
         (on_x_min ? wall.face_ids : other.face_ids).push_back(
             static_cast<FaceIndex>(face));
@@ -203,7 +207,9 @@ int main()
             wall_velocity_samples,0.7,6);
         EXPECT_TRUE(surface.size()==mesh.boundary().patch(wall_patch).face_ids.size());
         for(const auto& sample:surface) {
-            EXPECT_TRUE(sample.normal.x>0.999999);
+            EXPECT_TRUE(sample.normal.x>0.98);
+            EXPECT_TRUE(sample.normal.y<0.0);
+            EXPECT_NEAR(sample.normal.z,0.0,1e-12);
             EXPECT_NEAR(sample.pressure,quadratic_pressure(
                 Vec3{sample.position.x,sample.position.y,sample.position.z}),2e-10);
             EXPECT_TRUE(std::isfinite(sample.viscous_traction.x));
