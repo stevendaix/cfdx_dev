@@ -877,6 +877,8 @@ if QMainWindow is not object:
                         )
                         self._show_viewport()
                     else:
+                        self.application.clear_mesh_catalog()
+                        self.mesh_browser.clear()
                         self.view3d.clear()
                         self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
                         viewport_note = (
