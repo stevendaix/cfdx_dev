@@ -204,9 +204,9 @@ def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
             group = _internal_object(h5, f"regions/{name}")
             if not isinstance(group, h5py.Group):
                 return None, None, None
-            points = group.get("points")
-            owner = group.get("owner")
-            offsets = group.get("cell_offsets")
+            points = _internal_object(group, "points")
+            owner = _internal_object(group, "owner")
+            offsets = _internal_object(group, "cell_offsets")
             if not isinstance(points, h5py.Dataset) or not isinstance(
                 owner, h5py.Dataset
             ):
