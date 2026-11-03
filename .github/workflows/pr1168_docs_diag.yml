@@ -1,0 +1,105 @@
+name: PR 1168 sphinx docs oracle (diag)
+
+# DIAG-ONLY - branche ci/long-campaign-diagnostics (PR #903, JAMAIS merger).
+# Evidence-only : relever l'erreur Sphinx exacte derriere l'echec du job "build"
+# (docs.yml, "Build Sphinx documentation" exit 1 a 22:24:18Z) sur le head PR #1168 d7838830.
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths:
+      - '.github/workflows/pr1168_docs_diag.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr1168-docs-diag
+  cancel-in-progress: false
+
+env:
+  EVID: diag-evidence/logs
+  PR1168_HEAD: d78388304f053d668a0265eebe1a7269108646c8
+
+jobs:
+  oracle:
+    name: sphinx-build -W replica on PR1168 head
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      WDIR: /tmp/pr1168_wt3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve pins and worktree PR head
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "pr1168_head=$PR1168_HEAD"
+            echo "purpose=exact sphinx error behind docs.yml build exit 1 on PR #1168 head d7838830"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1168_docs_meta_run$GITHUB_RUN_ID.txt"
+          git cat-file -e "$PR1168_HEAD^{commit}" || { echo "::error::PR1168 head unresolvable"; exit 1; }
+          git worktree add "$WDIR" "$PR1168_HEAD"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install documentation dependencies
+        run: python -m pip install -r docs/requirements.txt
+
+      - name: Sphinx build replica (warnings fatal, full output)
+        run: |
+          set +e
+          cd "$WDIR"
+          {
+            echo "=== sphinx-build -W -b html docs docs/_build/html (replica of docs.yml) ==="
+            sphinx-build -W -b html docs docs/_build/html
+            echo "sphinx_exit=$?"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1168_sphinx_out_run$GITHUB_RUN_ID.txt" 2>&1
+          rc=$?
+          set -e
+          echo "sphinx_replica_exit=$rc" | tee "$GITHUB_WORKSPACE/$EVID/pr1168_docs_status_run$GITHUB_RUN_ID.txt"
+          tail -n 80 "$GITHUB_WORKSPACE/$EVID/pr1168_sphinx_out_run$GITHUB_RUN_ID.txt"
+
+      - name: Sphinx build WITHOUT -W (full warning inventory, informational)
+        run: |
+          set +e
+          cd "$WDIR"
+          rm -rf docs/_build/html2
+          {
+            echo "=== sphinx-build -b html docs docs/_build/html2 (warning inventory) ==="
+            sphinx-build -b html docs docs/_build/html2
+            echo "sphinx_nowarn_exit=$?"
+          } > "$GITHUB_WORKSPACE/$EVID/pr1168_sphinx_nowarn_run$GITHUB_RUN_ID.txt" 2>&1
+          set -e
+          grep -c "WARNING" "$GITHUB_WORKSPACE/$EVID/pr1168_sphinx_nowarn_run$GITHUB_RUN_ID.txt" || true
+
+      - name: Commit evidence
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: pr1168 sphinx oracle run $GITHUB_RUN_ID (evidence-only) [ci skip]"
+            if ! git push origin "HEAD:$GITHUB_REF_NAME" 2>&1; then
+              git pull --rebase origin "$GITHUB_REF_NAME"
+              git push origin "HEAD:$GITHUB_REF_NAME"
+            fi
+          fi
+
+      - name: Final gate
+        if: always()
+        run: |
+          f="$GITHUB_WORKSPACE/$EVID/pr1168_docs_status_run$GITHUB_RUN_ID.txt"
+          if [ ! -f "$f" ]; then
+            echo "::error::no status recorded - read oracle evidence"
+            exit 1
+          fi
+          cat "$f"
