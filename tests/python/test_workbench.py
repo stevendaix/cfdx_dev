@@ -76,7 +76,6 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
 ) -> None:
     import h5py
     import numpy as np
-
     from cfdx.gui import create_application
     from PySide6.QtWidgets import QFileDialog
 
