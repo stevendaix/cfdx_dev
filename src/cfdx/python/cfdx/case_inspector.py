@@ -253,68 +253,6 @@ def _case_config(h5: h5py.File) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-@dataclass(frozen=True)
-class Hdf5DatasetSample:
-    path: str
-    shape: tuple[int, ...]
-    dtype: str
-    total_values: int
-    values: tuple[str, ...]
-
-
-def read_hdf5_dataset_sample(
-    path: str | Path, dataset_path: str, *, max_values: int = 32
-) -> Hdf5DatasetSample:
-    """Read a bounded sample from one HDF5 dataset, never the full array."""
-    if not dataset_path.startswith("/") or dataset_path == "/":
-        raise ValueError("dataset_path must be an absolute HDF5 dataset path")
-    parts = dataset_path.strip("/").split("/")
-    if any(part in {"", ".", ".."} for part in parts):
-        raise ValueError("dataset_path is not a safe HDF5 path")
-    if max_values < 1 or max_values > 256:
-        raise ValueError("max_values must be between 1 and 256")
-
-    with h5py.File(Path(path), "r") as h5:
-        if dataset_path not in h5:
-            raise KeyError(dataset_path)
-        dataset = h5[dataset_path]
-        if not isinstance(dataset, h5py.Dataset):
-            raise ValueError(f"{dataset_path} is not an HDF5 dataset")
-        shape = tuple(int(size) for size in dataset.shape)
-        dtype = dataset.dtype
-        if dtype.kind not in "biufcS":
-            raise ValueError(
-                f"sampling dtype {dtype} is disabled; only numeric and fixed strings are supported"
-            )
-        if dtype.itemsize * max_values > 1_048_576:
-            raise ValueError("dataset element width exceeds the 1 MiB sample budget")
-
-        if not shape:
-            raw = dataset[()]
-            values = (_text(raw),)
-        elif any(size == 0 for size in shape):
-            values = ()
-        else:
-            counts = [1] * len(shape)
-            remaining = max_values
-            for axis in reversed(range(len(shape))):
-                counts[axis] = min(shape[axis], remaining)
-                remaining = max(1, remaining // counts[axis])
-            selection = tuple(slice(0, count) for count in counts)
-            import numpy as np
-
-            raw = np.asarray(dataset[selection]).reshape(-1)
-            values = tuple(_text(value) for value in raw[:max_values])
-
-        return Hdf5DatasetSample(
-            path=dataset_path,
-            shape=shape,
-            dtype=str(dtype),
-            total_values=int(prod(shape)),
-            values=values,
-        )
-
-
 def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileSummary:
     """Inspect CFDX HDF5 metadata without reading any scientific array values.
 
