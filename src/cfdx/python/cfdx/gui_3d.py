@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .case_inspector import CaseFileSummary, inspect_cfdx_file
 from .selection import parse_selection_id, selection_label
 from .visualization_pipeline import VisualizationOperation, VisualizationPipeline
 
@@ -12,6 +13,24 @@ try:
     from PySide6.QtWidgets import QVBoxLayout, QWidget
 except ImportError:
     QWidget = None
+
+
+def _require_previewable_mesh(
+    path: Path, summary: CaseFileSummary | None
+) -> CaseFileSummary:
+    """Fail closed before any eager HDF5 topology arrays are materialized."""
+    inspected = summary or inspect_cfdx_file(path)
+    if Path(inspected.path).resolve() != path.resolve():
+        raise ValueError("mesh preview summary belongs to a different file")
+    if not inspected.is_cfdx or not inspected.has_mesh:
+        raise ValueError("file does not contain a recognised CFDX mesh")
+    if not inspected.preview_supported:
+        raise ValueError(
+            "full in-memory mesh preview deferred: "
+            f"{inspected.preview_block_reason or 'mesh exceeds renderer limits'}"
+        )
+    return inspected
+
 
 
 class PyVistaQtView(QWidget if QWidget is not None else object):
@@ -78,14 +97,17 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             raise ValueError(f"invalid patch stable ID: {stable_id!r}")
         return stable_id
 
-    def load_cfdx_mesh(self, source: str) -> None:
-        """Load real CFDX HDF5 mesh patches as selectable 3D actors."""
-        import h5py
-        import numpy as np
-
+    def load_cfdx_mesh(
+        self, source: str, *, summary: CaseFileSummary | None = None
+    ) -> None:
+        """Load a guarded CFDX HDF5 mesh as selectable 3D actors."""
         path = Path(source)
         if not path.exists():
             raise FileNotFoundError(source)
+        _require_previewable_mesh(path, summary)
+        import h5py
+        import numpy as np
+
         with h5py.File(path, "r") as h5:
             points = np.asarray(h5["points"][:], dtype=float)
             face_vertices = np.asarray(h5["face_vertices"][:], dtype=np.int64)
@@ -125,15 +147,25 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             self.plotter.reset_camera()
             self.plotter.render()
 
-    def load_cfdx_dat(self, case_path: str, dat_path: str) -> list[str]:
-        """Load a CFDX HDF5 mesh and a generic DAT checkpoint into one dataset."""
+    def load_cfdx_dat(
+        self,
+        case_path: str,
+        dat_path: str,
+        *,
+        summary: CaseFileSummary | None = None,
+    ) -> list[str]:
+        """Load a guarded CFDX mesh and DAT checkpoint into one dataset."""
+        mesh_path = Path(case_path)
+        if not mesh_path.exists():
+            raise FileNotFoundError(case_path)
+        _require_previewable_mesh(mesh_path, summary)
         import h5py
         import numpy as np
 
         from .dat_io import read_dat_restart
 
         restart = read_dat_restart(dat_path)
-        with h5py.File(Path(case_path), "r") as h5:
+        with h5py.File(mesh_path, "r") as h5:
             points = np.asarray(h5["points"][:], dtype=float)
             face_vertices = np.asarray(h5["face_vertices"][:], dtype=np.int64)
             face_offsets = np.asarray(h5["face_offsets"][:], dtype=np.int64)
