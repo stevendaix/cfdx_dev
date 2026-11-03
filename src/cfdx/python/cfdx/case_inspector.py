@@ -50,6 +50,7 @@ class CaseFileSummary:
     schema_version: str | None
     is_cfdx: bool
     has_case_config: bool
+    has_project_config: bool
     has_mesh: bool
     preview_supported: bool
     n_points: int | None
@@ -162,6 +163,7 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
         n_points, n_faces, n_cells = _mesh_counts(h5, regions)
         has_mesh = n_points is not None and n_faces is not None
         config = _case_config(h5)
+        has_project_config = "case/config" in h5
         scalar_fields = _field_names(h5, "scalar")
         vector_fields = _field_names(h5, "vector")
 
@@ -193,6 +195,7 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             has_mesh and not regions
             and n_points is not None and n_faces is not None
             and n_points <= 1_000_000 and n_faces <= 1_000_000
+            and (n_cells is None or n_cells <= 1_000_000)
             and all(name in h5 for name in ("points", "face_vertices", "face_offsets", "patch_face_ids", "patch_face_offsets"))
         )
         return CaseFileSummary(
@@ -201,6 +204,7 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             schema_version=schema,
             is_cfdx=is_cfdx,
             has_case_config=config is not None,
+            has_project_config=has_project_config,
             has_mesh=has_mesh,
             preview_supported=preview_supported,
             n_points=n_points,
