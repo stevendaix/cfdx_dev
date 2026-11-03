@@ -186,6 +186,22 @@ def test_inspect_bounds_dataset_tree(tmp_path):
     assert len(summary.datasets) == 3
     assert summary.datasets_truncated
 
+
+def test_inspect_bounds_hdf5_group_only_trees(tmp_path):
+    path = tmp_path / "many-groups.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        for index in range(1_005):
+            h5.create_group(f"metadata/group_{index:04d}")
+
+    summary = inspect_cfdx_file(path, max_datasets=1)
+
+    assert summary.is_cfdx
+    assert summary.datasets == ()
+    assert summary.tree_truncated
+
+
+
 def test_inspect_bounds_root_attribute_payloads_and_count(tmp_path):
     oversized_path = tmp_path / "oversized-attribute.h5"
     with h5py.File(oversized_path, "w") as h5:
