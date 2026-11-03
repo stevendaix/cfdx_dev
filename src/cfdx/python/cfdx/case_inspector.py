@@ -72,6 +72,7 @@ class CaseFileSummary:
     attributes: tuple[tuple[str, str], ...]
     datasets: tuple[Hdf5DatasetInfo, ...]
     datasets_truncated: bool = False
+    tree_truncated: bool = False
     attributes_truncated: bool = False
     regions_truncated: bool = False
     scalar_fields_truncated: bool = False
@@ -389,9 +390,16 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
 
         datasets: list[Hdf5DatasetInfo] = []
         datasets_truncated = False
+        tree_truncated = False
+        visited_objects = 0
+        object_limit = min(20_000, max(1_000, max_datasets * 20))
 
         def collect(name: str, obj: Any):
-            nonlocal datasets_truncated
+            nonlocal datasets_truncated, tree_truncated, visited_objects
+            visited_objects += 1
+            if visited_objects > object_limit:
+                tree_truncated = True
+                return 1
             if not isinstance(obj, h5py.Dataset):
                 return None
             if len(datasets) >= max_datasets:
@@ -526,6 +534,7 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             attributes=attrs,
             datasets=tuple(datasets),
             datasets_truncated=datasets_truncated,
+            tree_truncated=tree_truncated,
             attributes_truncated=attributes_truncated,
             regions_truncated=regions_truncated,
             scalar_fields_truncated=scalar_fields_truncated,
