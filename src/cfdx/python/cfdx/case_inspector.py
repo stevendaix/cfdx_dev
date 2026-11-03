@@ -189,9 +189,7 @@ def _field_names(h5: h5py.File, kind: str) -> tuple[str, ...]:
         return ()
     return tuple(
         sorted(
-            name
-            for name, value in h5[path].items()
-            if isinstance(value, h5py.Dataset)
+            name for name, value in h5[path].items() if isinstance(value, h5py.Dataset)
         )
     )
 
