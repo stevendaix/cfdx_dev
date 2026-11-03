@@ -193,6 +193,23 @@ def test_dataset_preview_rejects_unsafe_paths_and_skips_strings(tmp_path):
 
 
 
+
+def test_inspect_bounds_field_catalogs(tmp_path):
+    path = tmp_path / "many-fields.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        for index in range(305):
+            h5.create_dataset(f"fields/scalar/p{index:03d}", shape=(1,), dtype="f8")
+
+    summary = inspect_cfdx_file(path)
+
+    assert len(summary.scalar_fields) == 300
+    assert summary.scalar_fields_truncated
+    with pytest.raises(ValueError, match="between 1 and 5000"):
+        inspect_cfdx_file(path, max_datasets=10_000)
+
+
+
 def test_inspect_rejects_non_hdf5_file(tmp_path):
     path = tmp_path / "not-a-case.cfdx.h5"
     path.write_text("not hdf5")
