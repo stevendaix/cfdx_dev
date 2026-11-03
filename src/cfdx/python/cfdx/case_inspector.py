@@ -470,11 +470,17 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             if points_dataset.ndim != 2 or points_dataset.shape[1] != 3:
                 preview_block_reason = "points must have shape (n_points, 3)"
             elif points_dataset.dtype.kind != "f":
-                preview_block_reason = "point coordinates must use a floating-point dtype"
+                preview_block_reason = (
+                    "point coordinates must use a floating-point dtype"
+                )
             elif any(dataset.dtype.kind not in "iu" for dataset in integer_topology):
-                preview_block_reason = "surface connectivity datasets must use integer dtypes"
+                preview_block_reason = (
+                    "surface connectivity datasets must use integer dtypes"
+                )
             elif neighbour_dataset.dtype.kind != "i":
-                preview_block_reason = "neighbour indices must use a signed integer dtype"
+                preview_block_reason = (
+                    "neighbour indices must use a signed integer dtype"
+                )
             elif face_vertices_dataset.ndim != 1:
                 preview_block_reason = (
                     "face connectivity must be a one-dimensional array"
