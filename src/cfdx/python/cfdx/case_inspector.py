@@ -56,6 +56,7 @@ class CaseFileSummary:
     has_project_config: bool
     has_mesh: bool
     preview_supported: bool
+    preview_block_reason: str | None
     n_points: int | None
     n_faces: int | None
     n_cells: int | None
@@ -210,25 +211,58 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
 
         h5.visititems(collect)
         is_cfdx = file_format in _FORMATS or config is not None or has_mesh
-        preview_supported = (
-            has_mesh and not regions
-            and n_points is not None and n_faces is not None
-            and n_points <= 100_000 and n_faces <= 100_000
-            and n_cells is not None
-            and n_cells <= 100_000
-            and all(
-                name in h5
-                for name in (
-                    "points",
-                    "face_vertices",
-                    "face_offsets",
-                    "owner",
-                    "neighbour",
-                    "patch_face_ids",
-                    "patch_face_offsets",
-                )
-            )
+        preview_datasets = (
+            "points",
+            "face_vertices",
+            "face_offsets",
+            "owner",
+            "neighbour",
+            "patch_face_ids",
+            "patch_face_offsets",
         )
+        preview_block_reason = None
+        if not has_mesh:
+            preview_block_reason = "mesh topology metadata is incomplete"
+        elif regions:
+            preview_block_reason = "region-grouped meshes require the streaming renderer"
+        elif n_points is None or n_faces is None or n_cells is None:
+            preview_block_reason = "point, face and cell counts must all be declared"
+        elif max(n_points, n_faces, n_cells) > 100_000:
+            preview_block_reason = "mesh exceeds the 100k entity safety limit"
+        elif not all(
+            name in h5 and isinstance(h5[name], h5py.Dataset)
+            for name in preview_datasets
+        ):
+            preview_block_reason = "required surface topology datasets are missing"
+        else:
+            points_dataset = h5["points"]
+            face_vertices_dataset = h5["face_vertices"]
+            face_offsets_dataset = h5["face_offsets"]
+            owner_dataset = h5["owner"]
+            neighbour_dataset = h5["neighbour"]
+            patch_ids_dataset = h5["patch_face_ids"]
+            patch_offsets_dataset = h5["patch_face_offsets"]
+            if points_dataset.ndim != 2 or points_dataset.shape[1] != 3:
+                preview_block_reason = "points must have shape (n_points, 3)"
+            elif face_offsets_dataset.shape != (n_faces + 1,):
+                preview_block_reason = "face offsets do not match the face count"
+            elif owner_dataset.shape != (n_faces,) or neighbour_dataset.shape != (n_faces,):
+                preview_block_reason = "owner/neighbour arrays do not match the face count"
+            elif patch_offsets_dataset.ndim != 1 or patch_offsets_dataset.shape[0] < 1:
+                preview_block_reason = "patch offsets are malformed"
+            elif patch_ids_dataset.ndim != 1 or patch_offsets_dataset.shape[0] < 2:
+                preview_block_reason = "patch face metadata is missing"
+            else:
+                source_bytes = sum(
+                    int(prod(h5[name].shape) * h5[name].dtype.itemsize)
+                    for name in preview_datasets
+                )
+                connectivity_entries = int(face_vertices_dataset.shape[0])
+                if source_bytes > 32 * 1024 * 1024:
+                    preview_block_reason = "surface topology exceeds the 32 MiB eager-load budget"
+                elif connectivity_entries > 2_000_000:
+                    preview_block_reason = "surface connectivity exceeds the 2M-entry eager-load budget"
+        preview_supported = preview_block_reason is None
         return CaseFileSummary(
             path=source.resolve(),
             format=file_format,
@@ -238,6 +272,7 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             has_project_config=has_project_config,
             has_mesh=has_mesh,
             preview_supported=preview_supported,
+            preview_block_reason=preview_block_reason,
             n_points=n_points,
             n_faces=n_faces,
             n_cells=n_cells,
