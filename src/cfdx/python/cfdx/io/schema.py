@@ -41,6 +41,21 @@ class BCValueType(str, Enum):
     UNKNOWN = "unknown"
 
 
+class SSTScalarBoundaryType(str, Enum):
+    """Wire-compatible k/omega boundary types understood by the C++ runtime."""
+    FIXED_VALUE = "fixed_value"
+    ZERO_GRADIENT = "zero_gradient"
+    WALL_K_ZERO = "wall_k_zero"
+    WALL_OMEGA_SST = "wall_omega_sst"
+    UNKNOWN = "unknown"
+
+
+class SSTScalarBoundarySpec(BaseModel):
+    field: str
+    type: SSTScalarBoundaryType
+    value: float = 0.0
+
+
 class Severity(str, Enum):
     SUPPORTED = "supported"
     APPROXIMATED = "approximated"
@@ -81,6 +96,7 @@ class BoundarySpec(BaseModel):
     pressure: float = 0.0
     turbulence_intensity: float = 0.0
     turbulence_length_scale: float = 0.0
+    sst_scalar_conditions: list[SSTScalarBoundarySpec] = Field(default_factory=list)
     roughness_height: float = 0.0
     wall_temperature: float = 0.0
     back_pressure: float = 0.0

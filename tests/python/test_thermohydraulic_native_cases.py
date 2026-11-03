@@ -24,7 +24,8 @@ def test_example_campaign_reports_all_unavailable_critical_physics() -> None:
     assert [r["id"] for r in report["cases"]] == list(campaign.SCENARIOS)
     by_id={c["id"]:c for c in report["cases"]}
     assert any("periodic" in x for x in by_id["TH-01"]["blockers"])
-    assert any("SST+energy+buoyancy" in x for x in by_id["TH-07"]["blockers"])
+    assert any("missing real" in x for x in by_id["TH-07"]["blockers"])
+    assert any("experimental" in x for x in by_id["TH-07"]["warnings"])
     assert any("transient" in x for x in by_id["TH-08"]["blockers"])
     assert all(r["physical_qualification"] == "NOT_QUALIFIED" for r in report["cases"])
 

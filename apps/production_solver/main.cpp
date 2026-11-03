@@ -2,6 +2,7 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/production_energy_stage.h"
 #include "cfdx/physics/production_turbulence_contract.h"
+#include "cfdx/physics/production_sst_thermal_coupling.h"
 #include "cfdx/physics/production_radiation_contract.h"
 #include "cfdx/physics/production_radiation_s2s_stage.h"
 #include "cfdx/physics/production_buoyancy_stage.h"
@@ -909,6 +910,25 @@ int main(int argc, char** argv)
         controls.convergence.max_iterations = options.iterations;
         if (is_case_hdf5) {
             apply_explicit_case_numerics(case_setup, controls);
+            // A parsed relaxation value that is silently ignored prevents
+            // a difficult SST separation case from being stabilized by its
+            // declared numerical input. Carry the case-level controls into
+            // SIMPLE/SIMPLEC/PISO; do not substitute hidden defaults.
+            const double requested_alpha_u =
+                case_setup.numerics.under_relaxation_momentum;
+            const double requested_alpha_p =
+                case_setup.numerics.under_relaxation_pressure;
+            if (!std::isfinite(requested_alpha_u) ||
+                !(requested_alpha_u > 0.0) || requested_alpha_u > 1.0 ||
+                !std::isfinite(requested_alpha_p) ||
+                !(requested_alpha_p > 0.0) || requested_alpha_p > 1.0)
+                throw std::invalid_argument(
+                    "production solver: case momentum/pressure relaxation "
+                    "must be finite and in (0,1]");
+            controls.coupling.alpha_u = requested_alpha_u;
+            controls.coupling.alpha_p = requested_alpha_p;
+            std::cout << "Case under-relaxation alpha_u=" << requested_alpha_u
+                      << " alpha_p=" << requested_alpha_p << '\n';
             std::cout << "Resolved numerical selections:\n"
                       << cfdx::core::format_numerics_report(case_setup.numerical_report);
             if (case_setup.numerics.max_iterations > 0)
@@ -1014,13 +1034,12 @@ int main(int argc, char** argv)
             solver_restart_fields.face_mass_flux = &*restart_face_flux;
         }
         if (options.experimental_sst) {
-            if (production_energy_requested(case_setup) ||
-                production_buoyancy_requested(case_setup) ||
-                production_s2s_radiation_requested(case_setup))
+            if (production_s2s_radiation_requested(case_setup))
                 throw std::invalid_argument(
-                    "production solver: --experimental-sst currently supports only "
-                    "the isolated incompressible carrier; coupled energy, buoyancy, "
-                    "and radiation cases remain unsupported");
+                    "production solver: experimental SST-radiation coupling is "
+                    "not implemented; cannot assert a physical energy balance");
+            if (production_energy_requested(case_setup))
+                (void)require_production_sst_turbulent_prandtl(case_setup);
 
             TurbulenceTransportControls sst_controls;
             sst_controls.model = TurbulenceModel::SST;
@@ -1098,8 +1117,31 @@ int main(int argc, char** argv)
             experimental_sst_runtime.wall_patch_names = wall_patch_names;
             experimental_sst_runtime.wall_omega_sst_patches =
                 boundary_contract.wall_omega_sst_patches;
-            experimental_sst_runtime.max_transport_iterations = 100;
+            // Larger SST inner budgets may be needed for high-Re separated
+            // flows. This setting changes only the work budget, never the
+            // fixed 1e-8 acceptance tolerance or conservation gates.
+            std::size_t sst_inner_budget = 100;
+            const auto budget_it = case_setup.numerics.raw_settings.find(
+                "sst_transport_max_iterations");
+            if (budget_it != case_setup.numerics.raw_settings.end()) {
+                const auto& declared = budget_it->second;
+                std::size_t end = 0;
+                unsigned long parsed = 0;
+                try {
+                    parsed = std::stoul(declared, &end, 10);
+                } catch (const std::exception&) {
+                    throw std::invalid_argument(
+                        "SST transport budget must be a decimal integer in [10, 2000]");
+                }
+                if (end != declared.size() || parsed < 10 || parsed > 2000)
+                    throw std::invalid_argument(
+                        "SST transport budget must be a decimal integer in [10, 2000]");
+                sst_inner_budget = static_cast<std::size_t>(parsed);
+            }
+            experimental_sst_runtime.max_transport_iterations = sst_inner_budget;
             experimental_sst_runtime.transport_tolerance = 1e-8;
+            std::cout << "SST transport max inner iterations "
+                      << sst_inner_budget << " (unchanged tolerance 1e-8)\n";
             if (!boundary_contract.wall_omega_sst_patches.empty()) {
                 experimental_sst_runtime.omega_face_values =
                     make_sst_wall_omega_face_values(
@@ -1209,7 +1251,8 @@ int main(int argc, char** argv)
             // never an intermediate Picard pass.
             buoyancy_result = run_production_buoyant_outer_loop(
                 mesh, ubc, pbc, controls, case_setup, U, p,
-                options.restart.string(), thermal_restart ? &temperature : nullptr);
+                options.restart.string(), thermal_restart ? &temperature : nullptr,
+                options.experimental_sst ? &experimental_sst_runtime : nullptr);
             result = buoyancy_result.flow;
             buoyancy_ran = true;
             std::cout << "Buoyant flow-energy outer loop "
@@ -1320,9 +1363,18 @@ int main(int argc, char** argv)
                 energy_ran = true;
                 s2s_ran = true;
             } else {
+                // Couple the final *accepted* SST viscosity to energy.
+                // Keep this vector alive until the assembled energy solve
+                // and its independent face-flux audit have finished.
+                std::vector<double> lambda_eff;
+                if (experimental_sst_state)
+                    lambda_eff = build_production_sst_thermal_conductivity(
+                        case_setup, *experimental_sst_state, mesh.n_cells(),
+                        require_production_sst_turbulent_prandtl(case_setup));
                 energy_result = run_production_energy_stage(
                     mesh, energy_geometry, case_setup,
-                    result.authoritative_mass_flux, temperature);
+                    result.authoritative_mass_flux, temperature, {},
+                    lambda_eff.empty() ? nullptr : &lambda_eff);
                 energy_ran = true;
             }
         } else if (energy_requested) {

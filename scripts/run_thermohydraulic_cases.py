@@ -1,8 +1,9 @@
 """Execute real CFDX TH benchmark cases, never synthetic solver profiles.
 
 The supplied campaign JSON must point at actual .cfdx.h5 cases. Unsupported
-physics (LES/DNS, periodic channel, SST+buoyancy/energy, transient statistics)
-is *blocked before execution*. This launcher does not grant physical validity;
+physics (LES/DNS, periodic channel, transient statistics) is *blocked
+before execution*. Experimental SST + energy/Boussinesq may run only with
+fully declared real HDF5 cases, independent energy audits, and strict proofs. This launcher does not grant physical validity;
 users must separately provide independent, pinned reference profiles and run
 qualify_thermohydraulic_benchmarks.py.
 """
@@ -19,10 +20,14 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import h5py
+
 try:
-    from scripts.qualify_thermohydraulic_benchmarks import SCENARIOS, MAX_MASS_IMBALANCE, MAX_TRUE_RESIDUAL
+    from scripts.qualify_thermohydraulic_benchmarks import (SCENARIOS, MAX_MASS_IMBALANCE,
+        MAX_TRUE_RESIDUAL, MAX_ENERGY_IMBALANCE)
 except ImportError:
-    from qualify_thermohydraulic_benchmarks import SCENARIOS, MAX_MASS_IMBALANCE, MAX_TRUE_RESIDUAL
+    from qualify_thermohydraulic_benchmarks import (SCENARIOS, MAX_MASS_IMBALANCE,
+        MAX_TRUE_RESIDUAL, MAX_ENERGY_IMBALANCE)
 
 
 class CampaignError(ValueError):
@@ -57,6 +62,57 @@ def resolve_relative(root: Path, value: str, name: str) -> Path:
     return file
 
 
+def validate_native_case_physics(path: Path, case_id: str, scenario: str,
+                                 model: str, expected_cells: int) -> None:
+    """Reject a mislabeled or physically different case before expensive CFD.
+
+    This is a *case-contract* gate, not a certification of the supplied
+    geometry, y+, turbulent inlet profiles, Reynolds number, or Grashof
+    number. Those require independent physical campaign evidence.
+    """
+    try:
+        with h5py.File(path, 'r') as h5:
+            require(h5.attrs.get('format') == 'CFDX-HDF5-mesh-v1',
+                    f'{path}: unsupported native HDF5 format')
+            require(int(h5.attrs['n_cells']) == expected_cells,
+                    f'{path}: mesh cells disagree with declared campaign')
+            setup=json.loads(h5.attrs['case_setup_json'])
+    except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise CampaignError(f'{path}: invalid production case HDF5: {exc}') from exc
+    require(isinstance(setup, dict),f'{path}: case_setup_json must be an object')
+    labels=setup.get('source_metadata') or {}
+    require(isinstance(labels, dict) and
+            labels.get('benchmark_case') == case_id and
+            labels.get('benchmark_scenario') == scenario,
+            f'{path}: explicit benchmark_case/scenario provenance is missing or different')
+    require(setup.get('radiation_model') in ('none', '', None),
+            f'{path}: production SST radiation coupling is unsupported')
+    if model == 'RANS_SST':
+        require(setup.get('turbulence_model') in ('sst','k_omega_sst'),
+                f'{path}: RANS_SST requires an explicit SST input case')
+    if case_id == 'TH-03':
+        require(setup.get('energy_model') in ('isothermal','none'),
+                f'{path}: TH-03 must have isothermal energy model')
+    if case_id == 'TH-07':
+        required_model = 'conjugate' if scenario == 'Gr_0' else 'buoyant'
+        require(setup.get('energy_model') == required_model,
+                f'{path}: {scenario} requires energy_model {required_model!r}')
+        materials=setup.get('materials')
+        require(isinstance(materials, list) and len(materials)==1,
+                f'{path}: SST thermal case requires one declared fluid material')
+        props=materials[0].get('extra_properties') or {}
+        try:
+            prt=float(props.get('turbulent_prandtl', 'nan'))
+        except (TypeError,ValueError) as exc:
+            raise CampaignError(f'{path}: non-numeric turbulent_prandtl') from exc
+        require(math.isfinite(prt) and prt>0,
+                f'{path}: declare finite positive turbulent_prandtl')
+        if required_model=='buoyant':
+            require('thermal_expansion_coefficient' in props and
+                    bool(setup.get('gravity_vector')),
+                    f'{path}: buoyant scenario missing beta or gravity')
+
+
 def preflight(campaign: dict[str, Any], root: Path, case_filter: set[str] | None) -> dict[str, Any]:
     require(campaign.get("schema_version") == 1, "campaign schema_version must be 1")
     cases = campaign.get("cases")
@@ -85,14 +141,13 @@ def preflight(campaign: dict[str, Any], root: Path, case_filter: set[str] | None
         # supported paths. They cannot be bypassed by toggling a JSON flag.
         if case_id == "TH-01":
             blockers.append("periodic 3D, mass-flux-controlled channel DNS/LES is absent")
-        if case_id == "TH-07":
-            blockers.append("SST+energy+buoyancy production coupling is absent")
         if case_id == "TH-08":
             blockers.append("transient SST/LES energy and sampling/spectra are absent")
         if model in ("LES", "DNS", "RSM"):
             blockers.append(f"{model} transport is not available in the production driver")
+        warnings=[]
         if model == "RANS_SST":
-            blockers.append("SST remains experimental and not physically qualified")
+            warnings.append("SST and SST-energy/Boussinesq are experimental, not physically qualified")
         ready_inputs = True
         for scenario in scenarios:
             sid = scenario["id"]
@@ -123,12 +178,21 @@ def preflight(campaign: dict[str, Any], root: Path, case_filter: set[str] | None
                 if not case_file.is_file():
                     ready_inputs = False
                     blockers.append(f"missing real .cfdx.h5 input {case_file}")
-        # All RANS_SST inputs remain eligible to *execute* only TH-03 as an
-        # explicitly experimental numerical investigation, never qualification.
-        runnable = ready_inputs and case_id == "TH-03" and model == "RANS_SST"
+                elif model == 'RANS_SST' and case_id in ('TH-03','TH-07'):
+                    try:
+                        validate_native_case_physics(
+                            case_file,case_id,sid,model,int(cells))
+                    except CampaignError as exc:
+                        ready_inputs=False
+                        blockers.append(str(exc))
+        # TH-07 can now run experimental SST + energy + Boussinesq. TH-01
+        # and TH-08 remain hard-blocked for the missing physical-time solver.
+        runnable = (ready_inputs and not blockers and
+                    case_id in ('TH-03','TH-07') and model == 'RANS_SST')
         report["cases"].append({"id":case_id, "model":model,
             "inputs_present":ready_inputs, "executable_experimental":runnable,
-            "physical_qualification":"NOT_QUALIFIED", "blockers":list(dict.fromkeys(blockers))})
+            "physical_qualification":"NOT_QUALIFIED",
+            "warnings":warnings,"blockers":list(dict.fromkeys(blockers))})
     report["status"] = ("EXPERIMENTAL_RUN_INPUTS_READY" if any(
         c["executable_experimental"] for c in report["cases"]) else "BLOCKED")
     return report
@@ -188,15 +252,79 @@ def run_one(solver: Path, campaign_root: Path, out: Path,
                     "native residual, global or local mass balance exceeds fixed gate")
             require(conservation.get("cells") == int(run["cells"]),
                     "native CFDX cell count disagrees with declared input mesh")
+            energy_metrics = {}
+            energy_files = []
+            if case_id == 'TH-07':
+                energy_convergence = run_dir / 'energy_convergence.json'
+                energy_summary = run_dir / 'energy_summary.json'
+                energy=json.loads(energy_convergence.read_text(encoding='utf-8'))
+                summary=json.loads(energy_summary.read_text(encoding='utf-8'))
+                require(energy.get('converged') is True and
+                        energy.get('linear_solver_converged') is True and
+                        energy.get('global_energy_balance_passed') is True and
+                        energy.get('local_energy_balance_passed') is True and
+                        energy.get('temperature_admissibility_passed') is True,
+                        'native energy stage not converged at all independent gates')
+                global_energy = float(energy['global_balance_normalized'])
+                local_energy = float(energy['max_cell_residual_normalized'])
+                require(math.isfinite(global_energy) and math.isfinite(local_energy)
+                        and 0<=global_energy<=MAX_ENERGY_IMBALANCE
+                        and 0<=local_energy<=MAX_ENERGY_IMBALANCE,
+                        'energy audit exceeds fixed global/local gate')
+                tmin, tmax = float(summary['min_temperature']), float(summary['max_temperature'])
+                require(math.isfinite(tmin) and math.isfinite(tmax) and
+                        0<tmin<=tmax, 'physically invalid energy temperature extrema')
+                energy_metrics={'energy_imbalance_relative':global_energy,
+                                'max_cell_energy_imbalance_relative':local_energy,
+                                'temperature_min_K':tmin,'temperature_max_K':tmax}
+                energy_files=[energy_convergence,energy_summary]
+            wall_files=[]
+            wall_metrics={}
+            if case_id == 'TH-03':
+                try:
+                    from scripts.audit_th03_wall_resolution import audit as audit_sst_wall
+                except ImportError:
+                    from audit_th03_wall_resolution import audit as audit_sst_wall
+                with h5py.File(case_file, 'r') as case_h5:
+                    setup = json.loads(case_h5.attrs['case_setup_json'])
+                materials = setup.get('materials', [])
+                require(isinstance(materials, list) and len(materials) == 1,
+                        'TH-03: one fluid material with rho and mu is mandatory')
+                rho = positive_number(materials[0].get('density'), 'TH-03 density')
+                mu = positive_number(materials[0].get('dynamic_viscosity'),
+                                     'TH-03 molecular dynamic viscosity')
+                wall_patches = tuple(bc['patch_name'] for bc in
+                    setup.get('boundary_conditions', []) if
+                    bc.get('type') == 'wall' and
+                    bc.get('value_type') == 'wall_no_slip')
+                require(wall_patches, 'TH-03: no explicitly declared no-slip walls')
+                wall_report = audit_sst_wall(
+                    run_dir/'benchmark_observables'/'face_fluxes.csv',
+                    run_dir/'benchmark_observables'/'cell_fields.csv',
+                    wall_patches=wall_patches,density=rho,viscosity=mu/rho)
+                wall_report.update({'density_kg_m3':rho,
+                    'molecular_kinematic_viscosity_m2_s':mu/rho,
+                    'audited_wall_patches':list(wall_patches)})
+                wall_file=run_dir/'wall_resolution.json'
+                wall_file.write_text(json.dumps(wall_report,indent=2,allow_nan=False)
+                                     +'\n',encoding='utf-8')
+                wall_files.append(wall_file)
+                wall_metrics={'wall_resolution_status':wall_report['status'],
+                    'max_wall_y_plus_estimate':wall_report['max_y_plus_estimate']}
+                require(wall_report['status'] == 'PREFLIGHT_PASS',
+                        'TH-03: native resolved-wall SST y+ preflight failed: '
+                        f"max y+={wall_report['max_y_plus_estimate']:.4g}")
             actual = {"iterations":execution["iterations"],
                       "true_residual_max":residual,
                       "mass_imbalance_relative":mass,
                       "maximum_cell_mass_imbalance_relative":local_mass,
+                      **energy_metrics, **wall_metrics,
                       "files_sha256":{
                          str(path.relative_to(run_dir)):sha256_file(path)
                          for path in (execution_file,convergence_file,flux_file,
                                       run_dir / "benchmark_observables" / "cell_fields.csv",
-                                      run_dir / "benchmark_observables" / "face_fluxes.csv")}}
+                                      run_dir / "benchmark_observables" / "face_fluxes.csv",
+                                      *energy_files,*wall_files)}}
         except (OSError,KeyError,ValueError,TypeError,CampaignError,OverflowError) as exc:
             error = f"invalid solver-owned evidence: {exc}"
     result: dict[str, Any] = {"case_id":case_id,"scenario_id":sid,"mesh_id":mid,

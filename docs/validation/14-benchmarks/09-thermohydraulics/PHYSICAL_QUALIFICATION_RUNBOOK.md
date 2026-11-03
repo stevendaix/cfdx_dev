@@ -94,7 +94,7 @@ L'outil rejette par défaut les points hors domaine (pas d'extrapolation), un pr
 
 ## 6. Verrou observé dans le code de production
 
-Le fichier `apps/production_solver/main.cpp` contient un chemin SST **expérimental** (`--experimental-sst`) qui couple la viscosité turbulente au solveur de mouvement. Il ne s'agit pas d'un solveur turbulent déjà qualifié : il exige un cas HDF5 avec métadonnées de paroi et des champs initiaux `k`/`omega` (ou un redémarrage cohérent). Surtout, il **rejette explicitement les cas combinant SST avec énergie, flottabilité ou rayonnement** (guard dans la section `if (options.experimental_sst)`). Cela bloque notamment une qualification TH-07 par SST turbulent avec convection mixte. Les validations de production laminaire/thermique ne permettent pas de contourner ce refus. TH-01 et TH-03 demandent encore géométrie, maillages, conditions de turbulence et post-traitement des profils, absents de cette PR.
+Le fichier `apps/production_solver/main.cpp` contient un chemin SST **expérimental** (`--experimental-sst`) qui couple la viscosité turbulente au solveur de mouvement. Il ne s'agit pas d'un solveur turbulent déjà qualifié : il exige un cas HDF5 avec métadonnées de paroi et des champs initiaux `k`/`omega` (ou un redémarrage cohérent). Le correctif V2 **active expérimentalement SST+énergie et SST+flottabilité** (avec `Pr_t` déclaré, conductivité effective SST, mise à jour au point fixe et bilans d'énergie), mais **rejette toujours SST+rayonnement**. TH-07 peut donc fournir des vérifications numériques et des essais RANS thermiques, **pas** une validation des moments DNS/stats de Wagner et Wetzel. Les validations laminaires/thermiques ne se substituent pas à une qualification SST/RANS. TH-01 et TH-03 demandent encore géométrie, maillages, conditions de turbulence et post-traitement des profils, absents de cette PR.
 
 TH-08 demande en plus un protocole temporel documenté pour les fluctuations thermiques ; le comparateur actuel de **profils moyens** ne certifie pas ces quantités. La clôture de ces lacunes exige un développement de solveur et des campagnes indépendantes, pas un changement de seuil ni une simple modification du contrat JSON.
 
@@ -143,7 +143,7 @@ reconstruction de face quadratique existante et aux références expérimentales
 2. `python scripts/run_thermohydraulic_cases.py --campaign <campagne.json> --check-only`
    vérifie les entrées et signale les capacités physiques non disponibles.
 3. Après build : `python scripts/run_thermohydraulic_cases.py --campaign <campagne.json> --case TH-03 --solver build/th-qualification/cfdx_production_solver --output build/thermohydraulic/native-runs`
-   ne lance que les grilles TH-03 pour lesquelles les entrées existent, avec
+   lance TH-03 ou TH-07 (si les trois maillages de chaque scénario sont présents et que les cas HDF5 décrivent les bonnes équations), avec
    `--experimental-sst`. Chaque calcul conserve `solver.log`,
    `run_evidence.json`, les SHA-256 et les fichiers CFDX d'origine.
 4. Pour la marche descendante, faire le diagnostic de réattachement :
@@ -171,13 +171,17 @@ expérimentaux et la version exacte du solveur doivent y être archivés.
 |---|---|---|
 | TH-01 canal MKM | Export de flux et des champs ; comparateur | Entrée périodique 3D, pilotage du débit, DNS/LES temporel, contraintes résolues et statistiques indépendantes non disponibles |
 | TH-03 marche descendante | **Lanceur SST expérimental** sur vrais HDF5, diagnostic signed `Cf`, bilans et preuves natives | Fournir géométrie et 3 maillages réellement convergés ; reconstruire précisément la traction, mesurer `Cp`, profils et références expérimentales |
-| TH-07 convection mixte | Export des champs thermiques laminaires et prérequis énergie/flottabilité | **SST+énergie+flottabilité non couplés dans le pilote de production** ; `Pr_t`, bilans de chaleur pariétaux et référence indépendante non qualifiés |
+| TH-07 convection mixte | **SST+énergie et SST+Boussinesq expérimental**, `Pr_t` explicite, conductivité effective, bilan thermique indépendant et campagne native | Cas turbulent à gradient thermique et `Gr` non nul non convergé dans le smoke 15 cellules ; pas de 3 maillages qualifiés, ni profils DNS, flux turbulents résolus ou statistiques temporelles |
 | TH-08 jonction T | Export stationnaire et prérequis de conservation | **Transitoire URANS/LES, transport thermique turbulent, moyennes temporelles, variances, spectres et pas de temps** non qualifiés |
 
-En particulier, ce correctif ne supprime pas le garde du solveur qui refuse
-`--experimental-sst` avec énergie/flottabilité/rayonnement : supprimer ce garde
-sans implémenter les termes turbulents cohérents dans le flux thermique et la
-boucle couplée serait une régression physique, pas une amélioration.
+Le correctif V2 **ne lève le garde que pour SST+énergie et SST+Boussinesq** :
+le code consomme la viscosité turbulente SST acceptée dans `lambda_eff`, réévalue
+cette conductivité à chaque itération de couplage, contrôle la stationnarité
+de `nu_t`, et enregistre les bilans de chaleur natifs dans la preuve SHA-256.
+`SST+rayonnement`, le transport instationnaire URANS/LES, les fluctuations
+résolues et les spectres physiques restent exclus. Voir
+`IMPLEMENTATION_STATUS_2026-11-03.md`. Aucun `PASS` TH physique sans références
+indépendantes et convergence en temps/espace.
 
 ### Tests de régression nouveaux
 
@@ -191,3 +195,58 @@ boucle couplée serait une régression physique, pas une amélioration.
   des benchmarks TH physiques.**
 - `tests/python/test_thermohydraulic_physical_qualifier.py` : mutations de
   mesures, empreintes, grilles, et attestation native stricte.
+
+### Ajouts V2 : tests thermiques directs et contrôle de campagne
+
+- `tests/python/test_thermohydraulic_sst_energy_e2e.py` lance le vrai
+  `cfdx_production_solver` pour deux `Pr_t`, vérifie l'effet mesurable sur
+  le flux pariétal, le cas Boussinesq à température uniforme et le refus
+  d'un `Pr_t` absent, puis vérifie les SHA des preuves thermiques natives.
+- `tests/python/test_th03_bfs_case_generator.py` vérifie l'aller-retour
+  Python/HDF5 des conditions `k/omega` et refuse les maillages de débogage
+  mal étiquetés. La sérialisation typée est dans `cfdx/io/schema.py`.
+- TH-03 peut déclarer `numerics.raw_settings.sst_transport_max_iterations`
+  entier entre 10 et 2000 ; sa tolérance SST reste **1e-8**.
+- L'outil `scripts/analyse_thermohydraulic_timeseries.py` calcule des
+  diagnostics d'un **véritable** historique temporel existant, jamais de
+  pseudo-historique à partir d'itérations de convergence stationnaires.
+
+### Diagnostic de sensibilité TH-03 (résultat réel CFDX, 2026-11-03)
+
+Un *cas de débogage* HDF5 de 192 cellules, `Re_h=36 000` et entrée
+uniforme a convergé après 145 itérations avec SST, budget de transport
+interne de 600 et **tolérance inchangée** à `1e-8`. Le véritable profil
+d'entrée expérimental n'est pas représenté. Ce Reynolds diffère du
+`Re_h=37 500` déclaré dans TH-03.json : ce calcul **n'est donc pas**
+un scénario TH-03 validable.
+
+- Résidu final momentum `5.65e-12`, continuité `8.73e-13` ;
+  déséquilibres massiques globaux `4.05e-14` et locaux `4.32e-10`.
+- Cisaillement unilatéral d'ordre 1 : `x_r/h=1.7688239`.
+- Fit quadratique normal à deux cellules : `x_r/h=2.2647777`,
+  soit une sensibilité **0.49595 h** à la reconstruction.
+- Donnée expérimentale Driver–Seegmiller de référence :
+  `x_r/h=6.26 +/- 0.10`. Écart d'au moins 63 % même avec
+  la reconstruction quadratique. **NON QUALIFIÉ**, résultat scientifique
+  invalidé malgré la convergence itérative.
+
+Le fit d'ordre 2 n'est lui-même qu'un diagnostic de gradients sur
+une paroi horizontale, des centres cellulaires verticalement alignés et
+un non-glissement exact. Il rejette par exception les maillages pour
+lesquels ces hypothèses sont fausses.
+
+```bash
+python scripts/compare_th03_wall_gradients.py \
+  --face-csv <sortie>/benchmark_observables/face_fluxes.csv \
+  --cell-csv <sortie>/benchmark_observables/cell_fields.csv \
+  --patch downstream_wall \
+  --density 1.2 --kinematic-viscosity 1.5592777777777776e-05 \
+  --bulk-speed 44.2 --step-height 0.0127 \
+  --output wall_gradient_comparison.json
+```
+
+Pour véritablement qualifier TH-03, acquérir le profil expérimental
+d'entrée et toutes les stations de référence, construire les trois
+maillages avec `y+` pariétal contrôlé, résoudre la sensibilité à la
+reconstruction faciale/au schéma convectif puis mesurer une GCI.
+Les réussites de tests logiciels ne remplacent pas ces preuves.

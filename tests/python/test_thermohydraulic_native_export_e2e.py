@@ -39,6 +39,8 @@ def test_real_production_solver_thermohydraulic_export(tmp_path: Path) -> None:
     with h5py.File(case_file, "r+") as h5:
         setup = json.loads(h5.attrs["case_setup_json"])
         setup["body_force"] = [0.0, 0.0, 0.0]
+        setup["numerics"]["under_relaxation_momentum"] = 0.2
+        setup["numerics"]["under_relaxation_pressure"] = 0.1
         h5.attrs["case_setup_json"] = json.dumps(setup)
 
     output = tmp_path / "solver_output"
@@ -47,6 +49,8 @@ def test_real_production_solver_thermohydraulic_export(tmp_path: Path) -> None:
                              "--benchmark-export"],
                             capture_output=True, text=True, timeout=90, check=False)
     assert result.returncode == 0, (result.stdout[-3000:], result.stderr[-3000:])
+    assert 'Case under-relaxation alpha_u=0.2 alpha_p=0.1' in result.stdout
+    assert 'alpha_u=0.2 alpha_p=0.1' in result.stdout
     summary = json.loads((output / "execution.json").read_text(encoding="utf-8"))
     mass = json.loads((output / "benchmark_observables/mass_conservation.json").read_text(encoding="utf-8"))
     assert summary["converged"] is True

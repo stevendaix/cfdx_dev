@@ -1179,6 +1179,43 @@ inline ScalarEquation assemble_momentum_component(
         convection_scheme, convected_field);
 }
 
+// SSTm has zero turbulent shear viscosity at a resolved no-slip wall.  The
+// cell-centre nu_t is NOT the face value there. Reusing mu_eff(owner) at the
+// Dirichlet wall produces an artificial wall force O(nu_t/nu), and makes the
+// momentum equation inconsistent with the molecular-only Cf diagnostic.
+// The returned field is used by predictor, acceptance residual and
+// independent face-flux audit, so all three see the same wall coefficient.
+inline std::vector<double> resolved_wall_face_viscosity(
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const std::vector<double>& cell_mu,
+    const ScalarBoundaryConditions& velocity_bcs,
+    double molecular_wall_mu)
+{
+    if (!(molecular_wall_mu > 0.0) || !std::isfinite(molecular_wall_mu) ||
+        cell_mu.size() != mesh.n_cells() ||
+        geometry.face_patch.size() != mesh.n_faces())
+        throw std::invalid_argument("SST wall diffusion: invalid molecular viscosity or geometry");
+    std::vector<double> face_mu(mesh.n_faces(), 0.0);
+    for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+        const auto owner = mesh.ownership().owner(face);
+        if (owner >= cell_mu.size() || !std::isfinite(cell_mu[owner]) ||
+            cell_mu[owner] < molecular_wall_mu)
+            throw std::invalid_argument("SST wall diffusion: invalid effective cell viscosity");
+        face_mu[face] = cell_mu[owner];
+        if (mesh.ownership().neighbour(face) >= 0) continue;
+        const auto patch_id = geometry.face_patch[face];
+        if (patch_id >= mesh.boundary().n_patches()) continue;
+        const auto& patch = mesh.boundary().patch(patch_id);
+        const auto it = velocity_bcs.find(patch.name);
+        if (patch.type == cfdx::core::PatchType::WALL &&
+            it != velocity_bcs.end() &&
+            it->second.type == ScalarBoundaryType::FIXED_VALUE)
+            face_mu[face] = molecular_wall_mu;
+    }
+    return face_mu;
+}
+
 // Conservative explicit contribution of div(mu_eff * grad(U)^T) to one
 // momentum component. The returned vector contains integrated face fluxes;
 // internal-face fluxes are oriented outward from the owner cell.
@@ -1409,7 +1446,8 @@ inline ScalarEquation assemble_momentum_component(
     bool bounded,
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
-    const std::vector<double>* extra_rhs = nullptr)
+    const std::vector<double>* extra_rhs = nullptr,
+    double molecular_wall_mu = -1.0)
 {
     const std::size_t nc = mesh.n_cells();
     if (extra_rhs != nullptr && extra_rhs->size() != nc)
@@ -1440,10 +1478,16 @@ inline ScalarEquation assemble_momentum_component(
                     pressure_gradient_component.component_data(component)[c];
         sp(c) = 0.0;
     }
+    const auto face_mu = molecular_wall_mu > 0.0
+        ? resolved_wall_face_viscosity(
+            mesh, geometry, cell_effective_dynamic_viscosity,
+            velocity_bcs, molecular_wall_mu)
+        : std::vector<double>{};
     return assemble_scalar_equation(
         mesh, geometry, mass_flux, 0.0, source, sp, velocity_bcs, bounded,
         nullptr, nullptr, extra_rhs, &cell_effective_dynamic_viscosity,
-        convection_scheme, convected_field);
+        convection_scheme, convected_field, nullptr, true,
+        face_mu.empty() ? nullptr : &face_mu);
 }
 
 // Production wrapper: the full velocity tensor and vector boundary conditions
@@ -3684,7 +3728,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         Field<double, Location::CELL> transpose_force;
         if (include_transpose_stress) {
             const auto stress_flux = transpose_viscous_stress_flux(
-                mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z});
+                mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z},
+                controls.sst_runtime
+                    ? controls.density * controls.kinematic_viscosity : -1.0);
             transpose_force = viscous_face_flux_divergence(mesh, geometry, stress_flux);
             for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
                 body_x(cell) += transpose_force(cell,0);
@@ -3699,15 +3745,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         if (controls.momentum_predictor_callback)
             controls.momentum_predictor_callback(iter, mu_eff, U, mass_flux);
 
+        const double sst_molecular_wall_mu = controls.sst_runtime
+            ? controls.density * controls.kinematic_viscosity : -1.0;
         auto ex = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_x, mu_eff, ubc_x, 0,
-            controls.use_bounded_convection, controls.convection_scheme, &u_x_field);
+            controls.use_bounded_convection, controls.convection_scheme,
+            &u_x_field, nullptr, sst_molecular_wall_mu);
         auto ey = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_y, mu_eff, ubc_y, 1,
-            controls.use_bounded_convection, controls.convection_scheme, &u_y_field);
+            controls.use_bounded_convection, controls.convection_scheme,
+            &u_y_field, nullptr, sst_molecular_wall_mu);
         auto ez = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_z, mu_eff, ubc_z, 2,
-            controls.use_bounded_convection, controls.convection_scheme, &u_z_field);
+            controls.use_bounded_convection, controls.convection_scheme,
+            &u_z_field, nullptr, sst_molecular_wall_mu);
 
         if (controls.momentum_equation_forensic_callback) {
             controls.momentum_equation_forensic_callback(
@@ -5132,7 +5183,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.pressure_skew_corrected_gradient);
         if (include_transpose_stress) {
             const auto final_stress_flux = transpose_viscous_stress_flux(
-                mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z});
+                mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z},
+                controls.sst_runtime
+                    ? controls.density * controls.kinematic_viscosity : -1.0);
             const auto final_transpose_force = viscous_face_flux_divergence(
                 mesh, geometry, final_stress_flux);
             for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
@@ -5143,13 +5196,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         auto final_ex = assemble_momentum_component(
             mesh, geometry, mass_flux, final_grad_p, body_x, mu_eff, ubc_x, 0,
-            controls.use_bounded_convection, controls.convection_scheme, &final_ux_field);
+            controls.use_bounded_convection, controls.convection_scheme,
+            &final_ux_field, nullptr, sst_molecular_wall_mu);
         auto final_ey = assemble_momentum_component(
             mesh, geometry, mass_flux, final_grad_p, body_y, mu_eff, ubc_y, 1,
-            controls.use_bounded_convection, controls.convection_scheme, &final_uy_field);
+            controls.use_bounded_convection, controls.convection_scheme,
+            &final_uy_field, nullptr, sst_molecular_wall_mu);
         auto final_ez = assemble_momentum_component(
             mesh, geometry, mass_flux, final_grad_p, body_z, mu_eff, ubc_z, 2,
-            controls.use_bounded_convection, controls.convection_scheme, &final_uz_field);
+            controls.use_bounded_convection, controls.convection_scheme,
+            &final_uz_field, nullptr, sst_molecular_wall_mu);
 
         // The final nonlinear acceptance residual must represent the same
         // production equation that was solved. For transient runs the
@@ -6191,7 +6247,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             Field<double, Location::FACE> audit_transpose_flux;
             if (include_transpose_stress)
                 audit_transpose_flux = transpose_viscous_stress_flux(
-                    mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z});
+                    mesh, geometry, U, mu_eff, {ubc_x, ubc_y, ubc_z},
+                controls.sst_runtime
+                    ? controls.density * controls.kinematic_viscosity : -1.0);
             for (std::size_t d = 0; d < 3; ++d) {
                 cfdx::core::Field<double, cfdx::core::Location::CELL> component(
                     mesh.n_cells(), "U_reconstructed", "m/s", 1);
@@ -6234,10 +6292,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     source(cell) = final_grad_p.component_data(d)[cell] -
                                    controls.density * body_component;
                 }
+                const auto wall_face_mu = controls.sst_runtime
+                    ? resolved_wall_face_viscosity(
+                        mesh, geometry, mu_eff, scalar_bcs,
+                        sst_molecular_wall_mu)
+                    : std::vector<double>{};
                 auto flux = reconstruct_scalar_transport_flux(
                     mesh, geometry, mass_flux, component, 0.0, scalar_bcs,
                     controls.use_bounded_convection, controls.convection_scheme,
-                    nullptr, &mu_eff);
+                    nullptr, &mu_eff, nullptr,
+                    wall_face_mu.empty() ? nullptr : &wall_face_mu);
                 // Transport flux is convection minus viscous stress. Rebuild
                 // the transpose contribution from final U independently of
                 // the predictor source and assembled matrix residual.
@@ -6288,7 +6352,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     ? cfdx::core::ConvergenceStatus::MAX_ITERATIONS
                     : cfdx::core::ConvergenceStatus::CONTINUE;
             result.convergence_reason =
-                "carrier criteria satisfied but SST transport/closure convergence gate is not satisfied";
+                convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED
+                    ? "carrier criteria satisfied but SST transport/closure gate is not satisfied"
+                    : "max iterations reached; carrier and/or SST transport/closure gates unsatisfied";
         }
         if (converged_now) {
             result.converged = true;

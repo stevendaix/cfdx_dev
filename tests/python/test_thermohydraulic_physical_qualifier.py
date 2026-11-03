@@ -173,11 +173,34 @@ def provide_synthetic_native_traces(folder: Path, data: dict) -> None:
             path.parent.mkdir(parents=True,exist_ok=True)
             path.write_text(json.dumps(content), encoding="utf-8")
             checksums[file] = hashlib.sha256(path.read_bytes()).hexdigest()
-        for file in ("benchmark_observables/cell_fields.csv",
-                     "benchmark_observables/face_fluxes.csv"):
-            path = native_dir/file
-            path.write_text("fixture,not_real\n", encoding="utf-8")
-            checksums[file] = hashlib.sha256(path.read_bytes()).hexdigest()
+        # Minimal consistent synthetic *test fixture* for the strict
+        # wall gate. This is not a real CFD calculation or physical evidence.
+        wall_dir = native_dir/'benchmark_observables'
+        (wall_dir/'cell_fields.csv').write_text(
+            'cell_id,nu_t_m2_s\n0,0\n',encoding='utf-8')
+        (wall_dir/'face_fluxes.csv').write_text(
+            'owner,patch,wall_normal_distance_m,wall_shear_x_Pa,'
+            'wall_shear_y_Pa,wall_shear_z_Pa,wall_shear_method,'
+            'wall_y_plus_estimate,owner_nu_t_over_nu\n'
+            '0,wall,0.000001,0.01,0,0,'
+            'first_order_one_sided_diagnostic,0.0000001,0\n',
+            encoding='utf-8')
+        for file in ('benchmark_observables/cell_fields.csv',
+                     'benchmark_observables/face_fluxes.csv'):
+            checksums[file]=hashlib.sha256((native_dir/file).read_bytes()).hexdigest()
+        wall_report={
+            'case_id':'TH-03','status':'PREFLIGHT_PASS',
+            'physical_qualification':'NOT_QUALIFIED',
+            'wall_method':'first_order_one_sided_diagnostic',
+            'n_faces':1,'min_y_plus_estimate':1e-7,
+            'max_y_plus_estimate':1e-7,'max_owner_nu_t_over_nu':0,
+            'wall_y_plus_preflight_threshold':1.,
+            'density_kg_m3':1.,'molecular_kinematic_viscosity_m2_s':1.,
+            'audited_wall_patches':['wall']}
+        (native_dir/'wall_resolution.json').write_text(
+            json.dumps(wall_report),encoding='utf-8')
+        checksums['wall_resolution.json']=hashlib.sha256(
+            (native_dir/'wall_resolution.json').read_bytes()).hexdigest()
         manifest = {"case_id":"TH-03", "scenario_id":"Re_h_37500",
                     "mesh_id":run["mesh_id"], "status":"EXECUTED_UNQUALIFIED",
                     "physical_qualification":"NOT_QUALIFIED", "solver_executed":True,

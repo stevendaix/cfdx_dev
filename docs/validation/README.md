@@ -42,6 +42,8 @@ A reference value is never a CFDX result. A green CI job is not automatically va
 14-benchmarks/08-radiation/chapter
 14-benchmarks/09-thermohydraulics/README
 14-benchmarks/09-thermohydraulics/PHYSICAL_QUALIFICATION_RUNBOOK
+14-benchmarks/09-thermohydraulics/IMPLEMENTATION_STATUS_2026-11-03
+14-benchmarks/09-thermohydraulics/TH03_V3_WALL_CORRECTION_AUDIT
 15-qualification/README
 ```
 

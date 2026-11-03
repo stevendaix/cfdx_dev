@@ -73,7 +73,8 @@ int main() {
         EXPECT_TRUE(cells.find("0,0.5,0.5,0.5,1,2,0,0,10,10,,,")!=std::string::npos);
         // Face 2 is y=0 with wall-normal distance 0.5 m.
         EXPECT_TRUE(faces.find("2,0,-1,\"wall\"")!=std::string::npos);
-        EXPECT_TRUE(faces.find(",0.5,4,0,0,first_order_one_sided_diagnostic")!=std::string::npos);
+        EXPECT_TRUE(faces.find(",0.5,4,0,0,first_order_one_sided_diagnostic,1,")!=std::string::npos);
+        EXPECT_TRUE(faces.find("wall_y_plus_estimate,owner_nu_t_over_nu")!=std::string::npos);
         EXPECT_TRUE(file_text(dir/"mass_conservation.json").find(
             "\"physical_qualification\": \"NOT_QUALIFIED\"") !=std::string::npos);
         std::filesystem::remove_all(dir);
@@ -88,14 +89,23 @@ int main() {
         SSTProductionState sst(1);
         sst.k(0)=3;
         sst.omega(0)=1;
-        sst.nu_t(0)=0;
+        sst.nu_t(0)=0.01;
         sst.wall_distance(0)=0.5;
         sst.strain_rate(0)=0;
         const auto dir=unique_temp_path("_th_sst");
         write_thermohydraulic_observables(dir,mesh,u,p,mdot,{},2,0.001,&sst);
         // 12 - 2/3*2*3 = 8 Pa; failing to transform corrupts Cp.
         const auto fields=file_text(dir/"cell_fields.csv");
-        EXPECT_TRUE(fields.find(",12,8,3,1,0,")!=std::string::npos);
+        EXPECT_TRUE(fields.find(",12,8,3,1,0.01,")!=std::string::npos);
+        // On a real no-slip wall, the ratio is a CELL diagnostic: the
+        // viscosity at the geometric face is molecular even if this is 10.
+        VelocityBoundaryConditions walls;
+        walls["wall"]={VelocityBoundaryCondition::Type::FIXED_VALUE,Vec3{0,0,0}};
+        u.set(0,2,0,0);
+        write_thermohydraulic_observables(dir,mesh,u,p,mdot,walls,2,0.001,&sst);
+        const auto wall_faces=file_text(dir/"face_fluxes.csv");
+        EXPECT_TRUE(wall_faces.find("first_order_one_sided_diagnostic,")!=std::string::npos);
+        EXPECT_TRUE(wall_faces.find(",10\n")!=std::string::npos);
         std::filesystem::remove_all(dir);
     });
     run_case("nonfinite_temperature_rejected", [] {

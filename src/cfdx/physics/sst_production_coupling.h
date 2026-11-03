@@ -289,7 +289,18 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
             !std::isfinite(step.transport.k_residual) ||
             !std::isfinite(step.transport.second_residual)) {
             rollback();
-            step.reason = "SST transport did not satisfy convergence and finite-state gates";
+            // Preserve the exact failed transport metrics after rollback.
+            // These distinguish a genuine k/omega fixed-point defect from a
+            // bound violation without weakening the required acceptance gate.
+            step.reason = "SST transport did not satisfy convergence and finite-state gates"
+                " (iterations=" + std::to_string(step.transport.iterations) +
+                ", converged=" + std::to_string(step.transport.converged) +
+                ", k_residual=" + std::to_string(step.transport.k_residual) +
+                ", omega_residual=" + std::to_string(step.transport.second_residual) +
+                ", k_floor_events=" + std::to_string(step.transport.k_floor_events) +
+                ", omega_floor_events=" + std::to_string(step.transport.second_floor_events) +
+                ", nonfinite_bound_events=" +
+                  std::to_string(step.transport.nonfinite_bound_events) + ")";
             return step;
         }
 

@@ -7,6 +7,10 @@ on:
       - 'tests/**'
       - 'CMakeLists.txt'
       - 'scripts/qualify_thermohydraulic_benchmarks.py'
+      - 'scripts/run_thermohydraulic_cases.py'
+      - 'scripts/generate_th03_bfs_case.py'
+      - 'scripts/compare_th03_wall_gradients.py'
+      - 'scripts/analyse_thermohydraulic_timeseries.py'
       - 'scripts/validate_thermohydraulic_reference.py'
       - 'docs/validation/14-benchmarks/09-thermohydraulics/**'
       - '.github/workflows/th-physical-prerequisites.yml'
@@ -31,7 +35,10 @@ jobs:
           python -m pytest -q \
             tests/python/test_thermohydraulic_reference_contracts.py \
             tests/python/test_thermohydraulic_physical_qualifier.py \
-            tests/python/test_thermohydraulic_native_cases.py
+            tests/python/test_thermohydraulic_native_cases.py \
+            tests/python/test_th03_bfs_case_generator.py \
+            tests/python/test_th03_wall_gradient_compare.py \
+            tests/python/test_thermohydraulic_timeseries.py
           python scripts/validate_thermohydraulic_reference.py \
             --output build/thermohydraulic/references.json
           python scripts/qualify_thermohydraulic_benchmarks.py \
@@ -49,6 +56,7 @@ jobs:
             cfdx_production_solver \
             test_ghia_cavity \
             test_thermohydraulic_observables \
+            test_production_sst_thermal_coupling \
             test_thermal_driver_vv \
             test_production_buoyancy_outer_loop_vv \
             test_natural_convection_de_vahl_davis
@@ -56,12 +64,22 @@ jobs:
         env:
           PYTHONPATH: src/cfdx/python
           CFDX_PRODUCTION_SOLVER: build/th-preflight/cfdx_production_solver
-        run: python -m pytest -q tests/python/test_thermohydraulic_native_export_e2e.py
+        run: |
+          python -m pytest -q \
+            tests/python/test_thermohydraulic_native_export_e2e.py \
+            tests/python/test_thermohydraulic_sst_energy_e2e.py
+      - name: Execute real SST backward-facing-step debug regression (not validation)
+        env:
+          PYTHONPATH: src/cfdx/python
+          CFDX_PRODUCTION_SOLVER: build/th-preflight/cfdx_production_solver
+          CFDX_RUN_TH03_DEBUG_E2E: "1"
+        run: |
+          python -m pytest -q tests/python/test_th03_native_sst_e2e.py
       - name: Execute independent laminar numerical prerequisites
         run: |
           ctest --test-dir build/th-preflight --output-on-failure \
             --timeout 450 \
-            -R '^(test_ghia_cavity_quick|test_thermohydraulic_observables|test_thermal_driver_vv|test_production_buoyancy_outer_loop_vv|test_natural_convection_de_vahl_davis)$' \
+            -R '^(test_ghia_cavity_quick|test_thermohydraulic_observables|test_production_sst_thermal_coupling|test_thermal_driver_vv|test_production_buoyancy_outer_loop_vv|test_natural_convection_de_vahl_davis)$' \
             -j 2
       - name: Upload prerequisites without claiming turbulent validation
         if: always()

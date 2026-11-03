@@ -206,6 +206,10 @@ def check_native_run_evidence(base: Path, case: str, scenario: str,
         "benchmark_observables/cell_fields.csv",
         "benchmark_observables/face_fluxes.csv",
     }
+    if case == 'TH-07':
+        expected_files.update(('energy_convergence.json', 'energy_summary.json'))
+    if case == 'TH-03':
+        expected_files.add('wall_resolution.json')
     check(expected_files.issubset(file_hashes),
           f"{tag}: missing native solver-owned outputs")
     for name in expected_files:
@@ -235,6 +239,55 @@ def check_native_run_evidence(base: Path, case: str, scenario: str,
                            f"{tag}.native_max_cell_mass_imbalance", nonnegative=True)
     check(max_cell_mass <= MAX_MASS_IMBALANCE,
           f"{tag}: local cell mass leakage {max_cell_mass} exceeds {MAX_MASS_IMBALANCE}")
+    if case == 'TH-03':
+        try:
+            from scripts.audit_th03_wall_resolution import audit as audit_sst_wall
+        except ImportError:
+            from audit_th03_wall_resolution import audit as audit_sst_wall
+        native_wall = json.loads((evidence_path.parent/'wall_resolution.json').read_text())
+        rho = number(native_wall.get('density_kg_m3'), f'{tag}.density')
+        nu = number(native_wall.get('molecular_kinematic_viscosity_m2_s'),
+                    f'{tag}.molecular_nu')
+        check(rho > 0 and nu > 0, f'{tag}: invalid wall-audit physical scales')
+        walls = native_wall.get('audited_wall_patches')
+        check(isinstance(walls,list) and walls and all(isinstance(w,str) and w for w in walls),
+              f'{tag}: missing all-wall coverage')
+        derived = audit_sst_wall(
+            evidence_path.parent/'benchmark_observables/face_fluxes.csv',
+            evidence_path.parent/'benchmark_observables/cell_fields.csv',
+            wall_patches=tuple(walls),density=rho,viscosity=nu)
+        check(native_wall.get('status') == 'PREFLIGHT_PASS' and
+              derived['status'] == 'PREFLIGHT_PASS' and
+              native_wall.get('physical_qualification') == 'NOT_QUALIFIED' and
+              native_wall.get('wall_method') == derived['wall_method'] and
+              native_wall.get('n_faces') == derived['n_faces'] and
+              abs(number(native_wall.get('max_y_plus_estimate'),f'{tag}.wall_y_plus') -
+                  derived['max_y_plus_estimate']) < 1e-9,
+              f'{tag}: native SST wall-resolution diagnostic does not pass')
+    if case == 'TH-07':
+        energy = json.loads((evidence_path.parent / 'energy_convergence.json').read_text())
+        summary = json.loads((evidence_path.parent / 'energy_summary.json').read_text())
+        check(energy.get('converged') is True and
+              energy.get('linear_solver_converged') is True and
+              energy.get('global_energy_balance_passed') is True and
+              energy.get('local_energy_balance_passed') is True and
+              energy.get('temperature_admissibility_passed') is True,
+              f'{tag}: native thermal convergence contract incomplete')
+        global_energy = number(energy.get('global_balance_normalized'),
+                               f'{tag}.native_energy',nonnegative=True)
+        local_energy = number(energy.get('max_cell_residual_normalized'),
+                              f'{tag}.native_energy_cell',nonnegative=True)
+        check(max(global_energy,local_energy) <= MAX_ENERGY_IMBALANCE,
+              f'{tag}: native energy conservation exceeds gate')
+        tmin = number(summary.get('min_temperature'),f'{tag}.temperature_min_K')
+        tmax = number(summary.get('max_temperature'),f'{tag}.temperature_max_K')
+        check(0<tmin<=tmax, f'{tag}: invalid native temperature envelope')
+        declared = number(run.get('energy_imbalance_relative'),
+                          f'{tag}.declared_energy',nonnegative=True)
+        check(abs(declared-global_energy)<=1e-12*max(1,abs(global_energy)) and
+              number(evidence.get('energy_imbalance_relative'),
+                     f'{tag}.native_manifest_energy',nonnegative=True)==global_energy,
+              f'{tag}: declared energy balance does not match solver-owned audit')
     for name, actual in (("true_residual_max", true_residual),
                          ("mass_imbalance_relative", mass)):
         declared = number(run.get(name), f"{tag}.{name}", nonnegative=True)

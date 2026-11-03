@@ -394,7 +394,8 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
     const ScalarBoundaryConditions& boundary_conditions,
     const std::vector<double>* cell_diffusion = nullptr,
     const ScalarBoundaryFaceValues* face_values = nullptr,
-    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr,
+    const std::vector<double>* boundary_face_diffusion = nullptr)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells(), nf = mesh.n_faces();
@@ -402,7 +403,8 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
         geometry.cell_centres.size() != nc || geometry.cell_volumes.size() != nc ||
         geometry.face_centres.size() != nf || geometry.face_area_vectors.size() != nf ||
         geometry.face_patch.size() != nf ||
-        (cell_diffusion && cell_diffusion->size() != nc))
+        (cell_diffusion && cell_diffusion->size() != nc) ||
+        (boundary_face_diffusion && boundary_face_diffusion->size() != nf))
         throw std::invalid_argument(
             "compute_nonorthogonal_diffusion_face_fluxes: shape mismatch");
     if (!(diffusion_coefficient >= 0.0) || !std::isfinite(diffusion_coefficient))
@@ -482,8 +484,12 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
         const Vec3 tangential = sf - d * alpha;
         if (tangential.mag() <= 1e-12 * area) continue;
 
-        double gamma_face = cell_diffusion
-            ? (*cell_diffusion)[owner] : diffusion_coefficient;
+        double gamma_face = neighbour_raw < 0 && boundary_face_diffusion
+            ? (*boundary_face_diffusion)[face]
+            : (cell_diffusion ? (*cell_diffusion)[owner] : diffusion_coefficient);
+        if (!(gamma_face >= 0.0) || !std::isfinite(gamma_face))
+            throw std::invalid_argument(
+                "compute_nonorthogonal_diffusion_face_fluxes: invalid face diffusion");
         Vec3 grad_face{
             gradient.component_data(0)[owner],
             gradient.component_data(1)[owner],
@@ -569,7 +575,8 @@ inline ScalarEquation assemble_scalar_equation(
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
     const ScalarBoundaryFaceConditions* face_conditions = nullptr,
-    bool apply_nonorthogonal_correction = true)
+    bool apply_nonorthogonal_correction = true,
+    const std::vector<double>* boundary_face_diffusion = nullptr)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells();
@@ -581,8 +588,13 @@ inline ScalarEquation assemble_scalar_equation(
         source_implicit.size() != nc || source_implicit.dimension() != 1 ||
         (extra_diagonal && extra_diagonal->size() != nc) ||
         (extra_rhs && extra_rhs->size() != nc) ||
-        (cell_diffusion && cell_diffusion->size() != nc))
+        (cell_diffusion && cell_diffusion->size() != nc) ||
+        (boundary_face_diffusion && boundary_face_diffusion->size() != nf))
         throw std::invalid_argument("assemble_scalar_equation: field dimensions do not match mesh");
+    if (boundary_face_diffusion)
+        for (const double gamma : *boundary_face_diffusion)
+            if (!(gamma >= 0.0) || !std::isfinite(gamma))
+                throw std::invalid_argument("assemble_scalar_equation: invalid boundary face viscosity");
     if (!(diffusion_coefficient >= 0.0) || !std::isfinite(diffusion_coefficient))
         throw std::invalid_argument("assemble_scalar_equation: invalid diffusion coefficient");
 
@@ -681,7 +693,8 @@ inline ScalarEquation assemble_scalar_equation(
     if (apply_nonorthogonal_correction && needs_nonorthogonal_gradient) {
         nonorthogonal_diffusion_flux = compute_nonorthogonal_diffusion_face_fluxes(
             mesh, geometry, *convected_field, diffusion_coefficient,
-            boundary_conditions, cell_diffusion, face_values, face_conditions);
+            boundary_conditions, cell_diffusion, face_values, face_conditions,
+            boundary_face_diffusion);
     }
 
     double max_abs_face_flux = 0.0;
@@ -840,8 +853,9 @@ inline ScalarEquation assemble_scalar_equation(
                 deferred_rhs[o] += nonorthogonal_diffusion_flux[f];
 
             if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
-                const double gamma_owner = cell_diffusion
-                    ? (*cell_diffusion)[o] : diffusion_coefficient;
+                const double gamma_owner = boundary_face_diffusion
+                    ? (*boundary_face_diffusion)[f]
+                    : (cell_diffusion ? (*cell_diffusion)[o] : diffusion_coefficient);
                 if (gamma_owner < 0.0)
                     throw std::invalid_argument("assemble_scalar_equation: negative boundary diffusion");
                 const double D = gamma_owner * area / distance;
@@ -851,8 +865,9 @@ inline ScalarEquation assemble_scalar_equation(
                 rhs[o] += a_boundary * bc.value;
                 div_phi[o] += F;
             } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
-                const double gamma_owner = cell_diffusion
-                    ? (*cell_diffusion)[o] : diffusion_coefficient;
+                const double gamma_owner = boundary_face_diffusion
+                    ? (*boundary_face_diffusion)[f]
+                    : (cell_diffusion ? (*cell_diffusion)[o] : diffusion_coefficient);
                 if (!(gamma_owner >= 0.0) || !std::isfinite(gamma_owner))
                     throw std::invalid_argument(
                         "assemble_scalar_equation: invalid boundary diffusion");
@@ -960,7 +975,8 @@ reconstruct_scalar_transport_flux(
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
     const ScalarBoundaryFaceConditions* face_conditions = nullptr,
     const std::vector<double>* cell_diffusion = nullptr,
-    const ScalarBoundaryFaceValues* face_values = nullptr)
+    const ScalarBoundaryFaceValues* face_values = nullptr,
+    const std::vector<double>* boundary_face_diffusion = nullptr)
 {
     using namespace cfdx::core;
     const std::size_t nc = mesh.n_cells(), nf = mesh.n_faces();
@@ -976,11 +992,13 @@ reconstruct_scalar_transport_flux(
         throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid diffusion coefficient");
     if (cell_diffusion && cell_diffusion->size() != nc)
         throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid cell diffusion");
+    if (boundary_face_diffusion && boundary_face_diffusion->size() != nf)
+        throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid boundary face diffusion");
 
     Field<double, Location::FACE> result(nf, field.name()+"_flux", "", 1);
     const auto nonorthogonal_diffusion_flux = compute_nonorthogonal_diffusion_face_fluxes(
         mesh, geometry, field, diffusion_coefficient, boundary_conditions,
-        cell_diffusion, face_values, face_conditions);
+        cell_diffusion, face_values, face_conditions, boundary_face_diffusion);
     Field<double, Location::CELL> grad;
     Field<double, Location::FACE> reconstructed_face;
     // Only SECOND_ORDER_UPWIND and TVD consume the cell gradient below.
@@ -1094,7 +1112,8 @@ reconstruct_scalar_transport_flux(
             const double d=boundary_normal_distance(geometry,f,o);
             if (!(area > 0.0) || !(d > 0.0))
                 throw std::runtime_error("reconstruct_scalar_transport_flux: degenerate boundary face");
-            gamma = cell_diffusion ? (*cell_diffusion)[o] : diffusion_coefficient;
+            gamma = boundary_face_diffusion ? (*boundary_face_diffusion)[f]
+                : (cell_diffusion ? (*cell_diffusion)[o] : diffusion_coefficient);
             if (!(gamma >= 0.0) || !std::isfinite(gamma))
                 throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid boundary diffusion");
             if (bc.type == ScalarBoundaryType::FIXED_VALUE) {

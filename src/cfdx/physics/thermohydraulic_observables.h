@@ -176,7 +176,7 @@ inline ThermohydraulicObservableSummary write_thermohydraulic_observables(
                "area_x_m2,area_y_m2,area_z_m2,area_m2,"
                "mass_flux_kg_s,wall_normal_distance_m,"
                "wall_shear_x_Pa,wall_shear_y_Pa,wall_shear_z_Pa,"
-               "wall_shear_method\n";
+               "wall_shear_method,wall_y_plus_estimate,owner_nu_t_over_nu\n";
         for (std::size_t f = 0; f < faces; ++f) {
             const auto owner = static_cast<std::size_t>(mesh.ownership().owner(f));
             const auto neighbour = mesh.ownership().neighbour(f);
@@ -221,12 +221,23 @@ inline ThermohydraulicObservableSummary write_thermohydraulic_observables(
                         << ',' << multiplier*(uy - dot*ny)
                         << ',' << multiplier*(uz - dot*nz)
                         << ",first_order_one_sided_diagnostic";
+                    // y+ is a *diagnostic estimate* from the one-sided
+                    // molecular shear, not a resolved-wall qualification.
+                    const double tau_tangent = multiplier *
+                        std::sqrt((ux - dot*nx)*(ux - dot*nx) +
+                                  (uy - dot*ny)*(uy - dot*ny) +
+                                  (uz - dot*nz)*(uz - dot*nz));
+                    const double u_tau = std::sqrt(tau_tangent / density);
+                    out << ',' << distance * u_tau / molecular_kinematic_viscosity;
+                    out << ',';
+                    if (sst)
+                        out << sst->nu_t(owner)/molecular_kinematic_viscosity;
                     ++summary.no_slip_wall_faces;
                 } else {
-                    out << ",,,,not_available_non_dirichlet_wall";
+                    out << ",,,,not_available_non_dirichlet_wall,,";
                 }
             } else {
-                out << ",,,,not_a_no_slip_wall";
+                out << ",,,,not_a_no_slip_wall,,";
             }
             out << '\n';
         }

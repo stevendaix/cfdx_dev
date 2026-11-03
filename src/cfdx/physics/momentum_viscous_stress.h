@@ -18,7 +18,8 @@ transpose_viscous_stress_flux(
     const FvGeometry& geometry,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& velocity,
     const std::vector<double>& cell_mu,
-    const std::array<ScalarBoundaryConditions,3>& velocity_bcs)
+    const std::array<ScalarBoundaryConditions,3>& velocity_bcs,
+    double molecular_wall_mu = -1.0)
 {
     using namespace cfdx::core;
     const auto nc=mesh.n_cells(), nf=mesh.n_faces();
@@ -44,6 +45,20 @@ transpose_viscous_stress_flux(
             mesh.boundary().patch(patch).type==PatchType::EMPTY)
             continue;
         double mu=cell_mu[owner], weight=0.0;
+        if (neighbour < 0 && molecular_wall_mu > 0.0 &&
+            patch < mesh.boundary().n_patches()) {
+            const auto& boundary_patch = mesh.boundary().patch(patch);
+            const auto it = velocity_bcs[0].find(boundary_patch.name);
+            if (boundary_patch.type == PatchType::WALL &&
+                it != velocity_bcs[0].end() &&
+                it->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                if (!std::isfinite(molecular_wall_mu) ||
+                    !(molecular_wall_mu > 0.0) || molecular_wall_mu > mu)
+                    throw std::invalid_argument(
+                        "transpose viscous stress: invalid molecular wall viscosity");
+                mu = molecular_wall_mu;
+            }
+        }
         const auto& Sf=geometry.face_area_vectors[face];
         if (neighbour>=0) {
             const auto nb=static_cast<std::size_t>(neighbour);
