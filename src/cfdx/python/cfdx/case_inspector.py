@@ -255,8 +255,8 @@ def read_dataset_preview(
             raise TypeError(f"{dataset_path} is not an HDF5 dataset")
         if dataset.dtype.kind not in "biufc":
             return (
-                f"{dataset_path}\\nshape: {dataset.shape}\\ndtype: {dataset.dtype}"
-                "\\nPreview disabled for non-numeric or variable-length data."
+                f"{dataset_path}\nshape: {dataset.shape}\ndtype: {dataset.dtype}"
+                "\nPreview disabled for non-numeric or variable-length data."
             )
 
         shape = tuple(int(size) for size in dataset.shape)
@@ -267,13 +267,14 @@ def read_dataset_preview(
             values = []
             truncated = False
         else:
-            selection = []
+            reversed_selection = []
             remaining = max_elements
-            for size in shape:
+            for size in reversed(shape):
                 count = min(size, max(1, remaining))
-                selection.append(slice(0, count))
+                reversed_selection.append(slice(0, count))
                 remaining = max(1, remaining // count)
-            values = dataset[tuple(selection)].tolist()
+            selection = tuple(reversed(reversed_selection))
+            values = dataset[selection].tolist()
             truncated = any(
                 selected.stop < size
                 for selected, size in zip(selection, shape, strict=True)
@@ -282,10 +283,10 @@ def read_dataset_preview(
         rendered = repr(values)
         if len(rendered) > max_text_chars:
             rendered = rendered[: max_text_chars - 3] + "..."
-        suffix = "\\n(preview truncated; source dataset was not modified)" if truncated else ""
+        suffix = "\n(preview truncated; source dataset was not modified)" if truncated else ""
         return (
-            f"{dataset_path}\\nshape: {shape}\\ndtype: {dataset.dtype}"
-            f"\\nfirst values: {rendered}{suffix}"
+            f"{dataset_path}\nshape: {shape}\ndtype: {dataset.dtype}"
+            f"\nfirst values: {rendered}{suffix}"
         )
 
 
