@@ -4,8 +4,9 @@ import h5py
 import numpy as np
 import pytest
 
-from cfdx.application import Application
 from cfdx.case_inspector import inspect_cfdx_file
+
+from cfdx.application import Application
 
 
 def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
@@ -91,6 +92,7 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
 
 
 
+
 def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     path = tmp_path / "oversized-connectivity.h5"
     with h5py.File(path, "w") as h5:
@@ -116,6 +118,7 @@ def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
 
 
 
+
 def test_inspect_bounds_dataset_tree(tmp_path):
     path = tmp_path / "many.h5"
     with h5py.File(path, "w") as h5:
@@ -127,6 +130,7 @@ def test_inspect_bounds_dataset_tree(tmp_path):
 
     assert len(summary.datasets) == 3
     assert summary.datasets_truncated
+
 
 
 
