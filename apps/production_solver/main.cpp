@@ -598,6 +598,8 @@ void write_quadratic_wall_forces(
         << "  \"method\": \"quadratic_wls_3d\",\n"
         << "  \"normal_convention\": \"body_to_fluid\",\n"
         << "  \"pressure_reference_pa\": 0,\n"
+        << "  \"moment_center_m\": [0, 0, 0],\n"
+        << "  \"force_definition\": \"fluid_on_body = -p*n_body + tau*n_body\",\n"
         << "  \"dynamic_viscosity_pa_s\": " << json_number(dynamic_viscosity) << ",\n"
         << "  \"surface_face_count\": " << surface.size() << ",\n"
         << "  \"surface_area_m2\": " << json_number(total_area) << ",\n"
