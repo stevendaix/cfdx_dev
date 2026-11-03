@@ -61,10 +61,15 @@ case does not load or activate a restart checkpoint.
 
 ## Performance contract
 
-The metadata inspector does not slice mesh/field datasets. Dataset discovery
-stops at 300 entries by default (5,000 hard maximum), scalar/vector field
+Opening a file does not slice mesh/field datasets. Only an explicit dataset
+selection reads a bounded sample. Chunked datasets whose individual chunks
+exceed the 1 MiB decompression budget and virtual datasets are not sampled.
+Dataset discovery stops at 300 entries by default (5,000 hard maximum),
+scalar/vector field
 catalogs and region names are each capped at 300 entries, and root attribute
-display is bounded to 100 entries and 4 KiB per value. Known small
+display is bounded to 100 entries and 4 KiB per value. Variable-length
+dataset storage is reported as unknown rather than estimated from pointer
+size. Known small
 format/provenance attributes and the case setup JSON are read for
 identification; the setup JSON is rejected when its reported payload exceeds
 1 MiB.
