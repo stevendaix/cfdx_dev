@@ -90,6 +90,7 @@ def test_workbench_has_stable_docks() -> None:
     assert window.workflow_tree.topLevelItem(1).child(2).text(0).endswith("[OK]")
     assert window.workflow_tree.topLevelItem(0).child(4).text(0).endswith("[ ]")
     assert window.findChild(QDockWidget, "workbench.dock.workflow") is not None
+    assert window.findChild(QDockWidget, "workbench.dock.case_file") is not None
     assert window.findChild(QDockWidget, "workbench.dock.setup") is not None
     assert window.findChild(QDockWidget, "workbench.dock.probes") is not None
     assert window.findChild(QDockWidget, "workbench.dock.properties") is not None
