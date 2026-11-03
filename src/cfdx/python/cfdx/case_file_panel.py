@@ -74,9 +74,7 @@ class CaseFilePanel(QWidget):
     def set_summary(self, summary: CaseFileSummary) -> None:
         self.summary = summary
         self.tree.clear()
-        self.preview.setPlainText(
-            "Select a dataset to inspect a bounded sample."
-        )
+        self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         state = "CFDX" if summary.is_cfdx else "HDF5 (unrecognised CFDX layout)"
         self.status.setText(f"{summary.path.name} · {state}")
         root = QTreeWidgetItem(self.tree, ["File", str(summary.path)])
@@ -106,9 +104,7 @@ class CaseFilePanel(QWidget):
                 ("Cells", summary.n_cells),
                 ("Regions", len(summary.regions) if summary.regions else 1),
             ):
-                display_value = (
-                    str(value) if value is not None else "not declared"
-                )
+                display_value = str(value) if value is not None else "not declared"
                 if (
                     summary.regions_truncated
                     and label != "Regions"
@@ -175,11 +171,9 @@ class CaseFilePanel(QWidget):
                 else "variable/unknown size"
             )
             chunk_label = (
-                (
-                    f"chunks={dataset.chunks}"
-                    if dataset.chunks is not None
-                    else "contiguous"
-                )
+                f"chunks={dataset.chunks}"
+                if dataset.chunks is not None
+                else "contiguous"
             )
             compression_label = (
                 f"compression={dataset.compression}"
