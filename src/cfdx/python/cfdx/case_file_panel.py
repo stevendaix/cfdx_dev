@@ -101,9 +101,17 @@ class CaseFilePanel(QWidget):
                 ("Cells", summary.n_cells),
                 ("Regions", len(summary.regions) if summary.regions else 1),
             ):
+                display_value = (
+                    str(value) if value is not None else "not declared"
+                )
+                if not summary.mesh_counts_complete and label != "Regions":
+                    display_value = f"≥{display_value}"
+                if label == "Regions" and summary.regions_truncated:
+                    display_value = f"{len(summary.regions)}+"
+                QTreeWidgetItem(mesh, [label, display_value])
+            if not summary.mesh_counts_complete:
                 QTreeWidgetItem(
-                    mesh,
-                    [label, str(value) if value is not None else "not declared"],
+                    mesh, ["Count status", "Partial: first 300 regions only"]
                 )
             for region in summary.regions:
                 QTreeWidgetItem(mesh, ["Region", region])
@@ -111,7 +119,15 @@ class CaseFilePanel(QWidget):
                 QTreeWidgetItem(mesh, ["Regions", "Listing truncated at 300 entries"])
         else:
             QTreeWidgetItem(mesh, ["Status", "No recognised mesh topology"])
-        fields = QTreeWidgetItem(self.tree, ["Fields", str(summary.total_field_count)])
+        fields_truncated = (
+            summary.scalar_fields_truncated or summary.vector_fields_truncated
+        )
+        field_total = (
+            f"{summary.total_field_count}+"
+            if fields_truncated
+            else str(summary.total_field_count)
+        )
+        fields = QTreeWidgetItem(self.tree, ["Fields", field_total])
         for label, names in (
             ("Scalar", summary.scalar_fields),
             ("Vector", summary.vector_fields),
