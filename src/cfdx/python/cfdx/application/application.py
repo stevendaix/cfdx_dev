@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from ..dat_io import DatRestart, read_dat_restart
+from ..case_inspector import CaseFileSummary, inspect_cfdx_file
 from ..execution import ExecutionController
 from ..mesh_model import MeshCatalog, read_mesh_catalog
 from ..probe import ProbeCatalog
@@ -395,6 +396,12 @@ class Application:
         return self.set_results(
             discover_result_series(path, inspect_fields=True), directory=path
         )
+
+    def inspect_case_file(
+        self, path: str | Path, *, max_datasets: int = 300
+    ) -> CaseFileSummary:
+        """Inspect CFDX HDF5 metadata without materializing scientific arrays."""
+        return inspect_cfdx_file(Path(path), max_datasets=max_datasets)
 
     def load_mesh(self, path: str | Path) -> MeshCatalog:
         """Load a CFDX mesh and keep its catalog for contextual properties."""
