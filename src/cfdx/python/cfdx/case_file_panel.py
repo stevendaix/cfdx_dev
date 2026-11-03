@@ -70,7 +70,7 @@ class CaseFilePanel(QWidget):
         self.summary = summary
         self.tree.clear()
         self.preview.setPlainText(
-            "Select a numeric dataset to inspect a bounded sample."
+            "Select a dataset to inspect a bounded sample."
         )
         state = "CFDX" if summary.is_cfdx else "HDF5 (unrecognised CFDX layout)"
         self.status.setText(f"{summary.path.name} · {state}")
