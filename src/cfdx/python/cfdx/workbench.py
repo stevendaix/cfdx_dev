@@ -27,7 +27,6 @@ from .session import CFDXSession
 from .solver_states import session_state_view
 from .theme import TOKENS, apply_workbench_theme
 from .visualization_pipeline import VisualizationOperation
-from .case_inspector import inspect_cfdx_file
 
 
 try:
@@ -481,7 +480,7 @@ if QMainWindow is not object:
             if not path:
                 return
             try:
-                summary = inspect_cfdx_file(path)
+                summary = self.application.inspect_case_file(path)
                 if not summary.is_cfdx:
                     raise ValueError("file does not contain a recognised CFDX layout")
                 self.case_file_panel.set_summary(summary)
