@@ -154,7 +154,6 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     assert application.selection.stable_id is None
 
 
-
 def test_inspect_does_not_preview_mesh_with_external_region_catalog(tmp_path):
     path = tmp_path / "external-regions.h5"
     with h5py.File(path, "w") as h5:
@@ -174,8 +173,6 @@ def test_inspect_does_not_preview_mesh_with_external_region_catalog(tmp_path):
     assert summary.has_mesh
     assert not summary.preview_supported
     assert "region catalog" in summary.preview_block_reason
-
-
 
 
 def test_inspect_does_not_preview_when_region_group_contains_soft_links(tmp_path):
@@ -199,7 +196,6 @@ def test_inspect_does_not_preview_when_region_group_contains_soft_links(tmp_path
     assert summary.regions_truncated
     assert not summary.preview_supported
     assert "non-internal links" in summary.preview_block_reason
-
 
 
 def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
