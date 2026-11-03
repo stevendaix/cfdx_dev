@@ -121,6 +121,7 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
         h5.attrs["n_points"] = 4
         h5.attrs["n_faces"] = 4
         h5.attrs["n_cells"] = 1
+        h5.attrs["boundary_patches"] = "wall:0:4:0"
         h5.attrs["source_case_name"] = "converted-channel"
         h5.attrs["case_setup_json"] = (
             '{"name":"converted-channel","physics":{"energy":true},'
