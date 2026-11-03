@@ -6,6 +6,8 @@ import pytest
 from cfdx.case_inspector import inspect_cfdx_file
 
 from cfdx.application import Application
+from cfdx.case_io import save_case
+from cfdx.session import CFDXSession
 
 
 def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
@@ -55,6 +57,25 @@ def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
         item.path == "/points" and item.size_bytes == 1_200_000_000
         for item in summary.datasets
     )
+
+
+
+def test_inspect_case_written_by_canonical_case_io(tmp_path):
+    path = tmp_path / "roundtrip.cfdx.h5"
+    session = CFDXSession()
+
+    save_case(session, path)
+    summary = Application().inspect_case_file(path)
+
+    assert summary.is_cfdx
+    assert summary.has_project_config
+    assert summary.case_name == session.case.name
+    assert summary.physics == tuple(sorted(session.case.physics))
+    assert summary.numerics == tuple(sorted(session.case.numerics))
+    assert summary.boundaries == tuple(sorted(session.case.boundaries))
+    assert not summary.has_mesh
+    assert not summary.preview_supported
+
 
 
 def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
