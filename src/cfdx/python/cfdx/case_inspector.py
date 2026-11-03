@@ -133,21 +133,48 @@ def _root_attributes(
     return tuple(sorted(attributes)), truncated
 
 
+def _internal_object(h5: h5py.Group, path: str):
+    """Resolve only hard links inside the inspected HDF5 file."""
+    parts = path.strip("/").split("/")
+    if not parts or any(part in {"", ".", ".."} for part in parts):
+        return None
+    current = h5
+    for index, part in enumerate(parts):
+        try:
+            link = current.get(part, getlink=True)
+        except KeyError:
+            return None
+        if not isinstance(link, h5py.HardLink):
+            return None
+        try:
+            current = current[part]
+        except (KeyError, OSError, RuntimeError):
+            return None
+        if index < len(parts) - 1 and not isinstance(current, h5py.Group):
+            return None
+    return current
+
+
 def _first_dataset(h5: h5py.File, candidates: tuple[str, ...]):
     for candidate in candidates:
-        if candidate in h5 and isinstance(h5[candidate], h5py.Dataset):
-            return h5[candidate]
+        dataset = _internal_object(h5, candidate)
+        if isinstance(dataset, h5py.Dataset):
+            return dataset
     return None
 
 
 def _region_names(
     h5: h5py.File, *, max_items: int = 300
 ) -> tuple[tuple[str, ...], bool]:
-    if "regions" not in h5 or not isinstance(h5["regions"], h5py.Group):
+    region_group = _internal_object(h5, "regions")
+    if not isinstance(region_group, h5py.Group):
         return (), False
     names = []
     truncated = False
-    for name, value in h5["regions"].items():
+    for name in region_group:
+        if not isinstance(region_group.get(name, getlink=True), h5py.HardLink):
+            continue
+        value = region_group[name]
         if not isinstance(value, h5py.Group):
             continue
         if len(names) >= max_items:
@@ -174,7 +201,9 @@ def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
     if regions:
         counts = []
         for name in regions:
-            group = h5["regions"][name]
+            group = _internal_object(h5, f"regions/{name}")
+            if not isinstance(group, h5py.Group):
+                return None, None, None
             points = group.get("points")
             owner = group.get("owner")
             offsets = group.get("cell_offsets")
@@ -209,11 +238,15 @@ def _field_names(
     h5: h5py.File, kind: str, *, max_items: int = 300
 ) -> tuple[tuple[str, ...], bool]:
     path = f"fields/{kind}"
-    if path not in h5 or not isinstance(h5[path], h5py.Group):
+    field_group = _internal_object(h5, path)
+    if not isinstance(field_group, h5py.Group):
         return (), False
     names = []
     truncated = False
-    for name, value in h5[path].items():
+    for name in field_group:
+        if not isinstance(field_group.get(name, getlink=True), h5py.HardLink):
+            continue
+        value = field_group[name]
         if not isinstance(value, h5py.Dataset):
             continue
         if len(names) >= max_items:
@@ -225,8 +258,9 @@ def _field_names(
 
 def _case_config(h5: h5py.File) -> dict[str, Any] | None:
     raw = None
-    if "case/config" in h5:
-        dataset = h5["case/config"]
+    project_config = _internal_object(h5, "case/config")
+    if project_config is not None:
+        dataset = project_config
         if not isinstance(dataset, h5py.Dataset) or dataset.size != 1:
             return None
         if dataset.dtype.kind not in "SUO":
@@ -276,9 +310,9 @@ def read_hdf5_dataset_sample(
         raise ValueError("max_values must be between 1 and 256")
 
     with h5py.File(Path(path), "r") as h5:
-        if dataset_path not in h5:
-            raise KeyError(dataset_path)
-        dataset = h5[dataset_path]
+        dataset = _internal_object(h5, dataset_path)
+        if dataset is None:
+            raise ValueError("dataset path must resolve through internal HDF5 hard links")
         if not isinstance(dataset, h5py.Dataset):
             raise ValueError(f"{dataset_path} is not an HDF5 dataset")
         shape = tuple(int(size) for size in dataset.shape)
@@ -403,18 +437,18 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
         elif max(n_points, n_faces, n_cells) > 100_000:
             preview_block_reason = "mesh exceeds the 100k entity safety limit"
         elif not all(
-            name in h5 and isinstance(h5[name], h5py.Dataset)
+            isinstance(_internal_object(h5, name), h5py.Dataset)
             for name in preview_datasets
         ):
             preview_block_reason = "required surface topology datasets are missing"
         else:
-            points_dataset = h5["points"]
-            face_vertices_dataset = h5["face_vertices"]
-            face_offsets_dataset = h5["face_offsets"]
-            owner_dataset = h5["owner"]
-            neighbour_dataset = h5["neighbour"]
-            patch_ids_dataset = h5["patch_face_ids"]
-            patch_offsets_dataset = h5["patch_face_offsets"]
+            points_dataset = _internal_object(h5, "points")
+            face_vertices_dataset = _internal_object(h5, "face_vertices")
+            face_offsets_dataset = _internal_object(h5, "face_offsets")
+            owner_dataset = _internal_object(h5, "owner")
+            neighbour_dataset = _internal_object(h5, "neighbour")
+            patch_ids_dataset = _internal_object(h5, "patch_face_ids")
+            patch_offsets_dataset = _internal_object(h5, "patch_face_offsets")
             if points_dataset.ndim != 2 or points_dataset.shape[1] != 3:
                 preview_block_reason = "points must have shape (n_points, 3)"
             elif face_vertices_dataset.ndim != 1:
@@ -435,7 +469,10 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
                 preview_block_reason = "patch face metadata is missing"
             else:
                 source_bytes = sum(
-                    int(prod(h5[name].shape) * h5[name].dtype.itemsize)
+                    int(
+                        prod(_internal_object(h5, name).shape)
+                        * _internal_object(h5, name).dtype.itemsize
+                    )
                     for name in preview_datasets
                 )
                 connectivity_entries = int(face_vertices_dataset.shape[0])
