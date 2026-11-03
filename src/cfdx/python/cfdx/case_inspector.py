@@ -329,7 +329,7 @@ def read_hdf5_dataset_sample(
                 "dataset path must resolve through internal HDF5 hard links"
             )
         if not isinstance(dataset, h5py.Dataset):
-            raise ValueError(f"{dataset_path} is not an HDF5 dataset")
+            raise TypeError(f"{dataset_path} is not an HDF5 dataset")
         shape = tuple(int(size) for size in dataset.shape)
         dtype = dataset.dtype
         if dtype.kind not in "biufcS":
@@ -419,9 +419,7 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
                 return 1
             shape = tuple(int(size) for size in obj.shape)
             size_bytes = (
-                None
-                if obj.dtype.kind == "O"
-                else int(prod(shape) * obj.dtype.itemsize)
+                None if obj.dtype.kind == "O" else int(prod(shape) * obj.dtype.itemsize)
             )
             datasets.append(
                 Hdf5DatasetInfo(
