@@ -80,7 +80,7 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
     from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QFileDialog
 
-    create_application(["cfdx-workbench-inspector-test"])
+    app = create_application(["cfdx-workbench-inspector-test"])
     session = CFDXSession()
     window = CFDXWorkbenchWindow(session)
     path = tmp_path / "mesh.h5"
@@ -115,6 +115,8 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
     assert point_items
     window.case_file_panel.tree.itemClicked.emit(point_items[0], 0)
     assert "shape: (4, 3)" in window.case_file_panel.preview.toPlainText()
+    window.close()
+    app.quit()
 
 
 @pytest.mark.skipif(
