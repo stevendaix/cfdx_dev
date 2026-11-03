@@ -292,6 +292,8 @@ def read_hdf5_dataset_sample(
             raise ValueError("dataset element width exceeds the 1 MiB sample budget")
         if dataset.is_virtual:
             raise ValueError("virtual datasets are not sampled")
+        if dataset.external:
+            raise ValueError("externally stored datasets are not sampled")
         if dataset.chunks is not None:
             chunk_bytes = prod(dataset.chunks) * dtype.itemsize
             if chunk_bytes > 1_048_576:
