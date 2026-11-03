@@ -21,7 +21,13 @@ def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
         h5.create_dataset("patch_face_ids", shape=(10,), dtype="u8")
         h5.create_dataset("patch_face_offsets", data=[0, 10])
         h5.attrs["boundary_patches"] = "wall:0:10:0"
-        h5.create_dataset("case/config", data='{"name":"channel","physics":{"energy":true},"numerics":{"cfl":1.0},"boundaries":{"wall":{}}}')
+        h5.create_dataset(
+            "case/config",
+            data=(
+                '{"name":"channel","physics":{"energy":true},'
+                '"numerics":{"cfl":1.0},"boundaries":{"wall":{}}}'
+            ),
+        )
         h5.create_dataset("fields/scalar/p", shape=(4,), dtype="f8")
         h5.create_dataset("fields/vector/U", shape=(4, 3), dtype="f8")
 
@@ -40,7 +46,10 @@ def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
     assert summary.has_project_config
     assert summary.numerics == ("cfl",)
     assert summary.boundaries == ("wall",)
-    assert any(item.path == "/points" and item.size_bytes == 1_200_000_000 for item in summary.datasets)
+    assert any(
+        item.path == "/points" and item.size_bytes == 1_200_000_000
+        for item in summary.datasets
+    )
 
 
 def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
