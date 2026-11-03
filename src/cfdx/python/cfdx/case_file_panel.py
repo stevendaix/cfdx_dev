@@ -93,6 +93,8 @@ class CaseFilePanel(QWidget):
                 )
             for region in summary.regions:
                 QTreeWidgetItem(mesh, ["Region", region])
+            if summary.regions_truncated:
+                QTreeWidgetItem(mesh, ["Regions", "Listing truncated at 300 entries"])
         else:
             QTreeWidgetItem(mesh, ["Status", "No recognised mesh topology"])
         fields = QTreeWidgetItem(self.tree, ["Fields", str(summary.total_field_count)])
@@ -100,9 +102,17 @@ class CaseFilePanel(QWidget):
             ("Scalar", summary.scalar_fields),
             ("Vector", summary.vector_fields),
         ):
-            group = QTreeWidgetItem(fields, [label, str(len(names))])
+            truncated = (
+                summary.scalar_fields_truncated
+                if label == "Scalar"
+                else summary.vector_fields_truncated
+            )
+            count_label = f"≥{len(names)}" if truncated else str(len(names))
+            group = QTreeWidgetItem(fields, [label, count_label])
             for name in names:
                 QTreeWidgetItem(group, [name, ""])
+            if truncated:
+                QTreeWidgetItem(group, ["Field listing", "Truncated at 300 entries"])
         if summary.case_name:
             QTreeWidgetItem(self.tree, ["Case name", summary.case_name])
         for label, names in (
