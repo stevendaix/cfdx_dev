@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
     QPlainTextEdit,
+    QPushButton,
     QTreeWidget,
     QTreeWidgetItem,
     QVBoxLayout,
@@ -36,6 +39,13 @@ class CaseFilePanel(QWidget):
             "Filter datasets, fields, regions and metadata…"
         )
         self.filter_input.setClearButtonEnabled(True)
+        self.expand_button = QPushButton("Expand all")
+        self.expand_button.setObjectName("workbench.case_file.expand_all")
+        self.collapse_button = QPushButton("Collapse all")
+        self.collapse_button.setObjectName("workbench.case_file.collapse_all")
+        self.copy_path_button = QPushButton("Copy dataset path")
+        self.copy_path_button.setObjectName("workbench.case_file.copy_dataset_path")
+        self.copy_path_button.setEnabled(False)
         self.preview = QPlainTextEdit()
         self.preview.setObjectName("workbench.case_file.dataset_preview")
         self.preview.setReadOnly(True)
@@ -44,15 +54,27 @@ class CaseFilePanel(QWidget):
         layout = QVBoxLayout(self)
         layout.addWidget(self.status)
         layout.addWidget(self.filter_input)
+        controls = QHBoxLayout()
+        controls.addWidget(self.expand_button)
+        controls.addWidget(self.collapse_button)
+        controls.addStretch(1)
+        controls.addWidget(self.copy_path_button)
+        layout.addLayout(controls)
         layout.addWidget(self.tree, 3)
         layout.addWidget(self.preview, 1)
         self.tree.itemClicked.connect(self._preview_dataset)
+        self.tree.currentItemChanged.connect(self._preview_current_item)
+        self.tree.itemSelectionChanged.connect(self._update_selection_actions)
         self.filter_input.textChanged.connect(self._filter_tree)
+        self.expand_button.clicked.connect(self.tree.expandAll)
+        self.collapse_button.clicked.connect(self.tree.collapseAll)
+        self.copy_path_button.clicked.connect(self.copy_selected_dataset_path)
 
     def clear(self) -> None:
         self.summary = None
         self.filter_input.clear()
         self.tree.clear()
+        self.copy_path_button.setEnabled(False)
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         self.status.setText("No CFDX file inspected")
 
@@ -72,6 +94,29 @@ class CaseFilePanel(QWidget):
         visible = own_match or child_match
         item.setHidden(not visible)
         return visible
+
+    def _preview_current_item(
+        self, current: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None
+    ) -> None:
+        """Preview datasets selected with either the mouse or keyboard."""
+        if current is not None:
+            self._preview_dataset(current, 0)
+
+    def _update_selection_actions(self) -> None:
+        item = self.tree.currentItem()
+        dataset_path = (
+            item.data(0, Qt.ItemDataRole.UserRole) if item is not None else None
+        )
+        self.copy_path_button.setEnabled(bool(dataset_path))
+
+    def copy_selected_dataset_path(self) -> None:
+        """Copy the selected HDF5 dataset path without reading its payload."""
+        item = self.tree.currentItem()
+        dataset_path = (
+            item.data(0, Qt.ItemDataRole.UserRole) if item is not None else None
+        )
+        if dataset_path:
+            QApplication.clipboard().setText(str(dataset_path))
 
     def _preview_dataset(self, item: QTreeWidgetItem, _column: int) -> None:
         """Display a bounded sample only when a dataset row is selected."""
@@ -219,6 +264,7 @@ class CaseFilePanel(QWidget):
         datasets = QTreeWidgetItem(
             self.tree, ["HDF5 datasets", str(len(summary.datasets))]
         )
+        dataset_groups: dict[str, QTreeWidgetItem] = {"": datasets}
         for dataset in summary.datasets:
             size_label = (
                 f"{dataset.size_bytes:,} bytes"
@@ -239,7 +285,20 @@ class CaseFilePanel(QWidget):
                 f"{dataset.shape} · {dataset.dtype} · {size_label} · "
                 f"{chunk_label} · {compression_label}"
             )
-            item = QTreeWidgetItem(datasets, [dataset.path, details])
+            parts = dataset.path.strip("/").split("/")
+            parent_path = ""
+            parent = datasets
+            for group_name in parts[:-1]:
+                parent_path = f"{parent_path}/{group_name}"
+                group_item = dataset_groups.get(parent_path)
+                if group_item is None:
+                    group_item = QTreeWidgetItem(parent, [group_name, "HDF5 group"])
+                    group_item.setData(
+                        0, Qt.ItemDataRole.UserRole, f"group:{parent_path}"
+                    )
+                    dataset_groups[parent_path] = group_item
+                parent = group_item
+            item = QTreeWidgetItem(parent, [dataset.path, details])
             item.setToolTip(0, dataset.path)
             item.setToolTip(1, details)
             item.setData(0, Qt.ItemDataRole.UserRole, dataset.path)
@@ -264,4 +323,5 @@ class CaseFilePanel(QWidget):
                 attributes,
                 ["Attribute listing", "Truncated at the configured metadata limit"],
             )
-        self.tree.expandToDepth(1)
+        self.tree.expandToDepth(2)
+        self._update_selection_actions()
