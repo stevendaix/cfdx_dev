@@ -796,11 +796,21 @@ if QMainWindow is not object:
 
         def _open_mesh(self) -> None:
             path, _ = QFileDialog.getOpenFileName(
-                self, "Open CFDX Mesh", "", "CFDX mesh (*.h5);;All files (*)"
+                self, "Open CFDX Mesh", "", "CFDX/HDF5 mesh (*.h5);;All files (*)"
             )
             if not path:
                 return
             try:
+                summary = inspect_cfdx_file(path)
+                if not summary.is_cfdx or not summary.has_mesh:
+                    raise ValueError("file does not contain a recognised CFDX mesh")
+                self.case_file_panel.set_summary(summary)
+                if not summary.preview_supported:
+                    self.statusBar().showMessage(
+                        f"Mesh metadata loaded ({summary.n_cells or 'unknown'} cells); "
+                        "full in-memory preview is disabled above the 1M entity safety limit"
+                    )
+                    return
                 catalog = self.application.load_mesh(path)
                 self.mesh_browser.set_catalog(catalog)
                 if self.view3d is not None:
