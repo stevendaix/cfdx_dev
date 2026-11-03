@@ -156,6 +156,19 @@ def _region_names(
     return tuple(sorted(names)), truncated
 
 
+def _nonnegative_count(value: Any) -> int | None:
+    """Parse a stored entity count without accepting malformed or negative data."""
+    if isinstance(value, bool):
+        return None
+    try:
+        count = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if count < 0 or (not isinstance(value, (str, bytes)) and count != value):
+        return None
+    return count
+
+
 def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
     if regions:
         counts = []
@@ -168,12 +181,12 @@ def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
                 owner, h5py.Dataset
             ):
                 return None, None, None
-            raw_cells = _safe_attribute(group, "n_cells")
+            raw_cells = _nonnegative_count(_safe_attribute(group, "n_cells"))
+            if raw_cells is None and isinstance(offsets, h5py.Dataset):
+                raw_cells = max(0, int(offsets.shape[0]) - 1)
             if raw_cells is None:
-                raw_cells = (
-                    offsets.shape[0] - 1 if isinstance(offsets, h5py.Dataset) else 0
-                )
-            counts.append((int(points.shape[0]), int(owner.shape[0]), int(raw_cells)))
+                return None, None, None
+            counts.append((int(points.shape[0]), int(owner.shape[0]), raw_cells))
         return tuple(sum(item[i] for item in counts) for i in range(3))
 
     points = _first_dataset(h5, ("points", "mesh/points", "mesh/topology/points"))
@@ -184,10 +197,10 @@ def _mesh_counts(h5: h5py.File, regions: tuple[str, ...]):
     )
     n_points = int(points.shape[0]) if points is not None and points.ndim else None
     n_faces = int(owner.shape[0]) if owner is not None and owner.ndim else None
-    raw_cells = _safe_attribute(h5, "n_cells")
+    raw_cells = _nonnegative_count(_safe_attribute(h5, "n_cells"))
     if raw_cells is None and offsets is not None and offsets.shape[0]:
-        raw_cells = offsets.shape[0] - 1
-    n_cells = int(raw_cells) if raw_cells is not None else None
+        raw_cells = max(0, int(offsets.shape[0]) - 1)
+    n_cells = raw_cells
     return n_points, n_faces, n_cells
 
 
