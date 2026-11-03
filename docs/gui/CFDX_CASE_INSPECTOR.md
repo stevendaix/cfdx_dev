@@ -50,7 +50,10 @@ The Open action first inspects the HDF5 metadata. It then:
    why the full in-memory preview was not attempted.
 
 The 100,000-entity threshold is a conservative guard for the current renderer,
-not a CFDX file-format limit. Preview eligibility also checks the topology
+not a CFDX file-format limit. Both PyVista mesh and DAT loading entry points
+repeat the metadata preflight and reject oversized inputs before slicing
+topology arrays, so direct renderer calls cannot bypass the Workbench guard.
+Preview eligibility also checks the topology
 dataset shapes, caps eager source topology at 32 MiB and caps face connectivity
 at two million entries. These limits are deliberately conservative because
 the current PyVista adapter creates additional Python-side connectivity lists.
