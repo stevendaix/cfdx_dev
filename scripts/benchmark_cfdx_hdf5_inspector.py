@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import subprocess
 import sys
 import tempfile
@@ -17,7 +18,6 @@ from time import perf_counter
 from typing import Any
 
 import h5py
-
 from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample
 
 
@@ -55,7 +55,7 @@ def _create_sparse_case(path: Path, n_cells: int) -> None:
                 shape=(n_faces,),
                 dtype=dtype,
                 chunks=(4096,),
-                )
+            )
         h5.create_dataset(
             "face_vertices",
             shape=(n_connectivity,),
