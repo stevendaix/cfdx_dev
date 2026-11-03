@@ -214,6 +214,23 @@ def test_dataset_preview_rejects_unsafe_paths_and_skips_strings(tmp_path):
     assert "Preview disabled for non-numeric" in preview
 
 
+
+def test_inspect_falls_back_to_cell_offsets_for_invalid_count_attribute(tmp_path):
+    path = tmp_path / "invalid-count.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        h5.attrs["n_cells"] = "not-a-count"
+        h5.create_dataset("points", shape=(8, 3), dtype="f8")
+        h5.create_dataset("owner", shape=(6,), dtype="u8")
+        h5.create_dataset("cell_offsets", data=[0, 2, 4, 6, 8])
+
+    summary = inspect_cfdx_file(path)
+
+    assert summary.has_mesh
+    assert summary.n_cells == 4
+
+
+
 def test_inspect_bounds_field_catalogs(tmp_path):
     path = tmp_path / "many-fields.h5"
     with h5py.File(path, "w") as h5:
