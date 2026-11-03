@@ -474,16 +474,44 @@ if QMainWindow is not object:
 
         def _open_case(self) -> None:
             path, _ = QFileDialog.getOpenFileName(
-                self, "Open CFDX Case", "", "CFDX Case (*.cfdx.h5)"
+                self, "Open CFDX File", "", "CFDX/HDF5 files (*.cfdx.h5 *.h5)"
             )
             if not path:
                 return
             try:
-                self.application.open_project(path)
-                self.session = self.application.session
-                self._refresh_setup_case()
-                self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
-            except (OSError, ValueError) as exc:
+                summary = inspect_cfdx_file(path)
+                if not summary.is_cfdx:
+                    raise ValueError("file does not contain a recognised CFDX layout")
+                self.case_file_panel.set_summary(summary)
+                if summary.has_project_config:
+                    self.application.open_project(path)
+                    self.session = self.application.session
+                    self._refresh_setup_case()
+                    self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
+                elif not summary.has_mesh:
+                    raise ValueError("CFDX HDF5 file has neither a project configuration nor readable mesh topology")
+                if summary.preview_supported:
+                    catalog = self.application.load_mesh(path)
+                    self.mesh_browser.set_catalog(catalog)
+                    if self.view3d is not None:
+                        self.view3d.load_cfdx_mesh(path)
+                        self._show_viewport()
+                        self._refresh_action_availability()
+                    self.statusBar().showMessage(
+                        f"CFDX file inspected: {summary.n_cells:,} cells · "
+                        f"{summary.n_faces:,} faces · {summary.total_field_count} fields"
+                    )
+                elif summary.has_mesh:
+                    self.mesh_browser.clear()
+                    self.statusBar().showMessage(
+                        f"CFDX file opened metadata-only: {summary.n_cells or 'unknown'} cells; "
+                        "3D preview deferred to protect memory"
+                    )
+                else:
+                    self.statusBar().showMessage(
+                        f"CFDX project opened: {summary.path.name} · no embedded mesh topology"
+                    )
+            except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Open failed: {exc}")
 
         def _save_case(self) -> None:
