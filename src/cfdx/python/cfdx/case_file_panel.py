@@ -147,7 +147,11 @@ class CaseFilePanel(QWidget):
                 else "variable/unknown size"
             )
             chunk_label = (
-                f"chunks={dataset.chunks}" if dataset.chunks is not None else "contiguous"
+                (
+                    f"chunks={dataset.chunks}"
+                    if dataset.chunks is not None
+                    else "contiguous"
+                )
             )
             compression_label = (
                 f"compression={dataset.compression}"
