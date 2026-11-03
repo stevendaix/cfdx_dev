@@ -101,12 +101,16 @@ The Probes panel can load and re-export native `cfdx-probe-csv v1` histories.
 It reports the probe count, sample count and iteration range after loading,
 then plots the selected histories interactively. Curves can be toggled
 individually, grouped by field and unit, and displayed against physical time or
-iteration; the plot supports normal pan and zoom interactions. Reading and
-writing use the shared Application API and canonical CSV schema. The current
-native output contract supplies completed CSV histories, not a live probe
-stream during solver execution, so the plot is not advertised as real-time.
-The GUI does not introduce a second format or treat a CSV round-trip as solver
-qualification.
+iteration; the plot supports normal pan and zoom interactions. During a
+`cfdx_production_solver` run, the application enables `--probe-stream` and
+receives versioned stdout records for samples from committed iterations. The Qt
+panel batches redraws at 10 Hz and retains the latest 2,000 points per probe in
+memory; the live view defaults to iteration (steady samples have constant
+physical time). Rejected nonlinear attempts are not published. The canonical CSV stays
+a separate final, atomically written artifact; the GUI never tails a partial
+CSV file. Reading and writing use the shared Application API and canonical CSV
+schema. The GUI does not introduce a second file format or treat a CSV
+round-trip as solver qualification.
 
 ## Execution controls
 

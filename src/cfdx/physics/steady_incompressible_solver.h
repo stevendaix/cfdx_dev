@@ -281,6 +281,7 @@ struct IncompressibleSolverControls {
     // momentum, pressure assembly AND authoritative Rhie-Chow reconstruction.
     // Keep off until three-grid NACA and N9 physical qualification pass.
     bool pressure_skew_corrected_gradient = false;
+    // Emitted only after the nonlinear transaction accepting the sample commits.
     std::function<void(const IncompressibleProbeSample&)> probe_callback;
     // Called after each completed nonlinear iteration with the authoritative solver state.
     // Return false to stop the solve after the current iteration.
@@ -6253,9 +6254,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         result.history.push_back(h);
 
-        // Samples are retained regardless of probe_callback. A probe that was
-        // requested and sampled but not retained left no artifact behind, so
-        // there was nothing to export or validate after the run.
+        // Samples are retained regardless of probe_callback. External observers
+        // are notified only after the nonlinear transaction commits below, so a
+        // retry cannot leak a sample from a candidate state that was rolled back.
         for (const auto& probe : controls.probes) {
             if (probe.name.empty())
                 throw std::invalid_argument("solve_steady_incompressible: probe name must not be empty");
@@ -6264,8 +6265,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 throw std::runtime_error("solve_steady_incompressible: probe value is not finite");
             result.probe_samples.push_back(
                 IncompressibleProbeSample{probe.name, iter, 0.0, value});
-            if (controls.probe_callback)
-                controls.probe_callback(result.probe_samples.back());
         }
 
         if (controls.iteration_output_callback &&
@@ -6354,6 +6353,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
                 throw;
             }
+            if (iteration_completed && controls.probe_callback) {
+                for (std::size_t sample_index = probe_samples_size;
+                     sample_index < result.probe_samples.size(); ++sample_index)
+                    controls.probe_callback(result.probe_samples[sample_index]);
+            }
         }
         if (stop_after_iteration)
             break;
@@ -6368,4 +6372,3 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 }
 
 } // namespace cfdx::physics
-

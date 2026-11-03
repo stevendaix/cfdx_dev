@@ -1,6 +1,8 @@
 from pathlib import Path
 from unittest.mock import patch
 
+from cfdx.probe import Probe, ProbeField
+
 from cfdx import CFDXSession
 from cfdx.application import Application, ApplicationStateChanged
 
@@ -68,6 +70,23 @@ def test_application_owns_controller_construction_and_restart_selection(
         "--restart",
         str(dat_path),
     )
+
+
+def test_application_enables_probe_stream_when_probe_catalog_is_configured(
+    tmp_path,
+) -> None:
+    project_path = tmp_path / "case.cfdx.h5"
+    application = Application(CFDXSession(), project_path=project_path)
+    application.session.case.execution.solver = "/usr/bin/cfdx_production_solver"
+    application.session.case.probes.append(
+        Probe("pressure", 0.5, 0.0, 0.0, ProbeField.PRESSURE)
+    )
+
+    command = application.ensure_controller().runner.command
+
+    assert "--probe" in command
+    assert "--probe-csv" in command
+    assert command[-1] == "--probe-stream"
 
 
 def test_application_new_project_clears_restart_and_controller() -> None:

@@ -10,6 +10,7 @@ from ..dat_io import DatRestart, read_dat_restart
 from ..execution import ExecutionController
 from ..mesh_model import MeshCatalog, read_mesh_catalog
 from ..probe import ProbeCatalog
+from ..probe_stream import ProbeStreamSample
 from ..probe_validation import ProbeSeries, read_probe_csv, write_probe_csv
 from ..project import Project
 from ..results_series import ResultSeries, discover_result_series
@@ -26,7 +27,13 @@ from .commands import (
     SetProperty,
     StopSolver,
 )
-from .events import ApplicationStateChanged, EventBus, ResultsChanged, SelectionChanged
+from .events import (
+    ApplicationStateChanged,
+    EventBus,
+    ProbeSampleReceived,
+    ResultsChanged,
+    SelectionChanged,
+)
 from .history import EditHistory, HistoryEntry
 from .properties import PropertyState, get_property, properties_for_selection
 from .results import ResultsState, build_results_state
@@ -59,7 +66,7 @@ class Application:
         self.mesh_catalog: MeshCatalog | None = None
         self.run_center = RunCenterModel(controller) if controller is not None else None
         if self.run_center is not None:
-            self.run_center.on_change = lambda _state: self._publish_state()
+            self._wire_run_center(self.run_center)
 
     @property
     def state(self) -> ApplicationState:
@@ -85,12 +92,19 @@ class Application:
         self.events.publish(ApplicationStateChanged(snapshot))
         return snapshot
 
+    def _publish_probe_sample(self, sample: ProbeStreamSample) -> None:
+        self.events.publish(ProbeSampleReceived(self.state, sample))
+
+    def _wire_run_center(self, run_center: RunCenterModel) -> None:
+        run_center.on_change = lambda _state: self._publish_state()
+        run_center.on_probe_sample = self._publish_probe_sample
+
     def attach_controller(self, controller: ExecutionController) -> ApplicationState:
         if self.run_center is not None:
             self.run_center.close()
         self.controller = controller
         self.run_center = RunCenterModel(controller)
-        self.run_center.on_change = lambda _state: self._publish_state()
+        self._wire_run_center(self.run_center)
         return self._publish_state()
 
     def replace_session(
@@ -281,6 +295,7 @@ class Application:
             command += [
                 "--probe-csv",
                 str(probe_catalog.csv_path(self.project_path or self._restart_dat)),
+                "--probe-stream",
             ]
         if self.session.case.execution.mpi_ranks > 1:
             command = [

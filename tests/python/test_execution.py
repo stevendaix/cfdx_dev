@@ -1,7 +1,7 @@
-from pathlib import Path
 import os
 import sys
 import time
+from pathlib import Path
 
 import pytest
 
@@ -51,10 +51,15 @@ def test_controller_stop_reports_stopped(tmp_path: Path) -> None:
     assert session.state.value == "STOPPED"
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX process groups provide pause semantics")
+@pytest.mark.skipif(
+    os.name != "posix", reason="POSIX process groups provide pause semantics"
+)
 def test_controller_pause_resume(tmp_path: Path) -> None:
     script = tmp_path / "solver.py"
-    script.write_text("import time; [print(i, flush=True) or time.sleep(0.05) for i in range(1000)]\n", encoding="utf-8")
+    script.write_text(
+        "import time; [print(i, flush=True) or time.sleep(0.05) for i in range(1000)]\n",
+        encoding="utf-8",
+    )
     session = CFDXSession()
     runner = SolverRunner([sys.executable, "-u", str(script)])
     controller = ExecutionController(session, runner)
@@ -119,6 +124,7 @@ def test_controller_builds_monitor_series_from_solver_metrics(tmp_path: Path) ->
     assert controller.monitor_series.at(2).values["p"] == pytest.approx(2.0e-3)
     assert controller.monitor_series.at(2).values["CFL"] == pytest.approx(0.3)
 
+
 def test_controller_merges_metrics_emitted_on_separate_lines(tmp_path: Path) -> None:
     script = tmp_path / "solver.py"
     script.write_text(
@@ -138,3 +144,49 @@ def test_controller_merges_metrics_emitted_on_separate_lines(tmp_path: Path) -> 
     assert sample.time == pytest.approx(0.7)
     assert sample.values["CFL"] == pytest.approx(0.4)
     assert sample.values["p"] == pytest.approx(3.0e-4)
+
+
+def test_controller_streams_probe_records_from_solver_stdout(tmp_path: Path) -> None:
+    script = tmp_path / "solver.py"
+    script.write_text(
+        "print('CFDX_PROBE_SAMPLE_V1\\t70726f6265\\tp\\tPa\\t1\\t0.0\\t101325.0', flush=True)\n"
+        "print('CFDX_PROBE_SAMPLE_V1\\t70726f6265\\tp\\tPa\\t2\\t0.0\\t101326.0', flush=True)\n",
+        encoding="utf-8",
+    )
+    session = CFDXSession()
+    runner = SolverRunner([sys.executable, str(script)])
+    controller = ExecutionController(session, runner)
+    samples = []
+    output = []
+    controller.on_probe_sample = samples.append
+    controller.on_output = lambda line, is_stderr: output.append((line, is_stderr))
+
+    controller.start()
+
+    assert runner._thread is not None
+    runner._thread.join(timeout=5)
+    assert [sample.name for sample in samples] == ["probe", "probe"]
+    assert [sample.iteration for sample in samples] == [1, 2]
+    assert controller.latest_probe_samples["probe"] == samples[-1]
+    assert not any(line.startswith("CFDX_PROBE_SAMPLE_V1") for line, _ in output)
+    assert controller.probe_stream_error is None
+
+
+def test_controller_rejects_non_monotonic_probe_stream_records() -> None:
+    controller = ExecutionController(
+        CFDXSession(), SolverRunner([sys.executable, "-c", "pass"])
+    )
+    samples = []
+    output = []
+    controller.on_probe_sample = samples.append
+    controller.on_output = lambda line, is_stderr: output.append((line, is_stderr))
+    record = "CFDX_PROBE_SAMPLE_V1\t70726f6265\tp\tPa\t2\t0.0\t101326.0"
+
+    controller._output(record, is_stderr=False)
+    controller._output(record, is_stderr=False)
+
+    assert len(samples) == 1
+    assert controller.probe_stream_error == "probe 'probe' samples are not monotonic"
+    assert output == [
+        ("Probe stream warning: probe 'probe' samples are not monotonic", True)
+    ]

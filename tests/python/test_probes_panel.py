@@ -1,10 +1,12 @@
 import importlib.util
 
 import pytest
+from cfdx.probe import Probe, ProbeField
+from cfdx.probe_stream import ProbeStreamSample
 from cfdx.probe_validation import ProbeSample, ProbeSeries
 
 from cfdx import CFDXSession
-from cfdx.application import Application
+from cfdx.application import Application, ProbeSampleReceived
 
 pytestmark = pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
@@ -85,5 +87,47 @@ def test_probe_history_csv_load_and_export_uses_application_contract(
     assert application.read_probe_results(
         destination
     ) == application.read_probe_results(source)
+    panel.close()
+    app.processEvents()
+
+
+def test_live_probe_samples_update_interactive_plot_from_worker_thread() -> None:
+    pytest.importorskip("pyqtgraph")
+    from threading import Thread
+
+    from cfdx.probes_panel import ProbesPanel
+    from PySide6.QtWidgets import QApplication
+
+    app = QApplication.instance() or QApplication(["cfdx-live-probes-test"])
+    session = CFDXSession()
+    session.case.probes.append(Probe("pressure", 0.5, 0.0, 0.0, ProbeField.PRESSURE))
+    application = Application(session)
+    panel = ProbesPanel(application)
+
+    def publish(iteration: int, value: float) -> None:
+        application.events.publish(
+            ProbeSampleReceived(
+                application.state,
+                ProbeStreamSample(
+                    "pressure", "p", "Pa", iteration, iteration / 10, value
+                ),
+            )
+        )
+
+    for iteration, value in ((1, 101325.0), (2, 101326.0)):
+        thread = Thread(target=publish, args=(iteration, value))
+        thread.start()
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+        app.processEvents()
+    panel._flush_live_plot()
+
+    assert panel._results_summary.text() == (
+        "Live · 1 probe · 2 buffered samples · iterations 1–2"
+    )
+    assert len(panel._probe_plot.plotItem.listDataItems()) == 1
+    x_values, y_values = panel._probe_plot.plotItem.listDataItems()[0].getData()
+    assert list(x_values) == pytest.approx([1, 2])
+    assert list(y_values) == pytest.approx([101325.0, 101326.0])
     panel.close()
     app.processEvents()

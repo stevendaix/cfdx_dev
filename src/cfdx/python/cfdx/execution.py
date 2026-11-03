@@ -1,14 +1,16 @@
-""""Execution controller connecting the session, runner and progress parser."""
+"""Execution controller connecting the session, runner and progress parser."""
+
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
-from typing import Callable
 
 from .metrics import SolverMetrics, SolverMetricsParser
 from .monitors import MonitorSample, MonitorSeries
+from .probe_stream import ProbeStreamSample, parse_probe_stream_line
 from .runner import ProcessResult, SolverRunner
 from .session import CFDXSession, SimulationState
 
@@ -59,7 +61,10 @@ class ExecutionController:
         self.error: ExecutionError | None = None
         self.on_output: Callable[[str, bool], None] | None = None
         self.on_metrics: Callable[[SolverMetrics], None] | None = None
+        self.on_probe_sample: Callable[[ProbeStreamSample], None] | None = None
         self.on_complete: Callable[[ProcessResult], None] | None = None
+        self.latest_probe_samples: dict[str, ProbeStreamSample] = {}
+        self.probe_stream_error: str | None = None
         self._stop_requested = False
         self._monitor_lock = Lock()
 
@@ -72,26 +77,64 @@ class ExecutionController:
             raise RuntimeError("cannot restart an active session")
         restart_option = self.session.case.execution.restart_option
         if restart_option is None:
-            raise ValueError("A DAT restart is loaded but no solver restart option is configured")
+            raise ValueError(
+                "A DAT restart is loaded but no solver restart option is configured"
+            )
         self.session.run()
         self.error = None
         self.latest_metrics = None
+        self.latest_probe_samples.clear()
+        self.probe_stream_error = None
         with self._monitor_lock:
             self.monitor_series = MonitorSeries("solver", [])
         self._stop_requested = False
-        self.runner.start(self._output, self._complete, restart_path=path, restart_option=restart_option)
+        self.runner.start(
+            self._output,
+            self._complete,
+            restart_path=path,
+            restart_option=restart_option,
+        )
 
     def start(self) -> None:
         self.session.run()
         self.error = None
         self.latest_metrics = None
+        self.latest_probe_samples.clear()
+        self.probe_stream_error = None
         with self._monitor_lock:
             self.monitor_series = MonitorSeries("solver", [])
         self._stop_requested = False
         output_dir = self.session.case.execution.output_dir
-        self.runner.start(self._output, self._complete, output_dir=Path(output_dir) if output_dir else None)
+        self.runner.start(
+            self._output,
+            self._complete,
+            output_dir=Path(output_dir) if output_dir else None,
+        )
 
     def _output(self, line: str, is_stderr: bool) -> None:
+        is_probe_stream_line = not is_stderr and (
+            line == "CFDX_PROBE_SAMPLE_V1" or line.startswith("CFDX_PROBE_SAMPLE_V1\t")
+        )
+        stream_warning: str | None = None
+        if is_probe_stream_line:
+            try:
+                sample = parse_probe_stream_line(line)
+                assert sample is not None
+                previous = self.latest_probe_samples.get(sample.name)
+                if previous is not None and (
+                    sample.iteration <= previous.iteration
+                    or sample.time < previous.time
+                ):
+                    raise ValueError(f"probe {sample.name!r} samples are not monotonic")
+            except ValueError as exc:
+                self.probe_stream_error = str(exc)
+                stream_warning = f"Probe stream warning: {exc}"
+            else:
+                self.latest_probe_samples[sample.name] = sample
+                self.probe_stream_error = None
+                if self.on_probe_sample:
+                    self.on_probe_sample(sample)
+
         metrics = self.parser.parse(line)
         if metrics is not None:
             self.latest_metrics = metrics
@@ -99,23 +142,42 @@ class ExecutionController:
                 self.session.iteration = metrics.iteration
             if metrics.time is not None:
                 self.session.time = metrics.time
-            if metrics.iteration is not None or metrics.time is not None or metrics.cfl is not None or metrics.residuals:
+            if (
+                metrics.iteration is not None
+                or metrics.time is not None
+                or metrics.cfl is not None
+                or metrics.residuals
+            ):
                 with self._monitor_lock:
-                    iteration = metrics.iteration if metrics.iteration is not None else (
-                        self.monitor_series.samples[-1].iteration
-                        if self.monitor_series.samples else 0
+                    iteration = (
+                        metrics.iteration
+                        if metrics.iteration is not None
+                        else (
+                            self.monitor_series.samples[-1].iteration
+                            if self.monitor_series.samples
+                            else 0
+                        )
                     )
-                    time_value = metrics.time if metrics.time is not None else (
-                        self.monitor_series.samples[-1].time
-                        if self.monitor_series.samples else 0.0
+                    time_value = (
+                        metrics.time
+                        if metrics.time is not None
+                        else (
+                            self.monitor_series.samples[-1].time
+                            if self.monitor_series.samples
+                            else 0.0
+                        )
                     )
                     values = {name: value for name, value in metrics.residuals}
                     if metrics.cfl is not None:
                         values["CFL"] = metrics.cfl
-                    self.monitor_series.upsert(MonitorSample(iteration, time_value, values))
+                    self.monitor_series.upsert(
+                        MonitorSample(iteration, time_value, values)
+                    )
             if self.on_metrics:
                 self.on_metrics(metrics)
-        if self.on_output:
+        if self.on_output and stream_warning:
+            self.on_output(stream_warning, True)
+        if self.on_output and not is_probe_stream_line:
             self.on_output(line, is_stderr)
 
     def _complete(self, result: ProcessResult) -> None:

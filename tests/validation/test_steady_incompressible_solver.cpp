@@ -694,6 +694,13 @@ int main()
         controls.pressure_reference_cell = 0;
         controls.pressure_reference_value = 0.0;
         controls.nonlinear_retry.max_retries = 1;
+        controls.probes = {
+            {"retry_probe", {0.5, 0.5, 0.5}, IncompressibleProbeField::PRESSURE},
+        };
+        std::vector<IncompressibleProbeSample> published_probe_samples;
+        controls.probe_callback = [&](const IncompressibleProbeSample& sample) {
+            published_probe_samples.push_back(sample);
+        };
 
         SSTProductionState state(1);
         state.k(0) = 0.1;
@@ -748,6 +755,10 @@ int main()
 
         const auto result = solve_steady_incompressible(m, U, p, ubc, pbc, controls);
         EXPECT_TRUE(callback_calls == 2);
+        EXPECT_TRUE(result.probe_samples.size() == 1);
+        EXPECT_TRUE(published_probe_samples.size() == result.probe_samples.size());
+        EXPECT_TRUE(published_probe_samples[0].iteration == result.probe_samples[0].iteration);
+        EXPECT_NEAR(published_probe_samples[0].value, result.probe_samples[0].value, 1e-14);
         EXPECT_TRUE(result.iterations == 1);
         EXPECT_TRUE(result.history.size() == 1);
         EXPECT_NEAR(state.k(0), first_candidate[0], 1e-12);
