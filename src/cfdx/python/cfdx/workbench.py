@@ -491,7 +491,8 @@ if QMainWindow is not object:
                         )
                     self.statusBar().showMessage(
                         "Mesh interchange file inspected; active project unchanged. "
-                        "Use Open Mesh to load it into the viewport."
+                        "Viewport remains on the active project; use Open Mesh "
+                        "to preview this imported mesh."
                     )
                     return
                 self.application.open_project(path)
