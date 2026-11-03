@@ -199,6 +199,11 @@ class CaseFilePanel(QWidget):
                 datasets,
                 ["Dataset listing", "Truncated at the configured metadata limit"],
             )
+        if summary.tree_truncated:
+            QTreeWidgetItem(
+                datasets,
+                ["HDF5 object tree", "Traversal stopped at the safety limit"],
+            )
         attributes = QTreeWidgetItem(
             self.tree, ["Attributes", str(len(summary.attributes))]
         )
