@@ -67,7 +67,9 @@ exceed the 1 MiB decompression budget and virtual datasets are not sampled.
 Dataset discovery stops at 300 entries by default (5,000 hard maximum),
 scalar/vector field
 catalogs and region names are each capped at 300 entries, and root attribute
-display is bounded to 100 entries and 4 KiB per value. Variable-length
+display is bounded to 100 entries and 4 KiB per value. Truncated region
+catalogs display lower-bound counts rather than presenting partial sums as
+exact mesh totals. Variable-length
 dataset storage is reported as unknown rather than estimated from pointer
 size. Known small
 format/provenance attributes and the case setup JSON are read for
