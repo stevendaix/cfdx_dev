@@ -504,7 +504,8 @@ if QMainWindow is not object:
                         self._refresh_action_availability()
                     self.statusBar().showMessage(
                         f"CFDX file inspected: {summary.n_cells:,} cells · "
-                        f"{summary.n_faces:,} faces · {summary.total_field_count} fields"
+                        f"{summary.n_faces:,} faces · "
+                        f"{summary.total_field_count} fields"
                     )
                 elif summary.has_mesh:
                     self.mesh_browser.clear()
@@ -512,7 +513,8 @@ if QMainWindow is not object:
                         self.view3d.clear()
                         self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
                     self.statusBar().showMessage(
-                        f"CFDX file opened metadata-only: {summary.n_cells or 'unknown'} cells; "
+                        "CFDX file opened metadata-only: "
+                        f"{summary.n_cells or 'unknown'} cells; "
                         "3D preview deferred to protect memory"
                     )
                 else:
@@ -521,7 +523,8 @@ if QMainWindow is not object:
                         self.view3d.clear()
                         self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
                     self.statusBar().showMessage(
-                        f"CFDX project opened: {summary.path.name} · no embedded mesh topology"
+                        f"CFDX project opened: {summary.path.name} · "
+                        "no embedded mesh topology"
                     )
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Open failed: {exc}")
@@ -824,7 +827,8 @@ if QMainWindow is not object:
                         self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
                     self.statusBar().showMessage(
                         f"Mesh metadata loaded ({summary.n_cells or 'unknown'} cells); "
-                        "full in-memory preview is disabled above the 100k entity safety limit"
+                        "full in-memory preview is disabled above "
+                        "the 100k entity safety limit"
                     )
                     return
                 catalog = self.application.load_mesh(path)
