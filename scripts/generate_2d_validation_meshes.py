@@ -505,7 +505,9 @@ def naca_o_grid_quality(
 def wall3d_box(n: int = 3):
     """Build a small structured 3-D box with one physical WALL patch."""
     points = []
-    point_id = lambda i, j, k: (i * (n + 1) + j) * (n + 1) + k
+    def point_id(i: int, j: int, k: int) -> int:
+        return (i * (n + 1) + j) * (n + 1) + k
+
     for i in range(n + 1):
         for j in range(n + 1):
             for k in range(n + 1):
