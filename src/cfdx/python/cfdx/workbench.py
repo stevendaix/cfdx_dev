@@ -484,16 +484,21 @@ if QMainWindow is not object:
                 if not summary.is_cfdx:
                     raise ValueError("file does not contain a recognised CFDX layout")
                 self.case_file_panel.set_summary(summary)
-                if summary.has_project_config:
-                    self.application.open_project(path)
-                    self.session = self.application.session
-                    self._refresh_setup_case()
-                    self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
-                elif not summary.has_mesh:
-                    raise ValueError(
-                        "CFDX HDF5 file has neither a project configuration "
-                        "nor readable mesh topology"
+                if not summary.has_project_config:
+                    if not summary.has_mesh:
+                        raise ValueError(
+                            "CFDX HDF5 file has neither a project configuration "
+                            "nor readable mesh topology"
+                        )
+                    self.statusBar().showMessage(
+                        "Mesh interchange file inspected; active project unchanged. "
+                        "Use Open Mesh to load it into the viewport."
                     )
+                    return
+                self.application.open_project(path)
+                self.session = self.application.session
+                self._refresh_setup_case()
+                self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
                 if summary.preview_supported:
                     catalog = self.application.load_mesh(path)
                     self.mesh_browser.set_catalog(catalog)
