@@ -165,9 +165,14 @@ class CaseFilePanel(QWidget):
         fields_truncated = (
             summary.scalar_fields_truncated or summary.vector_fields_truncated
         )
+        field_count_is_lower_bound = (
+            summary.scalar_fields_truncated and len(summary.scalar_fields) == 300
+        ) or (
+            summary.vector_fields_truncated and len(summary.vector_fields) == 300
+        )
         field_total = (
             f"{summary.total_field_count}+"
-            if fields_truncated and summary.total_field_count >= 600
+            if fields_truncated and field_count_is_lower_bound
             else "incomplete"
             if fields_truncated
             else str(summary.total_field_count)
