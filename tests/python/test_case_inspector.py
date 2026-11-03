@@ -207,7 +207,6 @@ def test_inspect_bounds_dataset_tree(tmp_path):
     assert summary.datasets_truncated
 
 
-
 def test_inspect_bounds_soft_link_scans_in_region_and_field_groups(tmp_path):
     path = tmp_path / "many-soft-links.h5"
     with h5py.File(path, "w") as h5:
@@ -225,7 +224,6 @@ def test_inspect_bounds_soft_link_scans_in_region_and_field_groups(tmp_path):
     assert summary.regions_truncated
     assert summary.scalar_fields == ()
     assert summary.scalar_fields_truncated
-
 
 
 def test_inspect_bounds_hdf5_group_only_trees(tmp_path):
