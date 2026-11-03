@@ -154,6 +154,29 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     assert application.selection.stable_id is None
 
 
+
+def test_inspect_does_not_preview_mesh_with_external_region_catalog(tmp_path):
+    path = tmp_path / "external-regions.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        h5.attrs["n_cells"] = 1
+        h5.create_dataset("points", shape=(4, 3), dtype="f8")
+        h5.create_dataset("owner", data=[0, 0, 0, 0])
+        h5.create_dataset("neighbour", data=[-1, -1, -1, -1])
+        h5.create_dataset("face_vertices", data=[0, 1, 1, 2, 2, 3, 3, 0])
+        h5.create_dataset("face_offsets", data=[0, 2, 4, 6, 8])
+        h5.create_dataset("patch_face_ids", data=[0, 1, 2, 3])
+        h5.create_dataset("patch_face_offsets", data=[0, 4])
+        h5["regions"] = h5py.SoftLink("/missing")
+
+    summary = inspect_cfdx_file(path)
+
+    assert summary.has_mesh
+    assert not summary.preview_supported
+    assert "region catalog" in summary.preview_block_reason
+
+
+
 def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     path = tmp_path / "oversized-connectivity.h5"
     with h5py.File(path, "w") as h5:
