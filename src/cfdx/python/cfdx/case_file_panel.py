@@ -210,4 +210,3 @@ class CaseFilePanel(QWidget):
                 ["Attribute listing", "Truncated at the configured metadata limit"],
             )
         self.tree.expandToDepth(1)
-
