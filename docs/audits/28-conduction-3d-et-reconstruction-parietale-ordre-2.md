@@ -26,7 +26,11 @@ La nouvelle API wall_face_reconstruction_quadratic.h ajuste les dix monômes 3D 
 
 Le stencil pariétal doit contenir les valeurs des cellules voisines et la valeur de vitesse prescrite au centre de face (condition de non-glissement). Le rang insuffisant est rejeté explicitement ; aucun fallback affine silencieux n'est permis.
 
-Un constructeur de stencil depuis l'adjacence réelle est maintenant disponible dans wall_quadratic_stencil.h : parcours BFS des cellules par faces internes, inclusion explicite de la vitesse de paroi prescrite, contrôle du patch WALL et rejet des entrées invalides. La pression au point de paroi reste fournie explicitement par l'appelant selon la condition de pression choisie. Le test sur cube unitaire vérifie l'extraction du point de paroi et du propriétaire ainsi que le rejet du stencil insuffisant. Un second test construit un maillage cartésien 3x3x3, extrait un stencil complet par adjacence, reproduit un champ quadratique et vérifie les gradients exacts au mur. L'adaptateur wall_quadratic_forces.h convertit les résultats en forces::SurfaceSample, consommables par forces::integrate. Le traitement des stencils 2D coplanaires et le raccordement au chemin de post-traitement du solveur restent à faire. Un test affine-shear 3x3x3 vérifie désormais une géométrie hexaédrique non-orthogonale ; ce test synthétique ne remplace pas une qualification sur maillage CFD NACA réel.
+Un constructeur de stencil depuis l'adjacence réelle est disponible dans wall_quadratic_stencil.h : parcours BFS des cellules par faces internes, inclusion explicite de la vitesse de paroi prescrite, contrôle du patch WALL et rejet des entrées invalides. La pression au point de paroi est fournie explicitement selon le contrat de pression du patch. L'adaptateur wall_quadratic_forces.h convertit les résultats en forces::SurfaceSample, consommables par forces::integrate.
+
+Le chemin de production est maintenant accessible par l'option explicite `--wall-forces-quadratic`. Il exige une solution convergée, une vitesse prescrite FIXED_VALUE sur chaque patch WALL et une pression FIXED_VALUE ou ZERO_GRADIENT. Il écrit les forces et moments dimensionnels dans `wall_forces.json`. Les coefficients non dimensionnels sont volontairement absents tant que rho_inf, U_inf, la surface et la longueur de référence ne sont pas déclarés. Tout stencil de rang déficient provoque un échec explicite ; aucun fallback affine n'est appliqué.
+
+Les tests couvrent un cube unitaire (rejet de stencil insuffisant), un hexaèdre affine-shear 3x3x3 (géométrie non-orthogonale), et un O-grid NACA0012 extrudé en quatre couches (champ polynomial manufacturé et traction exacte sur chaque face airfoil). Ce dernier reste un test de reconstruction sur géométrie CFD réelle, pas une qualification d'un champ de solution CFD. Les stencils 2D coplanaires et les extrusions à deux couches restent volontairement rejetés.
 
 ## 5. Pièges connus
 
@@ -43,7 +47,7 @@ Un constructeur de stencil depuis l'adjacence réelle est maintenant disponible 
 - Géométrie : stencil non coplanaire, faces obliques, maillages non-orthogonaux et rejet des stencils dégénérés.
 - Exécution : CTest ciblé, Release, DebugSanitizers et campagnes longues pertinentes.
 
-Les tests test_wall_face_reconstruction_quadratic_3d et test_wall_quadratic_stencil sont enregistrés dans CTest. Ils vérifient la reproduction quadratique sur un stencil synthétique et sur un maillage 3D 3x3x3 extrait par adjacence, la valeur de paroi prescrite, les gradients pariétaux et le passage des échantillons dans l'intégrateur de forces. Le maillage 3x3x3 est désormais affine-shear (faces obliques et cellules non-orthogonales) et le test vérifie aussi le sens de la normale du corps. Il ne qualifie pas encore un maillage CFD NACA réel ni le chemin de post-traitement de production.
+Les tests `test_wall_face_reconstruction_quadratic_3d`, `test_wall_quadratic_stencil` et `test_naca3d_wall_quadratic_mesh` sont enregistrés dans CTest. Le dernier utilise un O-grid NACA0012 extrudé avec quatre couches spanwise, reconstruit un champ quadratique analytique sur toutes les faces airfoil et compare pression et traction au champ exact. Le test Python de production vérifie aussi l'option CLI et l'écriture du JSON sur un volume 3D fermé. Ces cas vérifient l'algorithme et son raccordement logiciel, mais ne constituent pas une validation d'ordre sur un écoulement CFD calculé.
 
 ## 7. Statut d'implémentation
 
@@ -55,14 +59,16 @@ Les tests test_wall_face_reconstruction_quadratic_3d et test_wall_quadratic_sten
 - Rejet explicite des stencils 3D de rang déficient.
 - MMS quadratique 3D enregistré dans CTest, avec non-glissement stationnaire et étude de convergence sur stencil synthétique ;
 - résolution WLS par QR de Householder pivotée, avec rejet des stencils mal conditionnés selon un indicateur diagonal ;
-- fixture thermique 3D distinct avec patches d'extrémité WALL, afin que les Dirichlet de température ne soient pas ignorés comme sur le fixture fluide à patches EMPTY.
+- fixture thermique 3D distinct avec patches d'extrémité WALL, afin que les Dirichlet de température ne soient pas ignorés comme sur le fixture fluide à patches EMPTY ;
+- test de reproduction et de traction exacte sur l'O-grid NACA0012 extrudé en quatre couches spanwise ;
+- intégration dans le CLI du solveur de production via `--wall-forces-quadratic`, avec garde de convergence, contrôle des contrats de frontière, sortie des forces/moments dimensionnels et rejet fail-closed des stencils insuffisants ;
+- test E2E Python de l'export des forces sur un maillage 3D wall-only.
 
 **Non implémenté / non qualifié :**
-- exécution CI et correction effective du MMS de conduction linéaire 3D ;
-- décomposition détaillée des contributions matricielles et des flux dans le diagnostic ;
-- qualification d'un stencil 3D complet extrait d'un maillage multi-cellules et intégration dans l'audit de paroi existant ;
-- support des stencils 2D coplanaires et estimation spectrale/SVD du conditionnement ;
-- preuve de convergence d'ordre 2 sur plusieurs maillages CFD et stencils issus de l'adjacence réelle.
+- validation des résultats CI du HEAD courant pour le MMS de conduction et les tests de reconstruction ;
+- preuve d'ordre observé 2 sur des champs de solution CFD calculés, avec étude de raffinement et comparaison GG/WLS/quadratique ;
+- qualification physique des forces sur un cas expérimental 3D avec valeurs de référence ;
+- support des stencils 2D coplanaires (hors contrat de l'API 3D actuelle) et estimation spectrale/SVD du conditionnement.
 
 Aucune tolérance n'est élargie. Aucune qualification physique n'est revendiquée. La PR reste draft jusqu'à obtention de ces preuves.
 
@@ -74,3 +80,5 @@ Aucune tolérance n'est élargie. Aucune qualification physique n'est revendiqu�
 - 2026-11-03 — test pariétal renforcé avec valeur de paroi nulle et mesure d'ordre sur trois échelles ; remplacement des équations normales par QR de Householder pivotée et rejet conditionné par le rapport diagonal.
 - 2026-11-03 — ajout du constructeur BFS de stencil depuis les faces internes du maillage, avec contrôle WALL et échantillon de vitesse de paroi exact ; test fail-closed sur cube unitaire.
 - 2026-11-03 — ajout de l'adaptateur vers forces::SurfaceSample et d'une qualification algébrique sur maillage hexaédrique 3x3x3 affine-shear, incluant reproduction quadratique, normale oblique et appel à forces::integrate.
+- 2026-11-03 — ajout d'un test de reproduction quadratique sur O-grid NACA0012 extrudé en quatre couches spanwise ; test des pressions et tractions exactes sur toutes les faces airfoil.
+- 2026-11-03 — raccordement opt-in au solveur de production via --wall-forces-quadratic ; sortie des forces/moments dimensionnels et test E2E sur volume 3D fermé.
