@@ -580,6 +580,11 @@ def main():
             b,
             patch_type_overrides={"front": 0, "back": 0},
         )
+        # A four-layer spanwise fixture is required to identify the complete
+        # 3-D quadratic basis at wall faces (the two-layer smoke mesh is rank
+        # deficient for this purpose).
+        p, c, b = naca_o_grid(16, 8, 20.0, n_spanwise=4, span=1.0)
+        write_mesh(out / "naca0012_extruded_3d_wall_n16_z4.h5", p, c, b)
     print(f"validation meshes written to {out}")
 
 
