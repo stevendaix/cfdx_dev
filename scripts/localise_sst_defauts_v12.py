@@ -31,10 +31,14 @@ def localisation(mesh: Path, log: Path) -> dict:
                          "iteration" in row]
     # A late retry may restart at iteration=1. Prefer the most advanced
     # inspected SST Picard state, never mislabel a fresh retry as iter=100.
-    record = max(qualified_records, key=lambda row: int(row["iteration"]),
-                 default=None)
-    if record is None:
+    # Multiple outer retries can all reach the same Picard iteration budget.
+    # On a tie, use the LAST attempt, not a stale earlier retry.
+    selected = max(enumerate(qualified_records),
+                   key=lambda pair: (int(pair[1]["iteration"]), pair[0]),
+                   default=None)
+    if selected is None:
         raise ValueError("SST trace lacks local worst-cell indices")
+    record = selected[1]
     with h5py.File(mesh, "r") as file:
         xyz = np.asarray(file["points"], dtype=float)
         face_offsets = np.asarray(file["face_offsets"], dtype=np.int64)
