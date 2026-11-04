@@ -192,8 +192,9 @@ the 32 MiB source-data budget and the 1 MiB per-chunk decompression budget.
 The current report contains:
 - Polygon area minimum and maximum.
 - Face edge-length ratio (longest / shortest edge), with min, p95 and max.
-- Relative warpage: maximum vertex distance to the least-squares face plane,
-  divided by the longest edge; min/p95/max summary and worst face IDs.
+- Relative warpage: maximum vertex distance to the centroid plane normal to the
+  polygon area vector, divided by the longest edge; min/p95/max summary and
+  worst face IDs.
 - Degenerate faces and faces with numerically zero-length edges; a zero-length edge makes a face degenerate even when its polygon area is otherwise nonzero.
 
 These are **surface-face geometric indicators**, not volume-cell quality
