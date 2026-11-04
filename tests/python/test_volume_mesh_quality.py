@@ -1,12 +1,13 @@
 """Regression tests for volumetric skewness and cell adjacency."""
 
 import h5py
+import numpy as np
+import pytest
+
 from cfdx.volume_mesh_quality import (
     analyze_cfdx_volume_skewness,
     analyze_volume_skewness,
 )
-import numpy as np
-import pytest
 
 
 def two_tetrahedra():
