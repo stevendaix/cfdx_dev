@@ -321,7 +321,15 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
                     v18_full_flux_pressure_oracle: bool = False,
                     v18_sparse_flux_pressure_jacobian: bool = False,
                     v19_full_pressure_flux_step: bool = False,
-                    v21_adaptive_relaxation: bool = False) -> CaseSetup:
+                    v21_adaptive_relaxation: bool = False,
+                    convection_scheme: str = 'upwind') -> CaseSetup:
+    convection_keys = {
+        'upwind': 'numerics.convection.upwind',
+        'second_order_upwind': 'numerics.convection.second_order_upwind',
+        'tvd_minmod': 'numerics.convection.tvd.minmod',
+    }
+    if convection_scheme not in convection_keys:
+        raise ValueError('unsupported TH-03 convection scheme')
     if (not 1 <= pressure_restart <= 2048 or
             pressure_scaling not in ('none', 'row_column', 'symmetric_diagonal')):
         raise ValueError('invalid pressure Krylov controls')
@@ -433,7 +441,7 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
     setup.numerics.raw_settings['pressure_face_interpolation'] = 'arithmetic'
     setup.numerics.selection = NumericalSelectionConfig(entries=[
         NumericalSelection(family='gradient', configuration_key='numerics.gradient.gauss'),
-        NumericalSelection(family='convection', configuration_key='numerics.convection.upwind'),
+        NumericalSelection(family='convection', configuration_key=convection_keys[convection_scheme]),
         NumericalSelection(family='pressure_velocity', configuration_key='pressure_velocity.simple'),
         NumericalSelection(family='linear_solver', configuration_key='linear.fgmres'),
     ], required_families=['gradient', 'convection', 'pressure_velocity'])
@@ -507,7 +515,8 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                v18_full_flux_pressure_oracle: bool = False,
                v18_sparse_flux_pressure_jacobian: bool = False,
                     v19_full_pressure_flux_step: bool = False,
-               v21_adaptive_relaxation: bool = False) -> dict:
+               v21_adaptive_relaxation: bool = False,
+               convection_scheme: str = 'upwind') -> dict:
     # A mislabeled lateral wall must never reach the CFDX solver as EMPTY.
     # Audit and case writer intentionally use this single geometry contract.
     if count_invalid_extrusion_patch_faces(mesh):
@@ -534,7 +543,8 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                             v18_full_flux_pressure_oracle=v18_full_flux_pressure_oracle,
                             v18_sparse_flux_pressure_jacobian=v18_sparse_flux_pressure_jacobian,
                             v19_full_pressure_flux_step=v19_full_pressure_flux_step,
-                            v21_adaptive_relaxation=v21_adaptive_relaxation)
+                            v21_adaptive_relaxation=v21_adaptive_relaxation,
+                            convection_scheme=convection_scheme)
     setup.source.case_path = mesh_source
     setup.source_metadata['physical_qualification'] = 'NOT_QUALIFIED'
     setup.source_metadata['inlet_omega_origin'] = (
@@ -575,6 +585,7 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
         'patch_faces': {p['name']: len(p['face_ids'])
                         for p in mesh['boundary_patch_assignment']},
         'source_mesh': mesh_source,
+        'momentum_convection_scheme': setup.numerics.selection.entries[1].configuration_key,
         'pressure_gmres_restart': pressure_restart,
         'pressure_linear_scaling': pressure_scaling,
         'pressure_krylov': pressure_krylov,
@@ -605,6 +616,8 @@ def main() -> int:
                         default='coarse')
     parser.add_argument('--openfoam-case', type=Path,
                         help='Use actual OpenFOAM constant/polyMesh ASCII files instead of reconstruction')
+    parser.add_argument('--convection-scheme', choices=('upwind','second_order_upwind','tvd_minmod'),
+        default='upwind', help='V22 opt-in bounded momentum convection; keep legacy upwind by default.')
     parser.add_argument('--max-iterations', type=int, default=100)
     parser.add_argument('--alpha-u', type=float, default=.25)
     parser.add_argument('--alpha-p', type=float, default=.1)
@@ -697,7 +710,8 @@ def main() -> int:
             v18_full_flux_pressure_oracle=args.v18_full_flux_pressure_oracle,
             v18_sparse_flux_pressure_jacobian=args.v18_sparse_flux_pressure_jacobian,
             v19_full_pressure_flux_step=args.v19_full_pressure_flux_step,
-            v21_adaptive_relaxation=args.v21_adaptive_relaxation)
+            v21_adaptive_relaxation=args.v21_adaptive_relaxation,
+            convection_scheme=args.convection_scheme)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(2, f'TH-03 mesh generation/import failed: {exc}\n')
     print(json.dumps(summary, indent=2))
