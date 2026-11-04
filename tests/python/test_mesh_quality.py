@@ -155,3 +155,24 @@ def test_hdf5_surface_analysis_refuses_oversized_chunks_and_payload(tmp_path):
 
     with pytest.raises(ValueError, match="budget"):
         analyze_cfdx_surface_file(path, max_source_bytes=32)
+
+
+
+def test_hdf5_surface_analysis_rejects_soft_links(tmp_path):
+    path = tmp_path / "surface-soft-link.h5"
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset("real_points", data=[[0.0, 0.0, 0.0]])
+        h5["points"] = h5py.SoftLink("/real_points")
+        h5.create_dataset("face_vertices", data=[0, 0, 0])
+        h5.create_dataset("face_offsets", data=[0, 3])
+
+    with pytest.raises(ValueError, match="internal hard-linked points"):
+        analyze_cfdx_surface_file(path)
+
+
+def test_hdf5_surface_analysis_requires_positive_byte_budgets(tmp_path):
+    path = tmp_path / "surface-empty.h5"
+    with h5py.File(path, "w"):
+        pass
+    with pytest.raises(ValueError, match="byte budgets must be positive"):
+        analyze_cfdx_surface_file(path, max_block_bytes=0)
