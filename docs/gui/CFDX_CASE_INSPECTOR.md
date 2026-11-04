@@ -203,3 +203,10 @@ validity. Those require the complete cell polyhedra, cell centres and
 neighbour relationships; the UI explicitly says so rather than inferring them
 from boundary faces. The current implementation is an on-demand diagnostic,
 not a mesh repair operation and it never modifies the source file.
+
+
+The GUI workflow also runs a deterministic 128 × 128 warped-quad probe and
+publishes `cfdx-surface-quality-report` as a JSON artifact. It verifies that
+all 16,384 faces are processed and that the known warped surface produces a
+nonzero warpage indicator. Its elapsed time is a CI smoke measurement, not a
+cross-machine performance claim.
