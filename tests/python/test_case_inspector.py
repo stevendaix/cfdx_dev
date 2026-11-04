@@ -198,9 +198,7 @@ def test_renderer_rejects_stale_inspection_summary_before_loading_arrays(
     with pytest.raises(ValueError, match="changed since metadata inspection"):
         PyVistaQtView.load_cfdx_mesh(None, str(path), summary=summary)
     with pytest.raises(ValueError, match="changed since metadata inspection"):
-        PyVistaQtView.load_cfdx_dat(
-            None, str(path), "unused.dat", summary=summary
-        )
+        PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
 
 
 
