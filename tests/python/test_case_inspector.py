@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from types import SimpleNamespace
 
 import h5py
@@ -620,3 +621,42 @@ def test_inspector_reports_logical_and_allocated_hdf5_storage(tmp_path):
     assert unallocated.size_bytes == 10_000 * 8
     assert unallocated.storage_bytes == 0
     assert unallocated.storage_ratio == pytest.approx(0.0)
+
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_case_file_panel_runs_surface_quality_action(tmp_path):
+    from PySide6.QtWidgets import QApplication
+
+    from cfdx.case_file_panel import CaseFilePanel
+
+    path = tmp_path / "surface-quality.cfdx.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        h5.attrs["n_cells"] = 1
+        h5.create_dataset(
+            "points",
+            data=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+        )
+        h5.create_dataset("owner", data=[0])
+        h5.create_dataset("neighbour", data=[-1])
+        h5.create_dataset("face_vertices", data=[0, 1, 2, 3])
+        h5.create_dataset("face_offsets", data=[0, 4])
+        h5.create_dataset("patch_face_ids", data=[0])
+        h5.create_dataset("patch_face_offsets", data=[0, 1])
+
+    app = QApplication.instance() or QApplication(["cfdx-case-file-quality-test"])
+    panel = CaseFilePanel()
+    summary = inspect_cfdx_file(path)
+    assert summary.preview_supported
+    panel.set_summary(summary)
+    assert panel.mesh_quality_button.isEnabled()
+    panel.mesh_quality_button.click()
+    report = panel.preview.toPlainText()
+    assert "faces: 1 · valid: 1 · degenerate: 0" in report
+    assert "area min/max: 1 / 1" in report
+    assert "Volume-cell skewness" in report
+    panel.close()
+    app.processEvents()
