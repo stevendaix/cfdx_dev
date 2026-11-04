@@ -52,7 +52,7 @@ def analyze_cfdx_surface_file(
             if not isinstance(link, h5py.HardLink) or not isinstance(
                 dataset, h5py.Dataset
             ):
-                raise TypeError(
+                raise ValueError(
                     f"surface quality requires an internal hard-linked {name} dataset"
                 )
             if dataset.is_virtual or dataset.external:
