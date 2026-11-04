@@ -360,6 +360,7 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
     setup.numerics.under_relaxation_momentum = alpha_u
     setup.numerics.under_relaxation_pressure = alpha_p
     setup.numerics.raw_settings['sst_transport_max_iterations'] = '800'
+    setup.numerics.raw_settings['sst_scale_aware_convergence'] = 'false'  # legacy baseline; compare opt-in explicitly
     setup.numerics.raw_settings['pressure_gmres_restart'] = str(pressure_restart)
     setup.numerics.raw_settings['pressure_linear_scaling'] = pressure_scaling
     setup.numerics.raw_settings['pressure_krylov'] = pressure_krylov
