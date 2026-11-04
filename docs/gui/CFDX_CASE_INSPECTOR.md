@@ -58,10 +58,15 @@ modification time; renderer entry points reject a summary if the file changed
 since inspection, closing the stale-summary/time-of-check-to-time-of-use gap.
 Preview eligibility also checks the topology
 dataset shapes, caps eager source topology at 32 MiB and caps face connectivity
-at two million entries. These limits are deliberately conservative because
-the current PyVista adapter creates additional Python-side connectivity lists.
-They must not be raised until measured peak-RSS and latency benchmarks justify
-doing so.
+at two million entries. Immediately after bounded array reads and before any
+viewport mutation or VTK object construction, the adapter validates finite
+coordinates, face-offset and cell-offset CSR invariants, face vertex ranges,
+patch face ranges, and cell-to-face ranges. Degenerate faces and empty cell
+face lists are rejected with explicit errors. These checks defend the renderer
+against malformed but superficially well-shaped HDF5 files. The limits are
+deliberately conservative because the current PyVista adapter creates
+additional Python-side connectivity lists. They must not be raised until
+measured peak-RSS and latency benchmarks justify doing so.
 
 The numerical checkpoint remains a separate `.dat.h5` artifact. Inspecting a
 case does not load or activate a restart checkpoint.
@@ -102,9 +107,12 @@ peak RSS, GPU memory, frame rate and selection/cut latency.
 The GUI CI also runs `scripts/benchmark_cfdx_hdf5_inspector.py` at logical
 sizes of 1M, 10M and 50M cells. The benchmark resolves the source package
 explicitly because `scripts/cfdx.py` otherwise shadows the importable `cfdx`
-package when Python executes scripts directly. It records metadata-inspection latency,
-bounded-sample latency, peak RSS, logical dataset bytes and physical sparse-file
-size. The JSON report is published as the
+package when Python executes scripts directly. It records metadata-inspection
+latency, bounded-sample latency, peak RSS, logical dataset bytes, physical
+sparse-file size and allocated bytes for the sampled points chunk. That one
+chunk is deliberately materialized and checked against known values so the
+sample measurement exercises actual HDF5 chunk I/O rather than only returning
+implicit fill values. The JSON report is published as the
 `cfdx-hdf5-inspector-benchmark` workflow artifact. These sparse fixtures
 measure the file-browser path only; they do not simulate geometry rendering,
 GPU upload or interactive picking.
@@ -115,8 +123,10 @@ GPU upload or interactive picking.
 metadata, bounded dataset/field discovery, malformed count attributes,
 bounded numeric/fixed-string samples and unsafe sample paths, plus a sparse HDF5 fixture
 whose logical coordinate/connectivity arrays represent a 50-million point
-case. The fixture verifies metadata inspection without materializing those
-arrays.
+case. `tests/python/test_mesh_topology_validation.py` exercises malformed CSR
+offsets, out-of-range point/face references, degenerate faces and non-finite
+coordinates before VTK construction. The fixture verifies metadata inspection
+without materializing large coordinate/connectivity arrays.
 
 The inspector is read-only. It does not repair files, rewrite attributes,
 change case configuration or establish numerical validation/qualification.
