@@ -400,7 +400,8 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
         n_points, n_faces, n_cells = _mesh_counts(h5, regions)
         has_mesh = n_points is not None and n_faces is not None
         config = _case_config(h5)
-        has_project_config = "case/config" in h5 and config is not None
+        project_config = _internal_object(h5, "case/config")
+        has_project_config = isinstance(project_config, h5py.Dataset) and config is not None
         scalar_fields, scalar_fields_truncated = _field_names(h5, "scalar")
         vector_fields, vector_fields_truncated = _field_names(h5, "vector")
 
