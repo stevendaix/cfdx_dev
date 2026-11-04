@@ -746,6 +746,108 @@ inline ScalarBoundaryFaceValues make_sst_wall_omega_face_values(
     return values;
 }
 
+// Geometry/first-cell audit for the V13 FACE Dirichlet omega prescription.
+// NASA's 60*nu/(beta1*y1^2) is defined at the FIRST CELL CENTRE, whereas
+// the existing CFDX 6/60 choice is a face value. Even if both numbers agree,
+// applying them at different locations creates different discrete operators.
+// The optional viscous y+ proxy is valid only for a no-slip wall at the
+// sampled velocity state; it is NOT a wall-function y+ qualification.
+struct SSTWallOmegaDiscreteAudit {
+    std::size_t faces = 0;
+    std::size_t velocity_proxy_faces = 0;
+    double min_distance = std::numeric_limits<double>::infinity();
+    double max_distance = 0.0;
+    double max_tangential_geometry_ratio = 0.0;
+    double min_face_value = std::numeric_limits<double>::infinity();
+    double max_face_value = 0.0;
+    double min_nasa_first_cell_value = std::numeric_limits<double>::infinity();
+    double max_nasa_first_cell_value = 0.0;
+    double min_owner_to_first_cell_ratio = std::numeric_limits<double>::infinity();
+    double max_owner_to_first_cell_ratio = 0.0;
+    double min_viscous_yplus_proxy = std::numeric_limits<double>::infinity();
+    double max_viscous_yplus_proxy = 0.0;
+};
+
+inline SSTWallOmegaDiscreteAudit audit_sst_wall_omega_discretization(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const std::vector<std::string>& wall_patches,
+    const ScalarBoundaryFaceValues& face_values,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& velocity,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& omega,
+    const std::map<std::string,std::array<double,3>>& fixed_wall_velocity,
+    const TurbulenceTransportControls& controls)
+{
+    if (velocity.size()!=mesh.n_cells() || velocity.dimension()!=3 ||
+        omega.size()!=mesh.n_cells() || omega.dimension()!=1 ||
+        !(controls.molecular_viscosity>0.0) || !(controls.beta1>0.0))
+        throw std::invalid_argument("SST wall audit: invalid fields or viscosity");
+    SSTWallOmegaDiscreteAudit result;
+    std::map<std::string,bool> patch_names;
+    for (const auto& name : wall_patches) {
+        if (!patch_names.emplace(name,true).second)
+            throw std::invalid_argument("SST wall audit: duplicate wall patch");
+        if (face_values.values.find(name)==face_values.values.end())
+            throw std::invalid_argument("SST wall audit: missing Dirichlet face values");
+    }
+    for (std::size_t face=0; face<mesh.n_faces(); ++face) {
+        const auto patch=geometry.face_patch.at(face);
+        if (patch>=mesh.boundary().n_patches()) continue;
+        const auto& name=mesh.boundary().patch(patch).name;
+        if (patch_names.find(name)==patch_names.end()) continue;
+        const std::size_t owner=mesh.ownership().owner(face);
+        if (owner>=mesh.n_cells() || mesh.ownership().neighbour(face)>=0)
+            throw std::invalid_argument("SST wall audit: invalid boundary owner");
+        const auto area=geometry.face_area_vectors[face].mag();
+        const auto delta=geometry.face_centres[face]-geometry.cell_centres[owner];
+        const double d=delta.dot(geometry.face_area_vectors[face])/area;
+        if (!(d>0.0) || !std::isfinite(d))
+            throw std::invalid_argument("SST wall audit: nonpositive wall-normal spacing");
+        const auto& patch_values=face_values.values.at(name);
+        if (face>=patch_values.size() || !(patch_values[face]>0.0) ||
+            !std::isfinite(patch_values[face]) ||
+            !(omega(owner)>0.0) || !std::isfinite(omega(owner)))
+            throw std::invalid_argument("SST wall audit: invalid omega value");
+        const double first_cell_target=60.0*controls.molecular_viscosity/
+            (controls.beta1*d*d);
+        if (!std::isfinite(first_cell_target) || !(first_cell_target>0.0))
+            throw std::domain_error("SST wall audit: first-cell target overflow");
+        const double ratio=omega(owner)/first_cell_target;
+        result.faces++;
+        result.min_distance=std::min(result.min_distance,d);
+        result.max_distance=std::max(result.max_distance,d);
+        const double lateral=std::sqrt(std::max(0.0,delta.dot(delta)-d*d));
+        result.max_tangential_geometry_ratio=std::max(
+            result.max_tangential_geometry_ratio,lateral/d);
+        result.min_face_value=std::min(result.min_face_value,patch_values[face]);
+        result.max_face_value=std::max(result.max_face_value,patch_values[face]);
+        result.min_nasa_first_cell_value=std::min(result.min_nasa_first_cell_value,first_cell_target);
+        result.max_nasa_first_cell_value=std::max(result.max_nasa_first_cell_value,first_cell_target);
+        result.min_owner_to_first_cell_ratio=std::min(result.min_owner_to_first_cell_ratio,ratio);
+        result.max_owner_to_first_cell_ratio=std::max(result.max_owner_to_first_cell_ratio,ratio);
+        if (const auto fixed=fixed_wall_velocity.find(name); fixed!=fixed_wall_velocity.end()) {
+            const double nx=geometry.face_area_vectors[face].x/area;
+            const double ny=geometry.face_area_vectors[face].y/area;
+            const double nz=geometry.face_area_vectors[face].z/area;
+            const double dx=velocity(owner,0)-fixed->second[0];
+            const double dy=velocity(owner,1)-fixed->second[1];
+            const double dz=velocity(owner,2)-fixed->second[2];
+            const double normal=dx*nx+dy*ny+dz*nz;
+            const double tangential=std::sqrt(std::max(0.0,
+                dx*dx+dy*dy+dz*dz-normal*normal));
+            // viscous estimate: tau_w ~ mu * |Ut|/y ; y+=y*sqrt(tau_w/rho)/nu.
+            const double yplus=std::sqrt(tangential*d/controls.molecular_viscosity);
+            if (!std::isfinite(yplus))
+                throw std::domain_error("SST wall audit: yplus proxy overflow");
+            result.velocity_proxy_faces++;
+            result.min_viscous_yplus_proxy=std::min(result.min_viscous_yplus_proxy,yplus);
+            result.max_viscous_yplus_proxy=std::max(result.max_viscous_yplus_proxy,yplus);
+        }
+    }
+    if (!result.faces)
+        throw std::invalid_argument("SST wall audit: no boundary wall faces");
+    return result;
+}
+
 // A geometry-free call cannot certify global-face coverage. Retain the old
 // overload for contracts without wall omega, but require the mesh-aware API
 // whenever WALL_OMEGA_SST is declared.
