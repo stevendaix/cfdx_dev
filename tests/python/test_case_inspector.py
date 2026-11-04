@@ -6,12 +6,11 @@ import h5py
 import numpy as np
 import pytest
 from cfdx import dat_io
+from cfdx.application import Application
 from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample
 from cfdx.case_io import save_case
 from cfdx.gui_3d import PyVistaQtView
 from cfdx.session import CFDXSession
-
-from cfdx.application import Application
 
 
 def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
