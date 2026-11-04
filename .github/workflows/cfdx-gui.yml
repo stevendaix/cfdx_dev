@@ -123,6 +123,7 @@ jobs:
           retention-days: 14
 
       - name: Benchmark sparse large-mesh HDF5 inspection
+        if: always() && steps.install_gui.outcome == 'success'
         env:
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
         run: |
@@ -140,6 +141,7 @@ jobs:
           retention-days: 14
 
       - name: Benchmark bounded surface quality diagnostics
+        if: always() && steps.install_gui.outcome == 'success'
         env:
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
         run: |
