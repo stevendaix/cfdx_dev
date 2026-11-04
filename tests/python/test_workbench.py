@@ -96,6 +96,7 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
         h5.create_dataset("patch_face_ids", data=[0, 1, 2, 3])
         h5.create_dataset("patch_face_offsets", data=[0, 4])
         h5.create_dataset("metadata/labels", data=["wall"])
+        h5.create_dataset("fields/scalar/pressure", data=[1.0, 2.0, 3.0, 4.0])
 
     monkeypatch.setattr(
         QFileDialog,
@@ -129,6 +130,7 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
     window.case_file_panel.tree.setCurrentItem(point_items[0])
     assert "shape: (4, 3)" in window.case_file_panel.preview.toPlainText()
     assert window.case_file_panel.copy_path_button.isEnabled()
+    assert window.case_file_panel.statistics_button.isEnabled()
     window.case_file_panel.copy_selected_dataset_path()
     from PySide6.QtWidgets import QApplication
 
@@ -136,6 +138,18 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
     window.case_file_panel.tree.setCurrentItem(metadata_groups[0])
     assert "Select a dataset" in window.case_file_panel.preview.toPlainText()
     assert not window.case_file_panel.copy_path_button.isEnabled()
+    assert not window.case_file_panel.statistics_button.isEnabled()
+    pressure_items = window.case_file_panel.tree.findItems(
+        "/fields/scalar/pressure",
+        Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive,
+        0,
+    )
+    assert pressure_items
+    window.case_file_panel.tree.setCurrentItem(pressure_items[0])
+    window.case_file_panel.statistics_button.click()
+    statistics_text = window.case_file_panel.preview.toPlainText()
+    assert "mean: 2.5" in statistics_text
+    assert "RMS:" in statistics_text
     window.case_file_panel.tree.setCurrentItem(point_items[0])
     window.case_file_panel.filter_input.setText("points")
     assert not point_items[0].isHidden()
