@@ -39,7 +39,15 @@ VELOCITY = 44.2
 NU = 1.56e-5
 RHO = 1.2
 K_IN = 1.09e-3
-OMEGA_IN = 181728.0
+# The documented OpenFOAM *inlet* condition targets nut/nu = 0.009.
+# The previous 181728 s^-1 was applied to both inlet and initial state,
+# yielding nut/nu = 3.84e-4 for the specified k and nu: 23.4x too small.
+# This is a DOCUMENTATION-DERIVED surrogate until the exact 0.orig/omega
+# file is independently obtained; never label it byte-equivalent to OpenFOAM.
+INLET_TURBULENT_VISCOSITY_RATIO = 0.009
+OMEGA_IN = K_IN / (NU * INLET_TURBULENT_VISCOSITY_RATIO)
+OMEGA_INITIAL = OMEGA_IN
+OMEGA_LEGACY_V9 = 181728.0
 
 # Local Cartesian coordinates are in step heights, not SI. Six blocks and
 # boundary names match the published v2606 OpenFOAM tutorial.
@@ -289,12 +297,16 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
                     pressure_scaling: str = 'none',
                     pressure_krylov: str = 'auto',
                     pressure_preconditioner: str = 'auto',
-                    pressure_tolerance: float = 1.e-11) -> CaseSetup:
+                    pressure_tolerance: float = 1.e-11,
+                    inlet_omega: float = OMEGA_IN,
+                    initial_omega: float = OMEGA_INITIAL) -> CaseSetup:
     if (not 1 <= pressure_restart <= 2048 or
             pressure_scaling not in ('none', 'row_column', 'symmetric_diagonal')):
         raise ValueError('invalid pressure Krylov controls')
     if not (math.isfinite(pressure_tolerance) and pressure_tolerance > 0):
         raise ValueError('invalid pressure tolerance')
+    if not all(math.isfinite(v) and v > 0 for v in (inlet_omega, initial_omega)):
+        raise ValueError('inlet and initial omega must be finite and strictly positive')
     if max_iterations <= 0 or not (0. < alpha_u <= 1. and 0. < alpha_p <= 1.):
         raise ValueError('invalid numerical controls')
     setup = CaseSetup(source=SourceInfo(solver='OpenFOAM', version='v2606',
@@ -318,13 +330,13 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
         scalar = [SSTScalarBoundarySpec(field='k', type=scalar_types[0],
             value=K_IN if name == 'inlet' else 0.),
             SSTScalarBoundarySpec(field='omega', type=scalar_types[1],
-            value=OMEGA_IN if name == 'inlet' else 0.)]
+            value=inlet_omega if name == 'inlet' else 0.)]
         if name == 'inlet':
             bc = BoundarySpec(patch_name=name, type=BCType.INLET,
                 value_type=BCValueType.FIXED,
                 velocity_vector=[VELOCITY, 0., 0.], velocity_magnitude=VELOCITY,
                 turbulence_intensity=math.sqrt(K_IN / (1.5 * VELOCITY**2)),
-                turbulence_length_scale=math.sqrt(K_IN) / (.09**.25 * OMEGA_IN),
+                turbulence_length_scale=math.sqrt(K_IN) / (.09**.25 * inlet_omega),
                 sst_scalar_conditions=scalar)
         elif name == 'outlet':
             bc = BoundarySpec(patch_name=name, type=BCType.OUTLET,
@@ -343,7 +355,7 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
     setup.boundary_conditions = bcs
     setup.initial_condition = InitialCondition(velocity=VELOCITY,
         velocity_vector=[VELOCITY,0.,0.], pressure=0.,
-        scalar_fields={'k': K_IN, 'omega': OMEGA_IN})
+        scalar_fields={'k': K_IN, 'omega': initial_omega})
     setup.numerics.max_iterations = max_iterations
     setup.numerics.under_relaxation_momentum = alpha_u
     setup.numerics.under_relaxation_pressure = alpha_p
@@ -406,7 +418,9 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                pressure_scaling: str = 'none',
                pressure_krylov: str = 'auto',
                pressure_preconditioner: str = 'auto',
-               pressure_tolerance: float = 1.e-11) -> dict:
+               pressure_tolerance: float = 1.e-11,
+               inlet_omega: float = OMEGA_IN,
+               initial_omega: float = OMEGA_INITIAL) -> dict:
     # A mislabeled lateral wall must never reach the CFDX solver as EMPTY.
     # Audit and case writer intentionally use this single geometry contract.
     if count_invalid_extrusion_patch_faces(mesh):
@@ -414,9 +428,15 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
     path.parent.mkdir(parents=True, exist_ok=True)
     setup = make_case_setup(max_iterations, alpha_u, alpha_p,
                             pressure_restart, pressure_scaling, pressure_krylov,
-                            pressure_preconditioner, pressure_tolerance)
+                            pressure_preconditioner, pressure_tolerance,
+                            inlet_omega, initial_omega)
     setup.source.case_path = mesh_source
     setup.source_metadata['physical_qualification'] = 'NOT_QUALIFIED'
+    setup.source_metadata['inlet_omega_origin'] = (
+        'derived from OpenFOAM documented inlet nut/nu=0.009; '
+        '0.orig/omega has not been byte-verified')
+    setup.source_metadata['initial_omega_must_not_be_assumed_inlet'] = 'true'
+    setup.source_metadata['inlet_eddy_viscosity_ratio'] = str(K_IN / (NU * inlet_omega))
     setup.source_metadata['mesh_description'] = mesh_source
     setup.source_metadata['physics_gaps'] = (
         'RANS-SST experimental; wall model not equivalent to OpenFOAM; '
@@ -456,6 +476,9 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
         'pressure_preconditioner': pressure_preconditioner,
         'pressure_linear_tolerance': pressure_tolerance,
         'reynolds_h': VELOCITY*H/NU,
+        'inlet_omega_s_inverse': inlet_omega,
+        'initial_omega_s_inverse': initial_omega,
+        'inlet_nut_over_nu': K_IN / (NU * inlet_omega),
         'reference_reattachment_x_over_h': {
             'value': 6.26, 'experimental_sigma': .10,
             'directly_comparable': False,
@@ -465,6 +488,7 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
         'warnings': ['TH-03 experimental registry Re_h=37500 differs from OpenFOAM nominal Re_h=36000',
                      'experimental SST opt-in', 'CFDX first-order upwind',
                      'wall treatment not equivalent to OpenFOAM tutorial',
+                     'OpenFOAM omega inlet is derived from published nut/nu, not verified from raw file',
                      'initial profile and grid convergence not verified'],
     }
 
@@ -484,6 +508,11 @@ def main() -> int:
     parser.add_argument('--pressure-krylov', choices=('auto','cg','gmres','fgmres','bicgstab'), default='auto')
     parser.add_argument('--pressure-preconditioner', choices=('auto','none','jacobi','ilu0','native_amg','smoothed_aggregation_amg'), default='auto')
     parser.add_argument('--pressure-linear-tolerance', type=float, default=1.e-11)
+    parser.add_argument('--inlet-omega', type=float, default=OMEGA_IN,
+        help='SST omega inlet in 1/s. Default derived from documented nut/nu=0.009; '
+             'use 181728 to reproduce V9 (not source-equivalent).')
+    parser.add_argument('--initial-omega', type=float, default=OMEGA_INITIAL,
+        help='Independent initial SST omega field in 1/s; need not equal inlet.')
     parser.add_argument('--pressure-linear-scaling',
                         choices=('none','row_column','symmetric_diagonal'),default='none',
                         help='Optional algebraic scaling with unscaled true-residual gate')
@@ -501,7 +530,9 @@ def main() -> int:
             pressure_scaling=args.pressure_linear_scaling,
             pressure_krylov=args.pressure_krylov,
             pressure_preconditioner=args.pressure_preconditioner,
-            pressure_tolerance=args.pressure_linear_tolerance)
+            pressure_tolerance=args.pressure_linear_tolerance,
+            inlet_omega=args.inlet_omega,
+            initial_omega=args.initial_omega)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(2, f'TH-03 mesh generation/import failed: {exc}\n')
     print(json.dumps(summary, indent=2))
