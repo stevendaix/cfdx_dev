@@ -16,13 +16,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .mesh_quality import analyze_cfdx_surface_file
-
 from .case_inspector import (
     CaseFileSummary,
     read_hdf5_dataset_sample,
     read_hdf5_dataset_statistics,
 )
+from .mesh_quality import analyze_cfdx_surface_file
 
 
 class CaseFilePanel(QWidget):
