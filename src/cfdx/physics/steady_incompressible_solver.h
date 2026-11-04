@@ -756,7 +756,7 @@ gauss_gradient_with_boundary(
                     const auto it = bcs.find(name);
                     if (it != bcs.end() && it->second.type == ScalarBoundaryType::FIXED_VALUE)
                         vf = it->second.value;
-                    else if (skew_correct && it != bcs.end() &&
+                    else if (it != bcs.end() &&
                              it->second.type == ScalarBoundaryType::FIXED_GRADIENT) {
                         const Vec3 outward = Sf * (1.0 / Sf.mag());
                         const Vec3 centre_to_face =

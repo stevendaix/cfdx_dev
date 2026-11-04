@@ -18,8 +18,9 @@ inline std::vector<double> sst_boundary_gradient_dot(
     const ScalarBoundaryConditions& omega_bcs,
     const ScalarBoundaryFaceValues* omega_face_values = nullptr)
 {
-    const auto grad_k = scalar_gradient_with_transport_boundaries(k, mesh, geometry, k_bcs);
-    const auto grad_omega = scalar_gradient_with_transport_boundaries(
+    const auto grad_k = compute_boundary_aware_wls_gradient(
+        k, mesh, geometry, k_bcs);
+    const auto grad_omega = compute_boundary_aware_wls_gradient(
         omega, mesh, geometry, omega_bcs, omega_face_values);
     std::vector<double> result(mesh.n_cells());
     for (std::size_t cell = 0; cell < result.size(); ++cell) {

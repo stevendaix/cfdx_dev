@@ -10,8 +10,9 @@ namespace cfdx::physics {
 // flux is required when mu_eff varies, even for divergence-free velocity.
 // Internal mu uses the same normal-distance harmonic interpolation as scalar
 // diffusion; boundary mu and face gradients use their owner-cell values.
-// Boundary U values enter the Green--Gauss reconstruction explicitly. No
-// non-orthogonal/skew correction or higher-order wall extrapolation is implied.
+// Boundary U values enter the rank-checked WLS reconstruction.  The
+// reconstructed gradients are evaluated at cell centres; higher-order wall
+// traction still requires a separate face-consistent qualification.
 inline cfdx::core::Field<double,cfdx::core::Location::FACE>
 transpose_viscous_stress_flux(
     const cfdx::core::Mesh& mesh,
@@ -32,7 +33,7 @@ transpose_viscous_stress_flux(
     for (std::size_t component=0; component<3; ++component) {
         Field<double,Location::CELL> scalar(nc,"U_stress_component","m/s",1);
         for (std::size_t cell=0; cell<nc; ++cell) scalar(cell)=velocity(cell,component);
-        gradients[component]=scalar_gradient_with_transport_boundaries(
+        gradients[component]=compute_boundary_aware_wls_gradient(
             scalar,mesh,geometry,velocity_bcs[component]);
     }
     Field<double,Location::FACE> flux(nf,"transpose_viscous_stress_flux","N",3);
