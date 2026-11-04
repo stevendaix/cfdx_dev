@@ -234,10 +234,10 @@ def test_dat_preview_reports_missing_cell_topology(
         "read_dat_restart",
         lambda _path: SimpleNamespace(cells=1, fields={}),
     )
-    with pytest.raises(ValueError, match=f"requires an internal HDF5 {missing_dataset}"):
-        PyVistaQtView.load_cfdx_dat(
-            None, str(path), "unused.dat", summary=summary
-        )
+    with pytest.raises(
+        ValueError, match=f"requires an internal HDF5 {missing_dataset}"
+    ):
+        PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
 
 
 def test_inspect_does_not_preview_mesh_with_external_region_catalog(tmp_path):
