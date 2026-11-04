@@ -299,12 +299,20 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
                     pressure_preconditioner: str = 'auto',
                     pressure_tolerance: float = 1.e-11,
                     inlet_omega: float = OMEGA_IN,
-                    initial_omega: float = OMEGA_INITIAL) -> CaseSetup:
+                    initial_omega: float = OMEGA_INITIAL,
+                    sst_newton_sink: bool = False,
+                    sst_omega_first: bool = False,
+                    sst_wall_factor: int = 6,
+                    sst_inner_iterations: int = 800) -> CaseSetup:
     if (not 1 <= pressure_restart <= 2048 or
             pressure_scaling not in ('none', 'row_column', 'symmetric_diagonal')):
         raise ValueError('invalid pressure Krylov controls')
     if not (math.isfinite(pressure_tolerance) and pressure_tolerance > 0):
         raise ValueError('invalid pressure tolerance')
+    if not isinstance(sst_inner_iterations,int) or sst_inner_iterations <= 0:
+        raise ValueError('SST inner iterations must be a positive integer')
+    if sst_wall_factor not in (6, 60):
+        raise ValueError('SST wall factor must be 6 or 60')
     if not all(math.isfinite(v) and v > 0 for v in (inlet_omega, initial_omega)):
         raise ValueError('inlet and initial omega must be finite and strictly positive')
     if max_iterations <= 0 or not (0. < alpha_u <= 1. and 0. < alpha_p <= 1.):
@@ -359,8 +367,11 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
     setup.numerics.max_iterations = max_iterations
     setup.numerics.under_relaxation_momentum = alpha_u
     setup.numerics.under_relaxation_pressure = alpha_p
-    setup.numerics.raw_settings['sst_transport_max_iterations'] = '800'
+    setup.numerics.raw_settings['sst_transport_max_iterations'] = str(sst_inner_iterations)
     setup.numerics.raw_settings['sst_scale_aware_convergence'] = 'false'  # legacy baseline; compare opt-in explicitly
+    setup.numerics.raw_settings['sst_omega_newton_sink'] = str(bool(sst_newton_sink)).lower()
+    setup.numerics.raw_settings['sst_sequential_omega_first'] = str(bool(sst_omega_first)).lower()
+    setup.numerics.raw_settings['sst_wall_omega_factor'] = str(sst_wall_factor)
     setup.numerics.raw_settings['pressure_gmres_restart'] = str(pressure_restart)
     setup.numerics.raw_settings['pressure_linear_scaling'] = pressure_scaling
     setup.numerics.raw_settings['pressure_krylov'] = pressure_krylov
@@ -421,7 +432,11 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                pressure_preconditioner: str = 'auto',
                pressure_tolerance: float = 1.e-11,
                inlet_omega: float = OMEGA_IN,
-               initial_omega: float = OMEGA_INITIAL) -> dict:
+               initial_omega: float = OMEGA_INITIAL,
+               sst_newton_sink: bool = False,
+               sst_omega_first: bool = False,
+               sst_wall_factor: int = 6,
+               sst_inner_iterations: int = 800) -> dict:
     # A mislabeled lateral wall must never reach the CFDX solver as EMPTY.
     # Audit and case writer intentionally use this single geometry contract.
     if count_invalid_extrusion_patch_faces(mesh):
@@ -430,7 +445,9 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
     setup = make_case_setup(max_iterations, alpha_u, alpha_p,
                             pressure_restart, pressure_scaling, pressure_krylov,
                             pressure_preconditioner, pressure_tolerance,
-                            inlet_omega, initial_omega)
+                            inlet_omega, initial_omega,
+                            sst_newton_sink, sst_omega_first, sst_wall_factor,
+                            sst_inner_iterations)
     setup.source.case_path = mesh_source
     setup.source_metadata['physical_qualification'] = 'NOT_QUALIFIED'
     setup.source_metadata['inlet_omega_origin'] = (
@@ -512,6 +529,14 @@ def main() -> int:
     parser.add_argument('--inlet-omega', type=float, default=OMEGA_IN,
         help='SST omega inlet in 1/s. Default derived from documented nut/nu=0.009; '
              'use 181728 to reproduce V9 (not source-equivalent).')
+    parser.add_argument('--sst-inner-iterations', type=int, default=800,
+        help='Inner SST Picard limit (default 800); diagnostic A/B only.')
+    parser.add_argument('--sst-newton-sink', action='store_true',
+        help='Experimental Newton-linearized omega destruction (default off).')
+    parser.add_argument('--sst-omega-first', action='store_true',
+        help='Experimental omega-first k/omega Picard coupling (default off).')
+    parser.add_argument('--sst-wall-factor', type=int, choices=(6, 60), default=6,
+        help='Face Dirichlet omega factor (6 legacy; 60 Menter/NASA-inspired).')
     parser.add_argument('--initial-omega', type=float, default=OMEGA_INITIAL,
         help='Independent initial SST omega field in 1/s; need not equal inlet.')
     parser.add_argument('--pressure-linear-scaling',
@@ -533,7 +558,11 @@ def main() -> int:
             pressure_preconditioner=args.pressure_preconditioner,
             pressure_tolerance=args.pressure_linear_tolerance,
             inlet_omega=args.inlet_omega,
-            initial_omega=args.initial_omega)
+            initial_omega=args.initial_omega,
+            sst_newton_sink=args.sst_newton_sink,
+            sst_omega_first=args.sst_omega_first,
+            sst_wall_factor=args.sst_wall_factor,
+            sst_inner_iterations=args.sst_inner_iterations)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(2, f'TH-03 mesh generation/import failed: {exc}\n')
     print(json.dumps(summary, indent=2))
