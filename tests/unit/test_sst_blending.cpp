@@ -1605,5 +1605,214 @@ int main()
             EXPECT_NEAR(phi(f), original_phi(f), 0.0);
     });
 
+    run_case("v17_pseudo_momentum_preserves_old_state_residual_and_steady_fixed_point", [] {
+        using namespace cfdx::core;
+        const auto mesh=make_sst_transaction_unit_cube();
+        const auto geometry=build_fv_geometry(mesh);
+        Field<double,Location::FACE> phi(mesh.n_faces(),"phi","kg/s",1);
+        phi.fill(0.0);
+        const auto masses=make_v17_pseudo_momentum_masses(
+            mesh,geometry,phi,std::vector<double>{1.0},2.0,0.5);
+        EXPECT_TRUE(masses.size()==1 && masses[0]>0.0);
+        Field<double,Location::CELL> old(mesh.n_cells(),"old","m/s",3);
+        old.fill(0.0); old.component_data(0)[0]=3.0;
+        ScalarEquation eq;
+        eq.matrix=SparseMatrix(1,1);
+        eq.matrix.push_back(0,0,5.0); eq.matrix.finalize();
+        eq.rhs=Vector(1,4.0);
+        eq.diagonal={5.0};
+        add_v17_pseudo_momentum_term(eq,old,masses,0);
+        const double m=masses[0];
+        EXPECT_NEAR(eq.diagonal[0],5.0+m,1e-12);
+        EXPECT_NEAR(eq.rhs(0),4.0+3.0*m,1e-12);
+        EXPECT_NEAR((5.0+m)*3.0-eq.rhs(0),5.0*3.0-4.0,1e-12);
+        EXPECT_NEAR((5.0+m)*4.0-eq.rhs(0),5.0*4.0-4.0+m,1e-12);
+        EXPECT_THROW(add_v17_pseudo_momentum_term(eq,old,{},0),std::invalid_argument);
+    });
+    run_case("v17_adaptive_CFL_falls_on_bad_continuity_and_grows_on_joint_progress", [] {
+        V17PseudoMomentumControls cfg;
+        EXPECT_NEAR(next_v17_pseudo_cfl(0.3,0.2,0.1,0.1,0.02,cfg),0.375,1e-14);
+        EXPECT_NEAR(next_v17_pseudo_cfl(0.3,0.2,0.1,0.1,0.13,cfg),0.15,1e-14);
+        EXPECT_NEAR(next_v17_pseudo_cfl(0.03,0.2,0.3,0.1,0.2,cfg),0.03,1e-14);
+        cfg.minimum_cfl=2.0;
+        EXPECT_THROW(validate_v17_pseudo_momentum_controls(cfg),std::invalid_argument);
+    });
+    run_case("v17_pseudo_is_rejected_for_physical_time_and_monolithic_coupling", [] {
+        IncompressibleSolverControls cfg;
+        cfg.pseudo_momentum.enabled=true;
+        cfg.algorithm=PressureVelocityAlgorithm::COUPLED;
+        EXPECT_THROW(validate_incompressible_controls(cfg,1),std::invalid_argument);
+        cfg.algorithm=PressureVelocityAlgorithm::SIMPLE;
+        cfg.transient.enabled=true;
+        EXPECT_THROW(validate_incompressible_controls(cfg,1),std::invalid_argument);
+    });
+    run_case("v17_authoritative_face_flux_patch_and_cell_closure", [] {
+        using namespace cfdx::core;
+        const auto mesh=make_sst_transaction_unit_cube();
+        const auto geometry=build_fv_geometry(mesh);
+        Field<double,Location::FACE> phi(mesh.n_faces(),"phi","kg/s",1);
+        phi.fill(0.0); phi(4)=-3.0; phi(5)=+3.25;
+        const auto balance=audit_v17_authoritative_flux(mesh,geometry,phi);
+        EXPECT_NEAR(balance.boundary_signed,0.25,1e-14);
+        EXPECT_NEAR(balance.cell_signed,0.25,1e-14);
+        EXPECT_NEAR(balance.cell_linf,0.25,1e-14);
+        EXPECT_NEAR(balance.topology_error,0.0,1e-14);
+        EXPECT_TRUE(balance.patches.size()==3);
+        EXPECT_NEAR(balance.patches.at("x0").signed_flux,-3.0,1e-14);
+        EXPECT_NEAR(balance.patches.at("x1").signed_flux,+3.25,1e-14);
+        phi(0)=std::numeric_limits<double>::quiet_NaN();
+        EXPECT_THROW(audit_v17_authoritative_flux(mesh,geometry,phi),std::invalid_argument);
+    });
+
+    run_case("v17_projected_Rhie_Chow_HbyA_equals_physical_U_contract_on_stretched_face", [] {
+        using namespace cfdx::core;
+        Mesh mesh;
+        mesh.points().resize(12);
+        const double coords[12][3] = {
+            {0,0,0},{2,0,0},{3,0,0},{0,1,0},{2,1,0},{3,1,0},
+            {0,0,1},{2,0,1},{3,0,1},{0,1,1},{2,1,1},{3,1,1}};
+        for(std::size_t i=0;i<12;++i)
+            mesh.points().set(i,coords[i][0],coords[i][1],coords[i][2]);
+        for(const auto& f : std::vector<std::vector<FaceIndex>>{
+            {0,6,9,3},{0,1,7,6},{3,9,10,4},{0,3,4,1},{6,7,10,9},
+            {7,10,4,1},{2,5,11,8},{1,2,8,7},{4,10,11,5},
+            {1,4,5,2},{7,8,11,10}})
+            mesh.faces().push_face(f);
+        mesh.ownership().resize(11);
+        for(std::size_t f=0;f<11;++f){
+            mesh.ownership().set_owner(f,f<=5?0:1);
+            mesh.ownership().set_neighbour(f,f==5?1:FaceOwnership::BOUNDARY);
+        }
+        mesh.cells().push_cell({0,1,2,3,4,5});
+        mesh.cells().push_cell({5,6,7,8,9,10});
+        Patch a,b;
+        a.name="left"; a.type=PatchType::WALL; a.face_ids={0,1,2,3,4};
+        b.name="right"; b.type=PatchType::WALL; b.face_ids={6,7,8,9,10};
+        mesh.boundary().add_patch(a);
+        mesh.boundary().add_patch(b);
+        const auto geom=build_fv_geometry(mesh);
+        const double wn=pressure_face_neighbour_weight(geom,5,0,1,true);
+        EXPECT_TRUE(wn>0.55 && wn<0.75);
+        Field<double,Location::CELL> p(mesh.n_cells(),"p","Pa",1);
+        p(0)=1.0; p(1)=5.0;
+        const auto grad=gauss_gradient_with_boundary(p,mesh,geom,{},false,true);
+        Field<double,Location::CELL> physical(mesh.n_cells(),"U","m/s",3);
+        physical.fill(0.0);
+        std::array<std::vector<double>,3> rAU{{{0.2,0.6},{0.2,0.6},{0.2,0.6}}};
+        Field<double,Location::CELL> hbya=physical;
+        for(std::size_t c=0;c<2;++c)
+            for(std::size_t d=0;d<3;++d)
+                hbya.component_data(d)[c] =
+                    geom.cell_volumes[c]*rAU[d][c]*grad.component_data(d)[c];
+        const auto phi_h=make_rhie_chow_mass_flux(mesh,geom,hbya,p,rAU,1.0,
+            VelocityBoundaryConditions{},ScalarBoundaryConditions{},
+            RhieChowVelocityContract::HBYA_PREDICTOR,false,true);
+        const auto phi_u=make_rhie_chow_mass_flux(mesh,geom,physical,p,rAU,1.0,
+            VelocityBoundaryConditions{},ScalarBoundaryConditions{},
+            RhieChowVelocityContract::PHYSICAL_VELOCITY,false,true);
+        EXPECT_NEAR(phi_h(5),phi_u(5),1e-11);
+    });
+
+    run_case("v17_pseudo_spectral_excludes_empty_extrusion_and_symmetry", [] {
+        using namespace cfdx::core;
+        auto mesh=make_sst_transaction_unit_cube();
+        const auto original_geom=build_fv_geometry(mesh);
+        Field<double,Location::FACE> phi(mesh.n_faces(),"phi","kg/s",1);
+        phi.fill(0.0);
+        const auto baseline=make_v17_pseudo_momentum_masses(
+            mesh,original_geom,phi,{1.0},1.0,0.3);
+        // The last four boundary faces are a 2D extrusion/symmetry;
+        // their small normal distance must not create artificial diffusion.
+        mesh.boundary().patch(2).type=PatchType::EMPTY;
+        const auto geometry=build_fv_geometry(mesh);
+        const auto without_empty=make_v17_pseudo_momentum_masses(
+            mesh,geometry,phi,{1.0},1.0,0.3);
+        EXPECT_TRUE(without_empty[0] < baseline[0]);
+        EXPECT_TRUE(without_empty[0] > 0.0);
+        // Applying molecular wall viscosity further reduces artificial
+        // stiffness without changing the underlying steady equation.
+        const auto molecular=make_v17_pseudo_momentum_masses(
+            mesh,geometry,phi,{1.0},1.0,0.3,0.01);
+        EXPECT_TRUE(molecular[0] < without_empty[0]);
+    });
+
+    run_case("v18_sparse_pressure_jacobian_matches_full_rhie_chow_oracle", [] {
+        using namespace cfdx::core;
+        Mesh mesh;
+        mesh.points().resize(12);
+        const double coord[12][3]={{0,0,0},{2,0,0},{3,0,0},
+            {0,1,0},{2,1,0},{3,1,0},
+            {0,0,1},{2,0,1},{3,0,1},
+            {0,1,1},{2,1,1},{3,1,1}};
+        for(std::size_t i=0;i<12;++i) {
+            const double shift=(i==1 || i==4 || i==7 || i==10) ? 0.15 :
+                ((i==2 || i==5 || i==8 || i==11) ? 0.55 : 0.0);
+            mesh.points().set(i,coord[i][0],coord[i][1]+shift,coord[i][2]);
+        }
+        for(const auto& faces:std::vector<std::vector<FaceIndex>>{
+            {0,6,9,3},{0,1,7,6},{3,9,10,4},{0,3,4,1},{6,7,10,9},
+            {7,10,4,1},{2,5,11,8},{1,2,8,7},{4,10,11,5},
+            {1,4,5,2},{7,8,11,10}})
+            mesh.faces().push_face(faces);
+        mesh.ownership().resize(11);
+        for(std::size_t f=0;f<11;++f) {
+            mesh.ownership().set_owner(f,f<=5?0:1);
+            mesh.ownership().set_neighbour(f,f==5?1:FaceOwnership::BOUNDARY);
+        }
+        mesh.cells().push_cell({0,1,2,3,4,5});
+        mesh.cells().push_cell({5,6,7,8,9,10});
+        Patch left,right;
+        left.name="left";left.type=PatchType::WALL;left.face_ids={0,1,2,3,4};
+        right.name="right";right.type=PatchType::WALL;right.face_ids={6,7,8,9,10};
+        mesh.boundary().add_patch(left);
+        mesh.boundary().add_patch(right);
+        const auto geom=build_fv_geometry(mesh);
+        ScalarBoundaryConditions pbcs;
+        pbcs["left"]={ScalarBoundaryType::FIXED_VALUE,3.0,0.0};
+        pbcs["right"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        const std::array<std::vector<double>,3> rAU{{{0.2,0.3},{0.4,0.5},{0.6,0.8}}};
+        Field<double,Location::CELL> p(2,"p","Pa",1);
+        Field<double,Location::CELL> perturb(2,"perturb","Pa",1);
+        Field<double,Location::CELL> H(2,"H","m/s",3);
+        H.fill(0.0);
+        p(0)=0.7;p(1)=1.9;
+        perturb(0)=0.29;perturb(1)=-0.61;
+        for(const bool projected: {false,true}) {
+            const auto sparse=make_full_rhie_chow_pressure_rows_sparse(
+                mesh,geom,rAU,1.2,pbcs,projected);
+            const auto reference=make_full_rhie_chow_pressure_rows_reference(
+                mesh,geom,rAU,1.2,{},pbcs,projected);
+            for(std::size_t i=0;i<2;++i) {
+                for(std::size_t j=0;j<2;++j) {
+                    const auto value=[](const auto& row,std::size_t index){
+                        const auto it=row.find(index);
+                        return it==row.end()?0.0:it->second;
+                    };
+                    EXPECT_NEAR(value(sparse[i],j),value(reference[i],j),1e-12);
+                }
+            }
+            const auto f0=make_rhie_chow_mass_flux(mesh,geom,H,p,rAU,1.2,
+                VelocityBoundaryConditions{},pbcs,RhieChowVelocityContract::HBYA_PREDICTOR,
+                false,projected);
+            for(std::size_t c=0;c<2;++c) p(c)+=perturb(c);
+            const auto f1=make_rhie_chow_mass_flux(mesh,geom,H,p,rAU,1.2,
+                VelocityBoundaryConditions{},pbcs,RhieChowVelocityContract::HBYA_PREDICTOR,
+                false,projected);
+            for(std::size_t c=0;c<2;++c) p(c)-=perturb(c);
+            std::array<double,2> flux_diff{0.0,0.0};
+            for(std::size_t f=0;f<mesh.n_faces();++f) {
+                const double d=f1(f)-f0(f);
+                flux_diff[mesh.ownership().owner(f)]+=d;
+                const auto nr=mesh.ownership().neighbour(f);
+                if(nr>=0) flux_diff[static_cast<std::size_t>(nr)]-=d;
+            }
+            for(std::size_t i=0;i<2;++i) {
+                double expected=0.0;
+                for(const auto& [j,a]:sparse[i]) expected+=a*perturb(j);
+                EXPECT_NEAR(flux_diff[i],expected,1e-11);
+            }
+        }
+    });
+
     return run_all();
 }
