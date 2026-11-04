@@ -21,7 +21,10 @@ from .case_inspector import (
     read_hdf5_dataset_sample,
     read_hdf5_dataset_statistics,
 )
-from .mesh_quality import analyze_cfdx_surface_file
+from .mesh_quality import (
+    SURFACE_QUALITY_MAX_FACES,
+    analyze_cfdx_surface_file,
+)
 
 
 class CaseFilePanel(QWidget):
@@ -236,7 +239,11 @@ class CaseFilePanel(QWidget):
         self.tree.clear()
         self.copy_path_button.setEnabled(False)
         self.statistics_button.setEnabled(False)
-        self.mesh_quality_button.setEnabled(summary.preview_supported)
+        self.mesh_quality_button.setEnabled(
+            summary.preview_supported
+            and summary.n_faces is not None
+            and summary.n_faces <= SURFACE_QUALITY_MAX_FACES
+        )
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         state = "CFDX" if summary.is_cfdx else "HDF5 (unrecognised CFDX layout)"
         self.status.setText(f"{summary.path.name} · {state}")
