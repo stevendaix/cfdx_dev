@@ -309,7 +309,8 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
                     sst_relative_gate: bool = False,
                     sst_compensated_gate: bool = False,
                     sst_nonlinear_line_search: bool = False,
-                    sst_linear_relaxation: float = 0.7) -> CaseSetup:
+                    sst_linear_relaxation: float = 0.7,
+                    sst_molecular_wall_diffusion: bool = False) -> CaseSetup:
     if (not 1 <= pressure_restart <= 2048 or
             pressure_scaling not in ('none', 'row_column', 'symmetric_diagonal')):
         raise ValueError('invalid pressure Krylov controls')
@@ -387,6 +388,7 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
     setup.numerics.raw_settings['sst_compensated_residual_gate'] = str(bool(sst_compensated_gate)).lower()
     setup.numerics.raw_settings['sst_nonlinear_line_search'] = str(bool(sst_nonlinear_line_search)).lower()
     setup.numerics.raw_settings['sst_transport_linear_relaxation'] = str(sst_linear_relaxation)
+    setup.numerics.raw_settings['sst_molecular_wall_diffusion'] = str(bool(sst_molecular_wall_diffusion)).lower()
     # Provisional steps are NOT certified; the final coupled convergence gate
     # continues to require converged SST, carrier equations and conservation.
     if sst_provisional:
@@ -463,7 +465,8 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                sst_relative_gate: bool = False,
                sst_compensated_gate: bool = False,
                sst_nonlinear_line_search: bool = False,
-               sst_linear_relaxation: float = 0.7) -> dict:
+               sst_linear_relaxation: float = 0.7,
+               sst_molecular_wall_diffusion: bool = False) -> dict:
     # A mislabeled lateral wall must never reach the CFDX solver as EMPTY.
     # Audit and case writer intentionally use this single geometry contract.
     if count_invalid_extrusion_patch_faces(mesh):
@@ -479,7 +482,8 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                             sst_relative_gate=sst_relative_gate,
                             sst_compensated_gate=sst_compensated_gate,
                             sst_nonlinear_line_search=sst_nonlinear_line_search,
-                            sst_linear_relaxation=sst_linear_relaxation)
+                            sst_linear_relaxation=sst_linear_relaxation,
+                            sst_molecular_wall_diffusion=sst_molecular_wall_diffusion)
     setup.source.case_path = mesh_source
     setup.source_metadata['physical_qualification'] = 'NOT_QUALIFIED'
     setup.source_metadata['inlet_omega_origin'] = (
@@ -579,6 +583,8 @@ def main() -> int:
         help='SST transport post-solve relaxation (0,1], legacy default 0.7.')
     parser.add_argument('--sst-compensated-gate', action='store_true',
         help='Experimental extended-precision local SST residual gate; original FP64 also logged.')
+    parser.add_argument('--sst-molecular-wall-diffusion', action='store_true',
+        help='Use rho*nu (not owner-cell rho*(nu+sigma*nut)) at resolved Dirichlet wall faces; experimental.')
     parser.add_argument('--sst-nonlinear-line-search', action='store_true',
         help='Backtrack Picard candidate only when the fully reassembled SST merit decreases.')
     parser.add_argument('--initial-omega', type=float, default=OMEGA_INITIAL,
@@ -612,7 +618,8 @@ def main() -> int:
             sst_relative_gate=args.sst_relative_gate,
             sst_compensated_gate=args.sst_compensated_gate,
             sst_nonlinear_line_search=args.sst_nonlinear_line_search,
-            sst_linear_relaxation=args.sst_linear_relaxation)
+            sst_linear_relaxation=args.sst_linear_relaxation,
+            sst_molecular_wall_diffusion=args.sst_molecular_wall_diffusion)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(2, f'TH-03 mesh generation/import failed: {exc}\n')
     print(json.dumps(summary, indent=2))
