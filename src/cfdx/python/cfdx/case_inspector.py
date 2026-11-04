@@ -319,6 +319,150 @@ def _case_config(h5: h5py.File) -> dict[str, Any] | None:
 
 
 @dataclass(frozen=True)
+class Hdf5DatasetStatistics:
+    """Streaming statistics for one explicitly selected numeric dataset."""
+
+    path: str
+    shape: tuple[int, ...]
+    dtype: str
+    value_count: int
+    finite_count: int
+    non_finite_count: int
+    minimum: float | None
+    maximum: float | None
+    mean: float | None
+    rms: float | None
+    scanned_bytes: int
+
+
+def read_hdf5_dataset_statistics(
+    path: str | Path,
+    dataset_path: str,
+    *,
+    max_scan_bytes: int = 64 * 1024 * 1024,
+    block_bytes: int = 1024 * 1024,
+) -> Hdf5DatasetStatistics:
+    """Compute finite-value statistics in bounded blocks after explicit user action.
+
+    The logical dataset size and each decompressed HDF5 chunk are checked before
+    reading. This is a diagnostic quick-look, not a substitute for a full
+    post-processing pipeline or numerically weighted cell statistics.
+    """
+    if not dataset_path.startswith("/") or dataset_path == "/":
+        raise ValueError("dataset_path must be an absolute HDF5 dataset path")
+    parts = dataset_path.strip("/").split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError("dataset_path is not a safe HDF5 path")
+    if max_scan_bytes <= 0 or block_bytes <= 0:
+        raise ValueError("statistics byte budgets must be positive")
+    if block_bytes > max_scan_bytes:
+        raise ValueError("block_bytes cannot exceed max_scan_bytes")
+
+    import numpy as np
+
+    with h5py.File(Path(path), "r") as h5:
+        dataset = _internal_object(h5, dataset_path)
+        if dataset is None:
+            raise ValueError(
+                "dataset path must resolve through internal HDF5 hard links"
+            )
+        if not isinstance(dataset, h5py.Dataset):
+            raise TypeError(f"{dataset_path} is not an HDF5 dataset")
+        if dataset.dtype.kind not in "biuf":
+            raise ValueError("statistics support integer and real numeric datasets only")
+        if dataset.is_virtual:
+            raise ValueError("virtual datasets are not scanned")
+        if dataset.external:
+            raise ValueError("externally stored datasets are not scanned")
+
+        shape = tuple(int(size) for size in dataset.shape)
+        value_count = int(prod(shape)) if shape else 1
+        logical_bytes = value_count * dataset.dtype.itemsize
+        if logical_bytes > max_scan_bytes:
+            raise ValueError(
+                f"dataset logical size {logical_bytes:,} exceeds "
+                f"the {max_scan_bytes:,}-byte statistics budget"
+            )
+        if dataset.chunks is not None:
+            chunk_bytes = prod(dataset.chunks) * dataset.dtype.itemsize
+            if chunk_bytes > block_bytes:
+                raise ValueError(
+                    f"dataset chunk size {chunk_bytes:,} exceeds "
+                    f"the {block_bytes:,}-byte statistics block budget"
+                )
+
+        if value_count == 0:
+            return Hdf5DatasetStatistics(
+                path=dataset_path,
+                shape=shape,
+                dtype=str(dataset.dtype),
+                value_count=0,
+                finite_count=0,
+                non_finite_count=0,
+                minimum=None,
+                maximum=None,
+                mean=None,
+                rms=None,
+                scanned_bytes=0,
+            )
+
+        if not shape:
+            blocks = (np.asarray(dataset[()]).reshape(-1),)
+        else:
+            row_values = int(prod(shape[1:])) if len(shape) > 1 else 1
+            row_bytes = row_values * dataset.dtype.itemsize
+            if row_bytes > block_bytes:
+                raise ValueError(
+                    "one dataset row exceeds the statistics block budget"
+                )
+            rows_per_block = max(1, block_bytes // row_bytes)
+            blocks = (
+                np.asarray(dataset[start : min(shape[0], start + rows_per_block)])
+                .reshape(-1)
+                for start in range(0, shape[0], rows_per_block)
+            )
+
+        finite_count = 0
+        non_finite_count = 0
+        total = np.longdouble(0)
+        sum_squares = np.longdouble(0)
+        minimum = None
+        maximum = None
+        for block in blocks:
+            finite = np.isfinite(block)
+            finite_values = block[finite]
+            non_finite_count += int(block.size - finite_values.size)
+            if finite_values.size == 0:
+                continue
+            finite_count += int(finite_values.size)
+            block_min = float(np.min(finite_values))
+            block_max = float(np.max(finite_values))
+            minimum = block_min if minimum is None else min(minimum, block_min)
+            maximum = block_max if maximum is None else max(maximum, block_max)
+            wide = finite_values.astype(np.longdouble, copy=False)
+            total += np.sum(wide, dtype=np.longdouble)
+            sum_squares += np.sum(wide * wide, dtype=np.longdouble)
+
+        mean = float(total / finite_count) if finite_count else None
+        rms = (
+            float(np.sqrt(sum_squares / finite_count)) if finite_count else None
+        )
+        return Hdf5DatasetStatistics(
+            path=dataset_path,
+            shape=shape,
+            dtype=str(dataset.dtype),
+            value_count=value_count,
+            finite_count=finite_count,
+            non_finite_count=non_finite_count,
+            minimum=minimum,
+            maximum=maximum,
+            mean=mean,
+            rms=rms,
+            scanned_bytes=logical_bytes,
+        )
+
+
+@dataclass(frozen=True)
 class Hdf5DatasetSample:
     path: str
     shape: tuple[int, ...]
