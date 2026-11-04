@@ -290,6 +290,12 @@ public:
         build(0,indices_.size());
     }
 
+    // The BVH stores a non-owning reference and must not bind a temporary.
+    // Without this guard WallDistanceBvh(make_surface()) would leave a
+    // dangling surface_ reference immediately after construction.
+    WallDistanceBvh(WallSurface&&) = delete;
+    WallDistanceBvh(const WallSurface&&) = delete;
+
     double nearest_distance(const WallDistanceVec3& p) const {
         validate_wall_distance_point(p);
         double best2=std::numeric_limits<double>::infinity();
@@ -332,7 +338,9 @@ public:
             };
         };
         double best=std::numeric_limits<double>::infinity();
-        const double eps=1e-12*std::max(1.0,max_distance);
+        // A ray limited to a micro-scale cut cell must not inherit an absolute
+        // 1e-12 length tolerance from a unit-sized coordinate convention.
+        const double eps=1e-12*max_distance;
 
         // Traverse the existing BVH rather than testing every triangle for
         // every cut-face ray. Wall offsets are queried repeatedly during the
@@ -344,12 +352,16 @@ public:
             // within 1e-12 of an edge. Expand AABBs by a scale-aware spatial
             // tolerance too, otherwise a near-edge hit accepted by the exact
             // test could be pruned first (especially for axis-parallel rays).
-            const double spatial_eps=1e-12*std::max({
-                1.0,std::abs(p.x),std::abs(p.y),std::abs(p.z),
+            // ULP allowance at the coordinate scale, plus a local ray-length
+            // tolerance. A fixed 1e-12 in physical units is scale dependent.
+            const double coordinate_scale=std::max({
+                std::abs(p.x),std::abs(p.y),std::abs(p.z),
                 std::abs(box.lo.x),std::abs(box.lo.y),std::abs(box.lo.z),
-                std::abs(box.hi.x),std::abs(box.hi.y),std::abs(box.hi.z),
-                max_distance
+                std::abs(box.hi.x),std::abs(box.hi.y),std::abs(box.hi.z)
             });
+            const double spatial_eps=
+                32.0*std::numeric_limits<double>::epsilon()*coordinate_scale
+                + 1e-12*max_distance;
             const auto slab=[&](double origin,double direction,double lo,double hi) {
                 lo-=spatial_eps;
                 hi+=spatial_eps;
@@ -378,7 +390,13 @@ public:
                     const auto e2=v2-v0;
                     const auto h=cross(d,e2);
                     const double a=wd_dot(e1,h);
-                    if(std::abs(a)<1e-14) continue;
+                    // Moller-Trumbore determinant is an AREA. Reject by
+                    // relative parallelism, not by a dimensionful constant:
+                    // an ordinary 1e-8 m triangle has area ~1e-16 m^2.
+                    const double area_scale=wd_norm(e1)*wd_norm(e2);
+                    if(!(area_scale>0.0) ||
+                       std::abs(a)<=32.0*std::numeric_limits<double>::epsilon()*area_scale)
+                        continue;
                     const double inv_a=1.0/a;
                     const auto offset=p-v0;
                     const double u=inv_a*wd_dot(offset,h);
@@ -2013,6 +2031,18 @@ inline double poisson_reconstruction_gradient_component(
                          g.spacing.z,phi[id]);
 }
 
+// Numerically stable positive root of d^2 + 2|grad(phi)|d = 2phi.
+// The naive sqrt(grad*grad+2phi)-grad loses all significant digits when
+// phi << grad^2; rationalizing preserves near-wall positive distances.
+inline double poisson_distance_from_potential(double phi,double grad) {
+    if(!std::isfinite(phi) || !std::isfinite(grad) || grad<0.0)
+        return std::numeric_limits<double>::quiet_NaN();
+    const double p=std::max(0.0,phi);
+    if(p==0.0) return 0.0;
+    const double discriminant_root=std::hypot(grad,std::sqrt(2.0*p));
+    return (2.0*p)/(discriminant_root+grad);
+}
+
 inline double poisson_reconstructed_distance(const WallDistanceBvh& bvh,
                                               const WallDistanceGrid& g,
                                               const std::vector<double>& phi,
@@ -2021,7 +2051,7 @@ inline double poisson_reconstructed_distance(const WallDistanceBvh& bvh,
     const double gy=poisson_reconstruction_gradient_component(bvh,phi,g,id,1);
     const double gz=poisson_reconstruction_gradient_component(bvh,phi,g,id,2);
     const double grad=std::sqrt(gx*gx+gy*gy+gz*gz);
-    return std::max(0.0,std::sqrt(std::max(0.0,grad*grad+2.0*phi[id]))-grad);
+    return poisson_distance_from_potential(phi[id],grad);
 }
 
 struct WallDistancePoissonManufacturedAudit {
@@ -2276,7 +2306,9 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     for(std::size_t id=0;id<d.size();++id) if(!g.solid[id]) {
         const double gx=grad_comp(phi,id,0),gy=grad_comp(phi,id,1),gz=grad_comp(phi,id,2);
         const double gn=std::sqrt(gx*gx+gy*gy+gz*gz);
-        d[id]=gn>1e-14 ? std::max(0.0,std::sqrt(std::max(0.0,gn*gn+2*phi[id]))-gn) : 0.0;
+        // At a Poisson-potential extremum grad(phi)=0 is a legitimate
+        // medial-axis state: distance=sqrt(2*phi), NOT zero.
+        d[id]=poisson_distance_from_potential(phi[id],gn);
     }
     for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
     set_distance_outer_boundary(bvh,g,d,fixed);

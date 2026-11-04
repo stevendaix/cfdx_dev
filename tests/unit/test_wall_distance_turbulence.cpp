@@ -118,6 +118,8 @@ int main() {
         const auto geometry = build_fv_geometry(mesh);
         const auto result = compute_mesh_cell_wall_distance(mesh, geometry);
         EXPECT_TRUE(result.converged);
+        EXPECT_TRUE(result.geometrically_exact_on_input_mesh);
+        EXPECT_TRUE(result.active_pde_samples == 0);
         EXPECT_TRUE(result.valid.size() == 1 && result.valid[0] == 1);
         EXPECT_TRUE(result.distance.size() == 1);
         // Cell centre is (2,1,1): wall x=0 is 2 units away. Other

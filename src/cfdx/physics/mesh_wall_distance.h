@@ -257,6 +257,7 @@ inline WallDistanceResult compute_mesh_cell_wall_distance(
         result.distance[cell] = distance;
     }
     result.converged = true;
+    result.geometrically_exact_on_input_mesh = true;
     result.stopping_reason = "exact_cell_centre_distance";
     result.convergence_status = WallDistanceConvergenceStatus::DIRECT;
     return result;
