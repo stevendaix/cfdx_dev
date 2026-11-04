@@ -58,3 +58,10 @@ def test_v15_sst_linear_relaxation_validated_and_saved():
     for bad in (float('nan'), float('inf'), 0.0, -0.1, 1.1):
         with pytest.raises(ValueError, match='linear relaxation'):
             make_case_setup(2,0.25,0.1,sst_linear_relaxation=bad)
+
+
+def test_v16_molecular_wall_diffusion_is_explicit_opt_in():
+    legacy = make_case_setup(2, 0.25, 0.1)
+    proposed = make_case_setup(2, 0.25, 0.1, sst_molecular_wall_diffusion=True)
+    assert legacy.numerics.raw_settings['sst_molecular_wall_diffusion'] == 'false'
+    assert proposed.numerics.raw_settings['sst_molecular_wall_diffusion'] == 'true'
