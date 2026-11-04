@@ -164,7 +164,7 @@ jobs:
         env:
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
         run: |
-          python scripts/benchmark_cfdx_volume_skewness.py \\
+          python scripts/benchmark_cfdx_volume_skewness.py \
             --output artifacts/cfdx-volume-skewness.json
 
       - name: Upload volumetric skewness report
