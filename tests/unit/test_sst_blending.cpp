@@ -103,6 +103,35 @@ static cfdx::core::Mesh make_sst_transaction_unit_cube()
 
 int main()
 {
+    run_case("v11_sst_post_damping_residual_is_reassembled_on_returned_fields", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_transaction_unit_cube();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double,Location::FACE> flux(mesh.n_faces(),"mdot","kg/s",1);
+        flux.fill(0.0);
+        Field<double,Location::CELL> k(mesh.n_cells(),"k","m2/s2",1),
+            omega(mesh.n_cells(),"w","1/s",1),
+            strain(mesh.n_cells(),"strain","1/s",1),
+            wall(mesh.n_cells(),"y","m",1);
+        k.fill(0.4); omega.fill(8.0); strain.fill(2.0); wall.fill(0.1);
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.sst_picard_damping = 0.2;
+        ScalarBoundaryConditions k_bcs, w_bcs;
+        for (const char* patch : {"x0", "x1", "walls"}) {
+            k_bcs[patch] = {ScalarBoundaryType::FIXED_VALUE, 0.01, 0.0};
+            w_bcs[patch] = {ScalarBoundaryType::FIXED_VALUE, 2.0, 0.0};
+        }
+        const auto r = solve_sst_transport_dynamic_blending(
+            mesh,geometry,flux,k,omega,strain,wall,controls,
+            k_bcs,w_bcs,1,1e-12);
+        const auto expected = sst_reassembled_returned_state_residual(
+            mesh,geometry,flux,k,omega,strain,wall,controls,k_bcs,w_bcs,nullptr);
+        EXPECT_TRUE(!r.converged);
+        EXPECT_NEAR(r.k_residual,expected.k_raw_inf,1e-12);
+        EXPECT_NEAR(r.second_residual,expected.omega_raw_inf,1e-12);
+        EXPECT_TRUE(std::isfinite(r.k_residual) && std::isfinite(r.second_residual));
+    });
     run_case("sst_dynamic_blending_diagnostics_accumulate_all_bound_events", [] {
         TurbulenceTransportResult aggregate;
         aggregate.k_floor_events = 2;
