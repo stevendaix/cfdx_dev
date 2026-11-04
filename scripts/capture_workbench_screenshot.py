@@ -25,7 +25,7 @@ import h5py
 import numpy as np
 from cfdx.case_inspector import inspect_cfdx_file
 from cfdx.workbench import CFDXWorkbenchWindow
-from PySide6.QtCore import Qt, QEventLoop, QTimer
+from PySide6.QtCore import QEventLoop, Qt, QTimer
 from PySide6.QtWidgets import QApplication
 
 
@@ -48,8 +48,7 @@ def _create_demo_case(path: Path) -> None:
         h5.create_dataset(
             "points",
             data=np.asarray(
-                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
-                 [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
                 dtype=np.float64,
             ),
         )
@@ -65,9 +64,7 @@ def _create_demo_case(path: Path) -> None:
         h5.create_dataset(
             "patch_face_ids", data=np.asarray([0, 1, 2, 3], dtype=np.int64)
         )
-        h5.create_dataset(
-            "patch_face_offsets", data=np.asarray([0, 4], dtype=np.int64)
-        )
+        h5.create_dataset("patch_face_offsets", data=np.asarray([0, 4], dtype=np.int64))
 
         scalar = h5.create_group("fields/scalar")
         scalar.create_dataset(
@@ -77,8 +74,7 @@ def _create_demo_case(path: Path) -> None:
         vector.create_dataset(
             "velocity",
             data=np.asarray(
-                [[0.0, 0.0, 0.0], [0.1, 0.0, 0.0],
-                 [0.1, 0.1, 0.0], [0.0, 0.1, 0.0]]
+                [[0.0, 0.0, 0.0], [0.1, 0.0, 0.0], [0.1, 0.1, 0.0], [0.0, 0.1, 0.0]]
             ),
         )
         h5.create_dataset("metadata/source", data=np.bytes_("CI synthetic fixture"))
