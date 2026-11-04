@@ -14,9 +14,8 @@ PYTHON_PACKAGE_ROOT = REPOSITORY_ROOT / "src" / "cfdx" / "python"
 sys.path.insert(0, str(PYTHON_PACKAGE_ROOT))
 
 import h5py
-import numpy as np
-
 from cfdx.mesh_quality import analyze_cfdx_surface_file
+import numpy as np
 
 
 def run_benchmark(output: Path, resolution: int = 128) -> dict[str, object]:
@@ -55,10 +54,7 @@ def run_benchmark(output: Path, resolution: int = 128) -> dict[str, object]:
         elapsed_ms = (perf_counter() - start) * 1000.0
 
     expected_faces = resolution * resolution
-    if (
-        report.face_count != expected_faces
-        or report.valid_face_count != expected_faces
-    ):
+    if report.face_count != expected_faces or report.valid_face_count != expected_faces:
         raise RuntimeError(
             "surface quality analysis did not cover every generated face"
         )
