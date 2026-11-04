@@ -13,9 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "cfdx" / "python"))
 
 import h5py
-from cfdx.volume_mesh_quality import analyze_cfdx_volume_skewness
-
 import numpy as np
+
+from cfdx.volume_mesh_quality import analyze_cfdx_volume_skewness
 
 
 def main() -> None:
