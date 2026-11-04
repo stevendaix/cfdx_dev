@@ -8,9 +8,92 @@ cell aspect ratio, which require complete cell geometry and adjacency.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+
+def _file_signature(path: "Path") -> tuple[int, int, int, int]:
+    stat = path.stat()
+    return (
+        int(stat.st_dev),
+        int(stat.st_ino),
+        int(stat.st_size),
+        int(stat.st_mtime_ns),
+    )
+
+
+def analyze_cfdx_surface_file(
+    path: str | Path,
+    *,
+    expected_signature: tuple[int, int, int, int] | None = None,
+    max_source_bytes: int = 32 * 1024 * 1024,
+    max_block_bytes: int = 1024 * 1024,
+) -> SurfaceQualityReport:
+    """Read and analyze the supported root surface topology under strict budgets."""
+    import h5py
+
+    source = Path(path)
+    signature_before = _file_signature(source)
+    if expected_signature is not None and signature_before != expected_signature:
+        raise RuntimeError("mesh file changed since metadata inspection")
+    with h5py.File(source, "r") as h5:
+        datasets = {}
+        for name in ("points", "face_vertices", "face_offsets"):
+            link = h5.get(name, getlink=True)
+            dataset = h5.get(name)
+            if not isinstance(link, h5py.HardLink) or not isinstance(
+                dataset, h5py.Dataset
+            ):
+                raise ValueError(
+                    f"surface quality requires an internal hard-linked {name} dataset"
+                )
+            if dataset.is_virtual or dataset.external:
+                raise ValueError(f"surface quality does not read external {name}")
+            if dataset.chunks is not None:
+                chunk_bytes = int(np.prod(dataset.chunks)) * dataset.dtype.itemsize
+                if chunk_bytes > max_block_bytes:
+                    raise ValueError(
+                        f"{name} chunk exceeds the {max_block_bytes:,}-byte block budget"
+                    )
+            datasets[name] = dataset
+
+        points, vertices, offsets = (
+            datasets["points"],
+            datasets["face_vertices"],
+            datasets["face_offsets"],
+        )
+        if points.ndim != 2 or points.shape[1] != 3 or points.dtype.kind != "f":
+            raise ValueError("points must be a floating-point (n_points, 3) array")
+        if vertices.ndim != 1 or vertices.dtype.kind not in "iu":
+            raise ValueError("face_vertices must be a one-dimensional integer array")
+        if offsets.ndim != 1 or offsets.dtype.kind not in "iu":
+            raise ValueError("face_offsets must be a one-dimensional integer array")
+        face_count = int(offsets.shape[0] - 1)
+        if face_count < 0 or face_count > 100_000:
+            raise ValueError("surface face count exceeds the 100k quality limit")
+        if vertices.shape[0] > 2_000_000:
+            raise ValueError("surface connectivity exceeds the 2M-entry quality limit")
+        source_bytes = sum(
+            int(np.prod(dataset.shape)) * dataset.dtype.itemsize
+            for dataset in datasets.values()
+        )
+        if source_bytes > max_source_bytes:
+            raise ValueError(
+                f"surface topology requires {source_bytes:,} bytes; "
+                f"budget is {max_source_bytes:,}"
+            )
+        point_values = points[...]
+        face_values = vertices[...]
+        face_offsets = offsets[...]
+    if _file_signature(source) != signature_before:
+        raise RuntimeError("mesh file changed during surface quality analysis")
+    return analyze_surface_quality(
+        point_values,
+        face_values,
+        face_offsets,
+    )
 
 
 @dataclass(frozen=True)
