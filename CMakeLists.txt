@@ -1602,3 +1602,12 @@ if(CFDX_BUILD_TESTS AND CFDX_ENABLE_LONG_VALIDATION)
         LABELS "numerics;gradient;validation;long"
         FIXTURES_REQUIRED cfdx_validation_meshes_full)
 endif()
+
+# Production mesh/gradient contracts: face centroid, warped faces, Neumann
+# pressure boundary, 3D skew/2D extrusion and conservative deferred fluxes.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_production_boundary_wls_v6
+        tests/validation/test_production_boundary_wls_v6.cpp)
+    set_tests_properties(test_production_boundary_wls_v6 PROPERTIES
+        LABELS "verification;gradient;diffusion;pressure;geometry")
+endif()

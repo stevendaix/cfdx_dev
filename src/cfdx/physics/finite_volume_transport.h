@@ -13,6 +13,7 @@
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "cfdx/core/numerics/gradient.h"
+#include "cfdx/core/fvm/least_squares_gradient.h"
 #include "cfdx/core/numerics/interpolation.h"
 #include <algorithm>
 #include <cmath>
@@ -382,6 +383,128 @@ compute_scalar_gradient_with_boundary(
     return gradient;
 }
 
+// Production gradient contract for the deferred non-orthogonal diffusion flux.
+// Unlike the historic internal-only LS substitution, this includes the same
+// face-specific Dirichlet/Neumann constraints as the assembled equation.
+// Only rank- and conditioning-certified SVD fits are used; an unsuccessful fit
+// falls back to the boundary-aware conservative Green-Gauss gradient and is
+// counted explicitly. A fallback is NOT evidence of spatial qualification.
+struct BoundaryWlsDiagnostics {
+    std::size_t robust_cells = 0;
+    std::size_t fallback_cells = 0;
+    std::size_t rank_deficient_cells = 0;
+    std::size_t ill_conditioned_cells = 0;
+    double maximum_condition = 0.0;
+};
+
+inline cfdx::core::Field<double, cfdx::core::Location::CELL>
+compute_boundary_aware_wls_gradient(
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const ScalarBoundaryConditions& boundary_conditions,
+    const ScalarBoundaryFaceValues* face_values = nullptr,
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr,
+    BoundaryWlsDiagnostics* diagnostics = nullptr,
+    double condition_limit = 1.e8,
+    bool require_certified = false)
+{
+    using namespace cfdx::core;
+    if (!(condition_limit >= 1.0) || !std::isfinite(condition_limit))
+        throw std::invalid_argument("boundary WLS: invalid condition limit");
+    auto gradient = compute_scalar_gradient_with_boundary(
+        field, mesh, geometry, boundary_conditions, face_values, face_conditions);
+    BoundaryWlsDiagnostics result;
+    // An EMPTY patch denotes a 2D extrusion with the collapsed direction
+    // intentionally omitted from the scalar transport equations.
+    int dimension = 3;
+    for (std::size_t p = 0; p < mesh.boundary().n_patches(); ++p)
+        if (mesh.boundary().patch(p).type == PatchType::EMPTY)
+            dimension = 2;
+    const auto& own = mesh.ownership();
+    const auto* offsets = mesh.cells().offsets_data();
+    const auto* faces = mesh.cells().faces_data();
+    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+        std::vector<Vec3> sample_points;
+        std::vector<double> sample_values;
+        const Vec3 centre = geometry.cell_centres[cell];
+        const double value = field(cell);
+        for (Offset k = offsets[cell]; k < offsets[cell + 1]; ++k) {
+            const std::size_t face = faces[k];
+            const auto nr = own.neighbour(face);
+            const bool is_owner = own.owner(face) == cell;
+            if (nr >= 0) {
+                const std::size_t other = is_owner
+                    ? static_cast<std::size_t>(nr)
+                    : static_cast<std::size_t>(own.owner(face));
+                if (other >= mesh.n_cells())
+                    throw std::runtime_error("boundary WLS: invalid neighbour");
+                sample_points.push_back(geometry.cell_centres[other]);
+                sample_values.push_back(field(other));
+                continue;
+            }
+            const std::size_t patch = geometry.face_patch[face];
+            if (patch < mesh.boundary().n_patches() &&
+                mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                continue;
+            const auto bc = resolve_scalar_boundary_condition(
+                mesh, geometry, face, boundary_conditions,
+                face_values, face_conditions);
+            const Vec3 sf = is_owner ? geometry.face_area_vectors[face]
+                                     : geometry.face_area_vectors[face] * (-1.0);
+            const double area = sf.mag();
+            if (!(area > 0.0) || !std::isfinite(area))
+                throw std::runtime_error("boundary WLS: degenerate face");
+            const Vec3 normal = sf * (1.0 / area);
+            const double normal_distance =
+                (geometry.face_centres[face] - centre).dot(normal);
+            if (!(normal_distance > 0.0) || !std::isfinite(normal_distance))
+                throw std::runtime_error("boundary WLS: degenerate normal distance");
+            if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
+                sample_points.push_back(geometry.face_centres[face]);
+                sample_values.push_back(bc.value);
+            } else {
+                // A Neumann datum constrains the NORMAL derivative, not a
+                // tangential extrapolation to an off-axis face centroid.
+                sample_points.push_back(centre + normal * normal_distance);
+                sample_values.push_back(value + normal_distance *
+                    (bc.type == ScalarBoundaryType::FIXED_GRADIENT ? bc.gradient : 0.0));
+            }
+        }
+        StencilQuality quality;
+        Vec3 value_gradient;
+        bool certified = false;
+        try {
+            value_gradient = weighted_least_squares_gradient_robust(
+                centre, value, sample_points, sample_values,
+                GradientWeighting::INVERSE_DISTANCE_SQUARED,
+                dimension, &quality);
+            certified = quality.full_rank && quality.well_conditioned(condition_limit);
+        } catch (const std::runtime_error&) {
+            // Rejected rank or non-finite input is never silently accepted.
+        }
+        if (std::isfinite(quality.condition_estimate))
+            result.maximum_condition = std::max(
+                result.maximum_condition, quality.condition_estimate);
+        if (!quality.full_rank) ++result.rank_deficient_cells;
+        else if (!certified) ++result.ill_conditioned_cells;
+        if (!certified) {
+            ++result.fallback_cells;
+            if (require_certified)
+                throw std::runtime_error(
+                    "boundary WLS: rank/conditioning gate rejected cell " +
+                    std::to_string(cell));
+            continue;
+        }
+        ++result.robust_cells;
+        gradient.component_data(0)[cell] = value_gradient.x;
+        gradient.component_data(1)[cell] = value_gradient.y;
+        gradient.component_data(2)[cell] = value_gradient.z;
+    }
+    if (diagnostics) *diagnostics = result;
+    return gradient;
+}
+
 // Integrated tangential diffusion flux per global face, shared by matrix
 // assembly and post-solve flux reconstruction. Positive flux is outward from
 // the owner cell. The implicit orthogonal coefficient and this correction use
@@ -423,33 +546,10 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
     std::vector<double> flux(nf, 0.0);
     if (!active) return flux;
 
-    // Green-Gauss with two-point interpolation is biased when face centroids
-    // do not lie on owner-neighbour centre lines. Use least squares where the
-    // cell has at least three internal neighbours (the LS kernel is rank-aware);
-    // retain boundary-aware Green-Gauss on smaller stencils where prescribed
-    // boundary data supply information absent from the cell-centred stencil.
-    auto boundary_gradient = compute_scalar_gradient_with_boundary(
+    const auto boundary_gradient = compute_scalar_gradient_with_boundary(
         field, mesh, geometry, boundary_conditions, face_values, face_conditions);
-    auto gradient = boundary_gradient;
-    const auto least_squares_gradient =
-        cfdx::core::compute_gradient_least_squares(field, mesh);
-    const auto& stencil_ownership = mesh.ownership();
-    const auto* cell_faces = mesh.cells().faces_data();
-    const auto* cell_offsets = mesh.cells().offsets_data();
-    for (std::size_t cell = 0; cell < nc; ++cell) {
-        std::size_t internal_neighbours = 0;
-        for (Offset k = cell_offsets[cell]; k < cell_offsets[cell + 1]; ++k) {
-            const std::size_t face = cell_faces[k];
-            const auto neighbour = stencil_ownership.neighbour(face);
-            if (neighbour >= 0 || stencil_ownership.owner(face) != cell)
-                ++internal_neighbours;
-        }
-        if (internal_neighbours >= 3) {
-            for (std::size_t direction = 0; direction < 3; ++direction)
-                gradient.component_data(direction)[cell] =
-                    least_squares_gradient.component_data(direction)[cell];
-        }
-    }
+    const auto gradient = compute_boundary_aware_wls_gradient(
+        field, mesh, geometry, boundary_conditions, face_values, face_conditions);
     const auto& ownership = mesh.ownership();
     for (std::size_t face = 0; face < nf; ++face) {
         const std::size_t owner = ownership.owner(face);
@@ -521,14 +621,18 @@ inline std::vector<double> compute_nonorthogonal_diffusion_face_fluxes(
                 conductance = diffusion_coefficient * area / (d_owner + d_neighbour);
             }
             gamma_face = conductance / alpha;
-            const double dc = (geometry.face_centres[face] -
-                               geometry.cell_centres[owner]).mag();
-            const double dn = (geometry.cell_centres[neighbour] -
-                               geometry.face_centres[face]).mag();
-            if (!(dc + dn > 0.0) || !std::isfinite(dc + dn))
+            const Vec3 centre_line =
+                geometry.cell_centres[neighbour] - geometry.cell_centres[owner];
+            const double d2_line = centre_line.mag2();
+            if (!(d2_line > 0.0) || !std::isfinite(d2_line))
                 throw std::runtime_error(
                     "compute_nonorthogonal_diffusion_face_fluxes: invalid gradient interpolation distance");
-            const double w = dn / (dc + dn);
+            // Project the true face centroid onto the centre line. Euclidean
+            // face-to-cell distances bias strongly stretched skewed faces.
+            const double neighbour_weight = std::clamp(
+                (geometry.face_centres[face] - geometry.cell_centres[owner]).dot(centre_line)
+                    / d2_line, 0.0, 1.0);
+            const double w = 1.0 - neighbour_weight;
             const Vec3 grad_neighbour{
                 gradient.component_data(0)[neighbour],
                 gradient.component_data(1)[neighbour],
@@ -614,7 +718,12 @@ inline ScalarEquation assemble_scalar_equation(
     }
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
         convection_scheme == ConvectionScheme::TVD) {
-        reconstructed_gradient = cfdx::core::compute_gradient_gauss(*convected_field, mesh);
+        // Use the same boundary-aware rank-certified reconstruction as
+        // deferred diffusion. Historical raw Gauss ignored physical BCs and
+        // can lose affine accuracy on skewed production meshes.
+        reconstructed_gradient = compute_boundary_aware_wls_gradient(
+            *convected_field, mesh, geometry, boundary_conditions,
+            face_values, face_conditions);
     }
     if (convection_scheme == ConvectionScheme::CENTRAL ||
         convection_scheme == ConvectionScheme::BLENDED ||
@@ -1005,7 +1114,10 @@ reconstruct_scalar_transport_flux(
     // CENTRAL/BLENDED/QUICK variants use reconstructed_face directly.
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
         convection_scheme == ConvectionScheme::TVD)
-        grad = compute_gradient_gauss(field, mesh);
+        // Match assemble_scalar_equation exactly: an independent flux audit
+        // must use the SAME boundary-aware gradient and limiter inputs.
+        grad = compute_boundary_aware_wls_gradient(
+            field, mesh, geometry, boundary_conditions, face_values, face_conditions);
     if (convection_scheme == ConvectionScheme::CENTRAL ||
         convection_scheme == ConvectionScheme::BLENDED ||
         convection_scheme == ConvectionScheme::QUICK ||
