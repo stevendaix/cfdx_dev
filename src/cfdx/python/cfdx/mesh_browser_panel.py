@@ -21,6 +21,8 @@ from .mesh_model import MeshCatalog, MeshPatch, MeshRegion
 from .selection import face_selection_id
 from .setup_model import MeshSelection
 
+_FACE_PAGE_SIZE = 250
+
 
 class MeshBrowserPanel(QWidget):
     """Tree browser over mesh regions, patches and faces."""
@@ -87,11 +89,26 @@ class MeshBrowserPanel(QWidget):
             )
 
     def _populate_item_children(self, item: QTreeWidgetItem) -> None:
-        """Create the face children of one patch node lazily."""
+        """Create one bounded page of face children on demand."""
+        page_end = item.data(0, Qt.ItemDataRole.UserRole + 2)
+        if isinstance(page_end, int):
+            parent = item.parent()
+            patch = item.data(0, Qt.ItemDataRole.UserRole + 1)
+            if parent is None or patch is None:
+                return
+            parent.removeChild(item)
+            self._append_face_page(parent, patch, page_end)
+            return
         patch = item.data(0, Qt.ItemDataRole.UserRole + 1)
         if patch is None or item.childCount():
             return
-        for face_index in range(patch.face_count):
+        self._append_face_page(item, patch, 0)
+
+    def _append_face_page(
+        self, item: QTreeWidgetItem, patch: MeshPatch, start: int
+    ) -> None:
+        end = min(start + _FACE_PAGE_SIZE, patch.face_count)
+        for face_index in range(start, end):
             face_id = face_selection_id(patch.stable_id, face_index)
             child = QTreeWidgetItem(item, [f"Face {face_index}"])
             child.setData(
@@ -99,6 +116,52 @@ class MeshBrowserPanel(QWidget):
                 Qt.ItemDataRole.UserRole,
                 MeshSelection("face", face_index, patch.name, face_id),
             )
+        item.setData(0, Qt.ItemDataRole.UserRole + 3, end)
+        if end < patch.face_count:
+            more = QTreeWidgetItem(
+                item,
+                [
+                    f"Load faces {end}–{min(end + _FACE_PAGE_SIZE, patch.face_count) - 1}…"
+                ],
+            )
+            more.setData(0, Qt.ItemDataRole.UserRole + 1, patch)
+            more.setData(0, Qt.ItemDataRole.UserRole + 2, end)
+            more.setChildIndicatorPolicy(
+                QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator
+            )
+
+    def select_stable_id(self, stable_id: str) -> MeshSelection | None:
+        """Select a currently represented browser node by its canonical ID."""
+
+        def find(item: QTreeWidgetItem) -> QTreeWidgetItem | None:
+            selection = item.data(0, Qt.ItemDataRole.UserRole)
+            if (
+                isinstance(selection, MeshSelection)
+                and selection.stable_id == stable_id
+            ):
+                return item
+            for index in range(item.childCount()):
+                match = find(item.child(index))
+                if match is not None:
+                    return match
+            return None
+
+        for index in range(self.patches.topLevelItemCount()):
+            item = find(self.patches.topLevelItem(index))
+            if item is not None:
+                selection = item.data(0, Qt.ItemDataRole.UserRole)
+                ancestor = item.parent()
+                while ancestor is not None:
+                    ancestor.setExpanded(True)
+                    ancestor = ancestor.parent()
+                signals_were_blocked = self.patches.blockSignals(True)
+                try:
+                    self.patches.setCurrentItem(item)
+                    self.patches.scrollToItem(item)
+                finally:
+                    self.patches.blockSignals(signals_were_blocked)
+                return selection
+        return None
 
     def _select(self) -> None:
         items = self.patches.selectedItems()

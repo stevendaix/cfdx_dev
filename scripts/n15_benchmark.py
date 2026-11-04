@@ -5,9 +5,22 @@ This tool records real measurements only. Missing application-internal timings
 remain missing; they are never inferred from iteration counts.
 """
 from __future__ import annotations
-import argparse, datetime as dt, json, os, platform, resource, shutil, socket, subprocess, sys, time
+
+import argparse
+import datetime as dt
+import json
+import locale
+import os
+import platform
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
+import time
 from pathlib import Path
 from typing import Any
+
 SCHEMA_VERSION = "1.0"
 
 def git_sha(repo: Path) -> str | None:
@@ -44,10 +57,33 @@ def hardware_metadata() -> dict[str,Any]:
             if line.startswith("MemTotal:"): memory_bytes=int(line.split()[1])*1024; break
     return {"hostname":socket.gethostname(),"platform":platform.platform(),"system":platform.system(),"machine":platform.machine(),"processor":platform.processor(),"logical_cpus":os.cpu_count(),"memory_bytes":memory_bytes,"gpu":gpu_info()}
 
-def peak_rss_bytes() -> int | None:
-    value=resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+def peak_rss_bytes_from_child_usage(value: float) -> int | None:
     if value<=0: return None
-    return value*1024 if sys.platform!="darwin" else value
+    if sys.platform.startswith("linux"): return int(value*1024)
+    if sys.platform=="darwin": return int(value)
+    return None
+
+def run_child(command:list[str],cwd:str,env:dict[str,str],inherit_output:bool)->tuple[subprocess.CompletedProcess[str],int|None]:
+    """Run one child and return its own peak RSS where wait4 is available."""
+    if os.name!="posix" or not hasattr(os,"wait4"):
+        completed=subprocess.run(command,cwd=cwd,env=env,text=True,capture_output=not inherit_output,check=False)
+        return completed,None
+    with tempfile.TemporaryFile(mode="w+b") as stdout_file, tempfile.TemporaryFile(mode="w+b") as stderr_file:
+        process=subprocess.Popen(command,cwd=cwd,env=env,stdout=None if inherit_output else stdout_file,stderr=None if inherit_output else stderr_file)
+        while True:
+            try:
+                _pid,status,usage=os.wait4(process.pid,0)
+                break
+            except InterruptedError:
+                continue
+        process.returncode=os.waitstatus_to_exitcode(status)
+        encoding=locale.getpreferredencoding(False)
+        def read_output(file):
+            if inherit_output: return None
+            file.seek(0)
+            return file.read().decode(encoding,errors="replace")
+        completed=subprocess.CompletedProcess(command,process.returncode,read_output(stdout_file),read_output(stderr_file))
+        return completed,peak_rss_bytes_from_child_usage(usage.ru_maxrss)
 
 def load_json(path:Path)->dict[str,Any]:
     data=json.loads(path.read_text())
@@ -59,10 +95,15 @@ def run_once(args:argparse.Namespace,case:dict[str,Any],rank:int|None=None)->dic
     for key,value in args.env: env[key]=value
     if rank is not None: env["CFDX_N15_MPI_RANKS"]=str(rank)
     started=dt.datetime.now(dt.timezone.utc); t0=time.perf_counter()
-    completed=subprocess.run(command,cwd=args.cwd,env=env,text=True,capture_output=not args.inherit_output)
+    completed,child_peak_rss=run_child(command,args.cwd,env,args.inherit_output)
     elapsed=time.perf_counter()-t0; finished=dt.datetime.now(dt.timezone.utc)
     metrics=load_json(Path(args.metrics_file)) if args.metrics_file else {}
-    metrics.setdefault("total",elapsed); metrics.setdefault("peak_rss_bytes",peak_rss_bytes())
+    metrics.setdefault("total",elapsed)
+    if "peak_rss_bytes" not in metrics:
+        metrics["peak_rss_bytes"]=child_peak_rss
+        metrics["peak_rss_source"]="wait4-child" if child_peak_rss is not None else "unavailable"
+    else:
+        metrics.setdefault("peak_rss_source","metrics-file")
     return {"schema_version":SCHEMA_VERSION,"benchmark":case,
             "provenance":{"git_sha":git_sha(Path(args.repo)),"timestamp_start_utc":started.isoformat(),"timestamp_end_utc":finished.isoformat(),"command":command,"cwd":str(Path(args.cwd).resolve()),"returncode":completed.returncode},
             "software":{"python":platform.python_version(),"compiler":compiler_info(),"build_type":args.build_type,"mpi":args.mpi,"cuda":args.cuda},

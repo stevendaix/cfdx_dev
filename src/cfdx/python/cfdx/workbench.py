@@ -509,7 +509,8 @@ if QMainWindow is not object:
                     self.statusBar().showMessage(
                         f"CFDX file inspected: {summary.n_cells:,} cells · "
                         f"{summary.n_faces:,} faces · "
-                        f"{summary.total_field_count} fields"
+                        f"{summary.total_field_count} fields · "
+                        "right-click a boundary patch to select it"
                     )
                 elif summary.has_mesh:
                     self.mesh_browser.clear()
@@ -706,6 +707,7 @@ if QMainWindow is not object:
             try:
                 renderer = PyVistaQtView()
                 self.view3d = renderer
+                self.view3d.selection_changed.connect(self._mesh_view_selection_changed)
             except RuntimeError as exc:
                 renderer = QLabel(f"3D renderer unavailable\n\n{exc}")
                 self.view3d = None
@@ -1166,6 +1168,16 @@ if QMainWindow is not object:
                 except (KeyError, ValueError):
                     pass
             self.statusBar().showMessage(f"Selected: {summary}")
+
+        def _mesh_view_selection_changed(self, stable_id: str) -> None:
+            """Route a renderer patch pick through the shared browser selection."""
+            selection = self.mesh_browser.select_stable_id(stable_id)
+            if selection is None:
+                self.statusBar().showMessage(
+                    f"Picked mesh object is not in the current catalog: {stable_id}"
+                )
+                return
+            self._mesh_selection_changed(selection)
 
         def _refresh_properties(self) -> None:
             """Rebuild the typed inspector for the current selection context."""

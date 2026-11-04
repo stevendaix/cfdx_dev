@@ -278,6 +278,35 @@ def test_workbench_has_stable_docks() -> None:
 
 
 @pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None
+    or importlib.util.find_spec("pyvista") is None
+    or importlib.util.find_spec("pyvistaqt") is None,
+    reason="optional GUI stack",
+)
+def test_renderer_patch_pick_selects_shared_mesh_catalog_entry() -> None:
+    from cfdx.gui import create_application
+    from cfdx.mesh_model import MeshCatalog, MeshPatch
+
+    app = create_application(["cfdx-workbench-picking-test"])
+    window = CFDXWorkbenchWindow(CFDXSession())
+    patch = MeshPatch(0, "wall", "wall", 1)
+    window.mesh_browser.set_catalog(MeshCatalog(4, 1, 1, (patch,)))
+    assert window.view3d is not None
+    window.view3d.select = lambda _stable_id: None
+    window.view3d.selection_summary = lambda: "Patch wall"
+
+    window.view3d.selection_changed.emit("patch:wall")
+
+    selection = window.application.state.selection
+    assert selection.stable_id == "patch:wall"
+    assert selection.kind == "patch"
+    assert selection.label == "wall"
+    assert window.mesh_browser.patches.currentItem().text(0).startswith("wall")
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
 )
 def test_properties_inspector_applies_typed_cfl_value() -> None:

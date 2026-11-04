@@ -11,9 +11,11 @@ from .selection import parse_selection_id, selection_label
 from .visualization_pipeline import VisualizationOperation, VisualizationPipeline
 
 try:
+    from PySide6.QtCore import Signal
     from PySide6.QtWidgets import QVBoxLayout, QWidget
 except ImportError:
     QWidget = None
+    Signal = None
 
 
 def _require_previewable_mesh(
@@ -86,6 +88,8 @@ def _require_previewable_dat_mesh(
 class PyVistaQtView(QWidget if QWidget is not None else object):
     """Qt container around pyvistaqt for CFDX result visualization."""
 
+    selection_changed = Signal(str) if Signal is not None else None
+
     def __init__(self, parent: Any = None) -> None:
         if QWidget is None:
             raise RuntimeError("PySide6 is required for the 3D GUI")
@@ -123,6 +127,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         path = Path(source)
         if not path.exists():
             raise FileNotFoundError(source)
+        self.plotter.disable_picking()
         self.plotter.clear()
         self._actors.clear()
         self._visualization_pipeline = VisualizationPipeline()
@@ -177,6 +182,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                 n_faces=int(inspected.n_faces),
                 n_patches=len(metadata),
             )
+            self.plotter.disable_picking()
             self.plotter.clear()
             self._actors.clear()
             self._visualization_pipeline = VisualizationPipeline()
@@ -202,7 +208,33 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                 self._patch_face_vertices[actor_id] = tuple(patch_faces)
                 self._actor_regions[actor_id] = "default"
             self.plotter.reset_camera()
+            self.plotter.enable_mesh_picking(
+                callback=self._on_mesh_picked,
+                use_actor=True,
+                show=False,
+            )
             self.plotter.render()
+
+    def _stable_id_for_actor(self, picked_actor: object) -> str | None:
+        """Resolve a picked VTK/PyVista actor to its registered mesh patch ID."""
+        name = getattr(picked_actor, "name", None)
+        if isinstance(name, str) and name in self._actors:
+            return name
+        for stable_id, actor in self._actors.items():
+            if picked_actor is actor:
+                return stable_id
+            try:
+                if picked_actor == actor:
+                    return stable_id
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def _on_mesh_picked(self, picked_actor: object) -> None:
+        """Publish patch picks; never guess a face/cell ID from VTK order."""
+        stable_id = self._stable_id_for_actor(picked_actor)
+        if stable_id is not None and self.selection_changed is not None:
+            self.selection_changed.emit(stable_id)
 
     def load_cfdx_dat(
         self,
@@ -287,6 +319,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             )
             dataset.cell_data[name] = values[:, 0] if field.dimension == 1 else values
 
+        self.plotter.disable_picking()
         self.plotter.clear()
         self._actors.clear()
         self._visualization_pipeline = VisualizationPipeline()
@@ -306,6 +339,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         """Render the replayed pipeline without replacing its source dataset."""
         source = self._dataset()
         derived = self._visualization_pipeline.evaluate(source)
+        self.plotter.disable_picking()
         self.plotter.clear()
         self._selection_highlight = None
         self._selection_id = None
@@ -455,6 +489,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         return selection_label(parse_selection_id(self._selection_id))
 
     def clear(self) -> None:
+        self.plotter.disable_picking()
         self.plotter.clear()
         self._actors.clear()
         self._current_result = None

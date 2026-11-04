@@ -82,6 +82,15 @@ keyboard selection. The Copy dataset path action copies the selected absolute
 HDF5 path without reading its payload. Expand all and Collapse all controls
 support navigation of large metadata trees.
 
+The Mesh dock creates face rows in pages of 250 when a patch is expanded; a
+large patch therefore does not create one Qt item per face on the first click.
+Picking a rendered boundary patch selects its canonical patch ID and synchronizes
+the tree, application selection and 3D highlight (right-click a boundary
+patch in the viewport). Picking individual VTK cells or CFDX faces is
+intentionally not inferred from renderer cell order: a stable
+VTK-cell-to-CFDX-face mapping is still required before that interaction can be
+offered safely.
+
 
 ## Performance contract
 
@@ -122,6 +131,14 @@ implicit fill values. The JSON report is published as the
 `cfdx-hdf5-inspector-benchmark` workflow artifact. These sparse fixtures
 measure the file-browser path only; they do not simulate geometry rendering,
 GPU upload or interactive picking.
+
+The generic `scripts/n15_benchmark.py` runner measures the direct child
+process's peak RSS independently on POSIX systems using `wait4`; this avoids
+reporting the cumulative high-water mark of earlier benchmark children. On
+platforms without `wait4`, `peak_rss_bytes` is `null` with source
+`unavailable` unless a metrics file supplies a measurement. This process-level
+measurement does not include descendant processes and is not a GPU-memory
+measurement.
 
 ## Validation
 
