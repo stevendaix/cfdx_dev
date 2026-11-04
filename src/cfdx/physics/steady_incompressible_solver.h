@@ -4336,21 +4336,34 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     --adaptive_p_recovery_cooldown;
                     adaptive_p_improvement_streak = 0;
                     adaptive_p_degradation_streak = 0;
-                } else if (std::isfinite(current.continuity_normalized) &&
-                           std::isfinite(reference.continuity_normalized) &&
-                           reference.continuity_normalized > 0.0) {
+                } else {
+                    // V19's exact flux projection makes continuity an
+                    // arithmetic-noise metric. Adapt the PRESSURE split from
+                    // the nonlinear momentum/RC coupling merit instead.
+                    const double current_merit = v21_pressure_relaxation_merit(
+                        controls.v19_full_pressure_flux_step,
+                        current.continuity_normalized,
+                        current.momentum_equation_residual_rhs_relative,
+                        current.flux_velocity_mismatch_normalized);
+                    const double reference_merit = v21_pressure_relaxation_merit(
+                        controls.v19_full_pressure_flux_step,
+                        reference.continuity_normalized,
+                        reference.momentum_equation_residual_rhs_relative,
+                        reference.flux_velocity_mismatch_normalized);
+                    if (reference_merit > 0.0) {
                     effective_alpha_p = adapt_relaxation_factor_windowed(
                         effective_alpha_p,
-                        reference.continuity_normalized,
-                        current.continuity_normalized,
+                        reference_merit,
+                        current_merit,
                         controls.adaptive_relaxation.min_alpha_p,
                         controls.adaptive_relaxation.max_alpha_p,
                         controls.adaptive_relaxation,
                         adaptive_p_improvement_streak,
                         adaptive_p_degradation_streak);
-                } else {
-                    adaptive_p_improvement_streak = 0;
-                    adaptive_p_degradation_streak = 0;
+                    } else {
+                        adaptive_p_improvement_streak = 0;
+                        adaptive_p_degradation_streak = 0;
+                    }
                 }
             }
         }
@@ -6783,13 +6796,20 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     previous.effective_alpha_u,
                     h.effective_alpha_u,
                     controls.adaptive_relaxation);
-            const bool severe_p =
-                std::isfinite(previous.continuity_normalized) &&
-                std::isfinite(h.continuity_normalized) &&
-                previous.continuity_normalized > 0.0 &&
+            const double previous_pressure_merit = v21_pressure_relaxation_merit(
+                controls.v19_full_pressure_flux_step,
+                previous.continuity_normalized,
+                previous.momentum_equation_residual_rhs_relative,
+                previous.flux_velocity_mismatch_normalized);
+            const double current_pressure_merit = v21_pressure_relaxation_merit(
+                controls.v19_full_pressure_flux_step,
+                h.continuity_normalized,
+                h.momentum_equation_residual_rhs_relative,
+                h.flux_velocity_mismatch_normalized);
+            const bool severe_p = previous_pressure_merit > 0.0 &&
                 adaptive_relaxation_severe_degradation(
-                    previous.continuity_normalized,
-                    h.continuity_normalized,
+                    previous_pressure_merit,
+                    current_pressure_merit,
                     previous.effective_alpha_p,
                     h.effective_alpha_p,
                     controls.adaptive_relaxation);
