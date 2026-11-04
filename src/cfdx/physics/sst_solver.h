@@ -96,6 +96,58 @@ inline double sst_equation_solution_defect(
     return maximum;
 }
 
+// Independent CELL-LOCAL residual certificate. A global max(k) or max(omega)
+// can hide an O(1) defect in near-wall cells whose field is much smaller.
+// For each row, measure the local solution-unit defect |A*x-b| / ||A_i||_1,
+// then compare it with the largest *local stencil* field magnitude, bounded
+// below by the explicitly specified field floor. This is NOT a substitute for
+// mass/flux conservation or for the full nonlinear operator reassembly.
+struct SSTLocalEquationDefect {
+    double maximum_relative = 0.0;
+    std::size_t worst_cell = 0;
+};
+
+inline SSTLocalEquationDefect sst_local_equation_defect(
+    const ScalarEquation& equation,
+    const cfdx::core::Vector& solution,
+    double minimum_field_scale)
+{
+    if (solution.empty() || solution.size() != equation.rhs.size() ||
+        !std::isfinite(minimum_field_scale) || minimum_field_scale <= 0.0)
+        throw std::invalid_argument("SST local defect: invalid field or scale");
+    SSTLocalEquationDefect result;
+    const auto* offsets = equation.matrix.row_offsets_data();
+    const auto* cols = equation.matrix.columns_data();
+    const auto* vals = equation.matrix.values_data();
+    for (std::size_t row = 0; row < solution.size(); ++row) {
+        double residual = -equation.rhs(row);
+        double matrix_row_norm = 0.0;
+        double local_field_scale = std::max(minimum_field_scale,
+                                             std::abs(solution(row)));
+        for (std::uint32_t k=offsets[row]; k<offsets[row+1]; ++k) {
+            if (cols[k] >= solution.size() || !std::isfinite(vals[k]) ||
+                !std::isfinite(solution(cols[k])))
+                throw std::invalid_argument("SST local defect: invalid row coefficient");
+            residual += vals[k]*solution(cols[k]);
+            matrix_row_norm += std::abs(vals[k]);
+            local_field_scale = std::max(local_field_scale,
+                                         std::abs(solution(cols[k])));
+        }
+        if (!(matrix_row_norm > 0.0) || !std::isfinite(matrix_row_norm) ||
+            !std::isfinite(residual) || !std::isfinite(local_field_scale))
+            throw std::invalid_argument("SST local defect: invalid assembled equation");
+        const double relative = (std::abs(residual) / matrix_row_norm) /
+                                local_field_scale;
+        if (!std::isfinite(relative))
+            throw std::invalid_argument("SST local defect: normalization overflow");
+        if (relative > result.maximum_relative) {
+            result.maximum_relative = relative;
+            result.worst_cell = row;
+        }
+    }
+    return result;
+}
+
 // Dimensionless SST convergence certificate: the same numeric threshold
 // applies to the k and omega *relative* updates and equation defects. The
 // equation defect remains an independent true residual of A*x-b, not a
@@ -354,8 +406,11 @@ inline TurbulenceTransportResult solve_sst_transport(
             sst_field_update_diagnostic(oldk,k,controls.k_min),
             sst_field_update_diagnostic(oldw,omega,controls.omega_min),
             k_defect, omega_defect, tolerance);
+        const bool local_equations_ok = !controls.sst_scale_aware_convergence ||
+            (sst_local_equation_defect(eqk,k_solution,controls.k_min).maximum_relative <= tolerance &&
+             sst_local_equation_defect(eqw,omega_solution,controls.omega_min).maximum_relative <= tolerance);
         const bool iterate_and_equations_ok = controls.sst_scale_aware_convergence
-            ? relative_certificate.converged
+            ? (relative_certificate.converged && local_equations_ok)
             : std::max(dk,dw)<=tolerance &&
               k_defect<=tolerance && omega_defect<=tolerance;
         if (result.nonfinite_bound_events==0 && rk.status==cfdx::core::SolverStatus::CONVERGED &&
@@ -378,6 +433,10 @@ struct SSTNonlinearResidualSample {
     double omega_raw_inf = std::numeric_limits<double>::infinity();
     double k_row_scaled = std::numeric_limits<double>::infinity();
     double omega_row_scaled = std::numeric_limits<double>::infinity();
+    double k_local_relative = std::numeric_limits<double>::infinity();
+    double omega_local_relative = std::numeric_limits<double>::infinity();
+    std::size_t k_worst_cell = 0;
+    std::size_t omega_worst_cell = 0;
 };
 
 inline SSTNonlinearResidualSample sst_reassembled_returned_state_residual(
@@ -416,11 +475,15 @@ inline SSTNonlinearResidualSample sst_reassembled_returned_state_residual(
         omega_face_values,nullptr,nullptr,&gamma_w,ConvectionScheme::UPWIND,&omega);
     cfdx::core::Vector ks(n), ws(n);
     for(std::size_t i=0;i<n;++i) { ks(i)=k(i); ws(i)=omega(i); }
+    const auto k_local=sst_local_equation_defect(eqk,ks,controls.k_min);
+    const auto omega_local=sst_local_equation_defect(eqw,ws,controls.omega_min);
     return {
         scalar_equation_residual_inf(eqk,ks),
         scalar_equation_residual_inf(eqw,ws),
         sst_equation_solution_defect(eqk,ks),
-        sst_equation_solution_defect(eqw,ws)};
+        sst_equation_solution_defect(eqw,ws),
+        k_local.maximum_relative,omega_local.maximum_relative,
+        k_local.worst_cell,omega_local.worst_cell};
 }
 
 inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
@@ -516,6 +579,10 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                       << " omega_returned_nonlinear_raw=" << result.second_residual
                       << " k_returned_row_scaled=" << returned.k_row_scaled
                       << " omega_returned_row_scaled=" << returned.omega_row_scaled
+                      << " k_local_relative=" << returned.k_local_relative
+                      << " omega_local_relative=" << returned.omega_local_relative
+                      << " k_local_worst_cell=" << returned.k_worst_cell
+                      << " omega_local_worst_cell=" << returned.omega_worst_cell
                       << " k_inner_converged=" << inner.converged
                       << " finite_events=" << result.nonfinite_bound_events
                       << " floor_k=" << result.k_floor_events
@@ -529,7 +596,9 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         const bool returned_equations_ok = !must_audit_returned ||
             (controls.sst_scale_aware_convergence
                 ? returned.k_row_scaled / k_change.reference_scale <= tolerance &&
-                  returned.omega_row_scaled / omega_change.reference_scale <= tolerance
+                  returned.omega_row_scaled / omega_change.reference_scale <= tolerance &&
+                  returned.k_local_relative <= tolerance &&
+                  returned.omega_local_relative <= tolerance
                 : returned.k_row_scaled <= tolerance &&
                   returned.omega_row_scaled <= tolerance);
         if (inner.converged && result.nonfinite_bound_events == 0 &&
