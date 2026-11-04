@@ -254,6 +254,11 @@ struct IncompressibleSolverControls {
     // Optional cellwise kinematic eddy viscosity (m^2/s). Replaces the scalar
     // value when supplied; the production RANS guard remains active.
     std::vector<double> cell_turbulent_viscosity;
+    // Explicit V23 hybrid startup: a projected FACE mass flux produced on the
+    // same mesh. Not a restart and never re-created from a relaxed pressure.
+    // The conservative flux is only a startup state; all final residual and
+    // physical gates are unchanged. Empty means legacy interpolation.
+    std::vector<double> initial_face_mass_flux;
     cfdx::core::Vec3 body_force{0.0, 0.0, 0.0};
     // Optional cellwise body force per unit mass (m/s^2). Replaces the
     // uniform controls.body_force vector when supplied (Boussinesq
@@ -4219,6 +4224,50 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     Field<double, Location::FACE> mass_flux =
         make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs,
                        {}, controls.pressure_projected_face_interpolation);
+    if (!controls.initial_face_mass_flux.empty()) {
+        if (controls.initialization.mode == InitializationMode::Restart ||
+            controls.initial_face_mass_flux.size() != mesh.n_faces())
+            throw std::invalid_argument(
+                "hybrid initial face mass flux requires current-mesh, non-restart initialization");
+        double inlet_scale = 0.0;
+        std::vector<double> div(mesh.n_cells(), 0.0);
+        for (std::size_t f=0; f<mesh.n_faces(); ++f) {
+            const double mdot=controls.initial_face_mass_flux[f];
+            if (!std::isfinite(mdot))
+                throw std::invalid_argument("hybrid initial face mass flux contains nonfinite values");
+            const auto owner=mesh.ownership().owner(f);
+            div[owner]+=mdot;
+            const auto nr=mesh.ownership().neighbour(f);
+            if (nr>=0) div[static_cast<std::size_t>(nr)]-=mdot;
+            else {
+                const auto patch_index=geometry.face_patch[f];
+                if (patch_index>=mesh.boundary().n_patches())
+                    throw std::invalid_argument("hybrid flux has an unlabelled boundary face");
+                const auto& name=mesh.boundary().patch(patch_index).name;
+                const auto it=velocity_bcs.find(name);
+                // Fixed-velocity walls and inlets must retain their prescribed
+                // face flux. The outlet is unconstrained by design.
+                if (it!=velocity_bcs.end() &&
+                    it->second.type==VelocityBoundaryCondition::Type::FIXED_VALUE) {
+                    const double reference=mass_flux(f);
+                    const double allowed=1e-11*std::max(1.0,std::abs(reference));
+                    if (std::abs(mdot-reference)>allowed)
+                        throw std::invalid_argument(
+                            "hybrid flux violates a fixed-velocity boundary face");
+                    inlet_scale+=std::abs(reference);
+                }
+            }
+        }
+        double l1=0.0;
+        for (const auto d:div) l1+=std::abs(d);
+        const double relative=l1/std::max(inlet_scale,1e-30);
+        if (!(relative<=1e-7))
+            throw std::invalid_argument("hybrid initial mass flux fails local continuity gate");
+        for (std::size_t f=0; f<mesh.n_faces(); ++f)
+            mass_flux(f)=controls.initial_face_mass_flux[f];
+        std::cout << "HYBRID_INITIAL_FACE_FLUX continuity_l1=" << l1
+                  << " normalized=" << relative << " (NOT a final convergence gate)\n";
+    }
 
     // A restart must replay the continuous iteration sequence. Iteration n+1
     // assembles momentum from the Rhie-Chow flux reconstructed with
