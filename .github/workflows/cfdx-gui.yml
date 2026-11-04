@@ -159,6 +159,23 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Benchmark volumetric skewness diagnostics
+        if: always() && steps.install_gui.outcome == 'success'
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+        run: |
+          python scripts/benchmark_cfdx_volume_skewness.py \\
+            --output artifacts/cfdx-volume-skewness.json
+
+      - name: Upload volumetric skewness report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-volume-skewness-report
+          path: artifacts/cfdx-volume-skewness.json
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Capture Workbench screenshot
         if: always() && steps.install_gui.outcome == 'success'
         env:
