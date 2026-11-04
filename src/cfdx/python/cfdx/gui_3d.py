@@ -32,7 +32,6 @@ def _require_previewable_mesh(
     return inspected
 
 
-
 class PyVistaQtView(QWidget if QWidget is not None else object):
     """Qt container around pyvistaqt for CFDX result visualization."""
 
