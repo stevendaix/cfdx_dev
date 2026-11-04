@@ -107,3 +107,19 @@ def test_v18_pressure_schur_operators_are_opt_in_and_exportable(tmp_path):
         raw=json.loads(f.attrs['case_setup_json'])['numerics']['raw_settings']
     assert raw['v18_sparse_flux_pressure_jacobian']=='true'
     assert raw['v18_full_flux_pressure_oracle']=='false'
+
+
+def test_v19_full_pressure_flux_policy_is_opt_in():
+    import pytest
+    from scripts.generate_th03_openfoam_blockmesh import make_case_setup
+    default = make_case_setup(2, .25, .1)
+    assert default.numerics.raw_settings['v19_full_pressure_flux_step'] == 'false'
+    with pytest.raises(ValueError, match='V19 full flux requires'):
+        make_case_setup(2, .25, .1, v19_full_pressure_flux_step=True)
+    with pytest.raises(ValueError, match='exclusive'):
+        make_case_setup(2, .25, .1, v19_full_pressure_flux_step=True,
+                        v18_sparse_flux_pressure_jacobian=True,
+                        v17_pressure_line_search=True)
+    option = make_case_setup(2,.25,.1, v19_full_pressure_flux_step=True,
+                             v18_sparse_flux_pressure_jacobian=True)
+    assert option.numerics.raw_settings['v19_full_pressure_flux_step'] == 'true'
