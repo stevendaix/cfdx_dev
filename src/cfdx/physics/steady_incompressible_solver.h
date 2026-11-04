@@ -325,6 +325,13 @@ struct IncompressibleSolverControls {
     // V18 scalable assembly of the same Jacobian from local Gauss stencils.
     // Still experimental; no automatic physical qualification.
     bool v18_sparse_flux_pressure_jacobian = false;
+    // V19 experimental SIMPLE flux policy: compute conservative phi using
+    // the FULL pressure correction, while pressure used for velocity and
+    // gradients remains under-relaxed. Mirrors the SIMPLE flux/pressure
+    // separation in OpenFOAM. The face flux is an independent state and
+    // deliberately need not equal RC(HbyA, under-relaxed cell pressure).
+    // Requires exact V18 pressure/flux Jacobian, single SIMPLE corrector.
+    bool v19_full_pressure_flux_step = false;
     std::function<void(const IncompressibleProbeSample&)> probe_callback;
     // Called after each completed nonlinear iteration with the authoritative solver state.
     // Return false to stop the solve after the current iteration.
@@ -637,6 +644,13 @@ inline void validate_incompressible_controls(
                     "' does not name a configured probe");
         }
     }
+    if (c.v19_full_pressure_flux_step &&
+        (c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
+         (!c.v18_full_flux_pressure_oracle && !c.v18_sparse_flux_pressure_jacobian) ||
+         c.pressure_continuity_line_search.enabled))
+        throw std::invalid_argument(
+            "V19 split pressure/flux requires SIMPLE, V18 full Jacobian, "
+            "one pressure corrector and no pressure line-search");
     if (c.v18_full_flux_pressure_oracle && c.v18_sparse_flux_pressure_jacobian)
         throw std::invalid_argument("V18 reference and sparse pressure solvers are mutually exclusive");
     if (c.v18_sparse_flux_pressure_jacobian &&
@@ -808,6 +822,50 @@ inline void apply_pressure_gauge_policy(
         const double mean = weighted_sum / volume;
         for (std::size_t c = 0; c < p.size(); ++c) p(c) -= mean;
     }
+}
+
+// V19: split the full pressure step used for flux correction from the
+// under-relaxed physical pressure used in the momentum corrector. Both
+// states have the same gauge policy. This is deliberately transactional:
+// validate the full increment before modifying either output.
+inline void apply_v19_pressure_flux_policy(
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& pressure,
+    cfdx::core::Field<double,cfdx::core::Location::CELL>& flux_pressure,
+    const cfdx::core::Vector& correction,
+    double alpha,
+    bool full_flux,
+    const FvGeometry& geometry,
+    PressureGaugePolicy gauge,
+    std::size_t reference_cell,
+    double reference_value,
+    bool has_fixed_pressure_boundary)
+{
+    if (correction.size()!=pressure.size() ||
+        flux_pressure.size()!=pressure.size() ||
+        !(alpha>0.0 && alpha<=1.0) || !std::isfinite(alpha))
+        throw std::invalid_argument("V19 pressure flux policy: invalid dimensions/relaxation");
+    for (std::size_t c=0;c<pressure.size();++c)
+        if (!std::isfinite(pressure(c)) || !std::isfinite(correction(c)))
+            throw std::invalid_argument("V19 pressure flux policy: nonfinite pressure/increment");
+    auto adjusted_pressure=pressure;
+    auto adjusted_flux_pressure=pressure;
+    for (std::size_t c=0;c<pressure.size();++c) {
+        const double original=pressure(c);
+        adjusted_pressure(c)=original+alpha*correction(c);
+        if (full_flux) adjusted_flux_pressure(c)=original+correction(c);
+        if (!std::isfinite(adjusted_pressure(c)) ||
+            !std::isfinite(adjusted_flux_pressure(c)))
+            throw std::runtime_error("V19 pressure flux policy overflow");
+    }
+    apply_pressure_gauge_policy(adjusted_pressure, geometry, gauge, reference_cell,
+                                reference_value, has_fixed_pressure_boundary);
+    if (full_flux)
+        apply_pressure_gauge_policy(adjusted_flux_pressure, geometry, gauge, reference_cell,
+                                    reference_value, has_fixed_pressure_boundary);
+    else
+        adjusted_flux_pressure=adjusted_pressure;
+    pressure=std::move(adjusted_pressure);
+    flux_pressure=std::move(adjusted_flux_pressure);
 }
 
 inline cfdx::core::Field<double, cfdx::core::Location::CELL>
@@ -1288,6 +1346,70 @@ make_rhie_chow_mass_flux(
         flux(f) = rho * Hf.dot(geometry.face_area_vectors[f]) - correction;
     }
     return flux;
+}
+
+// V20: decompose the INDEPENDENT face-flux discrepancy into two mechanisms.
+// phi_transport is conservative and uses the full pressure step in V19.
+// phi_relaxed uses the identical HbyA, rAU, BCs, and RC reconstruction but
+// the pressure used by the momentum-corrected cell velocity.
+// phi_velocity is deliberately built using a DIFFERENT operator (linear U
+// interpolation).  Thus:
+//   phi_transport - phi_velocity = (phi_transport - phi_relaxed)
+//                                  + (phi_relaxed - phi_velocity).
+// The first component is the pressure-relaxation split, NOT a conservation
+// defect. The second is the collocated Rhie-Chow versus U interpolation
+// discrepancy, which must be qualified separately near walls and outlets.
+struct V20FluxVelocityDecomposition {
+    double total_linf=0.0, pressure_split_linf=0.0, rhie_chow_linf=0.0;
+    double total_l1=0.0, pressure_split_l1=0.0, rhie_chow_l1=0.0;
+    double triangle_error_linf=0.0;
+    double internal_total_linf=0.0, boundary_total_linf=0.0;
+    std::size_t total_worst_face=0, split_worst_face=0, rc_worst_face=0;
+    bool total_worst_boundary=false;
+};
+
+inline V20FluxVelocityDecomposition audit_v20_flux_velocity_decomposition(
+    const cfdx::core::Mesh& mesh,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& phi_transport,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& phi_relaxed,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& phi_velocity)
+{
+    if (phi_transport.size()!=mesh.n_faces() ||
+        phi_relaxed.size()!=mesh.n_faces() ||
+        phi_velocity.size()!=mesh.n_faces())
+        throw std::invalid_argument("V20 face flux decomposition: inconsistent size");
+    V20FluxVelocityDecomposition result;
+    for (std::size_t face=0; face<mesh.n_faces(); ++face) {
+        const double total=phi_transport(face)-phi_velocity(face);
+        const double split=phi_transport(face)-phi_relaxed(face);
+        const double rc=phi_relaxed(face)-phi_velocity(face);
+        if (!std::isfinite(total) || !std::isfinite(split) || !std::isfinite(rc))
+            throw std::domain_error("V20 face flux decomposition: nonfinite flux");
+        const double a=std::abs(total), b=std::abs(split), c=std::abs(rc);
+        result.total_l1+=a;
+        result.pressure_split_l1+=b;
+        result.rhie_chow_l1+=c;
+        if (a>result.total_linf) {
+            result.total_linf=a;
+            result.total_worst_face=face;
+            result.total_worst_boundary=mesh.ownership().neighbour(face)<0;
+        }
+        if (b>result.pressure_split_linf) {
+            result.pressure_split_linf=b;
+            result.split_worst_face=face;
+        }
+        if (c>result.rhie_chow_linf) {
+            result.rhie_chow_linf=c;
+            result.rc_worst_face=face;
+        }
+        if (mesh.ownership().neighbour(face)>=0)
+            result.internal_total_linf=std::max(result.internal_total_linf,a);
+        else
+            result.boundary_total_linf=std::max(result.boundary_total_linf,a);
+        result.triangle_error_linf=std::max(
+            result.triangle_error_linf,std::abs(total-(split+rc)));
+    }
+    return result;
 }
 
 // V18 exact sparse Schur Jacobian of the existing SIMPLE Rhie-Chow flux.
@@ -4414,6 +4536,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // Evidence channel only; no acceptance criterion consumes it.
         bool rhie_chow_identity_evaluated = false;
         double rhie_chow_identity_audit_linf = 0.0;
+        // V20 diagnostic-only reference for the V19 split pressure state.
+        std::optional<Field<double,Location::FACE>> v20_relaxed_pressure_flux;
+
         if (controls.algorithm == PressureVelocityAlgorithm::COUPLED) {
             const auto coupled_result = solve_coupled_momentum_continuity(
                 mesh, geometry, ex, ey, ez, U_old, p_old,
@@ -4774,6 +4899,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // phiHbyA is the authoritative predictor flux. The Rhie-Chow term
         // uses the same directional inverse momentum coefficient as the
         // pressure equation, avoiding a second, incompatible face operator.
+        // V19: last conservative flux may correspond to the unrelaxed
+        // pressure step, not the under-relaxed physical pressure.
+        auto v19_flux_pressure_state = p;
         auto phiHbyA = make_mass_flux(
             mesh, geometry, HbyA, controls.density, velocity_bcs,
             {}, controls.pressure_projected_face_interpolation);
@@ -5913,10 +6041,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 restore_base_pressure();
             }
             last_selected_pressure_alpha = alpha_p;
-            for (std::size_t c = 0; c < nc; ++c)
-                p(c) += alpha_p * p_corr(c);
-            apply_pressure_gauge_policy(
-                p, geometry, controls.pressure_gauge_policy,
+            apply_v19_pressure_flux_policy(
+                p, v19_flux_pressure_state, p_corr, alpha_p,
+                controls.v19_full_pressure_flux_step,
+                geometry, controls.pressure_gauge_policy,
                 controls.pressure_reference_cell, controls.pressure_reference_value,
                 has_fixed_pressure_boundary);
 
@@ -5945,7 +6073,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // momentum-weighted interpolation used by the pressure equation.
             // This is the single authoritative phi state for continuity.
             mass_flux = make_rhie_chow_mass_flux(
-                mesh, geometry, HbyA, p,
+                mesh, geometry, HbyA, v19_flux_pressure_state,
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
                 controls.density, velocity_bcs, pressure_bcs,
                 RhieChowVelocityContract::HBYA_PREDICTOR,
@@ -5955,6 +6083,34 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                 add_simplec_consistent_response(mass_flux);
 
+            if (controls.v19_full_pressure_flux_step && controls.diagnostics.flux_patch_audit) {
+                // Both fluxes use identical predictor, rAU, face BCs and
+                // geometry. The only difference is full vs relaxed pressure.
+                const auto relaxed_flux=make_rhie_chow_mass_flux(
+                    mesh,geometry,HbyA,p,rAU,controls.density,
+                    velocity_bcs,pressure_bcs,
+                    RhieChowVelocityContract::HBYA_PREDICTOR,
+                    controls.pressure_skew_corrected_gradient,
+                    controls.pressure_projected_face_interpolation);
+                double l1_delta=0.0, linf_delta=0.0;
+                for(std::size_t f=0;f<mesh.n_faces();++f) {
+                    const double delta=std::abs(mass_flux(f)-relaxed_flux(f));
+                    l1_delta+=delta;
+                    linf_delta=std::max(linf_delta,delta);
+                }
+                v20_relaxed_pressure_flux=relaxed_flux;
+                const auto a=audit_v17_authoritative_flux(mesh,geometry,mass_flux);
+                const auto b=audit_v17_authoritative_flux(mesh,geometry,relaxed_flux);
+                std::cerr << std::scientific << std::setprecision(13)
+                          << "V19_SPLIT_PRESSURE_FLUX iteration=" << iter
+                          << " corrector=" << corr
+                          << " alpha_p=" << alpha_p
+                          << " full_flux_continuity_l1=" << a.cell_l1
+                          << " relaxed_flux_continuity_l1=" << b.cell_l1
+                          << " face_delta_l1=" << l1_delta
+                          << " face_delta_linf=" << linf_delta
+                          << " qualified=0\n";
+            }
             if (v17_pressure_before) {
                 const auto after=audit_v17_authoritative_flux(mesh,geometry,mass_flux);
                 const double ratio=after.cell_l1/std::max(v17_pressure_before->cell_l1,1e-300);
@@ -5999,14 +6155,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
 
         // Operator identity audit: re-derive the authoritative flux from the
-        // CURRENT HbyA/p/rAtU(rAU) state through the same operator primitives
+        // CURRENT HbyA/flux-pressure/rAtU(rAU) state through the same operator primitives
         // the pressure equation balanced (including the SIMPLEC
         // consistent-response term) and compare with the stored mass_flux.
         // Expected zero up to round-off; a nonzero value flags a stale or
         // mutated flux, or an omitted/duplicated SIMPLEC response term.
         {
             auto rederived_flux = make_rhie_chow_mass_flux(
-                mesh, geometry, HbyA, p,
+                mesh, geometry, HbyA, v19_flux_pressure_state,
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC
                     ? rAtU : rAU,
                 controls.density, velocity_bcs, pressure_bcs,
@@ -6421,6 +6577,26 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.flux_velocity_mismatch_linf = flux_mismatch_linf;
         h.flux_velocity_mismatch_boundary_linf = flux_mismatch_boundary_linf;
         h.flux_velocity_mismatch_normalized = flux_mismatch_normalized;
+        if (v20_relaxed_pressure_flux) {
+            const auto decomposed=audit_v20_flux_velocity_decomposition(
+                mesh,mass_flux,*v20_relaxed_pressure_flux,reconstructed_flux);
+            std::cerr << std::scientific << std::setprecision(13)
+                      << "V20_FLUX_VELOCITY_DECOMPOSITION iteration=" << iter
+                      << " total_linf=" << decomposed.total_linf
+                      << " pressure_split_linf=" << decomposed.pressure_split_linf
+                      << " rc_vs_velocity_linf=" << decomposed.rhie_chow_linf
+                      << " total_l1=" << decomposed.total_l1
+                      << " pressure_split_l1=" << decomposed.pressure_split_l1
+                      << " rc_vs_velocity_l1=" << decomposed.rhie_chow_l1
+                      << " triangle_error_linf=" << decomposed.triangle_error_linf
+                      << " internal_linf=" << decomposed.internal_total_linf
+                      << " boundary_linf=" << decomposed.boundary_total_linf
+                      << " total_worst_face=" << decomposed.total_worst_face
+                      << " split_worst_face=" << decomposed.split_worst_face
+                      << " rc_worst_face=" << decomposed.rc_worst_face
+                      << " total_worst_boundary=" << decomposed.total_worst_boundary
+                      << " qualified=0\n";
+        }
         h.rhie_chow_identity_linf =
             rhie_chow_identity_evaluated ? rhie_chow_identity_audit_linf : 0.0;
         h.momentum_equation_residual_components =
