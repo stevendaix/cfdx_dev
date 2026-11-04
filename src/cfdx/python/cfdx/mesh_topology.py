@@ -73,11 +73,13 @@ def validate_surface_topology(
 def validate_cell_topology(
     cell_faces: Any,
     cell_offsets: Any,
+    face_offsets: Any,
     *,
     n_cells: int,
     n_faces: int,
+    max_vtk_entries: int = 2_000_000,
 ) -> None:
-    """Validate cell-to-face CSR connectivity before building a VTK grid."""
+    """Validate cell-to-face CSR and bound the expanded VTK cell array."""
     face_ids = np.asarray(cell_faces)
     if face_ids.ndim != 1:
         raise ValueError("cell_faces must be one-dimensional")
@@ -93,3 +95,13 @@ def validate_cell_topology(
     )
     if np.any(np.diff(offsets) < 1):
         raise ValueError("every cell must reference at least one face")
+
+    face_sizes = np.diff(np.asarray(face_offsets))
+    expanded_entries = n_cells
+    for start in range(0, face_ids.size, 65_536):
+        referenced = face_ids[start : start + 65_536]
+        expanded_entries += int(referenced.size + face_sizes[referenced].sum())
+        if expanded_entries > max_vtk_entries:
+            raise ValueError(
+                "expanded VTK cell connectivity exceeds the 2M-entry safety budget"
+            )
