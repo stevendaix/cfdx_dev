@@ -9,6 +9,7 @@ from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample
 from cfdx.case_io import save_case
 from cfdx.gui_3d import PyVistaQtView
 from cfdx.session import CFDXSession
+
 from cfdx import dat_io
 from cfdx.application import Application
 
