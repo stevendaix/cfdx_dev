@@ -363,6 +363,43 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
     return setup
 
 
+def count_invalid_extrusion_patch_faces(mesh: dict) -> int:
+    """Check actual polygon geometry against the TH-03 2-D patch contract.
+
+    Share the *same* geometry gate between the independent mesh audit and the
+    case writer.  Do not infer an EMPTY cap from a face's first edge or centre.
+    """
+    points = np.asarray(mesh['points'], dtype=float)
+    offsets = np.asarray(mesh['face_offsets'], dtype=np.int64)
+    vertices = np.asarray(mesh['face_vertices'], dtype=np.int64)
+    nf = int(mesh['n_faces'])
+    invalid = 0
+    for patch in mesh['boundary_patch_assignment']:
+        name = patch['name']
+        if name not in PATCH_TYPES:
+            continue
+        expects_cap = PATCH_TYPES[name].lower() == 'empty'
+        for face in patch['face_ids']:
+            f = int(face)
+            if not 0 <= f < nf:
+                invalid += 1
+                continue
+            face_vertices = vertices[offsets[f]:offsets[f+1]]
+            if (face_vertices.size < 3 or np.any(face_vertices < 0) or
+                    np.any(face_vertices >= len(points))):
+                invalid += 1
+                continue
+            z = points[face_vertices, 2]
+            cap = float(np.ptp(z)) <= 1e-10 * H
+            on_declared_plane = cap and (
+                abs(float(z[0])) <= 1e-10 * H if name == 'front' else
+                abs(float(z[0] - H)) <= 1e-10 * H if name == 'back' else False
+            )
+            if (expects_cap and not on_declared_plane) or (not expects_cap and cap):
+                invalid += 1
+    return invalid
+
+
 def write_case(path: Path, mesh: dict, *, mesh_source: str,
                max_iterations: int = 100, alpha_u: float = .25,
                alpha_p: float = .1, pressure_restart: int = 160,
@@ -370,6 +407,10 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                pressure_krylov: str = 'auto',
                pressure_preconditioner: str = 'auto',
                pressure_tolerance: float = 1.e-11) -> dict:
+    # A mislabeled lateral wall must never reach the CFDX solver as EMPTY.
+    # Audit and case writer intentionally use this single geometry contract.
+    if count_invalid_extrusion_patch_faces(mesh):
+        raise ValueError('TH-03 EMPTY/wall patch geometry is inconsistent')
     path.parent.mkdir(parents=True, exist_ok=True)
     setup = make_case_setup(max_iterations, alpha_u, alpha_p,
                             pressure_restart, pressure_scaling, pressure_krylov,
