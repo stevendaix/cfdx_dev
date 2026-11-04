@@ -792,6 +792,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_n11_bound_reporting_hardening tests/unit/test_n11_bound_reporting_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_wall_distance_methods tests/unit/test_wall_distance_methods.cpp)
+    add_cfdx_test(test_wall_distance_difficult_surfaces tests/unit/test_wall_distance_difficult_surfaces.cpp)
+    set_tests_properties(test_wall_distance_difficult_surfaces PROPERTIES LABELS "wall-distance;analytical;difficult-geometry" TIMEOUT 90)
     add_cfdx_test(test_wall_distance_full_method_audit tests/unit/test_wall_distance_full_method_audit.cpp)
     set_tests_properties(test_wall_distance_full_method_audit PROPERTIES LABELS "wall-distance;analytical;regression" TIMEOUT 90)
     add_cfdx_test(test_wall_distance_curved_qualification tests/benchmarks/wall_distance_curved_raw.cpp)

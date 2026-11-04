@@ -109,6 +109,10 @@ struct WallDistanceResult {
     // very coarse grids dominated by fixed boundary nodes.
     std::size_t exact_wall_seed_samples{0};
     std::size_t exact_outer_boundary_samples{0};
+    // Interior fluid nodes on which the selected distance PDE actually ran.
+    // Zero is an essential diagnostic: the entire field may have come from
+    // BVH wall seeds and exact outer-boundary Dirichlet data instead.
+    std::size_t active_pde_samples{0};
     bool converged{false};
     std::string stopping_reason{"not_reported"};
     WallDistanceConvergenceStatus convergence_status{WallDistanceConvergenceStatus::NOT_REPORTED};
@@ -1375,7 +1379,9 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
                                                      double relaxation=0.25,
                                                      std::size_t* used_iter=nullptr,
                                                      double* residual_out=nullptr,
-                                                     std::size_t* clamp_activations=nullptr) {
+                                                     std::size_t* clamp_activations=nullptr,
+                                                     std::size_t* active_nodes_out=nullptr,
+                                                     std::size_t* seed_count_out=nullptr) {
     // Modified Hamilton-Jacobi equation:
     //   |grad d| = 1 + Gamma(d) laplacian(d), Gamma(d)=epsilon*d.
     // Solve it by pseudo-time relaxation with an upwind/Godunov gradient
@@ -1397,6 +1403,9 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
     active_ids.reserve(d.size());
     for(std::size_t id=0;id<d.size();++id)
         if(!g.solid[id] && !fixed[id] && std::isfinite(d[id])) active_ids.push_back(id);
+
+    if(active_nodes_out) *active_nodes_out=active_ids.size();
+    if(seed_count_out) *seed_count_out=seeds.size();
 
     const double inverse_spacing_sum=1.0/g.spacing.x+1.0/g.spacing.y+1.0/g.spacing.z;
     const double dt_adv_constant=0.9/inverse_spacing_sum;
@@ -2118,7 +2127,9 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
 inline std::vector<double> advection_diffusion_distance(const WallSurface& s,const WallDistanceGrid& g,
                                                         std::size_t max_iter,double gamma=0.05,
                                                         std::size_t* used_iter=nullptr,
-                                                        double* residual_out=nullptr) {
+                                                        double* residual_out=nullptr,
+                                                        std::size_t* active_nodes_out=nullptr,
+                                                        std::size_t* seed_count_out=nullptr) {
     // NASA/Tucker transport form: U·∇d = 1 + Gamma ∇²d, with U derived
     // from the current distance field. Advection is first-order upwind and
     // diffusion is second-order central, matching the published formulation.
@@ -2131,6 +2142,12 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
     for(std::size_t id=0;id<d.size();++id) if(g.solid[id]) d[id]=0.0;
     for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
     set_distance_outer_boundary(bvh,g,d,fixed);
+    if(active_nodes_out) {
+        *active_nodes_out=0;
+        for(std::size_t id=0;id<d.size();++id)
+            if(!g.solid[id] && !fixed[id] && std::isfinite(d[id])) ++*active_nodes_out;
+    }
+    if(seed_count_out) *seed_count_out=seeds.size();
     std::size_t used=max_iter;
     double final_residual=std::numeric_limits<double>::infinity();
     for(std::size_t it=0;it<max_iter;++it) {
@@ -2209,7 +2226,9 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     std::size_t* used_iter=nullptr,double* residual_out=nullptr,
     double poisson_weight=1.0,
     std::size_t* poisson_iter_out=nullptr,double* poisson_residual_out=nullptr,
-    std::size_t* clamp_activations=nullptr) {
+    std::size_t* clamp_activations=nullptr,
+    std::size_t* active_nodes_out=nullptr,
+    std::size_t* seed_count_out=nullptr) {
     // Tucker 2011: Poisson supplies an auxiliary front-propagation direction
     // (effectively a wall normal); H-J then propagates distance with that
     // direction, optionally blended with the evolving Eikonal direction.
@@ -2267,6 +2286,9 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     active_ids.reserve(d.size());
     for(std::size_t id=0;id<d.size();++id)
         if(!g.solid[id] && !fixed[id] && std::isfinite(d[id])) active_ids.push_back(id);
+
+    if(active_nodes_out) *active_nodes_out=active_ids.size();
+    if(seed_count_out) *seed_count_out=seeds.size();
 
     const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
                        +1.0/(g.spacing.y*g.spacing.y)
@@ -2579,6 +2601,9 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.convergence_status=WallDistanceConvergenceStatus::DIRECT;
             break;
         case WallDistanceMethod::POISSON: {
+            // The Poisson potential is solved on all fluid nodes, rather than
+            // propagated from exact wall-distance seeds.
+            for(const auto solid:g.solid) if(!solid) ++r.active_pde_samples;
             WallDistancePoissonReconstructionAudit pa;
             r.distance=poisson_distance(s,g,iterations,1.5,&r.iterations,&r.residual_inf,&pa);
             const WallDistanceBvh pbvh(s);
@@ -2639,7 +2664,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
         }
         case WallDistanceMethod::HAMILTON_JACOBI: {
             r.distance=hamilton_jacobi_distance(s,g,iterations,wall_distance_refinement_epsilon(g),0.7,&r.iterations,&r.residual_inf,
-                &r.positivity_clamp_activations);
+                &r.positivity_clamp_activations,&r.active_pde_samples,&r.exact_wall_seed_samples);
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
@@ -2648,7 +2673,8 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             break;
         }
         case WallDistanceMethod::ADVECTION_DIFFUSION: {
-            r.distance=advection_diffusion_distance(s,g,iterations,wall_distance_refinement_diffusivity(g),&r.iterations,&r.residual_inf);
+            r.distance=advection_diffusion_distance(s,g,iterations,wall_distance_refinement_diffusivity(g),&r.iterations,&r.residual_inf,
+                &r.active_pde_samples,&r.exact_wall_seed_samples);
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
@@ -2660,7 +2686,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             std::size_t poisson_iter=0; double poisson_residual=0.0;
             r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,wall_distance_refinement_epsilon(g),0.9,
                 &r.iterations,&r.residual_inf,0.25,&poisson_iter,&poisson_residual,
-                &r.positivity_clamp_activations);
+                &r.positivity_clamp_activations,&r.active_pde_samples,&r.exact_wall_seed_samples);
             r.auxiliary_iterations=poisson_iter;
             r.auxiliary_residual_inf=poisson_residual;
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
@@ -2669,6 +2695,29 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.stopping_reason = r.converged ? "converged" :
                                 (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
+        }
+    }
+    // All five distance PDE methods can be fully constrained by BVH exact
+    // wall seeds and outer-boundary data in very thin gaps. In such a case
+    // the output really is exact point-to-triangle geometry, NOT a solved
+    // Eikonal or transport PDE. Preserve this distinction in every result.
+    if(method==WallDistanceMethod::EIKONAL ||
+       method==WallDistanceMethod::EIKONAL_SECOND_ORDER ||
+       method==WallDistanceMethod::HAMILTON_JACOBI ||
+       method==WallDistanceMethod::ADVECTION_DIFFUSION ||
+       method==WallDistanceMethod::HYBRID_POISSON_EIKONAL) {
+        std::size_t fluid_count=0;
+        for(const auto solid:g.solid) if(!solid) ++fluid_count;
+        if(method==WallDistanceMethod::EIKONAL ||
+           method==WallDistanceMethod::EIKONAL_SECOND_ORDER)
+            r.active_pde_samples=fluid_count>=r.exact_wall_seed_samples
+                ? fluid_count-r.exact_wall_seed_samples : 0;
+        if(fluid_count>0 && r.active_pde_samples==0) {
+            r.converged=true;
+            r.residual_inf=0.0; // an empty active discrete equation
+            r.convergence_status=WallDistanceConvergenceStatus::DIRECT;
+            r.stopping_reason="all_fluid_nodes_exact_bvh_seeds_or_outer_no_pde_solve";
+            r.geometrically_exact_on_input_mesh=true;
         }
     }
     if(method==WallDistanceMethod::HAMILTON_JACOBI ||
