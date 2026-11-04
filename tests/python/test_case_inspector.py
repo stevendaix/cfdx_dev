@@ -13,7 +13,6 @@ from cfdx.session import CFDXSession
 from cfdx import dat_io
 from cfdx.application import Application
 
-
 def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
     path = tmp_path / "channel.cfdx.h5"
     with h5py.File(path, "w") as h5:
@@ -66,7 +65,6 @@ def test_inspect_canonical_case_and_mesh_without_loading_arrays(tmp_path):
     assert sample.total_values == 150_000_000
     assert set(sample.values) == {"0.0"}
 
-
 def test_dataset_sample_is_bounded_and_rejects_unsafe_or_expensive_reads(tmp_path):
     path = tmp_path / "samples.h5"
     with h5py.File(path, "w") as h5:
@@ -100,7 +98,6 @@ def test_dataset_sample_is_bounded_and_rejects_unsafe_or_expensive_reads(tmp_pat
     with pytest.raises(ValueError, match="internal HDF5 hard links"):
         read_hdf5_dataset_sample(path, "/external_values")
 
-
 def test_inspect_case_written_by_canonical_case_io(tmp_path):
     path = tmp_path / "roundtrip.cfdx.h5"
     session = CFDXSession()
@@ -116,7 +113,6 @@ def test_inspect_case_written_by_canonical_case_io(tmp_path):
     assert summary.boundaries == tuple(sorted(session.case.boundaries))
     assert not summary.has_mesh
     assert not summary.preview_supported
-
 
 def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     path = tmp_path / "mesh.h5"
@@ -157,7 +153,6 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     assert catalog.n_cells == 1
     assert application.selection.stable_id is None
 
-
 def test_soft_linked_case_config_is_not_reported_as_project_config(tmp_path):
     path = tmp_path / "soft-linked-config.h5"
     with h5py.File(path, "w") as h5:
@@ -179,7 +174,6 @@ def test_soft_linked_case_config_is_not_reported_as_project_config(tmp_path):
     assert not summary.has_project_config
     assert summary.case_name == "imported"
 
-
 def test_renderer_rejects_stale_inspection_summary_before_loading_arrays(
     tmp_path,
 ):
@@ -196,17 +190,13 @@ def test_renderer_rejects_stale_inspection_summary_before_loading_arrays(
     with h5py.File(path, "a") as h5:
         h5.create_dataset("metadata/mutation", data=np.arange(4096, dtype=np.int64))
 
-
     with pytest.raises(ValueError, match="changed since metadata inspection"):
         PyVistaQtView.load_cfdx_mesh(None, str(path), summary=summary)
     with pytest.raises(ValueError, match="changed since metadata inspection"):
         PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
 
-
 @pytest.mark.parametrize("missing_dataset", ["cell_faces", "cell_offsets"])
-def test_dat_preview_reports_missing_cell_topology(
-    tmp_path, monkeypatch, missing_dataset
-):
+def test_dat_preview_reports_missing_cell_topology(tmp_path, monkeypatch, missing_dataset):
     path = tmp_path / f"missing-{missing_dataset}.h5"
     with h5py.File(path, "w") as h5:
         h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
@@ -234,11 +224,7 @@ def test_dat_preview_reports_missing_cell_topology(
     with pytest.raises(TypeError, match=f"requires an internal HDF5 {missing_dataset}"):
         PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
 
-
-
-def test_dat_preview_rejects_oversized_cell_connectivity_before_reading(
-    tmp_path, monkeypatch
-):
+def test_dat_preview_rejects_oversized_cell_connectivity_before_reading(tmp_path, monkeypatch):
     path = tmp_path / "oversized-cell-connectivity.h5"
     with h5py.File(path, "w") as h5:
         h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
@@ -262,7 +248,6 @@ def test_dat_preview_rejects_oversized_cell_connectivity_before_reading(
     summary = inspect_cfdx_file(path)
     assert summary.preview_supported
 
-
     def unexpected_restart_read(_path):
         raise AssertionError(
             "DAT checkpoint must not be read after failed mesh preflight"
@@ -271,7 +256,6 @@ def test_dat_preview_rejects_oversized_cell_connectivity_before_reading(
     monkeypatch.setattr(dat_io, "read_dat_restart", unexpected_restart_read)
     with pytest.raises(ValueError, match="2M-entry eager-load budget"):
         PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
-
 
 def test_inspect_does_not_preview_mesh_with_external_region_catalog(tmp_path):
     path = tmp_path / "external-regions.h5"
@@ -292,7 +276,6 @@ def test_inspect_does_not_preview_mesh_with_external_region_catalog(tmp_path):
     assert summary.has_mesh
     assert not summary.preview_supported
     assert "region catalog" in summary.preview_block_reason
-
 
 def test_inspect_does_not_preview_when_region_group_contains_soft_links(tmp_path):
     path = tmp_path / "soft-region-entry.h5"
@@ -315,7 +298,6 @@ def test_inspect_does_not_preview_when_region_group_contains_soft_links(tmp_path
     assert summary.regions_truncated
     assert not summary.preview_supported
     assert "non-internal links" in summary.preview_block_reason
-
 
 def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     path = tmp_path / "oversized-connectivity.h5"
@@ -340,12 +322,10 @@ def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     assert not summary.preview_supported
     assert "connectivity" in summary.preview_block_reason
 
-
     with pytest.raises(ValueError, match="preview deferred"):
         PyVistaQtView.load_cfdx_mesh(None, str(path), summary=summary)
     with pytest.raises(ValueError, match="preview deferred"):
         PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
-
 
 def test_preview_rejects_non_integer_surface_connectivity(tmp_path):
     path = tmp_path / "invalid-connectivity-dtype.h5"
@@ -364,7 +344,6 @@ def test_preview_rejects_non_integer_surface_connectivity(tmp_path):
 
     assert not summary.preview_supported
     assert "integer dtypes" in summary.preview_block_reason
-
 
 def test_preview_rejects_externally_stored_topology(tmp_path):
     path = tmp_path / "external-topology.h5"
@@ -389,7 +368,6 @@ def test_preview_rejects_externally_stored_topology(tmp_path):
     assert not summary.preview_supported
     assert "externally stored" in summary.preview_block_reason
 
-
 def test_inspect_bounds_dataset_tree(tmp_path):
     path = tmp_path / "many.h5"
     with h5py.File(path, "w") as h5:
@@ -401,7 +379,6 @@ def test_inspect_bounds_dataset_tree(tmp_path):
 
     assert len(summary.datasets) == 3
     assert summary.datasets_truncated
-
 
 def test_inspect_bounds_soft_link_scans_in_region_and_field_groups(tmp_path):
     path = tmp_path / "many-soft-links.h5"
@@ -421,7 +398,6 @@ def test_inspect_bounds_soft_link_scans_in_region_and_field_groups(tmp_path):
     assert summary.scalar_fields == ()
     assert summary.scalar_fields_truncated
 
-
 def test_inspect_bounds_hdf5_group_only_trees(tmp_path):
     path = tmp_path / "many-groups.h5"
     with h5py.File(path, "w") as h5:
@@ -434,7 +410,6 @@ def test_inspect_bounds_hdf5_group_only_trees(tmp_path):
     assert summary.is_cfdx
     assert summary.datasets == ()
     assert summary.tree_truncated
-
 
 def test_inspect_bounds_root_attribute_payloads_and_count(tmp_path):
     oversized_path = tmp_path / "oversized-attribute.h5"
@@ -457,7 +432,6 @@ def test_inspect_bounds_root_attribute_payloads_and_count(tmp_path):
     assert summary.attributes_truncated
     assert len(summary.attributes) == 100
 
-
 def test_inspect_falls_back_to_cell_offsets_for_invalid_count_attribute(tmp_path):
     path = tmp_path / "invalid-count.h5"
     with h5py.File(path, "w") as h5:
@@ -471,7 +445,6 @@ def test_inspect_falls_back_to_cell_offsets_for_invalid_count_attribute(tmp_path
 
     assert summary.has_mesh
     assert summary.n_cells == 4
-
 
 def test_inspect_marks_region_totals_as_partial_when_catalog_is_truncated(tmp_path):
     path = tmp_path / "many-regions.h5"
@@ -492,7 +465,6 @@ def test_inspect_marks_region_totals_as_partial_when_catalog_is_truncated(tmp_pa
     assert not summary.mesh_counts_complete
     assert summary.n_cells == 300
 
-
 def test_inspect_bounds_field_catalogs(tmp_path):
     path = tmp_path / "many-fields.h5"
     with h5py.File(path, "w") as h5:
@@ -506,7 +478,6 @@ def test_inspect_bounds_field_catalogs(tmp_path):
     assert summary.scalar_fields_truncated
     with pytest.raises(ValueError, match="between 1 and 5000"):
         inspect_cfdx_file(path, max_datasets=10_000)
-
 
 def test_inspect_rejects_non_hdf5_file(tmp_path):
     path = tmp_path / "not-a-case.cfdx.h5"
