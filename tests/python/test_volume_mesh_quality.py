@@ -2,12 +2,11 @@
 
 import h5py
 import numpy as np
-import pytest
-
 from cfdx.volume_mesh_quality import (
     analyze_cfdx_volume_skewness,
     analyze_volume_skewness,
 )
+import pytest
 
 
 def two_tetrahedra():
@@ -50,12 +49,12 @@ def test_volume_skewness_rejects_invalid_owner_neighbour_indices():
         analyze_volume_skewness(*arrays)
 
 
-
 def test_volume_skewness_rejects_inconsistent_cell_face_incidence():
     arrays = list(two_tetrahedra())
     arrays[5] = np.asarray([0, 1, 2, 3, 1, 4, 5, 6], dtype=np.int64)
     with pytest.raises(ValueError, match="face list disagrees"):
         analyze_volume_skewness(*arrays)
+
 
 def test_volume_skewness_rejects_boundary_only_mesh():
     arrays = list(two_tetrahedra())
