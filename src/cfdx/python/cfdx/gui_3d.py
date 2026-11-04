@@ -61,7 +61,7 @@ def _require_previewable_dat_mesh(
             if not isinstance(link, h5py.HardLink) or not isinstance(
                 dataset, h5py.Dataset
             ):
-                raise ValueError(
+                raise TypeError(
                     f"DAT preview requires an internal HDF5 {name} dataset"
                 )
             if dataset.is_virtual or dataset.external:
@@ -231,7 +231,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                 if not isinstance(link, h5py.HardLink) or not isinstance(
                     h5.get(name), h5py.Dataset
                 ):
-                    raise ValueError(
+                    raise TypeError(
                         f"DAT preview requires an internal HDF5 {name} dataset"
                     )
             points = np.asarray(h5["points"][:], dtype=float)
