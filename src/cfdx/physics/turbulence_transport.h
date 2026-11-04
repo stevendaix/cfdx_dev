@@ -87,6 +87,10 @@ struct TurbulenceTransportControls {
     // Expose the same parameter (default preserved) for a controlled
     // 0.7 / 0.9 / 1.0 contract study; 1.0 performs no post-solve damping.
     double sst_linear_relaxation = 0.7;
+    // V16 opt-in: at resolved no-slip Dirichlet walls use rho*nu for
+    // k and omega boundary diffusion; never use owner-cell eddy viscosity
+    // as the face viscosity. Does NOT implement an omega wall function.
+    bool sst_molecular_wall_diffusion = false;
     double smagorinsky_Cs = 0.17, wale_Cw = 0.325, des_Cdes = 0.65;
     TurbulenceCorrectionControls corrections{};
     // N11 F1 (#480): route the Spalart-Allmaras negative nu-tilde policy
