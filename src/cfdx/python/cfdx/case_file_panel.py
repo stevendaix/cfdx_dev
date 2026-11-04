@@ -271,10 +271,18 @@ class CaseFilePanel(QWidget):
         dataset_paths = {dataset.path for dataset in summary.datasets}
         self.volume_quality_button.setEnabled(
             summary.preview_supported
-            and {"/" + name for name in (
-                "cell_faces", "cell_offsets", "owner", "neighbour",
-                "face_vertices", "face_offsets", "points",
-            )}.issubset(dataset_paths)
+            and {
+                "/" + name
+                for name in (
+                    "cell_faces",
+                    "cell_offsets",
+                    "owner",
+                    "neighbour",
+                    "face_vertices",
+                    "face_offsets",
+                    "points",
+                )
+            }.issubset(dataset_paths)
         )
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         state = "CFDX" if summary.is_cfdx else "HDF5 (unrecognised CFDX layout)"
