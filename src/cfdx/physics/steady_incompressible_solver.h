@@ -201,6 +201,9 @@ struct SSTProductionRuntime {
     std::vector<std::string> wall_omega_sst_patches;
     std::size_t max_transport_iterations = 100;
     double transport_tolerance = 1e-8;
+    // Experimental outer-coupling schedule. Finite and unclipped intermediate
+    // SST predictors may advance; NOT a relaxation of the final SST gate.
+    bool allow_bounded_provisional_transport = false;
 };
 
 struct IncompressibleSolverControls {
@@ -285,6 +288,10 @@ struct IncompressibleSolverControls {
     // momentum, pressure assembly AND authoritative Rhie-Chow reconstruction.
     // Keep off until three-grid NACA and N9 physical qualification pass.
     bool pressure_skew_corrected_gradient = false;
+    // Experimental: use the actual projected face position on an elongated
+    // owner-neighbour pair for BOTH the predictor and pressure Schur operator.
+    // Segregated SIMPLE only until the coupled Jacobian is equivalently updated.
+    bool pressure_projected_face_interpolation = false;
     std::function<void(const IncompressibleProbeSample&)> probe_callback;
     // Called after each completed nonlinear iteration with the authoritative solver state.
     // Return false to stop the solve after the current iteration.
@@ -550,6 +557,10 @@ inline void validate_incompressible_controls(
     // with the historical face weights. Until that block is augmented with
     // the skew-correction Jacobian, activating this option would make the
     // coupled matrix inconsistent with the reconstructed Rhie-Chow flux.
+    if (c.pressure_projected_face_interpolation &&
+        c.algorithm != PressureVelocityAlgorithm::SIMPLE)
+        throw std::invalid_argument(
+            "projected pressure face interpolation requires segregated SIMPLE");
     if (c.pressure_skew_corrected_gradient &&
         c.algorithm == PressureVelocityAlgorithm::COUPLED)
         throw std::invalid_argument(
@@ -780,6 +791,20 @@ gauss_gradient_with_boundary(
     return grad;
 }
 
+// The weight on the neighbour is the longitudinal projection of the actual
+// face centroid. A geometric average (0.5) is not affine-exact when the two
+// centre-to-face distances differ. The same weight MUST be used in HbyA,
+// dAU=V/A_P, pressure gradients and the pressure-correction matrix.
+inline double pressure_face_neighbour_weight(
+    const FvGeometry& geometry, std::size_t face,
+    std::size_t owner, std::size_t neighbour, bool projected)
+{
+    if (!projected) return 0.5;
+    return cfdx::core::geometric_interpolation_weight(
+        geometry.face_centres[face], geometry.cell_centres[owner],
+        &geometry.cell_centres[neighbour]);
+}
+
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
 make_mass_flux(
     const cfdx::core::Mesh& mesh,
@@ -787,7 +812,8 @@ make_mass_flux(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
     double rho,
     const VelocityBoundaryConditions& bcs,
-    const ScalarBoundaryConditions& pressure_bcs = {})
+    const ScalarBoundaryConditions& pressure_bcs = {},
+    bool projected_face_interpolation = false)
 {
     using namespace cfdx::core;
     (void)pressure_bcs;
@@ -809,7 +835,9 @@ make_mass_flux(
             const std::size_t n=static_cast<std::size_t>(own.neighbour(f));
             Vec3 Un;
             U.get(n,Un.x,Un.y,Un.z);
-            Uf=(Uf+Un)*0.5;
+            const double wn = pressure_face_neighbour_weight(
+                geometry,f,o,n,projected_face_interpolation);
+            Uf=Uf*(1.0-wn)+Un*wn;
         } else {
             const std::size_t p=geometry.face_patch[f];
             if (p < mesh.boundary().n_patches() &&
@@ -898,7 +926,8 @@ inline double rhie_chow_pressure_flux_internal(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& grad_p,
     const std::array<std::vector<double>, 3>& rAU,
-    double rho)
+    double rho,
+    bool projected_face_interpolation = false)
 {
     using namespace cfdx::core;
     const auto nr = mesh.ownership().neighbour(face);
@@ -917,16 +946,19 @@ inline double rhie_chow_pressure_flux_internal(
     // factor is introduced here, at the velocity/pressure projection stage,
     // because the pressure gradient is a volumetric momentum source. Thus
     // cx/cy/cz are dAU = V*rAU, not a redefinition of rAU itself.
-    const double cx = 0.5*(geometry.cell_volumes[o] * rAU[0][o] +
-                           geometry.cell_volumes[n] * rAU[0][n]);
-    const double cy = 0.5*(geometry.cell_volumes[o] * rAU[1][o] +
-                           geometry.cell_volumes[n] * rAU[1][n]);
-    const double cz = 0.5*(geometry.cell_volumes[o] * rAU[2][o] +
-                           geometry.cell_volumes[n] * rAU[2][n]);
+    const double wn = pressure_face_neighbour_weight(
+        geometry, face, o, n, projected_face_interpolation);
+    const double wo = 1.0 - wn;
+    const double cx = wo * geometry.cell_volumes[o] * rAU[0][o] +
+                      wn * geometry.cell_volumes[n] * rAU[0][n];
+    const double cy = wo * geometry.cell_volumes[o] * rAU[1][o] +
+                      wn * geometry.cell_volumes[n] * rAU[1][n];
+    const double cz = wo * geometry.cell_volumes[o] * rAU[2][o] +
+                      wn * geometry.cell_volumes[n] * rAU[2][n];
     const Vec3 gp{
-        0.5*(grad_p.component_data(0)[o] + grad_p.component_data(0)[n]),
-        0.5*(grad_p.component_data(1)[o] + grad_p.component_data(1)[n]),
-        0.5*(grad_p.component_data(2)[o] + grad_p.component_data(2)[n])};
+        wo * grad_p.component_data(0)[o] + wn * grad_p.component_data(0)[n],
+        wo * grad_p.component_data(1)[o] + wn * grad_p.component_data(1)[n],
+        wo * grad_p.component_data(2)[o] + wn * grad_p.component_data(2)[n]};
     // The face response uses the same dAU = V/A_P operator as the cell
     // velocity reconstruction. Keeping the orthogonal pressure difference
     // implicit and the non-orthogonal remainder deferred is important: the
@@ -963,7 +995,8 @@ make_rhie_chow_mass_flux(
     const ScalarBoundaryConditions& pressure_bcs = {},
     RhieChowVelocityContract velocity_contract =
         RhieChowVelocityContract::HBYA_PREDICTOR,
-    bool skew_correct_gradient = false)
+    bool skew_correct_gradient = false,
+    bool projected_face_interpolation = false)
 ;
 
 inline cfdx::core::Field<double, cfdx::core::Location::FACE>
@@ -992,7 +1025,8 @@ make_rhie_chow_mass_flux(
     const VelocityBoundaryConditions& bcs,
     const ScalarBoundaryConditions& pressure_bcs,
     RhieChowVelocityContract velocity_contract,
-    bool skew_correct_gradient)
+    bool skew_correct_gradient,
+    bool projected_face_interpolation)
 {
     using namespace cfdx::core;
     const bool coupled_physical_velocity =
@@ -1039,9 +1073,12 @@ make_rhie_chow_mass_flux(
             const std::size_t n = static_cast<std::size_t>(nr);
             Vec3 Hn;
             U.get(n, Hn.x, Hn.y, Hn.z);
-            Hf = (Hf + Hn) * 0.5;
+            const double wn = pressure_face_neighbour_weight(
+                geometry, f, o, n, projected_face_interpolation);
+            Hf = Hf * (1.0 - wn) + Hn * wn;
             correction = rhie_chow_pressure_flux_internal(
-                mesh, geometry, f, p, grad_p, rAU, rho);
+                mesh, geometry, f, p, grad_p, rAU, rho,
+                projected_face_interpolation);
             if (coupled_physical_velocity) {
                 // In the monolithic block U is the physical velocity, not H/A.
                 // Add the interpolated dAU*grad(p) compensation so an affine
@@ -3520,22 +3557,24 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // pressure-correction matrix.
     auto directional_face_coefficient =
         [&](const std::array<std::vector<double>,3>& coeff,
-            std::size_t o, std::size_t n,
+            std::size_t f, std::size_t o, std::size_t n,
             const Vec3& Sf, const Vec3& dvec) {
-            const double cx = 0.5 * (
-                geometry.cell_volumes[o] * coeff[0][o] +
-                geometry.cell_volumes[n] * coeff[0][n]);
-            const double cy = 0.5 * (
-                geometry.cell_volumes[o] * coeff[1][o] +
-                geometry.cell_volumes[n] * coeff[1][n]);
-            const double cz = 0.5 * (
-                geometry.cell_volumes[o] * coeff[2][o] +
-                geometry.cell_volumes[n] * coeff[2][n]);
+            const double wn = pressure_face_neighbour_weight(
+                geometry, f, o, n,
+                controls.pressure_projected_face_interpolation);
+            const double wo = 1.0 - wn;
+            const double cx = wo * geometry.cell_volumes[o] * coeff[0][o] +
+                              wn * geometry.cell_volumes[n] * coeff[0][n];
+            const double cy = wo * geometry.cell_volumes[o] * coeff[1][o] +
+                              wn * geometry.cell_volumes[n] * coeff[1][n];
+            const double cz = wo * geometry.cell_volumes[o] * coeff[2][o] +
+                              wn * geometry.cell_volumes[n] * coeff[2][n];
             return pressure_face_orthogonal_coefficient(Sf, dvec, {cx, cy, cz});
         };
 
     Field<double, Location::FACE> mass_flux =
-        make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
+        make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs,
+                       {}, controls.pressure_projected_face_interpolation);
 
     // A restart must replay the continuous iteration sequence. Iteration n+1
     // assembles momentum from the Rhie-Chow flux reconstructed with
@@ -4186,7 +4225,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // uses the same directional inverse momentum coefficient as the
         // pressure equation, avoiding a second, incompatible face operator.
         auto phiHbyA = make_mass_flux(
-            mesh, geometry, HbyA, controls.density, velocity_bcs);
+            mesh, geometry, HbyA, controls.density, velocity_bcs,
+            {}, controls.pressure_projected_face_interpolation);
 
         if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
             for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
@@ -4361,7 +4401,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         const double phi_nonorth = rhie_chow_pressure_flux_internal(
                             mesh, geometry, f, p, current_grad_p,
                             controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
-                            controls.density);
+                            controls.density,
+                            controls.pressure_projected_face_interpolation);
                         continuity[c] += mesh.ownership().owner(f) == c
                             ? -phi_nonorth : phi_nonorth;
                     }
@@ -4378,7 +4419,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const auto& pressure_coeff =
                     controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
                 const double coeff = controls.density * directional_face_coefficient(
-                    pressure_coeff, o, n, Sf, dvec);
+                    pressure_coeff, f, o, n, Sf, dvec);
                 diag[o] += coeff;
                 diag[n] += coeff;
                 rows[o][n] -= coeff;
@@ -4468,21 +4509,28 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         const Vec3 Sf = geometry.face_area_vectors[f];
                         const Vec3 dvec = geometry.cell_centres[n] - geometry.cell_centres[o];
                         const double coeff = controls.density *
-                            directional_face_coefficient(pressure_coeff, o, n, Sf, dvec);
+                            directional_face_coefficient(pressure_coeff, f, o, n, Sf, dvec);
+                        // The forensic RHS audit must use the same projected
+                        // dAU/gradient as the production Schur complement,
+                        // or a diagnostic callback can report a false mismatch.
+                        const double wn = pressure_face_neighbour_weight(
+                            geometry, f, o, n,
+                            controls.pressure_projected_face_interpolation);
+                        const double wo = 1.0 - wn;
                         const Vec3 dAU{
-                            0.5 * (geometry.cell_volumes[o] * pressure_coeff[0][o] +
-                                   geometry.cell_volumes[n] * pressure_coeff[0][n]),
-                            0.5 * (geometry.cell_volumes[o] * pressure_coeff[1][o] +
-                                   geometry.cell_volumes[n] * pressure_coeff[1][n]),
-                            0.5 * (geometry.cell_volumes[o] * pressure_coeff[2][o] +
-                                   geometry.cell_volumes[n] * pressure_coeff[2][n])};
+                            wo * geometry.cell_volumes[o] * pressure_coeff[0][o] +
+                            wn * geometry.cell_volumes[n] * pressure_coeff[0][n],
+                            wo * geometry.cell_volumes[o] * pressure_coeff[1][o] +
+                            wn * geometry.cell_volumes[n] * pressure_coeff[1][n],
+                            wo * geometry.cell_volumes[o] * pressure_coeff[2][o] +
+                            wn * geometry.cell_volumes[n] * pressure_coeff[2][n]};
                         const Vec3 grad_face{
-                            0.5 * (current_grad_p.component_data(0)[o] +
-                                   current_grad_p.component_data(0)[n]),
-                            0.5 * (current_grad_p.component_data(1)[o] +
-                                   current_grad_p.component_data(1)[n]),
-                            0.5 * (current_grad_p.component_data(2)[o] +
-                                   current_grad_p.component_data(2)[n])};
+                            wo * current_grad_p.component_data(0)[o] +
+                            wn * current_grad_p.component_data(0)[n],
+                            wo * current_grad_p.component_data(1)[o] +
+                            wn * current_grad_p.component_data(1)[n],
+                            wo * current_grad_p.component_data(2)[o] +
+                            wn * current_grad_p.component_data(2)[n]};
                         const double implicit_flux = coeff * (p(n) - p(o));
                         const double deferred_flux = controls.density *
                             pressure_face_nonorthogonal_flux(Sf, dvec, dAU, grad_face);
@@ -5062,7 +5110,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
                         controls.density, velocity_bcs, pressure_bcs,
                         RhieChowVelocityContract::HBYA_PREDICTOR,
-                        controls.pressure_skew_corrected_gradient);
+                        controls.pressure_skew_corrected_gradient,
+                        controls.pressure_projected_face_interpolation);
                     if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                         add_simplec_consistent_response(trial_flux);
                     return trial_flux;
@@ -5156,7 +5205,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU,
                 controls.density, velocity_bcs, pressure_bcs,
                 RhieChowVelocityContract::HBYA_PREDICTOR,
-                controls.pressure_skew_corrected_gradient);
+                controls.pressure_skew_corrected_gradient,
+                controls.pressure_projected_face_interpolation);
 
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                 add_simplec_consistent_response(mass_flux);
@@ -5201,7 +5251,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     ? rAtU : rAU,
                 controls.density, velocity_bcs, pressure_bcs,
                 RhieChowVelocityContract::HBYA_PREDICTOR,
-                controls.pressure_skew_corrected_gradient);
+                controls.pressure_skew_corrected_gradient,
+                controls.pressure_projected_face_interpolation);
             if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC)
                 add_simplec_consistent_response(rederived_flux);
             for (std::size_t f = 0; f < mesh.n_faces(); ++f)
@@ -5538,7 +5589,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // consumes them (see the N9/S9 test suite for the sensitivity
         // proofs).
         auto reconstructed_flux = make_mass_flux(
-            mesh, geometry, U, controls.density, velocity_bcs);
+            mesh, geometry, U, controls.density, velocity_bcs,
+            {}, controls.pressure_projected_face_interpolation);
         double reconstructed_linf = 0.0;
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             double div_reconstructed = 0.0;
@@ -5856,10 +5908,17 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 controls.sst_runtime->omega_boundary_conditions,
                 controls.sst_runtime->max_transport_iterations,
                 controls.sst_runtime->transport_tolerance,
-                &controls.sst_runtime->omega_face_values);
+                &controls.sst_runtime->omega_face_values,
+                controls.sst_runtime->allow_bounded_provisional_transport);
             if (!sst_step.committed)
                 throw NonlinearRetryableFailure(
                     "solve_steady_incompressible: SST update rejected: " + sst_step.reason);
+            if (sst_step.provisional)
+                std::cerr << "SST_PROVISIONAL_OUTER iteration=" << iter
+                          << " inner_iterations=" << sst_step.transport.iterations
+                          << " k_candidate_residual=" << sst_step.transport.k_residual
+                          << " omega_candidate_residual=" << sst_step.transport.second_residual
+                          << " qualified=0\n";
             // Turbulence convergence is an additional gate; it never relaxes
             // the existing carrier residual, continuity, or QoI criteria.
             if (!std::isfinite(sst_step.transport.k_residual) ||
@@ -5883,7 +5942,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             h.continuity_normalized,
             std::move(qoi_values)});
         const bool sst_residual_gate = !controls.sst_runtime ||
-            (sst_step.committed && sst_step.transport.converged &&
+            (sst_step.committed && !sst_step.provisional &&
+             sst_step.transport.converged &&
              std::isfinite(sst_step.transport.k_residual) &&
              std::isfinite(sst_step.transport.second_residual) &&
              sst_step.transport.nonfinite_bound_events == 0 &&
@@ -5957,7 +6017,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
 
             const auto reconstructed_flux =
-                make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs);
+                make_mass_flux(mesh, geometry, U, controls.density, velocity_bcs,
+                       {}, controls.pressure_projected_face_interpolation);
             double local_div_authoritative = 0.0;
             double local_div_reconstructed = 0.0;
             double max_delta_phi = 0.0;
