@@ -1351,40 +1351,6 @@
         "tests/unit/test_scalar_transport_gradient_skew.cpp",
         "docs/audits/06-gradients-reconstruction.md"
       ]
-    },
-    {
-      "package_id": "WD",
-      "requirement": "triangulated wall-surface validation, exact point-triangle distance and BVH/oracle equivalence",
-      "status": "verified",
-      "evidence": [
-        "src/cfdx/physics/mesh_wall_distance.h",
-        "src/cfdx/physics/wall_distance.h",
-        "tests/unit/test_wall_distance_difficult_surfaces.cpp",
-        "tests/unit/test_wall_distance_methods.cpp",
-        "docs/audits/20-distance-geometrique-bvh.md"
-      ]
-    },
-    {
-      "package_id": "WD",
-      "requirement": "graph-wave nearest-wall-point propagation and second-order Eikonal analytical accuracy",
-      "status": "verified",
-      "evidence": [
-        "src/cfdx/physics/wall_distance.h",
-        "tests/unit/test_wall_distance_full_method_audit.cpp",
-        "tests/unit/test_wall_distance_precision.cpp",
-        "docs/audits/20-distance-geometrique-bvh.md"
-      ]
-    },
-    {
-      "package_id": "WD",
-      "requirement": "production wall-distance accuracy on arbitrary polyhedral meshes and physical SST/NACA qualification",
-      "status": "partial",
-      "evidence": [
-        "src/cfdx/physics/wall_distance_precision.h",
-        "docs/audits/20-distance-geometrique-bvh.md",
-        "docs/audits/09-turbulence-rans.md",
-        "docs/validation/CFDX_QUALIFICATION_REGISTRY.json"
-      ]
     }
   ]
 }
