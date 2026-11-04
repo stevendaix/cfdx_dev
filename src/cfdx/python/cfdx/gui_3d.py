@@ -186,6 +186,14 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
 
         restart = read_dat_restart(dat_path)
         with h5py.File(mesh_path, "r") as h5:
+            for name in ("cell_faces", "cell_offsets"):
+                link = h5.get(name, getlink=True)
+                if not isinstance(link, h5py.HardLink) or not isinstance(
+                    h5.get(name), h5py.Dataset
+                ):
+                    raise ValueError(
+                        f"DAT preview requires an internal HDF5 {name} dataset"
+                    )
             points = np.asarray(h5["points"][:], dtype=float)
             face_vertices = np.asarray(h5["face_vertices"][:], dtype=np.int64)
             face_offsets = np.asarray(h5["face_offsets"][:], dtype=np.int64)
@@ -207,7 +215,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             n_faces=int(inspected.n_faces),
             n_patches=len(metadata),
         )
-        mesh_cells = len(cell_offsets) - 1
+        mesh_cells = int(inspected.n_cells)
         validate_cell_topology(
             cell_faces,
             cell_offsets,
