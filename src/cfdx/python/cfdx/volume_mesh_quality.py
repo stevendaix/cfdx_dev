@@ -27,6 +27,7 @@ class VolumeSkewnessReport:
     cell_skewness: np.ndarray
     face_skewness: np.ndarray
     face_non_orthogonality_deg: np.ndarray
+    cell_non_orthogonality_deg: np.ndarray
     cell_centres: np.ndarray
     cell_neighbours: tuple[tuple[int, ...], ...]
     worst_cell_ids: tuple[int, ...]
@@ -139,6 +140,7 @@ def analyze_volume_skewness(
     face_scores = np.full(n_faces, np.nan, dtype=np.float64)
     face_non_orthogonality = np.full(n_faces, np.nan, dtype=np.float64)
     cell_scores = np.zeros(n_cells, dtype=np.float64)
+    cell_non_orthogonality = np.zeros(n_cells, dtype=np.float64)
     adjacency = [set() for _ in range(n_cells)]
     for face_id in internal:
         owner_id, neighbour_id = int(own[face_id]), int(nei[face_id])
@@ -152,7 +154,10 @@ def analyze_volume_skewness(
         if float(area_vector @ line) < 0.0:
             area_vector = -area_vector
         cosine = float(np.clip((line @ area_vector) / (line_norm * face_areas[face_id]), -1.0, 1.0))
-        face_non_orthogonality[face_id] = float(np.degrees(np.arccos(cosine)))
+        non_orthogonality = float(np.degrees(np.arccos(cosine)))
+        face_non_orthogonality[face_id] = non_orthogonality
+        cell_non_orthogonality[owner_id] = max(cell_non_orthogonality[owner_id], non_orthogonality)
+        cell_non_orthogonality[neighbour_id] = max(cell_non_orthogonality[neighbour_id], non_orthogonality)
         owner_to_face = face_centres[face_id] - cell_centres[owner_id]
         projection = float(owner_to_face @ line) / (line_norm * line_norm)
         projected = cell_centres[owner_id] + line * projection
@@ -172,6 +177,7 @@ def analyze_volume_skewness(
         cell_skewness=cell_scores,
         face_skewness=face_scores,
         face_non_orthogonality_deg=face_non_orthogonality,
+        cell_non_orthogonality_deg=cell_non_orthogonality,
         cell_centres=cell_centres,
         cell_neighbours=tuple(tuple(sorted(values)) for values in adjacency),
         worst_cell_ids=tuple(problem_order[:20]),
