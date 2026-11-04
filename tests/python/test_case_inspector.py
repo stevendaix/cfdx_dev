@@ -512,6 +512,76 @@ def test_inspect_rejects_non_hdf5_file(tmp_path):
         inspect_cfdx_file(path)
 
 
+def test_streaming_statistics_match_reference_with_non_finite_values(tmp_path):
+    from cfdx.case_inspector import read_hdf5_dataset_statistics
+
+    path = tmp_path / "field-statistics.h5"
+    values = np.array(
+        [[1.0, 2.0, np.nan], [4.0, np.inf, -2.0], [3.0, -np.inf, 5.0]],
+        dtype=np.float64,
+    )
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset(
+            "fields/scalar/temperature",
+            data=values,
+            chunks=(1, 3),
+            compression="gzip",
+        )
+
+    result = read_hdf5_dataset_statistics(
+        path, "/fields/scalar/temperature", block_bytes=24
+    )
+    finite = values[np.isfinite(values)]
+
+    assert result.shape == (3, 3)
+    assert result.value_count == values.size
+    assert result.finite_count == finite.size
+    assert result.non_finite_count == 3
+    assert result.minimum == pytest.approx(np.min(finite))
+    assert result.maximum == pytest.approx(np.max(finite))
+    assert result.mean == pytest.approx(np.mean(finite))
+    assert result.rms == pytest.approx(np.sqrt(np.mean(finite**2)))
+    assert result.scanned_bytes == values.nbytes
+
+
+def test_streaming_statistics_enforce_read_and_chunk_budgets(tmp_path):
+    from cfdx.case_inspector import read_hdf5_dataset_statistics
+
+    path = tmp_path / "statistics-budget.h5"
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset("large", shape=(1024,), dtype="f8")
+        h5.create_dataset("large_chunk", shape=(1024,), dtype="f8", chunks=(256,))
+
+    with pytest.raises(ValueError, match="statistics budget"):
+        read_hdf5_dataset_statistics(path, "/large", max_scan_bytes=128)
+
+    with pytest.raises(ValueError, match="chunk size"):
+        read_hdf5_dataset_statistics(
+            path, "/large_chunk", max_scan_bytes=16_384, block_bytes=128
+        )
+
+
+def test_streaming_statistics_handle_empty_and_all_non_finite_datasets(tmp_path):
+    from cfdx.case_inspector import read_hdf5_dataset_statistics
+
+    path = tmp_path / "empty-statistics.h5"
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset("empty", shape=(0, 3), dtype="f8")
+        h5.create_dataset("invalid", data=[np.nan, np.inf, -np.inf])
+
+    empty = read_hdf5_dataset_statistics(path, "/empty")
+    assert empty.value_count == 0
+    assert empty.finite_count == 0
+    assert empty.minimum is None
+    assert empty.mean is None
+
+    invalid = read_hdf5_dataset_statistics(path, "/invalid")
+    assert invalid.finite_count == 0
+    assert invalid.non_finite_count == 3
+    assert invalid.minimum is None
+    assert invalid.rms is None
+
+
 def test_inspector_reports_logical_and_allocated_hdf5_storage(tmp_path):
     path = tmp_path / "storage-audit.h5"
     with h5py.File(path, "w") as h5:
