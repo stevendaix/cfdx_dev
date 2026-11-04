@@ -59,7 +59,7 @@ def main() -> None:
         "cell_neighbours": [list(values) for values in report.cell_neighbours],
         "elapsed_seconds": elapsed,
         "metric_definition": "face-centroid distance to owner-neighbour centroid line / sqrt(face area)",
-    }, indent=2) + "\\n", encoding="utf-8")
+    }, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
