@@ -143,7 +143,7 @@ def analyze_volume_skewness(
 
     cell_centres = np.empty((n_cells, 3), dtype=np.float64)
     for cell_id in range(n_cells):
-        face_ids = cf[int(co[cell_id]):int(co[cell_id + 1])]
+        face_ids = cf[int(co[cell_id]) : int(co[cell_id + 1])]
         weights = face_areas[face_ids]
         total_area = float(weights.sum())
         if not np.isfinite(total_area) or total_area <= np.finfo(float).tiny:
