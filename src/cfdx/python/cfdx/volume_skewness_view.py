@@ -31,12 +31,21 @@ class VolumeSkewnessDialog(QDialog):
         self.report: VolumeSkewnessReport = analyze_cfdx_volume_skewness(
             path, expected_signature=expected_signature
         )
-        with h5py.File(path, "r") as h5:
+        source = Path(path)
+        stat = source.stat()
+        signature = (int(stat.st_dev), int(stat.st_ino), int(stat.st_size), int(stat.st_mtime_ns))
+        if expected_signature is not None and signature != expected_signature:
+            raise RuntimeError("mesh file changed before volume rendering")
+        with h5py.File(source, "r") as h5:
             points = np.asarray(h5["points"][:], dtype=float)
             face_vertices = np.asarray(h5["face_vertices"][:], dtype=np.int64)
             face_offsets = np.asarray(h5["face_offsets"][:], dtype=np.int64)
             cell_faces = np.asarray(h5["cell_faces"][:], dtype=np.int64)
             cell_offsets = np.asarray(h5["cell_offsets"][:], dtype=np.int64)
+        stat_after = source.stat()
+        after = (int(stat_after.st_dev), int(stat_after.st_ino), int(stat_after.st_size), int(stat_after.st_mtime_ns))
+        if after != signature:
+            raise RuntimeError("mesh file changed while volume rendering topology was loaded")
         vtk_cells: list[int] = []
         for cell_id in range(len(cell_offsets) - 1):
             face_ids = cell_faces[cell_offsets[cell_id]:cell_offsets[cell_id + 1]]
