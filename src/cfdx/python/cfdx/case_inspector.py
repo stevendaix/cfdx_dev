@@ -77,6 +77,7 @@ class CaseFileSummary:
     regions_truncated: bool = False
     scalar_fields_truncated: bool = False
     vector_fields_truncated: bool = False
+    file_signature: tuple[int, int, int, int] | None = None
 
     @property
     def total_field_count(self) -> int:
