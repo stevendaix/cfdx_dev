@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from .case_inspector import (
     CaseFileSummary,
     read_hdf5_dataset_sample,
+    read_hdf5_dataset_statistics,
 )
 
 
@@ -46,6 +47,9 @@ class CaseFilePanel(QWidget):
         self.copy_path_button = QPushButton("Copy dataset path")
         self.copy_path_button.setObjectName("workbench.case_file.copy_dataset_path")
         self.copy_path_button.setEnabled(False)
+        self.statistics_button = QPushButton("Compute statistics")
+        self.statistics_button.setObjectName("workbench.case_file.compute_statistics")
+        self.statistics_button.setEnabled(False)
         self.preview = QPlainTextEdit()
         self.preview.setObjectName("workbench.case_file.dataset_preview")
         self.preview.setReadOnly(True)
@@ -58,6 +62,7 @@ class CaseFilePanel(QWidget):
         controls.addWidget(self.expand_button)
         controls.addWidget(self.collapse_button)
         controls.addStretch(1)
+        controls.addWidget(self.statistics_button)
         controls.addWidget(self.copy_path_button)
         layout.addLayout(controls)
         layout.addWidget(self.tree, 3)
@@ -69,12 +74,14 @@ class CaseFilePanel(QWidget):
         self.expand_button.clicked.connect(self.tree.expandAll)
         self.collapse_button.clicked.connect(self.tree.collapseAll)
         self.copy_path_button.clicked.connect(self.copy_selected_dataset_path)
+        self.statistics_button.clicked.connect(self.compute_selected_statistics)
 
     def clear(self) -> None:
         self.summary = None
         self.filter_input.clear()
         self.tree.clear()
         self.copy_path_button.setEnabled(False)
+        self.statistics_button.setEnabled(False)
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         self.status.setText("No CFDX file inspected")
 
@@ -108,6 +115,39 @@ class CaseFilePanel(QWidget):
             item.data(0, Qt.ItemDataRole.UserRole) if item is not None else None
         )
         self.copy_path_button.setEnabled(bool(dataset_path))
+        self.statistics_button.setEnabled(bool(dataset_path))
+
+    def compute_selected_statistics(self) -> None:
+        """Compute bounded streaming statistics for the selected dataset."""
+        item = self.tree.currentItem()
+        dataset_path = (
+            item.data(0, Qt.ItemDataRole.UserRole) if item is not None else None
+        )
+        if not dataset_path or self.summary is None:
+            return
+        try:
+            statistics = read_hdf5_dataset_statistics(
+                self.summary.path, str(dataset_path)
+            )
+            def display(value: float | None) -> str:
+                return "n/a" if value is None else f"{value:.8g}"
+
+            report = (
+                f"{statistics.path} — streaming statistics\n"
+                f"shape: {statistics.shape} · dtype: {statistics.dtype}\n"
+                f"values: {statistics.value_count:,} · "
+                f"finite: {statistics.finite_count:,} · "
+                f"non-finite: {statistics.non_finite_count:,}\n"
+                f"min: {display(statistics.minimum)} · "
+                f"max: {display(statistics.maximum)}\n"
+                f"mean: {display(statistics.mean)} · "
+                f"RMS: {display(statistics.rms)}\n"
+                f"scanned: {statistics.scanned_bytes:,} bytes "
+                "(uniform value statistics; no cell-volume weighting)"
+            )
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError) as exc:
+            report = f"Unable to compute dataset statistics: {exc}"
+        self.preview.setPlainText(report)
 
     def copy_selected_dataset_path(self) -> None:
         """Copy the selected HDF5 dataset path without reading its payload."""
@@ -150,6 +190,7 @@ class CaseFilePanel(QWidget):
         self.filter_input.clear()
         self.tree.clear()
         self.copy_path_button.setEnabled(False)
+        self.statistics_button.setEnabled(False)
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         state = "CFDX" if summary.is_cfdx else "HDF5 (unrecognised CFDX layout)"
         self.status.setText(f"{summary.path.name} · {state}")
