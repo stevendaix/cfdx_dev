@@ -100,8 +100,9 @@ def analyze_surface_quality(
         if longest == 0.0 or shortest <= np.finfo(np.float64).eps * longest:
             zero_edges.append(face_id)
 
+        centered = polygon - np.mean(polygon, axis=0)
         area_vector = np.sum(
-            np.cross(polygon, np.roll(polygon, -1, axis=0)), axis=0
+            np.cross(centered, np.roll(centered, -1, axis=0)), axis=0
         )
         area = 0.5 * float(np.linalg.norm(area_vector))
         area_tolerance = 64.0 * np.finfo(np.float64).eps * longest * longest
@@ -111,7 +112,6 @@ def analyze_surface_quality(
 
         areas.append(area)
         edge_ratios.append(longest / shortest)
-        centered = polygon - np.mean(polygon, axis=0)
         try:
             _, _, right_vectors = np.linalg.svd(centered, full_matrices=False)
         except np.linalg.LinAlgError as exc:
