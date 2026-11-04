@@ -369,7 +369,9 @@ def read_hdf5_dataset_statistics(
         if not isinstance(dataset, h5py.Dataset):
             raise TypeError(f"{dataset_path} is not an HDF5 dataset")
         if dataset.dtype.kind not in "biuf":
-            raise ValueError("statistics support integer and real numeric datasets only")
+            raise ValueError(
+                "statistics support integer and real numeric datasets only"
+            )
         if dataset.is_virtual:
             raise ValueError("virtual datasets are not scanned")
         if dataset.external:
@@ -412,13 +414,12 @@ def read_hdf5_dataset_statistics(
             row_values = int(prod(shape[1:])) if len(shape) > 1 else 1
             row_bytes = row_values * dataset.dtype.itemsize
             if row_bytes > block_bytes:
-                raise ValueError(
-                    "one dataset row exceeds the statistics block budget"
-                )
+                raise ValueError("one dataset row exceeds the statistics block budget")
             rows_per_block = max(1, block_bytes // row_bytes)
             blocks = (
-                np.asarray(dataset[start : min(shape[0], start + rows_per_block)])
-                .reshape(-1)
+                np.asarray(
+                    dataset[start : min(shape[0], start + rows_per_block)]
+                ).reshape(-1)
                 for start in range(0, shape[0], rows_per_block)
             )
 
@@ -444,9 +445,7 @@ def read_hdf5_dataset_statistics(
             sum_squares += np.sum(wide * wide, dtype=np.longdouble)
 
         mean = float(total / finite_count) if finite_count else None
-        rms = (
-            float(np.sqrt(sum_squares / finite_count)) if finite_count else None
-        )
+        rms = float(np.sqrt(sum_squares / finite_count)) if finite_count else None
         return Hdf5DatasetStatistics(
             path=dataset_path,
             shape=shape,
