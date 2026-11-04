@@ -2,7 +2,7 @@
 
 **En-tête d'évidence**
 - Scope : distances exactes point-triangle et intersection rayon-triangle utilisées par les méthodes de distance aux parois. Cette fiche qualifie le contrat géométrique et les optimisations de recherche ; elle ne valide pas à elle seule les EDP de Poisson, Eikonal, Hamilton–Jacobi ou advection-diffusion.
-- Statut : DRAFT (2026-10-19) — tests d'équivalence géométrique ajoutés ; benchmark rayons BVH/brute-force intégré au cas complexe, mesures et qualification EDP encore requises.
+- Statut : APPROVED pour le contrat géométrique et algorithmique décrit aux sections 1–13 (revue PR #1172, 2026-11-04). Cette approbation ne vaut pas qualification de performance end-to-end, GCI des EDP, ni validation physique SST/NACA ; ces éléments restent explicitement ouverts.
 - Registre autoritaire : `docs/validation/CFDX_QUALIFICATION_REGISTRY.json` (campagnes) et `docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json` (exigences).
 - Issue / PR liées : PR #979 ; backlog wall-distance #34.
 - HEAD de qualification : à renseigner après la prochaine campagne CI exacte ; ne pas réutiliser les résultats d’un HEAD antérieur.
