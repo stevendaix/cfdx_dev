@@ -279,6 +279,17 @@ class CaseFilePanel(QWidget):
                 if dataset.chunks is not None
                 else "contiguous"
             )
+            allocated_label = (
+                f"allocated={dataset.storage_bytes:,} bytes"
+                if dataset.storage_bytes is not None
+                else "allocated=unknown"
+            )
+            ratio = dataset.storage_ratio
+            storage_label = (
+                f"storage={ratio:.1%} of logical"
+                if ratio is not None
+                else "storage ratio=n/a"
+            )
             compression_label = (
                 f"compression={dataset.compression}"
                 if dataset.compression is not None
@@ -286,6 +297,7 @@ class CaseFilePanel(QWidget):
             )
             details = (
                 f"{dataset.shape} · {dataset.dtype} · {size_label} · "
+                f"{allocated_label} · {storage_label} · "
                 f"{chunk_label} · {compression_label}"
             )
             parts = dataset.path.strip("/").split("/")
