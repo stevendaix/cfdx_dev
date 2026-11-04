@@ -103,7 +103,7 @@ def analyze_volume_skewness(
             expected_faces[int(neighbour_id)].add(face_id)
     for cell_id in range(n_cells):
         actual = cf[int(co[cell_id]):int(co[cell_id + 1])]
-        if len(set(int(value) for value in actual)) != actual.size:
+        if len({int(value) for value in actual}) != actual.size:
             raise ValueError(f"cell {cell_id} contains duplicate face references")
         if {int(value) for value in actual} != expected_faces[cell_id]:
             raise ValueError(f"cell {cell_id} face list disagrees with owner/neighbour")
