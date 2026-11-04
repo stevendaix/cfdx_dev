@@ -1167,6 +1167,18 @@ int main(int argc, char** argv)
                 std::cout << "SST Picard damping: " << value
                           << " (equation and convergence gates unchanged)\n";
             }
+            const auto relative_gate = case_setup.numerics.raw_settings.find(
+                "sst_scale_aware_convergence");
+            if (relative_gate != case_setup.numerics.raw_settings.end()) {
+                if (relative_gate->second != "true" && relative_gate->second != "false")
+                    throw std::invalid_argument(
+                        "sst_scale_aware_convergence must be true or false");
+                sst_controls.sst_scale_aware_convergence =
+                    relative_gate->second == "true";
+                std::cout << "SST scale-aware convergence: "
+                          << (sst_controls.sst_scale_aware_convergence ? "enabled" : "disabled")
+                          << " (true equation residual, linear and physical gates retained)\n";
+            }
             validate_turbulence_controls(sst_controls);
 
             const auto boundary_contract =
