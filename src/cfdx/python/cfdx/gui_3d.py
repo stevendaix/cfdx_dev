@@ -46,6 +46,46 @@ def _require_previewable_mesh(
     return inspected
 
 
+def _require_previewable_dat_mesh(
+    path: Path, summary: CaseFileSummary | None
+) -> CaseFileSummary:
+    """Preflight cell-to-face arrays before reading a DAT preview topology."""
+    inspected = _require_previewable_mesh(path, summary)
+    import h5py
+
+    with h5py.File(path, "r") as h5:
+        datasets = {}
+        for name in ("cell_faces", "cell_offsets"):
+            link = h5.get(name, getlink=True)
+            dataset = h5.get(name)
+            if not isinstance(link, h5py.HardLink) or not isinstance(
+                dataset, h5py.Dataset
+            ):
+                raise ValueError(
+                    f"DAT preview requires an internal HDF5 {name} dataset"
+                )
+            if dataset.is_virtual or dataset.external:
+                raise ValueError(f"DAT preview does not support external {name}")
+            if dataset.ndim != 1 or dataset.dtype.kind not in "iu":
+                raise ValueError(f"DAT preview requires one-dimensional integer {name}")
+            datasets[name] = dataset
+
+        if datasets["cell_offsets"].shape != (int(inspected.n_cells) + 1,):
+            raise ValueError("DAT preview cell_offsets do not match the cell count")
+        connectivity_entries = int(datasets["cell_faces"].shape[0])
+        source_bytes = sum(
+            int(dataset.size * dataset.dtype.itemsize)
+            for dataset in datasets.values()
+        )
+        if connectivity_entries > 2_000_000:
+            raise ValueError(
+                "DAT cell connectivity exceeds the 2M-entry eager-load budget"
+            )
+        if source_bytes > 32 * 1024 * 1024:
+            raise ValueError("DAT cell topology exceeds the 32 MiB eager-load budget")
+    return inspected
+
+
 class PyVistaQtView(QWidget if QWidget is not None else object):
     """Qt container around pyvistaqt for CFDX result visualization."""
 
@@ -178,7 +218,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         mesh_path = Path(case_path)
         if not mesh_path.exists():
             raise FileNotFoundError(case_path)
-        inspected = _require_previewable_mesh(mesh_path, summary)
+        inspected = _require_previewable_dat_mesh(mesh_path, summary)
         import h5py
         import numpy as np
 
