@@ -1210,6 +1210,34 @@ int main(int argc, char** argv)
                           << sst_controls.sst_wall_omega_factor
                           << " (not an OpenFOAM wall function)\n";
             }
+            const auto sst_linear_relaxation = case_setup.numerics.raw_settings.find(
+                "sst_transport_linear_relaxation");
+            if (sst_linear_relaxation != case_setup.numerics.raw_settings.end()) {
+                std::size_t parsed=0;
+                double alpha=0.0;
+                try { alpha=std::stod(sst_linear_relaxation->second,&parsed); }
+                catch (const std::exception&) {
+                    throw std::invalid_argument("invalid sst_transport_linear_relaxation");
+                }
+                if (parsed!=sst_linear_relaxation->second.size() ||
+                    !std::isfinite(alpha) || alpha<=0.0 || alpha>1.0)
+                    throw std::invalid_argument("sst_transport_linear_relaxation must be in (0,1]");
+                sst_controls.sst_linear_relaxation=alpha;
+            }
+            std::cout << "SST scalar post-solve relaxation: "
+                      << sst_controls.sst_linear_relaxation << " (default 0.7)\n";
+            for (const auto& setting : {std::pair<const char*,bool*>{
+                     "sst_compensated_residual_gate", &sst_controls.sst_compensated_residual_gate},
+                     {"sst_nonlinear_line_search", &sst_controls.sst_nonlinear_line_search}}) {
+                const auto found=case_setup.numerics.raw_settings.find(setting.first);
+                if (found != case_setup.numerics.raw_settings.end()) {
+                    if (found->second != "true" && found->second != "false")
+                        throw std::invalid_argument(std::string(setting.first)+" must be true or false");
+                    *setting.second = found->second == "true";
+                    std::cout << "Experimental " << setting.first << "=" << found->second
+                              << " (global physical gates unchanged)\n";
+                }
+            }
             validate_turbulence_controls(sst_controls);
 
             const auto boundary_contract =
