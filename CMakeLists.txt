@@ -1406,6 +1406,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_transport_field_contract tests/unit/test_transport_field_contract.cpp)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
     add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
+    add_cfdx_test(test_th03_sst_scale_diagnostic_v10 tests/unit/test_th03_sst_scale_diagnostic_v10.cpp)
     add_cfdx_test(test_thermo_transport_contracts tests/unit/test_thermo_transport_contracts.cpp)
     add_cfdx_test(test_thermophysical_models tests/unit/test_thermophysical_models.cpp)
     add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)
