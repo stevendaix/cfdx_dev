@@ -306,7 +306,10 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
                     sst_inner_iterations: int = 800, *,
                     sst_provisional: bool = False,
                     sst_picard_damping: float = 1.0,
-                    sst_relative_gate: bool = False) -> CaseSetup:
+                    sst_relative_gate: bool = False,
+                    sst_compensated_gate: bool = False,
+                    sst_nonlinear_line_search: bool = False,
+                    sst_linear_relaxation: float = 0.7) -> CaseSetup:
     if (not 1 <= pressure_restart <= 2048 or
             pressure_scaling not in ('none', 'row_column', 'symmetric_diagonal')):
         raise ValueError('invalid pressure Krylov controls')
@@ -318,6 +321,10 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
         raise ValueError('SST wall factor must be 6 or 60')
     if not (math.isfinite(sst_picard_damping) and 0.0 < sst_picard_damping <= 1.0):
         raise ValueError('SST Picard damping must be finite and in (0, 1]')
+    if not (math.isfinite(sst_linear_relaxation) and 0.0 < sst_linear_relaxation <= 1.0):
+        raise ValueError('SST scalar linear relaxation must be finite and in (0,1]')
+    if sst_nonlinear_line_search and sst_picard_damping != 1.0:
+        raise ValueError('SST nonlinear line search and fixed Picard damping are exclusive')
     if not all(math.isfinite(v) and v > 0 for v in (inlet_omega, initial_omega)):
         raise ValueError('inlet and initial omega must be finite and strictly positive')
     if max_iterations <= 0 or not (0. < alpha_u <= 1. and 0. < alpha_p <= 1.):
@@ -377,6 +384,9 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
     setup.numerics.raw_settings['sst_omega_newton_sink'] = str(bool(sst_newton_sink)).lower()
     setup.numerics.raw_settings['sst_sequential_omega_first'] = str(bool(sst_omega_first)).lower()
     setup.numerics.raw_settings['sst_wall_omega_factor'] = str(sst_wall_factor)
+    setup.numerics.raw_settings['sst_compensated_residual_gate'] = str(bool(sst_compensated_gate)).lower()
+    setup.numerics.raw_settings['sst_nonlinear_line_search'] = str(bool(sst_nonlinear_line_search)).lower()
+    setup.numerics.raw_settings['sst_transport_linear_relaxation'] = str(sst_linear_relaxation)
     # Provisional steps are NOT certified; the final coupled convergence gate
     # continues to require converged SST, carrier equations and conservation.
     if sst_provisional:
@@ -450,7 +460,10 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                sst_inner_iterations: int = 800,
                sst_provisional: bool = False,
                sst_picard_damping: float = 1.0,
-               sst_relative_gate: bool = False) -> dict:
+               sst_relative_gate: bool = False,
+               sst_compensated_gate: bool = False,
+               sst_nonlinear_line_search: bool = False,
+               sst_linear_relaxation: float = 0.7) -> dict:
     # A mislabeled lateral wall must never reach the CFDX solver as EMPTY.
     # Audit and case writer intentionally use this single geometry contract.
     if count_invalid_extrusion_patch_faces(mesh):
@@ -463,7 +476,10 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                             sst_newton_sink, sst_omega_first, sst_wall_factor,
                             sst_inner_iterations, sst_provisional=sst_provisional,
                             sst_picard_damping=sst_picard_damping,
-                            sst_relative_gate=sst_relative_gate)
+                            sst_relative_gate=sst_relative_gate,
+                            sst_compensated_gate=sst_compensated_gate,
+                            sst_nonlinear_line_search=sst_nonlinear_line_search,
+                            sst_linear_relaxation=sst_linear_relaxation)
     setup.source.case_path = mesh_source
     setup.source_metadata['physical_qualification'] = 'NOT_QUALIFIED'
     setup.source_metadata['inlet_omega_origin'] = (
@@ -559,6 +575,12 @@ def main() -> int:
         help='Outer SST Picard damping in (0,1]; default 1.0.')
     parser.add_argument('--sst-relative-gate', action='store_true',
         help='Use scale-aware SST residual and field gates without loosening tolerance.')
+    parser.add_argument('--sst-linear-relaxation', type=float, default=0.7,
+        help='SST transport post-solve relaxation (0,1], legacy default 0.7.')
+    parser.add_argument('--sst-compensated-gate', action='store_true',
+        help='Experimental extended-precision local SST residual gate; original FP64 also logged.')
+    parser.add_argument('--sst-nonlinear-line-search', action='store_true',
+        help='Backtrack Picard candidate only when the fully reassembled SST merit decreases.')
     parser.add_argument('--initial-omega', type=float, default=OMEGA_INITIAL,
         help='Independent initial SST omega field in 1/s; need not equal inlet.')
     parser.add_argument('--pressure-linear-scaling',
@@ -587,7 +609,10 @@ def main() -> int:
             sst_inner_iterations=args.sst_inner_iterations,
             sst_provisional=args.sst_provisional,
             sst_picard_damping=args.sst_picard_damping,
-            sst_relative_gate=args.sst_relative_gate)
+            sst_relative_gate=args.sst_relative_gate,
+            sst_compensated_gate=args.sst_compensated_gate,
+            sst_nonlinear_line_search=args.sst_nonlinear_line_search,
+            sst_linear_relaxation=args.sst_linear_relaxation)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(2, f'TH-03 mesh generation/import failed: {exc}\n')
     print(json.dumps(summary, indent=2))
