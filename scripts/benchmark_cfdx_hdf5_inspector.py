@@ -126,6 +126,24 @@ def _benchmark_one(n_cells: int) -> dict[str, Any]:
             "points": summary.n_points,
             "faces": summary.n_faces,
             "logical_dataset_bytes": logical_bytes,
+            "allocated_dataset_bytes": sum(
+                item.storage_bytes or 0 for item in summary.datasets
+            ),
+            "dataset_storage_audit": [
+                {
+                    "path": item.path,
+                    "logical_bytes": item.size_bytes,
+                    "allocated_bytes": item.storage_bytes,
+                    "allocated_ratio": (
+                        round(item.storage_ratio, 6)
+                        if item.storage_ratio is not None
+                        else None
+                    ),
+                    "chunks": item.chunks,
+                    "compression": item.compression,
+                }
+                for item in summary.datasets
+            ],
             "physical_file_bytes": path.stat().st_size,
             "points_allocated_bytes": points_allocated_bytes,
             "inspect_ms": round(inspect_ms, 3),
