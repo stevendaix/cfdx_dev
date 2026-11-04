@@ -149,7 +149,11 @@ sparse-file size and allocated bytes for the sampled points chunk. That one
 chunk is deliberately materialized and checked against known values so the
 sample measurement exercises actual HDF5 chunk I/O rather than only returning
 implicit fill values. The JSON report is published as the
-`cfdx-hdf5-inspector-benchmark` workflow artifact. These sparse fixtures
+`cfdx-hdf5-inspector-benchmark` workflow artifact. The JSON also includes
+streaming statistics for a separate materialized 4,096-value scalar probe,
+including extrema, finite count, bytes scanned and elapsed time. This exercises
+the statistics path without scanning the sparse production-scale field or
+confusing a synthetic probe with a full-case result. These sparse fixtures
 measure the file-browser path only; they do not simulate geometry rendering,
 GPU upload or interactive picking.
 
