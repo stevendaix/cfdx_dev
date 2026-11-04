@@ -100,7 +100,7 @@ def test_surface_quality_limits_are_enforced():
     points = np.asarray(
         [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
     )
-    with pytest.raises(ValueError, match="face count"):
+    with pytest.raises(ValueError, match="limits must be positive"):
         analyze_surface_quality(
             points, np.asarray([0, 1, 2]), np.asarray([0, 3]), max_faces=0
         )
