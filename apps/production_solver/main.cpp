@@ -31,12 +31,36 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#if defined(CFDX_HAS_HDF5) && CFDX_HAS_HDF5
+#include <hdf5.h>
+#endif
 
 using namespace cfdx::core;
 using namespace cfdx::io;
 using namespace cfdx::physics;
 
 namespace {
+// A CFDX case with a generic .h5 name MUST NOT silently take the mesh-only
+// loader: that route omits its physical BCs and can falsely converge at U=0.
+// Inspect only the root metadata. Ordinary HDF5 meshes stay supported.
+inline bool hdf5_contains_case_setup(const std::string& path)
+{
+#if defined(CFDX_HAS_HDF5) && CFDX_HAS_HDF5
+    hid_t file = -1;
+    H5E_BEGIN_TRY { file = H5Fopen(path.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT); }
+    H5E_END_TRY;
+    if (file < 0) return false; // Mesh importer gives the canonical error.
+    const htri_t attribute = H5Aexists(file, "case_setup_json");
+    (void)H5Fclose(file);
+    if (attribute < 0)
+        throw std::runtime_error("production solver: cannot inspect HDF5 case metadata");
+    return attribute > 0;
+#else
+    (void)path;
+    return false;
+#endif
+}
+
 volatile std::sig_atomic_t g_stop_requested = 0;
 
 void handle_stop_signal(int) noexcept
@@ -714,6 +738,11 @@ int main(int argc, char** argv)
                 throw std::runtime_error("production solver: CFDX case load failed");
         } else if (mesh_path.size() >= 3 &&
                    mesh_path.substr(mesh_path.size() - 3) == ".h5") {
+            if (hdf5_contains_case_setup(mesh_path))
+                throw std::invalid_argument(
+                    "production solver: HDF5 contains case_setup_json but file "
+                    "does not end in .cfdx.h5; rename it to load the physical case "
+                    "(case boundaries/initialization must not be ignored)");
             ok = read_mesh_hdf5(mesh_path, mesh);
         } else {
             ok = gmsh::import_gmsh_mesh(mesh_path, mesh);
@@ -1134,6 +1163,10 @@ int main(int argc, char** argv)
             controls.diagnostics.flux_patch_audit=flag("v17_flux_patch_audit");
             controls.v18_full_flux_pressure_oracle=flag("v18_full_flux_pressure_oracle");
             controls.v18_sparse_flux_pressure_jacobian=flag("v18_sparse_flux_pressure_jacobian");
+            controls.v19_full_pressure_flux_step=flag("v19_full_pressure_flux_step");
+            if (controls.v19_full_pressure_flux_step)
+                std::cout << "V19 full pressure flux step, relaxed physical pressure: "
+                          << "EXPERIMENTAL, not qualified\n";
             if (controls.v18_full_flux_pressure_oracle)
                 std::cout << "V18 reference pressure Schur Jacobian: ENABLED "
                           << "(small-mesh diagnostic only, never qualified)\n";
@@ -1177,12 +1210,13 @@ int main(int argc, char** argv)
         // state: it is read from the DAT into this caller-owned field and
         // consumed by the solver after its own initialization transaction.
         std::optional<Field<double, Location::FACE>> restart_face_flux;
-        if (!options.restart.empty() && options.experimental_sst) {
+        if (!options.restart.empty() &&
+            (options.experimental_sst || controls.v19_full_pressure_flux_step)) {
             // DAT v4 checkpoints created before the optional face_fields
-            // section remain valid for every established non-SST restart
-            // path. The experimental SST equivalence contract explicitly
-            // requires mdot; other restart modes retain their legacy
-            // reconstruction unless they opt into the face-field contract.
+            // section remain valid for established non-SST restart paths.
+            // Experimental SST and the V19 split pressure/flux policy need
+            // the authoritative mdot to replay the same momentum predictor.
+            // Do not silently reconstruct mdot from U and relaxed p here.
             restart_face_flux.emplace(mesh.n_faces(), "mdot", "kg/s", 1);
             solver_restart_fields.face_mass_flux = &*restart_face_flux;
         }
