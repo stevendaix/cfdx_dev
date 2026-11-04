@@ -165,6 +165,32 @@ def test_quality_check_fails_closed_on_inverted_internal_face():
     assert result['flipped_internal_faces']>=1
 
 
+def test_empty_patches_are_only_extrusion_caps():
+    from scripts import audit_th03_openfoam_mesh as inspect
+    for resolution in ('smoke','coarse'):
+        result=inspect.audit(b.make_structured_mesh(resolution))
+        assert result['status']=='PASS_GEOMETRY_ONLY'
+        assert result['invalid_extrusion_patch_faces']==0
+
+
+def test_mesh_audit_rejects_swapped_empty_and_wall_labels():
+    from scripts import audit_th03_openfoam_mesh as inspect
+    mesh=b.make_structured_mesh('smoke')
+    patches={p['name']:p['face_ids']
+             for p in mesh['boundary_patch_assignment']}
+    # Keep patch coverage perfect: an index/duplicate-only audit would PASS.
+    patches['front'][0],patches['lowerWall'][0] = (
+        patches['lowerWall'][0],patches['front'][0])
+    result=inspect.audit(mesh)
+    assert result['status']=='FAIL_GEOMETRY'
+    assert result['invalid_extrusion_patch_faces']==2
+    with pytest.raises(ValueError, match='EMPTY/wall patch geometry'):
+        b.write_case(Path('never_created.h5'), mesh,
+                     mesh_source='intentionally invalid fixture')
+    assert any('incompatible extrusion patch' in issue
+               for issue in result['issues'])
+
+
 def test_krylov_config_is_exported_and_rejects_invalid_entries(tmp_path):
     with pytest.raises(ValueError, match='invalid pressure Krylov controls'):
         b.make_case_setup(5,.25,.1,pressure_restart=0)
