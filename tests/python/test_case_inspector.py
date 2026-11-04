@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import h5py
+from types import SimpleNamespace
 import numpy as np
 import pytest
 from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample
@@ -224,8 +225,6 @@ def test_dat_preview_reports_missing_cell_topology(
     summary = inspect_cfdx_file(path)
     assert summary.preview_supported
 
-    from types import SimpleNamespace
-
     from cfdx import dat_io
     from cfdx.gui_3d import PyVistaQtView
 
@@ -235,7 +234,7 @@ def test_dat_preview_reports_missing_cell_topology(
         lambda _path: SimpleNamespace(cells=1, fields={}),
     )
     with pytest.raises(
-        ValueError, match=f"requires an internal HDF5 {missing_dataset}"
+        TypeError, match=f"requires an internal HDF5 {missing_dataset}"
     ):
         PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
 
