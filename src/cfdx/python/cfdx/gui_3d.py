@@ -61,7 +61,7 @@ def _require_previewable_dat_mesh(
             if not isinstance(link, h5py.HardLink) or not isinstance(
                 dataset, h5py.Dataset
             ):
-                raise TypeError(f"DAT preview requires an internal HDF5 {name} dataset)
+                raise TypeError(f"DAT preview requires an internal HDF5 {name} dataset")
             if dataset.is_virtual or dataset.external:
                 raise ValueError(f"DAT preview does not support external {name}")
             if dataset.ndim != 1 or dataset.dtype.kind not in "iu":
