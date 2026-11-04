@@ -392,6 +392,13 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
     if not 1 <= max_datasets <= 5000:
         raise ValueError("max_datasets must be between 1 and 5000")
 
+    stat_before = source.stat()
+    signature_before = (
+        int(stat_before.st_dev),
+        int(stat_before.st_ino),
+        int(stat_before.st_size),
+        int(stat_before.st_mtime_ns),
+    )
     with h5py.File(source, "r") as h5:
         attrs, attributes_truncated = _root_attributes(h5)
         attr_map = dict(attrs)
