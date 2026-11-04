@@ -109,6 +109,8 @@ jobs:
               tests/python/test_gui_3d.py
 
       - name: Benchmark sparse large-mesh HDF5 inspection
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
         run: |
           python scripts/benchmark_cfdx_hdf5_inspector.py \
             --sizes 1000000,10000000,50000000 \
