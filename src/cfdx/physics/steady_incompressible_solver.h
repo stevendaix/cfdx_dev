@@ -668,6 +668,64 @@ inline void validate_incompressible_controls(
         throw std::invalid_argument("invalid linear solver controls");
 }
 
+// Independent, read-only pressure-correction diagnostic. A tiny backward
+// error in A*x=b does NOT certify a sufficiently small local mass defect.
+// Use extended precision for this diagnostic to avoid cancellation errors
+// in the double-precision matrix-vector product itself. It can never alter
+// the linear-solver status or the physical convergence gate.
+struct PressureLinearCancellationDiagnostic {
+    bool valid = false;
+    double max_componentwise_backward_error = std::numeric_limits<double>::infinity();
+    double max_local_mass_ratio = std::numeric_limits<double>::infinity();
+};
+
+inline PressureLinearCancellationDiagnostic diagnose_pressure_linear_cancellation(
+    const cfdx::core::SparseMatrix& matrix,
+    const cfdx::core::Vector& rhs,
+    const cfdx::core::Vector& candidate,
+    const std::vector<double>& local_incident_mass_scale,
+    double required_local_mass_ratio)
+{
+    PressureLinearCancellationDiagnostic certificate;
+    const std::size_t n = matrix.n_rows();
+    if (!n || n != matrix.n_cols() || rhs.size() != n || candidate.size() != n ||
+        local_incident_mass_scale.size() != n ||
+        !std::isfinite(required_local_mass_ratio) ||
+        !(required_local_mass_ratio > 0.0))
+        return certificate;
+    long double largest_backward = 0.0L, largest_local = 0.0L;
+    for (std::size_t row = 0; row < n; ++row) {
+        const double reference = local_incident_mass_scale[row];
+        if (!(reference > 0.0) || !std::isfinite(reference) ||
+            !std::isfinite(rhs(row)))
+            return certificate;
+        long double ax = 0.0L, absolute_terms = std::abs(static_cast<long double>(rhs(row)));
+        for (std::uint32_t k = matrix.row_offsets_data()[row];
+             k < matrix.row_offsets_data()[row + 1]; ++k) {
+            const double a = matrix.values_data()[k];
+            const double x = candidate(matrix.columns_data()[k]);
+            if (!std::isfinite(a) || !std::isfinite(x))
+                return certificate;
+            const long double term = static_cast<long double>(a) * x;
+            ax += term;
+            absolute_terms += std::abs(term);
+        }
+        const long double defect = std::abs(ax - static_cast<long double>(rhs(row)));
+        const long double eta = absolute_terms > 0.0L
+            ? defect / absolute_terms : (defect == 0.0L ? 0.0L :
+               std::numeric_limits<long double>::infinity());
+        largest_backward = std::max(largest_backward, eta);
+        largest_local = std::max(largest_local, defect / reference);
+    }
+    certificate.max_componentwise_backward_error =
+        static_cast<double>(largest_backward);
+    certificate.max_local_mass_ratio = static_cast<double>(largest_local);
+    certificate.valid = largest_backward <=
+            64.0L * std::numeric_limits<double>::epsilon() &&
+        largest_local <= required_local_mass_ratio;
+    return certificate;
+}
+
 inline void apply_pressure_gauge_policy(
     cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
     const FvGeometry& geometry,
@@ -3502,6 +3560,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // matrix has N-1 rows, so the preconditioner must not be configured to
         // project a constant null space: the gauge has already removed it.
         // Project only on the full-size, explicitly projected-null-space path.
+        // Reuse AMG across pressure correctors even when symmetric algebraic
+        // scaling is active; the dispatcher below transforms the matrix and
+        // verifies the physical residual after unscaling the pressure field.
         if (pressure_plan.krylov == KrylovModel::CG) {
             const bool project_pressure_null_space =
                 pressure_plan.null_space == NullSpaceModel::Constant &&
@@ -4752,14 +4813,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     const Vector& rhs,
                     Vector& correction) {
                     if (pressure_context) {
-                        return pressure_context->solve(
-                            matrix, rhs, correction,
+                        return solve_reusable_scaled_cg(
+                            matrix, rhs, correction, *pressure_context,
+                            controls.pressure_linear_solver.scaling,
                             controls.pressure_linear_max_iterations != 0
                                 ? controls.pressure_linear_max_iterations
                                 : controls.linear_max_iterations,
                             controls.pressure_linear_tolerance > 0.0
                                 ? controls.pressure_linear_tolerance
-                                : linear_tolerance, {}, {},
+                                : linear_tolerance,
                             pressure_null_space.get());
                     }
                     return solve_linear_system(
@@ -5008,6 +5070,34 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             }
             pressure_residual = rp.residual_relative;
             pressure_iterations = rp.iterations;
+            // Forensic only: an SPD pressure operator can be resolved to
+            // backward-error O(eps) yet still violate cellwise continuity.
+            // Measure this explicitly; NEVER bypass rp.status with it.
+            if (std::getenv("CFDX_PRESSURE_ROUNDOFF_DIAGNOSTICS") &&
+                rp.status != cfdx::core::SolverStatus::CONVERGED &&
+                has_fixed_pressure_boundary &&
+                solved_pressure_matrix->n_rows() == mesh.n_cells()) {
+                std::vector<double> local_scale(mesh.n_cells(), 0.0);
+                const auto* faces = mesh.cells().faces_data();
+                const auto* offsets = mesh.cells().offsets_data();
+                for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
+                    for (cfdx::core::Offset k = offsets[cell];
+                         k < offsets[cell + 1]; ++k)
+                        local_scale[cell] += std::abs(phiHbyA(faces[k]));
+                const auto diagnostic = diagnose_pressure_linear_cancellation(
+                    *solved_pressure_matrix, *solved_pressure_rhs, p_corr,
+                    local_scale, controls.convergence.continuity_tolerance);
+                std::cerr << std::scientific << std::setprecision(9)
+                          << "PRESSURE_ROUNDOFF_DIAGNOSTIC iteration=" << iter
+                          << " corrector=" << corr
+                          << " original_true_relative=" << rp.residual_relative
+                          << " backward_error="
+                          << diagnostic.max_componentwise_backward_error
+                          << " max_local_mass_ratio="
+                          << diagnostic.max_local_mass_ratio
+                          << " local_gate_pass=" << diagnostic.valid
+                          << " qualified=0\n";
+            }
             if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
                 if (controls.momentum_assembly_forensic_callback) {
                     const auto& matrix = *solved_pressure_matrix;
