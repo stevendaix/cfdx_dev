@@ -40,6 +40,15 @@ def test_benchmark_cli_runs_without_pythonpath_or_scripts_shadowing(tmp_path):
     result = report["results"][0]
     assert result["cells"] == 1_000_000
     assert result["sample_values"] == 30
+    field_statistics = result["field_statistics"]
+    assert field_statistics["path"] == "/fields/scalar/temperature_probe"
+    assert field_statistics["value_count"] == 4096
+    assert field_statistics["finite_count"] == 4096
+    assert field_statistics["non_finite_count"] == 0
+    assert field_statistics["minimum"] == -2048.0
+    assert field_statistics["maximum"] == 2047.0
+    assert field_statistics["scanned_bytes"] == 4096 * 8
+    assert field_statistics["elapsed_ms"] >= 0
     assert result["points_allocated_bytes"] > 0
     assert result["allocated_dataset_bytes"] >= result["points_allocated_bytes"]
     storage_audit = {item["path"]: item for item in result["dataset_storage_audit"]}
