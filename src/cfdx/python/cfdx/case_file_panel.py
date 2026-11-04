@@ -25,6 +25,7 @@ from .mesh_quality import (
     SURFACE_QUALITY_MAX_FACES,
     analyze_cfdx_surface_file,
 )
+from .volume_skewness_view import VolumeSkewnessDialog
 
 
 class CaseFilePanel(QWidget):
@@ -57,6 +58,10 @@ class CaseFilePanel(QWidget):
         self.mesh_quality_button = QPushButton("Analyze surface quality")
         self.mesh_quality_button.setObjectName("workbench.case_file.surface_quality")
         self.mesh_quality_button.setEnabled(False)
+        self.volume_quality_button = QPushButton("Inspect volume skewness")
+        self.volume_quality_button.setObjectName("workbench.case_file.volume_skewness")
+        self.volume_quality_button.setEnabled(False)
+        self._volume_quality_dialog = None
         self.preview = QPlainTextEdit()
         self.preview.setObjectName("workbench.case_file.dataset_preview")
         self.preview.setReadOnly(True)
@@ -70,6 +75,7 @@ class CaseFilePanel(QWidget):
         controls.addWidget(self.collapse_button)
         controls.addStretch(1)
         controls.addWidget(self.mesh_quality_button)
+        controls.addWidget(self.volume_quality_button)
         controls.addWidget(self.statistics_button)
         controls.addWidget(self.copy_path_button)
         layout.addLayout(controls)
@@ -84,6 +90,7 @@ class CaseFilePanel(QWidget):
         self.copy_path_button.clicked.connect(self.copy_selected_dataset_path)
         self.statistics_button.clicked.connect(self.compute_selected_statistics)
         self.mesh_quality_button.clicked.connect(self.compute_surface_quality)
+        self.volume_quality_button.clicked.connect(self.open_volume_skewness)
 
     def clear(self) -> None:
         self.summary = None
@@ -92,6 +99,7 @@ class CaseFilePanel(QWidget):
         self.copy_path_button.setEnabled(False)
         self.statistics_button.setEnabled(False)
         self.mesh_quality_button.setEnabled(False)
+        self.volume_quality_button.setEnabled(False)
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         self.status.setText("No CFDX file inspected")
 
@@ -198,6 +206,21 @@ class CaseFilePanel(QWidget):
             report_text = f"Unable to analyze surface quality: {exc}"
         self.preview.setPlainText(report_text)
 
+    def open_volume_skewness(self) -> None:
+        """Open the interactive cut-plane view for bounded volume topology."""
+        if self.summary is None or not self.summary.preview_supported:
+            return
+        try:
+            dialog = VolumeSkewnessDialog(
+                self.summary.path,
+                expected_signature=self.summary.file_signature,
+                parent=self,
+            )
+            self._volume_quality_dialog = dialog
+            dialog.show()
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError) as exc:
+            self.preview.setPlainText(f"Unable to open volume skewness view: {exc}")
+
     def copy_selected_dataset_path(self) -> None:
         """Copy the selected HDF5 dataset path without reading its payload."""
         item = self.tree.currentItem()
@@ -244,6 +267,14 @@ class CaseFilePanel(QWidget):
             summary.preview_supported
             and summary.n_faces is not None
             and summary.n_faces <= SURFACE_QUALITY_MAX_FACES
+        )
+        dataset_paths = {dataset.path for dataset in summary.datasets}
+        self.volume_quality_button.setEnabled(
+            summary.preview_supported
+            and {"/" + name for name in (
+                "cell_faces", "cell_offsets", "owner", "neighbour",
+                "face_vertices", "face_offsets", "points",
+            )}.issubset(dataset_paths)
         )
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         state = "CFDX" if summary.is_cfdx else "HDF5 (unrecognised CFDX layout)"
