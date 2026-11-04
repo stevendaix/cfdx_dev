@@ -58,9 +58,7 @@ def validate_surface_topology(
 
     if patch_ids.ndim != 1:
         raise ValueError("patch_face_ids must be one-dimensional")
-    if patch_ids.size and (
-        int(patch_ids.min()) < 0 or int(patch_ids.max()) >= n_faces
-    ):
+    if patch_ids.size and (int(patch_ids.min()) < 0 or int(patch_ids.max()) >= n_faces):
         raise ValueError("patch_face_ids contains an out-of-range face index")
     _validated_offsets(
         patch_offsets,
@@ -83,9 +81,7 @@ def validate_cell_topology(
     face_ids = np.asarray(cell_faces)
     if face_ids.ndim != 1:
         raise ValueError("cell_faces must be one-dimensional")
-    if face_ids.size and (
-        int(face_ids.min()) < 0 or int(face_ids.max()) >= n_faces
-    ):
+    if face_ids.size and (int(face_ids.min()) < 0 or int(face_ids.max()) >= n_faces):
         raise ValueError("cell_faces contains an out-of-range face index")
     offsets = _validated_offsets(
         cell_offsets,
