@@ -327,6 +327,29 @@ int main()
                             cfdx::core::LinearScalingModel::SymmetricDiagonal);
     });
 
+    run_case("fallback_cg_is_for_strictly_spd_matrices_only", [] {
+        SparseMatrix nonsymmetric(2,2);
+        nonsymmetric.push_back(0,0,4.0);
+        nonsymmetric.push_back(0,1,-2.0);
+        nonsymmetric.push_back(1,0,-1.0);
+        nonsymmetric.push_back(1,1,4.0);
+        nonsymmetric.finalize();
+        EXPECT_TRUE(!scalar_cg_fallback_spd_certificate(nonsymmetric));
+        SparseMatrix indefinite(2,2);
+        indefinite.push_back(0,0,2.0);
+        indefinite.push_back(0,1,3.0);
+        indefinite.push_back(1,0,3.0);
+        indefinite.push_back(1,1,2.0);
+        indefinite.finalize();
+        EXPECT_TRUE(!scalar_cg_fallback_spd_certificate(indefinite));
+        SparseMatrix spd(2,2);
+        spd.push_back(0,0,4.0);
+        spd.push_back(0,1,-1.0);
+        spd.push_back(1,0,-1.0);
+        spd.push_back(1,1,4.0);
+        spd.finalize();
+        EXPECT_TRUE(scalar_cg_fallback_spd_certificate(spd));
+    });
     run_case("cg_rejects_nonsymmetric_row_scaling", [] {
         ScalarEquation eq;
         eq.matrix = SparseMatrix(2, 2);
