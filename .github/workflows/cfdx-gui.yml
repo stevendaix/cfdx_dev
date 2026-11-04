@@ -96,6 +96,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: xcb
         run: |
+          mkdir -p artifacts
           xvfb-run -a -s "-screen 0 1280x1024x24" \
             python -m pytest -q \
               tests/python/test_capabilities.py \
@@ -106,7 +107,17 @@ jobs:
               tests/python/test_renderer.py \
               tests/python/test_renderer_headless_contract.py \
               tests/python/test_renderer_pyvista.py \
-              tests/python/test_gui_3d.py
+              tests/python/test_gui_3d.py \
+              --junitxml=artifacts/gui-regression-junit.xml
+
+      - name: Upload GUI regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-gui-regression-junit
+          path: artifacts/gui-regression-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Benchmark sparse large-mesh HDF5 inspection
         env:
