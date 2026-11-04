@@ -132,6 +132,79 @@ int main()
         EXPECT_NEAR(r.second_residual,expected.omega_raw_inf,1e-12);
         EXPECT_TRUE(std::isfinite(r.k_residual) && std::isfinite(r.second_residual));
     });
+    run_case("v13_sst_newton_sink_preserves_the_exact_omega_source", [] {
+        TurbulenceTransportControls old;
+        old.model = TurbulenceModel::SST;
+        old.density = 1.2;
+        old.sst_omega_newton_sink = false;
+        auto improved=old;
+        improved.sst_omega_newton_sink = true;
+        const double k=0.35, w=15.0, strain=4.0, f1=0.7, f2=0.4;
+        const double cross=-1.3;
+        const auto old_s=sst_cell_sources(k,w,strain,f1,f2,cross,old);
+        const auto new_s=sst_cell_sources(k,w,strain,f1,f2,cross,improved);
+        EXPECT_NEAR(old_s.sk, new_s.sk, 1e-13);
+        EXPECT_NEAR(old_s.spk, new_s.spk, 1e-13);
+        EXPECT_NEAR(old_s.gamma_k, new_s.gamma_k, 1e-13);
+        EXPECT_NEAR(old_s.sw + old_s.spw*w,
+                    new_s.sw + new_s.spw*w, 1e-12);
+        const double beta= f1*old.beta1+(1.0-f1)*old.beta2;
+        EXPECT_NEAR(new_s.sw-old_s.sw,old.density*beta*w*w,1e-11);
+        EXPECT_NEAR(new_s.spw-old_s.spw,-old.density*beta*w,1e-12);
+        EXPECT_TRUE(new_s.spw < old_s.spw);
+    });
+    run_case("v13_wall_omega_requires_explicit_treatment_choice", [] {
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        const auto geometry = build_fv_geometry(mesh);
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.molecular_viscosity=1e-5;
+        controls.sst_wall_omega_factor=6.0;
+        const auto legacy=make_sst_wall_omega_face_values(
+            mesh,geometry,std::vector<std::string>{"wall"},controls);
+        controls.sst_wall_omega_factor=60.0;
+        const auto menter=make_sst_wall_omega_face_values(
+            mesh,geometry,std::vector<std::string>{"wall"},controls);
+        EXPECT_NEAR(menter.values.at("wall")[0],
+                    10.0*legacy.values.at("wall")[0],1e-12);
+        controls.sst_wall_omega_factor=9.0;
+        EXPECT_THROW(validate_turbulence_controls(controls),std::invalid_argument);
+    });
+    run_case("v13_omega_first_coupling_uses_updated_omega_in_k_equation", [] {
+        using namespace cfdx::core;
+        const auto mesh = make_sst_transaction_unit_cube();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double,Location::FACE> flux(mesh.n_faces(),"phi","kg/s",1);
+        flux.fill(0.0);
+        Field<double,Location::CELL> k(mesh.n_cells(),"k","m2/s2",1),
+            omega(mesh.n_cells(),"omega","1/s",1),
+            strain(mesh.n_cells(),"s","1/s",1),
+            F1(mesh.n_cells(),"f1","1",1), F2(mesh.n_cells(),"f2","1",1);
+        k.fill(0.4); omega.fill(20.0); strain.fill(10.0);
+        F1.fill(0.8); F2.fill(0.7);
+        ScalarBoundaryConditions kb,ob;
+        for (const char* patch : {"x0", "x1", "walls"}) {
+            kb[patch]={ScalarBoundaryType::FIXED_VALUE,0.03,0.0};
+            ob[patch]={ScalarBoundaryType::FIXED_VALUE,2.0,0.0};
+        }
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.sst_omega_newton_sink = true;
+        auto parallel_k=k,parallel_omega=omega;
+        auto sequential_k=k,sequential_omega=omega;
+        const auto parallel_result=solve_sst_transport(
+            mesh,geometry,flux,parallel_k,parallel_omega,strain,F1,F2,
+            controls,kb,ob,1,1e-10);
+        controls.sst_sequential_omega_first=true;
+        const auto sequential_result=solve_sst_transport(
+            mesh,geometry,flux,sequential_k,sequential_omega,strain,F1,F2,
+            controls,kb,ob,1,1e-10);
+        EXPECT_TRUE(std::isfinite(parallel_result.k_residual));
+        EXPECT_TRUE(std::isfinite(sequential_result.k_residual));
+        EXPECT_TRUE(sequential_k(0)>0.0 && sequential_omega(0)>0.0);
+        EXPECT_NEAR(parallel_omega(0),sequential_omega(0),1e-11);
+        EXPECT_TRUE(std::abs(parallel_k(0)-sequential_k(0))>1e-7);
+    });
     run_case("sst_dynamic_blending_diagnostics_accumulate_all_bound_events", [] {
         TurbulenceTransportResult aggregate;
         aggregate.k_floor_events = 2;
