@@ -17,6 +17,16 @@ variable-length, object and compound datasets are rejected. This is a
 diagnostic sample, not a replacement for a full field reader or
 post-processing pipeline.
 
+The Case File dock also provides an explicit **Compute statistics** action for
+the selected numeric dataset. It scans in bounded blocks and reports minimum,
+maximum, arithmetic mean, RMS, finite/non-finite counts and bytes scanned.
+The default logical-read budget is 64 MiB and the default block/decompression
+budget is 1 MiB; larger datasets or chunks are refused with a reason instead
+of silently allocating more memory. This quick-look treats every stored value
+equally: it is not volume-, mass- or area-weighted and must not be interpreted
+as a conservative CFD integral. Opening a case and selecting a dataset still
+do not trigger this full-dataset scan; the user must explicitly request it.
+
 This distinction matters for production cases whose topology contains tens of
 millions of entities. Opening a file must not implicitly allocate a second copy
 of the mesh in Python or GPU memory.
