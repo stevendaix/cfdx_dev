@@ -132,6 +132,115 @@ int main()
         EXPECT_NEAR(r.second_residual,expected.omega_raw_inf,1e-12);
         EXPECT_TRUE(std::isfinite(r.k_residual) && std::isfinite(r.second_residual));
     });
+    run_case("v15_extended_residual_detects_fp64_cancellation_on_same_matrix", [] {
+        using namespace cfdx::core;
+        ScalarEquation equation;
+        equation.matrix=SparseMatrix(3,3);
+        equation.matrix.push_back(0,0,1e16);
+        equation.matrix.push_back(0,1,-1e16);
+        equation.matrix.push_back(0,2,1.0);
+        equation.matrix.push_back(1,1,1.0);
+        equation.matrix.push_back(2,2,1.0);
+        equation.matrix.finalize();
+        equation.rhs=Vector(3,0.0);
+        equation.rhs(0)=1.0;
+        equation.rhs(1)=1.0;
+        equation.rhs(2)=1.0;
+        Vector x(3,1.0);
+        const auto r=sst_local_residual_precision_audit(equation,x,1e-20);
+        EXPECT_TRUE(r.native.maximum_relative>0.0);
+        EXPECT_NEAR(r.compensated.maximum_relative,0.0,1e-25);
+        EXPECT_TRUE(r.maximum_row_disagreement>0.0);
+        EXPECT_TRUE(r.disagreement_cell==0);
+        equation.rhs(0)=0.0;
+        const auto actual=sst_local_residual_precision_audit(equation,x,1e-20);
+        EXPECT_TRUE(actual.compensated.maximum_relative>0.0);
+        EXPECT_NEAR(actual.compensated.maximum_relative,
+                    1.0/(2e16+1.0),1e-28);
+    });
+    run_case("v15_wall_audit_distinguishes_face_dirichlet_and_first_cell_omega", [] {
+        using namespace cfdx::core;
+        const auto mesh=make_sst_wall_operator_test_mesh();
+        const auto geom=build_fv_geometry(mesh);
+        TurbulenceTransportControls controls;
+        controls.model=TurbulenceModel::SST;
+        controls.molecular_viscosity=1e-5;
+        controls.sst_wall_omega_factor=6.0;
+        const auto values=make_sst_wall_omega_face_values(
+            mesh,geom,std::vector<std::string>{"wall"},controls);
+        Field<double,Location::CELL> U(1,"velocity","m/s",3);
+        U(0,0)=0.0; U(0,1)=2.0; U(0,2)=0.0;
+        Field<double,Location::CELL> w(1,"omega","1/s",1);
+        const double y=2.0;
+        const double nasa=60.0*controls.molecular_viscosity/(controls.beta1*y*y);
+        w(0)=nasa;
+        const auto audit=audit_sst_wall_omega_discretization(
+            mesh,geom,{"wall"},values,U,w,
+            {{"wall",{0.0,0.0,0.0}}},controls);
+        EXPECT_TRUE(audit.faces==1 && audit.velocity_proxy_faces==1);
+        EXPECT_NEAR(audit.min_distance,y,1e-12);
+        EXPECT_NEAR(audit.min_nasa_first_cell_value,nasa,1e-12);
+        EXPECT_NEAR(audit.min_face_value,nasa/10.0,1e-12);
+        EXPECT_NEAR(audit.min_owner_to_first_cell_ratio,1.0,1e-12);
+        EXPECT_NEAR(audit.max_viscous_yplus_proxy,std::sqrt(y*2.0/1e-5),1e-9);
+        EXPECT_NEAR(audit.max_tangential_geometry_ratio,0.0,1e-12);
+        EXPECT_THROW(audit_sst_wall_omega_discretization(
+            mesh,geom,{"missing"},values,U,w,{},controls),std::invalid_argument);
+    });
+    run_case("v15_scalar_relaxation_validates_domain_and_keeps_default", [] {
+        TurbulenceTransportControls c;
+        c.model=TurbulenceModel::SST;
+        EXPECT_NEAR(c.sst_linear_relaxation,0.7,0.0);
+        c.sst_linear_relaxation=1.0;
+        validate_turbulence_controls(c);
+        c.sst_linear_relaxation=0.0;
+        EXPECT_THROW(validate_turbulence_controls(c),std::invalid_argument);
+        c.sst_linear_relaxation=1.1;
+        EXPECT_THROW(validate_turbulence_controls(c),std::invalid_argument);
+    });
+    run_case("v15_nonlinear_line_search_merit_is_strict_and_fail_closed", [] {
+        const double old=0.2;
+        EXPECT_TRUE(sst_nonlinear_step_reduces_merit(old,0.19,0.5));
+        EXPECT_TRUE(!sst_nonlinear_step_reduces_merit(old,old,1.0));
+        EXPECT_TRUE(!sst_nonlinear_step_reduces_merit(old,0.3,0.1));
+        EXPECT_TRUE(!sst_nonlinear_step_reduces_merit(old,-1.0,1.0));
+        EXPECT_TRUE(!sst_nonlinear_step_reduces_merit(old,0.01,0.0));
+        TurbulenceTransportControls controls;
+        controls.model=TurbulenceModel::SST;
+        controls.sst_nonlinear_line_search=true;
+        controls.sst_picard_damping=0.5;
+        EXPECT_THROW(validate_turbulence_controls(controls),std::invalid_argument);
+        controls.sst_picard_damping=1.0;
+        validate_turbulence_controls(controls);
+    });
+    run_case("v15_line_search_one_cell_cannot_increase_reassembled_merit", [] {
+        using namespace cfdx::core;
+        const auto mesh=make_sst_transaction_unit_cube();
+        const auto geom=build_fv_geometry(mesh);
+        Field<double,Location::FACE> flux(mesh.n_faces(),"flux","kg/s",1);
+        flux.fill(0.0);
+        Field<double,Location::CELL> k(1,"k","m2/s2",1),w(1,"w","1/s",1),
+            strain(1,"strain","1/s",1),wall(1,"y","m",1);
+        k(0)=0.4;w(0)=8.0;strain(0)=2.0;wall(0)=0.1;
+        ScalarBoundaryConditions kb,ob;
+        for(const char* patch:{"x0","x1","walls"}) {
+            kb[patch]={ScalarBoundaryType::FIXED_VALUE,0.01,0.0};
+            ob[patch]={ScalarBoundaryType::FIXED_VALUE,2.0,0.0};
+        }
+        TurbulenceTransportControls c;
+        c.model=TurbulenceModel::SST;
+        c.sst_nonlinear_line_search=true;
+        const auto before=sst_reassembled_returned_state_residual(
+            mesh,geom,flux,k,w,strain,wall,c,kb,ob,nullptr);
+        const auto result=solve_sst_transport_dynamic_blending(
+            mesh,geom,flux,k,w,strain,wall,c,kb,ob,1,1e-12);
+        const auto after=sst_reassembled_returned_state_residual(
+            mesh,geom,flux,k,w,strain,wall,c,kb,ob,nullptr);
+        EXPECT_TRUE(std::isfinite(result.k_residual) &&
+                    std::isfinite(result.second_residual));
+        EXPECT_TRUE(sst_nonlinear_merit(after) <= sst_nonlinear_merit(before));
+        EXPECT_TRUE(!result.converged);
+    });
     run_case("v14_sst_records_linear_solution_and_relaxed_state_separately", [] {
         using namespace cfdx::core;
         const auto mesh=make_sst_transaction_unit_cube();
