@@ -103,3 +103,15 @@ def test_invalid_cell_connectivity_is_rejected(
             n_cells=len(cell_offsets) - 1,
             n_faces=4,
         )
+
+
+def test_cell_topology_bounds_expanded_vtk_connectivity():
+    with pytest.raises(ValueError, match="expanded VTK cell connectivity"):
+        validate_cell_topology(
+            np.zeros(1000, dtype=np.int64),
+            np.asarray([0, 1000], dtype=np.int64),
+            np.asarray([0, 2000], dtype=np.int64),
+            n_cells=1,
+            n_faces=1,
+            max_vtk_entries=1000,
+        )
