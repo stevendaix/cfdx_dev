@@ -39,6 +39,7 @@ def test_benchmark_cli_runs_without_pythonpath_or_scripts_shadowing(tmp_path):
     assert len(report["results"]) == 1
     result = report["results"][0]
     assert result["cells"] == 1_000_000
-    assert result["sample_values"] <= 32
+    assert result["sample_values"] == 30
+    assert result["points_allocated_bytes"] > 0
     assert result["preview_block_reason"]
     assert result["physical_file_bytes"] < result["logical_dataset_bytes"]
