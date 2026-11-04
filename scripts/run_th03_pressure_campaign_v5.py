@@ -7,6 +7,7 @@ import subprocess
 from pathlib import Path
 
 from generate_th03_openfoam_blockmesh import make_structured_mesh, write_case
+from audit_th03_case_contract_v10 import audit as audit_input_contract
 
 _RESIDUAL = re.compile(r'pressure-correction solve did not converge .*?iterations=(\d+), residual=([\deE.+-]+), relative=([\deE.+-]+)')
 _ACCEPTED = re.compile(r'INCOMPRESSIBLE_ITER iter=(\d+).*?pressure_linear_iterations=(\d+) pressure_relative_residual=([\deE.+-]+)')
@@ -22,6 +23,9 @@ def campaign(solver: Path, output: Path, timeout: float, tolerance: float,
         write_case(case, mesh, mesh_source=f'OpenFOAM six-block reconstruction ({grid}); not exact blockMesh',
                    max_iterations=2, pressure_krylov='cg',
                    pressure_preconditioner='native_amg', pressure_tolerance=tolerance)
+        input_contract = audit_input_contract(case)
+        if input_contract['mesh_status'] == 'FAIL_GEOMETRY':
+            raise ValueError(f'TH-03 mesh geometry invalid on {grid}')
         cmd = [str(solver), '--mesh', str(case), '--output-dir', str(output / f'out_{grid}'),
                '--iterations', '2', '--experimental-sst', '--benchmark-export']
         timed_out = False
@@ -40,6 +44,9 @@ def campaign(solver: Path, output: Path, timeout: float, tolerance: float,
         accepted = _ACCEPTED.findall(log)
         results.append({
             'grid': grid, 'cells': mesh['n_cells'], 'timeout': timed_out,
+            'input_contract_checks': input_contract['checks'],
+            'inlet_eddy_viscosity_ratio': input_contract['physics']['inlet_nut_over_nu'],
+            'experimental_input_comparability': input_contract['experimental_comparability'],
             'return_code': code,
             'last_pressure_failure': {
                 'iterations': int(failures[-1][0]),
