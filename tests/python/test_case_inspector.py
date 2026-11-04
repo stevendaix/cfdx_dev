@@ -154,6 +154,29 @@ def test_inspect_converter_mesh_layout_without_case_config(tmp_path):
     assert application.selection.stable_id is None
 
 
+
+def test_soft_linked_case_config_is_not_reported_as_project_config(tmp_path):
+    path = tmp_path / "soft-linked-config.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX"
+        h5.attrs["case_setup_json"] = (
+            '{"name":"imported","physics":{"energy":true},'
+            '"numerics":{"scheme":"SIMPLE"},"boundaries":{}}'
+        )
+        h5.create_dataset(
+            "metadata/decoy_config",
+            data='{"name":"not-canonical","physics":{},"numerics":{},"boundaries":{}}',
+        )
+        h5["case"] = h5py.SoftLink("/metadata")
+        h5["case/config"] = h5py.SoftLink("/metadata/decoy_config")
+
+    summary = inspect_cfdx_file(path)
+
+    assert summary.has_case_config
+    assert not summary.has_project_config
+    assert summary.case_name == "imported"
+
+
 def test_inspect_does_not_preview_mesh_with_external_region_catalog(tmp_path):
     path = tmp_path / "external-regions.h5"
     with h5py.File(path, "w") as h5:
