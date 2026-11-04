@@ -194,7 +194,7 @@ The current report contains:
 - Face edge-length ratio (longest / shortest edge), with min, p95 and max.
 - Relative warpage: maximum vertex distance to the least-squares face plane,
   divided by the longest edge; min/p95/max summary and worst face IDs.
-- Degenerate faces and faces with numerically zero-length edges.
+- Degenerate faces and faces with numerically zero-length edges; a zero-length edge makes a face degenerate even when its polygon area is otherwise nonzero.
 
 These are **surface-face geometric indicators**, not volume-cell quality
 metrics. A surface-only boundary mesh cannot establish cell skewness,
