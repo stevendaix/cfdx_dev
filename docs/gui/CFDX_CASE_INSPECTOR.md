@@ -76,6 +76,16 @@ measured peak-RSS and latency benchmarks justify doing so.
 
 The numerical checkpoint remains a separate `.dat.h5` artifact. Inspecting a
 case does not load or activate a restart checkpoint.
+The dataset tree also exposes a read-only storage audit for every discovered dataset:
+logical payload size (shape × dtype), allocated HDF5 storage bytes, allocated/logical
+ratio, chunk shape and compression filter. This distinguishes dense datasets from
+chunked sparse datasets whose logical dimensions can be enormous while few chunks
+are physically allocated. The ratio is not a compression benchmark: it reflects
+allocated HDF5 storage for that dataset and can be zero for an unallocated chunked
+dataset. Variable-length/object datasets retain unknown logical/allocated sizes
+rather than reporting misleading pointer-based estimates. These values are read
+from HDF5 metadata and do not materialize field or mesh arrays.
+
 The Case File dock displays datasets as a hierarchical HDF5 tree. Its filter
 retains matching ancestor groups; dataset samples can be opened by mouse or
 keyboard selection. The Copy dataset path action copies the selected absolute
