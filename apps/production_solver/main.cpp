@@ -75,6 +75,8 @@ struct Options {
     std::size_t iterations = 2;
     bool adaptive_convergence = false;
     bool initial_velocity_field = false;
+    bool initial_sst_fields = false;
+    bool initial_face_mass_flux = false;
     bool wall_forces_quadratic = false;
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
@@ -675,6 +677,8 @@ Options parse(int argc, char** argv)
         else if (arg == "--iterations") o.iterations = std::stoull(value("--iterations"));
         else if (arg == "--adaptive-convergence") o.adaptive_convergence = true;
         else if (arg == "--initial-velocity-field") o.initial_velocity_field = true;
+        else if (arg == "--initial-sst-fields") o.initial_sst_fields = true;
+        else if (arg == "--initial-face-mass-flux") o.initial_face_mass_flux = true;
         else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--benchmark-export") o.benchmark_export = true;
@@ -684,6 +688,8 @@ Options parse(int argc, char** argv)
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
                          "  [--initial-velocity-field] (initialize U from /fields/vector/U)\n"
+                         "  [--initial-sst-fields] (initial k and omega from /fields/scalar)\n"
+                         "  [--initial-face-mass-flux] (projected /fields/face/mdot; requires initial velocity)\n"
                          "  [--wall-forces-quadratic] (opt-in 3-D quadratic WLS wall-force artifact; rank-deficient stencils fail)\n"
                          "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
                          "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
@@ -789,6 +795,14 @@ int main(int argc, char** argv)
                     "only); use a compressible solver for this case");
         }
 
+        if (options.initial_sst_fields && (!options.experimental_sst ||
+            !options.restart.empty() || !is_case_hdf5))
+            throw std::invalid_argument(
+                "--initial-sst-fields requires --experimental-sst, HDF5, and no DAT restart");
+        if (options.initial_face_mass_flux && (!options.initial_velocity_field ||
+            !options.restart.empty() || !is_case_hdf5))
+            throw std::invalid_argument(
+                "--initial-face-mass-flux requires --initial-velocity-field, HDF5, and no DAT restart");
         Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
         Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
 
@@ -1209,6 +1223,34 @@ int main(int argc, char** argv)
         controls.initialization = initialization;
         if (!options.restart.empty())
             controls.initialization.mode = InitializationMode::Restart;
+        if (options.initial_face_mass_flux) {
+#if defined(CFDX_HAS_HDF5) && CFDX_HAS_HDF5
+            const auto fail = [](const char* why) -> void {
+                throw std::invalid_argument(
+                    std::string("hybrid /fields/face/mdot: ") + why);
+            };
+            hid_t file=H5Fopen(mesh_path.c_str(), H5F_ACC_RDONLY, H5P_DEFAULT);
+            if (file<0) fail("cannot open HDF5");
+            hid_t ds=H5Dopen2(file,"/fields/face/mdot",H5P_DEFAULT);
+            if (ds<0) { H5Fclose(file); fail("missing dataset"); }
+            hid_t space=H5Dget_space(ds);
+            hsize_t dims[1]={0};
+            if (space<0 || H5Sget_simple_extent_ndims(space)!=1 ||
+                H5Sget_simple_extent_dims(space,dims,nullptr)<0 ||
+                dims[0]!=mesh.n_faces()) {
+                if (space>=0) H5Sclose(space);
+                H5Dclose(ds); H5Fclose(file);
+                fail("invalid face field shape");
+            }
+            controls.initial_face_mass_flux.resize(mesh.n_faces());
+            const auto read_result=H5Dread(ds,H5T_NATIVE_DOUBLE,H5S_ALL,H5S_ALL,
+                                        H5P_DEFAULT,controls.initial_face_mass_flux.data());
+            H5Sclose(space); H5Dclose(ds); H5Fclose(file);
+            if (read_result<0) fail("cannot read dataset");
+#else
+            throw std::invalid_argument("hybrid face flux requires HDF5-enabled CFDX");
+#endif
+        }
 
         // Own all SST runtime objects in main for the complete solver call.
         // The default production selector stays fail-closed; this branch can
@@ -1404,6 +1446,36 @@ int main(int argc, char** argv)
                     initialize_sst_production_state_from_mesh(
                         mesh, case_setup, sst_controls, U,
                         fixed_velocity_values, wall_patch_names));
+                if (options.initial_sst_fields) {
+                    std::vector<std::pair<std::string,ScalarCellField>> scalars;
+                    if (!read_scalar_fields_hdf5(mesh_path,scalars))
+                        throw std::invalid_argument("hybrid SST fields cannot be read from HDF5");
+                    bool found_k=false, found_omega=false;
+                    for (const auto& [name,field]:scalars) {
+                        if (name!="k" && name!="omega") continue;
+                        if (field.size()!=mesh.n_cells() || field.dimension()!=1)
+                            throw std::invalid_argument("hybrid SST scalar shape mismatch");
+                        bool& found=name=="k" ? found_k : found_omega;
+                        if (found)
+                            throw std::invalid_argument("duplicate hybrid SST scalar");
+                        found=true;
+                        for (std::size_t c=0;c<mesh.n_cells();++c) {
+                            const double value=field(c);
+                            if (!std::isfinite(value) ||
+                                !(value>=(name=="k" ? sst_controls.k_min : sst_controls.omega_min)))
+                                throw std::invalid_argument("hybrid SST field contains an invalid or subfloor value");
+                            if (name=="k") experimental_sst_state->k(c)=value;
+                            else experimental_sst_state->omega(c)=value;
+                        }
+                    }
+                    if (!found_k || !found_omega)
+                        throw std::invalid_argument("hybrid SST requires k and omega datasets");
+                    refresh_sst_production_derived_state_from_mesh(
+                        *experimental_sst_state,mesh,sst_controls,U,
+                        fixed_velocity_values,wall_patch_names);
+                    std::cout << "HYBRID_INITIAL_SST_FIELDS imported nonuniform k and omega"
+                                 " (derived nut refreshed; NOT qualified)\n";
+                }
             }
 
             experimental_sst_runtime.state = &*experimental_sst_state;
