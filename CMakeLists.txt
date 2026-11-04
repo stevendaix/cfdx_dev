@@ -1628,3 +1628,10 @@ if(CFDX_BUILD_TESTS)
     set_tests_properties(test_pressure_linear_diagnostics_v9 PROPERTIES
         LABELS "verification;pressure;mass;diagnostic")
 endif()
+
+# V11 numerical qualification: independent checks for active vector components
+# and dimensional SST convergence. Neither test asserts benchmark validation.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_momentum_residual_certification_v11 tests/unit/test_momentum_residual_certification_v11.cpp)
+    add_cfdx_test(test_sst_relative_convergence_v11 tests/unit/test_sst_relative_convergence_v11.cpp)
+endif()
