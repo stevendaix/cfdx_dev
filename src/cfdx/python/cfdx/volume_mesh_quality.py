@@ -1,9 +1,9 @@
 """Bounded volumetric mesh skewness diagnostics for CFDX HDF5 meshes.
 
-The metric is a face-based internal-face skewness: distance between the face
-centroid and the owner/neighbour-centroid line, normalized by the face's
-equivalent-area length. Cell scores are the maximum incident internal-face
-score. Boundary faces are excluded because they have no neighbour centroid.
+The metric follows CFDX core/geometry/mesh_quality.h: distance from the face
+centre to the owner-neighbour cell-centre line, normalized by the centre
+distance. Cell centres follow GeometryCache's face-area-weighted construction.
+Boundary faces are excluded.
 """
 
 from __future__ import annotations
@@ -107,42 +107,55 @@ def analyze_volume_skewness(
     internal = np.flatnonzero(nei >= 0)
     if np.any(own[internal] == nei[internal]):
         raise ValueError("internal face cannot have identical owner and neighbour")
-    # Vertex-average cell centroids are robust for arbitrary polyhedra and do
-    # not assume convexity or a particular element family.
+    # Match CFDX GeometryCache: polygon face centres/areas first, then
+    # area-weighted provisional cell centres, orient face area vectors from
+    # owner to neighbour, and use the core mesh_quality.h skewness definition.
+    face_centres = np.empty((n_faces, 3), dtype=np.float64)
+    face_area_vectors = np.empty((n_faces, 3), dtype=np.float64)
+    face_areas = np.empty(n_faces, dtype=np.float64)
+    for face_id in range(n_faces):
+        polygon = xyz[fv[int(fo[face_id]):int(fo[face_id + 1])]]
+        centre = polygon.mean(axis=0)
+        centred = polygon - centre
+        area_vector = np.sum(np.cross(centred, np.roll(centred, -1, axis=0)), axis=0) * 0.5
+        area = float(np.linalg.norm(area_vector))
+        if not np.isfinite(area) or area <= np.finfo(float).tiny:
+            raise ValueError(f"face {face_id} is degenerate")
+        face_centres[face_id] = centre
+        face_area_vectors[face_id] = area_vector
+        face_areas[face_id] = area
+
     cell_centres = np.empty((n_cells, 3), dtype=np.float64)
     for cell_id in range(n_cells):
         face_ids = cf[int(co[cell_id]):int(co[cell_id + 1])]
-        point_ids = np.unique(np.concatenate([
-            fv[int(fo[fid]):int(fo[fid + 1])] for fid in face_ids
-        ]))
-        if point_ids.size < 4:
-            raise ValueError(f"cell {cell_id} has fewer than four unique vertices")
-        cell_centres[cell_id] = xyz[point_ids].mean(axis=0)
+        weights = face_areas[face_ids]
+        total_area = float(weights.sum())
+        if not np.isfinite(total_area) or total_area <= np.finfo(float).tiny:
+            raise ValueError(f"cell {cell_id} has invalid total face area")
+        cell_centres[cell_id] = np.average(face_centres[face_ids], axis=0, weights=weights)
+
     face_scores = np.full(n_faces, np.nan, dtype=np.float64)
+    face_non_orthogonality = np.full(n_faces, np.nan, dtype=np.float64)
     cell_scores = np.zeros(n_cells, dtype=np.float64)
     adjacency = [set() for _ in range(n_cells)]
     for face_id in internal:
         owner_id, neighbour_id = int(own[face_id]), int(nei[face_id])
         adjacency[owner_id].add(neighbour_id)
         adjacency[neighbour_id].add(owner_id)
-        polygon = xyz[fv[int(fo[face_id]):int(fo[face_id + 1])]]
-        face_centre = polygon.mean(axis=0)
-        centred_face = polygon - face_centre
-        area_vector = np.sum(
-            np.cross(centred_face, np.roll(centred_face, -1, axis=0)), axis=0
-        ) * 0.5
-        area = float(np.linalg.norm(area_vector))
-        if not np.isfinite(area) or area <= np.finfo(float).tiny:
-            raise ValueError(f"internal face {face_id} is degenerate")
         line = cell_centres[neighbour_id] - cell_centres[owner_id]
-        line_norm2 = float(line @ line)
-        if line_norm2 <= np.finfo(float).tiny:
+        line_norm = float(np.linalg.norm(line))
+        if line_norm <= np.finfo(float).tiny:
             raise ValueError(f"cells adjacent to face {face_id} have coincident centroids")
-        projection = float((face_centre - cell_centres[owner_id]) @ line) / line_norm2
-        closest = cell_centres[owner_id] + projection * line
-        # Dimensionless displacement relative to equivalent face diameter.
-        scale = np.sqrt(area)
-        score = float(np.linalg.norm(face_centre - closest) / scale)
+        area_vector = face_area_vectors[face_id]
+        if float(area_vector @ line) < 0.0:
+            area_vector = -area_vector
+        cosine = float(np.clip((line @ area_vector) / (line_norm * face_areas[face_id]), -1.0, 1.0))
+        face_non_orthogonality[face_id] = float(np.degrees(np.arccos(cosine)))
+        owner_to_face = face_centres[face_id] - cell_centres[owner_id]
+        projection = float(owner_to_face @ line) / (line_norm * line_norm)
+        projected = cell_centres[owner_id] + line * projection
+        # Same convention as CFDX core/geometry/mesh_quality.h.
+        score = float(np.linalg.norm(face_centres[face_id] - projected) / line_norm)
         face_scores[face_id] = score
         cell_scores[owner_id] = max(cell_scores[owner_id], score)
         cell_scores[neighbour_id] = max(cell_scores[neighbour_id], score)
@@ -156,6 +169,8 @@ def analyze_volume_skewness(
     return VolumeSkewnessReport(
         cell_skewness=cell_scores,
         face_skewness=face_scores,
+        face_non_orthogonality_deg=face_non_orthogonality,
+        cell_centres=cell_centres,
         cell_neighbours=tuple(tuple(sorted(values)) for values in adjacency),
         worst_cell_ids=tuple(problem_order[:20]),
         bad_cell_ids=tuple(int(i) for i in bad),
