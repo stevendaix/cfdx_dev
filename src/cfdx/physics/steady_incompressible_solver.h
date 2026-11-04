@@ -6025,6 +6025,33 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     fixed_velocity_values.emplace(
                         patch, std::array<double, 3>{bc.value.x, bc.value.y, bc.value.z});
             }
+            if (std::getenv("CFDX_SST_WALL_AUDIT") != nullptr &&
+                !controls.sst_runtime->wall_omega_sst_patches.empty() &&
+                (iter==1 || iter%5==0 || iter==controls.convergence.max_iterations)) {
+                const auto wall_audit=audit_sst_wall_omega_discretization(
+                    mesh,geometry,controls.sst_runtime->wall_omega_sst_patches,
+                    controls.sst_runtime->omega_face_values,U,
+                    controls.sst_runtime->state->omega,fixed_velocity_values,
+                    controls.sst_runtime->transport);
+                std::cerr << std::scientific << std::setprecision(9)
+                          << "SST_WALL_DISCRETE_AUDIT iteration=" << iter
+                          << " faces=" << wall_audit.faces
+                          << " d_min=" << wall_audit.min_distance
+                          << " d_max=" << wall_audit.max_distance
+                          << " lateral_normal_max=" << wall_audit.max_tangential_geometry_ratio
+                          << " omega_face_min=" << wall_audit.min_face_value
+                          << " omega_face_max=" << wall_audit.max_face_value
+                          << " nasa_firstcell_min=" << wall_audit.min_nasa_first_cell_value
+                          << " nasa_firstcell_max=" << wall_audit.max_nasa_first_cell_value
+                          << " owner_to_nasa60_min=" << wall_audit.min_owner_to_first_cell_ratio
+                          << " owner_to_nasa60_max=" << wall_audit.max_owner_to_first_cell_ratio
+                          << " yplus_viscous_proxy_faces=" << wall_audit.velocity_proxy_faces
+                          << " yplus_viscous_proxy_min=" << (wall_audit.velocity_proxy_faces
+                              ? wall_audit.min_viscous_yplus_proxy : -1.0)
+                          << " yplus_viscous_proxy_max=" << (wall_audit.velocity_proxy_faces
+                              ? wall_audit.max_viscous_yplus_proxy : -1.0)
+                          << " qualified=0\n";
+            }
             sst_step = advance_sst_production_iterate_transactionally(
                 mesh, U, p, mass_flux, *controls.sst_runtime->state,
                 controls.sst_runtime->transport, fixed_velocity_values,
