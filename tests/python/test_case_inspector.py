@@ -553,7 +553,9 @@ def test_streaming_statistics_enforce_read_and_chunk_budgets(tmp_path):
         h5.create_dataset("large_chunk", shape=(1024,), dtype="f8", chunks=(256,))
 
     with pytest.raises(ValueError, match="statistics budget"):
-        read_hdf5_dataset_statistics(path, "/large", max_scan_bytes=128)
+        read_hdf5_dataset_statistics(
+            path, "/large", max_scan_bytes=128, block_bytes=64
+        )
 
     with pytest.raises(ValueError, match="chunk size"):
         read_hdf5_dataset_statistics(
