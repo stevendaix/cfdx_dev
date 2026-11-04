@@ -6,7 +6,12 @@ from pathlib import Path
 
 import numpy as np
 from PySide6.QtWidgets import (
-    QComboBox, QDialog, QLabel, QVBoxLayout, QHBoxLayout, QPushButton,
+    QComboBox,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
 )
 
 from .volume_mesh_quality import VolumeSkewnessReport, analyze_cfdx_volume_skewness
