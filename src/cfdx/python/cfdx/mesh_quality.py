@@ -35,6 +35,8 @@ def analyze_cfdx_surface_file(
     """Read and analyze the supported root surface topology under strict budgets."""
     import h5py
 
+    if max_source_bytes <= 0 or max_block_bytes <= 0:
+        raise ValueError("surface quality byte budgets must be positive")
     source = Path(path)
     signature_before = _file_signature(source)
     if expected_signature is not None and signature_before != expected_signature:
