@@ -1179,6 +1179,37 @@ int main(int argc, char** argv)
                           << (sst_controls.sst_scale_aware_convergence ? "enabled" : "disabled")
                           << " (true equation residual, linear and physical gates retained)\n";
             }
+            const auto sst_newton_setting = case_setup.numerics.raw_settings.find(
+                "sst_omega_newton_sink");
+            if (sst_newton_setting != case_setup.numerics.raw_settings.end()) {
+                if (sst_newton_setting->second != "true" &&
+                    sst_newton_setting->second != "false")
+                    throw std::invalid_argument("sst_omega_newton_sink must be true or false");
+                sst_controls.sst_omega_newton_sink = sst_newton_setting->second == "true";
+                std::cout << "SST omega Newton sink: "
+                          << (sst_controls.sst_omega_newton_sink ? "enabled" : "disabled") << "\n";
+            }
+            const auto sst_gs_setting = case_setup.numerics.raw_settings.find(
+                "sst_sequential_omega_first");
+            if (sst_gs_setting != case_setup.numerics.raw_settings.end()) {
+                if (sst_gs_setting->second != "true" &&
+                    sst_gs_setting->second != "false")
+                    throw std::invalid_argument("sst_sequential_omega_first must be true or false");
+                sst_controls.sst_sequential_omega_first = sst_gs_setting->second == "true";
+                std::cout << "SST omega-first Picard: "
+                          << (sst_controls.sst_sequential_omega_first ? "enabled" : "disabled") << "\n";
+            }
+            const auto sst_wall_setting = case_setup.numerics.raw_settings.find(
+                "sst_wall_omega_factor");
+            if (sst_wall_setting != case_setup.numerics.raw_settings.end()) {
+                if (sst_wall_setting->second != "6" &&
+                    sst_wall_setting->second != "60")
+                    throw std::invalid_argument("sst_wall_omega_factor must be 6 or 60");
+                sst_controls.sst_wall_omega_factor = std::stod(sst_wall_setting->second);
+                std::cout << "SST wall omega face factor: "
+                          << sst_controls.sst_wall_omega_factor
+                          << " (not an OpenFOAM wall function)\n";
+            }
             validate_turbulence_controls(sst_controls);
 
             const auto boundary_contract =
