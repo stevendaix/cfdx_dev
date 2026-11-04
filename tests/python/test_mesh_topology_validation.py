@@ -76,6 +76,7 @@ def test_valid_cell_topology_is_accepted():
     validate_cell_topology(
         np.asarray([0, 1, 2, 3], dtype=np.int64),
         np.asarray([0, 4], dtype=np.int64),
+        np.asarray([0, 3, 6, 9, 12], dtype=np.int64),
         n_cells=1,
         n_faces=4,
     )
@@ -98,6 +99,7 @@ def test_invalid_cell_connectivity_is_rejected(
         validate_cell_topology(
             np.asarray(cell_faces, dtype=np.int64),
             np.asarray(cell_offsets, dtype=np.int64),
+            np.asarray([0, 3, 6, 9, 12], dtype=np.int64),
             n_cells=len(cell_offsets) - 1,
             n_faces=4,
         )
