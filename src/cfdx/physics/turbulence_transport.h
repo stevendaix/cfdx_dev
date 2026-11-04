@@ -56,6 +56,9 @@ struct TurbulenceTransportControls {
     double sst_sigma_k1 = 0.85, sst_sigma_k2 = 1.0;
     double sst_sigma_w1 = 0.5, sst_sigma_w2 = 0.856;
     double sst_production_limiter = 10.0;
+    // Opt-in damping for the OUTER nonlinear k/omega/F1/F2 Picard iteration.
+    // One means the historical algorithm; this never changes equation gates.
+    double sst_picard_damping = 1.0;
     double smagorinsky_Cs = 0.17, wale_Cw = 0.325, des_Cdes = 0.65;
     TurbulenceCorrectionControls corrections{};
     // N11 F1 (#480): route the Spalart-Allmaras negative nu-tilde policy
@@ -244,7 +247,9 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        !std::isfinite(c.turbulent_prandtl) || !std::isfinite(c.k_min) ||
        !std::isfinite(c.epsilon_min) || !std::isfinite(c.omega_min) ||
        c.density<=0.0 || c.molecular_viscosity<0.0 ||
-       c.turbulent_prandtl<=0.0 || c.k_min<=0.0 ||
+       c.turbulent_prandtl<=0.0 || !std::isfinite(c.sst_picard_damping) ||
+       !(c.sst_picard_damping>0.0 && c.sst_picard_damping<=1.0) ||
+       c.k_min<=0.0 ||
        c.epsilon_min<=0.0 || c.omega_min<=0.0)
         throw std::invalid_argument("invalid turbulence controls");
     const double values[] = {c.C_mu,c.C1,c.C2,c.beta_star,c.beta1,c.beta2,

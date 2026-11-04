@@ -1042,6 +1042,18 @@ int main(int argc, char** argv)
                 else throw std::invalid_argument("invalid pressure_preconditioner; expected auto, none, jacobi, ilu0, native_amg or smoothed_aggregation_amg");
                 std::cout << "Pressure preconditioner: " << v << "\n";
             }
+            const auto interpolation = case_setup.numerics.raw_settings.find(
+                "pressure_face_interpolation");
+            if (interpolation != case_setup.numerics.raw_settings.end()) {
+                if (interpolation->second == "arithmetic")
+                    controls.pressure_projected_face_interpolation = false;
+                else if (interpolation->second == "projected")
+                    controls.pressure_projected_face_interpolation = true;
+                else throw std::invalid_argument(
+                    "invalid pressure_face_interpolation; expected arithmetic or projected");
+                std::cout << "Pressure face interpolation: "
+                          << interpolation->second << " (SIMPLE-only experimental)\n";
+            }
             const auto pressure_tol = case_setup.numerics.raw_settings.find(
                 "pressure_linear_tolerance");
             if (pressure_tol != case_setup.numerics.raw_settings.end()) {
@@ -1139,6 +1151,22 @@ int main(int argc, char** argv)
             sst_controls.model = TurbulenceModel::SST;
             sst_controls.density = controls.density;
             sst_controls.molecular_viscosity = controls.kinematic_viscosity;
+            const auto damping = case_setup.numerics.raw_settings.find(
+                "sst_picard_damping");
+            if (damping != case_setup.numerics.raw_settings.end()) {
+                std::size_t used = 0;
+                double value=0.0;
+                try { value=std::stod(damping->second, &used); }
+                catch (const std::exception&) {
+                    throw std::invalid_argument("invalid sst_picard_damping");
+                }
+                if (used != damping->second.size() ||
+                    !std::isfinite(value) || !(value>0.0 && value<=1.0))
+                    throw std::invalid_argument("sst_picard_damping must be in (0,1]");
+                sst_controls.sst_picard_damping = value;
+                std::cout << "SST Picard damping: " << value
+                          << " (equation and convergence gates unchanged)\n";
+            }
             validate_turbulence_controls(sst_controls);
 
             const auto boundary_contract =
@@ -1234,6 +1262,18 @@ int main(int argc, char** argv)
             }
             experimental_sst_runtime.max_transport_iterations = sst_inner_budget;
             experimental_sst_runtime.transport_tolerance = 1e-8;
+            const auto provisional = case_setup.numerics.raw_settings.find(
+                "sst_outer_provisional");
+            if (provisional != case_setup.numerics.raw_settings.end()) {
+                if (provisional->second == "enabled")
+                    experimental_sst_runtime.allow_bounded_provisional_transport = true;
+                else if (provisional->second != "disabled")
+                    throw std::invalid_argument(
+                        "sst_outer_provisional must be enabled or disabled");
+                std::cout << "SST bounded provisional outer coupling: "
+                          << provisional->second
+                          << " (final SST and conservation gates UNCHANGED)\n";
+            }
             std::cout << "SST transport max inner iterations "
                       << sst_inner_budget << " (unchanged tolerance 1e-8)\n";
             if (!boundary_contract.wall_omega_sst_patches.empty()) {

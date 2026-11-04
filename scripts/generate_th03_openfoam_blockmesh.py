@@ -353,6 +353,7 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
     setup.numerics.raw_settings['pressure_krylov'] = pressure_krylov
     setup.numerics.raw_settings['pressure_preconditioner'] = pressure_preconditioner
     setup.numerics.raw_settings['pressure_linear_tolerance'] = str(pressure_tolerance)
+    setup.numerics.raw_settings['pressure_face_interpolation'] = 'arithmetic'
     setup.numerics.selection = NumericalSelectionConfig(entries=[
         NumericalSelection(family='gradient', configuration_key='numerics.gradient.gauss'),
         NumericalSelection(family='convection', configuration_key='numerics.convection.upwind'),
