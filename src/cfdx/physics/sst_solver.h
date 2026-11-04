@@ -38,6 +38,46 @@ inline std::vector<double> sst_boundary_gradient_dot(
     return result;
 }
 
+// V16: the turbulent eddy viscosity vanishes at a smooth resolved no-slip
+// wall, whereas its owner-cell value generally does not. The generic scalar
+// assembler defaults to Gamma_owner at Dirichlet faces; keep that historical
+// choice by default, but enable a physically distinct wall-face Gamma=rho*nu
+// without changing any interior face, inlet, outlet or symmetry condition.
+inline std::vector<double> sst_face_diffusion_coefficients(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const std::vector<double>& gamma_cell,
+    const ScalarBoundaryConditions& boundary_conditions,
+    const ScalarBoundaryFaceValues* face_values,
+    const TurbulenceTransportControls& controls)
+{
+    if (gamma_cell.size() != mesh.n_cells() ||
+        geometry.face_patch.size() != mesh.n_faces())
+        throw std::invalid_argument("SST wall diffusion: field/mesh mismatch");
+    const double wall_gamma = controls.density * controls.molecular_viscosity;
+    if (!(wall_gamma > 0.0) || !std::isfinite(wall_gamma))
+        throw std::invalid_argument("SST wall diffusion: invalid molecular coefficient");
+    std::vector<double> gamma_face(mesh.n_faces());
+    const auto& ownership = mesh.ownership();
+    for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+        const auto owner = ownership.owner(face);
+        if (owner >= gamma_cell.size() || !std::isfinite(gamma_cell[owner]) ||
+            gamma_cell[owner] < wall_gamma)
+            throw std::invalid_argument("SST wall diffusion: invalid owner coefficient");
+        gamma_face[face] = gamma_cell[owner];
+        if (ownership.neighbour(face) >= 0) continue;
+        const auto patch = geometry.face_patch[face];
+        if (patch >= mesh.boundary().n_patches())
+            throw std::invalid_argument("SST wall diffusion: unassigned boundary face");
+        if (mesh.boundary().patch(patch).type != cfdx::core::PatchType::WALL)
+            continue;
+        const auto bc = resolve_scalar_boundary_condition(
+            mesh,geometry,face,boundary_conditions,face_values);
+        if (bc.type == ScalarBoundaryType::FIXED_VALUE)
+            gamma_face[face] = wall_gamma;
+    }
+    return gamma_face;
+}
+
 // Diagnostic-only scale-aware update. k [m2/s2] and omega [1/s] cannot be
 // compared to a single absolute Picard tolerance as dimensionless quantities.
 // Use one reference scale per FIELD; global-relative change is informative but
@@ -441,12 +481,21 @@ inline TurbulenceTransportResult solve_sst_transport(
             gamma_k[i]=q.gamma_k; gamma_w[i]=q.gamma_w;
         }
 
+        const auto k_wall_gamma = controls.sst_molecular_wall_diffusion
+            ? sst_face_diffusion_coefficients(mesh,geometry,gamma_k,k_bcs,nullptr,controls)
+            : std::vector<double>{};
+        const auto omega_wall_gamma = controls.sst_molecular_wall_diffusion
+            ? sst_face_diffusion_coefficients(mesh,geometry,gamma_w,omega_bcs,
+                                              omega_face_values,controls)
+            : std::vector<double>{};
         auto eqk=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
-            nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k);
+            nullptr,nullptr,nullptr,&gamma_k, ConvectionScheme::UPWIND, &k,
+            nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr);
         auto eqw=assemble_scalar_equation(
             mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
-            omega_face_values,nullptr,nullptr,&gamma_w, ConvectionScheme::UPWIND, &omega);
+            omega_face_values,nullptr,nullptr,&gamma_w, ConvectionScheme::UPWIND, &omega,
+            nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr);
 
         // Relative mode converts the requested dimensionless tolerance into
         // each field's physical solution units before the Krylov solve.
@@ -488,9 +537,13 @@ inline TurbulenceTransportResult solve_sst_transport(
                 spk(i)=q.spk;
                 gamma_k[i]=q.gamma_k;
             }
+            const auto updated_k_wall_gamma = controls.sst_molecular_wall_diffusion
+                ? sst_face_diffusion_coefficients(mesh,geometry,gamma_k,k_bcs,nullptr,controls)
+                : std::vector<double>{};
             eqk=assemble_scalar_equation(
                 mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
-                nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k);
+                nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k,
+                nullptr,true,controls.sst_molecular_wall_diffusion ? &updated_k_wall_gamma : nullptr);
             const ScalarSolveControls updated_k_sc{
                 2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),controls.sst_linear_relaxation};
             rk=solve_scalar_equation(eqk,k_solution,updated_k_sc);
@@ -599,12 +652,21 @@ inline SSTNonlinearResidualSample sst_reassembled_returned_state_residual(
         sk(i)=q.sk; sw(i)=q.sw; spk(i)=q.spk; spw(i)=q.spw;
         gamma_k[i]=q.gamma_k; gamma_w[i]=q.gamma_w;
     }
+    const auto k_wall_gamma = controls.sst_molecular_wall_diffusion
+        ? sst_face_diffusion_coefficients(mesh,geometry,gamma_k,k_bcs,nullptr,controls)
+        : std::vector<double>{};
+    const auto omega_wall_gamma = controls.sst_molecular_wall_diffusion
+        ? sst_face_diffusion_coefficients(mesh,geometry,gamma_w,omega_bcs,
+                                          omega_face_values,controls)
+        : std::vector<double>{};
     const auto eqk=assemble_scalar_equation(
         mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
-        nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k);
+        nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k,
+        nullptr,true,controls.sst_molecular_wall_diffusion ? &k_wall_gamma : nullptr);
     const auto eqw=assemble_scalar_equation(
         mesh,geometry,mass_flux,0.0,sw,spw,omega_bcs,true,
-        omega_face_values,nullptr,nullptr,&gamma_w,ConvectionScheme::UPWIND,&omega);
+        omega_face_values,nullptr,nullptr,&gamma_w,ConvectionScheme::UPWIND,&omega,
+        nullptr,true,controls.sst_molecular_wall_diffusion ? &omega_wall_gamma : nullptr);
     cfdx::core::Vector ks(n), ws(n);
     for(std::size_t i=0;i<n;++i) { ks(i)=k(i); ws(i)=omega(i); }
     const auto k_audit=sst_local_residual_precision_audit(eqk,ks,controls.k_min);
@@ -622,6 +684,229 @@ inline SSTNonlinearResidualSample sst_reassembled_returned_state_residual(
         k_local.worst_cell,omega_local.worst_cell,
         k_audit.compensated.maximum_relative,omega_audit.compensated.maximum_relative,
         k_audit.maximum_row_disagreement,omega_audit.maximum_row_disagreement};
+}
+
+// V16 opt-in operator budget. Split the exact assembled finite-volume row
+// into source-free advection and diffusion plus the evaluated nonlinear source
+// and sink, using the production assembler for all three checks. The sum is
+// compared with the full equation A*x-b, preventing unverified hand-derived
+// flux signs or hidden deferred nonorthogonal corrections.
+struct SSTCellDiscreteBudget {
+    std::size_t cell = 0;
+    double convection = 0.0;
+    double diffusion = 0.0;
+    double explicit_source = 0.0;
+    double implicit_source = 0.0;
+    double recomposed = 0.0;
+    double full_residual = 0.0;
+    double closure_error = 0.0;
+    double relative_local = 0.0;
+    // Physical source split evaluated on the CURRENT state, independent of
+    // Newton / sign-split linearization (row-residual units).
+    double physical_production = 0.0;
+    double physical_destruction = 0.0;
+    double physical_cross_diffusion = 0.0;
+    double nonlinear_source_identity_error = 0.0;
+    double continuity_divergence = 0.0;
+    double wall_orthogonal_flux = 0.0;
+    double wall_owner_diffusion_flux = 0.0;
+    double wall_molecular_diffusion_flux = 0.0;
+    std::size_t dirichlet_wall_faces = 0;
+};
+
+inline double sst_signed_equation_row_residual(
+    const ScalarEquation& eq, const cfdx::core::Vector& x, std::size_t row)
+{
+    if (row >= eq.rhs.size() || x.size() != eq.rhs.size())
+        throw std::invalid_argument("SST row balance: invalid row or solution size");
+    long double sum = -static_cast<long double>(eq.rhs(row));
+    const auto* offsets = eq.matrix.row_offsets_data();
+    for (auto entry=offsets[row]; entry<offsets[row+1]; ++entry) {
+        const auto col=eq.matrix.columns_data()[entry];
+        if (col >= x.size())
+            throw std::invalid_argument("SST row balance: invalid column");
+        sum += static_cast<long double>(eq.matrix.values_data()[entry]) *
+               static_cast<long double>(x(col));
+    }
+    const double value=static_cast<double>(sum);
+    if (!std::isfinite(value))
+        throw std::invalid_argument("SST row balance: nonfinite residual");
+    return value;
+}
+
+inline SSTCellDiscreteBudget sst_cell_discrete_budget(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& field,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& explicit_source,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& implicit_source,
+    const std::vector<double>& gamma,
+    const ScalarBoundaryConditions& bcs,
+    const ScalarBoundaryFaceValues* face_values,
+    const TurbulenceTransportControls& controls,
+    std::size_t row,
+    double minimum_scale)
+{
+    const auto nc=mesh.n_cells();
+    if (row>=nc || field.size()!=nc || explicit_source.size()!=nc ||
+        implicit_source.size()!=nc || gamma.size()!=nc ||
+        mass_flux.size()!=mesh.n_faces() ||
+        !(minimum_scale>0.0) || !std::isfinite(minimum_scale))
+        throw std::invalid_argument("SST row budget: invalid arguments");
+    cfdx::core::Field<double,cfdx::core::Location::CELL> zero_source(
+        nc,"zero_source","",1);
+    zero_source.fill(0.0);
+    cfdx::core::Field<double,cfdx::core::Location::FACE> zero_flux(
+        mesh.n_faces(),"zero_flux","",1);
+    zero_flux.fill(0.0);
+    const auto gamma_faces=controls.sst_molecular_wall_diffusion
+        ? sst_face_diffusion_coefficients(mesh,geometry,gamma,bcs,face_values,controls)
+        : std::vector<double>{};
+    const auto* boundary_gamma=controls.sst_molecular_wall_diffusion
+        ? &gamma_faces : nullptr;
+    const auto full=assemble_scalar_equation(
+        mesh,geometry,mass_flux,0.0,explicit_source,implicit_source,bcs,true,
+        face_values,nullptr,nullptr,&gamma,ConvectionScheme::UPWIND,&field,
+        nullptr,true,boundary_gamma);
+    const auto diff=assemble_scalar_equation(
+        mesh,geometry,zero_flux,0.0,zero_source,zero_source,bcs,true,
+        face_values,nullptr,nullptr,&gamma,ConvectionScheme::UPWIND,&field,
+        nullptr,true,boundary_gamma);
+    cfdx::core::Vector x(nc);
+    for (std::size_t i=0;i<nc;++i) x(i)=field(i);
+    SSTCellDiscreteBudget budget;
+    budget.cell=row;
+    // Reconstruct bounded-upwind advection directly face by face. A
+    // convection-only matrix can have a zero diagonal at stagnant cells and
+    // therefore cannot be passed through the production assembler's positive
+    // diagonal contract.
+    budget.convection=0.0;
+    budget.diffusion=sst_signed_equation_row_residual(diff,x,row);
+    budget.explicit_source=-explicit_source(row)*geometry.cell_volumes[row];
+    budget.implicit_source=-implicit_source(row)*field(row)*geometry.cell_volumes[row];
+    budget.full_residual=sst_signed_equation_row_residual(full,x,row);
+    double row_norm=0.0;
+    double stencil_scale=std::max(minimum_scale,std::abs(field(row)));
+    const auto* offsets=full.matrix.row_offsets_data();
+    for (auto entry=offsets[row];entry<offsets[row+1];++entry) {
+        row_norm+=std::abs(full.matrix.values_data()[entry]);
+        stencil_scale=std::max(stencil_scale,std::abs(x(full.matrix.columns_data()[entry])));
+    }
+    if (!(row_norm>0.0) || !std::isfinite(row_norm) || !(stencil_scale>0.0))
+        throw std::invalid_argument("SST row budget: invalid row normalization");
+    budget.relative_local=std::abs(budget.full_residual)/(row_norm*stencil_scale);
+    const auto& ownership=mesh.ownership();
+    for (std::size_t face=0;face<mesh.n_faces();++face) {
+        const auto owner=ownership.owner(face);
+        const auto neighbour=ownership.neighbour(face);
+        if (owner!=row && (neighbour < 0 || static_cast<std::size_t>(neighbour)!=row))
+            continue;
+        if (neighbour>=0) {
+            const auto other=static_cast<std::size_t>(neighbour);
+            const double F=mass_flux(face);
+            const double transported = F >= 0.0 ? field(owner) : field(other);
+            const double sign=owner==row ? 1.0 : -1.0;
+            budget.continuity_divergence+=sign*F;
+            budget.convection+=sign*F*transported;
+            continue;
+        }
+        const auto patch=geometry.face_patch[face];
+        if (patch>=mesh.boundary().n_patches())
+            throw std::invalid_argument("SST row budget: unassigned patch");
+        if (mesh.boundary().patch(patch).type==cfdx::core::PatchType::EMPTY)
+            continue;
+        budget.continuity_divergence+=mass_flux(face);
+        const auto bc=resolve_scalar_boundary_condition(mesh,geometry,face,bcs,face_values);
+        // Fixed-gradient discretization uses its prescribed boundary state
+        // for either face-flux sign; other types use upwind or zero-gradient.
+        double psi_face=field(row);
+        if (bc.type==ScalarBoundaryType::FIXED_VALUE && mass_flux(face)<0.0)
+            psi_face=bc.value;
+        else if (bc.type==ScalarBoundaryType::FIXED_GRADIENT)
+            psi_face=field(row)+bc.gradient*boundary_normal_distance(geometry,face,row);
+        budget.convection+=mass_flux(face)*psi_face;
+        if (mesh.boundary().patch(patch).type!=cfdx::core::PatchType::WALL ||
+            bc.type!=ScalarBoundaryType::FIXED_VALUE) continue;
+        ++budget.dirichlet_wall_faces;
+        const double area=geometry.face_area_vectors[face].mag();
+        const double dn=boundary_normal_distance(geometry,face,row);
+        const double owner_flux=gamma[row]*area/dn*(field(row)-bc.value);
+        const double molecular_flux=controls.density*controls.molecular_viscosity*
+            area/dn*(field(row)-bc.value);
+        budget.wall_owner_diffusion_flux+=owner_flux;
+        budget.wall_molecular_diffusion_flux+=molecular_flux;
+        budget.wall_orthogonal_flux+=controls.sst_molecular_wall_diffusion
+            ? molecular_flux : owner_flux;
+    }
+    budget.convection-=budget.continuity_divergence*field(row);
+    budget.recomposed=budget.convection+budget.diffusion+
+        budget.explicit_source+budget.implicit_source;
+    budget.closure_error=budget.full_residual-budget.recomposed;
+    if (!std::isfinite(budget.recomposed) || !std::isfinite(budget.full_residual))
+        throw std::invalid_argument("SST row budget: non-finite result");
+    return budget;
+}
+
+inline std::pair<SSTCellDiscreteBudget,SSTCellDiscreteBudget>
+sst_reassembled_discrete_cell_budgets(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const cfdx::core::Field<double,cfdx::core::Location::FACE>& mass_flux,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& k,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& omega,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& strain_rate,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& wall_distance,
+    const TurbulenceTransportControls& controls,
+    const ScalarBoundaryConditions& k_bcs,
+    const ScalarBoundaryConditions& omega_bcs,
+    const ScalarBoundaryFaceValues* omega_face_values,
+    std::size_t row)
+{
+    const auto n=mesh.n_cells();
+    if (row>=n) throw std::invalid_argument("SST row budget: invalid row");
+    const auto cross=sst_boundary_gradient_dot(
+        k,omega,mesh,geometry,k_bcs,omega_bcs,omega_face_values);
+    cfdx::core::Field<double,cfdx::core::Location::CELL>
+        sk(n,"Sk","",1),spk(n,"Spk","",1),sw(n,"Sw","",1),spw(n,"Spw","",1);
+    std::vector<double> gamma_k(n),gamma_w(n);
+    for (std::size_t i=0;i<n;++i) {
+        const auto [f1,f2]=compute_sst_blending(
+            k(i),omega(i),wall_distance(i),controls.molecular_viscosity,
+            controls.beta_star,cross[i],controls.density,controls.sst_sigma_w2);
+        const auto s=sst_cell_sources(
+            k(i),omega(i),strain_rate(i),f1,f2,cross[i],controls);
+        sk(i)=s.sk;spk(i)=s.spk;sw(i)=s.sw;spw(i)=s.spw;
+        gamma_k[i]=s.gamma_k;gamma_w[i]=s.gamma_w;
+    }
+    auto k_budget=sst_cell_discrete_budget(mesh,geometry,mass_flux,k,sk,spk,gamma_k,
+                                 k_bcs,nullptr,controls,row,controls.k_min);
+    auto omega_budget=sst_cell_discrete_budget(mesh,geometry,mass_flux,omega,sw,spw,gamma_w,
+                                 omega_bcs,omega_face_values,controls,row,controls.omega_min);
+    const auto [f1,f2]=compute_sst_blending(k(row),omega(row),wall_distance(row),
+        controls.molecular_viscosity,controls.beta_star,cross[row],controls.density,
+        controls.sst_sigma_w2);
+    const auto source=sst_cell_sources(
+        k(row),omega(row),strain_rate(row),f1,f2,cross[row],controls);
+    const double volume=geometry.cell_volumes[row];
+    const double blended_gamma=f1*controls.gamma1+(1.0-f1)*controls.gamma2;
+    const double blended_beta=f1*controls.beta1+(1.0-f1)*controls.beta2;
+    const double omega_production=source.nut>0.0 ? source.sk/source.nut : 0.0;
+    const double cross_source=2.0*(1.0-f1)*controls.density*controls.sst_sigma_w2/
+                              omega(row)*cross[row];
+    k_budget.physical_production=-source.sk*volume;
+    k_budget.physical_destruction=controls.density*controls.beta_star*
+                                  omega(row)*k(row)*volume;
+    k_budget.nonlinear_source_identity_error=
+        k_budget.explicit_source+k_budget.implicit_source-
+        (k_budget.physical_production+k_budget.physical_destruction);
+    omega_budget.physical_production=-blended_gamma*omega_production*volume;
+    omega_budget.physical_destruction=controls.density*blended_beta*
+                                     omega(row)*omega(row)*volume;
+    omega_budget.physical_cross_diffusion=-cross_source*volume;
+    omega_budget.nonlinear_source_identity_error=
+        omega_budget.explicit_source+omega_budget.implicit_source-
+        (omega_budget.physical_production+omega_budget.physical_destruction+
+         omega_budget.physical_cross_diffusion);
+    return {k_budget,omega_budget};
 }
 
 // Conservative merit for an OPTIONAL nonlinear Picard backtracking step.
@@ -773,6 +1058,47 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                 controls,k_bcs,omega_bcs,omega_face_values);
             result.k_residual = returned.k_raw_inf;
             result.second_residual = returned.omega_raw_inf;
+        }
+        // V16: expensive on-demand physical row budget, with no effect on the
+        // solver path or any convergence gate. Compare exact full A*x-b with
+        // separate advection, diffusion, production and destruction terms.
+        const char* row_budget_flag=std::getenv("CFDX_SST_ROW_BUDGET");
+        if (row_budget_flag != nullptr && must_audit_returned &&
+            (iter==1 || iter%100==0 || iter==max_iterations)) {
+            char* end=nullptr;
+            const unsigned long requested=std::strtoul(row_budget_flag,&end,10);
+            if (end==row_budget_flag || *end!='\0' || requested>=n)
+                throw std::invalid_argument("CFDX_SST_ROW_BUDGET requires a valid zero-based cell index");
+            const auto budget=sst_reassembled_discrete_cell_budgets(
+                mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                controls,k_bcs,omega_bcs,omega_face_values,
+                static_cast<std::size_t>(requested));
+            for (const auto& item : {std::pair<const char*,SSTCellDiscreteBudget>{"k",budget.first},
+                                     {"omega",budget.second}}) {
+                const auto& b=item.second;
+                std::cerr << std::scientific << std::setprecision(12)
+                    << "SST_CELL_BUDGET iteration=" << iter
+                    << " field=" << item.first
+                    << " cell=" << b.cell
+                    << " convection=" << b.convection
+                    << " diffusion=" << b.diffusion
+                    << " production=" << b.explicit_source
+                    << " destruction=" << b.implicit_source
+                    << " physical_production=" << b.physical_production
+                    << " physical_destruction=" << b.physical_destruction
+                    << " physical_cross=" << b.physical_cross_diffusion
+                    << " source_identity_error=" << b.nonlinear_source_identity_error
+                    << " local_relative=" << b.relative_local
+                    << " sum=" << b.recomposed
+                    << " residual=" << b.full_residual
+                    << " decomposition_error=" << b.closure_error
+                    << " div_phi=" << b.continuity_divergence
+                    << " wall_faces=" << b.dirichlet_wall_faces
+                    << " wall_orth_flux=" << b.wall_orthogonal_flux
+                    << " wall_owner_flux=" << b.wall_owner_diffusion_flux
+                    << " wall_molecular_flux=" << b.wall_molecular_diffusion_flux
+                    << " qualified=0\n";
+            }
         }
         // Opt-in diagnostics: dk/domega describe the DAMPED returned state,
         // whereas k_raw/omega_raw are the PRE-DAMPING candidate equation
