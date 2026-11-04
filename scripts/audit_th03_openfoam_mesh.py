@@ -16,7 +16,7 @@ import h5py
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from generate_th03_openfoam_blockmesh import H, PATCH_TYPES
+from generate_th03_openfoam_blockmesh import H, PATCH_TYPES, count_invalid_extrusion_patch_faces
 
 
 def _area_2d(points: np.ndarray) -> float:
@@ -110,6 +110,10 @@ def audit(mesh: dict) -> dict:
     patch_faces={p['name']:p['face_ids'] for p in mesh['boundary_patch_assignment']}
     if set(patch_faces)!=set(PATCH_TYPES):
         issues.append('missing/unexpected patch names')
+    invalid_extrusion_patch_faces=count_invalid_extrusion_patch_faces(mesh)
+    if invalid_extrusion_patch_faces:
+        issues.append(
+            f'{invalid_extrusion_patch_faces} faces have incompatible extrusion patch geometry')
     listed=[int(f) for fids in patch_faces.values() for f in fids]
     if len(listed)!=len(boundary) or len(set(listed))!=len(boundary) or set(listed)!=set(map(int,boundary)):
         issues.append('boundary patch face coverage is incomplete/duplicated')
@@ -131,6 +135,7 @@ def audit(mesh: dict) -> dict:
         'p99_relative_face_skew':float(np.percentile(skew_rel,99)),
         'flipped_internal_faces':flipped,
         'flipped_boundary_faces':bad_boundary,
+        'invalid_extrusion_patch_faces':invalid_extrusion_patch_faces,
         'extent_over_step_height':{
             'min':coordinates_min.tolist(), 'max':coordinates_max.tolist(),
         },
