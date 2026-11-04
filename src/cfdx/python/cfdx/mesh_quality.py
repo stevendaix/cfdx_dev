@@ -8,13 +8,14 @@ cell aspect ratio, which require complete cell geometry and adjacency.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import prod
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 
-def _file_signature(path: "Path") -> tuple[int, int, int, int]:
+def _file_signature(path: Path) -> tuple[int, int, int, int]:
     stat = path.stat()
     return (
         int(stat.st_dev),
@@ -52,7 +53,7 @@ def analyze_cfdx_surface_file(
             if dataset.is_virtual or dataset.external:
                 raise ValueError(f"surface quality does not read external {name}")
             if dataset.chunks is not None:
-                chunk_bytes = int(np.prod(dataset.chunks)) * dataset.dtype.itemsize
+                chunk_bytes = prod(dataset.chunks) * dataset.dtype.itemsize
                 if chunk_bytes > max_block_bytes:
                     raise ValueError(
                         f"{name} chunk exceeds the {max_block_bytes:,}-byte block budget"
@@ -76,7 +77,7 @@ def analyze_cfdx_surface_file(
         if vertices.shape[0] > 2_000_000:
             raise ValueError("surface connectivity exceeds the 2M-entry quality limit")
         source_bytes = sum(
-            int(np.prod(dataset.shape)) * dataset.dtype.itemsize
+            prod(dataset.shape) * dataset.dtype.itemsize
             for dataset in datasets.values()
         )
         if source_bytes > max_source_bytes:
