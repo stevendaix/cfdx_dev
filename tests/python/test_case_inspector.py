@@ -628,9 +628,8 @@ def test_inspector_reports_logical_and_allocated_hdf5_storage(tmp_path):
     importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
 )
 def test_case_file_panel_runs_surface_quality_action(tmp_path):
-    from PySide6.QtWidgets import QApplication
-
     from cfdx.case_file_panel import CaseFilePanel
+    from PySide6.QtWidgets import QApplication
 
     path = tmp_path / "surface-quality.cfdx.h5"
     with h5py.File(path, "w") as h5:
