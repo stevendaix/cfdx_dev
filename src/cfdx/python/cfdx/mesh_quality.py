@@ -14,6 +14,9 @@ from typing import Any
 
 import numpy as np
 
+SURFACE_QUALITY_MAX_FACES = 20_000
+SURFACE_QUALITY_MAX_CONNECTIVITY = 2_000_000
+
 
 def _file_signature(path: Path) -> tuple[int, int, int, int]:
     stat = path.stat()
@@ -74,9 +77,11 @@ def analyze_cfdx_surface_file(
         if offsets.ndim != 1 or offsets.dtype.kind not in "iu":
             raise ValueError("face_offsets must be a one-dimensional integer array")
         face_count = int(offsets.shape[0] - 1)
-        if face_count < 0 or face_count > 100_000:
-            raise ValueError("surface face count exceeds the 100k quality limit")
-        if vertices.shape[0] > 2_000_000:
+        if face_count < 0 or face_count > SURFACE_QUALITY_MAX_FACES:
+            raise ValueError(
+                f"surface face count exceeds the {SURFACE_QUALITY_MAX_FACES:,} quality limit"
+            )
+        if vertices.shape[0] > SURFACE_QUALITY_MAX_CONNECTIVITY:
             raise ValueError("surface connectivity exceeds the 2M-entry quality limit")
         source_bytes = sum(
             prod(dataset.shape) * dataset.dtype.itemsize
@@ -96,6 +101,8 @@ def analyze_cfdx_surface_file(
         point_values,
         face_values,
         face_offsets,
+        max_faces=SURFACE_QUALITY_MAX_FACES,
+        max_connectivity_entries=SURFACE_QUALITY_MAX_CONNECTIVITY,
     )
 
 
@@ -122,8 +129,8 @@ def analyze_surface_quality(
     face_vertices: Any,
     face_offsets: Any,
     *,
-    max_faces: int = 100_000,
-    max_connectivity_entries: int = 2_000_000,
+    max_faces: int = SURFACE_QUALITY_MAX_FACES,
+    max_connectivity_entries: int = SURFACE_QUALITY_MAX_CONNECTIVITY,
     max_reported_faces: int = 20,
 ) -> SurfaceQualityReport:
     """Compute bounded face area, edge-ratio and plane-warpage diagnostics.
