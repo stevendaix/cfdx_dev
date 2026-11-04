@@ -608,4 +608,5 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
             regions_truncated=regions_truncated,
             scalar_fields_truncated=scalar_fields_truncated,
             vector_fields_truncated=vector_fields_truncated,
+            file_signature=signature_after,
         )
