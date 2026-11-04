@@ -555,6 +555,15 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
                         "surface connectivity exceeds the 2M-entry eager-load budget"
                     )
         preview_supported = preview_block_reason is None
+        stat_after = source.stat()
+        signature_after = (
+            int(stat_after.st_dev),
+            int(stat_after.st_ino),
+            int(stat_after.st_size),
+            int(stat_after.st_mtime_ns),
+        )
+        if signature_after != signature_before:
+            raise RuntimeError("HDF5 file changed during metadata inspection")
         return CaseFileSummary(
             path=source.resolve(),
             format=file_format,
