@@ -8,6 +8,7 @@
 #include "cfdx/core/linalg/linear_solver_models.h"
 #include "cfdx/core/linalg/matrix_diagnostics.h"
 #include "cfdx/core/linalg/null_space.h"
+#include "cfdx/core/linalg/linear_solver_context.h"
 
 #include <algorithm>
 #include <cmath>
@@ -47,6 +48,68 @@ inline MatrixScaling to_matrix_scaling(LinearScalingModel model) {
         case LinearScalingModel::SymmetricDiagonal: return MatrixScaling::SymmetricDiagonal;
     }
     throw std::invalid_argument("unknown linear scaling model");
+}
+
+// Reusable CG on an equilibrated SPD system.  A normal ReusableCgContext
+// sees only the matrix supplied by the caller; without this transform, a
+// pressure request with scaling!=None silently solves the ORIGINAL matrix.
+// Keep one AMG hierarchy across consecutive *scaled* matrices, then certify
+// on the unscaled physical operator. A small scaled residual alone is never
+// enough to claim convergence.
+inline SolverResult solve_reusable_scaled_cg(
+    const SparseMatrix& matrix, const Vector& rhs, Vector& solution,
+    ReusableCgContext& context, LinearScalingModel scaling,
+    std::size_t max_iterations, double tolerance,
+    const NullSpaceProjector* null_space = nullptr)
+{
+    if (scaling == LinearScalingModel::None)
+        return context.solve(matrix, rhs, solution, max_iterations,
+                             tolerance, {}, {}, null_space);
+    // CG relies on an SPD operator. Independent row/column equilibration
+    // generally destroys symmetry and makes CG mathematically invalid.
+    if (scaling != LinearScalingModel::SymmetricDiagonal)
+        throw std::invalid_argument(
+            "reusable CG only accepts symmetric-diagonal algebraic scaling");
+    if (null_space)
+        throw std::invalid_argument(
+            "scaled reusable CG cannot combine algebraic scaling and projected null space");
+    if (max_iterations == 0 || !(tolerance > 0.0) || !std::isfinite(tolerance))
+        throw std::invalid_argument("scaled reusable CG requires valid iteration controls");
+    if (matrix.n_rows() != matrix.n_cols() || rhs.size() != matrix.n_rows() ||
+        solution.size() != matrix.n_cols())
+        throw std::invalid_argument("scaled reusable CG: matrix/vector size mismatch");
+    const auto scaled = scale_matrix(matrix, to_matrix_scaling(scaling));
+    if (scaled.zero_rows || scaled.zero_columns) {
+        SolverResult result;
+        result.status = SolverStatus::NOT_APPLICABLE;
+        result.residual_relative = physical_relative_residual(matrix, solution, rhs);
+        double b_norm = 0.0;
+        for (std::size_t i = 0; i < rhs.size(); ++i)
+            b_norm = std::hypot(b_norm, rhs(i));
+        result.residual = result.residual_relative * b_norm;
+        return result;
+    }
+    Vector scaled_rhs(rhs.size(), 0.0);
+    Vector scaled_solution(solution.size(), 0.0);
+    for (std::size_t i = 0; i < rhs.size(); ++i) {
+        scaled_rhs(i) = rhs(i) * scaled.row_scale[i];
+        scaled_solution(i) = solution(i) / scaled.column_scale[i];
+    }
+    auto result = context.solve(scaled.matrix, scaled_rhs, scaled_solution,
+                                max_iterations, tolerance);
+    for (std::size_t i = 0; i < solution.size(); ++i)
+        solution(i) = scaled.column_scale[i] * scaled_solution(i);
+    // Independent contract on A*x=b, not on D_row*A*D_col*y=D_row*b.
+    const double physical_relative = physical_relative_residual(matrix, solution, rhs);
+    double b_norm = 0.0;
+    for (std::size_t i = 0; i < rhs.size(); ++i)
+        b_norm = std::hypot(b_norm, rhs(i));
+    result.residual_relative = physical_relative;
+    result.residual = physical_relative * b_norm;
+    if (result.status == SolverStatus::CONVERGED &&
+        (!std::isfinite(physical_relative) || physical_relative > tolerance))
+        result.status = SolverStatus::MAX_ITER_REACHED;
+    return result;
 }
 
 inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
@@ -99,6 +162,12 @@ inline LinearSolveReport solve_linear_system(
     double tolerance = 1e-12) {
     LinearSolveReport report;
     report.plan = select_linear_solver(problem, matrix.n_rows(), request);
+
+    if (report.plan.krylov == KrylovModel::CG &&
+        request.scaling != LinearScalingModel::None &&
+        request.scaling != LinearScalingModel::SymmetricDiagonal)
+        throw std::invalid_argument(
+            "CG requires symmetry-preserving scaling (symmetric_diagonal)");
 
     if (request.scaling != LinearScalingModel::None &&
         request.null_space != NullSpaceModel::None)
