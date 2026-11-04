@@ -13,6 +13,7 @@
 - T. Akenine-Möller, E. Haines, N. Hoffman, *Real-Time Rendering*, 4e éd., CRC Press, 2018, ISBN 978-1-138-62839-4 — hiérarchies de volumes englobants et intersection rayons/primitives.
 - S. Woop, C. Benthin, I. Wald, « Watertight Ray/Triangle Intersection », *Journal of Computer Graphics Techniques*, 2(1), 2013 — référence pour les cas d’intersection proches des arêtes et sommets.
 - C. Ericson, *Real-Time Collision Detection*, Morgan Kaufmann, 2004, ISBN 978-1-55860-732-3 — boîtes AABB et requêtes géométriques.
+- Y. Zhao, « A fast sweeping method for Eikonal equations », *Mathematics of Computation* 74(250), 2005, 603–627 — DOI : 10.1090/S0025-5718-04-01678-3. — schémas fast-sweeping et résolution de l'équation Eikonal.
 
 ## 2. Formulation continue
 
