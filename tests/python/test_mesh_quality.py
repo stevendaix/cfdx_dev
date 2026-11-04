@@ -176,3 +176,23 @@ def test_hdf5_surface_analysis_requires_positive_byte_budgets(tmp_path):
         pass
     with pytest.raises(ValueError, match="byte budgets must be positive"):
         analyze_cfdx_surface_file(path, max_block_bytes=0)
+
+
+
+def test_zero_length_edge_is_degenerate_even_when_polygon_area_is_nonzero():
+    points = np.asarray(
+        [
+            [0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ]
+    )
+    report = analyze_surface_quality(
+        points, np.asarray([0, 1, 2, 3, 4]), np.asarray([0, 5])
+    )
+
+    assert report.degenerate_face_ids == (0,)
+    assert report.zero_length_edge_face_ids == (0,)
+    assert report.valid_face_count == 0
