@@ -510,3 +510,41 @@ def test_inspect_rejects_non_hdf5_file(tmp_path):
 
     with pytest.raises(OSError):
         inspect_cfdx_file(path)
+
+
+def test_inspector_reports_logical_and_allocated_hdf5_storage(tmp_path):
+    path = tmp_path / "storage-audit.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        h5.create_dataset("fields/scalar/contiguous", data=np.arange(128, dtype="f8"))
+        h5.create_dataset(
+            "fields/scalar/compressed",
+            data=np.zeros(4096, dtype="f8"),
+            chunks=(256,),
+            compression="gzip",
+            compression_opts=6,
+        )
+        h5.create_dataset(
+            "fields/scalar/unallocated",
+            shape=(10_000,),
+            dtype="f8",
+            chunks=(256,),
+        )
+
+    summary = inspect_cfdx_file(path)
+    datasets = {item.path: item for item in summary.datasets}
+
+    contiguous = datasets["/fields/scalar/contiguous"]
+    assert contiguous.size_bytes == 128 * 8
+    assert contiguous.storage_bytes == contiguous.size_bytes
+    assert contiguous.storage_ratio == pytest.approx(1.0)
+
+    compressed = datasets["/fields/scalar/compressed"]
+    assert compressed.size_bytes == 4096 * 8
+    assert compressed.storage_bytes is not None
+    assert 0 <= compressed.storage_ratio < 1.0
+
+    unallocated = datasets["/fields/scalar/unallocated"]
+    assert unallocated.size_bytes == 10_000 * 8
+    assert unallocated.storage_bytes == 0
+    assert unallocated.storage_ratio == pytest.approx(0.0)
