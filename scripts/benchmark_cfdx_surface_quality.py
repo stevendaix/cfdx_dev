@@ -15,7 +15,6 @@ sys.path.insert(0, str(PYTHON_PACKAGE_ROOT))
 
 import h5py
 import numpy as np
-
 from cfdx.mesh_quality import analyze_cfdx_surface_file
 
 
