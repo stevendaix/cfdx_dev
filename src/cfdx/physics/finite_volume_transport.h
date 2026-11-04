@@ -1252,6 +1252,43 @@ reconstruct_scalar_transport_flux(
     return result;
 }
 
+// CG is a valid fallback only for certified SPD operators. A scalar
+// transport matrix is generally NON-symmetric when convection is present.
+// This conservative sufficient certificate (symmetric + strictly row-diagonally
+// dominant with positive diagonals) may reject some legitimate SPD matrices;
+// that is preferable to silently applying CG outside its mathematical domain.
+// The explicit Diffusion/Pressure solver dispatch remains independently usable.
+inline bool scalar_cg_fallback_spd_certificate(const cfdx::core::SparseMatrix& A)
+{
+    if (A.n_rows() == 0 || A.n_rows() != A.n_cols() || !A.is_consistent())
+        return false;
+    const auto* row = A.row_offsets_data();
+    const auto* col = A.columns_data();
+    const auto* val = A.values_data();
+    for (std::size_t i=0; i<A.n_rows(); ++i) {
+        double diagonal = 0.0;
+        double off_diagonal_abs = 0.0;
+        for (std::uint32_t j=row[i]; j<row[i+1]; ++j) {
+            const double aij = val[j];
+            if (!std::isfinite(aij)) return false;
+            if (col[j] == i) {
+                diagonal += aij;
+                continue;
+            }
+            const double aji = A(col[j], i);
+            const double scale = std::max({std::abs(aij), std::abs(aji), 1e-300});
+            if (!std::isfinite(aji) ||
+                std::abs(aij-aji) > 64.0*std::numeric_limits<double>::epsilon()*scale)
+                return false;
+            off_diagonal_abs += std::abs(aij);
+        }
+        if (!(diagonal > off_diagonal_abs) || !std::isfinite(diagonal) ||
+            !std::isfinite(off_diagonal_abs))
+            return false;
+    }
+    return true;
+}
+
 inline cfdx::core::SolverResult solve_scalar_equation(
     const ScalarEquation& equation,
     cfdx::core::Vector& solution,
@@ -1352,7 +1389,8 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     // states and mildly nonsymmetric convection-dominated states. BiCGStab may
     // either stagnate or break down on the former even though the linear
     // system is well posed. Retry from the original nonlinear iterate with
-    // restarted GMRES, then with CG as a final robust path. Every retry starts
+    // restarted GMRES. CG is a last resort ONLY for certified SPD operators;
+    // a generic convective scalar transport matrix is not SPD. Every retry starts
     // from the original iterate so no unconverged Krylov state is injected.
     if (fallback_allowed &&
         result.status != cfdx::core::SolverStatus::CONVERGED) {
@@ -1373,7 +1411,8 @@ inline cfdx::core::SolverResult solve_scalar_equation(
     }
 
     if (fallback_allowed &&
-        result.status != cfdx::core::SolverStatus::CONVERGED) {
+        result.status != cfdx::core::SolverStatus::CONVERGED &&
+        scalar_cg_fallback_spd_certificate(equation.matrix)) {
         candidate = solution;
         result = cfdx::core::solve_cg(
             equation.matrix, equation.rhs, candidate,
