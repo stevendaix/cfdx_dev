@@ -122,6 +122,32 @@ int main() {
         EXPECT_FALSE(std::filesystem::exists(dir/"cell_fields.csv.tmp"));
         std::filesystem::remove_all(dir);
     });
+    run_case("symmetry_patch_is_impermeable_in_both_mass_flux_contracts", [] {
+        auto mesh=cube();
+        // The top y=1 face is geometrically a symmetry plane, not an outlet.
+        mesh.boundary().patch(0).face_ids.erase(
+            mesh.boundary().patch(0).face_ids.begin()+3);
+        mesh.boundary().add_patch("symmetry", PatchType::SYMMETRY);
+        mesh.boundary().patch(1).face_ids.push_back(3);
+        const auto geometry=build_fv_geometry(mesh);
+        Field<double,Location::CELL> u(1,"U","m/s",3);
+        u.set(0,2.0,3.0,0.0); // nonzero normal cell velocity at y=1
+        Field<double,Location::CELL> p(1,"p","Pa");
+        p(0)=0.0;
+        VelocityBoundaryConditions bcs;
+        bcs["wall"]={VelocityBoundaryCondition::Type::FIXED_VALUE,Vec3{0,0,0}};
+        bcs["symmetry"]={VelocityBoundaryCondition::Type::ZERO_GRADIENT,Vec3{0,0,0}};
+        const auto direct = make_mass_flux(mesh,geometry,u,1.0,bcs);
+        EXPECT_NEAR(direct(3),0.0,1e-15);
+        const std::array<std::vector<double>,3> rAU{ {
+            std::vector<double>{1.0},
+            std::vector<double>{1.0},
+            std::vector<double>{1.0}}
+        };
+        const auto rhie = make_rhie_chow_mass_flux(
+            mesh,geometry,u,p,rAU,1.0,bcs);
+        EXPECT_NEAR(rhie(3),0.0,1e-15);
+    });
     run_case("mass_balance_flags_leak", [] {
         const auto mesh=cube();
         Field<double,Location::CELL> u(1,"U","m/s",3);

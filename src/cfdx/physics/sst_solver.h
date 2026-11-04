@@ -89,7 +89,12 @@ inline double sst_linear_tolerance_for_solution_defect(
     const double translated=tolerance*ratio;
     if (!std::isfinite(translated) || !(translated>0.0))
         throw std::domain_error("SST linear tolerance: requested absolute defect cannot be represented");
-    return translated;
+    // A global min-row-norm bound can demand a relative Krylov target far
+    // below FP64 precision on stretched grids. Prevent impossible linear
+    // oversolving. The independent physical SST solution-defect and iterate
+    // convergence tests below remain REQUIRED before accepting a solution.
+    const double fp64_floor = 64.0 * std::numeric_limits<double>::epsilon();
+    return std::max(translated, fp64_floor);
 }
 
 inline std::pair<double,double> compute_sst_blending(

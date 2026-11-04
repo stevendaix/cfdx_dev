@@ -993,6 +993,100 @@ int main(int argc, char** argv)
         controls.convergence.continuity_tolerance = 1e-12;
         controls.linear_max_iterations = 1000;
         controls.linear_tolerance = 1e-11;
+        // Optional algebraic equilibration for ill-scaled imported meshes.
+        // The linear dispatcher reconstructs the physical solution and checks
+        // its *unscaled true residual* at the original tolerance. This does
+        // not relax any of the nonlinear/physical qualification criteria.
+        if (is_case_hdf5) {
+            const auto scaling = case_setup.numerics.raw_settings.find(
+                "pressure_linear_scaling");
+            if (scaling != case_setup.numerics.raw_settings.end()) {
+                if (scaling->second == "none")
+                    controls.pressure_linear_solver.scaling = LinearScalingModel::None;
+                else if (scaling->second == "row_column")
+                    controls.pressure_linear_solver.scaling = LinearScalingModel::RowColumn;
+                else if (scaling->second == "symmetric_diagonal")
+                    controls.pressure_linear_solver.scaling = LinearScalingModel::SymmetricDiagonal;
+                else
+                    throw std::invalid_argument(
+                        "production solver: pressure_linear_scaling must be "
+                        "none, row_column, or symmetric_diagonal");
+                std::cout << "Pressure algebraic scaling: " << scaling->second
+                          << " (physical true-residual gate retained)\n";
+            }
+            // Pressure and momentum are different linear operators. Keep the
+            // case's global momentum selection, but allow an explicit SPD
+            // pressure-only Krylov/AMG selection on stretched meshes.
+            const auto pressure_krylov = case_setup.numerics.raw_settings.find(
+                "pressure_krylov");
+            if (pressure_krylov != case_setup.numerics.raw_settings.end()) {
+                const auto& v = pressure_krylov->second;
+                if (v == "auto") controls.pressure_linear_solver.krylov = KrylovModel::Auto;
+                else if (v == "cg") controls.pressure_linear_solver.krylov = KrylovModel::CG;
+                else if (v == "gmres") controls.pressure_linear_solver.krylov = KrylovModel::GMRES;
+                else if (v == "fgmres") controls.pressure_linear_solver.krylov = KrylovModel::FGMRES;
+                else if (v == "bicgstab") controls.pressure_linear_solver.krylov = KrylovModel::BiCGStab;
+                else throw std::invalid_argument("invalid pressure_krylov; expected auto, cg, gmres, fgmres or bicgstab");
+                std::cout << "Pressure Krylov: " << v << "\n";
+            }
+            const auto pressure_pc = case_setup.numerics.raw_settings.find(
+                "pressure_preconditioner");
+            if (pressure_pc != case_setup.numerics.raw_settings.end()) {
+                const auto& v = pressure_pc->second;
+                if (v == "auto") controls.pressure_linear_solver.preconditioner = PreconditionerModel::Auto;
+                else if (v == "none") controls.pressure_linear_solver.preconditioner = PreconditionerModel::None;
+                else if (v == "jacobi") controls.pressure_linear_solver.preconditioner = PreconditionerModel::Jacobi;
+                else if (v == "ilu0") controls.pressure_linear_solver.preconditioner = PreconditionerModel::ILU0;
+                else if (v == "native_amg") controls.pressure_linear_solver.preconditioner = PreconditionerModel::NativeAMG;
+                else if (v == "smoothed_aggregation_amg") controls.pressure_linear_solver.preconditioner = PreconditionerModel::SmoothedAggregationAMG;
+                else throw std::invalid_argument("invalid pressure_preconditioner; expected auto, none, jacobi, ilu0, native_amg or smoothed_aggregation_amg");
+                std::cout << "Pressure preconditioner: " << v << "\n";
+            }
+            const auto pressure_tol = case_setup.numerics.raw_settings.find(
+                "pressure_linear_tolerance");
+            if (pressure_tol != case_setup.numerics.raw_settings.end()) {
+                std::size_t consumed = 0;
+                double value = 0.0;
+                try { value = std::stod(pressure_tol->second, &consumed); }
+                catch (const std::exception&) { throw std::invalid_argument("invalid pressure_linear_tolerance"); }
+                if (consumed != pressure_tol->second.size() ||
+                    !(value > 0.0) || !std::isfinite(value))
+                    throw std::invalid_argument("invalid pressure_linear_tolerance");
+                controls.pressure_linear_tolerance = value;
+                std::cout << "Pressure true-residual target: " << value
+                          << " (physical conservation gate unchanged)\n";
+            }
+            const auto pressure_budget = case_setup.numerics.raw_settings.find(
+                "pressure_linear_max_iterations");
+            if (pressure_budget != case_setup.numerics.raw_settings.end()) {
+                std::size_t consumed = 0;
+                unsigned long value = 0;
+                try { value = std::stoul(pressure_budget->second, &consumed, 10); }
+                catch (const std::exception&) { throw std::invalid_argument("invalid pressure_linear_max_iterations"); }
+                if (consumed != pressure_budget->second.size() || value < 1 || value > 100000)
+                    throw std::invalid_argument("invalid pressure_linear_max_iterations");
+                controls.pressure_linear_max_iterations = value;
+                std::cout << "Pressure max iterations: " << value << "\n";
+            }
+            const auto restart = case_setup.numerics.raw_settings.find(
+                "pressure_gmres_restart");
+            if (restart != case_setup.numerics.raw_settings.end()) {
+                std::size_t consumed = 0;
+                int value = 0;
+                try {
+                    value = std::stoi(restart->second, &consumed, 10);
+                } catch (const std::exception&) {
+                    throw std::invalid_argument(
+                        "production solver: pressure_gmres_restart must be an integer 1..2048");
+                }
+                if (consumed != restart->second.size() || value < 1 || value > 2048)
+                    throw std::invalid_argument(
+                        "production solver: pressure_gmres_restart must be an integer 1..2048");
+                controls.pressure_linear_solver.gmres_restart = value;
+                std::cout << "Pressure GMRES restart: " << value
+                          << " (linear tolerance unchanged)\n";
+            }
+        }
         controls.acceleration.adaptive_linear_tolerance =
             options.adaptive_convergence;
         controls.acceleration.adaptive_pressure_correctors =

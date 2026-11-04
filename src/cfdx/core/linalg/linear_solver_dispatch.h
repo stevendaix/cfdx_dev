@@ -32,11 +32,10 @@ inline double physical_relative_residual(
     double r2 = 0.0;
     double b2 = 0.0;
     for (std::size_t i = 0; i < ax.size(); ++i) {
-        const double ri = ax[i] - rhs(i);
-        r2 += ri * ri;
-        b2 += rhs(i) * rhs(i);
+        r2 = std::hypot(r2, ax[i] - rhs(i));
+        b2 = std::hypot(b2, rhs(i));
     }
-    return std::sqrt(r2) / std::max(std::sqrt(b2), 1.0e-300);
+    return r2 / std::max(b2, 1.0e-300);
 }
 
 inline MatrixScaling to_matrix_scaling(LinearScalingModel model) {
@@ -208,6 +207,15 @@ inline LinearSolveReport solve_linear_system(
             solution(i) = column_scale[i] * scaled_solution(i);
         report.physical_residual_relative =
             physical_relative_residual(matrix, solution, rhs);
+        // A scaled solver can announce a tiny residual in the scaled norm
+        // while the physical pressure equation fails. Expose the ORIGINAL
+        // matrix's true residual in the authoritative result as well, so
+        // callers and logs never confuse scaled and physical metrics.
+        double original_rhs_norm = 0.0;
+        for (std::size_t i = 0; i < rhs.size(); ++i)
+            original_rhs_norm = std::hypot(original_rhs_norm, rhs(i));
+        report.result.residual_relative = report.physical_residual_relative;
+        report.result.residual = report.physical_residual_relative * original_rhs_norm;
         if (report.result.status == SolverStatus::CONVERGED &&
             (!std::isfinite(report.physical_residual_relative) ||
              report.physical_residual_relative > tolerance))

@@ -214,6 +214,10 @@ struct IncompressibleSolverControls {
     ConvergenceCriteria convergence;
     std::size_t linear_max_iterations = 1000;
     double linear_tolerance = 1e-10;
+    // Optional independent pressure linear budget; zero inherits the global one.
+    // The nonlinear mass and momentum conservation gates are unaffected.
+    double pressure_linear_tolerance = 0.0;
+    std::size_t pressure_linear_max_iterations = 0;
     ConvergenceAccelerationControls acceleration;
     double density = 1.0;
     double kinematic_viscosity = 1.0e-3;
@@ -646,7 +650,10 @@ inline void validate_incompressible_controls(
     }
     if (c.pressure_reference_cell >= n_cells)
         throw std::invalid_argument("pressure reference cell out of range");
-    if (c.linear_max_iterations == 0 || !(c.linear_tolerance > 0.0))
+    if (c.linear_max_iterations == 0 || !(c.linear_tolerance > 0.0) ||
+        !std::isfinite(c.linear_tolerance) ||
+        !std::isfinite(c.pressure_linear_tolerance) ||
+        c.pressure_linear_tolerance < 0.0)
         throw std::invalid_argument("invalid linear solver controls");
 }
 
@@ -806,7 +813,9 @@ make_mass_flux(
         } else {
             const std::size_t p=geometry.face_patch[f];
             if (p < mesh.boundary().n_patches() &&
-                mesh.boundary().patch(p).type == PatchType::EMPTY) {
+                (mesh.boundary().patch(p).type == PatchType::EMPTY ||
+                 mesh.boundary().patch(p).type == PatchType::SYMMETRY)) {
+                // Symmetry is impermeable, not a generic outflow.
                 flux(f) = 0.0;
                 continue;
             }
@@ -1058,7 +1067,9 @@ make_rhie_chow_mass_flux(
         } else {
             const std::size_t patch = geometry.face_patch[f];
             if (patch < mesh.boundary().n_patches() &&
-                mesh.boundary().patch(patch).type == PatchType::EMPTY) {
+                (mesh.boundary().patch(patch).type == PatchType::EMPTY ||
+                 mesh.boundary().patch(patch).type == PatchType::SYMMETRY)) {
+                // Both EMPTY and SYMMETRY faces prohibit normal mass flow.
                 flux(f) = 0.0;
                 continue;
             }
@@ -4672,16 +4683,24 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     if (pressure_context) {
                         return pressure_context->solve(
                             matrix, rhs, correction,
-                            controls.linear_max_iterations,
-                            linear_tolerance, {}, {},
+                            controls.pressure_linear_max_iterations != 0
+                                ? controls.pressure_linear_max_iterations
+                                : controls.linear_max_iterations,
+                            controls.pressure_linear_tolerance > 0.0
+                                ? controls.pressure_linear_tolerance
+                                : linear_tolerance, {}, {},
                             pressure_null_space.get());
                     }
                     return solve_linear_system(
                         matrix, rhs, correction,
                         LinearProblemKind::PressurePoisson,
                         controls.pressure_linear_solver,
-                        controls.linear_max_iterations,
-                        linear_tolerance).result;
+                        controls.pressure_linear_max_iterations != 0
+                            ? controls.pressure_linear_max_iterations
+                            : controls.linear_max_iterations,
+                        controls.pressure_linear_tolerance > 0.0
+                            ? controls.pressure_linear_tolerance
+                            : linear_tolerance).result;
                 };
             std::unique_ptr<SparseMatrix> reduced_pressure_matrix;
             std::unique_ptr<Vector> reduced_pressure_rhs;
@@ -4741,6 +4760,33 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         if (cell != ref)
                             p_corr(cell) = reduced_corr(reduced_index(cell));
                     p_corr(ref) = 0.0;
+                }
+            }
+            // Optional snapshot of the ORIGINAL pressure matrix and right-hand
+            // side. Independent of expensive momentum forensic logging.
+            // Does not modify the operator, initial state or convergence gate.
+            if (iter == 1 && corr == 0) {
+                if (const char* prefix = std::getenv("CFDX_PRESSURE_DUMP_PREFIX");
+                    prefix && *prefix) {
+                    const auto& mat = *solved_pressure_matrix;
+                    const auto& rhs = *solved_pressure_rhs;
+                    std::ofstream mm(std::string(prefix) + ".mtx");
+                    std::ofstream bb(std::string(prefix) + ".rhs");
+                    if (!mm || !bb)
+                        throw std::runtime_error("CFDX pressure dump: failed to open output");
+                    mm << "%%MatrixMarket matrix coordinate real general\n";
+                    mm << mat.n_rows() << " " << mat.n_cols() << " " << mat.nnz() << "\n";
+                    mm << std::setprecision(17);
+                    bb << std::setprecision(17);
+                    const auto* offsets = mat.row_offsets_data();
+                    const auto* columns = mat.columns_data();
+                    const auto* values = mat.values_data();
+                    for (std::size_t row = 0; row < mat.n_rows(); ++row) {
+                        bb << rhs(row) << "\n";
+                        for (std::uint32_t k = offsets[row]; k < offsets[row+1]; ++k)
+                            mm << row + 1 << " " << columns[k] + 1
+                               << " " << values[k] << "\n";
+                    }
                 }
             }
             const auto pressure_row_to_cell = [&](std::size_t row) {
