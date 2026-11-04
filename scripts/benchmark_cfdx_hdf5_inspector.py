@@ -47,12 +47,19 @@ def _create_sparse_case(path: Path, n_cells: int) -> None:
         h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
         h5.attrs["n_cells"] = n_cells
         h5.attrs["source_case_name"] = f"sparse-{n_cells}-cells"
-        h5.create_dataset(
+        points = h5.create_dataset(
             "points",
             shape=(n_points, 3),
             dtype="f8",
             chunks=(1024, 3),
         )
+        # Materialize the chunk touched by the bounded sample. The rest of the
+        # production-scale logical arrays remain sparse, isolating metadata
+        # traversal while ensuring the sample exercises real chunk I/O.
+        points[:11, :] = [
+            [float(row * 3 + column) for column in range(3)]
+            for row in range(11)
+        ]
         for name, dtype in (
             ("owner", "i8"),
             ("neighbour", "i8"),
@@ -104,6 +111,9 @@ def _benchmark_one(n_cells: int) -> dict[str, Any]:
             raise RuntimeError("large sparse fixture did not hit metadata-only mode")
         if not sample.values or len(sample.values) > 32:
             raise RuntimeError("bounded dataset sample violated its 32-value cap")
+        expected_sample = tuple(str(float(value)) for value in range(len(sample.values)))
+        if sample.values != expected_sample:
+            raise RuntimeError("bounded sample did not read the materialized HDF5 chunk")
 
         logical_bytes = sum(item.size_bytes or 0 for item in summary.datasets)
         return {
@@ -112,6 +122,7 @@ def _benchmark_one(n_cells: int) -> dict[str, Any]:
             "faces": summary.n_faces,
             "logical_dataset_bytes": logical_bytes,
             "physical_file_bytes": path.stat().st_size,
+            "points_allocated_bytes": int(h5py.File(path, "r")["points"].id.get_storage_size()),
             "inspect_ms": round(inspect_ms, 3),
             "sample_ms": round(sample_ms, 3),
             "sample_values": len(sample.values),
