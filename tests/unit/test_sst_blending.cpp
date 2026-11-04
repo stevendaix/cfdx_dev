@@ -198,6 +198,131 @@ int main()
         c.sst_linear_relaxation=1.1;
         EXPECT_THROW(validate_turbulence_controls(c),std::invalid_argument);
     });
+    run_case("v16_sst_source_jacobian_and_cross_diffusion_identity", [] {
+        TurbulenceTransportControls c;
+        c.model=TurbulenceModel::SST;
+        c.density=1.2;
+        c.sst_omega_newton_sink=true;
+        const double k=0.31,omega=25.0,S=4.0,F1=0.35,F2=0.8,cross=-1.2;
+        const auto q=sst_cell_sources(k,omega,S,F1,F2,cross,c);
+        const double beta=F1*c.beta1+(1.0-F1)*c.beta2;
+        const double gamma=F1*c.gamma1+(1.0-F1)*c.gamma2;
+        const double limitedPk=std::min(c.density*q.nut*S*S,
+            c.sst_production_limiter*c.beta_star*c.density*k*omega);
+        const double cross_source=2.0*(1.0-F1)*c.density*c.sst_sigma_w2/
+                                  omega*cross;
+        const double omega_physical=gamma*limitedPk/q.nut -
+            c.density*beta*omega*omega+cross_source;
+        EXPECT_NEAR(q.sk+q.spk*k,limitedPk-c.density*c.beta_star*k*omega,1e-12);
+        EXPECT_NEAR(q.sw+q.spw*omega,omega_physical,1e-11);
+        // The Newton option linearizes only the quadratic destruction.
+        const double h=1e-4;
+        const auto sink=[&](double w) {return -c.density*beta*w*w;};
+        const double fd=(sink(omega+h)-sink(omega-h))/(2.0*h);
+        EXPECT_NEAR(fd,-2.0*c.density*beta*omega,1e-8);
+        // With negative cross diffusion, Spw also contains a stability
+        // split. Its slope is not claimed to be the full nonlinear Jacobian.
+        EXPECT_NEAR(q.spw-std::min(cross_source,0.0)/omega,fd,1e-8);
+        c.sst_omega_newton_sink=false;
+        const auto legacy=sst_cell_sources(k,omega,S,F1,F2,cross,c);
+        EXPECT_NEAR(legacy.sw+legacy.spw*omega,omega_physical,1e-11);
+    });
+    run_case("v16_wall_diffusion_only_molecular_at_fixed_value_wall", [] {
+        using namespace cfdx::core;
+        const auto mesh=make_sst_transaction_unit_cube();
+        const auto geom=build_fv_geometry(mesh);
+        TurbulenceTransportControls c;
+        c.model=TurbulenceModel::SST;
+        c.density=1.2;
+        c.molecular_viscosity=1e-5;
+        const double molecular=c.density*c.molecular_viscosity;
+        std::vector<double> gamma(mesh.n_cells(),20.0*molecular);
+        ScalarBoundaryConditions bc;
+        for (const char* patch: {"x0","x1","walls"})
+            bc[patch]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        auto face_gamma=sst_face_diffusion_coefficients(mesh,geom,gamma,bc,nullptr,c);
+        for (const auto value : face_gamma)
+            EXPECT_NEAR(value,molecular,1e-16);
+        Field<double,Location::FACE> zero_flux(mesh.n_faces(),"flux","kg/s",1);
+        zero_flux.fill(0.0);
+        Field<double,Location::CELL> zero(mesh.n_cells(),"z","",1);
+        zero.fill(0.0);
+        Field<double,Location::CELL> k(mesh.n_cells(),"k","m2/s2",1);
+        k.fill(0.4);
+        const auto legacy=assemble_scalar_equation(
+            mesh,geom,zero_flux,0.0,zero,zero,bc,true,
+            nullptr,nullptr,nullptr,&gamma,ConvectionScheme::UPWIND,&k);
+        const auto physical=assemble_scalar_equation(
+            mesh,geom,zero_flux,0.0,zero,zero,bc,true,
+            nullptr,nullptr,nullptr,&gamma,ConvectionScheme::UPWIND,&k,
+            nullptr,true,&face_gamma);
+        EXPECT_NEAR(legacy.diagonal[0]/physical.diagonal[0],20.0,1e-12);
+        const auto budget=sst_cell_discrete_budget(
+            mesh,geom,zero_flux,k,zero,zero,gamma,bc,nullptr,c,0,c.k_min);
+        EXPECT_NEAR(budget.full_residual,budget.recomposed,1e-13);
+        EXPECT_NEAR(budget.wall_owner_diffusion_flux,budget.wall_orthogonal_flux,1e-13);
+        EXPECT_TRUE(budget.dirichlet_wall_faces==mesh.n_faces());
+        c.sst_molecular_wall_diffusion=true;
+        const auto budget_modified=sst_cell_discrete_budget(
+            mesh,geom,zero_flux,k,zero,zero,gamma,bc,nullptr,c,0,c.k_min);
+        EXPECT_NEAR(budget_modified.full_residual,budget_modified.recomposed,1e-13);
+        EXPECT_NEAR(budget_modified.wall_molecular_diffusion_flux,
+                    budget_modified.wall_orthogonal_flux,1e-13);
+        EXPECT_NEAR(budget.full_residual/budget_modified.full_residual,20.0,1e-12);
+    });
+    run_case("v16_wall_molecular_diffusion_does_not_change_nonwall_dirichlet", [] {
+        const auto mesh = make_sst_wall_operator_test_mesh();
+        const auto geometry = build_fv_geometry(mesh);
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.density = 1.2;
+        controls.molecular_viscosity = 1e-5;
+        const double wall_gamma = controls.density * controls.molecular_viscosity;
+        std::vector<double> gamma(mesh.n_cells(), 15.0 * wall_gamma);
+        ScalarBoundaryConditions bcs;
+        bcs["wall"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        bcs["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.2, 0.0};
+        for (const char* name: {"side_low", "side_high", "bottom", "top"})
+            bcs[name] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        const auto result = sst_face_diffusion_coefficients(
+            mesh, geometry, gamma, bcs, nullptr, controls);
+        EXPECT_TRUE(result.size() == mesh.n_faces());
+        EXPECT_NEAR(result[0], wall_gamma, 1e-16);
+        EXPECT_NEAR(result[1], gamma[0], 1e-16);
+        for (std::size_t face=2; face<mesh.n_faces(); ++face)
+            EXPECT_NEAR(result[face], gamma[0], 1e-16);
+    });
+    run_case("v16_sst_nonlinear_row_budget_has_no_hidden_flux_terms", [] {
+        using namespace cfdx::core;
+        const auto mesh=make_sst_transaction_unit_cube();
+        const auto geom=build_fv_geometry(mesh);
+        Field<double,Location::FACE> flux(mesh.n_faces(),"flux","kg/s",1);
+        flux.fill(0.0);
+        Field<double,Location::CELL> k(1,"k","m2/s2",1),omega(1,"omega","1/s",1),
+            strain(1,"strain","1/s",1),wall(1,"wall","m",1);
+        k(0)=0.4;omega(0)=20.0;strain(0)=4.0;wall(0)=0.2;
+        ScalarBoundaryConditions kb,wb;
+        for (const char* patch: {"x0","x1","walls"}) {
+            kb[patch]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+            wb[patch]={ScalarBoundaryType::FIXED_VALUE,2.0,0.0};
+        }
+        TurbulenceTransportControls c;
+        c.model=TurbulenceModel::SST;
+        for (const bool molecular : {false,true}) {
+            c.sst_molecular_wall_diffusion=molecular;
+            const auto [bk,bw]=sst_reassembled_discrete_cell_budgets(
+                mesh,geom,flux,k,omega,strain,wall,c,kb,wb,nullptr,0);
+            const double k_scale=std::max({1.0,std::abs(bk.full_residual),std::abs(bk.recomposed)});
+            const double w_scale=std::max({1.0,std::abs(bw.full_residual),std::abs(bw.recomposed)});
+            EXPECT_TRUE(std::abs(bk.closure_error) <= 1e-12*k_scale);
+            EXPECT_TRUE(std::abs(bw.closure_error) <= 1e-12*w_scale);
+            EXPECT_TRUE(bk.diffusion>0.0 && bw.diffusion>0.0);
+            EXPECT_TRUE(bk.implicit_source>0.0 && bw.implicit_source>0.0);
+            EXPECT_TRUE(bk.explicit_source<0.0 && bw.explicit_source<0.0);
+            EXPECT_TRUE(std::abs(bk.nonlinear_source_identity_error)<=1e-12*k_scale);
+            EXPECT_TRUE(std::abs(bw.nonlinear_source_identity_error)<=1e-12*w_scale);
+        }
+    });
     run_case("v15_nonlinear_line_search_merit_is_strict_and_fail_closed", [] {
         const double old=0.2;
         EXPECT_TRUE(sst_nonlinear_step_reduces_merit(old,0.19,0.5));
