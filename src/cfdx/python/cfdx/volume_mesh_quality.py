@@ -87,8 +87,23 @@ def analyze_volume_skewness(
         raise ValueError("cell face index is out of range")
     if np.any(own < 0) or np.any(own >= n_cells):
         raise ValueError("owner cell index is out of range")
+    if nei.dtype.kind != "i":
+        raise ValueError("neighbour indices must use a signed integer dtype")
     if np.any(nei < -1) or np.any(nei >= n_cells):
         raise ValueError("neighbour cell index is out of range")
+    # Validate both directions of the cell-face incidence relation before
+    # geometry is built; otherwise adjacency could silently be incomplete.
+    expected_faces = [set() for _ in range(n_cells)]
+    for face_id, (owner_id, neighbour_id) in enumerate(zip(own, nei, strict=True)):
+        expected_faces[int(owner_id)].add(face_id)
+        if int(neighbour_id) >= 0:
+            expected_faces[int(neighbour_id)].add(face_id)
+    for cell_id in range(n_cells):
+        actual = cf[int(co[cell_id]):int(co[cell_id + 1])]
+        if len(set(int(value) for value in actual)) != actual.size:
+            raise ValueError(f"cell {cell_id} contains duplicate face references")
+        if set(int(value) for value in actual) != expected_faces[cell_id]:
+            raise ValueError(f"cell {cell_id} face list disagrees with owner/neighbour")
     internal = np.flatnonzero(nei >= 0)
     if np.any(own[internal] == nei[internal]):
         raise ValueError("internal face cannot have identical owner and neighbour")
