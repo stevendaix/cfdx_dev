@@ -1109,6 +1109,53 @@ int main(int argc, char** argv)
         // requires the authoritative convergence gates below.
         controls.diagnostics.iteration_trace = true;
         controls.diagnostics.iteration_trace_frequency = 1;
+        if (is_case_hdf5) {
+            const auto& raw=case_setup.numerics.raw_settings;
+            const auto flag=[&](const char* name) {
+                const auto it=raw.find(name);
+                if (it==raw.end()) return false;
+                if (it->second!="true" && it->second!="false")
+                    throw std::invalid_argument(std::string(name)+" must be true or false");
+                return it->second=="true";
+            };
+            const auto number=[&](const char* name, double fallback) {
+                const auto it=raw.find(name);
+                if (it==raw.end()) return fallback;
+                std::size_t used=0;
+                double result=0.0;
+                try { result=std::stod(it->second,&used); }
+                catch (const std::exception&) {
+                    throw std::invalid_argument(std::string(name)+" must be a number");
+                }
+                if (used!=it->second.size() || !std::isfinite(result))
+                    throw std::invalid_argument(std::string(name)+" must be finite");
+                return result;
+            };
+            controls.diagnostics.flux_patch_audit=flag("v17_flux_patch_audit");
+            controls.v18_full_flux_pressure_oracle=flag("v18_full_flux_pressure_oracle");
+            controls.v18_sparse_flux_pressure_jacobian=flag("v18_sparse_flux_pressure_jacobian");
+            if (controls.v18_full_flux_pressure_oracle)
+                std::cout << "V18 reference pressure Schur Jacobian: ENABLED "
+                          << "(small-mesh diagnostic only, never qualified)\n";
+            controls.pressure_continuity_line_search.enabled=
+                flag("v17_pressure_line_search");
+            if (controls.pressure_continuity_line_search.enabled)
+                controls.pressure_continuity_line_search.max_trials=12;
+            auto& pseudo=controls.pseudo_momentum;
+            pseudo.enabled=flag("v17_pseudo_momentum");
+            pseudo.initial_cfl=number("v17_pseudo_initial_cfl",pseudo.initial_cfl);
+            pseudo.minimum_cfl=number("v17_pseudo_min_cfl",pseudo.minimum_cfl);
+            pseudo.maximum_cfl=number("v17_pseudo_max_cfl",pseudo.maximum_cfl);
+            pseudo.growth=number("v17_pseudo_growth",pseudo.growth);
+            pseudo.shrink=number("v17_pseudo_shrink",pseudo.shrink);
+            validate_v17_pseudo_momentum_controls(pseudo);
+            if (pseudo.enabled)
+                std::cout << "V17 experimental steady pseudo-momentum: initial CFL="
+                          << pseudo.initial_cfl << " range=[" << pseudo.minimum_cfl
+                          << "," << pseudo.maximum_cfl << "] (not a physical transient)\n";
+            if (controls.diagnostics.flux_patch_audit)
+                std::cout << "V17 authoritative Rhie-Chow patch flux audit enabled\n";
+        }
         controls.pressure_reference_cell = 0;
         controls.pressure_reference_value = 0.0;
         controls.probes = options.probes;
