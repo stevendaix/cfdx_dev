@@ -1,0 +1,137 @@
+name: PR1168 V6 CI diagnostics (pinned head, never merge this branch)
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+    paths: ['.github/workflows/pr1168_v6_ci_diag.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  # Pinned PR head under diagnosis: V1-V6 applied, 9 V6 files byte-exact.
+  PR_HEAD: 8b95611d3f3a98bf7e45a12e505317c24e453685
+  BASE_SHA: e0e59e5e3cf96e70ad2c179040953879bcd44ffb
+
+jobs:
+  diag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - name: Checkout pinned PR head (full history for base diff)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PR_HEAD }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Ruff on changed .py vs base (exact findings)
+        id: ruff
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          python -m pip install --upgrade ruff
+          mapfile -t changed < <(git diff --name-only "${{ env.BASE_SHA }}...${{ env.PR_HEAD }}" -- '*.py')
+          printf '%s\n' "${changed[@]}" > changed_py.log || true
+          if ((${#changed[@]} > 0)); then
+            ruff check --output-format=full "${changed[@]}" > ruff_check.log 2>&1 || true
+            ruff format --diff "${changed[@]}" > ruff_format.log 2>&1 || true
+          else
+            echo "no changed python files" > ruff_check.log
+          fi
+          cat ruff_check.log
+          cat ruff_format.log || true
+          ruff check "${changed[@]}" >/dev/null 2>&1 || echo "RUFF_CHECK_FAILED"
+
+      - name: Sphinx -W (docs job reproduction)
+        id: sphinx
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          python -m pip install -r docs/requirements.txt
+          python -m compileall -q docs/theory docs/developer docs/vv > sphinx.log 2>&1 || echo "COMPILEALL_FAILED" >> sphinx.log
+          find docs/theory docs/developer docs/vv -name 'chapter.py' -print0 | xargs -0 -n1 python -m jupytext --test --to py:percent >> sphinx.log 2>&1 || echo "JUPYTEXT_FAILED" >> sphinx.log
+          (cd docs/theory/04-gradients-reconstruction/experiments && python self_check.py && python run_gradient_study.py) >> sphinx.log 2>&1 || echo "N2_STUDY_FAILED" >> sphinx.log
+          sphinx-build -W -b html docs docs/_build/html >> sphinx.log 2>&1 || echo "SPHINX_W_FAILED" >> sphinx.log
+          tail -n 120 sphinx.log
+          ! grep -q 'FAILED' sphinx.log
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ zlib1g-dev libhdf5-dev
+
+      - name: Configure + build production solver and V6-adjacent C++ tests
+        id: build
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cmake -S . -B build-diag -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON -DCFDX_ENABLE_MPI=OFF -DCFDX_USE_HDF5_SERIAL=ON
+          cmake --build build-diag --parallel 4 \
+            --target cfdx_production_solver test_production_boundary_wls_v6 \
+            test_production_sst_thermal_coupling test_th03_sst_fp64_floor \
+            test_thermohydraulic_observables test_variable_viscosity_transpose_stress \
+            2>&1 | tee build.log
+          ! grep -E 'error:|FAILED:' build.log
+
+      - name: ctest selected C++ tests
+        id: ctest
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ctest --test-dir build-diag \
+            -R '^(test_production_boundary_wls_v6|test_production_sst_thermal_coupling|test_th03_sst_fp64_floor|test_thermohydraulic_observables|test_variable_viscosity_transpose_stress)$' \
+            --output-on-failure --no-tests=error 2>&1 | tee ctest.log
+          grep -E 'FAILED|Fail' ctest.log && exit 1 || true
+
+      - name: pytest TH-03 and thermohydraulic suites
+        id: pytest
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python -m pip install pytest h5py numpy scipy pydantic
+          PYTHONPATH=src/cfdx/python:. python -m pytest -q \
+            tests/python/test_th03_openfoam_blockmesh.py \
+            tests/python/test_th03_pressure_config_v5.py \
+            tests/python/test_th03_pressure_matrix_certificate_v5.py \
+            tests/python/test_thermohydraulic_reference_contracts.py \
+            tests/python/test_thermohydraulic_physical_qualifier.py \
+            tests/python/test_th03_wall_gradient_compare.py \
+            tests/python/test_thermohydraulic_native_cases.py \
+            tests/python/test_th03_bfs_case_generator.py \
+            tests/python/test_thermohydraulic_timeseries.py 2>&1 | tee pytest.log
+
+      - name: Commit evidence to diag branch ([ci skip])
+        if: always()
+        run: |
+          set -euo pipefail
+          git config --global user.name "cfdx-ci-diag"
+          git config --global user.email "actions@users.noreply.github.com"
+          rm -rf diag-branch
+          git worktree add diag-branch origin/ci/long-campaign-diagnostics
+          dest="diag-branch/diag-evidence/logs/pr1168_v6_run${{ github.run_number }}"
+          mkdir -p "${dest}"
+          cp changed_py.log ruff_check.log ruff_format.log sphinx.log build.log ctest.log pytest.log "${dest}/" 2>/dev/null || true
+          cp build-diag/Testing/Temporary/LastTest.log "${dest}/" 2>/dev/null || true
+          {
+            echo "run=${{ github.run_number }} head=${{ env.PR_HEAD }}"
+            echo "ruff=${{ steps.ruff.outcome }} sphinx=${{ steps.sphinx.outcome }} build=${{ steps.build.outcome }} ctest=${{ steps.ctest.outcome }} pytest=${{ steps.pytest.outcome }}"
+          } > "${dest}/summary.txt"
+          cd diag-branch
+          git add diag-evidence
+          git commit -m "[ci skip] PR1168 V6 diag evidence run ${{ github.run_number }}" || echo "nothing to commit"
+          git push origin HEAD:ci/long-campaign-diagnostics
+
+      - name: Final gate
+        if: always()
+        run: |
+          ok=0
+          for s in "${{ steps.ruff.outcome }}" "${{ steps.sphinx.outcome }}" "${{ steps.build.outcome }}" "${{ steps.ctest.outcome }}" "${{ steps.pytest.outcome }}"; do
+            [[ "$s" == "success" ]] || ok=1
+          done
+          exit $ok
