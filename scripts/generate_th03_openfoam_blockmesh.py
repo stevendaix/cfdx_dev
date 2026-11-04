@@ -310,7 +310,15 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
                     sst_compensated_gate: bool = False,
                     sst_nonlinear_line_search: bool = False,
                     sst_linear_relaxation: float = 0.7,
-                    sst_molecular_wall_diffusion: bool = False) -> CaseSetup:
+                    sst_molecular_wall_diffusion: bool = False,                    v17_pressure_line_search: bool = False,
+
+                    v17_flux_audit: bool = False,
+                    v17_pseudo_momentum: bool = False,
+                    v17_initial_cfl: float = 0.3,
+                    v17_min_cfl: float = 0.03,
+                    v17_max_cfl: float = 3.0,
+                    v18_full_flux_pressure_oracle: bool = False,
+                    v18_sparse_flux_pressure_jacobian: bool = False) -> CaseSetup:
     if (not 1 <= pressure_restart <= 2048 or
             pressure_scaling not in ('none', 'row_column', 'symmetric_diagonal')):
         raise ValueError('invalid pressure Krylov controls')
@@ -322,6 +330,9 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
         raise ValueError('SST wall factor must be 6 or 60')
     if not (math.isfinite(sst_picard_damping) and 0.0 < sst_picard_damping <= 1.0):
         raise ValueError('SST Picard damping must be finite and in (0, 1]')
+    if (not all(map(math.isfinite,(v17_initial_cfl,v17_min_cfl,v17_max_cfl))) or
+            not 0.0 < v17_min_cfl <= v17_initial_cfl <= v17_max_cfl):
+        raise ValueError('V17 pseudo CFL bounds must be finite and ordered')
     if not (math.isfinite(sst_linear_relaxation) and 0.0 < sst_linear_relaxation <= 1.0):
         raise ValueError('SST scalar linear relaxation must be finite and in (0,1]')
     if sst_nonlinear_line_search and sst_picard_damping != 1.0:
@@ -389,6 +400,14 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
     setup.numerics.raw_settings['sst_nonlinear_line_search'] = str(bool(sst_nonlinear_line_search)).lower()
     setup.numerics.raw_settings['sst_transport_linear_relaxation'] = str(sst_linear_relaxation)
     setup.numerics.raw_settings['sst_molecular_wall_diffusion'] = str(bool(sst_molecular_wall_diffusion)).lower()
+    setup.numerics.raw_settings['v17_pressure_line_search'] = str(bool(v17_pressure_line_search)).lower()
+    setup.numerics.raw_settings['v17_flux_patch_audit'] = str(bool(v17_flux_audit)).lower()
+    setup.numerics.raw_settings['v18_full_flux_pressure_oracle'] = str(bool(v18_full_flux_pressure_oracle)).lower()
+    setup.numerics.raw_settings['v18_sparse_flux_pressure_jacobian'] = str(bool(v18_sparse_flux_pressure_jacobian)).lower()
+    setup.numerics.raw_settings['v17_pseudo_momentum'] = str(bool(v17_pseudo_momentum)).lower()
+    setup.numerics.raw_settings['v17_pseudo_initial_cfl'] = str(v17_initial_cfl)
+    setup.numerics.raw_settings['v17_pseudo_min_cfl'] = str(v17_min_cfl)
+    setup.numerics.raw_settings['v17_pseudo_max_cfl'] = str(v17_max_cfl)
     # Provisional steps are NOT certified; the final coupled convergence gate
     # continues to require converged SST, carrier equations and conservation.
     if sst_provisional:
@@ -466,7 +485,15 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                sst_compensated_gate: bool = False,
                sst_nonlinear_line_search: bool = False,
                sst_linear_relaxation: float = 0.7,
-               sst_molecular_wall_diffusion: bool = False) -> dict:
+               sst_molecular_wall_diffusion: bool = False,               v17_pressure_line_search: bool = False,
+
+               v17_flux_audit: bool = False,
+               v17_pseudo_momentum: bool = False,
+               v17_initial_cfl: float = 0.3,
+               v17_min_cfl: float = 0.03,
+               v17_max_cfl: float = 3.0,
+               v18_full_flux_pressure_oracle: bool = False,
+               v18_sparse_flux_pressure_jacobian: bool = False) -> dict:
     # A mislabeled lateral wall must never reach the CFDX solver as EMPTY.
     # Audit and case writer intentionally use this single geometry contract.
     if count_invalid_extrusion_patch_faces(mesh):
@@ -483,7 +510,15 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                             sst_compensated_gate=sst_compensated_gate,
                             sst_nonlinear_line_search=sst_nonlinear_line_search,
                             sst_linear_relaxation=sst_linear_relaxation,
-                            sst_molecular_wall_diffusion=sst_molecular_wall_diffusion)
+                            sst_molecular_wall_diffusion=sst_molecular_wall_diffusion,
+                            v17_pressure_line_search=v17_pressure_line_search,
+                            v17_flux_audit=v17_flux_audit,
+                            v17_pseudo_momentum=v17_pseudo_momentum,
+                            v17_initial_cfl=v17_initial_cfl,
+                            v17_min_cfl=v17_min_cfl,
+                            v17_max_cfl=v17_max_cfl,
+                            v18_full_flux_pressure_oracle=v18_full_flux_pressure_oracle,
+                            v18_sparse_flux_pressure_jacobian=v18_sparse_flux_pressure_jacobian)
     setup.source.case_path = mesh_source
     setup.source_metadata['physical_qualification'] = 'NOT_QUALIFIED'
     setup.source_metadata['inlet_omega_origin'] = (
@@ -587,6 +622,19 @@ def main() -> int:
         help='Use rho*nu (not owner-cell rho*(nu+sigma*nut)) at resolved Dirichlet wall faces; experimental.')
     parser.add_argument('--sst-nonlinear-line-search', action='store_true',
         help='Backtrack Picard candidate only when the fully reassembled SST merit decreases.')
+    parser.add_argument('--v17-pressure-line-search', action='store_true',
+        help='Experimental fail-closed pressure step selection using real corrected continuity.')
+    parser.add_argument('--v18-sparse-flux-pressure-jacobian', action='store_true',
+        help='Experimental complete sparse Rhie-Chow pressure operator, SIMPLE/fixed-p.')
+    parser.add_argument('--v18-full-flux-pressure-oracle', action='store_true',
+        help='Diagnostic O(N*Nfaces) Schur operator; SIMPLE/<=1024 cells/fixed pressure only.')
+    parser.add_argument('--v17-flux-audit', action='store_true',
+        help='V17: per-patch conservative Rhie-Chow mass audit (diagnostic only).')
+    parser.add_argument('--v17-pseudo-momentum', action='store_true',
+        help='V17: artificial steady momentum mass with adaptive local CFL (opt-in).')
+    parser.add_argument('--v17-initial-cfl', type=float, default=0.3)
+    parser.add_argument('--v17-min-cfl', type=float, default=0.03)
+    parser.add_argument('--v17-max-cfl', type=float, default=3.0)
     parser.add_argument('--initial-omega', type=float, default=OMEGA_INITIAL,
         help='Independent initial SST omega field in 1/s; need not equal inlet.')
     parser.add_argument('--pressure-linear-scaling',
@@ -619,7 +667,15 @@ def main() -> int:
             sst_compensated_gate=args.sst_compensated_gate,
             sst_nonlinear_line_search=args.sst_nonlinear_line_search,
             sst_linear_relaxation=args.sst_linear_relaxation,
-            sst_molecular_wall_diffusion=args.sst_molecular_wall_diffusion)
+            sst_molecular_wall_diffusion=args.sst_molecular_wall_diffusion,
+            v17_pressure_line_search=args.v17_pressure_line_search,
+            v17_flux_audit=args.v17_flux_audit,
+            v17_pseudo_momentum=args.v17_pseudo_momentum,
+            v17_initial_cfl=args.v17_initial_cfl,
+            v17_min_cfl=args.v17_min_cfl,
+            v17_max_cfl=args.v17_max_cfl,
+            v18_full_flux_pressure_oracle=args.v18_full_flux_pressure_oracle,
+            v18_sparse_flux_pressure_jacobian=args.v18_sparse_flux_pressure_jacobian)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(2, f'TH-03 mesh generation/import failed: {exc}\n')
     print(json.dumps(summary, indent=2))
