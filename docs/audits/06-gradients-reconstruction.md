@@ -108,10 +108,11 @@ toutes familles polyédriques.
 
 La reconstruction SST optionnelle ajuste un gradient \(g\) aux échantillons
 internes et aux contraintes de face. Pour une face Dirichlet, l'échantillon
-est la valeur prescrite au centre de face. Pour une face Neumann, la contrainte
-est \(g\cdot n_f = \partial\phi/\partial n\), avec la normale sortante
-unitaire et la convention de signe du contrat de frontière. Une frontière
-zéro-gradient impose une contrainte homogène. Les faces internes contribuent
+est la valeur prescrite au centre de face. Pour une face Neumann, un point fantôme normal est construit à
+\(x_g=x_P+2d_n n_f\), avec \(\phi_g=\phi_P+2d_n(\partial\phi/\partial n)\).
+Une frontière zéro-gradient utilise la même construction avec dérivée nulle.
+Cette construction impose la seule dérivée normale prescrite et n'invente
+aucune composante tangentielle. Les faces internes contribuent
 avec les différences de valeurs aux centres des cellules.
 
 Les contraintes sont résolues dans le même problème WLS pondéré, avec la
