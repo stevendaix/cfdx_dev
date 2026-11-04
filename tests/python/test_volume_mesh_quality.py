@@ -13,7 +13,7 @@ from cfdx.volume_mesh_quality import (
 def two_tetrahedra():
     points = np.asarray([
         [0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [0., 0., 1.],
-        [1., 1., 1.],
+        [1., 1., 2.],
     ])
     # Shared face (1,2,3), plus three exterior faces per tetrahedron.
     faces = [
