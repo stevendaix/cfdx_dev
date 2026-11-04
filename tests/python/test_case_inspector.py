@@ -167,7 +167,7 @@ def test_soft_linked_case_config_is_not_reported_as_project_config(tmp_path):
             "metadata/decoy_config",
             data='{"name":"not-canonical","physics":{},"numerics":{},"boundaries":{}}',
         )
-        h5["case"] = h5py.SoftLink("/metadata")
+        h5.create_group("case")
         h5["case/config"] = h5py.SoftLink("/metadata/decoy_config")
 
     summary = inspect_cfdx_file(path)
