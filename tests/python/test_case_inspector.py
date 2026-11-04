@@ -195,7 +195,6 @@ def test_renderer_rejects_stale_inspection_summary_before_loading_arrays(
     with h5py.File(path, "a") as h5:
         h5.create_dataset("metadata/mutation", data=np.arange(4096, dtype=np.int64))
 
-    from cfdx.gui_3d import PyVistaQtView
 
     with pytest.raises(ValueError, match="changed since metadata inspection"):
         PyVistaQtView.load_cfdx_mesh(None, str(path), summary=summary)
@@ -262,8 +261,6 @@ def test_dat_preview_rejects_oversized_cell_connectivity_before_reading(
     summary = inspect_cfdx_file(path)
     assert summary.preview_supported
 
-    from cfdx import dat_io
-    from cfdx.gui_3d import PyVistaQtView
 
     def unexpected_restart_read(_path):
         raise AssertionError(
@@ -342,7 +339,6 @@ def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     assert not summary.preview_supported
     assert "connectivity" in summary.preview_block_reason
 
-    from cfdx.gui_3d import PyVistaQtView
 
     with pytest.raises(ValueError, match="preview deferred"):
         PyVistaQtView.load_cfdx_mesh(None, str(path), summary=summary)
