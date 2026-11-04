@@ -21,5 +21,26 @@ int main() {
     const auto consistent=sst_relative_convergence_certificate(kd,wmin,1.e-12,60.e-4,2.e-7);
     if (!consistent.converged ||
         std::abs(consistent.omega_equation_relative - pass.omega_equation_relative)>1.e-15) return 3;
-    std::cout << "PASS V11 SST relative update plus true equation defect certificate\n";
+    // Regression: a large upstream omega can mask a badly solved near-wall
+    // equation if every cell is divided by the GLOBAL maximum omega.
+    ScalarEquation eq;
+    eq.matrix=SparseMatrix(3,3);
+    for(std::size_t i=0;i<3;++i) eq.matrix.push_back(i,i,1.0);
+    eq.matrix.finalize();
+    eq.rhs=Vector(3,0.0);
+    eq.rhs(0)=1.e6; eq.rhs(1)=1.0; eq.rhs(2)=1.0;
+    Vector x(3,0.0);
+    x(0)=1.e6; x(1)=1.1; x(2)=1.0;
+    const double global_solution_defect=sst_equation_solution_defect(eq,x);
+    // The V11 global certificate sees only ~1e-7 and would pass 1e-6.
+    if (!(global_solution_defect / 1.e6 < 1.e-6)) return 4;
+    const auto local=sst_local_equation_defect(eq,x,1.e-12);
+    if (!(local.maximum_relative > 0.09 && local.maximum_relative < 0.091) ||
+        local.worst_cell != 1) return 5;
+    // Same physical system in units scaled by 60: the relative local defect
+    // must not depend on the omega time-unit choice.
+    for(std::size_t i=0;i<3;++i){eq.rhs(i)*=60.0; x(i)*=60.0;}
+    const auto rescaled=sst_local_equation_defect(eq,x,60.e-12);
+    if(std::abs(rescaled.maximum_relative-local.maximum_relative)>1.e-13) return 6;
+    std::cout << "PASS V12 SST global and local residuals with dimensional invariance\n";
 }
