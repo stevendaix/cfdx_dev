@@ -727,8 +727,15 @@ inline ScalarBoundaryFaceValues make_sst_wall_omega_face_values(
             throw std::invalid_argument("SST wall omega face has invalid area");
         const auto delta = geometry.face_centres[face] - geometry.cell_centres[owner];
         const double distance = std::abs(delta.dot(sf)) / area;
+        // The legacy value 6*nu/(beta1*d1^2) and the Menter/NASA
+        // first-point estimate 60*nu/(beta1*d1^2) are separate policies.
+        // Neither is equivalent to OpenFOAM's omegaWallFunction, which also
+        // blends with a logarithmic branch and constrains owner cells.
         it->second[face] = sst_wall_omega_value(
-            controls.molecular_viscosity, controls.beta1, distance);
+            controls.molecular_viscosity, controls.beta1, distance) *
+            (controls.sst_wall_omega_factor / 6.0);
+        if (!std::isfinite(it->second[face]) || !(it->second[face] > 0.0))
+            throw std::domain_error("SST wall omega factor overflow");
         ++face_counts[patch_name];
     }
     for (const auto& [name, _] : requested) {
