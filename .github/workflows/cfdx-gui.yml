@@ -138,6 +138,23 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Benchmark bounded surface quality diagnostics
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+        run: |
+          python scripts/benchmark_cfdx_surface_quality.py \
+            --resolution 128 \
+            --output artifacts/cfdx-surface-quality.json
+
+      - name: Upload surface quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-surface-quality-report
+          path: artifacts/cfdx-surface-quality.json
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Capture Workbench screenshot
         if: always() && steps.install_gui.outcome == 'success'
         env:
