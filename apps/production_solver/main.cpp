@@ -1238,6 +1238,18 @@ int main(int argc, char** argv)
                               << " (global physical gates unchanged)\n";
                 }
             }
+            const auto molecular_wall_diffusion = case_setup.numerics.raw_settings.find(
+                "sst_molecular_wall_diffusion");
+            if (molecular_wall_diffusion != case_setup.numerics.raw_settings.end()) {
+                if (molecular_wall_diffusion->second != "true" &&
+                    molecular_wall_diffusion->second != "false")
+                    throw std::invalid_argument("sst_molecular_wall_diffusion must be true or false");
+                sst_controls.sst_molecular_wall_diffusion =
+                    molecular_wall_diffusion->second == "true";
+            }
+            std::cout << "SST molecular boundary diffusion: "
+                      << (sst_controls.sst_molecular_wall_diffusion ? "experimental" : "legacy")
+                      << " (only fixed-value wall faces; no wall function)\n";
             validate_turbulence_controls(sst_controls);
 
             const auto boundary_contract =
