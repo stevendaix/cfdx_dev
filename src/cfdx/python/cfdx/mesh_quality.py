@@ -183,7 +183,10 @@ def analyze_surface_quality(
         edge_lengths = np.linalg.norm(edges, axis=1)
         longest = float(np.max(edge_lengths))
         shortest = float(np.min(edge_lengths))
-        if longest == 0.0 or shortest <= np.finfo(np.float64).eps * longest:
+        has_zero_length_edge = (
+            longest == 0.0 or shortest <= np.finfo(np.float64).eps * longest
+        )
+        if has_zero_length_edge:
             zero_edges.append(face_id)
 
         centered = polygon - np.mean(polygon, axis=0)
@@ -192,7 +195,7 @@ def analyze_surface_quality(
         )
         area = 0.5 * float(np.linalg.norm(area_vector))
         area_tolerance = 64.0 * np.finfo(np.float64).eps * longest * longest
-        if longest == 0.0 or area <= area_tolerance:
+        if has_zero_length_edge or area <= area_tolerance:
             degenerate.append(face_id)
             continue
 
