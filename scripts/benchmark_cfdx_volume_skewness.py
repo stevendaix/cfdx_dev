@@ -58,7 +58,7 @@ def main() -> None:
         "bad_cell_ids": list(report.bad_cell_ids),
         "cell_neighbours": [list(values) for values in report.cell_neighbours],
         "elapsed_seconds": elapsed,
-        "metric_definition": "face-centroid distance to owner-neighbour centroid line / sqrt(face area)",
+        "metric_definition": "CFDX core convention: distance from face centre to owner-neighbour centre line / centre distance",
     }, indent=2) + "\n", encoding="utf-8")
 
 
