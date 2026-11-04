@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <iomanip>
+#include <limits>
 #include <cmath>
 #include <stdexcept>
 #include <utility>
@@ -34,6 +35,40 @@ inline std::vector<double> sst_boundary_gradient_dot(
             throw std::invalid_argument("SST boundary gradient contraction is non-finite");
     }
     return result;
+}
+
+// Diagnostic-only scale-aware update. k [m2/s2] and omega [1/s] cannot be
+// compared to a single absolute Picard tolerance as dimensionless quantities.
+// Use one reference scale per FIELD; global-relative change is informative but
+// is NOT a substitute for a cellwise equation defect or conservation gate.
+struct SSTFieldUpdateDiagnostic {
+    double absolute_inf = 0.0;
+    double relative_global_inf = 0.0;
+    double reference_scale = 0.0;
+};
+
+inline SSTFieldUpdateDiagnostic sst_field_update_diagnostic(
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& previous,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& current,
+    double minimum_physical_scale)
+{
+    if (previous.size() == 0 || previous.size() != current.size() ||
+        !std::isfinite(minimum_physical_scale) || minimum_physical_scale <= 0.0)
+        throw std::invalid_argument("SST update diagnostic: invalid field size or scale");
+    SSTFieldUpdateDiagnostic diagnostic;
+    diagnostic.reference_scale = minimum_physical_scale;
+    for (std::size_t cell = 0; cell < current.size(); ++cell) {
+        if (!std::isfinite(previous(cell)) || !std::isfinite(current(cell)))
+            throw std::invalid_argument("SST update diagnostic: non-finite field");
+        diagnostic.reference_scale = std::max(
+            diagnostic.reference_scale,
+            std::max(std::abs(previous(cell)), std::abs(current(cell))));
+        diagnostic.absolute_inf = std::max(
+            diagnostic.absolute_inf, std::abs(current(cell) - previous(cell)));
+    }
+    diagnostic.relative_global_inf =
+        diagnostic.absolute_inf / diagnostic.reference_scale;
+    return diagnostic;
 }
 
 // Residual in solution units. Scaling each row by sum_j |a_ij| makes this
@@ -319,8 +354,12 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                 omega(i)=old_w(i)+alpha*(omega(i)-old_w(i));
             }
         }
-        double dk=0.0,dw=0.0;
-        for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-old_k(i)));dw=std::max(dw,std::abs(omega(i)-old_w(i)));}
+        const auto k_change = sst_field_update_diagnostic(
+            old_k, k, controls.k_min);
+        const auto omega_change = sst_field_update_diagnostic(
+            old_w, omega, controls.omega_min);
+        const double dk = k_change.absolute_inf;
+        const double dw = omega_change.absolute_inf;
         accumulate_turbulence_diagnostics(result, inner);
         result.k_residual = inner.k_residual;
         result.second_residual = inner.second_residual;
@@ -335,6 +374,10 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                       << "SST_TRANSPORT_DIAGNOSTIC iteration=" << iter
                       << " picard_damping=" << controls.sst_picard_damping
                       << " dk_inf=" << dk << " domega_inf=" << dw
+                      << " dk_relative_global=" << k_change.relative_global_inf
+                      << " domega_relative_global=" << omega_change.relative_global_inf
+                      << " k_reference_scale=" << k_change.reference_scale
+                      << " omega_reference_scale=" << omega_change.reference_scale
                       << " k_raw=" << inner.k_residual
                       << " omega_raw=" << inner.second_residual
                       << " k_inner_converged=" << inner.converged
