@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-import h5py
 from types import SimpleNamespace
+
+import h5py
 import numpy as np
 import pytest
 from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample
