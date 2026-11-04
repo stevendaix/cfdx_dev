@@ -14,8 +14,9 @@ PYTHON_PACKAGE_ROOT = REPOSITORY_ROOT / "src" / "cfdx" / "python"
 sys.path.insert(0, str(PYTHON_PACKAGE_ROOT))
 
 import h5py
-from cfdx.mesh_quality import analyze_cfdx_surface_file
 import numpy as np
+
+from cfdx.mesh_quality import analyze_cfdx_surface_file
 
 
 def run_benchmark(output: Path, resolution: int = 128) -> dict[str, object]:
