@@ -19,6 +19,13 @@ from time import perf_counter
 from typing import Any
 
 import h5py
+
+# scripts/cfdx.py shadows the installed package when this file is executed
+# directly (Python puts the script directory at sys.path[0]). Resolve the
+# source package explicitly before importing it, independent of PYTHONPATH.
+_PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "cfdx" / "python"
+sys.path.insert(0, str(_PACKAGE_ROOT))
+
 from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample
 
 
