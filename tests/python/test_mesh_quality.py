@@ -89,7 +89,7 @@ def test_quality_metrics_are_scale_invariant_for_small_meshes():
         (np.zeros((3, 2)), [0, 1, 2], [0, 3], "shape"),
         (np.zeros((3, 3)), [0.0, 1.0, 2.0], [0, 3], "integer"),
         (np.zeros((3, 3)), [0, 1, 2], [1, 3], "start at zero"),
-        (np.zeros((3, 3)), [0, 1, 2], [0, 2], "at least three"),
+        (np.zeros((3, 3)), [0, 1], [0, 2], "at least three"),
         (np.zeros((3, 3)), [0, 1, 4], [0, 3], "out-of-range"),
     ],
 )
