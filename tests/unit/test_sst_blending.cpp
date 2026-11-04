@@ -1814,5 +1814,108 @@ int main()
         }
     });
 
+    run_case("v19_pressure_flux_step_is_not_underrelaxed_cell_pressure", [] {
+        using namespace cfdx::core;
+        const auto mesh=make_sst_transaction_unit_cube();
+        const auto geometry=build_fv_geometry(mesh);
+        Field<double,Location::CELL> p(1,"p","Pa",1), pflux(1,"pflux","Pa",1);
+        p(0)=2.0;
+        Vector dp(1,0.0);
+        dp(0)=5.0;
+        apply_v19_pressure_flux_policy(p,pflux,dp,0.1,true,geometry,
+            PressureGaugePolicy::NONE,0,0.0,true);
+        EXPECT_NEAR(p(0),2.5,1e-14);
+        EXPECT_NEAR(pflux(0),7.0,1e-14);
+        // Repeating the legacy policy keeps the pressure and flux states equal.
+        p(0)=2.0;
+        apply_v19_pressure_flux_policy(p,pflux,dp,0.1,false,geometry,
+            PressureGaugePolicy::NONE,0,0.0,true);
+        EXPECT_NEAR(p(0),2.5,1e-14);
+        EXPECT_NEAR(pflux(0),2.5,1e-14);
+        p(0)=2.0;
+        dp(0)=std::numeric_limits<double>::quiet_NaN();
+        EXPECT_THROW(apply_v19_pressure_flux_policy(p,pflux,dp,0.1,true,
+            geometry,PressureGaugePolicy::NONE,0,0.0,true),std::invalid_argument);
+        EXPECT_NEAR(p(0),2.0,1e-14);
+        // A failed update must not partially overwrite either state.
+        p(0)=1.e308;
+        pflux(0)=3.0;
+        dp(0)=1.e308;
+        EXPECT_THROW(apply_v19_pressure_flux_policy(p,pflux,dp,0.5,true,
+            geometry,PressureGaugePolicy::NONE,0,0.0,true),std::runtime_error);
+        EXPECT_NEAR(p(0),1.e308,1.e292);
+        EXPECT_NEAR(pflux(0),3.0,1e-14);
+    });
+    run_case("v19_full_flux_step_uses_pressure_BC_and_not_relaxed_flux", [] {
+        using namespace cfdx::core;
+        const auto mesh=make_sst_transaction_unit_cube();
+        const auto geometry=build_fv_geometry(mesh);
+        Field<double,Location::CELL> p(1,"p","Pa",1),flux_p(1,"pf","Pa",1);
+        Field<double,Location::CELL> H(1,"H","m/s",3);
+        H.fill(0.0); p(0)=0.0;
+        Vector dp(1,0.0); dp(0)=0.25;
+        apply_v19_pressure_flux_policy(p,flux_p,dp,0.1,true,geometry,
+            PressureGaugePolicy::NONE,0,0.0,true);
+        const std::array<std::vector<double>,3> rAU{{{0.2},{0.2},{0.2}}};
+        ScalarBoundaryConditions pbcs;
+        pbcs["x1"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        const auto full=make_rhie_chow_mass_flux(mesh,geometry,H,flux_p,rAU,1.2,
+            VelocityBoundaryConditions{},pbcs,RhieChowVelocityContract::HBYA_PREDICTOR,
+            false,false);
+        const auto relaxed=make_rhie_chow_mass_flux(mesh,geometry,H,p,rAU,1.2,
+            VelocityBoundaryConditions{},pbcs,RhieChowVelocityContract::HBYA_PREDICTOR,
+            false,false);
+        double largest=0.0;
+        for (std::size_t f=0;f<mesh.n_faces();++f) {
+            EXPECT_NEAR(full(f),10.0*relaxed(f),1e-12);
+            largest=std::max(largest,std::abs(full(f)));
+        }
+        EXPECT_TRUE(largest>1e-6);
+    });
+    run_case("v19_pressure_flux_policy_refuses_incompatible_solver_modes", [] {
+        IncompressibleSolverControls controls;
+        EXPECT_TRUE(!controls.v19_full_pressure_flux_step);
+        controls.v19_full_pressure_flux_step=true;
+        EXPECT_THROW(validate_incompressible_controls(controls,1),std::invalid_argument);
+        controls.v18_sparse_flux_pressure_jacobian=true;
+        validate_incompressible_controls(controls,1);
+        controls.pressure_continuity_line_search.enabled=true;
+        EXPECT_THROW(validate_incompressible_controls(controls,1),std::invalid_argument);
+        controls.pressure_continuity_line_search.enabled=false;
+        controls.algorithm=PressureVelocityAlgorithm::COUPLED;
+        EXPECT_THROW(validate_incompressible_controls(controls,1),std::invalid_argument);
+    });
+
+    run_case("v20_flux_decomposition_separates_split_from_rc", [] {
+        using namespace cfdx::core;
+        const auto mesh=make_sst_transaction_unit_cube();
+        Field<double,Location::FACE> full(mesh.n_faces(),"full","kg/s",1);
+        Field<double,Location::FACE> relaxed(mesh.n_faces(),"relaxed","kg/s",1);
+        Field<double,Location::FACE> from_u(mesh.n_faces(),"U","kg/s",1);
+        full.fill(0.0); relaxed.fill(0.0); from_u.fill(0.0);
+        full(0)=3.0; relaxed(0)=2.0; from_u(0)=0.5;
+        full(1)=4.0; relaxed(1)=5.0; from_u(1)=2.0;
+        const auto audit=audit_v20_flux_velocity_decomposition(
+            mesh,full,relaxed,from_u);
+        EXPECT_NEAR(audit.total_linf,2.5,1e-14);
+        EXPECT_NEAR(audit.pressure_split_linf,1.0,1e-14);
+        EXPECT_NEAR(audit.rhie_chow_linf,3.0,1e-14);
+        EXPECT_NEAR(audit.total_l1,4.5,1e-14);
+        EXPECT_NEAR(audit.pressure_split_l1,2.0,1e-14);
+        EXPECT_NEAR(audit.rhie_chow_l1,4.5,1e-14);
+        EXPECT_NEAR(audit.triangle_error_linf,0.0,1e-14);
+        EXPECT_TRUE(audit.total_worst_boundary);
+        // With no split, the mismatch is solely the physical collocated
+        // face interpolation difference, not a missing transport flux.
+        relaxed=full;
+        const auto nosplit=audit_v20_flux_velocity_decomposition(
+            mesh,full,relaxed,from_u);
+        EXPECT_NEAR(nosplit.pressure_split_linf,0.0,1e-14);
+        EXPECT_NEAR(nosplit.rhie_chow_linf,nosplit.total_linf,1e-14);
+        from_u(0)=std::numeric_limits<double>::quiet_NaN();
+        EXPECT_THROW(audit_v20_flux_velocity_decomposition(
+            mesh,full,relaxed,from_u),std::domain_error);
+    });
+
     return run_all();
 }
