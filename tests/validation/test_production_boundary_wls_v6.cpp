@@ -66,11 +66,17 @@ Mesh grid(std::size_t nx, std::size_t ny, std::size_t nz, double shear = 0.0,
     if (two_dimensional) mesh.boundary().add_patch("frontBack",PatchType::EMPTY);
     for (std::size_t f=0; f<mesh.n_faces(); ++f) {
         if (mesh.ownership().neighbour(f)>=0) continue;
-        const auto first = mesh.faces().vertices_data()[mesh.faces().offsets_data()[f]];
-        const auto second= mesh.faces().vertices_data()[mesh.faces().offsets_data()[f]+1];
-        const std::size_t z_first= first/((nx+1)*(ny+1));
-        const std::size_t z_second=second/((nx+1)*(ny+1));
-        const bool on_empty = two_dimensional && (z_first == z_second);
+        const auto offset=mesh.faces().offsets_data()[f];
+        const auto end=mesh.faces().offsets_data()[f+1];
+        const auto z_first=mesh.faces().vertices_data()[offset]/((nx+1)*(ny+1));
+        // An EMPTY face is an entire extrusion cap, not a side face whose
+        // first two vertices happen to lie at the same z.  The old test
+        // helper silently discarded wall faces and invalidated the gauge
+        // invariance test on sheared grids.
+        bool on_empty=two_dimensional;
+        for (auto vi=offset; vi<end; ++vi)
+            on_empty = on_empty &&
+                mesh.faces().vertices_data()[vi]/((nx+1)*(ny+1))==z_first;
         mesh.boundary().patch(on_empty?1:0).face_ids.push_back(f);
     }
     return mesh;
@@ -190,6 +196,125 @@ int main() {
         try { validate_incompressible_controls(c,mesh.n_cells()); }
         catch(const std::invalid_argument&) { rejected=true; }
         EXPECT_TRUE(rejected);
+    });
+    run_case("v8_projected_pressure_gradient_reuses_core_face_weights", [] {
+        // A real skewed / stretched mesh, not an algebraic perturbation of Sf.
+        auto mesh=grid(2,2,1,0.35);
+        for (std::size_t k=0; k<=1; ++k) {
+            const auto vertex=(k*3+1)*3+1;
+            const auto x=mesh.points().x_data()[vertex];
+            const auto y=mesh.points().y_data()[vertex];
+            mesh.points().set(vertex,x+0.38,y-0.27,mesh.points().z_data()[vertex]);
+        }
+        auto geom=build_fv_geometry(mesh);
+        ScalarBoundaryConditions bcs;
+        // Give every boundary face its exact analytic Dirichlet value;
+        // isolate only internal-face interpolation error.
+        const auto old_wall=mesh.boundary().patch(0).face_ids;
+        mesh.boundary().patch(0).face_ids.clear();
+        for (const auto f:old_wall) {
+            const std::string name="bc_"+std::to_string(f);
+            mesh.boundary().add_patch(name,PatchType::WALL);
+            mesh.boundary().patch(mesh.boundary().n_patches()-1).face_ids.push_back(f);
+            bcs[name]={ScalarBoundaryType::FIXED_VALUE,
+                analytical(geom.face_centres[f]),0.0};
+        }
+        geom=build_fv_geometry(mesh);
+        Field<double,Location::CELL> field(mesh.n_cells(),"p","Pa");
+        for (std::size_t i=0;i<field.size();++i)
+            field(i)=analytical(geom.cell_centres[i]);
+        const auto legacy=gauss_gradient_with_boundary(field,mesh,geom,bcs,false,false);
+        const auto projected=gauss_gradient_with_boundary(field,mesh,geom,bcs,false,true);
+        // Independently reconstruct Green-Gauss from the pre-existing
+        // geometric_interpolation_weight() implementation in core.
+        for (std::size_t c=0;c<mesh.n_cells();++c) {
+            Vec3 integrated{0.,0.,0.};
+            for (Offset j=mesh.cells().offsets_data()[c];
+                 j<mesh.cells().offsets_data()[c+1];++j) {
+                const std::size_t f=mesh.cells().faces_data()[j];
+                const bool is_owner=mesh.ownership().owner(f)==c;
+                const auto nr=mesh.ownership().neighbour(f);
+                const auto sf=geom.face_area_vectors[f]*(is_owner?1.:-1.);
+                double value=field(c);
+                if (nr>=0) {
+                    const auto o=mesh.ownership().owner(f);
+                    const auto n=static_cast<std::size_t>(nr);
+                    const double w=geometric_interpolation_weight(
+                        geom.face_centres[f],geom.cell_centres[o],
+                        &geom.cell_centres[n]);
+                    value=(1.-w)*field(o)+w*field(n);
+                } else {
+                    value=analytical(geom.face_centres[f]);
+                }
+                integrated+=sf*value;
+            }
+            const auto expected=integrated*(1./geom.cell_volumes[c]);
+            EXPECT_NEAR(projected(c,0),expected.x,1e-12);
+            EXPECT_NEAR(projected(c,1),expected.y,1e-12);
+            EXPECT_NEAR(projected(c,2),expected.z,1e-12);
+        }
+        double difference=0.0;
+        double err_legacy=0.0, err_projected=0.0;
+        for (std::size_t c=0;c<mesh.n_cells();++c) {
+            for (std::size_t d=0;d<3;++d) {
+                difference=std::max(difference,std::abs(projected(c,d)-legacy(c,d)));
+                const double exact=d==0?1.25:(d==1?-0.8:0.3);
+                err_legacy=std::max(err_legacy,std::abs(legacy(c,d)-exact));
+                err_projected=std::max(err_projected,std::abs(projected(c,d)-exact));
+            }
+        }
+        EXPECT_TRUE(difference>1.e-4);
+        std::cerr<<"V8_PROJECTED_GRADIENT_ERRORS legacy="<<err_legacy
+                 <<" projected="<<err_projected<<"\n";
+    });
+    run_case("v8_projected_rhie_chow_suppresses_checkerboard_mode", [] {
+        // Real extruded 2-D grid with a collocated checkerboard pressure:
+        // a pure interpolated cell gradient may miss this high-frequency
+        // mode, while the Rhie--Chow centre-to-centre jump must detect it.
+        auto mesh=grid(4,4,1,0.12,true);
+        const auto geo=build_fv_geometry(mesh);
+        Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
+        Field<double,Location::CELL> p(mesh.n_cells(),"p","Pa",1);
+        U.fill(0.0);
+        std::array<std::vector<double>,3> rAU;
+        for (auto& component:rAU) component.resize(mesh.n_cells());
+        for (std::size_t c=0;c<mesh.n_cells();++c) {
+            const std::size_t i=c%4, j=(c/4)%4;
+            p(c)=((i+j)%2==0)?1.0:-1.0;
+            for (auto& component:rAU)
+                component[c]=1.0/geo.cell_volumes[c];
+        }
+        const auto flux=make_rhie_chow_mass_flux(
+            mesh,geo,U,p,rAU,1.0,{}, {},
+            RhieChowVelocityContract::HBYA_PREDICTOR,false,true);
+        double internal_activity=0.0, domain_sum=0.0;
+        std::vector<double> div(mesh.n_cells(),0.0);
+        for (std::size_t f=0;f<mesh.n_faces();++f) {
+            const auto n=mesh.ownership().neighbour(f);
+            const auto o=mesh.ownership().owner(f);
+            if (n>=0) {
+                internal_activity+=std::abs(flux(f));
+                div[o]+=flux(f);
+                div[static_cast<std::size_t>(n)]-=flux(f);
+            } else {
+                EXPECT_NEAR(flux(f),0.0,1e-13);
+            }
+        }
+        for (const double r:div) domain_sum+=r;
+        EXPECT_TRUE(internal_activity>1.0);
+        EXPECT_NEAR(domain_sum,0.0,1e-12);
+        for (std::size_t c=0;c<p.size();++c) p(c)+=3.0;
+        const auto shifted=make_rhie_chow_mass_flux(
+            mesh,geo,U,p,rAU,1.0,{}, {},
+            RhieChowVelocityContract::HBYA_PREDICTOR,false,true);
+        for (std::size_t f=0;f<mesh.n_faces();++f)
+            EXPECT_NEAR(shifted(f),flux(f),1e-12);
+        p.fill(3.0); // Exact null-space check.
+        const auto constant=make_rhie_chow_mass_flux(
+            mesh,geo,U,p,rAU,1.0,{}, {},
+            RhieChowVelocityContract::HBYA_PREDICTOR,false,true);
+        for (std::size_t f=0;f<mesh.n_faces();++f)
+            EXPECT_NEAR(constant(f),0.0,1e-12);
     });
     run_case("trapezoid_face_integral_centroid", [] {
         const std::vector<double> x={0.,3.,2.,0.};
