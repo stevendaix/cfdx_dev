@@ -240,6 +240,46 @@ def test_dat_preview_reports_missing_cell_topology(
         PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
 
 
+
+def test_dat_preview_rejects_oversized_cell_connectivity_before_reading(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "oversized-cell-connectivity.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        h5.attrs["n_cells"] = 1
+        h5.attrs["boundary_patches"] = "wall:0:4:0"
+        h5.create_dataset("points", data=np.zeros((4, 3)))
+        h5.create_dataset("owner", data=np.zeros(4, dtype=np.int64))
+        h5.create_dataset("neighbour", data=-np.ones(4, dtype=np.int64))
+        h5.create_dataset("face_vertices", data=[0, 1, 1, 2, 2, 3, 3, 0])
+        h5.create_dataset("face_offsets", data=[0, 2, 4, 6, 8])
+        h5.create_dataset("patch_face_ids", data=[0, 1, 2, 3])
+        h5.create_dataset("patch_face_offsets", data=[0, 4])
+        h5.create_dataset(
+            "cell_faces",
+            shape=(2_000_001,),
+            dtype=np.int64,
+            chunks=(4096,),
+        )
+        h5.create_dataset("cell_offsets", data=[0, 2_000_001])
+
+    summary = inspect_cfdx_file(path)
+    assert summary.preview_supported
+
+    from cfdx import dat_io
+    from cfdx.gui_3d import PyVistaQtView
+
+    def unexpected_restart_read(_path):
+        raise AssertionError("DAT checkpoint must not be read after failed mesh preflight")
+
+    monkeypatch.setattr(dat_io, "read_dat_restart", unexpected_restart_read)
+    with pytest.raises(ValueError, match="2M-entry eager-load budget"):
+        PyVistaQtView.load_cfdx_dat(
+            None, str(path), "unused.dat", summary=summary
+        )
+
+
 def test_inspect_does_not_preview_mesh_with_external_region_catalog(tmp_path):
     path = tmp_path / "external-regions.h5"
     with h5py.File(path, "w") as h5:
