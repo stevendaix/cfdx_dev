@@ -185,6 +185,9 @@ private:
 struct SSTProductionStepResult {
     TurbulenceTransportResult transport;
     bool committed = false;
+    // Provisional means an intermediate, bounded nonlinear predictor, not a
+    // converged SST transport solve. Outer qualification MUST reject it.
+    bool provisional = false;
     std::string reason;
 };
 
@@ -245,7 +248,8 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
     const ScalarBoundaryConditions& omega_bcs = {},
     std::size_t max_iterations = 100,
     double tolerance = 1e-8,
-    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr,
+    bool allow_bounded_provisional = false)
 {
     const std::size_t n = mesh.n_cells();
     if (controls.model != TurbulenceModel::SST)
@@ -284,10 +288,21 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
             mesh, geometry, mass_flux, k, omega, strain_rate, wall_distance,
             controls, k_bcs, omega_bcs, max_iterations, tolerance,
             omega_face_values);
-        if (!step.transport.converged ||
-            step.transport.nonfinite_bound_events != 0 ||
-            !std::isfinite(step.transport.k_residual) ||
-            !std::isfinite(step.transport.second_residual)) {
+        // A segregated outer fixed point may progress with a BOUNDED, finite
+        // intermediate predictor even when its inner SST residual is not yet
+        // converged. This does not certify that predictor: the external
+        // carrier+SST convergence gate requires transport.converged==true.
+        // Opt-in only. Never permit an iterate with clipping or nonfinite data.
+        const bool finite_undistorted =
+            step.transport.nonfinite_bound_events == 0 &&
+            step.transport.k_floor_events == 0 &&
+            step.transport.second_floor_events == 0 &&
+            std::isfinite(step.transport.k_residual) &&
+            std::isfinite(step.transport.second_residual);
+        step.provisional = allow_bounded_provisional &&
+            !step.transport.converged && finite_undistorted;
+        if ((!step.transport.converged && !step.provisional) ||
+            !finite_undistorted) {
             rollback();
             // Preserve the exact failed transport metrics after rollback.
             // These distinguish a genuine k/omega fixed-point defect from a
@@ -318,7 +333,9 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
         refresh_sst_production_eddy_viscosity(
             k, omega, strain_rate, F2, controls, nu_t);
         step.committed = true;
-        step.reason = "SST transport and eddy-viscosity refresh committed";
+        step.reason = step.provisional
+            ? "PROVISIONAL bounded SST predictor committed for outer iteration only; NOT CONVERGED"
+            : "SST transport and eddy-viscosity refresh committed";
         return step;
     } catch (...) {
         rollback();
@@ -534,7 +551,8 @@ inline SSTProductionStepResult advance_sst_production_iterate_transactionally(
     const ScalarBoundaryConditions& omega_bcs = {},
     std::size_t max_iterations = 100,
     double tolerance = 1e-8,
-    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr,
+    bool allow_bounded_provisional = false)
 {
     if (velocity.size() != mesh.n_cells() || velocity.dimension() != 3 ||
         pressure.size() != mesh.n_cells() || pressure.dimension() != 1 ||
@@ -555,7 +573,8 @@ inline SSTProductionStepResult advance_sst_production_iterate_transactionally(
         auto result = advance_sst_transport_transactionally(
             mesh, geometry, mass_flux, state.k, state.omega, state.strain_rate,
             state.wall_distance, controls, state.nu_t, k_bcs, omega_bcs,
-            max_iterations, tolerance, omega_face_values);
+            max_iterations, tolerance, omega_face_values,
+            allow_bounded_provisional);
         if (!result.committed) {
             transaction.rollback();
             result.reason =
@@ -565,8 +584,9 @@ inline SSTProductionStepResult advance_sst_production_iterate_transactionally(
         }
         validate_sst_production_state(state, mesh.n_cells());
         transaction.commit();
-        result.reason =
-            "coupled SST production iterate committed: derived state and transport converged";
+        result.reason = result.provisional
+            ? "coupled SST provisional predictor accepted; final SST qualification still REQUIRED"
+            : "coupled SST production iterate committed: derived state and transport converged";
         return result;
     } catch (...) {
         if (transaction.active())

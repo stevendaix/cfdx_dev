@@ -3,6 +3,9 @@
 #include "cfdx/physics/turbulence_solver.h"
 #include "cfdx/physics/scalar_transport_gradient.h"
 #include <algorithm>
+#include <cstdlib>
+#include <iostream>
+#include <iomanip>
 #include <cmath>
 #include <stdexcept>
 #include <utility>
@@ -304,12 +307,42 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         const auto inner=solve_sst_transport(
             mesh,geometry,mass_flux,k,omega,strain_rate,F1,F2,controls,
             k_bcs,omega_bcs,1,tolerance,omega_face_values);
+        // When the dynamic-blending Picard map oscillates, damp the update
+        // without changing the physical equation, positivity bounds or the
+        // exact final convergence gate. If the candidate is fully certified,
+        // apply it unmodified; a damped intermediate can NEVER be certified
+        // based on residuals of a different (undamped) field.
+        if (!inner.converged && controls.sst_picard_damping < 1.0) {
+            const double alpha=controls.sst_picard_damping;
+            for(std::size_t i=0;i<n;++i) {
+                k(i)=old_k(i)+alpha*(k(i)-old_k(i));
+                omega(i)=old_w(i)+alpha*(omega(i)-old_w(i));
+            }
+        }
         double dk=0.0,dw=0.0;
         for(std::size_t i=0;i<n;++i){dk=std::max(dk,std::abs(k(i)-old_k(i)));dw=std::max(dw,std::abs(omega(i)-old_w(i)));}
         accumulate_turbulence_diagnostics(result, inner);
         result.k_residual = inner.k_residual;
         result.second_residual = inner.second_residual;
         result.iterations = iter;
+        // Opt-in diagnostics: dk/domega describe the DAMPED returned state,
+        // whereas k_raw/omega_raw are the PRE-DAMPING candidate equation
+        // residuals reported by the one-step scalar solver. They must not be
+        // presented as a certificate of the returned damped iterate.
+        if (std::getenv("CFDX_SST_DIAGNOSTICS") &&
+            (iter == 1 || iter % 100 == 0 || iter == max_iterations)) {
+            std::cerr << std::scientific << std::setprecision(9)
+                      << "SST_TRANSPORT_DIAGNOSTIC iteration=" << iter
+                      << " picard_damping=" << controls.sst_picard_damping
+                      << " dk_inf=" << dk << " domega_inf=" << dw
+                      << " k_raw=" << inner.k_residual
+                      << " omega_raw=" << inner.second_residual
+                      << " k_inner_converged=" << inner.converged
+                      << " finite_events=" << result.nonfinite_bound_events
+                      << " floor_k=" << result.k_floor_events
+                      << " floor_omega=" << result.second_floor_events
+                      << '\n';
+        }
         if (inner.converged && result.nonfinite_bound_events == 0 &&
             std::max(dk, dw) <= tolerance) {
             result.converged = true;
