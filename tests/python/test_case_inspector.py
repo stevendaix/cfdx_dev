@@ -176,7 +176,6 @@ def test_soft_linked_case_config_is_not_reported_as_project_config(tmp_path):
     assert summary.case_name == "imported"
 
 
-
 def test_renderer_rejects_stale_inspection_summary_before_loading_arrays(
     tmp_path,
 ):
@@ -199,7 +198,6 @@ def test_renderer_rejects_stale_inspection_summary_before_loading_arrays(
         PyVistaQtView.load_cfdx_mesh(None, str(path), summary=summary)
     with pytest.raises(ValueError, match="changed since metadata inspection"):
         PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
-
 
 
 def test_inspect_does_not_preview_mesh_with_external_region_catalog(tmp_path):
