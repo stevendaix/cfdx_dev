@@ -212,33 +212,45 @@ all 16,384 faces are processed and that the known warped surface produces a
 nonzero warpage indicator. Its elapsed time is a CI smoke measurement, not a
 cross-machine performance claim.
 
-## Mesh Intelligence: volumetric skewness and local inspection
+## Mesh Intelligence: volumetric mesh quality and local inspection
 
 The Case File dock can open **Inspect volume skewness** when the HDF5 file
-contains bounded root-level \x60points\x60, \x60face_vertices\x60, \x60face_offsets\x60, \x60owner\x60,
-\x60neighbour\x60, \x60cell_faces\x60 and \x60cell_offsets\x60 datasets. The analyzer validates
+contains bounded root-level volume topology datasets. The analyzer validates
 internal hard links, numeric/integer dtypes, CSR ranges, owner/neighbour cell
-indices, file identity, and a 64 MiB source-data budget before constructing
-cell geometry. It is currently limited to 100,000 cells, 500,000 faces and
-2,000,000 connectivity entries.
+indices, file identity and a 64 MiB source-data budget before geometry is built.
+It is currently limited to 100,000 cells, 500,000 faces and 2,000,000
+connectivity entries.
 
-The reported face indicator is the distance between the face centroid and
-the line joining owner and neighbour vertex-average cell centroids, normalized
-by the square root of face area. Each cell receives the maximum score of its
-incident internal faces. Boundary faces are excluded because they have no
-neighbour centroid. This is a transparent geometric indicator, **not yet a
-claim of equivalence to Fluent, OpenFOAM or another vendor's skewness
-definition**. Cell centres are vertex averages, not volume-weighted polyhedral
-centroids; the metric must be calibrated against canonical tetrahedron,
-prism, pyramid, hexahedron and skewed-polyhedron fixtures before it is used
-as a mesh-acceptance gate.
+The Python adapter follows the conventions already implemented in
+`core/geometry/geometry_cache.h` and `core/geometry/mesh_quality.h`:
+polygon face centres and areas are computed first; provisional cell centres
+are face-area-weighted; face area vectors are oriented owner-to-neighbour;
+internal-face skewness is the distance from the face centre to the
+owner-neighbour centre line divided by the owner-neighbour centre distance.
+Internal-face non-orthogonality is also reported in degrees. Cell skewness is
+the maximum incident internal-face value. Boundary-face skewness is not
+reported by this internal-face diagnostic.
 
-The interactive PyVistaQt window provides an axis-aligned cut plane. Bad cells
-above the default threshold (0.5) are rendered red; the remaining cut cells
-are shown translucent. Selecting a worst cell reports its immediate
-owner/neighbour adjacency and highlights that cell plus its direct neighbours.
-This first version is limited to supported root-level, single-region meshes
-and uses the existing bounded eager topology path. It does not repair or alter
-the mesh. Arbitrary plane controls, multi-hop neighbourhoods, robust
-volume-weighted centroids, vendor-specific skewness variants and large-mesh
-streaming rendering remain follow-up work.
+This is a Python compatibility adapter, not a call into the C++ library:
+the native GeometryCache is not currently exposed through the packaged Python
+API. The algorithms and conventions are kept aligned, but the two paths still
+need parity tests against canonical element-family fixtures before the
+Python adapter can be considered numerically equivalent. In particular,
+CFDX's current cell centre is an area-weighted face-centre approximation,
+not a volume centroid for arbitrary non-convex polyhedra.
+
+VTK's Verdict-backed mesh-quality filters (available through the VTK runtime
+used by PyVista) and Gmsh element-quality measures are complementary
+diagnostics, not interchangeable definitions. They should be run only for
+supported element families and each reported value must retain its metric
+name, source and convention. OpenFOAM checkMesh is an external comparison
+reference; it is not a runtime dependency. No vendor threshold is treated as
+a universal CFDX acceptance limit.
+
+The interactive PyVistaQt window provides an axis-aligned cut plane. Cells
+above the configured threshold are rendered red; other cut cells are
+translucent. Selecting a worst cell reports its immediate adjacency and
+highlights that cell plus its direct neighbours. The view uses the bounded
+eager topology path and does not repair or modify the mesh. Arbitrary planes,
+volume-centroid algorithms, additional Verdict/Gmsh measures, and streaming
+large-mesh rendering remain follow-up work.
