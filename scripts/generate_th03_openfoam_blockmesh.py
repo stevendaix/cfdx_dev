@@ -318,7 +318,8 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
                     v17_min_cfl: float = 0.03,
                     v17_max_cfl: float = 3.0,
                     v18_full_flux_pressure_oracle: bool = False,
-                    v18_sparse_flux_pressure_jacobian: bool = False) -> CaseSetup:
+                    v18_sparse_flux_pressure_jacobian: bool = False,
+                    v19_full_pressure_flux_step: bool = False) -> CaseSetup:
     if (not 1 <= pressure_restart <= 2048 or
             pressure_scaling not in ('none', 'row_column', 'symmetric_diagonal')):
         raise ValueError('invalid pressure Krylov controls')
@@ -326,6 +327,10 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
         raise ValueError('invalid pressure tolerance')
     if not isinstance(sst_inner_iterations,int) or sst_inner_iterations <= 0:
         raise ValueError('SST inner iterations must be a positive integer')
+    if v19_full_pressure_flux_step and not (v18_sparse_flux_pressure_jacobian or v18_full_flux_pressure_oracle):
+        raise ValueError('V19 full flux requires a V18 complete Jacobian')
+    if v19_full_pressure_flux_step and v17_pressure_line_search:
+        raise ValueError('V19 full flux and pressure line search are exclusive')
     if sst_wall_factor not in (6, 60):
         raise ValueError('SST wall factor must be 6 or 60')
     if not (math.isfinite(sst_picard_damping) and 0.0 < sst_picard_damping <= 1.0):
@@ -404,6 +409,7 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
     setup.numerics.raw_settings['v17_flux_patch_audit'] = str(bool(v17_flux_audit)).lower()
     setup.numerics.raw_settings['v18_full_flux_pressure_oracle'] = str(bool(v18_full_flux_pressure_oracle)).lower()
     setup.numerics.raw_settings['v18_sparse_flux_pressure_jacobian'] = str(bool(v18_sparse_flux_pressure_jacobian)).lower()
+    setup.numerics.raw_settings['v19_full_pressure_flux_step'] = str(bool(v19_full_pressure_flux_step)).lower()
     setup.numerics.raw_settings['v17_pseudo_momentum'] = str(bool(v17_pseudo_momentum)).lower()
     setup.numerics.raw_settings['v17_pseudo_initial_cfl'] = str(v17_initial_cfl)
     setup.numerics.raw_settings['v17_pseudo_min_cfl'] = str(v17_min_cfl)
@@ -493,7 +499,8 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                v17_min_cfl: float = 0.03,
                v17_max_cfl: float = 3.0,
                v18_full_flux_pressure_oracle: bool = False,
-               v18_sparse_flux_pressure_jacobian: bool = False) -> dict:
+               v18_sparse_flux_pressure_jacobian: bool = False,
+                    v19_full_pressure_flux_step: bool = False) -> dict:
     # A mislabeled lateral wall must never reach the CFDX solver as EMPTY.
     # Audit and case writer intentionally use this single geometry contract.
     if count_invalid_extrusion_patch_faces(mesh):
@@ -518,7 +525,8 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                             v17_min_cfl=v17_min_cfl,
                             v17_max_cfl=v17_max_cfl,
                             v18_full_flux_pressure_oracle=v18_full_flux_pressure_oracle,
-                            v18_sparse_flux_pressure_jacobian=v18_sparse_flux_pressure_jacobian)
+                            v18_sparse_flux_pressure_jacobian=v18_sparse_flux_pressure_jacobian,
+                            v19_full_pressure_flux_step=v19_full_pressure_flux_step)
     setup.source.case_path = mesh_source
     setup.source_metadata['physical_qualification'] = 'NOT_QUALIFIED'
     setup.source_metadata['inlet_omega_origin'] = (
@@ -628,6 +636,8 @@ def main() -> int:
         help='Experimental complete sparse Rhie-Chow pressure operator, SIMPLE/fixed-p.')
     parser.add_argument('--v18-full-flux-pressure-oracle', action='store_true',
         help='Diagnostic O(N*Nfaces) Schur operator; SIMPLE/<=1024 cells/fixed pressure only.')
+    parser.add_argument('--v19-full-pressure-flux-step', action='store_true',
+        help='Experimental full conservative flux correction with separately relaxed physical pressure; SIMPLE/V18 only.')
     parser.add_argument('--v17-flux-audit', action='store_true',
         help='V17: per-patch conservative Rhie-Chow mass audit (diagnostic only).')
     parser.add_argument('--v17-pseudo-momentum', action='store_true',
@@ -675,7 +685,8 @@ def main() -> int:
             v17_min_cfl=args.v17_min_cfl,
             v17_max_cfl=args.v17_max_cfl,
             v18_full_flux_pressure_oracle=args.v18_full_flux_pressure_oracle,
-            v18_sparse_flux_pressure_jacobian=args.v18_sparse_flux_pressure_jacobian)
+            v18_sparse_flux_pressure_jacobian=args.v18_sparse_flux_pressure_jacobian,
+            v19_full_pressure_flux_step=args.v19_full_pressure_flux_step)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(2, f'TH-03 mesh generation/import failed: {exc}\n')
     print(json.dumps(summary, indent=2))
