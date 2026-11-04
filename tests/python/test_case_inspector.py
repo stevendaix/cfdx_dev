@@ -5,8 +5,10 @@ from types import SimpleNamespace
 import h5py
 import numpy as np
 import pytest
+from cfdx import dat_io
 from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample
 from cfdx.case_io import save_case
+from cfdx.gui_3d import PyVistaQtView
 from cfdx.session import CFDXSession
 
 from cfdx.application import Application
@@ -226,17 +228,12 @@ def test_dat_preview_reports_missing_cell_topology(
     summary = inspect_cfdx_file(path)
     assert summary.preview_supported
 
-    from cfdx import dat_io
-    from cfdx.gui_3d import PyVistaQtView
-
     monkeypatch.setattr(
         dat_io,
         "read_dat_restart",
         lambda _path: SimpleNamespace(cells=1, fields={}),
     )
-    with pytest.raises(
-        TypeError, match=f"requires an internal HDF5 {missing_dataset}"
-    ):
+    with pytest.raises(TypeError, match=f"requires an internal HDF5 {missing_dataset}"):
         PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
 
 
@@ -271,13 +268,13 @@ def test_dat_preview_rejects_oversized_cell_connectivity_before_reading(
     from cfdx.gui_3d import PyVistaQtView
 
     def unexpected_restart_read(_path):
-        raise AssertionError("DAT checkpoint must not be read after failed mesh preflight")
+        raise AssertionError(
+            "DAT checkpoint must not be read after failed mesh preflight"
+        )
 
     monkeypatch.setattr(dat_io, "read_dat_restart", unexpected_restart_read)
     with pytest.raises(ValueError, match="2M-entry eager-load budget"):
-        PyVistaQtView.load_cfdx_dat(
-            None, str(path), "unused.dat", summary=summary
-        )
+        PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
 
 
 def test_inspect_does_not_preview_mesh_with_external_region_catalog(tmp_path):
