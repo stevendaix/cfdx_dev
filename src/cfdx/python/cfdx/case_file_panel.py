@@ -129,6 +129,7 @@ class CaseFilePanel(QWidget):
             statistics = read_hdf5_dataset_statistics(
                 self.summary.path, str(dataset_path)
             )
+
             def display(value: float | None) -> str:
                 return "n/a" if value is None else f"{value:.8g}"
 
