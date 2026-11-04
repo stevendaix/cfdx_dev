@@ -16,6 +16,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from .mesh_quality import analyze_cfdx_surface_file
+
 from .case_inspector import (
     CaseFileSummary,
     read_hdf5_dataset_sample,
@@ -50,6 +52,9 @@ class CaseFilePanel(QWidget):
         self.statistics_button = QPushButton("Compute statistics")
         self.statistics_button.setObjectName("workbench.case_file.compute_statistics")
         self.statistics_button.setEnabled(False)
+        self.mesh_quality_button = QPushButton("Analyze surface quality")
+        self.mesh_quality_button.setObjectName("workbench.case_file.surface_quality")
+        self.mesh_quality_button.setEnabled(False)
         self.preview = QPlainTextEdit()
         self.preview.setObjectName("workbench.case_file.dataset_preview")
         self.preview.setReadOnly(True)
@@ -62,6 +67,7 @@ class CaseFilePanel(QWidget):
         controls.addWidget(self.expand_button)
         controls.addWidget(self.collapse_button)
         controls.addStretch(1)
+        controls.addWidget(self.mesh_quality_button)
         controls.addWidget(self.statistics_button)
         controls.addWidget(self.copy_path_button)
         layout.addLayout(controls)
@@ -75,6 +81,7 @@ class CaseFilePanel(QWidget):
         self.collapse_button.clicked.connect(self.tree.collapseAll)
         self.copy_path_button.clicked.connect(self.copy_selected_dataset_path)
         self.statistics_button.clicked.connect(self.compute_selected_statistics)
+        self.mesh_quality_button.clicked.connect(self.compute_surface_quality)
 
     def clear(self) -> None:
         self.summary = None
@@ -82,6 +89,7 @@ class CaseFilePanel(QWidget):
         self.tree.clear()
         self.copy_path_button.setEnabled(False)
         self.statistics_button.setEnabled(False)
+        self.mesh_quality_button.setEnabled(False)
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         self.status.setText("No CFDX file inspected")
 
@@ -150,6 +158,43 @@ class CaseFilePanel(QWidget):
             report = f"Unable to compute dataset statistics: {exc}"
         self.preview.setPlainText(report)
 
+    def compute_surface_quality(self) -> None:
+        """Run explicit, bounded geometric diagnostics on the inspected surface."""
+        if self.summary is None or not self.summary.preview_supported:
+            return
+        try:
+            report = analyze_cfdx_surface_file(
+                self.summary.path,
+                expected_signature=self.summary.file_signature,
+            )
+
+            def display(value: float | None) -> str:
+                return "n/a" if value is None else f"{value:.8g}"
+
+            worst_faces = ", ".join(
+                str(face_id) for face_id in report.worst_warpage_face_ids
+            ) or "none"
+            report_text = (
+                "Surface geometry diagnostics (not volume-cell quality)\n"
+                f"faces: {report.face_count:,} · valid: {report.valid_face_count:,} · "
+                f"degenerate: {len(report.degenerate_face_ids):,}\n"
+                f"area min/max: {display(report.face_area_min)} / "
+                f"{display(report.face_area_max)}\n"
+                f"edge-length ratio min/p95/max: "
+                f"{display(report.edge_length_ratio_min)} / "
+                f"{display(report.edge_length_ratio_p95)} / "
+                f"{display(report.edge_length_ratio_max)}\n"
+                f"warpage ratio p95/max: {display(report.warpage_ratio_p95)} / "
+                f"{display(report.warpage_ratio_max)}\n"
+                f"zero-length-edge faces: {len(report.zero_length_edge_face_ids):,}\n"
+                f"worst warpage face IDs: {worst_faces}\n"
+                "Volume-cell skewness, non-orthogonality and Jacobian are not "
+                "available from this surface-only topology."
+            )
+        except (OSError, RuntimeError, TypeError, ValueError, KeyError) as exc:
+            report_text = f"Unable to analyze surface quality: {exc}"
+        self.preview.setPlainText(report_text)
+
     def copy_selected_dataset_path(self) -> None:
         """Copy the selected HDF5 dataset path without reading its payload."""
         item = self.tree.currentItem()
@@ -192,6 +237,7 @@ class CaseFilePanel(QWidget):
         self.tree.clear()
         self.copy_path_button.setEnabled(False)
         self.statistics_button.setEnabled(False)
+        self.mesh_quality_button.setEnabled(summary.preview_supported)
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         state = "CFDX" if summary.is_cfdx else "HDF5 (unrecognised CFDX layout)"
         self.status.setText(f"{summary.path.name} · {state}")
