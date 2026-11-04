@@ -5,7 +5,6 @@ from __future__ import annotations
 import h5py
 import numpy as np
 import pytest
-
 from cfdx.mesh_quality import (
     analyze_cfdx_surface_file,
     analyze_surface_quality,
@@ -166,7 +165,7 @@ def test_hdf5_surface_analysis_rejects_soft_links(tmp_path):
         h5.create_dataset("face_vertices", data=[0, 0, 0])
         h5.create_dataset("face_offsets", data=[0, 3])
 
-    with pytest.raises(ValueError, match="internal hard-linked points"):
+    with pytest.raises(TypeError, match="internal hard-linked points"):
         analyze_cfdx_surface_file(path)
 
 
