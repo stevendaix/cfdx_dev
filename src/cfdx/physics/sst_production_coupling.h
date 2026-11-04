@@ -695,7 +695,13 @@ inline ScalarBoundaryFaceValues make_sst_wall_omega_face_values(
         if (!(area > 0.0) || !std::isfinite(area))
             throw std::invalid_argument("SST wall omega face has invalid area");
         const auto delta = geometry.face_centres[face] - geometry.cell_centres[owner];
-        const double distance = std::abs(delta.dot(sf)) / area;
+        // Face normals must point OUT of the owner cell. abs(dot) masked
+        // inverted normals and created a positive omega boundary value on
+        // a geometrically invalid face, corrupting other FV face fluxes.
+        const double distance = delta.dot(sf) / area;
+        if (!(distance > 0.0) || !std::isfinite(distance))
+            throw std::invalid_argument(
+                "SST wall omega requires an outward face normal and positive normal distance");
         it->second[face] = sst_wall_omega_value(
             controls.molecular_viscosity, controls.beta1, distance);
         ++face_counts[patch_name];
@@ -759,13 +765,14 @@ inline void require_supported_sst_runtime_boundaries(
             const double area = area_vector.mag();
             const auto owner = mesh.ownership().owner(face);
             const double distance = area > 0.0
-                ? std::abs((geometry.face_centres[face] - geometry.cell_centres[owner]).dot(area_vector)) / area
+                ? (geometry.face_centres[face] - geometry.cell_centres[owner]).dot(area_vector) / area
                 : 0.0;
             // WALL_OMEGA_SST has a resolved-wall geometric contract: never
             // accept a characteristic-length fallback for a degenerate face.
             if (!(area > 0.0) || !std::isfinite(area) ||
                 !(distance > 0.0) || !std::isfinite(distance))
-                throw std::invalid_argument("SST wall omega requires a positive geometric normal distance: " + patch);
+                throw std::invalid_argument(
+                    "SST wall omega requires an outward face normal and positive geometric normal distance: " + patch);
         }
     }
 }

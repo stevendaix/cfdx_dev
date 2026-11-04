@@ -137,6 +137,34 @@ int main() {
     });
 
 
+    run_case("production_wall_distance_accepts_collinear_polygon_edge", [] {
+        // A convex five-vertex wall polygon may contain a redundant
+        // collinear point. Its zero-area fan triangle must not make SST
+        // distance unavailable; the remaining triangles tile the face.
+        using namespace cfdx::core;
+        Mesh mesh;
+        mesh.points().resize(5);
+        const double p[5][3] = {
+            {0,0,0}, {1,0,0}, {2,0,0}, {2,1,0}, {0,1,0}
+        };
+        for (std::size_t i = 0; i < 5; ++i)
+            mesh.points().set(i, p[i][0],p[i][1],p[i][2]);
+        mesh.faces().push_face({0,1,2,3,4});
+        mesh.ownership().resize(1);
+        mesh.ownership().set_owner(0,0);
+        mesh.ownership().set_neighbour(0,FaceOwnership::BOUNDARY);
+        mesh.cells().push_cell({0});
+        Patch wall;
+        wall.name="wall";
+        wall.type=PatchType::WALL;
+        wall.face_ids={0};
+        mesh.boundary().add_patch(wall);
+        const auto surface = wall_surface_from_mesh(mesh);
+        EXPECT_TRUE(surface.triangles.size()==2);
+        const WallDistanceBvh bvh(surface);
+        EXPECT_NEAR(bvh.nearest_distance({1.5,0.4,0.7}), 0.7, 1e-12);
+    });
+
     run_case("production_mesh_wall_distance_rejects_concave_wall_polygons", [] {
         using namespace cfdx::core;
         Mesh mesh;
@@ -155,6 +183,36 @@ int main() {
         wall.name = "wall";
         wall.type = PatchType::WALL;
         wall.face_ids = {0};
+        mesh.boundary().add_patch(wall);
+        EXPECT_THROW(wall_surface_from_mesh(mesh), std::invalid_argument);
+    });
+
+    run_case("production_mesh_wall_distance_rejects_self_intersecting_star_polygon", [] {
+        // A self-intersecting five-point star has identical signs for ALL
+        // consecutive turns. Checking only convexity by signed turns cannot
+        // detect the crossing edges; fan triangulation must not silently
+        // fabricate an invalid surface or near-wall distance.
+        using namespace cfdx::core;
+        Mesh mesh;
+        mesh.points().resize(5);
+        const double p[5][3] = {
+            { 1.0, 0.0, 0.0},
+            {-0.8090169943749473,  0.5877852522924732, 0.0},
+            { 0.3090169943749472, -0.9510565162951536, 0.0},
+            { 0.3090169943749477,  0.9510565162951535, 0.0},
+            {-0.8090169943749477, -0.5877852522924728, 0.0}
+        };
+        for (std::size_t i=0; i<5; ++i)
+            mesh.points().set(i, p[i][0], p[i][1], p[i][2]);
+        mesh.faces().push_face({0,1,2,3,4});
+        mesh.ownership().resize(1);
+        mesh.ownership().set_owner(0,0);
+        mesh.ownership().set_neighbour(0,FaceOwnership::BOUNDARY);
+        mesh.cells().push_cell({0});
+        Patch wall;
+        wall.name="wall";
+        wall.type=PatchType::WALL;
+        wall.face_ids={0};
         mesh.boundary().add_patch(wall);
         EXPECT_THROW(wall_surface_from_mesh(mesh), std::invalid_argument);
     });

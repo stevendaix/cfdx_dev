@@ -290,6 +290,28 @@ int main() {
         EXPECT_NEAR(grad.z, 0.0, 1e-12);
     });
 
+    run_case("least_squares_rotated_2d_minimum_norm", []() {
+        // On an extruded/rotated plane z=x, the gradient must lie in the
+        // tangent plane. The legacy normal-equations fallback silently set
+        // gz=0 and returned (2,2,0) instead of (1,2,1).
+        const Vec3 centre{0.0, 0.0, 0.0};
+        const std::vector<Vec3> neighbours{
+            {1,0,1}, {0,1,0}, {-1,0,-1}, {0,-1,0},
+            {1,1,1}, {-1,-1,-1}
+        };
+        std::vector<double> values;
+        for (const auto& p : neighbours)
+            values.push_back(p.x + 2.0*p.y + p.z);
+        StencilQuality quality;
+        const auto g = least_squares_gradient(centre, 0.0,
+                                               neighbours, values, &quality);
+        EXPECT_NEAR(g.x, 1.0, 1e-12);
+        EXPECT_NEAR(g.y, 2.0, 1e-12);
+        EXPECT_NEAR(g.z, 1.0, 1e-12);
+        EXPECT_TRUE(quality.rank == 2);
+        EXPECT_TRUE(!quality.full_rank);
+    });
+
     run_case("gradient_least_squares_field_exact_linear", []() {
         // Three valid 3-D hexahedral cells provide a rank-1 x stencil.
         // Full 2-D/3-D rank properties are verified by the standalone tests.

@@ -16,11 +16,20 @@ inline std::vector<double> sst_boundary_gradient_dot(
     const FvGeometry& geometry,
     const ScalarBoundaryConditions& k_bcs,
     const ScalarBoundaryConditions& omega_bcs,
-    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr,
+    bool use_wls = false,
+    int intrinsic_dimension = 3)
 {
-    const auto grad_k = scalar_gradient_with_transport_boundaries(k, mesh, geometry, k_bcs);
-    const auto grad_omega = scalar_gradient_with_transport_boundaries(
-        omega, mesh, geometry, omega_bcs, omega_face_values);
+    const auto grad_k = use_wls
+        ? scalar_gradient_with_transport_boundaries_wls(
+              k, mesh, geometry, k_bcs, nullptr, intrinsic_dimension)
+        : scalar_gradient_with_transport_boundaries(k, mesh, geometry, k_bcs);
+    const auto grad_omega = use_wls
+        ? scalar_gradient_with_transport_boundaries_wls(
+              omega, mesh, geometry, omega_bcs, omega_face_values,
+              intrinsic_dimension)
+        : scalar_gradient_with_transport_boundaries(
+              omega, mesh, geometry, omega_bcs, omega_face_values);
     std::vector<double> result(mesh.n_cells());
     for (std::size_t cell = 0; cell < result.size(); ++cell) {
         result[cell] = 0.0;
@@ -201,8 +210,12 @@ inline TurbulenceTransportResult solve_sst_transport(
 
     TurbulenceTransportResult result;
     for(std::size_t iter=1;iter<=max_iterations;++iter) {
+        // Keep the cross-diffusion source and outer blending on the same
+        // gradient scheme. Previously opt-in WLS only affected F1/F2 in the
+        // outer loop while the inner omega equation still used Gauss.
         const auto cross = sst_boundary_gradient_dot(
-            k, omega, mesh, geometry, k_bcs, omega_bcs, omega_face_values);
+            k, omega, mesh, geometry, k_bcs, omega_bcs, omega_face_values,
+            controls.sst_use_wls_boundary_gradients, controls.sst_gradient_dimension);
         auto oldk=k;
         auto oldw=omega;
         cfdx::core::Field<double,cfdx::core::Location::CELL> sk(n,"Sk","W/m3",1),sw(n,"Sw","W/m3",1);
@@ -290,7 +303,8 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         // Compute the full-cell gradient contraction once per outer iteration.
         // Recomputing this n-cell vector inside the n-cell loop made this O(n^2).
         const auto cross=sst_boundary_gradient_dot(
-            k, omega, mesh, geometry, k_bcs, omega_bcs, omega_face_values);
+            k, omega, mesh, geometry, k_bcs, omega_bcs, omega_face_values,
+            controls.sst_use_wls_boundary_gradients, controls.sst_gradient_dimension);
         for(std::size_t i=0;i<n;++i){
             const auto b=compute_sst_blending(k(i),omega(i),wall_distance(i),controls.molecular_viscosity,controls.beta_star,cross[i],controls.density,controls.sst_sigma_w2);
             F1(i)=b.first; F2(i)=b.second;
