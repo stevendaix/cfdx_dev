@@ -203,7 +203,6 @@ def test_renderer_rejects_stale_inspection_summary_before_loading_arrays(
         PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
 
 
-
 @pytest.mark.parametrize("missing_dataset", ["cell_faces", "cell_offsets"])
 def test_dat_preview_reports_missing_cell_topology(
     tmp_path, monkeypatch, missing_dataset
