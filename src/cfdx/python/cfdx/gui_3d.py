@@ -32,7 +32,9 @@ def _require_previewable_mesh(
         int(stat.st_mtime_ns),
     )
     if current_signature != inspected.file_signature:
-        raise ValueError("mesh file changed since metadata inspection; inspect it again")
+        raise ValueError(
+            "mesh file changed since metadata inspection; inspect it again"
+        )
     if not inspected.is_cfdx or not inspected.has_mesh:
         raise ValueError("file does not contain a recognised CFDX mesh")
     if not inspected.preview_supported:
