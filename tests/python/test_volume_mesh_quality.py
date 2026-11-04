@@ -34,6 +34,10 @@ def test_volume_skewness_reports_internal_face_and_symmetric_neighbours():
     assert report.internal_face_count == 1
     assert report.cell_neighbours == ((1,), (0,))
     assert report.face_skewness.shape == (7,)
+    assert report.face_non_orthogonality_deg.shape == (7,)
+    assert np.isfinite(report.cell_centres).all()
+    assert report.cell_non_orthogonality_deg.shape == (2,)
+    assert np.isfinite(report.cell_non_orthogonality_deg).all()
     assert np.isnan(report.face_skewness[1:]).all()
     assert report.cell_skewness[0] == pytest.approx(report.cell_skewness[1])
     assert report.bad_cell_ids == (0, 1)
@@ -73,3 +77,14 @@ def test_hdf5_volume_skewness_preflights_and_rechecks_file(tmp_path):
     signature = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
     with pytest.raises(RuntimeError, match="changed since metadata"):
         analyze_cfdx_volume_skewness(path, expected_signature=signature[:-1] + (0,))
+
+
+def test_volume_quality_uses_cfdx_core_skewness_normalization():
+    report = analyze_volume_skewness(*two_tetrahedra(), threshold=0.01)
+    owner, neighbour = report.cell_centres
+    line = neighbour - owner
+    face_centre = np.asarray([1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0])
+    projection = np.dot(face_centre - owner, line) / np.dot(line, line)
+    closest = owner + projection * line
+    expected = np.linalg.norm(face_centre - closest) / np.linalg.norm(line)
+    assert report.face_skewness[0] == pytest.approx(expected)
