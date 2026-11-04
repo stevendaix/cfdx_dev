@@ -22,6 +22,17 @@ def _require_previewable_mesh(
     inspected = summary or inspect_cfdx_file(path)
     if Path(inspected.path).resolve() != path.resolve():
         raise ValueError("mesh preview summary belongs to a different file")
+    if inspected.file_signature is None:
+        raise ValueError("mesh preview summary has no verified file identity")
+    stat = path.stat()
+    current_signature = (
+        int(stat.st_dev),
+        int(stat.st_ino),
+        int(stat.st_size),
+        int(stat.st_mtime_ns),
+    )
+    if current_signature != inspected.file_signature:
+        raise ValueError("mesh file changed since metadata inspection; inspect it again")
     if not inspected.is_cfdx or not inspected.has_mesh:
         raise ValueError("file does not contain a recognised CFDX mesh")
     if not inspected.preview_supported:
