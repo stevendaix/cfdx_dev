@@ -14,9 +14,8 @@ PYTHON_PACKAGE_ROOT = REPOSITORY_ROOT / "src" / "cfdx" / "python"
 sys.path.insert(0, str(PYTHON_PACKAGE_ROOT))
 
 import h5py
-import numpy as np
-
 from cfdx.mesh_quality import analyze_cfdx_surface_file
+import numpy as np
 
 
 def run_benchmark(output: Path, resolution: int = 128) -> dict[str, object]:
@@ -42,9 +41,7 @@ def run_benchmark(output: Path, resolution: int = 128) -> dict[str, object]:
             lower_left + resolution + 1,
         )
     ).ravel()
-    face_offsets = np.arange(
-        0, face_vertices.size + 1, 4, dtype=np.int64
-    )
+    face_offsets = np.arange(0, face_vertices.size + 1, 4, dtype=np.int64)
 
     with tempfile.TemporaryDirectory(prefix="cfdx-surface-quality-") as directory:
         path = Path(directory) / "warped-surface.cfdx.h5"
@@ -58,7 +55,7 @@ def run_benchmark(output: Path, resolution: int = 128) -> dict[str, object]:
 
     expected_faces = resolution * resolution
     if report.face_count != expected_faces or report.valid_face_count != expected_faces:
-        raise RuntimeError("surface quality analysis did not cover every generated face")
+        raise RuntimeError(\n            "surface quality analysis did not cover every generated face"\n        )
     if report.warpage_ratio_max <= 0.0:
         raise RuntimeError("warped-surface probe did not produce nonzero warpage")
 
