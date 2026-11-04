@@ -61,7 +61,10 @@ dataset shapes, caps eager source topology at 32 MiB and caps face connectivity
 at two million entries. DAT preview additionally preflights the cell-to-face
 CSR datasets, their integer dtypes, internal-link status, cell count, and the
 same 32 MiB/2M-entry budgets before reading the checkpoint or connectivity.
-Immediately after bounded array reads and before any viewport mutation or VTK
+After reading the bounded arrays, it also estimates the fully expanded VTK
+polyhedron cell array in bounded chunks and refuses construction above two
+million flattened entries, preventing Python-list expansion from multiplying
+the source-array footprint. Immediately before any viewport mutation or VTK
 object construction, the adapter validates finite
 coordinates, face-offset and cell-offset CSR invariants, face vertex ranges,
 patch face ranges, and cell-to-face ranges. Degenerate faces and empty cell
