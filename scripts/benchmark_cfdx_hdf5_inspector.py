@@ -116,13 +116,15 @@ def _benchmark_one(n_cells: int) -> dict[str, Any]:
             raise RuntimeError("bounded sample did not read the materialized HDF5 chunk")
 
         logical_bytes = sum(item.size_bytes or 0 for item in summary.datasets)
+        with h5py.File(path, "r") as h5:
+            points_allocated_bytes = int(h5["points"].id.get_storage_size())
         return {
             "cells": n_cells,
             "points": summary.n_points,
             "faces": summary.n_faces,
             "logical_dataset_bytes": logical_bytes,
             "physical_file_bytes": path.stat().st_size,
-            "points_allocated_bytes": int(h5py.File(path, "r")["points"].id.get_storage_size()),
+            "points_allocated_bytes": points_allocated_bytes,
             "inspect_ms": round(inspect_ms, 3),
             "sample_ms": round(sample_ms, 3),
             "sample_values": len(sample.values),
