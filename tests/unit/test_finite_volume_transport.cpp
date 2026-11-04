@@ -319,10 +319,28 @@ int main()
         check_identity_case(1.0,1.0,3.0,4.0,2.9996,3.9996,
                             0.0004,0.0001,cfdx::core::LinearScalingModel::None);
 
-        // Row scaling makes the algebraic system well-scaled but does not
-        // change the physical residual contract of the returned field.
+        // CG is mathematically valid only if equilibration preserves SPD.
+        // Symmetric diagonal equilibration, not unilateral row scaling, is
+        // the qualified CG path. Diagnostics remain on the ORIGINAL system.
         check_identity_case(1.0e6,1.0,3.0e6,4.0,2.9996,3.9996,
-                            400.0,400.0/3.0e6,cfdx::core::LinearScalingModel::Row);
+                            400.0,400.0/3.0e6,
+                            cfdx::core::LinearScalingModel::SymmetricDiagonal);
+    });
+
+    run_case("cg_rejects_nonsymmetric_row_scaling", [] {
+        ScalarEquation eq;
+        eq.matrix = SparseMatrix(2, 2);
+        eq.matrix.push_back(0,0,2.0);
+        eq.matrix.push_back(1,1,3.0);
+        eq.matrix.finalize();
+        eq.rhs = Vector(2,1.0);
+        Vector solution(2,0.0);
+        ScalarSolveControls controls{10,1e-8,1.0};
+        controls.problem = cfdx::core::LinearProblemKind::Diffusion;
+        controls.linear_solver.krylov = cfdx::core::KrylovModel::CG;
+        controls.linear_solver.preconditioner = cfdx::core::PreconditionerModel::Jacobi;
+        controls.linear_solver.scaling = cfdx::core::LinearScalingModel::Row;
+        EXPECT_THROW(solve_scalar_equation(eq,solution,controls),std::invalid_argument);
     });
 
     run_case("scalar_relaxation_residual_matches_closed_form_oracle", [] {
