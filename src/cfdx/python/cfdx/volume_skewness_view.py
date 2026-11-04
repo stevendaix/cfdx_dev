@@ -131,6 +131,7 @@ class VolumeSkewnessDialog(QDialog):
         neighbours = self.report.cell_neighbours[int(cell_id)]
         self._details.setText(
             f"Cell {cell_id} · skewness {self.report.cell_skewness[cell_id]:.6g} · "
+            f"non-orthogonality {self.report.cell_non_orthogonality_deg[cell_id]:.3f} deg · "
             f"threshold {self.report.threshold:g}\n"
             f"Adjacent cells ({len(neighbours)}): "
             + (", ".join(str(value) for value in neighbours) or "none")
