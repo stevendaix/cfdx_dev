@@ -46,7 +46,11 @@ class Hdf5DatasetInfo:
     @property
     def storage_ratio(self) -> float | None:
         """Return allocated/logical storage, or None when it is not meaningful."""
-        if self.size_bytes is None or self.size_bytes <= 0 or self.storage_bytes is None:
+        if (
+            self.size_bytes is None
+            or self.size_bytes <= 0
+            or self.storage_bytes is None
+        ):
             return None
         return self.storage_bytes / self.size_bytes
 
@@ -451,7 +455,9 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
                     dtype=str(obj.dtype),
                     size_bytes=size_bytes,
                     storage_bytes=(
-                        int(obj.id.get_storage_size()) if obj.dtype.kind != "O" else None
+                        int(obj.id.get_storage_size())
+                        if obj.dtype.kind != "O"
+                        else None
                     ),
                     chunks=tuple(int(size) for size in obj.chunks)
                     if obj.chunks
