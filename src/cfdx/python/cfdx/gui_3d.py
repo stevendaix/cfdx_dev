@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .case_inspector import CaseFileSummary, inspect_cfdx_file
+from .mesh_topology import validate_cell_topology, validate_surface_topology
 from .selection import parse_selection_id, selection_label
 from .visualization_pipeline import VisualizationOperation, VisualizationPipeline
 
@@ -116,7 +117,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         path = Path(source)
         if not path.exists():
             raise FileNotFoundError(source)
-        _require_previewable_mesh(path, summary)
+        inspected = _require_previewable_mesh(path, summary)
         import h5py
         import numpy as np
 
@@ -130,8 +131,15 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             if isinstance(raw, bytes):
                 raw = raw.decode("utf-8")
             metadata = [item for item in str(raw).split(";") if item]
-            if len(patch_offsets) != len(metadata) + 1:
-                raise ValueError("boundary patch metadata/offset count mismatch")
+            validate_surface_topology(
+                points,
+                face_vertices,
+                face_offsets,
+                patch_face_ids,
+                patch_offsets,
+                n_faces=int(inspected.n_faces),
+                n_patches=len(metadata),
+            )
             self.plotter.clear()
             self._actors.clear()
             self._visualization_pipeline = VisualizationPipeline()
@@ -170,7 +178,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         mesh_path = Path(case_path)
         if not mesh_path.exists():
             raise FileNotFoundError(case_path)
-        _require_previewable_mesh(mesh_path, summary)
+        inspected = _require_previewable_mesh(mesh_path, summary)
         import h5py
         import numpy as np
 
@@ -183,8 +191,29 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             face_offsets = np.asarray(h5["face_offsets"][:], dtype=np.int64)
             cell_faces = np.asarray(h5["cell_faces"][:], dtype=np.int64)
             cell_offsets = np.asarray(h5["cell_offsets"][:], dtype=np.int64)
+            patch_face_ids = np.asarray(h5["patch_face_ids"][:], dtype=np.int64)
+            patch_offsets = np.asarray(h5["patch_face_offsets"][:], dtype=np.int64)
+            raw = h5.attrs.get("boundary_patches", "")
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8")
+            metadata = [item for item in str(raw).split(";") if item]
 
+        validate_surface_topology(
+            points,
+            face_vertices,
+            face_offsets,
+            patch_face_ids,
+            patch_offsets,
+            n_faces=int(inspected.n_faces),
+            n_patches=len(metadata),
+        )
         mesh_cells = len(cell_offsets) - 1
+        validate_cell_topology(
+            cell_faces,
+            cell_offsets,
+            n_cells=mesh_cells,
+            n_faces=int(inspected.n_faces),
+        )
         if restart.cells != mesh_cells:
             raise ValueError(
                 f"DAT cell count {restart.cells} does not match HDF5 mesh cell count {mesh_cells}"
