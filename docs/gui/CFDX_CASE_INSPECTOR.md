@@ -178,3 +178,28 @@ without materializing large coordinate/connectivity arrays.
 
 The inspector is read-only. It does not repair files, rewrite attributes,
 change case configuration or establish numerical validation/qualification.
+
+
+## Mesh Intelligence: surface geometry diagnostics
+
+The Case File dock exposes **Analyze surface quality** only when the metadata
+preflight confirms the supported, bounded single-region surface topology. The
+action checks the inspected file identity again and reads only the root
+`points`, `face_vertices` and `face_offsets` datasets after validating
+internal hard links, numeric dtypes, dimensions, entity/connectivity limits,
+the 32 MiB source-data budget and the 1 MiB per-chunk decompression budget.
+
+The current report contains:
+- Polygon area minimum and maximum.
+- Face edge-length ratio (longest / shortest edge), with min, p95 and max.
+- Relative warpage: maximum vertex distance to the least-squares face plane,
+  divided by the longest edge; min/p95/max summary and worst face IDs.
+- Degenerate faces and faces with numerically zero-length edges.
+
+These are **surface-face geometric indicators**, not volume-cell quality
+metrics. A surface-only boundary mesh cannot establish cell skewness,
+non-orthogonality, Jacobian, volume, cell aspect ratio or interior-cell
+validity. Those require the complete cell polyhedra, cell centres and
+neighbour relationships; the UI explicitly says so rather than inferring them
+from boundary faces. The current implementation is an on-demand diagnostic,
+not a mesh repair operation and it never modifies the source file.
