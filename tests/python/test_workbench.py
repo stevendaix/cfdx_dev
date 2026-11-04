@@ -111,15 +111,11 @@ def test_workbench_inspects_mesh_interchange_without_replacing_project(
     assert window.application.project_path is None
     assert "active project unchanged" in window.statusBar().currentMessage()
     point_items = window.case_file_panel.tree.findItems(
-        "/points",
-        Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive,
-        0
+        "/points", Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive, 0
     )
     assert point_items
     label_items = window.case_file_panel.tree.findItems(
-        "/metadata/labels",
-        Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive,
-        0
+        "/metadata/labels", Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive, 0
     )
     assert label_items
     metadata_groups = window.case_file_panel.tree.findItems(
