@@ -1917,5 +1917,18 @@ int main()
             mesh,full,relaxed,from_u),std::domain_error);
     });
 
+    run_case("v21_pressure_adaptation_uses_coupling_not_roundoff_continuity", [] {
+        // V20 full-flux continuity is ~1e-12 even when momentum is large.
+        EXPECT_NEAR(v21_pressure_relaxation_merit(true, 1e-12, .14, .02), .14, 1e-15);
+        EXPECT_NEAR(v21_pressure_relaxation_merit(true, 1e-16, .03, .08), .08, 1e-15);
+        EXPECT_NEAR(v21_pressure_relaxation_merit(false, .11, .03, .08), .11, 1e-15);
+        EXPECT_NEAR(v21_pressure_relaxation_merit(false, .11,
+                    std::numeric_limits<double>::quiet_NaN(), .08), .11, 1e-15);
+        EXPECT_THROW(v21_pressure_relaxation_merit(true, 0.0, -1.0, 0.0),
+                     std::invalid_argument);
+        EXPECT_THROW(v21_pressure_relaxation_merit(true,
+            std::numeric_limits<double>::quiet_NaN(), 0.1, 0.0), std::invalid_argument);
+    });
+
     return run_all();
 }
