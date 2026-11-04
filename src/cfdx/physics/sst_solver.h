@@ -3,6 +3,7 @@
 #include "cfdx/physics/turbulence_solver.h"
 #include "cfdx/physics/scalar_transport_gradient.h"
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <iostream>
 #include <iomanip>
@@ -146,6 +147,85 @@ inline SSTLocalEquationDefect sst_local_equation_defect(
         }
     }
     return result;
+}
+
+// Diagnostic on EXACTLY the same sparse A, b and returned state. The old
+// FP64 summation is retained for comparison. Long-double Neumaier summation
+// reduces cancellation on platforms with extended precision; on MSVC where
+// long double == double, compensation still reduces summation error. This is
+// not an a-posteriori physical error bound, and must not be used to relax
+// conservation or the configured tolerance.
+struct SSTResidualPrecisionAudit {
+    SSTLocalEquationDefect native;
+    SSTLocalEquationDefect compensated;
+    double maximum_row_disagreement = 0.0;
+    std::size_t disagreement_cell = 0;
+};
+
+inline SSTResidualPrecisionAudit sst_local_residual_precision_audit(
+    const ScalarEquation& equation,
+    const cfdx::core::Vector& solution,
+    double minimum_field_scale)
+{
+    SSTResidualPrecisionAudit audit;
+    audit.native = sst_local_equation_defect(equation, solution, minimum_field_scale);
+    const auto* offsets = equation.matrix.row_offsets_data();
+    const auto* cols = equation.matrix.columns_data();
+    const auto* vals = equation.matrix.values_data();
+    if (offsets == nullptr || cols == nullptr || vals == nullptr)
+        throw std::invalid_argument("SST precision audit: missing sparse matrix storage");
+    for (std::size_t row = 0; row < solution.size(); ++row) {
+        const double rhs = equation.rhs(row);
+        if (!std::isfinite(rhs))
+            throw std::invalid_argument("SST precision audit: nonfinite rhs");
+        long double sum = -static_cast<long double>(rhs);
+        long double correction = 0.0L;
+        long double row_norm = 0.0L;
+        long double local_scale = std::max(
+            static_cast<long double>(minimum_field_scale),
+            std::abs(static_cast<long double>(solution(row))));
+        double native_residual = -rhs;
+        double native_norm = 0.0;
+        double native_scale = std::max(minimum_field_scale, std::abs(solution(row)));
+        for (std::uint32_t entry = offsets[row]; entry < offsets[row+1]; ++entry) {
+            const std::size_t col = cols[entry];
+            if (col >= solution.size() || !std::isfinite(vals[entry]) ||
+                !std::isfinite(solution(col)))
+                throw std::invalid_argument("SST precision audit: invalid matrix row");
+            const long double term = static_cast<long double>(vals[entry]) *
+                                     static_cast<long double>(solution(col));
+            const long double next = sum + term;
+            if (std::abs(sum) >= std::abs(term))
+                correction += (sum-next)+term;
+            else
+                correction += (term-next)+sum;
+            sum = next;
+            row_norm += std::abs(static_cast<long double>(vals[entry]));
+            local_scale = std::max(local_scale,
+                std::abs(static_cast<long double>(solution(col))));
+            native_residual += vals[entry] * solution(col);
+            native_norm += std::abs(vals[entry]);
+            native_scale = std::max(native_scale, std::abs(solution(col)));
+        }
+        if (!(row_norm > 0.0L) || !(local_scale > 0.0L) ||
+            !std::isfinite(sum+correction))
+            throw std::invalid_argument("SST precision audit: invalid row norm or sum");
+        const long double precise = std::abs(sum+correction) / (row_norm*local_scale);
+        if (!std::isfinite(precise) || precise > std::numeric_limits<double>::max())
+            throw std::domain_error("SST precision audit: residual overflow");
+        const double compensated = static_cast<double>(precise);
+        if (compensated > audit.compensated.maximum_relative) {
+            audit.compensated.maximum_relative = compensated;
+            audit.compensated.worst_cell = row;
+        }
+        const double native = std::abs(native_residual) / native_norm / native_scale;
+        const double gap = std::abs(native-compensated);
+        if (gap > audit.maximum_row_disagreement) {
+            audit.maximum_row_disagreement = gap;
+            audit.disagreement_cell = row;
+        }
+    }
+    return audit;
 }
 
 // Dimensionless SST convergence certificate: the same numeric threshold
@@ -379,9 +459,9 @@ inline TurbulenceTransportResult solve_sst_transport(
         const double omega_linear_target = controls.sst_scale_aware_convergence
             ? tolerance * omega_scale : tolerance;
         const ScalarSolveControls k_sc{
-            2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),0.7};
+            2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),controls.sst_linear_relaxation};
         const ScalarSolveControls omega_sc{
-            2000,sst_linear_tolerance_for_solution_defect(eqw,omega_linear_target),0.7};
+            2000,sst_linear_tolerance_for_solution_defect(eqw,omega_linear_target),controls.sst_linear_relaxation};
         cfdx::core::Vector k_solution(n, 0.0);
         cfdx::core::Vector omega_solution(n, 0.0);
         for (std::size_t i = 0; i < n; ++i) {
@@ -412,7 +492,7 @@ inline TurbulenceTransportResult solve_sst_transport(
                 mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
                 nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k);
             const ScalarSolveControls updated_k_sc{
-                2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),0.7};
+                2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),controls.sst_linear_relaxation};
             rk=solve_scalar_equation(eqk,k_solution,updated_k_sc);
         } else {
             rk=solve_scalar_equation(eqk,k_solution,k_sc);
@@ -448,9 +528,15 @@ inline TurbulenceTransportResult solve_sst_transport(
             sst_field_update_diagnostic(oldk,k,controls.k_min),
             sst_field_update_diagnostic(oldw,omega,controls.omega_min),
             k_defect, omega_defect, tolerance);
+        const auto k_local = controls.sst_compensated_residual_gate
+            ? sst_local_residual_precision_audit(eqk,k_solution,controls.k_min).compensated
+            : sst_local_equation_defect(eqk,k_solution,controls.k_min);
+        const auto omega_local = controls.sst_compensated_residual_gate
+            ? sst_local_residual_precision_audit(eqw,omega_solution,controls.omega_min).compensated
+            : sst_local_equation_defect(eqw,omega_solution,controls.omega_min);
         const bool local_equations_ok = !controls.sst_scale_aware_convergence ||
-            (sst_local_equation_defect(eqk,k_solution,controls.k_min).maximum_relative <= tolerance &&
-             sst_local_equation_defect(eqw,omega_solution,controls.omega_min).maximum_relative <= tolerance);
+            (k_local.maximum_relative <= tolerance &&
+             omega_local.maximum_relative <= tolerance);
         const bool iterate_and_equations_ok = controls.sst_scale_aware_convergence
             ? (relative_certificate.converged && local_equations_ok)
             : std::max(dk,dw)<=tolerance &&
@@ -479,6 +565,10 @@ struct SSTNonlinearResidualSample {
     double omega_local_relative = std::numeric_limits<double>::infinity();
     std::size_t k_worst_cell = 0;
     std::size_t omega_worst_cell = 0;
+    double k_local_compensated = std::numeric_limits<double>::quiet_NaN();
+    double omega_local_compensated = std::numeric_limits<double>::quiet_NaN();
+    double k_local_roundoff_gap = std::numeric_limits<double>::quiet_NaN();
+    double omega_local_roundoff_gap = std::numeric_limits<double>::quiet_NaN();
 };
 
 inline SSTNonlinearResidualSample sst_reassembled_returned_state_residual(
@@ -517,15 +607,44 @@ inline SSTNonlinearResidualSample sst_reassembled_returned_state_residual(
         omega_face_values,nullptr,nullptr,&gamma_w,ConvectionScheme::UPWIND,&omega);
     cfdx::core::Vector ks(n), ws(n);
     for(std::size_t i=0;i<n;++i) { ks(i)=k(i); ws(i)=omega(i); }
-    const auto k_local=sst_local_equation_defect(eqk,ks,controls.k_min);
-    const auto omega_local=sst_local_equation_defect(eqw,ws,controls.omega_min);
+    const auto k_audit=sst_local_residual_precision_audit(eqk,ks,controls.k_min);
+    const auto omega_audit=sst_local_residual_precision_audit(eqw,ws,controls.omega_min);
+    const auto& k_local = controls.sst_compensated_residual_gate
+        ? k_audit.compensated : k_audit.native;
+    const auto& omega_local = controls.sst_compensated_residual_gate
+        ? omega_audit.compensated : omega_audit.native;
     return {
         scalar_equation_residual_inf(eqk,ks),
         scalar_equation_residual_inf(eqw,ws),
         sst_equation_solution_defect(eqk,ks),
         sst_equation_solution_defect(eqw,ws),
         k_local.maximum_relative,omega_local.maximum_relative,
-        k_local.worst_cell,omega_local.worst_cell};
+        k_local.worst_cell,omega_local.worst_cell,
+        k_audit.compensated.maximum_relative,omega_audit.compensated.maximum_relative,
+        k_audit.maximum_row_disagreement,omega_audit.maximum_row_disagreement};
+}
+
+// Conservative merit for an OPTIONAL nonlinear Picard backtracking step.
+// This is the fully reassembled dimensionless cell-local SST equation defect,
+// not the tiny Krylov residual of the frozen linear system. No line-search
+// acceptance can mark an inner SST or outer carrier step as converged.
+inline double sst_nonlinear_merit(const SSTNonlinearResidualSample& sample)
+{
+    const double merit = std::max(sample.k_local_relative, sample.omega_local_relative);
+    if (!(merit >= 0.0) || !std::isfinite(merit))
+        throw std::invalid_argument("SST line search: non-finite nonlinear merit");
+    return merit;
+}
+
+inline bool sst_nonlinear_step_reduces_merit(double old_merit,
+                                             double next_merit, double alpha)
+{
+    if (!std::isfinite(old_merit) || !std::isfinite(next_merit) ||
+        old_merit < 0.0 || next_merit < 0.0 ||
+        !(alpha > 0.0) || alpha > 1.0)
+        return false;
+    // A one-ulp fluctuation cannot be used to claim progress.
+    return next_merit < old_merit * (1.0 - 1e-9*alpha);
 }
 
 inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
@@ -548,6 +667,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         !std::isfinite(tolerance) || tolerance<=0.0)
         throw std::invalid_argument("SST dynamic blending requires SST and valid iteration controls");
     TurbulenceTransportResult result;
+    std::size_t consecutive_line_search_stalls=0;
     for(std::size_t iter=1;iter<=max_iterations;++iter){
         auto old_k=k,old_w=omega;
         cfdx::core::Field<double,cfdx::core::Location::CELL> F1(n,"F1","1",1),F2(n,"F2","1",1);
@@ -562,12 +682,59 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         const auto inner=solve_sst_transport(
             mesh,geometry,mass_flux,k,omega,strain_rate,F1,F2,controls,
             k_bcs,omega_bcs,1,tolerance,omega_face_values);
-        // When the dynamic-blending Picard map oscillates, damp the update
-        // without changing the physical equation, positivity bounds or the
-        // exact final convergence gate. If the candidate is fully certified,
-        // apply it unmodified; a damped intermediate can NEVER be certified
-        // based on residuals of a different (undamped) field.
-        if (!inner.converged && controls.sst_picard_damping < 1.0) {
+        // Optional Armijo-like backtracking on the *returned nonlinear SST
+        // equations*, with the pressure/velocity/face flux held fixed.
+        // It never changes the global conservation or convergence criteria.
+        double line_alpha = 1.0;
+        bool line_accepted = true;
+        double line_old_merit = std::numeric_limits<double>::quiet_NaN();
+        double line_new_merit = std::numeric_limits<double>::quiet_NaN();
+        if (controls.sst_nonlinear_line_search && !inner.converged) {
+            auto trial_k=k, trial_w=omega;
+            k=old_k; omega=old_w;
+            const auto starting=sst_reassembled_returned_state_residual(
+                mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                controls,k_bcs,omega_bcs,omega_face_values);
+            line_old_merit=sst_nonlinear_merit(starting);
+            line_accepted=false;
+            // Largest reducing step wins; decline must be present on the
+            // newly assembled operator, not only on the linear predictor.
+            for (const double alpha : {1.0,0.5,0.25,0.125,0.0625,0.03125}) {
+                for (std::size_t i=0; i<n; ++i) {
+                    k(i)=old_k(i)+alpha*(trial_k(i)-old_k(i));
+                    omega(i)=old_w(i)+alpha*(trial_w(i)-old_w(i));
+                }
+                const auto check=sst_reassembled_returned_state_residual(
+                    mesh,geometry,mass_flux,k,omega,strain_rate,wall_distance,
+                    controls,k_bcs,omega_bcs,omega_face_values);
+                const double merit=sst_nonlinear_merit(check);
+                if (sst_nonlinear_step_reduces_merit(line_old_merit,merit,alpha)) {
+                    line_alpha=alpha;
+                    line_new_merit=merit;
+                    line_accepted=true;
+                    break;
+                }
+            }
+            if (!line_accepted) {
+                k=old_k; omega=old_w;
+                line_alpha=0.0;
+                line_new_merit=line_old_merit;
+                ++consecutive_line_search_stalls;
+            } else {
+                consecutive_line_search_stalls=0;
+            }
+            if (std::getenv("CFDX_SST_DIAGNOSTICS") &&
+                (iter==1 || iter%100==0 || iter==max_iterations || !line_accepted))
+                std::cerr << std::scientific << std::setprecision(9)
+                          << "SST_NONLINEAR_LINESEARCH iteration=" << iter
+                          << " alpha=" << line_alpha
+                          << " old_merit=" << line_old_merit
+                          << " new_merit=" << line_new_merit
+                          << " accepted=" << line_accepted
+                          << " qualified=0\n";
+        } else if (!inner.converged && controls.sst_picard_damping < 1.0) {
+            // Historical fixed damping remains unchanged when not using
+            // line search, and never certifies an undamped candidate.
             const double alpha=controls.sst_picard_damping;
             for(std::size_t i=0;i<n;++i) {
                 k(i)=old_k(i)+alpha*(k(i)-old_k(i));
@@ -597,6 +764,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         const bool must_audit_returned = inner.converged ||
             controls.sst_scale_aware_convergence ||
             controls.sst_picard_damping < 1.0 ||
+            controls.sst_nonlinear_line_search ||
             std::getenv("CFDX_SST_DIAGNOSTICS") != nullptr;
         SSTNonlinearResidualSample returned;
         if (must_audit_returned) {
@@ -615,6 +783,7 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
             std::cerr << std::scientific << std::setprecision(9)
                       << "SST_TRANSPORT_DIAGNOSTIC iteration=" << iter
                       << " picard_damping=" << controls.sst_picard_damping
+                      << " linear_relaxation=" << controls.sst_linear_relaxation
                       << " dk_inf=" << dk << " domega_inf=" << dw
                       << " dk_relative_global=" << k_change.relative_global_inf
                       << " domega_relative_global=" << omega_change.relative_global_inf
@@ -629,6 +798,11 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                       << " omega_returned_row_scaled=" << returned.omega_row_scaled
                       << " k_local_relative=" << returned.k_local_relative
                       << " omega_local_relative=" << returned.omega_local_relative
+                      << " compensated_gate=" << controls.sst_compensated_residual_gate
+                      << " k_local_compensated=" << returned.k_local_compensated
+                      << " omega_local_compensated=" << returned.omega_local_compensated
+                      << " k_local_roundoff_gap=" << returned.k_local_roundoff_gap
+                      << " omega_local_roundoff_gap=" << returned.omega_local_roundoff_gap
                       << " k_local_worst_cell=" << returned.k_worst_cell
                       << " omega_local_worst_cell=" << returned.omega_worst_cell
                       << " k_inner_converged=" << inner.converged
@@ -655,7 +829,18 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                   returned.omega_local_relative <= tolerance
                 : returned.k_row_scaled <= tolerance &&
                   returned.omega_row_scaled <= tolerance);
-        if (inner.converged && result.nonfinite_bound_events == 0 &&
+        // With zero accepted step the old state is returned unchanged. A
+        // continued repeat will reassemble the same operator indefinitely.
+        // Exit early as UNCONVERGED; the carrier transaction will roll back.
+        if (controls.sst_nonlinear_line_search &&
+            consecutive_line_search_stalls >= 8 && !inner.converged) {
+            if (std::getenv("CFDX_SST_DIAGNOSTICS"))
+                std::cerr << "SST_LINESEARCH_STAGNATED iteration=" << iter
+                          << " consecutive_rejections=" << consecutive_line_search_stalls
+                          << " qualified=0\n";
+            break;
+        }
+        if (inner.converged && line_accepted && result.nonfinite_bound_events == 0 &&
             outer_update_ok && returned_equations_ok) {
             result.converged = true;
             if (std::getenv("CFDX_SST_DIAGNOSTICS"))
