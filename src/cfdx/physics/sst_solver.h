@@ -293,8 +293,16 @@ inline SSTCellSources sst_cell_sources(
     // SST-2003 uses the limited k-production in the omega production term.
     // If nut is zero, the limited production is also zero; avoid a 0/0 path.
     const double omega_production = s.nut > 0.0 ? Pk / s.nut : 0.0;
+    const double beta = blend(c.beta1,c.beta2);
+    const double sink_jacobian = c.sst_omega_newton_sink ? 2.0 : 1.0;
+    // Newton linearization of -rho*beta*omega^2 around omega_old:
+    // source = +rho*beta*omega_old^2, Sp = -2*rho*beta*omega_old.
+    // At omega=omega_old the net sink remains EXACTLY -rho*beta*omega_old^2.
+    // The positive explicit compensation preserves the M-matrix sink sign.
     s.sw=blend(c.gamma1,c.gamma2)*omega_production+std::max(cross,0.0);
-    s.spw=-c.density*blend(c.beta1,c.beta2)*wi+std::min(cross,0.0)/wi;
+    if (c.sst_omega_newton_sink)
+        s.sw += c.density*beta*wi*wi;
+    s.spw=-c.density*beta*wi*sink_jacobian+std::min(cross,0.0)/wi;
     s.gamma_k=c.density*(c.molecular_viscosity+
         blend(c.sst_sigma_k1,c.sst_sigma_k2)*s.nut);
     s.gamma_w=c.density*(c.molecular_viscosity+
@@ -380,8 +388,36 @@ inline TurbulenceTransportResult solve_sst_transport(
             k_solution(i) = k(i);
             omega_solution(i) = omega(i);
         }
-        const auto rk = solve_scalar_equation(eqk, k_solution, k_sc);
-        const auto rw = solve_scalar_equation(eqw, omega_solution, omega_sc);
+        cfdx::core::SolverResult rk, rw;
+        if (controls.sst_sequential_omega_first) {
+            // Reuse the existing scalar transport assembly: no second
+            // discretization of gradients, wall values or mass fluxes.
+            rw = solve_scalar_equation(eqw, omega_solution, omega_sc);
+            for (std::size_t cell=0; cell<n; ++cell)
+                omega(cell)=omega_solution(cell);
+            record_turbulence_bounds(result,
+                enforce_turbulence_bounds(k,omega,controls));
+            for (std::size_t cell=0; cell<n; ++cell)
+                omega_solution(cell)=omega(cell);
+            const auto updated_cross = sst_boundary_gradient_dot(
+                k, omega, mesh, geometry, k_bcs, omega_bcs, omega_face_values);
+            for (std::size_t i=0;i<n;++i) {
+                const auto q=sst_cell_sources(k(i),omega(i),strain_rate(i),
+                    F1(i),F2(i),updated_cross[i],controls);
+                sk(i)=q.sk;
+                spk(i)=q.spk;
+                gamma_k[i]=q.gamma_k;
+            }
+            eqk=assemble_scalar_equation(
+                mesh,geometry,mass_flux,0.0,sk,spk,k_bcs,true,
+                nullptr,nullptr,nullptr,&gamma_k,ConvectionScheme::UPWIND,&k);
+            const ScalarSolveControls updated_k_sc{
+                2000,sst_linear_tolerance_for_solution_defect(eqk,k_linear_target),0.7};
+            rk=solve_scalar_equation(eqk,k_solution,updated_k_sc);
+        } else {
+            rk=solve_scalar_equation(eqk,k_solution,k_sc);
+            rw=solve_scalar_equation(eqw,omega_solution,omega_sc);
+        }
         for (std::size_t i = 0; i < n; ++i) {
             k(i) = k_solution(i);
             omega(i) = omega_solution(i);
