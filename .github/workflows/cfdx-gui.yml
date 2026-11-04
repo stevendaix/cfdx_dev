@@ -103,7 +103,7 @@ jobs:
               tests/python/test_specialized_setup.py \
               tests/python/test_workbench.py \
               tests/python/test_case_inspector.py \
-              tests/python/test_mesh_quality.py \
+              tests/python/test_mesh_quality.py \\\n              tests/python/test_volume_mesh_quality.py \\
               tests/python/test_mesh_topology_validation.py \
               tests/python/test_hdf5_inspector_benchmark.py \
               tests/python/test_gui_browser_widgets.py \
