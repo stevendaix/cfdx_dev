@@ -65,3 +65,45 @@ def test_v16_molecular_wall_diffusion_is_explicit_opt_in():
     proposed = make_case_setup(2, 0.25, 0.1, sst_molecular_wall_diffusion=True)
     assert legacy.numerics.raw_settings['sst_molecular_wall_diffusion'] == 'false'
     assert proposed.numerics.raw_settings['sst_molecular_wall_diffusion'] == 'true'
+
+
+def test_v17_flux_and_pseudo_settings_opt_in_and_export(tmp_path):
+    plain = make_case_setup(2, 0.25, 0.1)
+    raw = plain.numerics.raw_settings
+    assert raw['v17_flux_patch_audit'] == 'false'
+    assert raw['v17_pseudo_momentum'] == 'false'
+    assert raw['v17_pressure_line_search'] == 'false'
+    path = tmp_path / 'v17_pseudo.h5'
+    write_case(path, make_structured_mesh('smoke'), mesh_source='V17',
+               max_iterations=2, v17_flux_audit=True,
+               v17_pressure_line_search=True,
+               v17_pseudo_momentum=True, v17_initial_cfl=0.4,
+               v17_min_cfl=0.04, v17_max_cfl=4.0)
+    with h5py.File(path, 'r') as handle:
+        out=json.loads(handle.attrs['case_setup_json'])['numerics']['raw_settings']
+    assert out['v17_flux_patch_audit']=='true'
+    assert out['v17_pressure_line_search']=='true'
+    assert out['v17_pseudo_momentum']=='true'
+    assert out['v17_pseudo_initial_cfl']=='0.4'
+
+
+def test_v17_rejects_invalid_CFL_bounds():
+    with pytest.raises(ValueError, match='V17 pseudo CFL'):
+        make_case_setup(2, 0.25, 0.1, v17_min_cfl=3.0)
+
+
+def test_v18_pressure_schur_operators_are_opt_in_and_exportable(tmp_path):
+    from scripts.generate_th03_openfoam_blockmesh import (
+        make_case_setup, make_structured_mesh, write_case)
+    import h5py
+    import json
+    defaults = make_case_setup(1,0.25,0.1).numerics.raw_settings
+    assert defaults['v18_full_flux_pressure_oracle'] == 'false'
+    assert defaults['v18_sparse_flux_pressure_jacobian'] == 'false'
+    dest=tmp_path / 'v18-pressure.h5'
+    write_case(dest, make_structured_mesh('smoke'), mesh_source='V18 pressure regression',
+        max_iterations=2, v18_sparse_flux_pressure_jacobian=True)
+    with h5py.File(dest,'r') as f:
+        raw=json.loads(f.attrs['case_setup_json'])['numerics']['raw_settings']
+    assert raw['v18_sparse_flux_pressure_jacobian']=='true'
+    assert raw['v18_full_flux_pressure_oracle']=='false'
