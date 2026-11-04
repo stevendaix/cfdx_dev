@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import h5py
 import numpy as np
 import pytest
 
-from cfdx.mesh_quality import analyze_surface_quality
+from cfdx.mesh_quality import (
+    analyze_cfdx_surface_file,
+    analyze_surface_quality,
+)
 
 
 def test_planar_square_has_unit_area_zero_warpage_and_equal_edges():
@@ -111,3 +115,43 @@ def test_surface_quality_limits_are_enforced():
             np.asarray([0, 3]),
             max_connectivity_entries=2,
         )
+
+
+
+def test_hdf5_surface_analysis_respects_inspected_file_identity(tmp_path):
+    path = tmp_path / "surface.cfdx.h5"
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset(
+            "points",
+            data=[[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+        )
+        h5.create_dataset("face_vertices", data=[0, 1, 2, 3])
+        h5.create_dataset("face_offsets", data=[0, 4])
+
+    stat = path.stat()
+    signature = (
+        int(stat.st_dev),
+        int(stat.st_ino),
+        int(stat.st_size),
+        int(stat.st_mtime_ns),
+    )
+    report = analyze_cfdx_surface_file(path, expected_signature=signature)
+    assert report.valid_face_count == 1
+    assert report.face_area_min == pytest.approx(1.0)
+
+    with pytest.raises(RuntimeError, match="changed since metadata inspection"):
+        analyze_cfdx_surface_file(path, expected_signature=(0, 0, 0, 0))
+
+
+def test_hdf5_surface_analysis_refuses_oversized_chunks_and_payload(tmp_path):
+    path = tmp_path / "surface-limits.h5"
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset("points", shape=(10, 3), dtype="f8", chunks=(10, 3))
+        h5.create_dataset("face_vertices", data=[0, 1, 2])
+        h5.create_dataset("face_offsets", data=[0, 3])
+
+    with pytest.raises(ValueError, match="chunk exceeds"):
+        analyze_cfdx_surface_file(path, max_block_bytes=64)
+
+    with pytest.raises(ValueError, match="budget"):
+        analyze_cfdx_surface_file(path, max_source_bytes=32)
