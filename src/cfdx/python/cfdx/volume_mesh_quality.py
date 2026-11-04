@@ -127,7 +127,10 @@ def analyze_volume_skewness(
         adjacency[neighbour_id].add(owner_id)
         polygon = xyz[fv[int(fo[face_id]):int(fo[face_id + 1])]]
         face_centre = polygon.mean(axis=0)
-        area_vector = np.sum(np.cross(polygon, np.roll(polygon, -1, axis=0)), axis=0) * 0.5
+        centred_face = polygon - face_centre
+        area_vector = np.sum(
+            np.cross(centred_face, np.roll(centred_face, -1, axis=0)), axis=0
+        ) * 0.5
         area = float(np.linalg.norm(area_vector))
         if not np.isfinite(area) or area <= np.finfo(float).tiny:
             raise ValueError(f"internal face {face_id} is degenerate")
@@ -147,11 +150,14 @@ def analyze_volume_skewness(
         raise ValueError("mesh has no internal faces; skewness cannot be assessed")
     bad = np.flatnonzero(cell_scores > threshold)
     order = np.argsort(cell_scores)[::-1]
+    problem_order = [int(i) for i in order if cell_scores[i] > threshold]
+    if not problem_order:
+        problem_order = [int(i) for i in order[:20]]
     return VolumeSkewnessReport(
         cell_skewness=cell_scores,
         face_skewness=face_scores,
         cell_neighbours=tuple(tuple(sorted(values)) for values in adjacency),
-        worst_cell_ids=tuple(int(i) for i in order[:20]),
+        worst_cell_ids=tuple(problem_order[:20]),
         bad_cell_ids=tuple(int(i) for i in bad),
         threshold=float(threshold),
         internal_face_count=int(internal.size),
