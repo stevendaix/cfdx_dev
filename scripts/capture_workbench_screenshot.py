@@ -52,19 +52,14 @@ def _create_demo_case(path: Path) -> None:
                 dtype=np.float64,
             ),
         )
-        h5.create_dataset("owner", data=np.zeros(4, dtype=np.int64))
-        h5.create_dataset("neighbour", data=-np.ones(4, dtype=np.int64))
+        h5.create_dataset("owner", data=np.asarray([0], dtype=np.int64))
+        h5.create_dataset("neighbour", data=np.asarray([-1], dtype=np.int64))
         h5.create_dataset(
-            "face_vertices",
-            data=np.asarray([0, 1, 1, 2, 2, 3, 3, 0], dtype=np.int64),
+            "face_vertices", data=np.asarray([0, 1, 2, 3], dtype=np.int64)
         )
-        h5.create_dataset(
-            "face_offsets", data=np.asarray([0, 2, 4, 6, 8], dtype=np.int64)
-        )
-        h5.create_dataset(
-            "patch_face_ids", data=np.asarray([0, 1, 2, 3], dtype=np.int64)
-        )
-        h5.create_dataset("patch_face_offsets", data=np.asarray([0, 4], dtype=np.int64))
+        h5.create_dataset("face_offsets", data=np.asarray([0, 4], dtype=np.int64))
+        h5.create_dataset("patch_face_ids", data=np.asarray([0], dtype=np.int64))
+        h5.create_dataset("patch_face_offsets", data=np.asarray([0, 1], dtype=np.int64))
 
         scalar = h5.create_group("fields/scalar")
         scalar.create_dataset(
@@ -123,6 +118,12 @@ def main() -> int:
             app.quit()
             return 3
         window.case_file_panel.tree.setCurrentItem(pressure_items[0])
+        if not window.case_file_panel.mesh_quality_button.isEnabled():
+            raise RuntimeError("surface quality action was not enabled for demo mesh")
+        window.case_file_panel.mesh_quality_button.click()
+        quality_report = window.case_file_panel.preview.toPlainText()
+        if "faces: 1 · valid: 1 · degenerate: 0" not in quality_report:
+            raise RuntimeError("surface quality action did not produce expected report")
 
         geometry = screen.availableGeometry()
         window.resize(min(1280, geometry.width()), min(900, geometry.height()))
@@ -155,7 +156,7 @@ def main() -> int:
             f"Populated Workbench screenshot saved: {args.output} "
             f"({screenshot.width()}x{screenshot.height()}); "
             f"datasets={len(summary.datasets)}, cells={summary.n_cells}, "
-            f"sample=/fields/scalar/pressure"
+            f"sample=/fields/scalar/pressure, surface_quality=passed"
         )
 
     window.close()
