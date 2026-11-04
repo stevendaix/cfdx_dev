@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from cfdx.mesh_topology import validate_cell_topology, validate_surface_topology
 
 
@@ -37,9 +36,7 @@ def test_valid_surface_topology_is_accepted():
         (4, np.asarray([0, 2]), "terminal offset"),
     ],
 )
-def test_invalid_surface_connectivity_is_rejected(
-    array_index, replacement, message
-):
+def test_invalid_surface_connectivity_is_rejected(array_index, replacement, message):
     arrays = list(_valid_surface())
     arrays[array_index] = replacement
     with pytest.raises(ValueError, match=message):
@@ -92,9 +89,7 @@ def test_valid_cell_topology_is_accepted():
         ([], [0, 0], "at least one face"),
     ],
 )
-def test_invalid_cell_connectivity_is_rejected(
-    cell_faces, cell_offsets, message
-):
+def test_invalid_cell_connectivity_is_rejected(cell_faces, cell_offsets, message):
     with pytest.raises(ValueError, match=message):
         validate_cell_topology(
             np.asarray(cell_faces, dtype=np.int64),
