@@ -200,6 +200,46 @@ def test_renderer_rejects_stale_inspection_summary_before_loading_arrays(
         PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
 
 
+
+@pytest.mark.parametrize("missing_dataset", ["cell_faces", "cell_offsets"])
+def test_dat_preview_reports_missing_cell_topology(
+    tmp_path, monkeypatch, missing_dataset
+):
+    path = tmp_path / f"missing-{missing_dataset}.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        h5.attrs["n_cells"] = 1
+        h5.attrs["boundary_patches"] = "wall:0:4:0"
+        h5.create_dataset("points", data=np.zeros((4, 3)))
+        h5.create_dataset("owner", data=np.zeros(4, dtype=np.int64))
+        h5.create_dataset("neighbour", data=-np.ones(4, dtype=np.int64))
+        h5.create_dataset("face_vertices", data=[0, 1, 1, 2, 2, 3, 3, 0])
+        h5.create_dataset("face_offsets", data=[0, 2, 4, 6, 8])
+        h5.create_dataset("patch_face_ids", data=[0, 1, 2, 3])
+        h5.create_dataset("patch_face_offsets", data=[0, 4])
+        h5.create_dataset("cell_faces", data=[0, 1, 2, 3])
+        h5.create_dataset("cell_offsets", data=[0, 4])
+        del h5[missing_dataset]
+
+    summary = inspect_cfdx_file(path)
+    assert summary.preview_supported
+
+    from types import SimpleNamespace
+
+    from cfdx import dat_io
+    from cfdx.gui_3d import PyVistaQtView
+
+    monkeypatch.setattr(
+        dat_io,
+        "read_dat_restart",
+        lambda _path: SimpleNamespace(cells=1, fields={}),
+    )
+    with pytest.raises(ValueError, match=f"requires an internal HDF5 {missing_dataset}"):
+        PyVistaQtView.load_cfdx_dat(
+            None, str(path), "unused.dat", summary=summary
+        )
+
+
 def test_inspect_does_not_preview_mesh_with_external_region_catalog(tmp_path):
     path = tmp_path / "external-regions.h5"
     with h5py.File(path, "w") as h5:
