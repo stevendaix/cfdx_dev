@@ -4,12 +4,11 @@ from __future__ import annotations
 
 import h5py
 import numpy as np
-import pytest
-
 from cfdx.mesh_quality import (
     analyze_cfdx_surface_file,
     analyze_surface_quality,
 )
+import pytest
 
 
 def test_planar_square_has_unit_area_zero_warpage_and_equal_edges():
