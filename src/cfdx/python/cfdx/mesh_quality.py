@@ -130,7 +130,8 @@ def analyze_surface_quality(
 
     The edge-length ratio is max(edge length) / min(edge length), and is
     intentionally not called a cell aspect ratio. Warpage is the maximum
-    absolute distance from face vertices to their least-squares plane,
+    absolute distance from face vertices to the centroid plane normal to the
+    polygon area vector,
     divided by the face's longest edge. Degeneracy uses a scale-relative
     floating-point threshold rather than a mesh-unit-specific tolerance.
 
@@ -201,13 +202,8 @@ def analyze_surface_quality(
 
         areas.append(area)
         edge_ratios.append(longest / shortest)
-        try:
-            _, _, right_vectors = np.linalg.svd(centered, full_matrices=False)
-        except np.linalg.LinAlgError as exc:
-            raise ValueError(f"could not determine face plane for face {face_id}") from exc
-        warpage = float(
-            np.max(np.abs(centered @ right_vectors[-1])) / longest
-        )
+        normal = area_vector / (2.0 * area)
+        warpage = float(np.max(np.abs(centered @ normal)) / longest)
         warpages.append(warpage)
         worst_ids.append((warpage, face_id))
 
