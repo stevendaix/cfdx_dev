@@ -39,8 +39,16 @@ class Hdf5DatasetInfo:
     shape: tuple[int, ...]
     dtype: str
     size_bytes: int | None
+    storage_bytes: int | None
     chunks: tuple[int, ...] | None
     compression: str | None
+
+    @property
+    def storage_ratio(self) -> float | None:
+        """Return allocated/logical storage, or None when it is not meaningful."""
+        if self.size_bytes is None or self.size_bytes <= 0 or self.storage_bytes is None:
+            return None
+        return self.storage_bytes / self.size_bytes
 
     @property
     def display(self) -> str:
@@ -442,6 +450,9 @@ def inspect_cfdx_file(path: str | Path, *, max_datasets: int = 300) -> CaseFileS
                     shape=shape,
                     dtype=str(obj.dtype),
                     size_bytes=size_bytes,
+                    storage_bytes=(
+                        int(obj.id.get_storage_size()) if obj.dtype.kind != "O" else None
+                    ),
                     chunks=tuple(int(size) for size in obj.chunks)
                     if obj.chunks
                     else None,
