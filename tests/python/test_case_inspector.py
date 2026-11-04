@@ -226,9 +226,7 @@ def test_inspect_refuses_small_mesh_with_huge_surface_connectivity(tmp_path):
     with pytest.raises(ValueError, match="preview deferred"):
         PyVistaQtView.load_cfdx_mesh(None, str(path), summary=summary)
     with pytest.raises(ValueError, match="preview deferred"):
-        PyVistaQtView.load_cfdx_dat(
-            None, str(path), "unused.dat", summary=summary
-        )
+        PyVistaQtView.load_cfdx_dat(None, str(path), "unused.dat", summary=summary)
 
 
 def test_preview_rejects_non_integer_surface_connectivity(tmp_path):
