@@ -26,6 +26,8 @@ class VolumeSkewnessReport:
 
     cell_skewness: np.ndarray
     face_skewness: np.ndarray
+    face_non_orthogonality_deg: np.ndarray
+    cell_centres: np.ndarray
     cell_neighbours: tuple[tuple[int, ...], ...]
     worst_cell_ids: tuple[int, ...]
     bad_cell_ids: tuple[int, ...]
