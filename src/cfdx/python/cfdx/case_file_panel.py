@@ -122,9 +122,7 @@ class CaseFilePanel(QWidget):
         """Display a bounded sample only when a dataset row is selected."""
         dataset_path = item.data(0, Qt.ItemDataRole.UserRole)
         if not dataset_path or self.summary is None:
-            self.preview.setPlainText(
-                "Select a dataset to inspect a bounded sample."
-            )
+            self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
             self._update_selection_actions()
             return
         try:
