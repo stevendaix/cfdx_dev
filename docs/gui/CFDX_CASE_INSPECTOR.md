@@ -22,7 +22,8 @@ the selected numeric dataset. It scans in bounded blocks and reports minimum,
 maximum, arithmetic mean, RMS, finite/non-finite counts and bytes scanned.
 The default logical-read budget is 64 MiB and the default block/decompression
 budget is 1 MiB; larger datasets or chunks are refused with a reason instead
-of silently allocating more memory. This quick-look treats every stored value
+of silently allocating more memory. Multidimensional fields are traversed by
+first-axis slabs, and a single row wider than the block budget is refused. This quick-look treats every stored value
 equally: it is not volume-, mass- or area-weighted and must not be interpreted
 as a conservative CFD integral. Opening a case and selecting a dataset still
 do not trigger this full-dataset scan; the user must explicitly request it.
