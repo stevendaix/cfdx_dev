@@ -418,6 +418,12 @@ inline TurbulenceTransportResult solve_sst_transport(
             rk=solve_scalar_equation(eqk,k_solution,k_sc);
             rw=solve_scalar_equation(eqw,omega_solution,omega_sc);
         }
+        result.last_k_linear_status = rk.status;
+        result.last_second_linear_status = rw.status;
+        result.last_k_linear_before = rk.residual_relative_before_relaxation;
+        result.last_k_linear_after = rk.residual_relative_after_relaxation;
+        result.last_second_linear_before = rw.residual_relative_before_relaxation;
+        result.last_second_linear_after = rw.residual_relative_after_relaxation;
         for (std::size_t i = 0; i < n; ++i) {
             k(i) = k_solution(i);
             omega(i) = omega_solution(i);
@@ -578,6 +584,12 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         result.k_residual = inner.k_residual;
         result.second_residual = inner.second_residual;
         result.iterations = iter;
+        result.last_k_linear_status = inner.last_k_linear_status;
+        result.last_second_linear_status = inner.last_second_linear_status;
+        result.last_k_linear_before = inner.last_k_linear_before;
+        result.last_k_linear_after = inner.last_k_linear_after;
+        result.last_second_linear_before = inner.last_second_linear_before;
+        result.last_second_linear_after = inner.last_second_linear_after;
         // Compare the residual of the CURRENT (possibly damped) state to the
         // residual of the undamped candidate that the inner solver returned.
         // Sampling is enabled when needed for physical acceptance or forensic
@@ -620,6 +632,12 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
                       << " k_local_worst_cell=" << returned.k_worst_cell
                       << " omega_local_worst_cell=" << returned.omega_worst_cell
                       << " k_inner_converged=" << inner.converged
+                      << " k_linear_status=" << cfdx::core::to_string(inner.last_k_linear_status)
+                      << " omega_linear_status=" << cfdx::core::to_string(inner.last_second_linear_status)
+                      << " k_linear_relative_before_relaxation=" << inner.last_k_linear_before
+                      << " k_linear_relative_after_relaxation=" << inner.last_k_linear_after
+                      << " omega_linear_relative_before_relaxation=" << inner.last_second_linear_before
+                      << " omega_linear_relative_after_relaxation=" << inner.last_second_linear_after
                       << " finite_events=" << result.nonfinite_bound_events
                       << " floor_k=" << result.k_floor_events
                       << " floor_omega=" << result.second_floor_events
@@ -640,6 +658,17 @@ inline TurbulenceTransportResult solve_sst_transport_dynamic_blending(
         if (inner.converged && result.nonfinite_bound_events == 0 &&
             outer_update_ok && returned_equations_ok) {
             result.converged = true;
+            if (std::getenv("CFDX_SST_DIAGNOSTICS"))
+                std::cerr << "SST_CERTIFIED_INNER"
+                          << " iteration=" << iter
+                          << " k_nonlinear_raw=" << result.k_residual
+                          << " omega_nonlinear_raw=" << result.second_residual
+                          << " k_local_relative=" << returned.k_local_relative
+                          << " omega_local_relative=" << returned.omega_local_relative
+                          << " k_linear_status=" << cfdx::core::to_string(result.last_k_linear_status)
+                          << " omega_linear_status=" << cfdx::core::to_string(result.last_second_linear_status)
+                          << " physical_qualification=NOT_QUALIFIED"
+                          << '\n';
             break;
         }
     }
