@@ -1164,6 +1164,16 @@ int main(int argc, char** argv)
             controls.v18_full_flux_pressure_oracle=flag("v18_full_flux_pressure_oracle");
             controls.v18_sparse_flux_pressure_jacobian=flag("v18_sparse_flux_pressure_jacobian");
             controls.v19_full_pressure_flux_step=flag("v19_full_pressure_flux_step");
+            // V21 opt-in for the existing hysteretic relaxation controller.
+            // It uses momentum/flux coupling, not projected continuity, for
+            // alpha_p whenever V19 full-flux SIMPLE is active.
+            controls.adaptive_relaxation.enabled=flag("v21_adaptive_relaxation");
+            if (controls.adaptive_relaxation.enabled &&
+                !controls.v19_full_pressure_flux_step)
+                throw std::invalid_argument(
+                    "V21 coupling adaptation requires V19 full pressure flux step");
+            if (controls.adaptive_relaxation.enabled)
+                std::cout << "V21 momentum/flux adaptive relaxation: EXPERIMENTAL\n";
             if (controls.v19_full_pressure_flux_step)
                 std::cout << "V19 full pressure flux step, relaxed physical pressure: "
                           << "EXPERIMENTAL, not qualified\n";
@@ -1504,10 +1514,24 @@ int main(int argc, char** argv)
                 }
                 const auto path = options.output_dir /
                     ("result_" + std::to_string(iteration) + ".vtu");
+                // V21: diagnostics for the actual accepted coupled SST state.
+                // Omitting these cell fields made it impossible to assess
+                // upstream boundary layers, nut, k and omega in the same
+                // snapshot as the velocity. No extra arrays for laminar cases.
+                std::map<std::string, ScalarCellField> cell_fields{
+                    {"p", pressure}, {"u_x", ux}, {"u_y", uy}, {"u_z", uz}};
+                if (experimental_sst_state) {
+                    validate_sst_production_state(*experimental_sst_state,
+                                                  state_mesh.n_cells());
+                    cell_fields.emplace("k", ScalarCellField(experimental_sst_state->k));
+                    cell_fields.emplace("omega", ScalarCellField(experimental_sst_state->omega));
+                    cell_fields.emplace("nu_t", ScalarCellField(experimental_sst_state->nu_t));
+                    cell_fields.emplace("wall_distance", ScalarCellField(experimental_sst_state->wall_distance));
+                    cell_fields.emplace("sst_strain_rate", ScalarCellField(experimental_sst_state->strain_rate));
+                }
                 VtuWriter writer;
                 if (!writer.write(path.string(), state_mesh,
-                                  {{"p", pressure}, {"u_x", ux}, {"u_y", uy}, {"u_z", uz}},
-                                  {}, {}, time, iteration, true))
+                                  cell_fields, {}, {}, time, iteration, true))
                     return false;
                 std::cout << "Iteration " << iteration
                           << " Time = " << time << "\n";
