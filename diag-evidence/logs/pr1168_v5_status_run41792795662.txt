@@ -1,0 +1,6 @@
+ruff=FAIL
+sphinx=FAIL
+pytest=PASS
+build=PASS
+ctest=PASS
+oracle_verdict=DIAGNOSTIC_COMPLETE
