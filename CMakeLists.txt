@@ -1611,3 +1611,19 @@ if(CFDX_BUILD_TESTS)
     set_tests_properties(test_production_boundary_wls_v6 PROPERTIES
         LABELS "verification;gradient;diffusion;pressure;geometry")
 endif()
+
+# TH-03 V9: opt-in pressure equilibration must not bypass the reusable
+# CG/AMG context or certify the transformed residual as the physical one.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_reusable_scaled_pressure_cg_v9
+        tests/unit/test_reusable_scaled_pressure_cg_v9.cpp)
+    set_tests_properties(test_reusable_scaled_pressure_cg_v9 PROPERTIES
+        LABELS "verification;pressure;krylov;scaling")
+endif()
+
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_pressure_linear_diagnostics_v9
+        tests/unit/test_pressure_linear_diagnostics_v9.cpp)
+    set_tests_properties(test_pressure_linear_diagnostics_v9 PROPERTIES
+        LABELS "verification;pressure;mass;diagnostic")
+endif()
