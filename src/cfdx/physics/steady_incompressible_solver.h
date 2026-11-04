@@ -22,6 +22,7 @@
 #include "cfdx/physics/pressure_affine_flux_trials.h"
 #include "cfdx/physics/solver_control.h"
 #include "cfdx/physics/sst_production_coupling.h"
+#include "cfdx/physics/momentum_residual_certification.h"
 #include "cfdx/physics/timestep_control.h"
 #include "cfdx/core/numerics/conservation.h"
 #include "cfdx/core/numerics/temporal.h"
@@ -364,6 +365,7 @@ struct IncompressibleIteration {
     double momentum_rhs_scale = std::numeric_limits<double>::infinity();
     double momentum_equation_residual_reference = std::numeric_limits<double>::infinity();
     double momentum_equation_residual_rhs_relative = std::numeric_limits<double>::infinity();
+    double momentum_equation_residual_rhs_active_component_max = std::numeric_limits<double>::infinity();
     std::array<double, 3> momentum_rhs_scale_components{
         std::numeric_limits<double>::infinity(),
         std::numeric_limits<double>::infinity(),
@@ -5643,6 +5645,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             rx_diag.global / momentum_rhs_scale_components[0],
             ry_diag.global / momentum_rhs_scale_components[1],
             rz_diag.global / momentum_rhs_scale_components[2]};
+        const auto momentum_component_certificate =
+            certify_momentum_residual_components(
+                {rx_diag.global, ry_diag.global, rz_diag.global},
+                momentum_rhs_scale_components,
+                controls.convergence.relative_tolerance);
+        h.momentum_equation_residual_rhs_active_component_max =
+            momentum_component_certificate.max_active_component_relative;
         double flux_reference = 0.0;
         for (std::size_t f = 0; f < mesh.n_faces(); ++f)
             flux_reference += std::abs(mass_flux(f));
@@ -5853,6 +5862,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                       << " momentum_residual_raw=" << h.momentum_equation_residual
                       << " momentum_rhs_scale=" << h.momentum_rhs_scale
                       << " momentum_residual_reference=" << h.momentum_equation_residual_reference
+                      << " momentum_active_component_residual_max="
+                      << h.momentum_equation_residual_rhs_active_component_max
                       << " momentum_rhs_scale_components=("
                       << h.momentum_rhs_scale_components[0] << ","
                       << h.momentum_rhs_scale_components[1] << ","
@@ -5881,8 +5892,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // absolute scale sits far below that first maximum would be exempted
         // from the gate. nonlinear_metric is therefore a diagnostic summary and
         // never a replacement for the individual physical criteria.
-        const bool momentum_residual_gate =
-            h.momentum_equation_residual_rhs_relative <= controls.convergence.relative_tolerance;
+        const bool momentum_residual_gate = momentum_component_certificate.converged;
         // COUPLED solves the monolithic momentum-continuity system before
         // this post-update residual is measured. Using that already-solved
         // residual as its own first-iteration reference makes the ratio
