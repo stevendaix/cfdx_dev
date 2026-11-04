@@ -1,24 +1,33 @@
 """Regression tests for volumetric skewness and cell adjacency."""
 
 import h5py
-import numpy as np
-import pytest
-
 from cfdx.volume_mesh_quality import (
     analyze_cfdx_volume_skewness,
     analyze_volume_skewness,
 )
+import numpy as np
+import pytest
 
 
 def two_tetrahedra():
-    points = np.asarray([
-        [0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [0., 0., 1.],
-        [1., 1., 2.],
-    ])
+    points = np.asarray(
+        [
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0],
+            [1.0, 1.0, 2.0],
+        ]
+    )
     # Shared face (1,2,3), plus three exterior faces per tetrahedron.
     faces = [
-        [1, 2, 3], [0, 2, 1], [0, 1, 3], [0, 3, 2],
-        [4, 2, 1], [4, 1, 3], [4, 3, 2],
+        [1, 2, 3],
+        [0, 2, 1],
+        [0, 1, 3],
+        [0, 3, 2],
+        [4, 2, 1],
+        [4, 1, 3],
+        [4, 3, 2],
     ]
     face_vertices = np.asarray([v for face in faces for v in face], dtype=np.int64)
     face_offsets = np.arange(0, 3 * (len(faces) + 1), 3, dtype=np.int64)
@@ -26,7 +35,15 @@ def two_tetrahedra():
     neighbour = np.asarray([1, -1, -1, -1, -1, -1, -1], dtype=np.int64)
     cell_faces = np.asarray([0, 1, 2, 3, 0, 4, 5, 6], dtype=np.int64)
     cell_offsets = np.asarray([0, 4, 8], dtype=np.int64)
-    return points, face_vertices, face_offsets, owner, neighbour, cell_faces, cell_offsets
+    return (
+        points,
+        face_vertices,
+        face_offsets,
+        owner,
+        neighbour,
+        cell_faces,
+        cell_offsets,
+    )
 
 
 def test_volume_skewness_reports_internal_face_and_symmetric_neighbours():
@@ -66,8 +83,15 @@ def test_volume_skewness_rejects_boundary_only_mesh():
 
 def test_hdf5_volume_skewness_preflights_and_rechecks_file(tmp_path):
     path = tmp_path / "two-tets.cfdx.h5"
-    names = ("points", "face_vertices", "face_offsets", "owner", "neighbour",
-             "cell_faces", "cell_offsets")
+    names = (
+        "points",
+        "face_vertices",
+        "face_offsets",
+        "owner",
+        "neighbour",
+        "cell_faces",
+        "cell_offsets",
+    )
     with h5py.File(path, "w") as h5:
         for name, values in zip(names, two_tetrahedra(), strict=True):
             h5.create_dataset(name, data=values)
