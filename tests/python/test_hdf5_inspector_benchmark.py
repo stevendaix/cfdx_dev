@@ -42,12 +42,9 @@ def test_benchmark_cli_runs_without_pythonpath_or_scripts_shadowing(tmp_path):
     assert result["sample_values"] == 30
     assert result["points_allocated_bytes"] > 0
     assert result["allocated_dataset_bytes"] >= result["points_allocated_bytes"]
-    storage_audit = {
-        item["path"]: item for item in result["dataset_storage_audit"]
-    }
+    storage_audit = {item["path"]: item for item in result["dataset_storage_audit"]}
     assert (
-        storage_audit["/points"]["allocated_bytes"]
-        == result["points_allocated_bytes"]
+        storage_audit["/points"]["allocated_bytes"] == result["points_allocated_bytes"]
     )
     assert storage_audit["/points"]["allocated_ratio"] is not None
     assert result["preview_block_reason"]
