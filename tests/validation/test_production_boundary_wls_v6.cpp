@@ -5,6 +5,7 @@
 #include <array>
 #include <cmath>
 #include <map>
+#include <limits>
 #include <vector>
 
 using namespace cfdx::core;
@@ -79,6 +80,117 @@ double analytical(const Vec3& c) {return 4.0 + 1.25*c.x - 0.8*c.y + 0.3*c.z;}
 }
 
 int main() {
+    run_case("v7_bounded_sst_outer_predictor_never_counts_as_converged", [] {
+        auto mesh=grid(2,1,1);
+        const auto geometry=build_fv_geometry(mesh);
+        Field<double,Location::FACE> mdot(mesh.n_faces(),"mdot","kg/s",1);
+        mdot.fill(0.0);
+        Field<double,Location::CELL> k(2,"k","m2/s2",1);
+        Field<double,Location::CELL> omega(2,"omega","1/s",1);
+        Field<double,Location::CELL> strain(2,"strain","1/s",1);
+        Field<double,Location::CELL> wall_distance(2,"y","m",1);
+        Field<double,Location::CELL> nut(2,"nut","m2/s",1);
+        for (std::size_t i=0;i<2;++i) {
+            k(i)=0.1; omega(i)=10.0; strain(i)=1.0;
+            wall_distance(i)=0.5; nut(i)=0.01;
+        }
+        TurbulenceTransportControls controls;
+        controls.model=TurbulenceModel::SST;
+        controls.density=1.0;
+        controls.molecular_viscosity=1e-3;
+        controls.sst_picard_damping=0.2;
+        const auto strict=advance_sst_transport_transactionally(
+            mesh,geometry,mdot,k,omega,strain,wall_distance,controls,nut,
+            {},{},1,1e-10,nullptr,false);
+        EXPECT_FALSE(strict.committed);
+        EXPECT_FALSE(strict.provisional);
+        EXPECT_NEAR(k(0),0.1,1e-14);
+        EXPECT_NEAR(omega(0),10.0,1e-14);
+        EXPECT_NEAR(nut(0),0.01,1e-14);
+        const auto intermediate=advance_sst_transport_transactionally(
+            mesh,geometry,mdot,k,omega,strain,wall_distance,controls,nut,
+            {},{},1,1e-10,nullptr,true);
+        EXPECT_TRUE(intermediate.committed);
+        EXPECT_TRUE(intermediate.provisional);
+        EXPECT_FALSE(intermediate.transport.converged);
+        EXPECT_TRUE(intermediate.transport.nonfinite_bound_events==0);
+        EXPECT_TRUE(k(0)>0.0 && omega(0)>0.0 && nut(0)>=0.0);
+        EXPECT_TRUE(std::abs(k(0)-0.1)>1e-10 ||
+                    std::abs(omega(0)-10.0)>1e-10);
+    });
+    run_case("v7_sst_damping_contract_is_explicit_and_bounded", [] {
+        TurbulenceTransportControls c;
+        c.model=TurbulenceModel::SST;
+        validate_turbulence_controls(c);
+        c.sst_picard_damping=0.1;
+        validate_turbulence_controls(c);
+        for (const double invalid: {0.0,-0.1,1.01,
+             std::numeric_limits<double>::infinity()}) {
+            c.sst_picard_damping=invalid;
+            bool rejected=false;
+            try { validate_turbulence_controls(c); }
+            catch(const std::invalid_argument&) {rejected=true;}
+            EXPECT_TRUE(rejected);
+        }
+    });
+    run_case("th03_v7_projected_pressure_face_is_shared_and_affine", [] {
+        auto mesh=grid(2,1,1);
+        // Widths [1, 3], internal face x=1, cell centres x=.5 and 2.5.
+        const auto npoints=mesh.points().size();
+        for (std::size_t i=0;i<npoints;++i) {
+            const auto x=mesh.points().x_data()[i];
+            if (x > 1.5)
+                mesh.points().set(i,4.0,
+                    mesh.points().y_data()[i],mesh.points().z_data()[i]);
+        }
+        const auto geo=build_fv_geometry(mesh);
+        std::size_t internal=mesh.n_faces();
+        for (std::size_t f=0;f<mesh.n_faces();++f)
+            if (mesh.ownership().neighbour(f)>=0) internal=f;
+        EXPECT_TRUE(internal<mesh.n_faces());
+        const auto owner=mesh.ownership().owner(internal);
+        const auto nb=static_cast<std::size_t>(mesh.ownership().neighbour(internal));
+        EXPECT_NEAR(pressure_face_neighbour_weight(geo,internal,owner,nb,false),0.5,1e-14);
+        EXPECT_NEAR(pressure_face_neighbour_weight(geo,internal,owner,nb,true),0.25,1e-14);
+        Field<double,Location::CELL> U(2,"U","m/s",3);
+        U.set(owner,0.0,0.0,0.0);
+        U.set(nb,4.0,0.0,0.0);
+        Field<double,Location::CELL> pressure(2,"p","Pa",1);
+        pressure(owner)=0.0; pressure(nb)=2.0;
+        // dAU owner=1, neighbour=5; the volume factor belongs to the operator.
+        std::array<std::vector<double>,3> rAU;
+        for (auto& comp:rAU) {
+            comp.resize(2);
+            comp[owner]=1.0/geo.cell_volumes[owner];
+            comp[nb]=5.0/geo.cell_volumes[nb];
+        }
+        const auto interp=make_mass_flux(mesh,geo,U,1.0,{}, {},true);
+        const auto interp_legacy=make_mass_flux(mesh,geo,U,1.0,{}, {},false);
+        EXPECT_NEAR(interp(internal),1.0,1e-12);
+        EXPECT_NEAR(interp_legacy(internal),2.0,1e-12);
+        const auto p_grad=gauss_gradient_with_boundary(pressure,mesh,geo,{});
+        const double projected= rhie_chow_pressure_flux_internal(
+            mesh,geo,internal,pressure,p_grad,rAU,1.0,true);
+        const double legacy= rhie_chow_pressure_flux_internal(
+            mesh,geo,internal,pressure,p_grad,rAU,1.0,false);
+        const auto sf=geo.face_area_vectors[internal];
+        const auto dv=geo.cell_centres[nb]-geo.cell_centres[owner];
+        EXPECT_NEAR(projected, pressure_face_orthogonal_coefficient(
+            sf,dv,Vec3{2.0,2.0,2.0})*2.0,1e-12);
+        EXPECT_NEAR(legacy,pressure_face_orthogonal_coefficient(
+            sf,dv,Vec3{3.0,3.0,3.0})*2.0,1e-12);
+        const auto rc=make_rhie_chow_mass_flux(mesh,geo,U,pressure,rAU,1.0,{}, {},
+            RhieChowVelocityContract::HBYA_PREDICTOR,false,true);
+        EXPECT_NEAR(rc(internal),interp(internal)-projected,1e-12);
+        EXPECT_TRUE(std::abs(projected-legacy)>1e-3);
+        IncompressibleSolverControls c;
+        c.pressure_projected_face_interpolation=true;
+        c.algorithm=PressureVelocityAlgorithm::COUPLED;
+        bool rejected=false;
+        try { validate_incompressible_controls(c,mesh.n_cells()); }
+        catch(const std::invalid_argument&) { rejected=true; }
+        EXPECT_TRUE(rejected);
+    });
     run_case("trapezoid_face_integral_centroid", [] {
         const std::vector<double> x={0.,3.,2.,0.};
         const std::vector<double> y={0.,0.,1.,1.};
