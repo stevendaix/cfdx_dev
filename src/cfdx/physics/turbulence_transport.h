@@ -56,6 +56,19 @@ struct TurbulenceTransportControls {
     double sst_sigma_k1 = 0.85, sst_sigma_k2 = 1.0;
     double sst_sigma_w1 = 0.5, sst_sigma_w2 = 0.856;
     double sst_production_limiter = 10.0;
+    // Opt-in Newton linearization of the omega destruction sink. It preserves
+    // -rho*beta*omega^2 at the frozen state, but supplies the exact local
+    // derivative -2*rho*beta*omega to the implicit scalar solve. Does NOT
+    // change the turbulence model or the final nonlinear residual gate.
+    bool sst_omega_newton_sink = false;
+    // Opt-in block Gauss-Seidel coupling: omega is solved before k, and the
+    // k equation is reassembled with the updated omega (F1/F2 remain frozen
+    // for the current inner iteration, as in the existing Picard scheme).
+    bool sst_sequential_omega_first = false;
+    // Explicit wall-value policy; this is NOT a complete OpenFOAM wall function.
+    // 6: original face Dirichlet approximation; 60: Menter first-cell
+    // spacing estimate applied as a face Dirichlet (requires qualification).
+    double sst_wall_omega_factor = 6.0;
     // Opt-in damping for the OUTER nonlinear k/omega/F1/F2 Picard iteration.
     // One means the historical algorithm; this never changes equation gates.
     double sst_picard_damping = 1.0;
@@ -253,6 +266,8 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        !std::isfinite(c.epsilon_min) || !std::isfinite(c.omega_min) ||
        c.density<=0.0 || c.molecular_viscosity<0.0 ||
        c.turbulent_prandtl<=0.0 || !std::isfinite(c.sst_picard_damping) ||
+       !std::isfinite(c.sst_wall_omega_factor) ||
+       (c.sst_wall_omega_factor != 6.0 && c.sst_wall_omega_factor != 60.0) ||
        !(c.sst_picard_damping>0.0 && c.sst_picard_damping<=1.0) ||
        c.k_min<=0.0 ||
        c.epsilon_min<=0.0 || c.omega_min<=0.0)
