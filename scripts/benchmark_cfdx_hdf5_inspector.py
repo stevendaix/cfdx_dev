@@ -26,7 +26,11 @@ import h5py
 _PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "src" / "cfdx" / "python"
 sys.path.insert(0, str(_PACKAGE_ROOT))
 
-from cfdx.case_inspector import inspect_cfdx_file, read_hdf5_dataset_sample
+from cfdx.case_inspector import (
+    inspect_cfdx_file,
+    read_hdf5_dataset_sample,
+    read_hdf5_dataset_statistics,
+)
 
 
 def _peak_rss_mb() -> float | None:
@@ -89,6 +93,11 @@ def _create_sparse_case(path: Path, n_cells: int) -> None:
             dtype="f8",
             chunks=(4096,),
         )
+        h5.create_dataset(
+            "fields/scalar/temperature_probe",
+            data=[float(value - 2048) for value in range(4096)],
+            chunks=(512,),
+        )
 
 
 def _benchmark_one(n_cells: int) -> dict[str, Any]:
@@ -104,6 +113,12 @@ def _benchmark_one(n_cells: int) -> dict[str, Any]:
         start = perf_counter()
         sample = read_hdf5_dataset_sample(path, "/points", max_values=32)
         sample_ms = (perf_counter() - start) * 1000
+
+        start = perf_counter()
+        statistics = read_hdf5_dataset_statistics(
+            path, "/fields/scalar/temperature_probe"
+        )
+        statistics_ms = (perf_counter() - start) * 1000
         rss_after = _peak_rss_mb()
 
         if summary.n_cells != n_cells or summary.preview_supported:
@@ -117,6 +132,12 @@ def _benchmark_one(n_cells: int) -> dict[str, Any]:
             raise RuntimeError(
                 "bounded sample did not read the materialized HDF5 chunk"
             )
+        if (
+            statistics.finite_count != 4096
+            or statistics.minimum != -2048.0
+            or statistics.maximum != 2047.0
+        ):
+            raise RuntimeError("streaming field statistics returned unexpected values")
 
         logical_bytes = sum(item.size_bytes or 0 for item in summary.datasets)
         with h5py.File(path, "r") as h5:
@@ -149,6 +170,20 @@ def _benchmark_one(n_cells: int) -> dict[str, Any]:
             "inspect_ms": round(inspect_ms, 3),
             "sample_ms": round(sample_ms, 3),
             "sample_values": len(sample.values),
+            "field_statistics": {
+                "path": statistics.path,
+                "value_count": statistics.value_count,
+                "finite_count": statistics.finite_count,
+                "non_finite_count": statistics.non_finite_count,
+                "minimum": statistics.minimum,
+                "maximum": statistics.maximum,
+                "mean": round(statistics.mean, 9)
+                if statistics.mean is not None
+                else None,
+                "rms": round(statistics.rms, 9) if statistics.rms is not None else None,
+                "scanned_bytes": statistics.scanned_bytes,
+                "elapsed_ms": round(statistics_ms, 3),
+            },
             "peak_rss_mb": round(rss_after, 3) if rss_after is not None else None,
             "rss_growth_mb": (
                 round(max(0.0, rss_after - rss_before), 3)
