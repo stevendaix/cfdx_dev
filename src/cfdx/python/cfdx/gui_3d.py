@@ -259,6 +259,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         validate_cell_topology(
             cell_faces,
             cell_offsets,
+            face_offsets,
             n_cells=mesh_cells,
             n_faces=int(inspected.n_faces),
         )
