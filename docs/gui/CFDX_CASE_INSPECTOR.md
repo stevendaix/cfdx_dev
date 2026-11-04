@@ -53,6 +53,9 @@ The 100,000-entity threshold is a conservative guard for the current renderer,
 not a CFDX file-format limit. Both PyVista mesh and DAT loading entry points
 repeat the metadata preflight and reject oversized inputs before slicing
 topology arrays, so direct renderer calls cannot bypass the Workbench guard.
+The inspector records the source file device, inode, size and nanosecond
+modification time; renderer entry points reject a summary if the file changed
+since inspection, closing the stale-summary/time-of-check-to-time-of-use gap.
 Preview eligibility also checks the topology
 dataset shapes, caps eager source topology at 32 MiB and caps face connectivity
 at two million entries. These limits are deliberately conservative because
