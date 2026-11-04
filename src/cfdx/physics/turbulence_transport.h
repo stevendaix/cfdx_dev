@@ -59,6 +59,11 @@ struct TurbulenceTransportControls {
     // Opt-in damping for the OUTER nonlinear k/omega/F1/F2 Picard iteration.
     // One means the historical algorithm; this never changes equation gates.
     double sst_picard_damping = 1.0;
+    // Explicit opt-in: dimensionless Picard and row-scaled equation gates for
+    // k [m2/s2] and omega [1/s]. Legacy absolute gates remain the default.
+    // The independent linear status, positivity and final carrier gates still
+    // apply; this option is NOT a physical qualification flag.
+    bool sst_scale_aware_convergence = false;
     double smagorinsky_Cs = 0.17, wale_Cw = 0.325, des_Cdes = 0.65;
     TurbulenceCorrectionControls corrections{};
     // N11 F1 (#480): route the Spalart-Allmaras negative nu-tilde policy
