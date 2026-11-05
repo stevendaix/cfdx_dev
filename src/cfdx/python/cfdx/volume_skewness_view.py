@@ -5,12 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSlider,
     QVBoxLayout,
 )
 
@@ -18,7 +20,7 @@ from .volume_mesh_quality import VolumeSkewnessReport, analyze_cfdx_volume_skewn
 
 
 class VolumeSkewnessDialog(QDialog):
-    """Show bad cells in red, the cut context transparently, and local neighbours."""
+    """Inspect a mesh cut and highlight the selected cell and its neighbours."""
 
     def __init__(
         self, path: str | Path, *, expected_signature=None, parent=None
@@ -87,6 +89,9 @@ class VolumeSkewnessDialog(QDialog):
             self.report.cell_skewness > self.report.threshold
         ).astype(np.uint8)
         self._grid = grid
+        self._cut_axis = "z"
+        self._cut_normal = (0.0, 0.0, 1.0)
+        self._cut_origin = np.asarray(grid.center, dtype=float)
         self._plotter = QtInteractor(self)
         self._cell_selector = QComboBox(self)
         self._cell_selector.setObjectName("volume_skewness.cell_selector")
@@ -98,31 +103,54 @@ class VolumeSkewnessDialog(QDialog):
         self._details = QLabel(self)
         self._details.setWordWrap(True)
         self._slice_axis = QComboBox(self)
+        self._slice_axis.setObjectName("volume_skewness.slice_axis")
         self._slice_axis.addItems(["X", "Y", "Z"])
         self._slice_axis.setCurrentText("Z")
-        self._slice_button = QPushButton("Update cut", self)
-        self._slice_button.clicked.connect(self._render_cut)
+        self._slice_position = QSlider(Qt.Orientation.Horizontal, self)
+        self._slice_position.setObjectName("volume_skewness.slice_position")
+        self._slice_position.setRange(0, 1000)
+        self._slice_position.setValue(500)
+        self._slice_position.setToolTip("Move the cut plane through the mesh")
+        self._slice_position_label = QLabel(self)
+        self._slice_button = QPushButton("Reset cut", self)
+        self._slice_button.clicked.connect(self._reset_cut)
         controls = QHBoxLayout()
         controls.addWidget(QLabel("Problem cell:"))
         controls.addWidget(self._cell_selector, 1)
         controls.addWidget(QLabel("Cut normal:"))
         controls.addWidget(self._slice_axis)
+        controls.addWidget(QLabel("Position:"))
+        controls.addWidget(self._slice_position, 2)
+        controls.addWidget(self._slice_position_label)
         controls.addWidget(self._slice_button)
         layout = QVBoxLayout(self)
         layout.addLayout(controls)
         layout.addWidget(self._plotter, 1)
         layout.addWidget(self._details)
         self._cell_selector.currentIndexChanged.connect(self._show_selected_cell)
+        self._slice_axis.currentTextChanged.connect(self._render_cut)
+        self._slice_position.valueChanged.connect(self._render_cut)
         self._render_cut()
-        self._show_selected_cell()
 
-    def _render_cut(self) -> None:
+    def _reset_cut(self) -> None:
+        self._slice_position.setValue(500)
+
+    def _render_cut(self, *_args) -> None:
         axis = self._slice_axis.currentText().lower()
         bounds = self._grid.bounds
         index = {"x": 0, "y": 1, "z": 2}[axis]
-        origin = list(self._grid.center)
-        origin[index] = 0.5 * (bounds[2 * index] + bounds[2 * index + 1])
-        normal = {"x": (1, 0, 0), "y": (0, 1, 0), "z": (0, 0, 1)}[axis]
+        minimum, maximum = bounds[2 * index], bounds[2 * index + 1]
+        fraction = self._slice_position.value() / 1000.0
+        position = minimum + fraction * (maximum - minimum)
+        origin = np.asarray(self._grid.center, dtype=float)
+        origin[index] = position
+        normal = {"x": (1.0, 0.0, 0.0), "y": (0.0, 1.0, 0.0), "z": (0.0, 0.0, 1.0)}[
+            axis
+        ]
+        self._cut_axis = axis
+        self._cut_normal = normal
+        self._cut_origin = origin
+        self._slice_position_label.setText(f"{position:.5g}")
         cut = self._grid.slice(normal=normal, origin=origin)
         self._plotter.clear()
         if cut.n_cells:
@@ -135,6 +163,7 @@ class VolumeSkewnessDialog(QDialog):
                     opacity=0.10,
                     show_edges=True,
                     line_width=0.5,
+                    name="volume-cut-good",
                 )
             if bad_cut.n_cells:
                 self._plotter.add_mesh(
@@ -143,39 +172,63 @@ class VolumeSkewnessDialog(QDialog):
                     opacity=1.0,
                     show_edges=True,
                     line_width=1.5,
+                    name="volume-cut-bad",
                 )
         self._plotter.add_text(
             f"Cut {axis.upper()} · red: skewness > {self.report.threshold:g} · "
             "transparent: remaining cells",
             font_size=10,
         )
+        self._show_selected_cell()
         self._plotter.reset_camera()
         self._plotter.render()
-        self._show_selected_cell()
 
     def _show_selected_cell(self, *_args) -> None:
         cell_id = self._cell_selector.currentData()
         if cell_id is None:
+            self._details.setText("No internal-face cell is available for inspection.")
             return
-        neighbours = self.report.cell_neighbours[int(cell_id)]
+        cell_id = int(cell_id)
+        neighbours = self.report.cell_neighbours[cell_id]
+        selected_score = self.report.cell_skewness[cell_id]
+        selected_non_orth = self.report.cell_non_orthogonality_deg[cell_id]
         self._details.setText(
-            f"Cell {cell_id} · skewness {self.report.cell_skewness[cell_id]:.6g} · "
-            f"non-orthogonality {self.report.cell_non_orthogonality_deg[cell_id]:.3f} deg · "
+            f"Cell {cell_id} · skewness {selected_score:.6g} · "
+            f"non-orthogonality {selected_non_orth:.3f} deg · "
             f"threshold {self.report.threshold:g}\n"
             f"Adjacent cells ({len(neighbours)}): "
             + (", ".join(str(value) for value in neighbours) or "none")
         )
-        ids = [int(cell_id), *neighbours]
-        local = self._grid.extract_cells(ids).extract_surface()
-        self._plotter.add_mesh(
-            local,
-            color="yellow",
-            opacity=0.95,
-            show_edges=True,
-            line_width=2.0,
-            name="selected-cell-neighbours",
+        selected_cut = self._grid.extract_cells([cell_id]).slice(
+            normal=self._cut_normal, origin=self._cut_origin
         )
-        self._plotter.render()
+        if selected_cut.n_cells:
+            self._plotter.add_mesh(
+                selected_cut,
+                color="orange",
+                opacity=1.0,
+                show_edges=True,
+                line_width=3.0,
+                name="selected-cell-cut",
+            )
+        if neighbours:
+            neighbours_cut = self._grid.extract_cells(list(neighbours)).slice(
+                normal=self._cut_normal, origin=self._cut_origin
+            )
+            if neighbours_cut.n_cells:
+                self._plotter.add_mesh(
+                    neighbours_cut,
+                    color="yellow",
+                    opacity=1.0,
+                    show_edges=True,
+                    line_width=2.0,
+                    name="selected-cell-neighbours-cut",
+                )
+        if not selected_cut.n_cells:
+            self._details.setText(
+                self._details.text()
+                + "\nSelected cell does not intersect the current cut plane."
+            )
 
     def closeEvent(self, event) -> None:
         self._plotter.close()
