@@ -13,6 +13,7 @@
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/numerics/gradient.h"
 #include "cfdx/io/restart/dat_restart.h"
+#include "cfdx/physics/initial_face_flux_contract.h"
 #include "cfdx/physics/advanced_convergence.h"
 #include "cfdx/physics/finite_volume_transport.h"
 #include "cfdx/physics/momentum_viscous_stress.h"
@@ -4229,44 +4230,41 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.initial_face_mass_flux.size() != mesh.n_faces())
             throw std::invalid_argument(
                 "hybrid initial face mass flux requires current-mesh, non-restart initialization");
-        double inlet_scale = 0.0;
-        std::vector<double> div(mesh.n_cells(), 0.0);
-        for (std::size_t f=0; f<mesh.n_faces(); ++f) {
-            const double mdot=controls.initial_face_mass_flux[f];
+        // Retain the original open-flow boundary normalization; only closed
+        // cavities fall back to the internal face throughput (N7).
+        double prescribed_boundary_throughput = 0.0;
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            const double mdot = controls.initial_face_mass_flux[f];
             if (!std::isfinite(mdot))
-                throw std::invalid_argument("hybrid initial face mass flux contains nonfinite values");
-            const auto owner=mesh.ownership().owner(f);
-            div[owner]+=mdot;
-            const auto nr=mesh.ownership().neighbour(f);
-            if (nr>=0) div[static_cast<std::size_t>(nr)]-=mdot;
-            else {
-                const auto patch_index=geometry.face_patch[f];
-                if (patch_index>=mesh.boundary().n_patches())
-                    throw std::invalid_argument("hybrid flux has an unlabelled boundary face");
-                const auto& name=mesh.boundary().patch(patch_index).name;
-                const auto it=velocity_bcs.find(name);
-                // Fixed-velocity walls and inlets must retain their prescribed
-                // face flux. The outlet is unconstrained by design.
-                if (it!=velocity_bcs.end() &&
-                    it->second.type==VelocityBoundaryCondition::Type::FIXED_VALUE) {
-                    const double reference=mass_flux(f);
-                    const double allowed=1e-11*std::max(1.0,std::abs(reference));
-                    if (std::abs(mdot-reference)>allowed)
-                        throw std::invalid_argument(
-                            "hybrid flux violates a fixed-velocity boundary face");
-                    inlet_scale+=std::abs(reference);
-                }
+                throw std::invalid_argument(
+                    "hybrid initial face mass flux contains nonfinite values");
+            if (mesh.ownership().neighbour(f) >= 0) continue;
+            const auto patch_index = geometry.face_patch[f];
+            if (patch_index >= mesh.boundary().n_patches())
+                throw std::invalid_argument(
+                    "hybrid flux has an unlabelled boundary face");
+            const auto& name = mesh.boundary().patch(patch_index).name;
+            const auto it = velocity_bcs.find(name);
+            if (it != velocity_bcs.end() &&
+                it->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE) {
+                const double reference = mass_flux(f);
+                const double allowed = 1e-11 * std::max(1.0, std::abs(reference));
+                if (std::abs(mdot - reference) > allowed)
+                    throw std::invalid_argument(
+                        "hybrid flux violates a fixed-velocity boundary face");
+                prescribed_boundary_throughput += std::abs(reference);
             }
         }
-        double l1=0.0;
-        for (const auto d:div) l1+=std::abs(d);
-        const double relative=l1/std::max(inlet_scale,1e-30);
-        if (!(relative<=1e-7))
-            throw std::invalid_argument("hybrid initial mass flux fails local continuity gate");
+        const auto continuity = initial_face_flux_continuity_report(
+            mesh, controls.initial_face_mass_flux,
+            prescribed_boundary_throughput);
+        if (!(continuity.normalized <= 1e-7))
+            throw std::invalid_argument(
+                "hybrid initial mass flux fails local continuity gate");
         for (std::size_t f=0; f<mesh.n_faces(); ++f)
             mass_flux(f)=controls.initial_face_mass_flux[f];
-        std::cout << "HYBRID_INITIAL_FACE_FLUX continuity_l1=" << l1
-                  << " normalized=" << relative << " (NOT a final convergence gate)\n";
+        std::cout << "HYBRID_INITIAL_FACE_FLUX continuity_l1=" << continuity.local_l1
+                  << " normalized=" << continuity.normalized << " (NOT a final convergence gate)\n";
     }
 
     // A restart must replay the continuous iteration sequence. Iteration n+1
