@@ -68,16 +68,21 @@ class VolumeSkewnessDialog(QDialog):
             raise RuntimeError(
                 "mesh file changed while volume rendering topology was loaded"
             )
+        # VTK's legacy polyhedron cell stream starts with the number
+        # of following entries, then the face count and each face's point
+        # count/IDs. Omitting this leading size makes VTK misparse one cell
+        # as several cells and rejects the cell-type array.
         vtk_cells: list[int] = []
         for cell_id in range(len(cell_offsets) - 1):
             face_ids = cell_faces[cell_offsets[cell_id] : cell_offsets[cell_id + 1]]
-            vtk_cells.append(len(face_ids))
+            face_stream = [len(face_ids)]
             for face_id in face_ids:
                 vertices = face_vertices[
                     face_offsets[face_id] : face_offsets[face_id + 1]
                 ]
-                vtk_cells.append(len(vertices))
-                vtk_cells.extend(int(value) for value in vertices)
+                face_stream.append(len(vertices))
+                face_stream.extend(int(value) for value in vertices)
+            vtk_cells.extend([len(face_stream), *face_stream])
         grid = pv.UnstructuredGrid(
             np.asarray(vtk_cells, dtype=np.int64),
             np.full(
