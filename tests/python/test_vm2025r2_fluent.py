@@ -38,7 +38,6 @@ _DEFAULT_FLUENT_DIRS = (
 from cfdx.io.adapters.fluent import FluentAdapter, _try_pyfluent
 from cfdx.io.interfaces import ConversionResult, SourceInfo
 
-
 PYFLUENT_AVAILABLE = _try_pyfluent()
 
 
