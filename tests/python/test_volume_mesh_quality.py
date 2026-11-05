@@ -158,9 +158,7 @@ def test_hdf5_volume_limits_are_checked_before_payload_reads(tmp_path):
         h5.create_dataset("points", data=np.zeros((4, 3), dtype=np.float64))
         h5.create_dataset("face_vertices", data=np.zeros(3, dtype=np.int64))
         h5.create_dataset("face_offsets", data=np.asarray([0, 3], dtype=np.int64))
-        h5.create_dataset(
-            "owner", shape=(500_001,), dtype=np.int8, chunks=(1024,)
-        )
+        h5.create_dataset("owner", shape=(500_001,), dtype=np.int8, chunks=(1024,))
         h5.create_dataset(
             "neighbour", shape=(500_001,), dtype=np.int8, chunks=(1024,)
         )
@@ -187,7 +185,9 @@ def test_hdf5_volume_rejects_non_integer_connectivity_before_read(tmp_path):
             if name == "cell_faces":
                 values = values.astype(np.float64)
             h5.create_dataset(name, data=values)
-    with pytest.raises(ValueError, match="cell_faces must be a one-dimensional integer"):
+    with pytest.raises(
+        ValueError, match="cell_faces must be a one-dimensional integer"
+    ):
         analyze_cfdx_volume_skewness(path)
 
 
