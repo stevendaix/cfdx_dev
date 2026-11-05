@@ -63,6 +63,7 @@ def test_volume_skewness_reports_internal_face_and_symmetric_neighbours():
 def test_cells_without_internal_faces_are_marked_unassessed():
     arrays = list(two_tetrahedra())
     points = arrays[0]
+    face_vertices = arrays[1]
     owner = arrays[3]
     neighbour = arrays[4]
     cell_faces = arrays[5]
