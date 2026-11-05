@@ -117,3 +117,84 @@ def test_volume_quality_uses_cfdx_core_skewness_normalization():
     closest = owner + projection * line
     expected = np.linalg.norm(face_centre - closest) / np.linalg.norm(line)
     assert report.face_skewness[0] == pytest.approx(expected)
+
+
+def test_hdf5_volume_limits_are_checked_before_payload_reads(tmp_path):
+    path = tmp_path / "too-many-faces.h5"
+    with h5py.File(path, "w") as h5:
+        h5.create_dataset("points", data=np.zeros((4, 3), dtype=np.float64))
+        h5.create_dataset("face_vertices", data=np.zeros(3, dtype=np.int64))
+        h5.create_dataset("face_offsets", data=np.asarray([0, 3], dtype=np.int64))
+        h5.create_dataset(
+            "owner", shape=(500_001,), dtype=np.int8, chunks=(1024,)
+        )
+        h5.create_dataset(
+            "neighbour", shape=(500_001,), dtype=np.int8, chunks=(1024,)
+        )
+        h5.create_dataset("cell_faces", data=np.asarray([0, 0, 0, 0]))
+        h5.create_dataset("cell_offsets", data=np.asarray([0, 4]))
+    with pytest.raises(ValueError, match="500,000-face eager-load limit"):
+        analyze_cfdx_volume_skewness(path)
+
+
+def test_hdf5_volume_rejects_non_integer_connectivity_before_read(tmp_path):
+    path = tmp_path / "float-connectivity.h5"
+    arrays = two_tetrahedra()
+    names = (
+        "points",
+        "face_vertices",
+        "face_offsets",
+        "owner",
+        "neighbour",
+        "cell_faces",
+        "cell_offsets",
+    )
+    with h5py.File(path, "w") as h5:
+        for name, values in zip(names, arrays, strict=True):
+            if name == "cell_faces":
+                values = values.astype(np.float64)
+            h5.create_dataset(name, data=values)
+    with pytest.raises(ValueError, match="cell_faces must be a one-dimensional integer"):
+        analyze_cfdx_volume_skewness(path)
+
+
+@pytest.mark.skipif(
+    __import__("importlib").util.find_spec("PySide6") is None
+    or __import__("importlib").util.find_spec("pyvista") is None
+    or __import__("importlib").util.find_spec("pyvistaqt") is None,
+    reason="optional Qt/PyVista runtime",
+)
+def test_volume_skewness_dialog_moves_cut_and_slices_local_neighbours(tmp_path):
+    from cfdx.gui import create_application
+    from cfdx.volume_skewness_view import VolumeSkewnessDialog
+    from PySide6.QtWidgets import QSlider
+
+    path = tmp_path / "two-tets.cfdx.h5"
+    names = (
+        "points",
+        "face_vertices",
+        "face_offsets",
+        "owner",
+        "neighbour",
+        "cell_faces",
+        "cell_offsets",
+    )
+    with h5py.File(path, "w") as h5:
+        for name, values in zip(names, two_tetrahedra(), strict=True):
+            h5.create_dataset(name, data=values)
+
+    app = create_application(["cfdx-volume-skewness-dialog-test"])
+    dialog = VolumeSkewnessDialog(path)
+    slider = dialog.findChild(QSlider, "volume_skewness.slice_position")
+    assert slider is not None
+    slider.setValue(250)
+    bounds = dialog._grid.bounds
+    expected_z = bounds[4] + 0.25 * (bounds[5] - bounds[4])
+    assert dialog._cut_axis == "z"
+    assert dialog._cut_origin[2] == pytest.approx(expected_z)
+    assert dialog._cell_selector.count() == 2
+    dialog._cell_selector.setCurrentIndex(0)
+    assert dialog._details.text().startswith("Cell ")
+    dialog.close()
+    app.processEvents()
+    app.quit()
