@@ -91,6 +91,14 @@ struct TurbulenceTransportControls {
     // k and omega boundary diffusion; never use owner-cell eddy viscosity
     // as the face viscosity. Does NOT implement an omega wall function.
     bool sst_molecular_wall_diffusion = false;
+
+    // Opt-in affine-exact near-wall cross-diffusion gradients on skewed meshes,
+    // selecting the dimension-aware transport-boundaries WLS variant. The
+    // merged default keeps the boundary-aware certified WLS contraction;
+    // this opt-in stays pending production V&V.
+    // For 2-D extruded meshes with EMPTY front/back faces, set dimension=2.
+    bool sst_use_wls_boundary_gradients = false;
+    int sst_gradient_dimension = 3;
     double smagorinsky_Cs = 0.17, wale_Cw = 0.325, des_Cdes = 0.65;
     TurbulenceCorrectionControls corrections{};
     // N11 F1 (#480): route the Spalart-Allmaras negative nu-tilde policy
@@ -275,6 +283,8 @@ inline double turbulence_nu_t(
 
 inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
 {
+    if (c.sst_gradient_dimension != 2 && c.sst_gradient_dimension != 3)
+        throw std::invalid_argument("SST gradient dimension must be 2 or 3");
     if(!std::isfinite(c.density) || !std::isfinite(c.molecular_viscosity) ||
        !std::isfinite(c.turbulent_prandtl) || !std::isfinite(c.k_min) ||
        !std::isfinite(c.epsilon_min) || !std::isfinite(c.omega_min) ||
