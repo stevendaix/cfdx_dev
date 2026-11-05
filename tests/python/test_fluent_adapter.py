@@ -7,7 +7,6 @@ The main CI installs PyFluent; dependency incompatibility is tested separately.
 import os
 
 import pytest
-
 from cfdx.io.adapters.fluent import FluentAdapter, _parse_s_expressions, _try_pyfluent
 from cfdx.io.interfaces import ConversionResult, SourceInfo
 from cfdx.io.schema import BCType
