@@ -218,12 +218,19 @@ std::size_t NativeAMGPreconditioner::coarse_size() const noexcept {
 
 std::vector<std::size_t> NativeAMGPreconditioner::hierarchy_level_sizes() const {
     return impl_->amg ? impl_->amg->hierarchy_level_sizes()
+std::vector<std::size_t> NativeAMGPreconditioner::hierarchy_level_nnz() const {
+    return impl_->amg ? impl_->amg->hierarchy_level_nnz()
                       : std::vector<std::size_t>{};
 }
 
-std::size_t NativeAMGPreconditioner::finest_line_coverage() const {
-    return impl_->amg ? impl_->amg->finest_line_coverage() : 0;
+double NativeAMGPreconditioner::operator_complexity() const {
+    return impl_->amg ? impl_->amg->operator_complexity() : 0.0;
 }
+
+double NativeAMGPreconditioner::grid_complexity() const {
+    return impl_->amg ? impl_->amg->grid_complexity() : 0.0;
+}
+
 
 std::size_t NativeAMGPreconditioner::line_factor_fallback_levels() const {
     return impl_->amg ? impl_->amg->line_factor_fallback_levels() : 0;
