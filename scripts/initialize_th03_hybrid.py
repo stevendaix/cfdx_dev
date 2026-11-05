@@ -209,11 +209,54 @@ def initialise_case(source:Path,destination:Path,*,delta_h:float=1.5,
     with h5py.File(source,'r') as f:
         if 'fields' in f: raise ValueError('source case already has fields; refusing to modify')
         geo=_geometry(f)
-    if sst_style not in ('wall_aware','soft_wall','uniform'):
+    if sst_style not in ('wall_aware','soft_wall','uniform','precursor_1d','precursor_1d_u_only'):
         raise ValueError('unsupported SST initialization style')
     n=len(geo['centres'])
     walls=np.concatenate([geo['patches'][p] for p in ('lowerWall','upperWall')])
     u,k,omega=_profile(geo['centres'][:,:2],geo['face_centres'][walls,:2],delta_h=delta_h)
+    precursor_evidence = None
+    if sst_style in ('precursor_1d','precursor_1d_u_only'):
+        # This is a numerically solved, *fully developed channel* precursor,
+        # not a claimed x-marching boundary layer or measured NASA inflow.
+        # Keep the declared uniform inlet condition at x/H=-130; transition
+        # the initial field only between -110 and the upstream step station.
+        from scripts.solve_th03_precursor_1d import (
+            PrecursorControls, solve_precursor)
+        precursor=solve_precursor(PrecursorControls())
+        precursor_evidence=precursor['diagnostics']
+        if not precursor_evidence['converged']:
+            raise ArithmeticError('unconverged 1D SST precursor cannot seed TH-03')
+        yy=geo['centres'][:,1] - H
+        xx=geo['centres'][:,0]/H
+        upstream=(xx<0.)
+        # First reach the fully-developed 1D channel state before the step.
+        # Downstream, advect an initial memory of the incoming channel state;
+        # a sharp reset to the old surrogate at x=0 introduces an artificial
+        # k/omega jump unrelated to the actual separated-flow physics.
+        t=np.clip((xx+110.)/106.,0.,1.)
+        w=t*t*(3.-2.*t)
+        downstream=np.maximum(xx,0.)
+        y_over_h=geo['centres'][:,1]/H
+        # The channel precursor is valid only for y/H in [1,9]; seed the
+        # newly exposed lower cavity from the original post-step surrogate.
+        bottom_gate=np.clip((y_over_h-1.)/0.5,0.,1.)
+        bottom_gate=bottom_gate*bottom_gate*(3.-2.*bottom_gate)
+        w[~upstream]=np.exp(-downstream[~upstream]/8.)*bottom_gate[~upstream]
+        # Interpolate from the 1D FV cell-centre state. Reject extrapolated
+        # stations, since they would silently break the 1D wall contract.
+        if np.any(upstream & ((yy<0.)|(yy>8.*H))):
+            raise ValueError('1D precursor station lies outside upstream channel')
+        sample=np.clip(yy,precursor['y'][0],precursor['y'][-1])
+        ux=np.interp(sample,precursor['y'],precursor['U'])
+        kval=np.interp(sample,precursor['y'],precursor['k'])
+        wval=np.interp(sample,precursor['y'],precursor['omega'])
+        u[:,0]=(1.-w)*u[:,0] + w*ux
+        if sst_style=='precursor_1d':
+            k[:]=(1.-w)*k + w*kval
+            omega[:]=(1.-w)*omega + w*wval
+        if not (np.isfinite(u).all() and np.isfinite(k).all() and
+                np.isfinite(omega).all() and np.all(k>0.) and np.all(omega>0.)):
+            raise ArithmeticError('invalid interpolated precursor state')
     if sst_style=='soft_wall':
         # Reduce the severity of near-wall initial gradients, not the final SST BC.
         k=np.sqrt(k*K_IN)
@@ -232,9 +275,19 @@ def initialise_case(source:Path,destination:Path,*,delta_h:float=1.5,
             s.create_dataset('k',data=k,compression='gzip')
             s.create_dataset('omega',data=omega,compression='gzip')
             f['fields'].require_group('face').create_dataset('mdot',data=phi,compression='gzip')
-            f.attrs['hybrid_initialisation']='self_grid_BL_SST_FV_flux_projection_v1'
+            # The velocity-only variant DOES NOT import certified 1D SST
+            # fields: do not label its k/omega as a verified precursor.
+            f.attrs['hybrid_initialisation']=(
+                'self_grid_channel_1d_U_k_omega_precursor_v2'
+                if sst_style == 'precursor_1d' else
+                'self_grid_channel_1d_U_only_SST_surrogate_v2'
+                if sst_style == 'precursor_1d_u_only' else
+                'self_grid_BL_SST_FV_flux_projection_v1')
             f.attrs['hybrid_qualification']='NOT_QUALIFIED'
-            f.attrs['hybrid_inlet_profile']='UNVERIFIED_turbulent_BL_surrogate'
+            f.attrs['hybrid_inlet_profile']=(
+                'CONVERGED_1D_CHANNEL_NOT_MEASURED_BFS_INFLOW'
+                if sst_style in ('precursor_1d','precursor_1d_u_only') else
+                'UNVERIFIED_turbulent_BL_surrogate')
     except BaseException:
         destination.unlink(missing_ok=True)
         raise
@@ -245,9 +298,18 @@ def initialise_case(source:Path,destination:Path,*,delta_h:float=1.5,
         'velocity_range_m_s':[float(np.min(u[:,0])),float(np.max(u[:,0]))],
         'k_range_m2_s2':[float(np.min(k)),float(np.max(k))],
         'omega_range_s_inverse':[float(np.min(omega)),float(np.max(omega))],
-        'initialisation':'per-mesh BL plus SST plus sparse mass-flux projection',
+        'initialisation':('1D channel U/k/omega plus face-flux projection'
+                          if sst_style == 'precursor_1d' else
+                          '1D channel U plus UNVERIFIED k/omega surrogate and face-flux projection'
+                          if sst_style == 'precursor_1d_u_only' else
+                          'per-mesh BL surrogate plus sparse mass-flux projection'),
         'sst_style': sst_style,
-        'profile_validation':'NOT_QUALIFIED',
+        'profile_validation':('1D_U_K_OMEGA_DISCRETE_CERTIFIED_NOT_2D_QUALIFIED'
+                              if sst_style == 'precursor_1d' else
+                              '1D_U_DISCRETE_CERTIFIED_K_OMEGA_UNVERIFIED_NOT_2D_QUALIFIED'
+                              if sst_style == 'precursor_1d_u_only' else
+                              'NOT_QUALIFIED'),
+        'precursor_1d_evidence':precursor_evidence,
         'solver_flags':['--initial-velocity-field','--initial-sst-fields','--initial-face-mass-flux','--experimental-sst'],
         'caveat':'Projected flux is a startup state, not a converged RANS solution; near-wall omega is approximate.'
     })
@@ -260,7 +322,7 @@ def main()->int:
     parser.add_argument('--case',type=Path,required=True)
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--delta-h',type=float,default=1.5)
-    parser.add_argument('--sst-style',choices=('wall_aware','soft_wall','uniform'),default='wall_aware')
+    parser.add_argument('--sst-style',choices=('wall_aware','soft_wall','uniform','precursor_1d','precursor_1d_u_only'),default='wall_aware')
     args=parser.parse_args()
     print(json.dumps(initialise_case(args.case,args.output,delta_h=args.delta_h,
                                      sst_style=args.sst_style),indent=2))
