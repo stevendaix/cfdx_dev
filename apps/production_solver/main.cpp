@@ -1,5 +1,6 @@
 
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/continuation.h"
 #include "cfdx/physics/production_energy_stage.h"
 #include "cfdx/physics/production_turbulence_contract.h"
 #include "cfdx/physics/production_sst_thermal_coupling.h"
@@ -77,6 +78,7 @@ struct Options {
     bool initial_velocity_field = false;
     bool initial_sst_fields = false;
     bool initial_face_mass_flux = false;
+    bool experimental_momentum_first_continuation = false;
     bool wall_forces_quadratic = false;
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
@@ -679,6 +681,8 @@ Options parse(int argc, char** argv)
         else if (arg == "--initial-velocity-field") o.initial_velocity_field = true;
         else if (arg == "--initial-sst-fields") o.initial_sst_fields = true;
         else if (arg == "--initial-face-mass-flux") o.initial_face_mass_flux = true;
+        else if (arg == "--experimental-momentum-first-continuation")
+            o.experimental_momentum_first_continuation = true;
         else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--benchmark-export") o.benchmark_export = true;
@@ -690,6 +694,7 @@ Options parse(int argc, char** argv)
                          "  [--initial-velocity-field] (initialize U from /fields/vector/U)\n"
                          "  [--initial-sst-fields] (initial k and omega from /fields/scalar)\n"
                          "  [--initial-face-mass-flux] (projected /fields/face/mdot; requires initial velocity)\n"
+                         "  [--experimental-momentum-first-continuation] (momentum-only then strict SST; NOT qualified)\n"
                          "  [--wall-forces-quadratic] (opt-in 3-D quadratic WLS wall-force artifact; rank-deficient stencils fail)\n"
                          "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
                          "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
@@ -1080,9 +1085,10 @@ int main(int argc, char** argv)
                 else if (v == "none") controls.pressure_linear_solver.preconditioner = PreconditionerModel::None;
                 else if (v == "jacobi") controls.pressure_linear_solver.preconditioner = PreconditionerModel::Jacobi;
                 else if (v == "ilu0") controls.pressure_linear_solver.preconditioner = PreconditionerModel::ILU0;
+                else if (v == "anisotropic_line_amg") controls.pressure_linear_solver.preconditioner = PreconditionerModel::AnisotropicLineAMG;
                 else if (v == "native_amg") controls.pressure_linear_solver.preconditioner = PreconditionerModel::NativeAMG;
                 else if (v == "smoothed_aggregation_amg") controls.pressure_linear_solver.preconditioner = PreconditionerModel::SmoothedAggregationAMG;
-                else throw std::invalid_argument("invalid pressure_preconditioner; expected auto, none, jacobi, ilu0, native_amg or smoothed_aggregation_amg");
+                else throw std::invalid_argument("invalid pressure_preconditioner; expected auto, none, jacobi, ilu0, native_amg, anisotropic_line_amg or smoothed_aggregation_amg");
                 std::cout << "Pressure preconditioner: " << v << "\n";
             }
             const auto interpolation = case_setup.numerics.raw_settings.find(
@@ -1661,6 +1667,34 @@ int main(int argc, char** argv)
                       << " pressure "
                       << buoyancy_result.max_pressure_change_normalized
                       << "\n";
+        } else if (options.experimental_momentum_first_continuation) {
+            if (!options.experimental_sst || controls.sst_runtime == nullptr)
+                throw std::invalid_argument(
+                    "--experimental-momentum-first-continuation requires --experimental-sst");
+            if (!options.restart.empty())
+                throw std::invalid_argument(
+                    "--experimental-momentum-first-continuation does not accept a DAT restart");
+            ContinuationControls schedule;
+            schedule.enabled = true;
+            schedule.momentum_only_before_final = true;
+            schedule.upwind_before_final = true;
+            schedule.initial_step = 0.5;
+            schedule.maximum_step = 0.5;
+            schedule.minimum_step = 0.0625;
+            const auto staged = solve_steady_incompressible_continuation(
+                mesh, U, p, ubc, pbc, controls, schedule);
+            for (const auto& stage : staged.stages)
+                std::cout << "V25_CONTINUATION_STAGE target=" << stage.parameter
+                          << " attempts=" << stage.attempts
+                          << " converged=" << (stage.converged ? 1 : 0)
+                          << " full_physics=" <<
+                              (continuation_final_physical_stage(stage.parameter) ? 1 : 0)
+                          << "\n";
+            result = staged.final_solver_result;
+            // A converged intermediate momentum-only stage must never
+            // masquerade as a converged final SST result.
+            if (!staged.converged || staged.final_parameter != 1.0)
+                result.converged = false;
         } else {
             result = solve_steady_incompressible(
                 mesh, U, p, ubc, pbc, controls, options.restart.string(),
