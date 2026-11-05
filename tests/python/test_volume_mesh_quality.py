@@ -76,8 +76,13 @@ def test_volume_skewness_rejects_inconsistent_cell_face_incidence():
 
 def test_volume_skewness_rejects_boundary_only_mesh():
     arrays = list(two_tetrahedra())
-    arrays[4] = np.full(7, -1, dtype=np.int64)
-    with pytest.raises(ValueError, match="no internal faces"):
+    arrays[1] = arrays[1][:12]
+    arrays[2] = np.asarray([0, 3, 6, 9, 12], dtype=np.int64)
+    arrays[3] = np.zeros(4, dtype=np.int64)
+    arrays[4] = np.full(4, -1, dtype=np.int64)
+    arrays[5] = np.asarray([0, 1, 2, 3], dtype=np.int64)
+    arrays[6] = np.asarray([0, 4], dtype=np.int64)
+    with pytest.raises(ValueError, match="no internal faces")
         analyze_volume_skewness(*arrays)
 
 
