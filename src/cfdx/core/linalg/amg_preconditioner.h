@@ -205,54 +205,37 @@ public:
             A.n_cols() != op_.cols() || !same_pattern(levels_.front().A, A) ||
             !matrix_is_valid(A) ||
             (constant_null_space_ && !has_constant_null_space(A))) {
-            return false;
+        // Transactionally stage only numeric state.  Copying `levels_` here
+        // used to clone every aggregate and every prolongation row on each
+        // pressure corrector even though interpolation is unchanged.  This
+        // is particularly expensive for NACA N256's anisotropic hierarchy.
+        // Keep the original transfer operators in levels_ until the staged
+        // Galerkin matrices, diagonals, line factorizations and damping have
+        // all passed their checks. Failure leaves the old hierarchy intact.
+        std::vector<Level> refreshed(levels_.size());
+        for (std::size_t level = 0; level < refreshed.size(); ++level) {
+            refreshed[level].use_lines = levels_[level].use_lines;
+            // The line topology and its existing factors are used only when
+            // a line smoother is active.  Its numeric refresh is itself
+            // transactional, so preserve an independent copy until commit.
+            if (refreshed[level].use_lines)
+                refreshed[level].line_pc = levels_[level].line_pc;
         }
-
-        std::vector<Level> refreshed = levels_;
-        std::size_t refreshed_line_fallbacks = 0;
-        refreshed.front().A = A;
-        if (!build_diagonal(refreshed.front()) ||
-            !refresh_level_lines(refreshed.front(), true, refreshed_line_fallbacks))
-            return false;
-
-        // Stage numeric-update diagnostics with the temporary hierarchy. A
-        // failed refresh must not report drops from levels that were never
-        // committed as the active hierarchy.
-        std::size_t dropped_entries = 0;
-        for (std::size_t level = 0; level + 1 < refreshed.size(); ++level) {
-            const std::size_t coarse_n = refreshed[level + 1].A.n_rows();
-            SparseMatrix coarse = galerkin_coarse(
-                refreshed[level].A, refreshed[level].prolongation, coarse_n,
-                &dropped_entries);
-            if (!matrix_is_valid(coarse)) return false;
-            refreshed[level + 1].A = std::move(coarse);
+            const std::size_t coarse_n = levels_[level + 1].A.n_rows();
+                refreshed[level].A, levels_[level].prolongation, coarse_n,
             if (!build_diagonal(refreshed[level + 1]) ||
                 !refresh_level_lines(refreshed[level + 1], false, refreshed_line_fallbacks))
-                return false;
+            if (require_smoother_certificate_) return false;
+        // Numeric-only commit: aggregate and interpolation storage is never
+        // moved or copied.  Move-assignments are noexcept for these standard
+        // containers, so no half-updated hierarchy can be observed.
+        for (std::size_t level = 0; level < levels_.size(); ++level) {
+            levels_[level].A = std::move(refreshed[level].A);
+            levels_[level].inv_diag = std::move(refreshed[level].inv_diag);
+            levels_[level].use_lines = refreshed[level].use_lines;
+            if (levels_[level].use_lines)
+                levels_[level].line_pc = std::move(refreshed[level].line_pc);
         }
-
-        // Numeric refresh can leave the retained interpolation with coarse
-        // operators whose high-frequency spectrum is no longer compatible
-        // with the original fixed Jacobi damping. Bound the normalized spectrum
-        // on every refreshed level and conservatively reduce omega before the
-        // hierarchy is exposed to CG. A non-SPD/unsupported diagonal does not
-        // get reclassified here; the caller's true-residual and Krylov checks
-        // remain authoritative.
-        double refreshed_omega = 0.0;
-        if (!compute_stable_smoother_omega(refreshed, refreshed_omega)) {
-            if (require_smoother_certificate_)
-                return false;
-            // General nonsymmetric preconditioner path: every structural
-            // check above passed, so commit the numeric refresh and keep
-            // the previously accepted damping. The outer Krylov
-            // true-residual checks remain authoritative.
-            refreshed_omega = omega_;
-        }
-
-        levels_ = std::move(refreshed);
-        numeric_line_fallbacks_ = refreshed_line_fallbacks;
-        omega_ = refreshed_omega;
-        last_footprint_.galerkin_dropped_entries += dropped_entries;
         return true;
     }
 
@@ -293,12 +276,33 @@ public:
         std::vector<std::size_t> sizes;
         sizes.reserve(levels_.size());
         for (const auto& level : levels_) sizes.push_back(level.A.n_rows());
+    // Complexity diagnostics for AMG on stretched meshes.  High operator
+    // complexity (sum(nnz(A_l))/nnz(A_0)) often exposes overly dense coarse
+    // Galerkin stencils even if the fine-grid Krylov count looks good.
+    std::vector<std::size_t> hierarchy_level_nnz() const
+    {
+        std::vector<std::size_t> sizes;
+        sizes.reserve(levels_.size());
+        for (const auto& level : levels_) sizes.push_back(level.A.nnz());
         return sizes;
     }
 
-    const AMGSetupFootprint& setup_footprint() const noexcept
+    double operator_complexity() const noexcept
     {
-        // Reporting-only counters of the AMG setup decisions that can degrade
+        if (levels_.empty() || levels_.front().A.nnz() == 0) return 0.0;
+        double total = 0.0;
+        for (const auto& level : levels_) total += static_cast<double>(level.A.nnz());
+        return total / static_cast<double>(levels_.front().A.nnz());
+    }
+
+    double grid_complexity() const noexcept
+    {
+        if (levels_.empty() || levels_.front().A.n_rows() == 0) return 0.0;
+        double total = 0.0;
+        for (const auto& level : levels_) total += static_cast<double>(level.A.n_rows());
+        return total / static_cast<double>(levels_.front().A.n_rows());
+    }
+
         // the coarse-grid quality: singleton smoothed-aggregation aggregates,
         // fallback interpolation rows and Galerkin entries dropped as
         // numerically zero. The counters are reset at the start of setup()
