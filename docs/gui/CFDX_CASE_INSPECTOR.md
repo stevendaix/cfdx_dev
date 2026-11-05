@@ -247,10 +247,13 @@ name, source and convention. OpenFOAM checkMesh is an external comparison
 reference; it is not a runtime dependency. No vendor threshold is treated as
 a universal CFDX acceptance limit.
 
-The interactive PyVistaQt window provides an axis-aligned cut plane. Cells
-above the configured threshold are rendered red; other cut cells are
-translucent. Selecting a worst cell reports its immediate adjacency and
-highlights that cell plus its direct neighbours. The view uses the bounded
-eager topology path and does not repair or modify the mesh. Arbitrary planes,
-volume-centroid algorithms, additional Verdict/Gmsh measures, and streaming
-large-mesh rendering remain follow-up work.
+The interactive PyVistaQt window provides an axis-aligned cut plane
+whose normal (X/Y/Z) and position can be changed interactively. Cells above
+the configured threshold are rendered red; other cut cells are translucent.
+Selecting a worst cell reports its immediate adjacency and highlights the
+selected cell and direct neighbours on the same cut plane (selected cell in
+orange, neighbours in yellow). Moving the cut plane preserves the camera.
+The view uses the bounded eager topology path and does not repair or modify
+the mesh. Arbitrary planes, volume-centroid algorithms, additional
+Verdict/Gmsh measures, and streaming large-mesh rendering remain follow-up
+work.
