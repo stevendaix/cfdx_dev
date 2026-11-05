@@ -26,8 +26,10 @@ jobs:
           set -uo pipefail
           BASE=$(git merge-base origin/master HEAD)
           mapfile -t python_files < <(git diff --name-only "$BASE"...HEAD -- "*.py")
+          ruff check --fix --unsafe-fixes -- "${python_files[@]}" || true
           ruff format -- "${python_files[@]}" || true
           ruff check --fix --unsafe-fixes -- "${python_files[@]}" || true
+          ruff format -- "${python_files[@]}" || true
           for f in "${python_files[@]}"; do
             if head -n 1 "$f" 2>/dev/null | grep -q "^#!"; then
               chmod +x "$f"
