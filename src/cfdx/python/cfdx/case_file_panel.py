@@ -173,9 +173,10 @@ class CaseFilePanel(QWidget):
             def display(value: float | None) -> str:
                 return "n/a" if value is None else f"{value:.8g}"
 
-            worst_faces = ", ".join(
-                str(face_id) for face_id in report.worst_warpage_face_ids
-            ) or "none"
+            worst_faces = (
+                ", ".join(str(face_id) for face_id in report.worst_warpage_face_ids)
+                or "none"
+            )
             report_text = (
                 "Surface geometry diagnostics (not volume-cell quality)\n"
                 f"faces: {report.face_count:,} · valid: {report.valid_face_count:,} · "

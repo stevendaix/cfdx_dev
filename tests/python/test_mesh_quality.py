@@ -100,9 +100,7 @@ def test_invalid_surface_arrays_fail_closed(points, vertices, offsets, message):
 
 
 def test_surface_quality_limits_are_enforced():
-    points = np.asarray(
-        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
-    )
+    points = np.asarray([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
     with pytest.raises(ValueError, match="limits must be positive"):
         analyze_surface_quality(
             points, np.asarray([0, 1, 2]), np.asarray([0, 3]), max_faces=0
@@ -114,7 +112,6 @@ def test_surface_quality_limits_are_enforced():
             np.asarray([0, 3]),
             max_connectivity_entries=2,
         )
-
 
 
 def test_hdf5_surface_analysis_respects_inspected_file_identity(tmp_path):
@@ -156,7 +153,6 @@ def test_hdf5_surface_analysis_refuses_oversized_chunks_and_payload(tmp_path):
         analyze_cfdx_surface_file(path, max_source_bytes=32)
 
 
-
 def test_hdf5_surface_analysis_rejects_soft_links(tmp_path):
     path = tmp_path / "surface-soft-link.h5"
     with h5py.File(path, "w") as h5:
@@ -175,7 +171,6 @@ def test_hdf5_surface_analysis_requires_positive_byte_budgets(tmp_path):
         pass
     with pytest.raises(ValueError, match="byte budgets must be positive"):
         analyze_cfdx_surface_file(path, max_block_bytes=0)
-
 
 
 def test_zero_length_edge_is_degenerate_even_when_polygon_area_is_nonzero():

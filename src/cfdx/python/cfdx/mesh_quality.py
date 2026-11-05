@@ -198,9 +198,7 @@ def analyze_surface_quality(
             zero_edges.append(face_id)
 
         centered = polygon - np.mean(polygon, axis=0)
-        area_vector = np.sum(
-            np.cross(centered, np.roll(centered, -1, axis=0)), axis=0
-        )
+        area_vector = np.sum(np.cross(centered, np.roll(centered, -1, axis=0)), axis=0)
         area = 0.5 * float(np.linalg.norm(area_vector))
         area_tolerance = 64.0 * np.finfo(np.float64).eps * longest * longest
         if has_zero_length_edge or area <= area_tolerance:
