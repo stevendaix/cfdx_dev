@@ -59,7 +59,10 @@ def _try_pyfluent() -> bool:
         from ansys.fluent.core.filereader.case_file import CaseFile  # noqa: F401
 
         return True
-    except ImportError:
+    except (ImportError, AttributeError):
+        # Some ansys-fluent-core releases are installed but cannot import their
+        # optional CaseFile reader because of an internal API mismatch. Treat
+        # that reader as unavailable; the legacy ASCII adapter remains usable.
         return False
 
 
