@@ -20,7 +20,6 @@ import csv
 import math
 import sys
 import time
-from typing import Iterable
 
 
 def matrix_entries(nx: int, ny: int, ratio: float, axis: str):
