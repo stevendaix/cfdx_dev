@@ -226,3 +226,23 @@ tests de raccordement des champs `nu_t` et `lambda_eff`.
 - Before the first momentum assembly, the solver refreshes wall distance, strain rate and `nu_t` from the actual initialized/restarted carrier field. The outer iteration then advances SST using the pressure-corrected authoritative face mass flux and the explicitly supplied omega face values when configured. A failed transport step raises the existing retryable-iteration path; the enclosing retry restores the SST snapshot together with carrier rollback.
 - After the carrier/SST transaction commits, the refreshed `nu_t` is converted to `mu_eff = rho * (nu + nu_t)` for the next momentum assembly. SST convergence is an additional hard gate based on the transport solver's convergence status, finite equation residuals, and zero non-finite bound events. Raw dimensional SST residuals are not mixed into the normalized carrier convergence metric; carrier, continuity, and QoI gates are not relaxed.
 - This is integration scaffolding, not permission to enable the general RANS selector or a claim of physical qualification. Restart/state lifecycle and production regression coverage must be demonstrated by exact-head CI before merge.
+
+
+## 14. Contrat géométrique SST — projection normale signée (PR #1172)
+
+Les calculs de distance normale aux faces murales ne doivent pas masquer une
+orientation incohérente par une valeur absolue. La projection signée entre le
+vecteur centre-cellule/centre-face et la normale unitaire doit respecter la
+convention sortante et être strictement positive ; une projection nulle,
+négative ou non finie est rejetée. Cette validation géométrique est décrite
+dans la fiche dédiée `docs/audits/20-distance-geometrique-bvh.md`.
+
+Les gradients WLS contraints aux frontières sont disponibles uniquement par
+opt-in explicite dans le chemin SST. Le chemin Green–Gauss historique reste
+le défaut. L'exactitude affine locale sur maillage skew n'est pas une
+qualification du modèle SST : les campagnes TUR-CHANNEL, TUR-FLATPLATE et
+TUR-NACA0012, les bilans et la convergence de la boucle externe restent
+indispensables avant toute promotion physique.
+
+- 2026-11-04 — PR #1172 : cohérence du contrat des normales signées et du
+  chemin WLS frontière opt-in explicitée ; aucune qualification RANS ajoutée.
