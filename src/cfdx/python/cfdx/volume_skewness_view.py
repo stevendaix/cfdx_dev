@@ -9,6 +9,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
+    QDoubleSpinBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -89,6 +90,7 @@ class VolumeSkewnessDialog(QDialog):
             self.report.cell_skewness > self.report.threshold
         ).astype(np.uint8)
         self._grid = grid
+        self._threshold = float(self.report.threshold)
         self._cut_axis = "z"
         self._cut_normal = (0.0, 0.0, 1.0)
         self._cut_origin = np.asarray(grid.center, dtype=float)
@@ -113,6 +115,13 @@ class VolumeSkewnessDialog(QDialog):
         self._slice_position.setValue(500)
         self._slice_position.setToolTip("Move the cut plane through the mesh")
         self._slice_position_label = QLabel(self)
+        self._threshold_spin = QDoubleSpinBox(self)
+        self._threshold_spin.setObjectName("volume_skewness.threshold")
+        self._threshold_spin.setDecimals(3)
+        self._threshold_spin.setRange(0.001, 10.0)
+        self._threshold_spin.setSingleStep(0.05)
+        self._threshold_spin.setValue(self._threshold)
+        self._threshold_spin.setToolTip("Cells above this skewness are marked red")
         self._slice_button = QPushButton("Reset cut", self)
         self._slice_button.clicked.connect(self._reset_cut)
         controls = QHBoxLayout()
@@ -123,6 +132,8 @@ class VolumeSkewnessDialog(QDialog):
         controls.addWidget(QLabel("Position:"))
         controls.addWidget(self._slice_position, 2)
         controls.addWidget(self._slice_position_label)
+        controls.addWidget(QLabel("Skewness limit:"))
+        controls.addWidget(self._threshold_spin)
         controls.addWidget(self._slice_button)
         layout = QVBoxLayout(self)
         layout.addLayout(controls)
@@ -131,10 +142,18 @@ class VolumeSkewnessDialog(QDialog):
         self._cell_selector.currentIndexChanged.connect(self._show_selected_cell)
         self._slice_axis.currentTextChanged.connect(self._render_cut)
         self._slice_position.valueChanged.connect(self._render_cut)
+        self._threshold_spin.valueChanged.connect(self._update_threshold)
         self._render_cut()
 
     def _reset_cut(self) -> None:
         self._slice_position.setValue(500)
+
+    def _update_threshold(self, value: float) -> None:
+        self._threshold = float(value)
+        self._grid.cell_data["bad"] = (
+            self.report.cell_skewness > self._threshold
+        ).astype(np.uint8)
+        self._render_cut()
 
     def _render_cut(self, *_args) -> None:
         axis = self._slice_axis.currentText().lower()
@@ -176,7 +195,7 @@ class VolumeSkewnessDialog(QDialog):
                     name="volume-cut-bad",
                 )
         self._plotter.add_text(
-            f"Cut {axis.upper()} · red: skewness > {self.report.threshold:g} · "
+            f"Cut {axis.upper()} · red: skewness > {self._threshold:g} · "
             "transparent: remaining cells",
             font_size=10,
         )
