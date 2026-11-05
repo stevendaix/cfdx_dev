@@ -40,6 +40,36 @@ inline double physical_relative_residual(
     return r2 / std::max(b2, 1.0e-300);
 }
 
+// V26: more accurate residual to construct a correction right-hand side.
+// It is NOT the final stopping certificate: after a trial correction the
+// original FP64 A*x-b residual is checked independently and must strictly
+// decrease. Long double does not change the stored FP64 solution or matrix.
+inline bool extended_precision_original_residual(
+    const SparseMatrix& matrix, const Vector& solution,
+    const Vector& rhs, Vector& residual)
+{
+    if (matrix.n_rows() != matrix.n_cols() ||
+        matrix.n_rows() != rhs.size() || solution.size() != rhs.size() ||
+        residual.size() != rhs.size()) return false;
+    for (std::size_t i = 0; i < rhs.size(); ++i) {
+        long double ax = 0.0L;
+        for (std::uint32_t k = matrix.row_offsets_data()[i];
+             k < matrix.row_offsets_data()[i + 1]; ++k) {
+            const auto c = matrix.columns_data()[k];
+            const double a = matrix.values_data()[k];
+            const double x = solution(c);
+            if (!std::isfinite(a) || !std::isfinite(x)) return false;
+            ax += static_cast<long double>(a) * static_cast<long double>(x);
+        }
+        if (!std::isfinite(rhs(i))) return false;
+        const long double ri = static_cast<long double>(rhs(i)) - ax;
+        if (!std::isfinite(ri) ||
+            std::abs(ri) > std::numeric_limits<double>::max()) return false;
+        residual(i) = static_cast<double>(ri);
+    }
+    return true;
+}
+
 inline MatrixScaling to_matrix_scaling(LinearScalingModel model) {
     switch (model) {
         case LinearScalingModel::None: return MatrixScaling::None;
@@ -164,7 +194,18 @@ inline LinearSolveReport solve_linear_system(
     std::size_t max_iterations = 1000,
     double tolerance = 1e-12) {
     LinearSolveReport report;
+    if (request.residual_refinement_steps > 8)
+        throw std::invalid_argument("residual refinement supports at most eight passes");
     report.plan = select_linear_solver(problem, matrix.n_rows(), request);
+    if (request.residual_refinement_steps != 0 &&
+        ((problem != LinearProblemKind::PressurePoisson &&
+          problem != LinearProblemKind::General) ||
+         request.scaling != LinearScalingModel::None ||
+         request.null_space != NullSpaceModel::None ||
+         (report.plan.krylov != KrylovModel::FGMRES &&
+          report.plan.krylov != KrylovModel::GMRES)))
+        throw std::invalid_argument(
+            "original-system refinement requires unscaled GMRES/FGMRES without a projected null space");
 
     if (report.plan.krylov == KrylovModel::CG &&
         request.scaling != LinearScalingModel::None &&
@@ -273,6 +314,47 @@ inline LinearSolveReport solve_linear_system(
         case KrylovModel::PipeFGMRES:
             report.result.status = SolverStatus::NOT_APPLICABLE;
             break;
+    }
+    // Do not restart the solve or rebuild the preconditioner when the
+    // original system has already passed. This is a guarded, explicitly
+    // requested fallback for finite-precision Krylov stagnation only.
+    if (request.residual_refinement_steps != 0 &&
+        report.result.status == SolverStatus::MAX_ITER_REACHED && pc) {
+        double previous = physical_relative_residual(matrix, solution, rhs);
+        for (std::size_t pass = 0;
+             pass < request.residual_refinement_steps &&
+             std::isfinite(previous) && previous > tolerance; ++pass) {
+            Vector residual(rhs.size(), 0.0);
+            Vector delta(rhs.size(), 0.0);
+            if (!extended_precision_original_residual(
+                    matrix, solution, rhs, residual)) break;
+            // The correction solve has its own *internal* tolerance; the
+            // caller's original tolerance remains the final, authoritative
+            // condition on A*x=b. Reuse the existing AMG/ILU hierarchy.
+            const auto correction = solve_fgmres(
+                matrix, residual, delta, request.gmres_restart,
+                std::min<std::size_t>(std::max<std::size_t>(max_iterations, 40), 200), 1e-3,
+                pc, PrecisionPolicy{}, false);
+            report.result.iterations += correction.iterations;
+            if (correction.status != SolverStatus::CONVERGED) break;
+            Vector trial = solution;
+            for (std::size_t i = 0; i < trial.size(); ++i)
+                trial(i) += delta(i);
+            const double trial_relative = physical_relative_residual(
+                matrix, trial, rhs);
+            if (!std::isfinite(trial_relative) ||
+                !(trial_relative < previous)) break;
+            solution = trial;
+            previous = trial_relative;
+        }
+        report.result.residual_relative = previous;
+        long double bnorm2 = 0.0L;
+        for (std::size_t i = 0; i < rhs.size(); ++i)
+            bnorm2 += static_cast<long double>(rhs(i)) * rhs(i);
+        report.result.residual =
+            previous * static_cast<double>(std::sqrt(bnorm2));
+        report.result.status = std::isfinite(previous) && previous <= tolerance
+            ? SolverStatus::CONVERGED : SolverStatus::MAX_ITER_REACHED;
     }
     if (request.scaling != LinearScalingModel::None) {
         for (std::size_t i = 0; i < solution.size(); ++i)
