@@ -1107,6 +1107,16 @@ int main()
         EXPECT_THROW(require_supported_sst_runtime_boundaries(runtime, &face_values),
                      std::invalid_argument);
         require_supported_sst_runtime_boundaries(runtime, mesh, geometry, &face_values);
+        // Inverting the owner-outward area vector makes the geometry
+        // inconsistent. An absolute normal projection previously hid it.
+        auto inward_geometry=geometry;
+        inward_geometry.face_area_vectors[0] = inward_geometry.face_area_vectors[0] * -1.0;
+        EXPECT_THROW(make_sst_wall_omega_face_values(
+            mesh,inward_geometry,std::vector<std::string>{"wall"},controls),
+            std::invalid_argument);
+        EXPECT_THROW(require_supported_sst_runtime_boundaries(
+            runtime,mesh,inward_geometry,&face_values),
+            std::invalid_argument);
     });
 
     run_case("sst_wall_omega_value_uses_resolved_wall_formula", [] {
