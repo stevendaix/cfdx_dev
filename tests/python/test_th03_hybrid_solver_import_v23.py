@@ -59,7 +59,7 @@ def run(binary, case: Path, out: Path, extra=()):
             "1",
             *extra,
         ],
-        text=True,
+        check=False, text=True,
         capture_output=True,
         timeout=45,
     )
