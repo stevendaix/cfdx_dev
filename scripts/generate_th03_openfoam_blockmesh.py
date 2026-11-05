@@ -322,7 +322,7 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
                     v18_sparse_flux_pressure_jacobian: bool = False,
                     v19_full_pressure_flux_step: bool = False,
                     v21_adaptive_relaxation: bool = False,
-                    convection_scheme: str = 'upwind') -> CaseSetup:
+                    convection_scheme: str = 'upwind', pressure_refinement_steps: int = 0) -> CaseSetup:
     convection_keys = {
         'upwind': 'numerics.convection.upwind',
         'second_order_upwind': 'numerics.convection.second_order_upwind',
@@ -438,6 +438,10 @@ def make_case_setup(max_iterations: int, alpha_u: float, alpha_p: float,
     setup.numerics.raw_settings['pressure_krylov'] = pressure_krylov
     setup.numerics.raw_settings['pressure_preconditioner'] = pressure_preconditioner
     setup.numerics.raw_settings['pressure_linear_tolerance'] = str(pressure_tolerance)
+    if not isinstance(pressure_refinement_steps, int) or not 0 <= pressure_refinement_steps <= 8:
+        raise ValueError('pressure refinement steps must be an integer in [0,8]')
+    if pressure_refinement_steps:
+        setup.numerics.raw_settings['pressure_iterative_refinement_steps'] = str(pressure_refinement_steps)
     setup.numerics.raw_settings['pressure_face_interpolation'] = 'arithmetic'
     setup.numerics.selection = NumericalSelectionConfig(entries=[
         NumericalSelection(family='gradient', configuration_key='numerics.gradient.gauss'),
@@ -516,7 +520,7 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                v18_sparse_flux_pressure_jacobian: bool = False,
                     v19_full_pressure_flux_step: bool = False,
                v21_adaptive_relaxation: bool = False,
-               convection_scheme: str = 'upwind') -> dict:
+               convection_scheme: str = 'upwind', pressure_refinement_steps: int = 0) -> dict:
     # A mislabeled lateral wall must never reach the CFDX solver as EMPTY.
     # Audit and case writer intentionally use this single geometry contract.
     if count_invalid_extrusion_patch_faces(mesh):
@@ -544,7 +548,8 @@ def write_case(path: Path, mesh: dict, *, mesh_source: str,
                             v18_sparse_flux_pressure_jacobian=v18_sparse_flux_pressure_jacobian,
                             v19_full_pressure_flux_step=v19_full_pressure_flux_step,
                             v21_adaptive_relaxation=v21_adaptive_relaxation,
-                            convection_scheme=convection_scheme)
+                            convection_scheme=convection_scheme,
+                            pressure_refinement_steps=pressure_refinement_steps)
     setup.source.case_path = mesh_source
     setup.source_metadata['physical_qualification'] = 'NOT_QUALIFIED'
     setup.source_metadata['inlet_omega_origin'] = (
@@ -626,6 +631,8 @@ def main() -> int:
     parser.add_argument('--pressure-krylov', choices=('auto','cg','gmres','fgmres','bicgstab'), default='auto')
     parser.add_argument('--pressure-preconditioner', choices=('auto','none','jacobi','ilu0','native_amg','smoothed_aggregation_amg','anisotropic_line_amg'), default='auto')
     parser.add_argument('--pressure-linear-tolerance', type=float, default=1.e-11)
+    parser.add_argument('--pressure-refinement-steps',type=int,choices=range(0,9),default=0,
+        help='Opt-in original-matrix correction solves (0..8); final FP64 residual criterion unchanged.')
     parser.add_argument('--inlet-omega', type=float, default=OMEGA_IN,
         help='SST omega inlet in 1/s. Default derived from documented nut/nu=0.009; '
              'use 181728 to reproduce V9 (not source-equivalent).')
@@ -711,7 +718,8 @@ def main() -> int:
             v18_sparse_flux_pressure_jacobian=args.v18_sparse_flux_pressure_jacobian,
             v19_full_pressure_flux_step=args.v19_full_pressure_flux_step,
             v21_adaptive_relaxation=args.v21_adaptive_relaxation,
-            convection_scheme=args.convection_scheme)
+            convection_scheme=args.convection_scheme,
+            pressure_refinement_steps=args.pressure_refinement_steps)
     except (OSError, ValueError, RuntimeError) as exc:
         parser.exit(2, f'TH-03 mesh generation/import failed: {exc}\n')
     print(json.dumps(summary, indent=2))
