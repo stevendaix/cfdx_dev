@@ -1,7 +1,7 @@
 """Unit tests for the Fluent .cas/.dat adapter.
 
-The .cas.h5 tests are guarded on pyfluent, which CI does not install, so they
-skip there. The adapter's HDF5 import path has no CI coverage.
+The .cas.h5 tests require a compatible PyFluent installation and fixtures.
+The main CI installs PyFluent; dependency incompatibility is tested separately.
 """
 import pytest
 import numpy as np

@@ -148,6 +148,10 @@ enum class WallDistanceMethod {
 inline constexpr WallDistanceMethod default_wall_distance_method =
     WallDistanceMethod::SEARCH_BASED;
 
+// Shared gate: numerical transport residuals and the auxiliary Poisson field
+// must satisfy the SAME strict physical-equation tolerance.
+inline constexpr double wall_distance_transport_residual_tolerance = 1e-8;
+
 inline const char* wall_distance_method_name(WallDistanceMethod m) {
     switch(m) {
         case WallDistanceMethod::EXACT_GEOMETRIC: return "exact_geometric";
@@ -2241,7 +2245,7 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
         if((it&3u)==3u || max_change<1e-10*h) {
             final_residual=wall_distance_pde_residual_inf(
                 WallDistanceMethod::ADVECTION_DIFFUSION,d,g,&fixed,gamma,&bvh);
-            if(final_residual<1e-8 && max_change<1e-8*h) {
+            if(final_residual<wall_distance_transport_residual_tolerance && max_change<1e-8*h) {
                 used=it+1;
                 break;
             }
@@ -2717,7 +2721,8 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
         case WallDistanceMethod::ADVECTION_DIFFUSION: {
             r.distance=advection_diffusion_distance(s,g,iterations,wall_distance_refinement_diffusivity(g),&r.iterations,&r.residual_inf,
                 &r.active_pde_samples,&r.exact_wall_seed_samples);
-            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.converged = std::isfinite(r.residual_inf) &&
+                r.residual_inf < wall_distance_transport_residual_tolerance;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
             r.stopping_reason = r.converged ? "converged" :
@@ -2731,11 +2736,17 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
                 &r.positivity_clamp_activations,&r.active_pde_samples,&r.exact_wall_seed_samples);
             r.auxiliary_iterations=poisson_iter;
             r.auxiliary_residual_inf=poisson_residual;
-            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.converged = std::isfinite(r.residual_inf) &&
+                r.residual_inf < wall_distance_transport_residual_tolerance &&
+                std::isfinite(r.auxiliary_residual_inf) &&
+                r.auxiliary_residual_inf < wall_distance_transport_residual_tolerance;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
             r.stopping_reason = r.converged ? "converged" :
-                                (r.iterations >= iterations ? "max_iter" : "residual_too_high");
+                (!std::isfinite(r.auxiliary_residual_inf) ||
+                 r.auxiliary_residual_inf >= wall_distance_transport_residual_tolerance)
+                    ? "auxiliary_poisson_residual_too_high" :
+                (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
         }
     }

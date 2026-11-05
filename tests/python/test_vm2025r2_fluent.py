@@ -3,11 +3,10 @@
 Tests .cas.h5 and .dat.h5 file reading for Fluent cases from the
 VM2025R2_Fluids.zip archive (Fluent 2025R2 validation cases).
 
-These tests require pyfluent (ansys-fluent-core) to be installed, and the
-case data is not versioned either. Neither is available in CI: the workflow
-installs neither pyfluent nor the archive, so the whole module skips there.
-The Fluent .cas.h5 reader therefore has no CI coverage, and a green run
-says nothing about it. Run it locally against a directory of cases.
+These tests require a compatible PyFluent installation and an external
+case archive. The CI installs PyFluent, but the archive is not versioned,
+so cases without fixtures are skipped explicitly. The separate compatibility
+test fails if an installed PyFluent package cannot import.
 """
 
 import pytest
@@ -33,17 +32,8 @@ _DEFAULT_FLUENT_DIRS = (
     os.path.join(_repo_root, "validation", "cases_fluent"),
 )
 
-from cfdx.io.adapters.fluent import FluentAdapter
+from cfdx.io.adapters.fluent import FluentAdapter, _try_pyfluent
 from cfdx.io.interfaces import ConversionResult, SourceInfo
-
-
-def _try_pyfluent() -> bool:
-    """Check if pyfluent CaseFile reader is available."""
-    try:
-        from ansys.fluent.core.filereader.case_file import CaseFile  # noqa: F401
-        return True
-    except ImportError:
-        return False
 
 
 PYFLUENT_AVAILABLE = _try_pyfluent()

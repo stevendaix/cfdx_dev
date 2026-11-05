@@ -794,6 +794,13 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_wall_distance_methods tests/unit/test_wall_distance_methods.cpp)
     add_cfdx_test(test_wall_distance_transport_implicit tests/unit/test_wall_distance_transport_implicit.cpp)
     set_tests_properties(test_wall_distance_transport_implicit PROPERTIES LABELS "wall-distance;transport;nonlinear" TIMEOUT 90)
+    # Long 65^3 numerical regression remains a hard gate in Release. The
+    # DebugSanitizers fast suite excludes only the explicit sanitizer-slow
+    # label; the short 33^3 transport check still runs under sanitizers.
+    add_cfdx_test(test_wall_distance_transport_stress65 tests/unit/test_wall_distance_transport_stress65.cpp)
+    set_tests_properties(test_wall_distance_transport_stress65 PROPERTIES
+        LABELS "wall-distance;transport;nonlinear;sanitizer-slow" TIMEOUT 600)
+
     add_cfdx_test(test_wall_distance_scale_and_poisson tests/unit/test_wall_distance_scale_and_poisson.cpp)
     set_tests_properties(test_wall_distance_scale_and_poisson PROPERTIES LABELS "wall-distance;precision;scale;poisson" TIMEOUT 60)
     add_cfdx_test(test_wall_distance_difficult_surfaces tests/unit/test_wall_distance_difficult_surfaces.cpp)

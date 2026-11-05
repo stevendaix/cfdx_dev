@@ -57,7 +57,7 @@ jobs:
         run: |
           python3 -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
-          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core "ansys-units>=0.12.1"
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
 
       - name: Configure
