@@ -195,7 +195,7 @@ def test_volume_skewness_dialog_moves_cut_and_slices_local_neighbours(tmp_path):
     pytest.importorskip("pyvistaqt")
     from cfdx.gui import create_application
     from cfdx.volume_skewness_view import VolumeSkewnessDialog
-    from PySide6.QtWidgets import QSlider
+    from PySide6.QtWidgets import QDoubleSpinBox, QSlider
 
     path = tmp_path / "two-tets.cfdx.h5"
     names = (
@@ -221,8 +221,14 @@ def test_volume_skewness_dialog_moves_cut_and_slices_local_neighbours(tmp_path):
     assert dialog._cut_axis == "z"
     assert dialog._cut_origin[2] == pytest.approx(expected_z)
     assert dialog._cell_selector.count() == 2
+    threshold = dialog.findChild(QDoubleSpinBox, "volume_skewness.threshold")
+    assert threshold is not None
+    threshold.setValue(10.0)
+    assert not np.any(dialog._grid.cell_data["bad"])
+    threshold.setValue(0.001)
+    assert np.all(dialog._grid.cell_data["bad"])
     dialog._cell_selector.setCurrentIndex(0)
-    assert dialog._details.text().startswith("Cell ")
+    assert "above threshold" in dialog._details.text()
     dialog.close()
     app.processEvents()
     app.quit()
