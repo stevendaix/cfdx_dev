@@ -106,7 +106,7 @@ def test_volume_skewness_rejects_zero_volume_cells():
     # Keep every triangular face non-degenerate while flattening the cell.
     # This reaches the cell-volume guard instead of failing the face-area guard.
     arrays[0][3] = [0.2, 0.3, 0.0]
-    arrays[0][4] = [0.6, 0.4, 0.0]
+    arrays[0][4] = [0.65, 0.45, 0.0]
     with pytest.raises(ValueError, match="cell 0 has zero or non-finite volume"):
         analyze_volume_skewness(*arrays)
 
