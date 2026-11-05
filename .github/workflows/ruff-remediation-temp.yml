@@ -1,0 +1,57 @@
+name: Ruff remediation (temp)
+
+on:
+  push:
+    branches:
+      - ci/thermohydraulic-independent-benchmarks
+
+permissions:
+  contents: write
+
+jobs:
+  remediate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Ruff
+        run: python -m pip install --upgrade ruff
+      - name: Apply Ruff format, fixes and executable bits
+        run: |
+          set -uo pipefail
+          BASE=$(git merge-base origin/master HEAD)
+          mapfile -t python_files < <(git diff --name-only "$BASE"...HEAD -- "*.py")
+          ruff format -- "${python_files[@]}" || true
+          ruff check --fix --unsafe-fixes -- "${python_files[@]}" || true
+          for f in "${python_files[@]}"; do
+            if head -n 1 "$f" 2>/dev/null | grep -q "^#!"; then
+              chmod +x "$f"
+            fi
+          done
+      - name: Capture remaining findings
+        run: |
+          set -uo pipefail
+          E="diag-evidence/ruff2"
+          mkdir -p "$E"
+          BASE=$(git merge-base origin/master HEAD)
+          mapfile -t python_files < <(git diff --name-only "$BASE"...HEAD -- "*.py")
+          ruff --version > "$E/ruff_version.txt"
+          ruff check -- "${python_files[@]}" > "$E/remaining_check.txt" 2>&1 || true
+          ruff format --check -- "${python_files[@]}" > "$E/remaining_format.txt" 2>&1 || true
+      - name: Commit remediation and evidence
+        run: |
+          E="diag-evidence/ruff2"
+          git config user.name "cfdx-diag-bot"
+          git config user.email "actions@github.com"
+          git add -A || true
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "style: apply Ruff 0.17.4 formatting, import order, lint fixes and executable bits to branch Python files"
+            git push
+          fi
