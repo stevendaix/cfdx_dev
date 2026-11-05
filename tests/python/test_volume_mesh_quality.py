@@ -213,6 +213,8 @@ def test_volume_skewness_dialog_moves_cut_and_slices_local_neighbours(tmp_path):
 
     app = create_application(["cfdx-volume-skewness-dialog-test"])
     dialog = VolumeSkewnessDialog(path)
+    dialog.show()
+    app.processEvents()
     slider = dialog.findChild(QSlider, "volume_skewness.slice_position")
     assert slider is not None
     slider.setValue(250)
