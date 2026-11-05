@@ -44,6 +44,10 @@ public:
     NativeAMGPreconditioner& operator=(NativeAMGPreconditioner&&) noexcept;
 
     void configure(AMGMemoryPolicy policy);
+    // Opt-in HYPRE-style cap for direct C/F interpolation (0 means legacy).
+    // Changing the cap invalidates the current hierarchy; call setup() again.
+    void configure_cf_interpolation_limit(std::size_t max_entries);
+    std::size_t cf_interpolation_limit() const noexcept;
     bool setup(const SparseMatrix& matrix) override;
     bool update_values(const SparseMatrix& matrix) override;
     bool apply(const Vector& residual, Vector& correction) const override;
@@ -52,9 +56,15 @@ public:
     bool is_ready() const noexcept;
     NativeAMGMethod method() const noexcept;
     bool uses_constant_null_space() const noexcept;
+    AMGMemoryPolicy memory_policy() const noexcept;
+    std::size_t coarse_size() const noexcept;
+    std::vector<std::size_t> hierarchy_level_sizes() const;
     std::vector<std::size_t> hierarchy_level_nnz() const;
     double operator_complexity() const;
     double grid_complexity() const;
+    std::size_t first_prolongation_nnz() const;
+    std::size_t finest_line_coverage() const;
+    std::size_t line_factor_fallback_levels() const;
     std::size_t numeric_line_fallbacks() const;
     std::size_t finest_longest_line() const;
     double prolongation_row_sum_min() const;

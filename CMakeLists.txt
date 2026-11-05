@@ -584,6 +584,15 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_linear_system tests/unit/test_linear_system.cpp)
     add_cfdx_test(test_cg_solver tests/unit/test_cg_solver.cpp)
     add_cfdx_test(test_amg_dispatch_certificate tests/unit/test_amg_dispatch_certificate.cpp)
+    add_cfdx_test(test_galerkin_csr_symbolic_numeric tests/unit/test_galerkin_csr_symbolic_numeric.cpp)
+    set_tests_properties(test_galerkin_csr_symbolic_numeric PROPERTIES
+        LABELS "amg;linalg;anisotropy;regression" TIMEOUT 30)
+    if(Python3_EXECUTABLE)
+        add_test(NAME test_naca_amg_csr_benchmark_fail_closed
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_amg_csr_benchmark_fail_closed.py)
+        set_tests_properties(test_naca_amg_csr_benchmark_fail_closed PROPERTIES
+            LABELS "amg;qualification;regression" TIMEOUT 15)
+    endif()
     add_cfdx_test(test_null_space tests/unit/test_null_space.cpp)
     add_cfdx_test(test_n8_pinned_pressure_gauge tests/unit/test_n8_pinned_pressure_gauge.cpp)
     add_cfdx_test(test_bicgstab_solver tests/unit/test_bicgstab_solver.cpp)

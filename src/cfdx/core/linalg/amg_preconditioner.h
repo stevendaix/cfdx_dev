@@ -1,5 +1,6 @@
 #pragma once
 #include "cfdx/core/linalg/amg_setup_footprint.h"
+#include "cfdx/core/linalg/galerkin_csr_product.h"
 #include "cfdx/core/linalg/algebraic_line_preconditioner.h"
 #include "cfdx/core/linalg/linear_operator.h"
 #include "cfdx/core/linalg/preconditioner.h"
@@ -45,19 +46,22 @@ public:
                                    bool constant_null_space = false,
                                    bool require_smoother_certificate = true,
                                    AMGSmootherPolicy smoother = AMGSmootherPolicy::DampedJacobi,
-                                   double prolongator_filter = 0.0)
+                                   double prolongator_filter = 0.0,
+                                   std::size_t max_cf_interpolation_entries = 0)
         : op_(op), configured_omega_(omega), omega_(omega), pre_(pre), post_(post),
           strength_threshold_(strength_threshold), max_levels_(max_levels),
           interpolation_(interpolation),
           constant_null_space_(constant_null_space),
           require_smoother_certificate_(require_smoother_certificate),
-          smoother_policy_(smoother), prolongator_filter_(prolongator_filter)
+          smoother_policy_(smoother), prolongator_filter_(prolongator_filter),
+          max_cf_interpolation_entries_(max_cf_interpolation_entries)
     {
         if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0) ||
             !std::isfinite(strength_threshold_) || strength_threshold_ < 0.0 ||
             strength_threshold_ > 1.0 || max_levels_ == 0 ||
             !std::isfinite(prolongator_filter_) || prolongator_filter_ < 0.0 ||
-            prolongator_filter_ >= 1.0) {
+            prolongator_filter_ >= 1.0 ||
+            max_cf_interpolation_entries_ == 1) {
             throw std::invalid_argument("invalid AMG operator");
         }
     }
@@ -122,7 +126,8 @@ public:
                 }
             } else {
                 if (!build_cf_interpolation(levels_.back(), strength_threshold_,
-                                            prolongation, aggregate, coarse_n)) {
+                                            prolongation, aggregate, coarse_n,
+                                            max_cf_interpolation_entries_)) {
                     last_setup_error_ = "Direct-CF interpolation construction failed at level " +
                                         std::to_string(levels_.size() - 1);
                     levels_.clear();
@@ -134,10 +139,12 @@ public:
                 break;
             }
 
-            SparseMatrix coarse = galerkin_coarse(
-                levels_.back().A, prolongation, coarse_n,
-                &last_footprint_.galerkin_dropped_entries);
-            if (!matrix_is_valid(coarse)) {
+            GalerkinCSRProduct product;
+            SparseMatrix coarse;
+            if (!product.symbolic(levels_.back().A, prolongation, coarse_n) ||
+                !product.numeric(levels_.back().A, prolongation, coarse,
+                                 &last_footprint_.galerkin_dropped_entries) ||
+                !matrix_is_valid(coarse)) {
                 last_setup_error_ = "invalid Galerkin coarse matrix from level " +
                                     std::to_string(levels_.size() - 1);
                 levels_.clear();
@@ -165,6 +172,7 @@ public:
             }
             levels_.back().aggregate = std::move(aggregate);
             levels_.back().prolongation = std::move(prolongation);
+            levels_.back().coarse_product = std::move(product);
             levels_.push_back(std::move(next));
         }
 
@@ -205,6 +213,9 @@ public:
             A.n_cols() != op_.cols() || !same_pattern(levels_.front().A, A) ||
             !matrix_is_valid(A) ||
             (constant_null_space_ && !has_constant_null_space(A))) {
+            return false;
+        }
+
         // Transactionally stage only numeric state.  Copying `levels_` here
         // used to clone every aggregate and every prolongation row on each
         // pressure corrector even though interpolation is unchanged.  This
@@ -213,6 +224,7 @@ public:
         // Galerkin matrices, diagonals, line factorizations and damping have
         // all passed their checks. Failure leaves the old hierarchy intact.
         std::vector<Level> refreshed(levels_.size());
+        std::size_t refreshed_line_fallbacks = 0;
         for (std::size_t level = 0; level < refreshed.size(); ++level) {
             refreshed[level].use_lines = levels_[level].use_lines;
             // The line topology and its existing factors are used only when
@@ -221,11 +233,31 @@ public:
             if (refreshed[level].use_lines)
                 refreshed[level].line_pc = levels_[level].line_pc;
         }
+        refreshed.front().A = A;
+        if (!build_diagonal(refreshed.front()) ||
+            !refresh_level_lines(refreshed.front(), true, refreshed_line_fallbacks))
+            return false;
+
+        std::size_t dropped_entries = 0;
+        for (std::size_t level = 0; level + 1 < refreshed.size(); ++level) {
             const std::size_t coarse_n = levels_[level + 1].A.n_rows();
-                refreshed[level].A, levels_[level].prolongation, coarse_n,
+            SparseMatrix coarse;
+            if (!levels_[level].coarse_product.numeric(
+                    refreshed[level].A, levels_[level].prolongation, coarse,
+                    &dropped_entries) || !matrix_is_valid(coarse) ||
+                coarse.n_rows() != coarse_n) return false;
+            refreshed[level + 1].A = std::move(coarse);
             if (!build_diagonal(refreshed[level + 1]) ||
                 !refresh_level_lines(refreshed[level + 1], false, refreshed_line_fallbacks))
+                return false;
+        }
+
+        double refreshed_omega = 0.0;
+        if (!compute_stable_smoother_omega(refreshed, refreshed_omega)) {
             if (require_smoother_certificate_) return false;
+            refreshed_omega = omega_;
+        }
+
         // Numeric-only commit: aggregate and interpolation storage is never
         // moved or copied.  Move-assignments are noexcept for these standard
         // containers, so no half-updated hierarchy can be observed.
@@ -236,6 +268,9 @@ public:
             if (levels_[level].use_lines)
                 levels_[level].line_pc = std::move(refreshed[level].line_pc);
         }
+        numeric_line_fallbacks_ = refreshed_line_fallbacks;
+        omega_ = refreshed_omega;
+        last_footprint_.galerkin_dropped_entries += dropped_entries;
         return true;
     }
 
@@ -276,6 +311,9 @@ public:
         std::vector<std::size_t> sizes;
         sizes.reserve(levels_.size());
         for (const auto& level : levels_) sizes.push_back(level.A.n_rows());
+        return sizes;
+    }
+
     // Complexity diagnostics for AMG on stretched meshes.  High operator
     // complexity (sum(nnz(A_l))/nnz(A_0)) often exposes overly dense coarse
     // Galerkin stencils even if the fine-grid Krylov count looks good.
@@ -303,6 +341,9 @@ public:
         return total / static_cast<double>(levels_.front().A.n_rows());
     }
 
+    const AMGSetupFootprint& setup_footprint() const noexcept
+    {
+        // Reporting-only counters of the AMG setup decisions that can degrade
         // the coarse-grid quality: singleton smoothed-aggregation aggregates,
         // fallback interpolation rows and Galerkin entries dropped as
         // numerically zero. The counters are reset at the start of setup()
@@ -1155,6 +1196,7 @@ private:
         bool use_lines = false;
         std::vector<std::size_t> aggregate;
         std::vector<TransferRow> prolongation;
+        GalerkinCSRProduct coarse_product;
     };
 
     static bool matrix_is_valid(const SparseMatrix& A)
@@ -1406,7 +1448,8 @@ private:
                                        double strength_threshold,
                                        std::vector<TransferRow>& prolongation,
                                        std::vector<std::size_t>& aggregate,
-                                       std::size_t& coarse_n)
+                                       std::size_t& coarse_n,
+                                       std::size_t max_interpolation_entries = 0)
     {
         const std::size_t n = level.A.n_rows();
         const auto strong = build_strength_graph(level, strength_threshold);
@@ -1709,6 +1752,50 @@ private:
                     return false;
                 }
             }
+
+            // HYPRE-inspired optional interpolation-row cap. Never drop the
+            // near-null-space mode: retain the largest absolute weights,
+            // then renormalize to keep P*1 = 1 exactly. The cutoff is
+            // deterministic (coarse-index tie break); a vanishing retained
+            // sum is a setup FAILURE, not permission for unstable weights.
+            if (max_interpolation_entries > 0 &&
+                prolongation[i].size() > max_interpolation_entries) {
+                auto& entries = prolongation[i];
+                const auto priority = [](const auto& lhs, const auto& rhs) {
+                    if (std::abs(lhs.second) != std::abs(rhs.second))
+                        return std::abs(lhs.second) > std::abs(rhs.second);
+                    return lhs.first < rhs.first;
+                };
+                std::partial_sort(entries.begin(),
+                                  entries.begin() + static_cast<std::ptrdiff_t>(max_interpolation_entries),
+                                  entries.end(), priority);
+                entries.resize(max_interpolation_entries);
+                double kept_sum = 0.0;
+                double kept_norm = 0.0;
+                for (const auto& entry : entries) {
+                    kept_sum += entry.second;
+                    kept_norm += std::abs(entry.second);
+                }
+                if (!std::isfinite(kept_sum) ||
+                    std::abs(kept_sum) <= 1e-12 * kept_norm) {
+                    prolongation.clear();
+                    aggregate.clear();
+                    coarse_n = 0;
+                    return false;
+                }
+                for (auto& entry : entries) entry.second /= kept_sum;
+                std::sort(entries.begin(), entries.end(),
+                          [](const auto& lhs, const auto& rhs) {
+                              return lhs.first < rhs.first;
+                          });
+                // Diagnostic aggregate must still refer to a retained C
+                // neighbour after pruning, not to a removed interpolation.
+                auto strongest = std::max_element(entries.begin(), entries.end(),
+                    [](const auto& lhs, const auto& rhs) {
+                        return std::abs(lhs.second) < std::abs(rhs.second);
+                    });
+                aggregate[i] = strongest->first;
+            }
         }
         return true;
     }
@@ -1842,39 +1929,6 @@ private:
                 if (fallback_rows) ++(*fallback_rows);
             }
         }
-    }
-
-    static SparseMatrix galerkin_coarse(const SparseMatrix& A,
-                                        const std::vector<TransferRow>& prolongation,
-                                        std::size_t coarse_n,
-                                        std::size_t* dropped_entries = nullptr)
-    {
-        std::vector<std::map<std::size_t, double>> rows(coarse_n);
-        const auto* row = A.row_offsets_data();
-        const auto* col = A.columns_data();
-        const auto* val = A.values_data();
-
-        for (std::size_t i = 0; i < A.n_rows(); ++i) {
-            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                const std::size_t j = col[k];
-                for (const auto& [ci, wi] : prolongation[i])
-                    for (const auto& [cj, wj] : prolongation[j])
-                        rows[ci][cj] += wi * val[k] * wj;
-            }
-        }
-
-        SparseMatrix coarse(coarse_n, coarse_n);
-        for (std::size_t i = 0; i < coarse_n; ++i) {
-            for (const auto& [j, value] : rows[i]) {
-                if (std::isfinite(value) && std::abs(value) > 1e-30) {
-                    coarse.push_back(i, j, value);
-                } else if (dropped_entries) {
-                    ++(*dropped_entries);
-                }
-            }
-        }
-        coarse.finalize();
-        return coarse;
     }
 
     bool apply_operator(std::size_t level, const Vector& x, Vector& y) const
@@ -2183,6 +2237,7 @@ private:
     const bool require_smoother_certificate_;
     const AMGSmootherPolicy smoother_policy_;
     const double prolongator_filter_;
+    const std::size_t max_cf_interpolation_entries_;
     std::size_t line_factor_fallback_levels_ = 0;
     std::size_t numeric_line_fallbacks_ = 0;
     std::vector<Level> levels_;

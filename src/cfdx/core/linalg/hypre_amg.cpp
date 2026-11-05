@@ -51,6 +51,7 @@ struct NativeAMGPreconditioner::Impl {
     bool require_smoother_certificate = true;
     bool algebraic_line_smoother = false;
     double prolongator_filter = 0.0;
+    std::size_t cf_interpolation_limit = 0;
     AMGMemoryPolicy policy = AMGMemoryPolicy::Balanced;
     std::unique_ptr<OwnedSparseOperator> op;
     std::unique_ptr<MatrixFreeVcyclePreconditioner> amg;
@@ -80,6 +81,21 @@ void NativeAMGPreconditioner::configure(AMGMemoryPolicy policy) {
     }
     impl_->policy = policy;
     impl_->error.clear();
+}
+
+void NativeAMGPreconditioner::configure_cf_interpolation_limit(std::size_t max_entries) {
+    if (max_entries == 1)
+        throw std::invalid_argument("AMG C/F row cap must be 0 or >=2");
+    if (impl_->cf_interpolation_limit != max_entries) {
+        impl_->amg.reset();
+        impl_->op.reset();
+    }
+    impl_->cf_interpolation_limit = max_entries;
+    impl_->error.clear();
+}
+
+std::size_t NativeAMGPreconditioner::cf_interpolation_limit() const noexcept {
+    return impl_->cf_interpolation_limit;
 }
 
 bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
@@ -118,7 +134,7 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
         impl_->require_smoother_certificate,
         impl_->algebraic_line_smoother ? AMGSmootherPolicy::AlgebraicLines
                                       : AMGSmootherPolicy::DampedJacobi,
-        impl_->prolongator_filter);
+        impl_->prolongator_filter, impl_->cf_interpolation_limit);
     if (!next_amg->setup(next_op->matrix())) {
         impl_->error = "native AMG hierarchy construction failed";
         const auto& detail = next_amg->last_setup_error();
@@ -218,6 +234,9 @@ std::size_t NativeAMGPreconditioner::coarse_size() const noexcept {
 
 std::vector<std::size_t> NativeAMGPreconditioner::hierarchy_level_sizes() const {
     return impl_->amg ? impl_->amg->hierarchy_level_sizes()
+                      : std::vector<std::size_t>{};
+}
+
 std::vector<std::size_t> NativeAMGPreconditioner::hierarchy_level_nnz() const {
     return impl_->amg ? impl_->amg->hierarchy_level_nnz()
                       : std::vector<std::size_t>{};
@@ -231,6 +250,9 @@ double NativeAMGPreconditioner::grid_complexity() const {
     return impl_->amg ? impl_->amg->grid_complexity() : 0.0;
 }
 
+std::size_t NativeAMGPreconditioner::finest_line_coverage() const {
+    return impl_->amg ? impl_->amg->finest_line_coverage() : 0;
+}
 
 std::size_t NativeAMGPreconditioner::line_factor_fallback_levels() const {
     return impl_->amg ? impl_->amg->line_factor_fallback_levels() : 0;

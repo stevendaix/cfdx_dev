@@ -175,15 +175,26 @@ public:
     }
 
     bool apply(const Vector& r, Vector& z) const override {
+        if (lines_.empty() || r.size() != row_offsets_.size() - 1 || !r.is_valid())
+            return false;
+        if (z.size() != r.size()) z.resize(r.size());
         // The lines are disjoint. Store the forward Thomas substitution in
         // the output vector itself, then back-substitute in-place. This
         // removes the per-apply heap allocation from every AMG V-cycle,
         // retains O(n) complexity and also supports apply(r, r) aliasing.
+        for (const auto& line : lines_) {
+            const std::size_t m = line.indices.size();
             z(line.indices[0]) = r(line.indices[0]);
+            for (std::size_t k = 1; k < m; ++k)
                 z(line.indices[k]) = r(line.indices[k]) -
                     line.lower_factor[k] * z(line.indices[k - 1]);
             z(line.indices[m - 1]) *= line.inverse_pivot[m - 1];
+            for (std::size_t k = m - 1; k-- > 0;)
+                z(line.indices[k]) =
                     (z(line.indices[k]) - line.upper[k] * z(line.indices[k + 1])) *
+                    line.inverse_pivot[k];
+        }
+        return z.is_valid();
     }
 
     const char* name() const override { return "CFDXAlgebraicLineBlockJacobi"; }

@@ -192,6 +192,9 @@ int main(int argc, char** argv) {
             EXPECT_TRUE(lines.longest_line() == (strong_x ? nx : ny));
             Vector rhs(A.n_rows(), 1.0), z(A.n_rows(), 0.0);
             EXPECT_TRUE(lines.apply(rhs, z));
+            const auto saved = z;
+            EXPECT_TRUE(lines.apply(rhs, z));
+            EXPECT_TRUE(relative_error(z, saved) < 1e-14);
             // Thomas forward/backward substitutions must work without a
             // temporary heap vector and when RHS/output alias.
             Vector in_place = rhs;
@@ -204,6 +207,9 @@ int main(int argc, char** argv) {
             Vector varied_alias = varying;
             EXPECT_TRUE(lines.apply(varied_alias, varied_alias));
             EXPECT_TRUE(relative_error(varied_alias, varied) < 1e-14);
+            EXPECT_TRUE(lines.update_values(A));
+            EXPECT_TRUE(lines.apply(rhs, z));
+        }
     });
 
     run_case("anisotropy_portable_krylov_and_amg", [&] {
