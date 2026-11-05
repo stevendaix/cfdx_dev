@@ -42,7 +42,8 @@ def _try_pyfluent() -> bool:
     try:
         from ansys.fluent.core.filereader.case_file import CaseFile  # noqa: F401
         return True
-    except ImportError:
+    except (ImportError, AttributeError):
+        # Optional pyfluent releases may expose an incomplete CaseFile API.
         return False
 
 
