@@ -172,6 +172,9 @@ class VolumeSkewnessDialog(QDialog):
         self._cut_origin = origin
         self._slice_position_label.setText(f"{position:.5g}")
         cut = self._grid.slice(normal=normal, origin=origin)
+        camera_position = (
+            self._plotter.camera_position if self._camera_initialized else None
+        )
         self._plotter.clear()
         if cut.n_cells:
             bad_cut = cut.threshold(0.5, scalars="bad")
@@ -200,9 +203,11 @@ class VolumeSkewnessDialog(QDialog):
             font_size=10,
         )
         self._show_selected_cell()
-        if not self._camera_initialized:
+        if camera_position is None:
             self._plotter.reset_camera()
             self._camera_initialized = True
+        else:
+            self._plotter.camera_position = camera_position
         self._plotter.render()
 
     def _show_selected_cell(self, *_args) -> None:
