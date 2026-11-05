@@ -131,9 +131,9 @@ enum class WallDistanceMethod {
     EIKONAL_SECOND_ORDER
 };
 
-// Legacy generic default kept unchanged for binary/source compatibility.
-// EIKONAL is a first-order DISCRETE APPROXIMATION to |grad(d)| = 1, not
-// an exact geometric wall distance: errors of several percent are measured
+// The generic default is now the exact BVH geometric distance on the input
+// triangulated surface. EIKONAL remains an explicit opt-in approximation to
+// |grad(d)| = 1; errors of several percent have been measured
 // on the analytical cube benchmarks included with this audit.
 //
 // For SST, wall functions, wall shear, y+ and physical qualification, prefer
@@ -146,7 +146,7 @@ enum class WallDistanceMethod {
 // The caller MUST check numerical convergence AND independent geometry error
 // before promoting an approximate method to production for a new mesh.
 inline constexpr WallDistanceMethod default_wall_distance_method =
-    WallDistanceMethod::EIKONAL;
+    WallDistanceMethod::SEARCH_BASED;
 
 inline const char* wall_distance_method_name(WallDistanceMethod m) {
     switch(m) {
@@ -2671,6 +2671,8 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
                 fixed[id]=1;
                 ++r.exact_wall_seed_samples;
             }
+            for (std::size_t id=0; id<g.points.size(); ++id)
+                if (!g.solid[id] && !fixed[id]) ++r.active_pde_samples;
             r.residual_inf=wall_distance_pde_residual_inf(WallDistanceMethod::EIKONAL,r.distance,g,&fixed,0.05,&bvh);
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
@@ -2685,6 +2687,8 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             std::vector<unsigned char> fixed(g.points.size(),0);
             const double radius=1.6*std::max({g.spacing.x,g.spacing.y,g.spacing.z});
             for(const auto id:wall_seed_nodes(bvh,g,radius)) { fixed[id]=1; ++r.exact_wall_seed_samples; }
+            for (std::size_t id=0; id<g.points.size(); ++id)
+                if (!g.solid[id] && !fixed[id]) ++r.active_pde_samples;
             r.residual_inf=second_order_eikonal_residual_inf(r.distance,g,fixed);
             r.converged=std::isfinite(r.residual_inf) && r.residual_inf<1e-6;
             r.convergence_status=r.converged?WallDistanceConvergenceStatus::CONVERGED :
@@ -2780,10 +2784,9 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
     return r;
 }
 
-// Convenience overload using the recommended default method (eikonal).
-// Prefer this at the top-level call site unless the caller has an explicit
-// reason to pick another method (e.g. requiring the smooth derivative of
-// Poisson for SA/SST source terms).
+// Convenience overload now defaults to the exact BVH distance on the input
+// triangulated surface. Approximate PDE/graph methods must be opted into and
+// qualified independently; the service API can enforce geometric accuracy.
 inline WallDistanceResult compute_wall_distance(const WallSurface& s,
                                                  const WallDistanceGrid& g,
                                                  std::size_t iterations=500) {

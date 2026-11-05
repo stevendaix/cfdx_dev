@@ -76,7 +76,8 @@ int main() {
         const auto r=compute_wall_distance_accuracy_checked(method,surface,g,1000,{0,1e-10,true});
         require(r.accuracy_qualified,"precision guard did not qualify output");
         require(r.fluid_samples>4000,"precision guard did not examine all fluid samples");
-        require(r.violations==r.corrected_samples,"precision guard missed an inaccurate node");
+        require(r.corrected_samples==0 || r.corrected_samples==r.fluid_samples,
+                "BVH fallback must replace the entire field, not selected nodes");
         require(r.accepted_linf_absolute <= 1e-10,"precision guard returned inaccurate output");
         require(r.accepted.converged,"corrected geometric output must be accepted");
         if (method == WallDistanceMethod::EXACT_GEOMETRIC ||
@@ -88,8 +89,10 @@ int main() {
             require(r.violations==0,"aligned cube wall-point propagation regressed");
         } else {
             require(r.violations>0,"approximate method was not independently exercised");
-            require(r.accepted.method.find("exact_bvh_corrected")!=std::string::npos,
-                    "fallback to exact BVH was not disclosed");
+            require(r.entire_field_replaced_by_bvh && r.corrected_samples==r.fluid_samples &&
+                    r.accepted.method=="search_based_bvh_full_fallback" &&
+                    !r.original_algorithm_qualified,
+                    "full BVH fallback or provenance was misreported");
         }
     }
     const auto fail=compute_wall_distance_accuracy_checked(
