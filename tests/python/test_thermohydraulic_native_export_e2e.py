@@ -19,7 +19,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tests/python"))
-import test_n9_poiseuille_body_force_production as channel  # noqa: E402
+import test_n9_poiseuille_body_force_production as channel
 
 
 def test_real_production_solver_thermohydraulic_export(tmp_path: Path) -> None:
@@ -44,15 +44,31 @@ def test_real_production_solver_thermohydraulic_export(tmp_path: Path) -> None:
         h5.attrs["case_setup_json"] = json.dumps(setup)
 
     output = tmp_path / "solver_output"
-    result = subprocess.run([str(solver), "--mesh", str(case_file),
-                             "--output-dir", str(output), "--iterations", "5",
-                             "--benchmark-export"],
-                            capture_output=True, text=True, timeout=90, check=False)
+    result = subprocess.run(
+        [
+            str(solver),
+            "--mesh",
+            str(case_file),
+            "--output-dir",
+            str(output),
+            "--iterations",
+            "5",
+            "--benchmark-export",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=90,
+        check=False,
+    )
     assert result.returncode == 0, (result.stdout[-3000:], result.stderr[-3000:])
-    assert 'Case under-relaxation alpha_u=0.2 alpha_p=0.1' in result.stdout
-    assert 'alpha_u=0.2 alpha_p=0.1' in result.stdout
+    assert "Case under-relaxation alpha_u=0.2 alpha_p=0.1" in result.stdout
+    assert "alpha_u=0.2 alpha_p=0.1" in result.stdout
     summary = json.loads((output / "execution.json").read_text(encoding="utf-8"))
-    mass = json.loads((output / "benchmark_observables/mass_conservation.json").read_text(encoding="utf-8"))
+    mass = json.loads(
+        (output / "benchmark_observables/mass_conservation.json").read_text(
+            encoding="utf-8"
+        )
+    )
     assert summary["converged"] is True
     assert summary["process_exit_code"] == 0
     assert mass["cells"] == 12
@@ -60,13 +76,17 @@ def test_real_production_solver_thermohydraulic_export(tmp_path: Path) -> None:
     assert mass["global_mass_imbalance_relative"] == pytest.approx(0.0, abs=1e-12)
     assert mass["maximum_cell_mass_imbalance_relative"] == pytest.approx(0.0, abs=1e-12)
     assert mass["physical_qualification"] == "NOT_QUALIFIED"
-    with (output / "benchmark_observables/cell_fields.csv").open(newline="", encoding="utf-8") as stream:
+    with (output / "benchmark_observables/cell_fields.csv").open(
+        newline="", encoding="utf-8"
+    ) as stream:
         rows = list(csv.DictReader(stream))
     assert len(rows) == 12
     for row in rows:
         for key in ("u_x_m_s", "u_y_m_s", "u_z_m_s", "p_static_Pa"):
             assert abs(float(row[key])) < 1e-10
-    with (output / "benchmark_observables/face_fluxes.csv").open(newline="", encoding="utf-8") as stream:
+    with (output / "benchmark_observables/face_fluxes.csv").open(
+        newline="", encoding="utf-8"
+    ) as stream:
         faces = list(csv.DictReader(stream))
     assert len(faces) == mass["faces"]
     assert all(abs(float(row["mass_flux_kg_s"])) < 1e-10 for row in faces)

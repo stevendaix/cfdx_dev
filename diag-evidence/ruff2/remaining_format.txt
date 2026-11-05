@@ -1,0 +1,65 @@
+unformatted: File would be reformatted
+   --> scripts/diagnose_sst_cell_budget_v16.py:97:49
+    |
+96  |     terminal = re.findall(
+    -         r"^Converged (YES|NO) Iterations (\d+)", path.read_text(errors="replace"), re.MULTILINE
+97  +         r"^Converged (YES|NO) Iterations (\d+)",
+98  +         path.read_text(errors="replace"),
+99  +         re.MULTILINE,
+100 |     )
+    |
+
+unformatted: File would be reformatted
+   --> scripts/solve_th03_precursor_1d.py:351:13
+    |
+350 |     diagnostics["configuration"] = asdict(c)
+    -     return {"edges": edges, "y": y, "U": U, "k": k, "omega": omega, "diagnostics": diagnostics}
+351 +     return {
+352 +         "edges": edges,
+353 +         "y": y,
+354 +         "U": U,
+355 +         "k": k,
+356 +         "omega": omega,
+357 +         "diagnostics": diagnostics,
+358 +     }
+359 |
+    |
+
+unformatted: File would be reformatted
+ --> tests/python/test_th03_hybrid_initialisation_v23.py:3:1
+  |
+2 |
+  -
+3 | import h5py
+  |
+
+unformatted: File would be reformatted
+   --> tests/python/test_th03_precursor_1d_v25.py:133:10
+    |
+132 |     target = tmp_path / "refused.cfdx.h5"
+    -     with patch(
+    -         "scripts.solve_th03_precursor_1d.solve_precursor",
+    -         return_value={"diagnostics": {"converged": False}},
+    -     ), pytest.raises(ArithmeticError, match="unconverged 1D"):
+133 +     with (
+134 +         patch(
+135 +             "scripts.solve_th03_precursor_1d.solve_precursor",
+136 +             return_value={"diagnostics": {"converged": False}},
+137 +         ),
+138 +         pytest.raises(ArithmeticError, match="unconverged 1D"),
+139 +     ):
+140 |         initialise_case(source, target, sst_style="precursor_1d")
+    |
+
+unformatted: File would be reformatted
+  --> tests/python/test_th03_wall_gradient_compare.py:59:28
+   |
+58 |             for d in (0.1, 0.2):
+   -                 w.writerow({"x_m": x, "y_m": d, "z_m": 0.5, "u_x_m_s": a * d + 5 * d * d})
+59 +                 w.writerow(
+60 +                     {"x_m": x, "y_m": d, "z_m": 0.5, "u_x_m_s": a * d + 5 * d * d}
+61 +                 )
+62 |     return faces, cells
+   |
+
+5 files would be reformatted, 57 files already formatted

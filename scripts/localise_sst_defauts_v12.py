@@ -3,6 +3,7 @@
 Lit la sortie HDF5 d'un cas CFDX et le journal du solveur V12.
 Le point de cellule est une moyenne de sommets (diagnostic seulement).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -25,17 +26,22 @@ def localisation(mesh: Path, log: Path) -> dict:
     if not matches:
         raise ValueError("missing SST_TRANSPORT_DIAGNOSTIC: no localization")
     records = [dict(FIELD.findall(match)) for match in matches]
-    qualified_records = [row for row in records if
-                         "k_local_worst_cell" in row and
-                         "omega_local_worst_cell" in row and
-                         "iteration" in row]
+    qualified_records = [
+        row
+        for row in records
+        if "k_local_worst_cell" in row
+        and "omega_local_worst_cell" in row
+        and "iteration" in row
+    ]
     # A late retry may restart at iteration=1. Prefer the most advanced
     # inspected SST Picard state, never mislabel a fresh retry as iter=100.
     # Multiple outer retries can all reach the same Picard iteration budget.
     # On a tie, use the LAST attempt, not a stale earlier retry.
-    selected = max(enumerate(qualified_records),
-                   key=lambda pair: (int(pair[1]["iteration"]), pair[0]),
-                   default=None)
+    selected = max(
+        enumerate(qualified_records),
+        key=lambda pair: (int(pair[1]["iteration"]), pair[0]),
+        default=None,
+    )
     if selected is None:
         raise ValueError("SST trace lacks local worst-cell indices")
     record = selected[1]
@@ -53,39 +59,56 @@ def localisation(mesh: Path, log: Path) -> dict:
         h = TH03_STEP_HEIGHT_M
         if not math.isfinite(h) or h <= 0:
             raise ValueError("non-positive span used to normalize position")
+
         def face_point(face_id: int) -> np.ndarray:
-            a, b = face_offsets[face_id:face_id+2]
+            a, b = face_offsets[face_id : face_id + 2]
             return np.mean(xyz[face_vertices[a:b]], axis=0)
-        wall_faces = [(name, face_point(int(fid)))
-                      for p, (name, code) in enumerate(zip(patch_names, patch_codes))
-                      if code == 0
-                      for fid in patch_fids[patch_offsets[p]:patch_offsets[p+1]]]
+
+        wall_faces = [
+            (name, face_point(int(fid)))
+            for p, (name, code) in enumerate(zip(patch_names, patch_codes))
+            if code == 0
+            for fid in patch_fids[patch_offsets[p] : patch_offsets[p + 1]]
+        ]
         if not wall_faces:
             raise ValueError("no physical WALL faces in HDF5")
         results = {}
         for variable in ("k", "omega"):
             index = int(record[f"{variable}_local_worst_cell"])
-            if not 0 <= index < len(cell_offsets)-1:
+            if not 0 <= index < len(cell_offsets) - 1:
                 raise ValueError(f"{variable}: invalid cell index {index}")
-            faces = cell_faces[cell_offsets[index]:cell_offsets[index+1]]
-            vertices = sorted({int(v) for fid in faces
-                               for v in face_vertices[face_offsets[fid]:face_offsets[fid+1]]})
+            faces = cell_faces[cell_offsets[index] : cell_offsets[index + 1]]
+            vertices = sorted(
+                {
+                    int(v)
+                    for fid in faces
+                    for v in face_vertices[face_offsets[fid] : face_offsets[fid + 1]]
+                }
+            )
             point = np.mean(xyz[vertices], axis=0)
-            name, distance = min(((name, float(np.linalg.norm(point - center)))
-                                  for name, center in wall_faces), key=lambda pair: pair[1])
+            name, distance = min(
+                (
+                    (name, float(np.linalg.norm(point - center)))
+                    for name, center in wall_faces
+                ),
+                key=lambda pair: pair[1],
+            )
             defect = float(record[f"{variable}_local_relative"])
             if not math.isfinite(defect) or defect < 0:
                 raise ValueError("nonfinite local defect")
             results[variable] = {
                 "worst_cell": index,
                 "defect_local_relative": defect,
-                "point_over_h": [float(v/h) for v in point],
+                "point_over_h": [float(v / h) for v in point],
                 "nearest_wall_patch": name,
-                "nearest_wall_face_center_distance_over_h": distance/h,
+                "nearest_wall_face_center_distance_over_h": distance / h,
             }
-    return {"status": "DIAGNOSTIC_ONLY_NOT_QUALIFIED",
-            "iteration": int(record["iteration"]), "h_m": h,
-            "fields": results}
+    return {
+        "status": "DIAGNOSTIC_ONLY_NOT_QUALIFIED",
+        "iteration": int(record["iteration"]),
+        "h_m": h,
+        "fields": results,
+    }
 
 
 def main() -> None:

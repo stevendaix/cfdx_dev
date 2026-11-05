@@ -1,4 +1,5 @@
 """V26 pressure-correction refinement must be explicit and fail closed."""
+
 import json
 from pathlib import Path
 
@@ -6,7 +7,9 @@ import h5py
 import pytest
 
 from scripts.generate_th03_openfoam_blockmesh import (
-    make_case_setup, make_structured_mesh, write_case,
+    make_case_setup,
+    make_structured_mesh,
+    write_case,
 )
 
 
@@ -18,10 +21,14 @@ def test_v26_pressure_refinement_is_off_by_default():
 
 def test_v26_pressure_refinement_exported_to_hdf5(tmp_path: Path):
     target = tmp_path / "refined.h5"
-    write_case(target, make_structured_mesh("smoke"),
-               mesh_source="v26-test", max_iterations=1,
-               pressure_refinement_steps=4,
-               pressure_tolerance=1e-10)
+    write_case(
+        target,
+        make_structured_mesh("smoke"),
+        mesh_source="v26-test",
+        max_iterations=1,
+        pressure_refinement_steps=4,
+        pressure_tolerance=1e-10,
+    )
     with h5py.File(target) as f:
         values = json.loads(f.attrs["case_setup_json"])["numerics"]["raw_settings"]
     assert values["pressure_iterative_refinement_steps"] == "4"

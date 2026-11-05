@@ -43,6 +43,7 @@ class BCValueType(str, Enum):
 
 class SSTScalarBoundaryType(str, Enum):
     """Wire-compatible k/omega boundary types understood by the C++ runtime."""
+
     FIXED_VALUE = "fixed_value"
     ZERO_GRADIENT = "zero_gradient"
     WALL_K_ZERO = "wall_k_zero"

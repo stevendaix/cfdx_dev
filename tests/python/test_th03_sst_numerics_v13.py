@@ -1,9 +1,16 @@
 """V13: New SST solver choices stay off by default and survive HDF5 export."""
+
 import json
 from pathlib import Path
+
 import h5py
 import pytest
-from scripts.generate_th03_openfoam_blockmesh import make_case_setup, make_structured_mesh, write_case
+
+from scripts.generate_th03_openfoam_blockmesh import (
+    make_case_setup,
+    make_structured_mesh,
+    write_case,
+)
 
 
 def test_v13_defaults_are_bitwise_opt_in():
@@ -16,9 +23,16 @@ def test_v13_defaults_are_bitwise_opt_in():
 
 def test_v13_controls_export_to_real_case(tmp_path: Path):
     dest = tmp_path / "sst-13.h5"
-    write_case(dest, make_structured_mesh("smoke"), mesh_source="V13 A/B fixture",
-        max_iterations=2, sst_newton_sink=True, sst_omega_first=True,
-        sst_wall_factor=60, sst_inner_iterations=12)
+    write_case(
+        dest,
+        make_structured_mesh("smoke"),
+        mesh_source="V13 A/B fixture",
+        max_iterations=2,
+        sst_newton_sink=True,
+        sst_omega_first=True,
+        sst_wall_factor=60,
+        sst_inner_iterations=12,
+    )
     with h5py.File(dest, "r") as f:
         raw = json.loads(f.attrs["case_setup_json"])["numerics"]["raw_settings"]
     assert raw["sst_omega_newton_sink"] == "true"
@@ -29,97 +43,143 @@ def test_v13_controls_export_to_real_case(tmp_path: Path):
 
 def test_v13_wall_policy_rejects_unsupported_values():
     with pytest.raises(ValueError, match="wall factor"):
-        make_case_setup(2,0.25,0.1,sst_wall_factor=10)
+        make_case_setup(2, 0.25, 0.1, sst_wall_factor=10)
 
 
 def test_v15_new_controls_default_off_and_export_to_case(tmp_path: Path):
     default = make_case_setup(2, 0.25, 0.1).numerics.raw_settings
-    assert default['sst_compensated_residual_gate'] == 'false'
-    assert default['sst_nonlinear_line_search'] == 'false'
-    outfile = tmp_path / 'v15.h5'
-    write_case(outfile, make_structured_mesh('smoke'), mesh_source='V15 test',
-        max_iterations=2, sst_compensated_gate=True,
-        sst_nonlinear_line_search=True)
-    with h5py.File(outfile, 'r') as f:
-        raw = json.loads(f.attrs['case_setup_json'])['numerics']['raw_settings']
-    assert raw['sst_compensated_residual_gate'] == 'true'
-    assert raw['sst_nonlinear_line_search'] == 'true'
+    assert default["sst_compensated_residual_gate"] == "false"
+    assert default["sst_nonlinear_line_search"] == "false"
+    outfile = tmp_path / "v15.h5"
+    write_case(
+        outfile,
+        make_structured_mesh("smoke"),
+        mesh_source="V15 test",
+        max_iterations=2,
+        sst_compensated_gate=True,
+        sst_nonlinear_line_search=True,
+    )
+    with h5py.File(outfile, "r") as f:
+        raw = json.loads(f.attrs["case_setup_json"])["numerics"]["raw_settings"]
+    assert raw["sst_compensated_residual_gate"] == "true"
+    assert raw["sst_nonlinear_line_search"] == "true"
 
 
 def test_v15_line_search_and_fixed_damping_rejected():
-    with pytest.raises(ValueError, match='exclusive'):
-        make_case_setup(2, 0.25, 0.1, sst_nonlinear_line_search=True,
-                        sst_picard_damping=0.5)
+    with pytest.raises(ValueError, match="exclusive"):
+        make_case_setup(
+            2, 0.25, 0.1, sst_nonlinear_line_search=True, sst_picard_damping=0.5
+        )
 
 
 def test_v15_sst_linear_relaxation_validated_and_saved():
-    assert make_case_setup(2,0.25,0.1).numerics.raw_settings['sst_transport_linear_relaxation'] == '0.7'
-    assert make_case_setup(2,0.25,0.1,sst_linear_relaxation=1.0).numerics.raw_settings['sst_transport_linear_relaxation'] == '1.0'
-    for bad in (float('nan'), float('inf'), 0.0, -0.1, 1.1):
-        with pytest.raises(ValueError, match='linear relaxation'):
-            make_case_setup(2,0.25,0.1,sst_linear_relaxation=bad)
+    assert (
+        make_case_setup(2, 0.25, 0.1).numerics.raw_settings[
+            "sst_transport_linear_relaxation"
+        ]
+        == "0.7"
+    )
+    assert (
+        make_case_setup(2, 0.25, 0.1, sst_linear_relaxation=1.0).numerics.raw_settings[
+            "sst_transport_linear_relaxation"
+        ]
+        == "1.0"
+    )
+    for bad in (float("nan"), float("inf"), 0.0, -0.1, 1.1):
+        with pytest.raises(ValueError, match="linear relaxation"):
+            make_case_setup(2, 0.25, 0.1, sst_linear_relaxation=bad)
 
 
 def test_v16_molecular_wall_diffusion_is_explicit_opt_in():
     legacy = make_case_setup(2, 0.25, 0.1)
     proposed = make_case_setup(2, 0.25, 0.1, sst_molecular_wall_diffusion=True)
-    assert legacy.numerics.raw_settings['sst_molecular_wall_diffusion'] == 'false'
-    assert proposed.numerics.raw_settings['sst_molecular_wall_diffusion'] == 'true'
+    assert legacy.numerics.raw_settings["sst_molecular_wall_diffusion"] == "false"
+    assert proposed.numerics.raw_settings["sst_molecular_wall_diffusion"] == "true"
 
 
 def test_v17_flux_and_pseudo_settings_opt_in_and_export(tmp_path):
     plain = make_case_setup(2, 0.25, 0.1)
     raw = plain.numerics.raw_settings
-    assert raw['v17_flux_patch_audit'] == 'false'
-    assert raw['v17_pseudo_momentum'] == 'false'
-    assert raw['v17_pressure_line_search'] == 'false'
-    path = tmp_path / 'v17_pseudo.h5'
-    write_case(path, make_structured_mesh('smoke'), mesh_source='V17',
-               max_iterations=2, v17_flux_audit=True,
-               v17_pressure_line_search=True,
-               v17_pseudo_momentum=True, v17_initial_cfl=0.4,
-               v17_min_cfl=0.04, v17_max_cfl=4.0)
-    with h5py.File(path, 'r') as handle:
-        out=json.loads(handle.attrs['case_setup_json'])['numerics']['raw_settings']
-    assert out['v17_flux_patch_audit']=='true'
-    assert out['v17_pressure_line_search']=='true'
-    assert out['v17_pseudo_momentum']=='true'
-    assert out['v17_pseudo_initial_cfl']=='0.4'
+    assert raw["v17_flux_patch_audit"] == "false"
+    assert raw["v17_pseudo_momentum"] == "false"
+    assert raw["v17_pressure_line_search"] == "false"
+    path = tmp_path / "v17_pseudo.h5"
+    write_case(
+        path,
+        make_structured_mesh("smoke"),
+        mesh_source="V17",
+        max_iterations=2,
+        v17_flux_audit=True,
+        v17_pressure_line_search=True,
+        v17_pseudo_momentum=True,
+        v17_initial_cfl=0.4,
+        v17_min_cfl=0.04,
+        v17_max_cfl=4.0,
+    )
+    with h5py.File(path, "r") as handle:
+        out = json.loads(handle.attrs["case_setup_json"])["numerics"]["raw_settings"]
+    assert out["v17_flux_patch_audit"] == "true"
+    assert out["v17_pressure_line_search"] == "true"
+    assert out["v17_pseudo_momentum"] == "true"
+    assert out["v17_pseudo_initial_cfl"] == "0.4"
 
 
 def test_v17_rejects_invalid_CFL_bounds():
-    with pytest.raises(ValueError, match='V17 pseudo CFL'):
+    with pytest.raises(ValueError, match="V17 pseudo CFL"):
         make_case_setup(2, 0.25, 0.1, v17_min_cfl=3.0)
 
 
 def test_v18_pressure_schur_operators_are_opt_in_and_exportable(tmp_path):
-    from scripts.generate_th03_openfoam_blockmesh import (
-        make_case_setup, make_structured_mesh, write_case)
-    import h5py
     import json
-    defaults = make_case_setup(1,0.25,0.1).numerics.raw_settings
-    assert defaults['v18_full_flux_pressure_oracle'] == 'false'
-    assert defaults['v18_sparse_flux_pressure_jacobian'] == 'false'
-    dest=tmp_path / 'v18-pressure.h5'
-    write_case(dest, make_structured_mesh('smoke'), mesh_source='V18 pressure regression',
-        max_iterations=2, v18_sparse_flux_pressure_jacobian=True)
-    with h5py.File(dest,'r') as f:
-        raw=json.loads(f.attrs['case_setup_json'])['numerics']['raw_settings']
-    assert raw['v18_sparse_flux_pressure_jacobian']=='true'
-    assert raw['v18_full_flux_pressure_oracle']=='false'
+
+    import h5py
+
+    from scripts.generate_th03_openfoam_blockmesh import (
+        make_case_setup,
+        make_structured_mesh,
+        write_case,
+    )
+
+    defaults = make_case_setup(1, 0.25, 0.1).numerics.raw_settings
+    assert defaults["v18_full_flux_pressure_oracle"] == "false"
+    assert defaults["v18_sparse_flux_pressure_jacobian"] == "false"
+    dest = tmp_path / "v18-pressure.h5"
+    write_case(
+        dest,
+        make_structured_mesh("smoke"),
+        mesh_source="V18 pressure regression",
+        max_iterations=2,
+        v18_sparse_flux_pressure_jacobian=True,
+    )
+    with h5py.File(dest, "r") as f:
+        raw = json.loads(f.attrs["case_setup_json"])["numerics"]["raw_settings"]
+    assert raw["v18_sparse_flux_pressure_jacobian"] == "true"
+    assert raw["v18_full_flux_pressure_oracle"] == "false"
 
 
 def test_v19_full_pressure_flux_policy_is_opt_in():
     import pytest
+
     from scripts.generate_th03_openfoam_blockmesh import make_case_setup
-    default = make_case_setup(2, .25, .1)
-    assert default.numerics.raw_settings['v19_full_pressure_flux_step'] == 'false'
-    with pytest.raises(ValueError, match='V19 full flux requires'):
-        make_case_setup(2, .25, .1, v19_full_pressure_flux_step=True)
-    with pytest.raises(ValueError, match='exclusive'):
-        make_case_setup(2, .25, .1, v19_full_pressure_flux_step=True,
-                        v18_sparse_flux_pressure_jacobian=True,
-                        v17_pressure_line_search=True)
-    option = make_case_setup(2,.25,.1, v19_full_pressure_flux_step=True,
-                             v18_sparse_flux_pressure_jacobian=True)
-    assert option.numerics.raw_settings['v19_full_pressure_flux_step'] == 'true'
+
+    default = make_case_setup(2, 0.25, 0.1)
+    assert default.numerics.raw_settings["v19_full_pressure_flux_step"] == "false"
+    with pytest.raises(ValueError, match="V19 full flux requires"):
+        make_case_setup(2, 0.25, 0.1, v19_full_pressure_flux_step=True)
+    with pytest.raises(ValueError, match="exclusive"):
+        make_case_setup(
+            2,
+            0.25,
+            0.1,
+            v19_full_pressure_flux_step=True,
+            v18_sparse_flux_pressure_jacobian=True,
+            v17_pressure_line_search=True,
+        )
+    option = make_case_setup(
+        2,
+        0.25,
+        0.1,
+        v19_full_pressure_flux_step=True,
+        v18_sparse_flux_pressure_jacobian=True,
+    )
+    assert option.numerics.raw_settings["v19_full_pressure_flux_step"] == "true"

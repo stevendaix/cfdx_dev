@@ -4,11 +4,12 @@ Run with CFDX_PRODUCTION_SOLVER_BINARY=/absolute/path/to/cfdx_production_solver
 so the test uses the actual compiled production executable. Normal unit-test
 jobs without a production binary skip, instead of accepting a fake solver.
 """
+
 import json
 import os
 import shutil
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import h5py
 import pytest
@@ -29,18 +30,26 @@ def _solver_binary() -> Path:
     return path
 
 
-def _run(solver: Path, case: Path, output: Path, iterations: int,
-         restart: Path | None = None) -> subprocess.CompletedProcess[str]:
-    cmd = [str(solver), "--mesh", str(case), "--output-dir", str(output),
-           "--iterations", str(iterations)]
+def _run(
+    solver: Path, case: Path, output: Path, iterations: int, restart: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    cmd = [
+        str(solver),
+        "--mesh",
+        str(case),
+        "--output-dir",
+        str(output),
+        "--iterations",
+        str(iterations),
+    ]
     if restart is not None:
         cmd.extend(["--restart", str(restart)])
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120,
-                          check=False)
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120, check=False)
     assert proc.returncode in (0, 1), (
         f"production process failed: {proc.returncode}\n"
         f"stdout tail: {proc.stdout[-1500:]}\n"
-        f"stderr tail: {proc.stderr[-1500:]}")
+        f"stderr tail: {proc.stderr[-1500:]}"
+    )
     assert (output / "restart.dat").is_file()
     return proc
 
@@ -48,11 +57,17 @@ def _run(solver: Path, case: Path, output: Path, iterations: int,
 def test_v19_split_pressure_flux_restart_replays_uninterrupted_mdot(tmp_path: Path):
     solver = _solver_binary()
     case = tmp_path / "v19_smoke.cfdx.h5"
-    write_case(case, make_structured_mesh("smoke"),
-               mesh_source="V19 replay contract fixture", max_iterations=4,
-               alpha_u=0.25, alpha_p=0.1, pressure_tolerance=1e-10,
-               v18_sparse_flux_pressure_jacobian=True,
-               v19_full_pressure_flux_step=True)
+    write_case(
+        case,
+        make_structured_mesh("smoke"),
+        mesh_source="V19 replay contract fixture",
+        max_iterations=4,
+        alpha_u=0.25,
+        alpha_p=0.1,
+        pressure_tolerance=1e-10,
+        v18_sparse_flux_pressure_jacobian=True,
+        v19_full_pressure_flux_step=True,
+    )
     # Run a diagnostic LAMINAR carrier explicitly: the fixture generator's
     # RANS SST declaration is intentionally rejected without --experimental-sst.
     # This test isolates the pressure/flux state and must not fake SST fields.
@@ -83,9 +98,20 @@ def test_v19_split_pressure_flux_restart_replays_uninterrupted_mdot(tmp_path: Pa
     mislabeled = tmp_path / "case_with_wrong_suffix.h5"
     shutil.copyfile(case, mislabeled)
     wrong_name = subprocess.run(
-        [str(solver), "--mesh", str(mislabeled), "--output-dir",
-         str(tmp_path / "wrong_case_name"), "--iterations", "2"],
-        capture_output=True, text=True, timeout=60, check=False)
+        [
+            str(solver),
+            "--mesh",
+            str(mislabeled),
+            "--output-dir",
+            str(tmp_path / "wrong_case_name"),
+            "--iterations",
+            "2",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
     assert wrong_name.returncode == 2
     assert "contains case_setup_json" in (wrong_name.stdout + wrong_name.stderr)
 
@@ -96,9 +122,21 @@ def test_v19_split_pressure_flux_restart_replays_uninterrupted_mdot(tmp_path: Pa
     assert "face_fields " in original
     truncated.write_text(original.split("face_fields ", 1)[0])
     failed = subprocess.run(
-        [str(solver), "--mesh", str(case), "--output-dir",
-         str(tmp_path / "missing_flux"), "--iterations", "1",
-         "--restart", str(truncated)],
-        capture_output=True, text=True, timeout=60, check=False)
+        [
+            str(solver),
+            "--mesh",
+            str(case),
+            "--output-dir",
+            str(tmp_path / "missing_flux"),
+            "--iterations",
+            "1",
+            "--restart",
+            str(truncated),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
     assert failed.returncode == 2
     assert "requested mdot but DAT has none" in (failed.stdout + failed.stderr)
