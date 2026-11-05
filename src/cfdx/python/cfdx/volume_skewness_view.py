@@ -116,7 +116,7 @@ class VolumeSkewnessDialog(QDialog):
         self._slice_button = QPushButton("Reset cut", self)
         self._slice_button.clicked.connect(self._reset_cut)
         controls = QHBoxLayout()
-        controls.addWidget(QLabel("Problem cell:"))
+        controls.addWidget(QLabel("Worst cell:"))
         controls.addWidget(self._cell_selector, 1)
         controls.addWidget(QLabel("Cut normal:"))
         controls.addWidget(self._slice_axis)
