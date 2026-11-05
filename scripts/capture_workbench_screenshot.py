@@ -142,8 +142,15 @@ def main() -> int:
             raise RuntimeError("surface quality action was not enabled for demo mesh")
         window.case_file_panel.mesh_quality_button.click()
         quality_report = window.case_file_panel.preview.toPlainText()
-        if "faces: 1 · valid: 1 · degenerate: 0" not in quality_report:
-            raise RuntimeError("surface quality action did not produce expected report")
+        expected_surface_summary = "faces: 7 · valid: 7 · degenerate: 0"
+        if (
+            "Surface geometry diagnostics" not in quality_report
+            or expected_surface_summary not in quality_report
+        ):
+            raise RuntimeError(
+                "surface quality action did not produce expected report: "
+                f"{quality_report}"
+            )
 
         geometry = screen.availableGeometry()
         window.resize(min(1280, geometry.width()), min(900, geometry.height()))
