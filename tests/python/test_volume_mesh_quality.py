@@ -62,14 +62,13 @@ def test_volume_skewness_reports_internal_face_and_symmetric_neighbours():
 
 def test_cells_without_internal_faces_are_marked_unassessed():
     arrays = list(two_tetrahedra())
-    points, face_vertices, face_offsets, owner, neighbour, cell_faces, cell_offsets = (
-        arrays
-    )
+    points = arrays[0]
+    owner = arrays[3]
+    neighbour = arrays[4]
+    cell_faces = arrays[5]
     extra_points = points[:4].copy()
     extra_points[:, 0] += 3.0
-    extra_faces = np.asarray(
-        [6, 7, 8, 5, 7, 6, 5, 6, 8, 5, 8, 7], dtype=np.int64
-    )
+    extra_faces = np.asarray([6, 7, 8, 5, 7, 6, 5, 6, 8, 5, 8, 7], dtype=np.int64)
     arrays = [
         np.vstack((points, extra_points)),
         np.concatenate((face_vertices, extra_faces)),
@@ -159,9 +158,7 @@ def test_hdf5_volume_limits_are_checked_before_payload_reads(tmp_path):
         h5.create_dataset("face_vertices", data=np.zeros(3, dtype=np.int64))
         h5.create_dataset("face_offsets", data=np.asarray([0, 3], dtype=np.int64))
         h5.create_dataset("owner", shape=(500_001,), dtype=np.int8, chunks=(1024,))
-        h5.create_dataset(
-            "neighbour", shape=(500_001,), dtype=np.int8, chunks=(1024,)
-        )
+        h5.create_dataset("neighbour", shape=(500_001,), dtype=np.int8, chunks=(1024,))
         h5.create_dataset("cell_faces", data=np.asarray([0, 0, 0, 0]))
         h5.create_dataset("cell_offsets", data=np.asarray([0, 4]))
     with pytest.raises(ValueError, match="500,000-face eager-load limit"):
