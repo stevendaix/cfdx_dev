@@ -348,7 +348,14 @@ def solve_precursor(c: PrecursorControls = PrecursorControls()):
     diagnostics["wall_resolved"] = bool(max(yplus0, yplus1) <= 1.0)
     diagnostics["converged"] = bool(passed and diagnostics["wall_resolved"])
     diagnostics["configuration"] = asdict(c)
-    return {"edges": edges, "y": y, "U": U, "k": k, "omega": omega, "diagnostics": diagnostics}
+    return {
+        "edges": edges,
+        "y": y,
+        "U": U,
+        "k": k,
+        "omega": omega,
+        "diagnostics": diagnostics,
+    }
 
 
 def main():

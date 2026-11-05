@@ -94,7 +94,9 @@ def inspect(path: Path) -> dict:
         for line in path.read_text(errors="replace").splitlines()
     )
     terminal = re.findall(
-        r"^Converged (YES|NO) Iterations (\d+)", path.read_text(errors="replace"), re.MULTILINE
+        r"^Converged (YES|NO) Iterations (\d+)",
+        path.read_text(errors="replace"),
+        re.MULTILINE,
     )
     return {
         "status": "DIAGNOSTIC_ONLY_NOT_QUALIFIED",

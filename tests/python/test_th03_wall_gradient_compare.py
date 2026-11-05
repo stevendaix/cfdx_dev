@@ -56,7 +56,9 @@ def make_fixtures(tmp_path: Path, *, skew: bool = False) -> tuple[Path, Path]:
         w.writeheader()
         for x, a in ((1, -4), (2, -2), (3, 2), (4, 4)):
             for d in (0.1, 0.2):
-                w.writerow({"x_m": x, "y_m": d, "z_m": 0.5, "u_x_m_s": a * d + 5 * d * d})
+                w.writerow(
+                    {"x_m": x, "y_m": d, "z_m": 0.5, "u_x_m_s": a * d + 5 * d * d}
+                )
     return faces, cells
 
 

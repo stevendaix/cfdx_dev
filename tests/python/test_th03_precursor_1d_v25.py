@@ -130,10 +130,13 @@ def test_1d_precursor_integration_preserves_flux_and_disclaims_qualification(
 def test_refuse_uncertified_1d_initialization_without_output(precursor_case, tmp_path):
     source, _, _ = precursor_case
     target = tmp_path / "refused.cfdx.h5"
-    with patch(
-        "scripts.solve_th03_precursor_1d.solve_precursor",
-        return_value={"diagnostics": {"converged": False}},
-    ), pytest.raises(ArithmeticError, match="unconverged 1D"):
+    with (
+        patch(
+            "scripts.solve_th03_precursor_1d.solve_precursor",
+            return_value={"diagnostics": {"converged": False}},
+        ),
+        pytest.raises(ArithmeticError, match="unconverged 1D"),
+    ):
         initialise_case(source, target, sst_style="precursor_1d")
     assert not target.exists()
 

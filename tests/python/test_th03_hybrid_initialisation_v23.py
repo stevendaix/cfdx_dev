@@ -1,6 +1,5 @@
 """V23 hybrid: no cross-grid transfer; conservative initial flux, positive SST."""
 
-
 import h5py
 import numpy as np
 import pytest
