@@ -217,7 +217,11 @@ def test_volume_skewness_dialog_moves_cut_and_slices_local_neighbours(tmp_path):
     app.processEvents()
     slider = dialog.findChild(QSlider, "volume_skewness.slice_position")
     assert slider is not None
+    camera_before = np.asarray(dialog._plotter.camera_position)
     slider.setValue(250)
+    assert np.allclose(
+        np.asarray(dialog._plotter.camera_position), camera_before
+    )
     bounds = dialog._grid.bounds
     expected_z = bounds[4] + 0.25 * (bounds[5] - bounds[4])
     assert dialog._cut_axis == "z"
