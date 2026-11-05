@@ -285,7 +285,15 @@ class TestVM2025R2FluentCases:
     def test_full_workflow_2d_rerun(self, base_dir):
         """Test full workflow: read cas.h5 + dat.h5, convert, save, rerun."""
         # VMFL001 - 2D axisymmetric rotating concentric cylinder
-        cas_file = base_dir / "VMFL001" / "VMFL001_WB_0_files" / "dp0" / "FLU" / "Fluent" / "VMFL001_rot_conc_cyl-1.cas.h5"
+        cas_file = (
+            base_dir
+            / "VMFL001"
+            / "VMFL001_WB_0_files"
+            / "dp0"
+            / "FLU"
+            / "Fluent"
+            / "VMFL001_rot_conc_cyl-1.cas.h5"
+        )
         dat_file = cas_file.parent / "VMFL001_rot_conc_cyl-1-00150.dat.h5"
 
         if not dat_file.exists():
