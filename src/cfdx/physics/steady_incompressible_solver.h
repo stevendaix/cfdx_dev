@@ -5513,7 +5513,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                         controls.v18_sparse_flux_pressure_jacobian) {
                         auto request=controls.pressure_linear_solver;
                         request.krylov=cfdx::core::KrylovModel::FGMRES;
-                        request.preconditioner=cfdx::core::PreconditionerModel::ILU0;
+                        if (request.preconditioner != cfdx::core::PreconditionerModel::AnisotropicLineAMG)
+                            request.preconditioner=cfdx::core::PreconditionerModel::ILU0;
                         request.gmres_restart=std::min<int>(512,static_cast<int>(nc));
                         request.null_space=cfdx::core::NullSpaceModel::None;
                         return solve_linear_system(
