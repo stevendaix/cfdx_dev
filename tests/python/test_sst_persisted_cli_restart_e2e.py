@@ -128,8 +128,6 @@ def _prepare_persisted_sst_case(case_path: Path) -> None:
         del h5.attrs["case_setup_json"]
         h5.attrs["case_setup_json"] = json.dumps(setup)
 
-
-
 def _make_volumetric_sst_restart_fixture(
     converted_case: Path, output_case: Path
 ) -> None:
@@ -150,10 +148,13 @@ def _make_volumetric_sst_restart_fixture(
         return (i * (ny + 1) + j) * (nz + 1) + k
 
     points = np.array(
-        [[float(i), j / ny, k / nz]
-         for i in range(nx + 1)
-         for j in range(ny + 1)
-         for k in range(nz + 1)], dtype=np.float64
+        [
+            [float(i), j / ny, k / nz]
+            for i in range(nx + 1)
+            for j in range(ny + 1)
+            for k in range(nz + 1)
+        ],
+        dtype=np.float64,
     )
     faces: list[tuple[int, ...]] = []
     owner: list[int] = []
@@ -178,35 +179,48 @@ def _make_volumetric_sst_restart_fixture(
     for i in range(nx):
         for j in range(ny):
             for k in range(nz):
-                a, b = vertex(i,j,k), vertex(i+1,j,k)
-                c, d = vertex(i+1,j+1,k), vertex(i,j+1,k)
-                e, f = vertex(i,j,k+1), vertex(i+1,j,k+1)
-                g, h = vertex(i+1,j+1,k+1), vertex(i,j+1,k+1)
+                a, b = vertex(i, j, k), vertex(i + 1, j, k)
+                c, d = vertex(i + 1, j + 1, k), vertex(i, j + 1, k)
+                e, f = vertex(i, j, k + 1), vertex(i + 1, j, k + 1)
+                g, h = vertex(i + 1, j + 1, k + 1), vertex(i, j + 1, k + 1)
                 cell = len(cells)
-                cells.append([
-                    add_face((a,d,c,b), cell), add_face((e,f,g,h), cell),
-                    add_face((a,b,f,e), cell), add_face((d,h,g,c), cell),
-                    add_face((a,e,h,d), cell), add_face((b,c,g,f), cell),
-                ])
+                cells.append(
+                    [
+                        add_face((a, d, c, b), cell),
+                        add_face((e, f, g, h), cell),
+                        add_face((a, b, f, e), cell),
+                        add_face((d, h, g, c), cell),
+                        add_face((a, e, h, d), cell),
+                        add_face((b, c, g, f), cell),
+                    ]
+                )
 
-    patches = {name: [] for name in (
-        "inlet", "outlet", "wall_bottom", "wall_top", "wall_front", "wall_back"
-    )}
+    patches = {
+        name: []
+        for name in (
+            "inlet",
+            "outlet",
+            "wall_bottom",
+            "wall_top",
+            "wall_front",
+            "wall_back",
+        )
+    }
     for face, vertices in enumerate(faces):
         if neighbour[face] >= 0:
             continue
         x, y, z = points[list(vertices)].mean(axis=0)
         if abs(x) < 1.e-12:
             patch = "inlet"
-        elif abs(x-nx) < 1.e-12:
+        elif abs(x - nx) < 1.e-12:
             patch = "outlet"
         elif abs(y) < 1.e-12:
             patch = "wall_bottom"
-        elif abs(y-1) < 1.e-12:
+        elif abs(y - 1) < 1.e-12:
             patch = "wall_top"
         elif abs(z) < 1.e-12:
             patch = "wall_front"
-        elif abs(z-1) < 1.e-12:
+        elif abs(z - 1) < 1.e-12:
             patch = "wall_back"
         else:
             raise AssertionError("unclassified volumetric SST boundary")
@@ -215,12 +229,13 @@ def _make_volumetric_sst_restart_fixture(
     assert sum(map(len, patches.values())) == sum(n < 0 for n in neighbour)
     assert sum(n >= 0 for n in neighbour) > 0
 
-    offsets = np.zeros(len(faces)+1, dtype=np.uint64)
-    cell_offsets = np.zeros(len(cells)+1, dtype=np.uint64)
+    offsets = np.zeros(len(faces) + 1, dtype=np.uint64)
+    cell_offsets = np.zeros(len(cells) + 1, dtype=np.uint64)
     for face, vertices in enumerate(faces):
-        offsets[face+1] = offsets[face]+len(vertices)
+        offsets[face + 1] = offsets[face] + len(vertices)
     for cell, vertices in enumerate(cells):
-        cell_offsets[cell+1] = cell_offsets[cell]+len(vertices)
+        cell_offsets[cell + 1] = cell_offsets[cell] + len(vertices)
+    patch_kinds = {"inlet": "inlet", "outlet": "outlet"}
     mesh = {
         "points": points,
         "face_vertices": np.array([v for f in faces for v in f], dtype=np.uint64),
@@ -229,11 +244,15 @@ def _make_volumetric_sst_restart_fixture(
         "neighbour": np.array(neighbour, dtype=np.int64),
         "cell_faces": np.array([v for c in cells for v in c], dtype=np.uint64),
         "cell_offsets": cell_offsets,
-        "n_points": len(points), "n_faces": len(faces), "n_cells": len(cells),
+        "n_points": len(points),
+        "n_faces": len(faces),
+        "n_cells": len(cells),
         "boundary_patch_assignment": [
-            {"name": name,
-             "type": "inlet" if name == "inlet" else "outlet" if name == "outlet" else "wall",
-             "face_ids": patch_faces}
+            {
+                "name": name,
+                "type": patch_kinds.get(name, "wall"),
+                "face_ids": patch_faces,
+            }
             for name, patch_faces in patches.items()
         ],
     }
@@ -241,32 +260,51 @@ def _make_volumetric_sst_restart_fixture(
         raw = h.attrs["case_setup_json"]
         setup = json.loads(raw.decode() if isinstance(raw, bytes) else str(raw))
     original = {b["patch_name"]: b for b in setup["boundary_conditions"]}
-    setup["boundary_conditions"] = [
-        copy.deepcopy(original[name]) if name in original else
-        dict(copy.deepcopy(original["wall_top"]), patch_name=name)
-        for name in patches
-    ]
+    boundaries = []
+    for name in patches:
+        if name in original:
+            boundaries.append(copy.deepcopy(original[name]))
+        else:
+            template = copy.deepcopy(original["wall_top"])
+            template["patch_name"] = name
+            boundaries.append(template)
+    setup["boundary_conditions"] = boundaries
     # A generated 3D fixture is not a SU2 2D import. Record that distinction.
-    setup.setdefault("source_metadata", {})["fixture_kind"] = "volumetric_3d_SST_restart"
+    source_metadata = setup.setdefault("source_metadata", {})
+    source_metadata["fixture_kind"] = "volumetric_3d_SST_restart"
     topology_hash, geometry_hash, mesh_hash = _integrity_hashes(mesh)
     metadata, patch_face_ids, patch_face_offsets = _boundary_patch_metadata(mesh)
     with h5py.File(output_case, "w") as h:
         for key, value in {
-            "format": "CFDX-HDF5-mesh-v1", "format_version": "1",
-            "schema_version": "1", "cfdx_version": "0.7",
+            "format": "CFDX-HDF5-mesh-v1",
+            "format_version": "1",
+            "schema_version": "1",
+            "cfdx_version": "0.7",
             "mesh_topology": "cfdx-csr-v1",
-            "n_points": str(len(points)), "n_faces": str(len(faces)),
-            "n_cells": str(len(cells)), "topology_hash": topology_hash,
-            "geometry_hash": geometry_hash, "mesh_hash": mesh_hash,
-            "boundary_patches": metadata, "source_solver": "CFDX test fixture",
-            "source_format": "generated_3d", "source_version": "1",
+            "n_points": str(len(points)),
+            "n_faces": str(len(faces)),
+            "n_cells": str(len(cells)),
+            "topology_hash": topology_hash,
+            "geometry_hash": geometry_hash,
+            "mesh_hash": mesh_hash,
+            "boundary_patches": metadata,
+            "source_solver": "CFDX test fixture",
+            "source_format": "generated_3d",
+            "source_version": "1",
             "source_case_path": str(output_case),
             "source_case_name": "sst_volumetric_restart",
             "case_setup_json": json.dumps(setup),
         }.items():
             h.attrs[key] = value
-        for name in ("points", "face_vertices", "face_offsets", "owner",
-                     "neighbour", "cell_faces", "cell_offsets"):
+        for name in (
+            "points",
+            "face_vertices",
+            "face_offsets",
+            "owner",
+            "neighbour",
+            "cell_faces",
+            "cell_offsets",
+        ):
             h.create_dataset(name, data=mesh[name])
         h.create_dataset("patch_face_ids", data=patch_face_ids)
         h.create_dataset("patch_face_offsets", data=patch_face_offsets)
