@@ -152,6 +152,10 @@ struct LinearSolverRequest {
     NullSpaceModel null_space = NullSpaceModel::None;
     // Optional algebraic scaling. None preserves the historical production path.
     LinearScalingModel scaling = LinearScalingModel::None;
+    // V26 opt-in: correction solves on the ORIGINAL matrix after a stalled
+    // Krylov solve. The final status still requires the original FP64
+    // true-relative-residual threshold. Disabled by default.
+    std::size_t residual_refinement_steps = 0;
 };
 
 struct MatrixCharacteristics {
