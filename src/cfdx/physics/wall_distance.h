@@ -2182,7 +2182,8 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
     double final_residual=std::numeric_limits<double>::infinity();
     for(std::size_t it=0;it<max_iter;++it) {
         double max_change=0.0;
-        for(std::size_t id=0;id<d.size();++id) {
+        for(std::size_t ii=0;ii<d.size();++ii) {
+            const std::size_t id=(it&1u) ? (d.size()-1-ii) : ii;
             if(g.solid[id]||fixed[id]||!std::isfinite(d[id])) continue;
             const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
             const auto one=[&](int axis)->double {
@@ -2361,65 +2362,58 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
 
     for(std::size_t it=0;it<steps;++it) {
         double max_change=0.0;
-        for(std::size_t active_index=0;active_index<active_ids.size();++active_index) {
-            const std::size_t id=active_ids[active_index];
-            const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
-            double ux,uy,uz; velocity(active_index,id,ux,uy,uz);
-            const auto up=[&](double u,int a)->double {
-                auto value=[&](std::size_t q)->double {
-                    return g.solid[q] ? 0.0 : d[q];
+        // A symmetric upwind Gauss-Seidel/Picard step replaces the explicit
+        // pseudo-time update. The diagonal contains every positive face
+        // contribution of -Gamma*Laplacian and U.grad(d). In particular,
+        // for cut cells the Shortley-Weller coefficient uses 2/(dm+dp),
+        // exactly as transport_laplacian_at() used in the true residual.
+        // Freeze Gamma(d) and U at the beginning of each cell update; never
+        // accept a small UPDATE as proof of a small nonlinear PDE residual.
+        for(std::size_t sweep=0;sweep<2;++sweep) {
+            for(std::size_t pos=0;pos<active_ids.size();++pos) {
+                const std::size_t active_index=(sweep==0)
+                    ? pos : active_ids.size()-1-pos;
+                const std::size_t id=active_ids[active_index];
+                const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny),
+                                  j=rem/g.nx, i=rem%g.nx;
+                double ux,uy,uz; velocity(active_index,id,ux,uy,uz);
+                const double gamma=epsilon*std::max(d[id],0.0);
+                double diag=0.0, rhs=1.0;
+                const auto axis=[&](int coord,std::size_t extent,
+                                    std::size_t stride,double u,double h,
+                                    std::size_t face) {
+                    const bool has_minus=coord>0;
+                    const bool has_plus=static_cast<std::size_t>(coord)+1<extent;
+                    const std::size_t minus=has_minus?id-stride:0;
+                    const std::size_t plus=has_plus?id+stride:0;
+                    const double dm=has_minus?offsets.delta(id,face):h;
+                    const double dp=has_plus?offsets.delta(id,face+1):h;
+                    const auto include=[&](std::size_t q,double weight) {
+                        diag+=weight;
+                        if(!g.solid[q]) rhs+=weight*d[q];
+                    };
+                    if(has_minus) {
+                        const double adv=u>0.0?u/dm:0.0;
+                        const double diff=has_plus?gamma*2.0/((dm+dp)*dm):0.0;
+                        include(minus,adv+diff);
+                    }
+                    if(has_plus) {
+                        const double adv=u<0.0?-u/dp:0.0;
+                        const double diff=has_minus?gamma*2.0/((dm+dp)*dp):0.0;
+                        include(plus,adv+diff);
+                    }
                 };
-                if(a==0) {
-                    if(u>=0) {
-                        if(i==0) return 0.0;
-                        const auto q=g.index(i-1,j,k);
-                        const double delta=offsets.delta(id,0);
-                        return u*(d[id]-value(q))/delta;
-                    }
-                    if(i+1==g.nx) return 0.0;
-                    const auto q=g.index(i+1,j,k);
-                    const double delta=offsets.delta(id,1);
-                    return u*(value(q)-d[id])/delta;
-                }
-                if(a==1) {
-                    if(u>=0) {
-                        if(j==0) return 0.0;
-                        const auto q=g.index(i,j-1,k);
-                        const double delta=offsets.delta(id,2);
-                        return u*(d[id]-value(q))/delta;
-                    }
-                    if(j+1==g.ny) return 0.0;
-                    const auto q=g.index(i,j+1,k);
-                    const double delta=offsets.delta(id,3);
-                    return u*(value(q)-d[id])/delta;
-                }
-                if(u>=0) {
-                    if(k==0) return 0.0;
-                    const auto q=g.index(i,j,k-1);
-                    const double delta=offsets.delta(id,4);
-                    return u*(d[id]-value(q))/delta;
-                }
-                if(k+1==g.nz) return 0.0;
-                const auto q=g.index(i,j,k+1);
-                const double delta=offsets.delta(id,5);
-                return u*(value(q)-d[id])/delta;
-            };
-            const double adv=up(ux,0)+up(uy,1)+up(uz,2);
-            const double gamma=epsilon*std::max(d[id],0.0);
-            const double residual=adv-1.0-gamma*transport_laplacian_at(bvh,d,g,id,&offsets);
-            // The hybrid transport step is also a 3-D explicit upwind
-            // update. Use its actual velocity components for the CFL bound.
-            const double cfl_rate=std::abs(ux)/g.spacing.x+
-                                  std::abs(uy)/g.spacing.y+
-                                  std::abs(uz)/g.spacing.z;
-            const double dt_adv=cfl_rate>1e-14 ? 0.9/cfl_rate :
-                                                std::numeric_limits<double>::infinity();
-            const double dt_diff=gamma>0.0?0.9/(2*gamma*inv_h2):std::numeric_limits<double>::infinity();
-            const double dt=relaxation_factor*std::min(dt_adv,dt_diff);
-            const double candidate=d[id]-dt*residual;
-            if(candidate<0.0) ++clamps;  // F-W2: observable positivity clamp
-            const double nd=std::max(0.0,candidate);
-            max_change=std::max(max_change,std::abs(nd-d[id])); d[id]=nd;
+                axis(static_cast<int>(i),g.nx,1,ux,g.spacing.x,0);
+                axis(static_cast<int>(j),g.ny,g.nx,uy,g.spacing.y,2);
+                axis(static_cast<int>(k),g.nz,g.nx*g.ny,uz,g.spacing.z,4);
+                if(!(diag>0.0) || !std::isfinite(diag) || !std::isfinite(rhs))
+                    continue; // true PDE residual remains nonzero: fail closed
+                const double candidate=rhs/diag;
+                if(!std::isfinite(candidate) || candidate<0.0) continue;
+                const double nd=d[id]+relaxation_factor*(candidate-d[id]);
+                max_change=std::max(max_change,std::abs(nd-d[id]));
+                d[id]=nd;
+            }
         }
         // Seed IDs are fixed and excluded from active_ids, so their exact
         // distances cannot change during transport. Re-querying the BVH for
