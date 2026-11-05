@@ -183,8 +183,10 @@ def analyze_volume_skewness(
 
     face_scores = np.full(n_faces, np.nan, dtype=np.float64)
     face_non_orthogonality = np.full(n_faces, np.nan, dtype=np.float64)
-    cell_scores = np.zeros(n_cells, dtype=np.float64)
-    cell_non_orthogonality = np.zeros(n_cells, dtype=np.float64)
+    # NaN means the cell has no internal face and therefore no value for
+    # this internal-face-only diagnostic; do not silently report it as zero.
+    cell_scores = np.full(n_cells, np.nan, dtype=np.float64)
+    cell_non_orthogonality = np.full(n_cells, np.nan, dtype=np.float64)
     adjacency = [set() for _ in range(n_cells)]
     for face_id in internal:
         owner_id, neighbour_id = int(own[face_id]), int(nei[face_id])
@@ -202,27 +204,40 @@ def analyze_volume_skewness(
         )
         non_orthogonality = float(np.degrees(np.arccos(cosine)))
         face_non_orthogonality[face_id] = non_orthogonality
-        cell_non_orthogonality[owner_id] = max(
-            cell_non_orthogonality[owner_id], non_orthogonality
-        )
-        cell_non_orthogonality[neighbour_id] = max(
-            cell_non_orthogonality[neighbour_id], non_orthogonality
-        )
+        for cell_id in (owner_id, neighbour_id):
+            previous = cell_non_orthogonality[cell_id]
+            cell_non_orthogonality[cell_id] = (
+                non_orthogonality
+                if not np.isfinite(previous)
+                else max(previous, non_orthogonality)
+            )
         owner_to_face = face_centres[face_id] - cell_centres[owner_id]
         projection = float(owner_to_face @ line) / (line_norm * line_norm)
         projected = cell_centres[owner_id] + line * projection
         # Same convention as CFDX core/geometry/mesh_quality.h.
         score = float(np.linalg.norm(face_centres[face_id] - projected) / line_norm)
         face_scores[face_id] = score
-        cell_scores[owner_id] = max(cell_scores[owner_id], score)
-        cell_scores[neighbour_id] = max(cell_scores[neighbour_id], score)
+        for cell_id in (owner_id, neighbour_id):
+            previous = cell_scores[cell_id]
+            cell_scores[cell_id] = (
+                score if not np.isfinite(previous) else max(previous, score)
+            )
     if internal.size == 0:
         raise ValueError("mesh has no internal faces; skewness cannot be assessed")
     bad = np.flatnonzero(cell_scores > threshold)
-    order = np.argsort(cell_scores)[::-1]
-    problem_order = [int(i) for i in order if cell_scores[i] > threshold]
+    assessed_cells = np.flatnonzero(np.isfinite(cell_scores))
+    problem_order = [
+        int(i)
+        for i in assessed_cells[np.argsort(cell_scores[assessed_cells])[::-1]]
+        if cell_scores[i] > threshold
+    ]
     if not problem_order:
-        problem_order = [int(i) for i in order[:20]]
+        problem_order = [
+            int(i)
+            for i in assessed_cells[
+                np.argsort(cell_scores[assessed_cells])[::-1]
+            ][:20]
+        ]
     return VolumeSkewnessReport(
         cell_skewness=cell_scores,
         face_skewness=face_scores,
