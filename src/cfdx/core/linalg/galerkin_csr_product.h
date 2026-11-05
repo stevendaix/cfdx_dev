@@ -147,8 +147,8 @@ public:
     // pruning of tiny entries is preserved (no non-Galerkin dropping).
     bool numeric(const SparseMatrix& A, const TransferRows& P,
                  SparseMatrix& out, std::size_t* dropped_entries = nullptr) const {
-        std::vector<double> c_values;
-        if (!accumulate(A, P, c_values)) return false;
+        if (!accumulate(A, P)) return false;
+        const auto& c_values = workspace_coarse_values_;
         std::vector<Index> offsets;
         std::vector<Index> columns;
         std::vector<double> values;
@@ -185,8 +185,8 @@ public:
                                std::size_t* dropped_entries = nullptr) const {
         if (&A == &out || out.n_rows() != n_coarse_ ||
             out.n_cols() != n_coarse_ || !out.is_consistent()) return false;
-        std::vector<double> c_values;
-        if (!accumulate(A, P, c_values)) return false;
+        if (!accumulate(A, P)) return false;
+        const auto& c_values = workspace_coarse_values_;
         const auto* old_offsets = out.row_offsets_data();
         const auto* old_columns = out.columns_data();
         std::size_t dropped = 0;
@@ -211,12 +211,24 @@ public:
         return true;
     }
 
+    // Retained capacity is intentionally per symbolic product, not a global
+    // thread-local cache: multiple AMG hierarchies may coexist with different
+    // structures. The numeric methods are single-writer (as is AMG setup).
+    // Expose counts for allocation-regression tests and setup diagnostics.
+    std::size_t numeric_workspace_growth_events() const noexcept {
+        return workspace_growth_events_;
+    }
+    std::size_t numeric_workspace_capacity_bytes() const noexcept {
+        return workspace_lookup_.capacity() * sizeof(std::size_t) +
+               workspace_ap_values_.capacity() * sizeof(double) +
+               workspace_coarse_values_.capacity() * sizeof(double);
+    }
+
     std::size_t symbolic_ap_nnz() const noexcept { return ap_columns_.size(); }
     std::size_t symbolic_coarse_nnz() const noexcept { return coarse_columns_.size(); }
 
 private:
-    bool accumulate(const SparseMatrix& A, const TransferRows& P,
-                    std::vector<double>& c_values) const {
+    bool accumulate(const SparseMatrix& A, const TransferRows& P) const {
         if (A.n_rows() != n_fine_ || A.n_cols() != n_fine_ ||
             P.size() != n_fine_ || !A.is_consistent() ||
             A.nnz() != input_columns_.size() || n_coarse_ == 0 ||
@@ -226,8 +238,27 @@ private:
                         A.columns_data())) return false;
 
         constexpr std::size_t missing = std::numeric_limits<std::size_t>::max();
-        std::vector<std::size_t> lookup(n_coarse_, missing);
-        std::vector<double> ap_values(ap_columns_.size(), 0.0);
+        // PETSc MatProductSymbolic/Numeric-style workspace reuse. Allocation
+        // occurs only on first use or when a *new symbolic plan* changes the
+        // sizes; repeated numeric AMG refreshes simply zero the same arrays.
+        if (workspace_lookup_.capacity() < n_coarse_) ++workspace_growth_events_;
+        if (workspace_ap_values_.capacity() < ap_columns_.size()) ++workspace_growth_events_;
+        if (workspace_coarse_values_.capacity() < coarse_columns_.size()) ++workspace_growth_events_;
+        // Both accumulation passes clear every marker they set. Reusing the
+        // already-clean lookup avoids O(n_coarse) writes on each numeric
+        // refresh. Any unsuccessful partial accumulation marks the lookup as
+        // dirty and forces a full reset on the next call.
+        if (workspace_lookup_.size() != n_coarse_) {
+            workspace_lookup_.assign(n_coarse_, missing);
+        } else if (!workspace_lookup_clean_) {
+            std::fill(workspace_lookup_.begin(), workspace_lookup_.end(), missing);
+        }
+        workspace_lookup_clean_ = false;
+        workspace_ap_values_.assign(ap_columns_.size(), 0.0);
+        workspace_coarse_values_.assign(coarse_columns_.size(), 0.0);
+        auto& lookup = workspace_lookup_;
+        auto& ap_values = workspace_ap_values_;
+        auto& c_values = workspace_coarse_values_;
         const auto* a_row = A.row_offsets_data();
         const auto* a_col = A.columns_data();
         const auto* a_val = A.values_data();
@@ -247,7 +278,6 @@ private:
                 lookup[ap_columns_[p]] = missing;
         }
 
-        c_values.assign(coarse_columns_.size(), 0.0);
         for (std::size_t ci = 0; ci < n_coarse_; ++ci) {
             for (std::size_t p = coarse_offsets_[ci]; p < coarse_offsets_[ci + 1]; ++p)
                 lookup[coarse_columns_[p]] = p;
@@ -268,6 +298,7 @@ private:
             for (std::size_t p = coarse_offsets_[ci]; p < coarse_offsets_[ci + 1]; ++p)
                 lookup[coarse_columns_[p]] = missing;
         }
+        workspace_lookup_clean_ = true;
         return true;
     }
 
@@ -284,6 +315,14 @@ private:
     std::vector<Index> transpose_offsets_;
     std::vector<Index> transpose_fine_rows_;
     std::vector<Index> transpose_p_positions_;
+    // Cache only temporary arithmetic arrays: no matrix values or hierarchy
+    // structure are modified on a failed numeric refresh. Not concurrently
+    // reentrant; consumers must serialize setup/update of one AMG instance.
+    mutable std::vector<std::size_t> workspace_lookup_;
+    mutable bool workspace_lookup_clean_ = false;
+    mutable std::vector<double> workspace_ap_values_;
+    mutable std::vector<double> workspace_coarse_values_;
+    mutable std::size_t workspace_growth_events_ = 0;
 };
 
 } // namespace cfdx::core

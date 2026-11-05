@@ -584,6 +584,13 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_linear_system tests/unit/test_linear_system.cpp)
     add_cfdx_test(test_cg_solver tests/unit/test_cg_solver.cpp)
     add_cfdx_test(test_amg_dispatch_certificate tests/unit/test_amg_dispatch_certificate.cpp)
+    add_executable(cfdx_benchmark_galerkin_workspace
+        tools/benchmarks/benchmark_galerkin_workspace.cpp)
+    target_link_libraries(cfdx_benchmark_galerkin_workspace PRIVATE cfdx_core)
+    add_test(NAME test_galerkin_numeric_workspace_smoke
+        COMMAND cfdx_benchmark_galerkin_workspace 16 3)
+    set_tests_properties(test_galerkin_numeric_workspace_smoke PROPERTIES
+        LABELS "amg;linalg;benchmark;regression" TIMEOUT 15)
     add_cfdx_test(test_galerkin_csr_symbolic_numeric tests/unit/test_galerkin_csr_symbolic_numeric.cpp)
     set_tests_properties(test_galerkin_csr_symbolic_numeric PROPERTIES
         LABELS "amg;linalg;anisotropy;regression" TIMEOUT 30)
@@ -874,6 +881,26 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     set_tests_properties(test_bfs_quick PROPERTIES LABELS "qualification;validation")
     add_executable(test_naca0012_qualification tests/validation/test_naca0012_geometry.cpp)
     target_link_libraries(test_naca0012_qualification PRIVATE cfdx_core)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_naca_mesh_similarity_gate
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_mesh_similarity_gate.py)
+        set_tests_properties(test_naca_mesh_similarity_gate PROPERTIES
+            LABELS "mesh;gci;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_naca_force_mesh_qualification
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_force_mesh_qualification.py)
+        set_tests_properties(test_naca_force_mesh_qualification PROPERTIES
+            LABELS "forces;mesh;gci;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_naca_force_certificate_fail_closed
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_force_certificate_fail_closed.py
+                $<TARGET_FILE:test_naca0012_qualification>
+                ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/naca0012_laminar_n64.h5)
+        set_tests_properties(test_naca_force_certificate_fail_closed PROPERTIES
+            LABELS "forces;qualification;regression" TIMEOUT 45
+            FIXTURES_REQUIRED cfdx_validation_meshes_quick)
+    endif()
     add_test(NAME test_naca0012_quick COMMAND test_naca0012_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/naca0012_laminar_n64.h5)
     set_tests_properties(test_naca0012_quick PROPERTIES LABELS "qualification;validation")
     if(Python3_Interpreter_FOUND)

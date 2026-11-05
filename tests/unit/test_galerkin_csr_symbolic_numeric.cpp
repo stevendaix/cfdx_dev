@@ -159,6 +159,42 @@ int main() {
                                coarse.columns_data() + coarse.nnz(),
                                old_coarse.columns_data()));
     });
+    run_case("numeric_workspace_reuses_capacity_across_coefficient_updates", [] {
+        const auto P = transfers();
+        const auto A = fine();
+        GalerkinCSRProduct plan;
+        EXPECT_TRUE(plan.symbolic(A, P, 3));
+        SparseMatrix coarse;
+        EXPECT_TRUE(plan.numeric(A, P, coarse));
+        const auto capacity = plan.numeric_workspace_capacity_bytes();
+        const auto growth = plan.numeric_workspace_growth_events();
+        EXPECT_TRUE(capacity >= (plan.symbolic_ap_nnz() +
+                                 plan.symbolic_coarse_nnz()) * sizeof(double));
+        EXPECT_TRUE(growth == 3);
+        for (int update = 0; update < 40; ++update) {
+            const double scale = 1.0 + 0.01 * static_cast<double>(update);
+            const auto matrix = fine(false, scale);
+            EXPECT_TRUE(plan.numeric_into_existing(matrix, P, coarse));
+            compare(coarse, legacy_reference(matrix, P, 3));
+            EXPECT_TRUE(plan.numeric_workspace_capacity_bytes() == capacity);
+            EXPECT_TRUE(plan.numeric_workspace_growth_events() == growth);
+        }
+        const SparseMatrix unchanged = coarse;
+        EXPECT_TRUE(!plan.numeric_into_existing(fine(true), P, coarse));
+        compare(coarse, unchanged);
+        EXPECT_TRUE(plan.numeric_workspace_capacity_bytes() == capacity);
+        EXPECT_TRUE(plan.numeric_workspace_growth_events() == growth);
+        // Fail after entering an AP row, so the sparse lookup contains dirty
+        // positions. The next valid call must reset the markers and produce
+        // exactly the legacy result without leaking a failed candidate.
+        auto bad_weights = P;
+        bad_weights[1][0].second = std::numeric_limits<double>::quiet_NaN();
+        EXPECT_TRUE(!plan.numeric_into_existing(A, bad_weights, coarse));
+        compare(coarse, unchanged);
+        EXPECT_TRUE(plan.numeric_into_existing(A, P, coarse));
+        compare(coarse, legacy_reference(A, P, 3));
+        EXPECT_TRUE(plan.numeric_workspace_growth_events() == growth);
+    });
     run_case("numeric_values_only_failure_is_transactional", [] {
         const Rows identity{{{0, 1.0}}, {{1, 1.0}}};
         const auto original = SparseMatrix::from_sorted_csr(
