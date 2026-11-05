@@ -92,6 +92,7 @@ class VolumeSkewnessDialog(QDialog):
         self._cut_axis = "z"
         self._cut_normal = (0.0, 0.0, 1.0)
         self._cut_origin = np.asarray(grid.center, dtype=float)
+        self._camera_initialized = False
         self._plotter = QtInteractor(self)
         self._cell_selector = QComboBox(self)
         self._cell_selector.setObjectName("volume_skewness.cell_selector")
@@ -180,7 +181,9 @@ class VolumeSkewnessDialog(QDialog):
             font_size=10,
         )
         self._show_selected_cell()
-        self._plotter.reset_camera()
+        if not self._camera_initialized:
+            self._plotter.reset_camera()
+            self._camera_initialized = True
         self._plotter.render()
 
     def _show_selected_cell(self, *_args) -> None:
