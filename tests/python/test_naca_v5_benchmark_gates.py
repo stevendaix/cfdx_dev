@@ -1,13 +1,12 @@
 """Negative/positive tests of reproducible V4/V5 AMG qualification gates."""
-import importlib.util
 from pathlib import Path
 import sys
 import unittest
 
 BENCH = Path(__file__).resolve().parents[2] / "tools/benchmarks"
 sys.path.insert(0, str(BENCH))
-import compare_naca_amg_v5
-import compare_naca_outer_histories
+import compare_naca_amg_v5  # noqa: E402
+import compare_naca_outer_histories  # noqa: E402
 
 
 class GateTests(unittest.TestCase):
