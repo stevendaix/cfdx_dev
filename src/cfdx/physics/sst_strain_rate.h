@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cfdx/core/numerics/gradient.h"
+#include "cfdx/physics/finite_volume_transport.h"
 #include <array>
 #include <cmath>
 #include <map>
@@ -110,7 +111,7 @@ compute_sst_strain_rate_with_boundary_values(
         }
     }
 
-    const GeometryCache geometry = make_geometry_cache(mesh);
+    const FvGeometry geometry = build_fv_geometry(mesh);
     const std::size_t n_faces = mesh.n_faces();
     const std::size_t n_patches = mesh.boundary().n_patches();
     std::vector<std::size_t> face_patch(n_faces, n_patches);
@@ -146,70 +147,12 @@ compute_sst_strain_rate_with_boundary_values(
             mesh.n_cells(), "velocity_component", "m/s", 1);
         for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell)
             scalar(cell) = velocity.component_data(component)[cell];
-
-        std::vector<double> face_values(n_faces, 0.0);
-        for (std::size_t face = 0; face < n_faces; ++face) {
-            const std::size_t owner = mesh.ownership().owner(face);
-            if (owner >= mesh.n_cells())
-                throw std::invalid_argument(
-                    "compute_sst_strain_rate_with_boundary_values: face owner out of range");
-            const auto neighbour_raw = mesh.ownership().neighbour(face);
-            if (neighbour_raw >= 0) {
-                const std::size_t neighbour = static_cast<std::size_t>(neighbour_raw);
-                if (neighbour >= mesh.n_cells())
-                    throw std::invalid_argument(
-                        "compute_sst_strain_rate_with_boundary_values: face neighbour out of range");
-                const double weight = geometric_interpolation_weight(
-                    geometry.face_centres[face], geometry.cell_centres[owner],
-                    &geometry.cell_centres[neighbour]);
-                face_values[face] = (1.0 - weight) * scalar(owner) +
-                                    weight * scalar(neighbour);
-                continue;
-            }
-
-            const std::size_t patch = face_patch[face];
-            if (patch >= n_patches)
-                throw std::invalid_argument(
-                    "compute_sst_strain_rate_with_boundary_values: boundary face has no patch");
-            if (mesh.boundary().patch(patch).type == PatchType::EMPTY) {
-                face_values[face] = scalar(owner);
-                continue;
-            }
-            const auto found = fixed_boundary_values.find(
-                mesh.boundary().patch(patch).name);
-            face_values[face] = found == fixed_boundary_values.end()
-                ? scalar(owner)
-                : found->second[component];
-        }
-
-        Field<double, Location::CELL> gradient(
-            mesh.n_cells(), "velocity_component_gradient", "1/s", 3);
-        const auto* cell_faces = mesh.cells().faces_data();
-        const auto* cell_offsets = mesh.cells().offsets_data();
-        for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
-            Vec3 sum{0.0, 0.0, 0.0};
-            for (Offset offset = cell_offsets[cell];
-                 offset < cell_offsets[cell + 1]; ++offset) {
-                const std::size_t face = cell_faces[offset];
-                const std::size_t patch = face_patch[face];
-                if (mesh.ownership().neighbour(face) < 0 &&
-                    patch < n_patches &&
-                    mesh.boundary().patch(patch).type == PatchType::EMPTY)
-                    continue;
-                const Vec3 area = mesh.ownership().owner(face) == cell
-                    ? geometry.face_Sf[face]
-                    : geometry.face_Sf[face] * -1.0;
-                sum += area * face_values[face];
-            }
-            const double volume = geometry.cell_volumes[cell];
-            if (!(volume > 0.0) || !std::isfinite(volume))
-                throw std::invalid_argument(
-                    "compute_sst_strain_rate_with_boundary_values: invalid cell volume");
-            gradient.component_data(0)[cell] = sum.x / volume;
-            gradient.component_data(1)[cell] = sum.y / volume;
-            gradient.component_data(2)[cell] = sum.z / volume;
-        }
-        return gradient;
+        ScalarBoundaryConditions boundary;
+        for (const auto& entry : fixed_boundary_values)
+            boundary[entry.first] = {ScalarBoundaryType::FIXED_VALUE,
+                                     entry.second[component], 0.0};
+        return compute_boundary_aware_wls_gradient(
+            scalar, mesh, geometry, boundary);
     };
 
     const auto grad_u = gradient_component(0);

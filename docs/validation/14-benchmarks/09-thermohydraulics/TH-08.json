@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "case_id": "TH-08",
+  "title": "OECD/NEA–Vattenfall turbulent thermal mixing T-junction",
+  "reference": {
+    "type": "EXPERIMENT",
+    "citation": "OECD/NEA (2011), Report of the OECD/NEA-Vattenfall T-Junction Benchmark exercise, NEA/CSNI/R(2011)5",
+    "primary_url": "https://www.oecd-nea.org/upload/docs/application/pdf/2021-03/csni-r2011-5.pdf",
+    "facility": "Vattenfall Älvkarleby; 1:2 scale Plexiglas test rig",
+    "data_policy": "Use Annex 2 final benchmark specification and released measurement data; retain thermocouple/LDV/PIV coordinates, acquisition rates, uncertainty and SHA-256."
+  },
+  "physics": {
+    "geometry": {
+      "main_pipe_diameter_m": 0.14,
+      "branch_pipe_diameter_m": 0.1,
+      "main_upstream_length_over_D": ">80",
+      "branch_upstream_length_over_D": "~20",
+      "branch_pipe_length_m": 0.47,
+      "junction_edge_radius_m": "<0.0002",
+      "main_upstream_test_section_length_m": 1.07,
+      "downstream_test_section_length_m": 1.07
+    },
+    "inlets": {
+      "main_cold": {
+        "temperature_C": 19,
+        "diameter_m": 0.14,
+        "volumetric_flow_m3_s": 0.009,
+        "measurement_x_m": -0.42,
+        "measurement_x_over_D": -3
+      },
+      "branch_hot": {
+        "temperature_C": 36,
+        "diameter_m": 0.1,
+        "volumetric_flow_m3_s": 0.006,
+        "measurement_x_m": -0.31,
+        "measurement_x_over_D": -3.1
+      }
+    },
+    "derived": {
+      "delta_temperature_K": 17,
+      "flow_ratio_main_over_branch": 1.5,
+      "bulk_velocity_main_m_s": 0.5846508,
+      "bulk_velocity_branch_m_s": 0.7639437,
+      "mixed_temperature_star_fully_mixed": 0.38,
+      "ldv_downstream_stations_x_over_D": [
+        2.6,
+        6.6
+      ],
+      "constant_property_volume_weighted_temperature_star": 0.4,
+      "mixing_reference_warning": "OECD/NEA 2011 p.48 reports T* approximately 0.38 from a heat balance, whereas the stated inlet volumetric flows give 0.40 if density and heat capacity are assumed equal. Do not silently overwrite the reported target or identify the two as equal: verify water property model and inlet flow measurement before applying a tight enthalpy gate."
+    }
+  },
+  "measurement_uncertainty": {
+    "ldv_global_relative_range": [
+      0.06,
+      0.08
+    ],
+    "ldv_streamwise_mean_random_relative_range": [
+      0.02,
+      0.03
+    ],
+    "ldv_streamwise_rms_random_relative_range": [
+      0.03,
+      0.04
+    ],
+    "thermocouple_mean_temperature_absolute_C": 0.5,
+    "normalized_mean_temperature_absolute": 0.03,
+    "temperature_rms_relative": 0.08,
+    "temperature_rms_relative_near_lower_wall": 0.13,
+    "piv_mean_velocity_relative_approx": 0.05,
+    "piv_velocity_absolute_m_s": 0.02,
+    "thermocouple_response_time_s": 0.013,
+    "ldv_flowrate_integrated_vs_flowmeter_relative_approx": 0.05
+  },
+  "qoi": {
+    "primary": [
+      "inlet mean and RMS velocity profiles",
+      "downstream U,V,W mean profiles and RMS profiles at LDV stations x/D=2.6 and 6.6",
+      "mean normalized temperature T*=(T-Tcold)/(Thot-Tcold) at thermocouple positions",
+      "RMS normalized temperature at all thermocouples",
+      "thermal mixing asymptote T*=0.38",
+      "temperature and velocity spectra where sampling metadata is available"
+    ],
+    "frequency": {
+      "reported_temperature_spectral_peak_Hz": 3.5,
+      "note": "Reported peak at flow ratio 1.5 at selected thermocouple positions; compare peak location only after matching record length and sampling frequency.",
+      "reported_peak_locations": [
+        "x/D=2, 270 degrees",
+        "x/D=4, 90 degrees",
+        "x/D=4, 270 degrees"
+      ]
+    },
+    "time_sampling": {
+      "requested_output_interval_s": 0.001,
+      "minimum_transient_record_s": 5,
+      "maximum_transient_record_s": 20
+    },
+    "thermocouple_positions": "Seven downstream axial stations, circumferential positions per report Fig. 3; sensors 1 mm from wall. Exact 2008 station list and corrected angular alignment must be taken from report/Annex 2.",
+    "velocity_stations": {
+      "ldv_downstream_x_over_D": [
+        2.6,
+        6.6
+      ],
+      "piv_downstream_x_over_D": [
+        1.6,
+        2.6,
+        3.6,
+        4.6
+      ]
+    },
+    "reference_data": {
+      "temperature_star_fully_mixed": 0.38,
+      "temperature_star_definition": "(T - T_cold)/(T_hot - T_cold)",
+      "reported_spectral_peak_Hz": 3.5
+    }
+  },
+  "campaign_split": {
+    "isothermal": "Hydrodynamic qualification with equal inlet temperatures; compare LDV/PIV mean and RMS velocity profiles. Do not use the thermal experiment to claim isothermal turbulence statistics.",
+    "non_isothermal": "19°C main and 36°C branch, ΔT=17 K; compare mean temperature, RMS temperature, thermal mixing and spectra."
+  },
+  "model_scope": {
+    "RANS": "Can be assessed against mean velocity and mean temperature only; steady RANS cannot pass RMS-temperature or spectral gates.",
+    "URANS_LES": "Required for transient RMS temperature and spectral comparisons. Match requested output interval and record length; include thermocouple response filtering where appropriate."
+  },
+  "verification": {
+    "mesh": "At least three meshes; resolve junction lip, shear layers, thermal mixing layer and wall-normal temperature gradients. Report y+ and local refinement.",
+    "conservation": [
+      "Main and branch mass flow rates and outlet mass balance",
+      "Global enthalpy balance using temperature-dependent water properties from ASME 1967 tables as benchmark specifies",
+      "Time-step sensitivity for transient quantities"
+    ],
+    "comparison": "Use uncertainty-weighted errors; do not turn a visual trend or ranking into a universal pass tolerance."
+  },
+  "status": {
+    "contract": "READY_FOR_CONTRACT_CI",
+    "physical_validation": "BLOCKED_UNTIL_COUPLED_TURBULENT_ENERGY_AND_TRANSIENT_SOLVER_PATH",
+    "reason": "No RANS or unit-test pass can establish thermal-fluctuation/spectral validation. Production turbulence/energy coupling is not yet qualified."
+  }
+}

@@ -117,6 +117,27 @@ void check_preconditioner_failure_residual(FailurePoint point) {
 } // namespace
 
 int main() {
+    run_case("cg_zero_rhs_nonzero_initial_uses_true_initial_residual_scale", [] {
+        SparseMatrix A(5,5);
+        for (std::size_t i=0; i<5; ++i) {
+            A.push_back(i,i,4.0);
+            if (i>0) A.push_back(i,i-1,-1.0);
+            if (i+1<5) A.push_back(i,i+1,-1.0);
+        }
+        A.finalize();
+        Vector rhs(5,0.0), solution(5,0.0);
+        for (std::size_t i=0; i<5; ++i) solution(i)=static_cast<double>(i+1);
+        Vector initial(5,0.0);
+        mixed_precision_true_residual(A,rhs,solution,initial);
+        const double initial_norm=initial.norm2();
+        const auto result=solve_cg(A,rhs,solution,100,1e-10);
+        EXPECT_TRUE(result.status==SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations>0);
+        Vector actual(5,0.0);
+        mixed_precision_true_residual(A,rhs,solution,actual);
+        EXPECT_TRUE(actual.norm2() / initial_norm <= 1e-10);
+        EXPECT_NEAR(result.residual_relative, actual.norm2() / initial_norm, 1e-12);
+    });
     run_case("cg_failed_setup_reports_current_true_residual", [] {
         check_preconditioner_failure_residual(FailurePoint::Setup);
     });
@@ -140,8 +161,8 @@ int main() {
         EXPECT_TRUE(result.iterations == 0);
         EXPECT_NEAR(x(0), 3.0, 0.0);
         EXPECT_NEAR(result.residual, 6.0, 1e-14);
-        EXPECT_TRUE(std::isinf(result.residual_relative));
-        EXPECT_TRUE(result.residual_relative > 0.0);
+        // b=0: failure is measured against the initial true residual.
+        EXPECT_NEAR(result.residual_relative, 1.0, 1e-14);
     });
     run_case("cg_nonpositive_curvature_reports_true_residual", [] {
         SparseMatrix A(2, 2);

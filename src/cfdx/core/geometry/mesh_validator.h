@@ -44,6 +44,7 @@ struct MeshQualityReport {
     double max_non_orthogonality_rad = 0.0;
     double max_non_orthogonality_deg = 0.0;
     double max_aspect_ratio = 0.0;
+    double max_face_warpage_ratio = 0.0;
     double min_volume_ratio = 1.0;
     double min_cell_volume = 0.0;
     double max_cell_volume = 0.0;
@@ -137,6 +138,12 @@ inline MeshQualityReport validate_mesh(const Mesh& m) {
             face_centres[f] = g.centre;
             face_Sf[f] = g.Sf;
             face_areas[f] = g.area;
+            report.max_face_warpage_ratio = std::max(
+                report.max_face_warpage_ratio, g.warpage_ratio);
+            if (g.warpage_ratio > 0.01)
+                report.add_warning("face " + std::to_string(f) +
+                    " has warped/non-fan-planar geometry (ratio=" +
+                    std::to_string(g.warpage_ratio) + ")");
 
             if (g.area <= 0.0) {
                 report.add_error("face " + std::to_string(f) + " has non-positive area");

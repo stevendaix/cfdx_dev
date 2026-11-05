@@ -50,6 +50,22 @@ It is intentionally not a second N1 gate.
 
 Validates the machine-readable #461 maturity and requirements audits on every PR/push.
 
+## 5. Independent thermohydraulic reference-contract CIs
+
+These are optional, case-scoped benchmark checks, not repository-wide required checks:
+
+- `.github/workflows/th01-channel-dns.yml` — Moser–Kim–Mansour turbulent channel.
+- `.github/workflows/th03-backward-facing-step.yml` — Driver–Seegmiller straight-wall backward-facing step.
+- `.github/workflows/th07-mixed-convection.yml` — Wagner–Wetzel mixed-convection DNS.
+- `.github/workflows/th08-t-junction.yml` — OECD/NEA–Vattenfall T-junction.
+
+The `.github/workflows/th-physical-prerequisites.yml` workflow executes Ghia,
+thermal, buoyancy and de Vahl Davis production preflight plus the comparator
+mutation tests. It does not run TH-01/03/07/08 turbulent CFDX simulations and
+must not be counted as their physical validation.
+
+Each reference-contract workflow runs on changes to its own reference contract, its own workflow, or the shared reference-contract checker; it can also be dispatched manually. They validate reference metadata and derived dimensionless values only. Their artifacts explicitly state that CFDX physical validation remains BLOCKED and include a fail-closed solver-evidence status report. They must not be configured as mandatory branch-protection checks until solver-level campaigns exist.
+
 ## Required-check policy
 
 Required checks should point only to workflows that always create a deterministic check:

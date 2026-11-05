@@ -1461,12 +1461,29 @@ bool read_scalar_fields_hdf5(const std::string& filename,
         if (ds < 0) { success = false; continue; }
 
         hid_t space = H5Dget_space(ds);
+        // Only one-dimensional, cell-sized scalar datasets are valid. In the
+        // old reader a rank-2 dataset could overflow values.data() because
+        // H5Sget_simple_extent_dims wrote past a one-element dims buffer.
+        if (space < 0 || H5Sget_simple_extent_ndims(space) != 1) {
+            if (space >= 0) H5Sclose(space);
+            H5Dclose(ds);
+            success = false;
+            continue;
+        }
         hsize_t dims[1] = {0};
-        H5Sget_simple_extent_dims(space, dims, nullptr);
-
+        if (H5Sget_simple_extent_dims(space, dims, nullptr) < 0) {
+            H5Sclose(space);
+            H5Dclose(ds);
+            success = false;
+            continue;
+        }
         std::vector<double> values(static_cast<std::size_t>(dims[0]));
-        if (dims[0] > 0) {
-            H5Dread(ds, H5T_NATIVE_DOUBLE, H5S_ALL, H5S_ALL, H5P_DEFAULT, values.data());
+        if (dims[0] > 0 && H5Dread(ds, H5T_NATIVE_DOUBLE, H5S_ALL,
+                                  H5S_ALL, H5P_DEFAULT, values.data()) < 0) {
+            H5Sclose(space);
+            H5Dclose(ds);
+            success = false;
+            continue;
         }
 
         cfdx::core::ScalarCellField field(static_cast<std::size_t>(dims[0]), name, "unit", 1);

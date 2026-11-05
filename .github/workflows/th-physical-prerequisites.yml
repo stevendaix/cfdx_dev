@@ -1,0 +1,109 @@
+name: TH-physical-prerequisites (production paths, not turbulent benchmark qualification)
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'CMakeLists.txt'
+      - 'scripts/qualify_thermohydraulic_benchmarks.py'
+      - 'scripts/run_thermohydraulic_cases.py'
+      - 'scripts/generate_th03_bfs_case.py'
+      - 'scripts/compare_th03_wall_gradients.py'
+      - 'scripts/analyse_thermohydraulic_timeseries.py'
+      - 'scripts/validate_thermohydraulic_reference.py'
+      - 'docs/validation/14-benchmarks/09-thermohydraulics/**'
+      - '.github/workflows/th-physical-prerequisites.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-prerequisites:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native HDF5 development libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libhdf5-dev zlib1g-dev
+      - name: Verify native HDF5 headers and linker are available
+        run: pkg-config --exists hdf5
+      - name: Install pytest for standalone quality-oracle regression tests
+        run: python -m pip install pytest h5py numpy pydantic
+      - name: Check the comparison oracle and fail-closed behavior
+        run: |
+          python -m pytest -q \
+            tests/python/test_thermohydraulic_reference_contracts.py \
+            tests/python/test_thermohydraulic_physical_qualifier.py \
+            tests/python/test_thermohydraulic_native_cases.py \
+            tests/python/test_th03_bfs_case_generator.py \
+            tests/python/test_th03_wall_gradient_compare.py \
+            tests/python/test_thermohydraulic_timeseries.py
+          python scripts/validate_thermohydraulic_reference.py \
+            --output build/thermohydraulic/references.json
+          python scripts/qualify_thermohydraulic_benchmarks.py \
+            --evidence-dir build/thermohydraulic/solver-exports \
+            --output build/thermohydraulic/solver-evidence.json
+          python scripts/run_thermohydraulic_cases.py \
+            --campaign benchmarks/thermohydraulics/campaign.example.json \
+            --check-only --output build/thermohydraulic/example-preflight
+      - name: Build production flow and thermal test paths
+        run: |
+          mkdir -p build
+          cmake -S . -B build/th-preflight -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_ENABLE_MPI=OFF -DCFDX_BUILD_RUNTIME_TESTS=OFF \
+            2>&1 | tee build/th-preflight-configure.log
+          grep -q 'Using system HDF5' build/th-preflight-configure.log || {
+            echo 'Native HDF5 must be enabled for TH production .cfdx.h5 fixtures'
+            exit 1
+          }
+          cmake --build build/th-preflight --parallel 2 --target \
+            cfdx_production_solver \
+            test_ghia_cavity \
+            test_thermohydraulic_observables \
+            test_production_sst_thermal_coupling \
+            test_thermal_driver_vv \
+            test_production_buoyancy_outer_loop_vv \
+            test_natural_convection_de_vahl_davis
+      - name: Run real production HDF5-to-CSV-and-VTU smoke
+        env:
+          PYTHONPATH: src/cfdx/python
+          CFDX_PRODUCTION_SOLVER: build/th-preflight/cfdx_production_solver
+        run: |
+          python -m pytest -q \
+            tests/python/test_thermohydraulic_native_export_e2e.py \
+            tests/python/test_thermohydraulic_sst_energy_e2e.py
+      - name: Execute real SST backward-facing-step debug regression (not validation)
+        env:
+          PYTHONPATH: src/cfdx/python
+          CFDX_PRODUCTION_SOLVER: build/th-preflight/cfdx_production_solver
+          CFDX_RUN_TH03_DEBUG_E2E: "1"
+        run: |
+          python -m pytest -q tests/python/test_th03_native_sst_e2e.py
+      - name: Execute independent laminar numerical prerequisites
+        run: |
+          ctest --test-dir build/th-preflight --output-on-failure \
+            --timeout 450 \
+            -R '^(test_ghia_cavity_quick|test_thermohydraulic_observables|test_production_sst_thermal_coupling|test_thermal_driver_vv|test_production_buoyancy_outer_loop_vv|test_natural_convection_de_vahl_davis)$' \
+            -j 2
+      - name: Upload prerequisites without claiming turbulent validation
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: th-production-prerequisites-${{ github.sha }}
+          path: |
+            build/thermohydraulic/*.json
+            build/thermohydraulic/example-preflight/campaign-report.json
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Qualification boundary
+        run: |
+          echo 'Production preflight is NOT TH-01/03/07/08 turbulent solver validation.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Each TH scenario still needs full production CFDX evidence, 3 meshes, pinned independent datasets, and dedicated model/stats checks.' >> "$GITHUB_STEP_SUMMARY"

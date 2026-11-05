@@ -22,6 +22,32 @@ SparseMatrix make_non_symmetric(std::size_t n) {
 }
 
 int main() {
+    run_case("bicgstab_homogeneous_system_uses_initial_residual_scale", []() {
+        const auto A = make_non_symmetric(5);
+        Vector zero_rhs(5, 0.0), x(5, 0.0);
+        for (std::size_t i=0; i<5; ++i) x(i)=static_cast<double>(i+1);
+        const auto Ax_initial=A.matvec(x);
+        double initial_residual=0.0;
+        for (double v : Ax_initial) initial_residual+=v*v;
+        initial_residual=std::sqrt(initial_residual);
+        const auto result=solve_bicgstab(A,zero_rhs,x,200,1e-10);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(result.iterations > 0);
+        const auto Ax_final=A.matvec(x);
+        double final_residual=0.0;
+        for (double v : Ax_final) final_residual+=v*v;
+        final_residual=std::sqrt(final_residual);
+        EXPECT_TRUE(final_residual / initial_residual <= 1e-10);
+        EXPECT_NEAR(result.residual_relative, final_residual / initial_residual, 1e-12);
+    });
+    run_case("bicgstab_zero_rhs_zero_initial_state_remains_converged", []() {
+        const auto A = make_non_symmetric(5);
+        Vector b(5, 0.0), x(5, 0.0);
+        const auto result=solve_bicgstab(A,b,x,200,1e-10);
+        EXPECT_TRUE(result.status == SolverStatus::CONVERGED);
+        EXPECT_NEAR(result.residual_relative, 0.0, 1e-15);
+        EXPECT_TRUE(result.iterations == 0);
+    });
     run_case("bicgstab_solve_diagonal", []() {
         SparseMatrix A(3, 3);
         A.push_back(0, 0, 2.0);

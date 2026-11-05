@@ -582,6 +582,8 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_linear_system tests/unit/test_linear_system.cpp)
     add_cfdx_test(test_cg_solver tests/unit/test_cg_solver.cpp)
     add_cfdx_test(test_amg_dispatch_certificate tests/unit/test_amg_dispatch_certificate.cpp)
+    add_cfdx_test(test_v24_anisotropic_line_amg tests/unit/test_v24_anisotropic_line_amg.cpp)
+    add_cfdx_test(test_v26_pressure_refinement tests/unit/test_v26_pressure_refinement.cpp)
     add_cfdx_test(test_null_space tests/unit/test_null_space.cpp)
     add_cfdx_test(test_n8_pinned_pressure_gauge tests/unit/test_n8_pinned_pressure_gauge.cpp)
     add_cfdx_test(test_bicgstab_solver tests/unit/test_bicgstab_solver.cpp)
@@ -656,6 +658,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_solver_control tests/unit/test_solver_control.cpp)
     add_cfdx_test(test_convergence_monitor tests/unit/test_convergence_monitor.cpp)
     add_cfdx_test(test_initialization tests/unit/test_initialization.cpp)
+    add_cfdx_test(test_initial_face_flux_contract tests/unit/test_initial_face_flux_contract.cpp)
     add_executable(test_n7_convergence_qualification tests/validation/test_n7_convergence_qualification.cpp)
     target_link_libraries(test_n7_convergence_qualification PRIVATE cfdx_core)
     target_include_directories(test_n7_convergence_qualification PRIVATE ${CMAKE_SOURCE_DIR}/tests)
@@ -780,6 +783,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
     add_cfdx_test(test_turbulence_qualification_equations tests/unit/test_turbulence_qualification_equations.cpp)
     add_cfdx_test(test_production_turbulence_contract tests/unit/test_production_turbulence_contract.cpp)
+    add_cfdx_test(test_thermohydraulic_observables tests/unit/test_thermohydraulic_observables.cpp)
+    add_cfdx_test(test_production_sst_thermal_coupling tests/unit/test_production_sst_thermal_coupling.cpp)
     add_cfdx_test(test_solid_conduction_selection tests/unit/test_solid_conduction_selection.cpp)
     add_cfdx_test(test_energy_integration_contracts tests/validation/test_energy_integration_contracts.cpp)
     add_cfdx_test(test_energy_independent_acceptance tests/unit/test_energy_independent_acceptance.cpp)
@@ -1404,6 +1409,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_transport_field_contract tests/unit/test_transport_field_contract.cpp)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
     add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
+    add_cfdx_test(test_th03_sst_scale_diagnostic_v10 tests/unit/test_th03_sst_scale_diagnostic_v10.cpp)
     add_cfdx_test(test_thermo_transport_contracts tests/unit/test_thermo_transport_contracts.cpp)
     add_cfdx_test(test_thermophysical_models tests/unit/test_thermophysical_models.cpp)
     add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)
@@ -1599,4 +1605,36 @@ if(CFDX_BUILD_TESTS AND CFDX_ENABLE_LONG_VALIDATION)
     set_tests_properties(test_naca_trailing_edge_gradient_mms PROPERTIES
         LABELS "numerics;gradient;validation;long"
         FIXTURES_REQUIRED cfdx_validation_meshes_full)
+endif()
+
+# Production mesh/gradient contracts: face centroid, warped faces, Neumann
+# pressure boundary, 3D skew/2D extrusion and conservative deferred fluxes.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_production_boundary_wls_v6
+        tests/validation/test_production_boundary_wls_v6.cpp)
+    set_tests_properties(test_production_boundary_wls_v6 PROPERTIES
+        LABELS "verification;gradient;diffusion;pressure;geometry")
+endif()
+
+# TH-03 V9: opt-in pressure equilibration must not bypass the reusable
+# CG/AMG context or certify the transformed residual as the physical one.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_reusable_scaled_pressure_cg_v9
+        tests/unit/test_reusable_scaled_pressure_cg_v9.cpp)
+    set_tests_properties(test_reusable_scaled_pressure_cg_v9 PROPERTIES
+        LABELS "verification;pressure;krylov;scaling")
+endif()
+
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_pressure_linear_diagnostics_v9
+        tests/unit/test_pressure_linear_diagnostics_v9.cpp)
+    set_tests_properties(test_pressure_linear_diagnostics_v9 PROPERTIES
+        LABELS "verification;pressure;mass;diagnostic")
+endif()
+
+# V11 numerical qualification: independent checks for active vector components
+# and dimensional SST convergence. Neither test asserts benchmark validation.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_momentum_residual_certification_v11 tests/unit/test_momentum_residual_certification_v11.cpp)
+    add_cfdx_test(test_sst_relative_convergence_v11 tests/unit/test_sst_relative_convergence_v11.cpp)
 endif()

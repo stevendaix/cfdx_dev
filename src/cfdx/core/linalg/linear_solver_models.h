@@ -36,6 +36,7 @@ enum class PreconditionerModel {
     ILUT,
     NativeAMG,
     SmoothedAggregationAMG,
+    AnisotropicLineAMG,
     FSAI,
     RAS,
     NativeFieldSplit,
@@ -83,8 +84,8 @@ inline const std::array<SolverModelDescriptor, 8>& krylov_model_catalog() {
     return models;
 }
 
-inline const std::array<SolverModelDescriptor, 15>& preconditioner_model_catalog() {
-    static const std::array<SolverModelDescriptor, 15> models{{
+inline const std::array<SolverModelDescriptor, 16>& preconditioner_model_catalog() {
+    static const std::array<SolverModelDescriptor, 16> models{{
         {"auto", ModelAvailability::Available, false, true},
         {"none", ModelAvailability::Available, false, true},
         {"jacobi", ModelAvailability::Available, false, true},
@@ -93,6 +94,7 @@ inline const std::array<SolverModelDescriptor, 15>& preconditioner_model_catalog
         {"ilut", ModelAvailability::Planned, false, false},
         {"native_amg", ModelAvailability::Available, false, false},
         {"smoothed_aggregation_amg", ModelAvailability::Available, false, false},
+        {"anisotropic_line_amg", ModelAvailability::Available, false, false},
         {"fsai", ModelAvailability::Planned, false, false},
         {"ras", ModelAvailability::Planned, false, true},
         {"native_fieldsplit", ModelAvailability::Available, false, false},
@@ -150,6 +152,10 @@ struct LinearSolverRequest {
     NullSpaceModel null_space = NullSpaceModel::None;
     // Optional algebraic scaling. None preserves the historical production path.
     LinearScalingModel scaling = LinearScalingModel::None;
+    // V26 opt-in: correction solves on the ORIGINAL matrix after a stalled
+    // Krylov solve. The final status still requires the original FP64
+    // true-relative-residual threshold. Disabled by default.
+    std::size_t residual_refinement_steps = 0;
 };
 
 struct MatrixCharacteristics {
@@ -266,6 +272,15 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     if (!plan.automatic_krylov) plan.krylov = request.krylov;
     if (!plan.automatic_preconditioner) plan.preconditioner = request.preconditioner;
 
+    // Line-smoothed AMG is not a certified SPD preconditioner. With an
+    // explicit line-AMG request and Krylov=auto, choose flexible GMRES,
+    // rather than selecting CG first and rejecting a valid scalar path.
+    if (plan.automatic_krylov &&
+        plan.preconditioner == PreconditionerModel::AnisotropicLineAMG) {
+        plan.krylov = KrylovModel::FGMRES;
+        plan.reason += "; experimental line-AMG requires flexible nonsymmetric Krylov";
+    }
+
     if (plan.null_space == NullSpaceModel::Constant && plan.automatic_preconditioner)
         plan.reason += "; projected constant null space is enforced across Krylov and compatible preconditioning";
 
@@ -280,6 +295,11 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
         plan.preconditioner != PreconditionerModel::SmoothedAggregationAMG)
         throw std::invalid_argument(
             "CG requires an SPD-qualified preconditioner (none, Jacobi, or a native AMG variant)");
+    if (plan.preconditioner == PreconditionerModel::AnisotropicLineAMG &&
+        (plan.krylov == KrylovModel::CG ||
+         problem == LinearProblemKind::CoupledPressureVelocity))
+        throw std::invalid_argument(
+            "anisotropic line AMG requires nonsymmetric scalar Krylov");
     if ((plan.preconditioner == PreconditionerModel::NativeAMG ||
          plan.preconditioner == PreconditionerModel::SmoothedAggregationAMG) && !cg_problem)
         throw std::invalid_argument(
