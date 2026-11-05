@@ -1,7 +1,5 @@
 """Independent negative and positive contracts for NACA force+mesh evidence."""
 import csv
-import importlib.util
-import json
 import sys
 import tempfile
 import unittest
