@@ -1,0 +1,73 @@
+name: PR1172 Python regression diagnostics
+
+on:
+  push:
+    branches: [ci/long-campaign-diagnostics]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  pr1172-pyregression-diag:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout pinned PR head
+        uses: actions/checkout@v4
+        with:
+          ref: a107848ef11e6f2c455fabd35ff02603eefa7d4b
+          path: pr
+
+      - name: Checkout diag branch
+        uses: actions/checkout@v4
+        with:
+          ref: ci/long-campaign-diagnostics
+          path: diag
+
+      - name: Install Python stack (identical to cfdx-ci Release)
+        run: |
+          cd "$GITHUB_WORKSPACE/pr"
+          python3 -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install "meshio[all]" h5py pytest gmsh pydantic ansys-fluent-core "ansys-units>=0.12.1"
+          mkdir -p "$GITHUB_WORKSPACE/diag/diag-evidence/logs"
+
+      - name: Record resolved versions
+        run: |
+          cd "$GITHUB_WORKSPACE/pr"
+          .venv/bin/pip freeze | tee "$GITHUB_WORKSPACE/diag/diag-evidence/logs/pr1172_a107848e_pip_freeze.txt"
+
+      - name: Probe PyFluent import
+        run: |
+          cd "$GITHUB_WORKSPACE/pr"
+          set +e
+          .venv/bin/python - > "$GITHUB_WORKSPACE/diag/diag-evidence/logs/pr1172_a107848e_pyfluent_probe.txt" 2>&1 <<'PYEOF'
+          import traceback
+          try:
+              from ansys.fluent.core.filereader.case_file import CaseFile
+              print("PYFLUENT_IMPORT: OK", CaseFile)
+          except BaseException:
+              print("PYFLUENT_IMPORT: FAILED")
+              traceback.print_exc()
+          try:
+              from ansys.units import VariableCatalog
+              print("VariableCatalog.fluent present:", hasattr(VariableCatalog, "fluent"))
+          except BaseException:
+              traceback.print_exc()
+          PYEOF
+
+      - name: Replay targeted pytest modules
+        run: |
+          cd "$GITHUB_WORKSPACE/pr"
+          set +e
+          PYTHONPATH="$PWD/src/cfdx/python" .venv/bin/python -m pytest -q             tests/python/test_pyfluent_dependency_compatibility.py             tests/python/test_pyfluent_import_guard.py             tests/python/test_fluent_adapter.py             tests/python/test_vm2025r2_fluent.py             --tb=long -rA > "$GITHUB_WORKSPACE/diag/diag-evidence/logs/pr1172_a107848e_pytest_targeted.txt" 2>&1
+          echo "PYTEST_EXIT=$?" >> "$GITHUB_WORKSPACE/diag/diag-evidence/logs/pr1172_a107848e_pytest_targeted.txt"
+
+      - name: Commit evidence
+        run: |
+          cd "$GITHUB_WORKSPACE/diag"
+          git config user.name "cfdx-diag-bot"
+          git config user.email "actions@github.com"
+          git add diag-evidence/logs
+          git diff --cached --quiet || (git commit -m "[ci skip] PR1172 a107848e python regression evidence" && git push)
