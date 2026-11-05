@@ -185,6 +185,9 @@ private:
 struct SSTProductionStepResult {
     TurbulenceTransportResult transport;
     bool committed = false;
+    // Provisional means an intermediate, bounded nonlinear predictor, not a
+    // converged SST transport solve. Outer qualification MUST reject it.
+    bool provisional = false;
     std::string reason;
 };
 
@@ -245,7 +248,8 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
     const ScalarBoundaryConditions& omega_bcs = {},
     std::size_t max_iterations = 100,
     double tolerance = 1e-8,
-    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr,
+    bool allow_bounded_provisional = false)
 {
     const std::size_t n = mesh.n_cells();
     if (controls.model != TurbulenceModel::SST)
@@ -284,12 +288,34 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
             mesh, geometry, mass_flux, k, omega, strain_rate, wall_distance,
             controls, k_bcs, omega_bcs, max_iterations, tolerance,
             omega_face_values);
-        if (!step.transport.converged ||
-            step.transport.nonfinite_bound_events != 0 ||
-            !std::isfinite(step.transport.k_residual) ||
-            !std::isfinite(step.transport.second_residual)) {
+        // A segregated outer fixed point may progress with a BOUNDED, finite
+        // intermediate predictor even when its inner SST residual is not yet
+        // converged. This does not certify that predictor: the external
+        // carrier+SST convergence gate requires transport.converged==true.
+        // Opt-in only. Never permit an iterate with clipping or nonfinite data.
+        const bool finite_undistorted =
+            step.transport.nonfinite_bound_events == 0 &&
+            step.transport.k_floor_events == 0 &&
+            step.transport.second_floor_events == 0 &&
+            std::isfinite(step.transport.k_residual) &&
+            std::isfinite(step.transport.second_residual);
+        step.provisional = allow_bounded_provisional &&
+            !step.transport.converged && finite_undistorted;
+        if ((!step.transport.converged && !step.provisional) ||
+            !finite_undistorted) {
             rollback();
-            step.reason = "SST transport did not satisfy convergence and finite-state gates";
+            // Preserve the exact failed transport metrics after rollback.
+            // These distinguish a genuine k/omega fixed-point defect from a
+            // bound violation without weakening the required acceptance gate.
+            step.reason = "SST transport did not satisfy convergence and finite-state gates"
+                " (iterations=" + std::to_string(step.transport.iterations) +
+                ", converged=" + std::to_string(step.transport.converged) +
+                ", k_residual=" + std::to_string(step.transport.k_residual) +
+                ", omega_residual=" + std::to_string(step.transport.second_residual) +
+                ", k_floor_events=" + std::to_string(step.transport.k_floor_events) +
+                ", omega_floor_events=" + std::to_string(step.transport.second_floor_events) +
+                ", nonfinite_bound_events=" +
+                  std::to_string(step.transport.nonfinite_bound_events) + ")";
             return step;
         }
 
@@ -307,7 +333,9 @@ inline SSTProductionStepResult advance_sst_transport_transactionally(
         refresh_sst_production_eddy_viscosity(
             k, omega, strain_rate, F2, controls, nu_t);
         step.committed = true;
-        step.reason = "SST transport and eddy-viscosity refresh committed";
+        step.reason = step.provisional
+            ? "PROVISIONAL bounded SST predictor committed for outer iteration only; NOT CONVERGED"
+            : "SST transport and eddy-viscosity refresh committed";
         return step;
     } catch (...) {
         rollback();
@@ -523,7 +551,8 @@ inline SSTProductionStepResult advance_sst_production_iterate_transactionally(
     const ScalarBoundaryConditions& omega_bcs = {},
     std::size_t max_iterations = 100,
     double tolerance = 1e-8,
-    const ScalarBoundaryFaceValues* omega_face_values = nullptr)
+    const ScalarBoundaryFaceValues* omega_face_values = nullptr,
+    bool allow_bounded_provisional = false)
 {
     if (velocity.size() != mesh.n_cells() || velocity.dimension() != 3 ||
         pressure.size() != mesh.n_cells() || pressure.dimension() != 1 ||
@@ -544,7 +573,8 @@ inline SSTProductionStepResult advance_sst_production_iterate_transactionally(
         auto result = advance_sst_transport_transactionally(
             mesh, geometry, mass_flux, state.k, state.omega, state.strain_rate,
             state.wall_distance, controls, state.nu_t, k_bcs, omega_bcs,
-            max_iterations, tolerance, omega_face_values);
+            max_iterations, tolerance, omega_face_values,
+            allow_bounded_provisional);
         if (!result.committed) {
             transaction.rollback();
             result.reason =
@@ -554,8 +584,9 @@ inline SSTProductionStepResult advance_sst_production_iterate_transactionally(
         }
         validate_sst_production_state(state, mesh.n_cells());
         transaction.commit();
-        result.reason =
-            "coupled SST production iterate committed: derived state and transport converged";
+        result.reason = result.provisional
+            ? "coupled SST provisional predictor accepted; final SST qualification still REQUIRED"
+            : "coupled SST production iterate committed: derived state and transport converged";
         return result;
     } catch (...) {
         if (transaction.active())
@@ -702,8 +733,15 @@ inline ScalarBoundaryFaceValues make_sst_wall_omega_face_values(
         if (!(distance > 0.0) || !std::isfinite(distance))
             throw std::invalid_argument(
                 "SST wall omega requires an outward face normal and positive normal distance");
+        // The legacy value 6*nu/(beta1*d1^2) and the Menter/NASA
+        // first-point estimate 60*nu/(beta1*d1^2) are separate policies.
+        // Neither is equivalent to OpenFOAM's omegaWallFunction, which also
+        // blends with a logarithmic branch and constrains owner cells.
         it->second[face] = sst_wall_omega_value(
-            controls.molecular_viscosity, controls.beta1, distance);
+            controls.molecular_viscosity, controls.beta1, distance) *
+            (controls.sst_wall_omega_factor / 6.0);
+        if (!std::isfinite(it->second[face]) || !(it->second[face] > 0.0))
+            throw std::domain_error("SST wall omega factor overflow");
         ++face_counts[patch_name];
     }
     for (const auto& [name, _] : requested) {
@@ -712,6 +750,108 @@ inline ScalarBoundaryFaceValues make_sst_wall_omega_face_values(
     }
     validate_transport_boundary_face_values(mesh, geometry, values, true);
     return values;
+}
+
+// Geometry/first-cell audit for the V13 FACE Dirichlet omega prescription.
+// NASA's 60*nu/(beta1*y1^2) is defined at the FIRST CELL CENTRE, whereas
+// the existing CFDX 6/60 choice is a face value. Even if both numbers agree,
+// applying them at different locations creates different discrete operators.
+// The optional viscous y+ proxy is valid only for a no-slip wall at the
+// sampled velocity state; it is NOT a wall-function y+ qualification.
+struct SSTWallOmegaDiscreteAudit {
+    std::size_t faces = 0;
+    std::size_t velocity_proxy_faces = 0;
+    double min_distance = std::numeric_limits<double>::infinity();
+    double max_distance = 0.0;
+    double max_tangential_geometry_ratio = 0.0;
+    double min_face_value = std::numeric_limits<double>::infinity();
+    double max_face_value = 0.0;
+    double min_nasa_first_cell_value = std::numeric_limits<double>::infinity();
+    double max_nasa_first_cell_value = 0.0;
+    double min_owner_to_first_cell_ratio = std::numeric_limits<double>::infinity();
+    double max_owner_to_first_cell_ratio = 0.0;
+    double min_viscous_yplus_proxy = std::numeric_limits<double>::infinity();
+    double max_viscous_yplus_proxy = 0.0;
+};
+
+inline SSTWallOmegaDiscreteAudit audit_sst_wall_omega_discretization(
+    const cfdx::core::Mesh& mesh, const FvGeometry& geometry,
+    const std::vector<std::string>& wall_patches,
+    const ScalarBoundaryFaceValues& face_values,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& velocity,
+    const cfdx::core::Field<double,cfdx::core::Location::CELL>& omega,
+    const std::map<std::string,std::array<double,3>>& fixed_wall_velocity,
+    const TurbulenceTransportControls& controls)
+{
+    if (velocity.size()!=mesh.n_cells() || velocity.dimension()!=3 ||
+        omega.size()!=mesh.n_cells() || omega.dimension()!=1 ||
+        !(controls.molecular_viscosity>0.0) || !(controls.beta1>0.0))
+        throw std::invalid_argument("SST wall audit: invalid fields or viscosity");
+    SSTWallOmegaDiscreteAudit result;
+    std::map<std::string,bool> patch_names;
+    for (const auto& name : wall_patches) {
+        if (!patch_names.emplace(name,true).second)
+            throw std::invalid_argument("SST wall audit: duplicate wall patch");
+        if (face_values.values.find(name)==face_values.values.end())
+            throw std::invalid_argument("SST wall audit: missing Dirichlet face values");
+    }
+    for (std::size_t face=0; face<mesh.n_faces(); ++face) {
+        const auto patch=geometry.face_patch.at(face);
+        if (patch>=mesh.boundary().n_patches()) continue;
+        const auto& name=mesh.boundary().patch(patch).name;
+        if (patch_names.find(name)==patch_names.end()) continue;
+        const std::size_t owner=mesh.ownership().owner(face);
+        if (owner>=mesh.n_cells() || mesh.ownership().neighbour(face)>=0)
+            throw std::invalid_argument("SST wall audit: invalid boundary owner");
+        const auto area=geometry.face_area_vectors[face].mag();
+        const auto delta=geometry.face_centres[face]-geometry.cell_centres[owner];
+        const double d=delta.dot(geometry.face_area_vectors[face])/area;
+        if (!(d>0.0) || !std::isfinite(d))
+            throw std::invalid_argument("SST wall audit: nonpositive wall-normal spacing");
+        const auto& patch_values=face_values.values.at(name);
+        if (face>=patch_values.size() || !(patch_values[face]>0.0) ||
+            !std::isfinite(patch_values[face]) ||
+            !(omega(owner)>0.0) || !std::isfinite(omega(owner)))
+            throw std::invalid_argument("SST wall audit: invalid omega value");
+        const double first_cell_target=60.0*controls.molecular_viscosity/
+            (controls.beta1*d*d);
+        if (!std::isfinite(first_cell_target) || !(first_cell_target>0.0))
+            throw std::domain_error("SST wall audit: first-cell target overflow");
+        const double ratio=omega(owner)/first_cell_target;
+        result.faces++;
+        result.min_distance=std::min(result.min_distance,d);
+        result.max_distance=std::max(result.max_distance,d);
+        const double lateral=std::sqrt(std::max(0.0,delta.dot(delta)-d*d));
+        result.max_tangential_geometry_ratio=std::max(
+            result.max_tangential_geometry_ratio,lateral/d);
+        result.min_face_value=std::min(result.min_face_value,patch_values[face]);
+        result.max_face_value=std::max(result.max_face_value,patch_values[face]);
+        result.min_nasa_first_cell_value=std::min(result.min_nasa_first_cell_value,first_cell_target);
+        result.max_nasa_first_cell_value=std::max(result.max_nasa_first_cell_value,first_cell_target);
+        result.min_owner_to_first_cell_ratio=std::min(result.min_owner_to_first_cell_ratio,ratio);
+        result.max_owner_to_first_cell_ratio=std::max(result.max_owner_to_first_cell_ratio,ratio);
+        if (const auto fixed=fixed_wall_velocity.find(name); fixed!=fixed_wall_velocity.end()) {
+            const double nx=geometry.face_area_vectors[face].x/area;
+            const double ny=geometry.face_area_vectors[face].y/area;
+            const double nz=geometry.face_area_vectors[face].z/area;
+            const double dx=velocity(owner,0)-fixed->second[0];
+            const double dy=velocity(owner,1)-fixed->second[1];
+            const double dz=velocity(owner,2)-fixed->second[2];
+            const double normal=dx*nx+dy*ny+dz*nz;
+            const double tangential=std::sqrt(std::max(0.0,
+                dx*dx+dy*dy+dz*dz-normal*normal));
+            // viscous estimate: tau_w ~ mu * |Ut|/y ; y+=y*sqrt(tau_w/rho)/nu.
+            const double yplus=std::sqrt(tangential*d/controls.molecular_viscosity);
+            if (!std::isfinite(yplus))
+                throw std::domain_error("SST wall audit: yplus proxy overflow");
+            result.velocity_proxy_faces++;
+            result.min_viscous_yplus_proxy=std::min(result.min_viscous_yplus_proxy,yplus);
+            result.max_viscous_yplus_proxy=std::max(result.max_viscous_yplus_proxy,yplus);
+        }
+    }
+    if (!result.faces)
+        throw std::invalid_argument("SST wall audit: no boundary wall faces");
+    return result;
 }
 
 // A geometry-free call cannot certify global-face coverage. Retain the old

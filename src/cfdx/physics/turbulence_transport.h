@@ -56,8 +56,46 @@ struct TurbulenceTransportControls {
     double sst_sigma_k1 = 0.85, sst_sigma_k2 = 1.0;
     double sst_sigma_w1 = 0.5, sst_sigma_w2 = 0.856;
     double sst_production_limiter = 10.0;
-    // Opt-in affine-exact near-wall cross-diffusion gradients on skewed meshes.
-    // Existing Gauss behaviour stays the default pending production V&V.
+    // Opt-in Newton linearization of the omega destruction sink. It preserves
+    // -rho*beta*omega^2 at the frozen state, but supplies the exact local
+    // derivative -2*rho*beta*omega to the implicit scalar solve. Does NOT
+    // change the turbulence model or the final nonlinear residual gate.
+    bool sst_omega_newton_sink = false;
+    // Opt-in block Gauss-Seidel coupling: omega is solved before k, and the
+    // k equation is reassembled with the updated omega (F1/F2 remain frozen
+    // for the current inner iteration, as in the existing Picard scheme).
+    bool sst_sequential_omega_first = false;
+    // Explicit wall-value policy; this is NOT a complete OpenFOAM wall function.
+    // 6: original face Dirichlet approximation; 60: Menter first-cell
+    // spacing estimate applied as a face Dirichlet (requires qualification).
+    double sst_wall_omega_factor = 6.0;
+    // Opt-in damping for the OUTER nonlinear k/omega/F1/F2 Picard iteration.
+    // One means the historical algorithm; this never changes equation gates.
+    double sst_picard_damping = 1.0;
+    // Explicit opt-in: dimensionless Picard and row-scaled equation gates for
+    // k [m2/s2] and omega [1/s]. Legacy absolute gates remain the default.
+    // The independent linear status, positivity and final carrier gates still
+    // apply; this option is NOT a physical qualification flag.
+    bool sst_scale_aware_convergence = false;
+    // Experimental, opt-in: Neumaier/extended precision residual for the
+    // per-cell SST local certificate. Trace always compares with FP64.
+    bool sst_compensated_residual_gate = false;
+    // Experimental, opt-in: backtracking that MUST reduce the fully
+    // reassembled SST local equation defect; never relaxes final gates.
+    bool sst_nonlinear_line_search = false;
+    // Existing scalar solve blends candidate and old state with 0.7.
+    // Expose the same parameter (default preserved) for a controlled
+    // 0.7 / 0.9 / 1.0 contract study; 1.0 performs no post-solve damping.
+    double sst_linear_relaxation = 0.7;
+    // V16 opt-in: at resolved no-slip Dirichlet walls use rho*nu for
+    // k and omega boundary diffusion; never use owner-cell eddy viscosity
+    // as the face viscosity. Does NOT implement an omega wall function.
+    bool sst_molecular_wall_diffusion = false;
+
+    // Opt-in affine-exact near-wall cross-diffusion gradients on skewed meshes,
+    // selecting the dimension-aware transport-boundaries WLS variant. The
+    // merged default keeps the boundary-aware certified WLS contraction;
+    // this opt-in stays pending production V&V.
     // For 2-D extruded meshes with EMPTY front/back faces, set dimension=2.
     bool sst_use_wls_boundary_gradients = false;
     int sst_gradient_dimension = 3;
@@ -251,7 +289,14 @@ inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
        !std::isfinite(c.turbulent_prandtl) || !std::isfinite(c.k_min) ||
        !std::isfinite(c.epsilon_min) || !std::isfinite(c.omega_min) ||
        c.density<=0.0 || c.molecular_viscosity<0.0 ||
-       c.turbulent_prandtl<=0.0 || c.k_min<=0.0 ||
+       c.turbulent_prandtl<=0.0 || !std::isfinite(c.sst_picard_damping) ||
+       !std::isfinite(c.sst_wall_omega_factor) ||
+       !std::isfinite(c.sst_linear_relaxation) ||
+       !(c.sst_linear_relaxation > 0.0 && c.sst_linear_relaxation <= 1.0) ||
+       (c.sst_wall_omega_factor != 6.0 && c.sst_wall_omega_factor != 60.0) ||
+       !(c.sst_picard_damping>0.0 && c.sst_picard_damping<=1.0) ||
+       (c.sst_nonlinear_line_search && c.sst_picard_damping != 1.0) ||
+       c.k_min<=0.0 ||
        c.epsilon_min<=0.0 || c.omega_min<=0.0)
         throw std::invalid_argument("invalid turbulence controls");
     const double values[] = {c.C_mu,c.C1,c.C2,c.beta_star,c.beta1,c.beta2,
