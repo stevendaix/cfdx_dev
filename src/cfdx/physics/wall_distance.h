@@ -172,16 +172,17 @@ inline const char* wall_distance_method_name(WallDistanceMethod m) {
 //   * Poisson is a Krylov solve; its iteration count grows like O(n). Measured
 //     46 / 98 / 207 / 461 at n=16 / 32 / 64 / 128, a clean factor 2.2 per
 //     refinement.
-//   * Hamilton-Jacobi, advection-diffusion and the hybrid all take an explicit
-//     pseudo-time step bounded by dt = O(h^2), so the number of steps to reach
-//     steady state grows like O(n^2). Measured with the old fixed budget of
-//     500: advection-diffusion needed 68 steps at n=16 and 224 at n=32
-//     (factor 3.3), then hit the ceiling at n=64 with residual 4.3e-5.
+//   * Hamilton-Jacobi retains an explicit pseudo-time update with a
+//     grid-dependent stability limit. Advection-diffusion and the hybrid now
+//     use implicit Gauss-Seidel/Picard sweeps; their work per sweep grows with
+//     the active grid and convergence depends on cut-cell geometry and the
+//     nonlinear direction field. The previous explicit iteration counts are
+//     historical evidence, not a valid cost model for the implicit solvers.
 //
-// Budgets below are those cost laws, normalized at n=16 with roughly a factor 4
-// of margin over the counts measured there (46 for Poisson, 208 for the slowest
-// pseudo-time method). Methods that are direct or purely graph-based ignore the
-// budget entirely.
+// Budgets below retain conservative resolution scaling pending matched
+// refinement campaigns on the implicit methods. They are execution ceilings,
+// not convergence certificates. Methods that are direct or purely graph-based
+// ignore the budget entirely.
 inline std::size_t wall_distance_iteration_budget(WallDistanceMethod method,
                                                   std::size_t n) {
     const double ratio=static_cast<double>(n)/16.0;
@@ -2314,7 +2315,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
     set_distance_outer_boundary(bvh,g,d,fixed);
     // The fixed set and finite-distance mask are invariant during transport.
-    // Cache active IDs in ascending order to preserve the in-place Gauss-Seidel sweep.
+    // Cache active IDs in ascending order for deterministic forward/reverse sweeps.
     std::vector<std::size_t> active_ids;
     active_ids.reserve(d.size());
     for(std::size_t id=0;id<d.size();++id)
