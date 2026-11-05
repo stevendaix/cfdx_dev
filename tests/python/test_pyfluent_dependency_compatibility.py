@@ -1,4 +1,5 @@
 """An installed, broken optional reader is not an acceptable CI skip."""
+
 from importlib import metadata
 
 import pytest
