@@ -82,7 +82,7 @@ def test_volume_skewness_rejects_boundary_only_mesh():
     arrays[4] = np.full(4, -1, dtype=np.int64)
     arrays[5] = np.asarray([0, 1, 2, 3], dtype=np.int64)
     arrays[6] = np.asarray([0, 4], dtype=np.int64)
-    with pytest.raises(ValueError, match="no internal faces")
+    with pytest.raises(ValueError, match="no internal faces"):
         analyze_volume_skewness(*arrays)
 
 
