@@ -152,6 +152,35 @@ def analyze_volume_skewness(
             face_centres[face_ids], axis=0, weights=weights
         )
 
+    # Resolve the same canonical owner-oriented face vectors as
+    # GeometryCache before checking cell closure/volume or internal metrics.
+    oriented_face_vectors = face_area_vectors.copy()
+    for face_id in range(n_faces):
+        owner_id, neighbour_id = int(own[face_id]), int(nei[face_id])
+        direction = (
+            cell_centres[neighbour_id] - cell_centres[owner_id]
+            if neighbour_id >= 0
+            else face_centres[face_id] - cell_centres[owner_id]
+        )
+        if float(oriented_face_vectors[face_id] @ direction) < 0.0:
+            oriented_face_vectors[face_id] *= -1.0
+
+    # GeometryCache rejects zero-volume polyhedra. Apply the same geometric
+    # sanity gate here so a flat/degenerate cell cannot receive a plausible
+    # skewness score merely because its individual faces have nonzero area.
+    for cell_id in range(n_cells):
+        face_ids = cf[int(co[cell_id]) : int(co[cell_id + 1])]
+        signed_volume = 0.0
+        for face_id_value in face_ids:
+            face_id = int(face_id_value)
+            sign = 1.0 if int(own[face_id]) == cell_id else -1.0
+            signed_volume += float(
+                (face_centres[face_id] - cell_centres[cell_id])
+                @ (sign * oriented_face_vectors[face_id])
+            ) / 3.0
+        if not np.isfinite(signed_volume) or abs(signed_volume) <= np.finfo(float).tiny:
+            raise ValueError(f"cell {cell_id} has zero or non-finite volume")
+
     face_scores = np.full(n_faces, np.nan, dtype=np.float64)
     face_non_orthogonality = np.full(n_faces, np.nan, dtype=np.float64)
     cell_scores = np.zeros(n_cells, dtype=np.float64)
@@ -167,9 +196,7 @@ def analyze_volume_skewness(
             raise ValueError(
                 f"cells adjacent to face {face_id} have coincident centroids"
             )
-        area_vector = face_area_vectors[face_id]
-        if float(area_vector @ line) < 0.0:
-            area_vector = -area_vector
+        area_vector = oriented_face_vectors[face_id]
         cosine = float(
             np.clip((line @ area_vector) / (line_norm * face_areas[face_id]), -1.0, 1.0)
         )
