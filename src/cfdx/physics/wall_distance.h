@@ -2240,7 +2240,7 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
         if((it&3u)==3u || max_change<1e-10*h) {
             final_residual=wall_distance_pde_residual_inf(
                 WallDistanceMethod::ADVECTION_DIFFUSION,d,g,&fixed,gamma,&bvh);
-            if(final_residual<1e-6 && max_change<1e-8*h) {
+            if(final_residual<1e-8 && max_change<1e-8*h) {
                 used=it+1;
                 break;
             }
@@ -2353,7 +2353,18 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
             const double dx=grad_comp(d,id,0),dy=grad_comp(d,id,1),dz=grad_comp(d,id,2);
             const double dn=std::sqrt(dx*dx+dy*dy+dz*dz);
             if(dn>1e-14) {
-                ux=alpha*ux+(1-alpha)*dx/dn; uy=alpha*uy+(1-alpha)*dy/dn; uz=alpha*uz+(1-alpha)*dz/dn;
+                const double ex=dx/dn, ey=dy/dn, ez=dz/dn;
+                // The Poisson potential uses a Neumann outer boundary,
+                // whereas transported distance has exact geometric Dirichlet
+                // data there. Reject auxiliary directions that disagree with
+                // the evolving distance-front normal; otherwise corner
+                // characteristics can remain incompatible with the boundary.
+                const double cosine=ux*ex+uy*ey+uz*ez;
+                const double trust=std::clamp((cosine-0.70)/0.30,0.0,1.0);
+                const double local_alpha=alpha*trust;
+                ux=local_alpha*ux+(1-local_alpha)*ex;
+                uy=local_alpha*uy+(1-local_alpha)*ey;
+                uz=local_alpha*uz+(1-local_alpha)*ez;
                 const double n=std::sqrt(ux*ux+uy*uy+uz*uz);
                 if(n>1e-14){ux/=n;uy/=n;uz/=n;}
             }
