@@ -3,11 +3,10 @@
 The .cas.h5 tests are guarded on pyfluent, which CI does not install, so they
 skip there. The adapter's HDF5 import path has no CI coverage.
 """
-import pytest
-import numpy as np
 
 import os
 
+import pytest
 from cfdx.io.adapters.fluent import FluentAdapter, _parse_s_expressions, _try_pyfluent
 from cfdx.io.interfaces import ConversionResult, SourceInfo
 from cfdx.io.schema import BCType
@@ -53,7 +52,7 @@ class TestFluentAdapter:
         assert "water" in mat_names
         assert "steel" in mat_names
 
-        air = [m for m in adapter._materials if m["name"] == "air"][0]
+        air = next(m for m in adapter._materials if m["name"] == "air")
         assert air["density"] == 1.225
 
     def test_parse_cas_boundary_zones(self, cas_file):
@@ -91,7 +90,7 @@ class TestFluentAdapter:
         assert len(adapter._model_settings) > 0
 
     def test_s_expression_parser(self):
-        text = "(1 \"COMPILED\") (2 3 6\\n 0.0 0.0 0.0\\n )"
+        text = '(1 "COMPILED") (2 3 6\\n 0.0 0.0 0.0\\n )'
         sections = _parse_s_expressions(text)
         assert len(sections) == 2
         assert sections[0][0] == 1
@@ -103,7 +102,9 @@ class TestFluentAdapter:
         adapter.convert(cas_file, result)
         assert result.gap_report.n_supported() > 0
 
-    @pytest.mark.skipif(not PYFLUENT_AVAILABLE, reason="pyfluent not installed")
+    @pytest.mark.skipif(
+        not PYFLUENT_AVAILABLE, reason="PyFluent CaseFile reader unavailable"
+    )
     def test_detect_cas_h5(self):
         adapter = FluentAdapter()
         info = SourceInfo()
@@ -113,7 +114,9 @@ class TestFluentAdapter:
         assert info.solver == "Fluent"
         assert info.format == "cas_h5"
 
-    @pytest.mark.skipif(not PYFLUENT_AVAILABLE, reason="pyfluent not installed")
+    @pytest.mark.skipif(
+        not PYFLUENT_AVAILABLE, reason="PyFluent CaseFile reader unavailable"
+    )
     def test_parse_cas_h5(self):
         adapter = FluentAdapter()
         h5_file = os.path.join(pytest.DATA_DIR, "fluent", "h5", "mixing_elbow.cas.h5")
@@ -126,7 +129,9 @@ class TestFluentAdapter:
         assert len(adapter._zones) > 1  # at least wall-inlet + wall-outlet + interior
         assert adapter.setup.source.version == "hdf5"
 
-    @pytest.mark.skipif(not PYFLUENT_AVAILABLE, reason="pyfluent not installed")
+    @pytest.mark.skipif(
+        not PYFLUENT_AVAILABLE, reason="PyFluent CaseFile reader unavailable"
+    )
     def test_convert_cas_h5_full(self):
         adapter = FluentAdapter()
         h5_file = os.path.join(pytest.DATA_DIR, "fluent", "h5", "mixing_elbow.cas.h5")
@@ -151,7 +156,9 @@ class TestFluentAdapter:
         # Check energy model
         assert result.setup.energy_model == "isothermal"
 
-    @pytest.mark.skipif(not PYFLUENT_AVAILABLE, reason="pyfluent not installed")
+    @pytest.mark.skipif(
+        not PYFLUENT_AVAILABLE, reason="PyFluent CaseFile reader unavailable"
+    )
     def test_import_dat_h5(self):
         adapter = FluentAdapter()
         h5_file = os.path.join(pytest.DATA_DIR, "fluent", "h5", "mixing_elbow.cas.h5")
