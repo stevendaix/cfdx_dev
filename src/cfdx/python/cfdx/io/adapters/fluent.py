@@ -59,7 +59,10 @@ def _try_pyfluent() -> bool:
         from ansys.fluent.core.filereader.case_file import CaseFile  # noqa: F401
 
         return True
-    except ImportError:
+    except (ImportError, AttributeError):
+        # PyFluent is optional. Its package initializer can raise AttributeError
+        # when its generated API modules are version-incompatible; in that case
+        # the CaseFile reader is not usable either.
         return False
 
 
