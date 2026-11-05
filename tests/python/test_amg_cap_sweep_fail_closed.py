@@ -1,8 +1,6 @@
 """Adversarial checks: no cap is qualified on malformed or false-positive CSV."""
 import importlib.util
-import io
 from pathlib import Path
-import sys
 import unittest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "tools/benchmarks/qualify_naca_amg_cap_sweep.py"
