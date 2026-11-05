@@ -174,10 +174,13 @@ def analyze_volume_skewness(
         for face_id_value in face_ids:
             face_id = int(face_id_value)
             sign = 1.0 if int(own[face_id]) == cell_id else -1.0
-            signed_volume += float(
-                (face_centres[face_id] - cell_centres[cell_id])
-                @ (sign * oriented_face_vectors[face_id])
-            ) / 3.0
+            signed_volume += (
+                float(
+                    (face_centres[face_id] - cell_centres[cell_id])
+                    @ (sign * oriented_face_vectors[face_id])
+                )
+                / 3.0
+            )
         if not np.isfinite(signed_volume) or abs(signed_volume) <= np.finfo(float).tiny:
             raise ValueError(f"cell {cell_id} has zero or non-finite volume")
 
@@ -234,9 +237,7 @@ def analyze_volume_skewness(
     if not problem_order:
         problem_order = [
             int(i)
-            for i in assessed_cells[
-                np.argsort(cell_scores[assessed_cells])[::-1]
-            ][:20]
+            for i in assessed_cells[np.argsort(cell_scores[assessed_cells])[::-1]][:20]
         ]
     return VolumeSkewnessReport(
         cell_skewness=cell_scores,
@@ -325,7 +326,9 @@ def analyze_cfdx_volume_skewness(
             arrays["face_vertices"].size + arrays["cell_faces"].size
         )
         if connectivity_entries > MAX_VOLUME_CONNECTIVITY:
-            raise ValueError("volume mesh exceeds the 2,000,000-entry connectivity limit")
+            raise ValueError(
+                "volume mesh exceeds the 2,000,000-entry connectivity limit"
+            )
         data = {name: dataset[...] for name, dataset in arrays.items()}
     stat_after = source.stat()
     after = (
