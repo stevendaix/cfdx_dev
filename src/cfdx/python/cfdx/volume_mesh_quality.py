@@ -265,10 +265,25 @@ def analyze_cfdx_volume_skewness(
             raise ValueError("volume topology exceeds the 64 MiB eager-read budget")
         if arrays["points"].ndim != 2 or arrays["points"].shape[1] != 3:
             raise ValueError("points must have shape (n_points, 3)")
-        if arrays["owner"].ndim != 1:
-            raise ValueError("owner must be one-dimensional")
-        if arrays["cell_offsets"].ndim != 1:
-            raise ValueError("cell_offsets must be one-dimensional")
+        if arrays["points"].dtype.kind != "f":
+            raise ValueError("points must use a floating-point dtype")
+        integer_names = names[1:]
+        for name in integer_names:
+            if arrays[name].ndim != 1 or arrays[name].dtype.kind not in "iu":
+                raise ValueError(f"{name} must be a one-dimensional integer dataset")
+        if arrays["neighbour"].dtype.kind != "i":
+            raise ValueError("neighbour indices must use a signed integer dtype")
+        n_cells = int(arrays["cell_offsets"].size - 1)
+        n_faces = int(arrays["owner"].size)
+        if n_cells < 1 or n_cells > MAX_VOLUME_CELLS:
+            raise ValueError("volume mesh exceeds the 100,000-cell eager-load limit")
+        if n_faces > MAX_VOLUME_FACES:
+            raise ValueError("volume mesh exceeds the 500,000-face eager-load limit")
+        connectivity_entries = int(
+            arrays["face_vertices"].size + arrays["cell_faces"].size
+        )
+        if connectivity_entries > MAX_VOLUME_CONNECTIVITY:
+            raise ValueError("volume mesh exceeds the 2,000,000-entry connectivity limit")
         data = {name: dataset[...] for name, dataset in arrays.items()}
     stat_after = source.stat()
     after = (
