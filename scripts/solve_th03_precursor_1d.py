@@ -171,7 +171,10 @@ def state_terms(y, U, k, omega, c):
     }
 
 
-def solve_precursor(c: PrecursorControls = PrecursorControls()):
+_DEFAULT_PRECURSOR_CONTROLS = PrecursorControls()
+
+
+def solve_precursor(c: PrecursorControls = _DEFAULT_PRECURSOR_CONTROLS):
     edges, y = grid(c)
     eta = y / c.height
     U = 6.0 * c.bulk_velocity * eta * (1.0 - eta)
