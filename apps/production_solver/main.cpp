@@ -1117,6 +1117,19 @@ int main(int argc, char** argv)
                 std::cout << "Pressure true-residual target: " << value
                           << " (physical conservation gate unchanged)\n";
             }
+            const auto refine_setting = case_setup.numerics.raw_settings.find(
+                "pressure_iterative_refinement_steps");
+            if (refine_setting != case_setup.numerics.raw_settings.end()) {
+                const auto& value = refine_setting->second;
+                if (value.size() != 1 || value[0] < '0' || value[0] > '8')
+                    throw std::invalid_argument(
+                        "pressure_iterative_refinement_steps must be an integer from 0 to 8");
+                controls.pressure_linear_solver.residual_refinement_steps =
+                    static_cast<std::size_t>(value[0] - '0');
+                std::cout << "Pressure original-system refinement steps: "
+                          << controls.pressure_linear_solver.residual_refinement_steps
+                          << " (opt-in; original FP64 tolerance unchanged)\n";
+            }
             const auto pressure_budget = case_setup.numerics.raw_settings.find(
                 "pressure_linear_max_iterations");
             if (pressure_budget != case_setup.numerics.raw_settings.end()) {
