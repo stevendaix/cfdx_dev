@@ -293,6 +293,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/linear_solver_models.h
     src/cfdx/core/linalg/linear_solver_dispatch.h
     src/cfdx/core/linalg/null_space.h
+    src/cfdx/core/linalg/projected_gmres.h
     src/cfdx/core/linalg/matrix_free_fv_operator.h
     src/cfdx/core/linalg/amg_setup_footprint.h
     src/cfdx/core/linalg/amg_preconditioner.h
@@ -1230,12 +1231,19 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_n8_amg_anisotropy_scaling tests/validation/test_n8_amg_anisotropy_scaling.cpp)
     add_cfdx_test(test_anisotropic_krylov_matrix tests/validation/test_anisotropic_krylov_matrix.cpp)
     add_cfdx_test(test_petsc_hypre_native_port_anisotropy tests/validation/test_petsc_hypre_native_port_anisotropy.cpp)
+    add_cfdx_test(test_neumann_anisotropic_pressure_qualification tests/validation/test_neumann_anisotropic_pressure_qualification.cpp)
+    set_tests_properties(test_neumann_anisotropic_pressure_qualification PROPERTIES LABELS "linalg;anisotropy;neumann;qualification" TIMEOUT 120)
     set_tests_properties(test_petsc_hypre_native_port_anisotropy PROPERTIES LABELS "linalg;anisotropy;native_port" TIMEOUT 90)
     set_tests_properties(test_anisotropic_krylov_matrix PROPERTIES LABELS "linalg;anisotropy;qualification" TIMEOUT 120)
     add_test(NAME test_amg_sparse_coarse_regression COMMAND test_anisotropic_krylov_matrix --coarse-stall)
     set_tests_properties(test_amg_sparse_coarse_regression PROPERTIES LABELS "linalg;anisotropy;regression" TIMEOUT 10)
     add_cfdx_test(test_n9_common_schur_qualification tests/validation/test_n9_common_schur_qualification.cpp)
     add_cfdx_test(test_n9_s10_pressure_reference_policies tests/validation/test_n9_s10_pressure_reference_policies.cpp)
+    # Keep compilation of the large steady-solver integration oracle bounded.
+    # This does not change optimization of the CFDX production library.
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_n9_s10_pressure_reference_policies PRIVATE -O0)
+    endif()
     # Run each production Schur model as an independent physical test.
     # The 32x32 Ghia cavity is expensive for some preconditioners; splitting
     # the cases lets CI parallelize them without weakening any physical gate.

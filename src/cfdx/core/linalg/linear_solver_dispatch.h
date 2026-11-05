@@ -9,6 +9,7 @@
 #include "cfdx/core/linalg/linear_solver_models.h"
 #include "cfdx/core/linalg/matrix_diagnostics.h"
 #include "cfdx/core/linalg/null_space.h"
+#include "cfdx/core/linalg/projected_gmres.h"
 
 #include <algorithm>
 #include <cmath>
@@ -25,19 +26,23 @@ struct LinearSolveReport {
     LinearScalingModel applied_scaling = LinearScalingModel::None;
 };
 
-inline double physical_relative_residual(
+inline double physical_residual_norm(
     const SparseMatrix& matrix,
     const Vector& solution,
     const Vector& rhs) {
     const auto ax = matrix.matvec(solution);
-    double r2 = 0.0;
-    double b2 = 0.0;
-    for (std::size_t i = 0; i < ax.size(); ++i) {
-        const double ri = ax[i] - rhs(i);
-        r2 += ri * ri;
-        b2 += rhs(i) * rhs(i);
-    }
-    return std::sqrt(r2) / std::max(std::sqrt(b2), 1.0e-300);
+    double norm = 0.0;
+    for (std::size_t i = 0; i < ax.size(); ++i)
+        norm = std::hypot(norm, ax[i] - rhs(i));
+    return norm;
+}
+
+inline double physical_relative_residual(
+    const SparseMatrix& matrix,
+    const Vector& solution,
+    const Vector& rhs) {
+    return physical_residual_norm(matrix, solution, rhs) /
+        std::max(rhs.norm2(), 1e-300);
 }
 
 inline MatrixScaling to_matrix_scaling(LinearScalingModel model) {
@@ -113,6 +118,12 @@ inline LinearSolveReport solve_linear_system(
     // the longstanding NOT_APPLICABLE runtime contract for this case.
     const auto characteristics = measure_matrix_characteristics(
         matrix, problem == LinearProblemKind::CoupledPressureVelocity);
+    // For b=0, the meaningful relative reference is the initial true
+    // residual ||A*x_initial||. Using ||b||=0 or skipping certification
+    // would either report infinity or accept an unverified homogeneous solve.
+    const double physical_rhs_norm = rhs.norm2();
+    const double homogeneous_initial_norm = physical_rhs_norm == 0.0
+        ? physical_residual_norm(matrix, solution, rhs) : 0.0;
     if (request.krylov == KrylovModel::CG &&
         (!characteristics.numerically_symmetric ||
          !characteristics.positive_diagonal)) {
@@ -218,14 +229,22 @@ inline LinearSolveReport solve_linear_system(
                 *solve_matrix, solve_rhs, solve_solution, max_iterations, inner_tolerance, pc);
             break;
         case KrylovModel::GMRES:
-            report.result = solve_gmres(
-                *solve_matrix, solve_rhs, solve_solution, request.gmres_restart,
-                max_iterations, inner_tolerance, pc);
-            break;
         case KrylovModel::FGMRES:
-            report.result = solve_fgmres(
-                *solve_matrix, solve_rhs, solve_solution, request.gmres_restart,
-                max_iterations, inner_tolerance, pc);
+            if (null_space) {
+                // The projected right-preconditioned Arnoldi recurrence also
+                // covers changing multilevel corrections (FGMRES semantics).
+                report.result = solve_projected_gmres(
+                    *solve_matrix, solve_rhs, solve_solution, *null_space,
+                    request.gmres_restart, max_iterations, inner_tolerance, *pc);
+            } else if (report.plan.krylov == KrylovModel::GMRES) {
+                report.result = solve_gmres(
+                    *solve_matrix, solve_rhs, solve_solution, request.gmres_restart,
+                    max_iterations, inner_tolerance, pc);
+            } else {
+                report.result = solve_fgmres(
+                    *solve_matrix, solve_rhs, solve_solution, request.gmres_restart,
+                    max_iterations, inner_tolerance, pc);
+            }
             break;
         case KrylovModel::Auto:
         case KrylovModel::LGMRES:
@@ -238,13 +257,15 @@ inline LinearSolveReport solve_linear_system(
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) = column_scale[i] * scaled_solution(i);
     }
-    // Every dispatch path uses the ORIGINAL physical system for its final
-    // convergence certificate. This never loosens the requested tolerance.
-    report.physical_residual_relative =
-        physical_relative_residual(matrix, solution, rhs);
-    double rhs_norm_squared = 0.0;
-    for (std::size_t i = 0; i < rhs.size(); ++i) rhs_norm_squared += rhs(i) * rhs(i);
-    if (report.result.status == SolverStatus::CONVERGED && rhs_norm_squared > 0.0 &&
+    // Every dispatch path uses the ORIGINAL unscaled physical system for
+    // its final convergence certificate, including the homogeneous b=0 case.
+    const double final_residual = physical_residual_norm(matrix, solution, rhs);
+    const double reference = physical_rhs_norm > 0.0
+        ? physical_rhs_norm : homogeneous_initial_norm;
+    report.physical_residual_relative = reference > 0.0
+        ? final_residual / reference
+        : (final_residual == 0.0 ? 0.0 : std::numeric_limits<double>::infinity());
+    if (report.result.status == SolverStatus::CONVERGED &&
         (!std::isfinite(report.physical_residual_relative) ||
          report.physical_residual_relative > tolerance))
         report.result.status = SolverStatus::MAX_ITER_REACHED;

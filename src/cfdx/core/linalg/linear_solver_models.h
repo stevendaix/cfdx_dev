@@ -297,9 +297,11 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     const bool anisotropic_amg =
         plan.preconditioner == PreconditionerModel::AnisotropicBoomerAMG ||
         plan.preconditioner == PreconditionerModel::AnisotropicSmoothedAggregationAMG;
-    if (anisotropic_amg && plan.automatic_krylov) {
+    if (plan.automatic_krylov &&
+        (anisotropic_amg ||
+         plan.preconditioner == PreconditionerModel::AnisotropicLine)) {
         plan.krylov = KrylovModel::FGMRES;
-        plan.reason += "; anisotropic line-AMG requires flexible GMRES";
+        plan.reason += "; anisotropic line preconditioning uses flexible GMRES";
     }
 
     // Row/column equilibration is generally NOT a symmetry-preserving
@@ -354,8 +356,12 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     if (plan.null_space == NullSpaceModel::Constant && !cg_problem)
         throw std::invalid_argument(
             "constant null space is currently qualified only for pressure/diffusion problems");
-    if (plan.null_space == NullSpaceModel::Constant && plan.krylov != KrylovModel::CG)
-        throw std::invalid_argument("constant null space currently requires projected CG");
+    if (plan.null_space == NullSpaceModel::Constant &&
+        plan.krylov != KrylovModel::CG &&
+        plan.krylov != KrylovModel::GMRES &&
+        plan.krylov != KrylovModel::FGMRES)
+        throw std::invalid_argument(
+            "constant null space requires CG, GMRES or FGMRES with explicit projection");
     return plan;
 }
 
