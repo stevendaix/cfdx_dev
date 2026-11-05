@@ -99,7 +99,22 @@ inline LinearSolveReport solve_linear_system(
     std::size_t max_iterations = 1000,
     double tolerance = 1e-12) {
     LinearSolveReport report;
-    report.plan = select_linear_solver(problem, matrix.n_rows(), request);
+    // Route against actual CSR coefficients. An explicitly forced CG solve
+    // with a non-SPD matrix fails closed without mutating the solution; keep
+    // the longstanding NOT_APPLICABLE runtime contract for this case.
+    const auto characteristics = measure_matrix_characteristics(
+        matrix, problem == LinearProblemKind::CoupledPressureVelocity);
+    if (request.krylov == KrylovModel::CG &&
+        (!characteristics.numerically_symmetric ||
+         !characteristics.positive_diagonal)) {
+        report.plan = select_linear_solver(problem, matrix.n_rows(), request);
+        report.plan.reason = "CG rejected: measured matrix is not symmetric with a positive diagonal";
+        report.result.status = SolverStatus::NOT_APPLICABLE;
+        report.physical_residual_relative =
+            physical_relative_residual(matrix, solution, rhs);
+        return report;
+    }
+    report.plan = select_linear_solver(problem, characteristics, request);
 
     if (request.scaling != LinearScalingModel::None &&
         request.null_space != NullSpaceModel::None)
@@ -135,6 +150,13 @@ inline LinearSolveReport solve_linear_system(
         }
         report.applied_scaling = request.scaling;
     }
+
+    // Equilibration changes the residual norm. Converging only to the
+    // requested tolerance in scaled coordinates may fail that same tolerance
+    // in physical coordinates. Request one decade more inner accuracy and
+    // still gate exclusively on the original physical true residual.
+    const double inner_tolerance = request.scaling == LinearScalingModel::None
+        ? tolerance : 0.1 * tolerance;
 
     std::unique_ptr<Preconditioner> preconditioner;
     if (problem == LinearProblemKind::CoupledPressureVelocity) {
@@ -173,28 +195,28 @@ inline LinearSolveReport solve_linear_system(
             if (null_space) {
                 report.result = pc
                     ? solve_cg(*solve_matrix, solve_rhs, solve_solution, *pc, *null_space,
-                               max_iterations, tolerance)
+                               max_iterations, inner_tolerance)
                     : solve_cg(*solve_matrix, solve_rhs, solve_solution, *null_space,
-                               max_iterations, tolerance);
+                               max_iterations, inner_tolerance);
             } else {
                 report.result = pc
-                    ? solve_cg(*solve_matrix, solve_rhs, solve_solution, *pc, max_iterations, tolerance)
-                    : solve_cg(*solve_matrix, solve_rhs, solve_solution, max_iterations, tolerance);
+                    ? solve_cg(*solve_matrix, solve_rhs, solve_solution, *pc, max_iterations, inner_tolerance)
+                    : solve_cg(*solve_matrix, solve_rhs, solve_solution, max_iterations, inner_tolerance);
             }
             break;
         case KrylovModel::BiCGStab:
             report.result = solve_bicgstab(
-                *solve_matrix, solve_rhs, solve_solution, max_iterations, tolerance, pc);
+                *solve_matrix, solve_rhs, solve_solution, max_iterations, inner_tolerance, pc);
             break;
         case KrylovModel::GMRES:
             report.result = solve_gmres(
                 *solve_matrix, solve_rhs, solve_solution, request.gmres_restart,
-                max_iterations, tolerance, pc);
+                max_iterations, inner_tolerance, pc);
             break;
         case KrylovModel::FGMRES:
             report.result = solve_fgmres(
                 *solve_matrix, solve_rhs, solve_solution, request.gmres_restart,
-                max_iterations, tolerance, pc);
+                max_iterations, inner_tolerance, pc);
             break;
         case KrylovModel::Auto:
         case KrylovModel::LGMRES:
@@ -206,16 +228,17 @@ inline LinearSolveReport solve_linear_system(
     if (request.scaling != LinearScalingModel::None) {
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) = column_scale[i] * scaled_solution(i);
-        report.physical_residual_relative =
-            physical_relative_residual(matrix, solution, rhs);
-        if (report.result.status == SolverStatus::CONVERGED &&
-            (!std::isfinite(report.physical_residual_relative) ||
-             report.physical_residual_relative > tolerance))
-            report.result.status = SolverStatus::MAX_ITER_REACHED;
-    } else {
-        report.physical_residual_relative =
-            physical_relative_residual(matrix, solution, rhs);
     }
+    // Every dispatch path uses the ORIGINAL physical system for its final
+    // convergence certificate. This never loosens the requested tolerance.
+    report.physical_residual_relative =
+        physical_relative_residual(matrix, solution, rhs);
+    double rhs_norm_squared = 0.0;
+    for (std::size_t i = 0; i < rhs.size(); ++i) rhs_norm_squared += rhs(i) * rhs(i);
+    if (report.result.status == SolverStatus::CONVERGED && rhs_norm_squared > 0.0 &&
+        (!std::isfinite(report.physical_residual_relative) ||
+         report.physical_residual_relative > tolerance))
+        report.result.status = SolverStatus::MAX_ITER_REACHED;
     return report;
 }
 

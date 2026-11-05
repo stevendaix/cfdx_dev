@@ -1227,6 +1227,10 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_n8_schur_representative_cfd tests/validation/test_n8_schur_representative_cfd.cpp)
     add_cfdx_test(test_n8_schur_complete_krylov tests/validation/test_n8_schur_complete_krylov.cpp)
     add_cfdx_test(test_n8_amg_anisotropy_scaling tests/validation/test_n8_amg_anisotropy_scaling.cpp)
+    add_cfdx_test(test_anisotropic_krylov_matrix tests/validation/test_anisotropic_krylov_matrix.cpp)
+    set_tests_properties(test_anisotropic_krylov_matrix PROPERTIES LABELS "linalg;anisotropy;qualification" TIMEOUT 120)
+    add_test(NAME test_amg_sparse_coarse_regression COMMAND test_anisotropic_krylov_matrix --coarse-stall)
+    set_tests_properties(test_amg_sparse_coarse_regression PROPERTIES LABELS "linalg;anisotropy;regression" TIMEOUT 10)
     add_cfdx_test(test_n9_common_schur_qualification tests/validation/test_n9_common_schur_qualification.cpp)
     add_cfdx_test(test_n9_s10_pressure_reference_policies tests/validation/test_n9_s10_pressure_reference_policies.cpp)
     # Run each production Schur model as an independent physical test.
@@ -1600,3 +1604,4 @@ if(CFDX_BUILD_TESTS AND CFDX_ENABLE_LONG_VALIDATION)
         LABELS "numerics;gradient;validation;long"
         FIXTURES_REQUIRED cfdx_validation_meshes_full)
 endif()
+

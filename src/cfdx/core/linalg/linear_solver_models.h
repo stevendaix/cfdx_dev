@@ -162,6 +162,10 @@ struct MatrixCharacteristics {
     bool strongly_scaled = false;
     // Large diagonal coefficient spread; this is not a geometric anisotropy metric.
     bool large_diagonal_dynamic_range = false;
+    // Algebraic proxy: in at least one row, negative off-diagonal couplings
+    // differ by >= 10^3. This is not a mesh aspect-ratio measurement.
+    bool strongly_directional_coupling = false;
+    bool positive_diagonal = true;
     bool saddle_point = false;
 };
 
@@ -213,6 +217,20 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
         case LinearProblemKind::Diffusion:
             if (characteristics.numerically_symmetric &&
                 characteristics.diagonally_dominant &&
+                characteristics.positive_diagonal &&
+                characteristics.strongly_directional_coupling &&
+                request.null_space != NullSpaceModel::Constant) {
+                // The existing certificate validates damping, not the
+                // complete SPD character of the multilevel V-cycle.
+                // Use flexible right-preconditioned Krylov rather than CG
+                // for the difficult directionally-coupled pressure path.
+                plan.krylov = KrylovModel::FGMRES;
+                plan.preconditioner = equations < 24 ? PreconditionerModel::Jacobi
+                                                     : PreconditionerModel::NativeAMG;
+                plan.reason = "strong directional off-diagonal coupling: flexible GMRES and strength-aware algebraic multigrid; true residual certified";
+            } else if (characteristics.numerically_symmetric &&
+                characteristics.diagonally_dominant &&
+                characteristics.positive_diagonal &&
                 !characteristics.large_diagonal_dynamic_range &&
                 !characteristics.strongly_scaled) {
                 plan.krylov = KrylovModel::CG;
@@ -266,13 +284,30 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     if (!plan.automatic_krylov) plan.krylov = request.krylov;
     if (!plan.automatic_preconditioner) plan.preconditioner = request.preconditioner;
 
+    // Row/column equilibration is generally NOT a symmetry-preserving
+    // congruence transformation. Reject explicit CG and use nonsymmetric-safe
+    // Krylov for auto selection; symmetric-diagonal scaling is admissible.
+    const bool nonsymmetric_scaling =
+        request.scaling == LinearScalingModel::Row ||
+        request.scaling == LinearScalingModel::Column ||
+        request.scaling == LinearScalingModel::RowColumn;
+    if (plan.krylov == KrylovModel::CG && nonsymmetric_scaling) {
+        if (!plan.automatic_krylov)
+            throw std::invalid_argument("CG cannot use nonsymmetric algebraic scaling");
+        plan.krylov = KrylovModel::FGMRES;
+        plan.reason += "; nonsymmetric scaling requires flexible GMRES";
+    }
+
     if (plan.null_space == NullSpaceModel::Constant && plan.automatic_preconditioner)
         plan.reason += "; projected constant null space is enforced across Krylov and compatible preconditioning";
 
     const bool cg_problem = problem == LinearProblemKind::PressurePoisson ||
                             problem == LinearProblemKind::Diffusion;
-    if (plan.krylov == KrylovModel::CG && !cg_problem)
-        throw std::invalid_argument("CG requires an SPD pressure/diffusion problem profile");
+    if (plan.krylov == KrylovModel::CG &&
+        (!cg_problem || !characteristics.numerically_symmetric ||
+         !characteristics.positive_diagonal))
+        throw std::invalid_argument(
+            "CG requires a symmetric, positive-diagonal pressure/diffusion operator");
     if (plan.krylov == KrylovModel::CG &&
         plan.preconditioner != PreconditionerModel::None &&
         plan.preconditioner != PreconditionerModel::Jacobi &&

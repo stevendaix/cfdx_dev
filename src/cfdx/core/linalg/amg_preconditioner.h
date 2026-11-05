@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <limits>
 #include <map>
+#include <queue>
 #include <stdexcept>
 #include <string>
 #include <set>
@@ -1353,23 +1354,32 @@ private:
 
         enum class Point : unsigned char { Undecided, Fine, Coarse };
         std::vector<Point> point(n, Point::Undecided);
+        // Preserve the original dynamic influence rule and lowest-index tie
+        // break without rescanning all remaining vertices after each seed.
+        // Stale heap entries are ignored when popped. Each update pushes one
+        // candidate, bounding the selection cost by O((n+nnz) log(n+nnz)).
         std::vector<std::size_t> influence(n, 0);
-        for (std::size_t i = 0; i < n; ++i)
+        using Candidate = std::pair<std::size_t, std::size_t>;
+        std::priority_queue<Candidate> candidates;
+        for (std::size_t i = 0; i < n; ++i) {
             influence[i] = transpose[i].size();
+            candidates.emplace(influence[i], n - i);
+        }
 
         std::size_t undecided = n;
 
         while (undecided > 0) {
             std::size_t best = n;
-            std::size_t best_measure = 0;
-            for (std::size_t i = 0; i < n; ++i) {
-                if (point[i] != Point::Undecided) continue;
-                if (best == n || influence[i] > best_measure ||
-                    (influence[i] == best_measure && i < best)) {
+            while (!candidates.empty()) {
+                const auto [measure, reverse_index] = candidates.top();
+                candidates.pop();
+                const std::size_t i = n - reverse_index;
+                if (point[i] == Point::Undecided && measure == influence[i]) {
                     best = i;
-                    best_measure = influence[i];
+                    break;
                 }
             }
+            if (best == n) return false;
 
             point[best] = Point::Coarse;
             --undecided;
@@ -1385,8 +1395,10 @@ private:
                     point[j] = Point::Fine;
                     --undecided;
                     for (const std::size_t k : strong[j]) {
-                        if (point[k] == Point::Undecided)
+                        if (point[k] == Point::Undecided) {
                             ++influence[k];
+                            candidates.emplace(influence[k], n - k);
+                        }
                     }
                 }
             }
@@ -1641,32 +1653,54 @@ private:
         // Deterministic uncoupled aggregation. The most connected unassigned
         // point seeds an aggregate and absorbs its unassigned strong
         // neighbours. Isolated points become singleton aggregates.
+        //
+        // Keep the residual unassigned degree in a lazy max-heap. The former
+        // implementation scanned every vertex to recompute every degree for
+        // every new aggregate (quadratic work on sparse diffusion graphs).
+        // This is the SAME seed/tie policy, but each edge is updated only
+        // when an endpoint becomes assigned, giving O((n+nnz) log n) setup.
         aggregate.assign(n, n);
         coarse_n = 0;
         std::size_t remaining = n;
-        while (remaining > 0) {
-            std::size_t seed = n;
-            std::size_t best_degree = 0;
-            for (std::size_t i = 0; i < n; ++i) {
-                if (aggregate[i] != n) continue;
-                std::size_t degree = 0;
-                for (const std::size_t j : neighborhood[i])
-                    if (aggregate[j] == n) ++degree;
-                if (seed == n || degree > best_degree ||
-                    (degree == best_degree && i < seed)) {
-                    seed = i;
-                    best_degree = degree;
+        std::vector<std::size_t> unassigned_degree(n, 0);
+        // For equal degrees, the lowest vertex index must win.
+        using Candidate = std::pair<std::size_t, std::size_t>;
+        std::priority_queue<Candidate> candidates;
+        for (std::size_t i = 0; i < n; ++i) {
+            unassigned_degree[i] = neighborhood[i].size();
+            candidates.emplace(unassigned_degree[i], n - i);
+        }
+        auto assign_to_aggregate = [&](std::size_t vertex, std::size_t id) {
+            if (aggregate[vertex] != n) return;
+            aggregate[vertex] = id;
+            --remaining;
+            for (const std::size_t neighbor : neighborhood[vertex]) {
+                if (aggregate[neighbor] == n) {
+                    // The strength neighbourhood is symmetrized above.
+                    --unassigned_degree[neighbor];
+                    candidates.emplace(unassigned_degree[neighbor], n - neighbor);
                 }
             }
+        };
+        while (remaining > 0) {
+            std::size_t seed = n;
+            while (!candidates.empty()) {
+                const auto [degree, reverse_index] = candidates.top();
+                candidates.pop();
+                const std::size_t index = n - reverse_index;
+                if (aggregate[index] != n || unassigned_degree[index] != degree)
+                    continue;
+                seed = index;
+                break;
+            }
+            if (seed == n) throw std::logic_error("AMG aggregation heap lost an unassigned vertex");
 
             const std::size_t id = coarse_n++;
-            aggregate[seed] = id;
-            --remaining;
+            // Snapshot the neighbourhood: assigned neighbours must not be
+            // included, but updating the heap does not mutate this graph.
+            assign_to_aggregate(seed, id);
             for (const std::size_t j : neighborhood[seed]) {
-                if (aggregate[j] == n) {
-                    aggregate[j] = id;
-                    --remaining;
-                }
+                assign_to_aggregate(j, id);
             }
         }
 
@@ -1933,6 +1967,21 @@ private:
         const auto& A = levels_[level].A;
         const std::size_t n = A.n_rows();
         if (r.size() != n || n == 0) return false;
+
+        // A strength graph can stop coarsening well before the level is tiny
+        // (e.g. shifted elliptic operators with no strong C/F neighbours).
+        // Never factor such a level densely: O(n^3) work and O(n^2) storage
+        // can dominate the entire solve and, at 8k fine unknowns, take
+        // seconds per V-cycle. Use a fixed, linear sparse relaxation as a
+        // bounded coarse correction. The outer Krylov solver must still
+        // certify the true residual; no tolerance or convergence gate changes.
+        constexpr std::size_t dense_direct_limit = 16;
+        constexpr std::size_t sparse_coarse_sweeps = 24;
+        if (n > dense_direct_limit) {
+            if (x.size() != n) x.resize(n);
+            x.fill(0.0);
+            return smooth(level, r, x, sparse_coarse_sweeps);
+        }
 
         const std::size_t system_n = n + (constant_null_space_ ? 1 : 0);
         std::vector<double> m(system_n * system_n, 0.0);

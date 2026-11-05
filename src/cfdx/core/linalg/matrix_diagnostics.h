@@ -125,7 +125,8 @@ inline const char* to_string(MatrixPathology pathology) {
 
 inline MatrixDiagnostics diagnose_matrix(
     const SparseMatrix& matrix,
-    double diagonal_relative_tolerance = 1e-14) {
+    double diagonal_relative_tolerance = 1e-14,
+    bool include_topology = true) {
     if (!(diagonal_relative_tolerance >= 0.0) ||
         !std::isfinite(diagonal_relative_tolerance))
         throw std::invalid_argument("diagonal relative tolerance must be finite and non-negative");
@@ -239,36 +240,40 @@ inline MatrixDiagnostics diagnose_matrix(
     if (d.rows != d.columns)
         d.minimum_gershgorin_margin = std::numeric_limits<double>::quiet_NaN();
 
-    // Connected components of the undirected sparsity graph. For a rectangular
-    // matrix, rows and columns are mapped into one bipartite graph.
-    const std::size_t nodes = d.rows + d.columns;
-    std::vector<std::vector<std::size_t>> graph(nodes);
-    for (std::size_t i = 0; i < d.rows; ++i) {
-        for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-            const std::size_t j = col[k];
-            if (std::abs(val[k]) == 0.0) continue;
-            graph[i].push_back(d.rows + j);
-            graph[d.rows + j].push_back(i);
+    // The solver-selection hot path needs coefficient evidence, not an
+    // expensive 2N-node topology graph. Preserve topology for full diagnostics.
+    if (include_topology) {
+        // Connected components of the undirected sparsity graph. For a rectangular
+        // matrix, rows and columns are mapped into one bipartite graph.
+        const std::size_t nodes = d.rows + d.columns;
+        std::vector<std::vector<std::size_t>> graph(nodes);
+        for (std::size_t i = 0; i < d.rows; ++i) {
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                const std::size_t j = col[k];
+                if (std::abs(val[k]) == 0.0) continue;
+                graph[i].push_back(d.rows + j);
+                graph[d.rows + j].push_back(i);
+            }
         }
-    }
-    std::vector<bool> visited(nodes, false);
-    for (std::size_t root = 0; root < nodes; ++root) {
-        if (visited[root]) continue;
-        ++d.connected_components;
-        std::vector<std::size_t> stack{root};
-        visited[root] = true;
-        while (!stack.empty()) {
-            const auto node = stack.back();
-            stack.pop_back();
-            for (const auto neighbour : graph[node]) {
-                if (!visited[neighbour]) {
-                    visited[neighbour] = true;
-                    stack.push_back(neighbour);
+        std::vector<bool> visited(nodes, false);
+        for (std::size_t root = 0; root < nodes; ++root) {
+            if (visited[root]) continue;
+            ++d.connected_components;
+            std::vector<std::size_t> stack{root};
+            visited[root] = true;
+            while (!stack.empty()) {
+                const auto node = stack.back();
+                stack.pop_back();
+                for (const auto neighbour : graph[node]) {
+                    if (!visited[neighbour]) {
+                        visited[neighbour] = true;
+                        stack.push_back(neighbour);
+                    }
                 }
             }
         }
-    }
 
+    }
     return d;
 }
 
@@ -286,7 +291,7 @@ inline MatrixCharacteristics measure_matrix_characteristics(
         throw std::invalid_argument(
             "matrix symmetry relative tolerance must be finite and non-negative");
 
-    const auto d = diagnose_matrix(matrix);
+    const auto d = diagnose_matrix(matrix, 1e-14, false);
     MatrixCharacteristics c;
     c.equations = d.rows;
     c.average_nnz_per_row =
@@ -305,6 +310,32 @@ inline MatrixCharacteristics measure_matrix_characteristics(
     c.large_diagonal_dynamic_range = std::isfinite(d.diagonal_dynamic_range) &&
                                     d.diagonal_dynamic_range >= 1.0e4;
     c.saddle_point = saddle_point;
+    // A local row-wise directional-coupling indicator. Comparing negative
+    // off-diagonal entries (the diffusion/pressure M-matrix graph) avoids
+    // confusing a globally rescaled matrix with geometric anisotropy.
+    c.strongly_directional_coupling = false;
+    c.positive_diagonal = c.square && d.missing_diagonal == 0;
+    if (c.square && matrix.n_rows() > 0) {
+        const auto* row = matrix.row_offsets_data();
+        const auto* col = matrix.columns_data();
+        const auto* val = matrix.values_data();
+        for (std::size_t i = 0; i < matrix.n_rows(); ++i) {
+            double diag = 0.0;
+            double min_negative = std::numeric_limits<double>::infinity();
+            double max_negative = 0.0;
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
+                if (col[k] == i) diag += val[k];
+                else if (val[k] < 0.0) {
+                    min_negative = std::min(min_negative, -val[k]);
+                    max_negative = std::max(max_negative, -val[k]);
+                }
+            }
+            if (!(diag > 0.0) || !std::isfinite(diag)) c.positive_diagonal = false;
+            if (min_negative < std::numeric_limits<double>::infinity() &&
+                max_negative / min_negative >= 1.0e3)
+                c.strongly_directional_coupling = true;
+        }
+    }
 
     if (c.square && matrix.n_rows() > 0) {
         const auto* row = matrix.row_offsets_data();
