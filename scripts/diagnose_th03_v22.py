@@ -180,7 +180,7 @@ def analyse(vtu: Path, history_json: Path) -> dict:
     j = json.loads(history_json.read_text())
     history = j.get("history", [])
     if not isinstance(history, list):
-        raise ValueError("history must be array")
+        raise TypeError("history must be array")
     wall = compare_wall_reconstructions(centres, bounds, fields["u_x"])
     hotspots = momentum_hotspots(history, centres, bounds)
     period = periodicity(history)
