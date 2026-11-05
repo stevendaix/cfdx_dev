@@ -1,0 +1,36 @@
+--- tests/python/test_sst_persisted_cli_restart_e2e.py
++++ tests/python/test_sst_persisted_cli_restart_e2e.py
+@@ -128,6 +128,7 @@
+         del h5.attrs["case_setup_json"]
+         h5.attrs["case_setup_json"] = json.dumps(setup)
+ 
++
+ def _make_volumetric_sst_restart_fixture(
+     converted_case: Path, output_case: Path
+ ) -> None:
+@@ -210,17 +211,17 @@
+         if neighbour[face] >= 0:
+             continue
+         x, y, z = points[list(vertices)].mean(axis=0)
+-        if abs(x) < 1.e-12:
++        if abs(x) < 1.0e-12:
+             patch = "inlet"
+-        elif abs(x - nx) < 1.e-12:
++        elif abs(x - nx) < 1.0e-12:
+             patch = "outlet"
+-        elif abs(y) < 1.e-12:
++        elif abs(y) < 1.0e-12:
+             patch = "wall_bottom"
+-        elif abs(y - 1) < 1.e-12:
++        elif abs(y - 1) < 1.0e-12:
+             patch = "wall_top"
+-        elif abs(z) < 1.e-12:
++        elif abs(z) < 1.0e-12:
+             patch = "wall_front"
+-        elif abs(z - 1) < 1.e-12:
++        elif abs(z - 1) < 1.0e-12:
+             patch = "wall_back"
+         else:
+             raise AssertionError("unclassified volumetric SST boundary")
+
+1 file would be reformatted
