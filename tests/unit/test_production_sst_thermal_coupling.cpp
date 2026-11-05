@@ -81,4 +81,5 @@ int main() {
         EXPECT_THROW(validate_sst_scalar_boundary_contract(setup),std::invalid_argument);
     });
     return 0;
+    return run_all();
 }
