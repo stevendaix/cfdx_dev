@@ -248,8 +248,9 @@ reference; it is not a runtime dependency. No vendor threshold is treated as
 a universal CFDX acceptance limit.
 
 The interactive PyVistaQt window provides an axis-aligned cut plane
-whose normal (X/Y/Z) and position can be changed interactively. Cells above
-the configured threshold are rendered red; other cut cells are translucent.
+whose normal (X/Y/Z) and position can be changed interactively. The skewness
+threshold is editable in the window. Cells above it are rendered red; other
+cut cells are translucent.
 Selecting a worst cell reports its immediate adjacency and highlights the
 selected cell and direct neighbours on the same cut plane (selected cell in
 orange, neighbours in yellow). Moving the cut plane preserves the camera.
