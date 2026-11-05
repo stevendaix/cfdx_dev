@@ -296,6 +296,7 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/matrix_free_fv_operator.h
     src/cfdx/core/linalg/amg_setup_footprint.h
     src/cfdx/core/linalg/amg_preconditioner.h
+    src/cfdx/core/linalg/algebraic_line_preconditioner.h
     src/cfdx/core/linalg/hypre_amg.h
     src/cfdx/core/linalg/coupled_amg_schur.h
     src/cfdx/core/linalg/native_fieldsplit.h
@@ -1228,6 +1229,8 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_n8_schur_complete_krylov tests/validation/test_n8_schur_complete_krylov.cpp)
     add_cfdx_test(test_n8_amg_anisotropy_scaling tests/validation/test_n8_amg_anisotropy_scaling.cpp)
     add_cfdx_test(test_anisotropic_krylov_matrix tests/validation/test_anisotropic_krylov_matrix.cpp)
+    add_cfdx_test(test_petsc_hypre_native_port_anisotropy tests/validation/test_petsc_hypre_native_port_anisotropy.cpp)
+    set_tests_properties(test_petsc_hypre_native_port_anisotropy PROPERTIES LABELS "linalg;anisotropy;native_port" TIMEOUT 90)
     set_tests_properties(test_anisotropic_krylov_matrix PROPERTIES LABELS "linalg;anisotropy;qualification" TIMEOUT 120)
     add_test(NAME test_amg_sparse_coarse_regression COMMAND test_anisotropic_krylov_matrix --coarse-stall)
     set_tests_properties(test_amg_sparse_coarse_regression PROPERTIES LABELS "linalg;anisotropy;regression" TIMEOUT 10)

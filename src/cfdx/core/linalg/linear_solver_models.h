@@ -42,7 +42,10 @@ enum class PreconditionerModel {
     CoupledBlockSchur,
     PCD,
     LSC,
-    MGR
+    MGR,
+    AnisotropicLine,
+    AnisotropicBoomerAMG,
+    AnisotropicSmoothedAggregationAMG
 };
 
 enum class ModelAvailability { Available, Planned };
@@ -83,8 +86,8 @@ inline const std::array<SolverModelDescriptor, 8>& krylov_model_catalog() {
     return models;
 }
 
-inline const std::array<SolverModelDescriptor, 15>& preconditioner_model_catalog() {
-    static const std::array<SolverModelDescriptor, 15> models{{
+inline const std::array<SolverModelDescriptor, 18>& preconditioner_model_catalog() {
+    static const std::array<SolverModelDescriptor, 18> models{{
         {"auto", ModelAvailability::Available, false, true},
         {"none", ModelAvailability::Available, false, true},
         {"jacobi", ModelAvailability::Available, false, true},
@@ -105,7 +108,10 @@ inline const std::array<SolverModelDescriptor, 15>& preconditioner_model_catalog
         // (status: partial), and neither is advanced by this entry.
         {"pcd", ModelAvailability::Available, false, false},
         {"lsc", ModelAvailability::Planned, false, false},
-        {"mgr", ModelAvailability::Available, false, false}
+        {"mgr", ModelAvailability::Available, false, false},
+        {"anisotropic_line", ModelAvailability::Available, false, false},
+        {"anisotropic_boomer_amg", ModelAvailability::Available, false, false},
+        {"anisotropic_smoothed_aggregation_amg", ModelAvailability::Available, false, false}
     }};
     return models;
 }
@@ -284,6 +290,18 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     if (!plan.automatic_krylov) plan.krylov = request.krylov;
     if (!plan.automatic_preconditioner) plan.preconditioner = request.preconditioner;
 
+    // The optional algebraic-line AMG smoothers are qualified with a flexible
+    // outer Krylov method. They must not inherit CG from a benign SPD-looking
+    // matrix solely because the user specified a preconditioner and left
+    // Krylov on Auto. This is an explicit algorithmic pairing contract.
+    const bool anisotropic_amg =
+        plan.preconditioner == PreconditionerModel::AnisotropicBoomerAMG ||
+        plan.preconditioner == PreconditionerModel::AnisotropicSmoothedAggregationAMG;
+    if (anisotropic_amg && plan.automatic_krylov) {
+        plan.krylov = KrylovModel::FGMRES;
+        plan.reason += "; anisotropic line-AMG requires flexible GMRES";
+    }
+
     // Row/column equilibration is generally NOT a symmetry-preserving
     // congruence transformation. Reject explicit CG and use nonsymmetric-safe
     // Krylov for auto selection; symmetric-diagonal scaling is admissible.
@@ -316,9 +334,14 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
         throw std::invalid_argument(
             "CG requires an SPD-qualified preconditioner (none, Jacobi, or a native AMG variant)");
     if ((plan.preconditioner == PreconditionerModel::NativeAMG ||
-         plan.preconditioner == PreconditionerModel::SmoothedAggregationAMG) && !cg_problem)
+         plan.preconditioner == PreconditionerModel::SmoothedAggregationAMG ||
+         anisotropic_amg) && !cg_problem)
         throw std::invalid_argument(
             "native AMG is currently qualified only for SPD elliptic problems");
+    if (anisotropic_amg &&
+        (!characteristics.numerically_symmetric || !characteristics.positive_diagonal))
+        throw std::invalid_argument(
+            "anisotropic line-AMG currently requires a symmetric positive-diagonal operator");
     if (plan.preconditioner == PreconditionerModel::NativeFieldSplit &&
         problem != LinearProblemKind::CoupledPressureVelocity)
         throw std::invalid_argument("native FieldSplit requires a coupled pressure-velocity profile");

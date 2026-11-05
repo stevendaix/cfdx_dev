@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cfdx/core/linalg/advanced_preconditioners.h"
+#include "cfdx/core/linalg/algebraic_line_preconditioner.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/gmres_solver.h"
@@ -66,9 +67,17 @@ inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
             return std::make_unique<GaussSeidelPreconditioner>();
         case PreconditionerModel::ILU0:
             return std::make_unique<ILU0Preconditioner>();
+        case PreconditionerModel::AnisotropicLine:
+            return std::make_unique<AlgebraicLinePreconditioner>();
         case PreconditionerModel::NativeAMG:
             return std::make_unique<NativeBoomerAMGPreconditioner>(
                 constant_null_space, require_smoother_certificate);
+        case PreconditionerModel::AnisotropicBoomerAMG:
+            return std::make_unique<NativeAnisotropicBoomerAMGPreconditioner>(
+                constant_null_space);
+        case PreconditionerModel::AnisotropicSmoothedAggregationAMG:
+            return std::make_unique<NativeAnisotropicSmoothedAggregationAMGPreconditioner>(
+                constant_null_space);
         case PreconditionerModel::SmoothedAggregationAMG:
             return std::make_unique<
                 NativeSmoothedAggregationAMGPreconditioner>(

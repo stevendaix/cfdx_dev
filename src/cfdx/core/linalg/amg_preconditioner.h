@@ -1,5 +1,6 @@
 #pragma once
 #include "cfdx/core/linalg/amg_setup_footprint.h"
+#include "cfdx/core/linalg/algebraic_line_preconditioner.h"
 #include "cfdx/core/linalg/linear_operator.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
@@ -22,6 +23,11 @@ enum class AMGInterpolationPolicy {
     SmoothedAggregation
 };
 
+enum class AMGSmootherPolicy {
+    DampedJacobi,
+    AlgebraicLines
+};
+
 // Multilevel AMG with selectable direct C/F or smoothed-aggregation
 // interpolation and Galerkin coarse operators. The finest operator remains
 // matrix-free during apply(); SparseMatrix is used during setup to build the
@@ -37,16 +43,21 @@ public:
                                    AMGInterpolationPolicy interpolation =
                                        AMGInterpolationPolicy::DirectCF,
                                    bool constant_null_space = false,
-                                   bool require_smoother_certificate = true)
+                                   bool require_smoother_certificate = true,
+                                   AMGSmootherPolicy smoother = AMGSmootherPolicy::DampedJacobi,
+                                   double prolongator_filter = 0.0)
         : op_(op), configured_omega_(omega), omega_(omega), pre_(pre), post_(post),
           strength_threshold_(strength_threshold), max_levels_(max_levels),
           interpolation_(interpolation),
           constant_null_space_(constant_null_space),
-          require_smoother_certificate_(require_smoother_certificate)
+          require_smoother_certificate_(require_smoother_certificate),
+          smoother_policy_(smoother), prolongator_filter_(prolongator_filter)
     {
         if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0) ||
             !std::isfinite(strength_threshold_) || strength_threshold_ < 0.0 ||
-            strength_threshold_ > 1.0 || max_levels_ == 0) {
+            strength_threshold_ > 1.0 || max_levels_ == 0 ||
+            !std::isfinite(prolongator_filter_) || prolongator_filter_ < 0.0 ||
+            prolongator_filter_ >= 1.0) {
             throw std::invalid_argument("invalid AMG operator");
         }
     }
@@ -55,6 +66,8 @@ public:
     {
         last_setup_error_.clear();
         last_footprint_ = AMGSetupFootprint{};
+        line_factor_fallback_levels_ = 0;
+        numeric_line_fallbacks_ = 0;
         if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
             A.n_rows() == 0 || !matrix_is_valid(A) ||
             (constant_null_space_ && !has_constant_null_space(A))) {
@@ -72,6 +85,10 @@ public:
         if (!build_diagonal(fine)) {
             last_setup_error_ = "invalid or zero diagonal on finest level";
             levels_.clear();
+            return false;
+        }
+        if (!build_level_lines(fine)) {
+            last_setup_error_ = "invalid finest algebraic-line factorization";
             return false;
         }
         levels_.push_back(std::move(fine));
@@ -92,7 +109,7 @@ public:
                 build_smoothed_aggregation_interpolation(
                     levels_.back(), strength_threshold_, prolongation,
                     aggregate, coarse_n,
-                    &last_footprint_.fallback_interpolation_rows);
+                    &last_footprint_.fallback_interpolation_rows, prolongator_filter_);
                 if (levels_.size() == 1) {
                     std::vector<std::size_t> members(coarse_n, 0);
                     for (const std::size_t id : aggregate) {
@@ -141,6 +158,11 @@ public:
                 first_aggregate_.clear();
                 return false;
             }
+            if (!build_level_lines(next)) {
+                last_setup_error_ = "invalid coarse algebraic-line factorization";
+                levels_.clear();
+                return false;
+            }
             levels_.back().aggregate = std::move(aggregate);
             levels_.back().prolongation = std::move(prolongation);
             levels_.push_back(std::move(next));
@@ -187,8 +209,11 @@ public:
         }
 
         std::vector<Level> refreshed = levels_;
+        std::size_t refreshed_line_fallbacks = 0;
         refreshed.front().A = A;
-        if (!build_diagonal(refreshed.front())) return false;
+        if (!build_diagonal(refreshed.front()) ||
+            !refresh_level_lines(refreshed.front(), true, refreshed_line_fallbacks))
+            return false;
 
         // Stage numeric-update diagnostics with the temporary hierarchy. A
         // failed refresh must not report drops from levels that were never
@@ -201,7 +226,9 @@ public:
                 &dropped_entries);
             if (!matrix_is_valid(coarse)) return false;
             refreshed[level + 1].A = std::move(coarse);
-            if (!build_diagonal(refreshed[level + 1])) return false;
+            if (!build_diagonal(refreshed[level + 1]) ||
+                !refresh_level_lines(refreshed[level + 1], false, refreshed_line_fallbacks))
+                return false;
         }
 
         // Numeric refresh can leave the retained interpolation with coarse
@@ -223,12 +250,27 @@ public:
         }
 
         levels_ = std::move(refreshed);
+        numeric_line_fallbacks_ = refreshed_line_fallbacks;
         omega_ = refreshed_omega;
         last_footprint_.galerkin_dropped_entries += dropped_entries;
         return true;
     }
 
     double smoother_omega() const noexcept { return omega_; }
+    std::size_t line_factor_fallback_levels() const noexcept {
+        return line_factor_fallback_levels_;
+    }
+    std::size_t numeric_line_fallbacks() const noexcept {
+        return numeric_line_fallbacks_;
+    }
+    std::size_t finest_line_coverage() const noexcept {
+        return levels_.empty() || !levels_.front().use_lines ? 0 :
+               levels_.front().line_pc.covered_rows();
+    }
+    std::size_t finest_longest_line() const noexcept {
+        return levels_.empty() || !levels_.front().use_lines ? 0 :
+               levels_.front().line_pc.longest_line();
+    }
 
     const std::string& last_setup_error() const noexcept { return last_setup_error_; }
 
@@ -1105,6 +1147,8 @@ private:
     struct Level {
         SparseMatrix A;
         std::vector<double> inv_diag;
+        AlgebraicLinePreconditioner line_pc;
+        bool use_lines = false;
         std::vector<std::size_t> aggregate;
         std::vector<TransferRow> prolongation;
     };
@@ -1271,6 +1315,41 @@ private:
             level.inv_diag[i] = 1.0 / diagonal;
             if (!std::isfinite(level.inv_diag[i])) return false;
         }
+        return true;
+    }
+
+    bool build_level_lines(Level& level) {
+        if (smoother_policy_ != AMGSmootherPolicy::AlgebraicLines) return true;
+        // A Galerkin coarse operator can be SPD yet exhibit locally
+        // ill-conditioned or non-M-matrix blocks. In that case the optional
+        // line smoother MUST NOT be applied: fall back to certified Jacobi
+        // while retaining the full hierarchy and physical-residual gate.
+        if (!level.line_pc.setup(level.A)) {
+            level.use_lines = false;
+            ++line_factor_fallback_levels_;
+            return true;
+        }
+        // On a well-conditioned/isotropic grid retain the original Jacobi
+        // smoother: only activate the block solver for coherent long paths.
+        level.use_lines = level.line_pc.longest_line() >= 4 &&
+                          level.line_pc.covered_rows() * 4 >= level.A.n_rows();
+        return true;
+    }
+
+    bool refresh_level_lines(Level& level, bool finest,
+                             std::size_t& fallback_count) const {
+        if (smoother_policy_ != AMGSmootherPolicy::AlgebraicLines ||
+            !level.use_lines) return true;
+        // On the physical (finest) matrix, a changed directional strength
+        // graph invalidates numeric-only reuse: require full setup(). On a
+        // Galerkin level, whose graph is itself only an approximation, a
+        // rejected line factor can safely fall back to Jacobi. This avoids
+        // poisoning the active hierarchy while retaining the outer true-
+        // residual contract. Record the reversion for diagnostics.
+        if (level.line_pc.update_values(level.A)) return true;
+        if (finest) return false;
+        level.use_lines = false;
+        ++fallback_count;
         return true;
     }
 
@@ -1636,7 +1715,8 @@ private:
         std::vector<TransferRow>& prolongation,
         std::vector<std::size_t>& aggregate,
         std::size_t& coarse_n,
-        std::size_t* fallback_rows = nullptr)
+        std::size_t* fallback_rows = nullptr,
+        double filter = 0.0)
     {
         const std::size_t n = level.A.n_rows();
         const auto strong = build_strength_graph(level, strength_threshold);
@@ -1731,10 +1811,27 @@ private:
                 if (fallback_rows) ++(*fallback_rows);
                 continue;
             }
+            // PETSc GAMG's prolongator filtering motivates a sparse,
+            // near-nullspace-preserving option. Drop only entries small
+            // relative to this row's largest normalized magnitude and
+            // renormalize the survivors so P * 1 = 1 remains exact.
+            double largest = 0.0;
+            for (const auto& [coarse, weight] : weights) {
+                (void)coarse;
+                largest = std::max(largest, std::abs(weight / sum));
+            }
             for (const auto& [coarse, weight] : weights) {
                 const double normalized = weight / sum;
-                if (std::isfinite(normalized) && std::abs(normalized) > 1e-14)
+                if (std::isfinite(normalized) && std::abs(normalized) > 1e-14 &&
+                    std::abs(normalized) >= filter * largest)
                     prolongation[i].push_back({coarse, normalized});
+            }
+            double kept_sum = 0.0;
+            for (const auto& entry : prolongation[i]) kept_sum += entry.second;
+            if (std::isfinite(kept_sum) && std::abs(kept_sum) > 1e-14) {
+                for (auto& entry : prolongation[i]) entry.second /= kept_sum;
+            } else {
+                prolongation[i].clear();
             }
             if (prolongation[i].empty()) {
                 prolongation[i].push_back({aggregate[i], 1.0});
@@ -1792,11 +1889,21 @@ private:
     bool smooth(std::size_t level, const Vector& r, Vector& x, std::size_t sweeps) const
     {
         Vector Ax(r.size());
-        const auto& inv_diag = levels_[level].inv_diag;
+        const auto& current = levels_[level];
+        const auto& inv_diag = current.inv_diag;
+        Vector residual(r.size(), 0.0);
+        Vector line_correction(r.size(), 0.0);
         for (std::size_t s = 0; s < sweeps; ++s) {
             if (!apply_operator(level, x, Ax)) return false;
+            if (current.use_lines) {
+                for (std::size_t i = 0; i < r.size(); ++i)
+                    residual(i) = r(i) - Ax(i);
+                if (!current.line_pc.apply(residual, line_correction)) return false;
+            }
             for (std::size_t i = 0; i < r.size(); ++i) {
-                x(i) += omega_ * inv_diag[i] * (r(i) - Ax(i));
+                const double delta = current.use_lines
+                    ? line_correction(i) : inv_diag[i] * (r(i) - Ax(i));
+                x(i) += omega_ * delta;
                 if (!std::isfinite(x(i))) return false;
             }
             if (constant_null_space_) remove_constant(x);
@@ -2070,6 +2177,10 @@ private:
     AMGInterpolationPolicy interpolation_;
     bool constant_null_space_;
     const bool require_smoother_certificate_;
+    const AMGSmootherPolicy smoother_policy_;
+    const double prolongator_filter_;
+    std::size_t line_factor_fallback_levels_ = 0;
+    std::size_t numeric_line_fallbacks_ = 0;
     std::vector<Level> levels_;
     std::vector<std::size_t> first_aggregate_;
     AMGSetupFootprint last_footprint_;
