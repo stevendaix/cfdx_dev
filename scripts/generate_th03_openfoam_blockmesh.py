@@ -624,7 +624,7 @@ def main() -> int:
     parser.add_argument('--pressure-gmres-restart', type=int, default=160,
                         help='GMRES/FGMRES restart length; does not alter linear tolerance')
     parser.add_argument('--pressure-krylov', choices=('auto','cg','gmres','fgmres','bicgstab'), default='auto')
-    parser.add_argument('--pressure-preconditioner', choices=('auto','none','jacobi','ilu0','native_amg','smoothed_aggregation_amg'), default='auto')
+    parser.add_argument('--pressure-preconditioner', choices=('auto','none','jacobi','ilu0','native_amg','smoothed_aggregation_amg','anisotropic_line_amg'), default='auto')
     parser.add_argument('--pressure-linear-tolerance', type=float, default=1.e-11)
     parser.add_argument('--inlet-omega', type=float, default=OMEGA_IN,
         help='SST omega inlet in 1/s. Default derived from documented nut/nu=0.009; '
