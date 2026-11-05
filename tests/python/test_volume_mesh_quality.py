@@ -158,13 +158,10 @@ def test_hdf5_volume_rejects_non_integer_connectivity_before_read(tmp_path):
         analyze_cfdx_volume_skewness(path)
 
 
-@pytest.mark.skipif(
-    __import__("importlib").util.find_spec("PySide6") is None
-    or __import__("importlib").util.find_spec("pyvista") is None
-    or __import__("importlib").util.find_spec("pyvistaqt") is None,
-    reason="optional Qt/PyVista runtime",
-)
 def test_volume_skewness_dialog_moves_cut_and_slices_local_neighbours(tmp_path):
+    pytest.importorskip("PySide6")
+    pytest.importorskip("pyvista")
+    pytest.importorskip("pyvistaqt")
     from cfdx.gui import create_application
     from cfdx.volume_skewness_view import VolumeSkewnessDialog
     from PySide6.QtWidgets import QSlider
