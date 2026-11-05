@@ -128,6 +128,7 @@ def _prepare_persisted_sst_case(case_path: Path) -> None:
         del h5.attrs["case_setup_json"]
         h5.attrs["case_setup_json"] = json.dumps(setup)
 
+
 def _make_volumetric_sst_restart_fixture(
     converted_case: Path, output_case: Path
 ) -> None:
@@ -138,9 +139,9 @@ def _make_volumetric_sst_restart_fixture(
     uses 12 conforming hexahedral volumes (3 x 2 x 2) with no missing faces,
     two connected internal planes and all six physical patch categories.
     """
-    from cfdx.io.hdf5_writer import _boundary_patch_metadata, _integrity_hashes
-
     import copy
+
+    from cfdx.io.hdf5_writer import _boundary_patch_metadata, _integrity_hashes
 
     nx, ny, nz = 3, 2, 2
 
@@ -210,17 +211,17 @@ def _make_volumetric_sst_restart_fixture(
         if neighbour[face] >= 0:
             continue
         x, y, z = points[list(vertices)].mean(axis=0)
-        if abs(x) < 1.e-12:
+        if abs(x) < 1.0e-12:
             patch = "inlet"
-        elif abs(x - nx) < 1.e-12:
+        elif abs(x - nx) < 1.0e-12:
             patch = "outlet"
-        elif abs(y) < 1.e-12:
+        elif abs(y) < 1.0e-12:
             patch = "wall_bottom"
-        elif abs(y - 1) < 1.e-12:
+        elif abs(y - 1) < 1.0e-12:
             patch = "wall_top"
-        elif abs(z) < 1.e-12:
+        elif abs(z) < 1.0e-12:
             patch = "wall_front"
-        elif abs(z - 1) < 1.e-12:
+        elif abs(z - 1) < 1.0e-12:
             patch = "wall_back"
         else:
             raise AssertionError("unclassified volumetric SST boundary")
