@@ -1,4 +1,5 @@
 name: Ruff diagnostics (temp)
+# trigger: run diagnostics on the current branch head
 
 on:
   push:
