@@ -60,6 +60,31 @@ def test_volume_skewness_reports_internal_face_and_symmetric_neighbours():
     assert report.bad_cell_ids == (0, 1)
 
 
+def test_cells_without_internal_faces_are_marked_unassessed():
+    arrays = list(two_tetrahedra())
+    points, face_vertices, face_offsets, owner, neighbour, cell_faces, cell_offsets = (
+        arrays
+    )
+    extra_points = points[:4].copy()
+    extra_points[:, 0] += 3.0
+    extra_faces = np.asarray(
+        [6, 7, 8, 5, 7, 6, 5, 6, 8, 5, 8, 7], dtype=np.int64
+    )
+    arrays = [
+        np.vstack((points, extra_points)),
+        np.concatenate((face_vertices, extra_faces)),
+        np.arange(0, 36, 3, dtype=np.int64),
+        np.concatenate((owner, np.full(4, 2, dtype=np.int64))),
+        np.concatenate((neighbour, np.full(4, -1, dtype=np.int64))),
+        np.concatenate((cell_faces, np.asarray([7, 8, 9, 10], dtype=np.int64))),
+        np.asarray([0, 4, 8, 12], dtype=np.int64),
+    ]
+    report = analyze_volume_skewness(*arrays)
+    assert np.isnan(report.cell_skewness[2])
+    assert np.isnan(report.cell_non_orthogonality_deg[2])
+    assert 2 not in report.worst_cell_ids
+
+
 def test_volume_skewness_rejects_invalid_owner_neighbour_indices():
     arrays = list(two_tetrahedra())
     arrays[3] = np.asarray([4, 0, 0, 0, 1, 1, 1])
