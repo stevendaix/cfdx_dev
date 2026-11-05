@@ -2661,7 +2661,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.poisson_grad_max=pa.grad_max;
             r.poisson_distance_l2_error=pa.distance_l2_error;
             r.poisson_distance_linf_error=pa.distance_linf_error;
-            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-8;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
             r.stopping_reason = r.converged ? "converged" :
@@ -2679,7 +2679,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             for (std::size_t id=0; id<g.points.size(); ++id)
                 if (!g.solid[id] && !fixed[id]) ++r.active_pde_samples;
             r.residual_inf=wall_distance_pde_residual_inf(WallDistanceMethod::EIKONAL,r.distance,g,&fixed,0.05,&bvh);
-            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-8;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
             r.stopping_reason = r.converged ? "converged" :
@@ -2725,7 +2725,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
         }
         case WallDistanceMethod::HYBRID_POISSON_EIKONAL: {
             std::size_t poisson_iter=0; double poisson_residual=0.0;
-            r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,wall_distance_refinement_epsilon(g),0.9,
+            r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,wall_distance_refinement_epsilon(g),0.45,
                 &r.iterations,&r.residual_inf,0.25,&poisson_iter,&poisson_residual,
                 &r.positivity_clamp_activations,&r.active_pde_samples,&r.exact_wall_seed_samples);
             r.auxiliary_iterations=poisson_iter;
