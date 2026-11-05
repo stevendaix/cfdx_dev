@@ -140,6 +140,45 @@ int main() {
         compare(refreshed, legacy_reference(changed, P, 3));
         EXPECT_TRUE(refreshed.nnz() == C.nnz());
     });
+    run_case("numeric_values_only_refresh_preserves_csr_pattern", [] {
+        const auto P = transfers();
+        const auto original = fine();
+        const auto updated = fine(false, 2.5);
+        GalerkinCSRProduct plan;
+        EXPECT_TRUE(plan.symbolic(original, P, 3));
+        SparseMatrix coarse;
+        EXPECT_TRUE(plan.numeric(original, P, coarse));
+        const SparseMatrix old_coarse = coarse;
+        EXPECT_TRUE(plan.numeric_into_existing(updated, P, coarse));
+        compare(coarse, legacy_reference(updated, P, 3));
+        EXPECT_TRUE(coarse.nnz() == old_coarse.nnz());
+        EXPECT_TRUE(std::equal(coarse.row_offsets_data(),
+                               coarse.row_offsets_data() + coarse.n_rows() + 1,
+                               old_coarse.row_offsets_data()));
+        EXPECT_TRUE(std::equal(coarse.columns_data(),
+                               coarse.columns_data() + coarse.nnz(),
+                               old_coarse.columns_data()));
+    });
+    run_case("numeric_values_only_failure_is_transactional", [] {
+        const Rows identity{{{0, 1.0}}, {{1, 1.0}}};
+        const auto original = SparseMatrix::from_sorted_csr(
+            2, 2, {0, 2, 4}, {0, 1, 0, 1}, {2.0, -1.0, -1.0, 2.0});
+        const auto pruned = SparseMatrix::from_sorted_csr(
+            2, 2, {0, 2, 4}, {0, 1, 0, 1}, {2.0, 0.0, 0.0, 2.0});
+        GalerkinCSRProduct plan;
+        EXPECT_TRUE(plan.symbolic(original, identity, 2));
+        SparseMatrix coarse;
+        EXPECT_TRUE(plan.numeric(original, identity, coarse));
+        const SparseMatrix retained = coarse;
+        EXPECT_TRUE(!plan.numeric_into_existing(pruned, identity, coarse));
+        compare(coarse, retained);
+        EXPECT_TRUE(coarse.nnz() == retained.nnz());
+        EXPECT_TRUE(!plan.numeric_into_existing(coarse, identity, coarse));
+        compare(coarse, retained);
+        const Rows reversed{{{1, 1.0}}, {{0, 1.0}}};
+        EXPECT_TRUE(!plan.numeric_into_existing(original, reversed, coarse));
+        compare(coarse, retained);
+    });
     run_case("failed_reuse_does_not_mutate_existing_coarse_matrix", [] {
         const auto P = transfers();
         auto A = fine();

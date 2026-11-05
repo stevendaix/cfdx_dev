@@ -592,6 +592,14 @@ if(CFDX_BUILD_TESTS)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_amg_csr_benchmark_fail_closed.py)
         set_tests_properties(test_naca_amg_csr_benchmark_fail_closed PROPERTIES
             LABELS "amg;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_amg_cap_sweep_fail_closed
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_amg_cap_sweep_fail_closed.py)
+        set_tests_properties(test_amg_cap_sweep_fail_closed PROPERTIES
+            LABELS "amg;anisotropy;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_naca_v5_benchmark_gates
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_v5_benchmark_gates.py)
+        set_tests_properties(test_naca_v5_benchmark_gates PROPERTIES
+            LABELS "amg;anisotropy;qualification;regression" TIMEOUT 15)
     endif()
     add_cfdx_test(test_null_space tests/unit/test_null_space.cpp)
     add_cfdx_test(test_n8_pinned_pressure_gauge tests/unit/test_n8_pinned_pressure_gauge.cpp)

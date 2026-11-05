@@ -241,12 +241,16 @@ public:
         std::size_t dropped_entries = 0;
         for (std::size_t level = 0; level + 1 < refreshed.size(); ++level) {
             const std::size_t coarse_n = levels_[level + 1].A.n_rows();
-            SparseMatrix coarse;
-            if (!levels_[level].coarse_product.numeric(
-                    refreshed[level].A, levels_[level].prolongation, coarse,
-                    &dropped_entries) || !matrix_is_valid(coarse) ||
-                coarse.n_rows() != coarse_n) return false;
-            refreshed[level + 1].A = std::move(coarse);
+            // Transactional fixed-graph Galerkin refresh: duplicate the old
+            // coarse CSR once into staging, then recompute only its values.
+            // Unlike a full numeric() build this does not reallocate or
+            // re-copy the row offsets and columns after every multiplication.
+            refreshed[level + 1].A = levels_[level + 1].A;
+            if (!levels_[level].coarse_product.numeric_into_existing(
+                    refreshed[level].A, levels_[level].prolongation,
+                    refreshed[level + 1].A, &dropped_entries) ||
+                !matrix_is_valid(refreshed[level + 1].A) ||
+                refreshed[level + 1].A.n_rows() != coarse_n) return false;
             if (!build_diagonal(refreshed[level + 1]) ||
                 !refresh_level_lines(refreshed[level + 1], false, refreshed_line_fallbacks))
                 return false;
@@ -1616,6 +1620,23 @@ private:
         prolongation.assign(n, {});
         aggregate.assign(n, 0);
 
+        // Sparse row markers provide the same deterministic, sorted weight
+        // accumulation as std::map, without one tree-node allocation per
+        // interpolation coefficient on every AMG setup. Stamps avoid a
+        // coarse_n-sized clear for every fine row.
+        std::vector<std::size_t> weight_stamps(coarse_n, n);
+        std::vector<std::size_t> weight_positions(coarse_n, 0);
+        std::vector<std::pair<std::size_t, double>> weights;
+        auto accumulate_weight = [&](std::size_t row_id, std::size_t coarse,
+                                     double contribution) {
+            if (weight_stamps[coarse] != row_id) {
+                weight_stamps[coarse] = row_id;
+                weight_positions[coarse] = weights.size();
+                weights.emplace_back(coarse, 0.0);
+            }
+            weights[weight_positions[coarse]].second += contribution;
+        };
+
         for (std::size_t i = 0; i < n; ++i) {
             if (point[i] == Point::Coarse) {
                 prolongation[i].push_back({coarse_index[i], 1.0});
@@ -1669,10 +1690,9 @@ private:
                 return false;
             }
 
-            std::map<std::size_t, double> weights;
-            for (const std::size_t j : c_neighbors) {
-                weights[coarse_index[j]] += matrix_value(i, j);
-            }
+            weights.clear();
+            for (const std::size_t j : c_neighbors)
+                accumulate_weight(i, coarse_index[j], matrix_value(i, j));
 
             for (const std::size_t k : strong[i]) {
                 if (point[k] != Point::Fine) continue;
@@ -1700,10 +1720,14 @@ private:
                 const double aik = matrix_value(i, k);
                 for (const std::size_t j : k_c_neighbors) {
                     const double akj = matrix_value(k, j);
-                    weights[coarse_index[j]] += aik * akj / c_sum;
+                    accumulate_weight(i, coarse_index[j], aik * akj / c_sum);
                 }
             }
 
+            std::sort(weights.begin(), weights.end(),
+                      [](const auto& lhs, const auto& rhs) {
+                          return lhs.first < rhs.first;
+                      });
             double largest = -1.0;
             for (const auto& [coarse, numerator] : weights) {
                 const double weight = -numerator / denominator;
@@ -1883,13 +1907,29 @@ private:
         const auto* col = level.A.columns_data();
         const auto* val = level.A.values_data();
         prolongation.assign(n, {});
+        std::vector<std::size_t> weight_stamps(coarse_n, n);
+        std::vector<std::size_t> weight_positions(coarse_n, 0);
+        std::vector<std::pair<std::size_t, double>> weights;
         for (std::size_t i = 0; i < n; ++i) {
-            std::map<std::size_t, double> weights;
-            weights[aggregate[i]] = 1.0;
-            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                weights[aggregate[col[k]]] -=
-                    interpolation_omega * level.inv_diag[i] * val[k];
-            }
+            weights.clear();
+            const auto accumulate = [&](std::size_t coarse, double contribution) {
+                if (weight_stamps[coarse] != i) {
+                    weight_stamps[coarse] = i;
+                    weight_positions[coarse] = weights.size();
+                    weights.emplace_back(coarse, 0.0);
+                }
+                weights[weight_positions[coarse]].second += contribution;
+            };
+            accumulate(aggregate[i], 1.0);
+            for (std::size_t k = row[i]; k < row[i + 1]; ++k)
+                accumulate(aggregate[col[k]],
+                           -interpolation_omega * level.inv_diag[i] * val[k]);
+            // Match the old std::map iteration order to preserve floating-
+            // point row sums and the deterministic prolongation layout.
+            std::sort(weights.begin(), weights.end(),
+                      [](const auto& lhs, const auto& rhs) {
+                          return lhs.first < rhs.first;
+                      });
 
             double sum = 0.0;
             for (const auto& [coarse, weight] : weights) {
