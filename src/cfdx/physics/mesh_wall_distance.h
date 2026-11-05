@@ -138,19 +138,76 @@ inline WallSurface wall_surface_from_mesh(
                 turn_sign = sign;
             }
 
+            // Convexity by local signed turns alone does NOT reject every
+            // self-intersection: a five-point star has the same signed turn
+            // at every vertex even though non-adjacent edges cross. A fan
+            // triangulation would fabricate wall triangles in the crossed
+            // region and corrupt the nearest-wall distance for SST.
+            const auto orient = [&](const WallDistanceVec3& a,
+                                    const WallDistanceVec3& b,
+                                    const WallDistanceVec3& c) {
+                return wd_dot(cross(b-a, c-a), unit_normal);
+            };
+            const auto side = [&](double determinant) {
+                if (!std::isfinite(determinant))
+                    throw std::invalid_argument(
+                        "wall_surface_from_mesh: non-finite polygon orientation");
+                return determinant > turn_tolerance ? 1 :
+                       determinant < -turn_tolerance ? -1 : 0;
+            };
+            const auto on_segment = [&](const WallDistanceVec3& p,
+                                        const WallDistanceVec3& a,
+                                        const WallDistanceVec3& b) {
+                // Only called when p is already collinear within tolerance.
+                return wd_dot(p-a, p-b) <= turn_tolerance;
+            };
+            for (std::size_t i = 0; i < count; ++i) {
+                const auto& a = surface.points[face_vertices[i]];
+                const auto& b = surface.points[face_vertices[(i+1)%count]];
+                for (std::size_t j = i+1; j < count; ++j) {
+                    // Consecutive edges share their endpoint by definition.
+                    if (j == i+1 || (i == 0 && j+1 == count))
+                        continue;
+                    const auto& c = surface.points[face_vertices[j]];
+                    const auto& d = surface.points[face_vertices[(j+1)%count]];
+                    const int abc = side(orient(a,b,c));
+                    const int abd = side(orient(a,b,d));
+                    const int cda = side(orient(c,d,a));
+                    const int cdb = side(orient(c,d,b));
+                    const bool intersection =
+                        (abc*abd < 0 && cda*cdb < 0) ||
+                        (abc == 0 && on_segment(c,a,b)) ||
+                        (abd == 0 && on_segment(d,a,b)) ||
+                        (cda == 0 && on_segment(a,c,d)) ||
+                        (cdb == 0 && on_segment(b,c,d));
+                    if (intersection)
+                        throw std::invalid_argument(
+                            "wall_surface_from_mesh: self-intersecting wall polygon");
+                }
+            }
+
             const auto v0 = face_vertices[0];
+            const std::size_t triangles_before = surface.triangles.size();
             for (std::size_t j = 1; j + 1 < count; ++j) {
                 const auto v1 = face_vertices[j];
                 const auto v2 = face_vertices[j + 1];
                 const double area2 = wd_norm2(cross(
                     surface.points[v1] - surface.points[v0],
                     surface.points[v2] - surface.points[v0]));
-                if (!std::isfinite(area2) ||
-                    area2 <= turn_tolerance * turn_tolerance)
+                if (!std::isfinite(area2))
                     throw std::invalid_argument(
-                        "wall_surface_from_mesh: degenerate triangle in wall face");
+                        "wall_surface_from_mesh: non-finite triangle area");
+                // Collinear consecutive vertices are common at imported
+                // hanging nodes. A zero-area triangle contributes nothing
+                // to a convex polygon fan; skipping it preserves the full
+                // polygon, unlike rejecting an otherwise valid wall face.
+                if (area2 <= turn_tolerance * turn_tolerance)
+                    continue;
                 surface.triangles.push_back({{v0, v1, v2}});
             }
+            if (surface.triangles.size() == triangles_before)
+                throw std::invalid_argument(
+                    "wall_surface_from_mesh: wall face has no usable triangles");
         }
     }
 
@@ -200,6 +257,7 @@ inline WallDistanceResult compute_mesh_cell_wall_distance(
         result.distance[cell] = distance;
     }
     result.converged = true;
+    result.geometrically_exact_on_input_mesh = true;
     result.stopping_reason = "exact_cell_centre_distance";
     result.convergence_status = WallDistanceConvergenceStatus::DIRECT;
     return result;

@@ -35,6 +35,7 @@ Corresponds to the C++ header:
 
 from __future__ import annotations
 
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -59,10 +60,18 @@ def _try_pyfluent() -> bool:
         from ansys.fluent.core.filereader.case_file import CaseFile  # noqa: F401
 
         return True
-    except (ImportError, AttributeError):
-        # Some ansys-fluent-core releases are installed but cannot import their
-        # optional CaseFile reader because of an internal API mismatch. Treat
-        # that reader as unavailable; the legacy ASCII adapter remains usable.
+    except ImportError:
+        return False
+    except AttributeError as exc:
+        # An installed but ABI/API-incompatible PyFluent/ansys-units package
+        # may fail during module initialization. Keep ASCII case support
+        # importable; the dedicated dependency-compatibility test must still
+        # fail on CI if PyFluent is installed but broken.
+        warnings.warn(
+            f"PyFluent installed but incompatible with its dependencies: {exc}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
         return False
 
 
