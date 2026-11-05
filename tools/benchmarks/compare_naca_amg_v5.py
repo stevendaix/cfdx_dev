@@ -8,7 +8,6 @@ This measures linear replay time, not full CFD time-to-convergence.
 
 import argparse
 import csv
-import io
 import math
 from pathlib import Path
 import statistics
