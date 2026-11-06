@@ -1,0 +1,289 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "id": "TH-01",
+      "model": "LES",
+      "scenarios": [
+        {
+          "id": "Re_tau_180",
+          "runs": [
+            {
+              "mesh_id": "coarse",
+              "case_file": "cases/TH-01/Re_tau_180/coarse.cfdx.h5",
+              "cells": 20000,
+              "characteristic_h": 0.02,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "medium",
+              "case_file": "cases/TH-01/Re_tau_180/medium.cfdx.h5",
+              "cells": 80000,
+              "characteristic_h": 0.01,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "fine",
+              "case_file": "cases/TH-01/Re_tau_180/fine.cfdx.h5",
+              "cells": 320000,
+              "characteristic_h": 0.005,
+              "max_iterations": 1500
+            }
+          ]
+        },
+        {
+          "id": "Re_tau_395",
+          "runs": [
+            {
+              "mesh_id": "coarse",
+              "case_file": "cases/TH-01/Re_tau_395/coarse.cfdx.h5",
+              "cells": 20000,
+              "characteristic_h": 0.02,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "medium",
+              "case_file": "cases/TH-01/Re_tau_395/medium.cfdx.h5",
+              "cells": 80000,
+              "characteristic_h": 0.01,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "fine",
+              "case_file": "cases/TH-01/Re_tau_395/fine.cfdx.h5",
+              "cells": 320000,
+              "characteristic_h": 0.005,
+              "max_iterations": 1500
+            }
+          ]
+        },
+        {
+          "id": "Re_tau_590",
+          "runs": [
+            {
+              "mesh_id": "coarse",
+              "case_file": "cases/TH-01/Re_tau_590/coarse.cfdx.h5",
+              "cells": 20000,
+              "characteristic_h": 0.02,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "medium",
+              "case_file": "cases/TH-01/Re_tau_590/medium.cfdx.h5",
+              "cells": 80000,
+              "characteristic_h": 0.01,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "fine",
+              "case_file": "cases/TH-01/Re_tau_590/fine.cfdx.h5",
+              "cells": 320000,
+              "characteristic_h": 0.005,
+              "max_iterations": 1500
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "TH-03",
+      "model": "RANS_SST",
+      "scenarios": [
+        {
+          "id": "Re_h_37500",
+          "runs": [
+            {
+              "mesh_id": "coarse",
+              "case_file": "cases/TH-03/Re_h_37500/coarse.cfdx.h5",
+              "cells": 20000,
+              "characteristic_h": 0.02,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "medium",
+              "case_file": "cases/TH-03/Re_h_37500/medium.cfdx.h5",
+              "cells": 80000,
+              "characteristic_h": 0.01,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "fine",
+              "case_file": "cases/TH-03/Re_h_37500/fine.cfdx.h5",
+              "cells": 320000,
+              "characteristic_h": 0.005,
+              "max_iterations": 1500
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "TH-07",
+      "model": "RANS_SST",
+      "scenarios": [
+        {
+          "id": "Gr_0",
+          "runs": [
+            {
+              "mesh_id": "coarse",
+              "case_file": "cases/TH-07/Gr_0/coarse.cfdx.h5",
+              "cells": 20000,
+              "characteristic_h": 0.02,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "medium",
+              "case_file": "cases/TH-07/Gr_0/medium.cfdx.h5",
+              "cells": 80000,
+              "characteristic_h": 0.01,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "fine",
+              "case_file": "cases/TH-07/Gr_0/fine.cfdx.h5",
+              "cells": 320000,
+              "characteristic_h": 0.005,
+              "max_iterations": 1500
+            }
+          ]
+        },
+        {
+          "id": "Gr_640000",
+          "runs": [
+            {
+              "mesh_id": "coarse",
+              "case_file": "cases/TH-07/Gr_640000/coarse.cfdx.h5",
+              "cells": 20000,
+              "characteristic_h": 0.02,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "medium",
+              "case_file": "cases/TH-07/Gr_640000/medium.cfdx.h5",
+              "cells": 80000,
+              "characteristic_h": 0.01,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "fine",
+              "case_file": "cases/TH-07/Gr_640000/fine.cfdx.h5",
+              "cells": 320000,
+              "characteristic_h": 0.005,
+              "max_iterations": 1500
+            }
+          ]
+        },
+        {
+          "id": "Gr_950000",
+          "runs": [
+            {
+              "mesh_id": "coarse",
+              "case_file": "cases/TH-07/Gr_950000/coarse.cfdx.h5",
+              "cells": 20000,
+              "characteristic_h": 0.02,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "medium",
+              "case_file": "cases/TH-07/Gr_950000/medium.cfdx.h5",
+              "cells": 80000,
+              "characteristic_h": 0.01,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "fine",
+              "case_file": "cases/TH-07/Gr_950000/fine.cfdx.h5",
+              "cells": 320000,
+              "characteristic_h": 0.005,
+              "max_iterations": 1500
+            }
+          ]
+        },
+        {
+          "id": "Gr_1600000",
+          "runs": [
+            {
+              "mesh_id": "coarse",
+              "case_file": "cases/TH-07/Gr_1600000/coarse.cfdx.h5",
+              "cells": 20000,
+              "characteristic_h": 0.02,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "medium",
+              "case_file": "cases/TH-07/Gr_1600000/medium.cfdx.h5",
+              "cells": 80000,
+              "characteristic_h": 0.01,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "fine",
+              "case_file": "cases/TH-07/Gr_1600000/fine.cfdx.h5",
+              "cells": 320000,
+              "characteristic_h": 0.005,
+              "max_iterations": 1500
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "TH-08",
+      "model": "LES",
+      "scenarios": [
+        {
+          "id": "isothermal",
+          "runs": [
+            {
+              "mesh_id": "coarse",
+              "case_file": "cases/TH-08/isothermal/coarse.cfdx.h5",
+              "cells": 20000,
+              "characteristic_h": 0.02,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "medium",
+              "case_file": "cases/TH-08/isothermal/medium.cfdx.h5",
+              "cells": 80000,
+              "characteristic_h": 0.01,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "fine",
+              "case_file": "cases/TH-08/isothermal/fine.cfdx.h5",
+              "cells": 320000,
+              "characteristic_h": 0.005,
+              "max_iterations": 1500
+            }
+          ]
+        },
+        {
+          "id": "non_isothermal",
+          "runs": [
+            {
+              "mesh_id": "coarse",
+              "case_file": "cases/TH-08/non_isothermal/coarse.cfdx.h5",
+              "cells": 20000,
+              "characteristic_h": 0.02,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "medium",
+              "case_file": "cases/TH-08/non_isothermal/medium.cfdx.h5",
+              "cells": 80000,
+              "characteristic_h": 0.01,
+              "max_iterations": 1500
+            },
+            {
+              "mesh_id": "fine",
+              "case_file": "cases/TH-08/non_isothermal/fine.cfdx.h5",
+              "cells": 320000,
+              "characteristic_h": 0.005,
+              "max_iterations": 1500
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -385,5 +385,47 @@ int main()
         for (const double value : rhs) EXPECT_NEAR(value, 0.0, 1e-12);
     });
 
+    run_case("sst_resolved_wall_uses_molecular_viscosity_in_momentum_and_flux_audit", [] {
+        const auto mesh = make_four_cell_stress_channel();
+        const auto g = build_fv_geometry(mesh);
+        Field<double,Location::CELL> grad(mesh.n_cells(), "gradp", "Pa/m", 3);
+        Field<double,Location::CELL> body(mesh.n_cells(), "body", "N/m3", 1);
+        Field<double,Location::CELL> u(mesh.n_cells(), "u", "m/s", 1);
+        Field<double,Location::FACE> phi(mesh.n_faces(), "flux", "kg/s", 1);
+        grad.fill(0.0); body.fill(0.0); u.fill(2.0); phi.fill(0.0);
+        ScalarBoundaryConditions bcs;
+        for (std::size_t i=0; i<mesh.boundary().n_patches(); ++i)
+            bcs[mesh.boundary().patch(i).name] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        const std::vector<double> cell_mu(mesh.n_cells(), 101.0);
+        const auto old_equation = assemble_momentum_component(
+            mesh,g,phi,grad,body,cell_mu,bcs,0,true,ConvectionScheme::UPWIND,&u);
+        const auto fixed_equation = assemble_momentum_component(
+            mesh,g,phi,grad,body,cell_mu,bcs,0,true,ConvectionScheme::UPWIND,&u,
+            nullptr,1.0);
+        const auto faces = resolved_wall_face_viscosity(mesh,g,cell_mu,bcs,1.0);
+        double expected_difference = 0.0;
+        for (std::size_t f=0; f<mesh.n_faces(); ++f) {
+            if (mesh.ownership().neighbour(f)>=0) continue;
+            EXPECT_NEAR(faces[f], 1.0, 1e-14);
+            if (mesh.ownership().owner(f)==0) {
+                const double area = g.face_area_vectors[f].mag();
+                expected_difference += 100.0*area/boundary_normal_distance(g,f,0);
+            }
+        }
+        EXPECT_NEAR(old_equation.diagonal[0]-fixed_equation.diagonal[0],
+                    expected_difference,1e-10);
+        const auto old_flux = reconstruct_scalar_transport_flux(
+            mesh,g,phi,u,0.0,bcs,true,ConvectionScheme::UPWIND,nullptr,&cell_mu);
+        const auto fixed_flux = reconstruct_scalar_transport_flux(
+            mesh,g,phi,u,0.0,bcs,true,ConvectionScheme::UPWIND,nullptr,&cell_mu,
+            nullptr,&faces);
+        for (std::size_t f=0; f<mesh.n_faces(); ++f) {
+            if (mesh.ownership().neighbour(f)>=0) continue;
+            EXPECT_NEAR(old_flux(f),101.0*fixed_flux(f),1e-11);
+        }
+        EXPECT_THROW(resolved_wall_face_viscosity(
+            mesh,g,cell_mu,bcs,102.0),std::invalid_argument);
+    });
+
     return run_all();
 }

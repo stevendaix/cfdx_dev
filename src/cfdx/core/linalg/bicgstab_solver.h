@@ -83,12 +83,26 @@ inline SolverResult solve_bicgstab(
     if(!finite_vector(w.r)){result.status=SolverStatus::DIVERGED;return result;}
     for(std::size_t i=0;i<n;++i)w.r_hat(i)=w.r(i);
 
-    const double bnorm=krylov_norm2(b, SolverPrecision::FP64, reduction),tol=tolerance*std::max(bnorm,1e-300);
-    if(!std::isfinite(bnorm)||!std::isfinite(tol)){result.status=SolverStatus::DIVERGED;return result;}
-    Vector true_r(n); mixed_precision_true_residual(A,b,x,true_r); double res=krylov_norm2(true_r, SolverPrecision::FP64, reduction);
-    if(res<=tol){
-        result.status=SolverStatus::CONVERGED;result.residual=res;
-        result.residual_relative=bnorm>0?res/bnorm:0.0;return result;
+    const double bnorm = krylov_norm2(b, SolverPrecision::FP64, reduction);
+    Vector true_r(n);
+    mixed_precision_true_residual(A, b, x, true_r);
+    double res = krylov_norm2(true_r, SolverPrecision::FP64, reduction);
+    if (!std::isfinite(bnorm) || !std::isfinite(res)) {
+        result.status = SolverStatus::DIVERGED;
+        result.residual = res;
+        return result;
+    }
+    // For b=0, ||b|| cannot normalize a relative stopping criterion.
+    // Use the *initial true residual* instead. This is the same contract as
+    // the existing GMRES homogeneous-system path, and preserves the usual
+    // ||b-Ax||/||b|| test whenever b is nonzero.
+    const double reference_norm = bnorm > 0.0 ? bnorm : res;
+    const double tol = tolerance * reference_norm;
+    if (res <= tol) {
+        result.status = SolverStatus::CONVERGED;
+        result.residual = res;
+        result.residual_relative = reference_norm > 0.0 ? res/reference_norm : 0.0;
+        return result;
     }
 
     double rho=1.0,alpha=1.0,omega=1.0;
@@ -111,7 +125,7 @@ inline SolverResult solve_bicgstab(
         result.status = SolverStatus::DIVERGED;
         result.iterations = iterations;
         result.residual = true_residual();
-        result.residual_relative = bnorm > 0.0 ? result.residual / bnorm : result.residual;
+        result.residual_relative = reference_norm > 0.0 ? result.residual / reference_norm : 0.0;
         return result;
     };
 
@@ -151,7 +165,7 @@ inline SolverResult solve_bicgstab(
             res=true_residual();
             if(res<=tol){
                 result.status=SolverStatus::CONVERGED;result.iterations=iter;result.residual=res;
-                result.residual_relative=bnorm>0?res/bnorm:0.0;return result;
+                result.residual_relative=reference_norm>0?res/reference_norm:0.0;return result;
             }
             if (!std::isfinite(res)) return fail_with_true_residual(iter);
             // The recurrence residual s can be below tolerance while the
@@ -189,11 +203,11 @@ inline SolverResult solve_bicgstab(
         res=true_residual();
         if(res<=tol){
             result.status=SolverStatus::CONVERGED;result.iterations=iter;result.residual=res;
-            result.residual_relative=bnorm>0?res/bnorm:0.0;return result;
+            result.residual_relative=reference_norm>0?res/reference_norm:0.0;return result;
         }
         rho=rho_new;
     }
     result.status=SolverStatus::MAX_ITER_REACHED;result.iterations=max_iter;result.residual=res;
-    result.residual_relative=bnorm>0?res/bnorm:0.0;return result;
+    result.residual_relative=reference_norm>0?res/reference_norm:0.0;return result;
 }
 }

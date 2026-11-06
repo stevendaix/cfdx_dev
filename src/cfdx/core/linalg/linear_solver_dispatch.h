@@ -1,6 +1,8 @@
 #pragma once
 
 #include "cfdx/core/linalg/advanced_preconditioners.h"
+#include "cfdx/core/linalg/anisotropic_line_amg.h"
+#include "cfdx/core/linalg/algebraic_line_preconditioner.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/gmres_solver.h"
@@ -8,6 +10,8 @@
 #include "cfdx/core/linalg/linear_solver_models.h"
 #include "cfdx/core/linalg/matrix_diagnostics.h"
 #include "cfdx/core/linalg/null_space.h"
+#include "cfdx/core/linalg/linear_solver_context.h"
+#include "cfdx/core/linalg/projected_gmres.h"
 
 #include <algorithm>
 #include <cmath>
@@ -24,19 +28,53 @@ struct LinearSolveReport {
     LinearScalingModel applied_scaling = LinearScalingModel::None;
 };
 
-inline double physical_relative_residual(
+inline double physical_residual_norm(
     const SparseMatrix& matrix,
     const Vector& solution,
     const Vector& rhs) {
     const auto ax = matrix.matvec(solution);
-    double r2 = 0.0;
-    double b2 = 0.0;
-    for (std::size_t i = 0; i < ax.size(); ++i) {
-        const double ri = ax[i] - rhs(i);
-        r2 += ri * ri;
-        b2 += rhs(i) * rhs(i);
+    double norm = 0.0;
+    for (std::size_t i = 0; i < ax.size(); ++i)
+        norm = std::hypot(norm, ax[i] - rhs(i));
+    return norm;
+}
+
+inline double physical_relative_residual(
+    const SparseMatrix& matrix,
+    const Vector& solution,
+    const Vector& rhs) {
+    return physical_residual_norm(matrix, solution, rhs) /
+        std::max(rhs.norm2(), 1e-300);
+}
+
+// V26: more accurate residual to construct a correction right-hand side.
+// It is NOT the final stopping certificate: after a trial correction the
+// original FP64 A*x-b residual is checked independently and must strictly
+// decrease. Long double does not change the stored FP64 solution or matrix.
+inline bool extended_precision_original_residual(
+    const SparseMatrix& matrix, const Vector& solution,
+    const Vector& rhs, Vector& residual)
+{
+    if (matrix.n_rows() != matrix.n_cols() ||
+        matrix.n_rows() != rhs.size() || solution.size() != rhs.size() ||
+        residual.size() != rhs.size()) return false;
+    for (std::size_t i = 0; i < rhs.size(); ++i) {
+        long double ax = 0.0L;
+        for (std::uint32_t k = matrix.row_offsets_data()[i];
+             k < matrix.row_offsets_data()[i + 1]; ++k) {
+            const auto c = matrix.columns_data()[k];
+            const double a = matrix.values_data()[k];
+            const double x = solution(c);
+            if (!std::isfinite(a) || !std::isfinite(x)) return false;
+            ax += static_cast<long double>(a) * static_cast<long double>(x);
+        }
+        if (!std::isfinite(rhs(i))) return false;
+        const long double ri = static_cast<long double>(rhs(i)) - ax;
+        if (!std::isfinite(ri) ||
+            std::abs(ri) > std::numeric_limits<double>::max()) return false;
+        residual(i) = static_cast<double>(ri);
     }
-    return std::sqrt(r2) / std::max(std::sqrt(b2), 1.0e-300);
+    return true;
 }
 
 inline MatrixScaling to_matrix_scaling(LinearScalingModel model) {
@@ -48,6 +86,68 @@ inline MatrixScaling to_matrix_scaling(LinearScalingModel model) {
         case LinearScalingModel::SymmetricDiagonal: return MatrixScaling::SymmetricDiagonal;
     }
     throw std::invalid_argument("unknown linear scaling model");
+}
+
+// Reusable CG on an equilibrated SPD system.  A normal ReusableCgContext
+// sees only the matrix supplied by the caller; without this transform, a
+// pressure request with scaling!=None silently solves the ORIGINAL matrix.
+// Keep one AMG hierarchy across consecutive *scaled* matrices, then certify
+// on the unscaled physical operator. A small scaled residual alone is never
+// enough to claim convergence.
+inline SolverResult solve_reusable_scaled_cg(
+    const SparseMatrix& matrix, const Vector& rhs, Vector& solution,
+    ReusableCgContext& context, LinearScalingModel scaling,
+    std::size_t max_iterations, double tolerance,
+    const NullSpaceProjector* null_space = nullptr)
+{
+    if (scaling == LinearScalingModel::None)
+        return context.solve(matrix, rhs, solution, max_iterations,
+                             tolerance, {}, {}, null_space);
+    // CG relies on an SPD operator. Independent row/column equilibration
+    // generally destroys symmetry and makes CG mathematically invalid.
+    if (scaling != LinearScalingModel::SymmetricDiagonal)
+        throw std::invalid_argument(
+            "reusable CG only accepts symmetric-diagonal algebraic scaling");
+    if (null_space)
+        throw std::invalid_argument(
+            "scaled reusable CG cannot combine algebraic scaling and projected null space");
+    if (max_iterations == 0 || !(tolerance > 0.0) || !std::isfinite(tolerance))
+        throw std::invalid_argument("scaled reusable CG requires valid iteration controls");
+    if (matrix.n_rows() != matrix.n_cols() || rhs.size() != matrix.n_rows() ||
+        solution.size() != matrix.n_cols())
+        throw std::invalid_argument("scaled reusable CG: matrix/vector size mismatch");
+    const auto scaled = scale_matrix(matrix, to_matrix_scaling(scaling));
+    if (scaled.zero_rows || scaled.zero_columns) {
+        SolverResult result;
+        result.status = SolverStatus::NOT_APPLICABLE;
+        result.residual_relative = physical_relative_residual(matrix, solution, rhs);
+        double b_norm = 0.0;
+        for (std::size_t i = 0; i < rhs.size(); ++i)
+            b_norm = std::hypot(b_norm, rhs(i));
+        result.residual = result.residual_relative * b_norm;
+        return result;
+    }
+    Vector scaled_rhs(rhs.size(), 0.0);
+    Vector scaled_solution(solution.size(), 0.0);
+    for (std::size_t i = 0; i < rhs.size(); ++i) {
+        scaled_rhs(i) = rhs(i) * scaled.row_scale[i];
+        scaled_solution(i) = solution(i) / scaled.column_scale[i];
+    }
+    auto result = context.solve(scaled.matrix, scaled_rhs, scaled_solution,
+                                max_iterations, tolerance);
+    for (std::size_t i = 0; i < solution.size(); ++i)
+        solution(i) = scaled.column_scale[i] * scaled_solution(i);
+    // Independent contract on A*x=b, not on D_row*A*D_col*y=D_row*b.
+    const double physical_relative = physical_relative_residual(matrix, solution, rhs);
+    double b_norm = 0.0;
+    for (std::size_t i = 0; i < rhs.size(); ++i)
+        b_norm = std::hypot(b_norm, rhs(i));
+    result.residual_relative = physical_relative;
+    result.residual = physical_relative * b_norm;
+    if (result.status == SolverStatus::CONVERGED &&
+        (!std::isfinite(physical_relative) || physical_relative > tolerance))
+        result.status = SolverStatus::MAX_ITER_REACHED;
+    return result;
 }
 
 inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
@@ -66,9 +166,19 @@ inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
             return std::make_unique<GaussSeidelPreconditioner>();
         case PreconditionerModel::ILU0:
             return std::make_unique<ILU0Preconditioner>();
+        case PreconditionerModel::AnisotropicLine:
+            return std::make_unique<AlgebraicLinePreconditioner>();
         case PreconditionerModel::NativeAMG:
             return std::make_unique<NativeBoomerAMGPreconditioner>(
                 constant_null_space, require_smoother_certificate);
+        case PreconditionerModel::AnisotropicLineAMG:
+            return std::make_unique<AnisotropicLineAMGPreconditioner>();
+        case PreconditionerModel::AnisotropicBoomerAMG:
+            return std::make_unique<NativeAnisotropicBoomerAMGPreconditioner>(
+                constant_null_space);
+        case PreconditionerModel::AnisotropicSmoothedAggregationAMG:
+            return std::make_unique<NativeAnisotropicSmoothedAggregationAMGPreconditioner>(
+                constant_null_space);
         case PreconditionerModel::SmoothedAggregationAMG:
             return std::make_unique<
                 NativeSmoothedAggregationAMGPreconditioner>(
@@ -99,7 +209,46 @@ inline LinearSolveReport solve_linear_system(
     std::size_t max_iterations = 1000,
     double tolerance = 1e-12) {
     LinearSolveReport report;
-    report.plan = select_linear_solver(problem, matrix.n_rows(), request);
+    // Route against actual CSR coefficients. An explicitly forced CG solve
+    // with a non-SPD matrix fails closed without mutating the solution; keep
+    // the longstanding NOT_APPLICABLE runtime contract for this case.
+    const auto characteristics = measure_matrix_characteristics(
+        matrix, problem == LinearProblemKind::CoupledPressureVelocity);
+    // For b=0, the meaningful relative reference is the initial true
+    // residual ||A*x_initial||. Using ||b||=0 or skipping certification
+    // would either report infinity or accept an unverified homogeneous solve.
+    const double physical_rhs_norm = rhs.norm2();
+    const double homogeneous_initial_norm = physical_rhs_norm == 0.0
+        ? physical_residual_norm(matrix, solution, rhs) : 0.0;
+    if (request.krylov == KrylovModel::CG &&
+        (!characteristics.numerically_symmetric ||
+         !characteristics.positive_diagonal)) {
+        report.plan = select_linear_solver(problem, matrix.n_rows(), request);
+        report.plan.reason = "CG rejected: measured matrix is not symmetric with a positive diagonal";
+        report.result.status = SolverStatus::NOT_APPLICABLE;
+        report.physical_residual_relative =
+            physical_relative_residual(matrix, solution, rhs);
+        return report;
+    }
+    report.plan = select_linear_solver(problem, characteristics, request);
+
+    if (request.residual_refinement_steps > 8)
+        throw std::invalid_argument("residual refinement supports at most eight passes");
+    if (request.residual_refinement_steps != 0 &&
+        ((problem != LinearProblemKind::PressurePoisson &&
+          problem != LinearProblemKind::General) ||
+         request.scaling != LinearScalingModel::None ||
+         request.null_space != NullSpaceModel::None ||
+         (report.plan.krylov != KrylovModel::FGMRES &&
+          report.plan.krylov != KrylovModel::GMRES)))
+        throw std::invalid_argument(
+            "original-system refinement requires unscaled GMRES/FGMRES without a projected null space");
+
+    if (report.plan.krylov == KrylovModel::CG &&
+        request.scaling != LinearScalingModel::None &&
+        request.scaling != LinearScalingModel::SymmetricDiagonal)
+        throw std::invalid_argument(
+            "CG requires symmetry-preserving scaling (symmetric_diagonal)");
 
     if (request.scaling != LinearScalingModel::None &&
         request.null_space != NullSpaceModel::None)
@@ -135,6 +284,13 @@ inline LinearSolveReport solve_linear_system(
         }
         report.applied_scaling = request.scaling;
     }
+
+    // Equilibration changes the residual norm. Converging only to the
+    // requested tolerance in scaled coordinates may fail that same tolerance
+    // in physical coordinates. Request one decade more inner accuracy and
+    // still gate exclusively on the original physical true residual.
+    const double inner_tolerance = request.scaling == LinearScalingModel::None
+        ? tolerance : 0.1 * tolerance;
 
     std::unique_ptr<Preconditioner> preconditioner;
     if (problem == LinearProblemKind::CoupledPressureVelocity) {
@@ -173,28 +329,36 @@ inline LinearSolveReport solve_linear_system(
             if (null_space) {
                 report.result = pc
                     ? solve_cg(*solve_matrix, solve_rhs, solve_solution, *pc, *null_space,
-                               max_iterations, tolerance)
+                               max_iterations, inner_tolerance)
                     : solve_cg(*solve_matrix, solve_rhs, solve_solution, *null_space,
-                               max_iterations, tolerance);
+                               max_iterations, inner_tolerance);
             } else {
                 report.result = pc
-                    ? solve_cg(*solve_matrix, solve_rhs, solve_solution, *pc, max_iterations, tolerance)
-                    : solve_cg(*solve_matrix, solve_rhs, solve_solution, max_iterations, tolerance);
+                    ? solve_cg(*solve_matrix, solve_rhs, solve_solution, *pc, max_iterations, inner_tolerance)
+                    : solve_cg(*solve_matrix, solve_rhs, solve_solution, max_iterations, inner_tolerance);
             }
             break;
         case KrylovModel::BiCGStab:
             report.result = solve_bicgstab(
-                *solve_matrix, solve_rhs, solve_solution, max_iterations, tolerance, pc);
+                *solve_matrix, solve_rhs, solve_solution, max_iterations, inner_tolerance, pc);
             break;
         case KrylovModel::GMRES:
-            report.result = solve_gmres(
-                *solve_matrix, solve_rhs, solve_solution, request.gmres_restart,
-                max_iterations, tolerance, pc);
-            break;
         case KrylovModel::FGMRES:
-            report.result = solve_fgmres(
-                *solve_matrix, solve_rhs, solve_solution, request.gmres_restart,
-                max_iterations, tolerance, pc);
+            if (null_space) {
+                // The projected right-preconditioned Arnoldi recurrence also
+                // covers changing multilevel corrections (FGMRES semantics).
+                report.result = solve_projected_gmres(
+                    *solve_matrix, solve_rhs, solve_solution, *null_space,
+                    request.gmres_restart, max_iterations, inner_tolerance, *pc);
+            } else if (report.plan.krylov == KrylovModel::GMRES) {
+                report.result = solve_gmres(
+                    *solve_matrix, solve_rhs, solve_solution, request.gmres_restart,
+                    max_iterations, inner_tolerance, pc);
+            } else {
+                report.result = solve_fgmres(
+                    *solve_matrix, solve_rhs, solve_solution, request.gmres_restart,
+                    max_iterations, inner_tolerance, pc);
+            }
             break;
         case KrylovModel::Auto:
         case KrylovModel::LGMRES:
@@ -203,19 +367,63 @@ inline LinearSolveReport solve_linear_system(
             report.result.status = SolverStatus::NOT_APPLICABLE;
             break;
     }
+    // Do not restart the solve or rebuild the preconditioner when the
+    // original system has already passed. This is a guarded, explicitly
+    // requested fallback for finite-precision Krylov stagnation only.
+    if (request.residual_refinement_steps != 0 &&
+        report.result.status == SolverStatus::MAX_ITER_REACHED && pc) {
+        double previous = physical_relative_residual(matrix, solution, rhs);
+        for (std::size_t pass = 0;
+             pass < request.residual_refinement_steps &&
+             std::isfinite(previous) && previous > tolerance; ++pass) {
+            Vector residual(rhs.size(), 0.0);
+            Vector delta(rhs.size(), 0.0);
+            if (!extended_precision_original_residual(
+                    matrix, solution, rhs, residual)) break;
+            // The correction solve has its own *internal* tolerance; the
+            // caller's original tolerance remains the final, authoritative
+            // condition on A*x=b. Reuse the existing AMG/ILU hierarchy.
+            const auto correction = solve_fgmres(
+                matrix, residual, delta, request.gmres_restart,
+                std::min<std::size_t>(std::max<std::size_t>(max_iterations, 40), 200), 1e-3,
+                pc, PrecisionPolicy{}, false);
+            report.result.iterations += correction.iterations;
+            if (correction.status != SolverStatus::CONVERGED) break;
+            Vector trial = solution;
+            for (std::size_t i = 0; i < trial.size(); ++i)
+                trial(i) += delta(i);
+            const double trial_relative = physical_relative_residual(
+                matrix, trial, rhs);
+            if (!std::isfinite(trial_relative) ||
+                !(trial_relative < previous)) break;
+            solution = trial;
+            previous = trial_relative;
+        }
+        report.result.residual_relative = previous;
+        long double bnorm2 = 0.0L;
+        for (std::size_t i = 0; i < rhs.size(); ++i)
+            bnorm2 += static_cast<long double>(rhs(i)) * rhs(i);
+        report.result.residual =
+            previous * static_cast<double>(std::sqrt(bnorm2));
+        report.result.status = std::isfinite(previous) && previous <= tolerance
+            ? SolverStatus::CONVERGED : SolverStatus::MAX_ITER_REACHED;
+    }
     if (request.scaling != LinearScalingModel::None) {
         for (std::size_t i = 0; i < solution.size(); ++i)
             solution(i) = column_scale[i] * scaled_solution(i);
-        report.physical_residual_relative =
-            physical_relative_residual(matrix, solution, rhs);
-        if (report.result.status == SolverStatus::CONVERGED &&
-            (!std::isfinite(report.physical_residual_relative) ||
-             report.physical_residual_relative > tolerance))
-            report.result.status = SolverStatus::MAX_ITER_REACHED;
-    } else {
-        report.physical_residual_relative =
-            physical_relative_residual(matrix, solution, rhs);
     }
+    // Every dispatch path uses the ORIGINAL unscaled physical system for
+    // its final convergence certificate, including the homogeneous b=0 case.
+    const double final_residual = physical_residual_norm(matrix, solution, rhs);
+    const double reference = physical_rhs_norm > 0.0
+        ? physical_rhs_norm : homogeneous_initial_norm;
+    report.physical_residual_relative = reference > 0.0
+        ? final_residual / reference
+        : (final_residual == 0.0 ? 0.0 : std::numeric_limits<double>::infinity());
+    if (report.result.status == SolverStatus::CONVERGED &&
+        (!std::isfinite(report.physical_residual_relative) ||
+         report.physical_residual_relative > tolerance))
+        report.result.status = SolverStatus::MAX_ITER_REACHED;
     return report;
 }
 

@@ -10,15 +10,17 @@ namespace cfdx::physics {
 // flux is required when mu_eff varies, even for divergence-free velocity.
 // Internal mu uses the same normal-distance harmonic interpolation as scalar
 // diffusion; boundary mu and face gradients use their owner-cell values.
-// Boundary U values enter the Green--Gauss reconstruction explicitly. No
-// non-orthogonal/skew correction or higher-order wall extrapolation is implied.
+// Boundary U values enter the rank-checked WLS reconstruction.  The
+// reconstructed gradients are evaluated at cell centres; higher-order wall
+// traction still requires a separate face-consistent qualification.
 inline cfdx::core::Field<double,cfdx::core::Location::FACE>
 transpose_viscous_stress_flux(
     const cfdx::core::Mesh& mesh,
     const FvGeometry& geometry,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& velocity,
     const std::vector<double>& cell_mu,
-    const std::array<ScalarBoundaryConditions,3>& velocity_bcs)
+    const std::array<ScalarBoundaryConditions,3>& velocity_bcs,
+    double molecular_wall_mu = -1.0)
 {
     using namespace cfdx::core;
     const auto nc=mesh.n_cells(), nf=mesh.n_faces();
@@ -31,7 +33,7 @@ transpose_viscous_stress_flux(
     for (std::size_t component=0; component<3; ++component) {
         Field<double,Location::CELL> scalar(nc,"U_stress_component","m/s",1);
         for (std::size_t cell=0; cell<nc; ++cell) scalar(cell)=velocity(cell,component);
-        gradients[component]=scalar_gradient_with_transport_boundaries(
+        gradients[component]=compute_boundary_aware_wls_gradient(
             scalar,mesh,geometry,velocity_bcs[component]);
     }
     Field<double,Location::FACE> flux(nf,"transpose_viscous_stress_flux","N",3);
@@ -44,6 +46,20 @@ transpose_viscous_stress_flux(
             mesh.boundary().patch(patch).type==PatchType::EMPTY)
             continue;
         double mu=cell_mu[owner], weight=0.0;
+        if (neighbour < 0 && molecular_wall_mu > 0.0 &&
+            patch < mesh.boundary().n_patches()) {
+            const auto& boundary_patch = mesh.boundary().patch(patch);
+            const auto it = velocity_bcs[0].find(boundary_patch.name);
+            if (boundary_patch.type == PatchType::WALL &&
+                it != velocity_bcs[0].end() &&
+                it->second.type == ScalarBoundaryType::FIXED_VALUE) {
+                if (!std::isfinite(molecular_wall_mu) ||
+                    !(molecular_wall_mu > 0.0) || molecular_wall_mu > mu)
+                    throw std::invalid_argument(
+                        "transpose viscous stress: invalid molecular wall viscosity");
+                mu = molecular_wall_mu;
+            }
+        }
         const auto& Sf=geometry.face_area_vectors[face];
         if (neighbour>=0) {
             const auto nb=static_cast<std::size_t>(neighbour);

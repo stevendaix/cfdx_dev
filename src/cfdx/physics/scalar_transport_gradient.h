@@ -111,4 +111,132 @@ scalar_gradient_with_transport_boundaries(
     return result;
 }
 
+// Boundary-constrained weighted LS for skewed/polyhedral FV cells.
+//
+// Unlike cell-centre Gauss interpolation, this operator fits the actual
+// face-centre Dirichlet data and normal Neumann constraints, so it reconstructs
+// affine fields on skew meshes. EXPLICIT opt-in: the historical Gauss operator
+// above remains the default until each SST/viscous validation is complete.
+// A 2-D embedded mesh must request intrinsic_dimension=2; an invalid or
+// deficient stencil is rejected rather than silently returning a gradient.
+inline cfdx::core::Field<double, cfdx::core::Location::CELL>
+scalar_gradient_with_transport_boundaries_wls(
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const ScalarBoundaryConditions& bcs = {},
+    const ScalarBoundaryFaceValues* face_values = nullptr,
+    int intrinsic_dimension = 3,
+    double max_condition = 1e10)
+{
+    using namespace cfdx::core;
+    const std::size_t nc = mesh.n_cells(), nf = mesh.n_faces();
+    // Finite condition-number gate avoids returning an amplified gradient on
+    // nearly singular stencils. Callers may choose a stricter threshold.
+    if ((intrinsic_dimension != 2 && intrinsic_dimension != 3) ||
+        !(max_condition > 0.0) || !std::isfinite(max_condition) ||
+        field.size() != nc || field.dimension() != 1 ||
+        geometry.cell_centres.size() != nc ||
+        geometry.cell_volumes.size() != nc ||
+        geometry.face_centres.size() != nf ||
+        geometry.face_area_vectors.size() != nf ||
+        geometry.face_patch.size() != nf ||
+        !mesh.boundary().is_consistent(nf) ||
+        !mesh.faces().is_consistent() ||
+        mesh.ownership().size() != nf)
+        throw std::invalid_argument("scalar WLS gradient: invalid field, dimension, or mesh geometry");
+    if (face_values)
+        validate_transport_boundary_face_values(mesh, geometry, *face_values);
+
+    Field<double, Location::CELL> result(nc,
+        field.name() + "_grad_bc_wls", field.metadata().unit + "/m", 3);
+    const auto* cell_faces = mesh.cells().faces_data();
+    const auto* offsets = mesh.cells().offsets_data();
+    for (std::size_t cell = 0; cell < nc; ++cell) {
+        const auto centre = geometry.cell_centres[cell];
+        const double phi = field(cell);
+        if (!std::isfinite(phi) || !std::isfinite(centre.x) ||
+            !std::isfinite(centre.y) || !std::isfinite(centre.z) ||
+            !(geometry.cell_volumes[cell] > 0.0) ||
+            !std::isfinite(geometry.cell_volumes[cell]))
+            throw std::invalid_argument("scalar WLS gradient: non-finite cell geometry or field");
+        std::vector<Vec3> sample_centres;
+        std::vector<double> sample_values;
+        for (Offset o = offsets[cell]; o < offsets[cell+1]; ++o) {
+            const std::size_t face = cell_faces[o];
+            if (face >= nf)
+                throw std::invalid_argument("scalar WLS gradient: invalid cell face index");
+            const std::size_t owner = mesh.ownership().owner(face);
+            const auto other = mesh.ownership().neighbour(face);
+            if (owner >= nc || (other >= 0 && static_cast<std::size_t>(other) >= nc))
+                throw std::invalid_argument("scalar WLS gradient: invalid ownership");
+            if (other >= 0) {
+                const std::size_t neighbour = owner == cell
+                    ? static_cast<std::size_t>(other) : owner;
+                if ((owner != cell && static_cast<std::size_t>(other) != cell) ||
+                    neighbour == cell)
+                    throw std::invalid_argument("scalar WLS gradient: cell-face connectivity mismatch");
+                sample_centres.push_back(geometry.cell_centres[neighbour]);
+                sample_values.push_back(field(neighbour));
+                continue;
+            }
+            if (owner != cell)
+                throw std::invalid_argument("scalar WLS gradient: boundary face owned by another cell");
+            const std::size_t patch_id = geometry.face_patch[face];
+            if (patch_id >= mesh.boundary().n_patches())
+                throw std::invalid_argument("scalar WLS gradient: boundary face without a patch");
+            const auto& patch = mesh.boundary().patch(patch_id);
+            if (patch.type == PatchType::EMPTY)
+                continue;
+            ScalarBoundaryCondition bc;
+            const auto it = bcs.find(patch.name);
+            if (it != bcs.end()) bc = it->second;
+            if (face_values) {
+                const auto by_patch = face_values->values.find(patch.name);
+                if (by_patch != face_values->values.end())
+                    bc = {ScalarBoundaryType::FIXED_VALUE,
+                          by_patch->second[face], 0.0};
+            }
+            if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
+                if (!std::isfinite(bc.value))
+                    throw std::invalid_argument("scalar WLS gradient: non-finite Dirichlet face value");
+                sample_centres.push_back(geometry.face_centres[face]);
+                sample_values.push_back(bc.value);
+                continue;
+            }
+            const Vec3 sf = geometry.face_area_vectors[face];
+            const double area = sf.mag();
+            if (!(area > 0.0) || !std::isfinite(area))
+                throw std::invalid_argument("scalar WLS gradient: invalid boundary face area");
+            const Vec3 n = sf*(1.0/area);
+            const double dn = (geometry.face_centres[face] - centre).dot(n);
+            if (!(dn > 0.0) || !std::isfinite(dn))
+                throw std::invalid_argument("scalar WLS gradient: non-positive outward boundary distance");
+            if (bc.type != ScalarBoundaryType::ZERO_GRADIENT &&
+                bc.type != ScalarBoundaryType::FIXED_GRADIENT)
+                throw std::invalid_argument("scalar WLS gradient: unknown boundary condition");
+            const double derivative = bc.type == ScalarBoundaryType::FIXED_GRADIENT
+                ? bc.gradient : 0.0;
+            if (!std::isfinite(derivative))
+                throw std::invalid_argument("scalar WLS gradient: non-finite Neumann gradient");
+            // A normal ghost point encodes only the prescribed normal
+            // derivative; no fictitious tangential component is imposed.
+            sample_centres.push_back(centre + n * (2.0*dn));
+            sample_values.push_back(phi + 2.0*dn*derivative);
+        }
+        StencilQuality quality;
+        const Vec3 g = weighted_least_squares_gradient_robust(
+            centre, phi, sample_centres, sample_values,
+            GradientWeighting::INVERSE_DISTANCE_SQUARED,
+            intrinsic_dimension, &quality);
+        if (!quality.full_rank || !quality.well_conditioned(max_condition))
+            throw std::runtime_error("scalar WLS gradient: ill-conditioned stencil at cell "
+                                     + std::to_string(cell));
+        result(cell,0) = g.x;
+        result(cell,1) = g.y;
+        result(cell,2) = g.z;
+    }
+    return result;
+}
+
 } // namespace cfdx::physics

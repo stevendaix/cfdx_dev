@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "case_id": "TH-01",
+  "title": "Fully developed turbulent plane channel",
+  "reference": {
+    "type": "DNS",
+    "citation": "Moser, Kim & Mansour (1999), Physics of Fluids 11(4), 943-945, DOI 10.1063/1.869966",
+    "primary_url": "https://turbulence.oden.utexas.edu/MKM_1999.html",
+    "data_url": "https://turbulence.oden.utexas.edu/data/MKM/",
+    "history_url": "https://turbulence.oden.utexas.edu/MKM_history.html",
+    "datasets": [
+      "chan180",
+      "chan395",
+      "chan590"
+    ],
+    "data_contents": [
+      "mean profiles",
+      "Reynolds-stress profiles",
+      "skewness and flatness",
+      "Reynolds-stress and TKE budgets",
+      "spectra",
+      "two-point correlations",
+      "velocity and pressure PDFs"
+    ],
+    "data_policy": "Download original text files; record exact filenames, retrieval timestamp and SHA-256. Never digitize plots or silently substitute the old AGARD CD data.",
+    "mirror_data_url": "https://torroja.dmt.upm.es/turbdata/agard/chapter5/PCH10/",
+    "profile_files": [
+      "chan180/profiles/chan180.means",
+      "chan180/profiles/chan180.reystress",
+      "chan395/profiles/chan395.means",
+      "chan395/profiles/chan395.reystress",
+      "chan590/profiles/chan590.means",
+      "chan590/profiles/chan590.reystress"
+    ],
+    "data_change_note": "The UT Austin history records a 2000 correction to z cross-correlations; do not use the superseded chan*.zccorr files from before that correction. The chan180.means numerical header states Re_tau=178.12; do not substitute the rounded 178.13 from secondary tables."
+  },
+  "physics": {
+    "geometry": "Plane channel of half-height h; walls y=±h; periodic streamwise x and spanwise z; no-slip walls.",
+    "forcing": "Pressure-gradient driven, statistically stationary channel flow; the streamwise pressure gradient is varied in time to maintain constant mass flux.",
+    "re_tau_definition": "Read actual profile Re_tau from original MKM .means headers (178.12, 392.24, 587.19). Nominal labels are not measured values.",
+    "re_tau_targets": [
+      180,
+      395,
+      590
+    ],
+    "re_tau_180_caveat": "The Re_tau=180 database has pronounced low-Reynolds-number effects and a very short/absent logarithmic region. Do not enforce a universal log-law fit at this Reynolds number.",
+    "re_tau_nominal_targets": [
+      180,
+      395,
+      590
+    ],
+    "reference_cases": [
+      {
+        "re_tau_nominal": 180,
+        "re_tau_actual": 178.12,
+        "bulk_reynolds_approx": 2800,
+        "domain_half_height_units": {
+          "Lx": "4*pi*h",
+          "Lz": "(4/3)*pi*h"
+        },
+        "spectral_grid": "128x129x128",
+        "resolution_wall_units": {
+          "delta_x_plus": 17.7,
+          "delta_z_plus": 5.9,
+          "delta_y_center_plus": 4.4
+        }
+      },
+      {
+        "re_tau_nominal": 395,
+        "re_tau_actual": 392.24,
+        "bulk_reynolds": 6875,
+        "domain_half_height_units": {
+          "Lx": "2*pi*h",
+          "Lz": "pi*h"
+        },
+        "spectral_grid": "256x193x192",
+        "resolution_wall_units": {
+          "delta_x_plus": 10,
+          "delta_z_plus": 6.5,
+          "delta_y_center_plus": 6.5
+        }
+      },
+      {
+        "re_tau_nominal": 590,
+        "re_tau_actual": 587.19,
+        "bulk_reynolds": 10935,
+        "domain_half_height_units": {
+          "Lx": "2*pi*h",
+          "Lz": "pi*h"
+        },
+        "spectral_grid": "384x257x384",
+        "resolution_wall_units": {
+          "delta_x_plus": 9.7,
+          "delta_z_plus": 4.8,
+          "delta_y_center_plus": 7.2
+        }
+      }
+    ]
+  },
+  "qoi": {
+    "primary": [
+      "U+(y+)",
+      "u_rms+(y+)",
+      "v_rms+(y+)",
+      "w_rms+(y+)",
+      "-<u'v'>+",
+      "k+",
+      "viscous shear stress",
+      "turbulent shear stress",
+      "total shear stress",
+      "bulk velocity",
+      "Re_b",
+      "Cf"
+    ],
+    "identities": [
+      "Total shear stress must be linear in wall-normal coordinate for fully developed plane channel flow.",
+      "At the wall, total stress equals wall shear stress; at the centreline, total shear stress tends to zero.",
+      "Mass flux is constant in x and matches the imposed bulk flow."
+    ],
+    "normalization": "Use the DNS u_tau, h and nu for reference normalization; additionally report CFDX-normalized values to diagnose friction-velocity bias."
+  },
+  "model_scope": {
+    "RANS_SST": "Compare mean velocity, wall friction and modelled shear stress. Linear eddy-viscosity Boussinesq closure cannot independently reproduce all DNS Reynolds-stress anisotropy components.",
+    "RSM": "Required if all six Reynolds-stress components are claimed as model validation targets.",
+    "LES_DNS": "Required for spectra, two-point correlations and resolved temporal fluctuations. A steady RANS run cannot pass these gates."
+  },
+  "verification": {
+    "mesh": "At least three systematically refined meshes. Report Δx+, Δy+ (including first off-wall point), Δz+ and cell count. Separate RANS wall-function and wall-resolved mesh families.",
+    "statistics": "Discard transient; demonstrate stationarity and convergence of means and second moments by comparing independent averaging blocks.",
+    "conservation": "Mass-flow control and pressure-gradient / integrated-wall-shear balance."
+  },
+  "status": {
+    "contract": "READY_FOR_CONTRACT_CI",
+    "physical_validation": "BLOCKED_UNTIL_PRODUCTION_RANS_OR_LES_COUPLING_AND_DNS_DATA_INGESTION",
+    "reason": "The current production path audit states that SST/SA/k-epsilon transport is not yet coupled to the production momentum solve."
+  }
+}

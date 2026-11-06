@@ -41,6 +41,8 @@ struct FaceGeometry {
     Vec3 Sf;       // vecteur surface (normale * aire)
     double area;   // aire scalaire
     Vec3 normal;   // normale unitaire (Sf / area)
+    double triangulated_area = 0.0; // sum of physical triangle areas
+    double warpage_ratio = 0.0; // 1 - |integrated Sf| / triangulated_area
 };
 
 // Calcule la géométrie d'une face à partir de ses sommets (positions).
@@ -57,39 +59,34 @@ inline FaceGeometry compute_face_geometry(
         throw std::runtime_error("FaceGeometry: face must have at least 3 vertices");
     }
 
-    // Centre : moyenne arithmétique des sommets (valable pour une face planaire ;
-    // pour une face non planaire c'est une approximation acceptable du centre
-    // de gravité géométrique).
-    Vec3 centre;
-    for (VertexIndex k = 0; k < n_verts; ++k) {
-        const VertexIndex v = vertices[offset + k];
-        centre.x += px[v];
-        centre.y += py[v];
-        centre.z += pz[v];
-    }
-    centre.x /= static_cast<double>(n_verts);
-    centre.y /= static_cast<double>(n_verts);
-    centre.z /= static_cast<double>(n_verts);
-
-    // Triangulation en éventail (fan) autour du premier sommet.
-    Vec3 Sf;
+    // Integrate the face polygon through a triangle fan.  The integrated
+    // vector Sf is the conservative FVM surface vector; its magnitude may be
+    // smaller than the true triangulated area on a warped face.
     const VertexIndex v0 = vertices[offset];
     const Vec3 p0{px[v0], py[v0], pz[v0]};
+    Vec3 Sf{}, area_weighted_centroid{};
+    double triangulated_area = 0.0;
     for (VertexIndex k = 1; k + 1 < n_verts; ++k) {
         const VertexIndex va = vertices[offset + k];
         const VertexIndex vb = vertices[offset + k + 1];
         const Vec3 pa{px[va], py[va], pz[va]};
         const Vec3 pb{px[vb], py[vb], pz[vb]};
-        const Vec3 ea = pa - p0;
-        const Vec3 eb = pb - p0;
-        Sf = Sf + ea.cross(eb);
+        const Vec3 triangle_Sf = (pa - p0).cross(pb - p0) * 0.5;
+        const double triangle_area = triangle_Sf.mag();
+        if (!std::isfinite(triangle_area))
+            throw std::runtime_error("FaceGeometry: non-finite triangle area");
+        Sf += triangle_Sf;
+        area_weighted_centroid += (p0 + pa + pb) * (triangle_area / 3.0);
+        triangulated_area += triangle_area;
     }
-    Sf = Sf * 0.5;
-
     const double area = Sf.mag();
-    Vec3 normal = area > 0.0 ? Sf.normalized() : Vec3{0, 0, 0};
-
-    return {centre, Sf, area, normal};
+    if (!(triangulated_area > 0.0) || !(area > 0.0) || !std::isfinite(area))
+        throw std::runtime_error("FaceGeometry: degenerate or cancelling face fan");
+    const Vec3 centre = area_weighted_centroid * (1.0 / triangulated_area);
+    const Vec3 normal = Sf * (1.0 / area);
+    const double warpage_ratio = std::max(0.0,
+        1.0 - std::min(1.0, area / triangulated_area));
+    return {centre, Sf, area, normal, triangulated_area, warpage_ratio};
 }
 
 // Surcharge de commodité : accepte des std::vector (API utilisée par les tests).

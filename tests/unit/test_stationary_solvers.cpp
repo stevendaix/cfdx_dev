@@ -16,6 +16,19 @@ SparseMatrix make_reference() {
 Vector make_b() { Vector b(3); b(0)=9; b(1)=15; b(2)=12; return b; }
 
 int main() {
+ run_case("stationary_homogeneous_relative_stop_uses_initial_residual", [] {
+  SparseMatrix A(2,2);
+  A.push_back(0,0,4.0); A.push_back(0,1,-1.0);
+  A.push_back(1,0,-1.0); A.push_back(1,1,4.0);
+  A.finalize();
+  Vector rhs(2,0.0), xj(2,1.0), xg(2,1.0);
+  auto rj=solve_jacobi(A,rhs,xj,12,1e-5);
+  auto rg=solve_gauss_seidel(A,rhs,xg,12,1e-5);
+  EXPECT_TRUE(rj.status==SolverStatus::CONVERGED);
+  EXPECT_TRUE(rg.status==SolverStatus::CONVERGED);
+  EXPECT_TRUE(rj.residual_relative<=1e-5);
+  EXPECT_TRUE(rg.residual_relative<=1e-5);
+ });
  run_case("jacobi_reference_solution", [] {
   auto A=make_reference(); auto b=make_b(); Vector x(3,0);
   auto r=solve_jacobi(A,b,x,1000,1e-12);

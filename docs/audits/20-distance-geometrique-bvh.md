@@ -2,7 +2,7 @@
 
 **En-tête d'évidence**
 - Scope : distances exactes point-triangle et intersection rayon-triangle utilisées par les méthodes de distance aux parois. Cette fiche qualifie le contrat géométrique et les optimisations de recherche ; elle ne valide pas à elle seule les EDP de Poisson, Eikonal, Hamilton–Jacobi ou advection-diffusion.
-- Statut : DRAFT (2026-10-19) — tests d'équivalence géométrique ajoutés ; benchmark rayons BVH/brute-force intégré au cas complexe, mesures et qualification EDP encore requises.
+- Statut : APPROVED pour le contrat géométrique et algorithmique décrit aux sections 1–13 (revue PR #1172, 2026-11-04). Cette approbation ne vaut pas qualification de performance end-to-end, GCI des EDP, ni validation physique SST/NACA ; ces éléments restent explicitement ouverts.
 - Registre autoritaire : `docs/validation/CFDX_QUALIFICATION_REGISTRY.json` (campagnes) et `docs/validation/NUMERICAL_METHOD_REQUIREMENTS_AUDIT.json` (exigences).
 - Issue / PR liées : PR #979 ; backlog wall-distance #34.
 - HEAD de qualification : à renseigner après la prochaine campagne CI exacte ; ne pas réutiliser les résultats d’un HEAD antérieur.
@@ -13,6 +13,7 @@
 - T. Akenine-Möller, E. Haines, N. Hoffman, *Real-Time Rendering*, 4e éd., CRC Press, 2018, ISBN 978-1-138-62839-4 — hiérarchies de volumes englobants et intersection rayons/primitives.
 - S. Woop, C. Benthin, I. Wald, « Watertight Ray/Triangle Intersection », *Journal of Computer Graphics Techniques*, 2(1), 2013 — référence pour les cas d’intersection proches des arêtes et sommets.
 - C. Ericson, *Real-Time Collision Detection*, Morgan Kaufmann, 2004, ISBN 978-1-55860-732-3 — boîtes AABB et requêtes géométriques.
+- Y. Zhao, « A fast sweeping method for Eikonal equations », *Mathematics of Computation* 74(250), 2005, 603–627 — DOI : 10.1090/S0025-5718-04-01678-3. — schémas fast-sweeping et résolution de l'équation Eikonal.
 
 ## 2. Formulation continue
 
@@ -67,3 +68,97 @@ La traversée est une accélération de recherche uniquement. Le test rayon-tria
 
 - 2026-10-19 — PR #979 — fiche créée, tests d’équivalence géométrique et benchmark BVH/brute-force ajoutés.
 - 2026-10-20 — PR #979 — benchmark rayons isolé dans un test CTest rapide ; sortie console corrigée pour produire un vrai saut de ligne ; qualification exacte du HEAD toujours requise.
+
+
+## 9. Extraction des parois et propagation par point de mur (PR #1172)
+
+La surface d'entrée est la triangulation des faces des patches 'WALL' du
+maillage. L'extraction doit rejeter les indices invalides, les faces non
+planaires, les polygones concaves ou auto-intersectants et les géométries
+non finies. Les sommets collinéaires redondants sont autorisés ; les triangles
+de fan de surface nulle sont omis. Une surface auto-intersectante ne peut pas
+être « réparée » par une triangulation en éventail, car elle créerait des
+triangles qui n'appartiennent pas à la frontière physique.
+
+Pour chaque nœud fluide, la référence géométrique est
+\[
+d_i=\min_{T\in\mathcal T_w}\operatorname{dist}(x_i,T),
+\]
+où \(\mathcal T_w\) est l'ensemble des triangles de la surface d'entrée.
+L'oracle exhaustif et le BVH doivent retourner la même distance à la
+tolérance flottante déclarée. Les triangles dégénérés acceptés par l'API
+géométrique restent traités par la primitive de distance correspondante ;
+les indices et coordonnées invalides sont toujours rejetés.
+
+'MESH_WAVE' propage désormais le point de surface le plus proche associé à
+chaque seed, puis évalue la distance euclidienne entre le point fluide et ce
+point de mur propagé. Il ne somme plus les longueurs des arêtes du graphe :
+cette ancienne métrique Manhattan dépendait du chemin et n'était pas la
+distance euclidienne. La méthode reste une approximation discrète sur le
+graphe du maillage : les changements de point de mur, les composantes
+déconnectées, les tie-breaks et les géométries non alignées peuvent produire
+une erreur. Elle ne devient pas une méthode exacte générale parce qu'elle
+est exacte sur un cube aligné.
+
+## 10. Méthodes Eikonal et garde d'exactitude (PR #1172)
+
+Le problème continu de distance satisfait l'équation Eikonal
+\[
+\|\nabla d\|_2=1,\qquad d|_{\Gamma_w}=0.
+\]
+La méthode 'EIKONAL' est un schéma discret de premier ordre. La méthode
+'EIKONAL_SECOND_ORDER' utilise une mise à jour fast-sweeping d'ordre deux
+lorsque les voisins amont requis sont disponibles et retombe sur une mise à
+jour de premier ordre lorsque le stencil d'ordre deux n'est pas admissible.
+Le résultat reste une approximation de l'EDP discrétisée ; l'ordre formel
+local ne garantit ni l'ordre global sur géométrie polyédrique arbitraire, ni
+l'exactitude vis-à-vis de la triangulation.
+
+La garde 'compute_wall_distance_accuracy_checked' compare **chaque nœud
+fluide** à la distance BVH exacte de la triangulation d'entrée. Pour chaque
+échantillon, le critère est
+\[
+|d_h-d_{BVH}|\leq \tau_{abs}+\tau_{rel}d_{BVH}.
+\]
+Elle rapporte le nombre total d'échantillons, de violations, de corrections,
+l'erreur relative L2 et l'erreur absolue L∞. Deux politiques seulement sont
+permises : correction explicite par la valeur BVH exacte, marquée dans le nom
+de méthode et le rapport ; ou rejet fail-closed si une violation subsiste.
+Une convergence EDP ou un résidu faible ne constitue jamais une preuve
+d'exactitude géométrique.
+
+La garde certifie la borne sur les nœuds fluides effectivement testés, par
+rapport à la surface triangulée fournie. Elle ne certifie pas la distance à
+une CAO lisse non représentée, les gradients pariétaux, y+, le cisaillement,
+ni l'ordre de convergence d'une solution RANS. Elle a un coût de vérification
+supplémentaire proportionnel au nombre de nœuds fluides et aux requêtes BVH.
+
+## 11. Contrat SST : normales signées et frontières
+
+Pour les conditions SST qui nécessitent une distance normale à une face
+murale, la projection signée doit être strictement positive dans la convention
+géométrique du solveur. Le remplacement par 'abs(dot(n, dx))' est interdit :
+il masquerait une normale inversée et convertirait une géométrie incohérente
+en distance apparemment valide. La validation doit échouer explicitement
+lorsque la projection est nulle, négative ou non finie. Ce contrat complète
+la fiche 'docs/audits/09-turbulence-rans.md' ; il ne remplace pas la
+qualification de la fermeture SST.
+
+## 12. Validation et limites de la PR #1172
+
+Les tests ajoutés/durcis couvrent notamment : cube analytique et cube tourné,
+plan décalé, sphère, échelles géométriques de 1 à 1e-10 pour les rayons,
+polygone concave et étoile auto-intersectante, point de mur propagé, erreur
+de reconstruction Poisson par cancellation, Eikonal d'ordre deux, garde
+exhaustive avec et sans correction BVH, absence de seeds, coordonnées NaN,
+indices de triangles invalides et durée de vie du BVH.
+
+La campagne unitaire/analytique est une vérification du code et du contrat
+géométrique. Les campagnes EDP N=128 appariées, les mesures end-to-end BVH,
+les études GCI et la qualification physique SST/NACA restent des tâches
+séparées. Aucun statut 'PASS' de validation physique n'est attribué ici.
+
+## 13. Journal des modifications
+
+- 2026-11-04 — PR #1172 : contrats de propagation par point de mur, Eikonal
+  d'ordre deux, garde d'exactitude et normales SST signées ajoutés.
