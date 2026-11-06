@@ -32,11 +32,14 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends cmake ninja-build g++ ccache zlib1g-dev libhdf5-dev libopenmpi-dev openmpi-bin python3-venv libglu1-mesa
 
+      # GitHub caches are immutable: use a per-run save key and a stable
+      # build-type restore prefix so source edits reuse ccache and each run
+      # can publish the updated cache, even when a later test step fails.
       - name: Restore compiler cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: ccache-${{ runner.os }}-${{ matrix.build_type }}-${{ hashFiles('CMakeLists.txt', 'cmake/**', 'src/**', 'include/**', 'tests/**') }}
+          key: ccache-${{ runner.os }}-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             ccache-${{ runner.os }}-${{ matrix.build_type }}-
 
@@ -45,11 +48,13 @@ jobs:
           ccache --zero-stats
           ccache --max-size=1G
 
+      # Keep pip's wheel/HTTP cache across source and test changes. The unique
+      # run key lets actions/cache save newly downloaded packages on each run.
       - name: Restore Python package cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: cfdx-pip-${{ runner.os }}-${{ hashFiles('tests/python/**', 'scripts/**') }}
+          key: cfdx-pip-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             cfdx-pip-${{ runner.os }}-
 

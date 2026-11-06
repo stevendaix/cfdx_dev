@@ -191,6 +191,26 @@ public:
         return matvec_transpose(std::vector<Value>(x.data(), x.data() + x.size()));
     }
 
+    // Allocation-free matrix-vector product for solver/operator callbacks.
+    // The output must be pre-sized; aliasing is supported for square matrices.
+    void matvec_into(const Vector& x, Vector& y) const {
+        if (x.size() != n_cols_ || y.size() != n_rows_) {
+            throw std::runtime_error("SparseMatrix::matvec_into: dimension mismatch");
+        }
+        if (&x == &y) {
+            const Vector input = x;
+            matvec_into(input, y);
+            return;
+        }
+        for (std::size_t i = 0; i < n_rows_; ++i) {
+            Value sum = 0.0;
+            for (Index k = row_offsets_[i]; k < row_offsets_[i + 1]; ++k) {
+                sum += values_[k] * x(columns_[k]);
+            }
+            y(i) = sum;
+        }
+    }
+
     // --- Accès bulk ---
 
     const Value* values_data() const noexcept { return values_.data(); }
