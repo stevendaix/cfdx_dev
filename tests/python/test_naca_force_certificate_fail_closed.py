@@ -8,10 +8,29 @@ import tempfile
 import unittest
 
 
-class CertificateGate(unittest.TestCase):
-    def test_failure_records_history_and_removes_stale_force_result(self):
+def ctest_arguments():
+    """Return the (binary, mesh) paths provided by the CTest registration.
+
+    CTest runs this module as a script with the NACA qualification binary
+    and the quick n64 mesh as command-line arguments. The full-tree pytest
+    regression collects the module without those arguments, so pytest's
+    own options must never be misread as the solver path: without the
+    CTest-provided binary and mesh the fail-closed gate skips instead of
+    executing a non-existent file.
+    """
+    if len(sys.argv) >= 3:
         binary = Path(sys.argv[1])
         mesh = Path(sys.argv[2])
+        if binary.is_file() and mesh.is_file():
+            return binary, mesh
+    raise unittest.SkipTest(
+        "certificate gate requires the CTest-provided binary and mesh"
+    )
+
+
+class CertificateGate(unittest.TestCase):
+    def test_failure_records_history_and_removes_stale_force_result(self):
+        binary, mesh = ctest_arguments()
         with tempfile.TemporaryDirectory() as folder:
             directory = Path(folder)
             forces = directory / "forces.csv"
@@ -37,7 +56,7 @@ class CertificateGate(unittest.TestCase):
             self.assertNotIn("NACA_CONVERGED_FORCE_CERTIFICATE", proc.stdout)
 
     def test_invalid_mesh_clears_stale_force_and_state_certificates(self):
-        binary = Path(sys.argv[1])
+        binary, _ = ctest_arguments()
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)
             force = path / "old_forces.csv"
@@ -66,7 +85,7 @@ class CertificateGate(unittest.TestCase):
             self.assertFalse(history.exists(), "stale history survived mesh loading failure")
 
     def test_output_preflight_protects_restart_input(self):
-        binary = Path(sys.argv[1])
+        binary, _ = ctest_arguments()
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder)
             restart = path / "restart.csv"
