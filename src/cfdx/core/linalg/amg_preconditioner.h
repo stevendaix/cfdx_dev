@@ -1,5 +1,7 @@
 #pragma once
 #include "cfdx/core/linalg/amg_setup_footprint.h"
+#include "cfdx/core/linalg/galerkin_csr_product.h"
+#include "cfdx/core/linalg/algebraic_line_preconditioner.h"
 #include "cfdx/core/linalg/linear_operator.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
@@ -8,6 +10,7 @@
 #include <cstddef>
 #include <limits>
 #include <map>
+#include <queue>
 #include <stdexcept>
 #include <string>
 #include <set>
@@ -19,6 +22,11 @@ namespace cfdx::core {
 enum class AMGInterpolationPolicy {
     DirectCF,
     SmoothedAggregation
+};
+
+enum class AMGSmootherPolicy {
+    DampedJacobi,
+    AlgebraicLines
 };
 
 // Multilevel AMG with selectable direct C/F or smoothed-aggregation
@@ -36,16 +44,24 @@ public:
                                    AMGInterpolationPolicy interpolation =
                                        AMGInterpolationPolicy::DirectCF,
                                    bool constant_null_space = false,
-                                   bool require_smoother_certificate = true)
+                                   bool require_smoother_certificate = true,
+                                   AMGSmootherPolicy smoother = AMGSmootherPolicy::DampedJacobi,
+                                   double prolongator_filter = 0.0,
+                                   std::size_t max_cf_interpolation_entries = 0)
         : op_(op), configured_omega_(omega), omega_(omega), pre_(pre), post_(post),
           strength_threshold_(strength_threshold), max_levels_(max_levels),
           interpolation_(interpolation),
           constant_null_space_(constant_null_space),
-          require_smoother_certificate_(require_smoother_certificate)
+          require_smoother_certificate_(require_smoother_certificate),
+          smoother_policy_(smoother), prolongator_filter_(prolongator_filter),
+          max_cf_interpolation_entries_(max_cf_interpolation_entries)
     {
         if (op.rows() != op.cols() || !(omega_ > 0.0 && omega_ < 2.0) ||
             !std::isfinite(strength_threshold_) || strength_threshold_ < 0.0 ||
-            strength_threshold_ > 1.0 || max_levels_ == 0) {
+            strength_threshold_ > 1.0 || max_levels_ == 0 ||
+            !std::isfinite(prolongator_filter_) || prolongator_filter_ < 0.0 ||
+            prolongator_filter_ >= 1.0 ||
+            max_cf_interpolation_entries_ == 1) {
             throw std::invalid_argument("invalid AMG operator");
         }
     }
@@ -54,6 +70,8 @@ public:
     {
         last_setup_error_.clear();
         last_footprint_ = AMGSetupFootprint{};
+        line_factor_fallback_levels_ = 0;
+        numeric_line_fallbacks_ = 0;
         if (A.n_rows() != op_.rows() || A.n_cols() != op_.cols() ||
             A.n_rows() == 0 || !matrix_is_valid(A) ||
             (constant_null_space_ && !has_constant_null_space(A))) {
@@ -71,6 +89,10 @@ public:
         if (!build_diagonal(fine)) {
             last_setup_error_ = "invalid or zero diagonal on finest level";
             levels_.clear();
+            return false;
+        }
+        if (!build_level_lines(fine)) {
+            last_setup_error_ = "invalid finest algebraic-line factorization";
             return false;
         }
         levels_.push_back(std::move(fine));
@@ -91,7 +113,7 @@ public:
                 build_smoothed_aggregation_interpolation(
                     levels_.back(), strength_threshold_, prolongation,
                     aggregate, coarse_n,
-                    &last_footprint_.fallback_interpolation_rows);
+                    &last_footprint_.fallback_interpolation_rows, prolongator_filter_);
                 if (levels_.size() == 1) {
                     std::vector<std::size_t> members(coarse_n, 0);
                     for (const std::size_t id : aggregate) {
@@ -104,7 +126,8 @@ public:
                 }
             } else {
                 if (!build_cf_interpolation(levels_.back(), strength_threshold_,
-                                            prolongation, aggregate, coarse_n)) {
+                                            prolongation, aggregate, coarse_n,
+                                            max_cf_interpolation_entries_)) {
                     last_setup_error_ = "Direct-CF interpolation construction failed at level " +
                                         std::to_string(levels_.size() - 1);
                     levels_.clear();
@@ -116,10 +139,12 @@ public:
                 break;
             }
 
-            SparseMatrix coarse = galerkin_coarse(
-                levels_.back().A, prolongation, coarse_n,
-                &last_footprint_.galerkin_dropped_entries);
-            if (!matrix_is_valid(coarse)) {
+            GalerkinCSRProduct product;
+            SparseMatrix coarse;
+            if (!product.symbolic(levels_.back().A, prolongation, coarse_n) ||
+                !product.numeric(levels_.back().A, prolongation, coarse,
+                                 &last_footprint_.galerkin_dropped_entries) ||
+                !matrix_is_valid(coarse)) {
                 last_setup_error_ = "invalid Galerkin coarse matrix from level " +
                                     std::to_string(levels_.size() - 1);
                 levels_.clear();
@@ -140,8 +165,14 @@ public:
                 first_aggregate_.clear();
                 return false;
             }
+            if (!build_level_lines(next)) {
+                last_setup_error_ = "invalid coarse algebraic-line factorization";
+                levels_.clear();
+                return false;
+            }
             levels_.back().aggregate = std::move(aggregate);
             levels_.back().prolongation = std::move(prolongation);
+            levels_.back().coarse_product = std::move(product);
             levels_.push_back(std::move(next));
         }
 
@@ -185,49 +216,83 @@ public:
             return false;
         }
 
-        std::vector<Level> refreshed = levels_;
+        // Transactionally stage only numeric state.  Copying `levels_` here
+        // used to clone every aggregate and every prolongation row on each
+        // pressure corrector even though interpolation is unchanged.  This
+        // is particularly expensive for NACA N256's anisotropic hierarchy.
+        // Keep the original transfer operators in levels_ until the staged
+        // Galerkin matrices, diagonals, line factorizations and damping have
+        // all passed their checks. Failure leaves the old hierarchy intact.
+        std::vector<Level> refreshed(levels_.size());
+        std::size_t refreshed_line_fallbacks = 0;
+        for (std::size_t level = 0; level < refreshed.size(); ++level) {
+            refreshed[level].use_lines = levels_[level].use_lines;
+            // The line topology and its existing factors are used only when
+            // a line smoother is active.  Its numeric refresh is itself
+            // transactional, so preserve an independent copy until commit.
+            if (refreshed[level].use_lines)
+                refreshed[level].line_pc = levels_[level].line_pc;
+        }
         refreshed.front().A = A;
-        if (!build_diagonal(refreshed.front())) return false;
+        if (!build_diagonal(refreshed.front()) ||
+            !refresh_level_lines(refreshed.front(), true, refreshed_line_fallbacks))
+            return false;
 
-        // Stage numeric-update diagnostics with the temporary hierarchy. A
-        // failed refresh must not report drops from levels that were never
-        // committed as the active hierarchy.
         std::size_t dropped_entries = 0;
         for (std::size_t level = 0; level + 1 < refreshed.size(); ++level) {
-            const std::size_t coarse_n = refreshed[level + 1].A.n_rows();
-            SparseMatrix coarse = galerkin_coarse(
-                refreshed[level].A, refreshed[level].prolongation, coarse_n,
-                &dropped_entries);
-            if (!matrix_is_valid(coarse)) return false;
-            refreshed[level + 1].A = std::move(coarse);
-            if (!build_diagonal(refreshed[level + 1])) return false;
+            const std::size_t coarse_n = levels_[level + 1].A.n_rows();
+            // Transactional fixed-graph Galerkin refresh: duplicate the old
+            // coarse CSR once into staging, then recompute only its values.
+            // Unlike a full numeric() build this does not reallocate or
+            // re-copy the row offsets and columns after every multiplication.
+            refreshed[level + 1].A = levels_[level + 1].A;
+            if (!levels_[level].coarse_product.numeric_into_existing(
+                    refreshed[level].A, levels_[level].prolongation,
+                    refreshed[level + 1].A, &dropped_entries) ||
+                !matrix_is_valid(refreshed[level + 1].A) ||
+                refreshed[level + 1].A.n_rows() != coarse_n) return false;
+            if (!build_diagonal(refreshed[level + 1]) ||
+                !refresh_level_lines(refreshed[level + 1], false, refreshed_line_fallbacks))
+                return false;
         }
 
-        // Numeric refresh can leave the retained interpolation with coarse
-        // operators whose high-frequency spectrum is no longer compatible
-        // with the original fixed Jacobi damping. Bound the normalized spectrum
-        // on every refreshed level and conservatively reduce omega before the
-        // hierarchy is exposed to CG. A non-SPD/unsupported diagonal does not
-        // get reclassified here; the caller's true-residual and Krylov checks
-        // remain authoritative.
         double refreshed_omega = 0.0;
         if (!compute_stable_smoother_omega(refreshed, refreshed_omega)) {
-            if (require_smoother_certificate_)
-                return false;
-            // General nonsymmetric preconditioner path: every structural
-            // check above passed, so commit the numeric refresh and keep
-            // the previously accepted damping. The outer Krylov
-            // true-residual checks remain authoritative.
+            if (require_smoother_certificate_) return false;
             refreshed_omega = omega_;
         }
 
-        levels_ = std::move(refreshed);
+        // Numeric-only commit: aggregate and interpolation storage is never
+        // moved or copied.  Move-assignments are noexcept for these standard
+        // containers, so no half-updated hierarchy can be observed.
+        for (std::size_t level = 0; level < levels_.size(); ++level) {
+            levels_[level].A = std::move(refreshed[level].A);
+            levels_[level].inv_diag = std::move(refreshed[level].inv_diag);
+            levels_[level].use_lines = refreshed[level].use_lines;
+            if (levels_[level].use_lines)
+                levels_[level].line_pc = std::move(refreshed[level].line_pc);
+        }
+        numeric_line_fallbacks_ = refreshed_line_fallbacks;
         omega_ = refreshed_omega;
         last_footprint_.galerkin_dropped_entries += dropped_entries;
         return true;
     }
 
     double smoother_omega() const noexcept { return omega_; }
+    std::size_t line_factor_fallback_levels() const noexcept {
+        return line_factor_fallback_levels_;
+    }
+    std::size_t numeric_line_fallbacks() const noexcept {
+        return numeric_line_fallbacks_;
+    }
+    std::size_t finest_line_coverage() const noexcept {
+        return levels_.empty() || !levels_.front().use_lines ? 0 :
+               levels_.front().line_pc.covered_rows();
+    }
+    std::size_t finest_longest_line() const noexcept {
+        return levels_.empty() || !levels_.front().use_lines ? 0 :
+               levels_.front().line_pc.longest_line();
+    }
 
     const std::string& last_setup_error() const noexcept { return last_setup_error_; }
 
@@ -251,6 +316,33 @@ public:
         sizes.reserve(levels_.size());
         for (const auto& level : levels_) sizes.push_back(level.A.n_rows());
         return sizes;
+    }
+
+    // Complexity diagnostics for AMG on stretched meshes.  High operator
+    // complexity (sum(nnz(A_l))/nnz(A_0)) often exposes overly dense coarse
+    // Galerkin stencils even if the fine-grid Krylov count looks good.
+    std::vector<std::size_t> hierarchy_level_nnz() const
+    {
+        std::vector<std::size_t> sizes;
+        sizes.reserve(levels_.size());
+        for (const auto& level : levels_) sizes.push_back(level.A.nnz());
+        return sizes;
+    }
+
+    double operator_complexity() const noexcept
+    {
+        if (levels_.empty() || levels_.front().A.nnz() == 0) return 0.0;
+        double total = 0.0;
+        for (const auto& level : levels_) total += static_cast<double>(level.A.nnz());
+        return total / static_cast<double>(levels_.front().A.nnz());
+    }
+
+    double grid_complexity() const noexcept
+    {
+        if (levels_.empty() || levels_.front().A.n_rows() == 0) return 0.0;
+        double total = 0.0;
+        for (const auto& level : levels_) total += static_cast<double>(level.A.n_rows());
+        return total / static_cast<double>(levels_.front().A.n_rows());
     }
 
     const AMGSetupFootprint& setup_footprint() const noexcept
@@ -1104,8 +1196,11 @@ private:
     struct Level {
         SparseMatrix A;
         std::vector<double> inv_diag;
+        AlgebraicLinePreconditioner line_pc;
+        bool use_lines = false;
         std::vector<std::size_t> aggregate;
         std::vector<TransferRow> prolongation;
+        GalerkinCSRProduct coarse_product;
     };
 
     static bool matrix_is_valid(const SparseMatrix& A)
@@ -1273,6 +1368,41 @@ private:
         return true;
     }
 
+    bool build_level_lines(Level& level) {
+        if (smoother_policy_ != AMGSmootherPolicy::AlgebraicLines) return true;
+        // A Galerkin coarse operator can be SPD yet exhibit locally
+        // ill-conditioned or non-M-matrix blocks. In that case the optional
+        // line smoother MUST NOT be applied: fall back to certified Jacobi
+        // while retaining the full hierarchy and physical-residual gate.
+        if (!level.line_pc.setup(level.A)) {
+            level.use_lines = false;
+            ++line_factor_fallback_levels_;
+            return true;
+        }
+        // On a well-conditioned/isotropic grid retain the original Jacobi
+        // smoother: only activate the block solver for coherent long paths.
+        level.use_lines = level.line_pc.longest_line() >= 4 &&
+                          level.line_pc.covered_rows() * 4 >= level.A.n_rows();
+        return true;
+    }
+
+    bool refresh_level_lines(Level& level, bool finest,
+                             std::size_t& fallback_count) const {
+        if (smoother_policy_ != AMGSmootherPolicy::AlgebraicLines ||
+            !level.use_lines) return true;
+        // On the physical (finest) matrix, a changed directional strength
+        // graph invalidates numeric-only reuse: require full setup(). On a
+        // Galerkin level, whose graph is itself only an approximation, a
+        // rejected line factor can safely fall back to Jacobi. This avoids
+        // poisoning the active hierarchy while retaining the outer true-
+        // residual contract. Record the reversion for diagnostics.
+        if (level.line_pc.update_values(level.A)) return true;
+        if (finest) return false;
+        level.use_lines = false;
+        ++fallback_count;
+        return true;
+    }
+
     static std::vector<std::vector<std::size_t>> build_strength_graph(
         const Level& level, double strength_threshold)
     {
@@ -1313,719 +1443,3 @@ private:
                 strong[i].push_back(j);
             }
             std::sort(strong[i].begin(), strong[i].end());
-            strong[i].erase(std::unique(strong[i].begin(), strong[i].end()),                            strong[i].end());
-        }
-        return strong;
-    }
-
-    static bool build_cf_interpolation(const Level& level,
-                                       double strength_threshold,
-                                       std::vector<TransferRow>& prolongation,
-                                       std::vector<std::size_t>& aggregate,
-                                       std::size_t& coarse_n)
-    {
-        const std::size_t n = level.A.n_rows();
-        const auto strong = build_strength_graph(level, strength_threshold);
-
-        // Ruge--Stüben uses both the strong-dependence graph S and its
-        // transpose S^T.  The first pass selects high-influence points as C
-        // points and marks their strongly connected neighbours F.  Measures
-        // are recomputed after every selection rather than using a stale
-        // degree: this keeps the implementation deterministic and makes the
-        // influence update explicit.
-        std::vector<std::vector<std::size_t>> transpose(n);
-        for (std::size_t i = 0; i < n; ++i) {
-            for (const std::size_t j : strong[i]) {
-                if (j < n) transpose[j].push_back(i);
-            }
-        }
-
-        std::vector<std::vector<std::size_t>> neighborhood(n);
-        for (std::size_t i = 0; i < n; ++i) {
-            neighborhood[i] = strong[i];
-            neighborhood[i].insert(neighborhood[i].end(),
-                                    transpose[i].begin(), transpose[i].end());
-            std::sort(neighborhood[i].begin(), neighborhood[i].end());
-            neighborhood[i].erase(
-                std::unique(neighborhood[i].begin(), neighborhood[i].end()),
-                neighborhood[i].end());
-        }
-
-        enum class Point : unsigned char { Undecided, Fine, Coarse };
-        std::vector<Point> point(n, Point::Undecided);
-        std::vector<std::size_t> influence(n, 0);
-        for (std::size_t i = 0; i < n; ++i)
-            influence[i] = transpose[i].size();
-
-        std::size_t undecided = n;
-
-        while (undecided > 0) {
-            std::size_t best = n;
-            std::size_t best_measure = 0;
-            for (std::size_t i = 0; i < n; ++i) {
-                if (point[i] != Point::Undecided) continue;
-                if (best == n || influence[i] > best_measure ||
-                    (influence[i] == best_measure && i < best)) {
-                    best = i;
-                    best_measure = influence[i];
-                }
-            }
-
-            point[best] = Point::Coarse;
-            --undecided;
-
-            // Points that strongly depend on the new C point become F.
-            // Every newly-created F point then increases the influence
-            // measure of its strong influencers. This is the dynamic
-            // Ruge--Stuben first-pass update; recomputing only the number of
-            // undecided neighbours is not equivalent and over-coarsens paths
-            // into a ~1/3 C-set.
-            for (const std::size_t j : transpose[best]) {
-                if (point[j] == Point::Undecided) {
-                    point[j] = Point::Fine;
-                    --undecided;
-                    for (const std::size_t k : strong[j]) {
-                        if (point[k] == Point::Undecided)
-                            ++influence[k];
-                    }
-                }
-            }
-        }
-
-        auto has_common_coarse = [&](std::size_t i, std::size_t j) {
-            for (const std::size_t ci : strong[i]) {
-                if (point[ci] != Point::Coarse) continue;
-                for (const std::size_t cj : strong[j]) {
-                    if (ci == cj && point[cj] == Point::Coarse) return true;
-                }
-            }
-            return false;
-        };
-
-        // RS second pass: every strong F-F connection must be representable
-        // through a common C neighbour.  If the first pass leaves a violation,
-        // augment the C set only with a point that is not strongly adjacent to
-        // an existing C point.  On the 1-D Poisson model this pass is inactive
-        // for the normal alternating C/F splitting; it is nevertheless needed
-        // for general strength graphs.
-        bool changed = true;
-        std::size_t guard = 0;
-        while (changed && guard++ <= 2 * n + 1) {
-            changed = false;
-            for (std::size_t i = 0; i < n && !changed; ++i) {
-                if (point[i] != Point::Fine) continue;
-                for (const std::size_t j : strong[i]) {
-                    if (point[j] != Point::Fine) continue;
-                    if (has_common_coarse(i, j)) continue;
-
-                    // Second-pass augmentation is allowed to add a C point
-                    // adjacent to an existing C point.  The first pass enforces
-                    // maximal C/F independence; the second pass exists precisely
-                    // to repair F-F connections that have no common C neighbour.
-                    // Rejecting both endpoints here can leave an F-F edge with no
-                    // admissible classical interpolation stencil.
-                    const std::size_t candidate = i;
-
-                    point[candidate] = Point::Coarse;
-                    changed = true;
-                    for (const std::size_t q : neighborhood[candidate]) {
-                        if (point[q] == Point::Undecided) point[q] = Point::Fine;
-                    }
-                    break;
-                }
-            }
-        }
-
-        // A valid classical interpolation requires every F point to have at
-        // least one strong C neighbour in its own dependence set.  If a
-        // directed strength graph leaves such a point without one, promote the
-        // point itself when that does not violate C independence.
-        for (std::size_t i = 0; i < n; ++i) {
-            if (point[i] != Point::Fine) continue;
-            bool has_strong_C = false;
-            for (const std::size_t j : strong[i]) {
-                if (point[j] == Point::Coarse) {
-                    has_strong_C = true;
-                    break;
-                }
-            }
-            if (!has_strong_C) {
-                // At this stage there is no valid interpolation stencil for
-                // this F point. Promote it rather than manufacturing a
-                // singleton/fallback interpolation row.
-                point[i] = Point::Coarse;
-            }
-        }
-
-        std::vector<std::size_t> coarse_index(n, n);
-        coarse_n = 0;
-        for (std::size_t i = 0; i < n; ++i) {
-            if (point[i] == Point::Coarse) coarse_index[i] = coarse_n++;
-        }
-
-        const auto* row = level.A.row_offsets_data();
-        const auto* col = level.A.columns_data();
-        const auto* val = level.A.values_data();
-
-        auto matrix_value = [&](std::size_t i, std::size_t j) {
-            double value = 0.0;
-            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                if (col[k] == j) value += val[k];
-            }
-            return value;
-        };
-
-        prolongation.assign(n, {});
-        aggregate.assign(n, 0);
-
-        for (std::size_t i = 0; i < n; ++i) {
-            if (point[i] == Point::Coarse) {
-                prolongation[i].push_back({coarse_index[i], 1.0});
-                aggregate[i] = coarse_index[i];
-                continue;
-            }
-
-            const double diagonal = 1.0 / level.inv_diag[i];
-            std::vector<std::size_t> c_neighbors;
-            c_neighbors.reserve(strong[i].size());
-            for (const std::size_t j : strong[i]) {
-                if (point[j] == Point::Coarse)
-                    c_neighbors.push_back(j);
-            }
-
-            // The second-pass criterion above should make this non-empty.
-            // If it is not, the splitting is not valid for classical
-            // interpolation; reject the hierarchy rather than inventing a
-            // non-Galerkin fallback.
-            if (c_neighbors.empty()) {
-                prolongation.clear();
-                aggregate.clear();
-                coarse_n = 0;
-                return false;
-            }
-
-            // Classical Ruge--Stüben interpolation:
-            //
-            // w_ij = -(a_ij + sum_{k in F_i^s}
-            //                  a_ik a_kj / sum_{m in C_k^s} a_km)
-            //             / (a_ii + sum_{k in N_i^w} a_ik).
-            //
-            // This is the standard signed formula. There is deliberately no
-            // arbitrary post-normalization: constant preservation follows from
-            // the algebraic formula for Laplacian/M-matrix rows, and a failure
-            // to obtain finite weights is a setup failure rather than a hidden
-            // fallback.
-            double weak_sum = 0.0;
-            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                const std::size_t j = col[k];
-                if (j == i) continue;
-                if (!std::binary_search(strong[i].begin(), strong[i].end(), j))
-                    weak_sum += val[k];
-            }
-
-            const double denominator = diagonal + weak_sum;
-            if (!std::isfinite(denominator) || std::abs(denominator) <= 1e-30) {
-                prolongation.clear();
-                aggregate.clear();
-                coarse_n = 0;
-                return false;
-            }
-
-            std::map<std::size_t, double> weights;
-            for (const std::size_t j : c_neighbors) {
-                weights[coarse_index[j]] += matrix_value(i, j);
-            }
-
-            for (const std::size_t k : strong[i]) {
-                if (point[k] != Point::Fine) continue;
-
-                // Classical RS interpolation uses the complete strong
-                // C-neighbour set of the intermediate F-point k. Restricting
-                // this contribution to C_i^s ∩ C_k^s is not the RS formula
-                // and can destroy the interpolation space on recursively
-                // generated Galerkin operators.
-                double c_sum = 0.0;
-                std::vector<std::size_t> k_c_neighbors;
-                for (const std::size_t m : strong[k]) {
-                    if (point[m] == Point::Coarse) {
-                        c_sum += matrix_value(k, m);
-                        k_c_neighbors.push_back(m);
-                    }
-                }
-                if (!std::isfinite(c_sum) || std::abs(c_sum) <= 1e-30) {
-                    prolongation.clear();
-                    aggregate.clear();
-                    coarse_n = 0;
-                    return false;
-                }
-
-                const double aik = matrix_value(i, k);
-                for (const std::size_t j : k_c_neighbors) {
-                    const double akj = matrix_value(k, j);
-                    weights[coarse_index[j]] += aik * akj / c_sum;
-                }
-            }
-
-            double largest = -1.0;
-            for (const auto& [coarse, numerator] : weights) {
-                const double weight = -numerator / denominator;
-                if (!std::isfinite(weight)) {
-                    prolongation.clear();
-                    aggregate.clear();
-                    coarse_n = 0;
-                    return false;
-                }
-                prolongation[i].push_back({coarse, weight});
-                if (std::abs(weight) > largest) {
-                    largest = std::abs(weight);
-                    aggregate[i] = coarse;
-                }
-            }
-
-            if (prolongation[i].empty()) {
-                prolongation.clear();
-                aggregate.clear();
-                coarse_n = 0;
-                return false;
-            }
-
-            // The constant vector is the near-nullspace mode for the elliptic
-            // operators targeted by classical AMG. Enforce P*1 = 1 explicitly
-            // after the signed RS construction. This is a mathematical
-            // near-nullspace constraint, not a convergence/tolerance fallback.
-            double row_sum = 0.0;
-            for (const auto& [coarse, weight] : prolongation[i]) {
-                (void)coarse;
-                row_sum += weight;
-            }
-            if (!std::isfinite(row_sum) || std::abs(row_sum) <= 1e-30) {
-                prolongation.clear();
-                aggregate.clear();
-                coarse_n = 0;
-                return false;
-            }
-            for (auto& [coarse, weight] : prolongation[i]) {
-                (void)coarse;
-                weight /= row_sum;
-                if (!std::isfinite(weight)) {
-                    prolongation.clear();
-                    aggregate.clear();
-                    coarse_n = 0;
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-
-    static void build_smoothed_aggregation_interpolation(
-        const Level& level,
-        double strength_threshold,
-        std::vector<TransferRow>& prolongation,
-        std::vector<std::size_t>& aggregate,
-        std::size_t& coarse_n,
-        std::size_t* fallback_rows = nullptr)
-    {
-        const std::size_t n = level.A.n_rows();
-        const auto strong = build_strength_graph(level, strength_threshold);
-        std::vector<std::vector<std::size_t>> neighborhood = strong;
-        for (std::size_t i = 0; i < n; ++i) {
-            for (const std::size_t j : strong[i]) neighborhood[j].push_back(i);
-        }
-        for (auto& neighbors : neighborhood) {
-            std::sort(neighbors.begin(), neighbors.end());
-            neighbors.erase(std::unique(neighbors.begin(), neighbors.end()),
-                            neighbors.end());
-        }
-
-        // Deterministic uncoupled aggregation. The most connected unassigned
-        // point seeds an aggregate and absorbs its unassigned strong
-        // neighbours. Isolated points become singleton aggregates.
-        aggregate.assign(n, n);
-        coarse_n = 0;
-        std::size_t remaining = n;
-        while (remaining > 0) {
-            std::size_t seed = n;
-            std::size_t best_degree = 0;
-            for (std::size_t i = 0; i < n; ++i) {
-                if (aggregate[i] != n) continue;
-                std::size_t degree = 0;
-                for (const std::size_t j : neighborhood[i])
-                    if (aggregate[j] == n) ++degree;
-                if (seed == n || degree > best_degree ||
-                    (degree == best_degree && i < seed)) {
-                    seed = i;
-                    best_degree = degree;
-                }
-            }
-
-            const std::size_t id = coarse_n++;
-            aggregate[seed] = id;
-            --remaining;
-            for (const std::size_t j : neighborhood[seed]) {
-                if (aggregate[j] == n) {
-                    aggregate[j] = id;
-                    --remaining;
-                }
-            }
-        }
-
-        // Smooth the piecewise-constant tentative prolongator with one damped
-        // Jacobi step. Row normalization preserves the constant near-null-space
-        // mode while retaining interpolation to neighbouring aggregates.
-        constexpr double interpolation_omega = 2.0 / 3.0;
-        const auto* row = level.A.row_offsets_data();
-        const auto* col = level.A.columns_data();
-        const auto* val = level.A.values_data();
-        prolongation.assign(n, {});
-        for (std::size_t i = 0; i < n; ++i) {
-            std::map<std::size_t, double> weights;
-            weights[aggregate[i]] = 1.0;
-            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                weights[aggregate[col[k]]] -=
-                    interpolation_omega * level.inv_diag[i] * val[k];
-            }
-
-            double sum = 0.0;
-            for (const auto& [coarse, weight] : weights) {
-                (void)coarse;
-                if (std::isfinite(weight) && std::abs(weight) > 1e-14)
-                    sum += weight;
-            }
-            if (!std::isfinite(sum) || std::abs(sum) <= 1e-14) {
-                prolongation[i].push_back({aggregate[i], 1.0});
-                if (fallback_rows) ++(*fallback_rows);
-                continue;
-            }
-            for (const auto& [coarse, weight] : weights) {
-                const double normalized = weight / sum;
-                if (std::isfinite(normalized) && std::abs(normalized) > 1e-14)
-                    prolongation[i].push_back({coarse, normalized});
-            }
-            if (prolongation[i].empty()) {
-                prolongation[i].push_back({aggregate[i], 1.0});
-                if (fallback_rows) ++(*fallback_rows);
-            }
-        }
-    }
-
-    static SparseMatrix galerkin_coarse(const SparseMatrix& A,
-                                        const std::vector<TransferRow>& prolongation,
-                                        std::size_t coarse_n,
-                                        std::size_t* dropped_entries = nullptr)
-    {
-        std::vector<std::map<std::size_t, double>> rows(coarse_n);
-        const auto* row = A.row_offsets_data();
-        const auto* col = A.columns_data();
-        const auto* val = A.values_data();
-
-        for (std::size_t i = 0; i < A.n_rows(); ++i) {
-            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                const std::size_t j = col[k];
-                for (const auto& [ci, wi] : prolongation[i])
-                    for (const auto& [cj, wj] : prolongation[j])
-                        rows[ci][cj] += wi * val[k] * wj;
-            }
-        }
-
-        SparseMatrix coarse(coarse_n, coarse_n);
-        for (std::size_t i = 0; i < coarse_n; ++i) {
-            for (const auto& [j, value] : rows[i]) {
-                if (std::isfinite(value) && std::abs(value) > 1e-30) {
-                    coarse.push_back(i, j, value);
-                } else if (dropped_entries) {
-                    ++(*dropped_entries);
-                }
-            }
-        }
-        coarse.finalize();
-        return coarse;
-    }
-
-    bool apply_operator(std::size_t level, const Vector& x, Vector& y) const
-    {
-        if (level == 0) {
-            op_.apply(x, y);
-            return y.is_valid();
-        }
-        const auto& A = levels_[level].A;
-        const auto result = A.matvec(x);
-        if (y.size() != result.size()) y.resize(result.size());
-        for (std::size_t i = 0; i < result.size(); ++i) y(i) = result[i];
-        return y.is_valid();
-    }
-
-    bool smooth(std::size_t level, const Vector& r, Vector& x, std::size_t sweeps) const
-    {
-        Vector Ax(r.size());
-        const auto& inv_diag = levels_[level].inv_diag;
-        for (std::size_t s = 0; s < sweeps; ++s) {
-            if (!apply_operator(level, x, Ax)) return false;
-            for (std::size_t i = 0; i < r.size(); ++i) {
-                x(i) += omega_ * inv_diag[i] * (r(i) - Ax(i));
-                if (!std::isfinite(x(i))) return false;
-            }
-            if (constant_null_space_) remove_constant(x);
-        }
-        return true;
-    }
-
-    bool vcycle(std::size_t level, const Vector& r, Vector& x) const
-    {
-        const auto& current = levels_[level];
-        if (level + 1 == levels_.size()) {
-            return smooth_coarsest(level, r, x);        }
-
-        if (!smooth(level, r, x, pre_)) return false;
-
-        Vector Ax(r.size());
-        if (!apply_operator(level, x, Ax)) return false;
-
-        const auto& prolongation = current.prolongation;
-        const std::size_t nc = levels_[level + 1].A.n_rows();
-        Vector coarse_r(nc, 0.0);
-        for (std::size_t i = 0; i < r.size(); ++i) {
-            const double residual = r(i) - Ax(i);
-            for (const auto& [coarse, weight] : prolongation[i])
-                coarse_r(coarse) += weight * residual;
-        }
-        if (constant_null_space_) remove_constant(coarse_r);
-
-        Vector coarse_x(nc, 0.0);
-        if (!vcycle(level + 1, coarse_r, coarse_x)) return false;
-
-        for (std::size_t i = 0; i < r.size(); ++i) {
-            for (const auto& [coarse, weight] : prolongation[i])
-                x(i) += weight * coarse_x(coarse);
-            if (!std::isfinite(x(i))) return false;
-        }
-        if (constant_null_space_) remove_constant(x);
-
-        return smooth(level, r, x, post_);
-    }
-    bool vcycle_diagnostic(std::size_t level, const Vector& r, Vector& x,
-                           std::vector<VcycleDiagnostic>& diagnostics) const
-    {
-        VcycleDiagnostic d;
-        d.level = level;
-        d.size = r.size();
-        d.rhs_norm = r.norm2();
-        d.x_initial_norm = x.norm2();
-        Vector Ax(r.size());
-        if (!apply_operator(level, x, Ax)) return false;
-        Vector residual(r.size());
-        for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
-        d.residual_before = residual.norm2();
-
-        const std::size_t index = diagnostics.size();
-        diagnostics.push_back(d);
-        if (level + 1 == levels_.size()) {
-            const double coarse_before = residual.norm2();
-            if (!smooth_coarsest(level, r, x)) return false;
-            if (!apply_operator(level, x, Ax)) return false;
-            for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
-            diagnostics[index].coarse_residual_before = coarse_before;
-            diagnostics[index].coarse_residual_after = residual.norm2();
-            diagnostics[index].residual_after_pre = diagnostics[index].coarse_residual_after;
-            diagnostics[index].residual_after_post = diagnostics[index].coarse_residual_after;
-            diagnostics[index].coarse_solution_norm = x.norm2();
-            return x.is_valid();
-        }
-
-        if (!smooth(level, r, x, pre_)) return false;
-        if (!apply_operator(level, x, Ax)) return false;
-        for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
-        diagnostics[index].residual_after_pre = residual.norm2();
-
-        const auto& prolongation = levels_[level].prolongation;
-        const std::size_t nc = levels_[level + 1].A.n_rows();
-        Vector coarse_r(nc, 0.0);
-        for (std::size_t i = 0; i < r.size(); ++i)
-            for (const auto& [coarse, weight] : prolongation[i])
-                coarse_r(coarse) += weight * residual(i);
-        if (constant_null_space_) remove_constant(coarse_r);
-        diagnostics[index].coarse_rhs_norm = coarse_r.norm2();
-
-        Vector coarse_x(nc, 0.0);
-        if (!vcycle_diagnostic(level + 1, coarse_r, coarse_x, diagnostics)) return false;
-        diagnostics[index].coarse_solution_norm = coarse_x.norm2();
-
-        Vector coarse_Ax(nc, 0.0);
-        if (!apply_operator(level + 1, coarse_x, coarse_Ax)) return false;
-        double coarse_eq_r2 = 0.0;
-        double coarse_rhs2 = 0.0;
-        for (std::size_t i = 0; i < nc; ++i) {
-            const double e = coarse_r(i) - coarse_Ax(i);
-            coarse_eq_r2 += e * e;
-            coarse_rhs2 += coarse_r(i) * coarse_r(i);
-        }
-        diagnostics[index].coarse_equation_relative_residual =
-            std::sqrt(coarse_eq_r2 / std::max(coarse_rhs2, 1e-300));
-
-        Vector correction(x.size(), 0.0);
-        for (std::size_t i = 0; i < r.size(); ++i) {
-            for (const auto& [coarse, weight] : prolongation[i])
-                correction(i) += weight * coarse_x(coarse);
-            x(i) += correction(i);
-            if (!std::isfinite(x(i))) return false;
-        }
-        diagnostics[index].correction_norm = correction.norm2();
-        Vector A_correction(x.size(), 0.0);
-        if (!apply_operator(level, correction, A_correction)) return false;
-        diagnostics[index].correction_operator_norm = A_correction.norm2();
-        if (constant_null_space_) remove_constant(x);
-        if (!apply_operator(level, x, Ax)) return false;
-        for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
-        diagnostics[index].residual_after_correction = residual.norm2();
-
-        if (!smooth(level, r, x, post_)) return false;
-        if (!apply_operator(level, x, Ax)) return false;
-        for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
-        diagnostics[index].residual_after_post = residual.norm2();
-        return x.is_valid();
-    }
-
-
-    static bool dense_solve(const SparseMatrix& A, const Vector& b, Vector& x)
-    {
-        const std::size_t n=A.n_rows();
-        if(n==0 || b.size()!=n) return false;
-        std::vector<double> m(n*n,0.0),rhs(b.size(),0.0);
-        const auto* row=A.row_offsets_data(); const auto* col=A.columns_data(); const auto* val=A.values_data();
-        for(std::size_t i=0;i<n;++i) {
-            rhs[i]=b(i);
-            for(std::size_t k=row[i];k<row[i+1];++k) m[i*n+col[k]]+=val[k];
-        }
-        for(std::size_t k=0;k<n;++k) {
-            std::size_t p=k; double pa=std::abs(m[k*n+k]);
-            for(std::size_t i=k+1;i<n;++i) if(std::abs(m[i*n+k])>pa) {pa=std::abs(m[i*n+k]);p=i;}
-            if(!std::isfinite(pa) || pa<=128.0*std::numeric_limits<double>::epsilon()*std::max(1.0,pa)) return false;
-            if(p!=k) {
-                for(std::size_t j=k;j<n;++j) std::swap(m[k*n+j],m[p*n+j]);
-                std::swap(rhs[k],rhs[p]);
-            }
-            for(std::size_t i=k+1;i<n;++i) {
-                const double f=m[i*n+k]/m[k*n+k];
-                if(!std::isfinite(f)) return false;
-                m[i*n+k]=0.0;
-                for(std::size_t j=k+1;j<n;++j) m[i*n+j]-=f*m[k*n+j];
-                rhs[i]-=f*rhs[k];
-            }
-        }
-        x.resize(n);
-        for(std::size_t ii=n;ii-- > 0;) {
-            double sum=rhs[ii];
-            for(std::size_t j=ii+1;j<n;++j) sum-=m[ii*n+j]*x(j);
-            if(!std::isfinite(m[ii*n+ii]) || std::abs(m[ii*n+ii])<=1e-30) return false;
-            x(ii)=sum/m[ii*n+ii];
-            if(!std::isfinite(x(ii))) return false;
-        }
-        return true;
-    }
-
-    bool smooth_coarsest(std::size_t level, const Vector& r, Vector& x) const
-    {
-        // Solve the tiny coarsest problem directly. Using a fixed number of
-        // Jacobi sweeps leaves low-frequency error on small Poisson systems
-        // and makes the V-cycle quality depend on the arbitrary sweep count.
-        // The coarsest level is intentionally small, so a dense pivoted solve
-        // is both robust and negligible compared with the fine-grid work.
-        const auto& A = levels_[level].A;
-        const std::size_t n = A.n_rows();
-        if (r.size() != n || n == 0) return false;
-
-        const std::size_t system_n = n + (constant_null_space_ ? 1 : 0);
-        std::vector<double> m(system_n * system_n, 0.0);
-        std::vector<double> b(system_n, 0.0);
-        const auto* row = A.row_offsets_data();
-        const auto* col = A.columns_data();
-        const auto* val = A.values_data();
-        for (std::size_t i = 0; i < n; ++i) {
-            b[i] = r(i);
-            for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
-                m[i * system_n + col[k]] += val[k];
-            }
-        }
-
-        // A pure-Neumann coarse operator is singular. The symmetric saddle-
-        // point augmentation enforces a zero-mean correction without pinning
-        // an arbitrary coarse unknown.
-        if (constant_null_space_) {
-            for (std::size_t i = 0; i < n; ++i) {
-                m[i * system_n + n] = 1.0;
-                m[n * system_n + i] = 1.0;
-            }
-        }
-
-        double matrix_scale = 0.0;
-        for (const double value : m)
-            matrix_scale = std::max(matrix_scale, std::abs(value));
-        const double pivot_tol = 128.0 * std::numeric_limits<double>::epsilon() *
-                                 std::max(1.0, matrix_scale);
-        for (std::size_t k = 0; k < system_n; ++k) {
-            std::size_t pivot = k;
-            double pivot_abs = std::abs(m[k * system_n + k]);
-            for (std::size_t i = k + 1; i < system_n; ++i) {
-                const double candidate = std::abs(m[i * system_n + k]);
-                if (candidate > pivot_abs) {
-                    pivot_abs = candidate;
-                    pivot = i;
-                }
-            }
-            if (!std::isfinite(pivot_abs) || pivot_abs <= pivot_tol) return false;
-
-            if (pivot != k) {
-                for (std::size_t j = k; j < system_n; ++j) {
-                    std::swap(m[k * system_n + j],
-                              m[pivot * system_n + j]);
-                }
-                std::swap(b[k], b[pivot]);
-            }
-
-            const double diagonal = m[k * system_n + k];
-            for (std::size_t i = k + 1; i < system_n; ++i) {
-                const double factor = m[i * system_n + k] / diagonal;
-                if (!std::isfinite(factor)) return false;
-                m[i * system_n + k] = 0.0;
-                for (std::size_t j = k + 1; j < system_n; ++j) {
-                    m[i * system_n + j] -=
-                        factor * m[k * system_n + j];
-                }
-                b[i] -= factor * b[k];
-            }
-        }
-
-        std::vector<double> solution(system_n, 0.0);
-        for (std::size_t ii = system_n; ii-- > 0;) {
-            double sum = b[ii];
-            for (std::size_t j = ii + 1; j < system_n; ++j) {
-                sum -= m[ii * system_n + j] * solution[j];
-            }
-            const double diagonal = m[ii * system_n + ii];
-            if (!std::isfinite(diagonal) || std::abs(diagonal) <= pivot_tol) return false;
-            solution[ii] = sum / diagonal;
-            if (!std::isfinite(solution[ii])) return false;
-        }
-        if (x.size() != n) x.resize(n);
-        for (std::size_t i = 0; i < n; ++i) x(i) = solution[i];
-        if (constant_null_space_) remove_constant(x);
-        return x.is_valid();
-    }
-
-    const LinearOperatorBase& op_;
-    const double configured_omega_;
-    double omega_;
-    std::size_t pre_, post_;
-    double strength_threshold_;
-    std::size_t max_levels_;
-    AMGInterpolationPolicy interpolation_;
-    bool constant_null_space_;
-    const bool require_smoother_certificate_;
-    std::vector<Level> levels_;
-    std::vector<std::size_t> first_aggregate_;
-    AMGSetupFootprint last_footprint_;
-    std::string last_setup_error_;
-};
-
-using AgglomeratedAMGPreconditioner = MatrixFreeVcyclePreconditioner;
-} // namespace cfdx::core
