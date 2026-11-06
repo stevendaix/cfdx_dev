@@ -8,6 +8,7 @@
 #include "cfdx/core/linalg/gmres_solver.h"
 #include "cfdx/core/linalg/hypre_amg.h"
 #include "cfdx/core/linalg/linear_solver_models.h"
+#include "cfdx/core/linalg/vanka_patch_preconditioner.h"
 #include "cfdx/core/linalg/matrix_diagnostics.h"
 #include "cfdx/core/linalg/null_space.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
@@ -182,12 +183,16 @@ inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
         case PreconditionerModel::DirectionalSemiCoarseningAMG:
             return std::make_unique<NativeDirectionalSemiCoarseningAMGPreconditioner>(
                 constant_null_space);
+        case PreconditionerModel::EnergyMinimizingAMG:
+            return std::make_unique<NativeEnergyMinimizingAMGPreconditioner>(
+                constant_null_space);
         case PreconditionerModel::SmoothedAggregationAMG:
             return std::make_unique<
                 NativeSmoothedAggregationAMGPreconditioner>(
                     constant_null_space, require_smoother_certificate);
         case PreconditionerModel::NativeFieldSplit:
         case PreconditionerModel::CoupledBlockSchur:
+        case PreconditionerModel::VankaPressurePatch:
             throw std::invalid_argument(
                 "block preconditioning needs field metadata; use the coupled solver API");
         case PreconditionerModel::Auto:
@@ -301,6 +306,9 @@ inline LinearSolveReport solve_linear_system(
             throw std::invalid_argument("coupled pressure-velocity system must have 4N unknowns");
         if (report.plan.preconditioner == PreconditionerModel::CoupledBlockSchur)
             preconditioner = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+                matrix.n_rows() / 4);
+        else if (report.plan.preconditioner == PreconditionerModel::VankaPressurePatch)
+            preconditioner = std::make_unique<VankaPressurePatchPreconditioner>(
                 matrix.n_rows() / 4);
         else if (report.plan.preconditioner == PreconditionerModel::PCD)
             throw std::invalid_argument(

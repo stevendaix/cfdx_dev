@@ -22,7 +22,8 @@ namespace cfdx::core {
 enum class AMGInterpolationPolicy {
     DirectCF,
     SmoothedAggregation,
-    DirectionalSemiCoarsening
+    DirectionalSemiCoarsening,
+    EnergyMinimizingAggregation
 };
 
 enum class AMGSmootherPolicy {
@@ -117,11 +118,21 @@ public:
                     aggregate, coarse_n,
                     &last_footprint_.fallback_interpolation_rows,
                     prolongator_filter_, &levels_.back().directional_pairs);
-            } else if (interpolation_ == AMGInterpolationPolicy::SmoothedAggregation) {
+            } else if (interpolation_ == AMGInterpolationPolicy::SmoothedAggregation ||
+                       interpolation_ == AMGInterpolationPolicy::EnergyMinimizingAggregation) {
                 build_smoothed_aggregation_interpolation(
                     levels_.back(), strength_threshold_, prolongation,
                     aggregate, coarse_n,
                     &last_footprint_.fallback_interpolation_rows, prolongator_filter_);
+                if (interpolation_ == AMGInterpolationPolicy::EnergyMinimizingAggregation &&
+                    !minimize_interpolation_energy(levels_.back(), aggregate,
+                                                   coarse_n, prolongation)) {
+                    last_setup_error_ = "energy-minimizing interpolation failed at level " +
+                                        std::to_string(levels_.size() - 1);
+                    levels_.clear();
+                    first_aggregate_.clear();
+                    return false;
+                }
                 if (levels_.size() == 1) {
                     std::vector<std::size_t> members(coarse_n, 0);
                     for (const std::size_t id : aggregate) {
@@ -373,6 +384,13 @@ public:
         // update_values() accumulates Galerkin drops only after a numeric
         // hierarchy refresh succeeds; failed refreshes do not commit counts. No tolerance or acceptance criterion reads them.
         return last_footprint_;
+    }
+
+    double first_prolongation_energy() const
+    {
+        if (levels_.size() < 2 || levels_.front().prolongation.empty())
+            throw std::out_of_range("first_prolongation_energy: hierarchy unavailable");
+        return interpolation_energy(levels_.front().A, levels_.front().prolongation);
     }
 
     double prolongation_row_sum_min() const
@@ -2007,6 +2025,173 @@ private:
                 if (fallback_rows) ++(*fallback_rows);
             }
         }
+    }
+
+    // Trace(P^T A P), for a symmetric positive (semi)definite elliptic
+    // matrix. There is no dense N x N object and no dense coarse operator.
+    static double interpolation_energy(const SparseMatrix& A,
+                                       const std::vector<TransferRow>& P)
+    {
+        long double energy = 0.0L;
+        const auto* ro = A.row_offsets_data();
+        const auto* ci = A.columns_data();
+        const auto* av = A.values_data();
+        for (std::size_t i = 0; i < P.size(); ++i)
+            for (std::size_t k = ro[i]; k < ro[i+1]; ++k) {
+                const auto& a = P[i];
+                const auto& b = P[ci[k]];
+                std::size_t ia = 0, ib = 0;
+                while (ia < a.size() && ib < b.size()) {
+                    if (a[ia].first == b[ib].first) {
+                        energy += static_cast<long double>(av[k]) *
+                            static_cast<long double>(a[ia].second) *
+                            static_cast<long double>(b[ib].second);
+                        ++ia;
+                        ++ib;
+                    } else if (a[ia].first < b[ib].first) ++ia;
+                    else ++ib;
+                }
+            }
+        return static_cast<double>(energy);
+    }
+
+    // Approximate constrained energy minimization (fixed sparse pattern):
+    //   min_P tr(P^T A P), subject to P*1=1 and injection at each aggregate.
+    // The support reaches graph distance two. A projected Jacobi gradient
+    // step is accepted only when the *global* quadratic energy decreases.
+    // Fixed injection rows prevent loss of rank of the Galerkin transfers.
+    // This is an opt-in sparse approximation, not the Schroder algorithm.
+    static bool minimize_interpolation_energy(
+        const Level& level, const std::vector<std::size_t>& aggregate,
+        std::size_t coarse_n, std::vector<TransferRow>& P)
+    {
+        const auto& A = level.A;
+        const std::size_t n = A.n_rows();
+        if (aggregate.size() != n || P.size() != n || coarse_n == 0)
+            return false;
+        const auto* ro = A.row_offsets_data();
+        const auto* ci = A.columns_data();
+        const auto* av = A.values_data();
+        std::vector<double> diagonal(n, 0.0);
+        std::vector<std::size_t> anchors(coarse_n, n);
+        for (std::size_t i = 0; i < n; ++i) {
+            if (aggregate[i] >= coarse_n) return false;
+            anchors[aggregate[i]] = std::min(anchors[aggregate[i]], i);
+            for (std::size_t k = ro[i]; k < ro[i+1]; ++k)
+                if (ci[k] == i) diagonal[i] += av[k];
+            if (!std::isfinite(diagonal[i]) || diagonal[i] <= 0.0)
+                return false;
+        }
+        const auto baseline = P;
+        const double baseline_energy = interpolation_energy(A, P);
+        if (!std::isfinite(baseline_energy) || baseline_energy <= 0.0) return false;
+        constexpr std::size_t support_cap = 12;
+        for (std::size_t i = 0; i < n; ++i) {
+            if (anchors[aggregate[i]] == i) continue;
+            // Include graph-distance-two aggregates, ranked by the product
+            // of normalized couplings along a one/two-hop path. This avoids
+            // an excessive number of long-distance interpolation entries.
+            std::map<std::size_t, double> candidates;
+            candidates[aggregate[i]] = std::numeric_limits<double>::max();
+            for (std::size_t k = ro[i]; k < ro[i+1]; ++k) {
+                const std::size_t j = ci[k];
+                if (j == i) continue;
+                const double first = std::abs(av[k]) / diagonal[i];
+                if (first < 1e-14) continue;
+                candidates[aggregate[j]] += first;
+                for (std::size_t q = ro[j]; q < ro[j+1]; ++q) {
+                    const std::size_t h = ci[q];
+                    if (h == j) continue;
+                    const double second = std::abs(av[q]) / diagonal[j];
+                    if (second < 1e-14) continue;
+                    candidates[aggregate[h]] += first * second;
+                }
+            }
+            std::vector<std::pair<std::size_t, double>> sorted(candidates.begin(), candidates.end());
+            std::sort(sorted.begin(), sorted.end(),
+                      [](const auto& a, const auto& b) {
+                          return a.second != b.second ? a.second > b.second : a.first < b.first;
+                      });
+            if (sorted.size() > support_cap) sorted.resize(support_cap);
+            std::vector<TransferRow::value_type> support;
+            support.reserve(sorted.size());
+            double row_sum = 0.0;
+            for (const auto& [column, score] : sorted) {
+                (void)score;
+                const auto it = std::lower_bound(P[i].begin(), P[i].end(), column,
+                    [](const auto& item, std::size_t c) { return item.first < c; });
+                const double weight = it != P[i].end() && it->first == column
+                    ? it->second : 0.0;
+                support.emplace_back(column, weight);
+                row_sum += weight;
+            }
+            if (!std::isfinite(row_sum) || std::abs(row_sum) <= 1e-12)
+                support = {{aggregate[i], 1.0}};
+            else for (auto& entry : support) entry.second /= row_sum;
+            std::sort(support.begin(), support.end(),
+                      [](const auto& a, const auto& b) { return a.first < b.first; });
+            P[i] = std::move(support);
+        }
+        double last_energy = interpolation_energy(A, P);
+        if (!std::isfinite(last_energy) || last_energy <= 0.0) return false;
+        std::vector<TransferRow> direction = P;
+        std::vector<TransferRow> trial = P;
+        for (int step = 0; step < 5; ++step) {
+            for (std::size_t i = 0; i < n; ++i) {
+                for (auto& entry : direction[i]) entry.second = 0.0;
+                if (anchors[aggregate[i]] == i || P[i].size() < 2) continue;
+                double mean_gradient = 0.0;
+                for (std::size_t c = 0; c < P[i].size(); ++c) {
+                    const std::size_t coarse = P[i][c].first;
+                    double gradient = 0.0;
+                    for (std::size_t k = ro[i]; k < ro[i+1]; ++k) {
+                        const auto& row = P[ci[k]];
+                        const auto it = std::lower_bound(row.begin(), row.end(), coarse,
+                            [](const auto& item, std::size_t key) { return item.first < key; });
+                        if (it != row.end() && it->first == coarse)
+                            gradient += av[k] * it->second;
+                    }
+                    direction[i][c].second = gradient;
+                    mean_gradient += gradient;
+                }
+                mean_gradient /= static_cast<double>(P[i].size());
+                for (auto& entry : direction[i])
+                    entry.second = -(entry.second - mean_gradient) / diagonal[i];
+            }
+            bool accepted = false;
+            for (double step_size = 0.7; step_size > 1e-5; step_size *= 0.5) {
+                bool valid = true;
+                for (std::size_t i = 0; i < n; ++i) {
+                    double sum = 0.0;
+                    for (std::size_t c = 0; c < P[i].size(); ++c) {
+                        trial[i][c].second = P[i][c].second +
+                            step_size * direction[i][c].second;
+                        if (!std::isfinite(trial[i][c].second) ||
+                            std::abs(trial[i][c].second) > 8.0) valid = false;
+                        sum += trial[i][c].second;
+                    }
+                    if (trial[i].empty()) { valid = false; continue; }
+                    // Enforce P*1=1 exactly even after FP rounding.
+                    trial[i][0].second += 1.0 - sum;
+                }
+                if (!valid) continue;
+                const double candidate_energy = interpolation_energy(A, trial);
+                if (std::isfinite(candidate_energy) && candidate_energy > 0.0 &&
+                    candidate_energy < last_energy * (1.0 - 1e-11)) {
+                    P.swap(trial);
+                    last_energy = candidate_energy;
+                    accepted = true;
+                    break;
+                }
+            }
+            if (!accepted) break;
+        }
+        // Never promote a transfer worse in the same SPD energy measure.
+        // The optimization is opportunistic: the regular SA prolongator is
+        // a safe fallback for nearly isotropic / badly conditioned cases.
+        if (!(last_energy < baseline_energy * (1.0 - 1e-11)))
+            P = baseline;
+        return true;
     }
 
     // Semi-coarsening in the WEAK direction: matching vertices belonging to

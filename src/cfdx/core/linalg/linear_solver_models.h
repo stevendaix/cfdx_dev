@@ -47,7 +47,9 @@ enum class PreconditionerModel {
     AnisotropicLine,
     AnisotropicBoomerAMG,
     AnisotropicSmoothedAggregationAMG,
-    DirectionalSemiCoarseningAMG
+    DirectionalSemiCoarseningAMG,
+    EnergyMinimizingAMG,
+    VankaPressurePatch
 };
 
 enum class ModelAvailability { Available, Planned };
@@ -88,8 +90,8 @@ inline const std::array<SolverModelDescriptor, 8>& krylov_model_catalog() {
     return models;
 }
 
-inline const std::array<SolverModelDescriptor, 20>& preconditioner_model_catalog() {
-    static const std::array<SolverModelDescriptor, 20> models{{
+inline const std::array<SolverModelDescriptor, 22>& preconditioner_model_catalog() {
+    static const std::array<SolverModelDescriptor, 22> models{{
         {"auto", ModelAvailability::Available, false, true},
         {"none", ModelAvailability::Available, false, true},
         {"jacobi", ModelAvailability::Available, false, true},
@@ -115,7 +117,9 @@ inline const std::array<SolverModelDescriptor, 20>& preconditioner_model_catalog
         {"anisotropic_line", ModelAvailability::Available, false, false},
         {"anisotropic_boomer_amg", ModelAvailability::Available, false, false},
         {"anisotropic_smoothed_aggregation_amg", ModelAvailability::Available, false, false},
-        {"directional_semi_coarsening_amg", ModelAvailability::Available, false, false}
+        {"directional_semi_coarsening_amg", ModelAvailability::Available, false, false},
+        {"energy_minimizing_amg", ModelAvailability::Available, false, false},
+        {"vanka_pressure_patch", ModelAvailability::Available, false, false}
     }};
     return models;
 }
@@ -313,7 +317,8 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     const bool anisotropic_amg =
         plan.preconditioner == PreconditionerModel::AnisotropicBoomerAMG ||
         plan.preconditioner == PreconditionerModel::AnisotropicSmoothedAggregationAMG ||
-        plan.preconditioner == PreconditionerModel::DirectionalSemiCoarseningAMG;
+        plan.preconditioner == PreconditionerModel::DirectionalSemiCoarseningAMG ||
+        plan.preconditioner == PreconditionerModel::EnergyMinimizingAMG;
     if (plan.automatic_krylov &&
         (anisotropic_amg ||
          plan.preconditioner == PreconditionerModel::AnisotropicLine)) {
@@ -366,6 +371,11 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
         (!characteristics.numerically_symmetric || !characteristics.positive_diagonal))
         throw std::invalid_argument(
             "anisotropic line-AMG currently requires a symmetric positive-diagonal operator");
+    if (plan.preconditioner == PreconditionerModel::VankaPressurePatch &&
+        (problem != LinearProblemKind::CoupledPressureVelocity ||
+         plan.krylov != KrylovModel::FGMRES))
+        throw std::invalid_argument(
+            "pressure-patch Vanka is opt-in for coupled FGMRES only");
     if (plan.preconditioner == PreconditionerModel::NativeFieldSplit &&
         problem != LinearProblemKind::CoupledPressureVelocity)
         throw std::invalid_argument("native FieldSplit requires a coupled pressure-velocity profile");

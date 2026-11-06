@@ -40,19 +40,20 @@ struct NativeAMGPreconditioner::Impl {
     explicit Impl(NativeAMGMethod selected_method, bool use_constant_null_space,
                  bool require_smoother_certificate,
                  bool algebraic_line_smoother, double prolongator_filter,
-                 bool directional_semicoarsening)
+                 bool directional_semicoarsening, bool energy_minimizing)
         : method(selected_method),
           constant_null_space(use_constant_null_space),
           require_smoother_certificate(require_smoother_certificate),
           algebraic_line_smoother(algebraic_line_smoother),
           directional_semicoarsening(directional_semicoarsening),
-          prolongator_filter(prolongator_filter) {}
+          energy_minimizing(energy_minimizing), prolongator_filter(prolongator_filter) {}
 
     NativeAMGMethod method;
     bool constant_null_space = false;
     bool require_smoother_certificate = true;
     bool algebraic_line_smoother = false;
     bool directional_semicoarsening = false;
+    bool energy_minimizing = false;
     double prolongator_filter = 0.0;
     std::size_t cf_interpolation_limit = 0;
     AMGMemoryPolicy policy = AMGMemoryPolicy::Balanced;
@@ -66,11 +67,13 @@ struct NativeAMGPreconditioner::Impl {
 NativeAMGPreconditioner::NativeAMGPreconditioner(
     NativeAMGMethod method, bool constant_null_space,
     bool require_smoother_certificate, bool algebraic_line_smoother,
-    double prolongator_filter, bool directional_semicoarsening)
+    double prolongator_filter, bool directional_semicoarsening,
+    bool energy_minimizing)
     : impl_(std::make_unique<Impl>(method, constant_null_space,
                                    require_smoother_certificate,
                                    algebraic_line_smoother, prolongator_filter,
-                                   directional_semicoarsening)) {}
+                                   directional_semicoarsening,
+                                   energy_minimizing)) {}
 
 NativeAMGPreconditioner::~NativeAMGPreconditioner() = default;
 NativeAMGPreconditioner::NativeAMGPreconditioner(
@@ -139,6 +142,8 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
         impl_->policy == AMGMemoryPolicy::Low ? 15 : 25,
         impl_->directional_semicoarsening
             ? AMGInterpolationPolicy::DirectionalSemiCoarsening
+            : impl_->energy_minimizing
+                ? AMGInterpolationPolicy::EnergyMinimizingAggregation
             : impl_->method == NativeAMGMethod::SmoothedAggregation
                 ? AMGInterpolationPolicy::SmoothedAggregation
                 : AMGInterpolationPolicy::DirectCF,
@@ -220,6 +225,8 @@ bool NativeAMGPreconditioner::apply(
 const char* NativeAMGPreconditioner::name() const {
     if (impl_->directional_semicoarsening)
         return "CFDXDirectionalSemiCoarseningLineGSAMG";
+    if (impl_->energy_minimizing)
+        return "CFDXEnergyMinimizingAggregationAMG";
     if (impl_->algebraic_line_smoother)
         return impl_->method == NativeAMGMethod::SmoothedAggregation
             ? "CFDXAnisotropicSmoothedAggregationAMG"

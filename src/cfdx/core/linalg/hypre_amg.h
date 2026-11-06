@@ -36,7 +36,8 @@ public:
                                      bool require_smoother_certificate = true,
                                      bool algebraic_line_smoother = false,
                                      double prolongator_filter = 0.0,
-                                     bool directional_semicoarsening = false);
+                                     bool directional_semicoarsening = false,
+        bool energy_minimizing = false);
     ~NativeAMGPreconditioner() override;
 
     NativeAMGPreconditioner(const NativeAMGPreconditioner&) = delete;
@@ -139,6 +140,15 @@ public:
         bool constant_null_space = false)
         : NativeAMGPreconditioner(NativeAMGMethod::SmoothedAggregation,
             constant_null_space, false, true, 0.02, true) {}
+};
+
+// Experimental long-distance, row-sum-constrained energy interpolation.
+// FGMRES only until all coarse-level symmetry/positivity gates are certified.
+class NativeEnergyMinimizingAMGPreconditioner final : public NativeAMGPreconditioner {
+public:
+    explicit NativeEnergyMinimizingAMGPreconditioner(bool constant_null_space = false)
+        : NativeAMGPreconditioner(NativeAMGMethod::SmoothedAggregation,
+            constant_null_space, false, false, 0.0, false, true) {}
 };
 
 } // namespace cfdx::core

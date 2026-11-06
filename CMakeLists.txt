@@ -588,6 +588,18 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_v24_anisotropic_line_amg tests/unit/test_v24_anisotropic_line_amg.cpp)
     add_cfdx_test(test_anisotropic_line_integrity tests/unit/test_anisotropic_line_integrity.cpp)
     add_cfdx_test(test_directional_semicoarsening tests/unit/test_directional_semicoarsening.cpp)
+    add_cfdx_test(test_mgr_transactional tests/unit/test_mgr_transactional.cpp)
+    set_tests_properties(test_mgr_transactional PROPERTIES LABELS "linalg;coupled;regression" TIMEOUT 120)
+    add_cfdx_test(test_vanka_pressure_patch tests/unit/test_vanka_pressure_patch.cpp)
+    set_tests_properties(test_vanka_pressure_patch PROPERTIES LABELS "linalg;coupled;qualification" TIMEOUT 120)
+    add_executable(cfdx_benchmark_energy_vanka EXCLUDE_FROM_ALL
+        tools/benchmarks/benchmark_energy_vanka.cpp)
+    target_link_libraries(cfdx_benchmark_energy_vanka PRIVATE cfdx_core)
+    add_executable(cfdx_anisotropy_report EXCLUDE_FROM_ALL
+        tools/diagnostics/cfdx_anisotropy_report.cpp)
+    target_link_libraries(cfdx_anisotropy_report PRIVATE cfdx_core)
+    add_cfdx_test(test_anisotropy_energy tests/unit/test_anisotropy_energy.cpp)
+    set_tests_properties(test_anisotropy_energy PROPERTIES LABELS "linalg;anisotropy;qualification" TIMEOUT 120)
     set_tests_properties(test_directional_semicoarsening PROPERTIES LABELS "linalg;anisotropy;regression" TIMEOUT 120)
     set_tests_properties(test_anisotropic_line_integrity PROPERTIES LABELS "linalg;anisotropy;regression" TIMEOUT 60)
     add_cfdx_test(test_v26_pressure_refinement tests/unit/test_v26_pressure_refinement.cpp)
@@ -1686,6 +1698,8 @@ endif()
 # Experimental pressure-gradient skewness correction: affine face reconstruction.
 if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_pressure_skew_gradient_affine tests/validation/test_pressure_skew_gradient_affine.cpp)
+    add_cfdx_test(test_pressure_anisotropic_affine_flux tests/validation/test_pressure_anisotropic_affine_flux.cpp)
+    set_tests_properties(test_pressure_anisotropic_affine_flux PROPERTIES LABELS "validation;pressure;anisotropy" TIMEOUT 120)
 endif()
 
 # NACA 3-grid trailing-edge affine MMS: gradient verification, NOT flow validation.
