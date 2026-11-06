@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reproducible CFDX N15 performance benchmark runner.
 
 This tool records real measurements only. Missing application-internal timings

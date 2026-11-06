@@ -1,5 +1,11 @@
 # TUR-CHANNEL — turbulent channel qualification
 
+## Reference:
+
+Moser, Kim & Mansour (1999), DNS of turbulent plane channel flow,
+*Physics of Fluids* 11, 943–945, DOI: 10.1063/1.869966.
+Reference dataset: https://turbulence.oden.utexas.edu/MKM_1999.html.
+
 ## Reference definition
 
 Moser, R. D., Kim, J. & Mansour, N. N. (1999), “Direct numerical simulation of turbulent channel flow up to Re_tau=590”, *Physics of Fluids*, 11(4), 943–945, DOI: 10.1063/1.869966.
@@ -38,8 +44,17 @@ Before the first campaign run, freeze each downloaded reference file independent
 
 Never reconstruct reference profiles from plotted figures.
 
+## Required evidence:
+
+The qualification must include the independently frozen reference profiles,
+case setup/mesh files, y+ resolution, time or iteration convergence histories,
+cellwise mass and momentum budgets, mean velocity and shear comparisons,
+mesh sensitivity, physical errors and runtime. Missing evidence is a BLOCKER.
+
 ## Required CFDX evidence
 
 An actual production turbulent CFDX run, statistically stationary averaging interval, wall-normal and homogeneous-direction mesh sensitivity, y+ and resolution metadata, independent mass/momentum balance, bulk-flow stability, quantitative profile errors, runtime and exact software/case revision.
+
+**Current status:** BLOCKED — no certified production SST/RSM channel run, frozen reference-data checksum, or multi-grid error assessment is provided in this snapshot.
 
 **Status: BLOCKED.** The reference definition is known, but this is not evidence that the current production turbulence path executes or is validated. Reference-data parsing tests alone do not qualify CFDX.

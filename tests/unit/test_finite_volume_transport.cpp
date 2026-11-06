@@ -305,12 +305,27 @@ int main()
             controls.linear_solver.krylov=cfdx::core::KrylovModel::CG;
             controls.linear_solver.preconditioner=cfdx::core::PreconditionerModel::Jacobi;
             controls.linear_solver.scaling=scaling;
+            // The supplied oracle is the ORIGINAL initial residual, not
+            // necessarily the residual of the returned solution. Symmetric
+            // equilibration requests a tighter inner tolerance and may solve
+            // further even when the initial PHYSICAL residual is acceptable.
+            const double rhs_inf=std::max(std::abs(b0),std::abs(b1));
+            const double initial_inf=std::max(std::abs(a0*x0-b0),
+                                               std::abs(a1*x1-b1));
+            EXPECT_NEAR(initial_inf,expected_inf,1e-10);
+            EXPECT_NEAR(initial_inf/rhs_inf,expected_relative,1e-12);
             const auto result=solve_scalar_equation(eq,x,controls);
             EXPECT_TRUE(result.status==SolverStatus::CONVERGED);
-            EXPECT_NEAR(result.residual_before_relaxation,expected_inf,1e-10);
-            EXPECT_NEAR(result.residual_after_relaxation,expected_inf,1e-10);
-            EXPECT_NEAR(result.residual_relative_before_relaxation,expected_relative,1e-12);
-            EXPECT_NEAR(result.residual_relative_after_relaxation,expected_relative,1e-12);
+            // Independently evaluate the ORIGINAL equation on the returned
+            // unscaled x. No scaled/recursive Krylov norm may replace this.
+            const double physical_inf=std::max(std::abs(a0*x(0)-b0),
+                                                std::abs(a1*x(1)-b1));
+            const double physical_relative=physical_inf/rhs_inf;
+            EXPECT_TRUE(physical_inf<=initial_inf+1e-10);
+            EXPECT_NEAR(result.residual_before_relaxation,physical_inf,1e-10);
+            EXPECT_NEAR(result.residual_after_relaxation,physical_inf,1e-10);
+            EXPECT_NEAR(result.residual_relative_before_relaxation,physical_relative,1e-12);
+            EXPECT_NEAR(result.residual_relative_after_relaxation,physical_relative,1e-12);
         };
 
         // Initial candidate is already admissible under the solver tolerance,
