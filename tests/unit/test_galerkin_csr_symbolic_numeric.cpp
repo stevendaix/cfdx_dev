@@ -106,6 +106,31 @@ SparseMatrix anisotropic(std::size_t nside, double ax, double ay) {
 }
 
 int main() {
+    run_case("sparse_matrix_matvec_into_matches_allocating_api_and_supports_aliasing", [] {
+        const auto A = fine();
+        Vector x(A.n_cols());
+        for (std::size_t i = 0; i < x.size(); ++i)
+            x(i) = 0.25 + 0.1 * static_cast<double>(i);
+        const auto expected = A.matvec(x);
+        Vector y(A.n_rows());
+        A.matvec_into(x, y);
+        for (std::size_t i = 0; i < y.size(); ++i)
+            EXPECT_TRUE(std::abs(y(i) - expected[i]) < 1e-14);
+
+        Vector aliased = x;
+        A.matvec_into(aliased, aliased);
+        for (std::size_t i = 0; i < aliased.size(); ++i)
+            EXPECT_TRUE(std::abs(aliased(i) - expected[i]) < 1e-14);
+
+        bool invalid_dimensions = false;
+        try {
+            Vector wrong_output(A.n_rows() + 1);
+            A.matvec_into(x, wrong_output);
+        } catch (const std::runtime_error&) {
+            invalid_dimensions = true;
+        }
+        EXPECT_TRUE(invalid_dimensions);
+    });
     run_case("csr_factory_rejects_unsorted_and_duplicate_columns", [] {
         bool invalid = false;
         try {
