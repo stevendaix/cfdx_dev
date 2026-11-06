@@ -51,7 +51,9 @@ def test_failed_candidate_not_dropped(tmp_path):
 
 def test_truncated_csv_rejected(tmp_path):
     executable = tmp_path / "fake.py"
-    executable.write_text("#!/usr/bin/env python3\nprint('invalid')\n", encoding="utf-8")
+    executable.write_text(
+        "#!/usr/bin/env python3\nprint('invalid')\n", encoding="utf-8"
+    )
     executable.chmod(0o755)
     (tmp_path / "n256.cfdxlin").write_text("mock", encoding="utf-8")
     rows, errors = module.compare(tmp_path, executable, ("native",), 10)
