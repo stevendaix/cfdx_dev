@@ -24,7 +24,10 @@ def finite_nonnegative(entry: dict[str, Any], key: str) -> float:
 def audit_history(
     history: dict[str, Any], thresholds: dict[str, float], min_full_order: int
 ) -> dict[str, Any]:
-    if history.get("format") != "CFDX-CONVERGENCE" or history.get("schema_version") != 1:
+    if (
+        history.get("format") != "CFDX-CONVERGENCE"
+        or history.get("schema_version") != 1
+    ):
         raise ValueError("unsupported or absent CFDX-CONVERGENCE format")
     if type(history.get("converged")) is not bool:
         raise ValueError("missing convergence verdict")
@@ -43,7 +46,7 @@ def audit_history(
     full_order_tail = 0
     for sample in entries:
         if not isinstance(sample, dict):
-            raise ValueError("non-object history entry")
+            raise TypeError("non-object history entry")
         iteration = sample.get("iteration")
         if type(iteration) is not int or iteration <= last_iter:
             raise ValueError("non-monotone or invalid iteration numbers")
@@ -113,7 +116,9 @@ def main() -> int:
     }
     try:
         with args.history.open(encoding="utf-8") as stream:
-            data = json.load(stream, parse_constant=lambda s: (_ for _ in ()).throw(ValueError(s)))
+            data = json.load(
+                stream, parse_constant=lambda s: (_ for _ in ()).throw(ValueError(s))
+            )
         report = audit_history(data, thresholds, args.min_full_order)
     except (OSError, ValueError, TypeError) as exc:
         report = {"qualified": False, "failures": [f"invalid_evidence: {exc}"]}
