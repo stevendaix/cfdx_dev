@@ -40,7 +40,7 @@ def _create_demo_case(path: Path) -> None:
     with h5py.File(path, "w") as h5:
         h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
         h5.attrs["schema_version"] = "1"
-        h5.attrs["n_cells"] = 1
+        h5.attrs["n_cells"] = 2
         h5.attrs["source_case_name"] = "CI cavity demonstration"
         h5.attrs["case_setup_json"] = json.dumps(setup)
         h5.attrs["units"] = "SI"
@@ -48,18 +48,38 @@ def _create_demo_case(path: Path) -> None:
         h5.create_dataset(
             "points",
             data=np.asarray(
-                [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]],
+                [
+                    [0.0, 0.0, 0.0],
+                    [1.0, 0.0, 0.0],
+                    [0.0, 1.0, 0.0],
+                    [0.0, 0.0, 1.0],
+                    [1.0, 1.0, 2.0],
+                ],
                 dtype=np.float64,
             ),
         )
-        h5.create_dataset("owner", data=np.asarray([0], dtype=np.int64))
-        h5.create_dataset("neighbour", data=np.asarray([-1], dtype=np.int64))
         h5.create_dataset(
-            "face_vertices", data=np.asarray([0, 1, 2, 3], dtype=np.int64)
+            "owner", data=np.asarray([0, 0, 0, 0, 1, 1, 1], dtype=np.int64)
         )
-        h5.create_dataset("face_offsets", data=np.asarray([0, 4], dtype=np.int64))
-        h5.create_dataset("patch_face_ids", data=np.asarray([0], dtype=np.int64))
-        h5.create_dataset("patch_face_offsets", data=np.asarray([0, 1], dtype=np.int64))
+        h5.create_dataset(
+            "neighbour", data=np.asarray([1, -1, -1, -1, -1, -1, -1], dtype=np.int64)
+        )
+        h5.create_dataset(
+            "face_vertices",
+            data=np.asarray(
+                [1, 2, 3, 0, 2, 1, 0, 1, 3, 0, 3, 2, 4, 2, 1, 4, 1, 3, 4, 3, 2],
+                dtype=np.int64,
+            ),
+        )
+        h5.create_dataset("face_offsets", data=np.arange(0, 24, 3, dtype=np.int64))
+        h5.create_dataset(
+            "cell_faces", data=np.asarray([0, 1, 2, 3, 0, 4, 5, 6], dtype=np.int64)
+        )
+        h5.create_dataset("cell_offsets", data=np.asarray([0, 4, 8], dtype=np.int64))
+        h5.create_dataset(
+            "patch_face_ids", data=np.asarray([1, 2, 3, 4, 5, 6], dtype=np.int64)
+        )
+        h5.create_dataset("patch_face_offsets", data=np.asarray([0, 6], dtype=np.int64))
 
         scalar = h5.create_group("fields/scalar")
         scalar.create_dataset(
@@ -122,8 +142,15 @@ def main() -> int:
             raise RuntimeError("surface quality action was not enabled for demo mesh")
         window.case_file_panel.mesh_quality_button.click()
         quality_report = window.case_file_panel.preview.toPlainText()
-        if "faces: 1 · valid: 1 · degenerate: 0" not in quality_report:
-            raise RuntimeError("surface quality action did not produce expected report")
+        expected_surface_summary = "faces: 7 · valid: 7 · degenerate: 0"
+        if (
+            "Surface geometry diagnostics" not in quality_report
+            or expected_surface_summary not in quality_report
+        ):
+            raise RuntimeError(
+                "surface quality action did not produce expected report: "
+                f"{quality_report}"
+            )
 
         geometry = screen.availableGeometry()
         window.resize(min(1280, geometry.width()), min(900, geometry.height()))

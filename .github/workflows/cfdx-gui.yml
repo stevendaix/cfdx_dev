@@ -104,6 +104,7 @@ jobs:
               tests/python/test_workbench.py \
               tests/python/test_case_inspector.py \
               tests/python/test_mesh_quality.py \
+              tests/python/test_volume_mesh_quality.py \
               tests/python/test_mesh_topology_validation.py \
               tests/python/test_hdf5_inspector_benchmark.py \
               tests/python/test_gui_browser_widgets.py \
@@ -155,6 +156,23 @@ jobs:
         with:
           name: cfdx-surface-quality-report
           path: artifacts/cfdx-surface-quality.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Benchmark volumetric skewness diagnostics
+        if: always() && steps.install_gui.outcome == 'success'
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+        run: |
+          python scripts/benchmark_cfdx_volume_skewness.py \
+            --output artifacts/cfdx-volume-skewness.json
+
+      - name: Upload volumetric skewness report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-volume-skewness-report
+          path: artifacts/cfdx-volume-skewness.json
           if-no-files-found: warn
           retention-days: 14
 
