@@ -100,6 +100,38 @@ public:
         finalized_ = true;
     }
 
+    // Assemble already sorted and unique CSR without staging COO entries or
+    // sorting them again. Used by the symbolic/numeric Galerkin product.
+    // The factory rejects malformed graphs instead of silently merging them.
+    static SparseMatrix from_sorted_csr(
+        std::size_t n_rows, std::size_t n_cols,
+        std::vector<Index> offsets, std::vector<Index> columns,
+        std::vector<Value> values) {
+        SparseMatrix result(n_rows, n_cols);
+        if (offsets.size() != n_rows + 1 || offsets.empty() ||
+            offsets.front() != 0 || offsets.back() != columns.size() ||
+            columns.size() != values.size() ||
+            columns.size() > std::numeric_limits<Index>::max()) {
+            throw std::invalid_argument("SparseMatrix::from_sorted_csr: invalid dimensions");
+        }
+        for (std::size_t row = 0; row < n_rows; ++row) {
+            if (offsets[row] > offsets[row + 1] ||
+                offsets[row + 1] > columns.size())
+                throw std::invalid_argument("SparseMatrix::from_sorted_csr: invalid offsets");
+            for (std::size_t k = offsets[row]; k < offsets[row + 1]; ++k) {
+                if (columns[k] >= n_cols || !std::isfinite(values[k]) ||
+                    (k > offsets[row] && columns[k - 1] >= columns[k])) {
+                    throw std::invalid_argument("SparseMatrix::from_sorted_csr: invalid row");
+                }
+            }
+        }
+        result.row_offsets_ = std::move(offsets);
+        result.columns_ = std::move(columns);
+        result.values_ = std::move(values);
+        result.finalized_ = true;
+        return result;
+    }
+
     // --- Accès ---
 
     // Accès à l'entrée (row, col). Retourne 0.0 si absente.
@@ -157,6 +189,26 @@ public:
     }
     std::vector<Value> matvec_transpose(const Vector& x) const {
         return matvec_transpose(std::vector<Value>(x.data(), x.data() + x.size()));
+    }
+
+    // Allocation-free matrix-vector product for solver/operator callbacks.
+    // The output must be pre-sized; aliasing is supported for square matrices.
+    void matvec_into(const Vector& x, Vector& y) const {
+        if (x.size() != n_cols_ || y.size() != n_rows_) {
+            throw std::runtime_error("SparseMatrix::matvec_into: dimension mismatch");
+        }
+        if (&x == &y) {
+            const Vector input = x;
+            matvec_into(input, y);
+            return;
+        }
+        for (std::size_t i = 0; i < n_rows_; ++i) {
+            Value sum = 0.0;
+            for (Index k = row_offsets_[i]; k < row_offsets_[i + 1]; ++k) {
+                sum += values_[k] * x(columns_[k]);
+            }
+            y(i) = sum;
+        }
     }
 
     // --- Accès bulk ---

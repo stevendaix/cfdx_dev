@@ -90,6 +90,33 @@ int main() {
     assert(slow_report.stagnation_count == 0);
     assert(slow_report.iteration == 20);
 
+    // Regression for a pressure-velocity solve on stretched NACA N256:
+    // the dominant momentum residual can plateau over ten iterations while
+    // conservation still improves by several percent per nonlinear step.
+    ConvergenceMonitorControls mixed = controls;
+    mixed.qoi_gates.clear();
+    mixed.max_iterations = 16;
+    mixed.stagnation_window = 3;
+    mixed.stagnation_relative_improvement = 1e-3;
+    ConvergenceMonitor independent_conservation(mixed);
+    ConvergenceReport mixed_report;
+    for (std::size_t iteration = 1; iteration <= 16; ++iteration) {
+        mixed_report = independent_conservation.update(
+            {iteration, 0.0307, 1e-4 * std::pow(0.95, static_cast<double>(iteration)), {}});
+    }
+    assert(mixed_report.status == ConvergenceStatus::MAX_ITERATIONS);
+    assert(mixed_report.stagnation_count == 0);
+    assert(!mixed_report.conservation_gate);
+
+    // A genuine joint plateau must remain a terminal diagnostic. When the
+    // conservation gate has already passed, it cannot excuse a flat residual.
+    ConvergenceMonitor joint_plateau(mixed);
+    joint_plateau.update({1, 0.0307, 1e-10, {}});
+    joint_plateau.update({2, 0.0307, 1e-10, {}});
+    joint_plateau.update({3, 0.0307, 1e-10, {}});
+    auto joint = joint_plateau.update({4, 0.0307, 1e-10, {}});
+    assert(joint.status == ConvergenceStatus::STAGNATED);
+
     ConvergenceMonitorControls divergence = controls;
     divergence.qoi_gates.clear();
     divergence.divergence_window = 2;

@@ -77,6 +77,7 @@
 
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/production_energy_stage.h"
+#include "cfdx/physics/production_sst_thermal_coupling.h"
 #include "cfdx/physics/production_radiation_contract.h"
 #include "cfdx/physics/production_radiation_s2s_stage.h"
 #include "cfdx/io/cfdx_io/case_schema.h"
@@ -84,6 +85,7 @@
 #include <cmath>
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -318,6 +320,10 @@ struct ProductionBuoyancyOuterIteration {
         std::numeric_limits<double>::infinity();
     double max_pressure_change_normalized =
         std::numeric_limits<double>::infinity();
+    // Required additionally for SST+Boussinesq: T/U/p stationarity does
+    // not prove the eddy viscosity has stopped changing.
+    double max_sst_viscosity_change_normalized =
+        std::numeric_limits<double>::infinity();
 };
 
 struct ProductionBuoyancyOuterLoopResult {
@@ -330,6 +336,9 @@ struct ProductionBuoyancyOuterLoopResult {
     bool fixed_point_temperature_passed = false;
     bool fixed_point_velocity_passed = false;
     bool fixed_point_pressure_passed = false;
+    bool fixed_point_sst_passed = false;
+    double max_sst_viscosity_change_normalized =
+        std::numeric_limits<double>::infinity();
     // True when the recorded energy response belongs to the recorded
     // final flow state (the last outer iteration completed both solves).
     bool energy_ran = false;
@@ -406,7 +415,8 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
     cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,
     cfdx::core::Field<double, cfdx::core::Location::CELL>& pressure,
     const std::string& restart_path = {},
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>* initial_temperature_field = nullptr)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* initial_temperature_field = nullptr,
+    SSTProductionRuntime* sst_runtime = nullptr)
 {
     if (!production_buoyancy_requested(setup))
         throw std::invalid_argument(
@@ -416,6 +426,13 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
     const ProductionBuoyancyCoupling coupling =
         make_production_buoyancy_coupling(setup);
     const bool s2s_requested = production_s2s_radiation_requested(setup);
+    if (sst_runtime && s2s_requested)
+        throw std::invalid_argument(
+            "SST-buoyancy: radiative coupling is not implemented");
+    const double turbulent_prandtl = sst_runtime
+        ? require_production_sst_turbulent_prandtl(setup) : 0.0;
+    if (sst_runtime && !sst_runtime->state)
+        throw std::invalid_argument("SST-buoyancy: missing SST state");
     const FvGeometry geometry = build_fv_geometry(mesh);
     const std::size_t n_cells = mesh.n_cells();
 
@@ -459,6 +476,7 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
     std::vector<double> previous_temperature;
     std::vector<double> previous_velocity;
     std::vector<double> previous_pressure;
+    std::vector<double> previous_nut;
     bool have_previous_response = false;
 
     ProductionBuoyancyOuterLoopResult result;
@@ -485,7 +503,14 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
         // an accepted-at-entry solve can restore it unchanged.
         auto entry_velocity = velocity;
         auto entry_pressure = pressure;
+        const auto entry_sst = sst_runtime
+            ? std::optional<SSTProductionState>(
+                snapshot_sst_production_state(*sst_runtime->state))
+            : std::nullopt;
         IncompressibleSolverControls controls = base_controls;
+        // The external Picard loop must not accidentally revert to laminar
+        // momentum while it solves the buoyancy source.
+        controls.sst_runtime = sst_runtime;
         if (iteration > 1)
             controls.initialization.mode = InitializationMode::Provided;
         build_cell_buoyancy_acceleration(
@@ -513,6 +538,8 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
         } else if (converged_at_entry) {
             velocity = entry_velocity;
             pressure = entry_pressure;
+            if (entry_sst)
+                restore_sst_production_state(*sst_runtime->state, *entry_sst);
             record.flow_converged = true;
             record.flow_converged_at_entry = true;
             record.flow_iterations = flow.iterations;
@@ -536,6 +563,10 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
         // With declared S2S radiation the stage-3 energy-radiation fixed
         // point is the response operator (fiche 11, unchanged).
         auto temperature_guess = relaxed_temperature;
+        std::vector<double> sst_conductivity;
+        if (sst_runtime)
+            sst_conductivity = build_production_sst_thermal_conductivity(
+                setup, *sst_runtime->state, n_cells, turbulent_prandtl);
         if (s2s_requested) {
             const auto s2s_result = run_production_s2s_energy_outer_loop(
                 mesh, geometry, setup, carrier.authoritative_mass_flux,
@@ -551,7 +582,8 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
         } else {
             const auto energy = run_production_energy_stage(
                 mesh, geometry, setup, carrier.authoritative_mass_flux,
-                temperature_guess);
+                temperature_guess, {},
+                sst_conductivity.empty() ? nullptr : &sst_conductivity);
             result.energy = energy;
             record.energy_converged = energy.converged;
             record.energy_iterations = energy.iterations;
@@ -633,10 +665,30 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
                 std::isfinite(
                     record.max_pressure_change_normalized) &&
                 record.max_pressure_change_normalized <= tolerance;
+            // A physically stationary U/T/p can still hide an evolving
+            // RANS closure.  Block that false convergence explicitly.
+            if (sst_runtime) {
+                double change = 0.0, magnitude = 0.0;
+                for (std::size_t c = 0; c < n_cells; ++c) {
+                    const double nut = sst_runtime->state->nu_t(c);
+                    change = std::max(change, std::abs(nut - previous_nut[c]));
+                    magnitude = std::max(magnitude, std::abs(nut));
+                }
+                // Use the molecular viscosity as physical normalization
+                // when the turbulent viscosity vanishes near a wall.
+                magnitude = std::max(magnitude, base_controls.kinematic_viscosity);
+                record.max_sst_viscosity_change_normalized = change / magnitude;
+                result.max_sst_viscosity_change_normalized =
+                    record.max_sst_viscosity_change_normalized;
+            }
+            result.fixed_point_sst_passed = !sst_runtime ||
+                (std::isfinite(record.max_sst_viscosity_change_normalized) &&
+                 record.max_sst_viscosity_change_normalized <= tolerance);
             result.history.push_back(record);
             if (result.fixed_point_temperature_passed &&
                 result.fixed_point_velocity_passed &&
-                result.fixed_point_pressure_passed) {
+                result.fixed_point_pressure_passed &&
+                result.fixed_point_sst_passed) {
                 result.converged = true;  // exact coupled fixed point
                 return result;
             }
@@ -655,12 +707,15 @@ inline ProductionBuoyancyOuterLoopResult run_production_buoyant_outer_loop(
         previous_temperature.assign(n_cells, 0.0);
         previous_velocity.assign(3 * n_cells, 0.0);
         previous_pressure.assign(n_cells, 0.0);
+        if (sst_runtime) previous_nut.assign(n_cells, 0.0);
         for (std::size_t cell = 0; cell < n_cells; ++cell) {
             previous_temperature[cell] = temperature_guess(cell);
             for (std::size_t component = 0; component < 3; ++component)
                 previous_velocity[3 * cell + component] =
                     velocity.component_data(component)[cell];
             previous_pressure[cell] = pressure(cell);
+            if (sst_runtime)
+                previous_nut[cell] = sst_runtime->state->nu_t(cell);
         }
         have_previous_response = true;
     }

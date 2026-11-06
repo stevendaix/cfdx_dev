@@ -448,6 +448,26 @@
       "runtime": "Not measured",
       "regression_status": "Added to tests/validation/test_nonorthogonal_laplacian_campaign.cpp; exact-HEAD CI pending. Polyhedral MMS and mesh-refinement/GCI remain open.",
       "method_fiche": "docs/audits/24-nonorthogonal-transport-diffusion.md"
+    },
+    {
+      "id": "WALL-DISTANCE-GEOMETRY",
+      "domain": "Geometry / wall distance",
+      "case": "Analytical wall-distance and geometric robustness audit (PR #1172)",
+      "status": "DIAGNOSTIC",
+      "reference": "Independent analytical cube/plane/sphere distances and exhaustive point-to-triangle BVH oracle on the exact input triangulation",
+      "parameters": "Deterministic unit, rotated, shifted and multi-scale geometries; invalid connectivity and non-finite inputs rejected",
+      "mesh": "Synthetic structured grids and triangulated wall surfaces; this is code verification, not a production mesh qualification",
+      "boundary_conditions": "Triangulated WALL surface; fluid samples compared to nearest point on the same surface",
+      "numerical_schemes": "Exact point-triangle/BVH reference; graph-wave point propagation; first- and second-order Eikonal; optional exhaustive exact-BVH accuracy guard",
+      "solver_settings": "Unit tests and analytical benchmarks; no production RANS solver settings",
+      "convergence_criteria": "Algorithm-specific termination plus independent geometric error; PDE residual alone is not accepted as a distance-accuracy certificate",
+      "conservation_criteria": "Not applicable to this geometry-only code-verification case",
+      "qoi": "Per-node absolute distance error, relative L2 error, L-infinity error, violation/correction counts, BVH/oracle equivalence",
+      "reference_value": "Analytical Euclidean distance to cube/plane/sphere or exhaustive nearest-triangle distance",
+      "error": "Explicit per-node error and tolerance bound; no hidden fallback or tolerance relaxation",
+      "observed_order": "Not claimed by this diagnostic case; separate mesh-refinement/GCI campaigns are required for EDP methods",
+      "runtime": "CTest and analytical benchmark runtime retained by CI; paired end-to-end N=128 wall-distance performance remains open",
+      "regression_status": "Code-verification tests added in PR #1172; physical wall-distance/SST qualification, EDP GCI and paired performance evidence remain OPEN. DIAGNOSTIC is not PASS."
     }
   ]
 }

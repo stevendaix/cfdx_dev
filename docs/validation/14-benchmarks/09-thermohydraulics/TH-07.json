@@ -1,0 +1,150 @@
+{
+  "schema_version": 1,
+  "case_id": "TH-07",
+  "title": "Turbulent mixed convection in a differentially heated vertical channel",
+  "reference": {
+    "type": "DNS",
+    "citation": "Wagner & Wetzel (2022), Coherent structures in turbulent mixed convection flows through channels with differentially heated walls, GAMM-Mitteilungen 45, e202200006, DOI 10.1002/gamm.202200006",
+    "primary_url": "https://onlinelibrary.wiley.com/doi/10.1002/gamm.202200006",
+    "data_policy": "Use published DNS tables/profiles and any author-hosted numerical dataset. Pin exact data release and SHA-256 before comparing."
+  },
+  "physics": {
+    "model": "Incompressible Boussinesq DNS; vertical plane channel; heated wall and cooled wall; periodic axial and spanwise directions; no-slip, impermeable walls.",
+    "geometry": {
+      "axial_length_over_delta": "2.5*pi",
+      "spanwise_width_over_delta": "pi",
+      "heated_wall_dimensionless_temperature": 0.5,
+      "cooled_wall_dimensionless_temperature": -0.5,
+      "channel_height_over_delta": 1
+    },
+    "dimensionless": {
+      "bulk_reynolds": 4328,
+      "prandtl": 0.71,
+      "grashof_cases": [
+        0,
+        640000,
+        950000,
+        1600000
+      ],
+      "richardson_definition": "Ri = Gr/Re_b^2 using the same delta, bulk velocity and reference properties as the DNS.",
+      "richardson_cases": [
+        0,
+        0.0341669,
+        0.0507165,
+        0.0854172
+      ],
+      "warning": "Do not compare Richardson numbers defined with different length scales or velocity scales."
+    }
+  },
+  "reference_targets": {
+    "wall_shear_stress_mean": {
+      "Gr_0": {
+        "heated": null,
+        "cooled": null,
+        "reference_isothermal": 0.0043
+      },
+      "Gr_6.4e5": {
+        "heated": 0.0047,
+        "cooled": 0.0041
+      },
+      "Gr_9.5e5": {
+        "heated": 0.0051,
+        "cooled": 0.004
+      },
+      "Gr_1.6e6": {
+        "heated": 0.0059,
+        "cooled": 0.0039
+      }
+    },
+    "friction_reynolds": {
+      "Gr_6.4e5": {
+        "heated": 299.1,
+        "global": 288.58,
+        "cooled": 277.67
+      },
+      "Gr_9.5e5": {
+        "heated": 307.85,
+        "global": 291.46,
+        "cooled": 274.1
+      },
+      "Gr_1.6e6": {
+        "heated": 331.41,
+        "global": 301.21,
+        "cooled": 267.63
+      },
+      "Gr_0": {
+        "global": 284.02
+      }
+    },
+    "grid_reference": {
+      "delta1_star": [
+        4.36,
+        4.42,
+        4.48,
+        4.62
+      ],
+      "delta2_star": [
+        3.48,
+        3.54,
+        3.59,
+        3.7
+      ],
+      "delta3_min_star": [
+        0.16,
+        0.16,
+        0.16,
+        0.18
+      ],
+      "delta3_max_star": [
+        3.62,
+        3.66,
+        3.7,
+        3.84
+      ],
+      "dt_star": [
+        8.42e-06,
+        8.55e-06,
+        8.63e-06,
+        8.93e-06
+      ],
+      "mean_cell_width_star": [
+        3.8,
+        3.85,
+        3.9,
+        4.1
+      ]
+    },
+    "wall_shear_stress_normalization": "Dimensionless tau_w/(rho*Ub^2), as used by the DNS nondimensionalization; do not compare to dimensional Pa without restoring rho and Ub.",
+    "derived_change_policy": "Derive Re_tau percentage changes from the tabulated values and the Gr=0 baseline 284.02. Do not confuse percent change in Re_tau with percent change in tau_w, which scales as Re_tau squared. The previously recorded [5.3,11.6,21]/[-8.3,-11.6,-19.9] arrays are not consistent with the tabulated source."
+  },
+  "qoi": {
+    "primary": [
+      "mean axial velocity profile on heated and cooled halves",
+      "mean temperature profile",
+      "RMS velocity components",
+      "RMS temperature profile",
+      "Reynolds shear stress",
+      "turbulent heat flux <u_i'T'>",
+      "wall shear stress on each wall",
+      "local friction Reynolds number",
+      "Nusselt number and global heat balance",
+      "TKE budget terms if CFDX resolves/exports them"
+    ],
+    "expected_trends": [
+      "As Gr increases, aiding buoyancy accelerates mean flow near heated wall and opposing buoyancy decelerates it near cooled wall.",
+      "Mean wall shear stress increases on heated/aiding side and decreases on cooled/opposing side relative to isothermal baseline.",
+      "Reynolds shear stress is attenuated on aiding side and enhanced on opposing side.",
+      "Temperature and RMS-temperature profiles become asymmetric; compare the published profiles rather than imposing a guessed scalar target."
+    ]
+  },
+  "statistics": {
+    "reference_equilibration": "DNS statistics start after 50 u_tau/delta dimensionless time units following heating/cooling switch-on.",
+    "reference_averaging": "At least 60 u_tau/delta dimensionless time units after statistical equilibrium.",
+    "mesh_resolution": "Reference grid widths and time steps are listed in reference_targets.grid_reference; CFDX must document its own resolution and demonstrate mesh/time-step sensitivity."
+  },
+  "status": {
+    "contract": "READY_FOR_CONTRACT_CI",
+    "physical_validation": "BLOCKED_UNTIL_BUOYANCY_ENERGY_AND_TURBULENCE_ARE_COUPLED_IN_PRODUCTION",
+    "reason": "A RANS model can compare mean profiles and integral quantities only; RMS, Reynolds stress and heat-flux claims require a resolved unsteady model or an explicit Reynolds-stress/heat-flux closure."
+  }
+}
