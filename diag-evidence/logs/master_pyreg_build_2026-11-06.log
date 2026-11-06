@@ -1,0 +1,590 @@
+[1/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/cell.cpp.o
+[2/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/ownership.cpp.o
+[3/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/face.cpp.o
+[4/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/point.cpp.o
+[5/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/face_geometry.cpp.o
+[6/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/boundary.cpp.o
+[7/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/cell_geometry.cpp.o
+[8/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/mesh/mesh.cpp.o
+[9/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_quality.cpp.o
+[10/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/storage.cpp.o
+[11/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/application/simulation_controller.cpp.o
+[12/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/field/field.cpp.o
+[13/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/geometry/mesh_validator.cpp.o
+[14/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/gmsh/gmsh_importer.cpp.o
+[15/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/cfdx_io/gap_analysis.cpp.o
+[16/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/mesh/mesh_importer.cpp.o
+[17/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_writer.cpp.o
+[18/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/vtu/vtu_writer.cpp.o
+/home/runner/work/_temp/ref-bad/src/cfdx/io/vtu/vtu_writer.cpp: In member function ‘void cfdx::io::VtuWriter::write_header(std::ofstream&, const cfdx::core::Mesh&, const std::vector<std::vector<long unsigned int> >&, const std::vector<cfdx::io::VtkCellType>&, double, std::size_t, bool)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/io/vtu/vtu_writer.cpp:119:62: warning: unused parameter ‘vtk_cell_types’ [-Wunused-parameter]
+  119 |                              const std::vector<VtkCellType>& vtk_cell_types,
+      |                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~
+[19/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/runtime/gpu/gpu_kernels.cpp.o
+/home/runner/work/_temp/ref-bad/src/cfdx/runtime/gpu/gpu_kernels.cpp: In function ‘void cfdx::runtime::gpu::divergence_reference(const double*, const double*, const double*, const double*, const std::size_t*, const int64_t*, std::size_t, std::size_t, double*)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:19: warning: unused parameter ‘sx’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |     ~~~~~~~~~~~~~~^~
+/home/runner/work/_temp/ref-bad/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:37: warning: unused parameter ‘sy’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |                       ~~~~~~~~~~~~~~^~
+/home/runner/work/_temp/ref-bad/src/cfdx/runtime/gpu/gpu_kernels.cpp:37:55: warning: unused parameter ‘sz’ [-Wunused-parameter]
+   37 |     const double* sx, const double* sy, const double* sz,
+      |                                         ~~~~~~~~~~~~~~^~
+[20/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/cfdx_io/mapping_rules.cpp.o
+[21/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/hdf5_reader.cpp.o
+[22/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/memory/memory_planner.cpp.o
+[23/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/core/linalg/hypre_amg.cpp.o
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/hypre_amg.h:4,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/hypre_amg.cpp:1:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+[24/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/openfoam/openfoam_importer.cpp.o
+[25/30] Building CXX object CMakeFiles/cfdx_core.dir/src/cfdx/io/hdf5/case_hdf5_io.cpp.o
+[26/30] Building CXX object CMakeFiles/cfdx_thermal_solver.dir/apps/thermal_solver/main.cpp.o
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/krylov_reductions.h:6,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/cg_solver.h:16,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/bicgstab_solver.h:4,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:7,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/thermal_zones.h:31,
+                 from /home/runner/work/_temp/ref-bad/apps/thermal_solver/main.cpp:38:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/parallel/mpi_utils.h: In function ‘std::string cfdx::core::parallel::mpi_bcast_string(const std::string&, int, MPI_Comm)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/parallel/mpi_utils.h:171:24: warning: conversion to ‘std::__cxx11::basic_string<char>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  171 |     std::string result(len, '\0');
+      |                        ^~~
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/cg_solver.h:18:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:9:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/gmres_solver.h: In function ‘cfdx::core::SolverResult cfdx::core::solve_gmres(const LinearOperator&, const Vector&, Vector&, int, std::size_t, double, Preconditioner*, KrylovControls, GmresWorkspace*)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/gmres_solver.h:240:66: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  240 |                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
+      |                                                                  ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/gmres_solver.h:254:31: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  254 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                               ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/gmres_solver.h:254:39: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  254 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                                       ^
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/core/numerics/gradient.h:26,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:15:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h: In function ‘cfdx::core::Vec3 cfdx::core::weighted_least_squares_gradient_robust(const Vec3&, double, const std::vector<Vec3>&, const std::vector<double>&, GradientWeighting, int, StencilQuality*)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:135:34: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  135 |                     alpha += row[p]*row[p];
+      |                                  ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:135:41: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  135 |                     alpha += row[p]*row[p];
+      |                                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:136:33: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  136 |                     beta += row[k]*row[k];
+      |                                 ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:136:40: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  136 |                     beta += row[k]*row[k];
+      |                                        ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:137:34: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  137 |                     gamma += row[p]*row[k];
+      |                                  ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:137:41: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  137 |                     gamma += row[p]*row[k];
+      |                                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:149:44: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  149 |                     const double old_p=row[p], old_k=row[k];
+      |                                            ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:149:58: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  149 |                     const double old_p=row[p], old_k=row[k];
+      |                                                          ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:150:25: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  150 |                     row[p] = c*old_p-sn*old_k;
+      |                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:151:25: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  151 |                     row[k] = sn*old_p+c*old_k;
+      |                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:154:44: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  154 |                     const double old_p=row[p], old_k=row[k];
+      |                                            ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:154:58: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  154 |                     const double old_p=row[p], old_k=row[k];
+      |                                                          ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:155:25: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  155 |                     row[p] = c*old_p-sn*old_k;
+      |                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:156:25: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  156 |                     row[k] = sn*old_p+c*old_k;
+      |                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:165:44: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  165 |         for (const auto& row:design) sigma[j] += row[j]*row[j];
+      |                                            ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:165:54: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  165 |         for (const auto& row:design) sigma[j] += row[j]*row[j];
+      |                                                      ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:165:61: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  165 |         for (const auto& row:design) sigma[j] += row[j]*row[j];
+      |                                                             ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:166:15: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  166 |         sigma[j] = std::sqrt(sigma[j]);
+      |               ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:166:36: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  166 |         sigma[j] = std::sqrt(sigma[j]);
+      |                                    ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h: In lambda function:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:170:45: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  170 |               [&](int a,int b){return sigma[a]>sigma[b];});
+      |                                             ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:170:54: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  170 |               [&](int a,int b){return sigma[a]>sigma[b];});
+      |                                                      ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h: In function ‘cfdx::core::Vec3 cfdx::core::weighted_least_squares_gradient_robust(const Vec3&, double, const std::vector<Vec3>&, const std::vector<double>&, GradientWeighting, int, StencilQuality*)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:171:29: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘std::array<int, 3>::value_type’ {aka ‘int’} may change the sign of the result [-Wsign-conversion]
+  171 |     q.scale = sigma[order[0]];
+      |                             ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:175:19: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  175 |         if (sigma[j] > cutoff) ++q.rank;
+      |                   ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:181:23: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘std::array<int, 3>::value_type’ {aka ‘int’} may change the sign of the result [-Wsign-conversion]
+  181 |         sigma[order[2]] <= 1e-10 * sigma[order[0]])
+      |                       ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:181:50: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘std::array<int, 3>::value_type’ {aka ‘int’} may change the sign of the result [-Wsign-conversion]
+  181 |         sigma[order[2]] <= 1e-10 * sigma[order[0]])
+      |                                                  ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:186:33: warning: conversion to ‘std::array<int, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  186 |         ? sigma[order[solve_rank-1]] : 0.0;
+      |                       ~~~~~~~~~~^~
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:186:36: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘std::array<int, 3>::value_type’ {aka ‘int’} may change the sign of the result [-Wsign-conversion]
+  186 |         ? sigma[order[solve_rank-1]] : 0.0;
+      |                                    ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:195:27: warning: conversion to ‘std::array<int, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  195 |         const int j=order[oi];
+      |                           ^~
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:198:33: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  198 |             proj += design[row][j]*rhs[row];
+      |                                 ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:199:42: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  199 |         const double coeff = proj/(sigma[j]*sigma[j]);
+      |                                          ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:199:51: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  199 |         const double coeff = proj/(sigma[j]*sigma[j]);
+      |                                                   ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:200:33: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  200 |         for (int k=0;k<3;++k) g[k] += V[k][j]*coeff;
+      |                                 ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:200:41: warning: conversion to ‘std::array<std::array<double, 3>, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  200 |         for (int k=0;k<3;++k) g[k] += V[k][j]*coeff;
+      |                                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:200:44: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  200 |         for (int k=0;k<3;++k) g[k] += V[k][j]*coeff;
+      |                                            ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/numerics/gradient.h:567:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  567 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/numerics/gradient.h:569:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  569 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::FACE> cfdx::physics::reconstruct_scalar_transport_flux(const cfdx::core::Mesh&, const FvGeometry&, const cfdx::core::Field<double, cfdx::core::Location::FACE>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, double, const ScalarBoundaryConditions&, bool, ConvectionScheme, const ScalarBoundaryFaceConditions*, const std::vector<double>*, const ScalarBoundaryFaceValues*, const std::vector<double>*)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:1083:10: warning: unused parameter ‘bounded_convection’ [-Wunused-parameter]
+ 1083 |     bool bounded_convection = true,
+      |     ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_scalar_equation(const ScalarEquation&, cfdx::core::Vector&, const ScalarSolveControls&)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:1322:49: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1322 |                     candidate_residual, relative};
+      |                                                 ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:1330:13: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1330 |             };
+      |             ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:1343:9: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1343 |         };
+      |         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:1515:17: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1515 |                 };
+      |                 ^
+[27/30] Linking CXX static library libcfdx_core.a
+[28/30] Linking CXX executable cfdx_thermal_solver
+[29/30] Building CXX object CMakeFiles/cfdx_production_solver.dir/apps/production_solver/main.cpp.o
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/krylov_reductions.h:6,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/cg_solver.h:16,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/bicgstab_solver.h:4,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h:4,
+                 from /home/runner/work/_temp/ref-bad/apps/production_solver/main.cpp:2:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/parallel/mpi_utils.h: In function ‘std::string cfdx::core::parallel::mpi_bcast_string(const std::string&, int, MPI_Comm)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/parallel/mpi_utils.h:171:24: warning: conversion to ‘std::__cxx11::basic_string<char>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  171 |     std::string result(len, '\0');
+      |                        ^~~
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/cg_solver.h:18:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/preconditioner.h: In member function ‘virtual bool cfdx::core::CoupledBlockSchurPreconditioner::setup(const cfdx::core::SparseMatrix&)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/preconditioner.h:414:39: warning: conversion from ‘std::vector<std::pair<long unsigned int, double> >::size_type’ {aka ‘long unsigned int’} to ‘__gnu_cxx::__alloc_traits<std::allocator<unsigned int>, unsigned int>::value_type’ {aka ‘unsigned int’} may change value [-Wconversion]
+  414 |                 schur_row_offsets_[c] + entries.size();
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/linear_solver_context.h:4,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h:7:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/gmres_solver.h: In function ‘cfdx::core::SolverResult cfdx::core::solve_gmres(const LinearOperator&, const Vector&, Vector&, int, std::size_t, double, Preconditioner*, KrylovControls, GmresWorkspace*)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/gmres_solver.h:240:66: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  240 |                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
+      |                                                                  ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/gmres_solver.h:254:31: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  254 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                               ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/linalg/gmres_solver.h:254:39: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  254 |                 std::copy(w.v(j), w.v(j) + n, w.zv(static_cast<std::size_t>(j)));
+      |                                       ^
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/core/numerics/gradient.h:26,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h:14:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h: In function ‘cfdx::core::Vec3 cfdx::core::weighted_least_squares_gradient_robust(const Vec3&, double, const std::vector<Vec3>&, const std::vector<double>&, GradientWeighting, int, StencilQuality*)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:135:34: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  135 |                     alpha += row[p]*row[p];
+      |                                  ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:135:41: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  135 |                     alpha += row[p]*row[p];
+      |                                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:136:33: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  136 |                     beta += row[k]*row[k];
+      |                                 ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:136:40: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  136 |                     beta += row[k]*row[k];
+      |                                        ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:137:34: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  137 |                     gamma += row[p]*row[k];
+      |                                  ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:137:41: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  137 |                     gamma += row[p]*row[k];
+      |                                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:149:44: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  149 |                     const double old_p=row[p], old_k=row[k];
+      |                                            ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:149:58: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  149 |                     const double old_p=row[p], old_k=row[k];
+      |                                                          ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:150:25: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  150 |                     row[p] = c*old_p-sn*old_k;
+      |                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:151:25: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  151 |                     row[k] = sn*old_p+c*old_k;
+      |                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:154:44: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  154 |                     const double old_p=row[p], old_k=row[k];
+      |                                            ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:154:58: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  154 |                     const double old_p=row[p], old_k=row[k];
+      |                                                          ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:155:25: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  155 |                     row[p] = c*old_p-sn*old_k;
+      |                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:156:25: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  156 |                     row[k] = sn*old_p+c*old_k;
+      |                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:165:44: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  165 |         for (const auto& row:design) sigma[j] += row[j]*row[j];
+      |                                            ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:165:54: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  165 |         for (const auto& row:design) sigma[j] += row[j]*row[j];
+      |                                                      ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:165:61: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  165 |         for (const auto& row:design) sigma[j] += row[j]*row[j];
+      |                                                             ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:166:15: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  166 |         sigma[j] = std::sqrt(sigma[j]);
+      |               ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:166:36: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  166 |         sigma[j] = std::sqrt(sigma[j]);
+      |                                    ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h: In lambda function:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:170:45: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  170 |               [&](int a,int b){return sigma[a]>sigma[b];});
+      |                                             ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:170:54: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  170 |               [&](int a,int b){return sigma[a]>sigma[b];});
+      |                                                      ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h: In function ‘cfdx::core::Vec3 cfdx::core::weighted_least_squares_gradient_robust(const Vec3&, double, const std::vector<Vec3>&, const std::vector<double>&, GradientWeighting, int, StencilQuality*)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:171:29: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘std::array<int, 3>::value_type’ {aka ‘int’} may change the sign of the result [-Wsign-conversion]
+  171 |     q.scale = sigma[order[0]];
+      |                             ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:175:19: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  175 |         if (sigma[j] > cutoff) ++q.rank;
+      |                   ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:181:23: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘std::array<int, 3>::value_type’ {aka ‘int’} may change the sign of the result [-Wsign-conversion]
+  181 |         sigma[order[2]] <= 1e-10 * sigma[order[0]])
+      |                       ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:181:50: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘std::array<int, 3>::value_type’ {aka ‘int’} may change the sign of the result [-Wsign-conversion]
+  181 |         sigma[order[2]] <= 1e-10 * sigma[order[0]])
+      |                                                  ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:186:33: warning: conversion to ‘std::array<int, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  186 |         ? sigma[order[solve_rank-1]] : 0.0;
+      |                       ~~~~~~~~~~^~
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:186:36: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘std::array<int, 3>::value_type’ {aka ‘int’} may change the sign of the result [-Wsign-conversion]
+  186 |         ? sigma[order[solve_rank-1]] : 0.0;
+      |                                    ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:195:27: warning: conversion to ‘std::array<int, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  195 |         const int j=order[oi];
+      |                           ^~
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:198:33: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  198 |             proj += design[row][j]*rhs[row];
+      |                                 ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:199:42: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  199 |         const double coeff = proj/(sigma[j]*sigma[j]);
+      |                                          ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:199:51: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  199 |         const double coeff = proj/(sigma[j]*sigma[j]);
+      |                                                   ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:200:33: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  200 |         for (int k=0;k<3;++k) g[k] += V[k][j]*coeff;
+      |                                 ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:200:41: warning: conversion to ‘std::array<std::array<double, 3>, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  200 |         for (int k=0;k<3;++k) g[k] += V[k][j]*coeff;
+      |                                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/fvm/least_squares_gradient.h:200:44: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  200 |         for (int k=0;k<3;++k) g[k] += V[k][j]*coeff;
+      |                                            ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/numerics/gradient.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::CELL> cfdx::core::compute_quadratic_fit_least_squares(const Field<double, cfdx::core::Location::CELL>&, const Mesh&)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/numerics/gradient.h:567:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  567 |             for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+      |                                                ^
+/home/runner/work/_temp/ref-bad/src/cfdx/core/numerics/gradient.h:569:48: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  569 |             for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+      |                                                ^
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h:15:
+/home/runner/work/_temp/ref-bad/src/cfdx/io/restart/dat_restart.h: In function ‘cfdx::io::DatRestartState cfdx::io::read_dat_restart_fields(const std::string&, const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, DatRestartFields)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/io/restart/dat_restart.h:325:10: warning: variable ‘read_scalar_field’ set but not used [-Wunused-but-set-variable]
+  325 |     auto read_scalar_field = [&](const char* expected,
+      |          ^~~~~~~~~~~~~~~~~
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h:18:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::Field<double, cfdx::core::Location::FACE> cfdx::physics::reconstruct_scalar_transport_flux(const cfdx::core::Mesh&, const FvGeometry&, const cfdx::core::Field<double, cfdx::core::Location::FACE>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, double, const ScalarBoundaryConditions&, bool, ConvectionScheme, const ScalarBoundaryFaceConditions*, const std::vector<double>*, const ScalarBoundaryFaceValues*, const std::vector<double>*)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:1083:10: warning: unused parameter ‘bounded_convection’ [-Wunused-parameter]
+ 1083 |     bool bounded_convection = true,
+      |     ~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_scalar_equation(const ScalarEquation&, cfdx::core::Vector&, const ScalarSolveControls&)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:1322:49: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1322 |                     candidate_residual, relative};
+      |                                                 ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:1330:13: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1330 |             };
+      |             ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:1343:9: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1343 |         };
+      |         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/finite_volume_transport.h:1515:17: warning: missing initializer for member ‘cfdx::core::SolverResult::diagnostics’ [-Wmissing-field-initializers]
+ 1515 |                 };
+      |                 ^
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/physics/turbulence_models.h:2,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/turbulence_transport.h:6,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/turbulence_solver.h:5,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/sst_solver.h:3,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/sst_production_coupling.h:4,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h:25:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/thermophysical_models.h: In member function ‘double cfdx::physics::ThermophysicalProperties::enthalpy(double, double, double) const’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/thermophysical_models.h:181:40: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                        ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/thermophysical_models.h:181:42: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                          ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/thermophysical_models.h:181:56: warning: conversion from ‘std::size_t’ {aka ‘long unsigned int’} to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                      ~~^~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/thermophysical_models.h:181:60: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+  181 |                 const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+      |                                                            ^
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/physics/sst_production_coupling.h:5:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/sst_case_contract.h: In function ‘void cfdx::physics::validate_sst_case_prerequisites(const cfdx::io::CaseSetup&, const TurbulenceTransportControls&)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/sst_case_contract.h:82:41: warning: conversion to ‘unsigned char’ from ‘char’ may change the sign of the result [-Wsign-conversion]
+   82 |     for (const unsigned char ch : setup.turbulence_model) {
+      |                                         ^~~~~~~~~~~~~~~~
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/physics/mesh_wall_distance.h:5,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/sst_production_coupling.h:7:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/wall_distance.h: In function ‘std::vector<double> cfdx::physics::hybrid_poisson_hamilton_jacobi_distance(const WallSurface&, const WallDistanceGrid&, std::size_t, double, double, std::size_t*, double*, double, std::size_t*, double*, std::size_t*, std::size_t*, std::size_t*)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/wall_distance.h:2331:18: warning: unused variable ‘inv_h2’ [-Wunused-variable]
+ 2331 |     const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
+      |                  ^~~~~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h: In lambda function:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h:2654:23: warning: unused variable ‘old_component’ [-Wunused-variable]
+ 2654 |         const double* old_component = U_old.component_data(component);
+      |                       ^~~~~~~~~~~~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::core::SolverResult cfdx::physics::solve_coupled_momentum_continuity(const cfdx::core::Mesh&, const FvGeometry&, ScalarEquation, ScalarEquation, ScalarEquation, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, double, double, std::size_t, double, std::size_t, double, const DiagnosticsControls&, CoupledSchurModel, const cfdx::core::LinearSolverRequest&, const IncompressibleSolverControls&, double, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::LinearSolverPlan*)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h:2700:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 2699 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 2700 |                     ? nr
+      |                     ^~~~
+ 2701 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h:2789:21: warning: conversion from ‘long int’ to ‘int’ may change value [-Wconversion]
+ 2788 |                 const int other_cell = owner
+      |                                        ~~~~~
+ 2789 |                     ? nr
+      |                     ^~~~
+ 2790 |                     : static_cast<int>(mesh.ownership().owner(f));
+      |                     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h: In function ‘cfdx::physics::IncompressibleSolveResult cfdx::physics::solve_steady_incompressible(const cfdx::core::Mesh&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, cfdx::core::Field<double, cfdx::core::Location::CELL>&, const VelocityBoundaryConditions&, const ScalarBoundaryConditions&, const IncompressibleSolverControls&, const std::string&, cfdx::io::DatRestartFields)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h:6427:44: warning: conversion from ‘long unsigned int’ to ‘double’ may change value [-Wconversion]
+ 6427 |                       std::max<std::size_t>(mesh.n_cells(), 1));
+      |                       ~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_s2s.h:4,
+                 from /home/runner/work/_temp/ref-bad/src/cfdx/physics/production_radiation_s2s_stage.h:67,
+                 from /home/runner/work/_temp/ref-bad/apps/production_solver/main.cpp:8:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h: In function ‘cfdx::physics::RadiationAabb cfdx::physics::radiation_triangle_aabb(const RadiationTriangle&)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:542:14: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  542 |         b.lo[k]=std::min({t.a[k],t.b[k],t.c[k]});
+      |              ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:542:31: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  542 |         b.lo[k]=std::min({t.a[k],t.b[k],t.c[k]});
+      |                               ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:542:38: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  542 |         b.lo[k]=std::min({t.a[k],t.b[k],t.c[k]});
+      |                                      ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:542:45: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  542 |         b.lo[k]=std::min({t.a[k],t.b[k],t.c[k]});
+      |                                             ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:543:14: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  543 |         b.hi[k]=std::max({t.a[k],t.b[k],t.c[k]});
+      |              ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:543:31: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  543 |         b.hi[k]=std::max({t.a[k],t.b[k],t.c[k]});
+      |                               ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:543:38: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  543 |         b.hi[k]=std::max({t.a[k],t.b[k],t.c[k]});
+      |                                      ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:543:45: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  543 |         b.hi[k]=std::max({t.a[k],t.b[k],t.c[k]});
+      |                                             ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h: In function ‘cfdx::physics::RadiationAabb cfdx::physics::radiation_merge_aabb(const RadiationAabb&, const RadiationAabb&)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:553:14: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  553 |         r.lo[k]=std::min(a.lo[k],b.lo[k]);
+      |              ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:553:31: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  553 |         r.lo[k]=std::min(a.lo[k],b.lo[k]);
+      |                               ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:553:39: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  553 |         r.lo[k]=std::min(a.lo[k],b.lo[k]);
+      |                                       ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:554:14: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  554 |         r.hi[k]=std::max(a.hi[k],b.hi[k]);
+      |              ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:554:31: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  554 |         r.hi[k]=std::max(a.hi[k],b.hi[k]);
+      |                               ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:554:39: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  554 |         r.hi[k]=std::max(a.hi[k],b.hi[k]);
+      |                                       ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h: In function ‘bool cfdx::physics::radiation_ray_aabb_hit(const std::array<double, 3>&, const std::array<double, 3>&, const RadiationAabb&, double)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:574:32: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  574 |         if (std::abs(direction[k])<1e-15) {
+      |                                ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:575:24: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  575 |             if (origin[k]<box.lo[k] || origin[k]>box.hi[k]) return false;
+      |                        ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:575:34: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  575 |             if (origin[k]<box.lo[k] || origin[k]>box.hi[k]) return false;
+      |                                  ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:575:47: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  575 |             if (origin[k]<box.lo[k] || origin[k]>box.hi[k]) return false;
+      |                                               ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:575:57: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  575 |             if (origin[k]<box.lo[k] || origin[k]>box.hi[k]) return false;
+      |                                                         ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:578:40: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  578 |         const double inv=1.0/direction[k];
+      |                                        ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:579:27: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  579 |         double t1=(box.lo[k]-origin[k])*inv;
+      |                           ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:579:37: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  579 |         double t1=(box.lo[k]-origin[k])*inv;
+      |                                     ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:580:27: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  580 |         double t2=(box.hi[k]-origin[k])*inv;
+      |                           ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:580:37: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  580 |         double t2=(box.hi[k]-origin[k])*inv;
+      |                                     ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h: In member function ‘bool cfdx::physics::RadiationBvh::nearest_hit(const std::array<double, 3>&, const std::array<double, 3>&, double&) const’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:627:39: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  627 |             if (!std::isfinite(origin[k]) || !std::isfinite(direction[k]))
+      |                                       ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:627:71: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  627 |             if (!std::isfinite(origin[k]) || !std::isfinite(direction[k]))
+      |                                                                       ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:629:47: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  629 |             direction_norm_squared+=direction[k]*direction[k];
+      |                                               ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:629:60: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  629 |             direction_norm_squared+=direction[k]*direction[k];
+      |                                                            ^
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:640:37: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  640 |             const auto& node=nodes_[ni];
+      |                                     ^~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h: In member function ‘int32_t cfdx::physics::RadiationBvh::build_node(std::size_t, std::size_t)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:679:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  679 |         nodes_[id].bounds=bounds;
+      |                ^~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:680:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  680 |         nodes_[id].begin=static_cast<std::uint32_t>(begin);
+      |                ^~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:681:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  681 |         nodes_[id].count=static_cast<std::uint32_t>(end-begin);
+      |                ^~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:690:30: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  690 |         if (extent[1]>extent[axis]) axis=1;
+      |                              ^~~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:691:30: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  691 |         if (extent[2]>extent[axis]) axis=2;
+      |                              ^~~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:693:43: warning: conversion to ‘__gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int> >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  693 |         std::nth_element(indices_.begin()+begin,indices_.begin()+mid,
+      |                                           ^~~~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:693:66: warning: conversion to ‘__gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int> >::difference_type’ {aka ‘long int’} from ‘long unsigned int’ may change the sign of the result [-Wsign-conversion]
+  693 |         std::nth_element(indices_.begin()+begin,indices_.begin()+mid,
+      |                                                                  ^~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:694:43: warning: conversion to ‘__gnu_cxx::__normal_iterator<unsigned int*, std::vector<unsigned int> >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  694 |                          indices_.begin()+end,[&](std::uint32_t a,
+      |                                           ^~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h: In lambda function:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:700:23: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  700 |             return ca[axis]<cb[axis];
+      |                       ^~~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:700:32: warning: conversion to ‘std::array<double, 3>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  700 |             return ca[axis]<cb[axis];
+      |                                ^~~~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h: In member function ‘int32_t cfdx::physics::RadiationBvh::build_node(std::size_t, std::size_t)’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:702:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  702 |         nodes_[id].left=build_node(begin,mid);
+      |                ^~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:703:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  703 |         nodes_[id].right=build_node(mid,end);
+      |                ^~
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/radiation_advanced.h:704:16: warning: conversion to ‘std::vector<cfdx::physics::RadiationBvh::Node>::size_type’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  704 |         nodes_[id].count=0;
+      |                ^~
+In file included from /home/runner/work/_temp/ref-bad/apps/production_solver/main.cpp:20:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/thermohydraulic_observables.h: In lambda function:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/thermohydraulic_observables.h:151:58: warning: conversion to ‘std::size_t’ {aka ‘long unsigned int’} from ‘int’ may change the sign of the result [-Wsign-conversion]
+  151 |                 thermohydraulic_check_finite(velocity(c, d), "velocity");
+      |                                                          ^
+/home/runner/work/_temp/ref-bad/apps/production_solver/main.cpp: In function ‘std::string {anonymous}::encode_probe_name_hex(const std::string&)’:
+/home/runner/work/_temp/ref-bad/apps/production_solver/main.cpp:96:37: warning: conversion to ‘unsigned char’ from ‘char’ may change the sign of the result [-Wsign-conversion]
+   96 |     for (const unsigned char byte : name) {
+      |                                     ^~~~
+In file included from /home/runner/work/_temp/ref-bad/src/cfdx/physics/steady_incompressible_solver.h:3:
+/home/runner/work/_temp/ref-bad/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::FACE]’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/momentum_viscous_stress.h:40:14:   required from here
+/home/runner/work/_temp/ref-bad/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/home/runner/work/_temp/ref-bad/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/home/runner/work/_temp/ref-bad/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+/home/runner/work/_temp/ref-bad/src/cfdx/core/field/field.h: In instantiation of ‘void cfdx::core::Field<T, L>::fill(T) [with T = double; cfdx::core::Location L = cfdx::core::Location::CELL]’:
+/home/runner/work/_temp/ref-bad/src/cfdx/physics/momentum_viscous_stress.h:104:16:   required from here
+/home/runner/work/_temp/ref-bad/src/cfdx/core/field/field.h:122:62: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                              ^~
+/home/runner/work/_temp/ref-bad/src/cfdx/core/field/field.h:122:138: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                         ~^~~
+/home/runner/work/_temp/ref-bad/src/cfdx/core/field/field.h:122:161: warning: conversion to ‘__gnu_cxx::__normal_iterator<double*, std::vector<double, cfdx::core::AlignedAllocator<double, 64> > >::difference_type’ {aka ‘long int’} from ‘std::size_t’ {aka ‘long unsigned int’} may change the sign of the result [-Wsign-conversion]
+  122 |     void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+      |                                                                                                                                                            ~~~~~^~~
+[30/30] Linking CXX executable cfdx_production_solver
+-rwxr-xr-x 1 runner runner 2134288 Nov  6 11:24 /home/runner/work/_temp/ref-bad/build/cfdx_production_solver
+-rwxr-xr-x 1 runner runner  900880 Nov  6 11:23 /home/runner/work/_temp/ref-bad/build/cfdx_thermal_solver
