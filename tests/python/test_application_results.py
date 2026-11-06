@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -106,3 +107,45 @@ def test_application_probe_csv_contract_round_trips_solver_history(
     assert path.is_file()
     loaded = application.read_probe_results(path)
     assert loaded == original
+
+
+def test_application_probe_json_export_includes_version_and_live_buffer_metadata(
+    tmp_path: Path,
+) -> None:
+    application = Application(CFDXSession())
+    original = (
+        ProbeSeries(
+            "pressure",
+            (0.5, 0.5, 0.5),
+            (ProbeSample(1, 0.1, 101325.0), ProbeSample(2, 0.2, 101300.0)),
+            field="p",
+            unit="Pa",
+        ),
+    )
+
+    path = application.export_probe_results_json(
+        tmp_path / "stream.json", original, max_samples_per_probe=2000
+    )
+
+    assert path.is_file()
+    document = json.loads(path.read_text(encoding="utf-8"))
+    assert document["schema"] == "cfdx-probe-json"
+    assert document["version"] == 1
+    assert document["source"] == "live-stream-buffer"
+    assert document["max_samples_per_probe"] == 2000
+    assert document["probes"] == [
+        {
+            "name": "pressure",
+            "point": [0.5, 0.5, 0.5],
+            "field": "p",
+            "unit": "Pa",
+            "samples": [
+                {"iteration": 1, "time": 0.1, "value": 101325.0},
+                {"iteration": 2, "time": 0.2, "value": 101300.0},
+            ],
+        }
+    ]
+    with pytest.raises(ValueError, match="exceeds the declared live buffer limit"):
+        application.export_probe_results_json(
+            tmp_path / "oversized.json", original, max_samples_per_probe=1
+        )

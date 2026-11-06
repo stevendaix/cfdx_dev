@@ -11,7 +11,13 @@ from ..dat_io import DatRestart, read_dat_restart
 from ..execution import ExecutionController
 from ..mesh_model import MeshCatalog, read_mesh_catalog
 from ..probe import ProbeCatalog
-from ..probe_validation import ProbeSeries, read_probe_csv, write_probe_csv
+from ..probe_stream import ProbeStreamSample
+from ..probe_validation import (
+    ProbeSeries,
+    read_probe_csv,
+    write_probe_csv,
+    write_probe_json,
+)
 from ..project import Project
 from ..results_series import ResultSeries, discover_result_series
 from ..runner import SolverRunner
@@ -27,7 +33,13 @@ from .commands import (
     SetProperty,
     StopSolver,
 )
-from .events import ApplicationStateChanged, EventBus, ResultsChanged, SelectionChanged
+from .events import (
+    ApplicationStateChanged,
+    EventBus,
+    ProbeSampleReceived,
+    ResultsChanged,
+    SelectionChanged,
+)
 from .history import EditHistory, HistoryEntry
 from .properties import PropertyState, get_property, properties_for_selection
 from .results import ResultsState, build_results_state
@@ -60,7 +72,7 @@ class Application:
         self.mesh_catalog: MeshCatalog | None = None
         self.run_center = RunCenterModel(controller) if controller is not None else None
         if self.run_center is not None:
-            self.run_center.on_change = lambda _state: self._publish_state()
+            self._wire_run_center(self.run_center)
 
     @property
     def state(self) -> ApplicationState:
@@ -86,12 +98,19 @@ class Application:
         self.events.publish(ApplicationStateChanged(snapshot))
         return snapshot
 
+    def _publish_probe_sample(self, sample: ProbeStreamSample) -> None:
+        self.events.publish(ProbeSampleReceived(self.state, sample))
+
+    def _wire_run_center(self, run_center: RunCenterModel) -> None:
+        run_center.on_change = lambda _state: self._publish_state()
+        run_center.on_probe_sample = self._publish_probe_sample
+
     def attach_controller(self, controller: ExecutionController) -> ApplicationState:
         if self.run_center is not None:
             self.run_center.close()
         self.controller = controller
         self.run_center = RunCenterModel(controller)
-        self.run_center.on_change = lambda _state: self._publish_state()
+        self._wire_run_center(self.run_center)
         return self._publish_state()
 
     def replace_session(
@@ -282,6 +301,7 @@ class Application:
             command += [
                 "--probe-csv",
                 str(probe_catalog.csv_path(self.project_path or self._restart_dat)),
+                "--probe-stream",
             ]
         if self.session.case.execution.mpi_ranks > 1:
             command = [
@@ -383,6 +403,18 @@ class Application:
     ) -> Path:
         """Export probe history using the canonical native CSV schema."""
         return write_probe_csv(Path(path), tuple(series))
+
+    def export_probe_results_json(
+        self,
+        path: str | Path,
+        series: Iterable[ProbeSeries],
+        *,
+        max_samples_per_probe: int | None = None,
+    ) -> Path:
+        """Export probe histories as versioned JSON, optionally identifying a live buffer."""
+        return write_probe_json(
+            Path(path), tuple(series), max_samples_per_probe=max_samples_per_probe
+        )
 
     def set_results(
         self, series: ResultSeries | None, *, directory: str | Path | None = None

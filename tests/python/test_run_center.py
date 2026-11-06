@@ -1,7 +1,9 @@
+from cfdx.metrics import SolverMetrics
+from cfdx.probe_stream import ProbeStreamSample
+from cfdx.runner import ProcessResult
+
 from cfdx import CFDXSession
 from cfdx.application import RunCenterModel
-from cfdx.metrics import SolverMetrics
-from cfdx.runner import ProcessResult
 
 
 class FakeController:
@@ -11,6 +13,7 @@ class FakeController:
         self.error = None
         self.on_output = None
         self.on_metrics = None
+        self.on_probe_sample = None
         self.on_complete = None
 
 
@@ -31,3 +34,21 @@ def test_run_center_tracks_output_metrics_and_completion() -> None:
     assert len(changes) == 5
     model.close()
     assert controller.on_output is None
+
+
+def test_run_center_forwards_and_restores_probe_sample_callback() -> None:
+    controller = FakeController()
+    previous_samples = []
+    previous_callback = previous_samples.append
+    controller.on_probe_sample = previous_callback
+    model = RunCenterModel(controller)
+    received = []
+    model.on_probe_sample = received.append
+    sample = ProbeStreamSample("p1", "p", "Pa", 3, 0.0, 101325.0)
+
+    controller.on_probe_sample(sample)
+
+    assert received == [sample]
+    assert previous_samples == [sample]
+    model.close()
+    assert controller.on_probe_sample is previous_callback

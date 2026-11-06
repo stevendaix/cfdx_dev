@@ -97,6 +97,31 @@ The GUI exposes the same persistence contract as the headless API:
 There is no GUI-specific checkpoint format. A modified case is marked in the
 window and the GUI asks whether to save before Run or Close.
 
+## Probe results
+
+The Probes panel can load and re-export native `cfdx-probe-csv v1` histories.
+It reports the probe count, sample count and iteration range after loading.
+**Compare CSV runs** multi-selects completed simulation files and overlays their
+histories in the same plot. Curve labels include the source filename, so probes
+with the same name in different runs stay distinguishable. Curves can be toggled
+individually and are grouped by field and unit so incompatible quantities are
+not overlaid; the x-axis can show physical time or iteration, with normal
+pan/zoom interactions. During a
+`cfdx_production_solver` run, the application enables `--probe-stream` and
+receives versioned stdout records for samples from committed iterations. The Qt
+panel batches redraws at 10 Hz and retains the latest 2,000 points per probe in
+memory; the live view defaults to iteration (steady samples have constant
+physical time). The X-axis selector can switch the live curve between iteration
+and physical time at any point in the run, and the selected axis is retained as
+new batches arrive. The separate **Export live stream** action saves the
+complete retained buffer as canonical probe CSV or versioned `cfdx-probe-json`
+v1 JSON; it exports all probes, not only visible curves. Since each live series
+is bounded to 2,000 samples, older samples are not included after they roll out
+of memory. Rejected nonlinear attempts are not published. The solver's final
+canonical CSV stays a separate artifact; the GUI never tails a partial CSV
+file. Reading and writing use the shared Application API and canonical CSV
+schema. The GUI does not treat a CSV round-trip as solver qualification.
+
 ## Execution controls
 
 Run, Pause, Resume and Stop are routed through ExecutionController.

@@ -1,11 +1,13 @@
 """Headless Run Center state fed by the existing execution controller."""
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from ..execution import ExecutionController
 from ..metrics import SolverMetrics
+from ..probe_stream import ProbeStreamSample
 from ..runner import ProcessResult
 from ..session import SimulationState
 
@@ -27,17 +29,22 @@ class RunCenterModel:
     subscribes to its existing callbacks and keeps a bounded output transcript.
     """
 
-    def __init__(self, controller: ExecutionController, *, max_output_lines: int = 2000) -> None:
+    def __init__(
+        self, controller: ExecutionController, *, max_output_lines: int = 2000
+    ) -> None:
         self.controller = controller
         self.max_output_lines = max_output_lines
         self.output: list[str] = []
         self._latest_metrics = getattr(controller, "latest_metrics", None)
         self.on_change: Callable[[RunCenterState], None] | None = None
+        self.on_probe_sample: Callable[[ProbeStreamSample], None] | None = None
         self._previous_output = getattr(controller, "on_output", None)
         self._previous_metrics = getattr(controller, "on_metrics", None)
+        self._previous_probe_sample = getattr(controller, "on_probe_sample", None)
         self._previous_complete = getattr(controller, "on_complete", None)
         controller.on_output = self._on_output
         controller.on_metrics = self._on_metrics
+        controller.on_probe_sample = self._on_probe_sample
         controller.on_complete = self._on_complete
 
     @property
@@ -61,6 +68,7 @@ class RunCenterModel:
         """Detach without taking ownership of the controller callbacks."""
         self.controller.on_output = self._previous_output
         self.controller.on_metrics = self._previous_metrics
+        self.controller.on_probe_sample = self._previous_probe_sample
         self.controller.on_complete = self._previous_complete
 
     def _on_output(self, line: str, is_stderr: bool) -> None:
@@ -76,6 +84,12 @@ class RunCenterModel:
         if self._previous_metrics:
             self._previous_metrics(metrics)
         self._changed()
+
+    def _on_probe_sample(self, sample: ProbeStreamSample) -> None:
+        if self._previous_probe_sample:
+            self._previous_probe_sample(sample)
+        if self.on_probe_sample:
+            self.on_probe_sample(sample)
 
     def _on_complete(self, result: ProcessResult) -> None:
         if self._previous_complete:

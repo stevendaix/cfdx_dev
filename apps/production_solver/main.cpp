@@ -85,7 +85,20 @@ struct Options {
     bool benchmark_export = false;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
+    bool probe_stream = false;
 };
+
+std::string encode_probe_name_hex(const std::string& name)
+{
+    constexpr char digits[] = "0123456789abcdef";
+    std::string encoded;
+    encoded.reserve(name.size() * 2);
+    for (const unsigned char byte : name) {
+        encoded.push_back(digits[byte >> 4]);
+        encoded.push_back(digits[byte & 0x0f]);
+    }
+    return encoded;
+}
 
 
 // Parses `--probe <name>:<x>,<y>,<z>:<field>`.
@@ -688,6 +701,7 @@ Options parse(int argc, char** argv)
         else if (arg == "--benchmark-export") o.benchmark_export = true;
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
+        else if (arg == "--probe-stream") o.probe_stream = true;
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
@@ -700,6 +714,7 @@ Options parse(int argc, char** argv)
                          "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
+            std::cout << "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n";
             std::exit(0);
         } else {
             throw std::invalid_argument("unknown option: " + arg);
@@ -711,6 +726,8 @@ Options parse(int argc, char** argv)
     // empty file, or worse a file with a header and no data.
     if (!o.probe_csv.empty() && o.probes.empty())
         throw std::invalid_argument("--probe-csv requires at least one --probe");
+    if (o.probe_stream && o.probes.empty())
+        throw std::invalid_argument("--probe-stream requires at least one --probe");
     for (std::size_t i = 0; i < o.probes.size(); ++i)
         for (std::size_t j = i + 1; j < o.probes.size(); ++j)
             if (o.probes[i].name == o.probes[j].name)
@@ -1235,6 +1252,27 @@ int main(int argc, char** argv)
         controls.pressure_reference_cell = 0;
         controls.pressure_reference_value = 0.0;
         controls.probes = options.probes;
+        if (options.probe_stream) {
+            controls.probe_callback = [&options](
+                const IncompressibleProbeSample& sample) {
+                const auto probe = std::find_if(
+                    options.probes.begin(), options.probes.end(),
+                    [&sample](const IncompressiblePointProbe& candidate) {
+                        return candidate.name == sample.name;
+                    });
+                if (probe == options.probes.end())
+                    throw std::logic_error(
+                        "probe stream received a sample without a configured probe");
+                std::cout << "CFDX_PROBE_SAMPLE_V1\t"
+                          << encode_probe_name_hex(sample.name) << '\t'
+                          << probe_field_cli(probe->field) << '\t'
+                          << probe_field_unit(probe->field) << '\t'
+                          << sample.iteration << '\t'
+                          << format_probe_csv_value(sample.time) << '\t'
+                          << format_probe_csv_value(sample.value) << '\n'
+                          << std::flush;
+            };
+        }
 
         // The declared initialization strategy is applied by the solver, before
         // the first residual is formed. An explicit --restart request therefore
@@ -2028,4 +2066,3 @@ int main(int argc, char** argv)
         return kExecutionExitError;
     }
 }
-

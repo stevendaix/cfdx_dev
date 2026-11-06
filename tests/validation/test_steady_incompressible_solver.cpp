@@ -1102,5 +1102,45 @@ int main()
         EXPECT_NEAR(U.component_data(0)[0], 0.0, 0.0);
     });
 
+    // Closes the probe-observer contract: a sample produced by an iteration that
+    // the nonlinear retry controller rejects must never be published, and the
+    // committed iteration's samples must reach probe_callback exactly once.
+    run_case("probe_samples_publish_only_committed_iteration_across_nonlinear_retry", [] {
+        const Mesh m = make_unit_cube();
+        Field<double, Location::CELL> U(1, "U", "m/s", 3), p(1, "p", "Pa", 1);
+        U.fill(0.0);
+        p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        IncompressibleSolverControls controls;
+        controls.convergence.max_iterations = 1;
+        controls.pressure_reference_cell = 0;
+        controls.nonlinear_retry.max_retries = 1;
+        controls.probes = {
+            {"retry_probe", {0.5, 0.5, 0.5}, IncompressibleProbeField::PRESSURE},
+        };
+        std::vector<IncompressibleProbeSample> published_probe_samples;
+        controls.probe_callback = [&](const IncompressibleProbeSample& sample) {
+            published_probe_samples.push_back(sample);
+        };
+        std::size_t output_calls = 0;
+        controls.iteration_output_callback =
+            [&](std::size_t, double, const auto&, const auto&, const auto&) {
+                if (++output_calls == 1)
+                    throw NonlinearRetryableFailure("deliberate probe-publication rejection");
+                return false;
+            };
+        const auto accepted = solve_steady_incompressible(m, U, p, ubc, pbc, controls);
+        EXPECT_TRUE(output_calls == 2);
+        EXPECT_TRUE(accepted.history.size() == 1);
+        EXPECT_TRUE(accepted.probe_samples.size() == 1);
+        EXPECT_TRUE(published_probe_samples.size() == accepted.probe_samples.size());
+        EXPECT_TRUE(published_probe_samples[0].iteration == accepted.probe_samples[0].iteration);
+        EXPECT_NEAR(published_probe_samples[0].value, accepted.probe_samples[0].value, 1e-14);
+    });
+
     return run_all();
 }

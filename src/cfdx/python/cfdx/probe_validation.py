@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -212,6 +213,81 @@ def write_probe_csv(path: str | Path, series: Sequence[ProbeSeries]) -> Path:
         )
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return destination
+
+
+def write_probe_json(
+    path: str | Path,
+    series: Sequence[ProbeSeries],
+    *,
+    max_samples_per_probe: int | None = None,
+) -> Path:
+    """Write a versioned JSON snapshot of probe series and their metadata."""
+    if not series:
+        raise ValueError("probe JSON export requires at least one probe series")
+    if max_samples_per_probe is not None and max_samples_per_probe <= 0:
+        raise ValueError("max_samples_per_probe must be positive")
+
+    probes: list[dict[str, object]] = []
+    seen_names: set[str] = set()
+    for probe in sorted(series, key=lambda item: item.name):
+        if not probe.name:
+            raise ValueError("probe name must not be empty")
+        if probe.name in seen_names:
+            raise ValueError(f"probe names must be unique: {probe.name!r}")
+        seen_names.add(probe.name)
+        if len(probe.point) != 3 or not probe.field or not probe.unit:
+            raise ValueError(
+                f"probe {probe.name!r} has incomplete metadata; expected "
+                "three coordinates, field, and unit"
+            )
+        if (
+            max_samples_per_probe is not None
+            and len(probe.samples) > max_samples_per_probe
+        ):
+            raise ValueError(
+                f"probe {probe.name!r} exceeds the declared live buffer limit"
+            )
+        if any(not math.isfinite(float(coordinate)) for coordinate in probe.point):
+            raise ValueError(f"probe {probe.name!r} has non-finite coordinates")
+        probe.validate_monotonic()
+        samples: list[dict[str, int | float]] = []
+        for sample in probe.samples:
+            if sample.iteration < 0:
+                raise ValueError("probe iteration must be non-negative")
+            if not math.isfinite(sample.time) or not math.isfinite(sample.value):
+                raise ValueError(f"probe {probe.name!r} has a non-finite sample")
+            samples.append(
+                {
+                    "iteration": sample.iteration,
+                    "time": sample.time,
+                    "value": sample.value,
+                }
+            )
+        probes.append(
+            {
+                "name": probe.name,
+                "point": list(probe.point),
+                "field": probe.field,
+                "unit": probe.unit,
+                "samples": samples,
+            }
+        )
+
+    document: dict[str, object] = {
+        "schema": "cfdx-probe-json",
+        "version": 1,
+        "probes": probes,
+    }
+    if max_samples_per_probe is not None:
+        document["source"] = "live-stream-buffer"
+        document["max_samples_per_probe"] = max_samples_per_probe
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(
+        json.dumps(document, indent=2, sort_keys=True, allow_nan=False) + "\n",
+        encoding="utf-8",
+    )
     return destination
 
 

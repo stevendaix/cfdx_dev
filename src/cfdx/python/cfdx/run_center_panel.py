@@ -1,14 +1,26 @@
 """Qt adapter for the headless Application Run Center."""
+
 from __future__ import annotations
 
-from .application import Application, ApplicationStateChanged
+from weakref import ref
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtCore import Signal
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QTextEdit,
+    QVBoxLayout,
+    QWidget,
+)
+
+from .application import Application, ApplicationStateChanged
 
 
 class RunCenterPanel(QWidget):
     """Controls and live output for the application execution controller."""
+
+    _state_event = Signal(object)
 
     def __init__(self, application: Application, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -24,7 +36,12 @@ class RunCenterPanel(QWidget):
         self.resume_button = QPushButton("Resume")
         self.stop_button = QPushButton("Stop")
         controls = QHBoxLayout()
-        for button in (self.run_button, self.pause_button, self.resume_button, self.stop_button):
+        for button in (
+            self.run_button,
+            self.pause_button,
+            self.resume_button,
+            self.stop_button,
+        ):
             controls.addWidget(button)
         layout = QVBoxLayout(self)
         layout.addWidget(self.status)
@@ -35,7 +52,21 @@ class RunCenterPanel(QWidget):
         self.pause_button.clicked.connect(self._pause)
         self.resume_button.clicked.connect(self._resume)
         self.stop_button.clicked.connect(self._stop)
-        application.events.subscribe(ApplicationStateChanged, self._state_changed)
+        self._state_event.connect(self._state_changed)
+        panel_ref = ref(self)
+
+        def queue_state_event(event: object) -> None:
+            panel = panel_ref()
+            if panel is not None:
+                panel._state_event.emit(event)
+
+        application.events.subscribe(ApplicationStateChanged, queue_state_event)
+        event_bus = application.events
+        self.destroyed.connect(
+            lambda *_args: event_bus.unsubscribe(
+                ApplicationStateChanged, queue_state_event
+            )
+        )
         self._refresh(application.state)
 
     def _run(self) -> None:
@@ -59,7 +90,12 @@ class RunCenterPanel(QWidget):
             self.status.setText("No execution controller attached")
             self.metrics.setText("Iteration: — | Time: — | CFL: —")
             self.output.clear()
-            for button in (self.run_button, self.pause_button, self.resume_button, self.stop_button):
+            for button in (
+                self.run_button,
+                self.pause_button,
+                self.resume_button,
+                self.stop_button,
+            ):
                 button.setEnabled(False)
             return
         center_state = center.state
@@ -70,7 +106,9 @@ class RunCenterPanel(QWidget):
             f"Iteration: {center_state.iteration} | Time: {center_state.time:g} | CFL: {cfl_text}"
         )
         self.output.setPlainText("\n".join(center_state.output))
-        self.output.verticalScrollBar().setValue(self.output.verticalScrollBar().maximum())
+        self.output.verticalScrollBar().setValue(
+            self.output.verticalScrollBar().maximum()
+        )
         running = center_state.simulation_state.value == "RUNNING"
         paused = center_state.simulation_state.value == "PAUSED"
         self.run_button.setEnabled(not running and not paused)
