@@ -1,6 +1,6 @@
 # TUR-CHANNEL — turbulent channel qualification
 
-## Reference definition
+## Reference:
 
 Moser, R. D., Kim, J. & Mansour, N. N. (1999), “Direct numerical simulation of turbulent channel flow up to Re_tau=590”, *Physics of Fluids*, 11(4), 943–945, DOI: 10.1063/1.869966.
 
@@ -38,8 +38,8 @@ Before the first campaign run, freeze each downloaded reference file independent
 
 Never reconstruct reference profiles from plotted figures.
 
-## Required CFDX evidence
+## Required evidence:
 
 An actual production turbulent CFDX run, statistically stationary averaging interval, wall-normal and homogeneous-direction mesh sensitivity, y+ and resolution metadata, independent mass/momentum balance, bulk-flow stability, quantitative profile errors, runtime and exact software/case revision.
 
-**Status: BLOCKED.** The reference definition is known, but this is not evidence that the current production turbulence path executes or is validated. Reference-data parsing tests alone do not qualify CFDX.
+**Current status:** BLOCKED. The reference definition is known, but this is not evidence that the current production turbulence path executes or is validated. Reference-data parsing tests alone do not qualify CFDX.
