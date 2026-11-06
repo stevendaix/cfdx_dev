@@ -1,7 +1,7 @@
 """Unit tests for the Fluent .cas/.dat adapter.
 
-The .cas.h5 tests are guarded on pyfluent, which CI does not install, so they
-skip there. The adapter's HDF5 import path has no CI coverage.
+The .cas.h5 tests require a compatible PyFluent installation and fixtures.
+The main CI installs PyFluent; dependency incompatibility is tested separately.
 """
 
 import os
@@ -102,9 +102,7 @@ class TestFluentAdapter:
         adapter.convert(cas_file, result)
         assert result.gap_report.n_supported() > 0
 
-    @pytest.mark.skipif(
-        not PYFLUENT_AVAILABLE, reason="PyFluent CaseFile reader unavailable"
-    )
+    @pytest.mark.skipif(not PYFLUENT_AVAILABLE, reason="pyfluent not installed")
     def test_detect_cas_h5(self):
         adapter = FluentAdapter()
         info = SourceInfo()
@@ -114,9 +112,7 @@ class TestFluentAdapter:
         assert info.solver == "Fluent"
         assert info.format == "cas_h5"
 
-    @pytest.mark.skipif(
-        not PYFLUENT_AVAILABLE, reason="PyFluent CaseFile reader unavailable"
-    )
+    @pytest.mark.skipif(not PYFLUENT_AVAILABLE, reason="pyfluent not installed")
     def test_parse_cas_h5(self):
         adapter = FluentAdapter()
         h5_file = os.path.join(pytest.DATA_DIR, "fluent", "h5", "mixing_elbow.cas.h5")
@@ -129,9 +125,7 @@ class TestFluentAdapter:
         assert len(adapter._zones) > 1  # at least wall-inlet + wall-outlet + interior
         assert adapter.setup.source.version == "hdf5"
 
-    @pytest.mark.skipif(
-        not PYFLUENT_AVAILABLE, reason="PyFluent CaseFile reader unavailable"
-    )
+    @pytest.mark.skipif(not PYFLUENT_AVAILABLE, reason="pyfluent not installed")
     def test_convert_cas_h5_full(self):
         adapter = FluentAdapter()
         h5_file = os.path.join(pytest.DATA_DIR, "fluent", "h5", "mixing_elbow.cas.h5")
@@ -156,9 +150,7 @@ class TestFluentAdapter:
         # Check energy model
         assert result.setup.energy_model == "isothermal"
 
-    @pytest.mark.skipif(
-        not PYFLUENT_AVAILABLE, reason="PyFluent CaseFile reader unavailable"
-    )
+    @pytest.mark.skipif(not PYFLUENT_AVAILABLE, reason="pyfluent not installed")
     def test_import_dat_h5(self):
         adapter = FluentAdapter()
         h5_file = os.path.join(pytest.DATA_DIR, "fluent", "h5", "mixing_elbow.cas.h5")
