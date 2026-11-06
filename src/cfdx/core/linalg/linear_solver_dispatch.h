@@ -9,6 +9,7 @@
 #include "cfdx/core/linalg/gmres_solver.h"
 #include "cfdx/core/linalg/hypre_amg.h"
 #include "cfdx/core/linalg/linear_solver_models.h"
+#include "cfdx/core/linalg/linear_system_capture.h"
 #include "cfdx/core/linalg/vanka_patch_preconditioner.h"
 #include "cfdx/core/linalg/matrix_diagnostics.h"
 #include "cfdx/core/linalg/null_space.h"
@@ -29,6 +30,7 @@ struct LinearSolveReport {
     double physical_residual_relative = std::numeric_limits<double>::quiet_NaN();
     LinearScalingModel applied_scaling = LinearScalingModel::None;
     std::string anisotropy_json;  // empty unless explicitly requested
+    std::string preconditioner_error; // error from an optional failed native AMG setup
 };
 
 inline double physical_residual_norm(
@@ -231,6 +233,10 @@ inline LinearSolveReport solve_linear_system(
     std::size_t max_iterations = 1000,
     double tolerance = 1e-12) {
     LinearSolveReport report;
+    if (!request.linear_capture_path.empty())
+        write_linear_system_capture(
+            request.linear_capture_path, matrix, rhs, solution, problem,
+            request.null_space, request.scaling, max_iterations, tolerance);
     if (request.anisotropy_geometry && !request.diagnose_anisotropy)
         throw std::invalid_argument("anisotropy geometry provided without diagnostics opt-in");
     if (request.diagnose_anisotropy) {
@@ -406,6 +412,13 @@ inline LinearSolveReport solve_linear_system(
         case KrylovModel::PipeFGMRES:
             report.result.status = SolverStatus::NOT_APPLICABLE;
             break;
+    }
+    // Preserve the actionable native AMG setup reason in the report.
+    // NOT_APPLICABLE without a cause previously made N128/N256 failures
+    // indistinguishable from unsupported model dispatch.
+    if (report.result.status == SolverStatus::NOT_APPLICABLE) {
+        if (const auto* native = dynamic_cast<const NativeAMGPreconditioner*>(pc))
+            report.preconditioner_error = native->last_error();
     }
     // Do not restart the solve or rebuild the preconditioner when the
     // original system has already passed. This is a guarded, explicitly

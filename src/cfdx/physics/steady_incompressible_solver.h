@@ -276,6 +276,12 @@ struct IncompressibleSolverControls {
     double pressure_reference_value = 0.0;
     cfdx::core::LinearSolverRequest momentum_linear_solver;
     cfdx::core::LinearSolverRequest pressure_linear_solver;
+    // Explicit pressure-matrix forensic capture: select at most 32 outer
+    // iterations (e.g. {20,21,600} for N256). One original post-gauge CSR
+    // system per selected iteration and pressure corrector; retry on the same
+    // iteration may overwrite its file. No I/O unless configured.
+    std::string pressure_replay_prefix;
+    std::vector<std::size_t> pressure_replay_iterations;
     cfdx::core::LinearSolverRequest coupled_linear_solver;
     // PCD pressure-side solves are nested inside the coupled preconditioner.
     // They deliberately have independent solver controls so the outer coupled
@@ -410,6 +416,7 @@ struct IncompressibleSolverControls {
 struct IncompressibleIteration {
     std::size_t iteration = 0;
     double high_order_fraction = 1.0; // 1.0 is the only qualified final operator.
+    bool full_order_eligible = true; // Held at full order for mandatory iterations.
     double momentum_residual = std::numeric_limits<double>::infinity();
     double pressure_residual = std::numeric_limits<double>::infinity();
     double continuity_l1 = std::numeric_limits<double>::infinity();
@@ -625,6 +632,20 @@ inline void validate_incompressible_controls(
         throw std::invalid_argument(
             "convection continuation: only steady SIMPLE with SOU/TVD is qualified");
     validate_pressure_continuity_line_search(c.pressure_continuity_line_search);
+    if (c.pressure_replay_prefix.empty() != c.pressure_replay_iterations.empty() ||
+        c.pressure_replay_iterations.size() > 32 ||
+        std::any_of(c.pressure_replay_iterations.begin(),
+                    c.pressure_replay_iterations.end(),
+                    [&](std::size_t i) {
+                        return i == 0 || i > c.convergence.max_iterations;
+                    }))
+        throw std::invalid_argument(
+            "pressure linear replay: require prefix and 1..32 valid iterations");
+    auto selected_iterations = c.pressure_replay_iterations;
+    std::sort(selected_iterations.begin(), selected_iterations.end());
+    if (std::adjacent_find(selected_iterations.begin(), selected_iterations.end()) !=
+        selected_iterations.end())
+        throw std::invalid_argument("pressure linear replay: duplicate iteration");
     // The monolithic U-p block still assembles its analytical G operator
     // with the historical face weights. Until that block is augmented with
     // the skew-correction Jacobian, activating this option would make the
@@ -5633,6 +5654,47 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 [&](const SparseMatrix& matrix,
                     const Vector& rhs,
                     Vector& correction) {
+                    // Capture selected difficult *actual* post-gauge pressure
+                    // systems, including their original RHS and initial guess.
+                    // This hook also covers reusable CG, which bypasses dispatch.
+                    if (!controls.pressure_replay_prefix.empty() &&
+                        std::find(controls.pressure_replay_iterations.begin(),
+                                  controls.pressure_replay_iterations.end(), iter) !=
+                        controls.pressure_replay_iterations.end()) {
+                        const auto path = controls.pressure_replay_prefix +
+                            "_i" + std::to_string(iter) +
+                            "_c" + std::to_string(corr) + ".cfdxlin";
+                        cfdx::core::write_linear_system_capture(
+                            path, matrix, rhs, correction,
+                            cfdx::core::LinearProblemKind::PressurePoisson,
+                            controls.pressure_linear_solver.null_space,
+                            controls.pressure_linear_solver.scaling,
+                            controls.pressure_linear_max_iterations != 0
+                                ? controls.pressure_linear_max_iterations
+                                : controls.linear_max_iterations,
+                            controls.pressure_linear_tolerance > 0.0
+                                ? controls.pressure_linear_tolerance
+                                : linear_tolerance);
+                    }
+                    // The reusable pressure-CG context bypasses generic dispatch.
+                    // Capture the first ACTUAL pressure matrix before the solve
+                    // (including the post-gauge reduction and true initial guess).
+                    // No overhead and no file creation without explicit opt-in.
+                    if (iter == 1 && corr == 0 &&
+                        !controls.pressure_linear_solver.linear_capture_path.empty()) {
+                        cfdx::core::write_linear_system_capture(
+                            controls.pressure_linear_solver.linear_capture_path,
+                            matrix, rhs, correction,
+                            cfdx::core::LinearProblemKind::PressurePoisson,
+                            controls.pressure_linear_solver.null_space,
+                            controls.pressure_linear_solver.scaling,
+                            controls.pressure_linear_max_iterations != 0
+                                ? controls.pressure_linear_max_iterations
+                                : controls.linear_max_iterations,
+                            controls.pressure_linear_tolerance > 0.0
+                                ? controls.pressure_linear_tolerance
+                                : linear_tolerance);
+                    }
                     if (controls.v18_full_flux_pressure_oracle ||
                         controls.v18_sparse_flux_pressure_jacobian) {
                         auto request=controls.pressure_linear_solver;
@@ -6628,6 +6690,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.pressure_line_search_norm_after = last_line_search_after;
         h.iteration = iter;
         h.high_order_fraction = outer_high_order_fraction;
+        h.full_order_eligible = full_order_eligible;
         h.momentum_residual = final_momentum_residual / momentum_rhs_scale;
         h.pressure_residual = pressure_residual;
         h.continuity_l1 = l1;
@@ -7807,3 +7870,4 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 }
 
 } // namespace cfdx::physics
+

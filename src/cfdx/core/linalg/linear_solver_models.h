@@ -177,6 +177,9 @@ struct LinearSolverRequest {
     // scaling and preconditioning. Produces JSON in LinearSolveReport.
     bool diagnose_anisotropy = false;
     std::string anisotropy_equation;
+    // Explicit opt-in: write exact, unscaled CSR/RHS/initial guess for replay.
+    // Caller owns naming/rotation; repeated use of a path overwrites it.
+    std::string linear_capture_path;
     // Borrowed for the duration of solve_linear_system(); optional, no
     // fabricated mesh metrics when absent.
     const AnisotropyGeometry* anisotropy_geometry = nullptr;

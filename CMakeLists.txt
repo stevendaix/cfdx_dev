@@ -603,6 +603,12 @@ if(CFDX_BUILD_TESTS)
     add_executable(cfdx_anisotropy_report EXCLUDE_FROM_ALL
         tools/diagnostics/cfdx_anisotropy_report.cpp)
     target_link_libraries(cfdx_anisotropy_report PRIVATE cfdx_core)
+    add_executable(cfdx_linear_replay EXCLUDE_FROM_ALL
+        tools/diagnostics/cfdx_linear_replay.cpp)
+    target_link_libraries(cfdx_linear_replay PRIVATE cfdx_core)
+    add_cfdx_test(test_linear_system_capture tests/unit/test_linear_system_capture.cpp)
+    set_tests_properties(test_linear_system_capture PROPERTIES
+        LABELS "linalg;diagnostic;replay;regression" TIMEOUT 60)
     add_cfdx_test(test_anisotropy_energy tests/unit/test_anisotropy_energy.cpp)
     set_tests_properties(test_anisotropy_energy PROPERTIES LABELS "linalg;anisotropy;qualification" TIMEOUT 120)
     set_tests_properties(test_directional_semicoarsening PROPERTIES LABELS "linalg;anisotropy;regression" TIMEOUT 120)

@@ -100,6 +100,8 @@ inline void write_convergence_history(
             const auto& h = result.history[i];
             out << "    {\n";
             out << "      \"iteration\": " << h.iteration << ",\n";
+            out << "      \"high_order_fraction\": "; convergence_json_number(out, h.high_order_fraction); out << ",\n";
+            out << "      \"full_order_eligible\": " << (h.full_order_eligible ? "true" : "false") << ",\n";
             out << "      \"momentum_residual\": "; convergence_json_number(out, h.momentum_residual); out << ",\n";
             out << "      \"pressure_residual\": "; convergence_json_number(out, h.pressure_residual); out << ",\n";
             out << "      \"continuity_l1\": "; convergence_json_number(out, h.continuity_l1); out << ",\n";
@@ -109,6 +111,7 @@ inline void write_convergence_history(
             out << "      \"momentum_rhs_scale\": "; convergence_json_number(out, h.momentum_rhs_scale); out << ",\n";
             out << "      \"momentum_equation_residual_reference\": "; convergence_json_number(out, h.momentum_equation_residual_reference); out << ",\n";
             out << "      \"momentum_equation_residual_rhs_relative\": "; convergence_json_number(out, h.momentum_equation_residual_rhs_relative); out << ",\n";
+            out << "      \"momentum_equation_residual_rhs_active_component_max\": "; convergence_json_number(out, h.momentum_equation_residual_rhs_active_component_max); out << ",\n";
             out << "      \"momentum_rhs_scale_components\": "; convergence_json_array3(out, h.momentum_rhs_scale_components); out << ",\n";
             out << "      \"momentum_equation_residual_rhs_relative_components\": "; convergence_json_array3(out, h.momentum_equation_residual_rhs_relative_components); out << ",\n";
             out << "      \"momentum_equation_residual_relative\": "; convergence_json_number(out, h.momentum_equation_residual_relative); out << ",\n";

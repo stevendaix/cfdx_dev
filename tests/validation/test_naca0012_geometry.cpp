@@ -148,6 +148,19 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::invalid_argument("affine flux trials require line-search");
         c.pressure_continuity_line_search.affine_flux_trials = true;
     }
+    // Forensic only: select the exact difficult production pressure systems,
+    // e.g. N256 iterations 20,21,240. Never alters a coefficient or tolerance.
+    const char* replay_prefix = std::getenv("CFDX_NACA_PRESSURE_REPLAY_PREFIX");
+    const char* replay_iters = std::getenv("CFDX_NACA_PRESSURE_REPLAY_ITERATIONS");
+    if ((replay_prefix != nullptr) != (replay_iters != nullptr))
+        throw std::invalid_argument("NACA pressure replay requires BOTH env variables");
+    if (replay_prefix) {
+        if (!*replay_prefix)
+            throw std::invalid_argument("NACA pressure replay prefix is empty");
+        c.pressure_replay_prefix = replay_prefix;
+        c.pressure_replay_iterations = cfdx::core::parse_linear_capture_iterations(
+            replay_iters);
+    }
     c.pressure_reference_cell=0;
     c.pressure_reference_value=0.0;
     c.diagnostics.iteration_trace=true;

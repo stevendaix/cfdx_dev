@@ -156,5 +156,19 @@ int main(){
         controls.convergence.max_iterations = 122;
         EXPECT_THROW(validate_incompressible_controls(controls, 2), std::invalid_argument);
     });
+    run_case("pressure_replay_selection_is_bounded_and_fail_closed", [] {
+        IncompressibleSolverControls c;
+        c.convergence.max_iterations = 100;
+        c.pressure_replay_prefix = "replay/naca256";
+        c.pressure_replay_iterations = {20, 21, 80};
+        validate_incompressible_controls(c, 2);
+        c.pressure_replay_iterations = {20, 20};
+        EXPECT_THROW(validate_incompressible_controls(c, 2), std::invalid_argument);
+        c.pressure_replay_iterations = {101};
+        EXPECT_THROW(validate_incompressible_controls(c, 2), std::invalid_argument);
+        c.pressure_replay_iterations = {21};
+        c.pressure_replay_prefix.clear();
+        EXPECT_THROW(validate_incompressible_controls(c, 2), std::invalid_argument);
+    });
     return run_all();
 }
