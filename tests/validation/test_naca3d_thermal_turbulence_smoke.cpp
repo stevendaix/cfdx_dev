@@ -3,6 +3,7 @@
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/physics/energy_solver.h"
 #include "cfdx/physics/turbulence_solver.h"
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -12,9 +13,14 @@ using namespace cfdx::core;
 using namespace cfdx::physics;
 
 int main(int argc, char** argv) {
-    if (argc != 2) throw std::invalid_argument("usage: test_naca3d_thermal_turbulence_smoke mesh.h5");
+    const bool diagnose_linear = argc == 3 &&
+        std::string(argv[1]) == "--linear-conduction";
+    if (!(argc == 2 || diagnose_linear))
+        throw std::invalid_argument(
+            "usage: test_naca3d_thermal_turbulence_smoke [--linear-conduction] mesh.h5");
+    const char* mesh_path = diagnose_linear ? argv[2] : argv[1];
     Mesh mesh;
-    if (!cfdx::io::read_mesh_hdf5(argv[1], mesh) || !mesh.topo_validate().ok)
+    if (!cfdx::io::read_mesh_hdf5(mesh_path, mesh) || !mesh.topo_validate().ok)
         throw std::runtime_error("NACA3D: invalid HDF5 mesh");
     const auto geometry = build_fv_geometry(mesh);
     const auto n = mesh.n_cells();
@@ -34,6 +40,9 @@ int main(int argc, char** argv) {
     EnergySolverControls ec;
     ec.conductivity = 2.0; ec.relaxation = 1.0;
     ec.max_iterations = 6; ec.tolerance = 1e-9;
+    ec.linear_tolerance = 1e-9;
+    ec.temperature_tolerance = 1e-9;
+    ec.energy_balance_tolerance = 1e-9;
     const auto energy = solve_energy(mesh, geometry, mass_flux,
                                       temperature, source, ec, tbc);
     double tmax = 0.0;
@@ -45,6 +54,158 @@ int main(int argc, char** argv) {
               << " Linf_T=" << tmax << '\n';
     if (!energy.converged || tmax > 1e-7)
         throw std::runtime_error("NACA3D: isothermal thermal MMS failed");
+
+    if (diagnose_linear) {
+    // Nontrivial 3-D exact conduction MMS: T = 300 + 10 z on a span-1
+    // extruded mesh. Lateral patches are adiabatic, end caps Dirichlet.
+    // This checks z-face orientation, internal z couplings and energy BC.
+    Field<double, Location::CELL> Tlinear(n, "Tlinear", "K", 1);
+    for (std::size_t c = 0; c < n; ++c)
+        Tlinear(c) = 300.0 + 10.0 * geometry.cell_centres[c].z;
+    ScalarBoundaryConditions linear_bc;
+    linear_bc["front"] = {ScalarBoundaryType::FIXED_VALUE, 300.0, 0.0};
+    linear_bc["back"] = {ScalarBoundaryType::FIXED_VALUE, 310.0, 0.0};
+    linear_bc["airfoil"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+    linear_bc["farfield"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+    const auto linear_eq = assemble_energy_equation(mesh, geometry, mass_flux,
+        source, Tlinear, ec, linear_bc, nullptr, nullptr, nullptr, nullptr, &Tlinear);
+    double initial_residual_max = 0.;
+    std::size_t worst = 0;
+    for (std::size_t c = 0; c < n; ++c) {
+        double rowres = -linear_eq.rhs(c);
+        for (std::uint32_t j = linear_eq.matrix.row_offsets_data()[c];
+             j < linear_eq.matrix.row_offsets_data()[c+1]; ++j)
+            rowres += linear_eq.matrix.values_data()[j] *
+                Tlinear(linear_eq.matrix.columns_data()[j]);
+        if (std::abs(rowres) > initial_residual_max) {
+            initial_residual_max = std::abs(rowres);
+            worst = c;
+        }
+    }
+    std::cout << "NACA3D_LINEAR_MATRIX_AUDIT residual_max=" << initial_residual_max
+              << " worst_cell=" << worst
+              << " worst_z=" << geometry.cell_centres[worst].z << '\n';
+    // Expand the scalar residual into the exact matrix row and face geometry.
+    // Diagnostic-only: this does not alter the assembled operator.
+    const auto boundary_gradient = compute_scalar_gradient_with_boundary(
+        Tlinear, mesh, geometry, linear_bc);
+    const auto nonorthogonal_flux = compute_nonorthogonal_diffusion_face_fluxes(
+        mesh, geometry, Tlinear, ec.conductivity, linear_bc);
+    std::cout << "NACA3D_LINEAR_GRADIENT cell=" << worst
+              << " gx=" << boundary_gradient.component_data(0)[worst]
+              << " gy=" << boundary_gradient.component_data(1)[worst]
+              << " gz=" << boundary_gradient.component_data(2)[worst] << '\n';
+    std::cout << "NACA3D_LINEAR_ROW cell=" << worst
+              << " rhs=" << linear_eq.rhs(worst) << " terms=";
+    for (std::uint32_t j = linear_eq.matrix.row_offsets_data()[worst];
+         j < linear_eq.matrix.row_offsets_data()[worst+1]; ++j) {
+        const auto column = linear_eq.matrix.columns_data()[j];
+        std::cout << " [" << column << ":" << linear_eq.matrix.values_data()[j]
+                  << "*" << Tlinear(column) << "]";
+    }
+    std::cout << '\n';
+    const auto row_off = mesh.cells().offsets_data()[worst];
+    const auto row_count = mesh.cells().offsets_data()[worst+1] - row_off;
+    for (Offset k = 0; k < row_count; ++k) {
+        const auto face = static_cast<std::size_t>(mesh.cells().faces_data()[row_off+k]);
+        const auto owner = mesh.ownership().owner(face);
+        const auto neighbour = mesh.ownership().neighbour(face);
+        const auto sf = geometry.face_area_vectors[face];
+        const auto d = neighbour >= 0
+            ? geometry.cell_centres[static_cast<std::size_t>(neighbour)] - geometry.cell_centres[owner]
+            : geometry.face_centres[face] - geometry.cell_centres[owner];
+        const double area = sf.mag();
+        const double sd = sf.dot(d);
+        const double alpha = sd > 0.0 ? area*area/sd : 0.0;
+        const auto tangential = sf - d*alpha;
+        std::cout << "NACA3D_LINEAR_FACE cell=" << worst << " face=" << face
+                  << " owner=" << owner << " neighbour=" << neighbour
+                  << " area=" << area << " Sf_dot_d=" << sd
+                  << " tangential_area=" << tangential.mag()
+                  << " nonorth_flux=" << nonorthogonal_flux[face]
+                  << " Cf_z=" << geometry.face_centres[face].z
+                  << " Co_z=" << geometry.cell_centres[owner].z;
+        if (neighbour >= 0)
+            std::cout << " Cn_z=" << geometry.cell_centres[static_cast<std::size_t>(neighbour)].z;
+        std::cout << '\n';
+    }
+    const auto conduction = solve_energy(mesh, geometry, mass_flux, Tlinear,
+                                           source, ec, linear_bc);
+    double linear_err = 0.0;
+    for (std::size_t c = 0; c < n; ++c)
+        linear_err = std::max(linear_err,
+            std::abs(Tlinear(c) - (300.0 + 10.0*geometry.cell_centres[c].z)));
+    const auto reconstructed_flux = reconstruct_scalar_transport_flux(
+        mesh, geometry, mass_flux, Tlinear, ec.conductivity, linear_bc);
+    const auto front_id = mesh.boundary().find("front");
+    const auto back_id = mesh.boundary().find("back");
+    if (front_id >= mesh.boundary().n_patches() ||
+        back_id >= mesh.boundary().n_patches())
+        throw std::runtime_error("NACA3D_LINEAR_CONDUCTION: missing end-cap patches");
+    double front_flux = 0.0, back_flux = 0.0;
+    double front_area = 0.0, back_area = 0.0;
+    for (const auto face : mesh.boundary().patch(front_id).face_ids) {
+        front_flux += reconstructed_flux(face);
+        front_area += geometry.face_area_vectors[face].mag();
+    }
+    for (const auto face : mesh.boundary().patch(back_id).face_ids) {
+        back_flux += reconstructed_flux(face);
+        back_area += geometry.face_area_vectors[face].mag();
+    }
+    if (!(front_area > 0.0) || !(back_area > 0.0))
+        throw std::runtime_error("NACA3D_LINEAR_CONDUCTION: invalid end-cap area");
+    const double expected_front_flux = 10.0*ec.conductivity*front_area;
+    const double expected_back_flux = -10.0*ec.conductivity*back_area;
+    const double front_flux_relative = std::abs(front_flux-expected_front_flux) /
+        std::max(std::abs(expected_front_flux), 1.0);
+    const double back_flux_relative = std::abs(back_flux-expected_back_flux) /
+        std::max(std::abs(expected_back_flux), 1.0);
+    const double cap_area_relative = std::abs(front_area-back_area) /
+        std::max(front_area, back_area);
+    const bool flux_audit_passed =
+        front_flux_relative <= 1e-8 && back_flux_relative <= 1e-8 &&
+        cap_area_relative <= 1e-12;
+    std::cout << "NACA3D_LINEAR_CONDUCTION converged=" << conduction.converged
+              << " Linf_T=" << linear_err
+              << " front_flux=" << front_flux
+              << " expected_front_flux=" << expected_front_flux
+              << " back_flux=" << back_flux
+              << " expected_back_flux=" << expected_back_flux
+              << " front_flux_relative=" << front_flux_relative
+              << " back_flux_relative=" << back_flux_relative
+              << " cap_area_relative=" << cap_area_relative
+              << " flux_audit_passed=" << flux_audit_passed << '\n';
+    bool energy_audit_passed = false;
+    if (!conduction.history.empty()) {
+        const auto& final = conduction.history.back();
+        std::cout << "NACA3D_LINEAR_CONDUCTION_AUDIT iterations=" << conduction.iterations
+                  << " solver_status=" << final.linear_solver_status
+                  << " residual=" << final.residual
+                  << " linear_relative=" << final.linear_residual_relative
+                  << " backward_error=" << final.backward_error
+                  << " energy_imbalance=" << final.energy_imbalance
+                  << " independent_energy=" << final.independent_conservation_normalized
+                  << " independent_local_energy="
+                  << final.independent_conservation_local_normalized << '\n';
+        energy_audit_passed =
+            std::isfinite(final.linear_residual_relative) &&
+            final.linear_residual_relative <= ec.linear_tolerance &&
+            std::isfinite(final.backward_error) &&
+            final.backward_error <= ec.linear_tolerance &&
+            std::isfinite(final.energy_imbalance) &&
+            final.energy_imbalance <= ec.energy_balance_tolerance &&
+            std::isfinite(final.independent_conservation_normalized) &&
+            final.independent_conservation_normalized <= ec.energy_balance_tolerance &&
+            std::isfinite(final.independent_conservation_local_normalized) &&
+            final.independent_conservation_local_normalized <= ec.energy_balance_tolerance;
+    }
+    if (!conduction.converged || linear_err > 1e-6 ||
+        !flux_audit_passed || !energy_audit_passed) {
+        std::cerr << "NACA3D_LINEAR_CONDUCTION FAIL: 3D conduction MMS not qualified\n";
+        return 2;
+    }
+
+    } // Optional failing diagnostic: not part of the default 3-D smoke gate.
 
     // Turbulence: one transport step on the same volume mesh; bounded fields
     // and finite residuals are a smoke condition, NOT validation against TMR.

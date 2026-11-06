@@ -49,6 +49,25 @@ static void require(bool ok,const char* msg) {
 }
 
 int main() {
+    // A malformed raw surface previously led to unchecked triangle index
+    // reads in both the brute-force oracle and the BVH constructor.
+    WallSurface invalid;
+    invalid.points={{0,0,0},{1,0,0},{0,1,0}};
+    invalid.triangles={{{0,1,999}}};
+    bool bad_bvh_rejected=false, bad_oracle_rejected=false;
+    try { (void)WallDistanceBvh(invalid); }
+    catch (const std::invalid_argument&) { bad_bvh_rejected=true; }
+    try { (void)exact_point_distance(invalid,{0.25,0.25,1.0}); }
+    catch (const std::invalid_argument&) { bad_oracle_rejected=true; }
+    require(bad_bvh_rejected && bad_oracle_rejected,
+            "wall distance must reject invalid triangle connectivity");
+    invalid.triangles={{{0,1,2}}};
+    invalid.points[1].x=std::numeric_limits<double>::quiet_NaN();
+    bad_bvh_rejected=false;
+    try { (void)WallDistanceBvh(invalid); }
+    catch (const std::invalid_argument&) { bad_bvh_rejected=true; }
+    require(bad_bvh_rejected,"wall distance must reject NaN surface coordinates");
+
     WallSurface s;
     s.points={{0,0,0},{1,0,0},{1,1,0},{0,1,0},
               {0,0,1},{1,0,1},{1,1,1},{0,1,1}};
@@ -61,6 +80,11 @@ int main() {
 
     require(std::abs(exact_point_distance(s,{0.5,0.5,0.5})-0.5)<1e-12,
             "exact point-to-triangle distance is wrong");
+    const WallDistanceBvh valid_bvh(s);
+    bool invalid_query_rejected=false;
+    try { (void)valid_bvh.nearest_distance({std::numeric_limits<double>::quiet_NaN(),0,0}); }
+    catch (const std::invalid_argument&) { invalid_query_rejected=true; }
+    require(invalid_query_rejected,"BVH must reject NaN query point");
 
     const auto g=make_wall_distance_grid(
         9,9,9,{-1,-1,-1},{0.25,0.25,0.25},

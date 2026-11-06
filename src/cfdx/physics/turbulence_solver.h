@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <stdexcept>
 
 namespace cfdx::physics {
@@ -24,6 +25,17 @@ struct TurbulenceTransportResult {
     double second_total_floor_correction=0.0;
     double k_max_floor_correction=0.0;
     double second_max_floor_correction=0.0;
+    // Last scalar linear solves, before and after solver-level relaxation.
+    // Observational only: physical convergence still uses reassembled SST
+    // equations, not the scalar Krylov success statuses.
+    cfdx::core::SolverStatus last_k_linear_status =
+        cfdx::core::SolverStatus::NOT_APPLICABLE;
+    cfdx::core::SolverStatus last_second_linear_status =
+        cfdx::core::SolverStatus::NOT_APPLICABLE;
+    double last_k_linear_before = std::numeric_limits<double>::quiet_NaN();
+    double last_k_linear_after = std::numeric_limits<double>::quiet_NaN();
+    double last_second_linear_before = std::numeric_limits<double>::quiet_NaN();
+    double last_second_linear_after = std::numeric_limits<double>::quiet_NaN();
 };
 
 inline void record_turbulence_bounds(

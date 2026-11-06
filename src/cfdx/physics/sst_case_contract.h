@@ -178,10 +178,14 @@ inline void validate_sst_scalar_boundary_contract(const cfdx::io::CaseSetup& set
                     throw std::invalid_argument("SST outlet patch requires fixed values or zero gradients");
                 break;
             case cfdx::io::BCType::SYMMETRY:
+            case cfdx::io::BCType::EMPTY:
             case cfdx::io::BCType::PERIODIC:
+                // A 2-D extrusion's EMPTY planes are zero-flux/zero-gradient
+                // for both scalars. No wall treatment or artificial inlet
+                // turbulence is applied to the suppressed dimension.
                 if (k_type != cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT ||
                     omega_type != cfdx::io::SSTScalarBoundaryType::ZERO_GRADIENT)
-                    throw std::invalid_argument("SST symmetry/periodic patch requires zero gradients");
+                    throw std::invalid_argument("SST symmetry/empty/periodic patch requires zero gradients");
                 break;
             default:
                 throw std::invalid_argument("SST scalar boundary contract does not support patch type '" +

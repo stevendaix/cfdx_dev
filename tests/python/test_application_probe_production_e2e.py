@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 from cfdx.probe import Probe, ProbeCatalog, ProbeField
+from cfdx.probe_stream import ProbeStreamSample, parse_probe_stream_line
 from cfdx.probe_validation import ProbeSample
 
 from cfdx.application import Application
@@ -62,6 +63,7 @@ def test_application_probe_csv_round_trips_real_solver_output(tmp_path: Path) ->
             catalog.specs()[1],
             "--probe-csv",
             str(csv_path),
+            "--probe-stream",
         ],
         text=True,
         capture_output=True,
@@ -70,6 +72,11 @@ def test_application_probe_csv_round_trips_real_solver_output(tmp_path: Path) ->
     )
     assert completed.returncode == 0, completed.stderr[-4000:]
     assert csv_path.is_file(), "production solver did not emit a probe CSV"
+    streamed = [
+        parsed
+        for line in completed.stdout.splitlines()
+        if (parsed := parse_probe_stream_line(line)) is not None
+    ]
 
     application = Application()
     series = application.read_probe_results(csv_path)
@@ -79,14 +86,28 @@ def test_application_probe_csv_round_trips_real_solver_output(tmp_path: Path) ->
     assert by_name["pressure"].unit == "Pa"
     assert by_name["ux"].field == "u_x"
     assert by_name["ux"].unit == "m/s"
+    assert len(streamed) == sum(len(probe.samples) for probe in series)
+    streamed_by_name: dict[str, list[ProbeStreamSample]] = {}
+    for sample in streamed:
+        streamed_by_name.setdefault(sample.name, []).append(sample)
 
     # The solver emits one sample per iteration per probe; the Application
-    # reader must preserve every sample the solver wrote.
+    # reader must preserve every sample the solver wrote. The stream reports
+    # the same committed values while the final CSV remains the canonical file.
     assert all(len(probe.samples) >= 1 for probe in series)
     for probe in series:
         for sample in probe.samples:
             assert isinstance(sample, ProbeSample)
             assert sample.iteration >= 0
+        events = streamed_by_name[probe.name]
+        assert all(event.field == probe.field for event in events)
+        assert all(event.unit == probe.unit for event in events)
+        assert [event.iteration for event in events] == [
+            sample.iteration for sample in probe.samples
+        ]
+        assert [event.value for event in events] == pytest.approx(
+            [sample.value for sample in probe.samples]
+        )
 
     # The contract is symmetric: the same schema the solver wrote must be
     # reproducible verbatim through the Application's writer.

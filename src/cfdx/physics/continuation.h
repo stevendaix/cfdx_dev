@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -29,6 +30,13 @@ struct ContinuationControls {
     double step_reduction = 0.5;
     std::size_t max_stage_attempts = 8;
     std::size_t max_stages = 1000;
+    // Experimental two-phase startup: momentum-only stages first, full
+    // SST on lambda=1. An intermediate laminar solution is NEVER a final
+    // turbulence qualification. Must remain an explicit opt-in.
+    bool momentum_only_before_final = false;
+    // Intermediate stages may use robust first order, but lambda=1 always
+    // restores the user-selected final convection scheme.
+    bool upwind_before_final = false;
 };
 
 inline void validate_continuation_controls(const ContinuationControls& c)
@@ -48,6 +56,12 @@ inline void validate_continuation_controls(const ContinuationControls& c)
         !std::isfinite(c.step_reduction)) {
         throw std::invalid_argument("invalid continuation controls");
     }
+}
+
+inline bool continuation_final_physical_stage(double parameter) {
+    if (!std::isfinite(parameter) || parameter < 0.0 || parameter > 1.0)
+        throw std::invalid_argument("invalid continuation physical-stage parameter");
+    return parameter == 1.0;
 }
 
 inline double continuation_next_target(double current, double step)
@@ -76,6 +90,58 @@ inline double continuation_step_after_failure(
     return step * c.step_reduction;
 }
 
+// Captures every persistent field affected by an SST-coupled stage.
+// The solver maintains its own per-iteration retry, but a continuation
+// rejection must also roll back the *whole* stage, not merely U and p.
+struct ContinuationCoupledSnapshot {
+    cfdx::core::Field<double, cfdx::core::Location::CELL> velocity;
+    cfdx::core::Field<double, cfdx::core::Location::CELL> pressure;
+    std::optional<SSTProductionState> turbulence;
+    std::vector<double> mass_flux;
+
+    ContinuationCoupledSnapshot(
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
+        const SSTProductionState* sst, const std::vector<double>& flux)
+        : velocity(U), pressure(p), mass_flux(flux)
+    {
+        if (sst) turbulence = snapshot_sst_production_state(*sst);
+    }
+
+    void restore(
+        cfdx::core::Field<double, cfdx::core::Location::CELL>& U,
+        cfdx::core::Field<double, cfdx::core::Location::CELL>& p,
+        SSTProductionState* sst, std::vector<double>& flux) const
+    {
+        if (bool(turbulence) != (sst != nullptr))
+            throw std::invalid_argument("continuation snapshot: SST runtime changed");
+        U = velocity;
+        p = pressure;
+        if (sst) restore_sst_production_state(*sst, *turbulence);
+        flux = mass_flux;
+    }
+};
+
+// A previously corrected conservative flux is a valid warm start only
+// when the fixed-velocity boundary contract is scaled by the SAME factor.
+// This is a stage-seed transformation, never a replacement for the full
+// physical flux/conservation gate at lambda=1.
+inline std::vector<double> continuation_scale_mass_flux(
+    const std::vector<double>& flux, double factor)
+{
+    if (!std::isfinite(factor) || !(factor > 0.0))
+        throw std::invalid_argument("continuation: invalid face flux scale");
+    std::vector<double> scaled = flux;
+    for (double& f : scaled) {
+        if (!std::isfinite(f))
+            throw std::invalid_argument("continuation: non-finite face flux");
+        f *= factor;
+        if (!std::isfinite(f))
+            throw std::invalid_argument("continuation: face flux overflow");
+    }
+    return scaled;
+}
+
 struct ContinuationStageReport {
     std::size_t stage = 0;
     std::size_t attempts = 0;
@@ -86,6 +152,10 @@ struct ContinuationStageReport {
         cfdx::core::ConvergenceStatus::CONTINUE;
     std::string reason;
     IncompressibleSolveResult solver_result;
+    // This is the only stage at which SST and user-selected order
+    // are necessarily restored. Intermediate stage convergence is NEVER
+    // a certificate for the final physical problem.
+    bool full_physics = false;
 };
 
 struct ContinuationSolveResult {
@@ -139,8 +209,12 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
     double step = continuation.initial_step;
     std::size_t stage_index = 0;
     std::size_t total_attempts = 0;
-    auto last_accepted_U = U;
-    auto last_accepted_p = p;
+    auto* sst_state = controls.sst_runtime
+        ? controls.sst_runtime->state : nullptr;
+    // In particular, do not read a DAT restart again after the first stage.
+    std::vector<double> accepted_flux = controls.initial_face_mass_flux;
+    ContinuationCoupledSnapshot last_accepted(
+        U, p, sst_state, accepted_flux);
     IncompressibleSolveResult last_solver_result;
 
     while (parameter < 1.0) {
@@ -154,8 +228,7 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
         while (!accepted) {
             const double target = continuation_next_target(parameter, step);
             if (++attempts > continuation.max_stage_attempts) {
-                U = last_accepted_U;
-                p = last_accepted_p;
+                last_accepted.restore(U, p, sst_state, accepted_flux);
                 result.final_parameter = parameter;
                 result.total_attempts = total_attempts;
                 result.final_solver_result = last_solver_result;
@@ -164,14 +237,29 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
             }
             ++total_attempts;
 
-            const auto previous_U = U;
-            const auto previous_p = p;
+            const ContinuationCoupledSnapshot previous(
+                U, p, sst_state, accepted_flux);
             IncompressibleSolverControls stage_controls = controls;
             stage_controls.body_force = cfdx::core::Vec3{
                 controls.body_force.x * target,
                 controls.body_force.y * target,
                 controls.body_force.z * target};
+            const bool final_physical = continuation_final_physical_stage(target);
+            if (!final_physical && continuation.momentum_only_before_final) {
+                stage_controls.sst_runtime = nullptr;
+                stage_controls.turbulent_viscosity = 0.0;
+                stage_controls.cell_turbulent_viscosity.clear();
+            }
+            if (!final_physical && continuation.upwind_before_final)
+                stage_controls.convection_scheme = ConvectionScheme::UPWIND;
             const auto stage_velocity_bcs = scale_velocity_bcs(target);
+            // Keep the conservative face seed consistent with each stage's
+            // fixed-velocity BCs. When a stage succeeds, its authoritative
+            // corrected flux becomes the seed for the next stage.
+            if (!accepted_flux.empty()) {
+                stage_controls.initial_face_mass_flux = continuation_scale_mass_flux(
+                    accepted_flux, parameter > 0.0 ? target / parameter : target);
+            }
 
             // Stage 0 initializes the ramp from the declared strategy. Every
             // later attempt inherits the last accepted state (Provided), so a
@@ -195,8 +283,7 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
                     mesh, U, p, stage_velocity_bcs, pressure_bcs,
                     stage_controls, stage_restart_path, stage_restart_fields);
             } catch (const std::runtime_error& error) {
-                U = previous_U;
-                p = previous_p;
+                previous.restore(U, p, sst_state, accepted_flux);
                 if (step <= continuation.minimum_step) {
                     throw std::runtime_error(
                         std::string("continuation stage failed at minimum step: ") +
@@ -206,6 +293,9 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
                     continuation.minimum_step,
                     continuation_step_after_failure(step, continuation));
                 continue;
+            } catch (...) {
+                previous.restore(U, p, sst_state, accepted_flux);
+                throw;
             }
 
             last_solver_result = solver_result;
@@ -216,21 +306,28 @@ inline ContinuationSolveResult solve_steady_incompressible_continuation(
 
             if (stage_ok) {
                 parameter = target;
-                last_accepted_U = U;
-                last_accepted_p = p;
+                accepted_flux.clear();
+                if (solver_result.authoritative_mass_flux.size() == mesh.n_faces()) {
+                    accepted_flux.resize(mesh.n_faces());
+                    for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+                        accepted_flux[f] = solver_result.authoritative_mass_flux(f);
+                }
+                last_accepted = ContinuationCoupledSnapshot(
+                    U, p, sst_state, accepted_flux);
                 accepted = true;
                 result.stages.push_back(ContinuationStageReport{
                     stage_index, attempts, parameter, step, true,
                     solver_result.convergence_status,
                     solver_result.convergence_reason, solver_result});
+                result.stages.back().full_physics = final_physical;
                 step = continuation_step_after_success(step, continuation);
             } else {
-                U = previous_U;
-                p = previous_p;
+                previous.restore(U, p, sst_state, accepted_flux);
                 result.stages.push_back(ContinuationStageReport{
                     stage_index, attempts, target, step, false,
                     solver_result.convergence_status,
                     solver_result.convergence_reason, solver_result});
+                result.stages.back().full_physics = final_physical;
                 if (step <= continuation.minimum_step) {
                     result.final_solver_result = solver_result;
                     result.final_parameter = parameter;

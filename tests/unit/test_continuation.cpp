@@ -194,5 +194,49 @@ int main()
         }
     });
 
+    run_case("sst_coupled_snapshot_rollback_restores_every_field_and_flux", [] {
+        using namespace cfdx::core;
+        Field<double,Location::CELL> U(2,"U","m/s",3),p(2,"p","Pa",1);
+        U.fill(1.25); p.fill(5.5);
+        SSTProductionState sst(2);
+        sst.k.fill(0.15);
+        sst.omega.fill(270.);
+        sst.nu_t.fill(1.2e-5);
+        sst.wall_distance.fill(0.005);
+        sst.strain_rate.fill(15.);
+        std::vector<double> flux{0.1,0.2,0.3};
+        const ContinuationCoupledSnapshot snap(U,p,&sst,flux);
+        U.fill(-4.);p.fill(-2.);
+        sst.k.fill(1e-8);sst.omega.fill(900.);
+        sst.nu_t.fill(0.);sst.wall_distance.fill(0.01);
+        sst.strain_rate.fill(500.);
+        flux.assign(3,20.);
+        snap.restore(U,p,&sst,flux);
+        for (std::size_t i=0;i<2;++i) {
+            EXPECT_TRUE(p(i)==5.5);
+            EXPECT_TRUE(U.component_data(0)[i]==1.25);
+            EXPECT_TRUE(sst.k(i)==0.15);
+            EXPECT_TRUE(sst.omega(i)==270.);
+            EXPECT_TRUE(sst.nu_t(i)==1.2e-5);
+            EXPECT_TRUE(sst.wall_distance(i)==0.005);
+            EXPECT_TRUE(sst.strain_rate(i)==15.);
+        }
+        EXPECT_TRUE(flux[0]==0.1 && flux[1]==0.2 && flux[2]==0.3);
+    });
+    run_case("only_lambda_one_can_claim_full_physics", [] {
+        EXPECT_TRUE(!continuation_final_physical_stage(0.5));
+        EXPECT_TRUE(!continuation_final_physical_stage(0.9999));
+        EXPECT_TRUE(continuation_final_physical_stage(1.0));
+        EXPECT_THROW(continuation_final_physical_stage(1.01),std::invalid_argument);
+        EXPECT_THROW(continuation_final_physical_stage(-0.1),std::invalid_argument);
+    });
+    run_case("continuation_face_flux_scale_preserves_divergence_ratios", [] {
+        const auto f=continuation_scale_mass_flux({-2.,1.,1.},0.375);
+        EXPECT_NEAR(f[0]+f[1]+f[2],0.,1e-14);
+        EXPECT_NEAR(f[0],-0.75,1e-14);
+        EXPECT_THROW(continuation_scale_mass_flux({1.},0.),std::invalid_argument);
+        EXPECT_THROW(continuation_scale_mass_flux({NAN},0.5),std::invalid_argument);
+    });
+
     return run_all();
 }

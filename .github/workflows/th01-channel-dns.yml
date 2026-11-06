@@ -1,0 +1,69 @@
+name: TH-01 Turbulent channel DNS (Moser–Kim–Mansour) — reference contract CI
+
+on:
+  push:
+    branches: [ci/thermohydraulic-independent-benchmarks]
+    paths:
+      - 'docs/validation/14-benchmarks/09-thermohydraulics/TH-01.json'
+      - 'scripts/validate_thermohydraulic_reference.py'
+      - 'scripts/qualify_thermohydraulic_benchmarks.py'
+      - '.github/workflows/th01-channel-dns.yml'
+  pull_request:
+    paths:
+      - 'docs/validation/14-benchmarks/09-thermohydraulics/TH-01.json'
+      - 'scripts/validate_thermohydraulic_reference.py'
+      - 'scripts/qualify_thermohydraulic_benchmarks.py'
+      - '.github/workflows/th01-channel-dns.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: th-01-reference-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reference-contract:
+    name: TH-01 reference contract (not solver qualification)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Validate frozen reference data and dimensionless groups
+        run: |
+          python scripts/validate_thermohydraulic_reference.py \
+            --case TH-01 \
+            --output build/thermohydraulic/TH-01-reference-contract.json
+
+      - name: Audit CFDX solver evidence (separate fail-closed status)
+        run: |
+          python scripts/qualify_thermohydraulic_benchmarks.py \
+            --case TH-01 \
+            --evidence-dir build/thermohydraulic/solver-exports \
+            --output build/thermohydraulic/TH-01-physical-qualification.json
+          echo "TH-01: contract CI does NOT certify the CFDX solver" >> "$GITHUB_STEP_SUMMARY"
+          echo "Solver evidence is INCOMPLETE unless full verified CFDX exports are provided." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload reference-contract evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: th-01-reference-contract-${{ github.sha }}
+          path: |
+            build/thermohydraulic/TH-01-reference-contract.json
+            build/thermohydraulic/TH-01-physical-qualification.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Explicit qualification boundary
+        run: |
+          echo "TH-01: reference contract verified."
+          echo "Physical CFDX validation remains BLOCKED until the production solver campaign is implemented and executed."

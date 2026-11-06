@@ -34,6 +34,7 @@ include_patterns = [
     "validation/04-boundedness/chapter.py",
     "validation/14-benchmarks/README.md",
     "validation/14-benchmarks/*/README.md",
+    "validation/14-benchmarks/09-thermohydraulics/*.md",
     "validation/14-benchmarks/*/chapter.py",
     "validation/15-qualification/README.md",
     "references/README.md",

@@ -71,6 +71,141 @@ def test_workbench_is_importable_without_qt() -> None:
 @pytest.mark.skipif(
     importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
 )
+def test_workbench_inspects_mesh_interchange_without_replacing_project(
+    tmp_path, monkeypatch
+) -> None:
+    import h5py
+    import numpy as np
+    from cfdx.gui import create_application
+    from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QFileDialog
+
+    app = create_application(["cfdx-workbench-inspector-test"])
+    session = CFDXSession()
+    window = CFDXWorkbenchWindow(session)
+    path = tmp_path / "mesh.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        h5.attrs["n_cells"] = 1
+        h5.attrs["boundary_patches"] = "wall:0:4:0"
+        h5.create_dataset("points", data=np.zeros((4, 3)))
+        h5.create_dataset("owner", data=np.zeros(4, dtype=np.int64))
+        h5.create_dataset("neighbour", data=-np.ones(4, dtype=np.int64))
+        h5.create_dataset("face_vertices", data=[0, 1, 1, 2, 2, 3, 3, 0])
+        h5.create_dataset("face_offsets", data=[0, 2, 4, 6, 8])
+        h5.create_dataset("patch_face_ids", data=[0, 1, 2, 3])
+        h5.create_dataset("patch_face_offsets", data=[0, 4])
+        h5.create_dataset("metadata/labels", data=["wall"])
+        h5.create_dataset("fields/scalar/pressure", data=[1.0, 2.0, 3.0, 4.0])
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        lambda *args, **kwargs: (str(path), "CFDX/HDF5 files"),
+    )
+
+    window._open_case()
+
+    assert window.case_file_panel.summary is not None
+    assert window.case_file_panel.summary.n_cells == 1
+    assert window.application.session is session
+    assert window.application.project_path is None
+    assert "active project unchanged" in window.statusBar().currentMessage()
+    point_items = window.case_file_panel.tree.findItems(
+        "/points", Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive, 0
+    )
+    assert point_items
+    label_items = window.case_file_panel.tree.findItems(
+        "/metadata/labels", Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive, 0
+    )
+    assert label_items
+    metadata_groups = window.case_file_panel.tree.findItems(
+        "metadata",
+        Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive,
+        0,
+    )
+    assert metadata_groups
+    assert label_items[0].parent() is metadata_groups[0]
+    assert "variable/unknown size" in label_items[0].text(1)
+    window.case_file_panel.tree.setCurrentItem(point_items[0])
+    assert "shape: (4, 3)" in window.case_file_panel.preview.toPlainText()
+    assert window.case_file_panel.copy_path_button.isEnabled()
+    assert window.case_file_panel.statistics_button.isEnabled()
+    window.case_file_panel.copy_selected_dataset_path()
+    from PySide6.QtWidgets import QApplication
+
+    assert QApplication.clipboard().text() == "/points"
+    window.case_file_panel.tree.setCurrentItem(metadata_groups[0])
+    assert "Select a dataset" in window.case_file_panel.preview.toPlainText()
+    assert not window.case_file_panel.copy_path_button.isEnabled()
+    assert not window.case_file_panel.statistics_button.isEnabled()
+    pressure_items = window.case_file_panel.tree.findItems(
+        "/fields/scalar/pressure",
+        Qt.MatchFlag.MatchExactly | Qt.MatchFlag.MatchRecursive,
+        0,
+    )
+    assert pressure_items
+    window.case_file_panel.tree.setCurrentItem(pressure_items[0])
+    window.case_file_panel.statistics_button.click()
+    statistics_text = window.case_file_panel.preview.toPlainText()
+    assert "mean: 2.5" in statistics_text
+    assert "RMS:" in statistics_text
+    window.case_file_panel.tree.setCurrentItem(point_items[0])
+    window.case_file_panel.filter_input.setText("points")
+    assert not point_items[0].isHidden()
+    assert label_items[0].isHidden()
+    window.case_file_panel.filter_input.clear()
+    window.case_file_panel.tree.itemClicked.emit(point_items[0], 0)
+    assert "shape: (4, 3)" in window.case_file_panel.preview.toPlainText()
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
+def test_metadata_only_mesh_open_clears_stale_mesh_catalog(
+    tmp_path, monkeypatch
+) -> None:
+    import h5py
+    from cfdx.gui import create_application
+    from cfdx.mesh_model import MeshCatalog, MeshPatch, MeshRegion
+    from PySide6.QtWidgets import QFileDialog
+
+    app = create_application(["cfdx-workbench-large-mesh-test"])
+    window = CFDXWorkbenchWindow(CFDXSession())
+    patch = MeshPatch(0, "wall", "wall", 1, "fluid")
+    region = MeshRegion("fluid", 4, 1, 1, (patch,), ("cell:0",))
+    catalog = MeshCatalog(4, 1, 1, (patch,), (region,))
+    window.application.mesh_catalog = catalog
+    window.mesh_browser.set_catalog(catalog)
+
+    path = tmp_path / "large-mesh.h5"
+    with h5py.File(path, "w") as h5:
+        h5.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        h5.attrs["n_cells"] = 1
+        h5.create_dataset("points", shape=(100_001, 3), dtype="f8", chunks=(1024, 3))
+        h5.create_dataset("owner", shape=(1,), dtype="u8")
+        h5.create_dataset("cell_offsets", data=[0, 1])
+
+    monkeypatch.setattr(
+        QFileDialog,
+        "getOpenFileName",
+        lambda *args, **kwargs: (str(path), "CFDX/HDF5 mesh"),
+    )
+
+    window._open_mesh()
+
+    assert window.application.mesh_catalog is None
+    assert window.mesh_browser.patches.topLevelItemCount() == 0
+    assert "preview deferred" in window.statusBar().currentMessage()
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="PySide6 optional"
+)
 def test_workbench_has_stable_docks() -> None:
     from cfdx.gui import create_application
     from cfdx.session import SimulationState
@@ -90,6 +225,7 @@ def test_workbench_has_stable_docks() -> None:
     assert window.workflow_tree.topLevelItem(1).child(2).text(0).endswith("[OK]")
     assert window.workflow_tree.topLevelItem(0).child(4).text(0).endswith("[ ]")
     assert window.findChild(QDockWidget, "workbench.dock.workflow") is not None
+    assert window.findChild(QDockWidget, "workbench.dock.case_file") is not None
     assert window.findChild(QDockWidget, "workbench.dock.setup") is not None
     assert window.findChild(QDockWidget, "workbench.dock.probes") is not None
     assert window.findChild(QDockWidget, "workbench.dock.properties") is not None
@@ -151,6 +287,35 @@ def test_workbench_has_stable_docks() -> None:
     assert window.command_palette_results.item(0).text() == "Analyze workspace"
     window.command_palette_dialog.close()
     assert window.application.state.selection.stable_id == "boundaries"
+    window.close()
+    app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None
+    or importlib.util.find_spec("pyvista") is None
+    or importlib.util.find_spec("pyvistaqt") is None,
+    reason="optional GUI stack",
+)
+def test_renderer_patch_pick_selects_shared_mesh_catalog_entry() -> None:
+    from cfdx.gui import create_application
+    from cfdx.mesh_model import MeshCatalog, MeshPatch
+
+    app = create_application(["cfdx-workbench-picking-test"])
+    window = CFDXWorkbenchWindow(CFDXSession())
+    patch = MeshPatch(0, "wall", "wall", 1)
+    window.mesh_browser.set_catalog(MeshCatalog(4, 1, 1, (patch,)))
+    assert window.view3d is not None
+    window.view3d.select = lambda _stable_id: None
+    window.view3d.selection_summary = lambda: "Patch wall"
+
+    window.view3d.selection_changed.emit("patch:wall")
+
+    selection = window.application.state.selection
+    assert selection.stable_id == "patch:wall"
+    assert selection.kind == "patch"
+    assert selection.label == "wall"
+    assert window.mesh_browser.patches.currentItem().text(0).startswith("wall")
     window.close()
     app.quit()
 

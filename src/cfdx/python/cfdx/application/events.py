@@ -1,9 +1,12 @@
 """Application events independent from Qt."""
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Generic, TypeVar
+from typing import TypeVar
 
+from ..probe_stream import ProbeStreamSample
 from .state import ApplicationState
 
 
@@ -47,6 +50,13 @@ class CapabilitiesChanged(ApplicationEvent):
     pass
 
 
+@dataclass(frozen=True)
+class ProbeSampleReceived(ApplicationEvent):
+    """One solver-committed probe sample, transported outside state fan-out."""
+
+    sample: ProbeStreamSample
+
+
 EventT = TypeVar("EventT", bound=ApplicationEvent)
 Subscriber = Callable[[EventT], None]
 
@@ -60,7 +70,9 @@ class EventBus:
     def subscribe(self, event_type: type[EventT], callback: Subscriber[EventT]) -> None:
         self._subscribers.setdefault(event_type, []).append(callback)
 
-    def unsubscribe(self, event_type: type[EventT], callback: Subscriber[EventT]) -> None:
+    def unsubscribe(
+        self, event_type: type[EventT], callback: Subscriber[EventT]
+    ) -> None:
         callbacks = self._subscribers.get(event_type, [])
         if callback in callbacks:
             callbacks.remove(callback)
@@ -68,6 +80,6 @@ class EventBus:
     def publish(self, event: EventT) -> None:
         for callback in tuple(self._subscribers.get(type(event), ())):
             callback(event)
-        if type(event) is not ApplicationStateChanged:
+        if type(event) not in {ApplicationStateChanged, ProbeSampleReceived}:
             for callback in tuple(self._subscribers.get(ApplicationStateChanged, ())):
                 callback(event)

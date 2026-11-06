@@ -720,14 +720,14 @@ class OpenFOAMAdapter(SolverAdapter):
     def _map_patch_type(self, of_type: str) -> BCType:
         """Map OpenFOAM patch type to CFDX BCType."""
         mapping = {
-            "patch": BCType.WALL,
+            "patch": BCType.UNKNOWN,
             "wall": BCType.WALL,
             "inlet": BCType.INLET,
             "outlet": BCType.OUTLET,
-            "pressureInletOutletVelocity": BCType.PRESSURE_OUTLET,
-            "pressureOutlet": BCType.PRESSURE_OUTLET,
+            "pressureinletoutletvelocity": BCType.PRESSURE_OUTLET,
+            "pressureoutlet": BCType.PRESSURE_OUTLET,
             "symmetry": BCType.SYMMETRY,
-            "symmetryPlane": BCType.SYMMETRY,
+            "symmetryplane": BCType.SYMMETRY,
             "cyclic": BCType.PERIODIC,
             "empty": BCType.EMPTY,
         }

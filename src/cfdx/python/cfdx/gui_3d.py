@@ -5,17 +5,90 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from .case_inspector import CaseFileSummary, inspect_cfdx_file
+from .mesh_topology import validate_cell_topology, validate_surface_topology
 from .selection import parse_selection_id, selection_label
 from .visualization_pipeline import VisualizationOperation, VisualizationPipeline
 
 try:
+    from PySide6.QtCore import Signal
     from PySide6.QtWidgets import QVBoxLayout, QWidget
 except ImportError:
     QWidget = None
+    Signal = None
+
+
+def _require_previewable_mesh(
+    path: Path, summary: CaseFileSummary | None
+) -> CaseFileSummary:
+    """Fail closed before any eager HDF5 topology arrays are materialized."""
+    inspected = summary or inspect_cfdx_file(path)
+    if Path(inspected.path).resolve() != path.resolve():
+        raise ValueError("mesh preview summary belongs to a different file")
+    if inspected.file_signature is None:
+        raise ValueError("mesh preview summary has no verified file identity")
+    stat = path.stat()
+    current_signature = (
+        int(stat.st_dev),
+        int(stat.st_ino),
+        int(stat.st_size),
+        int(stat.st_mtime_ns),
+    )
+    if current_signature != inspected.file_signature:
+        raise ValueError(
+            "mesh file changed since metadata inspection; inspect it again"
+        )
+    if not inspected.is_cfdx or not inspected.has_mesh:
+        raise ValueError("file does not contain a recognised CFDX mesh")
+    if not inspected.preview_supported:
+        raise ValueError(
+            "full in-memory mesh preview deferred: "
+            f"{inspected.preview_block_reason or 'mesh exceeds renderer limits'}"
+        )
+    return inspected
+
+
+def _require_previewable_dat_mesh(
+    path: Path, summary: CaseFileSummary | None
+) -> CaseFileSummary:
+    """Preflight cell-to-face arrays before reading a DAT preview topology."""
+    inspected = _require_previewable_mesh(path, summary)
+    import h5py
+
+    with h5py.File(path, "r") as h5:
+        datasets = {}
+        for name in ("cell_faces", "cell_offsets"):
+            link = h5.get(name, getlink=True)
+            dataset = h5.get(name)
+            if not isinstance(link, h5py.HardLink) or not isinstance(
+                dataset, h5py.Dataset
+            ):
+                raise TypeError(f"DAT preview requires an internal HDF5 {name} dataset")
+            if dataset.is_virtual or dataset.external:
+                raise ValueError(f"DAT preview does not support external {name}")
+            if dataset.ndim != 1 or dataset.dtype.kind not in "iu":
+                raise ValueError(f"DAT preview requires one-dimensional integer {name}")
+            datasets[name] = dataset
+
+        if datasets["cell_offsets"].shape != (int(inspected.n_cells) + 1,):
+            raise ValueError("DAT preview cell_offsets do not match the cell count")
+        connectivity_entries = int(datasets["cell_faces"].shape[0])
+        source_bytes = sum(
+            int(dataset.size * dataset.dtype.itemsize) for dataset in datasets.values()
+        )
+        if connectivity_entries > 2_000_000:
+            raise ValueError(
+                "DAT cell connectivity exceeds the 2M-entry eager-load budget"
+            )
+        if source_bytes > 32 * 1024 * 1024:
+            raise ValueError("DAT cell topology exceeds the 32 MiB eager-load budget")
+    return inspected
 
 
 class PyVistaQtView(QWidget if QWidget is not None else object):
     """Qt container around pyvistaqt for CFDX result visualization."""
+
+    selection_changed = Signal(str) if Signal is not None else None
 
     def __init__(self, parent: Any = None) -> None:
         if QWidget is None:
@@ -54,6 +127,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         path = Path(source)
         if not path.exists():
             raise FileNotFoundError(source)
+        self.plotter.disable_picking()
         self.plotter.clear()
         self._actors.clear()
         self._visualization_pipeline = VisualizationPipeline()
@@ -78,14 +152,17 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             raise ValueError(f"invalid patch stable ID: {stable_id!r}")
         return stable_id
 
-    def load_cfdx_mesh(self, source: str) -> None:
-        """Load real CFDX HDF5 mesh patches as selectable 3D actors."""
-        import h5py
-        import numpy as np
-
+    def load_cfdx_mesh(
+        self, source: str, *, summary: CaseFileSummary | None = None
+    ) -> None:
+        """Load a guarded CFDX HDF5 mesh as selectable 3D actors."""
         path = Path(source)
         if not path.exists():
             raise FileNotFoundError(source)
+        inspected = _require_previewable_mesh(path, summary)
+        import h5py
+        import numpy as np
+
         with h5py.File(path, "r") as h5:
             points = np.asarray(h5["points"][:], dtype=float)
             face_vertices = np.asarray(h5["face_vertices"][:], dtype=np.int64)
@@ -96,8 +173,16 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             if isinstance(raw, bytes):
                 raw = raw.decode("utf-8")
             metadata = [item for item in str(raw).split(";") if item]
-            if len(patch_offsets) != len(metadata) + 1:
-                raise ValueError("boundary patch metadata/offset count mismatch")
+            validate_surface_topology(
+                points,
+                face_vertices,
+                face_offsets,
+                patch_face_ids,
+                patch_offsets,
+                n_faces=int(inspected.n_faces),
+                n_patches=len(metadata),
+            )
+            self.plotter.disable_picking()
             self.plotter.clear()
             self._actors.clear()
             self._visualization_pipeline = VisualizationPipeline()
@@ -123,24 +208,90 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
                 self._patch_face_vertices[actor_id] = tuple(patch_faces)
                 self._actor_regions[actor_id] = "default"
             self.plotter.reset_camera()
+            self.plotter.enable_mesh_picking(
+                callback=self._on_mesh_picked,
+                use_actor=True,
+                show=False,
+            )
             self.plotter.render()
 
-    def load_cfdx_dat(self, case_path: str, dat_path: str) -> list[str]:
-        """Load a CFDX HDF5 mesh and a generic DAT checkpoint into one dataset."""
+    def _stable_id_for_actor(self, picked_actor: object) -> str | None:
+        """Resolve a picked VTK/PyVista actor to its registered mesh patch ID."""
+        name = getattr(picked_actor, "name", None)
+        if isinstance(name, str) and name in self._actors:
+            return name
+        for stable_id, actor in self._actors.items():
+            if picked_actor is actor:
+                return stable_id
+            try:
+                if picked_actor == actor:
+                    return stable_id
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    def _on_mesh_picked(self, picked_actor: object) -> None:
+        """Publish patch picks; never guess a face/cell ID from VTK order."""
+        stable_id = self._stable_id_for_actor(picked_actor)
+        if stable_id is not None and self.selection_changed is not None:
+            self.selection_changed.emit(stable_id)
+
+    def load_cfdx_dat(
+        self,
+        case_path: str,
+        dat_path: str,
+        *,
+        summary: CaseFileSummary | None = None,
+    ) -> list[str]:
+        """Load a guarded CFDX mesh and DAT checkpoint into one dataset."""
+        mesh_path = Path(case_path)
+        if not mesh_path.exists():
+            raise FileNotFoundError(case_path)
+        inspected = _require_previewable_dat_mesh(mesh_path, summary)
         import h5py
         import numpy as np
 
         from .dat_io import read_dat_restart
 
         restart = read_dat_restart(dat_path)
-        with h5py.File(Path(case_path), "r") as h5:
+        with h5py.File(mesh_path, "r") as h5:
+            for name in ("cell_faces", "cell_offsets"):
+                link = h5.get(name, getlink=True)
+                if not isinstance(link, h5py.HardLink) or not isinstance(
+                    h5.get(name), h5py.Dataset
+                ):
+                    raise TypeError(
+                        f"DAT preview requires an internal HDF5 {name} dataset"
+                    )
             points = np.asarray(h5["points"][:], dtype=float)
             face_vertices = np.asarray(h5["face_vertices"][:], dtype=np.int64)
             face_offsets = np.asarray(h5["face_offsets"][:], dtype=np.int64)
             cell_faces = np.asarray(h5["cell_faces"][:], dtype=np.int64)
             cell_offsets = np.asarray(h5["cell_offsets"][:], dtype=np.int64)
+            patch_face_ids = np.asarray(h5["patch_face_ids"][:], dtype=np.int64)
+            patch_offsets = np.asarray(h5["patch_face_offsets"][:], dtype=np.int64)
+            raw = h5.attrs.get("boundary_patches", "")
+            if isinstance(raw, bytes):
+                raw = raw.decode("utf-8")
+            metadata = [item for item in str(raw).split(";") if item]
 
-        mesh_cells = len(cell_offsets) - 1
+        validate_surface_topology(
+            points,
+            face_vertices,
+            face_offsets,
+            patch_face_ids,
+            patch_offsets,
+            n_faces=int(inspected.n_faces),
+            n_patches=len(metadata),
+        )
+        mesh_cells = int(inspected.n_cells)
+        validate_cell_topology(
+            cell_faces,
+            cell_offsets,
+            face_offsets,
+            n_cells=mesh_cells,
+            n_faces=int(inspected.n_faces),
+        )
         if restart.cells != mesh_cells:
             raise ValueError(
                 f"DAT cell count {restart.cells} does not match HDF5 mesh cell count {mesh_cells}"
@@ -168,6 +319,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
             )
             dataset.cell_data[name] = values[:, 0] if field.dimension == 1 else values
 
+        self.plotter.disable_picking()
         self.plotter.clear()
         self._actors.clear()
         self._visualization_pipeline = VisualizationPipeline()
@@ -187,6 +339,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         """Render the replayed pipeline without replacing its source dataset."""
         source = self._dataset()
         derived = self._visualization_pipeline.evaluate(source)
+        self.plotter.disable_picking()
         self.plotter.clear()
         self._selection_highlight = None
         self._selection_id = None
@@ -336,6 +489,7 @@ class PyVistaQtView(QWidget if QWidget is not None else object):
         return selection_label(parse_selection_id(self._selection_id))
 
     def clear(self) -> None:
+        self.plotter.disable_picking()
         self.plotter.clear()
         self._actors.clear()
         self._current_result = None
