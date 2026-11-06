@@ -8,10 +8,10 @@
 #include <sstream>
 #include "common/test_harness.h"
 #include <limits>
+#include <tuple>
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
-#include <tuple>
 using namespace cfdx::testing;
 
 static Mesh make_unit_cube()
@@ -717,9 +717,6 @@ int main()
             r.pressure_linear_context.solves == 3 * r.iterations);
     });
 
-    run_case("piso_adaptive_acceleration_reduces_inner_work", [] {
-        const Mesh m = make_unit_cube();
-        Field<double,Location::CELL> U(1,"U","m/s",3);
     run_case("piso_neighbour_correction_rejects_wrong_algorithm", [] {
         const Mesh m = make_two_cell_channel();
         Field<double, Location::CELL> U(2,"U","m/s",3), p(2,"p","Pa",1);
@@ -790,6 +787,9 @@ int main()
         EXPECT_TRUE(improved_h.rhie_chow_identity_linf < 1e-10);
     });
 
+    run_case("piso_adaptive_acceleration_reduces_inner_work", [] {
+        const Mesh m = make_unit_cube();
+        Field<double,Location::CELL> U(1,"U","m/s",3);
         Field<double,Location::CELL> p(1,"p","Pa",1);
         U.fill(0.0); p.fill(0.0);
         VelocityBoundaryConditions ubc;

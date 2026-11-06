@@ -434,14 +434,14 @@ struct IncompressibleIteration {
     std::size_t momentum_linear_iterations = 0;
     std::size_t pressure_linear_iterations = 0;
     std::size_t pressure_correctors_used = 0;
-    double selected_pressure_alpha = std::numeric_limits<double>::quiet_NaN();
-    double pressure_line_search_norm_before = std::numeric_limits<double>::quiet_NaN();
-    double pressure_line_search_norm_after = std::numeric_limits<double>::quiet_NaN();
     // Evidence for experimental iterated PISO/PIMPLE: count predictor
     // rebuilds using corrected neighbour velocities and measure their effect.
     // Zero for the production-default frozen-predictor implementation.
     std::size_t piso_neighbor_predictor_rebuilds = 0;
     double piso_neighbor_predictor_flux_delta_linf = 0.0;
+    double selected_pressure_alpha = std::numeric_limits<double>::quiet_NaN();
+    double pressure_line_search_norm_before = std::numeric_limits<double>::quiet_NaN();
+    double pressure_line_search_norm_after = std::numeric_limits<double>::quiet_NaN();
     double linear_tolerance_used = std::numeric_limits<double>::quiet_NaN();
     // Conservative pressure-corrected flux continuity at the end of the iteration.
     double corrected_flux_continuity_linf = std::numeric_limits<double>::infinity();
@@ -605,14 +605,14 @@ inline void validate_incompressible_controls(
 {
     validate_initialization_controls(c.initialization);
     validate_coupling_controls(c.coupling);
-    validate_convergence_criteria(c.convergence);
-    validate_convergence_acceleration_controls(c.acceleration);
-    validate_adaptive_relaxation_controls(c.adaptive_relaxation);
     if (c.coupling.piso_neighbor_correction &&
         c.algorithm != PressureVelocityAlgorithm::PISO &&
         c.algorithm != PressureVelocityAlgorithm::PIMPLE)
         throw std::invalid_argument(
             "PISO neighbour correction requires PISO or PIMPLE algorithm");
+    validate_convergence_criteria(c.convergence);
+    validate_convergence_acceleration_controls(c.acceleration);
+    validate_adaptive_relaxation_controls(c.adaptive_relaxation);
     validate_nonlinear_retry_controls(c.nonlinear_retry);
     validate_pressure_continuity_line_search(c.pressure_continuity_line_search);
     // The monolithic U-p block still assembles its analytical G operator
@@ -4429,11 +4429,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         double last_line_search_before = std::numeric_limits<double>::quiet_NaN();
         double last_line_search_after = std::numeric_limits<double>::quiet_NaN();
         std::size_t pressure_correctors = configured_pcorr;
+        std::size_t piso_neighbor_predictor_rebuilds = 0;
+        double piso_neighbor_predictor_flux_delta_linf = 0.0;
         const bool supports_multiple_pressure_corrections =
             controls.algorithm == PressureVelocityAlgorithm::PISO ||
             controls.algorithm == PressureVelocityAlgorithm::PIMPLE ||
-        std::size_t piso_neighbor_predictor_rebuilds = 0;
-        double piso_neighbor_predictor_flux_delta_linf = 0.0;
             controls.algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP;
         if (supports_multiple_pressure_corrections &&
             controls.acceleration.adaptive_pressure_correctors) {
@@ -6224,9 +6224,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // multi-corrector algorithm (PISO, PIMPLE, FRACTIONAL_STEP).
             // The momentum matrix stays frozen inside the inner loop; the
             // relaxed pressure update is what carries the first correction
-        }
-
-        // Operator identity audit: re-derive the authoritative flux from the
             // into the next one. In the optional iterated-PISO variant,
             // refresh the diagonal-inverse predictor H/A using the just-
             // corrected cell velocities. This restores the neighbour terms
@@ -6263,6 +6260,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                               << " predictor_flux_delta_linf=" << predictor_delta_linf
                               << " (experimental; qualification=0)\n";
             }
+        }
+
+        // Operator identity audit: re-derive the authoritative flux from the
         // CURRENT HbyA/flux-pressure/rAtU(rAU) state through the same operator primitives
         // the pressure equation balanced (including the SIMPLEC
         // consistent-response term) and compare with the stored mass_flux.
@@ -6603,12 +6603,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.algorithm == PressureVelocityAlgorithm::COUPLED ? 0 : pressure_iterations;
         h.pressure_correctors_used =
             controls.algorithm == PressureVelocityAlgorithm::COUPLED ? 0 : pressure_correctors;
-        h.linear_tolerance_used = controls.algorithm == PressureVelocityAlgorithm::COUPLED
-            ? controls.coupling.coupled_linear_tolerance : linear_tolerance;
-        h.corrected_flux_continuity_linf = linf;
         h.piso_neighbor_predictor_rebuilds = piso_neighbor_predictor_rebuilds;
         h.piso_neighbor_predictor_flux_delta_linf =
             piso_neighbor_predictor_flux_delta_linf;
+        h.linear_tolerance_used = controls.algorithm == PressureVelocityAlgorithm::COUPLED
+            ? controls.coupling.coupled_linear_tolerance : linear_tolerance;
+        h.corrected_flux_continuity_linf = linf;
         // Independent flux/velocity audit (restores the measurement channel
         // that commit 7c7dadf5 made tautological with
         // reconstructed_flux = mass_flux). Two reconstruction paths are
