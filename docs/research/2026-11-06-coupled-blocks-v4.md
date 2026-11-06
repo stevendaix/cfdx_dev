@@ -2,7 +2,7 @@
 
 ## Baseline and scope
 
-Base: verified V3 full-source archive `CFDX_couplage_PV_briques_v3_sources_completes_2026-11-06.zip`. This is a local development continuation, not an update to the GitHub HEAD or PR #1182. Existing algorithms and physical tolerances remain unchanged by default.
+Base: verified V3 full-source archive `CFDX_couplage_PV_briques_v3_sources_completes_2026-11-06.zip`. This is the V4 continuation delivered on PR #1183, based on the verified V3 source archive; it does not modify PR #1182. Existing algorithms and physical tolerances remain unchanged by default.
 
 ## Changes to executable numerical code
 
