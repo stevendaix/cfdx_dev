@@ -3,11 +3,10 @@
 Tests .cas.h5 and .dat.h5 file reading for Fluent cases from the
 VM2025R2_Fluids.zip archive (Fluent 2025R2 validation cases).
 
-These tests require pyfluent (ansys-fluent-core) to be installed, and the
-case data is not versioned either. Neither is available in CI: the workflow
-installs neither pyfluent nor the archive, so the whole module skips there.
-The Fluent .cas.h5 reader therefore has no CI coverage, and a green run
-says nothing about it. Run it locally against a directory of cases.
+These tests require a compatible PyFluent installation and an external
+case archive. The CI installs PyFluent, but the archive is not versioned,
+so cases without fixtures are skipped explicitly. The separate compatibility
+test fails if an installed PyFluent package cannot import.
 """
 
 import os
@@ -36,28 +35,13 @@ _DEFAULT_FLUENT_DIRS = (
     os.path.join(_repo_root, "validation", "cases_fluent"),
 )
 
-from cfdx.io.adapters.fluent import FluentAdapter
+from cfdx.io.adapters.fluent import FluentAdapter, _try_pyfluent
 from cfdx.io.interfaces import ConversionResult, SourceInfo
-
-
-def _try_pyfluent() -> bool:
-    """Check if pyfluent CaseFile reader is available."""
-    try:
-        from ansys.fluent.core.filereader.case_file import CaseFile  # noqa: F401
-
-        return True
-    except (ImportError, AttributeError):
-        # The optional package may be present but unusable because its generated
-        # API package is out of sync with the installed PyFluent core.
-        return False
-
 
 PYFLUENT_AVAILABLE = _try_pyfluent()
 
 
-@pytest.mark.skipif(
-    not PYFLUENT_AVAILABLE, reason="PyFluent CaseFile reader unavailable"
-)
+@pytest.mark.skipif(not PYFLUENT_AVAILABLE, reason="pyfluent not installed")
 class TestVM2025R2FluentCases:
     """Tests for VM2025R2 Fluent validation cases."""
 
@@ -188,8 +172,9 @@ class TestVM2025R2FluentCases:
         for cas_file in cas_h5_files:
             adapter = FluentAdapter()
             result = ConversionResult(source=SourceInfo())
-            assert not adapter.convert(str(cas_file), result)
+            ok = adapter.convert(str(cas_file), result)
             # .cas.h5 has no volume topology - should be blocked
+            assert not ok
             assert result.gap_report.has_blocking()
             # But should have supported findings
             assert result.gap_report.n_supported() > 0
@@ -329,8 +314,9 @@ class TestVM2025R2FluentCases:
 
         # Step 3: Convert to CFDX (with blocking gap for volume topology)
         conv_result = ConversionResult(source=SourceInfo())
-        assert not adapter.convert(str(cas_file), conv_result)
+        conv_ok = adapter.convert(str(cas_file), conv_result)
         # Expected to be blocked due to no volume topology in .cas.h5
+        assert not conv_ok
         assert conv_result.gap_report.has_blocking()
         assert conv_result.mesh is not None
         assert conv_result.mesh["points"].shape[1] == 3
@@ -370,7 +356,8 @@ class TestVM2025R2FluentCases:
         # The conversion provides all metadata needed for CFDX case setup
         # but volume topology is missing from .cas.h5 (blocking gap)
         conv_result = ConversionResult(source=SourceInfo())
-        assert not adapter.convert(str(cas_file), conv_result)
+        conv_ok = adapter.convert(str(cas_file), conv_result)
+        assert not conv_ok
         assert conv_result.gap_report.has_blocking()
         assert conv_result.setup.turbulence_model == "kw-standard-viscous"
         assert len(conv_result.setup.materials) >= 1
