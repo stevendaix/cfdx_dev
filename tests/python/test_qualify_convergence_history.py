@@ -70,13 +70,18 @@ def test_false_eligibility_fails_closed():
 def test_momentum_component_failure_refused():
     bad = valid_evidence()
     bad["history"][-1]["momentum_equation_residual_rhs_active_component_max"] = 4e-5
-    assert "momentum_relative_above_limit" in module.audit_history(bad, LIMITS, 4)["failures"]
+    assert (
+        "momentum_relative_above_limit"
+        in module.audit_history(bad, LIMITS, 4)["failures"]
+    )
 
 
 def test_mass_balance_failure_refused():
     bad = valid_evidence()
     bad["history"][-1]["mass_normalized_imbalance"] = 1e-3
-    assert "mass_relative_above_limit" in module.audit_history(bad, LIMITS, 4)["failures"]
+    assert (
+        "mass_relative_above_limit" in module.audit_history(bad, LIMITS, 4)["failures"]
+    )
 
 
 def test_nonfinite_and_missing_fields_refused():
@@ -117,9 +122,19 @@ def test_historical_artifact_without_stage_certificate_is_not_promoted():
 def test_cli_returns_failure_exit_code(tmp_path):
     path = tmp_path / "history.json"
     path.write_text(json.dumps(valid_evidence()), encoding="utf-8")
-    args = [sys.executable, str(SCRIPT), str(path),
-            "--momentum-relative", "1e-8", "--pressure-relative", "1e-8",
-            "--continuity-relative", "1e-8", "--mass-relative", "1e-8"]
+    args = [
+        sys.executable,
+        str(SCRIPT),
+        str(path),
+        "--momentum-relative",
+        "1e-8",
+        "--pressure-relative",
+        "1e-8",
+        "--continuity-relative",
+        "1e-8",
+        "--mass-relative",
+        "1e-8",
+    ]
     ok = subprocess.run(args, capture_output=True, text=True, check=False)
     assert ok.returncode == 0, ok.stdout + ok.stderr
     assert json.loads(ok.stdout)["qualified"]
