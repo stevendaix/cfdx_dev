@@ -1,6 +1,7 @@
 #pragma once
 
-#include "cfdx/core/linalg/advanced_preconditioners.h"#include "cfdx/core/linalg/algebraic_line_preconditioner.h"
+#include "cfdx/core/linalg/advanced_preconditioners.h"
+#include "cfdx/core/linalg/algebraic_line_preconditioner.h"
 #include "cfdx/core/linalg/anisotropic_line_amg.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
@@ -8,7 +9,8 @@
 #include "cfdx/core/linalg/hypre_amg.h"
 #include "cfdx/core/linalg/linear_solver_models.h"
 #include "cfdx/core/linalg/matrix_diagnostics.h"
-#include "cfdx/core/linalg/null_space.h"#include "cfdx/core/linalg/projected_gmres.h"
+#include "cfdx/core/linalg/null_space.h"
+#include "cfdx/core/linalg/projected_gmres.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
 
 #include <algorithm>
@@ -31,13 +33,18 @@ inline double physical_residual_norm(
     const Vector& solution,
     const Vector& rhs) {
     const auto ax = matrix.matvec(solution);
-    double r2 = 0.0;
-    double b2 = 0.0;
-    for (std::size_t i = 0; i < ax.size(); ++i) {
-        r2 = std::hypot(r2, ax[i] - rhs(i));
-        b2 = std::hypot(b2, rhs(i));
-    }
-    return r2 / std::max(b2, 1.0e-300);
+    double norm = 0.0;
+    for (std::size_t i = 0; i < ax.size(); ++i)
+        norm = std::hypot(norm, ax[i] - rhs(i));
+    return norm;
+}
+
+inline double physical_relative_residual(
+    const SparseMatrix& matrix,
+    const Vector& solution,
+    const Vector& rhs) {
+    return physical_residual_norm(matrix, solution, rhs) /
+        std::max(rhs.norm2(), 1e-300);
 }
 
 // V26: more accurate residual to construct a correction right-hand side.
@@ -70,13 +77,6 @@ inline bool extended_precision_original_residual(
     return true;
 }
 
-inline double physical_relative_residual(
-    const SparseMatrix& matrix,
-    const Vector& solution,
-    const Vector& rhs) {
-    return physical_residual_norm(matrix, solution, rhs) /
-        std::max(rhs.norm2(), 1e-300);
-}
 inline MatrixScaling to_matrix_scaling(LinearScalingModel model) {
     switch (model) {
         case LinearScalingModel::None: return MatrixScaling::None;
@@ -165,11 +165,13 @@ inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
         case PreconditionerModel::GaussSeidel:
             return std::make_unique<GaussSeidelPreconditioner>();
         case PreconditionerModel::ILU0:
-            return std::make_unique<ILU0Preconditioner>();        case PreconditionerModel::AnisotropicLine:
+            return std::make_unique<ILU0Preconditioner>();
+        case PreconditionerModel::AnisotropicLine:
             return std::make_unique<AlgebraicLinePreconditioner>();
         case PreconditionerModel::NativeAMG:
             return std::make_unique<NativeBoomerAMGPreconditioner>(
-                constant_null_space, require_smoother_certificate);        case PreconditionerModel::AnisotropicBoomerAMG:
+                constant_null_space, require_smoother_certificate);
+        case PreconditionerModel::AnisotropicBoomerAMG:
             return std::make_unique<NativeAnisotropicBoomerAMGPreconditioner>(
                 constant_null_space);
         case PreconditionerModel::AnisotropicSmoothedAggregationAMG:
@@ -207,8 +209,6 @@ inline LinearSolveReport solve_linear_system(
     std::size_t max_iterations = 1000,
     double tolerance = 1e-12) {
     LinearSolveReport report;
-    if (request.residual_refinement_steps > 8)
-        throw std::invalid_argument("residual refinement supports at most eight passes");
     // Route against actual CSR coefficients. An explicitly forced CG solve
     // with a non-SPD matrix fails closed without mutating the solution; keep
     // the longstanding NOT_APPLICABLE runtime contract for this case.
@@ -230,6 +230,8 @@ inline LinearSolveReport solve_linear_system(
             physical_relative_residual(matrix, solution, rhs);
         return report;
     }
+    if (request.residual_refinement_steps > 8)
+        throw std::invalid_argument("residual refinement supports at most eight passes");
     report.plan = select_linear_solver(problem, characteristics, request);
     if (request.residual_refinement_steps != 0 &&
         ((problem != LinearProblemKind::PressurePoisson &&
@@ -288,6 +290,7 @@ inline LinearSolveReport solve_linear_system(
     // still gate exclusively on the original physical true residual.
     const double inner_tolerance = request.scaling == LinearScalingModel::None
         ? tolerance : 0.1 * tolerance;
+
     std::unique_ptr<Preconditioner> preconditioner;
     if (problem == LinearProblemKind::CoupledPressureVelocity) {
         if (matrix.n_rows() % 4 != 0)
@@ -339,7 +342,6 @@ inline LinearSolveReport solve_linear_system(
                 *solve_matrix, solve_rhs, solve_solution, max_iterations, inner_tolerance, pc);
             break;
         case KrylovModel::GMRES:
-
         case KrylovModel::FGMRES:
             if (null_space) {
                 // The projected right-preconditioned Arnoldi recurrence also
@@ -363,18 +365,7 @@ inline LinearSolveReport solve_linear_system(
         case KrylovModel::PipeFGMRES:
             report.result.status = SolverStatus::NOT_APPLICABLE;
             break;
-    }    // Every dispatch path uses the ORIGINAL unscaled physical system for
-    // its final convergence certificate, including the homogeneous b=0 case.
-    const double final_residual = physical_residual_norm(matrix, solution, rhs);
-    const double reference = physical_rhs_norm > 0.0
-        ? physical_rhs_norm : homogeneous_initial_norm;
-    report.physical_residual_relative = reference > 0.0
-        ? final_residual / reference
-        : (final_residual == 0.0 ? 0.0 : std::numeric_limits<double>::infinity());
-    if (report.result.status == SolverStatus::CONVERGED &&
-        (!std::isfinite(report.physical_residual_relative) ||
-         report.physical_residual_relative > tolerance))
-        report.result.status = SolverStatus::MAX_ITER_REACHED;
+    }
     // Do not restart the solve or rebuild the preconditioner when the
     // original system has already passed. This is a guarded, explicitly
     // requested fallback for finite-precision Krylov stagnation only.
