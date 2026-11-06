@@ -1,0 +1,26 @@
+I001 [*] Import block is un-sorted or un-formatted
+ --> tests/python/test_naca_force_certificate_fail_closed.py:2:1
+  |
+1 |   """An incomplete NACA solve must not leave old forces labelled converged."""
+2 | / import csv
+3 | | import os
+4 | | from pathlib import Path
+5 | | import subprocess
+6 | | import sys
+7 | | import tempfile
+8 | | import unittest
+  | |_______________^
+help: Organize imports
+  |
+3 | import os
+  - from pathlib import Path
+4 | import subprocess
+5 | import sys
+6 | import tempfile
+7 | import unittest
+8 + from pathlib import Path
+9 |
+  |
+
+Found 1 error.
+[*] 1 fixable with `--fix`.
