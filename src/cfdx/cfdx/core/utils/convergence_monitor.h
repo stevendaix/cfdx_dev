@@ -222,7 +222,23 @@ private:
             // A material increase is handled by the independent divergence detector;
             // counting every negative improvement here can abort a still-contracting
             // nonlinear solve when the synthetic max-residual changes dominant metric.
-            if (std::abs(improvement) < controls_.stagnation_relative_improvement)
+            const bool residual_flat =
+                std::abs(improvement) < controls_.stagnation_relative_improvement;
+            // An incomplete conservation gate is an independent physical
+            // equation. On strongly stretched NACA meshes the largest
+            // normalized momentum metric can plateau temporarily while the
+            // continuity defect still contracts appreciably. Do not diagnose
+            // total nonlinear stagnation when that independent gate is making
+            // measurable progress. All convergence tolerances are unchanged.
+            const double old_conservation = history_[i - 1].conservation;
+            const double new_conservation = history_[i].conservation;
+            const double conservation_improvement =
+                (old_conservation - new_conservation) /
+                std::max(old_conservation, std::numeric_limits<double>::min());
+            const bool conservation_progressing =
+                new_conservation > controls_.conservation_tolerance &&
+                conservation_improvement >= controls_.stagnation_relative_improvement;
+            if (residual_flat && !conservation_progressing)
                 ++count;
         }
         return count;

@@ -8,7 +8,9 @@
 #include "naca_qualification_state_io.h"
 #include <cstdlib>
 #include <cstdio>
+#include <cerrno>
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <fstream>
@@ -28,6 +30,31 @@ static Forces run(const std::string& path,std::size_t level,
                   bool growth_guard=false, double alpha_u=0.6,
                   double alpha_p=0.25, std::size_t max_iterations=8000)
 {
+    (void)level;  // the reported resolution is inferred from the actual mesh
+    // Fail closed on every output that could be mistaken for physical
+    // qualification after an early mesh/load/restart error. Validate *all*
+    // destinations before deleting anything, and never truncate inputs.
+    const char* output_names[] = {
+        "CFDX_NACA_CONVERGED_FORCE_CSV",
+        "CFDX_NACA_EXPORT_CONVERGED_STATE_CSV",
+        "CFDX_NACA_FACE_PROFILES_CSV",
+        "CFDX_NACA_PHYSICAL_HISTORY_CSV"};
+    std::vector<std::string> outputs;
+    for (const char* name : output_names) {
+        const char* candidate = std::getenv(name);
+        if (!candidate) continue;
+        const std::string output(candidate);
+        if (output.empty() || output == path ||
+            (std::getenv("CFDX_NACA_IMPORT_INITIAL_STATE_CSV") &&
+             output == std::getenv("CFDX_NACA_IMPORT_INITIAL_STATE_CSV")) ||
+            std::find(outputs.begin(), outputs.end(), output) != outputs.end()) {
+            throw std::invalid_argument(std::string("invalid or conflicting NACA output path: ") + name);
+        }
+        outputs.push_back(output);
+    }
+    for (const auto& output : outputs)
+        if (std::remove(output.c_str()) != 0 && errno != ENOENT)
+            throw std::runtime_error("cannot clear stale NACA diagnostic/certificate");
     Mesh mesh;
     if(!cfdx::io::read_mesh_hdf5(path,mesh))
         throw std::runtime_error("cannot read NACA0012 mesh: "+path);
@@ -195,7 +222,45 @@ static Forces run(const std::string& path,std::size_t level,
     cfdx::validation::exercise_new_velocity_bc_contract(
         mesh, geometry, strict_bc, validation_flux, "NACA0012_RE1000_A0");
 
+    const auto solve_started = std::chrono::steady_clock::now();
     const auto solve=solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
+    const double solve_elapsed_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() -
+                                      solve_started).count();
+    std::cout << "NACA_SOLVE_WALL elapsed_seconds=" << solve_elapsed_seconds
+              << " accepted_iterations=" << solve.history.size()
+              << " converged=" << solve.converged << '\n';
+    // Save physical nonlinear diagnostics even when the full CFD gate fails.
+    // The official force/GCI checks still require solve.converged == true.
+    // This opt-in creates no matrix dumps and can be used for long runs.
+    const auto write_outer_history = [&](const std::string& path) {
+        std::ofstream out(path, std::ios::trunc);
+        if (!out) throw std::runtime_error("cannot create NACA physical history CSV");
+        out << "iteration,continuity_normalized,momentum_rhs_relative,"
+               "mass_normalized_imbalance,mass_local_linf,"
+               "flux_velocity_mismatch_normalized,pressure_linear_iterations,"
+               "momentum_linear_iterations,nonfinite_mass_faces,nonfinite_velocities\n";
+        out << std::setprecision(17);
+        for (const auto& h : solve.history)
+            out << h.iteration << ',' << h.continuity_normalized << ','
+                << h.momentum_equation_residual_rhs_relative << ','
+                << h.mass_normalized_imbalance << ',' << h.mass_local_linf << ','
+                << h.flux_velocity_mismatch_normalized << ','
+                << h.pressure_linear_iterations << ','
+                << h.momentum_linear_iterations << ','
+                << h.mass_nonfinite_faces << ','
+                << h.boundedness_nonfinite_velocity << '\n';
+        out.flush();
+        if (!out) throw std::runtime_error("failed writing NACA physical history CSV");
+    };
+    if (const char* path = std::getenv("CFDX_NACA_PHYSICAL_HISTORY_CSV")) {
+        if (!*path) throw std::invalid_argument("empty NACA history path");
+        write_outer_history(path);
+        std::cout << "NACA_PHYSICAL_HISTORY path=" << path
+                  << " accepted_iterations=" << solve.history.size()
+                  << " converged=" << solve.converged << '\n';
+    }
+
     if(!solve.converged) {
         std::ostringstream message;
         message << "NACA0012 solver did not converge: status="
@@ -432,7 +497,32 @@ static Forces run(const std::string& path,std::size_t level,
         throw std::runtime_error("failed to write NACA face profiles CSV");
     const double cd=Fx/q, cl=Fy/q, cm=Mz/q;
     const auto& last=solve.history.back();
-    std::cout<<"NACA0012_RE1000_A0 level="<<level
+    // Optional, machine-readable single-grid certificate. The three-grid
+    // Richardson/GCI gate must still validate mesh-family similarity and
+    // cannot infer convergence from the existence of this file alone.
+    if (const char* output = std::getenv("CFDX_NACA_CONVERGED_FORCE_CSV")) {
+        std::ofstream out(output, std::ios::trunc);
+        if (!out) throw std::runtime_error("cannot open converged NACA force certificate");
+        // The NACA O-grid generator has 2*N+1 airfoil faces per mesh;
+        // infer the surface resolution only for that verified topology.
+        const auto airfoil_faces = patch.face_ids.size();
+        if (airfoil_faces < 3 || airfoil_faces % 2 == 0)
+            throw std::runtime_error("unexpected NACA O-grid wall-face topology for GCI metadata");
+        const auto surface_resolution = (airfoil_faces - 1) / 2;
+        out << "case,h,converged,res_mom,res_mass,cd,cdp,cdv,cl,cm\n";
+        out << std::setprecision(std::numeric_limits<double>::max_digits10)
+            << 'N' << surface_resolution << ','
+            << chord / static_cast<double>(surface_resolution)
+            << ",yes," << last.momentum_equation_residual_rhs_relative << ','
+            << std::max({last.continuity_normalized, last.mass_normalized_imbalance,
+                         last.mass_local_linf}) << ',' << cd << ',' << Fxp/q
+            << ',' << Fxv/q << ',' << cl << ',' << cm << '\n';
+        out.flush();
+        if (!out) throw std::runtime_error("failed writing converged force certificate");
+        std::cout << "NACA_CONVERGED_FORCE_CERTIFICATE path=" << output
+                  << " qualification=ONE_GRID_ONLY\n";
+    }
+    std::cout<<"NACA0012_RE1000_A0 level="<<((patch.face_ids.size()-1)/2)
              <<" Cd="<<cd<<" Cl="<<cl<<" Cm="<<cm
              <<" Cd_pressure="<<Fxp/q<<" Cd_viscous="<<Fxv/q
              <<" continuity="<<last.continuity_linf
@@ -496,6 +586,7 @@ static void run_quick_contract(const std::string& path)
 
 int main(int argc,char**argv)
 {
+    try {
     // Isolated quantitative r24/r36/r48/r72 experiment. The complete 3-grid
     // qualification remains separate and may not be promoted by this mode.
     // argc==6 dispatch preserves the 3-arg --single replay defined below.
@@ -513,7 +604,6 @@ int main(int argc,char**argv)
         (void)run(argv[2],64,true,alpha_u,alpha_p,maxit);
         return 0;
     }
-    try {
     const bool quick=argc>=2 && std::string(argv[1])=="--quick";
     if(quick) {
         if(argc!=3)

@@ -5557,7 +5557,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 // With a prescribed pressure boundary the pressure-correction
                 // operator is SPD. For pure Neumann pressure, an explicitly
                 // requested constant null-space model instead keeps the
-                // singular operator and projects every CG vector.
+                // singular operator and projects the CG/GMRES Krylov space.
                 for (std::size_t row = 0; row < nc; ++row)
                     for (const auto& [col, value] : rows[row])
                         A.push_back(row, col, value);
