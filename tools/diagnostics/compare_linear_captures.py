@@ -39,7 +39,9 @@ def compare(
             for line in result.stderr.splitlines():
                 for prefix in ("PRECONDITIONER_SETUP_ERROR ", "REPLAY_SOLVE_FAILED "):
                     if line.startswith(prefix):
-                        method, separator, explanation = line[len(prefix):].partition(": ")
+                        method, separator, explanation = line[len(prefix) :].partition(
+                            ": "
+                        )
                         if separator and method in methods:
                             reasons[method] = explanation.strip()
             names = [row.get("preconditioner", "") for row in parsed]
@@ -49,7 +51,9 @@ def compare(
                 errors.append(f"{path.name}: replay returned {result.returncode}")
             for item in parsed:
                 if item.get("status") != "converged":
-                    errors.append(f"{path.name}: {item.get('preconditioner')} not converged")
+                    errors.append(
+                        f"{path.name}: {item.get('preconditioner')} not converged"
+                    )
                 try:
                     elapsed = float(item["total_ms"])
                     residual = float(item["true_relative"])
@@ -79,21 +83,34 @@ def main() -> int:
     parser.add_argument("--csv", type=Path, required=True)
     args = parser.parse_args()
     methods = tuple(args.methods or DEFAULT_METHODS)
-    if len(methods) != len(set(methods)) or not methods or (
-        not math.isfinite(args.timeout) or args.timeout <= 0
+    if (
+        len(methods) != len(set(methods))
+        or not methods
+        or (not math.isfinite(args.timeout) or args.timeout <= 0)
     ):
         parser.error("invalid method selection or timeout")
     rows, errors = compare(args.directory, args.binary, methods, args.timeout)
-    header = ["capture", "preconditioner", "krylov", "status", "iterations",
-              "total_ms", "true_abs_l2", "true_relative", "failure_reason"]
+    header = [
+        "capture",
+        "preconditioner",
+        "krylov",
+        "status",
+        "iterations",
+        "total_ms",
+        "true_abs_l2",
+        "true_relative",
+        "failure_reason",
+    ]
     with args.csv.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=header)
         writer.writeheader()
         writer.writerows(rows)
     for error in errors:
         print("CFDX_REPLAY_BATCH_FAIL:", error, file=sys.stderr)
-    print(f"captures={len(set(r['capture'] for r in rows))} "
-          f"candidate_results={len(rows)} failures={len(errors)}")
+    print(
+        f"captures={len({r['capture'] for r in rows})} "
+        f"candidate_results={len(rows)} failures={len(errors)}"
+    )
     return 0 if rows and not errors else 1
 
 
