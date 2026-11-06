@@ -293,9 +293,11 @@ set(CFDX_CORE_HEADERS
     src/cfdx/core/linalg/linear_solver_models.h
     src/cfdx/core/linalg/linear_solver_dispatch.h
     src/cfdx/core/linalg/null_space.h
+    src/cfdx/core/linalg/projected_gmres.h
     src/cfdx/core/linalg/matrix_free_fv_operator.h
     src/cfdx/core/linalg/amg_setup_footprint.h
     src/cfdx/core/linalg/amg_preconditioner.h
+    src/cfdx/core/linalg/algebraic_line_preconditioner.h
     src/cfdx/core/linalg/hypre_amg.h
     src/cfdx/core/linalg/coupled_amg_schur.h
     src/cfdx/core/linalg/native_fieldsplit.h
@@ -585,7 +587,30 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_amg_dispatch_certificate tests/unit/test_amg_dispatch_certificate.cpp)
     add_cfdx_test(test_v24_anisotropic_line_amg tests/unit/test_v24_anisotropic_line_amg.cpp)
     add_cfdx_test(test_v26_pressure_refinement tests/unit/test_v26_pressure_refinement.cpp)
-    add_cfdx_test(test_null_space tests/unit/test_null_space.cpp)
+    add_executable(cfdx_benchmark_galerkin_workspace
+        tools/benchmarks/benchmark_galerkin_workspace.cpp)
+    target_link_libraries(cfdx_benchmark_galerkin_workspace PRIVATE cfdx_core)
+    add_test(NAME test_galerkin_numeric_workspace_smoke
+        COMMAND cfdx_benchmark_galerkin_workspace 16 3)
+    set_tests_properties(test_galerkin_numeric_workspace_smoke PROPERTIES
+        LABELS "amg;linalg;benchmark;regression" TIMEOUT 15)
+    add_cfdx_test(test_galerkin_csr_symbolic_numeric tests/unit/test_galerkin_csr_symbolic_numeric.cpp)
+    set_tests_properties(test_galerkin_csr_symbolic_numeric PROPERTIES
+        LABELS "amg;linalg;anisotropy;regression" TIMEOUT 30)
+    if(Python3_EXECUTABLE)
+        add_test(NAME test_naca_amg_csr_benchmark_fail_closed
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_amg_csr_benchmark_fail_closed.py)
+        set_tests_properties(test_naca_amg_csr_benchmark_fail_closed PROPERTIES
+            LABELS "amg;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_amg_cap_sweep_fail_closed
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_amg_cap_sweep_fail_closed.py)
+        set_tests_properties(test_amg_cap_sweep_fail_closed PROPERTIES
+            LABELS "amg;anisotropy;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_naca_v5_benchmark_gates
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_v5_benchmark_gates.py)
+        set_tests_properties(test_naca_v5_benchmark_gates PROPERTIES
+            LABELS "amg;anisotropy;qualification;regression" TIMEOUT 15)
+    endif()    add_cfdx_test(test_null_space tests/unit/test_null_space.cpp)
     add_cfdx_test(test_n8_pinned_pressure_gauge tests/unit/test_n8_pinned_pressure_gauge.cpp)
     add_cfdx_test(test_bicgstab_solver tests/unit/test_bicgstab_solver.cpp)
     add_cfdx_test(test_gmres_solver tests/unit/test_gmres_solver.cpp)
@@ -884,7 +909,26 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     set_tests_properties(test_bfs_quick PROPERTIES LABELS "qualification;validation")
     add_executable(test_naca0012_qualification tests/validation/test_naca0012_geometry.cpp)
     target_link_libraries(test_naca0012_qualification PRIVATE cfdx_core)
-    add_test(NAME test_naca0012_quick COMMAND test_naca0012_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/naca0012_laminar_n64.h5)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME test_naca_mesh_similarity_gate
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_mesh_similarity_gate.py)
+        set_tests_properties(test_naca_mesh_similarity_gate PROPERTIES
+            LABELS "mesh;gci;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_naca_force_mesh_qualification
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_force_mesh_qualification.py)
+        set_tests_properties(test_naca_force_mesh_qualification PROPERTIES
+            LABELS "forces;mesh;gci;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_naca_force_certificate_fail_closed
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_force_certificate_fail_closed.py
+                $<TARGET_FILE:test_naca0012_qualification>
+                ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/naca0012_laminar_n64.h5)
+        set_tests_properties(test_naca_force_certificate_fail_closed PROPERTIES
+            LABELS "forces;qualification;regression" TIMEOUT 45
+            FIXTURES_REQUIRED cfdx_validation_meshes_quick)
+    endif()    add_test(NAME test_naca0012_quick COMMAND test_naca0012_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/naca0012_laminar_n64.h5)
     set_tests_properties(test_naca0012_quick PROPERTIES LABELS "qualification;validation")
     if(Python3_Interpreter_FOUND)
         set_tests_properties(test_bfs_quick test_naca0012_quick PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_quick)
@@ -1256,8 +1300,21 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_n8_schur_representative_cfd tests/validation/test_n8_schur_representative_cfd.cpp)
     add_cfdx_test(test_n8_schur_complete_krylov tests/validation/test_n8_schur_complete_krylov.cpp)
     add_cfdx_test(test_n8_amg_anisotropy_scaling tests/validation/test_n8_amg_anisotropy_scaling.cpp)
+    add_cfdx_test(test_anisotropic_krylov_matrix tests/validation/test_anisotropic_krylov_matrix.cpp)
+    add_cfdx_test(test_petsc_hypre_native_port_anisotropy tests/validation/test_petsc_hypre_native_port_anisotropy.cpp)
+    add_cfdx_test(test_neumann_anisotropic_pressure_qualification tests/validation/test_neumann_anisotropic_pressure_qualification.cpp)
+    set_tests_properties(test_neumann_anisotropic_pressure_qualification PROPERTIES LABELS "linalg;anisotropy;neumann;qualification" TIMEOUT 120)
+    set_tests_properties(test_petsc_hypre_native_port_anisotropy PROPERTIES LABELS "linalg;anisotropy;native_port" TIMEOUT 90)
+    set_tests_properties(test_anisotropic_krylov_matrix PROPERTIES LABELS "linalg;anisotropy;qualification" TIMEOUT 120)
+    add_test(NAME test_amg_sparse_coarse_regression COMMAND test_anisotropic_krylov_matrix --coarse-stall)
+    set_tests_properties(test_amg_sparse_coarse_regression PROPERTIES LABELS "linalg;anisotropy;regression" TIMEOUT 10)
     add_cfdx_test(test_n9_common_schur_qualification tests/validation/test_n9_common_schur_qualification.cpp)
     add_cfdx_test(test_n9_s10_pressure_reference_policies tests/validation/test_n9_s10_pressure_reference_policies.cpp)
+    # Keep compilation of the large steady-solver integration oracle bounded.
+    # This does not change optimization of the CFDX production library.
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_n9_s10_pressure_reference_policies PRIVATE -O0)
+    endif()
     # Run each production Schur model as an independent physical test.
     # The 32x32 Ghia cavity is expensive for some preconditioners; splitting
     # the cases lets CI parallelize them without weakening any physical gate.
@@ -1662,3 +1719,4 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_momentum_residual_certification_v11 tests/unit/test_momentum_residual_certification_v11.cpp)
     add_cfdx_test(test_sst_relative_convergence_v11 tests/unit/test_sst_relative_convergence_v11.cpp)
 endif()
+
