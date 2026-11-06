@@ -1,11 +1,12 @@
 """An incomplete NACA solve must not leave old forces labelled converged."""
+
 import csv
 import os
-from pathlib import Path
 import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 
 def ctest_arguments():
@@ -42,12 +43,17 @@ class CertificateGate(unittest.TestCase):
             env["CFDX_NACA_PRESSURE_SOLVER"] = "fgmres_boomer"
             proc = subprocess.run(
                 [str(binary), "--single", str(mesh), "0.6", "0.25", "1"],
-                env=env, capture_output=True, text=True, timeout=40,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=40,
                 check=False,
             )
             self.assertEqual(proc.returncode, 1, proc.stderr[-1500:])
             self.assertIn("NACA0012_QUALIFICATION: FAIL", proc.stderr)
-            self.assertFalse(forces.exists(), "stale force certificate survived a failure")
+            self.assertFalse(
+                forces.exists(), "stale force certificate survived a failure"
+            )
             self.assertTrue(history.is_file())
             with history.open(newline="") as stream:
                 rows = list(csv.DictReader(stream))
@@ -73,16 +79,33 @@ class CertificateGate(unittest.TestCase):
             env["CFDX_NACA_FACE_PROFILES_CSV"] = str(profile)
             env["CFDX_NACA_PHYSICAL_HISTORY_CSV"] = str(history)
             proc = subprocess.run(
-                [str(binary), "--single", str(path / "nonexistent.h5"),
-                 "0.6", "0.25", "1"],
-                env=env, capture_output=True, text=True, timeout=15,
+                [
+                    str(binary),
+                    "--single",
+                    str(path / "nonexistent.h5"),
+                    "0.6",
+                    "0.25",
+                    "1",
+                ],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=15,
                 check=False,
             )
             self.assertNotEqual(proc.returncode, 0)
-            self.assertFalse(force.exists(), "stale force survived mesh loading failure")
-            self.assertFalse(state.exists(), "stale state survived mesh loading failure")
-            self.assertFalse(profile.exists(), "stale wall profile survived mesh loading failure")
-            self.assertFalse(history.exists(), "stale history survived mesh loading failure")
+            self.assertFalse(
+                force.exists(), "stale force survived mesh loading failure"
+            )
+            self.assertFalse(
+                state.exists(), "stale state survived mesh loading failure"
+            )
+            self.assertFalse(
+                profile.exists(), "stale wall profile survived mesh loading failure"
+            )
+            self.assertFalse(
+                history.exists(), "stale history survived mesh loading failure"
+            )
 
     def test_output_preflight_protects_restart_input(self):
         binary, _ = ctest_arguments()
@@ -94,9 +117,11 @@ class CertificateGate(unittest.TestCase):
             env["CFDX_NACA_IMPORT_INITIAL_STATE_CSV"] = str(restart)
             env["CFDX_NACA_CONVERGED_FORCE_CSV"] = str(restart)
             proc = subprocess.run(
-                [str(binary), "--single", str(path / "missing.h5"),
-                 "0.6", "0.25", "1"],
-                env=env, capture_output=True, text=True, timeout=15,
+                [str(binary), "--single", str(path / "missing.h5"), "0.6", "0.25", "1"],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=15,
                 check=False,
             )
             self.assertNotEqual(proc.returncode, 0)
