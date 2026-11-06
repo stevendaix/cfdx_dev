@@ -597,6 +597,9 @@ if(CFDX_BUILD_TESTS)
     add_executable(cfdx_benchmark_energy_vanka EXCLUDE_FROM_ALL
         tools/benchmarks/benchmark_energy_vanka.cpp)
     target_link_libraries(cfdx_benchmark_energy_vanka PRIVATE cfdx_core)
+    add_executable(cfdx_benchmark_gmres_arnoldi EXCLUDE_FROM_ALL
+        tools/benchmarks/benchmark_gmres_arnoldi.cpp)
+    target_link_libraries(cfdx_benchmark_gmres_arnoldi PRIVATE cfdx_core)
     add_executable(cfdx_anisotropy_report EXCLUDE_FROM_ALL
         tools/diagnostics/cfdx_anisotropy_report.cpp)
     target_link_libraries(cfdx_anisotropy_report PRIVATE cfdx_core)
@@ -736,6 +739,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     set_tests_properties(test_n11_scalar_conservation PROPERTIES
         LABELS "n11;qualification;validation")
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
+    add_cfdx_test(test_convection_continuation tests/unit/test_convection_continuation.cpp)
+    set_tests_properties(test_convection_continuation PROPERTIES LABELS "fv;convection;regression")
     add_cfdx_test(test_vof_curvature_contract tests/unit/test_vof_curvature_contract.cpp)
     add_cfdx_test(test_variable_viscosity_transpose_stress tests/unit/test_variable_viscosity_transpose_stress.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)

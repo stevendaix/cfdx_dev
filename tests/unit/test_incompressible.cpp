@@ -141,5 +141,20 @@ int main(){
         }
         EXPECT_TRUE(rejected);
     });
+    run_case("high_order_continuation_rejects_unsupported_couplings", [] {
+        IncompressibleSolverControls controls;
+        controls.convection_scheme = ConvectionScheme::TVD_VANLEER;
+        controls.convection_continuation.enabled = true;
+        controls.convergence.max_iterations = 200;
+        validate_incompressible_controls(controls, 2);
+        controls.algorithm = PressureVelocityAlgorithm::COUPLED;
+        EXPECT_THROW(validate_incompressible_controls(controls, 2), std::invalid_argument);
+        controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        controls.convection_scheme = ConvectionScheme::UPWIND;
+        EXPECT_THROW(validate_incompressible_controls(controls, 2), std::invalid_argument);
+        controls.convection_scheme = ConvectionScheme::TVD;
+        controls.convergence.max_iterations = 122;
+        EXPECT_THROW(validate_incompressible_controls(controls, 2), std::invalid_argument);
+    });
     return run_all();
 }

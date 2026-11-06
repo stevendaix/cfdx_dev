@@ -20,6 +20,7 @@
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/pressure_velocity_system.h"
 #include "cfdx/physics/pressure_continuity_line_search.h"
+#include "cfdx/physics/convection_continuation.h"
 #include "cfdx/physics/pressure_affine_flux_trials.h"
 #include "cfdx/physics/solver_control.h"
 #include "cfdx/physics/sst_production_coupling.h"
@@ -305,6 +306,9 @@ struct IncompressibleSolverControls {
     double pcd_convection_diffusion_tolerance = 1e-8;
     bool use_bounded_convection = true;
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND;
+    // Opt-in: conservative continuation from UPWIND to the requested full
+    // high-order scheme; acceptance requires full order, never a ramp stage.
+    ConvectionContinuationControls convection_continuation;
     DiagnosticsControls diagnostics;
     NonlinearRetryControls nonlinear_retry;
     std::vector<IncompressiblePointProbe> probes;
@@ -405,6 +409,7 @@ struct IncompressibleSolverControls {
 
 struct IncompressibleIteration {
     std::size_t iteration = 0;
+    double high_order_fraction = 1.0; // 1.0 is the only qualified final operator.
     double momentum_residual = std::numeric_limits<double>::infinity();
     double pressure_residual = std::numeric_limits<double>::infinity();
     double continuity_l1 = std::numeric_limits<double>::infinity();
@@ -609,6 +614,16 @@ inline void validate_incompressible_controls(
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
     validate_nonlinear_retry_controls(c.nonlinear_retry);
+    validate_convection_continuation(c.convection_continuation,
+                                     c.convergence.max_iterations);
+    if (c.convection_continuation.enabled &&
+        ((c.convection_scheme != ConvectionScheme::TVD &&
+          c.convection_scheme != ConvectionScheme::TVD_VANLEER &&
+          c.convection_scheme != ConvectionScheme::SECOND_ORDER_UPWIND) ||
+         c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
+         c.transient.enabled || c.sst_runtime != nullptr))
+        throw std::invalid_argument(
+            "convection continuation: only steady SIMPLE with SOU/TVD is qualified");
     validate_pressure_continuity_line_search(c.pressure_continuity_line_search);
     // The monolithic U-p block still assembles its analytical G operator
     // with the historical face weights. Until that block is augmented with
@@ -1697,7 +1712,8 @@ inline ScalarEquation assemble_momentum_component(
     std::size_t component,
     bool bounded,
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
+    double high_order_fraction = 1.0)
 {
     cfdx::core::Field<double, cfdx::core::Location::CELL> source(
         mesh.n_cells(), "momentum_source", "N/m3", 1);
@@ -1715,7 +1731,8 @@ inline ScalarEquation assemble_momentum_component(
     return assemble_scalar_equation(
         mesh, geometry, mass_flux, effective_dynamic_viscosity,
         source, sp, velocity_bcs, bounded, nullptr, nullptr, nullptr, nullptr,
-        convection_scheme, convected_field);
+        convection_scheme, convected_field, nullptr, true, nullptr,
+        high_order_fraction);
 }
 
 // SSTm has zero turbulent shear viscosity at a resolved no-slip wall.  The
@@ -1986,7 +2003,8 @@ inline ScalarEquation assemble_momentum_component(
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
     const std::vector<double>* extra_rhs = nullptr,
-    double molecular_wall_mu = -1.0)
+    double molecular_wall_mu = -1.0,
+    double high_order_fraction = 1.0)
 {
     const std::size_t nc = mesh.n_cells();
     if (extra_rhs != nullptr && extra_rhs->size() != nc)
@@ -2026,7 +2044,7 @@ inline ScalarEquation assemble_momentum_component(
         mesh, geometry, mass_flux, 0.0, source, sp, velocity_bcs, bounded,
         nullptr, nullptr, extra_rhs, &cell_effective_dynamic_viscosity,
         convection_scheme, convected_field, nullptr, true,
-        face_mu.empty() ? nullptr : &face_mu);
+        face_mu.empty() ? nullptr : &face_mu, high_order_fraction);
 }
 
 // Production wrapper: the full velocity tensor and vector boundary conditions
@@ -2044,7 +2062,8 @@ inline ScalarEquation assemble_momentum_component_with_transpose_diffusion(
     std::size_t component,
     bool bounded,
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
+    double high_order_fraction = 1.0)
 {
     // In the constant-viscosity incompressible limit, the transpose
     // contribution is equivalent to zero when continuity is satisfied.
@@ -2064,7 +2083,8 @@ inline ScalarEquation assemble_momentum_component_with_transpose_diffusion(
     return assemble_momentum_component(
         mesh, geometry, mass_flux, pressure_gradient_component, body_component,
         cell_effective_dynamic_viscosity, component_boundary_conditions, component,
-        bounded, convection_scheme, convected_field, &transpose_rhs);
+        bounded, convection_scheme, convected_field, &transpose_rhs, -1.0,
+        high_order_fraction);
 }
 
 inline ScalarEquation assemble_momentum_component(
@@ -2079,7 +2099,8 @@ inline ScalarEquation assemble_momentum_component(
     bool bounded,
     double time = 0.0,
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* convected_field = nullptr,
+    double high_order_fraction = 1.0)
 {
     if (component >= 3)
         throw std::invalid_argument("assemble_momentum_component: component index out of range");
@@ -2100,7 +2121,8 @@ inline ScalarEquation assemble_momentum_component(
     return assemble_scalar_equation(
         mesh, geometry, mass_flux, effective_dynamic_viscosity,
         source, sp, {}, bounded, nullptr, nullptr, nullptr, nullptr,
-        convection_scheme, convected_field, &face_conditions);
+        convection_scheme, convected_field, &face_conditions, true, nullptr,
+        high_order_fraction);
 }
 
 inline void add_dual_time_mass_term(
@@ -4152,7 +4174,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     }
 
     cfdx::core::ConvergenceMonitorControls monitor_controls;
-    monitor_controls.residual.absolute_tolerance = controls.convergence.absolute_tolerance;
+    // This monitor receives a dimensionless maximum of physical, RHS-normalized
+    // residuals and normalized field changes. During an operator homotopy the
+    // initial reference is not the same equation as the final one, so its
+    // relative reduction is only a diagnostic. For the opt-in continuation,
+    // use the ORIGINAL per-criterion relative threshold as the absolute bound
+    // for that already-normalized synthetic metric. The independent momentum
+    // component, pressure, continuity and field-change gates remain mandatory.
+    monitor_controls.residual.absolute_tolerance = convection_monitor_residual_threshold(
+        controls.convection_continuation, controls.convergence.absolute_tolerance,
+        controls.convergence.relative_tolerance);
     monitor_controls.residual.relative_tolerance = controls.convergence.relative_tolerance;
     monitor_controls.conservation_tolerance = controls.convergence.continuity_tolerance;
     monitor_controls.minimum_iterations = std::min<std::size_t>(2, controls.convergence.max_iterations);
@@ -4391,6 +4422,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     std::size_t adaptive_p_recovery_cooldown = 0;
 
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
+        const double outer_high_order_fraction =
+            convection_high_order_fraction(controls.convection_continuation, iter);
+        const bool full_order_eligible =
+            convection_full_order_eligible(controls.convection_continuation, iter);
         bool stop_after_iteration = false;
         NonlinearRetryController retry_controller(controls.nonlinear_retry);
         NonlinearStateRollback transaction(U, p);
@@ -4605,15 +4640,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         auto ex = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_x, mu_eff, ubc_x, 0,
             controls.use_bounded_convection, controls.convection_scheme,
-            &u_x_field, nullptr, sst_molecular_wall_mu);
+            &u_x_field, nullptr, sst_molecular_wall_mu,
+            outer_high_order_fraction);
         auto ey = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_y, mu_eff, ubc_y, 1,
             controls.use_bounded_convection, controls.convection_scheme,
-            &u_y_field, nullptr, sst_molecular_wall_mu);
+            &u_y_field, nullptr, sst_molecular_wall_mu,
+            outer_high_order_fraction);
         auto ez = assemble_momentum_component(
             mesh, geometry, mass_flux, grad_p, body_z, mu_eff, ubc_z, 2,
             controls.use_bounded_convection, controls.convection_scheme,
-            &u_z_field, nullptr, sst_molecular_wall_mu);
+            &u_z_field, nullptr, sst_molecular_wall_mu,
+            outer_high_order_fraction);
 
         if (controls.momentum_equation_forensic_callback) {
             controls.momentum_equation_forensic_callback(
@@ -6360,15 +6398,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         auto final_ex = assemble_momentum_component(
             mesh, geometry, mass_flux, final_grad_p, body_x, mu_eff, ubc_x, 0,
             controls.use_bounded_convection, controls.convection_scheme,
-            &final_ux_field, nullptr, sst_molecular_wall_mu);
+            &final_ux_field, nullptr, sst_molecular_wall_mu,
+            outer_high_order_fraction);
         auto final_ey = assemble_momentum_component(
             mesh, geometry, mass_flux, final_grad_p, body_y, mu_eff, ubc_y, 1,
             controls.use_bounded_convection, controls.convection_scheme,
-            &final_uy_field, nullptr, sst_molecular_wall_mu);
+            &final_uy_field, nullptr, sst_molecular_wall_mu,
+            outer_high_order_fraction);
         auto final_ez = assemble_momentum_component(
             mesh, geometry, mass_flux, final_grad_p, body_z, mu_eff, ubc_z, 2,
             controls.use_bounded_convection, controls.convection_scheme,
-            &final_uz_field, nullptr, sst_molecular_wall_mu);
+            &final_uz_field, nullptr, sst_molecular_wall_mu,
+            outer_high_order_fraction);
 
         // The final nonlinear acceptance residual must represent the same
         // production equation that was solved. For transient runs the
@@ -6586,6 +6627,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.pressure_line_search_norm_before = last_line_search_before;
         h.pressure_line_search_norm_after = last_line_search_after;
         h.iteration = iter;
+        h.high_order_fraction = outer_high_order_fraction;
         h.momentum_residual = final_momentum_residual / momentum_rhs_scale;
         h.pressure_residual = pressure_residual;
         h.continuity_l1 = l1;
@@ -6809,6 +6851,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // Exclude that ratio for COUPLED regardless of its magnitude, while
         // keeping the independently RHS-normalized physical gate mandatory.
         const bool use_reference_relative_metric =
+            !controls.convection_continuation.enabled &&
             !momentum_reference_ill_conditioned &&
             controls.algorithm != PressureVelocityAlgorithm::COUPLED;
         double nonlinear_metric = !use_reference_relative_metric
@@ -6859,6 +6902,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                       << " flux_velocity_mismatch_linf=" << h.flux_velocity_mismatch_linf
                       << " worst_momentum_cell=" << h.momentum_residual_cell
                       << " worst_momentum_patch=" << h.momentum_residual_patch
+                      << " high_order_fraction=" << h.high_order_fraction
+                      << " full_order_eligible=" << full_order_eligible
                       << "\n";
         }
         // Acceptance stays per-criterion. The monitor divides its synthetic
@@ -6877,6 +6922,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // for this direct block solve.
         const bool momentum_equation_residual_gate =
             controls.algorithm == PressureVelocityAlgorithm::COUPLED ||
+            // A pre-ramp reference is not a residual of the final operator.
+            // During continuation the independently normalized per-component
+            // physical momentum certificate is the mandatory convergence gate.
+            controls.convection_continuation.enabled ||
             momentum_reference_ill_conditioned ||
             h.momentum_equation_residual_relative <= controls.convergence.relative_tolerance;
         const bool pressure_residual_gate =
@@ -7069,6 +7118,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 *sst_attempt_snapshot, *controls.sst_runtime->state,
                 controls.kinematic_viscosity);
         }
+        if (controls.convection_continuation.enabled &&
+            outer_high_order_fraction == 1.0 && iter > 1 &&
+            convection_high_order_fraction(controls.convection_continuation,
+                                           iter - 1) < 1.0) {
+            // Do not inherit a residual or stagnation history from the
+            // incomplete UPWIND/deferred-correction operator.
+            convergence_monitor = cfdx::core::ConvergenceMonitor(monitor_controls);
+        }
         const auto convergence_report = convergence_monitor.update({
             iter,
             nonlinear_metric,
@@ -7085,7 +7142,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const bool converged_now =
             iter >= minimum_outer_correctors &&
             convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED &&
-            per_criterion_gates_ok && sst_residual_gate;
+            per_criterion_gates_ok && sst_residual_gate && full_order_eligible;
         if (debug_cell_enabled && (converged_now || iter == controls.convergence.max_iterations)) {
             std::cerr << "\n=== CFDX MOMENTUM MICROSCOPE cell=" << debug_cell
                       << " cell_source=" << (debug_cell_auto ? "auto_worst" : "explicit")
@@ -7585,7 +7642,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     mesh, geometry, mass_flux, component, 0.0, scalar_bcs,
                     controls.use_bounded_convection, controls.convection_scheme,
                     nullptr, &mu_eff, nullptr,
-                    wall_face_mu.empty() ? nullptr : &wall_face_mu);
+                    wall_face_mu.empty() ? nullptr : &wall_face_mu,
+                    outer_high_order_fraction);
                 // Transport flux is convection minus viscous stress. Rebuild
                 // the transpose contribution from final U independently of
                 // the predictor source and assembled matrix residual.
@@ -7648,13 +7706,31 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     ? "carrier criteria satisfied but SST transport/closure gate is not satisfied"
                     : "max iterations reached; carrier and/or SST transport/closure gates unsatisfied";
         }
+        if (controls.convection_continuation.enabled &&
+            !full_order_eligible &&
+            convergence_report.status == cfdx::core::ConvergenceStatus::CONVERGED) {
+            result.convergence_status = cfdx::core::ConvergenceStatus::CONTINUE;
+            result.convergence_reason =
+                "high-order convection continuation: full operator hold not completed";
+        }
         if (converged_now) {
             result.converged = true;
             result.iterations = iter;
             stop_after_iteration = true;
         }
-        if (convergence_report.status == cfdx::core::ConvergenceStatus::DIVERGED ||
+        if (controls.convection_continuation.enabled &&
+            !full_order_eligible &&
             convergence_report.status == cfdx::core::ConvergenceStatus::STAGNATED) {
+            // The operator is changing; a plateau before completion of the
+            // ramp is NOT stagnation of the final physical discretization.
+            convergence_monitor = cfdx::core::ConvergenceMonitor(monitor_controls);
+            result.convergence_status = cfdx::core::ConvergenceStatus::CONTINUE;
+            result.convergence_reason =
+                "high-order convection continuation: intermediate-operator plateau";
+        }
+        if (convergence_report.status == cfdx::core::ConvergenceStatus::DIVERGED ||
+            (convergence_report.status == cfdx::core::ConvergenceStatus::STAGNATED &&
+             full_order_eligible)) {
             result.iterations = iter;
             stop_after_iteration = true;
         }

@@ -589,6 +589,67 @@ int main()
         EXPECT_NEAR(eq_van.rhs(2)-eq_min.rhs(2),
                     f_van(target)-f_min(target),1e-12);
     });
+    run_case("tvd_continuation_conserves_faces_and_matches_deferred_rhs", [] {
+        const Mesh m = make_1d_chain(3);
+        const auto geometry = build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"flux","",1);
+        Field<double,Location::CELL> src(m.n_cells(),"src","",1);
+        Field<double,Location::CELL> sp(m.n_cells(),"sp","",1);
+        Field<double,Location::CELL> psi(m.n_cells(),"psi","",1);
+        flux.fill(0.0); src.fill(0.0); sp.fill(0.0);
+        psi(0)=0.25; psi(1)=0.5; psi(2)=0.9;
+        std::size_t target=m.n_faces();
+        for (std::size_t f=0; f<m.n_faces(); ++f)
+            if (m.ownership().owner(f)==1 && m.ownership().neighbour(f)==2) {
+                flux(f)=1.0; target=f; break;
+            }
+        EXPECT_TRUE(target < m.n_faces());
+        ScalarBoundaryConditions bc;
+        bc["inlet"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        bc["outlet"]={ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
+        bc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        const std::vector<double> regularization(m.n_cells(),1.0);
+        const auto upwind=assemble_scalar_equation(
+            m,geometry,flux,0.0,src,sp,bc,true,nullptr,&regularization,nullptr,nullptr,
+            ConvectionScheme::UPWIND,&psi);
+        const auto upwind_flux=reconstruct_scalar_transport_flux(
+            m,geometry,flux,psi,0.0,bc,true,ConvectionScheme::UPWIND);
+        const auto full=assemble_scalar_equation(
+            m,geometry,flux,0.0,src,sp,bc,true,nullptr,&regularization,nullptr,nullptr,
+            ConvectionScheme::TVD_VANLEER,&psi);
+        const auto full_flux=reconstruct_scalar_transport_flux(
+            m,geometry,flux,psi,0.0,bc,true,ConvectionScheme::TVD_VANLEER);
+        for (double fraction : {0.0, 0.25, 0.5, 1.0}) {
+            const auto eq=assemble_scalar_equation(
+                m,geometry,flux,0.0,src,sp,bc,true,nullptr,&regularization,nullptr,nullptr,
+                ConvectionScheme::TVD_VANLEER,&psi,nullptr,true,nullptr,fraction);
+            const auto flux_face=reconstruct_scalar_transport_flux(
+                m,geometry,flux,psi,0.0,bc,true,ConvectionScheme::TVD_VANLEER,
+                nullptr,nullptr,nullptr,nullptr,fraction);
+            EXPECT_NEAR(eq.rhs(1)-upwind.rhs(1),
+                        fraction*(full.rhs(1)-upwind.rhs(1)),1e-12);
+            EXPECT_NEAR(eq.rhs(2)-upwind.rhs(2),
+                        fraction*(full.rhs(2)-upwind.rhs(2)),1e-12);
+            EXPECT_NEAR(eq.rhs(1)+eq.rhs(2),
+                        upwind.rhs(1)+upwind.rhs(2),1e-12);
+            EXPECT_NEAR(flux_face(target), upwind_flux(target) +
+                        fraction*(full_flux(target)-upwind_flux(target)),1e-12);
+            EXPECT_NEAR(eq.rhs(1)-upwind.rhs(1),
+                        -(flux_face(target)-upwind_flux(target)),1e-12);
+            EXPECT_NEAR(eq.matrix.nnz(),upwind.matrix.nnz(),0.0);
+            EXPECT_TRUE(flux_face(target)>=psi(1)-1e-12 &&
+                        flux_face(target)<=psi(2)+1e-12);
+        }
+        EXPECT_THROW(assemble_scalar_equation(
+            m,geometry,flux,0.0,src,sp,bc,true,nullptr,&regularization,nullptr,nullptr,
+            ConvectionScheme::TVD_VANLEER,&psi,nullptr,true,nullptr,-0.01),
+            std::invalid_argument);
+        EXPECT_THROW(reconstruct_scalar_transport_flux(
+            m,geometry,flux,psi,0.0,bc,true,ConvectionScheme::TVD_VANLEER,
+            nullptr,nullptr,nullptr,nullptr,
+            std::numeric_limits<double>::quiet_NaN()), std::invalid_argument);
+    });
+
     run_case("tvd_requires_convected_field", [] {
         const Mesh m = make_unit_cube();
         const auto g = build_fv_geometry(m);
