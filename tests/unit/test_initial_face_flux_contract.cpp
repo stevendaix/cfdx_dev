@@ -91,4 +91,5 @@ int main()
         EXPECT_THROW(initial_face_flux_continuity_report(mesh,
             {0.2, 0.2, 0.2, 0.2}, -1.0), std::invalid_argument);
     });
+    return run_all();
 }
