@@ -420,6 +420,17 @@ inline LinearSolveReport solve_linear_system(
     report.physical_residual_relative = reference > 0.0
         ? final_residual / reference
         : (final_residual == 0.0 ? 0.0 : std::numeric_limits<double>::infinity());
+    if (request.scaling != LinearScalingModel::None) {
+        // A scaled solver can announce a tiny residual in the scaled norm
+        // while the physical pressure equation fails. Expose the ORIGINAL
+        // matrix's true residual in the authoritative result as well, so
+        // callers and logs never confuse scaled and physical metrics.
+        double original_rhs_norm = 0.0;
+        for (std::size_t i = 0; i < rhs.size(); ++i)
+            original_rhs_norm = std::hypot(original_rhs_norm, rhs(i));
+        report.result.residual_relative = report.physical_residual_relative;
+        report.result.residual = report.physical_residual_relative * original_rhs_norm;
+    }
     if (report.result.status == SolverStatus::CONVERGED &&
         (!std::isfinite(report.physical_residual_relative) ||
          report.physical_residual_relative > tolerance))
