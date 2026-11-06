@@ -338,7 +338,6 @@ struct IncompressibleSolverControls {
     // deliberately need not equal RC(HbyA, under-relaxed cell pressure).
     // Requires exact V18 pressure/flux Jacobian, single SIMPLE corrector.
     bool v19_full_pressure_flux_step = false;
-    // Emitted only after the nonlinear transaction accepting the sample commits.
     std::function<void(const IncompressibleProbeSample&)> probe_callback;
     // Called after each completed nonlinear iteration with the authoritative solver state.
     // Return false to stop the solve after the current iteration.
