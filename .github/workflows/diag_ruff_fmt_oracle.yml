@@ -1,0 +1,65 @@
+name: Ruff format oracle for 768030a8 (diag)
+
+on:
+  push:
+    branches:
+      - 'diag/ruff-fmt-768030a8'
+    paths:
+      - 'diag-tools/ruff_fmt_marker.txt'
+      - '.github/workflows/diag_ruff_fmt_oracle.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  oracle:
+    name: ruff-fmt-768030a8
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EVID: diag-evidence/logs
+      STAMP: 2026-11-06
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install ruff (identical to Pre-commit Fast Guards step)
+        run: python -m pip install --upgrade ruff
+
+      - name: Ruff diff, check, and formatted copy
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          mkdir -p "$E"
+          F=tests/python/test_naca_force_certificate_fail_closed.py
+          ruff --version | tee "$E/ruff_version_$STAMP.txt"
+          ruff format --diff "$F" > "$E/ruff_fmt_diff_768030a8_$STAMP.diff" 2>&1 || true
+          ruff check "$F" > "$E/ruff_check_768030a8_$STAMP.txt" 2>&1 || true
+          cp "$F" "$E/ruff_fmt_before_768030a8_$STAMP.py"
+          ruff format "$F" 2>&1 | tee -a "$E/ruff_version_$STAMP.txt"
+          cp "$F" "$E/ruff_fmt_after_768030a8_$STAMP.py"
+          git checkout -- "$F"
+
+      - name: Write meta
+        run: |
+          E="$GITHUB_WORKSPACE/$EVID"
+          {
+            echo "target=tests/python/test_naca_force_certificate_fail_closed.py at fix branch head 768030a80b25144e944e270b002f83c274db9d8d"
+            echo "why=Pre-commit Fast Guards run 42210698844-ish, step Run Ruff/pre-commit on changed Python files, exit 1 (PR #1181)"
+            echo "env=ruff installed via python -m pip install --upgrade ruff, Python 3.10, same as .github/workflows/precommit.yml"
+          } > "$E/ruff_fmt_meta_$STAMP.txt"
+
+      - name: Publish evidence to dedicated branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A diag-evidence/logs
+          if git diff --cached --quiet; then
+            echo "no evidence changes"
+          else
+            git commit -m "diag: ruff format oracle evidence for 768030a8 (2026-11-06) [ci skip]"
+            git push --force origin HEAD:refs/heads/diag-evidence/ruff-fmt-768030a8
+          fi

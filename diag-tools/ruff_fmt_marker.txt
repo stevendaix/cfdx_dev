@@ -1,0 +1,1 @@
+ruff format oracle target: tests/python/test_naca_force_certificate_fail_closed.py @ 768030a80b25144e944e270b002f83c274db9d8d (PR #1181 head)
