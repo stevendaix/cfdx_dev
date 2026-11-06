@@ -5,6 +5,7 @@
 #include "cfdx/core/linalg/schur_approximation.h"
 #include "cfdx/core/linalg/vector.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <functional>
@@ -56,7 +57,10 @@ namespace cfdx::core {
 // qualification for the coupled CFD solver.
 enum class PcdSchurActionMode {
     LegacySingleConvectionDiffusionInverse,
-    LumpedMassCommutator
+    LumpedMassCommutator,
+    // Research only: the full (non-lumped) pressure mass is inverted by an
+    // explicit callback, whose true residual is checked on every action.
+    ConsistentMassCommutator
 };
 
 class PcdSchurApproximation final : public SchurApproximation {
@@ -71,7 +75,8 @@ public:
                           std::optional<NullSpaceProjector> pressure_null_space = std::nullopt,
                           std::optional<std::size_t> pressure_reference_cell = std::nullopt,
                           PcdSchurActionMode mode =
-                              PcdSchurActionMode::LegacySingleConvectionDiffusionInverse)
+                              PcdSchurActionMode::LegacySingleConvectionDiffusionInverse,
+                          PressureSolve pressure_mass_solve = {})
         : pressure_mass_(pressure_mass),
           pressure_laplacian_(pressure_laplacian),
           pressure_convection_diffusion_(pressure_convection_diffusion),
@@ -79,11 +84,15 @@ public:
           convection_diffusion_solve_(std::move(convection_diffusion_solve)),
           pressure_null_space_(std::move(pressure_null_space)),
           pressure_reference_cell_(pressure_reference_cell),
-          mode_(mode) {}
+          mode_(mode),
+          pressure_mass_solve_(std::move(pressure_mass_solve)) {}
 
     const char* name() const noexcept override {
-        return mode_ == PcdSchurActionMode::LumpedMassCommutator
-            ? "pcd_lumped_mass_commutator" : "pcd_schur";
+        if (mode_ == PcdSchurActionMode::LumpedMassCommutator)
+            return "pcd_lumped_mass_commutator";
+        if (mode_ == PcdSchurActionMode::ConsistentMassCommutator)
+            return "pcd_consistent_mass_commutator";
+        return "pcd_schur";
     }
     PcdSchurActionMode mode() const noexcept { return mode_; }
 
@@ -114,6 +123,9 @@ public:
         if (mode_ == PcdSchurActionMode::LumpedMassCommutator &&
             !positive_diagonal_lumped_mass(pressure_mass_, np))
             return false;
+        if (mode_ == PcdSchurActionMode::ConsistentMassCommutator &&
+            (!pressure_mass_solve_ || !symmetric_positive_diagonal_mass(pressure_mass_, np)))
+            return false;
 
         pressure_size_ = np;
         graph_signature_ = graph_signature(blocks);
@@ -135,6 +147,9 @@ public:
             return false;
         if (mode_ == PcdSchurActionMode::LumpedMassCommutator &&
             !positive_diagonal_lumped_mass(pressure_mass_, np))
+            return false;
+        if (mode_ == PcdSchurActionMode::ConsistentMassCommutator &&
+            (!pressure_mass_solve_ || !symmetric_positive_diagonal_mass(pressure_mass_, np)))
             return false;
         return true;
     }
@@ -167,6 +182,11 @@ public:
         if ((mode_ == PcdSchurActionMode::LumpedMassCommutator &&
              (!positive_diagonal_lumped_mass(pressure_mass, np) ||
               !same_values(pressure_laplacian_, pressure_laplacian))) ||
+            (mode_ == PcdSchurActionMode::ConsistentMassCommutator &&
+             (!pressure_mass_solve_ ||
+              !symmetric_positive_diagonal_mass(pressure_mass, np) ||
+              !same_values(pressure_mass_, pressure_mass) ||
+              !same_values(pressure_laplacian_, pressure_laplacian))) ||
             (mode_ == PcdSchurActionMode::LegacySingleConvectionDiffusionInverse &&
              !same_values(pressure_convection_diffusion_,
                           pressure_convection_diffusion)))
@@ -189,7 +209,8 @@ public:
         const SparseMatrix& pressure_laplacian,
         const SparseMatrix& pressure_convection_diffusion,
         PressureSolve laplacian_solve,
-        PressureSolve convection_diffusion_solve) {
+        PressureSolve convection_diffusion_solve,
+        PressureSolve pressure_mass_solve = {}) {
         if (pressure_size_ == 0 || !blocks.is_valid() ||
             graph_signature(blocks) != graph_signature_ ||
             !laplacian_solve || !convection_diffusion_solve)
@@ -203,7 +224,10 @@ public:
             !same_pattern(pressure_convection_diffusion_,
                           pressure_convection_diffusion) ||
             (mode_ == PcdSchurActionMode::LumpedMassCommutator &&
-             !positive_diagonal_lumped_mass(pressure_mass, np)))
+             !positive_diagonal_lumped_mass(pressure_mass, np)) ||
+            (mode_ == PcdSchurActionMode::ConsistentMassCommutator &&
+             (!pressure_mass_solve ||
+              !symmetric_positive_diagonal_mass(pressure_mass, np))))
             return false;
 
         SparseMatrix new_mass(pressure_mass);
@@ -214,6 +238,7 @@ public:
         pressure_convection_diffusion_ = std::move(new_convection_diffusion);
         laplacian_solve_ = std::move(laplacian_solve);
         convection_diffusion_solve_ = std::move(convection_diffusion_solve);
+        pressure_mass_solve_ = std::move(pressure_mass_solve);
         graph_signature_ = graph_signature(blocks);
         return true;
     }
@@ -241,7 +266,7 @@ public:
         }
 
         Vector candidate(np, 0.0);
-        if (mode_ == PcdSchurActionMode::LumpedMassCommutator) {
+        if (mode_ != PcdSchurActionMode::LegacySingleConvectionDiffusionInverse) {
             // Apply -Mp^{-1} Fp Kp^{-1} in the mathematically correct order.
             // This requires an explicitly verified *lumped* Mp; a general
             // mass matrix must not be silently inverted using its diagonal.
@@ -254,9 +279,20 @@ public:
             Vector fp_product(np, 0.0);
             pressure_convection_diffusion_.matvec_into(
                 kp_inverse_rhs, fp_product);
-            for (std::size_t row = 0; row < np; ++row) {
-                const double mass = pressure_mass_(row, row);
-                candidate(row) = -fp_product(row) / mass;
+            if (mode_ == PcdSchurActionMode::LumpedMassCommutator) {
+                for (std::size_t row = 0; row < np; ++row) {
+                    const double mass = pressure_mass_(row, row);
+                    candidate(row) = -fp_product(row) / mass;
+                }
+            } else {
+                // A consistent/full pressure mass cannot be inverted using
+                // its diagonal. Fail closed on stale or inaccurate callbacks.
+                if (!pressure_mass_solve_ ||
+                    !pressure_mass_solve_(fp_product, candidate) ||
+                    candidate.size() != np || !candidate.is_valid() ||
+                    !inverse_is_current(pressure_mass_, fp_product, candidate))
+                    return false;
+                candidate *= -1.0;
             }
             if (!candidate.is_valid())
                 return false;
@@ -317,26 +353,52 @@ private:
         return true;
     }
 
-    // This check is intentionally algebraic and independent of the solver's
-    // claimed status. In this experimental mode an inaccurate or stale Kp
-    // callback must fail before it can poison the outer coupled iteration.
-    bool laplacian_inverse_is_current(const Vector& rhs,
-                                      const Vector& solution) const {
-        Vector actual(pressure_size_, 0.0);
-        pressure_laplacian_.matvec_into(solution, actual);
-        double residual_sq = 0.0;
-        double rhs_sq = 0.0;
-        for (std::size_t row = 0; row < pressure_size_; ++row) {
-            const double error = actual(row) - rhs(row);
-            residual_sq += error * error;
-            rhs_sq += rhs(row) * rhs(row);
-        }
-        if (!std::isfinite(residual_sq) || !std::isfinite(rhs_sq))
+    // Independent true-residual check; hypot avoids overflow of residual^2.
+    // Always verify a nested inverse against the current stored operator.
+    bool inverse_is_current(const SparseMatrix& matrix, const Vector& rhs,
+                            const Vector& solution) const {
+        if (rhs.size() != pressure_size_ || solution.size() != pressure_size_ ||
+            !rhs.is_valid() || !solution.is_valid())
             return false;
+        Vector actual(pressure_size_, 0.0);
+        matrix.matvec_into(solution, actual);
+        if (!actual.is_valid()) return false;
+        double residual_norm = 0.0;
+        double rhs_norm = 0.0;
+        for (std::size_t row = 0; row < pressure_size_; ++row) {
+            residual_norm = std::hypot(residual_norm, actual(row) - rhs(row));
+            rhs_norm = std::hypot(rhs_norm, rhs(row));
+        }
         constexpr double relative_tol = 1e-9;
         constexpr double absolute_tol = 1e-12;
-        return std::sqrt(residual_sq) <=
-            absolute_tol + relative_tol * std::sqrt(rhs_sq);
+        return std::isfinite(residual_norm) && std::isfinite(rhs_norm) &&
+            residual_norm <= absolute_tol + relative_tol * rhs_norm;
+    }
+
+    bool laplacian_inverse_is_current(const Vector& rhs,
+                                      const Vector& solution) const {
+        return inverse_is_current(pressure_laplacian_, rhs, solution);
+    }
+
+    // Positive diagonals and symmetric sparsity are necessary but NOT
+    // sufficient for SPD. The caller must supply a positive-definite pressure
+    // mass and a consistent inverse (the latter is checked on every apply).
+    static bool symmetric_positive_diagonal_mass(const SparseMatrix& matrix,
+                                                 std::size_t np) {
+        if (!valid_pressure_operator(matrix, np)) return false;
+        for (std::size_t row = 0; row < np; ++row) {
+            if (!(matrix(row, row) > 0.0)) return false;
+            for (std::size_t k = matrix.row_offsets_data()[row];
+                 k < matrix.row_offsets_data()[row + 1]; ++k) {
+                const std::size_t col = matrix.columns_data()[k];
+                const double val = matrix.values_data()[k];
+                const double opposite = matrix(col, row);
+                if (std::abs(val - opposite) >
+                    1e-12 * std::max({1.0, std::abs(val), std::abs(opposite)}))
+                    return false;
+            }
+        }
+        return true;
     }
 
     static bool same_values(const SparseMatrix& a, const SparseMatrix& b) {
@@ -417,6 +479,7 @@ private:
     std::optional<std::size_t> pressure_reference_cell_;
     PcdSchurActionMode mode_ =
         PcdSchurActionMode::LegacySingleConvectionDiffusionInverse;
+    PressureSolve pressure_mass_solve_;
     GraphSignature graph_signature_{};
 };
 

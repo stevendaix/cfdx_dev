@@ -109,5 +109,50 @@ int main() {
         EXPECT_TRUE(certificate.columns_checked == 2);
     });
 
+    run_case("pressure_velocity_directional_screening_detects_C_and_G_errors", [&] {
+        PressureVelocityDirectionalControls controls;
+        controls.directions = 12;
+        const auto correct = certify_pressure_velocity_jacobian_directions(
+            blocks, state, actual_residual, controls);
+        EXPECT_TRUE(correct.passed);
+        EXPECT_TRUE(correct.directions_checked == 12);
+        EXPECT_TRUE(correct.residual_evaluations == 24);
+        const auto wrong_C = sparse(2,2,{{0,0,0.7},{1,1,1.0}});
+        const BlockOperator missing_C(M,G,D,wrong_C);
+        const auto missing = certify_pressure_velocity_jacobian_directions(
+            missing_C, state, actual_residual, controls);
+        EXPECT_TRUE(!missing.passed);
+        EXPECT_TRUE(missing.worst_row >= 2);
+        const auto wrong_G = sparse(2,2,{{0,0,1.2},{0,1,0.3},
+                                          {1,0,0.4},{1,1,-0.1}});
+        const BlockOperator sign_error(M,wrong_G,D,C);
+        EXPECT_TRUE(!certify_pressure_velocity_jacobian_directions(
+            sign_error, state, actual_residual, controls).passed);
+        std::cout << "PV_DIRECTIONAL missing_C_ratio="
+                  << missing.max_tolerance_ratio << '\n';
+    });
+
+    run_case("pressure_velocity_directional_deterministic_and_fail_closed", [&] {
+        PressureVelocityDirectionalControls controls;
+        controls.directions = 6;
+        const auto a = certify_pressure_velocity_jacobian_directions(
+            blocks, state, actual_residual, controls);
+        const auto b = certify_pressure_velocity_jacobian_directions(
+            blocks, state, actual_residual, controls);
+        EXPECT_TRUE(a.passed && b.passed);
+        EXPECT_NEAR(a.max_absolute_error, b.max_absolute_error, 0.0);
+        auto failed = [](const Vector&, Vector&) { return false; };
+        EXPECT_TRUE(!certify_pressure_velocity_jacobian_directions(
+            blocks, state, failed, controls).passed);
+        EXPECT_TRUE(certify_pressure_velocity_jacobian_directions(
+            blocks, state, failed, controls).directions_checked == 0);
+        auto nan = [](const Vector& x, Vector& r) {
+            r = Vector(x.size(), std::numeric_limits<double>::quiet_NaN());
+            return true;
+        };
+        EXPECT_TRUE(!certify_pressure_velocity_jacobian_directions(
+            blocks, state, nan, controls).passed);
+    });
+
     return run_all();
 }

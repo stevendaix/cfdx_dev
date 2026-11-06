@@ -590,5 +590,100 @@ int main() {
         EXPECT_NEAR(out(1), 42.0, 0.0);
     });
 
+    run_case("pcd_consistent_mass_noncommuting_reference", [&] {
+        const auto mass = make_sparse(2, 2, {
+            {0,0,2.0}, {0,1,0.2}, {1,0,0.2}, {1,1,3.0}
+        });
+        const auto mass_inverse = inverse(dense(mass));
+        auto solve_mass = [mass_inverse](const Vector& rhs, Vector& result) {
+            result = dense_matvec(mass_inverse, rhs);
+            return true;
+        };
+        PcdSchurApproximation pcd(mass, Kp, Fp, solve_K, solve_F,
+            std::nullopt, std::nullopt,
+            PcdSchurActionMode::ConsistentMassCommutator, solve_mass);
+        EXPECT_TRUE(pcd.setup(blocks));
+        EXPECT_TRUE(std::string(pcd.name()) == "pcd_consistent_mass_commutator");
+        Vector rhs(2, 0.0); rhs(0) = 1.0; rhs(1) = -0.7;
+        Vector actual(2, 0.0);
+        EXPECT_TRUE(pcd.apply(rhs, actual));
+        Vector reference = dense_matvec(mass_inverse,
+            dense_matvec(dense(Fp), dense_matvec(Kinv, rhs))) * -1.0;
+        assert_close(actual, reference);
+        // A lumped diagonal inverse is not the full-mass action.
+        Vector diagonal_approx = dense_matvec(dense(Fp), dense_matvec(Kinv, rhs));
+        diagonal_approx(0) /= -2.0; diagonal_approx(1) /= -3.0;
+        EXPECT_TRUE((actual - diagonal_approx).norm2() > 1e-3);
+    });
+
+    run_case("pcd_consistent_mass_stale_callback_detected", [&] {
+        const auto mass = make_sparse(2, 2, {
+            {0,0,2.0}, {0,1,0.2}, {1,0,0.2}, {1,1,3.0}
+        });
+        const auto mass_inverse = inverse(dense(mass));
+        auto old_mass_solve = [mass_inverse](const Vector& rhs, Vector& out) {
+            out = dense_matvec(mass_inverse, rhs); return true;
+        };
+        PcdSchurApproximation pcd(mass, Kp, Fp, solve_K, solve_F,
+            std::nullopt, std::nullopt,
+            PcdSchurActionMode::ConsistentMassCommutator, old_mass_solve);
+        EXPECT_TRUE(pcd.setup(blocks));
+        const auto new_mass = make_sparse(2, 2, {
+            {0,0,3.0}, {0,1,0.2}, {1,0,0.2}, {1,1,4.0}
+        });
+        EXPECT_TRUE(!pcd.update_pressure_values(blocks, new_mass, Kp, Fp));
+        EXPECT_NEAR(pcd.pressure_mass()(0,0), 2.0, 0.0);
+        // Deliberately install the stale mass solver. The next apply rejects it.
+        EXPECT_TRUE(pcd.update_pressure_values_and_solves(blocks, new_mass,
+            Kp, Fp, solve_K, solve_F, old_mass_solve));
+        Vector rhs(2, 0.0); rhs(0) = 1.0; rhs(1) = -0.4;
+        Vector out(2, 77.0);
+        EXPECT_TRUE(!pcd.apply(rhs, out));
+        EXPECT_NEAR(out(0), 77.0, 0.0);
+        const auto new_inverse = inverse(dense(new_mass));
+        auto solve_new_mass = [new_inverse](const Vector& r, Vector& x) {
+            x = dense_matvec(new_inverse, r); return true;
+        };
+        EXPECT_TRUE(pcd.update_pressure_values_and_solves(blocks, new_mass,
+            Kp, Fp, solve_K, solve_F, solve_new_mass));
+        EXPECT_TRUE(pcd.apply(rhs, out));
+        EXPECT_TRUE(out.is_valid());
+    });
+
+    run_case("pcd_consistent_mass_rejects_nonsymmetric_and_missing_solver", [&] {
+        const auto mass = make_sparse(2, 2, {
+            {0,0,2.0}, {0,1,0.2}, {1,0,0.2}, {1,1,3.0}
+        });
+        PcdSchurApproximation missing(mass, Kp, Fp, solve_K, solve_F,
+            std::nullopt, std::nullopt,
+            PcdSchurActionMode::ConsistentMassCommutator);
+        EXPECT_TRUE(!missing.setup(blocks));
+        const auto asymmetric = make_sparse(2, 2, {
+            {0,0,2.0}, {0,1,0.2}, {1,0,0.1}, {1,1,3.0}
+        });
+        auto stub = [](const Vector& r, Vector& x) {x = r; return true;};
+        PcdSchurApproximation bad(asymmetric, Kp, Fp, solve_K, solve_F,
+            std::nullopt, std::nullopt,
+            PcdSchurActionMode::ConsistentMassCommutator, stub);
+        EXPECT_TRUE(!bad.setup(blocks));
+    });
+
+    run_case("pcd_consistent_mass_callback_failure_preserves_output", [&] {
+        const auto mass = make_sparse(2, 2, {
+            {0,0,2.0}, {0,1,0.2}, {1,0,0.2}, {1,1,3.0}
+        });
+        auto failing_mass = [](const Vector&, Vector& out) {
+            out = Vector(2, 999.0); return false;
+        };
+        PcdSchurApproximation pcd(mass, Kp, Fp, solve_K, solve_F,
+            std::nullopt, std::nullopt,
+            PcdSchurActionMode::ConsistentMassCommutator, failing_mass);
+        EXPECT_TRUE(pcd.setup(blocks));
+        Vector rhs(2, 1.0), out(2, 47.0);
+        EXPECT_TRUE(!pcd.apply(rhs, out));
+        EXPECT_NEAR(out(0), 47.0, 0.0);
+        EXPECT_NEAR(out(1), 47.0, 0.0);
+    });
+
     return run_all();
 }

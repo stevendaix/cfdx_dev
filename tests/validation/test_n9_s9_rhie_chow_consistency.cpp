@@ -1,4 +1,6 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/coupled_assembly_certificate.h"
+#include "cfdx/physics/coupled_flux_equivalence_certificate.h"
 #include "common/test_harness.h"
 
 #include <array>
@@ -444,6 +446,7 @@ int main()
         std::vector<double> captured_schur_diagonal;
         std::vector<double> captured_schur_diagonal_raw;
         bool captured_has_fixed_pressure = false;
+        bool captured_structure_certificate = false;
         bool captured = false;
         IncompressibleSolverControls controls;
         controls.algorithm = PressureVelocityAlgorithm::COUPLED;
@@ -467,11 +470,33 @@ int main()
             captured_schur_diagonal = *snapshot.pressure_schur_diagonal;
             captured_schur_diagonal_raw = *snapshot.pressure_schur_diagonal_raw;
             captured_has_fixed_pressure = snapshot.has_fixed_pressure;
+            if (snapshot.initial_guess == nullptr)
+                throw std::runtime_error("coupled initial guess missing from evidence");
+            CoupledAssemblyCertificateOptions audit_controls;
+            audit_controls.pressure_schur_diagonal = snapshot.pressure_schur_diagonal;
+            audit_controls.pressure_schur_diagonal_raw = snapshot.pressure_schur_diagonal_raw;
+            // This case has fixed-pressure inlet/outlet: do NOT impose
+            // a fake pinned gauge equation on genuine continuity rows.
+            if (!snapshot.has_fixed_pressure)
+                audit_controls.pressure_reference_cell = snapshot.reference_cell;
+            const auto audit = certify_coupled_assembly_structure(
+                *snapshot.matrix, *snapshot.rhs, *snapshot.initial_guess,
+                3 * mesh.n_cells(), mesh.n_cells(), audit_controls);
+            captured_structure_certificate = audit.passed &&
+                audit.nnz_momentum > 0 && audit.nnz_gradient > 0 &&
+                audit.nnz_divergence > 0 && audit.nnz_pressure > 0;
+            std::cerr << "N9_S9_COUPLED_ASSEMBLY_CERTIFICATE"
+                      << " structural_pass=" << audit.passed
+                      << " gradient_nnz=" << audit.nnz_gradient
+                      << " divergence_nnz=" << audit.nnz_divergence
+                      << " linear_continuity_linf="
+                      << audit.continuity_linear_residual_linf << '\n';
             captured = true;
         };
 
         const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, controls);
         EXPECT_TRUE(captured);
+        EXPECT_TRUE(captured_structure_certificate);
         // Diagnostic for the manufactured fixed-pressure case: distinguish a
         // bad assembled operator/RHS from a Krylov solution error without
         // changing any acceptance threshold.
@@ -542,6 +567,33 @@ int main()
                 cell_divergence[static_cast<std::size_t>(neighbour)] -=
                     result.authoritative_mass_flux(face);
         }
+
+        // Independent production flux-versus-matrix certificate: use the
+        // AUTHORITATIVE FV flux and exact Krylov CSR capture, not a matrix-
+        // derived proxy for the flux. The existing 1e-8 gate is unchanged.
+        std::vector<std::size_t> face_owner(mesh.n_faces());
+        std::vector<std::int64_t> face_neighbour(mesh.n_faces());
+        std::vector<double> face_flux(mesh.n_faces());
+        for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+            face_owner[face] = mesh.ownership().owner(face);
+            face_neighbour[face] = mesh.ownership().neighbour(face);
+            face_flux[face] = result.authoritative_mass_flux(face);
+        }
+        CoupledFluxEquivalenceControls face_controls;
+        face_controls.absolute_tolerance = 1e-8;
+        face_controls.relative_tolerance = 1e-8;
+        face_controls.continuity_linf_gate = 1e-8;
+        const auto face_certificate = certify_coupled_face_flux_equivalence(
+            captured_matrix, captured_rhs, x, nc, face_owner,
+            face_neighbour, face_flux, face_controls);
+        std::cerr << "N9_S9_COUPLED_FACE_FLUX_CERTIFICATE"
+                  << " complete=" << face_certificate.complete
+                  << " pass=" << face_certificate.passed
+                  << " matrix_flux_linf=" << face_certificate.max_identity_error
+                  << " continuity_linf=" <<
+                     face_certificate.max_conservative_flux_divergence << '\n';
+        EXPECT_TRUE(face_certificate.complete);
+        EXPECT_TRUE(face_certificate.passed);
 
         // The post-solve continuity row is the exact algebraic residual of
         // the captured production block system. With the production sign
