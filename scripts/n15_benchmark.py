@@ -174,9 +174,7 @@ def run_child(
                 if sample is not None:
                     sampled_peak = max(sampled_peak or 0, sample)
             try:
-                _pid, status, usage = os.wait4(
-                    process.pid, os.WNOHANG if linux else 0
-                )
+                _pid, status, usage = os.wait4(process.pid, os.WNOHANG if linux else 0)
                 if _pid:
                     break
                 time.sleep(0.005)
