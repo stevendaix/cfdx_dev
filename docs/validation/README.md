@@ -46,6 +46,7 @@ A reference value is never a CFDX result. A green CI job is not automatically va
 14-benchmarks/09-thermohydraulics/TH03_V3_WALL_CORRECTION_AUDIT
 14-benchmarks/09-thermohydraulics/CFDX_TH03_OpenFOAM_V4_AUDIT
 15-qualification/README
+14-benchmarks/09-thermohydraulics/chapter
 ```
 
 The numbered directories are the campaign taxonomy. A directory receives a `chapter.py` when executable evidence is actually implemented; we do not create empty Python notebooks merely to satisfy the layout.
