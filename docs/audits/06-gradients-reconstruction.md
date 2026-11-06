@@ -53,3 +53,84 @@ Aux faces frontières, $\\phi_f$ doit être la **valeur frontière** (Dirichlet)
 ## 8. Journal
 - 2026-10-12 — création ; synthétise #845/#852 et l'évaluation de #511.
 - 2026-10-16 — PR #925 : contrat GAUSS_POINT point-reconstruit ajouté (§3–§7) ; la reconstruction historique point-linéaire/vertex est retirée du code ; qualification CI en cours (job Release standard en échec sur le head initial 98e8905b — diagnostic en cours sur la branche diag, preuves diag-evidence/logs/pr925_release_*).
+
+
+## 9. Moindres carrés rang-déficient et gradient minimum-norm (PR #1172)
+
+Le solveur LS historique utilise les poids de lignes correspondant à
+\(\min_g\sum_i w_i(\Delta\phi_i-g\cdot\Delta x_i)^2\), avec
+\(w_i=1/\|\Delta x_i\|^2\). La matrice de conception pondérée contient donc
+les lignes \(a_i=\Delta x_i/\|\Delta x_i\|\) et le second membre
+\(b_i=\Delta\phi_i/\|\Delta x_i\|\). Les poids et le contrat de la voie
+legacy restent inchangés.
+
+La factorisation one-sided Jacobi orthogonalise directement les colonnes de
+la matrice de conception, sans former \(A^T A\). En notant
+\(A V = U\Sigma\), la solution retournée est
+\[
+g_{min}=V_r\Sigma_r^{-1}U_r^T b,
+\]
+où \(r\) est le rang numérique retenu. Cette solution est la solution de
+moindre norme euclidienne parmi les minimisateurs LS. Une direction non
+observable par le stencil ne reçoit donc pas arbitrairement une composante
+cartésienne nulle : le résultat est invariant par rotation du stencil.
+
+- La voie legacy 'least_squares_gradient' demande le mode interne
+  'requested_dimension=0' : le rang numérique 1, 2 ou 3 est retenu
+  automatiquement. C'est nécessaire pour les stencils 1-D/2-D plongés dans
+  l'espace 3-D.
+- La voie WLS explicite 2-D/3-D conserve un contrat strict : elle rejette un
+  rang différent de la dimension demandée. Le mode 2-D tolère uniquement le
+  bruit numérique de la troisième valeur singulière sous le seuil relatif
+  documenté dans le code ; le mode 3-D n'abaisse jamais silencieusement son
+  rang.
+- Le seuil de rang est relatif à la plus grande valeur singulière,
+  '128 * epsilon * sigma_max'. Le conditionnement est rapporté ; un rang
+  complet ne signifie pas qu'un stencil fortement mal conditionné est
+  physiquement acceptable.
+- Les coordonnées du stencil, valeurs, poids et gradient résultant doivent
+  rester finis. Les points dupliqués et les entrées invalides sont rejetés.
+- Le contrat ne promet pas de reconstruire les composantes du gradient dans
+  le noyau nul du stencil. Pour un champ affine, seule la projection
+  minimum-norm observable est déterminée si le rang est inférieur à 3.
+
+Régressions exigées : champ affine sur un stencil 3-D plein rang ; stencil
+plan 2-D tourné dans l'espace 3-D ; stencil 1-D tourné ; invariance à la
+rotation et à l'échelle ; rang 0 et points dupliqués ; stencils presque
+dégénérés avec diagnostics de rang/conditionnement. Le test
+'tests/unit/test_gradient.cpp' porte les contre-exemples de rang et le test
+'tests/unit/test_scalar_transport_gradient_skew.cpp' couvre la reconstruction
+scalaire sur maillages skew. Ces tests vérifient le contrat algébrique ; ils ne
+constituent pas une qualification complète des gradients de production sur
+toutes familles polyédriques.
+
+## 10. WLS contraint aux frontières pour le transport scalaire (PR #1172)
+
+La reconstruction SST optionnelle ajuste un gradient \(g\) aux échantillons
+internes et aux contraintes de face. Pour une face Dirichlet, l'échantillon
+est la valeur prescrite au centre de face. Pour une face Neumann, un point fantôme normal est construit à
+\(x_g=x_P+2d_n n_f\), avec \(\phi_g=\phi_P+2d_n(\partial\phi/\partial n)\).
+Une frontière zéro-gradient utilise la même construction avec dérivée nulle.
+Cette construction impose la seule dérivée normale prescrite et n'invente
+aucune composante tangentielle. Les faces internes contribuent
+avec les différences de valeurs aux centres des cellules.
+
+Les contraintes sont résolues dans le même problème WLS pondéré, avec la
+dimension intrinsèque explicitement fournie (2 ou 3). Les entrées non finies,
+les géométries dégénérées et les stencils de rang insuffisant sont rejetés ;
+aucun repli silencieux vers Green–Gauss n'est autorisé. L'opérateur est
+strictement opt-in pour SST : le chemin historique Green–Gauss reste le défaut.
+Il n'ajoute ni flux de face, ni correction de skewness à l'assemblage FV, et
+ne modifie donc pas la conservation des équations de transport.
+
+La preuve actuelle d'exactitude affine sur géométrie skew est une preuve de
+reconstruction locale. Avant d'activer ce chemin par défaut, il faut encore
+démontrer sur les cas SST de production la cohérence des valeurs de face,
+l'ordre mesuré, la convergence externe, les bilans et les QoI ; aucun résultat
+physique SST/NACA n'est revendiqué par la PR #1172.
+
+## 11. Journal des modifications
+
+- 2026-11-04 — PR #1172 : contrat minimum-norm LS rang-déficient, WLS contraint
+  aux frontières et limites de qualification explicités ; aucune promotion
+  des campagnes N2/SST n'est induite par les tests unitaires.

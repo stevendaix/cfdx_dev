@@ -35,6 +35,29 @@ struct WallSurface {
     std::vector<WallTriangle> triangles;
 };
 
+// Wall surfaces supplied directly by the public geometry API may not have
+// passed the mesh importer's connectivity checks. Reject malformed indices
+// and non-finite coordinates BEFORE any point/triangle or BVH access.
+// Geometrically degenerate triangles remain permitted here for the existing
+// explicit nearest_normal_fallbacks diagnostic; production mesh extraction
+// filters degenerate polygon fan triangles separately.
+inline void validate_wall_distance_surface(const WallSurface& surface) {
+    if (surface.points.empty() || surface.triangles.empty())
+        throw std::invalid_argument("wall distance surface is empty");
+    for (const auto& p : surface.points)
+        if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z))
+            throw std::invalid_argument("wall distance surface has non-finite coordinates");
+    for (const auto& t : surface.triangles)
+        for (const auto vertex : t.v)
+            if (vertex >= surface.points.size())
+                throw std::invalid_argument("wall distance surface has an invalid triangle index");
+}
+
+inline void validate_wall_distance_point(const WallDistanceVec3& p) {
+    if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z))
+        throw std::invalid_argument("wall distance query point is non-finite");
+}
+
 enum class WallDistanceConvergenceStatus {
     DIRECT,
     CONVERGED,
@@ -75,6 +98,21 @@ struct WallDistanceResult {
     // distance was negative and was clamped to zero. The clamp itself is
     // unchanged; this counter only makes it attributable in the result.
     std::size_t positivity_clamp_activations{0};
+    // converged is a NUMERICAL/PDE or graph-termination certificate only.
+    // Only the direct point-to-triangle methods are geometrically exact
+    // relative to the input triangulated wall. Poisson's geometry error is
+    // separately available in poisson_distance_l2_error.
+    bool geometrically_exact_on_input_mesh{false};
+    // Transport variants impose exact BVH Dirichlet data ONLY at outer
+    // computational-boundary fluid nodes, never at interior active nodes.
+    // Exposing their count is essential to interpret apparent 0% errors on
+    // very coarse grids dominated by fixed boundary nodes.
+    std::size_t exact_wall_seed_samples{0};
+    std::size_t exact_outer_boundary_samples{0};
+    // Interior fluid nodes on which the selected distance PDE actually ran.
+    // Zero is an essential diagnostic: the entire field may have come from
+    // BVH wall seeds and exact outer-boundary Dirichlet data instead.
+    std::size_t active_pde_samples{0};
     bool converged{false};
     std::string stopping_reason{"not_reported"};
     WallDistanceConvergenceStatus convergence_status{WallDistanceConvergenceStatus::NOT_REPORTED};
@@ -89,36 +127,30 @@ enum class WallDistanceMethod {
     EIKONAL,
     HAMILTON_JACOBI,
     ADVECTION_DIFFUSION,
-    HYBRID_POISSON_EIKONAL
+    HYBRID_POISSON_EIKONAL,
+    EIKONAL_SECOND_ORDER
 };
 
-// Recommended default wall-distance method.
+// The generic default is now the exact BVH geometric distance on the input
+// triangulated surface. EIKONAL remains an explicit opt-in approximation to
+// |grad(d)| = 1; errors of several percent have been measured
+// on the analytical cube benchmarks included with this audit.
 //
-// EIKONAL (fast sweeping of |grad d| = 1) is the accuracy/cost sweet spot
-// documented in the literature (Zhao, Math. Comp. 2005; Sethian 1996) and
-// verified by our own complex-geometry benchmark:
-//
-//   * exact_geometric / search_based : 0 % L2 error, but O(N_cell * N_face)
-//     for exact and requires a global BVH sweep for search.
-//   * eikonal                        : ~7 % L2 error in 3 fast-sweep passes.
-//   * hamilton_jacobi                : ~13 % L2 error, ~1000+ iterations
-//     (O(n^2) pseudo-time). Its H-J correction only helps on smooth
-//     single-body shapes; on multi-body wing-body-tail it slightly worsens
-//     accuracy compared to plain eikonal because the Poisson-integrated
-//     "seed" front is contaminated by contributions from every wall.
-//   * advection_diffusion / hybrid   : 10-33 % L2 error, thousand+
-//     iterations. Same multi-body limitation as HJ; the hybrid variant
-//     compounds it because it starts from a Poisson-reconstructed field
-//     and the reconstruction is intrinsically 15-30 % accurate in the
-//     literature (Tucker 2003, Fares-Schroder 2002) for this geometry
-//     class.
-//
-// The Poisson family is retained because it produces a smooth d(x) with
-// analytic dphi/dn, which is what Spalart-Allmaras and k-omega SST source
-// terms actually need -- OpenFOAM's PoissonPatchDist has the same
-// rationale. Do not use it when the value of d itself matters.
+// For SST, wall functions, wall shear, y+ and physical qualification, prefer
+// SEARCH_BASED (exact point-to-triangle BVH distance on the input mesh) and
+// qualify the actual wall-face geometry and wall-normal gradients separately.
+// The PDE/transport models below are not interchangeable with exact distance.
+// Poisson is an auxiliary smooth potential method, not a generally accurate
+// substitute for the Euclidean distance. Directional mesh-wave is explicitly
+// a different metric and requires a separately specified physical objective.
+// The caller MUST check numerical convergence AND independent geometry error
+// before promoting an approximate method to production for a new mesh.
 inline constexpr WallDistanceMethod default_wall_distance_method =
-    WallDistanceMethod::EIKONAL;
+    WallDistanceMethod::SEARCH_BASED;
+
+// Shared gate: numerical transport residuals and the auxiliary Poisson field
+// must satisfy the SAME strict physical-equation tolerance.
+inline constexpr double wall_distance_transport_residual_tolerance = 1e-8;
 
 inline const char* wall_distance_method_name(WallDistanceMethod m) {
     switch(m) {
@@ -128,6 +160,7 @@ inline const char* wall_distance_method_name(WallDistanceMethod m) {
         case WallDistanceMethod::DIRECTIONAL_MESH_WAVE: return "directional_mesh_wave";
         case WallDistanceMethod::POISSON: return "poisson";
         case WallDistanceMethod::EIKONAL: return "eikonal";
+        case WallDistanceMethod::EIKONAL_SECOND_ORDER: return "eikonal_second_order";
         case WallDistanceMethod::HAMILTON_JACOBI: return "hamilton_jacobi";
         case WallDistanceMethod::ADVECTION_DIFFUSION: return "advection_diffusion";
         case WallDistanceMethod::HYBRID_POISSON_EIKONAL: return "hybrid_poisson_eikonal";
@@ -143,16 +176,17 @@ inline const char* wall_distance_method_name(WallDistanceMethod m) {
 //   * Poisson is a Krylov solve; its iteration count grows like O(n). Measured
 //     46 / 98 / 207 / 461 at n=16 / 32 / 64 / 128, a clean factor 2.2 per
 //     refinement.
-//   * Hamilton-Jacobi, advection-diffusion and the hybrid all take an explicit
-//     pseudo-time step bounded by dt = O(h^2), so the number of steps to reach
-//     steady state grows like O(n^2). Measured with the old fixed budget of
-//     500: advection-diffusion needed 68 steps at n=16 and 224 at n=32
-//     (factor 3.3), then hit the ceiling at n=64 with residual 4.3e-5.
+//   * Hamilton-Jacobi retains an explicit pseudo-time update with a
+//     grid-dependent stability limit. Advection-diffusion and the hybrid now
+//     use implicit Gauss-Seidel/Picard sweeps; their work per sweep grows with
+//     the active grid and convergence depends on cut-cell geometry and the
+//     nonlinear direction field. The previous explicit iteration counts are
+//     historical evidence, not a valid cost model for the implicit solvers.
 //
-// Budgets below are those cost laws, normalized at n=16 with roughly a factor 4
-// of margin over the counts measured there (46 for Poisson, 208 for the slowest
-// pseudo-time method). Methods that are direct or purely graph-based ignore the
-// budget entirely.
+// Budgets below retain conservative resolution scaling pending matched
+// refinement campaigns on the implicit methods. They are execution ceilings,
+// not convergence certificates. Methods that are direct or purely graph-based
+// ignore the budget entirely.
 inline std::size_t wall_distance_iteration_budget(WallDistanceMethod method,
                                                   std::size_t n) {
     const double ratio=static_cast<double>(n)/16.0;
@@ -168,37 +202,60 @@ inline std::size_t wall_distance_iteration_budget(WallDistanceMethod method,
     }
 }
 
+// Closest point on a (possibly degenerate) triangle.  Degenerate and nearly
+// collinear faces are reduced to the nearest of their three closed edges.
+// This also makes the brute-force and BVH oracles agree on malformed mesh
+// inputs rather than silently returning a NaN or a wrong barycentric value.
+inline WallDistanceVec3 closest_point_on_triangle(const WallDistanceVec3& p,
+        const WallDistanceVec3& a,const WallDistanceVec3& b,
+        const WallDistanceVec3& c) {
+    auto segment=[&](const WallDistanceVec3& u,const WallDistanceVec3& v) {
+        const auto e=v-u;
+        const double len2=wd_norm2(e);
+        const double t=len2>0.0 ? std::clamp(wd_dot(p-u,e)/len2,0.0,1.0) : 0.0;
+        return u+e*t;
+    };
+    const auto ab=b-a, ac=c-a, bc=c-b;
+    const WallDistanceVec3 cross{ab.y*ac.z-ab.z*ac.y,
+                                  ab.z*ac.x-ab.x*ac.z,
+                                  ab.x*ac.y-ab.y*ac.x};
+    const double scale2=std::max({wd_norm2(ab),wd_norm2(ac),wd_norm2(bc)});
+    if(!(scale2>0.0) || wd_norm2(cross) <= 1e-24*scale2*scale2) {
+        const auto pa=segment(a,b), pb=segment(a,c), pc=segment(b,c);
+        const double da=wd_norm2(p-pa), db=wd_norm2(p-pb), dc=wd_norm2(p-pc);
+        return da<=db && da<=dc ? pa : (db<=dc ? pb : pc);
+    }
+    const auto ap=p-a;
+    const double d1=wd_dot(ab,ap), d2=wd_dot(ac,ap);
+    if(d1<=0.0 && d2<=0.0) return a;
+    const auto bp=p-b;
+    const double d3=wd_dot(ab,bp), d4=wd_dot(ac,bp);
+    if(d3>=0.0 && d4<=d3) return b;
+    const double vc=d1*d4-d3*d2;
+    if(vc<=0.0 && d1>=0.0 && d3<=0.0) return a+ab*(d1/(d1-d3));
+    const auto cp=p-c;
+    const double d5=wd_dot(ab,cp), d6=wd_dot(ac,cp);
+    if(d6>=0.0 && d5<=d6) return c;
+    const double vb=d5*d2-d1*d6;
+    if(vb<=0.0 && d2>=0.0 && d6<=0.0) return a+ac*(d2/(d2-d6));
+    const double va=d3*d6-d5*d4;
+    if(va<=0.0 && d4-d3>=0.0 && d5-d6>=0.0)
+        return b+bc*((d4-d3)/((d4-d3)+(d5-d6)));
+    const double den=va+vb+vc;
+    if(!(den>0.0)) {
+        // Arithmetic near a degenerate triangle: fail safely to its edges.
+        const auto pa=segment(a,b), pb=segment(a,c), pc=segment(b,c);
+        const double da=wd_norm2(p-pa), db=wd_norm2(p-pb), dc=wd_norm2(p-pc);
+        return da<=db && da<=dc ? pa : (db<=dc ? pb : pc);
+    }
+    return a+ab*(vb/den)+ac*(vc/den);
+}
+
 inline double point_triangle_distance2(const WallDistanceVec3& p,
                                        const WallDistanceVec3& a,
                                        const WallDistanceVec3& b,
                                        const WallDistanceVec3& c) {
-    const WallDistanceVec3 ab=b-a, ac=c-a, ap=p-a;
-    const double d1=wd_dot(ab,ap), d2=wd_dot(ac,ap);
-    if(d1<=0.0 && d2<=0.0) return wd_norm2(ap);
-    const WallDistanceVec3 bp=p-b;
-    const double d3=wd_dot(ab,bp), d4=wd_dot(ac,bp);
-    if(d3>=0.0 && d4<=d3) return wd_norm2(bp);
-    const double vc=d1*d4-d3*d2;
-    if(vc<=0.0 && d1>=0.0 && d3<=0.0) {
-        const double v=d1/(d1-d3);
-        return wd_norm2(p-(a+ab*v));
-    }
-    const WallDistanceVec3 cp=p-c;
-    const double d5=wd_dot(ab,cp), d6=wd_dot(ac,cp);
-    if(d6>=0.0 && d5<=d6) return wd_norm2(cp);
-    const double vb=d5*d2-d1*d6;
-    if(vb<=0.0 && d2>=0.0 && d6<=0.0) {
-        const double w=d2/(d2-d6);
-        return wd_norm2(p-(a+ac*w));
-    }
-    const double va=d3*d6-d5*d4;
-    if(va<=0.0 && (d4-d3)>=0.0 && (d5-d6)>=0.0) {
-        const double w=(d4-d3)/((d4-d3)+(d5-d6));
-        return wd_norm2(p-(b+(c-b)*w));
-    }
-    const double denom=1.0/(va+vb+vc);
-    const double v=vb*denom, w=vc*denom;
-    return wd_norm2(p-(a+ab*v+ac*w));
+    return wd_norm2(p-closest_point_on_triangle(p,a,b,c));
 }
 
 struct WallDistanceAabb {
@@ -231,21 +288,30 @@ inline double wall_distance_aabb_distance2(const WallDistanceAabb& box,
 class WallDistanceBvh {
 public:
     explicit WallDistanceBvh(const WallSurface& surface) : surface_(surface) {
-        if(surface_.points.empty() || surface_.triangles.empty())
-            throw std::invalid_argument("wall distance BVH surface is empty");
+        validate_wall_distance_surface(surface_);
         indices_.resize(surface_.triangles.size());
         for(std::size_t i=0;i<indices_.size();++i) indices_[i]=i;
         nodes_.reserve(indices_.size()*2);
         build(0,indices_.size());
     }
 
+    // The BVH stores a non-owning reference and must not bind a temporary.
+    // Without this guard WallDistanceBvh(make_surface()) would leave a
+    // dangling surface_ reference immediately after construction.
+    WallDistanceBvh(WallSurface&&) = delete;
+    WallDistanceBvh(const WallSurface&&) = delete;
+
     double nearest_distance(const WallDistanceVec3& p) const {
+        validate_wall_distance_point(p);
         double best2=std::numeric_limits<double>::infinity();
         nearest(0,p,best2);
         return std::sqrt(best2);
     }
 
     double nearest_distance_within(const WallDistanceVec3& p,double threshold) const {
+        validate_wall_distance_point(p);
+        if (std::isnan(threshold))
+            throw std::invalid_argument("wall distance search threshold is NaN");
         if(threshold<0.0) return std::numeric_limits<double>::infinity();
         double best2=threshold*threshold;
         bool found=false;
@@ -262,6 +328,10 @@ public:
     double ray_distance(const WallDistanceVec3& p,
                         const WallDistanceVec3& direction,
                         double max_distance) const {
+        validate_wall_distance_point(p);
+        validate_wall_distance_point(direction);
+        if (std::isnan(max_distance))
+            throw std::invalid_argument("wall distance ray maximum is NaN");
         const double dn=wd_norm(direction);
         if(!(dn>1e-30) || !(max_distance>0.0)) return std::numeric_limits<double>::infinity();
         const WallDistanceVec3 d=direction*(1.0/dn);
@@ -273,7 +343,9 @@ public:
             };
         };
         double best=std::numeric_limits<double>::infinity();
-        const double eps=1e-12*std::max(1.0,max_distance);
+        // A ray limited to a micro-scale cut cell must not inherit an absolute
+        // 1e-12 length tolerance from a unit-sized coordinate convention.
+        const double eps=1e-12*max_distance;
 
         // Traverse the existing BVH rather than testing every triangle for
         // every cut-face ray. Wall offsets are queried repeatedly during the
@@ -285,12 +357,16 @@ public:
             // within 1e-12 of an edge. Expand AABBs by a scale-aware spatial
             // tolerance too, otherwise a near-edge hit accepted by the exact
             // test could be pruned first (especially for axis-parallel rays).
-            const double spatial_eps=1e-12*std::max({
-                1.0,std::abs(p.x),std::abs(p.y),std::abs(p.z),
+            // ULP allowance at the coordinate scale, plus a local ray-length
+            // tolerance. A fixed 1e-12 in physical units is scale dependent.
+            const double coordinate_scale=std::max({
+                std::abs(p.x),std::abs(p.y),std::abs(p.z),
                 std::abs(box.lo.x),std::abs(box.lo.y),std::abs(box.lo.z),
-                std::abs(box.hi.x),std::abs(box.hi.y),std::abs(box.hi.z),
-                max_distance
+                std::abs(box.hi.x),std::abs(box.hi.y),std::abs(box.hi.z)
             });
+            const double spatial_eps=
+                32.0*std::numeric_limits<double>::epsilon()*coordinate_scale
+                + 1e-12*max_distance;
             const auto slab=[&](double origin,double direction,double lo,double hi) {
                 lo-=spatial_eps;
                 hi+=spatial_eps;
@@ -319,7 +395,13 @@ public:
                     const auto e2=v2-v0;
                     const auto h=cross(d,e2);
                     const double a=wd_dot(e1,h);
-                    if(std::abs(a)<1e-14) continue;
+                    // Moller-Trumbore determinant is an AREA. Reject by
+                    // relative parallelism, not by a dimensionful constant:
+                    // an ordinary 1e-8 m triangle has area ~1e-16 m^2.
+                    const double area_scale=wd_norm(e1)*wd_norm(e2);
+                    if(!(area_scale>0.0) ||
+                       std::abs(a)<=32.0*std::numeric_limits<double>::epsilon()*area_scale)
+                        continue;
                     const double inv_a=1.0/a;
                     const auto offset=p-v0;
                     const double u=inv_a*wd_dot(offset,h);
@@ -366,7 +448,20 @@ public:
         return degenerate_normal_fallbacks_.load(std::memory_order_relaxed);
     }
 
+    // Closest geometric point, calculated only at seed nodes by the
+    // wall-point wave. This is NOT an exact BVH query at every grid node.
+    WallDistanceVec3 nearest_point(const WallDistanceVec3& p) const {
+        validate_wall_distance_point(p);
+        double best2=std::numeric_limits<double>::infinity();
+        std::size_t best=0;
+        nearest_triangle(0,p,best2,best);
+        const auto& t=surface_.triangles[best];
+        return closest_point_on_triangle(p,surface_.points[t.v[0]],
+            surface_.points[t.v[1]],surface_.points[t.v[2]]);
+    }
+
     WallDistanceVec3 nearest_normal(const WallDistanceVec3& p) const {
+        validate_wall_distance_point(p);
         double best2=std::numeric_limits<double>::infinity();
         std::size_t best=0;
         nearest_triangle(0,p,best2,best);
@@ -535,8 +630,8 @@ private:
 };
 
 inline double exact_point_distance(const WallSurface& s,const WallDistanceVec3& p) {
-    if(s.points.empty() || s.triangles.empty())
-        throw std::invalid_argument("wall distance surface is empty");
+    validate_wall_distance_surface(s);
+    validate_wall_distance_point(p);
     double d2=std::numeric_limits<double>::infinity();
     for(const auto& t:s.triangles) {
         d2=std::min(d2,point_triangle_distance2(p,s.points[t.v[0]],s.points[t.v[1]],s.points[t.v[2]]));
@@ -561,7 +656,13 @@ inline WallDistanceGrid make_wall_distance_grid(std::size_t nx,std::size_t ny,st
                                                  const WallDistanceVec3& origin,
                                                  const WallDistanceVec3& spacing,
                                                  const std::function<bool(const WallDistanceVec3&)>& inside) {
-    if(nx<3 || ny<3 || nz<3) throw std::invalid_argument("wall distance grid too small");
+    if(nx<3 || ny<3 || nz<3 ||
+       !std::isfinite(spacing.x) || !std::isfinite(spacing.y) || !std::isfinite(spacing.z) ||
+       !(spacing.x>0.0 && spacing.y>0.0 && spacing.z>0.0) ||
+       !std::isfinite(origin.x) || !std::isfinite(origin.y) || !std::isfinite(origin.z) ||
+       ny>std::numeric_limits<std::size_t>::max()/nx ||
+       nz>std::numeric_limits<std::size_t>::max()/(nx*ny) || !inside)
+        throw std::invalid_argument("wall distance grid: invalid dimensions, spacing or predicate");
     WallDistanceGrid g; g.nx=nx; g.ny=ny; g.nz=nz; g.origin=origin; g.spacing=spacing;
     const std::size_t n=nx*ny*nz;
     g.points.resize(n); g.solid.resize(n,0); g.neighbours.resize(n);
@@ -613,31 +714,50 @@ inline std::vector<std::size_t> wall_seed_nodes(const WallSurface& s,const WallD
     return wall_seed_nodes(bvh,g,seed_width);
 }
 
+// Propagate a nearest-wall POSITION, not a sum of axis-aligned grid-edge
+// distances. The latter is a Manhattan/chamfer metric with non-vanishing
+// angular bias under Cartesian refinement (observed 29-32% error on a cube).
+// The new method performs BVH queries at seeds only; downstream nodes inherit
+// candidate wall points over the fluid graph and measure straight-line distance
+// to them. It remains a graph approximation: labels may not cross a disconnected
+// component, and an exact BVH query at every node is still more reliable.
 inline WallDistanceResult graph_wave(const WallSurface& s,const WallDistanceGrid& g,bool directional) {
-    const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
+    const double seed_radius=1.6*std::max({g.spacing.x,g.spacing.y,g.spacing.z});
     const WallDistanceBvh bvh(s);
-    const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
+    const auto seeds=wall_seed_nodes(bvh,g,seed_radius);
     std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
+    std::vector<WallDistanceVec3> wall_point(g.points.size());
+    std::vector<WallDistanceVec3> wall_normal(g.points.size());
     using Item=std::pair<double,std::size_t>;
     std::priority_queue<Item,std::vector<Item>,std::greater<Item>> q;
-    for(const auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); q.push({d[id],id}); }
+    for(const auto id:seeds) {
+        wall_point[id]=bvh.nearest_point(g.points[id]);
+        if(directional) wall_normal[id]=bvh.nearest_normal(g.points[id]);
+        d[id]=wd_norm(g.points[id]-wall_point[id]);
+        q.push({d[id],id});
+    }
     while(!q.empty()) {
         const auto [du,u]=q.top(); q.pop();
         if(du!=d[u]) continue;
         for(const auto v:g.neighbours[u]) {
             if(g.solid[v]) continue;
-            const auto dv=g.points[v]-g.points[u];
-            const double r=wd_norm(dv);
-            double w=r;
-            if(directional) {
-                // Penalize propagation tangential to the local wall normal.
-                // This is a real directional metric; the previous implementation
-                // used dot(dv,-dv), which is identically -|dv|^2.
-                const auto n=bvh.nearest_normal(g.points[u]);
-                const double align=std::abs(wd_dot(dv,n))/std::max(r,1e-30);
-                w*=1.0+0.15*(1.0-align);
+            const auto delta=g.points[v]-wall_point[u];
+            const double length=wd_norm(delta);
+            double candidate=length;
+            if(directional && length>0.0) {
+                // This anisotropic metric is DELIBERATELY not Euclidean wall
+                // distance; tag it separately in the benchmark and do not use
+                // it as SST wall-normal distance without its own validation.
+                const double alignment=std::clamp(
+                    std::abs(wd_dot(delta,wall_normal[u]))/length,0.0,1.0);
+                candidate*=1.0+0.15*(1.0-alignment);
             }
-            if(du+w<d[v]) { d[v]=du+w; q.push({d[v],v}); }
+            if(std::isfinite(candidate) && (!std::isfinite(d[v]) || candidate<d[v]-1e-14*std::max(1.0,d[v]))) {
+                d[v]=candidate;
+                wall_point[v]=wall_point[u];
+                if(directional) wall_normal[v]=wall_normal[u];
+                q.push({candidate,v});
+            }
         }
     }
     WallDistanceResult r;
@@ -645,8 +765,7 @@ inline WallDistanceResult graph_wave(const WallSurface& s,const WallDistanceGrid
     r.valid.assign(g.points.size(),1);
     r.method=directional?"directional_mesh_wave":"mesh_wave";
     r.iterations=0;
-    // F-W1: attribute the degenerate-normal fallbacks of the directional
-    // metric (the plain mesh wave never queries the surface normal).
+    r.exact_wall_seed_samples=seeds.size();
     r.nearest_normal_fallbacks=bvh.degenerate_normal_fallbacks();
     return r;
 }
@@ -871,7 +990,7 @@ inline double eikonal_update(const std::array<double,3>& a,
 inline std::vector<double> eikonal_fast_sweep(const WallDistanceBvh& bvh,const WallDistanceGrid& g,
                                                std::size_t max_iter,std::size_t* used_iter=nullptr) {
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
-    const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
+    const auto seeds=wall_seed_nodes(bvh,g,1.6*std::max({g.spacing.x,g.spacing.y,g.spacing.z}));
     std::vector<unsigned char> fixed(g.points.size(),0);
     std::vector<double> d(g.points.size(),std::numeric_limits<double>::infinity());
     for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
@@ -910,6 +1029,139 @@ inline std::vector<double> eikonal_fast_sweep(const WallSurface& s,const WallDis
                                                std::size_t max_iter,std::size_t* used_iter=nullptr) {
     const WallDistanceBvh bvh(s);
     return eikonal_fast_sweep(bvh,g,max_iter,used_iter);
+}
+
+// An upwind, locally second-order fast-sweeping solution of |grad d|=1.
+// Smooth, causal axes use (3*d_i-4*d_1+d_2)/(2*h); near singularities,
+// medial axes, boundaries and uncertain characteristics the update falls
+// back to the monotone first-order Godunov formula. Near-wall seeds are
+// evaluated by the exact surface BVH (not by a grid vertex approximation).
+// This method remains APPROXIMATE and requires independent accuracy testing.
+inline std::vector<double> second_order_eikonal_fast_sweep(
+    const WallSurface& surface, const WallDistanceGrid& grid,
+    std::size_t max_sweeps = 100,
+    std::size_t* used_sweeps = nullptr)
+{
+    if (grid.points.size() != grid.nx * grid.ny * grid.nz ||
+        grid.solid.size() != grid.points.size() ||
+        grid.nx < 2 || grid.ny < 2 || grid.nz < 2 ||
+        !(std::isfinite(grid.spacing.x) && grid.spacing.x > 0.0) ||
+        !(std::isfinite(grid.spacing.y) && grid.spacing.y > 0.0) ||
+        !(std::isfinite(grid.spacing.z) && grid.spacing.z > 0.0) ||
+        max_sweeps == 0)
+        throw std::invalid_argument("second_order_eikonal_fast_sweep: invalid grid or budget");
+
+    const WallDistanceBvh bvh(surface);
+    const double h_min = std::min({grid.spacing.x,grid.spacing.y,grid.spacing.z});
+    const auto seeds = wall_seed_nodes(bvh,grid,1.6*std::max({grid.spacing.x,grid.spacing.y,grid.spacing.z}));
+    if (seeds.empty())
+        throw std::invalid_argument("second_order_eikonal_fast_sweep: no wall seeds");
+
+    const double inf = std::numeric_limits<double>::infinity();
+    const std::size_t n = grid.points.size();
+    std::vector<double> distance(n,inf);
+    std::vector<unsigned char> fixed(n,0);
+    for (const auto id : seeds) {
+        distance[id] = bvh.nearest_distance(grid.points[id]);
+        fixed[id] = 1;
+    }
+    const std::array<int,2> directions = {1,-1};
+    std::size_t used = max_sweeps;
+    for (std::size_t sweep = 0; sweep < max_sweeps; ++sweep) {
+        double max_change = 0.0;
+        for (int sx : directions) for (int sy : directions) for (int sz : directions)
+            for (std::size_t kk = 0; kk < grid.nz; ++kk)
+                for (std::size_t jj = 0; jj < grid.ny; ++jj)
+                    for (std::size_t ii = 0; ii < grid.nx; ++ii) {
+                        const std::size_t i = sx > 0 ? ii : grid.nx-1-ii;
+                        const std::size_t j = sy > 0 ? jj : grid.ny-1-jj;
+                        const std::size_t k = sz > 0 ? kk : grid.nz-1-kk;
+                        const std::size_t id = grid.index(i,j,k);
+                        if (grid.solid[id] || fixed[id]) continue;
+                        std::array<double,3> a = {inf,inf,inf};
+                        std::array<double,3> h = {grid.spacing.x,grid.spacing.y,grid.spacing.z};
+                        for (std::size_t axis = 0; axis < 3; ++axis) {
+                            const std::size_t pos = axis == 0 ? i : (axis == 1 ? j : k);
+                            const std::size_t max_pos = axis == 0 ? grid.nx : (axis == 1 ? grid.ny : grid.nz);
+                            const std::size_t stride = axis == 0 ? 1 : (axis == 1 ? grid.nx : grid.nx*grid.ny);
+                            const double minus = pos > 0 && !grid.solid[id-stride] ? distance[id-stride] : inf;
+                            const double plus = pos+1 < max_pos && !grid.solid[id+stride] ? distance[id+stride] : inf;
+                            const bool use_minus = minus <= plus;
+                            const double d1 = use_minus ? minus : plus;
+                            if (!std::isfinite(d1)) continue;
+                            a[axis] = d1;
+                            const bool second_available = use_minus ? pos >= 2 : pos+2 < max_pos;
+                            if (!second_available) continue;
+                            const std::size_t id2 = use_minus ? id-2*stride : id+2*stride;
+                            if (grid.solid[id2] || !std::isfinite(distance[id2])) continue;
+                            const double d2 = distance[id2];
+                            if (d2 > d1) continue; // don't cross a ridge / reverse causality
+                            const double extrapolated = (4.0*d1-d2)/3.0;
+                            if (!std::isfinite(extrapolated)) continue;
+                            a[axis] = extrapolated;
+                            h[axis] *= 2.0/3.0;
+                        }
+                        double candidate = eikonal_update(a,h,1.0);
+                        if (std::isfinite(candidate) && candidate >= 0.0 &&
+                            (!std::isfinite(distance[id]) ||
+                             std::abs(candidate-distance[id]) > 1e-14*h_min)) {
+                            const double old = distance[id];
+                            distance[id] = candidate;
+                            max_change = std::max(max_change,
+                                std::isfinite(old) ? std::abs(candidate-old) : candidate);
+                        }
+                    }
+        if (max_change < 1e-11*h_min) { used = sweep+1; break; }
+    }
+    if (used_sweeps) *used_sweeps = used;
+    return distance;
+}
+
+// Discrete Eikonal residual for the same second-order upwind stencil as the
+// selectable fast sweeping update.  Never certify it with the first-order
+// Godunov residual (the two discretizations differ at a smooth node).
+inline double second_order_eikonal_residual_inf(
+        const std::vector<double>& distance,const WallDistanceGrid& grid,
+        const std::vector<unsigned char>& fixed) {
+    if(distance.size()!=grid.points.size() || fixed.size()!=distance.size())
+        throw std::invalid_argument("second-order Eikonal residual: size mismatch");
+    double maximum=0.0;
+    std::size_t active=0;
+    const double inf=std::numeric_limits<double>::infinity();
+    for(std::size_t k=0;k<grid.nz;++k)
+    for(std::size_t j=0;j<grid.ny;++j)
+    for(std::size_t i=0;i<grid.nx;++i) {
+        const auto id=grid.index(i,j,k);
+        if(grid.solid[id]) continue;
+        if(!std::isfinite(distance[id]) || distance[id]<0.0) return inf;
+        if(fixed[id]) continue;
+        ++active;
+        std::array<double,3> a={inf,inf,inf};
+        std::array<double,3> h={grid.spacing.x,grid.spacing.y,grid.spacing.z};
+        for(std::size_t axis=0;axis<3;++axis) {
+            const auto pos=axis==0?i:(axis==1?j:k);
+            const auto count=axis==0?grid.nx:(axis==1?grid.ny:grid.nz);
+            const auto stride=axis==0?1:(axis==1?grid.nx:grid.nx*grid.ny);
+            const double minus=pos>0 && !grid.solid[id-stride] ? distance[id-stride] : inf;
+            const double plus=pos+1<count && !grid.solid[id+stride] ? distance[id+stride] : inf;
+            const bool use_minus=minus<=plus;
+            const double d1=use_minus?minus:plus;
+            if(!std::isfinite(d1)) continue;
+            a[axis]=d1;
+            if(use_minus?pos<2:pos+2>=count) continue;
+            const auto q=use_minus?id-2*stride:id+2*stride;
+            if(grid.solid[q] || !std::isfinite(distance[q]) || distance[q]>d1) continue;
+            a[axis]=(4.0*d1-distance[q])/3.0;
+            h[axis]*=2.0/3.0;
+        }
+        double sum=0.0;
+        for(std::size_t axis=0;axis<3;++axis) if(std::isfinite(a[axis])) {
+            const double slope=std::max(0.0,(distance[id]-a[axis])/h[axis]);
+            sum+=slope*slope;
+        }
+        maximum=std::max(maximum,std::abs(std::sqrt(sum)-1.0));
+    }
+    return active>0 ? maximum : inf;
 }
 
 inline double laplacian_at(const std::vector<double>& f,const WallDistanceGrid& g,
@@ -1086,12 +1338,73 @@ inline double laplacian_at(const WallDistanceBvh& bvh,
          + axis_laplacian(side(zm,k>0,g.spacing.z,4),side(zp,k+1<g.nz,g.spacing.z,5),g.spacing.z,f[id]);
 }
 
+// For DISTANCE transport, a missing outer-domain neighbour means free
+// extrapolation of the wall distance (zero second derivative), not the
+// homogeneous-Neumann condition appropriate for the *Poisson potential*.
+// A one-sided Neumann Laplacian gave a spurious -1/h for the exact plane
+// d(x)=x at the outflow boundary and contaminated H-J / hybrid throughout
+// the domain. Keep Poisson's Neumann operator unchanged.
+inline double transport_laplacian_at(const WallDistanceBvh& bvh,
+        const std::vector<double>& f,const WallDistanceGrid& g,std::size_t id,
+        const WallDistanceCutFaceOffsetCache* offsets=nullptr) {
+    using poisson_stencil_detail::AxisNeighbour;
+    using poisson_stencil_detail::axis_laplacian;
+    const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
+    const auto side=[&](std::size_t q,std::size_t face,double h) {
+        AxisNeighbour out;
+        out.present=true;
+        out.distance=g.solid[q] ? (offsets ? offsets->delta(id,face) :
+            poisson_wall_offset(bvh,g.points[id],g.points[q],h)) : h;
+        out.value=g.solid[q]?0.0:f[q];
+        return out;
+    };
+    double sum=0.0;
+    if(i>0 && i+1<g.nx)
+        sum+=axis_laplacian(side(g.index(i-1,j,k),0,g.spacing.x),
+            side(g.index(i+1,j,k),1,g.spacing.x),g.spacing.x,f[id]);
+    if(j>0 && j+1<g.ny)
+        sum+=axis_laplacian(side(g.index(i,j-1,k),2,g.spacing.y),
+            side(g.index(i,j+1,k),3,g.spacing.y),g.spacing.y,f[id]);
+    if(k>0 && k+1<g.nz)
+        sum+=axis_laplacian(side(g.index(i,j,k-1),4,g.spacing.z),
+            side(g.index(i,j,k+1),5,g.spacing.z),g.spacing.z,f[id]);
+    return sum;
+}
+
+// Dirichlet data for a distance PDE at the finite artificial outer boundary.
+// The wall seed band fixes data at the inner boundary; without independent
+// outer data the regularized distance transport has an ill-posed truncation:
+// homogeneous-Neumann at outflow forces a plane d=x to have zero wall-normal
+// slope, although |grad(d)| must be one.  BVH here is only queried at
+// OUTER BOUNDARY points (O(surface area)), never substituted into the
+// transport solution at interior points.  Every anchored point is marked
+// fixed and excluded from the PDE residual test.
+inline std::size_t set_distance_outer_boundary(const WallDistanceBvh& bvh,
+        const WallDistanceGrid& g,std::vector<double>& distance,
+        std::vector<unsigned char>& fixed) {
+    std::size_t count=0;
+    for(std::size_t k=0;k<g.nz;++k)
+    for(std::size_t j=0;j<g.ny;++j)
+    for(std::size_t i=0;i<g.nx;++i) {
+        if(i!=0 && i+1!=g.nx && j!=0 && j+1!=g.ny && k!=0 && k+1!=g.nz)
+            continue;
+        const auto id=g.index(i,j,k);
+        if(g.solid[id]) continue;
+        distance[id]=bvh.nearest_distance(g.points[id]);
+        if(!fixed[id]) ++count;
+        fixed[id]=1;
+    }
+    return count;
+}
+
 inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const WallDistanceGrid& g,
                                                      std::size_t max_iter,double epsilon=0.25,
                                                      double relaxation=0.25,
                                                      std::size_t* used_iter=nullptr,
                                                      double* residual_out=nullptr,
-                                                     std::size_t* clamp_activations=nullptr) {
+                                                     std::size_t* clamp_activations=nullptr,
+                                                     std::size_t* active_nodes_out=nullptr,
+                                                     std::size_t* seed_count_out=nullptr) {
     // Modified Hamilton-Jacobi equation:
     //   |grad d| = 1 + Gamma(d) laplacian(d), Gamma(d)=epsilon*d.
     // Solve it by pseudo-time relaxation with an upwind/Godunov gradient
@@ -1100,18 +1413,22 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
     const WallDistanceBvh bvh(s);
     const WallDistanceCutFaceOffsetCache offsets(bvh,g);
-    const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
+    const auto seeds=wall_seed_nodes(bvh,g,1.6*std::max({g.spacing.x,g.spacing.y,g.spacing.z}));
     std::vector<unsigned char> fixed(g.points.size(),0);
     // eikonal_fast_sweep uses the same seed criterion and already assigns exact
     // BVH distances to those nodes. Do not repeat the nearest-triangle queries.
     std::vector<double> d=eikonal_fast_sweep(bvh,g,std::max<std::size_t>(8,max_iter));
     for(auto id:seeds) fixed[id]=1;
+    set_distance_outer_boundary(bvh,g,d,fixed);
     // Preserve the original ascending in-place update order, but avoid scanning
     // solid, fixed-seed and unreachable nodes on every pseudo-time iteration.
     std::vector<std::size_t> active_ids;
     active_ids.reserve(d.size());
     for(std::size_t id=0;id<d.size();++id)
         if(!g.solid[id] && !fixed[id] && std::isfinite(d[id])) active_ids.push_back(id);
+
+    if(active_nodes_out) *active_nodes_out=active_ids.size();
+    if(seed_count_out) *seed_count_out=seeds.size();
 
     const double inverse_spacing_sum=1.0/g.spacing.x+1.0/g.spacing.y+1.0/g.spacing.z;
     const double dt_adv_constant=0.9/inverse_spacing_sum;
@@ -1128,7 +1445,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
         for(const std::size_t id:active_ids) {
             const double grad=godunov_gradient_at(bvh,d,g,id,&offsets);
             const double gamma=epsilon*std::max(d[id],0.0);
-            const double lap=laplacian_at(bvh,d,g,id,offsets);
+            const double lap=transport_laplacian_at(bvh,d,g,id,&offsets);
             const double residual=grad-1.0-gamma*lap;
             // Use the full explicit CFL limits of the upwind advection and
             // central diffusion terms. The previous 0.25 safety factor was
@@ -1152,7 +1469,7 @@ inline std::vector<double> hamilton_jacobi_distance(const WallSurface& s,const W
             for(const std::size_t id:active_ids) {
                 final_residual=std::max(final_residual,std::abs(
                     godunov_gradient_at(bvh,d,g,id,&offsets)-1.0-
-                    epsilon*std::max(d[id],0.0)*laplacian_at(bvh,d,g,id,offsets)));
+                    epsilon*std::max(d[id],0.0)*transport_laplacian_at(bvh,d,g,id,&offsets)));
             }
             if(final_residual<1e-8 && max_change<1e-9*h) { used=it+1; break; }
         }
@@ -1662,6 +1979,12 @@ inline std::vector<double> poisson_potential(const WallDistanceBvh& bvh,const Wa
         rho_old=rho;
     }
 
+    // A small BiCGStab recurrence residual is NOT a certificate of the
+    // returned solution. Always recompute b-A*x using the production stencil.
+    apply(phi,Ax);
+    residual_inf=0.0;
+    for(std::size_t id=0;id<n;++id)
+        if(is_fluid(g,id)) residual_inf=std::max(residual_inf,std::abs(1.0-Ax[id]));
     if(used_iter) *used_iter=used;
     if(residual_out) *residual_out=residual_inf;
 
@@ -1713,6 +2036,18 @@ inline double poisson_reconstruction_gradient_component(
                          g.spacing.z,phi[id]);
 }
 
+// Numerically stable positive root of d^2 + 2|grad(phi)|d = 2phi.
+// The naive sqrt(grad*grad+2phi)-grad loses all significant digits when
+// phi << grad^2; rationalizing preserves near-wall positive distances.
+inline double poisson_distance_from_potential(double phi,double grad) {
+    if(!std::isfinite(phi) || !std::isfinite(grad) || grad<0.0)
+        return std::numeric_limits<double>::quiet_NaN();
+    const double p=std::max(0.0,phi);
+    if(p==0.0) return 0.0;
+    const double discriminant_root=std::hypot(grad,std::sqrt(2.0*p));
+    return (2.0*p)/(discriminant_root+grad);
+}
+
 inline double poisson_reconstructed_distance(const WallDistanceBvh& bvh,
                                               const WallDistanceGrid& g,
                                               const std::vector<double>& phi,
@@ -1721,7 +2056,7 @@ inline double poisson_reconstructed_distance(const WallDistanceBvh& bvh,
     const double gy=poisson_reconstruction_gradient_component(bvh,phi,g,id,1);
     const double gz=poisson_reconstruction_gradient_component(bvh,phi,g,id,2);
     const double grad=std::sqrt(gx*gx+gy*gy+gz*gz);
-    return std::max(0.0,std::sqrt(std::max(0.0,grad*grad+2.0*phi[id]))-grad);
+    return poisson_distance_from_potential(phi[id],grad);
 }
 
 struct WallDistancePoissonManufacturedAudit {
@@ -1821,47 +2156,65 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
                                                         const WallDistanceGrid& g,
                                                         const std::vector<unsigned char>* fixed=nullptr,
                                                         double advection_diffusion_gamma=0.05,
-                                                        const WallDistanceBvh* bvh=nullptr);
+                                                        const WallDistanceBvh* bvh=nullptr,
+                                                        double hamilton_jacobi_epsilon=0.25);
 
 inline std::vector<double> advection_diffusion_distance(const WallSurface& s,const WallDistanceGrid& g,
                                                         std::size_t max_iter,double gamma=0.05,
                                                         std::size_t* used_iter=nullptr,
-                                                        double* residual_out=nullptr) {
+                                                        double* residual_out=nullptr,
+                                                        std::size_t* active_nodes_out=nullptr,
+                                                        std::size_t* seed_count_out=nullptr) {
     // NASA/Tucker transport form: U·∇d = 1 + Gamma ∇²d, with U derived
     // from the current distance field. Advection is first-order upwind and
     // diffusion is second-order central, matching the published formulation.
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
     const WallDistanceBvh bvh(s);
-    const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
+    const WallDistanceCutFaceOffsetCache offsets(bvh,g);
+    const auto seeds=wall_seed_nodes(bvh,g,1.6*std::max({g.spacing.x,g.spacing.y,g.spacing.z}));
     std::vector<unsigned char> fixed(g.points.size(),0);
     std::vector<double> d=eikonal_fast_sweep(bvh,g,std::max<std::size_t>(8,max_iter/2));
     for(std::size_t id=0;id<d.size();++id) if(g.solid[id]) d[id]=0.0;
     for(auto id:seeds) { d[id]=bvh.nearest_distance(g.points[id]); fixed[id]=1; }
+    set_distance_outer_boundary(bvh,g,d,fixed);
+    if(active_nodes_out) {
+        *active_nodes_out=0;
+        for(std::size_t id=0;id<d.size();++id)
+            if(!g.solid[id] && !fixed[id] && std::isfinite(d[id])) ++*active_nodes_out;
+    }
+    if(seed_count_out) *seed_count_out=seeds.size();
     std::size_t used=max_iter;
     double final_residual=std::numeric_limits<double>::infinity();
     for(std::size_t it=0;it<max_iter;++it) {
         double max_change=0.0;
-        for(std::size_t id=0;id<d.size();++id) {
+        for(std::size_t ii=0;ii<d.size();++ii) {
+            const std::size_t id=(it&1u) ? (d.size()-1-ii) : ii;
             if(g.solid[id]||fixed[id]||!std::isfinite(d[id])) continue;
             const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny), j=rem/g.nx, i=rem%g.nx;
             const auto one=[&](int axis)->double {
                 double gm=0.0,gp=0.0;
-                if(axis==0) { if(i>0) gm=(d[g.index(i,j,k)]-d[g.index(i-1,j,k)])/g.spacing.x; if(i+1<g.nx) gp=(d[g.index(i+1,j,k)]-d[g.index(i,j,k)])/g.spacing.x; }
-                if(axis==1) { if(j>0) gm=(d[g.index(i,j,k)]-d[g.index(i,j-1,k)])/g.spacing.y; if(j+1<g.ny) gp=(d[g.index(i,j+1,k)]-d[g.index(i,j,k)])/g.spacing.y; }
-                if(axis==2) { if(k>0) gm=(d[g.index(i,j,k)]-d[g.index(i,j,k-1)])/g.spacing.z; if(k+1<g.nz) gp=(d[g.index(i,j,k+1)]-d[g.index(i,j,k)])/g.spacing.z; }
+                if(axis==0) { if(i>0) gm=(d[id]-(g.solid[g.index(i-1,j,k)]?0.0:d[g.index(i-1,j,k)]))/
+                        offsets.delta(id,0); if(i+1<g.nx) gp=((g.solid[g.index(i+1,j,k)]?0.0:d[g.index(i+1,j,k)])-d[id])/
+                        offsets.delta(id,1); }
+                if(axis==1) { if(j>0) gm=(d[id]-(g.solid[g.index(i,j-1,k)]?0.0:d[g.index(i,j-1,k)]))/
+                        offsets.delta(id,2); if(j+1<g.ny) gp=((g.solid[g.index(i,j+1,k)]?0.0:d[g.index(i,j+1,k)])-d[id])/
+                        offsets.delta(id,3); }
+                if(axis==2) { if(k>0) gm=(d[id]-(g.solid[g.index(i,j,k-1)]?0.0:d[g.index(i,j,k-1)]))/
+                        offsets.delta(id,4); if(k+1<g.nz) gp=((g.solid[g.index(i,j,k+1)]?0.0:d[g.index(i,j,k+1)])-d[id])/
+                        offsets.delta(id,5); }
                 return std::max(gm,0.0)+std::min(gp,0.0);
             };
             const double gx=one(0),gy=one(1),gz=one(2),gn=std::sqrt(gx*gx+gy*gy+gz*gz);
             const double ux=gn>1e-14?gx/gn:0.0, uy=gn>1e-14?gy/gn:0.0, uz=gn>1e-14?gz/gn:0.0;
             double diag=0.0,rhs=1.0;
             auto add_axis=[&](std::size_t m,bool has_m,std::size_t p,bool has_p,
-                                   double hh,double u) {
-                auto face_delta=[&](std::size_t q)->double {
-                    return g.solid[q] ? poisson_wall_offset(bvh,g.points[id],g.points[q],hh) : hh;
+                                   double hh,double u,std::size_t face_minus) {
+                auto face_delta=[&](std::size_t q,bool plus)->double {
+                    return g.solid[q] ? offsets.delta(id,face_minus+(plus?1u:0u)) : hh;
                 };
                 if(has_m) {
-                    const double delta=face_delta(m);
-                    const double w=gamma/(hh*delta);
+                    const double delta=face_delta(m,false);
+                    const double w=(has_m && has_p) ? gamma/(hh*delta) : 0.0;
                     const double dm=g.solid[m]?0.0:d[m];
                     diag+=w; rhs+=w*dm;
                     if(u>0.0) {
@@ -1870,8 +2223,8 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
                     }
                 }
                 if(has_p) {
-                    const double delta=face_delta(p);
-                    const double w=gamma/(hh*delta);
+                    const double delta=face_delta(p,true);
+                    const double w=(has_m && has_p) ? gamma/(hh*delta) : 0.0;
                     const double dp=g.solid[p]?0.0:d[p];
                     diag+=w; rhs+=w*dp;
                     if(u<0.0) {
@@ -1883,16 +2236,16 @@ inline std::vector<double> advection_diffusion_distance(const WallSurface& s,con
             const std::size_t xm=i>0?g.index(i-1,j,k):0, xp=i+1<g.nx?g.index(i+1,j,k):0;
             const std::size_t ym=j>0?g.index(i,j-1,k):0, yp=j+1<g.ny?g.index(i,j+1,k):0;
             const std::size_t zm=k>0?g.index(i,j,k-1):0, zp=k+1<g.nz?g.index(i,j,k+1):0;
-            add_axis(xm,i>0,xp,i+1<g.nx,g.spacing.x,ux);
-            add_axis(ym,j>0,yp,j+1<g.ny,g.spacing.y,uy);
-            add_axis(zm,k>0,zp,k+1<g.nz,g.spacing.z,uz);
+            add_axis(xm,i>0,xp,i+1<g.nx,g.spacing.x,ux,0);
+            add_axis(ym,j>0,yp,j+1<g.ny,g.spacing.y,uy,2);
+            add_axis(zm,k>0,zp,k+1<g.nz,g.spacing.z,uz,4);
             if(diag>0.0) { const double nd=rhs/diag; max_change=std::max(max_change,std::abs(nd-d[id])); d[id]=nd; }
         }
         for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
         if((it&3u)==3u || max_change<1e-10*h) {
             final_residual=wall_distance_pde_residual_inf(
                 WallDistanceMethod::ADVECTION_DIFFUSION,d,g,&fixed,gamma,&bvh);
-            if(final_residual<1e-6 && max_change<1e-8*h) {
+            if(final_residual<wall_distance_transport_residual_tolerance && max_change<1e-8*h) {
                 used=it+1;
                 break;
             }
@@ -1909,14 +2262,16 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     std::size_t* used_iter=nullptr,double* residual_out=nullptr,
     double poisson_weight=1.0,
     std::size_t* poisson_iter_out=nullptr,double* poisson_residual_out=nullptr,
-    std::size_t* clamp_activations=nullptr) {
+    std::size_t* clamp_activations=nullptr,
+    std::size_t* active_nodes_out=nullptr,
+    std::size_t* seed_count_out=nullptr) {
     // Tucker 2011: Poisson supplies an auxiliary front-propagation direction
     // (effectively a wall normal); H-J then propagates distance with that
     // direction, optionally blended with the evolving Eikonal direction.
     const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
     const WallDistanceBvh bvh(s);
     const WallDistanceCutFaceOffsetCache offsets(bvh,g);
-    const auto seeds=wall_seed_nodes(bvh,g,1.6*h);
+    const auto seeds=wall_seed_nodes(bvh,g,1.6*std::max({g.spacing.x,g.spacing.y,g.spacing.z}));
     std::vector<unsigned char> fixed(g.points.size(),0);
     for(auto id:seeds) fixed[id]=1;
 
@@ -1957,15 +2312,21 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     for(std::size_t id=0;id<d.size();++id) if(!g.solid[id]) {
         const double gx=grad_comp(phi,id,0),gy=grad_comp(phi,id,1),gz=grad_comp(phi,id,2);
         const double gn=std::sqrt(gx*gx+gy*gy+gz*gz);
-        d[id]=gn>1e-14 ? std::max(0.0,std::sqrt(std::max(0.0,gn*gn+2*phi[id]))-gn) : 0.0;
+        // At a Poisson-potential extremum grad(phi)=0 is a legitimate
+        // medial-axis state: distance=sqrt(2*phi), NOT zero.
+        d[id]=poisson_distance_from_potential(phi[id],gn);
     }
     for(auto id:seeds) d[id]=bvh.nearest_distance(g.points[id]);
+    set_distance_outer_boundary(bvh,g,d,fixed);
     // The fixed set and finite-distance mask are invariant during transport.
-    // Cache active IDs in ascending order to preserve the in-place Gauss-Seidel sweep.
+    // Cache active IDs in ascending order for deterministic forward/reverse sweeps.
     std::vector<std::size_t> active_ids;
     active_ids.reserve(d.size());
     for(std::size_t id=0;id<d.size();++id)
         if(!g.solid[id] && !fixed[id] && std::isfinite(d[id])) active_ids.push_back(id);
+
+    if(active_nodes_out) *active_nodes_out=active_ids.size();
+    if(seed_count_out) *seed_count_out=seeds.size();
 
     const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
                        +1.0/(g.spacing.y*g.spacing.y)
@@ -1997,7 +2358,18 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
             const double dx=grad_comp(d,id,0),dy=grad_comp(d,id,1),dz=grad_comp(d,id,2);
             const double dn=std::sqrt(dx*dx+dy*dy+dz*dz);
             if(dn>1e-14) {
-                ux=alpha*ux+(1-alpha)*dx/dn; uy=alpha*uy+(1-alpha)*dy/dn; uz=alpha*uz+(1-alpha)*dz/dn;
+                const double ex=dx/dn, ey=dy/dn, ez=dz/dn;
+                // The Poisson potential uses a Neumann outer boundary,
+                // whereas transported distance has exact geometric Dirichlet
+                // data there. Reject auxiliary directions that disagree with
+                // the evolving distance-front normal; otherwise corner
+                // characteristics can remain incompatible with the boundary.
+                const double cosine=ux*ex+uy*ey+uz*ez;
+                const double trust=std::clamp((cosine-0.70)/0.30,0.0,1.0);
+                const double local_alpha=alpha*trust;
+                ux=local_alpha*ux+(1-local_alpha)*ex;
+                uy=local_alpha*uy+(1-local_alpha)*ey;
+                uz=local_alpha*uz+(1-local_alpha)*ez;
                 const double n=std::sqrt(ux*ux+uy*uy+uz*uz);
                 if(n>1e-14){ux/=n;uy/=n;uz/=n;}
             }
@@ -2006,65 +2378,58 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
 
     for(std::size_t it=0;it<steps;++it) {
         double max_change=0.0;
-        for(std::size_t active_index=0;active_index<active_ids.size();++active_index) {
-            const std::size_t id=active_ids[active_index];
-            const std::size_t k=id/(g.nx*g.ny),rem=id%(g.nx*g.ny),j=rem/g.nx,i=rem%g.nx;
-            double ux,uy,uz; velocity(active_index,id,ux,uy,uz);
-            const auto up=[&](double u,int a)->double {
-                auto value=[&](std::size_t q)->double {
-                    return g.solid[q] ? 0.0 : d[q];
+        // A symmetric upwind Gauss-Seidel/Picard step replaces the explicit
+        // pseudo-time update. The diagonal contains every positive face
+        // contribution of -Gamma*Laplacian and U.grad(d). In particular,
+        // for cut cells the Shortley-Weller coefficient uses 2/(dm+dp),
+        // exactly as transport_laplacian_at() used in the true residual.
+        // Freeze Gamma(d) and U at the beginning of each cell update; never
+        // accept a small UPDATE as proof of a small nonlinear PDE residual.
+        for(std::size_t sweep=0;sweep<2;++sweep) {
+            for(std::size_t pos=0;pos<active_ids.size();++pos) {
+                const std::size_t active_index=(sweep==0)
+                    ? pos : active_ids.size()-1-pos;
+                const std::size_t id=active_ids[active_index];
+                const std::size_t k=id/(g.nx*g.ny), rem=id%(g.nx*g.ny),
+                                  j=rem/g.nx, i=rem%g.nx;
+                double ux,uy,uz; velocity(active_index,id,ux,uy,uz);
+                const double gamma=epsilon*std::max(d[id],0.0);
+                double diag=0.0, rhs=1.0;
+                const auto axis=[&](int coord,std::size_t extent,
+                                    std::size_t stride,double u,double h,
+                                    std::size_t face) {
+                    const bool has_minus=coord>0;
+                    const bool has_plus=static_cast<std::size_t>(coord)+1<extent;
+                    const std::size_t minus=has_minus?id-stride:0;
+                    const std::size_t plus=has_plus?id+stride:0;
+                    const double dm=has_minus?offsets.delta(id,face):h;
+                    const double dp=has_plus?offsets.delta(id,face+1):h;
+                    const auto include=[&](std::size_t q,double weight) {
+                        diag+=weight;
+                        if(!g.solid[q]) rhs+=weight*d[q];
+                    };
+                    if(has_minus) {
+                        const double adv=u>0.0?u/dm:0.0;
+                        const double diff=has_plus?gamma*2.0/((dm+dp)*dm):0.0;
+                        include(minus,adv+diff);
+                    }
+                    if(has_plus) {
+                        const double adv=u<0.0?-u/dp:0.0;
+                        const double diff=has_minus?gamma*2.0/((dm+dp)*dp):0.0;
+                        include(plus,adv+diff);
+                    }
                 };
-                if(a==0) {
-                    if(u>=0) {
-                        if(i==0) return 0.0;
-                        const auto q=g.index(i-1,j,k);
-                        const double delta=offsets.delta(id,0);
-                        return u*(d[id]-value(q))/delta;
-                    }
-                    if(i+1==g.nx) return 0.0;
-                    const auto q=g.index(i+1,j,k);
-                    const double delta=offsets.delta(id,1);
-                    return u*(value(q)-d[id])/delta;
-                }
-                if(a==1) {
-                    if(u>=0) {
-                        if(j==0) return 0.0;
-                        const auto q=g.index(i,j-1,k);
-                        const double delta=offsets.delta(id,2);
-                        return u*(d[id]-value(q))/delta;
-                    }
-                    if(j+1==g.ny) return 0.0;
-                    const auto q=g.index(i,j+1,k);
-                    const double delta=offsets.delta(id,3);
-                    return u*(value(q)-d[id])/delta;
-                }
-                if(u>=0) {
-                    if(k==0) return 0.0;
-                    const auto q=g.index(i,j,k-1);
-                    const double delta=offsets.delta(id,4);
-                    return u*(d[id]-value(q))/delta;
-                }
-                if(k+1==g.nz) return 0.0;
-                const auto q=g.index(i,j,k+1);
-                const double delta=offsets.delta(id,5);
-                return u*(value(q)-d[id])/delta;
-            };
-            const double adv=up(ux,0)+up(uy,1)+up(uz,2);
-            const double gamma=epsilon*std::max(d[id],0.0);
-            const double residual=adv-1.0-gamma*laplacian_at(bvh,d,g,id,offsets);
-            // The hybrid transport step is also a 3-D explicit upwind
-            // update. Use its actual velocity components for the CFL bound.
-            const double cfl_rate=std::abs(ux)/g.spacing.x+
-                                  std::abs(uy)/g.spacing.y+
-                                  std::abs(uz)/g.spacing.z;
-            const double dt_adv=cfl_rate>1e-14 ? 0.9/cfl_rate :
-                                                std::numeric_limits<double>::infinity();
-            const double dt_diff=gamma>0.0?0.9/(2*gamma*inv_h2):std::numeric_limits<double>::infinity();
-            const double dt=relaxation_factor*std::min(dt_adv,dt_diff);
-            const double candidate=d[id]-dt*residual;
-            if(candidate<0.0) ++clamps;  // F-W2: observable positivity clamp
-            const double nd=std::max(0.0,candidate);
-            max_change=std::max(max_change,std::abs(nd-d[id])); d[id]=nd;
+                axis(static_cast<int>(i),g.nx,1,ux,g.spacing.x,0);
+                axis(static_cast<int>(j),g.ny,g.nx,uy,g.spacing.y,2);
+                axis(static_cast<int>(k),g.nz,g.nx*g.ny,uz,g.spacing.z,4);
+                if(!(diag>0.0) || !std::isfinite(diag) || !std::isfinite(rhs))
+                    continue; // true PDE residual remains nonzero: fail closed
+                const double candidate=rhs/diag;
+                if(!std::isfinite(candidate) || candidate<0.0) continue;
+                const double nd=d[id]+relaxation_factor*(candidate-d[id]);
+                max_change=std::max(max_change,std::abs(nd-d[id]));
+                d[id]=nd;
+            }
         }
         // Seed IDs are fixed and excluded from active_ids, so their exact
         // distances cannot change during transport. Re-querying the BVH for
@@ -2112,7 +2477,7 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
                 };
                 const double adv=upwind(ux,0)+upwind(uy,1)+upwind(uz,2);
                 final_residual=std::max(final_residual,
-                    std::abs(adv-1.0-epsilon*std::max(d[id],0.0)*laplacian_at(bvh,d,g,id,offsets)));
+                    std::abs(adv-1.0-epsilon*std::max(d[id],0.0)*transport_laplacian_at(bvh,d,g,id,&offsets)));
             }
             if(final_residual<1e-8&&max_change<1e-9*h){used=it+1;break;}
         }
@@ -2128,7 +2493,8 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
                                                         const WallDistanceGrid& g,
                                                         const std::vector<unsigned char>* fixed,
                                                         double advection_diffusion_gamma,
-                                                        const WallDistanceBvh* bvh) {
+                                                        const WallDistanceBvh* bvh,
+                                                        double hamilton_jacobi_epsilon) {
     if(d.size()!=g.points.size() || g.solid.size()!=g.points.size() ||
        (fixed && fixed->size()!=g.points.size()))
         throw std::invalid_argument("wall_distance_pde_residual_inf: field/grid size mismatch");
@@ -2153,12 +2519,18 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
             accumulate(grad-1.0);
             continue;
         }
-        if(method==WallDistanceMethod::HAMILTON_JACOBI ||
-           method==WallDistanceMethod::HYBRID_POISSON_EIKONAL) {
-            const double gamma=0.25*std::max(d[id],0.0);
+        if(method==WallDistanceMethod::HYBRID_POISSON_EIKONAL) {
+            // This generic function has no Poisson-potential velocity field.
+            // The hybrid's transport direction is not the Godunov gradient:
+            // reporting a tiny Godunov residual here would certify a
+            // DIFFERENT equation. Use the hybrid solver's residual_out.
+            return std::numeric_limits<double>::infinity();
+        }
+        if(method==WallDistanceMethod::HAMILTON_JACOBI) {
+            const double gamma=hamilton_jacobi_epsilon*std::max(d[id],0.0);
             const double grad=bvh ? godunov_gradient_at(*bvh,d,g,id)
                                   : godunov_gradient_at(d,g,id);
-            const double lap=bvh ? laplacian_at(*bvh,d,g,id)
+            const double lap=bvh ? transport_laplacian_at(*bvh,d,g,id)
                                  : laplacian_at(d,g,id);
             accumulate(grad-1.0-gamma*lap);
             continue;
@@ -2169,14 +2541,14 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
             auto one=[&](int axis)->double {
                 double gm=0.0,gp=0.0;
                 if(axis==0) {
-                    if(i>0) gm=(d[id]-value(g.index(i-1,j,k)))/g.spacing.x;
-                    if(i+1<g.nx) gp=(value(g.index(i+1,j,k))-d[id])/g.spacing.x;
+                    if(i>0) gm=(d[id]-value(g.index(i-1,j,k)))/((bvh && g.solid[g.index(i-1,j,k)]) ? poisson_wall_offset(*bvh,g.points[id],g.points[g.index(i-1,j,k)],g.spacing.x) : g.spacing.x);
+                    if(i+1<g.nx) gp=(value(g.index(i+1,j,k))-d[id])/((bvh && g.solid[g.index(i+1,j,k)]) ? poisson_wall_offset(*bvh,g.points[id],g.points[g.index(i+1,j,k)],g.spacing.x) : g.spacing.x);
                 } else if(axis==1) {
-                    if(j>0) gm=(d[id]-value(g.index(i,j-1,k)))/g.spacing.y;
-                    if(j+1<g.ny) gp=(value(g.index(i,j+1,k))-d[id])/g.spacing.y;
+                    if(j>0) gm=(d[id]-value(g.index(i,j-1,k)))/((bvh && g.solid[g.index(i,j-1,k)]) ? poisson_wall_offset(*bvh,g.points[id],g.points[g.index(i,j-1,k)],g.spacing.y) : g.spacing.y);
+                    if(j+1<g.ny) gp=(value(g.index(i,j+1,k))-d[id])/((bvh && g.solid[g.index(i,j+1,k)]) ? poisson_wall_offset(*bvh,g.points[id],g.points[g.index(i,j+1,k)],g.spacing.y) : g.spacing.y);
                 } else {
-                    if(k>0) gm=(d[id]-value(g.index(i,j,k-1)))/g.spacing.z;
-                    if(k+1<g.nz) gp=(value(g.index(i,j,k+1))-d[id])/g.spacing.z;
+                    if(k>0) gm=(d[id]-value(g.index(i,j,k-1)))/((bvh && g.solid[g.index(i,j,k-1)]) ? poisson_wall_offset(*bvh,g.points[id],g.points[g.index(i,j,k-1)],g.spacing.z) : g.spacing.z);
+                    if(k+1<g.nz) gp=(value(g.index(i,j,k+1))-d[id])/((bvh && g.solid[g.index(i,j,k+1)]) ? poisson_wall_offset(*bvh,g.points[id],g.points[g.index(i,j,k+1)],g.spacing.z) : g.spacing.z);
                 }
                 return std::max(gm,0.0)+std::min(gp,0.0);
             };
@@ -2191,21 +2563,22 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
             // Godunov |grad d| plus a Shortley-Weller Laplacian is a different
             // operator and can stay O(1) after this solve reaches roundoff.
             double lhs=0.0;
-            const auto face=[&](std::size_t q,bool exists,bool minus_side,double h,double u) {
+            const auto face=[&](std::size_t q,bool exists,bool minus_side,double h,double u,bool two_sided) {
                 if(!exists) return;
                 const double delta=(bvh && g.solid[q])
                     ? poisson_wall_offset(*bvh,g.points[id],g.points[q],h) : h;
                 const double difference=d[id]-value(q);
-                lhs+=advection_diffusion_gamma*difference/(h*delta);
+                if(two_sided)
+                    lhs+=advection_diffusion_gamma*difference/(h*delta);
                 if((minus_side && u>0.0) || (!minus_side && u<0.0))
                     lhs+=std::abs(u)*difference/delta;
             };
-            face(i>0?g.index(i-1,j,k):0,i>0,true,g.spacing.x,ux);
-            face(i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,false,g.spacing.x,ux);
-            face(j>0?g.index(i,j-1,k):0,j>0,true,g.spacing.y,uy);
-            face(j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny,false,g.spacing.y,uy);
-            face(k>0?g.index(i,j,k-1):0,k>0,true,g.spacing.z,uz);
-            face(k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,false,g.spacing.z,uz);
+            face(i>0?g.index(i-1,j,k):0,i>0,true,g.spacing.x,ux,i+1<g.nx);
+            face(i+1<g.nx?g.index(i+1,j,k):0,i+1<g.nx,false,g.spacing.x,ux,i>0);
+            face(j>0?g.index(i,j-1,k):0,j>0,true,g.spacing.y,uy,j+1<g.ny);
+            face(j+1<g.ny?g.index(i,j+1,k):0,j+1<g.ny,false,g.spacing.y,uy,j>0);
+            face(k>0?g.index(i,j,k-1):0,k>0,true,g.spacing.z,uz,k+1<g.nz);
+            face(k+1<g.nz?g.index(i,j,k+1):0,k+1<g.nz,false,g.spacing.z,uz,k>0);
             accumulate(lhs-1.0);
         }
     }
@@ -2216,6 +2589,24 @@ inline double wall_distance_pde_residual_inf(WallDistanceMethod method,
 // they want. The overload below (compute_wall_distance(surface, grid, iter))
 // exposes the recommended default at the call site so the choice remains
 // visible in reviews.
+// Viscosity regularization must vanish as the grid is refined if the
+// objective is the EUCLIDEAN signed/unsigned distance, rather than the
+// solution of a different finite-viscosity PDE.  The differential equations
+// remain distinct; only their regularization amplitude is grid-consistent.
+// These are conservative experimental defaults for the grid dispatcher, not
+// tuned universal accuracy certificates.
+inline double wall_distance_refinement_epsilon(const WallDistanceGrid& g) {
+    const double h=std::min({g.spacing.x,g.spacing.y,g.spacing.z});
+    const double diameter=std::max({static_cast<double>(g.nx-1)*g.spacing.x,
+        static_cast<double>(g.ny-1)*g.spacing.y,
+        static_cast<double>(g.nz-1)*g.spacing.z});
+    return 0.25*h/diameter;
+}
+inline double wall_distance_refinement_diffusivity(const WallDistanceGrid& g) {
+    // gamma has dimensions of length in U.grad(d)=1+gamma*laplacian(d).
+    return 0.08*std::min({g.spacing.x,g.spacing.y,g.spacing.z});
+}
+
 inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const WallSurface& s,
                                                  const WallDistanceGrid& g,
                                                  std::size_t iterations=500) {
@@ -2228,11 +2619,14 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.converged=true;
             r.stopping_reason="direct";
             r.convergence_status=WallDistanceConvergenceStatus::DIRECT;
+            r.geometrically_exact_on_input_mesh=true;
             break;
         case WallDistanceMethod::SEARCH_BASED:
             r.distance=search_based_reference(s,g,4.0*std::min({g.spacing.x,g.spacing.y,g.spacing.z}));
             r.converged=true;
             r.stopping_reason="direct";
+            r.convergence_status=WallDistanceConvergenceStatus::DIRECT;
+            r.geometrically_exact_on_input_mesh=true;
             break;
         case WallDistanceMethod::MESH_WAVE:
             r=graph_wave(s,g,false);
@@ -2242,10 +2636,16 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             break;
         case WallDistanceMethod::DIRECTIONAL_MESH_WAVE:
             r=graph_wave(s,g,true);
-            r.converged=true;
-            r.stopping_reason="graph_complete";
+            r.converged=true; // only label-propagation termination, NOT geometric accuracy
+            // This legacy heuristic has no user-prescribed ignored direction.
+            // It is not the directionalMeshWave metric defined by OpenFOAM.
+            r.stopping_reason="graph_complete_nonstandard_directional_metric";
+            r.convergence_status=WallDistanceConvergenceStatus::DIRECT;
             break;
         case WallDistanceMethod::POISSON: {
+            // The Poisson potential is solved on all fluid nodes, rather than
+            // propagated from exact wall-distance seeds.
+            for(const auto solid:g.solid) if(!solid) ++r.active_pde_samples;
             WallDistancePoissonReconstructionAudit pa;
             r.distance=poisson_distance(s,g,iterations,1.5,&r.iterations,&r.residual_inf,&pa);
             const WallDistanceBvh pbvh(s);
@@ -2266,7 +2666,7 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             r.poisson_grad_max=pa.grad_max;
             r.poisson_distance_l2_error=pa.distance_l2_error;
             r.poisson_distance_linf_error=pa.distance_linf_error;
-            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-8;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
             r.stopping_reason = r.converged ? "converged" :
@@ -2277,18 +2677,40 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             const WallDistanceBvh bvh(s);
             r.distance=eikonal_fast_sweep(s,g,iterations,&r.iterations);
             std::vector<unsigned char> fixed(g.points.size(),0);
-            for(const auto id:wall_seed_nodes(bvh,g,1.6*std::min({g.spacing.x,g.spacing.y,g.spacing.z}))) fixed[id]=1;
+            for(const auto id:wall_seed_nodes(bvh,g,1.6*std::max({g.spacing.x,g.spacing.y,g.spacing.z}))) {
+                fixed[id]=1;
+                ++r.exact_wall_seed_samples;
+            }
+            for (std::size_t id=0; id<g.points.size(); ++id)
+                if (!g.solid[id] && !fixed[id]) ++r.active_pde_samples;
             r.residual_inf=wall_distance_pde_residual_inf(WallDistanceMethod::EIKONAL,r.distance,g,&fixed,0.05,&bvh);
-            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-8;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
             r.stopping_reason = r.converged ? "converged" :
                                 (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
         }
+        case WallDistanceMethod::EIKONAL_SECOND_ORDER: {
+            const WallDistanceBvh bvh(s);
+            r.distance=second_order_eikonal_fast_sweep(s,g,iterations,&r.iterations);
+            std::vector<unsigned char> fixed(g.points.size(),0);
+            const double radius=1.6*std::max({g.spacing.x,g.spacing.y,g.spacing.z});
+            for(const auto id:wall_seed_nodes(bvh,g,radius)) { fixed[id]=1; ++r.exact_wall_seed_samples; }
+            for (std::size_t id=0; id<g.points.size(); ++id)
+                if (!g.solid[id] && !fixed[id]) ++r.active_pde_samples;
+            r.residual_inf=second_order_eikonal_residual_inf(r.distance,g,fixed);
+            r.converged=std::isfinite(r.residual_inf) && r.residual_inf<1e-6;
+            r.convergence_status=r.converged?WallDistanceConvergenceStatus::CONVERGED :
+                (r.iterations>=iterations?WallDistanceConvergenceStatus::MAX_ITER:
+                 WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
+            r.stopping_reason=r.converged?"converged":
+                (r.iterations>=iterations?"max_iter":"residual_too_high");
+            break;
+        }
         case WallDistanceMethod::HAMILTON_JACOBI: {
-            r.distance=hamilton_jacobi_distance(s,g,iterations,0.25,0.7,&r.iterations,&r.residual_inf,
-                &r.positivity_clamp_activations);
+            r.distance=hamilton_jacobi_distance(s,g,iterations,wall_distance_refinement_epsilon(g),0.7,&r.iterations,&r.residual_inf,
+                &r.positivity_clamp_activations,&r.active_pde_samples,&r.exact_wall_seed_samples);
             r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
@@ -2297,8 +2719,10 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
             break;
         }
         case WallDistanceMethod::ADVECTION_DIFFUSION: {
-            r.distance=advection_diffusion_distance(s,g,iterations,0.05,&r.iterations,&r.residual_inf);
-            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.distance=advection_diffusion_distance(s,g,iterations,wall_distance_refinement_diffusivity(g),&r.iterations,&r.residual_inf,
+                &r.active_pde_samples,&r.exact_wall_seed_samples);
+            r.converged = std::isfinite(r.residual_inf) &&
+                r.residual_inf < wall_distance_transport_residual_tolerance;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
             r.stopping_reason = r.converged ? "converged" :
@@ -2307,18 +2731,57 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
         }
         case WallDistanceMethod::HYBRID_POISSON_EIKONAL: {
             std::size_t poisson_iter=0; double poisson_residual=0.0;
-            r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,0.25,0.9,
-                &r.iterations,&r.residual_inf,1.0,&poisson_iter,&poisson_residual,
-                &r.positivity_clamp_activations);
+            r.distance=hybrid_poisson_hamilton_jacobi_distance(s,g,iterations,wall_distance_refinement_epsilon(g),0.45,
+                &r.iterations,&r.residual_inf,0.25,&poisson_iter,&poisson_residual,
+                &r.positivity_clamp_activations,&r.active_pde_samples,&r.exact_wall_seed_samples);
             r.auxiliary_iterations=poisson_iter;
             r.auxiliary_residual_inf=poisson_residual;
-            r.converged = std::isfinite(r.residual_inf) && r.residual_inf < 1e-6;
+            r.converged = std::isfinite(r.residual_inf) &&
+                r.residual_inf < wall_distance_transport_residual_tolerance &&
+                std::isfinite(r.auxiliary_residual_inf) &&
+                r.auxiliary_residual_inf < wall_distance_transport_residual_tolerance;
             r.convergence_status = r.converged ? WallDistanceConvergenceStatus::CONVERGED :
                                    (r.iterations >= iterations ? WallDistanceConvergenceStatus::MAX_ITER : WallDistanceConvergenceStatus::RESIDUAL_TOO_HIGH);
             r.stopping_reason = r.converged ? "converged" :
-                                (r.iterations >= iterations ? "max_iter" : "residual_too_high");
+                (!std::isfinite(r.auxiliary_residual_inf) ||
+                 r.auxiliary_residual_inf >= wall_distance_transport_residual_tolerance)
+                    ? "auxiliary_poisson_residual_too_high" :
+                (r.iterations >= iterations ? "max_iter" : "residual_too_high");
             break;
         }
+    }
+    // All five distance PDE methods can be fully constrained by BVH exact
+    // wall seeds and outer-boundary data in very thin gaps. In such a case
+    // the output really is exact point-to-triangle geometry, NOT a solved
+    // Eikonal or transport PDE. Preserve this distinction in every result.
+    if(method==WallDistanceMethod::EIKONAL ||
+       method==WallDistanceMethod::EIKONAL_SECOND_ORDER ||
+       method==WallDistanceMethod::HAMILTON_JACOBI ||
+       method==WallDistanceMethod::ADVECTION_DIFFUSION ||
+       method==WallDistanceMethod::HYBRID_POISSON_EIKONAL) {
+        std::size_t fluid_count=0;
+        for(const auto solid:g.solid) if(!solid) ++fluid_count;
+        if(method==WallDistanceMethod::EIKONAL ||
+           method==WallDistanceMethod::EIKONAL_SECOND_ORDER)
+            r.active_pde_samples=fluid_count>=r.exact_wall_seed_samples
+                ? fluid_count-r.exact_wall_seed_samples : 0;
+        if(fluid_count>0 && r.active_pde_samples==0) {
+            r.converged=true;
+            r.residual_inf=0.0; // an empty active discrete equation
+            r.convergence_status=WallDistanceConvergenceStatus::DIRECT;
+            r.stopping_reason="all_fluid_nodes_exact_bvh_seeds_or_outer_no_pde_solve";
+            r.geometrically_exact_on_input_mesh=true;
+        }
+    }
+    if(method==WallDistanceMethod::HAMILTON_JACOBI ||
+       method==WallDistanceMethod::ADVECTION_DIFFUSION ||
+       method==WallDistanceMethod::HYBRID_POISSON_EIKONAL) {
+        for(std::size_t k=0;k<g.nz;++k)
+        for(std::size_t j=0;j<g.ny;++j)
+        for(std::size_t i=0;i<g.nx;++i)
+            if((i==0 || i+1==g.nx || j==0 || j+1==g.ny ||
+                k==0 || k+1==g.nz) && !g.solid[g.index(i,j,k)])
+                ++r.exact_outer_boundary_samples;
     }
     std::size_t fluid_samples=0, invalid_fluid_samples=0;
     for(std::size_t i=0;i<r.distance.size();++i) {
@@ -2338,10 +2801,9 @@ inline WallDistanceResult compute_wall_distance(WallDistanceMethod method,const 
     return r;
 }
 
-// Convenience overload using the recommended default method (eikonal).
-// Prefer this at the top-level call site unless the caller has an explicit
-// reason to pick another method (e.g. requiring the smooth derivative of
-// Poisson for SA/SST source terms).
+// Convenience overload now defaults to the exact BVH distance on the input
+// triangulated surface. Approximate PDE/graph methods must be opted into and
+// qualified independently; the service API can enforce geometric accuracy.
 inline WallDistanceResult compute_wall_distance(const WallSurface& s,
                                                  const WallDistanceGrid& g,
                                                  std::size_t iterations=500) {
@@ -2392,5 +2854,3 @@ inline WallDistanceBenchmarkMetrics compare_wall_distance(const WallDistanceGrid
 }
 
 } // namespace cfdx::physics
-
-

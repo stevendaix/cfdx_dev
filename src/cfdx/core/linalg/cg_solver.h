@@ -96,6 +96,7 @@ inline SolverResult solve_cg_impl(
     // rejected residual replacement). Preserve its current b-A*x diagnostic
     // instead of returning SolverResult's default zero residuals. This helper
     // is used only on failure; it does not change an iterate or a stopping gate.
+    double homogeneous_initial_norm = 0.0;
     const auto update_true_residual = [&]() {
         Vector failure_residual(n);
         mixed_precision_true_residual(A, b, x, failure_residual);
@@ -105,8 +106,10 @@ inline SolverResult solve_cg_impl(
             krylov_norm2(b, SolverPrecision::FP64, reduction);
         result.residual_relative = rhs_norm > 0.0
             ? result.residual / rhs_norm
-            : (result.residual == 0.0
-                ? 0.0 : std::numeric_limits<double>::infinity());
+            : (homogeneous_initial_norm > 0.0
+                ? result.residual / homogeneous_initial_norm
+                : (result.residual == 0.0
+                    ? 0.0 : std::numeric_limits<double>::infinity()));
     };
     const auto not_applicable = [&](std::size_t iterations) {
         result.status = SolverStatus::NOT_APPLICABLE;
@@ -149,13 +152,18 @@ inline SolverResult solve_cg_impl(
     const double b_norm = krylov_norm2(b, SolverPrecision::FP64, reduction);
     const double initial_true_residual =
         krylov_norm2(rv, SolverPrecision::FP64, reduction);
-    const double tol_abs = tolerance * std::max(b_norm, 1e-300);
+    // A homogeneous system with a nonzero initial iterate cannot use ||b||
+    // as a relative stopping scale. Use the initial independently recomputed
+    // residual, as for GMRES and BiCGStab. Never weaken the nonzero-RHS gate.
+    homogeneous_initial_norm = b_norm == 0.0 ? initial_true_residual : 0.0;
+    const double reference_norm = b_norm > 0.0 ? b_norm : initial_true_residual;
+    const double tol_abs = tolerance * reference_norm;
     if (initial_true_residual <= tol_abs) {
         result.status = SolverStatus::CONVERGED;
         result.iterations = 0;
         result.residual = initial_true_residual;
-        result.residual_relative = b_norm > 0.0
-            ? initial_true_residual / b_norm : 0.0;
+        result.residual_relative = reference_norm > 0.0
+            ? initial_true_residual / reference_norm : 0.0;
         return result;
     }
 
@@ -332,7 +340,7 @@ inline SolverResult solve_cg_impl(
             result.status = SolverStatus::CONVERGED;
             result.iterations = iter;
             result.residual = res;
-            result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+            result.residual_relative = reference_norm > 0.0 ? res / reference_norm : 0.0;
             return result;
         }
         // A finite non-positive r^T M^-1 r is a preconditioner/recurrence
@@ -381,7 +389,7 @@ inline SolverResult solve_cg_impl(
                     result.status = SolverStatus::MAX_ITER_REACHED;
                     result.iterations = iter;
                     result.residual = res;
-                    result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+                    result.residual_relative = reference_norm > 0.0 ? res / reference_norm : 0.0;
                     return result;
                 }
                 p = z;
@@ -495,7 +503,7 @@ inline SolverResult solve_cg_impl(
                 result.status = SolverStatus::MAX_ITER_REACHED;
                 result.iterations = iter;
                 result.residual = res;
-                result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+                result.residual_relative = reference_norm > 0.0 ? res / reference_norm : 0.0;
                 return result;
             }
             if (adaptive_replacement || periodic_replacement ||
@@ -528,7 +536,7 @@ inline SolverResult solve_cg_impl(
                     result.status = SolverStatus::CONVERGED;
                     result.iterations = iter;
                     result.residual = res;
-                    result.residual_relative = (b_norm > 0.0) ? res / b_norm : 0.0;
+                    result.residual_relative = reference_norm > 0.0 ? res / reference_norm : 0.0;
                     return result;
                 }
                 // Restart the search direction after replacement. This avoids
@@ -556,7 +564,7 @@ inline SolverResult solve_cg_impl(
     result.iterations = max_iter;
     mixed_precision_true_residual(A, b, x, rv);
     result.residual = krylov_norm2(rv, SolverPrecision::FP64, reduction);
-    result.residual_relative = (b_norm > 0.0) ? result.residual / b_norm : result.residual;
+    result.residual_relative = reference_norm > 0.0 ? result.residual / reference_norm : 0.0;
     return result;
 }
 } // namespace detail

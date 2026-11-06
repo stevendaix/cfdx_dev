@@ -140,5 +140,37 @@ int main()
         EXPECT_NEAR(p(0), 7.0, 1e-12);
         EXPECT_NEAR(p(1), 7.0, 1e-12);
     });
+    run_case("n9_s10_production_neumann_fgmres_anisotropic_amg", [] {
+        // End-to-end production pressure dispatch, not just a synthetic CSR.
+        // A closed, unforced two-cell cavity is an exact zero-velocity state;
+        // pressure has a genuine constant null space, with no pinned row.
+        const Mesh mesh = make_two_cell_channel();
+        for (const auto pc : {
+            PreconditionerModel::AnisotropicBoomerAMG,
+            PreconditionerModel::AnisotropicSmoothedAggregationAMG}) {
+            Field<double, Location::CELL> U(2, "U", "m/s", 3);
+            Field<double, Location::CELL> p(2, "p", "Pa", 1);
+            U.fill(0.0);
+            p.fill(7.0);
+            VelocityBoundaryConditions ubc;
+            ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+            ScalarBoundaryConditions pbc;
+            pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+            IncompressibleSolverControls c;
+            configure_case(c, PressureGaugePolicy::NONE);
+            c.pressure_linear_solver.null_space = NullSpaceModel::Constant;
+            c.pressure_linear_solver.preconditioner = pc;
+            // Auto must select the new projected FGMRES path.
+            const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
+            EXPECT_TRUE(result.pressure_linear_plan_resolved);
+            EXPECT_TRUE(result.pressure_linear_plan.krylov == KrylovModel::FGMRES);
+            EXPECT_TRUE(result.converged);
+            EXPECT_NEAR(p(0), 7.0, 1e-11);
+            EXPECT_NEAR(p(1), 7.0, 1e-11);
+            for (std::size_t cell = 0; cell < U.size(); ++cell)
+                for (std::size_t component = 0; component < 3; ++component)
+                    EXPECT_NEAR(U(cell, component), 0.0, 1e-12);
+        }
+    });
     return run_all();
 }

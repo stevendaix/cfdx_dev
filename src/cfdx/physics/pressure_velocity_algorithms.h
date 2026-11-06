@@ -130,6 +130,29 @@ inline void validate_adaptive_relaxation_controls(const AdaptiveRelaxationContro
         throw std::invalid_argument("invalid adaptive relaxation controls");
 }
 
+// V21: a full-flux V19 pressure correction drives continuity close to
+// round-off before U is consistent. Its tiny continuity residual is NOT
+// a useful merit for adapting alpha_p. Use the reassembled momentum defect
+// and the independently reconstructed face-flux mismatch instead. These are
+// diagnostics of coupling, not substitutes for the final physical gates.
+inline double v21_pressure_relaxation_merit(
+    bool full_flux_step, double continuity, double momentum_rhs_relative,
+    double flux_velocity_mismatch_normalized)
+{
+    if (!std::isfinite(continuity) || continuity < 0.0)
+        throw std::invalid_argument("V21 adaptive pressure merit: invalid continuity");
+    // Preserve the historical criterion (and its required inputs) when V19
+    // split flux is not active. An unrelated optional diagnostic must never
+    // invalidate a previously supported SIMPLE/PISO relaxation path.
+    if (!full_flux_step)
+        return continuity;
+    if (!std::isfinite(momentum_rhs_relative) || momentum_rhs_relative < 0.0 ||
+        !std::isfinite(flux_velocity_mismatch_normalized) ||
+        flux_velocity_mismatch_normalized < 0.0)
+        throw std::invalid_argument("V21 adaptive pressure merit: invalid coupling residual");
+    return std::max(momentum_rhs_relative, flux_velocity_mismatch_normalized);
+}
+
 inline double adapt_relaxation_factor(
     double alpha,
     double previous_residual,
