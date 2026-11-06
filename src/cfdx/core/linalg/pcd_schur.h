@@ -14,59 +14,51 @@
 
 namespace cfdx::core {
 
-// Pressure-convection-diffusion (PCD) approximation of the pressure Schur
-// inverse for the coupled operator
+// Pressure Schur inverse approximation for a coupled operator
 //
-//     A = [ Auu  G ]
-//         [ D    C ].
+//     A = [ Auu  G ]  with  S = C - D Auu^{-1} G.
+//         [ D    C ]
 //
-// The Schur complement is
+// The DEFAULT legacy CFDX action is -Fp^{-1} rhs. It passed an earlier
+// 512-unknown production acceptance case, but must not be called the classical
+// PCD commutator formula. The older -Fp^{-1} Mp Kp^{-1} composition failed
+// that case; this is not a general proof against all composite PCD operators.
 //
-//     S = C - D Auu^{-1} G.
+// The optional literature-inspired action is -Mp^{-1} Fp Kp^{-1} rhs:
+// first SOLVE Kp, then MULTIPLY Fp, then invert the positive LUMPED mass.
+// See Kay/Loghin/Wathen (2002) and Elman et al. (2006). The latter
+// multiplication is crucial: it does not introduce an Fp inverse. This
+// order is not interchangeable with -Kp^{-1} Fp Mp^{-1} in general.
 //
-// The action implemented here is a single pressure inverse,
+// Pressure-side operators are supplied explicitly, because inferring them
+// from the velocity block would hide discretization and boundary assumptions.
+// The literature model is a research option until the FV pressure-space
+// operators, their boundary conditions, gauge scaling and true coupled
+// convergence have been qualified independently on non-zero-flow cases.
 //
-//     S^{-1} rhs ~= -Fp^{-1} rhs,
+// Gauge treatment: pressure reference rows belong in the supplied pressure
+// operators, not zeroed in the apply() input/output. A frozen reference-cell
+// correction prevents the outer Krylov solver from fixing a nonzero gauge
+// residual. The optional commutator keeps the same input/output treatment;
+// its physical gauge scaling is NOT yet qualified for production.
 //
-// where Fp is the pressure convection-diffusion operator. The single inverse is
-// not a stylistic choice. On a uniform mesh the pressure mass operator is the
-// uniform scalar diag(cell_volumes), so the previously documented composition
-// -Fp^{-1} Mp Kp^{-1} reduced to a uniform factor times Fp^{-1} Kp^{-1}: two
-// inverse pressure operators where the Schur complement requires one. Measured
-// on the production 512-unknown coupled matrix, that squared inverse produced
-// an action of norm 51510.5 against an exact-Schur action of norm 0.70831, with
-// a cosine of -0.029 between them. Every double-inverse ordering fails to
-// converge that system; the single-inverse orderings converge it in the same 17
-// iterations as BlockSchur and MGR.
+// The pressure operators must keep their CSR patterns between setup() and
+// numeric update. A changed graph requires a fresh setup(). An updated
+// operator used by a nested inverse also requires updating its callback.
+// The old CFDX single-inverse approximation is preserved as the default.
+// The optional commutator model implements, for a lumped positive pressure
+// mass, -Mp^{-1} Fp Kp^{-1}. This is the order derived in the PCD literature;
+// it is NOT equivalent to -Kp^{-1} Fp Mp^{-1} on noncommuting matrices.
 //
-// The choice between Fp and the pure-diffusion operator Kp as the single inverse
-// is PROVISIONAL. Both converge the production acceptance case because the mass
-// flux is zero at its first coupled iteration, which leaves Fp and Kp nearly
-// proportional. That near-equality is a property of that case, not evidence
-// that the ordering is immaterial: with a non-zero mass flux Fp and Kp differ,
-// and the ordering must be qualified on such a case before it is fixed.
-//
-// The pressure-side operators are supplied explicitly. This is deliberate:
-// constructing Fp from the velocity block would silently encode a
-// discretisation-dependent assumption and would make the approximation less
-// auditable. Pressure solvers are also supplied independently for Kp and Fp.
-// Only Fp enters the current action; Mp and Kp are retained and validated
-// because the pending ordering qualification compares them, and because the
-// lifecycle contract covers all three pressure operators.
-//
-// Gauge treatment: the reference cell is imposed on the pressure operators
-// themselves, by replacing that operator row with a unit row. The operators are
-// therefore nonsingular and their inverse action is defined for any right-hand
-// side. The action must consequently return a gauge component when its input has
-// one. Zeroing the reference cell on input or output freezes the coupled gauge
-// row residual at its initial magnitude forever: on the production case that
-// left a residual of exactly the initial pressure value (0.5) as the dominant
-// term of a total residual norm of 0.500247. This class therefore does not pin
-// the reference cell.
-//
-// The pressure-side matrices must keep their sparsity patterns between
-// setup() and update_values(). A changed graph requires setup() so that the
-// lifecycle cannot silently reuse stale symbolic state.
+// The optional model validates its Kp inverse callback against the actual
+// Kp matrix on every apply. This detects stale callbacks after numeric updates.
+// It is an algebraic research option, not a claim of finite-volume or physical
+// qualification for the coupled CFD solver.
+enum class PcdSchurActionMode {
+    LegacySingleConvectionDiffusionInverse,
+    LumpedMassCommutator
+};
+
 class PcdSchurApproximation final : public SchurApproximation {
 public:
     using PressureSolve = std::function<bool(const Vector& rhs, Vector& x)>;
@@ -77,19 +69,26 @@ public:
                           PressureSolve laplacian_solve,
                           PressureSolve convection_diffusion_solve,
                           std::optional<NullSpaceProjector> pressure_null_space = std::nullopt,
-                          std::optional<std::size_t> pressure_reference_cell = std::nullopt)
+                          std::optional<std::size_t> pressure_reference_cell = std::nullopt,
+                          PcdSchurActionMode mode =
+                              PcdSchurActionMode::LegacySingleConvectionDiffusionInverse)
         : pressure_mass_(pressure_mass),
           pressure_laplacian_(pressure_laplacian),
           pressure_convection_diffusion_(pressure_convection_diffusion),
           laplacian_solve_(std::move(laplacian_solve)),
           convection_diffusion_solve_(std::move(convection_diffusion_solve)),
           pressure_null_space_(std::move(pressure_null_space)),
-          pressure_reference_cell_(pressure_reference_cell) {}
+          pressure_reference_cell_(pressure_reference_cell),
+          mode_(mode) {}
 
-    const char* name() const noexcept override { return "pcd_schur"; }
+    const char* name() const noexcept override {
+        return mode_ == PcdSchurActionMode::LumpedMassCommutator
+            ? "pcd_lumped_mass_commutator" : "pcd_schur";
+    }
+    PcdSchurActionMode mode() const noexcept { return mode_; }
 
-    // apply() returns -Fp^{-1} rhs, which approximates S^{-1} rhs for the
-    // pressure Schur complement. The sign belongs to the inverse action, so this
+    // Both actions approximate S^{-1} rhs for the pressure Schur complement.
+    // The sign belongs to the inverse action, so this
     // is InverseOperator rather than the SIMPLE/SIMPLEC operator action.
     SchurAction action() const noexcept override { return SchurAction::InverseOperator; }
 
@@ -112,6 +111,9 @@ public:
         if (pressure_reference_cell_ &&
             *pressure_reference_cell_ >= np)
             return false;
+        if (mode_ == PcdSchurActionMode::LumpedMassCommutator &&
+            !positive_diagonal_lumped_mass(pressure_mass_, np))
+            return false;
 
         pressure_size_ = np;
         graph_signature_ = graph_signature(blocks);
@@ -130,6 +132,9 @@ public:
             return false;
         if (pressure_null_space_ &&
             pressure_null_space_->dimension() != np)
+            return false;
+        if (mode_ == PcdSchurActionMode::LumpedMassCommutator &&
+            !positive_diagonal_lumped_mass(pressure_mass_, np))
             return false;
         return true;
     }
@@ -156,11 +161,59 @@ public:
             !same_pattern(pressure_convection_diffusion_,
                            pressure_convection_diffusion))
             return false;
+        // Any matrix used by a nested inverse must keep the numerical state
+        // of its callback. Updating only the matrix would silently continue
+        // solving the old operator, even though the graph is unchanged.
+        if ((mode_ == PcdSchurActionMode::LumpedMassCommutator &&
+             (!positive_diagonal_lumped_mass(pressure_mass, np) ||
+              !same_values(pressure_laplacian_, pressure_laplacian))) ||
+            (mode_ == PcdSchurActionMode::LegacySingleConvectionDiffusionInverse &&
+             !same_values(pressure_convection_diffusion_,
+                          pressure_convection_diffusion)))
+            return false; // Use update_pressure_values_and_solves instead.
 
         pressure_mass_ = pressure_mass;
         pressure_laplacian_ = pressure_laplacian;
         pressure_convection_diffusion_ = pressure_convection_diffusion;
         pressure_size_ = np;
+        graph_signature_ = graph_signature(blocks);
+        return true;
+    }
+
+    // A complete numeric update including the solvers whose captured state
+    // must correspond to the new matrices. Validate before modifying any
+    // member; pressure operators and callbacks change as one transaction.
+    bool update_pressure_values_and_solves(
+        const BlockOperator& blocks,
+        const SparseMatrix& pressure_mass,
+        const SparseMatrix& pressure_laplacian,
+        const SparseMatrix& pressure_convection_diffusion,
+        PressureSolve laplacian_solve,
+        PressureSolve convection_diffusion_solve) {
+        if (pressure_size_ == 0 || !blocks.is_valid() ||
+            graph_signature(blocks) != graph_signature_ ||
+            !laplacian_solve || !convection_diffusion_solve)
+            return false;
+        const std::size_t np = blocks.pressure_size();
+        if (!valid_pressure_operator(pressure_mass, np) ||
+            !valid_pressure_operator(pressure_laplacian, np) ||
+            !valid_pressure_operator(pressure_convection_diffusion, np) ||
+            !same_pattern(pressure_mass_, pressure_mass) ||
+            !same_pattern(pressure_laplacian_, pressure_laplacian) ||
+            !same_pattern(pressure_convection_diffusion_,
+                          pressure_convection_diffusion) ||
+            (mode_ == PcdSchurActionMode::LumpedMassCommutator &&
+             !positive_diagonal_lumped_mass(pressure_mass, np)))
+            return false;
+
+        SparseMatrix new_mass(pressure_mass);
+        SparseMatrix new_laplacian(pressure_laplacian);
+        SparseMatrix new_convection_diffusion(pressure_convection_diffusion);
+        pressure_mass_ = std::move(new_mass);
+        pressure_laplacian_ = std::move(new_laplacian);
+        pressure_convection_diffusion_ = std::move(new_convection_diffusion);
+        laplacian_solve_ = std::move(laplacian_solve);
+        convection_diffusion_solve_ = std::move(convection_diffusion_solve);
         graph_signature_ = graph_signature(blocks);
         return true;
     }
@@ -187,16 +240,37 @@ public:
             pressure_null_space_->remove(rhs);
         }
 
-        // pressure = -Fp^{-1} rhs. Exactly one pressure inverse is applied; see
-        // the contract note at the top of this header for why the mass and
-        // Laplacian operators must not be composed into the action.
-        if (!convection_diffusion_solve_(rhs, pressure) ||
-            pressure.size() != np || !pressure.is_valid())
-            return false;
-        if (pressure_null_space_)
-            pressure_null_space_->remove(pressure);
+        Vector candidate(np, 0.0);
+        if (mode_ == PcdSchurActionMode::LumpedMassCommutator) {
+            // Apply -Mp^{-1} Fp Kp^{-1} in the mathematically correct order.
+            // This requires an explicitly verified *lumped* Mp; a general
+            // mass matrix must not be silently inverted using its diagonal.
+            Vector kp_inverse_rhs(np, 0.0);
+            if (!laplacian_solve_(rhs, kp_inverse_rhs) ||
+                kp_inverse_rhs.size() != np || !kp_inverse_rhs.is_valid() ||
+                !laplacian_inverse_is_current(rhs, kp_inverse_rhs))
+                return false;
 
-        pressure *= -1.0;
+            Vector fp_product(np, 0.0);
+            pressure_convection_diffusion_.matvec_into(
+                kp_inverse_rhs, fp_product);
+            for (std::size_t row = 0; row < np; ++row) {
+                const double mass = pressure_mass_(row, row);
+                candidate(row) = -fp_product(row) / mass;
+            }
+            if (!candidate.is_valid())
+                return false;
+        } else {
+            // Historical single-inverse action retained by default. Write to
+            // a temporary so even a failing callback cannot corrupt output.
+            if (!convection_diffusion_solve_(rhs, candidate) ||
+                candidate.size() != np || !candidate.is_valid())
+                return false;
+            candidate *= -1.0;
+        }
+        if (pressure_null_space_)
+            pressure_null_space_->remove(candidate);
+        pressure = std::move(candidate);
         return true;
     }
 
@@ -225,6 +299,55 @@ public:
     }
 
 private:
+    static bool positive_diagonal_lumped_mass(const SparseMatrix& mass,
+                                               std::size_t np) {
+        if (!valid_pressure_operator(mass, np))
+            return false;
+        for (std::size_t row = 0; row < np; ++row) {
+            const double diagonal = mass(row, row);
+            if (!(diagonal > 0.0) || !std::isfinite(diagonal))
+                return false;
+            for (std::size_t k = mass.row_offsets_data()[row];
+                 k < mass.row_offsets_data()[row + 1]; ++k) {
+                if (mass.columns_data()[k] != row &&
+                    mass.values_data()[k] != 0.0)
+                    return false;
+            }
+        }
+        return true;
+    }
+
+    // This check is intentionally algebraic and independent of the solver's
+    // claimed status. In this experimental mode an inaccurate or stale Kp
+    // callback must fail before it can poison the outer coupled iteration.
+    bool laplacian_inverse_is_current(const Vector& rhs,
+                                      const Vector& solution) const {
+        Vector actual(pressure_size_, 0.0);
+        pressure_laplacian_.matvec_into(solution, actual);
+        double residual_sq = 0.0;
+        double rhs_sq = 0.0;
+        for (std::size_t row = 0; row < pressure_size_; ++row) {
+            const double error = actual(row) - rhs(row);
+            residual_sq += error * error;
+            rhs_sq += rhs(row) * rhs(row);
+        }
+        if (!std::isfinite(residual_sq) || !std::isfinite(rhs_sq))
+            return false;
+        constexpr double relative_tol = 1e-9;
+        constexpr double absolute_tol = 1e-12;
+        return std::sqrt(residual_sq) <=
+            absolute_tol + relative_tol * std::sqrt(rhs_sq);
+    }
+
+    static bool same_values(const SparseMatrix& a, const SparseMatrix& b) {
+        if (!same_pattern(a, b))
+            return false;
+        for (std::size_t k = 0; k < a.nnz(); ++k)
+            if (a.values_data()[k] != b.values_data()[k])
+                return false;
+        return true;
+    }
+
     static bool valid_pressure_operator(const SparseMatrix& matrix,
                                         std::size_t np) {
         if (matrix.n_rows() != np || matrix.n_cols() != np)
@@ -292,6 +415,8 @@ private:
     PressureSolve convection_diffusion_solve_;
     std::optional<NullSpaceProjector> pressure_null_space_;
     std::optional<std::size_t> pressure_reference_cell_;
+    PcdSchurActionMode mode_ =
+        PcdSchurActionMode::LegacySingleConvectionDiffusionInverse;
     GraphSignature graph_signature_{};
 };
 

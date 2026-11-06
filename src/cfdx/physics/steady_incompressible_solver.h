@@ -610,6 +610,11 @@ inline void validate_incompressible_controls(
         c.algorithm != PressureVelocityAlgorithm::PIMPLE)
         throw std::invalid_argument(
             "PISO neighbour correction requires PISO or PIMPLE algorithm");
+    if (c.coupling.pcd_lumped_mass_commutator_experimental &&
+        (c.algorithm != PressureVelocityAlgorithm::COUPLED ||
+         c.coupling.schur_model != CoupledSchurModel::PCD))
+        throw std::invalid_argument(
+            "PCD lumped-mass commutator requires COUPLED with PCD Schur");
     validate_convergence_criteria(c.convergence);
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
@@ -3560,7 +3565,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             std::move(solve_kp), std::move(solve_fp),
             std::nullopt,
             has_fixed_pressure ? std::optional<std::size_t>()
-                               : std::optional<std::size_t>(reference_cell));
+                               : std::optional<std::size_t>(reference_cell),
+            controls.coupling.pcd_lumped_mass_commutator_experimental
+                ? PcdSchurActionMode::LumpedMassCommutator
+                : PcdSchurActionMode::LegacySingleConvectionDiffusionInverse);
         // Evidence-only: expose the production operators to the
         // coupled_assembly_callback when one is installed (kept alive via
         // evidence_pcd_ops past this branch scope).

@@ -77,6 +77,10 @@ struct CouplingControls {
     // Explicit pressure-Schur approximation for the coupled production path.
     // Unsupported models must be rejected; there is no implicit fallback.
     CoupledSchurModel schur_model = CoupledSchurModel::PCD;
+    // Research-only, opt-in. Uses -Mp^-1 Fp Kp^-1 with a positive, lumped
+    // pressure mass. The default remains the qualified legacy -Fp^-1 action.
+    // No physical performance claim or automatic fallback is implied.
+    bool pcd_lumped_mass_commutator_experimental = false;
 };
 
 inline void validate_coupling_controls(const CouplingControls& c)

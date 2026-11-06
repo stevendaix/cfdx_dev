@@ -1,5 +1,16 @@
 # PCD Schur approximation — N8 implementation contract
 
+
+> **Relecture bibliographique du 2026-11-06 :** les sections de cette fiche
+> antérieures a cette date documentent un choix de production *historique* et
+> ses mesures, pas une preuve generale imposant `-Fp^-1`. Le PCD classique
+> du commutateur est `-Mp^-1 Fp Kp^-1` avec les signes CFDX; il effectue
+> une RESOLUTION Kp, une MULTIPLICATION Fp et une action masse inverse.
+> L'ordre `-Kp^-1 Fp Mp^-1` n'est pas equivalent. Le nouveau mode
+> `LumpedMassCommutator` est EXPERIMENTAL et desactive par defaut.
+> La transposition du PCD elements finis aux operateurs FV colocalises
+> exige une qualification physique independante.
+
 ## Scope
 
 This document defines the CFDX algebraic implementation of the pressure-convection-diffusion (PCD) Schur inverse approximation.
@@ -13,15 +24,17 @@ the exact pressure Schur complement is
 
     S = C - D Auu^{-1} G.
 
-For incompressible flow, the PCD approximation used here applies a single
-pressure inverse,
+For incompressible flow, the **legacy default CFDX approximation**
+applies a single pressure inverse,
 
     S^{-1} ~= -Fp^{-1}.
 
-This supersedes an earlier contract, `S ~= -Kp Mp^{-1} Fp` and therefore
-`S^{-1} ~= -Fp^{-1} Mp Kp^{-1}`, which applied two inverse pressure operators
-where one is required. That contract, the measurements that refuted it, and the
-gauge defect found alongside it are retained below as evidence.
+The earlier tested contract, `S ~= -Kp Mp^{-1} Fp` and hence
+`S^{-1} ~= -Fp^{-1} Mp Kp^{-1}`, applied TWO pressure solves and failed
+one production acceptance matrix. This observation does not refute the
+classical commutator PCD ordering `-Mp^{-1} Fp Kp^{-1}`, which uses just one
+pressure solve followed by Fp multiplication and mass scaling. Historical
+measurements and the gauge defect are retained below as evidence.
 
 The implementation is an algebraic Schur approximation. It does not claim that
 a particular pressure discretisation is universally correct.
@@ -36,25 +49,29 @@ The caller supplies three pressure-space operators:
 
 The caller also supplies independent solves for Kp and Fp.
 
-The apply sequence is exactly:
+Two selectable paths now exist:
 
-1. pressure = -Fp^{-1} rhs.
+1. Legacy default: `pressure = -Fp^{-1} rhs`.
+2. Opt-in commutator: `z = Kp^{-1} rhs`, `y = Fp z`,
+   `pressure = -diag(Mp)^{-1} y`. The second mode requires a strictly
+   positive diagonal/lumped mass, checks the true Kp solve residual and
+   never silently falls back to the legacy mode.
 
-**Exactly one pressure inverse is applied.** No dense inverse is formed and no
-pressure operator is inferred from Auu, G or D.
+No dense inverse is formed and no pressure operator is inferred from Auu, G or D.
 
 This separation is intentional: PCD depends on the pressure convection and
 diffusion discretisations, so constructing those operators implicitly from the
 saddle-point blocks would hide a numerical assumption.
 
-### Why a single inverse
+### Why the former double-solve composition failed
 
-The single inverse is required by the production algebra, not chosen for
-convenience. The previously documented composition
+The single-inverse action was the successful *empirical choice* on the original
+production acceptance case. The previously documented composition
 
     S^{-1} ~= -Fp^{-1} Mp Kp^{-1}
 
-applies two inverse pressure operators where the Schur complement requires one.
+applies TWO nested pressure inverse solves rather than the PCD commutator's
+one Kp inverse solve and a pressure Fp multiplication.
 On a uniform mesh Mp is the uniform scalar diag(cell_volumes), so that
 composition collapses to a uniform factor times Fp^{-1} Kp^{-1}: a squared
 pressure inverse. Measured on the production 512-unknown coupled matrix, it
@@ -74,9 +91,11 @@ residual after 2000 iterations:
 | `-Fp^{-1}` | 0.441942 | converged, 17 iterations |
 | `-Mp^{-1}` (diagonal) | 0.441983 | 0.003620 |
 
-The governing rule is the number of inverses, not which operators sit between
-them. Every double-inverse ordering fails; every single-inverse ordering
-converges.
+**This table describes one acceptance matrix, not an algebraic theorem.**
+The classical `-Mp^{-1} Fp Kp^{-1}` requires no Fp solve; its failure
+in that historical comparison is an important warning about its then-used
+pressure operators, scaling, gauge and preconditioner setup, not evidence that
+the commutator identity is mathematically wrong.
 
 ### The ordering is provisional
 
@@ -93,8 +112,9 @@ immaterial: once the mass flux is non-zero, Fp and Kp differ, and
 
 Accordingly the claim is:
 
-> A single-inverse action is required by the production algebra. The exact PCD
-> operator ordering remains to be qualified on a non-zero-convection case.
+> The historical CFDX `-Fp^-1` action remains the default. A separate
+> bibliographic PCD commutator action is now available *only by opt-in*; neither
+> is qualified superior on non-zero-convection coupled FV campaigns.
 
 ## Sign convention
 
@@ -131,9 +151,14 @@ Because BlockOperator intentionally contains only the saddle-point blocks,
 PCD exposes an explicit update_pressure_values(...) overload for its three
 additional pressure operators. This path:
 
-- accepts value-only updates when the CSR graphs are unchanged;
+- accepts value-only updates on unchanged CSR graphs **only if the matrix
+  inverted by a callback has unchanged numerical values**; otherwise it
+  rejects a potentially stale callback;
 - rejects any pressure-operator graph change;
-- updates the retained operator references only after all validation succeeds.
+- `update_pressure_values_and_solves(...)` replaces pressure matrices and
+  both nested solver callbacks in one validated transaction;
+- the experimental commutator recalculates the true Kp residual during apply
+  and rejects an inconsistent callback.
 
 A symbolic graph change therefore requires a fresh setup()/new PCD object
 rather than silently reusing stale symbolic assumptions.
@@ -190,7 +215,8 @@ non-zero output gauge component.
 - method name/registration surface;
 - dimension rejection;
 - pressure graph-change rejection;
-- value-only pressure updates;
+- transactional pressure-operator and callback updates (including rejection
+  of stale inverses);
 - null-space compatibility.
 
 This is implementation and algebraic verification, not production qualification.

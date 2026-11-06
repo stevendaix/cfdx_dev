@@ -8,7 +8,7 @@
 - Limites qualifiées : N8 accepté et issue #481 fermée le 2026-10-12 (décision consignée dans le suivi de #481). Les méthodes AMG/SA/Coupled Block Schur/PCD/MGR restent qualifiées en série uniquement ; aucune qualification MPI/GPU n'est revendiquée. Les métriques quantitatives de la section 6 restent des preuves et critères applicables, sans seuil universel ni sélection automatique.
 
 ## 1. Références sources
-- D. Kay, D. Loghin, A. Wathen, « A preconditioner for the steady-state Navier–Stokes equations », *SIAM J. Sci. Comput.* 24(1):239–253, 2002. (PCD)
+- D. Kay, D. Loghin, A. Wathen, « A preconditioner for the steady-state Navier–Stokes equations », *SIAM J. Sci. Comput.* 24(1):237–256, 2002. (PCD)
 - D. Loghin, A. J. Wathen, « Schur complement preconditioners for the Navier–Stokes equations », *Int. J. Numer. Meth. Fluids* 40:403–412, 2002 — DOI : 10.1002/fld.296. (LSC)
 - H. C. Elman, D. J. Silvester, A. J. Wathen, *Finite Elements and Fast Iterative Solvers: with applications in incompressible fluid dynamics*, 2e éd., Oxford University Press, 2014. (BFBT, analyse coût)
 - U. Trottenberg, C. W. Oosterlee, A. Schüller, *Multigrid*, Academic Press, 2001 — ISBN 978-0-12-701070-0. (AMG)
@@ -17,7 +17,7 @@
 Pression de correction pour le système de Stokes/Oseen ; le complément de Schur exact $S = C - D M^{-1} G$ est inaccessible ; on approxime $S^{-1}$.
 
 ## 3. Discrétisation Volume Fini (contrats par modèle)
-- **PCD** : $S^{-1} \\approx (M_p^{-1} F_p)^{-1} F_p \\, L_p^{-1}$ — les opérateurs de pression ($M_p$, $L_p$, $F_p$) sont **rigoureusement indépendants du schéma de convection** car assemblés sur la matrice upwind conservatrice commune (matrice seule, correction différée au second membre) — décision #663/#853 : ne **pas** propager le knob `convection_scheme’ dans le PCD.
+- **PCD** : approximation classique (convention CFDX) $S^{-1} \approx -M_p^{-1} F_p K_p^{-1}$, tandis que le mode de production historique reste $-F_p^{-1}$. Le commutateur PCD est experimental et desactive par defaut. Ici $K_p^{-1}$ est une resolution pression, $F_p$ est une multiplication et $M_p^{-1}$ est un inverse de masse positive lumped. Aucune superiorite physique n'est revendiquee. Sur un maillage FV colocalise, echelles et conditions aux limites doivent etre validees independamment. Les operateurs de pression sont assembles avec la meme matrice upwind implicite pour chaque schema a correction differee (voir commentaire de l'assembleur).
 - **LSC** : $S^{-1} \\approx (D M_u^{-1} G)^{-1} (D M_u^{-1} F_u M_u^{-1} G)(D M_u^{-1} G)^{-1}$ — exige les moyennes de faces $A_f$.
 - **BFBT** : factorisation $L D^T$ de masse — invariance par jauge à démontrer (leçon fix4 : jauge inconditionnelle corrigée par sentinelle).
 - **MGR / AMG**échelonnage/hierarchies : sweep anisotrope documenté ; le passage de MGR est une correction finie → l'efficacité doit être **mesurée**, pas supposée.

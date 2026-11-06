@@ -249,13 +249,28 @@ int main() {
         EXPECT_TRUE(!pcd.update_pressure_values(blocks, Mp, changed_K, Fp));
     });
 
-    run_case("pcd_accepts_pressure_value_update_same_graph", [&] {
+    run_case("pcd_legacy_refresh_requires_matching_new_nested_solver", [&] {
         PcdSchurApproximation pcd(Mp, Kp, Fp, solve_K, solve_F);
         EXPECT_TRUE(pcd.setup(blocks));
         const auto updated_F = make_sparse(2, 2, {
             {0, 0, 1.9}, {0, 1, 0.3}, {1, 0, -0.15}, {1, 1, 2.2}
         });
-        EXPECT_TRUE(pcd.update_pressure_values(blocks, Mp, Kp, updated_F));
+        EXPECT_TRUE(!pcd.update_pressure_values(blocks, Mp, Kp, updated_F));
+        EXPECT_NEAR(pcd.pressure_convection_diffusion()(0, 0), 1.7, 0.0);
+        // A matching fresh inverse callback permits the update atomically.
+        const auto Finv_updated = inverse(dense(updated_F));
+        const auto solve_F_updated = [Finv_updated](const Vector& rhs, Vector& x) {
+            x = dense_matvec(Finv_updated, rhs);
+            return true;
+        };
+        EXPECT_TRUE(pcd.update_pressure_values_and_solves(
+            blocks, Mp, Kp, updated_F, solve_K, solve_F_updated));
+        Vector rhs(2, 0.0);
+        rhs(0) = 1.0;
+        rhs(1) = -0.7;
+        Vector out(2, 0.0);
+        EXPECT_TRUE(pcd.apply(rhs, out));
+        assert_close(out, dense_matvec(Finv_updated, rhs) * -1.0);
     });
 
     run_case("pcd_requires_pressure_nullspace_compatibility", [&] {
@@ -400,6 +415,179 @@ int main() {
         const double separation = (from_fp - from_kp).norm2();
         std::cout << "PCD_ORACLE convection_ordering_separation=" << separation << '\n';
         EXPECT_TRUE(separation > 1e-6);
+    });
+
+    run_case("pcd_commutator_exact_order_noncommuting", [&] {
+        // Reference operator -Mp^-1 Fp Kp^-1, not the reverse ordering.
+        const auto lumped_mass = make_sparse(2, 2, {
+            {0, 0, 2.0}, {1, 1, 5.0}
+        });
+        PcdSchurApproximation pcd(
+            lumped_mass, Kp, Fp, solve_K, solve_F, std::nullopt,
+            std::nullopt, PcdSchurActionMode::LumpedMassCommutator);
+        EXPECT_TRUE(pcd.setup(blocks));
+        EXPECT_TRUE(pcd.mode() == PcdSchurActionMode::LumpedMassCommutator);
+        EXPECT_TRUE(std::string(pcd.name()) == "pcd_lumped_mass_commutator");
+        Vector rhs(2, 0.0);
+        rhs(0) = 1.0;
+        rhs(1) = -0.7;
+        Vector out(2, 0.0);
+        EXPECT_TRUE(pcd.apply(rhs, out));
+        Vector expected = dense_matvec(dense(Fp), dense_matvec(Kinv, rhs));
+        expected(0) *= -0.5;
+        expected(1) *= -0.2;
+        assert_close(out, expected);
+
+        Vector inv_mass_rhs(2, 0.0);
+        inv_mass_rhs(0) = rhs(0) / 2.0;
+        inv_mass_rhs(1) = rhs(1) / 5.0;
+        const Vector reversed = dense_matvec(
+            Kinv, dense_matvec(dense(Fp), inv_mass_rhs)) * -1.0;
+        const double difference = (out - reversed).norm2();
+        EXPECT_TRUE(difference > 1e-3);
+        std::cout << "PCD_COMMUTATOR noncommuting_order_difference="
+                  << difference << '\n';
+        Vector scaled(2, 0.0);
+        EXPECT_TRUE(pcd.apply(rhs * 3.0, scaled));
+        assert_close(scaled, out * 3.0);
+    });
+
+    run_case("pcd_commutator_rejects_nonlumped_or_nonpositive_mass", [&] {
+        PcdSchurApproximation nonlumped(
+            Mp, Kp, Fp, solve_K, solve_F, std::nullopt,
+            std::nullopt, PcdSchurActionMode::LumpedMassCommutator);
+        EXPECT_TRUE(!nonlumped.setup(blocks));
+        const auto zero_mass = make_sparse(2, 2, {
+            {0, 0, 2.0}, {1, 1, 0.0}
+        });
+        PcdSchurApproximation singular(
+            zero_mass, Kp, Fp, solve_K, solve_F, std::nullopt,
+            std::nullopt, PcdSchurActionMode::LumpedMassCommutator);
+        EXPECT_TRUE(!singular.setup(blocks));
+        const auto negative_mass = make_sparse(2, 2, {
+            {0, 0, 2.0}, {1, 1, -5.0}
+        });
+        PcdSchurApproximation indefinite(
+            negative_mass, Kp, Fp, solve_K, solve_F, std::nullopt,
+            std::nullopt, PcdSchurActionMode::LumpedMassCommutator);
+        EXPECT_TRUE(!indefinite.setup(blocks));
+    });
+
+    run_case("pcd_commutator_updates_operators_and_solver_transactionally", [&] {
+        const auto lumped_mass = make_sparse(2, 2, {
+            {0, 0, 2.0}, {1, 1, 5.0}
+        });
+        PcdSchurApproximation pcd(
+            lumped_mass, Kp, Fp, solve_K, solve_F, std::nullopt,
+            std::nullopt, PcdSchurActionMode::LumpedMassCommutator);
+        EXPECT_TRUE(pcd.setup(blocks));
+        const auto changed_K = make_sparse(2, 2, {
+            {0, 0, 3.4}, {0, 1, -0.4},
+            {1, 0, 0.2}, {1, 1, 2.0}
+        });
+        const auto changed_F = make_sparse(2, 2, {
+            {0, 0, 1.9}, {0, 1, 0.3},
+            {1, 0, -0.15}, {1, 1, 2.6}
+        });
+        const auto changed_M = make_sparse(2, 2, {
+            {0, 0, 3.0}, {1, 1, 4.0}
+        });
+        EXPECT_TRUE(!pcd.update_pressure_values(
+            blocks, changed_M, changed_K, changed_F));
+        EXPECT_NEAR(pcd.pressure_laplacian()(0, 0), 3.0, 0.0);
+        EXPECT_NEAR(pcd.pressure_mass()(0, 0), 2.0, 0.0);
+
+        const auto changed_K_inv = inverse(dense(changed_K));
+        auto new_solver = [changed_K_inv](const Vector& rhs, Vector& x) {
+            x = dense_matvec(changed_K_inv, rhs);
+            return true;
+        };
+        EXPECT_TRUE(pcd.update_pressure_values_and_solves(
+            blocks, changed_M, changed_K, changed_F, new_solver, solve_F));
+        Vector rhs(2, 0.0);
+        rhs(0) = 0.8;
+        rhs(1) = -0.2;
+        Vector out(2, 0.0);
+        EXPECT_TRUE(pcd.apply(rhs, out));
+        Vector expected = dense_matvec(
+            dense(changed_F), dense_matvec(changed_K_inv, rhs));
+        expected(0) /= -3.0;
+        expected(1) /= -4.0;
+        assert_close(out, expected);
+    });
+
+    run_case("pcd_commutator_stale_solver_fails_closed", [&] {
+        const auto lumped_mass = make_sparse(2, 2, {
+            {0, 0, 2.0}, {1, 1, 5.0}
+        });
+        PcdSchurApproximation pcd(
+            lumped_mass, Kp, Fp, solve_K, solve_F, std::nullopt,
+            std::nullopt, PcdSchurActionMode::LumpedMassCommutator);
+        EXPECT_TRUE(pcd.setup(blocks));
+        const auto changed_K = make_sparse(2, 2, {
+            {0, 0, 3.4}, {0, 1, -0.4},
+            {1, 0, 0.2}, {1, 1, 2.0}
+        });
+        // Deliberately attach the OLD solver to the NEW matrix.
+        EXPECT_TRUE(pcd.update_pressure_values_and_solves(
+            blocks, lumped_mass, changed_K, Fp, solve_K, solve_F));
+        Vector rhs(2, 0.0);
+        rhs(0) = 1.0;
+        rhs(1) = -0.7;
+        Vector out(2, 17.0);
+        EXPECT_TRUE(!pcd.apply(rhs, out));
+        EXPECT_NEAR(out(0), 17.0, 0.0);
+        EXPECT_NEAR(out(1), 17.0, 0.0);
+    });
+
+    run_case("pcd_commutator_rejects_bad_update_without_mutation", [&] {
+        const auto lumped_mass = make_sparse(2, 2, {
+            {0, 0, 2.0}, {1, 1, 5.0}
+        });
+        PcdSchurApproximation pcd(
+            lumped_mass, Kp, Fp, solve_K, solve_F, std::nullopt,
+            std::nullopt, PcdSchurActionMode::LumpedMassCommutator);
+        EXPECT_TRUE(pcd.setup(blocks));
+        const auto invalid_mass = make_sparse(2, 2, {
+            {0, 0, 2.0}, {1, 1, -1.0}
+        });
+        EXPECT_TRUE(!pcd.update_pressure_values_and_solves(
+            blocks, invalid_mass, Kp, Fp, solve_K, solve_F));
+        EXPECT_NEAR(pcd.pressure_mass()(1, 1), 5.0, 0.0);
+        Vector rhs(2, 0.0);
+        rhs(0) = 1.0;
+        rhs(1) = -0.7;
+        Vector out(2, 0.0);
+        EXPECT_TRUE(pcd.apply(rhs, out));
+    });
+
+    run_case("pcd_failed_inner_callback_does_not_corrupt_result", [&] {
+        auto fail_K = [](const Vector&, Vector& out) {
+            out = Vector(2, 999.0);
+            return false;
+        };
+        auto fail_F = [](const Vector&, Vector& out) {
+            out = Vector(2, 888.0);
+            return false;
+        };
+        PcdSchurApproximation legacy(
+            Mp, Kp, Fp, solve_K, fail_F);
+        EXPECT_TRUE(legacy.setup(blocks));
+        const auto lumped_mass = make_sparse(2, 2, {
+            {0, 0, 2.0}, {1, 1, 5.0}
+        });
+        PcdSchurApproximation commutator(
+            lumped_mass, Kp, Fp, fail_K, solve_F, std::nullopt,
+            std::nullopt, PcdSchurActionMode::LumpedMassCommutator);
+        EXPECT_TRUE(commutator.setup(blocks));
+        Vector rhs(2, 1.0);
+        Vector out(2, 42.0);
+        EXPECT_TRUE(!legacy.apply(rhs, out));
+        EXPECT_NEAR(out(0), 42.0, 0.0);
+        EXPECT_NEAR(out(1), 42.0, 0.0);
+        EXPECT_TRUE(!commutator.apply(rhs, out));
+        EXPECT_NEAR(out(0), 42.0, 0.0);
+        EXPECT_NEAR(out(1), 42.0, 0.0);
     });
 
     return run_all();

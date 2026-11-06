@@ -735,6 +735,26 @@ int main()
         EXPECT_TRUE(rejected);
     });
 
+    run_case("pcd_commutator_option_requires_coupled_pcd", [] {
+        IncompressibleSolverControls c;
+        EXPECT_TRUE(!c.coupling.pcd_lumped_mass_commutator_experimental);
+        c.coupling.pcd_lumped_mass_commutator_experimental = true;
+        c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        bool rejected = false;
+        try { validate_incompressible_controls(c, 2); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        EXPECT_TRUE(rejected);
+        c.algorithm = PressureVelocityAlgorithm::COUPLED;
+        c.coupling.schur_model = CoupledSchurModel::SIMPLE;
+        rejected = false;
+        try { validate_incompressible_controls(c, 2); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        EXPECT_TRUE(rejected);
+        c.coupling.schur_model = CoupledSchurModel::PCD;
+        // Other controls have valid defaults; the option is now admissible.
+        validate_incompressible_controls(c, 2);
+    });
+
     run_case("piso_neighbour_correction_is_opt_in_and_uses_inner_velocity", [] {
         const Mesh m = make_two_cell_channel();
         VelocityBoundaryConditions ubc;
