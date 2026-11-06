@@ -59,6 +59,7 @@ except ImportError:  # pragma: no cover
 
 
 if QMainWindow is not object:
+    from .case_file_panel import CaseFilePanel
     from .gui_3d import PyVistaQtView
     from .mesh_browser_panel import MeshBrowserPanel
     from .probes_panel import ProbesPanel
@@ -432,12 +433,14 @@ if QMainWindow is not object:
                 "setup": {
                     "workbench.dock.workflow",
                     "workbench.dock.mesh",
+                    "workbench.dock.case_file",
                     "workbench.dock.setup",
                     "workbench.dock.properties",
                 },
                 "mesh": {
                     "workbench.dock.workflow",
                     "workbench.dock.mesh",
+                    "workbench.dock.case_file",
                     "workbench.dock.properties",
                 },
                 "run": {
@@ -471,16 +474,66 @@ if QMainWindow is not object:
 
         def _open_case(self) -> None:
             path, _ = QFileDialog.getOpenFileName(
-                self, "Open CFDX Case", "", "CFDX Case (*.cfdx.h5)"
+                self, "Open CFDX File", "", "CFDX/HDF5 files (*.cfdx.h5 *.h5)"
             )
             if not path:
                 return
             try:
+                summary = self.application.inspect_case_file(path)
+                if not summary.is_cfdx:
+                    raise ValueError("file does not contain a recognised CFDX layout")
+                self.case_file_panel.set_summary(summary)
+                if not summary.has_project_config:
+                    if not summary.has_mesh:
+                        raise ValueError(
+                            "CFDX HDF5 file has neither a project configuration "
+                            "nor readable mesh topology"
+                        )
+                    self.statusBar().showMessage(
+                        "Mesh interchange file inspected; active project unchanged. "
+                        "Viewport remains on the active project; use Open Mesh "
+                        "to preview this imported mesh."
+                    )
+                    return
                 self.application.open_project(path)
                 self.session = self.application.session
                 self._refresh_setup_case()
                 self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
-            except (OSError, ValueError) as exc:
+                if summary.preview_supported:
+                    catalog = self.application.load_mesh(path)
+                    self.mesh_browser.set_catalog(catalog)
+                    if self.view3d is not None:
+                        self.view3d.load_cfdx_mesh(path, summary=summary)
+                        self._show_viewport()
+                    self._refresh_action_availability()
+                    self.statusBar().showMessage(
+                        f"CFDX file inspected: {summary.n_cells:,} cells · "
+                        f"{summary.n_faces:,} faces · "
+                        f"{summary.total_field_count} fields · "
+                        "right-click a boundary patch to select it"
+                    )
+                elif summary.has_mesh:
+                    self.mesh_browser.clear()
+                    if self.view3d is not None:
+                        self.view3d.clear()
+                        self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
+                    self._refresh_action_availability()
+                    self.statusBar().showMessage(
+                        "CFDX file opened metadata-only: "
+                        f"{summary.n_cells or 'unknown'} cells; "
+                        f"3D preview deferred: {summary.preview_block_reason}"
+                    )
+                else:
+                    self.mesh_browser.clear()
+                    if self.view3d is not None:
+                        self.view3d.clear()
+                        self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
+                    self._refresh_action_availability()
+                    self.statusBar().showMessage(
+                        f"CFDX project opened: {summary.path.name} · "
+                        "no embedded mesh topology"
+                    )
+            except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Open failed: {exc}")
 
         def _save_case(self) -> None:
@@ -552,6 +605,14 @@ if QMainWindow is not object:
                 "Mesh",
                 "workbench.dock.mesh",
                 self.mesh_browser,
+                Qt.DockWidgetArea.LeftDockWidgetArea,
+            )
+            self.case_file_panel = CaseFilePanel()
+            self.case_file_panel.setObjectName("workbench.case_file_panel")
+            self._add_dock(
+                "Case File",
+                "workbench.dock.case_file",
+                self.case_file_panel,
                 Qt.DockWidgetArea.LeftDockWidgetArea,
             )
             self.results_panel = ResultsPanel(self.application)
@@ -646,6 +707,7 @@ if QMainWindow is not object:
             try:
                 renderer = PyVistaQtView()
                 self.view3d = renderer
+                self.view3d.selection_changed.connect(self._mesh_view_selection_changed)
             except RuntimeError as exc:
                 renderer = QLabel(f"3D renderer unavailable\n\n{exc}")
                 self.view3d = None
@@ -757,17 +819,33 @@ if QMainWindow is not object:
 
         def _open_mesh(self) -> None:
             path, _ = QFileDialog.getOpenFileName(
-                self, "Open CFDX Mesh", "", "CFDX mesh (*.h5);;All files (*)"
+                self, "Open CFDX Mesh", "", "CFDX/HDF5 mesh (*.h5);;All files (*)"
             )
             if not path:
                 return
             try:
+                summary = self.application.inspect_case_file(path)
+                if not summary.is_cfdx or not summary.has_mesh:
+                    raise ValueError("file does not contain a recognised CFDX mesh")
+                self.case_file_panel.set_summary(summary)
+                if not summary.preview_supported:
+                    self.application.clear_mesh_catalog()
+                    self.mesh_browser.clear()
+                    if self.view3d is not None:
+                        self.view3d.clear()
+                        self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
+                    self._refresh_action_availability()
+                    self.statusBar().showMessage(
+                        f"Mesh metadata loaded ({summary.n_cells or 'unknown'} cells); "
+                        f"full in-memory preview deferred: {summary.preview_block_reason}"
+                    )
+                    return
                 catalog = self.application.load_mesh(path)
                 self.mesh_browser.set_catalog(catalog)
                 if self.view3d is not None:
                     self.view3d.load_cfdx_mesh(path)
                     self._show_viewport()
-                    self._refresh_action_availability()
+                self._refresh_action_availability()
                 self.statusBar().showMessage(f"Mesh loaded: {path}")
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Mesh error: {exc}")
@@ -787,20 +865,34 @@ if QMainWindow is not object:
             if not path:
                 return
             try:
+                case_path = Path(self.application.project_path)
+                summary = self.application.inspect_case_file(case_path)
                 loaded = self.application.load_dat(
                     path, use_for_restart=use_for_restart
                 )
                 fields = []
+                viewport_note = ""
                 if self.view3d is not None:
-                    fields = self.view3d.load_cfdx_dat(
-                        str(self.application.project_path), path
-                    )
-                    self._show_viewport()
+                    if summary.preview_supported:
+                        fields = self.view3d.load_cfdx_dat(
+                            str(case_path), path, summary=summary
+                        )
+                        self._show_viewport()
+                    else:
+                        self.application.clear_mesh_catalog()
+                        self.mesh_browser.clear()
+                        self.view3d.clear()
+                        self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
+                        viewport_note = (
+                            " | viewport deferred: "
+                            f"{summary.preview_block_reason or 'mesh is not previewable'}"
+                        )
                     self._refresh_action_availability()
                 self.statusBar().showMessage(
                     f"DAT loaded: {Path(path).name} | iteration={loaded.iteration} | "
                     f"time={loaded.time:g} | fields={len(fields or loaded.fields)}"
                     + (" | restart enabled" if use_for_restart else "")
+                    + viewport_note
                 )
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"DAT error: {exc}")
@@ -1076,6 +1168,16 @@ if QMainWindow is not object:
                 except (KeyError, ValueError):
                     pass
             self.statusBar().showMessage(f"Selected: {summary}")
+
+        def _mesh_view_selection_changed(self, stable_id: str) -> None:
+            """Route a renderer patch pick through the shared browser selection."""
+            selection = self.mesh_browser.select_stable_id(stable_id)
+            if selection is None:
+                self.statusBar().showMessage(
+                    f"Picked mesh object is not in the current catalog: {stable_id}"
+                )
+                return
+            self._mesh_selection_changed(selection)
 
         def _refresh_properties(self) -> None:
             """Rebuild the typed inspector for the current selection context."""

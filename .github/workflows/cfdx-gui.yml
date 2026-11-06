@@ -96,16 +96,85 @@ jobs:
         env:
           QT_QPA_PLATFORM: xcb
         run: |
+          mkdir -p artifacts
           xvfb-run -a -s "-screen 0 1280x1024x24" \
             python -m pytest -q \
               tests/python/test_capabilities.py \
               tests/python/test_specialized_setup.py \
               tests/python/test_workbench.py \
+              tests/python/test_case_inspector.py \
+              tests/python/test_mesh_quality.py \
+              tests/python/test_volume_mesh_quality.py \
+              tests/python/test_mesh_topology_validation.py \
+              tests/python/test_hdf5_inspector_benchmark.py \
               tests/python/test_gui_browser_widgets.py \
               tests/python/test_renderer.py \
               tests/python/test_renderer_headless_contract.py \
               tests/python/test_renderer_pyvista.py \
-              tests/python/test_gui_3d.py
+              tests/python/test_gui_3d.py \
+              --junitxml=artifacts/gui-regression-junit.xml
+
+      - name: Upload GUI regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-gui-regression-junit
+          path: artifacts/gui-regression-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Benchmark sparse large-mesh HDF5 inspection
+        if: always() && steps.install_gui.outcome == 'success'
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+        run: |
+          python scripts/benchmark_cfdx_hdf5_inspector.py \
+            --sizes 1000000,10000000,50000000 \
+            --output artifacts/cfdx-hdf5-inspector-benchmark.json
+
+      - name: Upload HDF5 inspection benchmark
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-hdf5-inspector-benchmark
+          path: artifacts/cfdx-hdf5-inspector-benchmark.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Benchmark bounded surface quality diagnostics
+        if: always() && steps.install_gui.outcome == 'success'
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+        run: |
+          python scripts/benchmark_cfdx_surface_quality.py \
+            --resolution 128 \
+            --output artifacts/cfdx-surface-quality.json
+
+      - name: Upload surface quality report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-surface-quality-report
+          path: artifacts/cfdx-surface-quality.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Benchmark volumetric skewness diagnostics
+        if: always() && steps.install_gui.outcome == 'success'
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+        run: |
+          python scripts/benchmark_cfdx_volume_skewness.py \
+            --output artifacts/cfdx-volume-skewness.json
+
+      - name: Upload volumetric skewness report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cfdx-volume-skewness-report
+          path: artifacts/cfdx-volume-skewness.json
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Capture Workbench screenshot
         if: always() && steps.install_gui.outcome == 'success'

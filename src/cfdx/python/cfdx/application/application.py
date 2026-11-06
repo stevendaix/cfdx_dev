@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+from ..case_inspector import CaseFileSummary, inspect_cfdx_file
 from ..dat_io import DatRestart, read_dat_restart
 from ..execution import ExecutionController
 from ..mesh_model import MeshCatalog, read_mesh_catalog
@@ -428,10 +429,26 @@ class Application:
             discover_result_series(path, inspect_fields=True), directory=path
         )
 
+    def inspect_case_file(
+        self, path: str | Path, *, max_datasets: int = 300
+    ) -> CaseFileSummary:
+        """Inspect CFDX HDF5 metadata without materializing scientific arrays."""
+        return inspect_cfdx_file(Path(path), max_datasets=max_datasets)
+
     def load_mesh(self, path: str | Path) -> MeshCatalog:
-        """Load a CFDX mesh and keep its catalog for contextual properties."""
+        """Load a CFDX mesh and reset selection tied to the previous catalog."""
         self.mesh_catalog = read_mesh_catalog(Path(path))
+        self.selection = SelectionState()
+        self.events.publish(SelectionChanged(self.state))
         return self.mesh_catalog
+
+    def clear_mesh_catalog(self) -> ApplicationState:
+        """Clear mesh-dependent context when a file cannot be loaded for preview."""
+        self.mesh_catalog = None
+        self.selection = SelectionState()
+        snapshot = self.state
+        self.events.publish(SelectionChanged(snapshot))
+        return snapshot
 
     def read_dat_restart(self, path: str | Path) -> DatRestart:
         """Read a numerical DAT artifact via the application facade."""
