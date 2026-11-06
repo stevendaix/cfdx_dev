@@ -12,6 +12,7 @@
 #include <optional>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 namespace cfdx::core {
 
@@ -124,7 +125,7 @@ public:
             !positive_diagonal_lumped_mass(pressure_mass_, np))
             return false;
         if (mode_ == PcdSchurActionMode::ConsistentMassCommutator &&
-            (!pressure_mass_solve_ || !symmetric_positive_diagonal_mass(pressure_mass_, np)))
+            (!pressure_mass_solve_ || !certified_positive_definite_mass(pressure_mass_, np)))
             return false;
 
         pressure_size_ = np;
@@ -149,7 +150,7 @@ public:
             !positive_diagonal_lumped_mass(pressure_mass_, np))
             return false;
         if (mode_ == PcdSchurActionMode::ConsistentMassCommutator &&
-            (!pressure_mass_solve_ || !symmetric_positive_diagonal_mass(pressure_mass_, np)))
+            (!pressure_mass_solve_ || !certified_positive_definite_mass(pressure_mass_, np)))
             return false;
         return true;
     }
@@ -184,7 +185,7 @@ public:
               !same_values(pressure_laplacian_, pressure_laplacian))) ||
             (mode_ == PcdSchurActionMode::ConsistentMassCommutator &&
              (!pressure_mass_solve_ ||
-              !symmetric_positive_diagonal_mass(pressure_mass, np) ||
+              !certified_positive_definite_mass(pressure_mass, np) ||
               !same_values(pressure_mass_, pressure_mass) ||
               !same_values(pressure_laplacian_, pressure_laplacian))) ||
             (mode_ == PcdSchurActionMode::LegacySingleConvectionDiffusionInverse &&
@@ -227,7 +228,7 @@ public:
              !positive_diagonal_lumped_mass(pressure_mass, np)) ||
             (mode_ == PcdSchurActionMode::ConsistentMassCommutator &&
              (!pressure_mass_solve ||
-              !symmetric_positive_diagonal_mass(pressure_mass, np))))
+              !certified_positive_definite_mass(pressure_mass, np))))
             return false;
 
         SparseMatrix new_mass(pressure_mass);
@@ -380,22 +381,59 @@ private:
         return inverse_is_current(pressure_laplacian_, rhs, solution);
     }
 
-    // Positive diagonals and symmetric sparsity are necessary but NOT
-    // sufficient for SPD. The caller must supply a positive-definite pressure
-    // mass and a consistent inverse (the latter is checked on every apply).
-    static bool symmetric_positive_diagonal_mass(const SparseMatrix& matrix,
+    // A symmetric matrix with positive diagonal can still be indefinite.
+    // The consistent-mass PCD path requires an SPD pressure mass. Check
+    // symmetry, then use an actual Cholesky factorization on small matrices;
+    // for larger matrices accept only the sufficient (conservative) criterion
+    // of strict symmetric diagonal dominance. An unproved SPD matrix is
+    // rejected, never treated as valid merely because its diagonals are >0.
+    // This research-only setup check is not a substitute for mesh/FE mass
+    // provenance or a scalable sparse SPD factorization.
+    static bool certified_positive_definite_mass(const SparseMatrix& matrix,
                                                  std::size_t np) {
         if (!valid_pressure_operator(matrix, np)) return false;
+        double maximum_diagonal = 0.0;
+        bool strict_diagonal_dominance = true;
         for (std::size_t row = 0; row < np; ++row) {
-            if (!(matrix(row, row) > 0.0)) return false;
+            const double diagonal = matrix(row, row);
+            if (!(diagonal > 0.0) || !std::isfinite(diagonal)) return false;
+            maximum_diagonal = std::max(maximum_diagonal, diagonal);
+            double off_diagonal_sum = 0.0;
             for (std::size_t k = matrix.row_offsets_data()[row];
                  k < matrix.row_offsets_data()[row + 1]; ++k) {
                 const std::size_t col = matrix.columns_data()[k];
                 const double val = matrix.values_data()[k];
+                if (col >= np) return false;
                 const double opposite = matrix(col, row);
-                if (std::abs(val - opposite) >
-                    1e-12 * std::max({1.0, std::abs(val), std::abs(opposite)}))
+                if (!std::isfinite(opposite) ||
+                    std::abs(val - opposite) >
+                        1e-12 * std::max({1.0, std::abs(val), std::abs(opposite)}))
                     return false;
+                if (col != row) off_diagonal_sum += std::abs(val);
+            }
+            if (!std::isfinite(off_diagonal_sum) || !(diagonal > off_diagonal_sum))
+                strict_diagonal_dominance = false;
+        }
+        // Avoid quadratic memory on a large pressure system. Symmetric,
+        // strictly diagonally dominant matrices with positive diagonal are SPD.
+        constexpr std::size_t dense_limit = 96;
+        if (np > dense_limit) return strict_diagonal_dominance;
+
+        std::vector<double> lower(np * np, 0.0);
+        const double pivot_floor = 1e-12 * maximum_diagonal;
+        for (std::size_t i = 0; i < np; ++i) {
+            for (std::size_t j = 0; j <= i; ++j) {
+                double sum = matrix(i, j);
+                for (std::size_t k = 0; k < j; ++k)
+                    sum -= lower[i * np + k] * lower[j * np + k];
+                if (!std::isfinite(sum)) return false;
+                if (i == j) {
+                    if (!(sum > pivot_floor)) return false;
+                    lower[i * np + j] = std::sqrt(sum);
+                } else {
+                    lower[i * np + j] = sum / lower[j * np + j];
+                    if (!std::isfinite(lower[i * np + j])) return false;
+                }
             }
         }
         return true;

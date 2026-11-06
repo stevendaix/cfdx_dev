@@ -3,6 +3,7 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
+#include "cfdx/core/linalg/cell_overlapping_schwarz.h"
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/mgr_preconditioner.h"
@@ -615,6 +616,11 @@ inline void validate_incompressible_controls(
          c.coupling.schur_model != CoupledSchurModel::PCD))
         throw std::invalid_argument(
             "PCD lumped-mass commutator requires COUPLED with PCD Schur");
+    if (c.coupling.coupled_schwarz_experimental &&
+        (c.algorithm != PressureVelocityAlgorithm::COUPLED ||
+         c.coupling.schur_model != CoupledSchurModel::BlockLocal))
+        throw std::invalid_argument(
+            "experimental Schwarz requires COUPLED with BlockLocal Schur");
     validate_convergence_criteria(c.convergence);
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
@@ -3261,7 +3267,22 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         block.finalize();
         return block;
     };
-    if (use_simple_schur) {
+    if (controls.coupling.coupled_schwarz_experimental) {
+        if (!use_n8_block_schur || schur_model != CoupledSchurModel::BlockLocal)
+            throw std::invalid_argument(
+                "experimental Schwarz requires the coupled_block_schur linear plan and BlockLocal Schur");
+        CellSchwarzConfig config;
+        config.cells_per_subdomain = controls.coupling.coupled_schwarz_cells_per_subdomain;
+        config.overlap_hops = controls.coupling.coupled_schwarz_overlap_hops;
+        config.max_local_unknowns = controls.coupling.coupled_schwarz_max_local_unknowns;
+        config.restriction = controls.coupling.coupled_schwarz_weighted
+            ? CellSchwarzRestriction::WeightedAdditive
+            : CellSchwarzRestriction::Restricted;
+        auto sch = std::make_unique<CellOverlappingSchwarzPreconditioner>(nc, config);
+        if (!sch->setup(A))
+            throw std::runtime_error("COUPLED Schwarz setup failed: local block singular or oversized; no fallback");
+        coupled_preconditioner = std::move(sch);
+    } else if (use_simple_schur) {
         if (!use_n8_block_schur)
             throw std::invalid_argument(
                 "SIMPLE/SIMPLEC coupled Schur models require the coupled_block_schur linear plan");

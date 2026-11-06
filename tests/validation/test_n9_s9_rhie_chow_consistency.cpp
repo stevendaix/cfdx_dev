@@ -1,6 +1,9 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/coupled_assembly_certificate.h"
 #include "cfdx/physics/coupled_flux_equivalence_certificate.h"
+#include "cfdx/core/linalg/coupled_block_extraction.h"
+#include "cfdx/core/linalg/small_dense_schur_oracle.h"
+#include "cfdx/core/linalg/schur_inverse_quality_certificate.h"
 #include "common/test_harness.h"
 
 #include <array>
@@ -532,6 +535,36 @@ int main()
                           << (1.0 + 2.0 * geometry.cell_centres[cell].x);
             std::cerr << "\\n";
         }
+        // V4: build the exact non-SPD-aware Schur oracle from the *captured
+        // post-gauge production CSR* rather than an unrelated toy matrix.
+        // The matrix includes a finite convective flux and Dirichlet pressure.
+        const std::size_t n_capture = mesh.n_cells();
+        const auto M = extract_coupled_block(captured_matrix,0,0,
+            3*n_capture,3*n_capture);
+        const auto G = extract_coupled_block(captured_matrix,0,1,
+            3*n_capture,n_capture);
+        const auto D = extract_coupled_block(captured_matrix,1,0,
+            n_capture,3*n_capture);
+        const auto C = extract_coupled_block(captured_matrix,1,1,
+            n_capture,n_capture);
+        const BlockOperator production_blocks(M,G,D,C);
+        EXPECT_TRUE(production_blocks.is_valid());
+        SmallDenseExactSchurInverse schur_oracle(64);
+        EXPECT_TRUE(schur_oracle.setup(production_blocks));
+        const auto probes = schur_inverse_quality_basis(n_capture);
+        const auto schur_cert = certify_schur_inverse_action(
+            production_blocks, schur_oracle,
+            [&](const Vector& rhs, Vector& answer) {
+                return schur_oracle.solve_velocity(rhs,answer);
+            }, probes);
+        std::cerr << "N9_S9_PRODUCTION_EXACT_SCHUR"
+                  << " complete=" << schur_cert.complete
+                  << " passed=" << schur_cert.passed
+                  << " max_defect=" << schur_cert.worst_schur_defect
+                  << " velocity_defect=" << schur_cert.worst_velocity_solve_defect
+                  << '\n';
+        EXPECT_TRUE(schur_cert.complete && schur_cert.passed);
+        EXPECT_TRUE(schur_cert.probes_checked == n_capture + 1);
         EXPECT_TRUE(captured_has_fixed_pressure);
         EXPECT_TRUE(captured_schur_diagonal.size() == mesh.n_cells());
         EXPECT_TRUE(captured_schur_diagonal_raw.size() == mesh.n_cells());
@@ -610,6 +643,66 @@ int main()
             const double block_residual = ax - captured_rhs(row);
             EXPECT_NEAR(block_residual, cell_divergence[cell], 1e-8);
         }
+    });
+
+    run_case("n9_s9_coupled_schwarz_optin_manufactured_four_cell", [] {
+        // Exercise the actual production COUPLED dispatch, not just a
+        // hand-made matrix. Two overlapping RAS subdomains of two core
+        // cells each: correctness smoke, not a speed or scaling claim.
+        const Mesh mesh = make_four_cell_channel({0.0, 0.5, 2.0, 4.0, 7.0}, true);
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            U.set(c, 2.0, 0.0, 0.0);
+            p(c) = 1.0 + 2.0 * geometry.cell_centres[c].x;
+        }
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{2.0,0.0,0.0}};
+        ubc["inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{2.0,0.0,0.0}};
+        ubc["outlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{2.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        pbc["inlet"] = {ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
+        pbc["outlet"] = {ScalarBoundaryType::FIXED_VALUE,15.0,0.0};
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::COUPLED;
+        c.pressure_gauge_policy = PressureGaugePolicy::NONE;
+        c.body_force = {2.0,0.0,0.0};
+        c.kinematic_viscosity = 1e-2;
+        c.coupling.alpha_u = 1.0;
+        c.coupling.alpha_p = 1.0;
+        c.coupling.schur_model = CoupledSchurModel::BlockLocal;
+        c.coupling.coupled_schwarz_experimental = true;
+        c.coupling.coupled_schwarz_cells_per_subdomain = 2;
+        c.coupling.coupled_schwarz_overlap_hops = 1;
+        c.coupling.coupled_schwarz_max_local_unknowns = 16;
+        c.coupling.coupled_linear_tolerance = 1e-12;
+        c.convergence.max_iterations = 1;
+        std::size_t snapshot_count = 0;
+        c.coupled_assembly_callback = [&](const CoupledAssemblySnapshot& snap) {
+            EXPECT_TRUE(snap.matrix != nullptr && snap.rhs != nullptr);
+            ++snapshot_count;
+        };
+        const auto result = solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
+        EXPECT_TRUE(snapshot_count > 0);
+        EXPECT_TRUE(result.authoritative_mass_flux.size() == mesh.n_faces());
+        for (std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
+            EXPECT_NEAR(U.component_data(0)[cell],2.0,1e-8);
+            EXPECT_NEAR(U.component_data(1)[cell],0.0,1e-8);
+            EXPECT_NEAR(U.component_data(2)[cell],0.0,1e-8);
+            EXPECT_NEAR(p(cell),1.0 + 2.0*geometry.cell_centres[cell].x,1e-8);
+        }
+        double divergence_linf = 0.0;
+        std::vector<double> divergence(mesh.n_cells(),0.0);
+        for (std::size_t f=0; f<mesh.n_faces(); ++f) {
+            divergence[mesh.ownership().owner(f)] += result.authoritative_mass_flux(f);
+            const auto nb = mesh.ownership().neighbour(f);
+            if (nb>=0) divergence[static_cast<std::size_t>(nb)] -= result.authoritative_mass_flux(f);
+        }
+        for (double div:divergence) divergence_linf = std::max(divergence_linf,std::abs(div));
+        std::cout << "COUPLED_SCHWARZ_PRODUCTION continuity_linf=" << divergence_linf << '\n';
+        EXPECT_TRUE(divergence_linf <= 1e-8);
     });
 
     run_case("n9_s9_rhie_chow_fixed_pressure_boundary_gauge_invariance", [] {

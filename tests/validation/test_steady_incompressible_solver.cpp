@@ -755,6 +755,26 @@ int main()
         validate_incompressible_controls(c, 2);
     });
 
+    run_case("schwarz_rejects_wrong_algorithm_schur_and_config", [] {
+        IncompressibleSolverControls c;
+        EXPECT_TRUE(!c.coupling.coupled_schwarz_experimental);
+        c.coupling.coupled_schwarz_experimental = true;
+        c.coupling.schur_model = CoupledSchurModel::BlockLocal;
+        c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        EXPECT_THROW(validate_incompressible_controls(c, 4), std::invalid_argument);
+        c.algorithm = PressureVelocityAlgorithm::COUPLED;
+        c.coupling.schur_model = CoupledSchurModel::PCD;
+        EXPECT_THROW(validate_incompressible_controls(c, 4), std::invalid_argument);
+        c.coupling.schur_model = CoupledSchurModel::BlockLocal;
+        c.coupling.coupled_schwarz_max_local_unknowns = 2;
+        EXPECT_THROW(validate_incompressible_controls(c, 4), std::invalid_argument);
+        c.coupling.coupled_schwarz_max_local_unknowns = 16;
+        c.coupling.coupled_schwarz_cells_per_subdomain = 5;
+        EXPECT_THROW(validate_incompressible_controls(c, 4), std::invalid_argument);
+        c.coupling.coupled_schwarz_cells_per_subdomain = 4;
+        validate_incompressible_controls(c, 4);
+    });
+
     run_case("piso_neighbour_correction_is_opt_in_and_uses_inner_velocity", [] {
         const Mesh m = make_two_cell_channel();
         VelocityBoundaryConditions ubc;

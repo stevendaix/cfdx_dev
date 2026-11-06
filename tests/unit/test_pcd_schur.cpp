@@ -668,6 +668,37 @@ int main() {
         EXPECT_TRUE(!bad.setup(blocks));
     });
 
+    run_case("pcd_consistent_mass_rejects_symmetric_indefinite_mass", [&] {
+        // Both diagonals are positive and M is symmetric, yet eigenvalues
+        // are +5 and -1. The previous check incorrectly accepted it.
+        const auto indefinite = make_sparse(2, 2, {
+            {0,0,2.0}, {0,1,3.0}, {1,0,3.0}, {1,1,2.0}
+        });
+        auto arbitrary_solve = [](const Vector&, Vector&) { return false; };
+        PcdSchurApproximation bad(indefinite, Kp, Fp, solve_K, solve_F,
+            std::nullopt, std::nullopt,
+            PcdSchurActionMode::ConsistentMassCommutator, arbitrary_solve);
+        EXPECT_TRUE(!bad.setup(blocks));
+        // Transactional update may not replace a previously valid SPD mass.
+        const auto spd = make_sparse(2, 2, {
+            {0,0,2.0}, {0,1,0.2}, {1,0,0.2}, {1,1,3.0}
+        });
+        const auto spd_inverse = inverse(dense(spd));
+        auto mass_solve = [spd_inverse](const Vector& r, Vector& z) {
+            z = dense_matvec(spd_inverse, r); return true;
+        };
+        PcdSchurApproximation good(spd, Kp, Fp, solve_K, solve_F,
+            std::nullopt, std::nullopt,
+            PcdSchurActionMode::ConsistentMassCommutator, mass_solve);
+        EXPECT_TRUE(good.setup(blocks));
+        EXPECT_TRUE(!good.update_pressure_values_and_solves(
+            blocks, indefinite, Kp, Fp, solve_K, solve_F, arbitrary_solve));
+        EXPECT_NEAR(good.pressure_mass()(0,1), 0.2, 0.0);
+        Vector rhs(2, 0.0); rhs(0) = 1.0; rhs(1) = -0.4;
+        Vector out(2, 0.0);
+        EXPECT_TRUE(good.apply(rhs, out));
+    });
+
     run_case("pcd_consistent_mass_callback_failure_preserves_output", [&] {
         const auto mass = make_sparse(2, 2, {
             {0,0,2.0}, {0,1,0.2}, {1,0,0.2}, {1,1,3.0}
