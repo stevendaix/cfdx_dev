@@ -149,11 +149,37 @@ int main() {
         auto wls_controls=legacy_controls;
         wls_controls.sst_use_wls_boundary_gradients=true;
         wls_controls.sst_gradient_dimension=3;
+        // The affine Dirichlet fixture above makes both certified WLS
+        // implementations exact, so it cannot distinguish their dispatch.
+        // Use a deliberately non-affine state with Neumann wall data here:
+        // the two WLS variants have different ghost-point constructions and
+        // must therefore produce a measurable cross-diffusion response.
+        auto kbc_solver=kbc, wbc_solver=wbc;
+        for (auto& entry : kbc_solver)
+            entry.second.type=ScalarBoundaryType::ZERO_GRADIENT;
+        for (auto& entry : wbc_solver)
+            entry.second.type=ScalarBoundaryType::ZERO_GRADIENT;
         auto k_legacy=k, w_legacy=omega, k_wls=k, w_wls=omega;
+        k_legacy(0)+=0.3;
+        w_legacy(1)+=0.2;
+        k_wls=k_legacy;
+        w_wls=w_legacy;
+        const auto legacy_cross=sst_boundary_gradient_dot(
+            k_legacy,w_legacy,mesh,geometry,kbc_solver,wbc_solver,
+            nullptr,false,3);
+        const auto wls_cross=sst_boundary_gradient_dot(
+            k_wls,w_wls,mesh,geometry,kbc_solver,wbc_solver,
+            nullptr,true,3);
+        double cross_difference=0.0;
+        for (std::size_t cell=0;cell<mesh.n_cells();++cell)
+            cross_difference=std::max(cross_difference,
+                std::abs(legacy_cross[cell]-wls_cross[cell]));
+        require(cross_difference>1e-9,
+            "WLS variants were not distinguished by the non-affine Neumann fixture");
         (void)solve_sst_transport(mesh,geometry,mass_flux,k_legacy,w_legacy,
-            strain,F1,F2,legacy_controls,kbc,wbc,1,1e-9);
+            strain,F1,F2,legacy_controls,kbc_solver,wbc_solver,1,1e-9);
         (void)solve_sst_transport(mesh,geometry,mass_flux,k_wls,w_wls,
-            strain,F1,F2,wls_controls,kbc,wbc,1,1e-9);
+            strain,F1,F2,wls_controls,kbc_solver,wbc_solver,1,1e-9);
         double omega_difference=0.0;
         for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
             require(std::isfinite(w_legacy(cell)) && std::isfinite(w_wls(cell)),
