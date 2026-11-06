@@ -119,15 +119,28 @@ inline SolverResult solve_reusable_scaled_cg(
     if (matrix.n_rows() != matrix.n_cols() || rhs.size() != matrix.n_rows() ||
         solution.size() != matrix.n_cols())
         throw std::invalid_argument("scaled reusable CG: matrix/vector size mismatch");
+    // The relative reference for a homogeneous system is the INITIAL true
+    // residual, not max(||b||, 1e-300). Otherwise A*x=0 can be solved to
+    // machine precision and still be reported as a huge failure. Match the
+    // unscaled CG and general linear-dispatch homogeneous contracts.
+    double b_norm = 0.0;
+    for (std::size_t i = 0; i < rhs.size(); ++i)
+        b_norm = std::hypot(b_norm, rhs(i));
+    const double initial_norm = b_norm == 0.0
+        ? physical_residual_norm(matrix, solution, rhs) : 0.0;
+    const double reference_norm = b_norm > 0.0 ? b_norm : initial_norm;
+    const auto physical_certificate = [&](SolverResult& result) {
+        const double true_norm = physical_residual_norm(matrix, solution, rhs);
+        result.residual = true_norm; // Absolute residual, even when b=0.
+        result.residual_relative = reference_norm > 0.0
+            ? true_norm / reference_norm
+            : (true_norm == 0.0 ? 0.0 : std::numeric_limits<double>::infinity());
+    };
     const auto scaled = scale_matrix(matrix, to_matrix_scaling(scaling));
     if (scaled.zero_rows || scaled.zero_columns) {
         SolverResult result;
         result.status = SolverStatus::NOT_APPLICABLE;
-        result.residual_relative = physical_relative_residual(matrix, solution, rhs);
-        double b_norm = 0.0;
-        for (std::size_t i = 0; i < rhs.size(); ++i)
-            b_norm = std::hypot(b_norm, rhs(i));
-        result.residual = result.residual_relative * b_norm;
+        physical_certificate(result);
         return result;
     }
     Vector scaled_rhs(rhs.size(), 0.0);
@@ -140,15 +153,13 @@ inline SolverResult solve_reusable_scaled_cg(
                                 max_iterations, tolerance);
     for (std::size_t i = 0; i < solution.size(); ++i)
         solution(i) = scaled.column_scale[i] * scaled_solution(i);
-    // Independent contract on A*x=b, not on D_row*A*D_col*y=D_row*b.
-    const double physical_relative = physical_relative_residual(matrix, solution, rhs);
-    double b_norm = 0.0;
-    for (std::size_t i = 0; i < rhs.size(); ++i)
-        b_norm = std::hypot(b_norm, rhs(i));
-    result.residual_relative = physical_relative;
-    result.residual = physical_relative * b_norm;
+    // Independent certificate on the ORIGINAL operator, not the scaled
+    // recursive Krylov residual. Keep the absolute diagnostic meaningful for
+    // both homogeneous and nonhomogeneous systems.
+    physical_certificate(result);
     if (result.status == SolverStatus::CONVERGED &&
-        (!std::isfinite(physical_relative) || physical_relative > tolerance))
+        (!std::isfinite(result.residual_relative) ||
+         result.residual_relative > tolerance))
         result.status = SolverStatus::MAX_ITER_REACHED;
     return result;
 }

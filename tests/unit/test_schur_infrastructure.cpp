@@ -222,7 +222,13 @@ int main() {
         });
 
         EXPECT_TRUE(same_sparse_pattern(A, B));
-        EXPECT_TRUE(!same_sparse_pattern(A, C));
+        // Adding a second COO contribution to an existing coefficient
+        // changes the numeric value, not the canonical CSR pattern.
+        EXPECT_TRUE(same_sparse_pattern(A, C));
+        const auto D = make_sparse(2, 2, {
+            {0, 0, 5.0}, {0, 1, -2.0}, {1, 1, 8.0}
+        });
+        EXPECT_TRUE(!same_sparse_pattern(A, D));
     });
 
     run_case("block_operator_validates_saddle_point_dimensions", [] {

@@ -60,23 +60,28 @@ private:
 };
 
 inline bool JacobiPreconditioner::setup(const SparseMatrix& A) {
-    if (A.n_rows() != A.n_cols()) return false;
+    if (A.n_rows() == 0 || A.n_rows() != A.n_cols() || !A.is_consistent())
+        return false;
     const auto* row = A.row_offsets_data();
     const auto* col = A.columns_data();
     const auto* val = A.values_data();
-    inv_diag_.assign(A.n_rows(), 0.0);
+    // Construct before publishing: a failed numeric update must not destroy
+    // the last valid diagonal inverse retained by a reusable solve context.
+    std::vector<double> next(A.n_rows(), 0.0);
     for (std::size_t i = 0; i < A.n_rows(); ++i) {
         bool found = false;
         for (std::size_t k = row[i]; k < row[i + 1]; ++k) {
             if (col[k] == i) {
-                if (val[k] == 0.0) { inv_diag_.clear(); return false; }
-                inv_diag_[i] = 1.0 / val[k];
+                const double inverse = 1.0 / val[k];
+                if (!std::isfinite(inverse)) return false;
+                next[i] = inverse;
                 found = true;
                 break;
             }
         }
-        if (!found) { inv_diag_.clear(); return false; }
+        if (!found) return false;
     }
+    inv_diag_.swap(next);
     return true;
 }
 

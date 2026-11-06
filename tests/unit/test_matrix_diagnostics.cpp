@@ -32,7 +32,9 @@ int main() {
         EXPECT_TRUE(d.missing_diagonal == 0);
         EXPECT_TRUE(d.near_zero_diagonal >= 1);
         EXPECT_TRUE(d.isolated_dofs >= 3);
-        EXPECT_TRUE(d.duplicate_entries == 1);
+        // COO assembly coalesces the duplicate diagonal before diagnostics.
+        EXPECT_TRUE(d.duplicate_entries == 0);
+        EXPECT_NEAR(make_pathological_matrix()(4, 4), 9.0, 0.0);
         EXPECT_TRUE(d.connected_components >= 3);
         EXPECT_TRUE(d.diagonal_dynamic_range > 1e17);
 

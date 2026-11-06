@@ -69,7 +69,14 @@ public:
         pending_values_.push_back(value);
     }
 
-    // Finalise the COO assembly into canonical CSR.
+    // Finalize unordered COO contributions into UNIQUE, sorted CSR entries.
+    // Assembly may add the same (row,column) more than once (e.g. implicit
+    // diffusion + source + boundary flux). Before this consolidation, Jacobi
+    // and other smoothers that read the first diagonal saw a different
+    // operator from matvec(), which sums ALL duplicate entries. The resulting
+    // preconditioner was inconsistent with A and could stall Krylov iteration.
+    // Build the new CSR transactionally: an overflowing coefficient must not
+    // publish a partially finalized matrix or silently become NaN/Inf.
     void finalize() {
         if (finalized_) return;
         const std::size_t count = pending_values_.size();
@@ -82,18 +89,41 @@ public:
             if (pending_rows_[a] != pending_rows_[b]) return pending_rows_[a] < pending_rows_[b];
             return pending_columns_[a] < pending_columns_[b];
         });
-        values_.resize(count);
-        columns_.resize(count);
-        row_offsets_.assign(n_rows_ + 1, 0);
-        for (const auto k : order) ++row_offsets_[pending_rows_[k] + 1];
-        for (std::size_t i = 0; i < n_rows_; ++i) row_offsets_[i + 1] += row_offsets_[i];
-        std::vector<Index> cursor = row_offsets_;
+        std::vector<Value> new_values;
+        std::vector<Index> new_columns;
+        std::vector<Index> new_offsets(n_rows_ + 1, 0);
+        new_values.reserve(count);
+        new_columns.reserve(count);
+        std::size_t prior_row = n_rows_;
+        Index prior_column = 0;
+        long double accumulated = 0.0L;
+        const auto flush = [&] {
+            if (prior_row == n_rows_) return;
+            if (!std::isfinite(accumulated) ||
+                std::abs(accumulated) > std::numeric_limits<Value>::max()) {
+                throw std::overflow_error("SparseMatrix: duplicate entry sum is not finite");
+            }
+            new_values.push_back(static_cast<Value>(accumulated));
+            new_columns.push_back(prior_column);
+            ++new_offsets[prior_row + 1];
+        };
         for (const auto k : order) {
-            const std::size_t row = pending_rows_[k];
-            const Index dst = cursor[row]++;
-            values_[dst] = pending_values_[k];
-            columns_[dst] = pending_columns_[k];
+            const auto row = pending_rows_[k];
+            const auto column = pending_columns_[k];
+            if (row != prior_row || column != prior_column) {
+                flush();
+                prior_row = row;
+                prior_column = column;
+                accumulated = 0.0L;
+            }
+            accumulated += static_cast<long double>(pending_values_[k]);
         }
+        flush();
+        for (std::size_t i = 0; i < n_rows_; ++i)
+            new_offsets[i + 1] += new_offsets[i];
+        values_.swap(new_values);
+        columns_.swap(new_columns);
+        row_offsets_.swap(new_offsets);
         pending_rows_.clear();
         pending_columns_.clear();
         pending_values_.clear();
@@ -239,7 +269,7 @@ public:
             for (Index k = begin; k < end; ++k) {
                 if (columns_[k] >= static_cast<Index>(n_cols_)) return false;
                 if (!std::isfinite(values_[k])) return false;
-                if (k > begin && columns_[k] < columns_[k - 1]) return false;
+                if (k > begin && columns_[k] <= columns_[k - 1]) return false;
             }
         }
         return true;
