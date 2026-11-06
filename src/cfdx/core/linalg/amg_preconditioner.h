@@ -21,12 +21,14 @@ namespace cfdx::core {
 
 enum class AMGInterpolationPolicy {
     DirectCF,
-    SmoothedAggregation
+    SmoothedAggregation,
+    DirectionalSemiCoarsening
 };
 
 enum class AMGSmootherPolicy {
     DampedJacobi,
-    AlgebraicLines
+    AlgebraicLines,
+    AlgebraicLineGaussSeidel
 };
 
 // Multilevel AMG with selectable direct C/F or smoothed-aggregation
@@ -109,7 +111,13 @@ public:
             std::vector<TransferRow> prolongation;
             std::vector<std::size_t> aggregate;
             std::size_t coarse_n = 0;
-            if (interpolation_ == AMGInterpolationPolicy::SmoothedAggregation) {
+            if (interpolation_ == AMGInterpolationPolicy::DirectionalSemiCoarsening) {
+                build_directional_semicoarsening_interpolation(
+                    levels_.back(), strength_threshold_, prolongation,
+                    aggregate, coarse_n,
+                    &last_footprint_.fallback_interpolation_rows,
+                    prolongator_filter_, &levels_.back().directional_pairs);
+            } else if (interpolation_ == AMGInterpolationPolicy::SmoothedAggregation) {
                 build_smoothed_aggregation_interpolation(
                     levels_.back(), strength_threshold_, prolongation,
                     aggregate, coarse_n,
@@ -278,6 +286,12 @@ public:
         return true;
     }
 
+    std::size_t finest_directional_pairs() const {
+        if (interpolation_ != AMGInterpolationPolicy::DirectionalSemiCoarsening ||
+            levels_.size() < 2) return 0;
+        return levels_.front().directional_pairs;
+    }
+
     double smoother_omega() const noexcept { return omega_; }
     std::size_t line_factor_fallback_levels() const noexcept {
         return line_factor_fallback_levels_;
@@ -288,6 +302,9 @@ public:
     std::size_t finest_line_coverage() const noexcept {
         return levels_.empty() || !levels_.front().use_lines ? 0 :
                levels_.front().line_pc.covered_rows();
+    }
+    double finest_line_coupling_share() const noexcept {
+        return levels_.empty() ? 0.0 : levels_.front().line_pc.coupling_share();
     }
     std::size_t finest_longest_line() const noexcept {
         return levels_.empty() || !levels_.front().use_lines ? 0 :
@@ -917,7 +934,7 @@ public:
                 corr += w * ec(c);
             x(i) += corr;
         }
-        if (!smooth(level, rhs, x, post_) || !apply_operator(level, x, Ax))
+        if (!smooth(level, rhs, x, post_, true) || !apply_operator(level, x, Ax))
             return std::numeric_limits<double>::infinity();
         for (std::size_t i = 0; i < rhs.size(); ++i)
             res(i) = rhs(i) - Ax(i);
@@ -1060,7 +1077,7 @@ public:
                 correction += weight * ec(coarse);
             x(i) += correction;
         }
-        if (!smooth(level, rhs, x, post_))
+        if (!smooth(level, rhs, x, post_, true))
             return std::numeric_limits<double>::infinity();
 
         Vector error(n, 0.0), Aerror(n), Aexact(n);
@@ -1198,6 +1215,7 @@ private:
         std::vector<double> inv_diag;
         AlgebraicLinePreconditioner line_pc;
         bool use_lines = false;
+        std::size_t directional_pairs = 0;
         std::vector<std::size_t> aggregate;
         std::vector<TransferRow> prolongation;
         GalerkinCSRProduct coarse_product;
@@ -1369,11 +1387,15 @@ private:
     }
 
     bool build_level_lines(Level& level) {
-        if (smoother_policy_ != AMGSmootherPolicy::AlgebraicLines) return true;
+        if (smoother_policy_ != AMGSmootherPolicy::AlgebraicLines &&
+            smoother_policy_ != AMGSmootherPolicy::AlgebraicLineGaussSeidel) return true;
         // A Galerkin coarse operator can be SPD yet exhibit locally
         // ill-conditioned or non-M-matrix blocks. In that case the optional
         // line smoother MUST NOT be applied: fall back to certified Jacobi
         // while retaining the full hierarchy and physical-residual gate.
+        level.line_pc = AlgebraicLinePreconditioner(
+            32.0, 0.1,
+            smoother_policy_ == AMGSmootherPolicy::AlgebraicLineGaussSeidel);
         if (!level.line_pc.setup(level.A)) {
             level.use_lines = false;
             ++line_factor_fallback_levels_;
@@ -1383,12 +1405,16 @@ private:
         // smoother: only activate the block solver for coherent long paths.
         level.use_lines = level.line_pc.longest_line() >= 4 &&
                           level.line_pc.covered_rows() * 4 >= level.A.n_rows();
+        if (smoother_policy_ == AMGSmootherPolicy::AlgebraicLineGaussSeidel)
+            level.use_lines = level.use_lines &&
+                              level.line_pc.coupling_share() >= 0.85;
         return true;
     }
 
     bool refresh_level_lines(Level& level, bool finest,
                              std::size_t& fallback_count) const {
-        if (smoother_policy_ != AMGSmootherPolicy::AlgebraicLines ||
+        if ((smoother_policy_ != AMGSmootherPolicy::AlgebraicLines &&
+             smoother_policy_ != AMGSmootherPolicy::AlgebraicLineGaussSeidel) ||
             !level.use_lines) return true;
         // On the physical (finest) matrix, a changed directional strength
         // graph invalidates numeric-only reuse: require full setup(). On a
@@ -1899,6 +1925,18 @@ private:
             }
         }
 
+        smooth_tentative_prolongator(level, aggregate, coarse_n,
+                                    prolongation, fallback_rows, filter);
+    }
+
+    // A Jacobi-smoothed tentative prolongation preserves the constant mode
+    // for both ordinary SA and direction-preserving weak-edge aggregation.
+    static void smooth_tentative_prolongator(
+        const Level& level, const std::vector<std::size_t>& aggregate,
+        std::size_t coarse_n, std::vector<TransferRow>& prolongation,
+        std::size_t* fallback_rows, double filter)
+    {
+        const std::size_t n = level.A.n_rows();
         // Smooth the piecewise-constant tentative prolongator with one damped
         // Jacobi step. Row normalization preserves the constant near-null-space
         // mode while retaining interpolation to neighbouring aggregates.
@@ -1971,6 +2009,95 @@ private:
         }
     }
 
+    // Semi-coarsening in the WEAK direction: matching vertices belonging to
+    // different algebraic strong-coupling lines preserves each strong line
+    // on the coarse operator. For no reliable lines/weak matches, revert to
+    // ordinary SA instead of forcing a defective hierarchy.
+    static void build_directional_semicoarsening_interpolation(
+        const Level& level, double strength_threshold,
+        std::vector<TransferRow>& prolongation,
+        std::vector<std::size_t>& aggregate, std::size_t& coarse_n,
+        std::size_t* fallback_rows, double filter,
+        std::size_t* pairs_on_level)
+    {
+        if (pairs_on_level) *pairs_on_level = 0;
+        const std::size_t n = level.A.n_rows();
+        const auto& line_ids = level.line_pc.row_line_ids();
+        if (!level.use_lines || line_ids.size() != n) {
+            build_smoothed_aggregation_interpolation(level, strength_threshold,
+                prolongation, aggregate, coarse_n, fallback_rows, filter);
+            return;
+        }
+        const auto* ro = level.A.row_offsets_data();
+        const auto* ci = level.A.columns_data();
+        const auto* av = level.A.values_data();
+        struct Edge { std::size_t i, j; double strength; };
+        std::vector<Edge> weak_links;
+        weak_links.reserve(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            double strongest = 0.0;
+            for (std::size_t p = ro[i]; p < ro[i+1]; ++p)
+                if (ci[p] != i && av[p] < 0.0)
+                    strongest = std::max(strongest, -av[p]);
+            if (!(strongest > 0.0)) continue;
+            for (std::size_t p = ro[i]; p < ro[i+1]; ++p) {
+                const auto j = ci[p];
+                if (j <= i || av[p] >= 0.0 || line_ids[j] == line_ids[i])
+                    continue;
+                // Only join genuinely weak directions. In particular,
+                // do not collapse strong edges that were rejected by the
+                // path detector on branching or rotating anisotropy.
+                if (-av[p] >= strength_threshold * strongest) continue;
+                double opposite = 0.0, reverse_strongest = 0.0;
+                for (std::size_t q = ro[j]; q < ro[j+1]; ++q) {
+                    if (ci[q] == i) opposite += av[q];
+                    if (ci[q] != j && av[q] < 0.0)
+                        reverse_strongest = std::max(reverse_strongest, -av[q]);
+                }
+                if (!(opposite < 0.0) ||
+                    -opposite >= strength_threshold * reverse_strongest)
+                    continue;
+                const double relative = std::abs(opposite - av[p]) /
+                    std::max(std::abs(opposite), std::abs(av[p]));
+                if (!std::isfinite(relative) || relative > 1e-8) continue;
+                weak_links.push_back({i, j, std::min(-opposite, -av[p])});
+            }
+        }
+        std::sort(weak_links.begin(), weak_links.end(),
+                  [](const Edge& a, const Edge& b) {
+                      if (a.strength != b.strength) return a.strength > b.strength;
+                      if (a.i != b.i) return a.i < b.i;
+                      return a.j < b.j;
+                  });
+        aggregate.assign(n, n);
+        coarse_n = 0;
+        std::size_t paired = 0;
+        for (const auto& e : weak_links) {
+            if (aggregate[e.i] != n || aggregate[e.j] != n) continue;
+            aggregate[e.i] = aggregate[e.j] = coarse_n++;
+            ++paired;
+        }
+        // Low matched coverage is usually a signal that the algebraic
+        // direction rotated or that the matrix does not expose clean layers.
+        if (paired * 5 < n) {
+            build_smoothed_aggregation_interpolation(level, strength_threshold,
+                prolongation, aggregate, coarse_n, fallback_rows, filter);
+            return;
+        }
+        for (std::size_t i = 0; i < n; ++i)
+            if (aggregate[i] == n) aggregate[i] = coarse_n++;
+        if (pairs_on_level) *pairs_on_level = paired;
+        // Preserve the strong-line near-null modes exactly. Jacobi smoothing
+        // a weak-direction tentative prolongator can spread it across the
+        // strongly coupled line, make the Galerkin operator non-M-matrix,
+        // and destabilize multiplicative line GS on coarse levels.
+        // Piecewise-constant injection has P*1=1 and retains the sign
+        // structure of an M-matrix diffusion stencil under P^T A P.
+        prolongation.assign(n, {});
+        for (std::size_t i = 0; i < n; ++i)
+            prolongation[i].push_back({aggregate[i], 1.0});
+    }
+
     bool apply_operator(std::size_t level, const Vector& x, Vector& y) const
     {
         if (level == 0) {
@@ -1984,14 +2111,31 @@ private:
         return y.is_valid();
     }
 
-    bool smooth(std::size_t level, const Vector& r, Vector& x, std::size_t sweeps) const
+    bool smooth(std::size_t level, const Vector& r, Vector& x,
+                std::size_t sweeps, bool backward = false) const
     {
-        Vector Ax(r.size());
         const auto& current = levels_[level];
+        if (current.use_lines &&
+            smoother_policy_ == AMGSmootherPolicy::AlgebraicLineGaussSeidel) {
+            // Multiplicative line-GS uses already-updated neighbouring lines,
+            // rather than solving every line against the same old residual.
+            // Reversing the post-sweep prevents a directional ordering bias.
+            std::vector<double> workspace(current.line_pc.longest_line());
+            for (std::size_t s = 0; s < sweeps; ++s) {
+                if (!current.line_pc.sweep(r, x, backward, 1.0, workspace))
+                    return false;
+                if (constant_null_space_) remove_constant(x);
+            }
+            return true;
+        }
+        Vector Ax(r.size());
         const auto& inv_diag = current.inv_diag;
         Vector residual(r.size(), 0.0);
         Vector line_correction(r.size(), 0.0);
-        for (std::size_t s = 0; s < sweeps; ++s) {
+        const std::size_t effective_sweeps =
+            smoother_policy_ == AMGSmootherPolicy::AlgebraicLineGaussSeidel
+                ? std::max<std::size_t>(4, sweeps) : sweeps;
+        for (std::size_t s = 0; s < effective_sweeps; ++s) {
             if (!apply_operator(level, x, Ax)) return false;
             if (current.use_lines) {
                 for (std::size_t i = 0; i < r.size(); ++i)
@@ -2040,7 +2184,7 @@ private:
         }
         if (constant_null_space_) remove_constant(x);
 
-        return smooth(level, r, x, post_);
+        return smooth(level, r, x, post_, true);
     }
     bool vcycle_diagnostic(std::size_t level, const Vector& r, Vector& x,
                            std::vector<VcycleDiagnostic>& diagnostics) const
@@ -2117,7 +2261,7 @@ private:
         for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
         diagnostics[index].residual_after_correction = residual.norm2();
 
-        if (!smooth(level, r, x, post_)) return false;
+        if (!smooth(level, r, x, post_, true)) return false;
         if (!apply_operator(level, x, Ax)) return false;
         for (std::size_t i = 0; i < r.size(); ++i) residual(i) = r(i) - Ax(i);
         diagnostics[index].residual_after_post = residual.norm2();

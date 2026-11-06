@@ -23,8 +23,10 @@ namespace cfdx::core {
 class AlgebraicLinePreconditioner final : public Preconditioner {
 public:
     explicit AlgebraicLinePreconditioner(double direction_ratio = 32.0,
-                                         double strength_fraction = 0.1)
-        : direction_ratio_(direction_ratio), strength_fraction_(strength_fraction) {}
+                                         double strength_fraction = 0.1,
+                                         bool multiplicative = false)
+        : direction_ratio_(direction_ratio), strength_fraction_(strength_fraction),
+          multiplicative_(multiplicative) {}
 
     bool setup(const SparseMatrix& A) override {
         // Construct and factor the replacement before touching the active
@@ -121,6 +123,25 @@ public:
         }
         if (candidate.empty()) return false;
         if (!factor_lines(A, candidate)) return false;
+        // An algebraic path may capture only one of two equally strong
+        // directions (e.g. four strong diagonal neighbours in a rotated
+        // diffusion stencil). Line-GS is unsuitable unless the selected
+        // tridiagonal blocks contain most of the negative coupling mass.
+        long double total_negative = 0.0L, on_line_negative = 0.0L;
+        if (multiplicative_) {
+            for (std::size_t i = 0; i < n; ++i)
+                for (std::size_t k = row[i]; k < row[i+1]; ++k)
+                    if (col[k] != i && value[k] < 0.0)
+                        total_negative += -static_cast<long double>(value[k]);
+            for (const auto& line : candidate)
+                for (std::size_t k = 1; k < line.indices.size(); ++k) {
+                    const auto i = line.indices[k-1], j = line.indices[k];
+                    on_line_negative -= static_cast<long double>(entry(A, i, j));
+                    on_line_negative -= static_cast<long double>(entry(A, j, i));
+                }
+        }
+        const double coupling_share = total_negative > 0.0L
+            ? static_cast<double>(on_line_negative / total_negative) : 0.0;
         // A long line can contain a weaker connection when the strength
         // graph branches. Record each row's *original* best on-line/overall
         // strength ratio to certify later numeric-only matrix updates.
@@ -136,9 +157,27 @@ public:
                     dominance[i] = best / max_negative[i];
             }
         }
+        // Store only the off-block CSR coefficients in compressed form.
+        // A multiplicative sweep then visits off-line entries without a
+        // full SpMV or per-sweep graph search. Adjacent line unknowns are
+        // handled exactly by the factored tridiagonal principal blocks.
+        std::vector<std::size_t> off_offsets;
+        std::vector<SparseMatrix::Index> off_columns;
+        std::vector<std::size_t> off_positions;
+        std::vector<double> off_values;
+        std::vector<std::size_t> row_line_ids;
+        if (multiplicative_)
+            build_off_block(A, candidate, off_offsets, off_columns,
+                            off_positions, off_values, row_line_ids);
         row_offsets_.assign(row, row + n + 1);
         columns_.assign(col, col + A.nnz());
+        off_offsets_ = std::move(off_offsets);
+        off_columns_ = std::move(off_columns);
+        off_positions_ = std::move(off_positions);
+        off_values_ = std::move(off_values);
+        row_line_ids_ = std::move(row_line_ids);
         dominant_line_share_ = std::move(dominance);
+        coupling_share_ = coupling_share;
         lines_ = std::move(candidate);
         longest_line_ = longest;
         covered_rows_ = covered;
@@ -201,9 +240,34 @@ public:
                 }
             }
         }
+        double refreshed_coupling_share = coupling_share_;
+        if (multiplicative_) {
+            long double total_negative = 0.0L, on_line_negative = 0.0L;
+            for (std::size_t i = 0; i < n; ++i)
+                for (std::size_t p = row[i]; p < row[i+1]; ++p)
+                    if (col[p] != i && val[p] < 0.0)
+                        total_negative -= static_cast<long double>(val[p]);
+            for (const auto& line : lines_)
+                for (std::size_t k = 1; k < line.indices.size(); ++k) {
+                    const auto i = line.indices[k-1], j = line.indices[k];
+                    on_line_negative -= static_cast<long double>(entry(A, i, j));
+                    on_line_negative -= static_cast<long double>(entry(A, j, i));
+                }
+            const double share = total_negative > 0.0L
+                ? static_cast<double>(on_line_negative / total_negative) : 0.0;
+            if (!(share >= 0.85)) return false;
+            refreshed_coupling_share = share;
+        }
         auto refreshed = lines_;
         if (!factor_lines(A, refreshed)) return false;
+        // Transactionally refresh coefficients of all non-tridiagonal
+        // couplings as well as the line factors. No stale off-block edges.
+        std::vector<double> off_values(off_positions_.size());
+        for (std::size_t k = 0; k < off_positions_.size(); ++k)
+            off_values[k] = val[off_positions_[k]];
         lines_ = std::move(refreshed);
+        off_values_.swap(off_values);
+        coupling_share_ = refreshed_coupling_share;
         return true;
     }
 
@@ -230,7 +294,50 @@ public:
         return z.is_valid();
     }
 
-    const char* name() const override { return "CFDXAlgebraicLineBlockJacobi"; }
+    // A true multiplicative block-line Gauss-Seidel sweep. Unlike block
+    // Jacobi, each line consumes updates from previously solved lines.
+    // The off-block CSR is cached at setup and refreshed transactionally;
+    // no SpMV or heap allocation is required in each sweep if workspace is
+    // pre-sized. The operation is generally nonsymmetric: pair with FGMRES.
+    bool sweep(const Vector& rhs, Vector& x, bool backward,
+               double relaxation, std::vector<double>& workspace) const {
+        if (!multiplicative_ || lines_.empty() ||
+            off_offsets_.size() != rhs.size() + 1 ||
+            rhs.size() != row_line_ids_.size() ||
+            x.size() != rhs.size() || &rhs == &x || !rhs.is_valid() ||
+            !x.is_valid() || !(relaxation > 0.0 && relaxation <= 1.0) ||
+            !std::isfinite(relaxation)) return false;
+        if (workspace.size() < longest_line_) workspace.resize(longest_line_);
+        for (std::size_t l = 0; l < lines_.size(); ++l) {
+            const auto& line = lines_[backward ? lines_.size() - l - 1 : l];
+            const auto m = line.indices.size();
+            for (std::size_t k = 0; k < m; ++k) {
+                const auto i = line.indices[k];
+                double value = rhs(i);
+                for (std::size_t p = off_offsets_[i]; p < off_offsets_[i+1]; ++p)
+                    value -= off_values_[p] * x(off_columns_[p]);
+                if (k) value -= line.lower_factor[k] * workspace[k-1];
+                if (!std::isfinite(value)) return false;
+                workspace[k] = value;
+            }
+            workspace[m-1] *= line.inverse_pivot[m-1];
+            for (std::size_t k = m - 1; k-- > 0;)
+                workspace[k] = (workspace[k] - line.upper[k] * workspace[k+1]) *
+                               line.inverse_pivot[k];
+            for (std::size_t k = 0; k < m; ++k) {
+                const auto i = line.indices[k];
+                x(i) += relaxation * (workspace[k] - x(i));
+                if (!std::isfinite(x(i))) return false;
+            }
+        }
+        return true;
+    }
+
+    const std::vector<std::size_t>& row_line_ids() const noexcept {
+        return row_line_ids_;
+    }
+    double coupling_share() const noexcept { return coupling_share_; }
+    const char* name() const override { return multiplicative_ ? "CFDXAlgebraicLineGaussSeidel" : "CFDXAlgebraicLineBlockJacobi"; }
     std::size_t line_count() const noexcept { return lines_.size(); }
     std::size_t longest_line() const noexcept { return longest_line_; }
     std::size_t covered_rows() const noexcept { return covered_rows_; }
@@ -242,6 +349,42 @@ private:
         std::vector<double> upper;
         std::vector<double> inverse_pivot;
     };
+
+    static void build_off_block(
+        const SparseMatrix& A, const std::vector<Line>& lines,
+        std::vector<std::size_t>& offsets,
+        std::vector<SparseMatrix::Index>& columns,
+        std::vector<std::size_t>& positions,
+        std::vector<double>& values,
+        std::vector<std::size_t>& row_line_ids) {
+        const auto n = A.n_rows();
+        const auto* ro = A.row_offsets_data();
+        const auto* ci = A.columns_data();
+        const auto* av = A.values_data();
+        std::vector<std::size_t> prev(n, n), next(n, n);
+        row_line_ids.assign(n, n);
+        for (std::size_t l = 0; l < lines.size(); ++l) {
+            const auto& nodes = lines[l].indices;
+            for (std::size_t k = 0; k < nodes.size(); ++k) {
+                const auto i = nodes[k];
+                row_line_ids[i] = l;
+                if (k) prev[i] = nodes[k - 1];
+                if (k + 1 < nodes.size()) next[i] = nodes[k + 1];
+            }
+        }
+        offsets.assign(n + 1, 0);
+        columns.clear(); positions.clear(); values.clear();
+        for (std::size_t i = 0; i < n; ++i) {
+            for (std::size_t p = ro[i]; p < ro[i+1]; ++p) {
+                if (ci[p] == i || ci[p] == prev[i] || ci[p] == next[i])
+                    continue;
+                columns.push_back(ci[p]);
+                positions.push_back(p);
+                values.push_back(av[p]);
+            }
+            offsets[i+1] = columns.size();
+        }
+    }
 
     static double entry(const SparseMatrix& A, std::size_t i, std::size_t j) {
         const auto* row = A.row_offsets_data();
@@ -298,10 +441,15 @@ private:
 
     double direction_ratio_;
     double strength_fraction_;
+    bool multiplicative_ = false;
+    double coupling_share_ = 0.0;
     std::vector<Line> lines_;
     std::vector<SparseMatrix::Index> row_offsets_;
     std::vector<SparseMatrix::Index> columns_;
     std::vector<double> dominant_line_share_;
+    std::vector<std::size_t> off_offsets_, off_positions_, row_line_ids_;
+    std::vector<SparseMatrix::Index> off_columns_;
+    std::vector<double> off_values_;
     std::size_t longest_line_ = 0;
     std::size_t covered_rows_ = 0;
 };

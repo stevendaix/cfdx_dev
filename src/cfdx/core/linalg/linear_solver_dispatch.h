@@ -179,6 +179,9 @@ inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
         case PreconditionerModel::AnisotropicSmoothedAggregationAMG:
             return std::make_unique<NativeAnisotropicSmoothedAggregationAMGPreconditioner>(
                 constant_null_space);
+        case PreconditionerModel::DirectionalSemiCoarseningAMG:
+            return std::make_unique<NativeDirectionalSemiCoarseningAMGPreconditioner>(
+                constant_null_space);
         case PreconditionerModel::SmoothedAggregationAMG:
             return std::make_unique<
                 NativeSmoothedAggregationAMGPreconditioner>(

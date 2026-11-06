@@ -46,7 +46,8 @@ enum class PreconditionerModel {
     MGR,
     AnisotropicLine,
     AnisotropicBoomerAMG,
-    AnisotropicSmoothedAggregationAMG
+    AnisotropicSmoothedAggregationAMG,
+    DirectionalSemiCoarseningAMG
 };
 
 enum class ModelAvailability { Available, Planned };
@@ -87,8 +88,8 @@ inline const std::array<SolverModelDescriptor, 8>& krylov_model_catalog() {
     return models;
 }
 
-inline const std::array<SolverModelDescriptor, 19>& preconditioner_model_catalog() {
-    static const std::array<SolverModelDescriptor, 19> models{{
+inline const std::array<SolverModelDescriptor, 20>& preconditioner_model_catalog() {
+    static const std::array<SolverModelDescriptor, 20> models{{
         {"auto", ModelAvailability::Available, false, true},
         {"none", ModelAvailability::Available, false, true},
         {"jacobi", ModelAvailability::Available, false, true},
@@ -113,7 +114,8 @@ inline const std::array<SolverModelDescriptor, 19>& preconditioner_model_catalog
         {"mgr", ModelAvailability::Available, false, false},
         {"anisotropic_line", ModelAvailability::Available, false, false},
         {"anisotropic_boomer_amg", ModelAvailability::Available, false, false},
-        {"anisotropic_smoothed_aggregation_amg", ModelAvailability::Available, false, false}
+        {"anisotropic_smoothed_aggregation_amg", ModelAvailability::Available, false, false},
+        {"directional_semi_coarsening_amg", ModelAvailability::Available, false, false}
     }};
     return models;
 }
@@ -310,7 +312,8 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
     // Krylov on Auto. This is an explicit algorithmic pairing contract.
     const bool anisotropic_amg =
         plan.preconditioner == PreconditionerModel::AnisotropicBoomerAMG ||
-        plan.preconditioner == PreconditionerModel::AnisotropicSmoothedAggregationAMG;
+        plan.preconditioner == PreconditionerModel::AnisotropicSmoothedAggregationAMG ||
+        plan.preconditioner == PreconditionerModel::DirectionalSemiCoarseningAMG;
     if (plan.automatic_krylov &&
         (anisotropic_amg ||
          plan.preconditioner == PreconditionerModel::AnisotropicLine)) {
