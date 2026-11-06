@@ -563,6 +563,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_boundary_validator tests/unit/test_boundary_validator.cpp)
     add_cfdx_test(test_interpolation tests/unit/test_interpolation.cpp)
     add_cfdx_test(test_gradient tests/unit/test_gradient.cpp)
+    add_cfdx_test(test_scalar_transport_gradient_skew tests/unit/test_scalar_transport_gradient_skew.cpp)
     add_cfdx_test(test_pressure_velocity_system tests/unit/test_pressure_velocity_system.cpp)
     add_cfdx_test(test_oriented_numerics tests/unit/test_oriented_numerics.cpp)
     add_cfdx_test(test_divergence tests/unit/test_divergence.cpp)
@@ -584,6 +585,8 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_linear_system tests/unit/test_linear_system.cpp)
     add_cfdx_test(test_cg_solver tests/unit/test_cg_solver.cpp)
     add_cfdx_test(test_amg_dispatch_certificate tests/unit/test_amg_dispatch_certificate.cpp)
+    add_cfdx_test(test_v24_anisotropic_line_amg tests/unit/test_v24_anisotropic_line_amg.cpp)
+    add_cfdx_test(test_v26_pressure_refinement tests/unit/test_v26_pressure_refinement.cpp)
     add_executable(cfdx_benchmark_galerkin_workspace
         tools/benchmarks/benchmark_galerkin_workspace.cpp)
     target_link_libraries(cfdx_benchmark_galerkin_workspace PRIVATE cfdx_core)
@@ -607,8 +610,7 @@ if(CFDX_BUILD_TESTS)
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_v5_benchmark_gates.py)
         set_tests_properties(test_naca_v5_benchmark_gates PROPERTIES
             LABELS "amg;anisotropy;qualification;regression" TIMEOUT 15)
-    endif()
-    add_cfdx_test(test_null_space tests/unit/test_null_space.cpp)
+    endif()    add_cfdx_test(test_null_space tests/unit/test_null_space.cpp)
     add_cfdx_test(test_n8_pinned_pressure_gauge tests/unit/test_n8_pinned_pressure_gauge.cpp)
     add_cfdx_test(test_bicgstab_solver tests/unit/test_bicgstab_solver.cpp)
     add_cfdx_test(test_gmres_solver tests/unit/test_gmres_solver.cpp)
@@ -682,6 +684,7 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_solver_control tests/unit/test_solver_control.cpp)
     add_cfdx_test(test_convergence_monitor tests/unit/test_convergence_monitor.cpp)
     add_cfdx_test(test_initialization tests/unit/test_initialization.cpp)
+    add_cfdx_test(test_initial_face_flux_contract tests/unit/test_initial_face_flux_contract.cpp)
     add_executable(test_n7_convergence_qualification tests/validation/test_n7_convergence_qualification.cpp)
     target_link_libraries(test_n7_convergence_qualification PRIVATE cfdx_core)
     target_include_directories(test_n7_convergence_qualification PRIVATE ${CMAKE_SOURCE_DIR}/tests)
@@ -806,6 +809,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_phase10_turbulence_hardening tests/validation/test_phase10_turbulence_hardening.cpp)
     add_cfdx_test(test_turbulence_qualification_equations tests/unit/test_turbulence_qualification_equations.cpp)
     add_cfdx_test(test_production_turbulence_contract tests/unit/test_production_turbulence_contract.cpp)
+    add_cfdx_test(test_thermohydraulic_observables tests/unit/test_thermohydraulic_observables.cpp)
+    add_cfdx_test(test_production_sst_thermal_coupling tests/unit/test_production_sst_thermal_coupling.cpp)
     add_cfdx_test(test_solid_conduction_selection tests/unit/test_solid_conduction_selection.cpp)
     add_cfdx_test(test_energy_integration_contracts tests/validation/test_energy_integration_contracts.cpp)
     add_cfdx_test(test_energy_independent_acceptance tests/unit/test_energy_independent_acceptance.cpp)
@@ -817,6 +822,29 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     add_cfdx_test(test_n11_bound_reporting_hardening tests/unit/test_n11_bound_reporting_hardening.cpp)
     add_cfdx_test(test_phase10_model_registry tests/validation/test_phase10_model_registry.cpp)
     add_cfdx_test(test_wall_distance_methods tests/unit/test_wall_distance_methods.cpp)
+    add_cfdx_test(test_wall_distance_transport_implicit tests/unit/test_wall_distance_transport_implicit.cpp)
+    set_tests_properties(test_wall_distance_transport_implicit PROPERTIES LABELS "wall-distance;transport;nonlinear" TIMEOUT 90)
+    # Long 65^3 numerical regression remains a hard gate in Release. The
+    # DebugSanitizers fast suite excludes only the explicit sanitizer-slow
+    # label; the short 33^3 transport check still runs under sanitizers.
+    add_cfdx_test(test_wall_distance_transport_stress65 tests/unit/test_wall_distance_transport_stress65.cpp)
+    set_tests_properties(test_wall_distance_transport_stress65 PROPERTIES
+        LABELS "wall-distance;transport;nonlinear;sanitizer-slow" TIMEOUT 600)
+
+    add_cfdx_test(test_wall_distance_scale_and_poisson tests/unit/test_wall_distance_scale_and_poisson.cpp)
+    set_tests_properties(test_wall_distance_scale_and_poisson PROPERTIES LABELS "wall-distance;precision;scale;poisson" TIMEOUT 60)
+    add_cfdx_test(test_wall_distance_difficult_surfaces tests/unit/test_wall_distance_difficult_surfaces.cpp)
+    set_tests_properties(test_wall_distance_difficult_surfaces PROPERTIES LABELS "wall-distance;analytical;difficult-geometry" TIMEOUT 90)
+    add_cfdx_test(test_wall_distance_full_method_audit tests/unit/test_wall_distance_full_method_audit.cpp)
+    set_tests_properties(test_wall_distance_full_method_audit PROPERTIES LABELS "wall-distance;analytical;regression" TIMEOUT 90)
+    add_cfdx_test(test_wall_distance_curved_qualification tests/benchmarks/wall_distance_curved_raw.cpp)
+    set_tests_properties(test_wall_distance_curved_qualification PROPERTIES LABELS "wall-distance;analytical;curved" TIMEOUT 120)
+    add_cfdx_test(test_wall_distance_precision tests/unit/test_wall_distance_precision.cpp)
+    set_tests_properties(test_wall_distance_precision PROPERTIES LABELS "wall-distance;precision;regression" TIMEOUT 90)
+    add_cfdx_test(test_wall_distance_service tests/unit/test_wall_distance_service.cpp)
+    set_tests_properties(test_wall_distance_service PROPERTIES LABELS "wall-distance;service;qualification" TIMEOUT 90)
+    add_cfdx_test(test_wall_distance_service_matrix tests/unit/test_wall_distance_service_matrix.cpp)
+    set_tests_properties(test_wall_distance_service_matrix PROPERTIES LABELS "wall-distance;service;all-methods" TIMEOUT 90)
     add_cfdx_test(test_wall_distance_invalid_results tests/unit/test_wall_distance_invalid_results.cpp)
     add_cfdx_test(test_wall_distance_godunov_ridges tests/unit/test_wall_distance_godunov_ridges.cpp)
     add_cfdx_test(test_wall_distance_advection_residual tests/unit/test_wall_distance_advection_residual.cpp)
@@ -900,8 +928,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         set_tests_properties(test_naca_force_certificate_fail_closed PROPERTIES
             LABELS "forces;qualification;regression" TIMEOUT 45
             FIXTURES_REQUIRED cfdx_validation_meshes_quick)
-    endif()
-    add_test(NAME test_naca0012_quick COMMAND test_naca0012_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/naca0012_laminar_n64.h5)
+    endif()    add_test(NAME test_naca0012_quick COMMAND test_naca0012_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/naca0012_laminar_n64.h5)
     set_tests_properties(test_naca0012_quick PROPERTIES LABELS "qualification;validation")
     if(Python3_Interpreter_FOUND)
         set_tests_properties(test_bfs_quick test_naca0012_quick PROPERTIES FIXTURES_REQUIRED cfdx_validation_meshes_quick)
@@ -1463,6 +1490,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_transport_field_contract tests/unit/test_transport_field_contract.cpp)
     add_cfdx_test(test_equation_of_state_consistency tests/unit/test_equation_of_state_consistency.cpp)
     add_cfdx_test(test_sst_blending tests/unit/test_sst_blending.cpp)
+    add_cfdx_test(test_th03_sst_scale_diagnostic_v10 tests/unit/test_th03_sst_scale_diagnostic_v10.cpp)
     add_cfdx_test(test_thermo_transport_contracts tests/unit/test_thermo_transport_contracts.cpp)
     add_cfdx_test(test_thermophysical_models tests/unit/test_thermophysical_models.cpp)
     add_cfdx_test(test_m5_m7_foundations tests/unit/test_m5_m7_foundations.cpp)
@@ -1658,5 +1686,37 @@ if(CFDX_BUILD_TESTS AND CFDX_ENABLE_LONG_VALIDATION)
     set_tests_properties(test_naca_trailing_edge_gradient_mms PROPERTIES
         LABELS "numerics;gradient;validation;long"
         FIXTURES_REQUIRED cfdx_validation_meshes_full)
+endif()
+
+# Production mesh/gradient contracts: face centroid, warped faces, Neumann
+# pressure boundary, 3D skew/2D extrusion and conservative deferred fluxes.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_production_boundary_wls_v6
+        tests/validation/test_production_boundary_wls_v6.cpp)
+    set_tests_properties(test_production_boundary_wls_v6 PROPERTIES
+        LABELS "verification;gradient;diffusion;pressure;geometry")
+endif()
+
+# TH-03 V9: opt-in pressure equilibration must not bypass the reusable
+# CG/AMG context or certify the transformed residual as the physical one.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_reusable_scaled_pressure_cg_v9
+        tests/unit/test_reusable_scaled_pressure_cg_v9.cpp)
+    set_tests_properties(test_reusable_scaled_pressure_cg_v9 PROPERTIES
+        LABELS "verification;pressure;krylov;scaling")
+endif()
+
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_pressure_linear_diagnostics_v9
+        tests/unit/test_pressure_linear_diagnostics_v9.cpp)
+    set_tests_properties(test_pressure_linear_diagnostics_v9 PROPERTIES
+        LABELS "verification;pressure;mass;diagnostic")
+endif()
+
+# V11 numerical qualification: independent checks for active vector components
+# and dimensional SST convergence. Neither test asserts benchmark validation.
+if(CFDX_BUILD_TESTS)
+    add_cfdx_test(test_momentum_residual_certification_v11 tests/unit/test_momentum_residual_certification_v11.cpp)
+    add_cfdx_test(test_sst_relative_convergence_v11 tests/unit/test_sst_relative_convergence_v11.cpp)
 endif()
 
