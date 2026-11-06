@@ -1753,4 +1753,3 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_momentum_residual_certification_v11 tests/unit/test_momentum_residual_certification_v11.cpp)
     add_cfdx_test(test_sst_relative_convergence_v11 tests/unit/test_sst_relative_convergence_v11.cpp)
 endif()
-
