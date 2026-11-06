@@ -125,6 +125,21 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::invalid_argument("CFDX_NACA_CONVECTION_TVD must be 1");
         c.convection_scheme=ConvectionScheme::TVD;
     }
+    // Optional smooth TVD A/B variant. Never enable this on the default
+    // NACA qualification path or jointly with the original MINMOD experiment.
+    if (const char* vanleer = std::getenv("CFDX_NACA_CONVECTION_VANLEER")) {
+        if (std::string(vanleer) != "1" || c.convection_scheme == ConvectionScheme::TVD)
+            throw std::invalid_argument("NACA van Leer requires an exclusive value of 1");
+        c.convection_scheme=ConvectionScheme::TVD_VANLEER;
+    }
+    if (const char* continuation = std::getenv("CFDX_NACA_TVD_CONTINUATION")) {
+        if (std::string(continuation) != "1" ||
+            (c.convection_scheme != ConvectionScheme::TVD &&
+             c.convection_scheme != ConvectionScheme::TVD_VANLEER))
+            throw std::invalid_argument(
+                "CFDX_NACA_TVD_CONTINUATION requires TVD or van Leer and value 1");
+        c.convection_continuation.enabled = true;
+    }
     if (const char* affine = std::getenv("CFDX_NACA_AFFINE_FLUX_TRIALS")) {
         if (std::string(affine) != "1")
             throw std::invalid_argument("CFDX_NACA_AFFINE_FLUX_TRIALS must be 1");
@@ -132,6 +147,19 @@ static Forces run(const std::string& path,std::size_t level,
         if (!c.pressure_continuity_line_search.enabled)
             throw std::invalid_argument("affine flux trials require line-search");
         c.pressure_continuity_line_search.affine_flux_trials = true;
+    }
+    // Forensic only: select the exact difficult production pressure systems,
+    // e.g. N256 iterations 20,21,240. Never alters a coefficient or tolerance.
+    const char* replay_prefix = std::getenv("CFDX_NACA_PRESSURE_REPLAY_PREFIX");
+    const char* replay_iters = std::getenv("CFDX_NACA_PRESSURE_REPLAY_ITERATIONS");
+    if ((replay_prefix != nullptr) != (replay_iters != nullptr))
+        throw std::invalid_argument("NACA pressure replay requires BOTH env variables");
+    if (replay_prefix) {
+        if (!*replay_prefix)
+            throw std::invalid_argument("NACA pressure replay prefix is empty");
+        c.pressure_replay_prefix = replay_prefix;
+        c.pressure_replay_iterations = cfdx::core::parse_linear_capture_iterations(
+            replay_iters);
     }
     c.pressure_reference_cell=0;
     c.pressure_reference_value=0.0;
@@ -239,7 +267,8 @@ static Forces run(const std::string& path,std::size_t level,
         out << "iteration,continuity_normalized,momentum_rhs_relative,"
                "mass_normalized_imbalance,mass_local_linf,"
                "flux_velocity_mismatch_normalized,pressure_linear_iterations,"
-               "momentum_linear_iterations,nonfinite_mass_faces,nonfinite_velocities\n";
+               "momentum_linear_iterations,nonfinite_mass_faces,nonfinite_velocities,"
+               "high_order_fraction\n";
         out << std::setprecision(17);
         for (const auto& h : solve.history)
             out << h.iteration << ',' << h.continuity_normalized << ','
@@ -249,7 +278,8 @@ static Forces run(const std::string& path,std::size_t level,
                 << h.pressure_linear_iterations << ','
                 << h.momentum_linear_iterations << ','
                 << h.mass_nonfinite_faces << ','
-                << h.boundedness_nonfinite_velocity << '\n';
+                << h.boundedness_nonfinite_velocity << ','
+                << h.high_order_fraction << '\n';
         out.flush();
         if (!out) throw std::runtime_error("failed writing NACA physical history CSV");
     };

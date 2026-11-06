@@ -63,6 +63,37 @@ int main() {
         demand(std::isfinite(strict.residual_relative),
                "physical pressure failure did not report its true residual");
 
+        // Homogeneous pressure correction: b=0 does NOT mean an infinite
+        // relative residual. Normalize with the initial original-system
+        // residual and report the actual nonzero absolute residual.
+        SparseMatrix homogeneous(3, 3);
+        homogeneous.push_back(0, 0, 2.7);
+        homogeneous.push_back(0, 1, -0.33);
+        homogeneous.push_back(1, 0, -0.33);
+        homogeneous.push_back(1, 1, 4.1);
+        homogeneous.push_back(1, 2, -0.72);
+        homogeneous.push_back(2, 1, -0.72);
+        homogeneous.push_back(2, 2, 3.6);
+        homogeneous.finalize();
+        Vector hb(3, 0.0), hx(3, 0.0);
+        hx(0) = 0.27; hx(1) = -0.41; hx(2) = 1.2;
+        const double initial_residual = physical_residual_norm(homogeneous, hx, hb);
+        JacobiPreconditioner homogeneous_pc;
+        ReusableCgContext homogeneous_context(homogeneous_pc);
+        const auto homogeneous_result = solve_reusable_scaled_cg(
+            homogeneous, hb, hx, homogeneous_context,
+            LinearScalingModel::SymmetricDiagonal, 100, 1e-10);
+        const double final_residual = physical_residual_norm(homogeneous, hx, hb);
+        demand(homogeneous_result.status == SolverStatus::CONVERGED,
+               "zero-RHS scaled CG falsely rejected a converged pressure correction");
+        demand(final_residual <= 1e-10 * initial_residual,
+               "zero-RHS scaled CG failed its original-system physical gate");
+        demand(std::abs(homogeneous_result.residual - final_residual) < 1e-24,
+               "homogeneous scaled CG lost the nonzero absolute residual");
+        demand(std::abs(homogeneous_result.residual_relative -
+                        final_residual / initial_residual) < 1e-15,
+               "homogeneous scaled CG returned the wrong relative reference");
+
         // Independently rescaling rows/columns of an SPD matrix need not
         // preserve symmetry, so CG must reject such a request.
         bool rejected_nonsymmetric_scaling = false;

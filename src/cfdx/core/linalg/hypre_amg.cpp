@@ -39,17 +39,21 @@ private:
 struct NativeAMGPreconditioner::Impl {
     explicit Impl(NativeAMGMethod selected_method, bool use_constant_null_space,
                  bool require_smoother_certificate,
-                 bool algebraic_line_smoother, double prolongator_filter)
+                 bool algebraic_line_smoother, double prolongator_filter,
+                 bool directional_semicoarsening, bool energy_minimizing)
         : method(selected_method),
           constant_null_space(use_constant_null_space),
           require_smoother_certificate(require_smoother_certificate),
           algebraic_line_smoother(algebraic_line_smoother),
-          prolongator_filter(prolongator_filter) {}
+          directional_semicoarsening(directional_semicoarsening),
+          energy_minimizing(energy_minimizing), prolongator_filter(prolongator_filter) {}
 
     NativeAMGMethod method;
     bool constant_null_space = false;
     bool require_smoother_certificate = true;
     bool algebraic_line_smoother = false;
+    bool directional_semicoarsening = false;
+    bool energy_minimizing = false;
     double prolongator_filter = 0.0;
     std::size_t cf_interpolation_limit = 0;
     AMGMemoryPolicy policy = AMGMemoryPolicy::Balanced;
@@ -63,10 +67,13 @@ struct NativeAMGPreconditioner::Impl {
 NativeAMGPreconditioner::NativeAMGPreconditioner(
     NativeAMGMethod method, bool constant_null_space,
     bool require_smoother_certificate, bool algebraic_line_smoother,
-    double prolongator_filter)
+    double prolongator_filter, bool directional_semicoarsening,
+    bool energy_minimizing)
     : impl_(std::make_unique<Impl>(method, constant_null_space,
                                    require_smoother_certificate,
-                                   algebraic_line_smoother, prolongator_filter)) {}
+                                   algebraic_line_smoother, prolongator_filter,
+                                   directional_semicoarsening,
+                                   energy_minimizing)) {}
 
 NativeAMGPreconditioner::~NativeAMGPreconditioner() = default;
 NativeAMGPreconditioner::NativeAMGPreconditioner(
@@ -99,8 +106,8 @@ std::size_t NativeAMGPreconditioner::cf_interpolation_limit() const noexcept {
 }
 
 bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
-    impl_->amg.reset();
-    impl_->op.reset();
+    // Stage the next hierarchy before committing. An invalid new mesh or
+    // failed factorization must not destroy a previously usable solver.
     if (matrix.n_rows() == 0 || matrix.n_rows() != matrix.n_cols() ||
         !matrix.is_consistent()) {
         impl_->error = "AMG setup requires a non-empty, square, finalized CSR matrix";
@@ -123,17 +130,29 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
         post_sweeps = 6;
     }
 
+    if (impl_->directional_semicoarsening) {
+        // A true block-line-GS sweep is stronger than the old Jacobi line
+        // update; more sweeps can cost more than they save.
+        pre_sweeps = 2;
+        post_sweeps = 2;
+    }
     auto next_op = std::make_unique<OwnedSparseOperator>(matrix);
     auto next_amg = std::make_unique<MatrixFreeVcyclePreconditioner>(
         *next_op, omega, pre_sweeps, post_sweeps, 0.25,
         impl_->policy == AMGMemoryPolicy::Low ? 15 : 25,
-        impl_->method == NativeAMGMethod::SmoothedAggregation
-            ? AMGInterpolationPolicy::SmoothedAggregation
-            : AMGInterpolationPolicy::DirectCF,
+        impl_->directional_semicoarsening
+            ? AMGInterpolationPolicy::DirectionalSemiCoarsening
+            : impl_->energy_minimizing
+                ? AMGInterpolationPolicy::EnergyMinimizingAggregation
+            : impl_->method == NativeAMGMethod::SmoothedAggregation
+                ? AMGInterpolationPolicy::SmoothedAggregation
+                : AMGInterpolationPolicy::DirectCF,
         impl_->constant_null_space,
         impl_->require_smoother_certificate,
-        impl_->algebraic_line_smoother ? AMGSmootherPolicy::AlgebraicLines
-                                      : AMGSmootherPolicy::DampedJacobi,
+        impl_->directional_semicoarsening
+            ? AMGSmootherPolicy::AlgebraicLineGaussSeidel
+            : impl_->algebraic_line_smoother ? AMGSmootherPolicy::AlgebraicLines
+                                            : AMGSmootherPolicy::DampedJacobi,
         impl_->prolongator_filter, impl_->cf_interpolation_limit);
     if (!next_amg->setup(next_op->matrix())) {
         impl_->error = "native AMG hierarchy construction failed";
@@ -142,9 +161,10 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
         return false;
     }
 
-    impl_->amg.reset();
-    impl_->op = std::move(next_op);
+    // Ensure the previous AMG (whose operator refers to the previous op)
+    // is destroyed before its previous operator is released.
     impl_->amg = std::move(next_amg);
+    impl_->op = std::move(next_op);
     ++impl_->hierarchy_builds;
     impl_->error.clear();
     return true;
@@ -203,6 +223,10 @@ bool NativeAMGPreconditioner::apply(
 }
 
 const char* NativeAMGPreconditioner::name() const {
+    if (impl_->directional_semicoarsening)
+        return "CFDXDirectionalSemiCoarseningLineGSAMG";
+    if (impl_->energy_minimizing)
+        return "CFDXEnergyMinimizingAggregationAMG";
     if (impl_->algebraic_line_smoother)
         return impl_->method == NativeAMGMethod::SmoothedAggregation
             ? "CFDXAnisotropicSmoothedAggregationAMG"
@@ -252,6 +276,14 @@ double NativeAMGPreconditioner::grid_complexity() const {
 
 std::size_t NativeAMGPreconditioner::finest_line_coverage() const {
     return impl_->amg ? impl_->amg->finest_line_coverage() : 0;
+}
+
+std::size_t NativeAMGPreconditioner::finest_directional_pairs() const {
+    return impl_->amg ? impl_->amg->finest_directional_pairs() : 0;
+}
+
+double NativeAMGPreconditioner::finest_line_coupling_share() const {
+    return impl_->amg ? impl_->amg->finest_line_coupling_share() : 0.0;
 }
 
 std::size_t NativeAMGPreconditioner::line_factor_fallback_levels() const {

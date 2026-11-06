@@ -35,7 +35,9 @@ public:
                                      bool constant_null_space = false,
                                      bool require_smoother_certificate = true,
                                      bool algebraic_line_smoother = false,
-                                     double prolongator_filter = 0.0);
+                                     double prolongator_filter = 0.0,
+                                     bool directional_semicoarsening = false,
+        bool energy_minimizing = false);
     ~NativeAMGPreconditioner() override;
 
     NativeAMGPreconditioner(const NativeAMGPreconditioner&) = delete;
@@ -64,6 +66,8 @@ public:
     double grid_complexity() const;
     std::size_t first_prolongation_nnz() const;
     std::size_t finest_line_coverage() const;
+    std::size_t finest_directional_pairs() const;
+    double finest_line_coupling_share() const;
     std::size_t line_factor_fallback_levels() const;
     std::size_t numeric_line_fallbacks() const;
     std::size_t finest_longest_line() const;
@@ -125,6 +129,26 @@ public:
         bool constant_null_space = false)
         : NativeAMGPreconditioner(NativeAMGMethod::SmoothedAggregation,
                                   constant_null_space, false, true, 0.05) {}
+};
+
+// Explicit opt-in for directional weak-edge semi-coarsening combined with
+// multiplicative forward/backward line-Gauss-Seidel. Use with FGMRES only.
+class NativeDirectionalSemiCoarseningAMGPreconditioner final
+    : public NativeAMGPreconditioner {
+public:
+    explicit NativeDirectionalSemiCoarseningAMGPreconditioner(
+        bool constant_null_space = false)
+        : NativeAMGPreconditioner(NativeAMGMethod::SmoothedAggregation,
+            constant_null_space, false, true, 0.02, true) {}
+};
+
+// Experimental long-distance, row-sum-constrained energy interpolation.
+// FGMRES only until all coarse-level symmetry/positivity gates are certified.
+class NativeEnergyMinimizingAMGPreconditioner final : public NativeAMGPreconditioner {
+public:
+    explicit NativeEnergyMinimizingAMGPreconditioner(bool constant_null_space = false)
+        : NativeAMGPreconditioner(NativeAMGMethod::SmoothedAggregation,
+            constant_null_space, false, false, 0.0, false, true) {}
 };
 
 } // namespace cfdx::core

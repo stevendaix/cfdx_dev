@@ -75,6 +75,29 @@ int main() {
         std::cout << "SKEW_AFFINE_GRADIENT before=" << before << " after=" << after << "\n";
         if (!(before>1e-4 && after<before && after<1e-6))
             throw std::runtime_error("skew correction failed affine-exactness gate");
+        // Differentiate the exact eight-sweep skew-corrected pressure
+        // gradient. Old and new use identical fixed-value BCs, whereas the
+        // Jacobian action must use their homogeneous variations.
+        Field<double, Location::CELL> perturbation(mesh.n_cells(),"dp","Pa",1);
+        for (std::size_t c=0; c<mesh.n_cells(); ++c)
+            perturbation(c) = 0.3 - static_cast<double>(c);
+        const auto jacobian = gauss_pressure_gradient_jacobian_action(
+            perturbation,mesh,g,pbc,true);
+        constexpr double step = 1e-5;
+        auto perturbed = p;
+        for (std::size_t c=0; c<mesh.n_cells(); ++c)
+            perturbed(c) += step * perturbation(c);
+        const auto updated = gauss_gradient_with_boundary(perturbed,mesh,g,pbc,true);
+        for(std::size_t c=0; c<mesh.n_cells(); ++c)
+            for(std::size_t component=0; component<3; ++component) {
+                const double reference =
+                    (updated.component_data(component)[c]-improved.component_data(component)[c])/step;
+                const double analytic_jv = jacobian.component_data(component)[c];
+                if (std::abs(reference-analytic_jv) >
+                    1e-7 * std::max(1.0,std::abs(analytic_jv)))
+                    throw std::runtime_error("skew gradient Jacobian action failed finite difference");
+            }
+        std::cout << "SKEW_GAUSS_JACOBIAN_DIRECTIONAL: PASS\n";
         // Use the production Rhie-Chow face reconstruction: this exercises
         // the same deferred face operator as the pressure correction.
         Field<double,Location::CELL> h(mesh.n_cells(),"h","m/s",3);

@@ -57,6 +57,10 @@ struct CoupledBlockSchurOptions {
     // explicit opt-in because CFDX pressure matrices may already be sign
     // normalized by the discretization.
     bool diagonal_schur_sign_flip = false;
+    // Braess-Sarazin: approximate momentum block M = alpha * diag(Auu).
+    // Store its inverse scale 1/alpha, shared by velocity and Schur actions.
+    // A scale of one retains the historical Block-Schur behavior.
+    double velocity_inverse_scale = 1.0;
 };
 
 // Block preconditioner for the pressure-based coupled ordering
@@ -107,6 +111,10 @@ public:
         if (n_cells_ == 0 || A.n_rows() != A.n_cols() ||
             A.n_rows() != 4 * n_cells_)
             return fail("expected a square 4N coupled matrix");
+        if (!(options_.velocity_inverse_scale > 0.0) ||
+            !std::isfinite(options_.velocity_inverse_scale) ||
+            options_.velocity_inverse_scale > 4.0)
+            return fail("invalid Braess-Sarazin velocity scale");
 
         if (!prepare_numeric_state(A)) return false;
         if (options_.schur_approximation == CoupledSchurApproximationModel::PCD) {
@@ -537,13 +545,25 @@ private:
                     }
                 }
             }
-            if (!invert3x3(block, velocity_inv_[c]))
-                return fail("singular or invalid cell-local velocity block");
+            if (options_.velocity_approximation ==
+                    CoupledSchurVelocityApproximation::Block) {
+                if (!invert3x3(block, velocity_inv_[c]))
+                    return fail("singular or invalid cell-local velocity block");
+                for (auto& value : velocity_inv_[c])
+                    value *= options_.velocity_inverse_scale;
+            }
             for (std::size_t q = 0; q < 3; ++q) {
                 const double d = block[3 * q + q];
-                if (!std::isfinite(d) || d == 0.0)
-                    return fail("singular or invalid velocity diagonal block");
-                velocity_inv_diag_[c][q] = 1.0 / d;
+                if (!std::isfinite(d) || !(d > 0.0))
+                    return fail("invalid or non-positive velocity diagonal block");
+                velocity_inv_diag_[c][q] = options_.velocity_inverse_scale / d;
+                // Both velocity correction and D M^-1 G must use the SAME
+                // approximate inverse. The former always consumed the full
+                // 3x3 inverse even in Diagonal mode, making the Schur
+                // factorization inconsistent for off-diagonal velocity blocks.
+                if (options_.velocity_approximation ==
+                        CoupledSchurVelocityApproximation::Diagonal)
+                    velocity_inv_[c][3*q+q] = velocity_inv_diag_[c][q];
             }
         }
         return build_schur(A);

@@ -500,5 +500,54 @@ int main() {
         EXPECT_TRUE(result.status == SolverStatus::NOT_APPLICABLE);
     });
 
+    run_case("gmres_arnoldi_view_matches_vector_reduction_owned_range", []() {
+        Vector a(9), b(9);
+        for (std::size_t i = 0; i < 9; ++i) {
+            a(i) = static_cast<double>(i + 1) * 0.25;
+            b(i) = static_cast<double>(10 - i) * -0.125;
+        }
+        KrylovReductionPolicy owned;
+        owned.local_begin = 2;
+        owned.local_end = 7;
+        for (const auto precision : {SolverPrecision::FP64, SolverPrecision::FP32}) {
+            const double expected = krylov_dot(a, b, precision, owned);
+            const double actual = krylov_dot_view(a.data(), b.data(), a.size(), precision, owned);
+            EXPECT_NEAR(actual, expected, 0.0);
+        }
+        EXPECT_TRUE(krylov_dot_view(a.data(), b.data(), a.size()) !=
+                    krylov_dot_view(a.data(), b.data(), a.size(), SolverPrecision::FP64, owned));
+    });
+
+    run_case("gmres_reused_workspace_and_owned_range_certify_true_residual", []() {
+        auto A = make_poisson_1d(19);
+        LinearOperator op;
+        op.size = A.n_rows();
+        op.apply = [&A](const Vector& in, Vector& out) {
+            const auto ax = A.matvec(in);
+            if (out.size() != ax.size()) out.resize(ax.size());
+            for (std::size_t i = 0; i < ax.size(); ++i) out(i) = ax[i];
+        };
+        Vector b(19, 0.0);
+        for (std::size_t i = 0; i < b.size(); ++i)
+            b(i) = std::sin(0.3 * static_cast<double>(i + 1));
+        KrylovControls controls;
+        controls.adaptive_restart = false;
+        controls.restart_min = 12;
+        controls.restart_max = 12;
+        GmresWorkspace workspace;
+        Vector x1(19, 0.0);
+        const auto one = solve_gmres(op, b, x1, 12, 400, 1e-11, nullptr,
+                                     controls, &workspace);
+        EXPECT_TRUE(one.status == SolverStatus::CONVERGED);
+        const auto allocation_count = workspace.reallocations;
+        Vector x2(19, 0.0);
+        const auto two = solve_gmres(op, b, x2, 12, 400, 1e-11, nullptr,
+                                     controls, &workspace);
+        EXPECT_TRUE(two.status == SolverStatus::CONVERGED);
+        EXPECT_TRUE(workspace.reallocations == allocation_count);
+        for (std::size_t i = 0; i < b.size(); ++i)
+            EXPECT_NEAR(x1(i), x2(i), 1e-11);
+    });
+
     return run_all();
 }

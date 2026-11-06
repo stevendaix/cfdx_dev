@@ -45,28 +45,17 @@ public:
           fine_relaxation_(fine_relaxation),
           additional_levels_(std::move(additional_levels)) {}
 
+    // Lifecycle is transactional. A new hierarchy, including the nested MGR
+    // and fine ILU factors, is built in isolation before it can replace the
+    // accepted one. Rejected setup/update must preserve the old action.
     bool setup(const SparseMatrix& A) override {
-        clear();
-        n_ = A.n_rows();
-        if (!validate_partition(A)) {
-            last_error_ = "invalid MGR fine/coarse partition";
+        NativeMGRPreconditioner candidate(fine_, coarse_, fine_relaxation_,
+                                         additional_levels_);
+        if (!candidate.setup_impl(A)) {
+            last_error_ = candidate.last_error_;
             return false;
         }
-        if (!build_reduction(A)) return false;
-        if (fine_relaxation_ == FineRelaxation::ILU0) {
-            fine_ilu_ = std::make_unique<ILU0Preconditioner>();
-            if (!fine_ilu_->setup(fine_operator_)) {
-                last_error_ = "ILU(0) setup failed on MGR F operator";
-                clear_state_only();
-                return false;
-            }
-        }
-        if (!setup_coarse_solver()) {
-            last_error_ = "coarse solver setup failed on MGR reduced operator";
-            clear_state_only();
-            return false;
-        }
-        ready_ = true;
+        commit_from(candidate);
         ++setup_count_;
         last_error_.clear();
         return true;
@@ -74,58 +63,56 @@ public:
 
     bool update_values(const SparseMatrix& A) override {
         if (!ready_) {
-            last_error_ =
-                "MGR numeric update requires an existing hierarchy; call setup() first";
+            last_error_ = "MGR numeric update requires an existing hierarchy; call setup() first";
             return false;
         }
         if (!validate_partition(A)) {
             last_error_ = "invalid MGR fine/coarse partition";
             return false;
         }
-        SparseMatrix next;
-        SparseMatrix next_fine_operator;
-        std::vector<double> next_fine_diag;
-        if (!assemble_reduced(A, next, next_fine_diag, next_fine_operator)) return false;
-
-        const bool fine_pattern_ok =
-            fine_relaxation_ == FineRelaxation::Diagonal ||
-            same_pattern(fine_operator_, next_fine_operator);
-        if (same_pattern(coarse_operator_, next) && fine_pattern_ok) {
-            coarse_operator_ = std::move(next);
-            fine_operator_ = std::move(next_fine_operator);
-            fine_inv_diag_ = std::move(next_fine_diag);
-            if (fine_relaxation_ == FineRelaxation::ILU0) {
-                if (!fine_ilu_ || !fine_ilu_->setup(fine_operator_)) {
-                    last_error_ = "ILU(0) numeric refresh failed on MGR F operator";
-                    return false;
-                }
-            }
-            if (!update_coarse_solver()) {
-                last_error_ = "coarse solver numeric refresh failed on MGR reduced operator";
-                return false;
-            }
-            ++numeric_updates_;
-            last_error_.clear();
-            return true;
+        NativeMGRPreconditioner candidate(fine_, coarse_, fine_relaxation_,
+                                         additional_levels_);
+        if (!candidate.setup_impl(A)) {
+            last_error_ = candidate.last_error_;
+            return false;
         }
-
-        last_error_ = fine_pattern_ok
-            ? "MGR reduced CSR pattern changed; explicit setup() required"
-            : "MGR F-operator CSR pattern changed; explicit setup() required";
-        return false;
+        if (!same_pattern(coarse_operator_, candidate.coarse_operator_)) {
+            last_error_ = "MGR reduced CSR pattern changed; explicit setup() required";
+            return false;
+        }
+        if (!same_pattern(fine_operator_, candidate.fine_operator_)) {
+            last_error_ = "MGR F-operator CSR pattern changed; explicit setup() required";
+            return false;
+        }
+        // This safely reconstructs the numeric factors and nested coarse
+        // hierarchy. It is more expensive than an in-place numeric refresh;
+        // a future coarse-AMG cloneable numeric state can restore reuse.
+        commit_from(candidate);
+        ++numeric_updates_;
+        last_error_.clear();
+        return true;
     }
 
     bool apply(const Vector& residual, Vector& correction) const override {
         if (!ready_ || residual.size() != n_ || correction.size() != n_)
             return false;
 
+        // The Krylov interface permits residual and correction to alias.
+        // Snapshot the input before zeroing the output, otherwise an in-place
+        // MGR application silently returns the zero vector.
+        const Vector* source = &residual;
+        Vector input_snapshot;
+        if (&residual == &correction) {
+            input_snapshot = residual;
+            source = &input_snapshot;
+        }
         correction.fill(0.0);
         Vector fine_rhs(fine_.size(), 0.0);
         Vector fine_correction(fine_.size(), 0.0);
         Vector coarse_rhs(coarse_.size(), 0.0);
 
         for (std::size_t i = 0; i < fine_.size(); ++i)
-            fine_rhs(i) = residual(fine_[i]);
+            fine_rhs(i) = (*source)(fine_[i]);
 
         // F-relaxation. Diagonal Jacobi is the baseline; ILU(0) is the
         // stronger local option used to test whether weak F relaxation is the
@@ -142,7 +129,7 @@ public:
 
         // Coarse residual: r_C - A_CF z_F.
         for (std::size_t i = 0; i < coarse_.size(); ++i) {
-            double value = residual(coarse_[i]);
+            double value = (*source)(coarse_[i]);
             for (const auto& [j, aij] : coarse_to_fine_[i])
                 value -= aij * correction(fine_[j]);
             coarse_rhs(i) = value;
@@ -191,6 +178,45 @@ public:
     }
 
 private:
+    bool setup_impl(const SparseMatrix& A) {
+        clear();
+        n_ = A.n_rows();
+        if (!validate_partition(A)) {
+            last_error_ = "invalid MGR fine/coarse partition";
+            return false;
+        }
+        if (!build_reduction(A)) return false;
+        if (fine_relaxation_ == FineRelaxation::ILU0) {
+            fine_ilu_ = std::make_unique<ILU0Preconditioner>();
+            if (!fine_ilu_->setup(fine_operator_)) {
+                last_error_ = "ILU(0) setup failed on MGR F operator";
+                clear_state_only();
+                return false;
+            }
+        }
+        if (!setup_coarse_solver()) {
+            last_error_ = "coarse solver setup failed on MGR reduced operator";
+            clear_state_only();
+            return false;
+        }
+        ready_ = true;
+        last_error_.clear();
+        return true;
+    }
+
+    void commit_from(NativeMGRPreconditioner& source) {
+        n_ = source.n_;
+        coarse_operator_ = std::move(source.coarse_operator_);
+        fine_operator_ = std::move(source.fine_operator_);
+        fine_inv_diag_ = std::move(source.fine_inv_diag_);
+        fine_ilu_ = std::move(source.fine_ilu_);
+        coarse_mgr_ = std::move(source.coarse_mgr_);
+        coarse_amg_ = std::move(source.coarse_amg_);
+        coarse_to_fine_ = std::move(source.coarse_to_fine_);
+        fine_to_coarse_ = std::move(source.fine_to_coarse_);
+        ready_ = source.ready_;
+    }
+
     bool validate_partition(const SparseMatrix& A) const {
         if (A.n_rows() != A.n_cols() || !A.is_consistent() ||
             fine_.empty() || coarse_.empty())

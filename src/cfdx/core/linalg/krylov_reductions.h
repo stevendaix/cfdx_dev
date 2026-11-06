@@ -57,19 +57,28 @@ inline double krylov_sum(double local, const KrylovReductionPolicy& policy) {
 #endif
 }
 
-inline double krylov_dot(const Vector& a, const Vector& b,
-                         SolverPrecision reduction_precision = SolverPrecision::FP64,
-                         const KrylovReductionPolicy& policy = {}) {
-    const std::size_t n = std::min(a.size(), b.size());
+// Contiguous Krylov basis views: avoid allocating and copying every Arnoldi
+// column during two-pass MGS. The owned-range/MPI reduction is identical to
+// the Vector overload, including FP32 multiplication semantics.
+inline double krylov_dot_view(const double* a, const double* b, std::size_t n,
+                              SolverPrecision reduction_precision = SolverPrecision::FP64,
+                              const KrylovReductionPolicy& policy = {}) {
     const std::size_t begin = std::min(policy.local_begin, n);
     const std::size_t end = policy.end_for(n);
     double local = 0.0;
     for (std::size_t i = begin; i < end; ++i) {
         local += reduction_precision == SolverPrecision::FP32
-            ? static_cast<double>(static_cast<float>(a(i)) * static_cast<float>(b(i)))
-            : a(i) * b(i);
+            ? static_cast<double>(static_cast<float>(a[i]) * static_cast<float>(b[i]))
+            : a[i] * b[i];
     }
     return krylov_sum(local, policy);
+}
+
+inline double krylov_dot(const Vector& a, const Vector& b,
+                         SolverPrecision reduction_precision = SolverPrecision::FP64,
+                         const KrylovReductionPolicy& policy = {}) {
+    return krylov_dot_view(a.data(), b.data(), std::min(a.size(), b.size()),
+                           reduction_precision, policy);
 }
 
 inline double krylov_norm2(const Vector& a,

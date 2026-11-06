@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Reproducible CFDX N15 performance benchmark runner.
 
 This tool records real measurements only. Missing application-internal timings
@@ -109,10 +108,34 @@ def peak_rss_bytes_from_child_usage(value: float) -> int | None:
     return None
 
 
+def _linux_vm_hwm_bytes(pid: int, command: list[str]) -> int | None:
+    """Sample post-exec high-water resident memory, not fork-inherited rusage.
+
+    Linux wait4(2) and even RUSAGE_SELF can inherit a parent's ru_maxrss
+    across fork/exec; /proc/<pid>/status VmHWM is reset by exec. A sampling
+    miss is explicitly labelled, never silently substituted as a measured RSS.
+    """
+    try:
+        # In the small pre-exec window, /proc/<pid>/status describes the
+        # launcher, not the requested solver. Never count such a sample.
+        expected = [os.fsencode(arg) for arg in command]
+        observed = (
+            Path(f"/proc/{pid}/cmdline").read_bytes().rstrip(b"\x00").split(b"\x00")
+        )
+        if observed != expected:
+            return None
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith("VmHWM:"):
+                return int(line.split()[1]) * 1024
+    except (OSError, ValueError, IndexError):
+        pass
+    return None
+
+
 def run_child(
     command: list[str], cwd: str, env: dict[str, str], inherit_output: bool
-) -> tuple[subprocess.CompletedProcess[str], int | None]:
-    """Run one child and return its own peak RSS where wait4 is available."""
+) -> tuple[subprocess.CompletedProcess[str], int | None, str]:
+    """Run one child, report RSS from a documented post-exec source."""
     if os.name != "posix" or not hasattr(os, "wait4"):
         completed = subprocess.run(
             command,
@@ -122,22 +145,39 @@ def run_child(
             capture_output=not inherit_output,
             check=False,
         )
-        return completed, None
+        return completed, None, "unavailable"
     with (
         tempfile.TemporaryFile(mode="w+b") as stdout_file,
         tempfile.TemporaryFile(mode="w+b") as stderr_file,
     ):
+        # On POSIX, passing cwd even when it equals the current directory
+        # can force fork/exec instead of posix_spawn. ru_maxrss then includes
+        # the *parent's* high-water RSS before exec, making per-child memory
+        # rankings incorrect (and platform dependent). Prefer posix_spawn
+        # for the default/inherited working directory. A genuinely different
+        # cwd still needs subprocess's supported chdir path.
+        spawn_cwd = None if Path(cwd).resolve() == Path.cwd().resolve() else cwd
         process = subprocess.Popen(
             command,
-            cwd=cwd,
+            cwd=spawn_cwd,
             env=env,
             stdout=None if inherit_output else stdout_file,
             stderr=None if inherit_output else stderr_file,
         )
+        # On Linux, ru_maxrss can include the benchmark runner's *own*
+        # pre-exec high-water memory. Sample the child's VmHWM instead.
+        linux = sys.platform.startswith("linux")
+        sampled_peak = None
         while True:
+            if linux:
+                sample = _linux_vm_hwm_bytes(process.pid, command)
+                if sample is not None:
+                    sampled_peak = max(sampled_peak or 0, sample)
             try:
-                _pid, status, usage = os.wait4(process.pid, 0)
-                break
+                _pid, status, usage = os.wait4(process.pid, os.WNOHANG if linux else 0)
+                if _pid:
+                    break
+                time.sleep(0.005)
             except InterruptedError:
                 continue
         process.returncode = os.waitstatus_to_exitcode(status)
@@ -155,7 +195,21 @@ def run_child(
             read_output(stdout_file),
             read_output(stderr_file),
         )
-        return completed, peak_rss_bytes_from_child_usage(usage.ru_maxrss)
+        if linux:
+            # A process shorter than the sampling period has no defensible
+            # peak RSS; do not return wait4's possibly inherited upper bound.
+            return (
+                completed,
+                sampled_peak,
+                "proc-status-vmhwm-sampled"
+                if sampled_peak is not None
+                else "unavailable",
+            )
+        return (
+            completed,
+            peak_rss_bytes_from_child_usage(usage.ru_maxrss),
+            "wait4-child",
+        )
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -176,16 +230,16 @@ def run_once(
         env["CFDX_N15_MPI_RANKS"] = str(rank)
     started = dt.datetime.now(dt.timezone.utc)
     t0 = time.perf_counter()
-    completed, child_peak_rss = run_child(command, args.cwd, env, args.inherit_output)
+    completed, child_peak_rss, rss_source = run_child(
+        command, args.cwd, env, args.inherit_output
+    )
     elapsed = time.perf_counter() - t0
     finished = dt.datetime.now(dt.timezone.utc)
     metrics = load_json(Path(args.metrics_file)) if args.metrics_file else {}
     metrics.setdefault("total", elapsed)
     if "peak_rss_bytes" not in metrics:
         metrics["peak_rss_bytes"] = child_peak_rss
-        metrics["peak_rss_source"] = (
-            "wait4-child" if child_peak_rss is not None else "unavailable"
-        )
+        metrics["peak_rss_source"] = rss_source
     else:
         metrics.setdefault("peak_rss_source", "metrics-file")
     return {

@@ -2,12 +2,15 @@
 
 #include "cfdx/core/linalg/advanced_preconditioners.h"
 #include "cfdx/core/linalg/anisotropic_line_amg.h"
+#include "cfdx/core/linalg/anisotropy_analysis.h"
 #include "cfdx/core/linalg/algebraic_line_preconditioner.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/gmres_solver.h"
 #include "cfdx/core/linalg/hypre_amg.h"
 #include "cfdx/core/linalg/linear_solver_models.h"
+#include "cfdx/core/linalg/linear_system_capture.h"
+#include "cfdx/core/linalg/vanka_patch_preconditioner.h"
 #include "cfdx/core/linalg/matrix_diagnostics.h"
 #include "cfdx/core/linalg/null_space.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
@@ -26,6 +29,8 @@ struct LinearSolveReport {
     LinearSolverPlan plan;
     double physical_residual_relative = std::numeric_limits<double>::quiet_NaN();
     LinearScalingModel applied_scaling = LinearScalingModel::None;
+    std::string anisotropy_json;  // empty unless explicitly requested
+    std::string preconditioner_error; // error from an optional failed native AMG setup
 };
 
 inline double physical_residual_norm(
@@ -116,15 +121,28 @@ inline SolverResult solve_reusable_scaled_cg(
     if (matrix.n_rows() != matrix.n_cols() || rhs.size() != matrix.n_rows() ||
         solution.size() != matrix.n_cols())
         throw std::invalid_argument("scaled reusable CG: matrix/vector size mismatch");
+    // The relative reference for a homogeneous system is the INITIAL true
+    // residual, not max(||b||, 1e-300). Otherwise A*x=0 can be solved to
+    // machine precision and still be reported as a huge failure. Match the
+    // unscaled CG and general linear-dispatch homogeneous contracts.
+    double b_norm = 0.0;
+    for (std::size_t i = 0; i < rhs.size(); ++i)
+        b_norm = std::hypot(b_norm, rhs(i));
+    const double initial_norm = b_norm == 0.0
+        ? physical_residual_norm(matrix, solution, rhs) : 0.0;
+    const double reference_norm = b_norm > 0.0 ? b_norm : initial_norm;
+    const auto physical_certificate = [&](SolverResult& result) {
+        const double true_norm = physical_residual_norm(matrix, solution, rhs);
+        result.residual = true_norm; // Absolute residual, even when b=0.
+        result.residual_relative = reference_norm > 0.0
+            ? true_norm / reference_norm
+            : (true_norm == 0.0 ? 0.0 : std::numeric_limits<double>::infinity());
+    };
     const auto scaled = scale_matrix(matrix, to_matrix_scaling(scaling));
     if (scaled.zero_rows || scaled.zero_columns) {
         SolverResult result;
         result.status = SolverStatus::NOT_APPLICABLE;
-        result.residual_relative = physical_relative_residual(matrix, solution, rhs);
-        double b_norm = 0.0;
-        for (std::size_t i = 0; i < rhs.size(); ++i)
-            b_norm = std::hypot(b_norm, rhs(i));
-        result.residual = result.residual_relative * b_norm;
+        physical_certificate(result);
         return result;
     }
     Vector scaled_rhs(rhs.size(), 0.0);
@@ -137,15 +155,13 @@ inline SolverResult solve_reusable_scaled_cg(
                                 max_iterations, tolerance);
     for (std::size_t i = 0; i < solution.size(); ++i)
         solution(i) = scaled.column_scale[i] * scaled_solution(i);
-    // Independent contract on A*x=b, not on D_row*A*D_col*y=D_row*b.
-    const double physical_relative = physical_relative_residual(matrix, solution, rhs);
-    double b_norm = 0.0;
-    for (std::size_t i = 0; i < rhs.size(); ++i)
-        b_norm = std::hypot(b_norm, rhs(i));
-    result.residual_relative = physical_relative;
-    result.residual = physical_relative * b_norm;
+    // Independent certificate on the ORIGINAL operator, not the scaled
+    // recursive Krylov residual. Keep the absolute diagnostic meaningful for
+    // both homogeneous and nonhomogeneous systems.
+    physical_certificate(result);
     if (result.status == SolverStatus::CONVERGED &&
-        (!std::isfinite(physical_relative) || physical_relative > tolerance))
+        (!std::isfinite(result.residual_relative) ||
+         result.residual_relative > tolerance))
         result.status = SolverStatus::MAX_ITER_REACHED;
     return result;
 }
@@ -179,12 +195,20 @@ inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
         case PreconditionerModel::AnisotropicSmoothedAggregationAMG:
             return std::make_unique<NativeAnisotropicSmoothedAggregationAMGPreconditioner>(
                 constant_null_space);
+        case PreconditionerModel::DirectionalSemiCoarseningAMG:
+            return std::make_unique<NativeDirectionalSemiCoarseningAMGPreconditioner>(
+                constant_null_space);
+        case PreconditionerModel::EnergyMinimizingAMG:
+            return std::make_unique<NativeEnergyMinimizingAMGPreconditioner>(
+                constant_null_space);
         case PreconditionerModel::SmoothedAggregationAMG:
             return std::make_unique<
                 NativeSmoothedAggregationAMGPreconditioner>(
                     constant_null_space, require_smoother_certificate);
         case PreconditionerModel::NativeFieldSplit:
         case PreconditionerModel::CoupledBlockSchur:
+        case PreconditionerModel::VankaPressurePatch:
+        case PreconditionerModel::BraessSarazin:
             throw std::invalid_argument(
                 "block preconditioning needs field metadata; use the coupled solver API");
         case PreconditionerModel::Auto:
@@ -209,6 +233,18 @@ inline LinearSolveReport solve_linear_system(
     std::size_t max_iterations = 1000,
     double tolerance = 1e-12) {
     LinearSolveReport report;
+    if (!request.linear_capture_path.empty())
+        write_linear_system_capture(
+            request.linear_capture_path, matrix, rhs, solution, problem,
+            request.null_space, request.scaling, max_iterations, tolerance);
+    if (request.anisotropy_geometry && !request.diagnose_anisotropy)
+        throw std::invalid_argument("anisotropy geometry provided without diagnostics opt-in");
+    if (request.diagnose_anisotropy) {
+        const auto measured = analyze_anisotropy(matrix, request.anisotropy_geometry);
+        report.anisotropy_json = measured.json(
+            request.anisotropy_equation.empty() ? to_string(problem) :
+                                                   request.anisotropy_equation);
+    }
     // Route against actual CSR coefficients. An explicitly forced CG solve
     // with a non-SPD matrix fails closed without mutating the solution; keep
     // the longstanding NOT_APPLICABLE runtime contract for this case.
@@ -299,6 +335,16 @@ inline LinearSolveReport solve_linear_system(
         if (report.plan.preconditioner == PreconditionerModel::CoupledBlockSchur)
             preconditioner = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
                 matrix.n_rows() / 4);
+        else if (report.plan.preconditioner == PreconditionerModel::VankaPressurePatch)
+            preconditioner = std::make_unique<VankaPressurePatchPreconditioner>(
+                matrix.n_rows() / 4);
+        else if (report.plan.preconditioner == PreconditionerModel::BraessSarazin) {
+            CoupledBlockSchurOptions options;
+            options.velocity_approximation = CoupledSchurVelocityApproximation::Diagonal;
+            options.velocity_inverse_scale = 1.0 / request.braess_sarazin_alpha;
+            preconditioner = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+                matrix.n_rows() / 4, options);
+        }
         else if (report.plan.preconditioner == PreconditionerModel::PCD)
             throw std::invalid_argument(
                 "PCD requires explicit pressure operators; use the coupled physics solver API");
@@ -366,6 +412,13 @@ inline LinearSolveReport solve_linear_system(
         case KrylovModel::PipeFGMRES:
             report.result.status = SolverStatus::NOT_APPLICABLE;
             break;
+    }
+    // Preserve the actionable native AMG setup reason in the report.
+    // NOT_APPLICABLE without a cause previously made N128/N256 failures
+    // indistinguishable from unsupported model dispatch.
+    if (report.result.status == SolverStatus::NOT_APPLICABLE) {
+        if (const auto* native = dynamic_cast<const NativeAMGPreconditioner*>(pc))
+            report.preconditioner_error = native->last_error();
     }
     // Do not restart the solve or rebuild the preconditioner when the
     // original system has already passed. This is a guarded, explicitly
