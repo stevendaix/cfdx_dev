@@ -22,7 +22,19 @@ namespace cfdx::core {
 class AnisotropicLineAMGPreconditioner final : public Preconditioner {
 public:
     bool setup(const SparseMatrix& a) override {
-        clear();
+        // Build a complete replacement first. A failed hierarchy rebuild
+        // must not destroy the preconditioner used by an accepted step.
+        AnisotropicLineAMGPreconditioner next;
+        if (!next.setup_candidate(a)) return false;
+        std::swap(n_, next.n_);
+        std::swap(matrix_, next.matrix_);
+        lines_.swap(next.lines_);
+        amg_.swap(next.amg_);
+        return true;
+    }
+
+private:
+    bool setup_candidate(const SparseMatrix& a) {
         if (a.n_rows() == 0 || a.n_rows() != a.n_cols() || !a.is_consistent())
             return false;
         const std::size_t n = a.n_rows();
@@ -106,19 +118,33 @@ public:
         return true;
     }
 
+public:
     bool apply(const Vector& rhs,Vector& out) const override {
-        if (n_==0 || rhs.size()!=n_ || out.size()!=n_ || !amg_) return false;
-        if (!line_solve(rhs,out)) return false;
-        Vector residual(n_,0.0),correction(n_,0.0),smoothed(n_,0.0);
-        const auto ax=matrix_.matvec(out);
-        for (std::size_t i=0;i<n_;++i) residual(i)=rhs(i)-ax[i];
+        if (n_==0 || rhs.size()!=n_ || out.size()!=n_ || !amg_ || !rhs.is_valid())
+            return false;
+        // The full preconditioner uses the right hand side three times.
+        // Preserve it before the first line sweep when input/output alias.
+        // The ordinary (non-aliased) Krylov path never makes this copy.
+        Vector saved_rhs;
+        const Vector* source = &rhs;
+        if (&rhs == &out) {
+            saved_rhs = rhs;
+            source = &saved_rhs;
+        }
+        if (!line_solve(*source,out)) return false;
+        // Reuse the AMG correction as the post-line scratch buffer.
+        Vector residual(n_,0.0), correction(n_,0.0);
+        // Reuse one pre-sized CSR matvec output in both residual evaluations.
+        // Avoid the Vector->std::vector copy and two heap-allocated matvecs.
+        matrix_.matvec_into(out,residual);
+        for (std::size_t i=0;i<n_;++i) residual(i)=(*source)(i)-residual(i);
         if (!amg_->apply(residual,correction)) return false;
         for (std::size_t i=0;i<n_;++i) out(i)+=correction(i);
-        const auto ax2=matrix_.matvec(out);
-        for (std::size_t i=0;i<n_;++i) residual(i)=rhs(i)-ax2[i];
-        if (!line_solve(residual,smoothed)) return false;
+        matrix_.matvec_into(out,residual);
+        for (std::size_t i=0;i<n_;++i) residual(i)=(*source)(i)-residual(i);
+        if (!line_solve(residual,correction)) return false;
         for (std::size_t i=0;i<n_;++i) {
-            out(i)+=smoothed(i);
+            out(i)+=correction(i);
             if (!std::isfinite(out(i))) return false;
         }
         return true;
@@ -138,16 +164,20 @@ private:
     bool line_solve(const Vector& r,Vector& z) const {
         for (const auto& line:lines_) {
             const auto m=line.nodes.size();
-            std::vector<double> y(m,0.0);
+            // Store Thomas forward substitution directly in z. Each line is
+            // disjoint; no O(line_length) allocation in every Krylov apply.
             for (std::size_t k=0;k<m;++k) {
-                const double numerator=r(line.nodes[k])-(k?line.lower[k]*y[k-1]:0.0);
-                y[k]=numerator/line.pivot[k];
-                if (!std::isfinite(y[k])) return false;
+                const std::size_t i=line.nodes[k];
+                const double numerator=r(i)-
+                    (k?line.lower[k]*z(line.nodes[k-1]):0.0);
+                z(i)=numerator/line.pivot[k];
+                if (!std::isfinite(z(i))) return false;
             }
             for (std::size_t k=m;k-->0;) {
-                const double correction=k+1<m?line.upper[k]*z(line.nodes[k+1])/line.pivot[k]:0.0;
-                z(line.nodes[k])=y[k]-correction;
-                if (!std::isfinite(z(line.nodes[k]))) return false;
+                const std::size_t i=line.nodes[k];
+                if (k+1<m)
+                    z(i)-=line.upper[k]*z(line.nodes[k+1])/line.pivot[k];
+                if (!std::isfinite(z(i))) return false;
             }
         }
         return true;

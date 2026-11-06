@@ -27,7 +27,8 @@ public:
         : direction_ratio_(direction_ratio), strength_fraction_(strength_fraction) {}
 
     bool setup(const SparseMatrix& A) override {
-        reset();
+        // Construct and factor the replacement before touching the active
+        // preconditioner. A rejected setup must not discard a valid solver.
         if (!valid_matrix(A)) return false;
         if (!(direction_ratio_ > 1.0) || !(strength_fraction_ > 0.0 &&
              strength_fraction_ <= 1.0)) return false;
@@ -120,8 +121,24 @@ public:
         }
         if (candidate.empty()) return false;
         if (!factor_lines(A, candidate)) return false;
+        // A long line can contain a weaker connection when the strength
+        // graph branches. Record each row's *original* best on-line/overall
+        // strength ratio to certify later numeric-only matrix updates.
+        std::vector<double> dominance(n, 0.0);
+        for (const auto& line : candidate) {
+            for (std::size_t k = 0; k < line.indices.size(); ++k) {
+                const auto i = line.indices[k];
+                double best = 0.0;
+                if (k) best = std::max(best, -entry(A, i, line.indices[k - 1]));
+                if (k + 1 < line.indices.size())
+                    best = std::max(best, -entry(A, i, line.indices[k + 1]));
+                if (max_negative[i] > 0.0)
+                    dominance[i] = best / max_negative[i];
+            }
+        }
         row_offsets_.assign(row, row + n + 1);
         columns_.assign(col, col + A.nnz());
+        dominant_line_share_ = std::move(dominance);
         lines_ = std::move(candidate);
         longest_line_ = longest;
         covered_rows_ = covered;
@@ -156,9 +173,25 @@ public:
         } else {
             for (const auto& line : lines_) {
                 if (line.indices.size() == 1) continue;
-                for (const auto i : line.indices)
+                for (std::size_t k = 0; k < line.indices.size(); ++k) {
+                    const auto i = line.indices[k];
                     if (!(strongest[i] >= direction_ratio_ * weakest[i]))
                         return false;
+                    // min/max anisotropy can remain huge because a tiny
+                    // third-direction edge persists even as the dominant
+                    // physical coupling rotates. Check the actual old
+                    // line's dominance instead of that ratio alone.
+                    double best_line = 0.0;
+                    if (k) best_line = std::max(best_line,
+                        -entry(A, i, line.indices[k - 1]));
+                    if (k + 1 < line.indices.size())
+                        best_line = std::max(best_line,
+                            -entry(A, i, line.indices[k + 1]));
+                    constexpr double allowed_dominance_drift = 0.90;
+                    if (!(best_line >= allowed_dominance_drift *
+                                       dominant_line_share_[i] * strongest[i]))
+                        return false;
+                }
                 for (std::size_t k = 1; k < line.indices.size(); ++k) {
                     const auto i = line.indices[k - 1];
                     const auto j = line.indices[k];
@@ -263,19 +296,12 @@ private:
         return true;
     }
 
-    void reset() {
-        lines_.clear();
-        row_offsets_.clear();
-        columns_.clear();
-        longest_line_ = 0;
-        covered_rows_ = 0;
-    }
-
     double direction_ratio_;
     double strength_fraction_;
     std::vector<Line> lines_;
     std::vector<SparseMatrix::Index> row_offsets_;
     std::vector<SparseMatrix::Index> columns_;
+    std::vector<double> dominant_line_share_;
     std::size_t longest_line_ = 0;
     std::size_t covered_rows_ = 0;
 };
