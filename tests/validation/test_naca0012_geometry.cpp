@@ -125,6 +125,13 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::invalid_argument("CFDX_NACA_CONVECTION_TVD must be 1");
         c.convection_scheme=ConvectionScheme::TVD;
     }
+    // Optional smooth TVD A/B variant. Never enable this on the default
+    // NACA qualification path or jointly with the original MINMOD experiment.
+    if (const char* vanleer = std::getenv("CFDX_NACA_CONVECTION_VANLEER")) {
+        if (std::string(vanleer) != "1" || c.convection_scheme == ConvectionScheme::TVD)
+            throw std::invalid_argument("NACA van Leer requires an exclusive value of 1");
+        c.convection_scheme=ConvectionScheme::TVD_VANLEER;
+    }
     if (const char* affine = std::getenv("CFDX_NACA_AFFINE_FLUX_TRIALS")) {
         if (std::string(affine) != "1")
             throw std::invalid_argument("CFDX_NACA_AFFINE_FLUX_TRIALS must be 1");

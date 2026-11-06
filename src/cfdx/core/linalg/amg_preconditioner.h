@@ -2089,28 +2089,47 @@ private:
         // Cap extended interpolation complexity to keep numeric Galerkin
         // preparation bounded. Qualification still certifies the true residual.
         constexpr std::size_t support_cap = 8;
+        // Sparse accumulator with one allocation per LEVEL, instead of a
+        // red-black tree and an allocation for every candidate aggregate in
+        // every fine row. Stamps avoid clearing O(n_coarse) data per row.
+        std::vector<double> candidate_scores(coarse_n, 0.0);
+        std::vector<std::size_t> candidate_stamps(coarse_n, n);
+        std::vector<std::pair<std::size_t, double>> sorted;
+        sorted.reserve(64);
         for (std::size_t i = 0; i < n; ++i) {
             if (anchors[aggregate[i]] == i) continue;
-            // Include graph-distance-two aggregates, ranked by the product
-            // of normalized couplings along a one/two-hop path. This avoids
-            // an excessive number of long-distance interpolation entries.
-            std::map<std::size_t, double> candidates;
-            candidates[aggregate[i]] = std::numeric_limits<double>::max();
+            sorted.clear();
+            const auto add_candidate = [&](std::size_t column, double score) {
+                if (candidate_stamps[column] != i) {
+                    candidate_stamps[column] = i;
+                    candidate_scores[column] = score;
+                    sorted.emplace_back(column, 0.0);
+                } else if (column != aggregate[i]) {
+                    candidate_scores[column] += score;
+                }
+            };
+            // Keep the local injection aggregate regardless of a possible
+            // long-range strength tie. It is mandatory for constant modes.
+            add_candidate(aggregate[i], std::numeric_limits<double>::max());
             for (std::size_t k = ro[i]; k < ro[i+1]; ++k) {
                 const std::size_t j = ci[k];
                 if (j == i) continue;
                 const double first = std::abs(av[k]) / diagonal[i];
                 if (first < 1e-14) continue;
-                candidates[aggregate[j]] += first;
+                add_candidate(aggregate[j], first);
                 for (std::size_t q = ro[j]; q < ro[j+1]; ++q) {
                     const std::size_t h = ci[q];
                     if (h == j) continue;
                     const double second = std::abs(av[q]) / diagonal[j];
                     if (second < 1e-14) continue;
-                    candidates[aggregate[h]] += first * second;
+                    add_candidate(aggregate[h], first * second);
                 }
             }
-            std::vector<std::pair<std::size_t, double>> sorted(candidates.begin(), candidates.end());
+            for (auto& entry : sorted) {
+                const double score = candidate_scores[entry.first];
+                if (!std::isfinite(score)) return false;
+                entry.second = score;
+            }
             std::sort(sorted.begin(), sorted.end(),
                       [](const auto& a, const auto& b) {
                           return a.second != b.second ? a.second > b.second : a.first < b.first;
@@ -2146,20 +2165,36 @@ private:
             for (std::size_t i = 0; i < n; ++i) {
                 for (auto& entry : direction[i]) entry.second = 0.0;
                 if (anchors[aggregate[i]] == i || P[i].size() < 2) continue;
-                double mean_gradient = 0.0;
-                for (std::size_t c = 0; c < P[i].size(); ++c) {
-                    const std::size_t coarse = P[i][c].first;
-                    double gradient = 0.0;
-                    for (std::size_t k = ro[i]; k < ro[i+1]; ++k) {
-                        const auto& row = P[ci[k]];
-                        const auto it = std::lower_bound(row.begin(), row.end(), coarse,
-                            [](const auto& item, std::size_t key) { return item.first < key; });
-                        if (it != row.end() && it->first == coarse)
-                            gradient += av[k] * it->second;
+                // Merge sorted interpolation supports once per fine-matrix
+                // neighbour.  The previous code rescanned all CSR neighbours
+                // for EACH interpolation coefficient and binary-searched the
+                // same row repeatedly (O(nnz * support^2)).  One merge per
+                // edge computes the identical A*P gradient in
+                // O(nnz * support), crucial for long-range interpolation.
+                for (std::size_t k = ro[i]; k < ro[i+1]; ++k) {
+                    const auto& neighbour = P[ci[k]];
+                    const double aij = av[k];
+                    std::size_t self_index = 0;
+                    std::size_t other_index = 0;
+                    while (self_index < direction[i].size() &&
+                           other_index < neighbour.size()) {
+                        const auto self_column = direction[i][self_index].first;
+                        const auto other_column = neighbour[other_index].first;
+                        if (self_column == other_column) {
+                            direction[i][self_index].second +=
+                                aij * neighbour[other_index].second;
+                            ++self_index;
+                            ++other_index;
+                        } else if (self_column < other_column) {
+                            ++self_index;
+                        } else {
+                            ++other_index;
+                        }
                     }
-                    direction[i][c].second = gradient;
-                    mean_gradient += gradient;
                 }
+                double mean_gradient = 0.0;
+                for (const auto& entry : direction[i])
+                    mean_gradient += entry.second;
                 mean_gradient /= static_cast<double>(P[i].size());
                 for (auto& entry : direction[i]) {
                     const double gradient = entry.second;

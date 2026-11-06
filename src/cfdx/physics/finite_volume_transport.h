@@ -49,7 +49,10 @@ enum class ConvectionScheme {
     CENTRAL,
     BLENDED,
     QUICK,
-    QUICK_BOUNDED
+    QUICK_BOUNDED,
+    // Append the new variant to preserve all existing enum numeric values.
+    // Smooth van Leer limiter for A/B convergence studies; not auto-selected.
+    TVD_VANLEER
 };
 
 struct ScalarBoundaryFaceValues {
@@ -717,7 +720,8 @@ inline ScalarEquation assemble_scalar_equation(
                 "assemble_scalar_equation: selected convection scheme requires a scalar convected field");
     }
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
-        convection_scheme == ConvectionScheme::TVD) {
+        convection_scheme == ConvectionScheme::TVD ||
+        convection_scheme == ConvectionScheme::TVD_VANLEER) {
         // Use the same boundary-aware rank-certified reconstruction as
         // deferred diffusion. Historical raw Gauss ignored physical BCs and
         // can lose affine accuracy on skewed production meshes.
@@ -875,6 +879,7 @@ inline ScalarEquation assemble_scalar_equation(
 
             if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
                 convection_scheme == ConvectionScheme::TVD ||
+                convection_scheme == ConvectionScheme::TVD_VANLEER ||
                 convection_scheme == ConvectionScheme::CENTRAL ||
                 convection_scheme == ConvectionScheme::BLENDED ||
                 convection_scheme == ConvectionScheme::QUICK ||
@@ -899,7 +904,8 @@ inline ScalarEquation assemble_scalar_equation(
                     // Keep the historical bounded SOU reconstruction.
                     phi_high = std::clamp(
                         phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
-                } else if (convection_scheme == ConvectionScheme::TVD) {
+                } else if (convection_scheme == ConvectionScheme::TVD ||
+                           convection_scheme == ConvectionScheme::TVD_VANLEER) {
                     // Darwish-Moukalled successive-slope ratio for an
                     // unstructured cell-centred face. The gradient must be
                     // projected over the full upwind-to-downwind centre
@@ -925,7 +931,10 @@ inline ScalarEquation assemble_scalar_equation(
                         ? (2.0 * delta_upwind_to_down - delta_down) / delta_down
                         : 0.0;
                     const double limiter =
-                        cfdx::core::limiter_psi(ratio, cfdx::core::LimiterType::MINMOD);
+                        cfdx::core::limiter_psi(ratio,
+                            convection_scheme == ConvectionScheme::TVD_VANLEER
+                            ? cfdx::core::LimiterType::VANLEER
+                            : cfdx::core::LimiterType::MINMOD);
                     phi_high = phi_up + limiter * high_increment;
                     phi_high = std::clamp(
                         phi_high, std::min(phi_up, phi_other), std::max(phi_up, phi_other));
@@ -1110,10 +1119,11 @@ reconstruct_scalar_transport_flux(
         cell_diffusion, face_values, face_conditions, boundary_face_diffusion);
     Field<double, Location::CELL> grad;
     Field<double, Location::FACE> reconstructed_face;
-    // Only SECOND_ORDER_UPWIND and TVD consume the cell gradient below.
+    // SOU and both TVD variants consume the cell gradient below.
     // CENTRAL/BLENDED/QUICK variants use reconstructed_face directly.
     if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
-        convection_scheme == ConvectionScheme::TVD)
+        convection_scheme == ConvectionScheme::TVD ||
+        convection_scheme == ConvectionScheme::TVD_VANLEER)
         // Match assemble_scalar_equation exactly: an independent flux audit
         // must use the SAME boundary-aware gradient and limiter inputs.
         grad = compute_boundary_aware_wls_gradient(
@@ -1177,6 +1187,7 @@ reconstruct_scalar_transport_flux(
             psi_face = up;
             if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
                 convection_scheme == ConvectionScheme::TVD ||
+                convection_scheme == ConvectionScheme::TVD_VANLEER ||
                 convection_scheme == ConvectionScheme::CENTRAL ||
                 convection_scheme == ConvectionScheme::BLENDED ||
                 convection_scheme == ConvectionScheme::QUICK ||
@@ -1184,7 +1195,8 @@ reconstruct_scalar_transport_flux(
                 const std::size_t u = F >= 0.0 ? o : n;
                 const std::size_t dcell = F >= 0.0 ? n : o;
                 if (convection_scheme == ConvectionScheme::SECOND_ORDER_UPWIND ||
-                    convection_scheme == ConvectionScheme::TVD) {
+                    convection_scheme == ConvectionScheme::TVD ||
+                    convection_scheme == ConvectionScheme::TVD_VANLEER) {
                     const double gx=grad.component_data(0)[u];
                     const double gy=grad.component_data(1)[u];
                     const double gz=grad.component_data(2)[u];
@@ -1192,14 +1204,17 @@ reconstruct_scalar_transport_flux(
                     const auto& Cf=geometry.face_centres[f];
                     const double increment=gx*(Cf.x-Cu.x)+gy*(Cf.y-Cu.y)+gz*(Cf.z-Cu.z);
                     double high=field(u)+increment;
-                    if (convection_scheme == ConvectionScheme::TVD) {
+                    if (convection_scheme == ConvectionScheme::TVD ||
+                        convection_scheme == ConvectionScheme::TVD_VANLEER) {
                         const auto& Cd=geometry.cell_centres[dcell];
                         const double delta=field(dcell)-field(u);
                         const double full=gx*(Cd.x-Cu.x)+gy*(Cd.y-Cu.y)+gz*(Cd.z-Cu.z);
                         const double ratio=std::abs(delta)>1e-14 ? (2.0*full-delta)/delta : 0.0;
-                        high=field(u)+limiter_psi(ratio, LimiterType::MINMOD)*increment;
+                        high=field(u)+limiter_psi(ratio,
+                            convection_scheme == ConvectionScheme::TVD_VANLEER
+                            ? LimiterType::VANLEER : LimiterType::MINMOD)*increment;
                     }
-                    // SECOND_ORDER_UPWIND and TVD face states are bounded by
+                    // SOU and both TVD face states are bounded by
                     // scheme contract, independently of bounded_convection.
                     // That option controls a separate bounded-divergence term.
                     psi_face = std::clamp(

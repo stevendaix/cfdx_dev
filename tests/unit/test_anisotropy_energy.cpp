@@ -155,6 +155,28 @@ int main() {
                     regular.first_prolongation_energy());
         EXPECT_TRUE(optimized.first_prolongation_row_nnz_max()>1);
     });
+    run_case("energy_sparse_support_deterministic_rotated_anisotropy", [] {
+        // A direction-independent row accumulator must produce the same
+        // interpolation on repeated builds, including diagonal strong edges.
+        const auto A = matrix(24,24,1.0,1.0,1000.0);
+        FunctionalLinearOperator op(A.n_rows(), [&A](const Vector& x, Vector& y) {
+            if (y.size()!=x.size()) y.resize(x.size());
+            A.matvec_into(x,y);
+        });
+        MatrixFreeVcyclePreconditioner a(op,0.7,4,4,0.25,25,
+            AMGInterpolationPolicy::EnergyMinimizingAggregation,false,false);
+        MatrixFreeVcyclePreconditioner b(op,0.7,4,4,0.25,25,
+            AMGInterpolationPolicy::EnergyMinimizingAggregation,false,false);
+        EXPECT_TRUE(a.setup(A));
+        EXPECT_TRUE(b.setup(A));
+        EXPECT_NEAR(a.first_prolongation_energy(),
+                    b.first_prolongation_energy(),
+                    1e-12*std::abs(a.first_prolongation_energy()));
+        EXPECT_TRUE(a.first_prolongation_row_nnz_max()<=8);
+        EXPECT_NEAR(a.prolongation_row_sum_min(),1.0,1e-12);
+        EXPECT_NEAR(a.prolongation_row_sum_max(),1.0,1e-12);
+        EXPECT_TRUE(std::isfinite(a.operator_complexity()));
+    });
     run_case("energy_minimized_amg_fgmres_true_residual_x_y_oblique", [] {
         for(const auto& configuration :
             {std::array<double,3>{1000.0,1.0,0.01},
