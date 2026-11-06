@@ -82,10 +82,10 @@ struct Options {
     bool wall_forces_quadratic = false;
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
-    bool probe_stream = false;
     bool benchmark_export = false;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
+    bool probe_stream = false;
 };
 
 std::string encode_probe_name_hex(const std::string& name)
@@ -698,10 +698,10 @@ Options parse(int argc, char** argv)
             o.experimental_momentum_first_continuation = true;
         else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
-        else if (arg == "--probe-stream") o.probe_stream = true;
         else if (arg == "--benchmark-export") o.benchmark_export = true;
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
+        else if (arg == "--probe-stream") o.probe_stream = true;
         else if (arg == "--help") {
             std::cout << "cfdx_production_solver --mesh PATH --output-dir DIR "
                          "[--restart DAT] [--iterations N] [--adaptive-convergence]\n"
@@ -712,9 +712,9 @@ Options parse(int argc, char** argv)
                          "  [--wall-forces-quadratic] (opt-in 3-D quadratic WLS wall-force artifact; rank-deficient stencils fail)\n"
                          "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
                          "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
-                         "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH] [--probe-stream]\n"
-                         "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n"
+                         "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
+            std::cout << "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n";
             std::exit(0);
         } else {
             throw std::invalid_argument("unknown option: " + arg);
