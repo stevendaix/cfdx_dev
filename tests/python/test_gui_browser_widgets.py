@@ -137,3 +137,55 @@ def test_mesh_browser_keeps_flat_patch_list_for_default_region():
     assert panel.patches.topLevelItemCount() == 0
     panel.deleteLater()
     app.quit()
+
+
+@pytest.mark.skipif(
+    importlib.util.find_spec("PySide6") is None, reason="optional Qt stack"
+)
+def test_mesh_browser_paginates_large_patch_faces_and_selects_stable_id():
+    from cfdx.mesh_browser_panel import MeshBrowserPanel
+    from cfdx.mesh_model import MeshCatalog, MeshPatch
+
+    from cfdx import create_application
+
+    app = create_application(["cfdx-browser-paging-test"])
+    panel = MeshBrowserPanel()
+    emitted = []
+    panel.selection_changed.connect(emitted.append)
+    patch = MeshPatch(0, "wall", "wall", 100_000)
+    panel.set_catalog(MeshCatalog(120_000, 100_000, 1, (patch,)))
+    patch_item = panel.patches.topLevelItem(0)
+    patch_item.setExpanded(True)
+    assert patch_item.childCount() == 251
+    assert patch_item.child(249).text(0) == "Face 249"
+    next_page = patch_item.child(250)
+    assert next_page.text(0) == "Load faces 250–499…"
+    next_page.setExpanded(True)
+    assert patch_item.childCount() == 501
+    assert patch_item.child(250).text(0) == "Face 250"
+    selection = panel.select_stable_id("patch:wall")
+    assert selection.stable_id == "patch:wall"
+    assert panel.patches.currentItem() is patch_item
+    assert emitted == []
+    panel.deleteLater()
+    app.quit()
+
+
+def test_renderer_pick_resolves_only_registered_patch_actor():
+    from types import SimpleNamespace
+
+    from cfdx.gui_3d import PyVistaQtView
+
+    actor = object()
+    signal = SimpleNamespace(emitted=[])
+    signal.emit = signal.emitted.append
+    view = SimpleNamespace(
+        _actors={"patch:wall": actor},
+        selection_changed=signal,
+    )
+    view._stable_id_for_actor = lambda picked: PyVistaQtView._stable_id_for_actor(
+        view, picked
+    )
+    PyVistaQtView._on_mesh_picked(view, actor)
+    PyVistaQtView._on_mesh_picked(view, object())
+    assert signal.emitted == ["patch:wall"]

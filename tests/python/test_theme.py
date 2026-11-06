@@ -51,7 +51,7 @@ def test_theme_application_sets_palette_and_stylesheet() -> None:
     assert window.styleSheet() == WORKBENCH_STYLESHEET
     assert (
         window.palette().color(QPalette.ColorRole.Window).name()
-        == TOKENS["surface.canvas"]
+        == TOKENS["surface.canvas"].lower()
     )
     window.close()
     app.quit()

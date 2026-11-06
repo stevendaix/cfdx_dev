@@ -82,6 +82,8 @@ implementation. To run it locally, use a real or known-good virtual display:
 
 ## Case files
 
+The Workbench also provides a metadata-first HDF5 browser. It recognises canonical project files and CFDX mesh-interchange files, reports topology counts, regions, fields and dataset metadata, and avoids reading large mesh/field arrays merely to open the file. See [CFDX HDF5 case inspection](gui/CFDX_CASE_INSPECTOR.md) for supported layouts and the large-mesh safety boundary.
+
 The GUI exposes the same persistence contract as the headless API:
 
 - Read Case loads the HDF5 case without consuming a DAT restart artifact.
