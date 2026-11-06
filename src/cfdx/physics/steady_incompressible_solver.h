@@ -437,6 +437,11 @@ struct IncompressibleIteration {
     double selected_pressure_alpha = std::numeric_limits<double>::quiet_NaN();
     double pressure_line_search_norm_before = std::numeric_limits<double>::quiet_NaN();
     double pressure_line_search_norm_after = std::numeric_limits<double>::quiet_NaN();
+    // Evidence for experimental iterated PISO/PIMPLE: count predictor
+    // rebuilds using corrected neighbour velocities and measure their effect.
+    // Zero for the production-default frozen-predictor implementation.
+    std::size_t piso_neighbor_predictor_rebuilds = 0;
+    double piso_neighbor_predictor_flux_delta_linf = 0.0;
     double linear_tolerance_used = std::numeric_limits<double>::quiet_NaN();
     // Conservative pressure-corrected flux continuity at the end of the iteration.
     double corrected_flux_continuity_linf = std::numeric_limits<double>::infinity();
@@ -603,6 +608,11 @@ inline void validate_incompressible_controls(
     validate_convergence_criteria(c.convergence);
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
+    if (c.coupling.piso_neighbor_correction &&
+        c.algorithm != PressureVelocityAlgorithm::PISO &&
+        c.algorithm != PressureVelocityAlgorithm::PIMPLE)
+        throw std::invalid_argument(
+            "PISO neighbour correction requires PISO or PIMPLE algorithm");
     validate_nonlinear_retry_controls(c.nonlinear_retry);
     validate_pressure_continuity_line_search(c.pressure_continuity_line_search);
     // The monolithic U-p block still assembles its analytical G operator
@@ -4422,6 +4432,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const bool supports_multiple_pressure_corrections =
             controls.algorithm == PressureVelocityAlgorithm::PISO ||
             controls.algorithm == PressureVelocityAlgorithm::PIMPLE ||
+        std::size_t piso_neighbor_predictor_rebuilds = 0;
+        double piso_neighbor_predictor_flux_delta_linf = 0.0;
             controls.algorithm == PressureVelocityAlgorithm::FRACTIONAL_STEP;
         if (supports_multiple_pressure_corrections &&
             controls.acceleration.adaptive_pressure_correctors) {
@@ -6212,10 +6224,45 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // multi-corrector algorithm (PISO, PIMPLE, FRACTIONAL_STEP).
             // The momentum matrix stays frozen inside the inner loop; the
             // relaxed pressure update is what carries the first correction
-            // into the next one.
         }
 
         // Operator identity audit: re-derive the authoritative flux from the
+            // into the next one. In the optional iterated-PISO variant,
+            // refresh the diagonal-inverse predictor H/A using the just-
+            // corrected cell velocities. This restores the neighbour terms
+            // of the frozen momentum operator before the next pressure solve.
+            // The next pressure RHS and its face flux must BOTH use this new
+            // predictor. Do not feed the already pressure-corrected flux back
+            // as phiHbyA: the pressure gradient would then be applied twice.
+            if (controls.coupling.piso_neighbor_correction &&
+                corr + 1 < pressure_correctors) {
+                for (std::size_t c = 0; c < nc; ++c) {
+                    ux(c) = U.component_data(0)[c];
+                    uy(c) = U.component_data(1)[c];
+                    uz(c) = U.component_data(2)[c];
+                }
+                hbya[0] = build_hbya(ex, ux, grad_p, 0, rAU[0]);
+                hbya[1] = build_hbya(ey, uy, grad_p, 1, rAU[1]);
+                hbya[2] = build_hbya(ez, uz, grad_p, 2, rAU[2]);
+                HbyA = make_hbya_field(hbya);
+                const auto old_predictor_flux = phiHbyA;
+                phiHbyA = make_mass_flux(
+                    mesh, geometry, HbyA, controls.density, velocity_bcs,
+                    {}, controls.pressure_projected_face_interpolation);
+                double predictor_delta_linf = 0.0;
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+                    predictor_delta_linf = std::max(
+                        predictor_delta_linf,
+                        std::abs(phiHbyA(f) - old_predictor_flux(f)));
+                ++piso_neighbor_predictor_rebuilds;
+                piso_neighbor_predictor_flux_delta_linf = std::max(
+                    piso_neighbor_predictor_flux_delta_linf, predictor_delta_linf);
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr << "PISO_NEIGHBOUR_UPDATE iteration=" << iter
+                              << " corrector=" << corr
+                              << " predictor_flux_delta_linf=" << predictor_delta_linf
+                              << " (experimental; qualification=0)\n";
+            }
         // CURRENT HbyA/flux-pressure/rAtU(rAU) state through the same operator primitives
         // the pressure equation balanced (including the SIMPLEC
         // consistent-response term) and compare with the stored mass_flux.
@@ -6559,6 +6606,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         h.linear_tolerance_used = controls.algorithm == PressureVelocityAlgorithm::COUPLED
             ? controls.coupling.coupled_linear_tolerance : linear_tolerance;
         h.corrected_flux_continuity_linf = linf;
+        h.piso_neighbor_predictor_rebuilds = piso_neighbor_predictor_rebuilds;
+        h.piso_neighbor_predictor_flux_delta_linf =
+            piso_neighbor_predictor_flux_delta_linf;
         // Independent flux/velocity audit (restores the measurement channel
         // that commit 7c7dadf5 made tautological with
         // reconstructed_flux = mass_flux). Two reconstruction paths are

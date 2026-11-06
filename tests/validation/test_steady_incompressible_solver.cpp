@@ -11,6 +11,7 @@
 
 using namespace cfdx::core;
 using namespace cfdx::physics;
+#include <tuple>
 using namespace cfdx::testing;
 
 static Mesh make_unit_cube()
@@ -719,6 +720,76 @@ int main()
     run_case("piso_adaptive_acceleration_reduces_inner_work", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> U(1,"U","m/s",3);
+    run_case("piso_neighbour_correction_rejects_wrong_algorithm", [] {
+        const Mesh m = make_two_cell_channel();
+        Field<double, Location::CELL> U(2,"U","m/s",3), p(2,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0,0};
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        c.coupling.piso_neighbor_correction = true;
+        c.convergence.max_iterations = 1;
+        bool rejected = false;
+        try { (void)solve_steady_incompressible(m,U,p,ubc,pbc,c); }
+        catch (const std::invalid_argument&) { rejected = true; }
+        EXPECT_TRUE(rejected);
+    });
+
+    run_case("piso_neighbour_correction_is_opt_in_and_uses_inner_velocity", [] {
+        const Mesh m = make_two_cell_channel();
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0,0};
+
+        auto run = [&](bool correction, int ncorrectors) {
+            Field<double, Location::CELL> U(2,"U","m/s",3), p(2,"p","Pa",1);
+            U.fill(0.0); p.fill(0.0);
+            U.set(0, 1.0, 0.3, 0.0);
+            U.set(1,-0.5,-0.2, 0.0);
+            p(1)=3.0;
+            IncompressibleSolverControls c;
+            c.algorithm = PressureVelocityAlgorithm::PISO;
+            c.kinematic_viscosity = 0.1;
+            c.coupling.alpha_p = 1.0;
+            c.coupling.n_pressure_correctors = ncorrectors;
+            c.coupling.piso_neighbor_correction = correction;
+            c.convergence.max_iterations = 1;
+            c.linear_tolerance = 1e-11;
+            c.pressure_reference_cell = 0;
+            const auto result = solve_steady_incompressible(m,U,p,ubc,pbc,c);
+            EXPECT_TRUE(result.history.size() == 1);
+            EXPECT_TRUE(std::isfinite(result.history.back().continuity_linf));
+            EXPECT_TRUE(std::isfinite(result.history.back().momentum_equation_residual));
+            return std::make_tuple(result.history.back(), U, p);
+        };
+
+        const auto [one_h,one_U,one_p] = run(false,1);
+        const auto [one_enabled_h,one_enabled_U,one_enabled_p] = run(true,1);
+        // With one corrector, the option cannot change the current solve.
+        EXPECT_TRUE(one_h.piso_neighbor_predictor_rebuilds == 0);
+        EXPECT_TRUE(one_enabled_h.piso_neighbor_predictor_rebuilds == 0);
+        for (std::size_t c=0; c<2; ++c) {
+            EXPECT_NEAR(one_U(c,0),one_enabled_U(c,0),1e-13);
+            EXPECT_NEAR(one_p(c),one_enabled_p(c),1e-13);
+        }
+        const auto [legacy_h,legacy_U,legacy_p] = run(false,3);
+        const auto [improved_h,improved_U,improved_p] = run(true,3);
+        (void)legacy_U; (void)legacy_p; (void)improved_U; (void)improved_p;
+        EXPECT_TRUE(legacy_h.pressure_correctors_used == 3);
+        EXPECT_TRUE(legacy_h.piso_neighbor_predictor_rebuilds == 0);
+        EXPECT_TRUE(improved_h.pressure_correctors_used == 3);
+        EXPECT_TRUE(improved_h.piso_neighbor_predictor_rebuilds == 2);
+        EXPECT_TRUE(improved_h.piso_neighbor_predictor_flux_delta_linf > 1e-12);
+        // Reconstructing the pressure flux from HbyA/p must agree with the
+        // authoritative mass flux; an inconsistency would mask mass defects.
+        EXPECT_TRUE(std::isfinite(improved_h.rhie_chow_identity_linf));
+        EXPECT_TRUE(improved_h.rhie_chow_identity_linf < 1e-10);
+    });
+
         Field<double,Location::CELL> p(1,"p","Pa",1);
         U.fill(0.0); p.fill(0.0);
         VelocityBoundaryConditions ubc;

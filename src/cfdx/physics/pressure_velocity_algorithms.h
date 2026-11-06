@@ -56,6 +56,12 @@ struct CouplingControls {
     int n_fractional_steps = 2;
     // Coupled linear solve controls. The coupled matrix is indefinite but the
     // Rhie-Chow pressure block makes the collocated formulation nonsingular
+    // EXPERIMENTAL, opt-in: for PISO/PIMPLE, rebuild H/A from the velocity
+    // corrected by the previous pressure solve, using the FROZEN relaxed
+    // momentum matrix. This incorporates neighbour velocity corrections
+    // neglected by a frozen-predictor pressure-only loop (Issa, 1986).
+    // Physical and temporal-order qualification is required before promotion.
+    bool piso_neighbor_correction = false;
     // after pressure gauge fixing.
     std::size_t coupled_max_iterations = 2000;
     // Default tightened from 1e-10. At 1e-10 the coupled FGMRES true
