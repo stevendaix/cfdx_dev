@@ -2,6 +2,7 @@
 
 #include "cfdx/core/linalg/advanced_preconditioners.h"
 #include "cfdx/core/linalg/anisotropic_line_amg.h"
+#include "cfdx/core/linalg/anisotropy_analysis.h"
 #include "cfdx/core/linalg/algebraic_line_preconditioner.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
@@ -27,6 +28,7 @@ struct LinearSolveReport {
     LinearSolverPlan plan;
     double physical_residual_relative = std::numeric_limits<double>::quiet_NaN();
     LinearScalingModel applied_scaling = LinearScalingModel::None;
+    std::string anisotropy_json;  // empty unless explicitly requested
 };
 
 inline double physical_residual_norm(
@@ -193,6 +195,7 @@ inline std::unique_ptr<Preconditioner> make_scalar_preconditioner(
         case PreconditionerModel::NativeFieldSplit:
         case PreconditionerModel::CoupledBlockSchur:
         case PreconditionerModel::VankaPressurePatch:
+        case PreconditionerModel::BraessSarazin:
             throw std::invalid_argument(
                 "block preconditioning needs field metadata; use the coupled solver API");
         case PreconditionerModel::Auto:
@@ -217,6 +220,14 @@ inline LinearSolveReport solve_linear_system(
     std::size_t max_iterations = 1000,
     double tolerance = 1e-12) {
     LinearSolveReport report;
+    if (request.anisotropy_geometry && !request.diagnose_anisotropy)
+        throw std::invalid_argument("anisotropy geometry provided without diagnostics opt-in");
+    if (request.diagnose_anisotropy) {
+        const auto measured = analyze_anisotropy(matrix, request.anisotropy_geometry);
+        report.anisotropy_json = measured.json(
+            request.anisotropy_equation.empty() ? to_string(problem) :
+                                                   request.anisotropy_equation);
+    }
     // Route against actual CSR coefficients. An explicitly forced CG solve
     // with a non-SPD matrix fails closed without mutating the solution; keep
     // the longstanding NOT_APPLICABLE runtime contract for this case.
@@ -310,6 +321,13 @@ inline LinearSolveReport solve_linear_system(
         else if (report.plan.preconditioner == PreconditionerModel::VankaPressurePatch)
             preconditioner = std::make_unique<VankaPressurePatchPreconditioner>(
                 matrix.n_rows() / 4);
+        else if (report.plan.preconditioner == PreconditionerModel::BraessSarazin) {
+            CoupledBlockSchurOptions options;
+            options.velocity_approximation = CoupledSchurVelocityApproximation::Diagonal;
+            options.velocity_inverse_scale = 1.0 / request.braess_sarazin_alpha;
+            preconditioner = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
+                matrix.n_rows() / 4, options);
+        }
         else if (report.plan.preconditioner == PreconditionerModel::PCD)
             throw std::invalid_argument(
                 "PCD requires explicit pressure operators; use the coupled physics solver API");

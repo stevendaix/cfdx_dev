@@ -590,6 +590,8 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_directional_semicoarsening tests/unit/test_directional_semicoarsening.cpp)
     add_cfdx_test(test_mgr_transactional tests/unit/test_mgr_transactional.cpp)
     set_tests_properties(test_mgr_transactional PROPERTIES LABELS "linalg;coupled;regression" TIMEOUT 120)
+    add_cfdx_test(test_braess_sarazin tests/unit/test_braess_sarazin.cpp)
+    set_tests_properties(test_braess_sarazin PROPERTIES LABELS "linalg;coupled;qualification" TIMEOUT 120)
     add_cfdx_test(test_vanka_pressure_patch tests/unit/test_vanka_pressure_patch.cpp)
     set_tests_properties(test_vanka_pressure_patch PROPERTIES LABELS "linalg;coupled;qualification" TIMEOUT 120)
     add_executable(cfdx_benchmark_energy_vanka EXCLUDE_FROM_ALL

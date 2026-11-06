@@ -396,6 +396,11 @@ struct IncompressibleSolverControls {
     // benchmark can replay the REAL solved system instead of a divergent
     // replica - see tests/validation/test_pcd_schur_action_benchmark.cpp.
     std::function<void(const CoupledAssemblySnapshot&)> coupled_assembly_callback;
+    // Optional per-equation diagnostic on the post-gauge coupled matrix.
+    // No output and no analysis cost unless enabled. This is an observer, not
+    // a new criterion for accepting a nonlinear or linear iteration.
+    std::function<void(const std::string&, const cfdx::core::AnisotropyReport&)>
+        anisotropy_report_callback;
 };
 
 struct IncompressibleIteration {
@@ -984,6 +989,32 @@ gauss_gradient_with_boundary(
     }
     }
     return grad;
+}
+
+// Matrix-free exact directional derivative of the *same finite-sweep* Gauss
+// pressure-gradient reconstruction used in production. The skew correction
+// is linear in pressure for fixed geometry, so homogeneous boundary data
+// produces the Jacobian action without finite-difference cancellation.
+// This is an observable Jacobian action, NOT permission to enable the
+// incomplete monolithic COUPLED G/C assembly on skewed meshes.
+inline cfdx::core::Field<double, cfdx::core::Location::CELL>
+gauss_pressure_gradient_jacobian_action(
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& direction,
+    const cfdx::core::Mesh& mesh,
+    const FvGeometry& geometry,
+    const ScalarBoundaryConditions& pressure_bcs,
+    bool skew_correct = true,
+    bool projected_face_interpolation = false)
+{
+    ScalarBoundaryConditions homogeneous_bcs = pressure_bcs;
+    for (auto& [name, bc] : homogeneous_bcs) {
+        (void)name;
+        bc.value = 0.0;
+        bc.gradient = 0.0;
+    }
+    return gauss_gradient_with_boundary(direction, mesh, geometry,
+                                        homogeneous_bcs, skew_correct,
+                                        projected_face_interpolation);
 }
 
 // The weight on the neighbour is the longitudinal projection of the actual
@@ -3194,9 +3225,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         throw std::invalid_argument("coupled solver currently requires GMRES or FGMRES");
     if (solver_plan.preconditioner != PreconditionerModel::CoupledBlockSchur &&
         solver_plan.preconditioner != PreconditionerModel::PCD &&
-        solver_plan.preconditioner != PreconditionerModel::MGR)
+        solver_plan.preconditioner != PreconditionerModel::MGR &&
+        solver_plan.preconditioner != PreconditionerModel::BraessSarazin)
         throw std::invalid_argument(
-            "coupled solver requires coupled_block_schur, pcd, or mgr");
+            "coupled solver requires coupled_block_schur, pcd, mgr, or braess_sarazin");
 
     // N8 owns the linear-solver/preconditioner policy. The coupled FV
     // assembler remains N9-owned, but an explicit BlockSchur request must use
@@ -3207,7 +3239,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // Selection reads the *resolved* plan, not the request, so an automatically
     // resolved policy takes the same branch an explicit one would.
     const bool use_n8_block_schur =
-        solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur;
+        solver_plan.preconditioner == PreconditionerModel::CoupledBlockSchur ||
+        solver_plan.preconditioner == PreconditionerModel::BraessSarazin;
+    if (solver_plan.preconditioner == PreconditionerModel::BraessSarazin &&
+        schur_model != CoupledSchurModel::BlockLocal)
+        throw std::invalid_argument(
+            "Braess-Sarazin requires block_local Schur; PCD/LSC/BFBt use their dedicated operators");
     // The Schur family is the production method selector. The outer
     // preconditioner family selects the surrounding block infrastructure;
     // PCD therefore remains reachable even when the outer plan is the generic
@@ -3246,6 +3283,52 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         block.finalize();
         return block;
     };
+    if (controls.anisotropy_report_callback) {
+        AnisotropyGeometry cell_geometry;
+        cell_geometry.cell_centers.reserve(nc);
+        for (const auto& c : geometry.cell_centres)
+            cell_geometry.cell_centers.push_back({c.x, c.y, c.z});
+        // Face-quality metrics for actual internal faces, not guessed mesh
+        // aspect ratios. A pressure Schur block is not equivalent to C alone.
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            const auto neighbor = mesh.ownership().neighbour(f);
+            if (neighbor < 0) continue;
+            const auto owner = static_cast<std::size_t>(mesh.ownership().owner(f));
+            const auto nb = static_cast<std::size_t>(neighbor);
+            const auto d = geometry.cell_centres[nb] - geometry.cell_centres[owner];
+            const auto sf = geometry.face_area_vectors[f];
+            const double dm = d.mag(), sm = sf.mag();
+            if (!(dm > 0.0) || !(sm > 0.0))
+                throw std::runtime_error("anisotropy diagnostic: invalid internal face geometry");
+            const double cosine = std::clamp(sf.dot(d) / (dm * sm), -1.0, 1.0);
+            cell_geometry.face_nonorthogonality_degrees.push_back(
+                std::acos(cosine) * (180.0 / 3.14159265358979323846));
+            const auto at_face = geometry.face_centres[f] - geometry.cell_centres[owner];
+            const auto offset = at_face - d * (at_face.dot(d) / (dm * dm));
+            cell_geometry.face_skewness.push_back(offset.mag() / dm);
+        }
+        // Inspect the component momentum operators, whose geometric
+        // connection graph has one entry per physical cell. Never feed cell
+        // centers into the 4N saddle matrix: those are different unknowns.
+        for (std::size_t comp = 0; comp < 3; ++comp) {
+            SparseMatrix component(nc, nc);
+            for (std::size_t i = 0; i < nc; ++i) {
+                const auto r = comp * nc + i;
+                for (std::size_t k = A.row_offsets_data()[r];
+                     k < A.row_offsets_data()[r+1]; ++k) {
+                    const auto c = A.columns_data()[k];
+                    if (c >= comp * nc && c < (comp + 1) * nc)
+                        component.push_back(i, c - comp * nc, A.values_data()[k]);
+                }
+            }
+            component.finalize();
+            const auto result = analyze_anisotropy(component, &cell_geometry);
+            controls.anisotropy_report_callback(
+                comp == 0 ? "momentum_x" : comp == 1 ? "momentum_y" : "momentum_z",
+                result);
+        }
+        controls.anisotropy_report_callback("coupled_full_4N", analyze_anisotropy(A));
+    }
     if (use_simple_schur) {
         if (!use_n8_block_schur)
             throw std::invalid_argument(
@@ -3597,8 +3680,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         coupled_preconditioner = std::move(schur);
     } else if (use_n8_block_schur) {
+        CoupledBlockSchurOptions options;
+        if (solver_plan.preconditioner == PreconditionerModel::BraessSarazin) {
+            options.velocity_approximation = CoupledSchurVelocityApproximation::Diagonal;
+            options.velocity_inverse_scale = 1.0 / solver_request.braess_sarazin_alpha;
+        }
         auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
-            nc, CoupledBlockSchurOptions{}, has_fixed_pressure
+            nc, options, has_fixed_pressure
                 ? std::numeric_limits<std::size_t>::max() : reference_cell);
         if (!schur_amg->setup(A)) {
             throw std::runtime_error(

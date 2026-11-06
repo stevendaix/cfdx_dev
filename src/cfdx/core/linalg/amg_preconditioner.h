@@ -2027,8 +2027,9 @@ private:
         }
     }
 
-    // Trace(P^T A P), for a symmetric positive (semi)definite elliptic
-    // matrix. There is no dense N x N object and no dense coarse operator.
+    // Trace(P^T A P), for an SPD elliptic operator and sorted sparse
+    // prolongation rows. Keep the original high-precision accumulation:
+    // cancellation can be important for near-null pressure modes.
     static double interpolation_energy(const SparseMatrix& A,
                                        const std::vector<TransferRow>& P)
     {
@@ -2038,17 +2039,17 @@ private:
         const auto* av = A.values_data();
         for (std::size_t i = 0; i < P.size(); ++i)
             for (std::size_t k = ro[i]; k < ro[i+1]; ++k) {
-                const auto& a = P[i];
-                const auto& b = P[ci[k]];
+                const auto& left = P[i];
+                const auto& right = P[ci[k]];
                 std::size_t ia = 0, ib = 0;
-                while (ia < a.size() && ib < b.size()) {
-                    if (a[ia].first == b[ib].first) {
+                while (ia < left.size() && ib < right.size()) {
+                    if (left[ia].first == right[ib].first) {
                         energy += static_cast<long double>(av[k]) *
-                            static_cast<long double>(a[ia].second) *
-                            static_cast<long double>(b[ib].second);
+                            static_cast<long double>(left[ia].second) *
+                            static_cast<long double>(right[ib].second);
                         ++ia;
                         ++ib;
-                    } else if (a[ia].first < b[ib].first) ++ia;
+                    } else if (left[ia].first < right[ib].first) ++ia;
                     else ++ib;
                 }
             }
@@ -2085,7 +2086,9 @@ private:
         const auto baseline = P;
         const double baseline_energy = interpolation_energy(A, P);
         if (!std::isfinite(baseline_energy) || baseline_energy <= 0.0) return false;
-        constexpr std::size_t support_cap = 12;
+        // Cap extended interpolation complexity to keep numeric Galerkin
+        // preparation bounded. Qualification still certifies the true residual.
+        constexpr std::size_t support_cap = 8;
         for (std::size_t i = 0; i < n; ++i) {
             if (anchors[aggregate[i]] == i) continue;
             // Include graph-distance-two aggregates, ranked by the product
@@ -2136,7 +2139,10 @@ private:
         if (!std::isfinite(last_energy) || last_energy <= 0.0) return false;
         std::vector<TransferRow> direction = P;
         std::vector<TransferRow> trial = P;
-        for (int step = 0; step < 5; ++step) {
+        // Three projected relaxations bound setup on fine stretched meshes.
+        for (int step = 0; step < 3; ++step) {
+            double cross = 0.0;
+            double diagonal_curvature = 0.0;
             for (std::size_t i = 0; i < n; ++i) {
                 for (auto& entry : direction[i]) entry.second = 0.0;
                 if (anchors[aggregate[i]] == i || P[i].size() < 2) continue;
@@ -2155,11 +2161,25 @@ private:
                     mean_gradient += gradient;
                 }
                 mean_gradient /= static_cast<double>(P[i].size());
-                for (auto& entry : direction[i])
-                    entry.second = -(entry.second - mean_gradient) / diagonal[i];
+                for (auto& entry : direction[i]) {
+                    const double gradient = entry.second;
+                    const double delta = -(gradient - mean_gradient) / diagonal[i];
+                    cross += gradient * delta; // <D, A P> for SPD A
+                    diagonal_curvature += diagonal[i] * delta * delta;
+                    entry.second = delta;
+                }
             }
+            // Projected-Jacobi quadratic model using only gradients already
+            // computed above; an extra full E(D) and <P,AD> pass used to
+            // dominate setup time. The true energy check below, not this
+            // diagonal curvature model, is the acceptance certificate.
+            if (!std::isfinite(cross) || !(cross < 0.0) ||
+                !(diagonal_curvature > 0.0) ||
+                !std::isfinite(diagonal_curvature)) break;
+            double step_size = std::min(0.7, -cross / diagonal_curvature);
             bool accepted = false;
-            for (double step_size = 0.7; step_size > 1e-5; step_size *= 0.5) {
+            for (int retry = 0; retry < 5 && step_size > 1e-8;
+                 ++retry, step_size *= 0.5) {
                 bool valid = true;
                 for (std::size_t i = 0; i < n; ++i) {
                     double sum = 0.0;
@@ -2171,7 +2191,6 @@ private:
                         sum += trial[i][c].second;
                     }
                     if (trial[i].empty()) { valid = false; continue; }
-                    // Enforce P*1=1 exactly even after FP rounding.
                     trial[i][0].second += 1.0 - sum;
                 }
                 if (!valid) continue;

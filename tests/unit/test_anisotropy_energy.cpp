@@ -82,6 +82,35 @@ int main() {
         EXPECT_NEAR(report.max_face_nonorthogonality_degrees,30.0,1e-12);
         EXPECT_TRUE(report.json("pressure").find("\"equation\":\"pressure\"")!=std::string::npos);
     });
+    run_case("dispatch_emits_unscaled_equation_diagnostic_on_request", [] {
+        const auto A=matrix(12,12,1000.0,1.0,0.0);
+        AnisotropyGeometry g;
+        for (std::size_t y=0;y<12;++y)
+            for (std::size_t x=0;x<12;++x)
+                g.cell_centers.push_back({static_cast<double>(x),
+                                          static_cast<double>(y),0.0});
+        const auto truth=manufactured(A.n_rows());
+        const auto b=product(A,truth);
+        Vector x(A.n_rows(),0.0);
+        LinearSolverRequest request;
+        request.krylov=KrylovModel::FGMRES;
+        request.preconditioner=PreconditionerModel::NativeAMG;
+        request.diagnose_anisotropy=true;
+        request.anisotropy_equation="pressure_corrector";
+        request.anisotropy_geometry=&g;
+        const auto report=solve_linear_system(A,b,x,
+            LinearProblemKind::PressurePoisson,request,300,1e-10);
+        EXPECT_TRUE(report.result.status==SolverStatus::CONVERGED);
+        EXPECT_TRUE(report.physical_residual_relative<=1e-10);
+        EXPECT_TRUE(report.anisotropy_json.find("\"equation\":\"pressure_corrector\"")
+                    !=std::string::npos);
+        EXPECT_TRUE(report.anisotropy_json.find("\"has_geometry\":true")
+                    !=std::string::npos);
+        request.diagnose_anisotropy=false;
+        EXPECT_THROW(solve_linear_system(A,b,x,
+            LinearProblemKind::PressurePoisson,request,100,1e-10),
+            std::invalid_argument);
+    });
     run_case("isotropy_and_tiny_connections_are_not_false_anisotropy", [] {
         const auto A=matrix(12,12,1.0,1.0,0.0);
         const auto report=analyze_anisotropy(A);

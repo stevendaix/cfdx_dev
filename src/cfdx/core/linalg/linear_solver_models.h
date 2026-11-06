@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cmath>
 #include <stdexcept>
 #include <string>
 
@@ -49,7 +50,8 @@ enum class PreconditionerModel {
     AnisotropicSmoothedAggregationAMG,
     DirectionalSemiCoarseningAMG,
     EnergyMinimizingAMG,
-    VankaPressurePatch
+    VankaPressurePatch,
+    BraessSarazin
 };
 
 enum class ModelAvailability { Available, Planned };
@@ -90,8 +92,8 @@ inline const std::array<SolverModelDescriptor, 8>& krylov_model_catalog() {
     return models;
 }
 
-inline const std::array<SolverModelDescriptor, 22>& preconditioner_model_catalog() {
-    static const std::array<SolverModelDescriptor, 22> models{{
+inline const std::array<SolverModelDescriptor, 23>& preconditioner_model_catalog() {
+    static const std::array<SolverModelDescriptor, 23> models{{
         {"auto", ModelAvailability::Available, false, true},
         {"none", ModelAvailability::Available, false, true},
         {"jacobi", ModelAvailability::Available, false, true},
@@ -119,7 +121,8 @@ inline const std::array<SolverModelDescriptor, 22>& preconditioner_model_catalog
         {"anisotropic_smoothed_aggregation_amg", ModelAvailability::Available, false, false},
         {"directional_semi_coarsening_amg", ModelAvailability::Available, false, false},
         {"energy_minimizing_amg", ModelAvailability::Available, false, false},
-        {"vanka_pressure_patch", ModelAvailability::Available, false, false}
+        {"vanka_pressure_patch", ModelAvailability::Available, false, false},
+        {"braess_sarazin", ModelAvailability::Available, false, false}
     }};
     return models;
 }
@@ -156,6 +159,8 @@ inline const char* to_string(NullSpaceModel value) {
     return null_space_model_catalog()[static_cast<std::size_t>(value)].name;
 }
 
+struct AnisotropyGeometry;
+
 struct LinearSolverRequest {
     KrylovModel krylov = KrylovModel::Auto;
     PreconditionerModel preconditioner = PreconditionerModel::Auto;
@@ -168,6 +173,16 @@ struct LinearSolverRequest {
     // Krylov solve. The final status still requires the original FP64
     // true-relative-residual threshold. Disabled by default.
     std::size_t residual_refinement_steps = 0;
+    // Opt-in observability of the EXACT original assembled CSR matrix, before
+    // scaling and preconditioning. Produces JSON in LinearSolveReport.
+    bool diagnose_anisotropy = false;
+    std::string anisotropy_equation;
+    // Borrowed for the duration of solve_linear_system(); optional, no
+    // fabricated mesh metrics when absent.
+    const AnisotropyGeometry* anisotropy_geometry = nullptr;
+    // Only used with BraessSarazin: M=alpha*diag(Auu). No auto tuning until
+    // a qualified pilot contraction is available for the assembled operator.
+    double braess_sarazin_alpha = 1.0;
 };
 
 struct MatrixCharacteristics {
@@ -212,6 +227,10 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
                                              const LinearSolverRequest& request = {}) {
     if (request.gmres_restart <= 0)
         throw std::invalid_argument("GMRES restart must be positive");
+    if (!(request.braess_sarazin_alpha >= 0.25 &&
+          request.braess_sarazin_alpha <= 4.0) ||
+        !std::isfinite(request.braess_sarazin_alpha))
+        throw std::invalid_argument("Braess-Sarazin alpha must be finite in [0.25,4]");
     if (!characteristics.square)
         throw std::invalid_argument("automatic linear-solver selection requires a square matrix");
     if (!is_available(request.krylov))
@@ -371,6 +390,11 @@ inline LinearSolverPlan select_linear_solver(LinearProblemKind problem,
         (!characteristics.numerically_symmetric || !characteristics.positive_diagonal))
         throw std::invalid_argument(
             "anisotropic line-AMG currently requires a symmetric positive-diagonal operator");
+    if (plan.preconditioner == PreconditionerModel::BraessSarazin &&
+        (problem != LinearProblemKind::CoupledPressureVelocity ||
+         plan.krylov != KrylovModel::FGMRES))
+        throw std::invalid_argument(
+            "Braess-Sarazin is opt-in for coupled FGMRES only");
     if (plan.preconditioner == PreconditionerModel::VankaPressurePatch &&
         (problem != LinearProblemKind::CoupledPressureVelocity ||
          plan.krylov != KrylovModel::FGMRES))
