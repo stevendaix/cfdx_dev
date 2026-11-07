@@ -38,7 +38,7 @@ Vec3 gradient(const Vec3& x, bool affine) {
 struct Metrics {double error=0.0; double true_residual=0.0; std::size_t iterations=0;};
 Metrics solve_grid(int n, double shear, PressureFluxSplitScheme scheme, bool affine) {
     const std::size_t count=static_cast<std::size_t>(n*n);
-    const double h=1.0/n, volume=h*h;
+    const double h=1.0/static_cast<double>(n), volume=h*h;
     SparseMatrix A(count,count);
     Vector b(count,0.0), p(count,0.0);
     auto id=[n](int i,int j){return static_cast<std::size_t>(j*n+i);};
@@ -77,12 +77,12 @@ Metrics solve_grid(int n, double shear, PressureFluxSplitScheme scheme, bool aff
         const auto row=id(i,j);
         const double residual=Ap[row]-b(row);
         r2+=residual*residual; b2+=b(row)*b(row);
-        const double diff=p(row)-exact(center(i,j,n,shear),affine);
+        const double diff=p(row)-exact(center(static_cast<std::size_t>(i), static_cast<std::size_t>(j), n, shear),affine);
         error2+=diff*diff;
     }
     const double relres=std::sqrt(r2)/std::max(std::sqrt(b2),1e-300);
     require(relres<1e-9,"independent true residual above gate");
-    return {std::sqrt(error2/count),relres,r.iterations};
+    return {std::sqrt(error2/static_cast<double>(count)),relres,r.iterations};
 }
 }
 int main() {
