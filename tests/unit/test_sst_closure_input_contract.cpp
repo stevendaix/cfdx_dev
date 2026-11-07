@@ -10,6 +10,22 @@ using namespace cfdx::physics;
 using namespace cfdx::testing;
 
 int main() {
+    run_case("sst_wls_planar_empty_requires_2d_gradients", [] {
+        cfdx::core::Mesh mesh;
+        mesh.boundary().add_patch(cfdx::core::Patch{
+            "front", cfdx::core::PatchType::EMPTY, {}, {}});
+        TurbulenceTransportControls controls;
+        controls.model = TurbulenceModel::SST;
+        controls.sst_use_wls_boundary_gradients = true;
+        controls.sst_gradient_dimension = 3;
+        EXPECT_THROW_WITH(require_sst_empty_wls_dimension(mesh, controls),
+                          std::invalid_argument, "dimension=2");
+        controls.sst_gradient_dimension = 2;
+        require_sst_empty_wls_dimension(mesh, controls);
+        controls.sst_use_wls_boundary_gradients = false;
+        controls.sst_gradient_dimension = 3;
+        require_sst_empty_wls_dimension(mesh, controls);
+    });
     run_case("healthy_sst_source_and_eddy_viscosity", [] {
         TurbulenceTransportControls c;
         c.model = TurbulenceModel::SST;

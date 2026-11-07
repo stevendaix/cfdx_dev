@@ -1,5 +1,7 @@
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/naca_planar_contract.h"
+#include "cfdx/physics/forces.h"
 #include "qualification_boundary_helpers.h"
 #include "naca_momentum_trace.h"
 #include "naca_relaxation_controls.h"
@@ -61,6 +63,9 @@ static Forces run(const std::string& path,std::size_t level,
     if(!mesh.topo_validate().ok)
         throw std::runtime_error("invalid NACA0012 topology: "+path);
 
+    // The laminar qualification explicitly requires a single-layer XY
+    // extrusion. Its span is a geometrical reference, NOT an extra wall.
+    const auto planar = require_naca_planar_geometry(mesh);
     constexpr double rho=1.0, Uinf=1.0, Re=1000.0, chord=1.0;
     constexpr double nu=Uinf*chord/Re;
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
@@ -125,21 +130,6 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::invalid_argument("CFDX_NACA_CONVECTION_TVD must be 1");
         c.convection_scheme=ConvectionScheme::TVD;
     }
-    // Optional smooth TVD A/B variant. Never enable this on the default
-    // NACA qualification path or jointly with the original MINMOD experiment.
-    if (const char* vanleer = std::getenv("CFDX_NACA_CONVECTION_VANLEER")) {
-        if (std::string(vanleer) != "1" || c.convection_scheme == ConvectionScheme::TVD)
-            throw std::invalid_argument("NACA van Leer requires an exclusive value of 1");
-        c.convection_scheme=ConvectionScheme::TVD_VANLEER;
-    }
-    if (const char* continuation = std::getenv("CFDX_NACA_TVD_CONTINUATION")) {
-        if (std::string(continuation) != "1" ||
-            (c.convection_scheme != ConvectionScheme::TVD &&
-             c.convection_scheme != ConvectionScheme::TVD_VANLEER))
-            throw std::invalid_argument(
-                "CFDX_NACA_TVD_CONTINUATION requires TVD or van Leer and value 1");
-        c.convection_continuation.enabled = true;
-    }
     if (const char* affine = std::getenv("CFDX_NACA_AFFINE_FLUX_TRIALS")) {
         if (std::string(affine) != "1")
             throw std::invalid_argument("CFDX_NACA_AFFINE_FLUX_TRIALS must be 1");
@@ -148,25 +138,14 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::invalid_argument("affine flux trials require line-search");
         c.pressure_continuity_line_search.affine_flux_trials = true;
     }
-    // Forensic only: select the exact difficult production pressure systems,
-    // e.g. N256 iterations 20,21,240. Never alters a coefficient or tolerance.
-    const char* replay_prefix = std::getenv("CFDX_NACA_PRESSURE_REPLAY_PREFIX");
-    const char* replay_iters = std::getenv("CFDX_NACA_PRESSURE_REPLAY_ITERATIONS");
-    if ((replay_prefix != nullptr) != (replay_iters != nullptr))
-        throw std::invalid_argument("NACA pressure replay requires BOTH env variables");
-    if (replay_prefix) {
-        if (!*replay_prefix)
-            throw std::invalid_argument("NACA pressure replay prefix is empty");
-        c.pressure_replay_prefix = replay_prefix;
-        c.pressure_replay_iterations = cfdx::core::parse_linear_capture_iterations(
-            replay_iters);
-    }
     c.pressure_reference_cell=0;
     c.pressure_reference_value=0.0;
     c.diagnostics.iteration_trace=true;
     c.diagnostics.iteration_trace_frequency=growth_guard ? 10 : 200;
 
     const auto geometry=build_fv_geometry(mesh);
+    std::string checkpoint_path;
+    std::size_t checkpoint_interval = 0;
     if (const char* checkpoint = std::getenv("CFDX_NACA_CHECKPOINT_STATE_CSV")) {
         const char* frequency = std::getenv("CFDX_NACA_CHECKPOINT_EVERY");
         if (!frequency || !*checkpoint)
@@ -176,20 +155,50 @@ static Forces run(const std::string& path,std::size_t level,
         const auto interval = std::stoull(raw, &n_read);
         if (n_read != raw.size() || interval < 10 || interval > 10000)
             throw std::invalid_argument("NACA checkpoint frequency must be in [10,10000]");
-        c.iteration_output_callback = [checkpoint_path=std::string(checkpoint),
-                                       interval, &geometry](
-            std::size_t iteration, double, const Mesh&, const auto& velocity,
-            const auto& pressure) {
-            if (iteration % interval != 0) return true;
-            std::vector<cfdx::validation::NacaStateRow> values;
-            values.reserve(geometry.cell_centres.size());
-            for (std::size_t i=0;i<geometry.cell_centres.size();++i)
-                values.push_back({geometry.cell_centres[i],
-                                  velocity.component_data(0)[i],
-                                  velocity.component_data(1)[i], pressure(i)});
-            cfdx::validation::naca_write_state_csv_atomic(checkpoint_path, values);
-            std::cout << "NACA_CHECKPOINT iteration=" << iteration
-                      << " status=STATE_ONLY_NOT_CONVERGED\n";
+        checkpoint_path = checkpoint;
+        checkpoint_interval = static_cast<std::size_t>(interval);
+    }
+    const char* audit_request = std::getenv("CFDX_NACA_AUDIT_ACCEPTED");
+    const bool audit_accepted = audit_request != nullptr;
+    if (audit_accepted && std::string(audit_request) != "1")
+        throw std::invalid_argument("CFDX_NACA_AUDIT_ACCEPTED must be 1");
+    if (audit_accepted || checkpoint_interval != 0) {
+        // This callback is invoked ONLY after the nonlinear transaction commits.
+        // A rejected retry can no longer write an apparently accepted restart.
+        c.committed_iteration_callback = [checkpoint_path, checkpoint_interval,
+                                          audit_accepted, &geometry,
+                                          flow_scale=rho*Uinf*chord*planar.span](
+            std::size_t iteration, double, const Mesh& accepted_mesh,
+            const auto& velocity, const auto& pressure, const auto& face_flux) {
+            if (audit_accepted) {
+                const auto plane = require_naca_planar_state(
+                    accepted_mesh, velocity, face_flux, Uinf, flow_scale);
+                const auto mass = audit_naca_face_mass_budget(
+                    accepted_mesh, face_flux, flow_scale);
+                if (iteration <= 3 || iteration % 10 == 0)
+                    std::cout << std::setprecision(16)
+                              << "NACA_ACCEPTED_FV_AUDIT iter=" << iteration
+                              << " max_uz=" << plane.max_abs_uz
+                              << " max_empty_phi=" << plane.max_abs_empty_face_flux
+                              << " local_mass_linf=" << mass.cell_linf
+                              << " local_mass_relative=" << mass.local_linf_relative
+                              << " local_worst_cell=" << mass.worst_cell
+                              << " net_boundary_phi=" << mass.global_net
+                              << " net_boundary_relative=" << mass.global_net_relative
+                              << " owner_neighbour_identity_error="
+                              << mass.topology_identity_error << '\n';
+            }
+            if (checkpoint_interval != 0 && iteration % checkpoint_interval == 0) {
+                std::vector<cfdx::validation::NacaStateRow> values;
+                values.reserve(geometry.cell_centres.size());
+                for (std::size_t i=0;i<geometry.cell_centres.size();++i)
+                    values.push_back({geometry.cell_centres[i],
+                                      velocity.component_data(0)[i],
+                                      velocity.component_data(1)[i], pressure(i)});
+                cfdx::validation::naca_write_state_csv_atomic(checkpoint_path, values);
+                std::cout << "NACA_CHECKPOINT iteration=" << iteration
+                          << " status=ACCEPTED_STATE_ONLY_NOT_CONVERGED\n";
+            }
             return true;
         };
     }
@@ -268,7 +277,10 @@ static Forces run(const std::string& path,std::size_t level,
                "mass_normalized_imbalance,mass_local_linf,"
                "flux_velocity_mismatch_normalized,pressure_linear_iterations,"
                "momentum_linear_iterations,nonfinite_mass_faces,nonfinite_velocities,"
-               "high_order_fraction\n";
+               "momentum_rhs_x,momentum_rhs_y,momentum_rhs_z,"
+               "momentum_balance_x,momentum_balance_y,momentum_balance_z,"
+               "momentum_worst_cell_x,momentum_worst_cell_y,momentum_worst_cell_z,"
+               "alpha_u,alpha_p,velocity_change_inf,pressure_change_inf\n";
         out << std::setprecision(17);
         for (const auto& h : solve.history)
             out << h.iteration << ',' << h.continuity_normalized << ','
@@ -279,7 +291,17 @@ static Forces run(const std::string& path,std::size_t level,
                 << h.momentum_linear_iterations << ','
                 << h.mass_nonfinite_faces << ','
                 << h.boundedness_nonfinite_velocity << ','
-                << h.high_order_fraction << '\n';
+                << h.momentum_equation_residual_rhs_relative_components[0] << ','
+                << h.momentum_equation_residual_rhs_relative_components[1] << ','
+                << h.momentum_equation_residual_rhs_relative_components[2] << ','
+                << h.momentum_conservation_normalized[0] << ','
+                << h.momentum_conservation_normalized[1] << ','
+                << h.momentum_conservation_normalized[2] << ','
+                << h.momentum_conservation_worst_cell[0] << ','
+                << h.momentum_conservation_worst_cell[1] << ','
+                << h.momentum_conservation_worst_cell[2] << ','
+                << h.effective_alpha_u << ',' << h.effective_alpha_p << ','
+                << h.velocity_change_inf << ',' << h.pressure_change_inf << '\n';
         out.flush();
         if (!out) throw std::runtime_error("failed writing NACA physical history CSV");
     };
@@ -291,6 +313,27 @@ static Forces run(const std::string& path,std::size_t level,
                   << " converged=" << solve.converged << '\n';
     }
 
+    // The authoritative face flux is the one accepted by the pressure-
+    // velocity solver. A guessed interpolation of U would not certify EMPTY.
+    if (solve.authoritative_mass_flux.size() == mesh.n_faces()) {
+        const auto plane = require_naca_planar_state(
+            mesh, U, solve.authoritative_mass_flux,
+            Uinf, rho * Uinf * chord * planar.span);
+        const auto mass = audit_naca_face_mass_budget(
+            mesh, solve.authoritative_mass_flux, rho * Uinf * chord * planar.span);
+        std::cout << "NACA_INDEPENDENT_MASS_BUDGET: cell_linf="
+                  << mass.cell_linf << " worst_cell=" << mass.worst_cell
+                  << " cell_linf_relative=" << mass.local_linf_relative
+                  << " net_boundary_relative=" << mass.global_net_relative
+                  << " topology_error=" << mass.topology_identity_error << '\n';
+        std::cout << "NACA_PLANAR_STATE: PASS span=" << planar.span
+                  << " max_abs_uz=" << plane.max_abs_uz
+                  << " max_empty_phi=" << plane.max_abs_empty_face_flux
+                  << " checked_empty_faces=" << plane.checked_empty_faces
+                  << "\n";
+    } else if (solve.converged) {
+        throw std::runtime_error("NACA2D: converged solver did not provide authoritative mass flux");
+    }
     if(!solve.converged) {
         std::ostringstream message;
         message << "NACA0012 solver did not converge: status="
@@ -369,6 +412,14 @@ static Forces run(const std::string& path,std::size_t level,
     }
     double Fx=0,Fy=0,Mz=0,Fxp=0,Fyp=0,Fxv=0,Fyv=0;
     const double q=0.5*rho*Uinf*Uinf;
+    const double reference_area=chord*planar.span;
+    const double qA=q*reference_area;
+    const double qAL=qA*chord;
+    if (!(qA > 0.0) || !std::isfinite(qA) ||
+        !(qAL > 0.0) || !std::isfinite(qAL))
+        throw std::runtime_error("NACA2D: invalid force/moment reference scales");
+    std::vector<forces::SurfaceSample> force_samples;
+    force_samples.reserve(patch.face_ids.size());
     for(const auto f:patch.face_ids){
         const std::size_t o=mesh.ownership().owner(f);
         const auto Sf=geometry.face_area_vectors[f];
@@ -404,6 +455,10 @@ static Forces run(const std::string& path,std::size_t level,
             Fxv -= face_txv*Sf.mag(); Fyv -= face_tyv*Sf.mag();
             const auto r = geometry.face_centres[f]-Vec3{0.25,0,0};
             Mz += r.x*ty-r.y*tx;
+            const auto centre = geometry.face_centres[f];
+            force_samples.push_back({
+                {centre.x, centre.y, centre.z}, {-n.x, -n.y, -n.z},
+                Sf.mag(), pp, {-face_txv, -face_tyv, 0.0}});
             if (face_profiles) {
                 Vec3 tangent{-n.y,n.x,0.0};
                 if (tangent.x < 0.0) tangent *= -1.0;
@@ -412,8 +467,8 @@ static Forces run(const std::string& path,std::size_t level,
                 face_profiles << f << ',' << geometry.face_centres[f].x/chord
                               << ',' << geometry.face_centres[f].y/chord
                               << ',' << pp/q << ',' << cf_tangent
-                              << ',' << (pp*n.x*Sf.mag())/q
-                              << ',' << (-face_txv*Sf.mag())/q << '\n';
+                              << ',' << (pp*n.x*Sf.mag())/qA
+                              << ',' << (-face_txv*Sf.mag())/qA << '\n';
             }
             continue;
         }
@@ -433,6 +488,11 @@ static Forces run(const std::string& path,std::size_t level,
         Fyv+=-(txy*n.x+tyy*n.y)*Sf.mag();
         const auto r=geometry.face_centres[f]-Vec3{0.25,0,0};
         Mz+=r.x*ty-r.y*tx;
+        const auto centre = geometry.face_centres[f];
+        force_samples.push_back({
+            {centre.x, centre.y, centre.z}, {-n.x, -n.y, -n.z},
+            Sf.mag(), pp, {-(txx*n.x + txy*n.y),
+                            -(txy*n.x + tyy*n.y), 0.0}});
     }
     // Independent, experimental two-depth wall-shear diagnostic. Does not
     // change the qualified force coefficient or hide missing near-wall cells.
@@ -500,7 +560,7 @@ static Forces run(const std::string& path,std::size_t level,
                     face, outward, tangent, {0,0,0},
                     sample(owner), sample(deeper), rho*nu);
                 const double drag_face = value.shear_on_body_tangent *
-                    tangent.x * sf.mag() / q;
+                    tangent.x * sf.mag() / qA;
                 integrated_cd_viscous += drag_face;
                 if (quadratic_profiles)
                     quadratic_profiles << f << ',' << face.x/chord << ','
@@ -525,7 +585,28 @@ static Forces run(const std::string& path,std::size_t level,
     }
     if (face_profiles && !face_profiles.good())
         throw std::runtime_error("failed to write NACA face profiles CSV");
-    const double cd=Fx/q, cl=Fy/q, cm=Mz/q;
+    // Reuse CFDX's existing dimensional surface-force integrator instead
+    // of silently assuming c=b=1. It independently recomputes and checks
+    // pressure/viscous components and moment from each face sample.
+    forces::Reference force_reference;
+    force_reference.rho_inf=rho;
+    force_reference.u_inf=Uinf;
+    force_reference.area=reference_area;
+    force_reference.length=chord;
+    force_reference.moment_center={0.25*chord,0,0};
+    const auto integrated = forces::integrate(force_samples, force_reference);
+    const auto equivalent = [](double a, double b) {
+        return std::abs(a-b) <= 2e-11 * std::max({1.0, std::abs(a), std::abs(b)});
+    };
+    if (!equivalent(integrated.total_force.x,Fx) ||
+        !equivalent(integrated.total_force.y,Fy) ||
+        !equivalent(integrated.pressure_force.x,Fxp) ||
+        !equivalent(integrated.pressure_force.y,Fyp) ||
+        !equivalent(integrated.viscous_force.x,Fxv) ||
+        !equivalent(integrated.viscous_force.y,Fyv) ||
+        !equivalent(integrated.total_moment.z,Mz))
+        throw std::runtime_error("NACA2D: independent surface force/moment integrators disagree");
+    const double cd=integrated.cd, cl=integrated.cl, cm=integrated.cmz;
     const auto& last=solve.history.back();
     // Optional, machine-readable single-grid certificate. The three-grid
     // Richardson/GCI gate must still validate mesh-family similarity and
@@ -545,8 +626,8 @@ static Forces run(const std::string& path,std::size_t level,
             << chord / static_cast<double>(surface_resolution)
             << ",yes," << last.momentum_equation_residual_rhs_relative << ','
             << std::max({last.continuity_normalized, last.mass_normalized_imbalance,
-                         last.mass_local_linf}) << ',' << cd << ',' << Fxp/q
-            << ',' << Fxv/q << ',' << cl << ',' << cm << '\n';
+                         last.mass_local_linf}) << ',' << cd << ',' << integrated.cd_pressure
+            << ',' << integrated.cd_viscous << ',' << cl << ',' << cm << '\n';
         out.flush();
         if (!out) throw std::runtime_error("failed writing converged force certificate");
         std::cout << "NACA_CONVERGED_FORCE_CERTIFICATE path=" << output
@@ -554,10 +635,10 @@ static Forces run(const std::string& path,std::size_t level,
     }
     std::cout<<"NACA0012_RE1000_A0 level="<<((patch.face_ids.size()-1)/2)
              <<" Cd="<<cd<<" Cl="<<cl<<" Cm="<<cm
-             <<" Cd_pressure="<<Fxp/q<<" Cd_viscous="<<Fxv/q
+             <<" Cd_pressure="<<integrated.cd_pressure<<" Cd_viscous="<<integrated.cd_viscous
              <<" continuity="<<last.continuity_linf
              <<" iterations="<<solve.iterations<<"\n";
-    return {cd,cl,cm,Fxp/q,Fxv/q,last.continuity_linf};
+    return {cd,cl,cm,integrated.cd_pressure,integrated.cd_viscous,last.continuity_linf};
 }
 
 static void run_quick_contract(const std::string& path)
@@ -569,6 +650,7 @@ static void run_quick_contract(const std::string& path)
     if(!topo.ok)
         throw std::runtime_error("invalid NACA0012 topology: "+path);
 
+    const auto planar = require_naca_planar_geometry(mesh);
     const auto geometry=build_fv_geometry(mesh);
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
     U.fill(0.0);
@@ -611,7 +693,7 @@ static void run_quick_contract(const std::string& path)
                  mesh.boundary().patch(split_in).size() +
                  mesh.boundary().patch(split_out).size() :
                  mesh.boundary().patch(farfield_id).size())
-             <<" solver_campaign_pending\n";
+             <<" span="<<planar.span<<" solver_campaign_pending\n";
 }
 
 int main(int argc,char**argv)

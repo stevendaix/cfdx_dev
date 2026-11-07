@@ -25,7 +25,7 @@ def parse_result(output: str) -> dict:
         raise ValueError("expected exactly one NACA coefficient record")
     line = matches[0]
     parsed = {}
-    for key in ("Cd", "Cl", "Cd_pressure", "continuity", "iterations"):
+    for key in ("Cd", "Cl", "Cm", "Cd_pressure", "Cd_viscous", "continuity", "iterations"):
         match = re.search(r"(?:^|\s)" + re.escape(key) + r"=([^\s]+)", line)
         if match is None:
             raise ValueError(f"missing {key}")
@@ -33,6 +33,8 @@ def parse_result(output: str) -> dict:
         if not math.isfinite(value):
             raise ValueError(f"nonfinite {key}")
         parsed[key] = value
+    if abs(parsed["Cd"] - parsed["Cd_pressure"] - parsed["Cd_viscous"]) > 1e-8:
+        raise ValueError("pressure + viscous drag does not equal Cd")
     if not (
         parsed["Cd_pressure"] > 0
         and parsed["continuity"] < 1e-7

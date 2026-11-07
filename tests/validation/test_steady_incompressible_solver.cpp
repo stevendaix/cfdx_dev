@@ -1267,6 +1267,18 @@ int main()
             published_probe_samples.push_back(sample);
         };
         std::size_t output_calls = 0;
+        std::size_t durable_calls = 0;
+        controls.committed_iteration_callback =
+            [&](std::size_t step, double, const auto& accepted_mesh,
+                const auto& velocity, const auto& pressure,
+                const auto& flux) {
+                ++durable_calls;
+                EXPECT_TRUE(step == 1);
+                EXPECT_TRUE(accepted_mesh.n_faces() == flux.size());
+                EXPECT_TRUE(velocity.size() == accepted_mesh.n_cells());
+                EXPECT_TRUE(pressure.size() == accepted_mesh.n_cells());
+                return true;
+            };
         controls.iteration_output_callback =
             [&](std::size_t, double, const auto&, const auto&, const auto&) {
                 if (++output_calls == 1)
@@ -1275,6 +1287,7 @@ int main()
             };
         const auto accepted = solve_steady_incompressible(m, U, p, ubc, pbc, controls);
         EXPECT_TRUE(output_calls == 2);
+        EXPECT_TRUE(durable_calls == 1);
         EXPECT_TRUE(accepted.history.size() == 1);
         EXPECT_TRUE(accepted.probe_samples.size() == 1);
         EXPECT_TRUE(published_probe_samples.size() == accepted.probe_samples.size());

@@ -574,6 +574,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_conservation_assembly tests/unit/test_conservation_assembly.cpp)
     add_cfdx_test(test_integrate tests/unit/test_integrate.cpp)
     add_cfdx_test(test_forces tests/unit/test_forces.cpp)
+    add_cfdx_test(test_naca_planar_contract tests/unit/test_naca_planar_contract.cpp)
     add_cfdx_test(test_force_finite_contract tests/unit/test_force_finite_contract.cpp)
     set_tests_properties(test_force_finite_contract PROPERTIES
         LABELS "validation;forces;regression")
@@ -947,11 +948,26 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_executable(test_naca0012_qualification tests/validation/test_naca0012_geometry.cpp)
     target_link_libraries(test_naca0012_qualification PRIVATE cfdx_core)
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_naca_case_separation
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/validate_naca_case_separation.py
+                --registry ${CMAKE_SOURCE_DIR}/docs/validation/CFDX_QUALIFICATION_REGISTRY.json)
+        set_tests_properties(test_naca_case_separation PROPERTIES
+            LABELS "naca;sst;contract;regression" TIMEOUT 15)
         add_test(NAME test_naca_mesh_similarity_gate
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_mesh_similarity_gate.py)
         set_tests_properties(test_naca_mesh_similarity_gate PROPERTIES
             LABELS "mesh;gci;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_naca_exponential_mesh_family
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_exponential_mesh_family.py)
+        set_tests_properties(test_naca_exponential_mesh_family PROPERTIES
+            LABELS "naca;mesh;gci;qualification;regression" TIMEOUT 45)
+        add_test(NAME test_naca_nonlinear_history_diagnostic
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_analyze_naca_nonlinear_history.py)
+        set_tests_properties(test_naca_nonlinear_history_diagnostic PROPERTIES
+            LABELS "naca;momentum;diagnostic;regression" TIMEOUT 15)
         add_test(NAME test_naca_force_mesh_qualification
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_force_mesh_qualification.py)
@@ -1770,4 +1786,43 @@ endif()
 if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_momentum_residual_certification_v11 tests/unit/test_momentum_residual_certification_v11.cpp)
     add_cfdx_test(test_sst_relative_convergence_v11 tests/unit/test_sst_relative_convergence_v11.cpp)
+endif()
+
+# CFDX V5: comparaison des preconditionneurs COUPLED.
+# Desactive par defaut pour eviter de ralentir les builds CI.
+option(
+    CFDX_BUILD_COUPLED_COMPARISON
+    "Build production-captured COUPLED comparison"
+    OFF
+)
+
+if(CFDX_BUILD_COUPLED_COMPARISON)
+    add_executable(
+        cfdx_coupled_production_comparison
+        tools/benchmarks/cfdx_coupled_production_comparison.cpp
+    )
+
+    target_link_libraries(
+        cfdx_coupled_production_comparison
+        PRIVATE cfdx_core
+    )
+
+    target_include_directories(
+        cfdx_coupled_production_comparison
+        PRIVATE ${CMAKE_SOURCE_DIR}/tests
+    )
+endif()
+
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(
+        NAME test_coupled_comparison_v5_protocol
+        COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/tools/benchmarks/run_coupled_preconditioner_comparison.py
+        --selftest
+    )
+
+    set_tests_properties(
+        test_coupled_comparison_v5_protocol
+        PROPERTIES LABELS "schur;benchmark;unit;v5"
+    )
 endif()

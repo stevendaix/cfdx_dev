@@ -44,8 +44,13 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
             diagnostic["reasons"].append("different_tangential_and_radial_ratios")
         if mismatch > tolerance:
             diagnostic["reasons"].append("first_layer_refinement_not_similar")
+        sa = float(a.get("radial_stretch", 0.0))
+        sb = float(b.get("radial_stretch", 0.0))
+        if not math.isfinite(sa) or not math.isfinite(sb) or sa < 0 or sb < 0:
+            raise ValueError("invalid radial_stretch parameter")
         if (abs(float(b["radius"]) / float(a["radius"]) - 1) > 1e-12 or
-                abs(float(b["radial_power"]) - float(a["radial_power"])) > 1e-12):
+                abs(float(b["radial_power"]) - float(a["radial_power"])) > 1e-12 or
+                abs(sb - sa) > 1e-12):
             diagnostic["reasons"].append("different_geometry_or_grading")
     if not diagnostic["reasons"]:
         diagnostic["status"] = "COMPATIBLE_WITH_SINGLE_RATIO_GCI"
