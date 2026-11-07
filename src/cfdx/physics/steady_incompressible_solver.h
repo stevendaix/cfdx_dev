@@ -3322,6 +3322,27 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         schur_model == CoupledSchurModel::SIMPLE ||
         schur_model == CoupledSchurModel::SIMPLEC;
     std::unique_ptr<Preconditioner> coupled_preconditioner;
+    // Experimental opt-in (#1183): cell-wise overlapping Schwarz for the COUPLED
+    // BlockLocal plan. Fail-closed: no fallback preconditioner. Setup runs
+    // before the dispatch chain so the experimental path can replace the N8
+    // BlockSchur AMG assignment below without altering the chain opening.
+    std::unique_ptr<Preconditioner> coupled_schwarz_preconditioner;
+    if (controls.coupling.coupled_schwarz_experimental) {
+        if (!use_n8_block_schur || schur_model != CoupledSchurModel::BlockLocal)
+            throw std::invalid_argument(
+                "experimental Schwarz requires the coupled_block_schur linear plan and BlockLocal Schur");
+        CellSchwarzConfig config;
+        config.cells_per_subdomain = controls.coupling.coupled_schwarz_cells_per_subdomain;
+        config.overlap_hops = controls.coupling.coupled_schwarz_overlap_hops;
+        config.max_local_unknowns = controls.coupling.coupled_schwarz_max_local_unknowns;
+        config.restriction = controls.coupling.coupled_schwarz_weighted
+            ? CellSchwarzRestriction::WeightedAdditive
+            : CellSchwarzRestriction::Restricted;
+        auto sch = std::make_unique<CellOverlappingSchwarzPreconditioner>(nc, config);
+        if (!sch->setup(A))
+            throw std::runtime_error("COUPLED Schwarz setup failed: local block singular or oversized; no fallback");
+        coupled_schwarz_preconditioner = std::move(sch);
+    }
     // Evidence-only alias of the production PCD pressure operators, kept
     // alive for the coupled_assembly_callback (the branch-local pcd_ops
     // shared_ptr goes out of scope below). Assigned only when a callback is
@@ -3393,22 +3414,7 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         }
         controls.anisotropy_report_callback("coupled_full_4N", analyze_anisotropy(A));
     }
-    if (controls.coupling.coupled_schwarz_experimental) {
-        if (!use_n8_block_schur || schur_model != CoupledSchurModel::BlockLocal)
-            throw std::invalid_argument(
-                "experimental Schwarz requires the coupled_block_schur linear plan and BlockLocal Schur");
-        CellSchwarzConfig config;
-        config.cells_per_subdomain = controls.coupling.coupled_schwarz_cells_per_subdomain;
-        config.overlap_hops = controls.coupling.coupled_schwarz_overlap_hops;
-        config.max_local_unknowns = controls.coupling.coupled_schwarz_max_local_unknowns;
-        config.restriction = controls.coupling.coupled_schwarz_weighted
-            ? CellSchwarzRestriction::WeightedAdditive
-            : CellSchwarzRestriction::Restricted;
-        auto sch = std::make_unique<CellOverlappingSchwarzPreconditioner>(nc, config);
-        if (!sch->setup(A))
-            throw std::runtime_error("COUPLED Schwarz setup failed: local block singular or oversized; no fallback");
-        coupled_preconditioner = std::move(sch);
-    } else if (use_simple_schur) {
+    if (use_simple_schur) {
         if (!use_n8_block_schur)
             throw std::invalid_argument(
                 "SIMPLE/SIMPLEC coupled Schur models require the coupled_block_schur linear plan");
@@ -3770,12 +3776,16 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
             nc, options, has_fixed_pressure
                 ? std::numeric_limits<std::size_t>::max() : reference_cell);
-        if (!schur_amg->setup(A)) {
-            throw std::runtime_error(
-                std::string("N8 coupled BlockSchur AMG setup failed: ") +
-                schur_amg->last_error());
+        if (coupled_schwarz_preconditioner) {
+            coupled_preconditioner = std::move(coupled_schwarz_preconditioner);
+        } else {
+            if (!schur_amg->setup(A)) {
+                throw std::runtime_error(
+                    std::string("N8 coupled BlockSchur AMG setup failed: ") +
+                    schur_amg->last_error());
+            }
+            coupled_preconditioner = std::move(schur_amg);
         }
-        coupled_preconditioner = std::move(schur_amg);
     } else {
         std::vector<std::size_t> fine_variables(nv);
         std::vector<std::size_t> coarse_variables(np);
