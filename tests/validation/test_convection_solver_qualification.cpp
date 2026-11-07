@@ -15,7 +15,8 @@ Mesh make_channel(std::size_t n)
     Mesh m;
     m.points().resize(8*n);
     for (std::size_t i=0;i<n;++i) {
-        const double x0=static_cast<double>(i)/n, x1=static_cast<double>(i+1)/n;
+        const double inverse_n=1.0/static_cast<double>(n);
+        const double x0=static_cast<double>(i)*inverse_n, x1=(static_cast<double>(i)+1.0)*inverse_n;
         const std::size_t b=8*i;
         const double p[8][3]={{x0,0,0},{x1,0,0},{x1,1,0},{x0,1,0},
                               {x0,0,1},{x1,0,1},{x1,1,1},{x0,1,1}};
