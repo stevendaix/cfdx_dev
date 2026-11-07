@@ -32,7 +32,7 @@ jobs:
     timeout-minutes: 90
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install build and report dependencies
         run: |
@@ -77,7 +77,7 @@ jobs:
 
       - name: Upload validation build
         if: steps.build.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-total-validation-build-${{ github.sha }}
           path: cfdx-validation-build.tar.gz
@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
@@ -113,7 +113,7 @@ jobs:
           "$VENV_DIR/bin/python" -m pip install --upgrade pip
           "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
           "$VENV_DIR/bin/python" -m pip install -e .
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: cfdx-total-validation-build-${{ github.sha }}
           path: .
@@ -162,7 +162,7 @@ jobs:
           PY
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-total-validation-fast-evidence
           path: |
@@ -184,7 +184,7 @@ jobs:
     # CTest per-test limits, numerical tolerances, and physical gates are unchanged.
     timeout-minutes: 240
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
@@ -195,7 +195,7 @@ jobs:
           "$VENV_DIR/bin/python" -m pip install --upgrade pip
           "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
           "$VENV_DIR/bin/python" -m pip install -e .
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: cfdx-total-validation-build-${{ github.sha }}
           path: .
@@ -244,7 +244,7 @@ jobs:
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-total-validation-long-evidence
           path: |
@@ -264,12 +264,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: cfdx-total-validation-build-${{ github.sha }}
           path: .
@@ -295,7 +295,7 @@ jobs:
           cat build-validation/wall_distance_poisson_decomposition.csv
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-total-validation-wall-evidence
           path: ${{ env.BUILD_DIR }}/*.csv
@@ -337,12 +337,12 @@ jobs:
           - advection_diffusion
           - hybrid_poisson_eikonal
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: cfdx-total-validation-build-${{ github.sha }}
           path: .
@@ -360,7 +360,7 @@ jobs:
           cat build-validation/wall_distance_controlled_benchmark_fine_${{ matrix.method }}.csv
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-total-validation-wall-fine-evidence-${{ matrix.method }}
           path: ${{ env.BUILD_DIR }}/*.csv
@@ -376,7 +376,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
@@ -387,7 +387,7 @@ jobs:
           "$VENV_DIR/bin/python" -m pip install --upgrade pip
           "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
           "$VENV_DIR/bin/python" -m pip install -e .
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: cfdx-total-validation-build-${{ github.sha }}
           path: .
@@ -405,7 +405,7 @@ jobs:
             2>&1 | tee "$BUILD_DIR/thermal-radiation-regression.log"
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-total-validation-thermal-radiation
           path: |
@@ -423,7 +423,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
@@ -434,7 +434,7 @@ jobs:
           "$VENV_DIR/bin/python" -m pip install --upgrade pip
           "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
           "$VENV_DIR/bin/python" -m pip install -e .
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: cfdx-total-validation-build-${{ github.sha }}
           path: .
@@ -464,7 +464,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install report dependencies
         run: |
           sudo apt-get update
@@ -475,13 +475,13 @@ jobs:
           "$VENV_DIR/bin/python" -m pip install --upgrade pip
           "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
           "$VENV_DIR/bin/python" -m pip install -e .
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: cfdx-total-validation-build-${{ github.sha }}
           path: .
       - name: Restore validation build
         run: tar -xzf cfdx-validation-build.tar.gz
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: cfdx-total-validation-long-evidence
           path: long-evidence
@@ -518,7 +518,7 @@ jobs:
             --output-dir "$BUILD_DIR/diagnostic-evidence"
       - name: Upload report evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-total-validation-report
           path: |
