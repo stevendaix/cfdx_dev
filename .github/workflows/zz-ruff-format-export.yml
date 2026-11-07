@@ -21,7 +21,7 @@ jobs:
           python-version: "3.10"
       - name: Install Ruff
         run: python -m pip install --upgrade ruff
-      - name: Format changed Python files
+      - name: Apply safe Ruff fixes and format changed Python files
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
@@ -31,15 +31,17 @@ jobs:
             echo "No changed Python files"
             exit 0
           fi
+          ruff check --fix --exit-zero "${files[@]}"
           ruff format "${files[@]}"
           mkdir -p /tmp/ruff-formatted
           for file in "${files[@]}"; do
             mkdir -p "/tmp/ruff-formatted/$(dirname "$file")"
             cp "$file" "/tmp/ruff-formatted/$file"
           done
+          ruff check "${files[@]}" || true
       - uses: actions/upload-artifact@v4
         with:
-          name: ruff-formatted-python
+          name: ruff-fixed-python
           path: /tmp/ruff-formatted/
           if-no-files-found: error
           retention-days: 1
