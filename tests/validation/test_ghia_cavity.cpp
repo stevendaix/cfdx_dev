@@ -275,7 +275,7 @@ CavityResult solve_cavity(
 }
 
 double interpolate_line(const Field<double,Location::CELL>& U,
-                        const FvGeometry& geometry,
+                        const FvGeometry&,
                         std::size_t nx, std::size_t ny,
                         bool horizontal_component,
                         double coordinate)
