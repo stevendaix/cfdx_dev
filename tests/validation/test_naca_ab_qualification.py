@@ -36,6 +36,14 @@ class TestNacaAB(unittest.TestCase):
         with self.assertRaises(ValueError):
             _mod.parse_output(_PASS.replace("Cd_viscous=0.031", "Cd_viscous=0.001"), 0)
 
+    def test_negative_continuity_rejected(self):
+        with self.assertRaises(ValueError):
+            _mod.parse_output(_PASS.replace("continuity=1e-11", "continuity=-1e-11"), 0)
+
+    def test_zero_iteration_pass_marker_rejected(self):
+        with self.assertRaises(ValueError):
+            _mod.parse_output(_PASS.replace("iterations=450", "iterations=0"), 0)
+
     def test_no_false_pass_from_timeout(self):
         with tempfile.TemporaryDirectory() as td:
             dummy = Path(td) / "fake.py"

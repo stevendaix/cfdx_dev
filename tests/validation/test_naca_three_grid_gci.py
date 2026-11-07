@@ -26,6 +26,7 @@ def data(cds=(0.14, 0.13, 0.1275)):
                     "Cd": cd,
                     "Cl": 0.0,
                     "Cd_pressure": 0.05,
+                    "Cd_viscous": cd - 0.05,
                     "continuity": 1e-9,
                 },
             }
@@ -39,6 +40,7 @@ def test_convergent_three_grid_example():
     assert math.isclose(report["observed_order"], 2.0)
     assert math.isclose(report["richardson_extrapolated_cd"], 0.12666666666666668)
     assert report["fine_grid_relative_gci"] > 0
+    assert report["status"] == "DIAGNOSTIC_ONLY"
     assert report["reference_validation"] == "NOT_PERFORMED"
 
 
@@ -64,5 +66,19 @@ def test_oscillatory_refinement_fails():
 def test_no_solver_success_no_gci():
     d = data()
     d["three_grid_solver_gate"] = "FAIL"
+    with pytest.raises(ValueError):
+        MODULE.verify_three_grid(d)
+
+
+def test_negative_continuity_is_not_physical_convergence():
+    d = data()
+    d["results"][1]["metrics"]["continuity"] = -1e-9
+    with pytest.raises(ValueError):
+        MODULE.verify_three_grid(d)
+
+
+def test_nonconservative_drag_partition_rejected():
+    d = data()
+    d["results"][2]["metrics"]["Cd_viscous"] = 0.0
     with pytest.raises(ValueError):
         MODULE.verify_three_grid(d)

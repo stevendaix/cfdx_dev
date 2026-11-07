@@ -945,6 +945,41 @@ int main()
             std::invalid_argument);
     });
 
+    run_case("fixed_pressure_gauge_rejects_phantom_and_impermeable_patches", [] {
+        Mesh m = make_unit_cube();
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
+        EXPECT_TRUE(has_effective_fixed_pressure_boundary(m, pbc));
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        EXPECT_TRUE(!has_effective_fixed_pressure_boundary(m, pbc));
+        pbc.clear();
+        pbc["typo_outlet"] = {ScalarBoundaryType::FIXED_VALUE, 3.0, 0.0};
+        EXPECT_THROW_WITH(has_effective_fixed_pressure_boundary(m, pbc),
+                          std::invalid_argument, "unknown patch");
+
+        Field<double,Location::CELL> U(1,"U","m/s",3), p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+        IncompressibleSolverControls controls;
+        controls.initialization.mode = InitializationMode::Uniform;
+        controls.initialization.uniform_velocity = {2.0, 0.0, 0.0};
+        EXPECT_THROW_WITH(solve_steady_incompressible(m, U, p, {}, pbc, controls),
+                          std::invalid_argument, "unknown patch");
+        EXPECT_NEAR(U.component_data(0)[0], 0.0, 0.0); // before initialization
+
+        pbc.clear();
+        pbc["wall"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
+        m.boundary().patch(0).type = PatchType::EMPTY;
+        EXPECT_THROW_WITH(has_effective_fixed_pressure_boundary(m, pbc),
+                          std::invalid_argument, "no effective Dirichlet face");
+        m.boundary().patch(0).type = PatchType::SYMMETRY;
+        EXPECT_THROW_WITH(has_effective_fixed_pressure_boundary(m, pbc),
+                          std::invalid_argument, "no effective Dirichlet face");
+        m.boundary().patch(0).type = PatchType::WALL;
+        m.boundary().patch(0).face_ids.clear();
+        EXPECT_THROW_WITH(has_effective_fixed_pressure_boundary(m, pbc),
+                          std::invalid_argument, "no effective Dirichlet face");
+    });
+
     run_case("fixed_pressure_boundary_is_accepted_by_coupled_solver", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> U(1,"U","m/s",3);
