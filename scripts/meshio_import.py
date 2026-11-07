@@ -228,7 +228,7 @@ def orient_faces(points, faces, owner, cells):
         if not np.isfinite(sd) or abs(sd)<=1e-14*scale:
             raise ValueError(f"face {fid}: degenerate or tangent owner normal")
         if sd<0.0:
-            faces[fid].reverse()
+            face.reverse()
     return faces
 
 def fnv1a_update(hash_value,array):
@@ -313,6 +313,23 @@ def write(path,mesh,topo):
 def main():
     p=argparse.ArgumentParser(); p.add_argument("input",type=pathlib.Path); p.add_argument("output",type=pathlib.Path); p.add_argument("--file-format")
     a=p.parse_args()
-    try: mesh=read_mesh(a.input,a.file_format); write(a.output,mesh,build(mesh)); return 0
-    except Exception as e: print(f"CFDX meshio import failed: {e}",file=sys.stderr); return 2
-if __name__=="__main__": raise SystemExit(main())
+    try:
+        mesh = read_mesh(a.input, a.file_format)
+        write(a.output, mesh, build(mesh))
+        return 0
+    except (
+        OSError,
+        ValueError,
+        TypeError,
+        KeyError,
+        IndexError,
+        OverflowError,
+        RuntimeError,
+        meshio.ReadError,
+    ) as exc:
+        print(f"CFDX meshio import failed: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
