@@ -46,12 +46,6 @@ def qualify(rows, residual_gate=1e-8):
         if max(float(row["res_mom"]), float(row["res_mass"])) > residual_gate:
             raise ValueError(
                 f"{row['case']}: physical residual exceeds {residual_gate}"
-                continue
-            if not math.isfinite(float(row[key])):
-                raise ValueError(f"{row['case']}: nonfinite {key}")
-        if max(float(row["res_mom"]), float(row["res_mass"])) > residual_gate:
-            raise ValueError(
-                f"{row['case']}: physical residual exceeds {residual_gate}"
             )
         if abs(float(row["cd"]) - float(row["cdp"]) - float(row["cdv"])) > 1e-8:
             raise ValueError(f"{row['case']}: Cd != Cd_pressure+Cd_viscous")
@@ -125,27 +119,6 @@ def qualify(rows, residual_gate=1e-8):
             "GCI_absolute": absolute_gci,
             "GCI_relative": (absolute_gci / abs(f2) if abs(f2) > 1e-14 else None),
             "fine_pair_refinement_ratio": r32,
-        }
-    return result
-
-            continue
-        p = math.log(abs(e21 / e32)) / math.log(r)
-        if not (0 < p < 8):
-            result["quantities"][key] = {
-                "status": "invalid_observed_order",
-                "order": p,
-                "GCI": None,
-            }
-            continue
-        denom = r**p - 1.0
-        extrapolated = f3 + (f3 - f2) / denom
-        absolute_gci = 1.25 * abs(f3 - f2) / denom
-        result["quantities"][key] = {
-            "status": "asymptotic_candidate",
-            "order": p,
-            "extrapolated": extrapolated,
-            "GCI_absolute": absolute_gci,
-            "GCI_relative": (absolute_gci / abs(f3) if abs(f3) > 1e-14 else None),
         }
     return result
 

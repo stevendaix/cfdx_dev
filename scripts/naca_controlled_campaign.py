@@ -29,12 +29,6 @@ def parse_result(output: str) -> dict:
         match = re.search(r"(?:^|\s)" + re.escape(key) + r"=([^\s]+)", line)
         if match is None:
             raise ValueError(f"missing {key}")
-    line = matches[0]
-    parsed = {}
-    for key in ("Cd", "Cl", "Cd_pressure", "continuity", "iterations"):
-        match = re.search(r"(?:^|\s)" + re.escape(key) + r"=([^\s]+)", line)
-        if match is None:
-            raise ValueError(f"missing {key}")
         value = float(match.group(1))
         if not math.isfinite(value):
             raise ValueError(f"nonfinite {key}")
@@ -55,18 +49,6 @@ def parse_result(output: str) -> dict:
         rel_tol=1e-7, abs_tol=1e-9,
     ):
         raise ValueError("total drag differs from pressure plus viscous drag")
-    return parsed
-
-
-            raise ValueError(f"nonfinite {key}")
-        parsed[key] = value
-    if not (
-        parsed["Cd_pressure"] > 0
-        and parsed["continuity"] < 1e-7
-        and abs(parsed["Cl"]) <= 2e-2
-        and parsed["iterations"] >= 1
-    ):
-        raise ValueError("physical gate failed")
     return parsed
 
 

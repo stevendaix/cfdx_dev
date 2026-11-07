@@ -15,12 +15,6 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-import argparse
-import csv
-import math
-from pathlib import Path
-
-import numpy as np
 from scipy.spatial import cKDTree
 
 
@@ -198,14 +192,6 @@ def create(
     return len(fine)
 
 
-        writer = csv.writer(stream, lineterminator="\n")
-        writer.writerow(("cell", "x", "y", "z", "ux", "uy", "p"))
-        for i, row in enumerate(data):
-            writer.writerow((i, *[format(float(x), ".17g") for x in row]))
-    print(f"NACA_PROLONG: INITIAL_GUESS_ONLY coarse={len(coarse)} fine={len(fine)}")
-    return len(fine)
-
-
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--coarse", type=Path, required=True)
@@ -220,14 +206,6 @@ def main() -> int:
         create(args.coarse, args.fine_centers, args.output,
                method=args.method, coarse_surface_n=args.coarse_surface_n,
                fine_surface_n=args.fine_surface_n)
-    except (ValueError, OSError, OverflowError) as exc:
-        parser.error(str(exc))
-    return 0
-    parser.add_argument("--fine-centers", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    try:
-        create(args.coarse, args.fine_centers, args.output)
     except (ValueError, OSError, OverflowError) as exc:
         parser.error(str(exc))
     return 0

@@ -36,12 +36,6 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
     for a, b in zip(items, items[1:]):
         tangential = float(b["n_surface"]) / float(a["n_surface"])
         radial = float(b["n_radial"]) / float(a["n_radial"])
-                raise ValueError(f"invalid mesh characteristic {key}")
-        if int(row["inverted_or_degenerate_cells"]) != 0:
-            diagnostic["reasons"].append("inverted_or_degenerate_cells")
-    for a, b in zip(items, items[1:]):
-        tangential = float(b["n_surface"]) / float(a["n_surface"])
-        radial = float(b["n_radial"]) / float(a["n_radial"])
         wall = (float(a["minimum_first_layer_spacing"]) /
                 float(b["minimum_first_layer_spacing"]))
         mismatch = abs(wall / tangential - 1.0)
