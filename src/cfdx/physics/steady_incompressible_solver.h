@@ -3,6 +3,7 @@
 #include "cfdx/core/field/field.h"
 #include "cfdx/core/linalg/bicgstab_solver.h"
 #include "cfdx/core/linalg/coupled_amg_schur.h"
+#include "cfdx/core/linalg/cell_overlapping_schwarz.h"
 #include "cfdx/core/linalg/cg_solver.h"
 #include "cfdx/core/linalg/linear_solver_context.h"
 #include "cfdx/core/linalg/mgr_preconditioner.h"
@@ -451,6 +452,11 @@ struct IncompressibleIteration {
     std::size_t momentum_linear_iterations = 0;
     std::size_t pressure_linear_iterations = 0;
     std::size_t pressure_correctors_used = 0;
+    // Evidence for experimental iterated PISO/PIMPLE: count predictor
+    // rebuilds using corrected neighbour velocities and measure their effect.
+    // Zero for the production-default frozen-predictor implementation.
+    std::size_t piso_neighbor_predictor_rebuilds = 0;
+    double piso_neighbor_predictor_flux_delta_linf = 0.0;
     double selected_pressure_alpha = std::numeric_limits<double>::quiet_NaN();
     double pressure_line_search_norm_before = std::numeric_limits<double>::quiet_NaN();
     double pressure_line_search_norm_after = std::numeric_limits<double>::quiet_NaN();
@@ -617,6 +623,21 @@ inline void validate_incompressible_controls(
 {
     validate_initialization_controls(c.initialization);
     validate_coupling_controls(c.coupling);
+    if (c.coupling.piso_neighbor_correction &&
+        c.algorithm != PressureVelocityAlgorithm::PISO &&
+        c.algorithm != PressureVelocityAlgorithm::PIMPLE)
+        throw std::invalid_argument(
+            "PISO neighbour correction requires PISO or PIMPLE algorithm");
+    if (c.coupling.pcd_lumped_mass_commutator_experimental &&
+        (c.algorithm != PressureVelocityAlgorithm::COUPLED ||
+         c.coupling.schur_model != CoupledSchurModel::PCD))
+        throw std::invalid_argument(
+            "PCD lumped-mass commutator requires COUPLED with PCD Schur");
+    if (c.coupling.coupled_schwarz_experimental &&
+        (c.algorithm != PressureVelocityAlgorithm::COUPLED ||
+         c.coupling.schur_model != CoupledSchurModel::BlockLocal))
+        throw std::invalid_argument(
+            "experimental Schwarz requires COUPLED with BlockLocal Schur");
     validate_convergence_criteria(c.convergence);
     validate_convergence_acceleration_controls(c.acceleration);
     validate_adaptive_relaxation_controls(c.adaptive_relaxation);
@@ -3301,6 +3322,27 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         schur_model == CoupledSchurModel::SIMPLE ||
         schur_model == CoupledSchurModel::SIMPLEC;
     std::unique_ptr<Preconditioner> coupled_preconditioner;
+    // Experimental opt-in (#1183): cell-wise overlapping Schwarz for the COUPLED
+    // BlockLocal plan. Fail-closed: no fallback preconditioner. Setup runs
+    // before the dispatch chain so the experimental path can replace the N8
+    // BlockSchur AMG assignment below without altering the chain opening.
+    std::unique_ptr<Preconditioner> coupled_schwarz_preconditioner;
+    if (controls.coupling.coupled_schwarz_experimental) {
+        if (!use_n8_block_schur || schur_model != CoupledSchurModel::BlockLocal)
+            throw std::invalid_argument(
+                "experimental Schwarz requires the coupled_block_schur linear plan and BlockLocal Schur");
+        CellSchwarzConfig config;
+        config.cells_per_subdomain = controls.coupling.coupled_schwarz_cells_per_subdomain;
+        config.overlap_hops = controls.coupling.coupled_schwarz_overlap_hops;
+        config.max_local_unknowns = controls.coupling.coupled_schwarz_max_local_unknowns;
+        config.restriction = controls.coupling.coupled_schwarz_weighted
+            ? CellSchwarzRestriction::WeightedAdditive
+            : CellSchwarzRestriction::Restricted;
+        auto sch = std::make_unique<CellOverlappingSchwarzPreconditioner>(nc, config);
+        if (!sch->setup(A))
+            throw std::runtime_error("COUPLED Schwarz setup failed: local block singular or oversized; no fallback");
+        coupled_schwarz_preconditioner = std::move(sch);
+    }
     // Evidence-only alias of the production PCD pressure operators, kept
     // alive for the coupled_assembly_callback (the branch-local pcd_ops
     // shared_ptr goes out of scope below). Assigned only when a callback is
@@ -3415,6 +3457,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 schur->last_error());
         }
         coupled_preconditioner = std::move(schur);
+    } else if (controls.coupling.coupled_schwarz_experimental) {
+        // Experimental Schwarz (#1183): set up before the dispatch chain;
+        // fail-closed there (misconfiguration rejects before any solve).
+        coupled_preconditioner = std::move(coupled_schwarz_preconditioner);
     } else if (use_lsc_bfbt) {
         if (!use_n8_block_schur)
             throw std::invalid_argument(
@@ -3676,7 +3722,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             std::move(solve_kp), std::move(solve_fp),
             std::nullopt,
             has_fixed_pressure ? std::optional<std::size_t>()
-                               : std::optional<std::size_t>(reference_cell));
+                               : std::optional<std::size_t>(reference_cell),
+            controls.coupling.pcd_lumped_mass_commutator_experimental
+                ? PcdSchurActionMode::LumpedMassCommutator
+                : PcdSchurActionMode::LegacySingleConvectionDiffusionInverse);
         // Evidence-only: expose the production operators to the
         // coupled_assembly_callback when one is installed (kept alive via
         // evidence_pcd_ops past this branch scope).
@@ -4563,6 +4612,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         double last_line_search_before = std::numeric_limits<double>::quiet_NaN();
         double last_line_search_after = std::numeric_limits<double>::quiet_NaN();
         std::size_t pressure_correctors = configured_pcorr;
+        std::size_t piso_neighbor_predictor_rebuilds = 0;
+        double piso_neighbor_predictor_flux_delta_linf = 0.0;
         const bool supports_multiple_pressure_corrections =
             controls.algorithm == PressureVelocityAlgorithm::PISO ||
             controls.algorithm == PressureVelocityAlgorithm::PIMPLE ||
@@ -6400,7 +6451,42 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // multi-corrector algorithm (PISO, PIMPLE, FRACTIONAL_STEP).
             // The momentum matrix stays frozen inside the inner loop; the
             // relaxed pressure update is what carries the first correction
-            // into the next one.
+            // into the next one. In the optional iterated-PISO variant,
+            // refresh the diagonal-inverse predictor H/A using the just-
+            // corrected cell velocities. This restores the neighbour terms
+            // of the frozen momentum operator before the next pressure solve.
+            // The next pressure RHS and its face flux must BOTH use this new
+            // predictor. Do not feed the already pressure-corrected flux back
+            // as phiHbyA: the pressure gradient would then be applied twice.
+            if (controls.coupling.piso_neighbor_correction &&
+                corr + 1 < pressure_correctors) {
+                for (std::size_t c = 0; c < nc; ++c) {
+                    ux(c) = U.component_data(0)[c];
+                    uy(c) = U.component_data(1)[c];
+                    uz(c) = U.component_data(2)[c];
+                }
+                hbya[0] = build_hbya(ex, ux, grad_p, 0, rAU[0]);
+                hbya[1] = build_hbya(ey, uy, grad_p, 1, rAU[1]);
+                hbya[2] = build_hbya(ez, uz, grad_p, 2, rAU[2]);
+                HbyA = make_hbya_field(hbya);
+                const auto old_predictor_flux = phiHbyA;
+                phiHbyA = make_mass_flux(
+                    mesh, geometry, HbyA, controls.density, velocity_bcs,
+                    {}, controls.pressure_projected_face_interpolation);
+                double predictor_delta_linf = 0.0;
+                for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+                    predictor_delta_linf = std::max(
+                        predictor_delta_linf,
+                        std::abs(phiHbyA(f) - old_predictor_flux(f)));
+                ++piso_neighbor_predictor_rebuilds;
+                piso_neighbor_predictor_flux_delta_linf = std::max(
+                    piso_neighbor_predictor_flux_delta_linf, predictor_delta_linf);
+                if (controls.diagnostics.iteration_trace)
+                    std::cerr << "PISO_NEIGHBOUR_UPDATE iteration=" << iter
+                              << " corrector=" << corr
+                              << " predictor_flux_delta_linf=" << predictor_delta_linf
+                              << " (experimental; qualification=0)\n";
+            }
         }
 
         // Operator identity audit: re-derive the authoritative flux from the
@@ -6749,6 +6835,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.algorithm == PressureVelocityAlgorithm::COUPLED ? 0 : pressure_iterations;
         h.pressure_correctors_used =
             controls.algorithm == PressureVelocityAlgorithm::COUPLED ? 0 : pressure_correctors;
+        h.piso_neighbor_predictor_rebuilds = piso_neighbor_predictor_rebuilds;
+        h.piso_neighbor_predictor_flux_delta_linf =
+            piso_neighbor_predictor_flux_delta_linf;
         h.linear_tolerance_used = controls.algorithm == PressureVelocityAlgorithm::COUPLED
             ? controls.coupling.coupled_linear_tolerance : linear_tolerance;
         h.corrected_flux_continuity_linf = linf;

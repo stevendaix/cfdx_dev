@@ -337,8 +337,12 @@ int main()
         // CG is mathematically valid only if equilibration preserves SPD.
         // Symmetric diagonal equilibration, not unilateral row scaling, is
         // the qualified CG path. Diagnostics remain on the ORIGINAL system.
-        check_identity_case(1.0e6,1.0,3.0e6,4.0,2.9996,3.9996,
-                            400.0,400.0/3.0e6,
+        // Symmetric equilibration tightens the inner Krylov target by one
+        // decade before the original-system residual is certified. Keep this
+        // initial guess inside that tightened target so the physical residual
+        // remains nonzero and the L-infinity diagnostic is exercised.
+        check_identity_case(1.0e6,1.0,3.0e6,4.0,2.9999,3.9996,
+                            100.0,100.0/3.0e6,
                             cfdx::core::LinearScalingModel::SymmetricDiagonal);
     });
 

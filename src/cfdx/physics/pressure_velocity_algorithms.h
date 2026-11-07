@@ -53,6 +53,12 @@ struct CouplingControls {
     double alpha_p = 0.3;
     int n_outer_correctors = 1;
     int n_pressure_correctors = 2;
+    // EXPERIMENTAL, opt-in: for PISO/PIMPLE, rebuild H/A from the velocity
+    // corrected by the previous pressure solve, using the FROZEN relaxed
+    // momentum matrix. This incorporates neighbour velocity corrections
+    // neglected by a frozen-predictor pressure-only loop (Issa, 1986).
+    // Physical and temporal-order qualification is required before promotion.
+    bool piso_neighbor_correction = false;
     int n_fractional_steps = 2;
     // Coupled linear solve controls. The coupled matrix is indefinite but the
     // Rhie-Chow pressure block makes the collocated formulation nonsingular
@@ -71,6 +77,18 @@ struct CouplingControls {
     // Explicit pressure-Schur approximation for the coupled production path.
     // Unsupported models must be rejected; there is no implicit fallback.
     CoupledSchurModel schur_model = CoupledSchurModel::PCD;
+    // Research-only, opt-in. Uses -Mp^-1 Fp Kp^-1 with a positive, lumped
+    // pressure mass. The default remains the qualified legacy -Fp^-1 action.
+    // No physical performance claim or automatic fallback is implied.
+    bool pcd_lumped_mass_commutator_experimental = false;
+    // Serial, small-subdomain, experimental RAS/weighted Schwarz for COUPLED
+    // with BlockLocal Schur. Explicit opt-in; setup failure is fatal rather
+    // than silently replaced by AMG. No MPI / coarse-space scaling claim.
+    bool coupled_schwarz_experimental = false;
+    std::size_t coupled_schwarz_cells_per_subdomain = 1;
+    std::size_t coupled_schwarz_overlap_hops = 1;
+    std::size_t coupled_schwarz_max_local_unknowns = 64;
+    bool coupled_schwarz_weighted = false;
 };
 
 inline void validate_coupling_controls(const CouplingControls& c)
@@ -81,6 +99,14 @@ inline void validate_coupling_controls(const CouplingControls& c)
         c.n_fractional_steps < 1 || c.coupled_max_iterations == 0 ||
         !(c.coupled_linear_tolerance > 0.0))
         throw std::invalid_argument("pressure-velocity controls: invalid relaxation/corrector count");
+    if (c.coupled_schwarz_experimental &&
+        (c.coupled_schwarz_cells_per_subdomain == 0 ||
+         c.coupled_schwarz_overlap_hops > 8 ||
+         c.coupled_schwarz_max_local_unknowns < 4 ||
+         c.coupled_schwarz_max_local_unknowns > 256 ||
+         c.coupled_schwarz_max_local_unknowns % 4 != 0 ||
+         c.coupled_schwarz_cells_per_subdomain > c.coupled_schwarz_max_local_unknowns / 4))
+        throw std::invalid_argument("COUPLED Schwarz: invalid subdomain/overlap controls");
 }
 
 struct AdaptiveRelaxationControls {
