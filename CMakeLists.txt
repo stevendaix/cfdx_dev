@@ -958,6 +958,16 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_mesh_similarity_gate.py)
         set_tests_properties(test_naca_mesh_similarity_gate PROPERTIES
             LABELS "mesh;gci;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_naca_exponential_mesh_family
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_exponential_mesh_family.py)
+        set_tests_properties(test_naca_exponential_mesh_family PROPERTIES
+            LABELS "naca;mesh;gci;qualification;regression" TIMEOUT 45)
+        add_test(NAME test_naca_nonlinear_history_diagnostic
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_analyze_naca_nonlinear_history.py)
+        set_tests_properties(test_naca_nonlinear_history_diagnostic PROPERTIES
+            LABELS "naca;momentum;diagnostic;regression" TIMEOUT 15)
         add_test(NAME test_naca_force_mesh_qualification
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_force_mesh_qualification.py)

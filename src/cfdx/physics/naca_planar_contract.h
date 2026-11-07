@@ -101,6 +101,80 @@ inline NacaPlanarGeometry require_naca_planar_geometry(const cfdx::core::Mesh& m
     return result;
 }
 
+// Independent conservation audit of the SINGLE authoritative face-flux array.
+// Internal faces are counted once (owner positive, neighbour negative).
+// The topology identity sum(divergence)==sum(boundary flux) is a structural
+// check, not a proof that div(phi)==0. Neither metric is reconstructed from U.
+struct NacaFaceMassBudget {
+    double cell_linf = 0.0;
+    double cell_l1 = 0.0;
+    double global_net = 0.0;
+    double global_net_relative = 0.0;
+    double local_linf_relative = 0.0;
+    double topology_identity_error = 0.0;
+    std::size_t worst_cell = 0;
+    std::size_t faces_checked = 0;
+};
+
+inline NacaFaceMassBudget audit_naca_face_mass_budget(
+    const cfdx::core::Mesh& mesh,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>& face_flux,
+    double mass_flux_scale) {
+    if (!std::isfinite(mass_flux_scale) || mass_flux_scale <= 0.0 ||
+        face_flux.dimension() != 1 || face_flux.size() != mesh.n_faces() ||
+        mesh.n_cells() == 0)
+        throw std::invalid_argument("NACA2D: invalid independent mass budget inputs");
+    std::vector<long double> cell(mesh.n_cells(), 0.0L);
+    long double external = 0.0L, abs_flux = 0.0L;
+    NacaFaceMassBudget result;
+    for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+        const double phi = face_flux(f);
+        const std::size_t owner = mesh.ownership().owner(f);
+        const auto neighbour = mesh.ownership().neighbour(f);
+        if (!std::isfinite(phi) || owner >= mesh.n_cells() || neighbour < -1 ||
+            (neighbour >= 0 &&
+             (static_cast<std::size_t>(neighbour) >= mesh.n_cells() ||
+              static_cast<std::size_t>(neighbour) == owner)))
+            throw std::runtime_error("NACA2D: invalid oriented face mass flux");
+        cell[owner] += static_cast<long double>(phi);
+        if (neighbour >= 0)
+            cell[static_cast<std::size_t>(neighbour)] -=
+                static_cast<long double>(phi);
+        else
+            external += static_cast<long double>(phi);
+        abs_flux += std::abs(static_cast<long double>(phi));
+        ++result.faces_checked;
+    }
+    long double sum = 0.0L;
+    for (std::size_t c = 0; c < cell.size(); ++c) {
+        if (!std::isfinite(cell[c]))
+            throw std::runtime_error("NACA2D: nonfinite cell flux imbalance");
+        const double abs_div = static_cast<double>(std::abs(cell[c]));
+        if (abs_div > result.cell_linf) {
+            result.cell_linf = abs_div;
+            result.worst_cell = c;
+        }
+        result.cell_l1 += abs_div;
+        sum += cell[c];
+    }
+    const long double mismatch = std::abs(sum - external);
+    const long double roundoff_limit =
+        256.0L * std::numeric_limits<double>::epsilon() *
+        std::max(1.0L, abs_flux);
+    if (!std::isfinite(sum) || !std::isfinite(external) ||
+        !std::isfinite(abs_flux) || mismatch > roundoff_limit)
+        throw std::runtime_error("NACA2D: owner-neighbour flux budget inconsistent");
+    result.global_net = static_cast<double>(external);
+    result.topology_identity_error = static_cast<double>(mismatch);
+    result.global_net_relative = std::abs(result.global_net) / mass_flux_scale;
+    result.local_linf_relative = result.cell_linf / mass_flux_scale;
+    if (!std::isfinite(result.local_linf_relative) ||
+        !std::isfinite(result.global_net_relative) ||
+        !std::isfinite(result.cell_l1))
+        throw std::runtime_error("NACA2D: overflowing independent mass budget");
+    return result;
+}
+
 inline NacaPlanarState require_naca_planar_state(
     const cfdx::core::Mesh& mesh,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& velocity,

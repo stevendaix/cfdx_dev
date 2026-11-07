@@ -359,6 +359,17 @@ struct IncompressibleSolverControls {
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&)>;
     IterationOutputCallback iteration_output_callback;
+    // Evidence/export hook for the last ACCEPTED state only. Invoked after
+    // transaction.commit() and after authoritative_mass_flux is published.
+    // It is never invoked for rejected retries. Exceptions cannot request a
+    // retry: the accepted state has already committed. Return false to stop
+    // cleanly after this accepted iteration. Null by default.
+    using CommittedIterationCallback = std::function<bool(
+        std::size_t, double, const cfdx::core::Mesh&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::FACE>&)>;
+    CommittedIterationCallback committed_iteration_callback;
     // Evidence hook called after the declared initialization strategy has been
     // applied and before geometry assembly or the first residual is formed.
     // References are valid only for the duration of the callback.
@@ -4175,6 +4186,9 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // initialization/restart has established the actual velocity field.
     const FvGeometry geometry = build_fv_geometry(mesh);
     if (controls.sst_runtime) {
+        // On NASA/TMR NACA, EMPTY caps mean physically 2-D gradients. Never
+        // let an opt-in wall WLS silently run in 3-D on that extrusion.
+        require_sst_empty_wls_dimension(mesh, controls.sst_runtime->transport);
         validate_sst_production_state(*controls.sst_runtime->state, mesh.n_cells());
         const auto& runtime = *controls.sst_runtime;
         const SSTRuntimeBoundaryContract boundary_contract{
@@ -7939,6 +7953,16 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 if (controls.sst_runtime && sst_attempt_snapshot)
                     restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
                 throw;
+            }
+            // Checkpoints, physical conservation audits and all durable
+            // observer side effects belong here, outside the retryable try
+            // block and only after successful transaction.commit().
+            if (iteration_completed && controls.committed_iteration_callback) {
+                if (!controls.committed_iteration_callback(
+                        iter, 0.0, mesh, U, p, result.authoritative_mass_flux)) {
+                    result.iterations = iter;
+                    stop_after_iteration = true;
+                }
             }
             if (iteration_completed && controls.probe_callback) {
                 for (std::size_t sample_index = probe_samples_size;

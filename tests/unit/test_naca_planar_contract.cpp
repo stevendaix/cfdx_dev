@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 using namespace cfdx::core;
@@ -67,6 +68,18 @@ int main() {
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
     Field<double,Location::FACE> phi(mesh.n_faces(),"phi","kg/s",1);
     U.fill(0); phi.fill(0);
+    const auto mass0 = audit_naca_face_mass_budget(mesh, phi, 2.0);
+    if (mass0.cell_linf != 0 || mass0.global_net != 0 ||
+        mass0.faces_checked != mesh.n_faces()) return 4;
+    phi(2) = 0.3;
+    const auto mass1 = audit_naca_face_mass_budget(mesh, phi, 2.0);
+    if (std::abs(mass1.cell_linf-0.3) > 1e-14 ||
+        std::abs(mass1.global_net-0.3) > 1e-14 ||
+        std::abs(mass1.local_linf_relative-0.15)>1e-14) return 5;
+    phi(2)=0;
+    phi(2)=std::numeric_limits<double>::quiet_NaN();
+    reject([&]{audit_naca_face_mass_budget(mesh, phi, 2.0);});
+    phi(2)=0;
     const auto state=require_naca_planar_state(mesh,U,phi,1,2);
     if (state.checked_empty_faces!=2 || state.max_abs_uz!=0 ||
         state.max_abs_empty_face_flux!=0) return 2;

@@ -281,6 +281,23 @@ inline double turbulence_nu_t(
                            bound_report);
 }
 
+// WLS must use the physical gradient dimension on a mesh with EMPTY caps.
+// This is an input contract only; it does not establish SST model validity.
+// The default 3-D transport gradient path is preserved when WLS is disabled.
+inline void require_sst_empty_wls_dimension(
+    const cfdx::core::Mesh& mesh, const TurbulenceTransportControls& c)
+{
+    if (c.model != TurbulenceModel::SST ||
+        !c.sst_use_wls_boundary_gradients) return;
+    for (std::size_t i=0; i<mesh.boundary().n_patches(); ++i) {
+        if (mesh.boundary().patch(i).type == cfdx::core::PatchType::EMPTY &&
+            c.sst_gradient_dimension != 2)
+            throw std::invalid_argument(
+                "SST WLS on an EMPTY extruded mesh requires sst_gradient_dimension=2");
+    }
+}
+
+inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
 inline void validate_turbulence_controls(const TurbulenceTransportControls& c)
 {
     if (c.sst_gradient_dimension != 2 && c.sst_gradient_dimension != 3)

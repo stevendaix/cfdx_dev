@@ -307,6 +307,7 @@ def naca_o_grid(
     span: float = 1.0,
     split_farfield: bool = False,
     radial_power: float = 1.8,
+    radial_stretch: float = 0.0,
 ):
     """Build the deterministic transfinite-blend NACA0012 O-grid.
 
@@ -321,6 +322,10 @@ def naca_o_grid(
         raise ValueError("radius must be finite and positive")
     if not math.isfinite(radial_power) or not 1.0 <= radial_power <= 3.0:
         raise ValueError("radial_power must be finite in [1, 3]")
+    if not math.isfinite(radial_stretch) or not 0.0 <= radial_stretch <= 10.0:
+        raise ValueError("radial_stretch must be finite in [0, 10]")
+    if radial_stretch and radial_power != 1.8:
+        raise ValueError("radial_stretch and non-default radial_power cannot be combined")
 
     surf = naca0012_surface(n_surface)
     m = len(surf)
@@ -343,7 +348,11 @@ def naca_o_grid(
     pts = []
     for j in range(n_radial + 1):
         eta = j / n_radial
-        rfac = eta**radial_power
+        # Exponential mapping with a fixed stretch parameter: when n_radial
+        # doubles the near-wall interval halves asymptotically. The default
+        # power-law path is preserved bit-for-bit for old regression meshes.
+        rfac = (math.expm1(radial_stretch * eta) / math.expm1(radial_stretch)
+                if radial_stretch > 0.0 else eta**radial_power)
         normal_weight = (1.0 - eta) ** 10
         for i, (x, y) in enumerate(surf):
             theta = 2.0 * math.pi * (i + 0.5) / m
@@ -394,7 +403,8 @@ def naca_o_grid(
 
 
 def naca_o_grid_quality(
-    n_surface: int, n_radial: int, radius: float = 20.0, radial_power: float = 1.8
+    n_surface: int, n_radial: int, radius: float = 20.0, radial_power: float = 1.8,
+    radial_stretch: float = 0.0,
 ):
     """Return geometric quality indicators for the 2-D NACA0012 O-grid.
 
@@ -403,7 +413,8 @@ def naca_o_grid_quality(
     is measured between corresponding nodes on adjacent layers.
     """
     points, _cells, _ = naca_o_grid(
-        n_surface, n_radial, radius, radial_power=radial_power
+        n_surface, n_radial, radius, radial_power=radial_power,
+        radial_stretch=radial_stretch,
     )
     points = np.asarray(points, dtype=np.float64)
     m = 2 * n_surface + 1
@@ -488,6 +499,7 @@ def naca_o_grid_quality(
         "n_radial": int(n_radial),
         "radius": float(radius),
         "radial_power": float(radial_power),
+        "radial_stretch": float(radial_stretch),
         "cell_count": int(n_surface * 2 * n_radial + n_radial),
         "inverted_or_degenerate_cells": inverted_or_degenerate,
         "minimum_absolute_cell_area": float(np.min(np.abs(signed_areas))),
@@ -560,6 +572,10 @@ def main():
         help="experimental O-grid radial spacing power; baseline 1.8",
     )
     ap.add_argument(
+        "--naca-radial-stretch", type=float, default=0.0,
+        help="opt-in exponential O-grid stretching; positive and shared by all grids",
+    )
+    ap.add_argument(
         "--split-naca-farfield",
         action="store_true",
         help="experimental inlet/outlet outer patches; distinct mesh filenames",
@@ -586,13 +602,17 @@ def main():
                 20.0,
                 split_farfield=args.split_naca_farfield,
                 radial_power=args.naca_radial_power,
+                radial_stretch=args.naca_radial_stretch,
             )
             suffix = "_split" if args.split_naca_farfield else ""
             if args.naca_radial_power != 1.8:
                 suffix += "_rp" + str(args.naca_radial_power).replace(".", "p")
+            if args.naca_radial_stretch > 0.0:
+                suffix += "_es" + str(args.naca_radial_stretch).replace(".", "p")
             write_mesh(out / f"naca0012_laminar_n{n}{suffix}.h5", p, c, b)
             quality = naca_o_grid_quality(
-                n, nr, 20.0, radial_power=args.naca_radial_power
+                n, nr, 20.0, radial_power=args.naca_radial_power,
+                radial_stretch=args.naca_radial_stretch,
             )
             quality_reports.append(quality)
             print(
@@ -601,11 +621,14 @@ def main():
                     sort_keys=True,
                 )
             )
-        report_path = out / (
-            "naca0012_mesh_quality_split.json"
-            if args.split_naca_farfield
-            else "naca0012_mesh_quality.json"
-        )
+        # Preserve the baseline report path; an experimental family must
+        # never overwrite or masquerade as the historical one.
+        report_suffix = "_split" if args.split_naca_farfield else ""
+        if args.naca_radial_power != 1.8:
+            report_suffix += "_rp" + str(args.naca_radial_power).replace(".", "p")
+        if args.naca_radial_stretch > 0.0:
+            report_suffix += "_es" + str(args.naca_radial_stretch).replace(".", "p")
+        report_path = out / ("naca0012_mesh_quality" + report_suffix + ".json")
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
             json.dumps(quality_reports, indent=2) + "\n", encoding="utf-8"
