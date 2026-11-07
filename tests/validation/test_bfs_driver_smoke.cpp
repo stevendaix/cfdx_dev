@@ -115,7 +115,6 @@ static Result run(const std::string& path, std::size_t level)
     for(const auto f:patch.face_ids) {
         const auto fc=geometry.face_centres[f];
         if(fc.x < 0.0 || std::abs(fc.y) > 1e-8) continue;
-        const auto n=geometry.face_area_vectors[f].normalized();
         const double txy=rho*nu*(gux.component_data(1)[mesh.ownership().owner(f)] +
                                  guy.component_data(0)[mesh.ownership().owner(f)]);
         tau.push_back({fc.x,txy});
