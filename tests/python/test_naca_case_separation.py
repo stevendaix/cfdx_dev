@@ -1,4 +1,5 @@
 """Regressions: a TMR grid is not a SST aerodynamic validation."""
+
 from __future__ import annotations
 
 import copy
@@ -18,8 +19,11 @@ SPEC.loader.exec_module(MODULE)
 
 
 def registry():
-    return json.loads((ROOT / "docs" / "validation" /
-                       "CFDX_QUALIFICATION_REGISTRY.json").read_text(encoding="utf-8"))
+    return json.loads(
+        (ROOT / "docs" / "validation" / "CFDX_QUALIFICATION_REGISTRY.json").read_text(
+            encoding="utf-8"
+        )
+    )
 
 
 def test_separate_existing_laminar_and_turbulent_cases():
@@ -29,11 +33,14 @@ def test_separate_existing_laminar_and_turbulent_cases():
     assert turbulent["status"] != "PASS"
 
 
-@pytest.mark.parametrize("mutator", [
-    lambda s: s.update(status="PASS"),
-    lambda s: s.update(numerical_schemes="laminar"),
-    lambda s: s.update(parameters="Re=1000; alpha=0"),
-])
+@pytest.mark.parametrize(
+    "mutator",
+    [
+        lambda s: s.update(status="PASS"),
+        lambda s: s.update(numerical_schemes="laminar"),
+        lambda s: s.update(parameters="Re=1000; alpha=0"),
+    ],
+)
 def test_sst_cannot_be_relabelled_or_promoted_by_metadata(mutator):
     data = copy.deepcopy(registry())
     sst = next(c for c in data["cases"] if c["id"] == "TUR-NACA0012")
@@ -50,7 +57,9 @@ def test_unproven_tmr_mesh_is_not_automatically_sst(tmp_path):
     with h5py.File(path, "w") as h:
         h.attrs["validation_source"] = "NASA TMR NACA0012"
         h.attrs["validation_status"] = "imported-provenance-only"
-        h.attrs["validation_source_url"] = "https://tmbwg.github.io/turbmodels/naca0012_grids.html"
+        h.attrs["validation_source_url"] = (
+            "https://tmbwg.github.io/turbmodels/naca0012_grids.html"
+        )
         h.attrs["validation_source_sha256"] = "a" * 64
         h.attrs["validation_grid"] = "225x65"
         h.attrs["boundary_patches"] = "airfoil:0:1:0;front:1:1:6;back:2:1:6"
