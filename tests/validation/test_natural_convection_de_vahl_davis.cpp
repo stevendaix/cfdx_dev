@@ -416,7 +416,12 @@ int main(int argc, char** argv)
         }
         if(!single && !(errors[2]<errors[1] && errors[1]<errors[0]))
             throw std::runtime_error("three-grid physical Nu error not decreasing");
-        std::cout << "CAVITY_DVD_STATUS: PREQUALIFICATION_PASS"
+        // A single-grid replay only checks that this isolated case is
+        // converged and conservative. It cannot establish spatial
+        // prequalification regardless of its numerical residuals.
+        std::cout << "CAVITY_DVD_STATUS: "
+                  << (single ? "SINGLE_GRID_DIAGNOSTIC_PASS"
+                             : "PREQUALIFICATION_PASS")
                   << " Ra=" << benchmark.ra << " grids=" << grids.size() << '\n';
     });
     return run_all();

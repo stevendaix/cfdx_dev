@@ -100,6 +100,9 @@ static Forces run(const std::string& path,std::size_t level,
     c.convergence.max_iterations=max_iterations;
     c.convergence.relative_tolerance=1e-8;
     c.convergence.continuity_tolerance=1e-8;
+    // Force/GCI output is forbidden until the independent face-transport
+    // momentum residual reaches the same strict nonlinear tolerance.
+    c.require_independent_face_residual_for_convergence = true;
     c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
     c.nonlinear_retry.reject_severe_physical_growth=growth_guard;
     cfdx::validation::apply_naca_relaxation_ab(c);
@@ -268,7 +271,10 @@ static Forces run(const std::string& path,std::size_t level,
                "mass_normalized_imbalance,mass_local_linf,"
                "flux_velocity_mismatch_normalized,pressure_linear_iterations,"
                "momentum_linear_iterations,nonfinite_mass_faces,nonfinite_velocities,"
-               "high_order_fraction\n";
+               "high_order_fraction,face_momentum_x_relative,"
+               "face_momentum_y_relative,face_momentum_z_relative,"
+               "face_momentum_x_linf,face_momentum_y_linf,face_momentum_z_linf,"
+               "convection_scheme\n";
         out << std::setprecision(17);
         for (const auto& h : solve.history)
             out << h.iteration << ',' << h.continuity_normalized << ','
@@ -279,7 +285,17 @@ static Forces run(const std::string& path,std::size_t level,
                 << h.momentum_linear_iterations << ','
                 << h.mass_nonfinite_faces << ','
                 << h.boundedness_nonfinite_velocity << ','
-                << h.high_order_fraction << '\n';
+                << h.high_order_fraction << ','
+                << h.momentum_face_local_relative[0] << ','
+                << h.momentum_face_local_relative[1] << ','
+                << h.momentum_face_local_relative[2] << ','
+                << h.momentum_face_local_linf[0] << ','
+                << h.momentum_face_local_linf[1] << ','
+                << h.momentum_face_local_linf[2] << ','
+                << (c.convection_scheme == ConvectionScheme::TVD ? "TVD" :
+                    c.convection_scheme == ConvectionScheme::TVD_VANLEER ? "TVD_VANLEER" :
+                    c.convection_scheme == ConvectionScheme::UPWIND ? "UPWIND" :
+                    "OTHER") << '\n';
         out.flush();
         if (!out) throw std::runtime_error("failed writing NACA physical history CSV");
     };

@@ -670,6 +670,7 @@ int main()
 
         IncompressibleSolverControls c;
         c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        c.require_independent_face_residual_for_convergence = true;
         c.convergence.max_iterations = 5;
         c.convergence.continuity_tolerance = 1e-12;
         c.linear_tolerance = 1e-12;
@@ -684,6 +685,8 @@ int main()
         EXPECT_NEAR(U(0,2),0.0,1e-14);
         EXPECT_NEAR(p(0),0.0,1e-14);
         EXPECT_NEAR(r.history.back().continuity_linf,0.0,1e-14);
+        for (double residual : r.history.back().momentum_face_local_relative)
+            EXPECT_NEAR(residual,0.0,1e-14);
     });
 
 
@@ -701,6 +704,7 @@ int main()
 
         IncompressibleSolverControls c;
         c.algorithm = PressureVelocityAlgorithm::SIMPLEC;
+        c.require_independent_face_residual_for_convergence = true;
         c.convergence.max_iterations = 5;
         c.convergence.continuity_tolerance = 1e-12;
         c.linear_tolerance = 1e-12;

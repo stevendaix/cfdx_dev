@@ -1,4 +1,5 @@
 #include "cfdx/core/numerics/conservation.h"
+#include "cfdx/physics/nonlinear_face_residual_certificate.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "common/test_harness.h"
 #include <limits>
@@ -185,6 +186,68 @@ int main()
         EXPECT_NEAR(r.residual, 0.0, 1e-15);
         EXPECT_NEAR(r.normalized_residual, 0.0, 1e-15);
         EXPECT_TRUE(r.worst_cell == 0);
+    });
+
+    run_case("nonlinear_face_certificate_rejects_local_cancellation_of_global_residual", [] {
+        const Mesh m = make_two_cell_chain();
+        Field<double, Location::FACE> flux(m.n_faces(), "flux", "N", 1);
+        Field<double, Location::CELL> source(m.n_cells(), "source", "N/m3", 1);
+        flux.fill(0.0);
+        source.fill(0.0);
+        flux(1) = 3.0;  // +3 in owner, -3 in neighbour, GLOBAL zero
+        const std::vector<double> volume{0.5, 0.5};
+        const auto balance = audit_integrated_balance(m, flux, source, volume);
+        const auto physical = cfdx::physics::certify_nonlinear_face_residual(
+            balance, flux, source, volume);
+        EXPECT_NEAR(balance.residual, 0.0, 1e-15);
+        EXPECT_NEAR(balance.normalized_residual, 0.0, 1e-15);
+        EXPECT_NEAR(physical.local_linf, 3.0, 1e-14);
+        EXPECT_NEAR(physical.local_relative, 1.0, 1e-14);
+        EXPECT_TRUE(physical.finite);
+    });
+
+    run_case("nonlinear_face_certificate_closes_backward_euler_momentum_acceleration", [] {
+        const Mesh m = make_unit_cube();
+        Field<double, Location::FACE> flux(m.n_faces(), "flux", "N", 1);
+        Field<double, Location::CELL> source(m.n_cells(), "source", "N/m3", 1);
+        Field<double, Location::CELL> acc(m.n_cells(), "negative_dt", "N", 1);
+        const std::vector<double> volume{1.0};
+        flux.fill(0.0);
+        source(0) = -4.0;
+        acc(0) = cfdx::physics::momentum_audit_negative_accumulation(
+            3.0, 1.0, 1.0, 2.0, 1.0, 1.0, 0.0, false);
+        EXPECT_NEAR(acc(0), -4.0, 1e-14);
+        const auto balanced = audit_integrated_balance(m, flux, source, volume, &acc);
+        const auto cert = cfdx::physics::certify_nonlinear_face_residual(
+            balanced, flux, source, volume, &acc);
+        EXPECT_NEAR(cert.local_linf, 0.0, 1e-14);
+        EXPECT_NEAR(cert.local_relative, 0.0, 1e-14);
+        const auto missing_time = audit_integrated_balance(m, flux, source, volume);
+        EXPECT_NEAR(missing_time.max_cell_residual, 4.0, 1e-14);
+    });
+
+    run_case("nonlinear_face_certificate_closes_variable_step_bdf2_acceleration", [] {
+        // dt=2, previous dt=1: w=2, a0=9, a1=4, denom=5, b=6.
+        // dU/dt=(5*4-9*2+4*1)/6 = 1.
+        const double accumulation = cfdx::physics::momentum_audit_negative_accumulation(
+            4.0, 2.0, 1.0, 3.0, 2.0, 2.0, 1.0, true);
+        EXPECT_NEAR(accumulation, -6.0, 1e-14);
+        EXPECT_THROW((void)cfdx::physics::momentum_audit_negative_accumulation(
+            4.0, 2.0, 1.0, 3.0, 2.0, 2.0, 0.0, true), std::invalid_argument);
+    });
+
+    run_case("independent_face_convergence_gate_keeps_original_tolerance", [] {
+        using cfdx::physics::independent_momentum_face_residual_gate;
+        EXPECT_TRUE(independent_momentum_face_residual_gate(
+            {0.0, 1e-9, 1e-8}, 1e-8));
+        EXPECT_TRUE(!independent_momentum_face_residual_gate(
+            {0.0, 1e-9, 1.000001e-8}, 1e-8));
+        EXPECT_TRUE(!independent_momentum_face_residual_gate(
+            {0.0, -1e-12, 0.0}, 1e-8));
+        EXPECT_TRUE(!independent_momentum_face_residual_gate(
+            {0.0, std::numeric_limits<double>::quiet_NaN(), 0.0}, 1e-8));
+        EXPECT_THROW((void)independent_momentum_face_residual_gate(
+            {0.0, 0.0, 0.0}, 0.0), std::invalid_argument);
     });
 
     run_case("boundedness_reports_worst_cell_without_clipping", [] {
