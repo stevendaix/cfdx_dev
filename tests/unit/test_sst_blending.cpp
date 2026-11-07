@@ -1667,12 +1667,6 @@ int main()
     run_case("v17_adaptive_CFL_falls_on_bad_continuity_and_grows_on_joint_progress", [] {
         V17PseudoMomentumControls cfg;
         EXPECT_NEAR(next_v17_pseudo_cfl(0.3,0.2,0.1,0.1,0.02,cfg),0.375,1e-14);
-        EXPECT_NEAR((5.0+m)*4.0-eq.rhs(0),5.0*4.0-4.0+m,1e-12);
-        EXPECT_THROW(add_v17_pseudo_momentum_term(eq,old,{},0),std::invalid_argument);
-    });
-    run_case("v17_adaptive_CFL_falls_on_bad_continuity_and_grows_on_joint_progress", [] {
-        V17PseudoMomentumControls cfg;
-        EXPECT_NEAR(next_v17_pseudo_cfl(0.3,0.2,0.1,0.1,0.02,cfg),0.375,1e-14);
         EXPECT_NEAR(next_v17_pseudo_cfl(0.3,0.2,0.1,0.1,0.13,cfg),0.15,1e-14);
         EXPECT_NEAR(next_v17_pseudo_cfl(0.03,0.2,0.3,0.1,0.2,cfg),0.03,1e-14);
         cfg.minimum_cfl=2.0;

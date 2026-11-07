@@ -1604,12 +1604,6 @@ int main()
             const std::size_t row = 3*nc + 1;
             double algebraic = -b(row);
             for (std::size_t k=A.row_offsets_data()[row];
-            const auto& A = *snap.matrix;
-            const auto& b = *snap.rhs;
-            const auto& x = *snap.initial_guess;
-            const std::size_t row = 3*nc + 1;
-            double algebraic = -b(row);
-            for (std::size_t k=A.row_offsets_data()[row];
                  k<A.row_offsets_data()[row+1]; ++k)
                 algebraic += A.values_data()[k]*x(A.columns_data()[k]);
             std::array<std::vector<double>,3> rAU{
