@@ -159,7 +159,8 @@ template<class T> void put(std::ofstream& f,const T& x){
 }
 template<class T> T get(std::ifstream& f){
     T x{};f.read(reinterpret_cast<char*>(&x),sizeof(x));
-    if(!f)throw std::runtime_error("truncated capture");return x;
+    if(!f) throw std::runtime_error("truncated capture");
+    return x;
 }
 void put_matrix(std::ofstream& f,const SparseMatrix& a){
     put(f,static_cast<std::uint64_t>(a.n_rows()));
