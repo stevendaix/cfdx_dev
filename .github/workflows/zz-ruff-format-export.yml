@@ -48,18 +48,19 @@ jobs:
           replace_once(
               "scripts/generate_2d_validation_meshes.py",
               "                def at_base_eta(base_eta):\n",
-              """                def at_base_eta(
-                    base_eta,
-                    *,
-                    x=x,
-                    y=y,
-                    dx=dx,
-                    dy=dy,
-                    radial_length=radial_length,
-                    nx=nx,
-                    ny=ny,
-                ):
-          """.replace("          \n", ""),
+              (
+                  "                def at_base_eta(\n"
+                  "                    base_eta,\n"
+                  "                    *,\n"
+                  "                    x=x,\n"
+                  "                    y=y,\n"
+                  "                    dx=dx,\n"
+                  "                    dy=dy,\n"
+                  "                    radial_length=radial_length,\n"
+                  "                    nx=nx,\n"
+                  "                    ny=ny,\n"
+                  "                ):\n"
+              ),
           )
           replace_once(
               "scripts/naca_mesh_similarity_gate.py",
