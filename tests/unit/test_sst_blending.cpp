@@ -972,7 +972,7 @@ int main()
             U.component_data(0)[c] = 1.0 + static_cast<double>(c);
             U.component_data(1)[c] = 2.0 + static_cast<double>(c);
             U.component_data(2)[c] = 3.0 + static_cast<double>(c);
-            p(c) = 10.0 + c;
+            p(c) = 10.0 + static_cast<double>(c);
             state.k(c) = 0.1 + 0.1 * static_cast<double>(c);
             state.omega(c) = 10.0 + 10.0 * static_cast<double>(c);
             state.nu_t(c) = 0.001 + 0.001 * static_cast<double>(c);

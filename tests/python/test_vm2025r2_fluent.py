@@ -46,7 +46,8 @@ class TestVM2025R2FluentCases:
     """Tests for VM2025R2 Fluent validation cases."""
 
     @pytest.fixture(scope="class")
-    def base_dir(self):
+    @classmethod
+    def base_dir(cls):
         """Base directory for the Fluent validation cases.
 
         An absolute path baked into the test could only ever resolve on the
@@ -64,7 +65,8 @@ class TestVM2025R2FluentCases:
         )
 
     @pytest.fixture(scope="class")
-    def cas_h5_files(self, base_dir):
+    @classmethod
+    def cas_h5_files(cls, base_dir):
         """Find all .cas.h5 files in the validation directory."""
         files = sorted(base_dir.rglob("*.cas.h5"))
         # Deduplicate by stem (keep first occurrence)

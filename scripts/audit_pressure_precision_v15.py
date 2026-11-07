@@ -23,7 +23,7 @@ def inspect(
 ) -> dict:
     if not (math.isfinite(tolerance) and tolerance > 0) or iterations < 0:
         raise ValueError("invalid pressure audit controls")
-    A = mmread(str(mtx)).tocsr()
+    A = mmread(str(mtx), spmatrix=True).tocsr()
     b = np.atleast_1d(np.loadtxt(rhs_path, dtype=float))
     if A.shape[0] != A.shape[1] or A.shape[0] != b.size or not np.all(np.isfinite(b)):
         raise ValueError("pressure matrix and rhs inconsistent")

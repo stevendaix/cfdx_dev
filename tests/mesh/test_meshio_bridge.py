@@ -28,32 +28,39 @@ with tempfile.TemporaryDirectory() as d:
     # edge faces instead of reporting them as skipped cell types.
     src_2d = root / "two_triangles.msh"
     dst_2d = root / "mesh_2d.h5"
-    points_2d = np.array(
-        [[0, 0], [1, 0], [1, 1], [0, 1]],
-        dtype=float,
+    # Use an explicit Gmsh 2.2 ASCII fixture. Meshio's Gmsh 4.1 writer
+    # requires gmsh:dim_tags for mixed line/triangle blocks; that writer
+    # constraint is unrelated to the importer contract tested below.
+    src_2d.write_text(
+        "$MeshFormat\\n"
+        "2.2 0 8\\n"
+        "$EndMeshFormat\\n"
+        "$PhysicalNames\\n"
+        "5\\n"
+        '1 1 "inlet"\\n'
+        '1 2 "outlet"\\n'
+        '1 3 "top_wall"\\n'
+        '1 4 "bottom_wall"\\n'
+        '2 5 "fluid"\\n'
+        "$EndPhysicalNames\\n"
+        "$Nodes\\n"
+        "4\\n"
+        "1 0 0 0\\n"
+        "2 1 0 0\\n"
+        "3 1 1 0\\n"
+        "4 0 1 0\\n"
+        "$EndNodes\\n"
+        "$Elements\\n"
+        "6\\n"
+        "1 1 2 1 1 1 2\\n"
+        "2 1 2 2 1 2 3\\n"
+        "3 1 2 3 1 3 4\\n"
+        "4 1 2 4 1 4 1\\n"
+        "5 2 2 5 1 1 2 3\\n"
+        "6 2 2 5 1 1 3 4\\n"
+        "$EndElements\\n",
+        encoding="utf-8",
     )
-    cells_2d = [
-        ("line", np.array([[0, 1], [1, 2], [2, 3], [3, 0]], dtype=int)),
-        ("triangle", np.array([[0, 1, 2], [0, 2, 3]], dtype=int)),
-    ]
-    physical_data = [
-        np.array([1, 2, 3, 4], dtype=int),
-        np.array([5, 5], dtype=int),
-    ]
-    field_data = {
-        "inlet": np.array([1, 1]),
-        "outlet": np.array([2, 1]),
-        "top_wall": np.array([3, 1]),
-        "bottom_wall": np.array([4, 1]),
-        "fluid": np.array([5, 2]),
-    }
-    mesh_2d = meshio.Mesh(
-        points_2d,
-        cells_2d,
-        cell_data={"gmsh:physical": physical_data},
-        field_data=field_data,
-    )
-    meshio.write(src_2d, mesh_2d, file_format="gmsh", binary=False)
     subprocess.check_call([sys.executable, str(bridge), str(src_2d), str(dst_2d)])
     with h5py.File(dst_2d, "r") as h5:
         patch_metadata = h5.attrs["boundary_patches"]
