@@ -73,8 +73,8 @@ Grid make_tet_grid(std::size_t n)
         for (std::size_t y = 0; y <= n; ++y)
             for (std::size_t x = 0; x <= n; ++x)
                 m.points().set(vid(x, y, z),
-                    static_cast<double>(x) / n, static_cast<double>(y) / n,
-                    static_cast<double>(z) / n);
+                    static_cast<double>(x) / static_cast<double>(n), static_cast<double>(y) / static_cast<double>(n),
+                    static_cast<double>(z) / static_cast<double>(n));
 
     std::unordered_map<std::string, std::size_t> face_ids;
     std::vector<std::vector<std::size_t>> face_cells;
