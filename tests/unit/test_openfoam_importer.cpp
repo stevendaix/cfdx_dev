@@ -52,13 +52,23 @@ int main() {
 )
 )") &&
         write(poly / "boundary", R"(FoamFile { version 2.0; format ascii; class polyBoundaryMesh; object boundary; }
-1
+2
 (
 wall
 {
     type wall;
-    nFaces 4;
+    nFaces 3;
     startFace 0;
+    custom
+    {
+        note "nested dictionary";
+    }
+}
+outlet
+{
+    type patch;
+    nFaces 1;
+    startFace 3;
 }
 )
 )");
@@ -71,7 +81,11 @@ wall
     const bool valid = imported && mesh.topo_validate().ok &&
                        stats.n_points == 4 && stats.n_faces == 4 &&
                        stats.n_cells == 1 && stats.n_boundary_faces == 4 &&
-                       mesh.boundary().n_patches() == 1;
+                       mesh.boundary().n_patches() == 2 &&
+                       mesh.boundary().patch(0).name == "wall" &&
+                       mesh.boundary().patch(0).face_ids.size() == 3 &&
+                       mesh.boundary().patch(1).name == "outlet" &&
+                       mesh.boundary().patch(1).face_ids.size() == 1;
 
     if (!valid) {
         std::cerr << "OpenFOAM reader test failed\n";
