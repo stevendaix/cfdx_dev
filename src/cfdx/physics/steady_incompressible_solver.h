@@ -292,7 +292,12 @@ struct IncompressibleSolverControls {
         cfdx::core::PreconditionerModel::NativeAMG,
         40,
         false,
-        cfdx::core::NullSpaceModel::None};
+        cfdx::core::NullSpaceModel::None,
+        cfdx::core::LinearScalingModel::None,
+        0,
+        false,
+        {},
+        {}};
     // Fp is the nested PCD pressure convection-diffusion operator. The
     // Ghia Re=100 qualification showed that FGMRES(40) repeatedly hit the
     // 100-iteration cap with true relative residuals above the unchanged

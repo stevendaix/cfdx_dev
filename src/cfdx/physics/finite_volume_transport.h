@@ -1349,14 +1349,14 @@ inline cfdx::core::SolverResult solve_scalar_equation(
         if (!std::isfinite(candidate_value) || !std::isfinite(candidate_residual) ||
             !std::isfinite(relative)) {
             return {cfdx::core::SolverStatus::DIVERGED, 1,
-                    candidate_residual, relative};
+                    candidate_residual, relative, {}};
         }
         if (relative <= controls.tolerance) {
             // Preserve the established exact 1x1 predictor contract.
             solution(0) = candidate_value;
             cfdx::core::SolverResult result{
                 cfdx::core::SolverStatus::CONVERGED,
-                1, candidate_residual, relative
+                1, candidate_residual, relative, {}
             };
             result.residual_before_relaxation = candidate_residual;
             result.residual_after_relaxation = candidate_residual;
@@ -1369,7 +1369,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
             std::abs(diagonal * solution(0) - equation.rhs(0));
         cfdx::core::SolverResult result{
             cfdx::core::SolverStatus::MAX_ITER_REACHED,
-            1, residual, rhs_scale > 0.0 ? residual / rhs_scale : residual
+            1, residual, rhs_scale > 0.0 ? residual / rhs_scale : residual, {}
         };
         result.residual_before_relaxation = candidate_residual;
         result.residual_after_relaxation = residual;
@@ -1541,7 +1541,7 @@ inline cfdx::core::SolverResult solve_scalar_equation(
                     relative <= controls.tolerance
                         ? cfdx::core::SolverStatus::CONVERGED
                         : cfdx::core::SolverStatus::MAX_ITER_REACHED,
-                    0, residual, relative
+                    0, residual, relative, {}
                 };
             }
         }
