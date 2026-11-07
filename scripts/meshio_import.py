@@ -14,6 +14,7 @@ VOLUME_FACES = {
  "voxel": ((0,4,6,2),(1,3,7,5),(0,1,5,4),(2,6,7,3),(0,2,3,1),(4,5,7,6)),
 }
 SURFACE = {"triangle":3,"quad":4,"triangle6":3,"quad8":4,"quad9":4}
+LINE = {"line":2,"line3":2}
 CORNER_COUNT = {"tetra":4,"hexahedron":8,"wedge":6,"pyramid":5,"voxel":8,"tetra10":4,"hexahedron20":8,"hexahedron27":8,"wedge15":6,"wedge18":6,"pyramid13":5,"pyramid14":5,"triangle6":3,"quad8":4,"quad9":4}
 BASE_TYPE = {"tetra10":"tetra","hexahedron20":"hexahedron","hexahedron27":"hexahedron","wedge15":"wedge","wedge18":"wedge","pyramid13":"pyramid","pyramid14":"pyramid"}
 
@@ -42,7 +43,7 @@ def build(mesh):
     points=np.asarray(mesh.points,dtype=np.float64)
     if points.ndim!=2 or points.shape[1] not in (2,3): raise ValueError(f"unsupported point shape {points.shape}")
     if points.shape[1]==2: points=np.column_stack((points,np.zeros(len(points))))
-    volumes=[]; surfaces=[]; skipped=collections.Counter()
+    volumes=[]; surfaces=[]; boundary_lines=[]; skipped=collections.Counter()
     for bi,b in enumerate(mesh.cells):
         ctype=b.type; base=BASE_TYPE.get(ctype,ctype)
         if base in VOLUME_FACES:
@@ -51,11 +52,18 @@ def build(mesh):
         elif ctype in SURFACE:
             ncorner=SURFACE[ctype]
             surfaces += [(ctype,[int(x) for x in row[:ncorner]],bi) for row in np.asarray(b.data)]
+        elif ctype in LINE:
+            ncorner=LINE[ctype]
+            boundary_lines += [(ctype,[int(x) for x in row[:ncorner]],bi) for row in np.asarray(b.data)]
         elif ctype=="polyhedron":
             for row in b.data: volumes.append(("polyhedron",[[int(x) for x in np.asarray(face)] for face in row],bi))
         else: skipped[ctype]+=len(b.data)
     if not volumes and not surfaces: raise ValueError("no supported cells")
     if not volumes: return build_surface_2d(points,surfaces,skipped)
+    # Gmsh line elements in a 3D volume mesh are geometric curves, not CFD
+    # boundary faces. Keep the diagnostic explicit instead of treating them
+    # as patches; in a surface-only 2D mesh they are mapped below to edge faces.
+    for ctype,_,_ in boundary_lines: skipped[ctype]+=1
     cells=volumes
     face_map={}; faces=[]; owner=[]; neighbour=[]; cell_faces=[]
     for ci,(ctype,nodes,_) in enumerate(cells):
@@ -166,10 +174,17 @@ def write(path,mesh,topo):
     lookup={tuple(sorted(f)):i for i,f in enumerate(faces)}
     names=physical_names(mesh); patches=collections.OrderedDict()
     for bi,b in enumerate(mesh.cells):
-        if b.type not in SURFACE: continue
+        if b.type in SURFACE:
+            ncorner=SURFACE[b.type]
+        elif b.type in LINE:
+            # In a 2D surface-only mesh, Gmsh line elements identify the
+            # physical boundary edges reconstructed from the surface cells.
+            ncorner=LINE[b.type]
+        else:
+            continue
         tags=block_tags(mesh,"gmsh:physical",bi)
         for j,row in enumerate(np.asarray(b.data)):
-            ncorner=SURFACE[b.type]; fid=lookup.get(tuple(sorted(int(x) for x in row[:ncorner])))
+            fid=lookup.get(tuple(sorted(int(x) for x in row[:ncorner])))
             if fid is None: continue
             pname=names.get(int(tags[j]),f"physical_{int(tags[j])}") if tags is not None and j<len(tags) else "boundary"
             patches.setdefault(pname,[]).append(fid)
