@@ -47,7 +47,7 @@ class N15Tests(unittest.TestCase):
                 "--",
                 sys.executable,
                 "-c",
-                "print('ok')",
+                "import time; time.sleep(.1); print('ok')",
             )
             self.assertEqual(p.returncode, 0, p.stderr)
             data = json.loads(result.read_text())
@@ -57,13 +57,18 @@ class N15Tests(unittest.TestCase):
             self.assertTrue(data["hardware"]["logical_cpus"])
             if sys.platform.startswith("linux") or sys.platform == "darwin":
                 self.assertGreater(data["performance"]["peak_rss_bytes"], 0)
-                self.assertEqual(data["performance"]["peak_rss_source"], "wait4-child")
+                expected_source = (
+                    "proc-status-vmhwm-sampled"
+                    if sys.platform.startswith("linux")
+                    else "wait4-child"
+                )
+                self.assertEqual(
+                    data["performance"]["peak_rss_source"], expected_source
+                )
 
     def test_scale_reports_peak_rss_per_child(self):
-        if not hasattr(os, "wait4") or not (
-            sys.platform.startswith("linux") or sys.platform == "darwin"
-        ):
-            self.skipTest("per-child RSS requires supported POSIX wait4 semantics")
+        if not hasattr(os, "wait4") or not sys.platform.startswith("linux"):
+            self.skipTest("post-exec RSS sampling requires Linux /proc")
         with tempfile.TemporaryDirectory() as d:
             d = Path(d)
             case = d / "case.json"
@@ -71,7 +76,15 @@ class N15Tests(unittest.TestCase):
             case.write_text(
                 json.dumps({"id": "n15-rss-isolation", "mesh": {"cells_per_rank": 16}})
             )
-            child = "import os,time; data=bytearray(80*1024*1024) if os.environ['CFDX_N15_MPI_RANKS']=='1' else bytearray(1024); time.sleep(.15)"
+            # Commit each 4KiB page: bytearray's lazy zero pages are NOT a
+            # valid physical-RSS stress on overcommitting Linux kernels.
+            child = (
+                "import os,time\n"
+                "n=80*1024*1024 if os.environ['CFDX_N15_MPI_RANKS']=='1' else 1024\n"
+                "data=bytearray(n)\n"
+                "for i in range(0,n,4096): data[i]=1\n"
+                "time.sleep(.2)\n"
+            )
             p = run(
                 "scale",
                 "--case",
@@ -93,8 +106,13 @@ class N15Tests(unittest.TestCase):
             runs = json.loads(result.read_text())["runs"]
             first = runs[0]["performance"]["peak_rss_bytes"]
             second = runs[1]["performance"]["peak_rss_bytes"]
-            self.assertGreater(first, second * 2)
-            self.assertEqual(runs[1]["performance"]["peak_rss_source"], "wait4-child")
+            # Compare a committed 80MiB difference, not a 2x ratio that
+            # assumes Python startup has negligible RSS across runners.
+            self.assertGreater(first - second, 64 * 1024 * 1024)
+            self.assertEqual(
+                runs[1]["performance"]["peak_rss_source"],
+                "proc-status-vmhwm-sampled",
+            )
 
     def test_regression(self):
         with tempfile.TemporaryDirectory() as d:

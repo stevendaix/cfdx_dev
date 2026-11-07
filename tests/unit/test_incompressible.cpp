@@ -141,5 +141,34 @@ int main(){
         }
         EXPECT_TRUE(rejected);
     });
+    run_case("high_order_continuation_rejects_unsupported_couplings", [] {
+        IncompressibleSolverControls controls;
+        controls.convection_scheme = ConvectionScheme::TVD_VANLEER;
+        controls.convection_continuation.enabled = true;
+        controls.convergence.max_iterations = 200;
+        validate_incompressible_controls(controls, 2);
+        controls.algorithm = PressureVelocityAlgorithm::COUPLED;
+        EXPECT_THROW(validate_incompressible_controls(controls, 2), std::invalid_argument);
+        controls.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        controls.convection_scheme = ConvectionScheme::UPWIND;
+        EXPECT_THROW(validate_incompressible_controls(controls, 2), std::invalid_argument);
+        controls.convection_scheme = ConvectionScheme::TVD;
+        controls.convergence.max_iterations = 122;
+        EXPECT_THROW(validate_incompressible_controls(controls, 2), std::invalid_argument);
+    });
+    run_case("pressure_replay_selection_is_bounded_and_fail_closed", [] {
+        IncompressibleSolverControls c;
+        c.convergence.max_iterations = 100;
+        c.pressure_replay_prefix = "replay/naca256";
+        c.pressure_replay_iterations = {20, 21, 80};
+        validate_incompressible_controls(c, 2);
+        c.pressure_replay_iterations = {20, 20};
+        EXPECT_THROW(validate_incompressible_controls(c, 2), std::invalid_argument);
+        c.pressure_replay_iterations = {101};
+        EXPECT_THROW(validate_incompressible_controls(c, 2), std::invalid_argument);
+        c.pressure_replay_iterations = {21};
+        c.pressure_replay_prefix.clear();
+        EXPECT_THROW(validate_incompressible_controls(c, 2), std::invalid_argument);
+    });
     return run_all();
 }

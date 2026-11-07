@@ -52,14 +52,15 @@ class ControlledNacaTests(unittest.TestCase):
             root = Path(directory)
             mesh = root / "mesh.h5"
             mesh.write_text("fixture")
-            script = root / "fail.py"
-            script.write_text(
-                "#!/usr/bin/env python3\nimport sys\n"
-                'print("NACA0012_SINGLE: PASS")\nsys.exit(4)\n'
-            )
+            # The fixture tests the runner's handling of a nonzero exit,
+            # not Python interpreter startup latency. A POSIX shell fixture
+            # makes this independent of import cache and CPU contention.
+            script = root / "fail.sh"
+            script.write_text('#!/bin/sh\nprintf "NACA0012_SINGLE: PASS\\n"\nexit 4\n')
             script.chmod(0o755)
-            result = run_campaign(script, [mesh, mesh, mesh], 2, root / "logs")
+            result = run_campaign(script, [mesh, mesh, mesh], 5, root / "logs")
             self.assertEqual(result["three_grid_solver_gate"], "FAIL")
+            self.assertEqual(result["results"][0]["reason"], "nonzero exit")
             self.assertEqual(result["results"][0]["exit_code"], 4)
 
 

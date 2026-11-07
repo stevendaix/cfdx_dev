@@ -2,6 +2,7 @@
 
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
+#include "cfdx/core/linalg/preconditioner.h"
 #include "common/test_harness.h"
 #include <limits>
 
@@ -169,11 +170,82 @@ int main() {
         A.push_back(0, 1, -1.0);
         A.finalize();
         EXPECT_TRUE(A.is_consistent());
+        EXPECT_TRUE(A.nnz() == 2); // duplicate (0,0) assembled exactly once
         EXPECT_NEAR(A(0, 0), 4.0, 1e-14);
         Vector x(2);
         x(0) = 2.0;
         x(1) = 3.0;
         EXPECT_NEAR(A.matvec(x)[0], 5.0, 1e-14);
+    });
+
+    run_case("duplicate_diagonal_does_not_desynchronize_jacobi_and_operator", []() {
+        // A unique-CSR contract is essential: the old Jacobi used the first
+        // diagonal (2), while A*x used the sum of both contributions (4).
+        SparseMatrix A(2, 2);
+        A.push_back(1, 1, 8.0);
+        A.push_back(0, 0, 2.0);
+        A.push_back(0, 1, -1.0);
+        A.push_back(0, 0, 2.0);
+        A.push_back(1, 0, -1.0);
+        A.finalize();
+        EXPECT_TRUE(A.is_consistent());
+        EXPECT_TRUE(A.nnz() == 4);
+        JacobiPreconditioner M;
+        EXPECT_TRUE(M.setup(A));
+        Vector r(2, 0.0), z(2, 0.0);
+        r(0) = 4.0; r(1) = 8.0;
+        EXPECT_TRUE(M.apply(r, z));
+        EXPECT_NEAR(z(0), 1.0, 1e-14);
+        EXPECT_NEAR(z(1), 1.0, 1e-14);
+        EXPECT_TRUE(A.row_offsets_data()[1] == 2);
+        EXPECT_TRUE(A.columns_data()[0] == 0 && A.columns_data()[1] == 1);
+    });
+    run_case("duplicate_assembly_cancellation_and_overflow_are_explicit", []() {
+        SparseMatrix cancellation(1, 1);
+        cancellation.push_back(0, 0, 1e100);
+        cancellation.push_back(0, 0, -1e100);
+        cancellation.push_back(0, 0, 3.0);
+        cancellation.finalize();
+        EXPECT_TRUE(cancellation.is_consistent());
+        EXPECT_TRUE(cancellation.nnz() == 1);
+        EXPECT_NEAR(cancellation(0, 0), 3.0, 0.0);
+
+        SparseMatrix overflow(1, 1);
+        overflow.push_back(0, 0, std::numeric_limits<double>::max());
+        overflow.push_back(0, 0, std::numeric_limits<double>::max());
+        EXPECT_THROW(overflow.finalize(), std::overflow_error);
+        // Still unfinalized after a failed consolidation. No partial CSR.
+        EXPECT_TRUE(overflow.nnz() == 2);
+    });
+
+    run_case("jacobi_failed_numeric_update_preserves_previous_inverse", []() {
+        SparseMatrix A(2, 2);
+        A.push_back(0, 0, 2.0);
+        A.push_back(1, 1, 4.0);
+        A.finalize();
+        JacobiPreconditioner M;
+        EXPECT_TRUE(M.setup(A));
+        Vector r(2, 0.0), z(2, 0.0);
+        r(0) = 4.0; r(1) = 8.0;
+        EXPECT_TRUE(M.apply(r, z));
+        EXPECT_NEAR(z(0), 2.0, 0.0);
+        EXPECT_NEAR(z(1), 2.0, 0.0);
+        SparseMatrix invalid(2, 2);
+        invalid.push_back(0, 0, 1.0);
+        invalid.push_back(1, 1, 0.0);
+        invalid.finalize();
+        EXPECT_TRUE(!M.update_values(invalid));
+        EXPECT_TRUE(M.apply(r, z));
+        EXPECT_NEAR(z(0), 2.0, 0.0);
+        EXPECT_NEAR(z(1), 2.0, 0.0);
+        SparseMatrix underflow(2, 2);
+        underflow.push_back(0, 0, std::numeric_limits<double>::denorm_min());
+        underflow.push_back(1, 1, 4.0);
+        underflow.finalize();
+        EXPECT_TRUE(!M.update_values(underflow));
+        EXPECT_TRUE(M.apply(r, z));
+        EXPECT_NEAR(z(0), 2.0, 0.0);
+        EXPECT_NEAR(z(1), 2.0, 0.0);
     });
 
     run_case("sparse_matrix_finalize_is_idempotent", []() {

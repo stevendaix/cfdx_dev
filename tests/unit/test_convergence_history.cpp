@@ -21,6 +21,9 @@ int main()
     result.convergence_reason = "converged \"normally\"";
     IncompressibleIteration h;
     h.iteration = 1;
+    h.high_order_fraction = 1.0;
+    h.full_order_eligible = true;
+    h.momentum_equation_residual_rhs_active_component_max = 0.125;
     h.momentum_residual = 1.0;
     h.pressure_residual = 0.5;
     h.continuity_l1 = 0.1;
@@ -85,6 +88,9 @@ int main()
     assert(json.find("\"format\": \"CFDX-CONVERGENCE\"") != std::string::npos);
     assert(json.find("\"schema_version\": 1") != std::string::npos);
     assert(json.find("\"history\": [") != std::string::npos);
+    assert(json.find("\"high_order_fraction\": 1") != std::string::npos);
+    assert(json.find("\"full_order_eligible\": true") != std::string::npos);
+    assert(json.find("\"momentum_equation_residual_rhs_active_component_max\": 0.125") != std::string::npos);
     assert(json.find("\"momentum_residual\": 1") != std::string::npos);
     assert(json.find("\"momentum_rhs_scale\": 0.5") != std::string::npos);
     assert(json.find("\"momentum_equation_residual_reference\": 0.25") != std::string::npos);
