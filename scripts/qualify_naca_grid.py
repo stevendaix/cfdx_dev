@@ -41,6 +41,8 @@ def qualify(rows, residual_gate=1e-8):
                 continue
             if not math.isfinite(float(row[key])):
                 raise ValueError(f"{row['case']}: nonfinite {key}")
+        if float(row["res_mom"]) < 0 or float(row["res_mass"]) < 0:
+            raise ValueError(f"{row['case']}: negative residual norm")
         if max(float(row["res_mom"]), float(row["res_mass"])) > residual_gate:
             raise ValueError(
                 f"{row['case']}: physical residual exceeds {residual_gate}"
@@ -58,38 +60,68 @@ def qualify(rows, residual_gate=1e-8):
         raise ValueError(
             "unequal refinement ratios: this estimator requires near-uniform r"
         )
-    r = (r21 * r32) ** 0.5
+    # Do not replace two DIFFERENT mesh ratios by a geometric mean: the
+    # Richardson order is then biased, even when their mismatch is below 5%.
+    # With f(h) = f_exact + C*h**p, the difference ratio is
+    # (h0**p-h1**p)/(h1**p-h2**p), not a power of mean(r21,r32).
     result = {
-        "refinement_ratio": r,
+        "refinement_ratios": [r21, r32],
         "meshes": [row["case"] for row in ordered],
         "quantities": {},
+        "estimator": "three_grid_unequal_ratio_power_law_candidate",
     }
+    log21, log32 = math.log(r21), math.log(r32)
+
+    def difference_ratio(order):
+        # expm1 avoids cancellation at small orders.
+        return math.expm1(order * log21) / (-math.expm1(-order * log32))
+
+    def observed_order(magnitude_ratio):
+        if magnitude_ratio <= log21 / log32:
+            return None  # would require non-positive observed order
+        lo, hi = 1.0e-9, 8.0
+        if magnitude_ratio >= difference_ratio(hi):
+            return None
+        for _ in range(80):
+            mid = (lo + hi) / 2.0
+            if difference_ratio(mid) < magnitude_ratio:
+                lo = mid
+            else:
+                hi = mid
+        return (lo + hi) / 2.0
+
     for key in ("cd", "cdp", "cdv", "cl", "cm"):
-        f1, f2, f3 = (float(row[key]) for row in ordered)
-        e21, e32 = f1 - f2, f2 - f3
-        if e21 == 0.0 or e32 == 0.0 or e21 * e32 <= 0:
+        f0, f1, f2 = (float(row[key]) for row in ordered)
+        d01, d12 = f0 - f1, f1 - f2
+        if d01 == 0.0 or d12 == 0.0 or d01 * d12 <= 0:
             result["quantities"][key] = {
                 "status": "nonmonotone_or_plateau",
                 "GCI": None,
             }
             continue
-        p = math.log(abs(e21 / e32)) / math.log(r)
-        if not (0 < p < 8):
+        order = observed_order(abs(d01 / d12))
+        if order is None or not math.isfinite(order):
             result["quantities"][key] = {
                 "status": "invalid_observed_order",
-                "order": p,
                 "GCI": None,
             }
             continue
-        denom = r**p - 1.0
-        extrapolated = f3 + (f3 - f2) / denom
-        absolute_gci = 1.25 * abs(f3 - f2) / denom
+        denominator = math.expm1(order * log32)
+        extrapolated = f2 + (f2 - f1) / denominator
+        absolute_gci = 1.25 * abs(f2 - f1) / denominator
+        if not (math.isfinite(extrapolated) and math.isfinite(absolute_gci)):
+            result["quantities"][key] = {
+                "status": "invalid_refinement_extrapolation",
+                "GCI": None,
+            }
+            continue
         result["quantities"][key] = {
             "status": "asymptotic_candidate",
-            "order": p,
+            "order": order,
             "extrapolated": extrapolated,
             "GCI_absolute": absolute_gci,
-            "GCI_relative": (absolute_gci / abs(f3) if abs(f3) > 1e-14 else None),
+            "GCI_relative": (absolute_gci / abs(f2) if abs(f2) > 1e-14 else None),
+            "fine_pair_refinement_ratio": r32,
         }
     return result
 

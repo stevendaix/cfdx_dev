@@ -1593,6 +1593,14 @@ int main()
             const auto& A = *snap.matrix;
             const auto& b = *snap.rhs;
             const auto& x = *snap.initial_guess;
+            // The FV oracle must suppress impermeable SYMMETRY faces exactly
+            // as the COUPLED assembly does, even for a non-tangent trial U.
+            const auto frozen = certify_coupled_frozen_fv_operator(
+                snap, mesh, geometry, ubc, pbc, controls.density,
+                controls.pressure_reference_value, x);
+            std::cerr << "SYMMETRY_FROZEN_FV passed=" << frozen.passed
+                      << " continuity_error=" << frozen.continuity_linf << '\n';
+            EXPECT_TRUE(frozen.passed);
             const std::size_t row = 3*nc + 1;
             double algebraic = -b(row);
             for (std::size_t k=A.row_offsets_data()[row];

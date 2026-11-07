@@ -66,6 +66,13 @@ inline CoupledAssemblyCertificate certify_coupled_assembly_structure(
     const auto* raw = controls.pressure_schur_diagonal_raw;
     if ((diag && diag->size() != pressure_unknowns) ||
         (raw && raw->size() != pressure_unknowns)) return result;
+    // Gauge replacement in the actual monolithic CSR sets its diagonal to
+    // one. The adjusted Schur evidence must represent that same gauge row;
+    // merely exempting it from the raw-vs-adjusted comparison was fail-open.
+    if (diag && controls.pressure_reference_cell &&
+        std::abs((*diag)[*controls.pressure_reference_cell] - 1.0) >
+            controls.gauge_coefficient_tolerance)
+        return result;
     for (std::size_t c = 0; c < pressure_unknowns; ++c) {
         if ((diag && !std::isfinite((*diag)[c])) ||
             (raw && !std::isfinite((*raw)[c]))) return result;

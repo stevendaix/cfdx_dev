@@ -11,11 +11,10 @@ import argparse
 import json
 import math
 import os
-from pathlib import Path
 import re
 import subprocess
 import time
-
+from pathlib import Path
 
 _RESULT = re.compile(
     r"NACA0012_RE1000_A0\s+level=\d+\s+Cd=(\S+)\s+Cl=(\S+)"
@@ -46,24 +45,33 @@ def parse_output(output: str, returncode: int) -> dict:
     if not all(math.isfinite(v) for v in values):
         raise ValueError("nonfinite force or continuity")
     cd, cl, cm, cdp, cdv, continuity = values
-    if not (continuity < 1e-7) or abs(cl) > 0.02 or cdp <= 0:
+    if not (0 <= continuity < 1e-7) or abs(cl) > 0.02 or cdp <= 0:
         raise ValueError("NACA physical gate rejected result")
     if not math.isclose(cd, cdp + cdv, rel_tol=1e-7, abs_tol=1e-9):
         raise ValueError("force decomposition is not conservative")
+    if int(x.group(7)) < 1:
+        raise ValueError("a completed physical run must have positive iterations")
     return {
-        "cd": cd, "cl": cl, "cm": cm, "cd_pressure": cdp,
-        "cd_viscous": cdv, "continuity": continuity,
+        "cd": cd,
+        "cl": cl,
+        "cm": cm,
+        "cd_pressure": cdp,
+        "cd_viscous": cdv,
+        "continuity": continuity,
         "iterations": int(x.group(7)),
     }
 
 
 def run_one(executable: Path, mesh: Path, mode: str, seconds: int, log: Path) -> dict:
     env = os.environ.copy()
-    for key in {
-        "CFDX_NACA_SKEW_GRADIENT", "CFDX_NACA_PRESSURE_LINE_SEARCH",
-        "CFDX_NACA_AFFINE_FLUX_TRIALS", "CFDX_NACA_CONVECTION_TVD",
-        "CFDX_NACA_WALL_TRACTION_FACE", "CFDX_NACA_FACE_PROFILES_CSV",
-    }:
+    for key in (
+        "CFDX_NACA_SKEW_GRADIENT",
+        "CFDX_NACA_PRESSURE_LINE_SEARCH",
+        "CFDX_NACA_AFFINE_FLUX_TRIALS",
+        "CFDX_NACA_CONVECTION_TVD",
+        "CFDX_NACA_WALL_TRACTION_FACE",
+        "CFDX_NACA_FACE_PROFILES_CSV",
+    ):
         env.pop(key, None)
     env.update(_MODES[mode])
     if mode in ("wall-face", "split-wall-face"):
@@ -73,7 +81,11 @@ def run_one(executable: Path, mesh: Path, mode: str, seconds: int, log: Path) ->
     try:
         completed = subprocess.run(
             [str(executable), "--single", str(mesh)],
-            env=env, capture_output=True, text=True, timeout=seconds, check=False,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=seconds,
+            check=False,
         )
         output = completed.stdout + "\n" + completed.stderr
         returncode = completed.returncode
@@ -81,9 +93,9 @@ def run_one(executable: Path, mesh: Path, mode: str, seconds: int, log: Path) ->
         data = exc.stdout or b""
         error = exc.stderr or b""
         output = (
-            data.decode(errors="replace") if isinstance(data, bytes) else data
-        ) + "\n" + (
-            error.decode(errors="replace") if isinstance(error, bytes) else error
+            (data.decode(errors="replace") if isinstance(data, bytes) else data)
+            + "\n"
+            + (error.decode(errors="replace") if isinstance(error, bytes) else error)
         )
         reason = "TIMEOUT"
     elapsed = time.monotonic() - start
@@ -106,7 +118,9 @@ def main() -> int:
     parser.add_argument("--executable", type=Path, required=True)
     parser.add_argument("--mesh-dir", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--modes", nargs="+", choices=tuple(_MODES), default=["baseline"])
+    parser.add_argument(
+        "--modes", nargs="+", choices=tuple(_MODES), default=["baseline"]
+    )
     parser.add_argument("--timeout", type=int, default=1800)
     args = parser.parse_args()
     if args.timeout <= 0 or not args.executable.is_file():
@@ -128,7 +142,7 @@ def main() -> int:
         campaign["modes"][mode] = trials
         # Exact input format of the existing fail-closed three-grid GCI tool.
         # It must independently reject any incomplete/non-asymptotic family.
-        all_pass = all(trials[str(n)]["status"] == "PASS" for n in (64,128,256))
+        all_pass = all(trials[str(n)]["status"] == "PASS" for n in (64, 128, 256))
         gci_input = {
             "three_grid_solver_gate": "PASS" if all_pass else "FAIL",
             "results": [
@@ -142,7 +156,8 @@ def main() -> int:
                         "Cd_pressure": trials[str(n)].get("cd_pressure"),
                         "Cd_viscous": trials[str(n)].get("cd_viscous"),
                     },
-                } for n in (64, 128, 256)
+                }
+                for n in (64, 128, 256)
             ],
         }
         (args.output / f"gci_input_{mode}.json").write_text(

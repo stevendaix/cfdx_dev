@@ -36,9 +36,11 @@ static Forces run(const std::string& path,std::size_t level,
     // destinations before deleting anything, and never truncate inputs.
     const char* output_names[] = {
         "CFDX_NACA_CONVERGED_FORCE_CSV",
+        "CFDX_NACA_CONVERGED_FACE_FLUX_CSV",
         "CFDX_NACA_EXPORT_CONVERGED_STATE_CSV",
         "CFDX_NACA_FACE_PROFILES_CSV",
-        "CFDX_NACA_PHYSICAL_HISTORY_CSV"};
+        "CFDX_NACA_PHYSICAL_HISTORY_CSV",
+        "CFDX_NACA_MOMENTUM_BUDGET_CSV"};
     std::vector<std::string> outputs;
     for (const char* name : output_names) {
         const char* candidate = std::getenv(name);
@@ -47,6 +49,8 @@ static Forces run(const std::string& path,std::size_t level,
         if (output.empty() || output == path ||
             (std::getenv("CFDX_NACA_IMPORT_INITIAL_STATE_CSV") &&
              output == std::getenv("CFDX_NACA_IMPORT_INITIAL_STATE_CSV")) ||
+            (std::getenv("CFDX_NACA_IMPORT_FACE_FLUX_CSV") &&
+             output == std::getenv("CFDX_NACA_IMPORT_FACE_FLUX_CSV")) ||
             std::find(outputs.begin(), outputs.end(), output) != outputs.end()) {
             throw std::invalid_argument(std::string("invalid or conflicting NACA output path: ") + name);
         }
@@ -95,11 +99,41 @@ static Forces run(const std::string& path,std::size_t level,
 
     IncompressibleSolverControls c;
     c.algorithm=PressureVelocityAlgorithm::SIMPLE;
+    // Isolated A/B only. Both algorithms retain the exact same nonlinear
+    // momentum, continuity and independent-face convergence criteria.
+    if (const char* algorithm=std::getenv("CFDX_NACA_ALGORITHM")) {
+        const std::string requested(algorithm);
+        if (requested == "SIMPLEC")
+            c.algorithm=PressureVelocityAlgorithm::SIMPLEC;
+        else if (requested != "SIMPLE")
+            throw std::invalid_argument("CFDX_NACA_ALGORITHM expects SIMPLE or SIMPLEC");
+    }
+    if (const char* pseudo=std::getenv("CFDX_NACA_PSEUDO_MOMENTUM")) {
+        if (std::string(pseudo) != "1")
+            throw std::invalid_argument("CFDX_NACA_PSEUDO_MOMENTUM must be 1");
+        c.pseudo_momentum.enabled = true;
+    }
+    if (const char* cap=std::getenv("CFDX_NACA_PSEUDO_DIAGONAL_CAP")) {
+        if (!c.pseudo_momentum.enabled)
+            throw std::invalid_argument(
+                "CFDX_NACA_PSEUDO_DIAGONAL_CAP requires pseudo momentum");
+        std::size_t parsed = 0;
+        const std::string raw(cap);
+        const double fraction = std::stod(raw, &parsed);
+        if (parsed != raw.size() || !std::isfinite(fraction) ||
+            !(fraction > 0.0 && fraction <= 2.0))
+            throw std::invalid_argument(
+                "CFDX_NACA_PSEUDO_DIAGONAL_CAP expects a finite fraction in (0,2]");
+        c.pseudo_momentum.maximum_diagonal_fraction = fraction;
+    }
     c.density=rho; c.kinematic_viscosity=nu;
     c.linear_max_iterations=4000; c.linear_tolerance=1e-10;
     c.convergence.max_iterations=max_iterations;
     c.convergence.relative_tolerance=1e-8;
     c.convergence.continuity_tolerance=1e-8;
+    // Force/GCI output is forbidden until the independent face-transport
+    // momentum residual reaches the same strict nonlinear tolerance.
+    c.require_independent_face_residual_for_convergence = true;
     c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
     c.nonlinear_retry.reject_severe_physical_growth=growth_guard;
     cfdx::validation::apply_naca_relaxation_ab(c);
@@ -132,10 +166,18 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::invalid_argument("NACA van Leer requires an exclusive value of 1");
         c.convection_scheme=ConvectionScheme::TVD_VANLEER;
     }
+    // Alternative smooth limiter from the core numerics library, opt-in only.
+    if (const char* albada = std::getenv("CFDX_NACA_CONVECTION_VANALBADA")) {
+        if (std::string(albada) != "1" ||
+            c.convection_scheme != ConvectionScheme::UPWIND)
+            throw std::invalid_argument("NACA van Albada must be exclusive and equal 1");
+        c.convection_scheme = ConvectionScheme::TVD_VANALBADA;
+    }
     if (const char* continuation = std::getenv("CFDX_NACA_TVD_CONTINUATION")) {
         if (std::string(continuation) != "1" ||
             (c.convection_scheme != ConvectionScheme::TVD &&
-             c.convection_scheme != ConvectionScheme::TVD_VANLEER))
+             c.convection_scheme != ConvectionScheme::TVD_VANLEER &&
+             c.convection_scheme != ConvectionScheme::TVD_VANALBADA))
             throw std::invalid_argument(
                 "CFDX_NACA_TVD_CONTINUATION requires TVD or van Leer and value 1");
         c.convection_continuation.enabled = true;
@@ -193,6 +235,70 @@ static Forces run(const std::string& path,std::size_t level,
             return true;
         };
     }
+    // Cellwise signed momentum evidence: exported only on a requested
+    // iteration, never used by the solve or to promote convergence.
+    std::ofstream face_budget_output;
+    if (const char* budget_path = std::getenv("CFDX_NACA_MOMENTUM_BUDGET_CSV")) {
+        if (!*budget_path)
+            throw std::invalid_argument("NACA momentum budget path is empty");
+        std::size_t every = 10;
+        if (const char* interval = std::getenv("CFDX_NACA_MOMENTUM_BUDGET_EVERY")) {
+            const std::string raw(interval);
+            std::size_t parsed = 0;
+            every = std::stoull(raw, &parsed);
+            if (parsed != raw.size() || every < 1 || every > 100000)
+                throw std::invalid_argument("invalid NACA momentum budget frequency");
+        }
+        face_budget_output.open(budget_path);
+        if (!face_budget_output)
+            throw std::runtime_error("cannot open NACA momentum budget output");
+        face_budget_output << std::setprecision(17);
+        face_budget_output << "iteration,component,rank,cell,x,y,z,"
+            "convection,viscous,transpose_viscous,pressure,body_force,"
+            "bounded_divergence,mass_divergence,collocated_difference,"
+            "physical_residual,bounded_operator_residual,worst_residual\n";
+        std::size_t all_cells = 0;
+        if (const char* selection = std::getenv("CFDX_NACA_MOMENTUM_BUDGET_ALL_CELLS")) {
+            if (std::string(selection) != "1")
+                throw std::invalid_argument("NACA full cell budget requires value 1");
+            all_cells = 1;
+        }
+        c.momentum_face_budget_every = every;
+        c.momentum_face_budget_callback =
+            [&face_budget_output, all_cells](std::size_t iteration, std::size_t d,
+                                  const cfdx::physics::MomentumFaceBudget& budget,
+                                  const cfdx::physics::FvGeometry& geom) {
+            std::vector<std::size_t> order(budget.cells.size());
+            for (std::size_t cell = 0; cell < order.size(); ++cell)
+                order[cell] = cell;
+            const std::size_t top = all_cells
+                ? order.size() : std::min<std::size_t>(12, order.size());
+            std::partial_sort(order.begin(), order.begin()+static_cast<std::ptrdiff_t>(top), order.end(),
+                [&](std::size_t a, std::size_t b) {
+                    const double av = std::abs(budget.cells[a].physical_residual);
+                    const double bv = std::abs(budget.cells[b].physical_residual);
+                    return av == bv ? a < b : av > bv;
+                });
+            for (std::size_t rank = 0; rank < top; ++rank) {
+                const auto cell = order[rank];
+                const auto& p = geom.cell_centres[cell];
+                const auto& b = budget.cells[cell];
+                face_budget_output << iteration << ',' << d << ',' << rank
+                    << ',' << cell << ',' << p.x << ',' << p.y << ',' << p.z
+                    << ',' << b.convection << ',' << b.viscous
+                    << ',' << b.transpose_viscous << ',' << b.pressure
+                    << ',' << b.body_force << ',' << b.bounded_divergence
+                    << ',' << b.mass_divergence
+                    << ',' << b.collocated_difference
+                    << ',' << b.physical_residual
+                    << ',' << b.bounded_operator_residual
+                    << ',' << budget.worst_absolute_residual << '\n';
+            }
+            face_budget_output.flush();
+            if (!face_budget_output)
+                throw std::runtime_error("cannot write NACA momentum budget");
+        };
+    }
     cfdx::validation::NacaMomentumTrace naca_trace(mesh);
     if (const char* forensic = std::getenv("CFDX_NACA_FORENSICS");
         forensic != nullptr && std::string(forensic) == "1") {
@@ -228,6 +334,18 @@ static Forces run(const std::string& path,std::size_t level,
                   << " cells=" << init.size() << "\n";
     }
 
+    // Optional SAME-MESH restart of the last authoritative Rhie-Chow mass
+    // flux. An interpolated U,p state on a finer mesh cannot supply this file;
+    // those runs must reproject the flux and reconverge independently.
+    if (const char* path = std::getenv("CFDX_NACA_IMPORT_FACE_FLUX_CSV")) {
+        if (!std::getenv("CFDX_NACA_IMPORT_INITIAL_STATE_CSV"))
+            throw std::invalid_argument("NACA face-flux restart requires the matching U,p state");
+        c.initial_face_mass_flux = cfdx::validation::naca_read_face_flux_csv(
+            path, mesh, geometry);
+        std::cout << "NACA_INITIAL_FACE_FLUX: SAME_MESH_GUESS_NOT_A_CERTIFICATE"
+                  << " faces=" << c.initial_face_mass_flux.size() << "\n";
+    }
+
     // Exercise the strict mathematical BC/FVM path before the production solve.
     // The legacy maps below are retained for the current steady-solver compatibility API.
     cfdx::physics::BoundaryConstraintMap strict_bc;
@@ -257,7 +375,10 @@ static Forces run(const std::string& path,std::size_t level,
                                       solve_started).count();
     std::cout << "NACA_SOLVE_WALL elapsed_seconds=" << solve_elapsed_seconds
               << " accepted_iterations=" << solve.history.size()
-              << " converged=" << solve.converged << '\n';
+              << " converged=" << solve.converged
+              << " algorithm=" << (c.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                     ? "SIMPLEC" : "SIMPLE")
+              << " pseudo_momentum=" << c.pseudo_momentum.enabled << '\n';
     // Save physical nonlinear diagnostics even when the full CFD gate fails.
     // The official force/GCI checks still require solve.converged == true.
     // This opt-in creates no matrix dumps and can be used for long runs.
@@ -268,7 +389,15 @@ static Forces run(const std::string& path,std::size_t level,
                "mass_normalized_imbalance,mass_local_linf,"
                "flux_velocity_mismatch_normalized,pressure_linear_iterations,"
                "momentum_linear_iterations,nonfinite_mass_faces,nonfinite_velocities,"
-               "high_order_fraction\n";
+               "high_order_fraction,face_momentum_x_relative,"
+               "face_momentum_y_relative,face_momentum_z_relative,"
+               "face_momentum_x_linf,face_momentum_y_linf,face_momentum_z_linf,"
+               "convection_scheme,momentum_reference_relative,"
+               "momentum_x_rhs_relative,momentum_y_rhs_relative,"
+               "momentum_z_rhs_relative,momentum_component_max,"
+               "velocity_change_inf,pressure_change_inf,pressure_residual,"
+               "alpha_u,alpha_p,pseudo_cfl,nonlinear_metric,"
+               "algorithm,pseudo_capped_cells\n";
         out << std::setprecision(17);
         for (const auto& h : solve.history)
             out << h.iteration << ',' << h.continuity_normalized << ','
@@ -279,7 +408,31 @@ static Forces run(const std::string& path,std::size_t level,
                 << h.momentum_linear_iterations << ','
                 << h.mass_nonfinite_faces << ','
                 << h.boundedness_nonfinite_velocity << ','
-                << h.high_order_fraction << '\n';
+                << h.high_order_fraction << ','
+                << h.momentum_face_local_relative[0] << ','
+                << h.momentum_face_local_relative[1] << ','
+                << h.momentum_face_local_relative[2] << ','
+                << h.momentum_face_local_linf[0] << ','
+                << h.momentum_face_local_linf[1] << ','
+                << h.momentum_face_local_linf[2] << ','
+                << (c.convection_scheme == ConvectionScheme::TVD ? "TVD" :
+                    c.convection_scheme == ConvectionScheme::TVD_VANLEER ? "TVD_VANLEER" :
+                    c.convection_scheme == ConvectionScheme::TVD_VANALBADA ? "TVD_VANALBADA" :
+                    c.convection_scheme == ConvectionScheme::UPWIND ? "UPWIND" :
+                    "OTHER") << ','
+                << h.momentum_equation_residual_relative << ','
+                << h.momentum_equation_residual_rhs_relative_components[0] << ','
+                << h.momentum_equation_residual_rhs_relative_components[1] << ','
+                << h.momentum_equation_residual_rhs_relative_components[2] << ','
+                << h.momentum_equation_residual_rhs_active_component_max << ','
+                << h.velocity_change_inf << ',' << h.pressure_change_inf << ','
+                << h.pressure_residual << ','
+                << h.effective_alpha_u << ',' << h.effective_alpha_p << ','
+                << (c.pseudo_momentum.enabled ? h.v17_pseudo_cfl : 0.0) << ','
+                << h.nonlinear_convergence_metric << ','
+                << (c.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                        ? "SIMPLEC" : "SIMPLE") << ','
+                << h.v17_pseudo_capped_cells << '\n';
         out.flush();
         if (!out) throw std::runtime_error("failed writing NACA physical history CSV");
     };
@@ -288,7 +441,10 @@ static Forces run(const std::string& path,std::size_t level,
         write_outer_history(path);
         std::cout << "NACA_PHYSICAL_HISTORY path=" << path
                   << " accepted_iterations=" << solve.history.size()
-                  << " converged=" << solve.converged << '\n';
+                  << " converged=" << solve.converged
+              << " algorithm=" << (c.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                     ? "SIMPLEC" : "SIMPLE")
+              << " pseudo_momentum=" << c.pseudo_momentum.enabled << '\n';
     }
 
     if(!solve.converged) {
@@ -322,6 +478,13 @@ static Forces run(const std::string& path,std::size_t level,
         cfdx::validation::naca_write_state_csv(path, state);
         std::cout << "NACA_CONVERGED_STATE: EXPORTED_ONLY_AFTER_PASS cells="
                   << state.size() << "\n";
+    }
+
+    if (const char* path = std::getenv("CFDX_NACA_CONVERGED_FACE_FLUX_CSV")) {
+        cfdx::validation::naca_write_face_flux_csv(
+            path, mesh, geometry, solve.authoritative_mass_flux);
+        std::cout << "NACA_CONVERGED_FACE_FLUX: EXPORTED_ONLY_AFTER_PASS"
+                  << " faces=" << mesh.n_faces() << "\n";
     }
 
     ScalarBoundaryConditions gx,gy;

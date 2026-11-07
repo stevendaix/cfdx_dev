@@ -56,6 +56,15 @@ int main() {
         auto bad=options; bad.pressure_schur_diagonal=&wrong_adjusted;
         EXPECT_TRUE(!certify_coupled_assembly_structure(A,rhs,guess,2,2,bad).passed);
     });
+    run_case("coupled_assembly_certificate_rejects_unpinned_schur_gauge", [&] {
+        // The physical Krylov gauge row is unit-diagonal; its Schur
+        // metadata must not silently carry a zero or negative coefficient.
+        const std::vector<double> wrong_gauge{4.0, 0.0};
+        auto bad = options;
+        bad.pressure_schur_diagonal = &wrong_gauge;
+        EXPECT_TRUE(!certify_coupled_assembly_structure(
+            A, rhs, guess, 2, 2, bad).passed);
+    });
     run_case("coupled_assembly_certificate_rejects_zero_and_nonfinite_rows", [&] {
         SparseMatrix zero(4,4);
         zero.push_back(0,0,4.0); zero.push_back(1,1,3.0);

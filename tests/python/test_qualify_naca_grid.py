@@ -33,6 +33,25 @@ class GridQualificationTests(unittest.TestCase):
         self.assertAlmostEqual(q["quantities"]["cd"]["order"], 2.0)
         self.assertAlmostEqual(q["quantities"]["cd"]["extrapolated"], 0.12)
 
+    def test_unequal_but_compatible_refinement_ratios_recover_exact_order(self):
+        # Ratio coarse/mid=2, mid/fine=1.96: averaging the ratios biases p.
+        hs = (0.25, 0.125, 0.125 / 1.96)
+        result = qualify([row(h) for h in hs])
+        self.assertAlmostEqual(result["quantities"]["cd"]["order"], 2.0, places=9)
+        self.assertAlmostEqual(
+            result["quantities"]["cd"]["extrapolated"], 0.12, places=11
+        )
+        self.assertAlmostEqual(result["refinement_ratios"][0], 2.0)
+        self.assertAlmostEqual(result["refinement_ratios"][1], 1.96)
+
+    def test_negative_observed_order_refuses_false_gci(self):
+        rows = [row(0.25), row(0.125), row(0.125 / 1.96)]
+        # The coarse-to-medium delta is too small for any positive order.
+        rows[0]["cd"] = str(float(rows[1]["cd"]) + 1.0e-6)
+        rows[0]["cdv"] = str(float(rows[0]["cd"]) - float(rows[0]["cdp"]))
+        result = qualify(rows)
+        self.assertEqual(result["quantities"]["cd"]["status"], "invalid_observed_order")
+
     def test_unconverged_grid_is_rejected(self):
         rows = [row(0.25), row(0.125), row(0.0625)]
         rows[0]["converged"] = "no"
@@ -43,6 +62,12 @@ class GridQualificationTests(unittest.TestCase):
         rows = [row(0.25), row(0.125), row(0.0625)]
         rows[2]["res_mass"] = "1e-5"
         with self.assertRaisesRegex(ValueError, "exceeds"):
+            qualify(rows)
+
+    def test_negative_residual_is_rejected(self):
+        rows = [row(0.25), row(0.125), row(0.0625)]
+        rows[2]["res_mass"] = "-1e-10"
+        with self.assertRaisesRegex(ValueError, "negative"):
             qualify(rows)
 
     def test_invalid_residual_gate_is_rejected(self):

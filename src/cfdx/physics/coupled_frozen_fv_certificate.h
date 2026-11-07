@@ -141,8 +141,13 @@ inline CoupledFrozenFvReport certify_coupled_frozen_fv_operator(
             divergence[n] -= phi;
         } else {
             const std::size_t patch = geometry.face_patch[f];
+            // Match the production continuity block: both EMPTY and
+            // SYMMETRY have prescribed zero normal mass flux, independent
+            // of the trial cell-centred velocity. Counting the velocity on a
+            // SYMMETRY face here produced false operator failures.
             if (patch < mesh.boundary().n_patches() &&
-                mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                (mesh.boundary().patch(patch).type == PatchType::EMPTY ||
+                 mesh.boundary().patch(patch).type == PatchType::SYMMETRY))
                 continue;
             const std::string name = patch < mesh.boundary().n_patches()
                 ? mesh.boundary().patch(patch).name : "";

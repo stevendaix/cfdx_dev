@@ -48,6 +48,21 @@ inline double convection_high_order_fraction(
         static_cast<double>(controls.high_order_ramp_iterations);
 }
 
+// A growth or adaptive-degradation check may compare nonlinear residuals
+// only when the *same discrete convection operator* is active. At a ramp
+// boundary the newly evaluated residual includes a changed deferred-order
+// correction; comparing it with a residual of the previous operator can
+// incorrectly reject all trials before the ramp begins. This DOES NOT relax
+// the final full-order physical convergence gates or permit nonfinite states.
+inline bool convection_residuals_share_operator(
+    const ConvectionContinuationControls& controls, std::size_t iteration) {
+    if (iteration == 0)
+        throw std::invalid_argument("convection operator comparison: invalid iteration");
+    return iteration == 1 ||
+        convection_high_order_fraction(controls, iteration) ==
+        convection_high_order_fraction(controls, iteration - 1);
+}
+
 // The nonlinear monitor receives a dimensionless, RHS-normalized synthetic
 // residual. A reference from an intermediate discretization cannot be used as
 // the denominator for a full-order convergence certificate. Preserve the

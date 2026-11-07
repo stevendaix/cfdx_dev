@@ -670,6 +670,7 @@ int main()
 
         IncompressibleSolverControls c;
         c.algorithm = PressureVelocityAlgorithm::SIMPLE;
+        c.require_independent_face_residual_for_convergence = true;
         c.convergence.max_iterations = 5;
         c.convergence.continuity_tolerance = 1e-12;
         c.linear_tolerance = 1e-12;
@@ -684,6 +685,8 @@ int main()
         EXPECT_NEAR(U(0,2),0.0,1e-14);
         EXPECT_NEAR(p(0),0.0,1e-14);
         EXPECT_NEAR(r.history.back().continuity_linf,0.0,1e-14);
+        for (double residual : r.history.back().momentum_face_local_relative)
+            EXPECT_NEAR(residual,0.0,1e-14);
     });
 
 
@@ -701,6 +704,7 @@ int main()
 
         IncompressibleSolverControls c;
         c.algorithm = PressureVelocityAlgorithm::SIMPLEC;
+        c.require_independent_face_residual_for_convergence = true;
         c.convergence.max_iterations = 5;
         c.convergence.continuity_tolerance = 1e-12;
         c.linear_tolerance = 1e-12;
@@ -943,6 +947,41 @@ int main()
                                       {std::numeric_limits<double>::quiet_NaN()},
                                       1.0, ubc),
             std::invalid_argument);
+    });
+
+    run_case("fixed_pressure_gauge_rejects_phantom_and_impermeable_patches", [] {
+        Mesh m = make_unit_cube();
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
+        EXPECT_TRUE(has_effective_fixed_pressure_boundary(m, pbc));
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        EXPECT_TRUE(!has_effective_fixed_pressure_boundary(m, pbc));
+        pbc.clear();
+        pbc["typo_outlet"] = {ScalarBoundaryType::FIXED_VALUE, 3.0, 0.0};
+        EXPECT_THROW_WITH(has_effective_fixed_pressure_boundary(m, pbc),
+                          std::invalid_argument, "unknown patch");
+
+        Field<double,Location::CELL> U(1,"U","m/s",3), p(1,"p","Pa",1);
+        U.fill(0.0); p.fill(0.0);
+        IncompressibleSolverControls controls;
+        controls.initialization.mode = InitializationMode::Uniform;
+        controls.initialization.uniform_velocity = {2.0, 0.0, 0.0};
+        EXPECT_THROW_WITH(solve_steady_incompressible(m, U, p, {}, pbc, controls),
+                          std::invalid_argument, "unknown patch");
+        EXPECT_NEAR(U.component_data(0)[0], 0.0, 0.0); // before initialization
+
+        pbc.clear();
+        pbc["wall"] = {ScalarBoundaryType::FIXED_VALUE, 1.0, 0.0};
+        m.boundary().patch(0).type = PatchType::EMPTY;
+        EXPECT_THROW_WITH(has_effective_fixed_pressure_boundary(m, pbc),
+                          std::invalid_argument, "no effective Dirichlet face");
+        m.boundary().patch(0).type = PatchType::SYMMETRY;
+        EXPECT_THROW_WITH(has_effective_fixed_pressure_boundary(m, pbc),
+                          std::invalid_argument, "no effective Dirichlet face");
+        m.boundary().patch(0).type = PatchType::WALL;
+        m.boundary().patch(0).face_ids.clear();
+        EXPECT_THROW_WITH(has_effective_fixed_pressure_boundary(m, pbc),
+                          std::invalid_argument, "no effective Dirichlet face");
     });
 
     run_case("fixed_pressure_boundary_is_accepted_by_coupled_solver", [] {
