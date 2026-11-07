@@ -49,7 +49,7 @@ def read_history(path: Path) -> list[dict[str, float | int | str]]:
             if float(item["high_order_fraction"]) > 1.0:
                 raise ValueError("NACA history has invalid high-order fraction")
             for field, options in (("algorithm", ("SIMPLE", "SIMPLEC")),
-                                   ("convection_scheme", ("UPWIND", "TVD", "TVD_VANLEER"))):
+                                   ("convection_scheme", ("UPWIND", "TVD", "TVD_VANLEER", "TVD_VANALBADA"))):
                 if row[field] not in options:
                     raise ValueError(f"NACA history has invalid {field}")
                 item[field] = row[field]
@@ -96,7 +96,7 @@ def diagnose(rows: list[dict[str, float | int | str]],
         "algorithm": last["algorithm"],
         "scheme": last["convection_scheme"],
         "full_order_fraction": float(last["high_order_fraction"]),
-        "full_order_scheme": last["convection_scheme"] in ("TVD", "TVD_VANLEER")
+        "full_order_scheme": last["convection_scheme"] in ("TVD", "TVD_VANLEER", "TVD_VANALBADA")
             and float(last["high_order_fraction"]) == 1.0,
         "momentum_reference_ratio_diagnostic": ratio,
         "momentum_component_max_geometric_ratio": trend,
