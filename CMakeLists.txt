@@ -574,6 +574,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_conservation_assembly tests/unit/test_conservation_assembly.cpp)
     add_cfdx_test(test_integrate tests/unit/test_integrate.cpp)
     add_cfdx_test(test_forces tests/unit/test_forces.cpp)
+    add_cfdx_test(test_naca_planar_contract tests/unit/test_naca_planar_contract.cpp)
     add_cfdx_test(test_force_finite_contract tests/unit/test_force_finite_contract.cpp)
     set_tests_properties(test_force_finite_contract PROPERTIES
         LABELS "validation;forces;regression")
@@ -947,6 +948,11 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_executable(test_naca0012_qualification tests/validation/test_naca0012_geometry.cpp)
     target_link_libraries(test_naca0012_qualification PRIVATE cfdx_core)
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_naca_case_separation
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/validate_naca_case_separation.py
+                --registry ${CMAKE_SOURCE_DIR}/docs/validation/CFDX_QUALIFICATION_REGISTRY.json)
+        set_tests_properties(test_naca_case_separation PROPERTIES
+            LABELS "naca;sst;contract;regression" TIMEOUT 15)
         add_test(NAME test_naca_mesh_similarity_gate
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_mesh_similarity_gate.py)

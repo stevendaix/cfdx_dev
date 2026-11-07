@@ -1,5 +1,7 @@
 #include "cfdx/io/hdf5/hdf5_reader.h"
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/naca_planar_contract.h"
+#include "cfdx/physics/forces.h"
 #include "qualification_boundary_helpers.h"
 #include "naca_momentum_trace.h"
 #include "naca_relaxation_controls.h"
@@ -61,6 +63,9 @@ static Forces run(const std::string& path,std::size_t level,
     if(!mesh.topo_validate().ok)
         throw std::runtime_error("invalid NACA0012 topology: "+path);
 
+    // The laminar qualification explicitly requires a single-layer XY
+    // extrusion. Its span is a geometrical reference, NOT an extra wall.
+    const auto planar = require_naca_planar_geometry(mesh);
     constexpr double rho=1.0, Uinf=1.0, Re=1000.0, chord=1.0;
     constexpr double nu=Uinf*chord/Re;
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
@@ -291,6 +296,20 @@ static Forces run(const std::string& path,std::size_t level,
                   << " converged=" << solve.converged << '\n';
     }
 
+    // The authoritative face flux is the one accepted by the pressure-
+    // velocity solver. A guessed interpolation of U would not certify EMPTY.
+    if (solve.authoritative_mass_flux.size() == mesh.n_faces()) {
+        const auto plane = require_naca_planar_state(
+            mesh, U, solve.authoritative_mass_flux,
+            Uinf, rho * Uinf * chord * planar.span);
+        std::cout << "NACA_PLANAR_STATE: PASS span=" << planar.span
+                  << " max_abs_uz=" << plane.max_abs_uz
+                  << " max_empty_phi=" << plane.max_abs_empty_face_flux
+                  << " checked_empty_faces=" << plane.checked_empty_faces
+                  << "\n";
+    } else if (solve.converged) {
+        throw std::runtime_error("NACA2D: converged solver did not provide authoritative mass flux");
+    }
     if(!solve.converged) {
         std::ostringstream message;
         message << "NACA0012 solver did not converge: status="
@@ -369,6 +388,14 @@ static Forces run(const std::string& path,std::size_t level,
     }
     double Fx=0,Fy=0,Mz=0,Fxp=0,Fyp=0,Fxv=0,Fyv=0;
     const double q=0.5*rho*Uinf*Uinf;
+    const double reference_area=chord*planar.span;
+    const double qA=q*reference_area;
+    const double qAL=qA*chord;
+    if (!(qA > 0.0) || !std::isfinite(qA) ||
+        !(qAL > 0.0) || !std::isfinite(qAL))
+        throw std::runtime_error("NACA2D: invalid force/moment reference scales");
+    std::vector<forces::SurfaceSample> force_samples;
+    force_samples.reserve(patch.face_ids.size());
     for(const auto f:patch.face_ids){
         const std::size_t o=mesh.ownership().owner(f);
         const auto Sf=geometry.face_area_vectors[f];
@@ -404,6 +431,10 @@ static Forces run(const std::string& path,std::size_t level,
             Fxv -= face_txv*Sf.mag(); Fyv -= face_tyv*Sf.mag();
             const auto r = geometry.face_centres[f]-Vec3{0.25,0,0};
             Mz += r.x*ty-r.y*tx;
+            const auto centre = geometry.face_centres[f];
+            force_samples.push_back({
+                {centre.x, centre.y, centre.z}, {-n.x, -n.y, -n.z},
+                Sf.mag(), pp, {-face_txv, -face_tyv, 0.0}});
             if (face_profiles) {
                 Vec3 tangent{-n.y,n.x,0.0};
                 if (tangent.x < 0.0) tangent *= -1.0;
@@ -412,8 +443,8 @@ static Forces run(const std::string& path,std::size_t level,
                 face_profiles << f << ',' << geometry.face_centres[f].x/chord
                               << ',' << geometry.face_centres[f].y/chord
                               << ',' << pp/q << ',' << cf_tangent
-                              << ',' << (pp*n.x*Sf.mag())/q
-                              << ',' << (-face_txv*Sf.mag())/q << '\n';
+                              << ',' << (pp*n.x*Sf.mag())/qA
+                              << ',' << (-face_txv*Sf.mag())/qA << '\n';
             }
             continue;
         }
@@ -433,6 +464,11 @@ static Forces run(const std::string& path,std::size_t level,
         Fyv+=-(txy*n.x+tyy*n.y)*Sf.mag();
         const auto r=geometry.face_centres[f]-Vec3{0.25,0,0};
         Mz+=r.x*ty-r.y*tx;
+        const auto centre = geometry.face_centres[f];
+        force_samples.push_back({
+            {centre.x, centre.y, centre.z}, {-n.x, -n.y, -n.z},
+            Sf.mag(), pp, {-(txx*n.x + txy*n.y),
+                            -(txy*n.x + tyy*n.y), 0.0}});
     }
     // Independent, experimental two-depth wall-shear diagnostic. Does not
     // change the qualified force coefficient or hide missing near-wall cells.
@@ -500,7 +536,7 @@ static Forces run(const std::string& path,std::size_t level,
                     face, outward, tangent, {0,0,0},
                     sample(owner), sample(deeper), rho*nu);
                 const double drag_face = value.shear_on_body_tangent *
-                    tangent.x * sf.mag() / q;
+                    tangent.x * sf.mag() / qA;
                 integrated_cd_viscous += drag_face;
                 if (quadratic_profiles)
                     quadratic_profiles << f << ',' << face.x/chord << ','
@@ -525,7 +561,28 @@ static Forces run(const std::string& path,std::size_t level,
     }
     if (face_profiles && !face_profiles.good())
         throw std::runtime_error("failed to write NACA face profiles CSV");
-    const double cd=Fx/q, cl=Fy/q, cm=Mz/q;
+    // Reuse CFDX's existing dimensional surface-force integrator instead
+    // of silently assuming c=b=1. It independently recomputes and checks
+    // pressure/viscous components and moment from each face sample.
+    forces::Reference force_reference;
+    force_reference.rho_inf=rho;
+    force_reference.u_inf=Uinf;
+    force_reference.area=reference_area;
+    force_reference.length=chord;
+    force_reference.moment_center={0.25*chord,0,0};
+    const auto integrated = forces::integrate(force_samples, force_reference);
+    const auto equivalent = [](double a, double b) {
+        return std::abs(a-b) <= 2e-11 * std::max({1.0, std::abs(a), std::abs(b)});
+    };
+    if (!equivalent(integrated.total_force.x,Fx) ||
+        !equivalent(integrated.total_force.y,Fy) ||
+        !equivalent(integrated.pressure_force.x,Fxp) ||
+        !equivalent(integrated.pressure_force.y,Fyp) ||
+        !equivalent(integrated.viscous_force.x,Fxv) ||
+        !equivalent(integrated.viscous_force.y,Fyv) ||
+        !equivalent(integrated.total_moment.z,Mz))
+        throw std::runtime_error("NACA2D: independent surface force/moment integrators disagree");
+    const double cd=integrated.cd, cl=integrated.cl, cm=integrated.cmz;
     const auto& last=solve.history.back();
     // Optional, machine-readable single-grid certificate. The three-grid
     // Richardson/GCI gate must still validate mesh-family similarity and
@@ -545,8 +602,8 @@ static Forces run(const std::string& path,std::size_t level,
             << chord / static_cast<double>(surface_resolution)
             << ",yes," << last.momentum_equation_residual_rhs_relative << ','
             << std::max({last.continuity_normalized, last.mass_normalized_imbalance,
-                         last.mass_local_linf}) << ',' << cd << ',' << Fxp/q
-            << ',' << Fxv/q << ',' << cl << ',' << cm << '\n';
+                         last.mass_local_linf}) << ',' << cd << ',' << integrated.cd_pressure
+            << ',' << integrated.cd_viscous << ',' << cl << ',' << cm << '\n';
         out.flush();
         if (!out) throw std::runtime_error("failed writing converged force certificate");
         std::cout << "NACA_CONVERGED_FORCE_CERTIFICATE path=" << output
@@ -554,10 +611,10 @@ static Forces run(const std::string& path,std::size_t level,
     }
     std::cout<<"NACA0012_RE1000_A0 level="<<((patch.face_ids.size()-1)/2)
              <<" Cd="<<cd<<" Cl="<<cl<<" Cm="<<cm
-             <<" Cd_pressure="<<Fxp/q<<" Cd_viscous="<<Fxv/q
+             <<" Cd_pressure="<<integrated.cd_pressure<<" Cd_viscous="<<integrated.cd_viscous
              <<" continuity="<<last.continuity_linf
              <<" iterations="<<solve.iterations<<"\n";
-    return {cd,cl,cm,Fxp/q,Fxv/q,last.continuity_linf};
+    return {cd,cl,cm,integrated.cd_pressure,integrated.cd_viscous,last.continuity_linf};
 }
 
 static void run_quick_contract(const std::string& path)
@@ -568,6 +625,8 @@ static void run_quick_contract(const std::string& path)
     const auto topo=mesh.topo_validate();
     if(!topo.ok)
         throw std::runtime_error("invalid NACA0012 topology: "+path);
+
+    const auto planar = require_naca_planar_geometry(mesh);
 
     const auto geometry=build_fv_geometry(mesh);
     Field<double,Location::CELL> U(mesh.n_cells(),"U","m/s",3);
@@ -611,7 +670,7 @@ static void run_quick_contract(const std::string& path)
                  mesh.boundary().patch(split_in).size() +
                  mesh.boundary().patch(split_out).size() :
                  mesh.boundary().patch(farfield_id).size())
-             <<" solver_campaign_pending\n";
+             <<" span="<<planar.span<<" solver_campaign_pending\n";
 }
 
 int main(int argc,char**argv)
