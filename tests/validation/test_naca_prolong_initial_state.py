@@ -121,12 +121,6 @@ class ProlongTests(unittest.TestCase):
     def test_bad_csv_schema_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory) / "data.csv"
-        with self.assertRaises(ValueError):
-            MODULE.prolong(self.coarse, self.fine, neighbors=2)
-
-    def test_bad_csv_schema_rejected(self):
-        with tempfile.TemporaryDirectory() as directory:
-            p = Path(directory) / "data.csv"
             p.write_text("cell,x,y\n0,0,0\n", encoding="utf-8")
             with self.assertRaises(ValueError):
                 MODULE.read_csv(p, ("cell", "x", "y", "z"))

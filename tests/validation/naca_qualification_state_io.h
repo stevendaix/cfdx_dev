@@ -5,6 +5,8 @@
 // The import validates every cell index and center before mutating the fields.
 
 #include "cfdx/core/field/field.h"
+#include "cfdx/core/mesh/mesh.h"
+#include "cfdx/physics/finite_volume_transport.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -119,4 +121,75 @@ inline void naca_write_centers_csv(
     }
     if (!out.good()) throw std::runtime_error("failed to write NACA centers");
 }
+// Same-mesh restart: the conservative mass flux at the accepted iterate
+// cannot in general be reconstructed from cell-centred U and p alone.
+// Bind every row to both connectivity and geometry so a face sequence from
+// another mesh or a reversed orientation cannot silently be accepted.
+inline void naca_write_face_flux_csv(
+    const std::string& path, const cfdx::core::Mesh& mesh,
+    const cfdx::physics::FvGeometry& geometry,
+    const cfdx::core::Field<double, cfdx::core::Location::FACE>& flux) {
+    const auto nf = mesh.n_faces();
+    if (flux.size() != nf || flux.dimension() != 1 ||
+        geometry.face_centres.size() != nf || geometry.face_area_vectors.size() != nf)
+        throw std::invalid_argument("NACA face-flux output shape mismatch");
+    std::ofstream out(path, std::ios::trunc);
+    if (!out) throw std::runtime_error("cannot open NACA converged face-flux CSV");
+    out << "face,owner,neighbour,cx,cy,cz,sx,sy,sz,mass_flux\n"
+        << std::setprecision(std::numeric_limits<double>::max_digits10);
+    for (std::size_t f=0; f<nf; ++f) {
+        const auto& cf=geometry.face_centres[f];
+        const auto& sf=geometry.face_area_vectors[f];
+        if (!std::isfinite(cf.x) || !std::isfinite(cf.y) || !std::isfinite(cf.z) ||
+            !std::isfinite(sf.x) || !std::isfinite(sf.y) || !std::isfinite(sf.z) ||
+            !std::isfinite(flux(f)))
+            throw std::invalid_argument("NACA face-flux export nonfinite");
+        out << f << ',' << mesh.ownership().owner(f) << ','
+            << mesh.ownership().neighbour(f) << ','
+            << cf.x << ',' << cf.y << ',' << cf.z << ','
+            << sf.x << ',' << sf.y << ',' << sf.z << ',' << flux(f) << '\n';
+    }
+    out.flush();
+    if (!out) throw std::runtime_error("NACA converged face-flux CSV write failure");
+}
+
+inline std::vector<double> naca_read_face_flux_csv(
+    const std::string& path, const cfdx::core::Mesh& mesh,
+    const cfdx::physics::FvGeometry& geometry) {
+    const auto nf=mesh.n_faces();
+    if (geometry.face_centres.size() != nf || geometry.face_area_vectors.size() != nf)
+        throw std::invalid_argument("NACA restart face geometry size mismatch");
+    std::ifstream in(path);
+    if (!in) throw std::runtime_error("cannot open NACA initial face flux: " + path);
+    std::string line;
+    if (!std::getline(in,line)) throw std::invalid_argument("NACA face-flux CSV empty");
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line != "face,owner,neighbour,cx,cy,cz,sx,sy,sz,mass_flux")
+        throw std::invalid_argument("NACA face-flux CSV schema mismatch");
+    std::vector<double> values;
+    values.reserve(nf);
+    for (std::size_t f=0; f<nf; ++f) {
+        if (!std::getline(in,line)) throw std::invalid_argument("NACA face-flux CSV incomplete");
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        const auto parts=naca_csv_fields(line);
+        if (parts.size() != 10 || parts[0] != std::to_string(f) ||
+            parts[1] != std::to_string(mesh.ownership().owner(f)) ||
+            parts[2] != std::to_string(mesh.ownership().neighbour(f)))
+            throw std::invalid_argument("NACA face-flux CSV connectivity mismatch");
+        const auto& cf=geometry.face_centres[f];
+        const auto& sf=geometry.face_area_vectors[f];
+        const double reference[]{cf.x,cf.y,cf.z,sf.x,sf.y,sf.z};
+        for (std::size_t j=0; j<6; ++j) {
+            const double value=naca_csv_finite_double(parts[j+3]);
+            if (std::abs(value-reference[j]) >
+                2e-10*std::max({1.0,std::abs(value),std::abs(reference[j])}))
+                throw std::invalid_argument("NACA face-flux CSV geometry mismatch");
+        }
+        values.push_back(naca_csv_finite_double(parts[9]));
+    }
+    if (std::getline(in,line))
+        throw std::invalid_argument("NACA face-flux CSV extra rows");
+    return values;
+}
+
 } // namespace cfdx::validation

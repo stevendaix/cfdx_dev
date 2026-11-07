@@ -674,12 +674,6 @@ int main()
         c.convergence.max_iterations = 5;
         c.convergence.continuity_tolerance = 1e-12;
         c.linear_tolerance = 1e-12;
-
-        IncompressibleSolverControls c;
-        c.algorithm = PressureVelocityAlgorithm::SIMPLE;
-        c.convergence.max_iterations = 5;
-        c.convergence.continuity_tolerance = 1e-12;
-        c.linear_tolerance = 1e-12;
         c.pressure_reference_cell = 0;
         c.pressure_reference_value = 0.0;
 
@@ -693,12 +687,6 @@ int main()
         EXPECT_NEAR(r.history.back().continuity_linf,0.0,1e-14);
         for (double residual : r.history.back().momentum_face_local_relative)
             EXPECT_NEAR(residual,0.0,1e-14);
-    });
-
-
-        EXPECT_NEAR(U(0,2),0.0,1e-14);
-        EXPECT_NEAR(p(0),0.0,1e-14);
-        EXPECT_NEAR(r.history.back().continuity_linf,0.0,1e-14);
     });
 
 
@@ -717,12 +705,6 @@ int main()
         IncompressibleSolverControls c;
         c.algorithm = PressureVelocityAlgorithm::SIMPLEC;
         c.require_independent_face_residual_for_convergence = true;
-        c.convergence.max_iterations = 5;
-        c.convergence.continuity_tolerance = 1e-12;
-        c.linear_tolerance = 1e-12;
-
-        IncompressibleSolverControls c;
-        c.algorithm = PressureVelocityAlgorithm::SIMPLEC;
         c.convergence.max_iterations = 5;
         c.convergence.continuity_tolerance = 1e-12;
         c.linear_tolerance = 1e-12;
@@ -1000,12 +982,6 @@ int main()
         m.boundary().patch(0).face_ids.clear();
         EXPECT_THROW_WITH(has_effective_fixed_pressure_boundary(m, pbc),
                           std::invalid_argument, "no effective Dirichlet face");
-    });
-
-    run_case("fixed_pressure_boundary_is_accepted_by_coupled_solver", [] {
-        const Mesh m = make_unit_cube();
-        Field<double,Location::CELL> U(1,"U","m/s",3);
-            std::invalid_argument);
     });
 
     run_case("fixed_pressure_boundary_is_accepted_by_coupled_solver", [] {
