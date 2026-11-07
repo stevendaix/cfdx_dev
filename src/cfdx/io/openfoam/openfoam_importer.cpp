@@ -12,7 +12,6 @@
 #include <cstdint>
 #include <limits>
 #include <algorithm>
-#include <regex>
 
 namespace cfdx::io::openfoam {
 namespace {
@@ -158,29 +157,114 @@ bool read_boundary(const std::filesystem::path& path,
     std::string text;
     if (!read_text(path, text)) return false;
 
-    std::regex patch_re(
-        R"(([A-Za-z_][A-Za-z0-9_.-]*)\s*\{([\s\S]*?)\})");
-    std::regex type_re(R"(\btype\s+([^;]+);)");
-    std::regex nfaces_re(R"(\bnFaces\s+(\d+)\s*;)");
-    std::regex start_re(R"(\bstartFace\s+(\d+)\s*;)");
+    const auto skip_space = [](const std::string& input, std::size_t& position) {
+        while (position < input.size() &&
+               std::isspace(static_cast<unsigned char>(input[position])) != 0) {
+            ++position;
+        }
+    };
+    const auto is_identifier_start = [](char value) {
+        const auto c = static_cast<unsigned char>(value);
+        return std::isalpha(c) != 0 || value == '_';
+    };
+    const auto is_identifier_char = [](char value) {
+        const auto c = static_cast<unsigned char>(value);
+        return std::isalnum(c) != 0 || value == '_' || value == '.' || value == '-';
+    };
+    const auto find_entry = [&](const std::string& body,
+                                const std::string& key,
+                                std::string& value) {
+        std::size_t position = 0;
+        while (position < body.size()) {
+            if (!is_identifier_start(body[position])) {
+                ++position;
+                continue;
+            }
+            const std::size_t token_start = position++;
+            while (position < body.size() && is_identifier_char(body[position])) {
+                ++position;
+            }
+            const std::string token = body.substr(token_start, position - token_start);
+            if (token != key) continue;
+
+            skip_space(body, position);
+            const std::size_t value_end = body.find(';', position);
+            if (value_end == std::string::npos) return false;
+            const std::size_t first = body.find_first_not_of(" \t\r\n", position);
+            if (first == std::string::npos || first >= value_end) return false;
+            const std::size_t last = body.find_last_not_of(" \t\r\n", value_end - 1);
+            value = body.substr(first, last - first + 1);
+            return true;
+        }
+        return false;
+    };
 
     bool found = false;
-    for (std::sregex_iterator it(text.begin(), text.end(), patch_re), e; it != e; ++it) {
-        const std::string name = (*it)[1].str();
-        const std::string body = (*it)[2].str();
-        std::smatch type_match, count_match, start_match;
-        if (!std::regex_search(body, type_match, type_re)) continue;
-        if (!std::regex_search(body, count_match, nfaces_re)) continue;
-        if (!std::regex_search(body, start_match, start_re)) continue;
-        const std::size_t nfaces = static_cast<std::size_t>(std::stoull(count_match[1].str()));
-        const std::size_t start = static_cast<std::size_t>(std::stoull(start_match[1].str()));
+    std::size_t position = 0;
+    while (position < text.size()) {
+        skip_space(text, position);
+        if (position >= text.size()) break;
+        if (!is_identifier_start(text[position])) {
+            ++position;
+            continue;
+        }
+
+        const std::size_t name_start = position++;
+        while (position < text.size() && is_identifier_char(text[position])) {
+            ++position;
+        }
+        const std::string name = text.substr(name_start, position - name_start);
+        skip_space(text, position);
+        if (position >= text.size() || text[position] != '{') continue;
+
+        const std::size_t body_start = ++position;
+        std::size_t depth = 1;
+        while (position < text.size() && depth != 0) {
+            if (text[position] == '{') ++depth;
+            else if (text[position] == '}') --depth;
+            if (depth != 0) ++position;
+        }
+        if (depth != 0) return false;
+
+        const std::string body = text.substr(body_start, position - body_start);
+        ++position;
+
+        std::string type_value;
+        std::string count_value;
+        std::string start_value;
+        if (!find_entry(body, "type", type_value) ||
+            !find_entry(body, "nFaces", count_value) ||
+            !find_entry(body, "startFace", start_value)) {
+            continue;
+        }
+
+        std::size_t nfaces = 0;
+        std::size_t start_face = 0;
+        try {
+            const auto parsed_count = std::stoull(count_value);
+            const auto parsed_start = std::stoull(start_value);
+            if (parsed_count > std::numeric_limits<std::size_t>::max() ||
+                parsed_start > std::numeric_limits<std::size_t>::max()) {
+                return false;
+            }
+            nfaces = static_cast<std::size_t>(parsed_count);
+            start_face = static_cast<std::size_t>(parsed_start);
+        } catch (const std::exception&) {
+            return false;
+        }
+        if (nfaces > std::numeric_limits<std::size_t>::max() - start_face ||
+            start_face + nfaces >
+                static_cast<std::size_t>(std::numeric_limits<cfdx::core::FaceIndex>::max()) + 1u) {
+            return false;
+        }
 
         cfdx::core::Patch patch;
         patch.name = name;
-        patch.type = patch_type(type_match[1].str());
+        patch.type = patch_type(type_value);
         patch.face_ids.reserve(nfaces);
-        for (std::size_t i = 0; i < nfaces; ++i)
-            patch.face_ids.push_back(static_cast<cfdx::core::FaceIndex>(start + i));
+        for (std::size_t i = 0; i < nfaces; ++i) {
+            patch.face_ids.push_back(static_cast<cfdx::core::FaceIndex>(start_face + i));
+        }
         boundary.add_patch(patch);
         found = true;
     }
