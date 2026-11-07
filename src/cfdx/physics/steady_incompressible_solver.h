@@ -27,12 +27,7 @@
 #include "cfdx/physics/sst_production_coupling.h"
 #include "cfdx/physics/momentum_residual_certification.h"
 #include "cfdx/physics/nonlinear_face_residual_certificate.h"
-#include "cfdx/physics/timestep_control.h"
-#include "cfdx/core/numerics/conservation.h"
-#include "cfdx/core/numerics/temporal.h"
-#include "cfdx/physics/solver_control.h"
-#include "cfdx/physics/sst_production_coupling.h"
-#include "cfdx/physics/momentum_residual_certification.h"
+#include "cfdx/physics/momentum_face_budget.h"
 #include "cfdx/physics/timestep_control.h"
 #include "cfdx/core/numerics/conservation.h"
 #include "cfdx/core/numerics/temporal.h"
@@ -94,12 +89,6 @@ inline bool has_effective_fixed_pressure_boundary(
 enum class IncompressibleProbeField {
     PRESSURE,
     U_X,
-
-using VelocityBoundaryConditions = std::map<std::string, VelocityBoundaryCondition>;
-
-enum class IncompressibleProbeField {
-    PRESSURE,
-    U_X,
     U_Y,
     U_Z,
     U_MAGNITUDE,
@@ -149,12 +138,6 @@ struct V17PseudoMomentumControls {
 };
 
 inline void validate_v17_pseudo_momentum_controls(const V17PseudoMomentumControls& c) {
-    double maximum_cfl = 3.0;
-    double growth = 1.25;
-    double shrink = 0.5;
-};
-
-inline void validate_v17_pseudo_momentum_controls(const V17PseudoMomentumControls& c) {
     if (!std::isfinite(c.initial_cfl) || !std::isfinite(c.minimum_cfl) ||
         !std::isfinite(c.maximum_cfl) || !std::isfinite(c.growth) ||
         !std::isfinite(c.shrink) || !(c.minimum_cfl > 0.0) ||
@@ -164,12 +147,6 @@ inline void validate_v17_pseudo_momentum_controls(const V17PseudoMomentumControl
         !(c.maximum_diagonal_fraction > 0.0) ||
         std::isnan(c.maximum_diagonal_fraction))
         throw std::invalid_argument("V17 pseudo-momentum controls: invalid CFL/diagonal cap");
-}
-
-struct IncompressibleTransientControls {
-        !(c.initial_cfl <= c.maximum_cfl) || !(c.growth >= 1.0) ||
-        !(c.shrink > 0.0 && c.shrink <= 1.0))
-        throw std::invalid_argument("V17 pseudo-momentum controls: invalid CFL schedule");
 }
 
 struct IncompressibleTransientControls {
@@ -312,12 +289,6 @@ struct IncompressibleSolverControls {
     // declaring nonlinear convergence. Shared by SIMPLE/SIMPLEC/COUPLED;
     // disabled by default to preserve existing solver behaviour.
     bool require_independent_face_residual_for_convergence = false;
-    std::size_t linear_max_iterations = 1000;
-    double linear_tolerance = 1e-10;
-    // Optional independent pressure linear budget; zero inherits the global one.
-    V17PseudoMomentumControls pseudo_momentum;
-    CouplingControls coupling;
-    ConvergenceCriteria convergence;
     std::size_t linear_max_iterations = 1000;
     double linear_tolerance = 1e-10;
     // Optional independent pressure linear budget; zero inherits the global one.
@@ -483,6 +454,11 @@ struct IncompressibleSolverControls {
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&)>;
     MomentumEquationForensicCallback momentum_equation_forensic_callback;
+    // Accepted-iterate per-cell convection/diffusion/pressure/RC diagnostic.
+    // The callback never changes the solver state, equations, or tolerances.
+    std::function<void(std::size_t, std::size_t, const MomentumFaceBudget&,
+                       const FvGeometry&)> momentum_face_budget_callback;
+    std::size_t momentum_face_budget_every = 1;
     // Evidence-only hook: invoked at the exact Krylov call point of the
     // coupled solve - after assembly, gauge treatment, finite checks and
     // preconditioner setup - so the snapshot matrix, RHS and initial guess
@@ -534,12 +510,6 @@ struct IncompressibleIteration {
     double v17_pseudo_mass_min = std::numeric_limits<double>::quiet_NaN();
     double v17_pseudo_mass_max = std::numeric_limits<double>::quiet_NaN();
     std::size_t v17_pseudo_capped_cells = 0;
-    std::size_t momentum_linear_iterations = 0;
-    std::size_t pressure_linear_iterations = 0;
-    std::size_t pressure_correctors_used = 0;
-    double v17_pseudo_cfl = std::numeric_limits<double>::quiet_NaN();
-    double v17_pseudo_mass_min = std::numeric_limits<double>::quiet_NaN();
-    double v17_pseudo_mass_max = std::numeric_limits<double>::quiet_NaN();
     std::size_t momentum_linear_iterations = 0;
     std::size_t pressure_linear_iterations = 0;
     std::size_t pressure_correctors_used = 0;
@@ -629,12 +599,6 @@ struct IncompressibleIteration {
         std::numeric_limits<double>::infinity(),
         std::numeric_limits<double>::infinity(),
         std::numeric_limits<double>::infinity()};
-};
-
-struct IncompressibleSolveResult {
-        std::numeric_limits<double>::infinity(),
-        std::numeric_limits<double>::infinity()};
-    std::array<std::size_t, 3> momentum_conservation_worst_cell{0,0,0};
 };
 
 struct IncompressibleSolveResult {
@@ -755,6 +719,7 @@ inline void validate_incompressible_controls(
     if (c.convection_continuation.enabled &&
         ((c.convection_scheme != ConvectionScheme::TVD &&
           c.convection_scheme != ConvectionScheme::TVD_VANLEER &&
+          c.convection_scheme != ConvectionScheme::TVD_VANALBADA &&
           c.convection_scheme != ConvectionScheme::SECOND_ORDER_UPWIND) ||
          c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
          c.transient.enabled || c.sst_runtime != nullptr))
@@ -2497,12 +2462,6 @@ inline std::size_t cap_v17_pseudo_momentum_masses(
 inline void add_v17_pseudo_momentum_term(
     ScalarEquation& eq,
     const cfdx::core::Field<double,cfdx::core::Location::CELL>& old_velocity,
-    return spectral;
-}
-
-inline void add_v17_pseudo_momentum_term(
-    ScalarEquation& eq,
-    const cfdx::core::Field<double,cfdx::core::Location::CELL>& old_velocity,
     const std::vector<double>& masses, std::size_t component)
 {
     if (old_velocity.dimension()!=3 || component>=3 ||
@@ -2735,12 +2694,6 @@ inline PcdPressureOperators assemble_pcd_pressure_operators(
     // untouched for direct callers that pass one.
     const bool fixed_pressure_gauge =
         has_effective_fixed_pressure_boundary(mesh, pressure_bcs);
-    const std::size_t gauge_cell = fixed_pressure_gauge
-        ? std::numeric_limits<std::size_t>::max() : reference_cell;
-    if (gauge_cell < nc) {
-        fixed_pressure_gauge = fixed_pressure_gauge ||
-            bc.type == ScalarBoundaryType::FIXED_VALUE;
-    }
     const std::size_t gauge_cell = fixed_pressure_gauge
         ? std::numeric_limits<std::size_t>::max() : reference_cell;
     if (gauge_cell < nc) {
@@ -3256,12 +3209,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
     // p_ref = reference_value. This keeps the coupled system deterministic.
     const bool has_fixed_pressure =
         has_effective_fixed_pressure_boundary(mesh, pressure_bcs);
-
-    if (!has_fixed_pressure) {
-        // Finalize the assembled COO matrix before reading its CSR arrays.
-        has_fixed_pressure = has_fixed_pressure ||
-            bc.type == ScalarBoundaryType::FIXED_VALUE;
-    }
 
     if (!has_fixed_pressure) {
         // Finalize the assembled COO matrix before reading its CSR arrays.
@@ -4350,12 +4297,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // Validate the caller-owned SST bundle before initialization can mutate
     // the carrier fields. Derived SST quantities must be refreshed only after
     // initialization/restart has established the actual velocity field.
-    // Validate all controls and derived material properties before initialization
-    // can mutate the caller-provided solution fields.
-    validate_incompressible_controls(controls, mesh.n_cells());
-    // Validate the caller-owned SST bundle before initialization can mutate
-    // the carrier fields. Derived SST quantities must be refreshed only after
-    // initialization/restart has established the actual velocity field.
     const FvGeometry geometry = build_fv_geometry(mesh);
     if (controls.sst_runtime) {
         validate_sst_production_state(*controls.sst_runtime->state, mesh.n_cells());
@@ -4451,12 +4392,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     monitor_controls.divergence_growth_factor = 10.0;
     monitor_controls.qoi_gates = controls.qoi_gates;
     cfdx::core::ConvergenceMonitor convergence_monitor(monitor_controls);
-
-    const std::size_t configured_pcorr =
-        (controls.algorithm == PressureVelocityAlgorithm::PISO ||
-         controls.algorithm == PressureVelocityAlgorithm::PIMPLE)
-        }
-    }
 
     const std::size_t configured_pcorr =
         (controls.algorithm == PressureVelocityAlgorithm::PISO ||
@@ -4679,12 +4614,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         const bool same_convection_operator_as_previous =
             convection_residuals_share_operator(
                 controls.convection_continuation, iter);
-        bool stop_after_iteration = false;
-        NonlinearRetryController retry_controller(controls.nonlinear_retry);
-        NonlinearStateRollback transaction(U, p);
-            convection_high_order_fraction(controls.convection_continuation, iter);
-        const bool full_order_eligible =
-            convection_full_order_eligible(controls.convection_continuation, iter);
         bool stop_after_iteration = false;
         NonlinearRetryController retry_controller(controls.nonlinear_retry);
         NonlinearStateRollback transaction(U, p);
@@ -4950,16 +4879,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             v17_capped_cells = cap_v17_pseudo_momentum_masses(
                 masses, ex, ey, ez,
                 controls.pseudo_momentum.maximum_diagonal_fraction);
-            add_v17_pseudo_momentum_term(ex,U_old,masses,0);
-            add_v17_pseudo_momentum_term(ey,U_old,masses,1);
-            add_v17_pseudo_momentum_term(ez,U_old,masses,2);
-        double v17_mass_min=std::numeric_limits<double>::quiet_NaN();
-        double v17_mass_max=std::numeric_limits<double>::quiet_NaN();
-        if (controls.pseudo_momentum.enabled) {
-            const auto masses=make_v17_pseudo_momentum_masses(
-                mesh,geometry,mass_flux,mu_eff,controls.density,v17_pseudo_cfl,
-                controls.sst_runtime
-                    ? controls.density*controls.kinematic_viscosity : -1.0);
             add_v17_pseudo_momentum_term(ex,U_old,masses,0);
             add_v17_pseudo_momentum_term(ey,U_old,masses,1);
             add_v17_pseudo_momentum_term(ez,U_old,masses,2);
@@ -6977,12 +6896,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         h.selected_pressure_alpha = last_selected_pressure_alpha;
         h.pressure_line_search_norm_before = last_line_search_before;
-            h.v17_pseudo_cfl=v17_pseudo_cfl;
-            h.v17_pseudo_mass_min=v17_mass_min;
-            h.v17_pseudo_mass_max=v17_mass_max;
-        }
-        h.selected_pressure_alpha = last_selected_pressure_alpha;
-        h.pressure_line_search_norm_before = last_line_search_before;
         h.pressure_line_search_norm_after = last_line_search_after;
         h.iteration = iter;
         h.high_order_fraction = outer_high_order_fraction;
@@ -7323,18 +7236,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             const auto& previous = result.history.back();
             const bool momentum_growth = severe_physical_residual_growth(
                 previous.momentum_equation_residual_rhs_relative,
-            pressure_residual_gate && velocity_change_gate && pressure_change_gate;
-
-        // Segregated SIMPLE only: an opt-in physical-residual globalization
-        // guard. The catch below restores U, p, mass_flux, monitor and SST
-        // and shrinks the equation relaxation before replaying this iteration.
-        // Do NOT apply independent post-solve U/p relaxation to COUPLED.
-        if (controls.nonlinear_retry.reject_severe_physical_growth &&
-            controls.algorithm == PressureVelocityAlgorithm::SIMPLE &&
-            !result.history.empty()) {
-            const auto& previous = result.history.back();
-            const bool momentum_growth = severe_physical_residual_growth(
-                previous.momentum_equation_residual_rhs_relative,
                 h.momentum_equation_residual_rhs_relative,
                 controls.convergence.relative_tolerance,
                 controls.nonlinear_retry);
@@ -7360,12 +7261,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // well: do not punish the solver for changing its discretization.
         if (controls.adaptive_relaxation.enabled && !result.history.empty() &&
             same_convection_operator_as_previous) {
-            const auto& previous = result.history.back();
-            const bool severe_u =
-                std::isfinite(previous.momentum_equation_residual_relative) &&
-        // monitor. A retry is the same nonlinear iteration, so convergence
-        // history must only observe the accepted state.
-        if (controls.adaptive_relaxation.enabled && !result.history.empty()) {
             const auto& previous = result.history.back();
             const bool severe_u =
                 std::isfinite(previous.momentum_equation_residual_relative) &&
@@ -8080,13 +7975,58 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 h.momentum_conservation_residual[d] = balance.residual;
                 h.momentum_conservation_normalized[d] = balance.normalized_residual;
                 h.momentum_conservation_worst_cell[d] = balance.worst_cell;
-                    for (std::size_t face=0; face<mesh.n_faces(); ++face)
-                        flux(face) -= audit_transpose_flux(face,d);
-                const auto balance = cfdx::core::audit_integrated_balance(
-                    mesh, flux, source, geometry.cell_volumes);
-                h.momentum_conservation_residual[d] = balance.residual;
-                h.momentum_conservation_normalized[d] = balance.normalized_residual;
-                h.momentum_conservation_worst_cell[d] = balance.worst_cell;
+                if (controls.momentum_face_budget_callback &&
+                    controls.momentum_face_budget_every > 0 &&
+                    (iter == 1 || iter % controls.momentum_face_budget_every == 0)) {
+                    // A/B diagnostic: exact accepted U, pressure gradient,
+                    // actual Rhie-Chow mass flux and same transport operator.
+                    // `collocated` is an observation, not a replacement for
+                    // the conservative flux used in the momentum equation.
+                    const auto collocated = make_mass_flux(
+                        mesh, geometry, U, controls.density, velocity_bcs,
+                        pressure_bcs,
+                        controls.pressure_projected_face_interpolation);
+                    cfdx::core::Field<double, cfdx::core::Location::CELL>
+                        pressure_component(mesh.n_cells(), "gradp_d", "Pa/m", 1);
+                    cfdx::core::Field<double, cfdx::core::Location::CELL>
+                        momentum_body(mesh.n_cells(), "body_d", "N/m3", 1);
+                    for (std::size_t cell = 0; cell < mesh.n_cells(); ++cell) {
+                        pressure_component(cell) = final_grad_p.component_data(d)[cell];
+                        const auto& force = controls.cell_body_force.empty()
+                            ? controls.body_force : controls.cell_body_force[cell];
+                        momentum_body(cell) = controls.density *
+                            (d == 0 ? force.x : d == 1 ? force.y : force.z);
+                    }
+                    cfdx::core::Field<double, cfdx::core::Location::FACE>
+                        transpose_component;
+                    const auto* transpose_ptr =
+                        static_cast<const cfdx::core::Field<double, cfdx::core::Location::FACE>*>(nullptr);
+                    if (include_transpose_stress) {
+                        transpose_component = cfdx::core::Field<double, cfdx::core::Location::FACE>(
+                            mesh.n_faces(), "transpose_face_d", "N", 1);
+                        for (std::size_t f = 0; f < mesh.n_faces(); ++f)
+                            transpose_component(f) = audit_transpose_flux(f,d);
+                        transpose_ptr = &transpose_component;
+                    }
+                    const auto budget = diagnose_momentum_face_budget(
+                        mesh, geometry, mass_flux, component,
+                        pressure_component, momentum_body, mu_eff, scalar_bcs,
+                        controls.convection_scheme, outer_high_order_fraction,
+                        controls.use_bounded_convection, &collocated,
+                        transpose_ptr,
+                        wall_face_mu.empty() ? nullptr : &wall_face_mu,
+                        time_accumulation);
+                    // The budget and the independent face certificate have
+                    // to agree: missing pressure/viscous terms must fail.
+                    const double agreement = std::abs(
+                        budget.worst_absolute_residual - physical.local_linf);
+                    if (agreement > 1e-10 * std::max({1.0,
+                            budget.worst_absolute_residual, physical.local_linf}))
+                        throw std::runtime_error(
+                            "momentum face budget disagrees with independent residual");
+                    controls.momentum_face_budget_callback(iter, d, budget, geometry);
+                }
+
             }
         }
         if (controls.pseudo_momentum.enabled)
@@ -8105,16 +8045,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             independent_momentum_face_residual_gate(
                 h.momentum_face_local_relative,
                 controls.convergence.relative_tolerance);
-        result.history.push_back(h);
-
-        // Samples are retained regardless of probe_callback. External observers
-                      << " cfl=" << h.v17_pseudo_cfl
-                      << " mass_min=" << h.v17_pseudo_mass_min
-                      << " mass_max=" << h.v17_pseudo_mass_max
-                      << " physical_momentum_rhs_relative="
-                      << h.momentum_equation_residual_rhs_relative
-                      << " continuity=" << h.continuity_normalized
-                      << " qualified=0\n";
         result.history.push_back(h);
 
         // Samples are retained regardless of probe_callback. External observers
@@ -8181,12 +8111,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     : "maximum nonlinear iterations; independent face momentum and/or carrier gates not met";
         }
         if (converged_now && independent_face_residual_ok) {
-            result.converged = true;
-            result.iterations = iter;
-            stop_after_iteration = true;
-                "high-order convection continuation: full operator hold not completed";
-        }
-        if (converged_now) {
             result.converged = true;
             result.iterations = iter;
             stop_after_iteration = true;
