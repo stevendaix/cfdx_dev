@@ -95,7 +95,7 @@ jobs:
 
           test_file = Path("tests/python/test_naca_force_mesh_qualification.py")
           test_source = test_file.read_text(encoding="utf-8")
-          pattern = re.compile(r"dict\(\s*case=f['\"]N\\{n\\}['\"],.*?cm=0,?\s*\)", re.S)
+          pattern = re.compile(r"dict\(\s*case=f['\"]N\{n\}['\"],.*?cm=0,?\s*\)", re.S)
           replacement = (
               '{"case": f"N{n}", "h": 1 / n, "converged": "yes", '
               '"res_mom": 1e-11, "res_mass": 2e-11, "cd": cd, '
