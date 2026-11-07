@@ -319,9 +319,9 @@ IncompressibleSolverControls common_controls(std::size_t nx,std::size_t ny){
     c.coupling.alpha_u=0.7; c.coupling.alpha_p=0.3;
     c.coupling.coupled_max_iterations=400;
     c.coupling.coupled_linear_tolerance=1e-10;
-    c.coupling.linear_solver.krylov=KrylovModel::FGMRES;
-    c.coupling.linear_solver.preconditioner=PreconditionerModel::CoupledBlockSchur;
-    c.coupling.linear_solver.gmres_restart=static_cast<int>(4*nx*ny);
+    c.coupled_linear_solver.krylov=KrylovModel::FGMRES;
+    c.coupled_linear_solver.preconditioner=PreconditionerModel::CoupledBlockSchur;
+    c.coupled_linear_solver.gmres_restart=static_cast<int>(4*nx*ny);
     c.pcd_convection_diffusion_max_iterations=200;
     c.pcd_laplacian_max_iterations=100;
     c.pcd_convection_diffusion_linear_solver.gmres_restart=static_cast<int>(nx*ny);
