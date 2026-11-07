@@ -47,6 +47,12 @@ def read_one_certificate(path: Path, level: int) -> dict[str, str]:
     if abs(float(row["h"]) - 1.0 / level) > 1e-12:
         raise ValueError(f"N{level}: wrong characteristic tangential spacing")
     if max(float(row["res_mom"]), float(row["res_mass"])) > RELATIVE_GATE:
+    for key in ("h", "res_mom", "res_mass", "cd", "cdp", "cdv", "cl", "cm"):
+        if not math.isfinite(float(row[key])):
+            raise ValueError(f"N{level}: nonfinite {key}")
+    if abs(float(row["h"]) - 1.0 / level) > 1e-12:
+        raise ValueError(f"N{level}: wrong characteristic tangential spacing")
+    if max(float(row["res_mom"]), float(row["res_mass"])) > RELATIVE_GATE:
         raise ValueError(f"N{level}: nonlinear momentum or mass gate not met")
     if abs(float(row["cd"]) - float(row["cdp"]) - float(row["cdv"])) > 1e-8:
         raise ValueError(f"N{level}: pressure and viscous forces do not sum to Cd")
@@ -66,6 +72,13 @@ def verify_physical_history(path: Path, level: int, certificate: dict[str, str])
         needed = {"iteration", "momentum_rhs_relative", "continuity_normalized",
                   "mass_local_linf", "nonfinite_mass_faces", "nonfinite_velocities",
                   "high_order_fraction", "convection_scheme"} | independent
+        if not needed.issubset(reader.fieldnames or ()):
+            raise ValueError(f"N{level}: incomplete physical history schema")
+        count = 0
+    with path.open(encoding="utf-8", newline="") as stream:
+        reader = csv.DictReader(stream)
+        needed = {"iteration", "momentum_rhs_relative", "continuity_normalized",
+                  "mass_local_linf", "nonfinite_mass_faces", "nonfinite_velocities"}
         if not needed.issubset(reader.fieldnames or ()):
             raise ValueError(f"N{level}: incomplete physical history schema")
         count = 0
@@ -92,6 +105,14 @@ def verify_physical_history(path: Path, level: int, certificate: dict[str, str])
             if int(row["nonfinite_mass_faces"]) != 0 or int(row["nonfinite_velocities"]) != 0:
                 raise ValueError(f"N{level}: nonfinite conservation or velocity")
             last = row
+                raise ValueError(f"N{level}: nonmonotone history iteration")
+            previous = iteration
+            for key in needed - {"iteration"}:
+                if not math.isfinite(float(row[key])):
+                    raise ValueError(f"N{level}: nonfinite history {key}")
+            if int(row["nonfinite_mass_faces"]) != 0 or int(row["nonfinite_velocities"]) != 0:
+                raise ValueError(f"N{level}: nonfinite conservation or velocity")
+            last = row
     if count == 0 or last is None:
         raise ValueError(f"N{level}: missing physical history")
     momentum = float(last["momentum_rhs_relative"])
@@ -112,6 +133,17 @@ def verify_physical_history(path: Path, level: int, certificate: dict[str, str])
     return {"iterations": count, "final_momentum_rhs_relative": momentum,
             "final_continuity_normalized": continuity, "final_mass_local_linf": mass,
             "final_independent_face_momentum_relative": face_residuals}
+
+
+def certify(mesh_quality: list[dict], certs: dict[int, Path], histories: dict[int, Path]) -> dict:
+    if momentum > RELATIVE_GATE or continuity > RELATIVE_GATE or mass > RELATIVE_GATE:
+        raise ValueError(f"N{level}: nonlinear history is not physically converged")
+    for key, value in (("res_mom", momentum), ("res_mass", mass)):
+        claimed = float(certificate[key])
+        if abs(claimed - value) > 1e-13 + 1e-5 * max(abs(claimed), abs(value)):
+            raise ValueError(f"N{level}: stale or mismatched force certificate ({key})")
+    return {"iterations": count, "final_momentum_rhs_relative": momentum,
+            "final_continuity_normalized": continuity, "final_mass_local_linf": mass}
 
 
 def certify(mesh_quality: list[dict], certs: dict[int, Path], histories: dict[int, Path]) -> dict:
@@ -150,6 +182,12 @@ def certify(mesh_quality: list[dict], certs: dict[int, Path], histories: dict[in
                 raise ValueError(
                     f"{component}: drag component lacks an asymptotic Richardson signature"
                 )
+        report["gci"] = {"status": "RICHARDSON_CANDIDATE_ONLY", "result": gci,
+                         "validation_reference": "NOT_PERFORMED"}
+        report["status"] = "GCI_CANDIDATE"
+        gci = qualify(rows, RELATIVE_GATE)
+        if gci["quantities"]["cd"]["status"] != "asymptotic_candidate":
+            raise ValueError("drag lacks an asymptotic Richardson signature")
         report["gci"] = {"status": "RICHARDSON_CANDIDATE_ONLY", "result": gci,
                          "validation_reference": "NOT_PERFORMED"}
         report["status"] = "GCI_CANDIDATE"

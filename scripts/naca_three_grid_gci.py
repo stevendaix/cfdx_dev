@@ -39,6 +39,15 @@ def verify_three_grid(summary: dict) -> dict:
         cds.append(float(metrics["Cd"]))
     d01 = cds[1] - cds[0]
     d12 = cds[2] - cds[1]
+        for key in ("Cd", "Cl", "continuity", "Cd_pressure"):
+            value = metrics.get(key)
+            if not isinstance(value, (int, float)) or not math.isfinite(value):
+                raise ValueError(f"N{n}: invalid {key}")
+        if not (metrics["continuity"] < 1e-7 and abs(metrics["Cl"]) <= 2e-2):
+            raise ValueError(f"N{n}: physical gate failed")
+        cds.append(float(metrics["Cd"]))
+    d01 = cds[1] - cds[0]
+    d12 = cds[2] - cds[1]
     if not (d01 * d12 > 0 and abs(d12) < abs(d01)):
         raise ValueError("drag has no monotone asymptotic refinement signature")
     order = math.log(abs(d01 / d12)) / math.log(2.0)
@@ -59,11 +68,23 @@ def verify_three_grid(summary: dict) -> dict:
         "grids": [64, 128, 256],
         "cd": cds,
         "observed_order": order,
+    if not (math.isfinite(extrapolated) and math.isfinite(gci_value)):
+        raise ValueError("non-finite refinement estimate")
+    return {
+        "grids": [64, 128, 256],
+        "cd": cds,
+        "observed_order": order,
         "richardson_extrapolated_cd": extrapolated,
         "fine_grid_relative_gci": gci_value,
         "reference_validation": "NOT_PERFORMED",
         "wall_shear_validation": "NOT_PERFORMED",
         "qualification_route": "scripts/naca_force_mesh_qualification.py",
+    }
+
+
+        "fine_grid_relative_gci": gci_value,
+        "reference_validation": "NOT_PERFORMED",
+        "wall_shear_validation": "NOT_PERFORMED",
     }
 
 

@@ -311,6 +311,12 @@ def naca_o_grid(
 ):
     """Build the deterministic transfinite-blend NACA0012 O-grid.
 
+    span: float = 1.0,
+    split_farfield: bool = False,
+    radial_power: float = 1.8,
+):
+    """Build the deterministic transfinite-blend NACA0012 O-grid.
+
     Splitting farfield by the sign of the outer-face x-normal is an
     experimental A/B setup; the standard qualification mesh is unchanged.
     """
@@ -327,6 +333,12 @@ def naca_o_grid(
         base_radial_layers < 1 or n_radial % base_radial_layers != 0
     ):
         raise ValueError("nested radial refinement requires an integer subdivision of the base grid")
+
+    surf = naca0012_surface(n_surface)
+    m = len(surf)
+    # Parameterize the outer boundary by the same closed-loop index. The
+    if not math.isfinite(radial_power) or not 1.0 <= radial_power <= 3.0:
+        raise ValueError("radial_power must be finite in [1, 3]")
 
     surf = naca0012_surface(n_surface)
     m = len(surf)
@@ -391,6 +403,18 @@ def naca_o_grid(
 
     def P(j, i):
         return j * m + (i % m)
+        for i, (x, y) in enumerate(surf):
+            theta = 2.0 * math.pi * (i + 0.5) / m
+            xo, yo = radius * math.cos(theta), radius * math.sin(theta)
+            dx, dy = xo - x, yo - y
+            radial_length = math.hypot(dx, dy)
+            nx, ny = normals[i]
+            vx = (1.0 - normal_weight) * dx + normal_weight * radial_length * nx
+            vy = (1.0 - normal_weight) * dy + normal_weight * radial_length * ny
+            pts.append((x + rfac * vx, y + rfac * vy))
+
+    def P(j, i):
+        return j * m + (i % m)
 
     cells2d = []
     for j in range(n_radial):
@@ -433,6 +457,12 @@ def naca_o_grid_quality(
 ):
     """Return geometric quality indicators for the 2-D NACA0012 O-grid.
 
+
+def naca_o_grid_quality(
+    n_surface: int, n_radial: int, radius: float = 20.0, radial_power: float = 1.8
+):
+    """Return geometric quality indicators for the 2-D NACA0012 O-grid.
+
     These metrics are diagnostics, not a CFD qualification or a force oracle.
     Cell area is evaluated from each quadrilateral's polygon; radial spacing
     is measured between corresponding nodes on adjacent layers.
@@ -440,6 +470,12 @@ def naca_o_grid_quality(
     points, _cells, _ = naca_o_grid(
         n_surface, n_radial, radius, radial_power=radial_power,
         base_radial_layers=base_radial_layers,
+    )
+    points = np.asarray(points, dtype=np.float64)
+    m = 2 * n_surface + 1
+    """
+    points, _cells, _ = naca_o_grid(
+        n_surface, n_radial, radius, radial_power=radial_power
     )
     points = np.asarray(points, dtype=np.float64)
     m = 2 * n_surface + 1
@@ -527,6 +563,12 @@ def naca_o_grid_quality(
         "n_surface": int(n_surface),
         "n_radial": int(n_radial),
         "radius": float(radius),
+        )
+    )
+    return {
+        "n_surface": int(n_surface),
+        "n_radial": int(n_radial),
+        "radius": float(radius),
         "radial_power": float(radial_power),
         "cell_count": int(n_surface * 2 * n_radial + n_radial),
         "inverted_or_degenerate_cells": inverted_or_degenerate,
@@ -611,6 +653,12 @@ def main():
     args = ap.parse_args()
 
     out = args.output_dir
+        action="store_true",
+        help="experimental inlet/outlet outer patches; distinct mesh filenames",
+    )
+    args = ap.parse_args()
+
+    out = args.output_dir
     if args.case in ("channel", "all"):
         for n in (16,) if args.quick else (16, 32, 64):
             p, c, b = channel(4 * n, n)
@@ -644,6 +692,18 @@ def main():
             )
             quality_reports.append(quality)
             print(
+                split_farfield=args.split_naca_farfield,
+                radial_power=args.naca_radial_power,
+            )
+            suffix = "_split" if args.split_naca_farfield else ""
+            if args.naca_radial_power != 1.8:
+                suffix += "_rp" + str(args.naca_radial_power).replace(".", "p")
+            write_mesh(out / f"naca0012_laminar_n{n}{suffix}.h5", p, c, b)
+            quality = naca_o_grid_quality(
+                n, nr, 20.0, radial_power=args.naca_radial_power
+            )
+            quality_reports.append(quality)
+            print(
                 json.dumps(
                     {"mesh": f"naca0012_laminar_n{n}{suffix}.h5", **quality},
                     sort_keys=True,
@@ -657,6 +717,12 @@ def main():
         if args.naca_nested_radial:
             report_path = report_path.with_name(
                 report_path.stem + "_nested" + report_path.suffix)
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(
+            json.dumps(quality_reports, indent=2) + "\n", encoding="utf-8"
+            if args.split_naca_farfield
+            else "naca0012_mesh_quality.json"
+        )
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
             json.dumps(quality_reports, indent=2) + "\n", encoding="utf-8"
