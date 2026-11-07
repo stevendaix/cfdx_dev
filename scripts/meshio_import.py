@@ -1,4 +1,5 @@
 """meshio -> CFDX-HDF5 mesh bridge."""
+
 from __future__ import annotations
 
 import argparse
@@ -12,37 +13,86 @@ import meshio
 import numpy as np
 
 VOLUME_FACES = {
- "tetra": ((0,2,1),(0,1,3),(1,3,2),(2,0,3)),
- "hexahedron": ((0,3,2,1),(4,5,6,7),(0,1,5,4),(1,2,6,5),(2,3,7,6),(3,0,4,7)),
- "wedge": ((0,2,1),(3,4,5),(0,1,4,3),(1,2,5,4),(2,0,3,5)),
- "pyramid": ((0,1,2,3),(0,4,1),(1,2,4),(2,3,4),(3,0,4)),
- "voxel": ((0,4,6,2),(1,3,7,5),(0,1,5,4),(2,6,7,3),(0,2,3,1),(4,5,7,6)),
+    "tetra": ((0, 2, 1), (0, 1, 3), (1, 3, 2), (2, 0, 3)),
+    "hexahedron": (
+        (0, 3, 2, 1),
+        (4, 5, 6, 7),
+        (0, 1, 5, 4),
+        (1, 2, 6, 5),
+        (2, 3, 7, 6),
+        (3, 0, 4, 7),
+    ),
+    "wedge": ((0, 2, 1), (3, 4, 5), (0, 1, 4, 3), (1, 2, 5, 4), (2, 0, 3, 5)),
+    "pyramid": ((0, 1, 2, 3), (0, 4, 1), (1, 2, 4), (2, 3, 4), (3, 0, 4)),
+    "voxel": (
+        (0, 4, 6, 2),
+        (1, 3, 7, 5),
+        (0, 1, 5, 4),
+        (2, 6, 7, 3),
+        (0, 2, 3, 1),
+        (4, 5, 7, 6),
+    ),
 }
-SURFACE = {"triangle":3,"quad":4,"triangle6":3,"quad8":4,"quad9":4}
-LINE = {"line":2,"line3":2}
-CORNER_COUNT = {"tetra":4,"hexahedron":8,"wedge":6,"pyramid":5,"voxel":8,"tetra10":4,"hexahedron20":8,"hexahedron27":8,"wedge15":6,"wedge18":6,"pyramid13":5,"pyramid14":5,"triangle6":3,"quad8":4,"quad9":4}
-BASE_TYPE = {"tetra10":"tetra","hexahedron20":"hexahedron","hexahedron27":"hexahedron","wedge15":"wedge","wedge18":"wedge","pyramid13":"pyramid","pyramid14":"pyramid"}
+SURFACE = {"triangle": 3, "quad": 4, "triangle6": 3, "quad8": 4, "quad9": 4}
+LINE = {"line": 2, "line3": 2}
+CORNER_COUNT = {
+    "tetra": 4,
+    "hexahedron": 8,
+    "wedge": 6,
+    "pyramid": 5,
+    "voxel": 8,
+    "tetra10": 4,
+    "hexahedron20": 8,
+    "hexahedron27": 8,
+    "wedge15": 6,
+    "wedge18": 6,
+    "pyramid13": 5,
+    "pyramid14": 5,
+    "triangle6": 3,
+    "quad8": 4,
+    "quad9": 4,
+}
+BASE_TYPE = {
+    "tetra10": "tetra",
+    "hexahedron20": "hexahedron",
+    "hexahedron27": "hexahedron",
+    "wedge15": "wedge",
+    "wedge18": "wedge",
+    "pyramid13": "pyramid",
+    "pyramid14": "pyramid",
+}
+
 
 def patch_type(name):
-    n=name.lower()
-    if "inlet" in n:return 1
-    if "outlet" in n:return 2
-    if "symmetr" in n:return 3
-    if "periodic" in n:return 4
-    if "interface" in n:return 5
-    if "empty" in n:return 6
+    n = name.lower()
+    if "inlet" in n:
+        return 1
+    if "outlet" in n:
+        return 2
+    if "symmetr" in n:
+        return 3
+    if "periodic" in n:
+        return 4
+    if "interface" in n:
+        return 5
+    if "empty" in n:
+        return 6
     return 0 if "wall" in n else 7
 
+
 def physical_names(mesh):
-    out={}
-    for name,value in getattr(mesh,"field_data",{}).items():
-        try: out[int(value[0])]=name
-        except (IndexError,TypeError,ValueError): pass
+    out = {}
+    for name, value in getattr(mesh, "field_data", {}).items():
+        try:
+            out[int(value[0])] = name
+        except (IndexError, TypeError, ValueError):
+            pass
     return out
 
-def block_tags(mesh,key,i):
-    values=getattr(mesh,"cell_data",{}).get(key)
-    return None if values is None or i>=len(values) else np.asarray(values[i])
+
+def block_tags(mesh, key, i):
+    values = getattr(mesh, "cell_data", {}).get(key)
+    return None if values is None or i >= len(values) else np.asarray(values[i])
 
 
 def read_mesh(path, file_format=None):
@@ -53,109 +103,150 @@ def read_mesh(path, file_format=None):
     values before delegating to meshio, then restore the original names as
     field_data so the normal patch writer can retain the physical boundaries.
     """
-    detected_format=(file_format or path.suffix.lstrip(".")).lower()
+    detected_format = (file_format or path.suffix.lstrip(".")).lower()
     if detected_format != "su2":
-        return meshio.read(path,file_format=file_format)
+        return meshio.read(path, file_format=file_format)
 
-    source=path.read_text(encoding="utf-8")
-    lines=source.splitlines()
-    numeric_ids=set()
-    has_named_markers=False
-    dimension=2
+    source = path.read_text(encoding="utf-8")
+    lines = source.splitlines()
+    numeric_ids = set()
+    has_named_markers = False
+    dimension = 2
     for line in lines:
         if "=" not in line:
             continue
-        key,value=(part.strip() for part in line.split("=",1))
-        if key=="NDIME":
-            dimension=int(value)
-        elif key=="MARKER_TAG":
+        key, value = (part.strip() for part in line.split("=", 1))
+        if key == "NDIME":
+            dimension = int(value)
+        elif key == "MARKER_TAG":
             try:
                 numeric_ids.add(int(value))
             except ValueError:
-                has_named_markers=True
+                has_named_markers = True
     if not has_named_markers:
-        return meshio.read(path,file_format="su2")
+        return meshio.read(path, file_format="su2")
 
-    next_id=max(numeric_ids,default=0)
-    name_to_id={}
-    id_to_name={}
-    normalized=[]
+    next_id = max(numeric_ids, default=0)
+    name_to_id = {}
+    id_to_name = {}
+    normalized = []
     for line in lines:
         if "=" not in line:
             normalized.append(line)
             continue
-        key,value=(part.strip() for part in line.split("=",1))
-        if key!="MARKER_TAG":
+        key, value = (part.strip() for part in line.split("=", 1))
+        if key != "MARKER_TAG":
             normalized.append(line)
             continue
         try:
-            tag_id=int(value)
-            id_to_name.setdefault(tag_id,value)
+            tag_id = int(value)
+            id_to_name.setdefault(tag_id, value)
         except ValueError:
             if value not in name_to_id:
-                next_id+=1
-                name_to_id[value]=next_id
-            tag_id=name_to_id[value]
-            id_to_name[tag_id]=value
+                next_id += 1
+                name_to_id[value] = next_id
+            tag_id = name_to_id[value]
+            id_to_name[tag_id] = value
         normalized.append(f"{key}= {tag_id}")
 
-    temporary_path=None
+    temporary_path = None
     try:
         with tempfile.NamedTemporaryFile(
-            mode="w",encoding="utf-8",suffix=".su2",delete=False
+            mode="w", encoding="utf-8", suffix=".su2", delete=False
         ) as handle:
-            handle.write("\n".join(normalized)+"\n")
-            temporary_path=pathlib.Path(handle.name)
-        mesh=meshio.read(temporary_path,file_format="su2")
+            handle.write("\n".join(normalized) + "\n")
+            temporary_path = pathlib.Path(handle.name)
+        mesh = meshio.read(temporary_path, file_format="su2")
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
 
-    for tag_id,name in id_to_name.items():
-        mesh.field_data[name]=np.asarray([tag_id,dimension-1],dtype=np.int32)
+    for tag_id, name in id_to_name.items():
+        mesh.field_data[name] = np.asarray([tag_id, dimension - 1], dtype=np.int32)
     return mesh
 
+
 def build(mesh):
-    points=np.asarray(mesh.points,dtype=np.float64)
-    if points.ndim!=2 or points.shape[1] not in (2,3): raise ValueError(f"unsupported point shape {points.shape}")
-    if points.shape[1]==2: points=np.column_stack((points,np.zeros(len(points))))
-    volumes=[]; surfaces=[]; boundary_lines=[]; skipped=collections.Counter()
-    for bi,b in enumerate(mesh.cells):
-        ctype=b.type; base=BASE_TYPE.get(ctype,ctype)
+    points = np.asarray(mesh.points, dtype=np.float64)
+    if points.ndim != 2 or points.shape[1] not in (2, 3):
+        raise ValueError(f"unsupported point shape {points.shape}")
+    if points.shape[1] == 2:
+        points = np.column_stack((points, np.zeros(len(points))))
+    volumes = []
+    surfaces = []
+    boundary_lines = []
+    skipped = collections.Counter()
+    for bi, b in enumerate(mesh.cells):
+        ctype = b.type
+        base = BASE_TYPE.get(ctype, ctype)
         if base in VOLUME_FACES:
-            ncorner=CORNER_COUNT.get(ctype,len(VOLUME_FACES[base][0]))
-            volumes += [(base,[int(x) for x in row[:ncorner]],bi) for row in np.asarray(b.data)]
+            ncorner = CORNER_COUNT.get(ctype, len(VOLUME_FACES[base][0]))
+            volumes += [
+                (base, [int(x) for x in row[:ncorner]], bi)
+                for row in np.asarray(b.data)
+            ]
         elif ctype in SURFACE:
-            ncorner=SURFACE[ctype]
-            surfaces += [(ctype,[int(x) for x in row[:ncorner]],bi) for row in np.asarray(b.data)]
+            ncorner = SURFACE[ctype]
+            surfaces += [
+                (ctype, [int(x) for x in row[:ncorner]], bi)
+                for row in np.asarray(b.data)
+            ]
         elif ctype in LINE:
-            ncorner=LINE[ctype]
-            boundary_lines += [(ctype,[int(x) for x in row[:ncorner]],bi) for row in np.asarray(b.data)]
-        elif ctype=="polyhedron":
-            for row in b.data: volumes.append(("polyhedron",[[int(x) for x in np.asarray(face)] for face in row],bi))
-        else: skipped[ctype]+=len(b.data)
-    if not volumes and not surfaces: raise ValueError("no supported cells")
-    if not volumes: return build_surface_2d(points,surfaces,skipped)
+            ncorner = LINE[ctype]
+            boundary_lines += [
+                (ctype, [int(x) for x in row[:ncorner]], bi)
+                for row in np.asarray(b.data)
+            ]
+        elif ctype == "polyhedron":
+            for row in b.data:
+                volumes.append(
+                    (
+                        "polyhedron",
+                        [[int(x) for x in np.asarray(face)] for face in row],
+                        bi,
+                    )
+                )
+        else:
+            skipped[ctype] += len(b.data)
+    if not volumes and not surfaces:
+        raise ValueError("no supported cells")
+    if not volumes:
+        return build_surface_2d(points, surfaces, skipped)
     # Gmsh line elements in a 3D volume mesh are geometric curves, not CFD
     # boundary faces. Keep the diagnostic explicit instead of treating them
     # as patches; in a surface-only 2D mesh they are mapped below to edge faces.
-    for ctype,_,_ in boundary_lines: skipped[ctype]+=1
-    cells=volumes
-    face_map={}; faces=[]; owner=[]; neighbour=[]; cell_faces=[]
-    for ci,(ctype,nodes,_) in enumerate(cells):
-        templates=tuple(range(len(nodes))) if ctype=="polyhedron" else VOLUME_FACES[ctype]
-        refs=[]
+    for ctype, _, _ in boundary_lines:
+        skipped[ctype] += 1
+    cells = volumes
+    face_map = {}
+    faces = []
+    owner = []
+    neighbour = []
+    cell_faces = []
+    for ci, (ctype, nodes, _) in enumerate(cells):
+        templates = (
+            tuple(range(len(nodes))) if ctype == "polyhedron" else VOLUME_FACES[ctype]
+        )
+        refs = []
         for local in templates:
-            face=nodes[local] if ctype=="polyhedron" else [nodes[i] for i in local]
-            key=tuple(sorted(face)); fid=face_map.get(key)
+            face = nodes[local] if ctype == "polyhedron" else [nodes[i] for i in local]
+            key = tuple(sorted(face))
+            fid = face_map.get(key)
             if fid is None:
-                fid=len(faces); face_map[key]=fid; faces.append(face); owner.append(ci); neighbour.append(-1)
-            elif neighbour[fid]!=-1: raise ValueError(f"non-manifold face {key}")
-            else: neighbour[fid]=ci
+                fid = len(faces)
+                face_map[key] = fid
+                faces.append(face)
+                owner.append(ci)
+                neighbour.append(-1)
+            elif neighbour[fid] != -1:
+                raise ValueError(f"non-manifold face {key}")
+            else:
+                neighbour[fid] = ci
             refs.append(fid)
         cell_faces.append(refs)
     orient_faces(points, faces, owner, cells)
-    return points,faces,owner,neighbour,cell_faces,skipped
+    return points, faces, owner, neighbour, cell_faces, skipped
+
 
 def build_surface_2d(points, surfaces, skipped):
     """Turn a surface-only mesh (SU2 .su2, exported 2D meshes) into a 2D CFDX mesh.
@@ -165,41 +256,60 @@ def build_surface_2d(points, surfaces, skipped):
     the faces. An edge shared by two elements is an interior face, the remaining
     ones are the boundary faces of the 2D domain.
     """
-    cells=surfaces
-    face_map={}; faces=[]; owner=[]; neighbour=[]; cell_faces=[]
-    for ci,(ctype,nodes,_) in enumerate(cells):
-        if len(nodes)<3: raise ValueError(f"cell {ci}: fewer than 3 vertices")
-        refs=[]
+    cells = surfaces
+    face_map = {}
+    faces = []
+    owner = []
+    neighbour = []
+    cell_faces = []
+    for ci, (ctype, nodes, _) in enumerate(cells):
+        if len(nodes) < 3:
+            raise ValueError(f"cell {ci}: fewer than 3 vertices")
+        refs = []
         for k in range(len(nodes)):
-            face=[nodes[k],nodes[(k+1)%len(nodes)]]
-            if face[0]==face[1]: raise ValueError(f"cell {ci}: repeated vertex {face[0]}")
-            key=tuple(sorted(face)); fid=face_map.get(key)
+            face = [nodes[k], nodes[(k + 1) % len(nodes)]]
+            if face[0] == face[1]:
+                raise ValueError(f"cell {ci}: repeated vertex {face[0]}")
+            key = tuple(sorted(face))
+            fid = face_map.get(key)
             if fid is None:
-                fid=len(faces); face_map[key]=fid; faces.append(face); owner.append(ci); neighbour.append(-1)
-            elif neighbour[fid]!=-1: raise ValueError(f"non-manifold face {key}")
-            else: neighbour[fid]=ci
+                fid = len(faces)
+                face_map[key] = fid
+                faces.append(face)
+                owner.append(ci)
+                neighbour.append(-1)
+            elif neighbour[fid] != -1:
+                raise ValueError(f"non-manifold face {key}")
+            else:
+                neighbour[fid] = ci
             refs.append(fid)
         cell_faces.append(refs)
     orient_faces(points, faces, owner, cells)
-    return points,faces,owner,neighbour,cell_faces,skipped
+    return points, faces, owner, neighbour, cell_faces, skipped
 
-def cell_vertices(ctype,nodes):
-    if ctype=="polyhedron": return sorted({v for fc in nodes for v in fc})
+
+def cell_vertices(ctype, nodes):
+    if ctype == "polyhedron":
+        return sorted({v for fc in nodes for v in fc})
     return nodes
 
+
 def newell_normal(pts):
-    xf=np.mean(pts,axis=0)
-    return 0.5*np.sum(np.cross(pts-xf,np.roll(pts-xf,-1,axis=0)),axis=0)
+    xf = np.mean(pts, axis=0)
+    return 0.5 * np.sum(np.cross(pts - xf, np.roll(pts - xf, -1, axis=0)), axis=0)
+
 
 def mid_surface_normal(points, cells):
     """Unit normal of the plane the cells lie in, used to orient 2D edges."""
-    acc=np.zeros(3)
-    for ctype,nodes,_ in cells:
-        ids=cell_vertices(ctype,nodes)
-        if len(ids)<3: continue
-        acc=acc+newell_normal(points[np.asarray(ids,dtype=np.int64)])
-    norm=float(np.linalg.norm(acc))
-    return acc/norm if norm>0.0 else np.array([0.0,0.0,1.0])
+    acc = np.zeros(3)
+    for ctype, nodes, _ in cells:
+        ids = cell_vertices(ctype, nodes)
+        if len(ids) < 3:
+            continue
+        acc = acc + newell_normal(points[np.asarray(ids, dtype=np.int64)])
+    norm = float(np.linalg.norm(acc))
+    return acc / norm if norm > 0.0 else np.array([0.0, 0.0, 1.0])
+
 
 def orient_faces(points, faces, owner, cells):
     """Orient each face so its normal points out of its owner cell.
@@ -208,111 +318,178 @@ def orient_faces(points, faces, owner, cells):
     faces of a 2D mesh are tested with the in-plane normal of the edge, i.e.
     the edge direction rotated by -90 degrees about the mid-surface normal.
     """
-    centres=[]
-    for ctype,nodes,_ in cells:
-        ids=cell_vertices(ctype,nodes)
+    centres = []
+    for ctype, nodes, _ in cells:
+        ids = cell_vertices(ctype, nodes)
         if not ids:
             raise ValueError("cell has no vertices")
-        centres.append(np.mean(points[np.asarray(ids,dtype=np.int64)],axis=0))
-    plane=mid_surface_normal(points,cells)
-    for fid,face in enumerate(faces):
-        if len(face)<2:
+        centres.append(np.mean(points[np.asarray(ids, dtype=np.int64)], axis=0))
+    plane = mid_surface_normal(points, cells)
+    for fid, face in enumerate(faces):
+        if len(face) < 2:
             raise ValueError(f"face {fid}: fewer than 2 vertices")
-        pts=points[np.asarray(face,dtype=np.int64)]
-        xf=np.mean(pts,axis=0)
-        rel=xf-centres[owner[fid]]
-        if len(face)<3: S=np.cross(pts[1]-pts[0],plane)
-        else: S=newell_normal(pts)
-        sd=float(np.dot(S,rel))
-        scale=max(float(np.linalg.norm(S))*float(np.linalg.norm(rel)),1e-300)
-        if not np.isfinite(sd) or abs(sd)<=1e-14*scale:
+        pts = points[np.asarray(face, dtype=np.int64)]
+        xf = np.mean(pts, axis=0)
+        rel = xf - centres[owner[fid]]
+        if len(face) < 3:
+            S = np.cross(pts[1] - pts[0], plane)
+        else:
+            S = newell_normal(pts)
+        sd = float(np.dot(S, rel))
+        scale = max(float(np.linalg.norm(S)) * float(np.linalg.norm(rel)), 1e-300)
+        if not np.isfinite(sd) or abs(sd) <= 1e-14 * scale:
             raise ValueError(f"face {fid}: degenerate or tangent owner normal")
-        if sd<0.0:
+        if sd < 0.0:
             face.reverse()
     return faces
 
-def fnv1a_update(hash_value,array):
+
+def fnv1a_update(hash_value, array):
     for byte in np.asarray(array).tobytes(order="C"):
-        hash_value ^= byte; hash_value=(hash_value*1099511628211)&0xFFFFFFFFFFFFFFFF
+        hash_value ^= byte
+        hash_value = (hash_value * 1099511628211) & 0xFFFFFFFFFFFFFFFF
     return hash_value
 
-def hash_hex(hash_value): return f"{hash_value:016x}"
 
-def write(path,mesh,topo):
-    points,faces,owner,neighbour,cell_faces,skipped=topo
-    fv=np.asarray([v for f in faces for v in f],dtype=np.uint64)
-    fo=np.zeros(len(faces)+1,dtype=np.uint64)
-    for i,f in enumerate(faces): fo[i+1]=fo[i]+len(f)
-    cf=np.asarray([f for c in cell_faces for f in c],dtype=np.uint64)
-    co=np.zeros(len(cell_faces)+1,dtype=np.uint64)
-    for i,c in enumerate(cell_faces): co[i+1]=co[i]+len(c)
-    owner_a=np.asarray(owner,dtype=np.uint64); neighbour_a=np.asarray(neighbour,dtype=np.int64)
-    lookup={tuple(sorted(f)):i for i,f in enumerate(faces)}
-    names=physical_names(mesh); patches=collections.OrderedDict()
-    for bi,b in enumerate(mesh.cells):
+def hash_hex(hash_value):
+    return f"{hash_value:016x}"
+
+
+def write(path, mesh, topo):
+    points, faces, owner, neighbour, cell_faces, skipped = topo
+    fv = np.asarray([v for f in faces for v in f], dtype=np.uint64)
+    fo = np.zeros(len(faces) + 1, dtype=np.uint64)
+    for i, f in enumerate(faces):
+        fo[i + 1] = fo[i] + len(f)
+    cf = np.asarray([f for c in cell_faces for f in c], dtype=np.uint64)
+    co = np.zeros(len(cell_faces) + 1, dtype=np.uint64)
+    for i, c in enumerate(cell_faces):
+        co[i + 1] = co[i] + len(c)
+    owner_a = np.asarray(owner, dtype=np.uint64)
+    neighbour_a = np.asarray(neighbour, dtype=np.int64)
+    lookup = {tuple(sorted(f)): i for i, f in enumerate(faces)}
+    names = physical_names(mesh)
+    patches = collections.OrderedDict()
+    for bi, b in enumerate(mesh.cells):
         if b.type in SURFACE:
-            ncorner=SURFACE[b.type]
+            ncorner = SURFACE[b.type]
         elif b.type in LINE:
             # In a 2D surface-only mesh, Gmsh line elements identify the
             # physical boundary edges reconstructed from the surface cells.
-            ncorner=LINE[b.type]
+            ncorner = LINE[b.type]
         else:
             continue
-        tags=block_tags(mesh,"gmsh:physical",bi)
-        if tags is None: tags=block_tags(mesh,"su2:tag",bi)
-        for j,row in enumerate(np.asarray(b.data)):
-            fid=lookup.get(tuple(sorted(int(x) for x in row[:ncorner])))
-            if fid is None: continue
-            pname=names.get(int(tags[j]),f"physical_{int(tags[j])}") if tags is not None and j<len(tags) else "boundary"
-            patches.setdefault(pname,[]).append(fid)
+        tags = block_tags(mesh, "gmsh:physical", bi)
+        if tags is None:
+            tags = block_tags(mesh, "su2:tag", bi)
+        for j, row in enumerate(np.asarray(b.data)):
+            fid = lookup.get(tuple(sorted(int(x) for x in row[:ncorner])))
+            if fid is None:
+                continue
+            pname = (
+                names.get(int(tags[j]), f"physical_{int(tags[j])}")
+                if tags is not None and j < len(tags)
+                else "boundary"
+            )
+            patches.setdefault(pname, []).append(fid)
     if not patches:
-        ids=[i for i,n in enumerate(neighbour) if n<0]
-        if ids: patches["boundary"]=ids
+        ids = [i for i, n in enumerate(neighbour) if n < 0]
+        if ids:
+            patches["boundary"] = ids
     # Every topological boundary face must belong to a patch. Physical
     # groups are optional/incomplete in real Gmsh files, so preserve their
     # named patches and explicitly collect any otherwise-unassigned boundary
     # faces in a generic patch instead of producing an invalid mesh.
-    assigned={fid for values in patches.values() for fid in values}
-    missing=[i for i,n in enumerate(neighbour) if n < 0 and i not in assigned]
+    assigned = {fid for values in patches.values() for fid in values}
+    missing = [i for i, n in enumerate(neighbour) if n < 0 and i not in assigned]
     if missing:
         patches.setdefault("boundary", []).extend(missing)
-        print("warning: unassigned boundary faces mapped to generic boundary patch: "
-              + ",".join(str(i) for i in missing), file=sys.stderr)
+        print(
+            "warning: unassigned boundary faces mapped to generic boundary patch: "
+            + ",".join(str(i) for i in missing),
+            file=sys.stderr,
+        )
 
-    ids=[]; offsets=[0]; meta=[]
-    for name,values in patches.items():
-        values=sorted(set(values)); ids.extend(values); offsets.append(len(ids))
-        start=values[0] if values else 0
+    ids = []
+    offsets = [0]
+    meta = []
+    for name, values in patches.items():
+        values = sorted(set(values))
+        ids.extend(values)
+        offsets.append(len(ids))
+        start = values[0] if values else 0
         meta.append(f"{name}:{start}:{len(values)}:{patch_type(name)}")
-    topology=1469598103934665603
-    topology=fnv1a_update(topology,fv)
-    if len(faces)>0: topology=fnv1a_update(topology,fo)
-    topology=fnv1a_update(topology,owner_a); topology=fnv1a_update(topology,neighbour_a)
-    topology=fnv1a_update(topology,cf)
-    if len(cell_faces)>0: topology=fnv1a_update(topology,co)
-    geometry=topology
-    geometry=fnv1a_update(geometry,points[:,0].astype(np.float64,copy=False))
-    geometry=fnv1a_update(geometry,points[:,1].astype(np.float64,copy=False))
-    geometry=fnv1a_update(geometry,points[:,2].astype(np.float64,copy=False))
-    with h5py.File(path,"w") as h:
-        h.attrs["format"]="CFDX-HDF5-mesh-v1"
-        h.attrs.create("format_version","1",dtype=h5py.string_dtype(encoding="ascii",length=2))
-        h.attrs.create("schema_version","1",dtype=h5py.string_dtype(encoding="ascii",length=2))
-        h.attrs.create("cfdx_version","0.7",dtype=h5py.string_dtype(encoding="ascii",length=4))
-        h.attrs.create("topology_hash",hash_hex(topology),dtype=h5py.string_dtype(encoding="ascii",length=17))
-        h.attrs.create("mesh_hash",hash_hex(geometry),dtype=h5py.string_dtype(encoding="ascii",length=17))
-        h.attrs["n_points"]=str(len(points)); h.attrs["n_faces"]=str(len(faces)); h.attrs["n_cells"]=str(len(cell_faces))
-        h.create_dataset("points",data=points); h.create_dataset("face_vertices",data=fv); h.create_dataset("face_offsets",data=fo)
-        h.create_dataset("owner",data=owner_a); h.create_dataset("neighbour",data=neighbour_a)
-        h.create_dataset("cell_faces",data=cf); h.create_dataset("cell_offsets",data=co)
-        boundary_metadata=";".join(meta)
-        if boundary_metadata: h.attrs.create("boundary_patches",boundary_metadata,dtype=h5py.string_dtype(encoding="ascii",length=len(boundary_metadata)+1))
-        h.create_dataset("patch_face_ids",data=np.asarray(ids,dtype=np.uint64)); h.create_dataset("patch_face_offsets",data=np.asarray(offsets,dtype=np.uint64))
-    if skipped: print("warning: skipped cell types: "+", ".join(f"{k}={v}" for k,v in sorted(skipped.items())),file=sys.stderr)
+    topology = 1469598103934665603
+    topology = fnv1a_update(topology, fv)
+    if len(faces) > 0:
+        topology = fnv1a_update(topology, fo)
+    topology = fnv1a_update(topology, owner_a)
+    topology = fnv1a_update(topology, neighbour_a)
+    topology = fnv1a_update(topology, cf)
+    if len(cell_faces) > 0:
+        topology = fnv1a_update(topology, co)
+    geometry = topology
+    geometry = fnv1a_update(geometry, points[:, 0].astype(np.float64, copy=False))
+    geometry = fnv1a_update(geometry, points[:, 1].astype(np.float64, copy=False))
+    geometry = fnv1a_update(geometry, points[:, 2].astype(np.float64, copy=False))
+    with h5py.File(path, "w") as h:
+        h.attrs["format"] = "CFDX-HDF5-mesh-v1"
+        h.attrs.create(
+            "format_version", "1", dtype=h5py.string_dtype(encoding="ascii", length=2)
+        )
+        h.attrs.create(
+            "schema_version", "1", dtype=h5py.string_dtype(encoding="ascii", length=2)
+        )
+        h.attrs.create(
+            "cfdx_version", "0.7", dtype=h5py.string_dtype(encoding="ascii", length=4)
+        )
+        h.attrs.create(
+            "topology_hash",
+            hash_hex(topology),
+            dtype=h5py.string_dtype(encoding="ascii", length=17),
+        )
+        h.attrs.create(
+            "mesh_hash",
+            hash_hex(geometry),
+            dtype=h5py.string_dtype(encoding="ascii", length=17),
+        )
+        h.attrs["n_points"] = str(len(points))
+        h.attrs["n_faces"] = str(len(faces))
+        h.attrs["n_cells"] = str(len(cell_faces))
+        h.create_dataset("points", data=points)
+        h.create_dataset("face_vertices", data=fv)
+        h.create_dataset("face_offsets", data=fo)
+        h.create_dataset("owner", data=owner_a)
+        h.create_dataset("neighbour", data=neighbour_a)
+        h.create_dataset("cell_faces", data=cf)
+        h.create_dataset("cell_offsets", data=co)
+        boundary_metadata = ";".join(meta)
+        if boundary_metadata:
+            h.attrs.create(
+                "boundary_patches",
+                boundary_metadata,
+                dtype=h5py.string_dtype(
+                    encoding="ascii", length=len(boundary_metadata) + 1
+                ),
+            )
+        h.create_dataset("patch_face_ids", data=np.asarray(ids, dtype=np.uint64))
+        h.create_dataset(
+            "patch_face_offsets", data=np.asarray(offsets, dtype=np.uint64)
+        )
+    if skipped:
+        print(
+            "warning: skipped cell types: "
+            + ", ".join(f"{k}={v}" for k, v in sorted(skipped.items())),
+            file=sys.stderr,
+        )
+
 
 def main():
-    p=argparse.ArgumentParser(); p.add_argument("input",type=pathlib.Path); p.add_argument("output",type=pathlib.Path); p.add_argument("--file-format")
-    a=p.parse_args()
+    p = argparse.ArgumentParser()
+    p.add_argument("input", type=pathlib.Path)
+    p.add_argument("output", type=pathlib.Path)
+    p.add_argument("--file-format")
+    a = p.parse_args()
     try:
         mesh = read_mesh(a.input, a.file_format)
         write(a.output, mesh, build(mesh))
