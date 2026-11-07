@@ -24,10 +24,6 @@ using namespace cfdx::verification;
 
 namespace {
 
-void require(bool condition, const std::string& message) {
-    if (!condition) throw std::runtime_error(message);
-}
-
 Field<double, Location::CELL> ode_field(double u) {
     Field<double, Location::CELL> f(1, "u", "1", 1);
     f(0) = u;
