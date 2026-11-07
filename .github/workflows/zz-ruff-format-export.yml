@@ -36,6 +36,7 @@ jobs:
           ruff format "${files[@]}"
           python - <<'PY'
           from pathlib import Path
+          import re
 
           def replace_once(path: str, old: str, new: str) -> None:
               file = Path(path)
@@ -95,6 +96,15 @@ jobs:
 
           test_file = Path("tests/python/test_naca_force_mesh_qualification.py")
           test_source = test_file.read_text(encoding="utf-8")
+          pattern = re.compile(r"dict\\(\\s*case=f['\\"]N\\{n\\}['\\"],.*?cm=0,?\\s*\\)", re.S)
+          replacement = (
+              '{"case": f"N{n}", "h": 1 / n, "converged": "yes", '
+              '"res_mom": 1e-11, "res_mass": 2e-11, "cd": cd, '
+              '"cdp": cd * 0.4, "cdv": cd * 0.6, "cl": 0, "cm": 0}'
+          )
+          test_source, fixed = pattern.subn(replacement, test_source, count=1)
+          if fixed != 1:
+              raise SystemExit("test_naca_force_mesh_qualification.py: C408 patch anchor not found")
           old = "record = list(csv.DictReader(stream))[0]"
           if test_source.count(old) != 1:
               raise SystemExit("test_naca_force_mesh_qualification.py: RUF015 patch anchor not found")
