@@ -56,13 +56,6 @@ static std::vector<std::vector<double>> inverse(std::vector<std::vector<double>>
     return I;
 }
 
-static Vector dense_matvec(const std::vector<std::vector<double>>& A, const Vector& x) {
-    Vector y(A.size(), 0.0);
-    for (std::size_t i = 0; i < A.size(); ++i)
-        for (std::size_t j = 0; j < A[i].size(); ++j) y(i) += A[i][j] * x(j);
-    return y;
-}
-
 static double norm2(const Vector& x) {
     return std::sqrt(x.dot(x));
 }

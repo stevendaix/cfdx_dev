@@ -9,14 +9,6 @@
 
 using namespace cfdx::core;
 
-static double residual_inf(const SparseMatrix& A, const Vector& x, const Vector& b) {
-    const auto ax = A.matvec(x);
-    double value = 0.0;
-    for (std::size_t i = 0; i < b.size(); ++i)
-        value = std::max(value, std::abs(ax[i] - b(i)));
-    return value;
-}
-
 static SparseMatrix make_system(double fine_diag = 4.0, double coarse_diag = 3.0) {
     SparseMatrix A(8, 8);
     for (std::size_t i = 0; i < 4; ++i) {

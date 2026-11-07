@@ -19,7 +19,6 @@ using namespace cfdx::testing;
 namespace {
 
 const double lambda = 2.0;
-double reaction(double phi) { return -lambda * phi; }
 
 RhsFunction ode_rhs = [](const Field<double, Location::CELL>& x,
                          Field<double, Location::CELL>& rhs) {
@@ -96,7 +95,7 @@ int main() {
             ctx.dt_prev = dt0;
             auto u = ctx.phi_curr;
             double t = dt0;
-            int k = 1;
+            std::size_t k = 1;
             while (t < 1.0 - 1e-12) {
                 const double dt = std::min(base * pattern[k % pattern.size()], 1.0 - t);
                 u = advance_time(u, dt, ode_rhs, TimeScheme::BDF2, &ctx);

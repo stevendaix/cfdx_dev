@@ -222,7 +222,6 @@ Mesh make_cartesian_cube(std::size_t n)
         for (std::size_t j = 0; j < n; ++j) {
             for (std::size_t i = 0; i < n; ++i) {
                 const std::size_t c = cell_id(i, j, k);
-                const std::size_t b = 8 * c;
                 auto face = [&](std::size_t axis, std::size_t fi, std::size_t fj, std::size_t fk,
                                 std::initializer_list<std::size_t> v) {
                     return add_or_get_face({fi, fj, fk, axis}, v);
