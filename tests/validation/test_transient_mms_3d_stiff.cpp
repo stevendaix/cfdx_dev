@@ -161,7 +161,7 @@ int main()
             const double mu3 = 3.0 * kPi * kPi;
             std::vector<double> errs;
             for (const std::size_t n : {8u, 16u, 32u, 64u}) {
-                const double h = 1.0 / n;
+                const double h = 1.0 / static_cast<double>(n);
                 const double mu_disc = 3.0 * (2.0 / (h * h)) * (1.0 - std::cos(kPi * h));
                 errs.push_back(std::abs(mu_disc - mu3));
                 std::cout << "N5D_SPATIAL3 n=" << n << " err=" << errs.back();
