@@ -1,4 +1,5 @@
 """Fail-closed convergence history diagnostics, never artificial solver PASS."""
+
 from __future__ import annotations
 
 import csv
@@ -20,9 +21,15 @@ def history(tmp_path: Path, **changes) -> Path:
     rows = []
     for i in range(1, 5):
         values = {key: "1e-11" for key in names}
-        values.update({"iteration": str(i), "convection_scheme": "TVD",
-                       "algorithm": "SIMPLE", "high_order_fraction": "1",
-                       "momentum_component_max": "1e-11"})
+        values.update(
+            {
+                "iteration": str(i),
+                "convection_scheme": "TVD",
+                "algorithm": "SIMPLE",
+                "high_order_fraction": "1",
+                "momentum_component_max": "1e-11",
+            }
+        )
         values.update(changes)
         rows.append(values)
     output = tmp_path / "history.csv"
@@ -42,29 +49,34 @@ def test_good_history_stays_diagnostic_not_certified(tmp_path):
 
 
 def test_transverse_momentum_detected_independently(tmp_path):
-    path = history(tmp_path, momentum_y_rhs_relative="2e-4",
-                   momentum_component_max="2e-4")
+    path = history(
+        tmp_path, momentum_y_rhs_relative="2e-4", momentum_component_max="2e-4"
+    )
     report = DIAG.diagnose(DIAG.read_history(path))
     assert not report["physical_tolerance_checks_pass"]
     assert report["unmet_nonlinear_checks"]["momentum_y_rhs_relative"] == 2e-4
 
 
-@pytest.mark.parametrize("field,value", [
-    ("momentum_reference_relative", "nan"),
-    ("face_momentum_y_relative", "-1"),
-    ("continuity_normalized", "inf"),
-    ("high_order_fraction", "1.1"),
-    ("iteration", "1.5"),
-    ("algorithm", "COUPLED"),
-])
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("momentum_reference_relative", "nan"),
+        ("face_momentum_y_relative", "-1"),
+        ("continuity_normalized", "inf"),
+        ("high_order_fraction", "1.1"),
+        ("iteration", "1.5"),
+        ("algorithm", "COUPLED"),
+    ],
+)
 def test_bad_history_fails_closed(tmp_path, field, value):
     with pytest.raises(ValueError):
         DIAG.read_history(history(tmp_path, **{field: value}))
 
 
 def test_first_order_not_full_order_candidate(tmp_path):
-    report = DIAG.diagnose(DIAG.read_history(
-        history(tmp_path, convection_scheme="UPWIND")))
+    report = DIAG.diagnose(
+        DIAG.read_history(history(tmp_path, convection_scheme="UPWIND"))
+    )
     assert report["physical_tolerance_checks_pass"]
     assert report["full_order_scheme"] is False
 

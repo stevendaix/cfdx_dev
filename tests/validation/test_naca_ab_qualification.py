@@ -1,7 +1,7 @@
 import importlib.util
-from pathlib import Path
 import tempfile
 import unittest
+from pathlib import Path
 
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "naca_ab_qualification.py"
 _spec = importlib.util.spec_from_file_location("cfdx_naca_ab", _SCRIPT)

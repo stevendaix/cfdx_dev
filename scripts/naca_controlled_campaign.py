@@ -45,8 +45,10 @@ def parse_result(output: str) -> dict:
     ):
         raise ValueError("physical gate failed")
     if not math.isclose(
-        parsed["Cd"], parsed["Cd_pressure"] + parsed["Cd_viscous"],
-        rel_tol=1e-7, abs_tol=1e-9,
+        parsed["Cd"],
+        parsed["Cd_pressure"] + parsed["Cd_viscous"],
+        rel_tol=1e-7,
+        abs_tol=1e-9,
     ):
         raise ValueError("total drag differs from pressure plus viscous drag")
     return parsed

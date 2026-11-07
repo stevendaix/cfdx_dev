@@ -1,11 +1,14 @@
 """Radial mesh nesting must be geometric, not merely a JSON claim."""
+
 import importlib.util
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "generate_2d_validation_meshes.py"
+SCRIPT = (
+    Path(__file__).resolve().parents[2] / "scripts" / "generate_2d_validation_meshes.py"
+)
 SPEC = importlib.util.spec_from_file_location("cfdx_nested_naca_mesh", SCRIPT)
 assert SPEC is not None and SPEC.loader is not None
 GEN = importlib.util.module_from_spec(SPEC)

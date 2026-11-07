@@ -38,19 +38,19 @@ class GridQualificationTests(unittest.TestCase):
         hs = (0.25, 0.125, 0.125 / 1.96)
         result = qualify([row(h) for h in hs])
         self.assertAlmostEqual(result["quantities"]["cd"]["order"], 2.0, places=9)
-        self.assertAlmostEqual(result["quantities"]["cd"]["extrapolated"],
-                               0.12, places=11)
+        self.assertAlmostEqual(
+            result["quantities"]["cd"]["extrapolated"], 0.12, places=11
+        )
         self.assertAlmostEqual(result["refinement_ratios"][0], 2.0)
         self.assertAlmostEqual(result["refinement_ratios"][1], 1.96)
 
     def test_negative_observed_order_refuses_false_gci(self):
         rows = [row(0.25), row(0.125), row(0.125 / 1.96)]
         # The coarse-to-medium delta is too small for any positive order.
-        rows[0]["cd"] = str(float(rows[1]["cd"]) + 1.e-6)
+        rows[0]["cd"] = str(float(rows[1]["cd"]) + 1.0e-6)
         rows[0]["cdv"] = str(float(rows[0]["cd"]) - float(rows[0]["cdp"]))
         result = qualify(rows)
-        self.assertEqual(result["quantities"]["cd"]["status"],
-                         "invalid_observed_order")
+        self.assertEqual(result["quantities"]["cd"]["status"], "invalid_observed_order")
 
     def test_unconverged_grid_is_rejected(self):
         rows = [row(0.25), row(0.125), row(0.0625)]

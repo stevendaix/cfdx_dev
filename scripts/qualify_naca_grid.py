@@ -79,7 +79,7 @@ def qualify(rows, residual_gate=1e-8):
     def observed_order(magnitude_ratio):
         if magnitude_ratio <= log21 / log32:
             return None  # would require non-positive observed order
-        lo, hi = 1.e-9, 8.0
+        lo, hi = 1.0e-9, 8.0
         if magnitude_ratio >= difference_ratio(hi):
             return None
         for _ in range(80):
@@ -95,13 +95,15 @@ def qualify(rows, residual_gate=1e-8):
         d01, d12 = f0 - f1, f1 - f2
         if d01 == 0.0 or d12 == 0.0 or d01 * d12 <= 0:
             result["quantities"][key] = {
-                "status": "nonmonotone_or_plateau", "GCI": None,
+                "status": "nonmonotone_or_plateau",
+                "GCI": None,
             }
             continue
         order = observed_order(abs(d01 / d12))
         if order is None or not math.isfinite(order):
             result["quantities"][key] = {
-                "status": "invalid_observed_order", "GCI": None,
+                "status": "invalid_observed_order",
+                "GCI": None,
             }
             continue
         denominator = math.expm1(order * log32)
@@ -109,7 +111,8 @@ def qualify(rows, residual_gate=1e-8):
         absolute_gci = 1.25 * abs(f2 - f1) / denominator
         if not (math.isfinite(extrapolated) and math.isfinite(absolute_gci)):
             result["quantities"][key] = {
-                "status": "invalid_refinement_extrapolation", "GCI": None,
+                "status": "invalid_refinement_extrapolation",
+                "GCI": None,
             }
             continue
         result["quantities"][key] = {

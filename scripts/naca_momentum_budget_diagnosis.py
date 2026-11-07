@@ -1,24 +1,48 @@
 #!/usr/bin/env python3
 """Fail-closed cellwise NACA momentum budget audit (never a CFD certificate)."""
+
 from __future__ import annotations
 
 import argparse
 import csv
+import itertools
 import json
 import math
 from collections import defaultdict
 from pathlib import Path
 
 COLUMNS = (
-    "iteration", "component", "rank", "cell", "x", "y", "z",
-    "convection", "viscous", "transpose_viscous", "pressure", "body_force",
-    "bounded_divergence", "mass_divergence", "collocated_difference",
-    "physical_residual", "bounded_operator_residual", "worst_residual",
+    "iteration",
+    "component",
+    "rank",
+    "cell",
+    "x",
+    "y",
+    "z",
+    "convection",
+    "viscous",
+    "transpose_viscous",
+    "pressure",
+    "body_force",
+    "bounded_divergence",
+    "mass_divergence",
+    "collocated_difference",
+    "physical_residual",
+    "bounded_operator_residual",
+    "worst_residual",
 )
 TERMS = (
-    "convection", "viscous", "transpose_viscous", "pressure", "body_force",
-    "bounded_divergence", "mass_divergence", "collocated_difference",
-    "physical_residual", "bounded_operator_residual", "worst_residual",
+    "convection",
+    "viscous",
+    "transpose_viscous",
+    "pressure",
+    "body_force",
+    "bounded_divergence",
+    "mass_divergence",
+    "collocated_difference",
+    "physical_residual",
+    "bounded_operator_residual",
+    "worst_residual",
 )
 
 
@@ -30,7 +54,9 @@ def _close(left: float, right: float) -> bool:
 def read_budget(path: Path) -> list[dict]:
     with path.open(newline="", encoding="utf-8") as stream:
         reader = csv.DictReader(stream)
-        if reader.fieldnames is None or len(set(reader.fieldnames)) != len(reader.fieldnames):
+        if reader.fieldnames is None or len(set(reader.fieldnames)) != len(
+            reader.fieldnames
+        ):
             raise ValueError("missing or duplicated cell-budget CSV headers")
         if not set(COLUMNS).issubset(reader.fieldnames):
             raise ValueError("missing required cell-budget columns")
@@ -55,9 +81,12 @@ def read_budget(path: Path) -> list[dict]:
             conv = row["convection"] + row["viscous"] + row["transpose_viscous"]
             phys = conv + row["pressure"] + row["body_force"]
             if not _close(phys, row["physical_residual"]):
-                raise ValueError(f"cell transport/source sum inconsistent at line {line}")
-            if not _close(phys + row["bounded_divergence"],
-                          row["bounded_operator_residual"]):
+                raise ValueError(
+                    f"cell transport/source sum inconsistent at line {line}"
+                )
+            if not _close(
+                phys + row["bounded_divergence"], row["bounded_operator_residual"]
+            ):
                 raise ValueError(f"bounded operator sum inconsistent at line {line}")
             rows.append(row)
     if not rows:
@@ -66,18 +95,24 @@ def read_budget(path: Path) -> list[dict]:
     for row in rows:
         groups[row["iteration"], row["component"]].append(row)
     for key, group in groups.items():
-        if set(r["rank"] for r in group) != set(range(len(group))):
+        if {r["rank"] for r in group} != set(range(len(group))):
             raise ValueError(f"noncontiguous ranks for iteration/component {key}")
         if len({r["cell"] for r in group}) != len(group):
             raise ValueError(f"duplicate cells for iteration/component {key}")
         ordered = sorted(group, key=lambda x: x["rank"])
-        if any(abs(a["physical_residual"]) + 1e-12 < abs(b["physical_residual"])
-               for a, b in zip(ordered, ordered[1:])):
+        if any(
+            abs(a["physical_residual"]) + 1e-12 < abs(b["physical_residual"])
+            for a, b in itertools.pairwise(ordered)
+        ):
             raise ValueError(f"ranks not ordered by local residual for {key}")
-        if not _close(abs(ordered[0]["physical_residual"]), ordered[0]["worst_residual"]):
+        if not _close(
+            abs(ordered[0]["physical_residual"]), ordered[0]["worst_residual"]
+        ):
             raise ValueError(f"top residual disagrees with reported maximum for {key}")
-        if any(not _close(r["worst_residual"], ordered[0]["worst_residual"])
-               for r in ordered):
+        if any(
+            not _close(r["worst_residual"], ordered[0]["worst_residual"])
+            for r in ordered
+        ):
             raise ValueError(f"inconsistent worst residual within {key}")
     return rows
 
@@ -90,15 +125,21 @@ def diagnose(rows: list[dict]) -> dict:
     summary = []
     for iteration, component in sorted(groups):
         top = min(groups[iteration, component], key=lambda row: row["rank"])
-        summary.append({
-            "iteration": iteration, "component": "xyz"[component],
-            "worst_cell": top["cell"], "x": top["x"], "y": top["y"],
-            "convection": top["convection"], "viscous": top["viscous"],
-            "pressure": top["pressure"], "collocated_flux_difference":
-            top["collocated_difference"],
-            "physical_residual": top["physical_residual"],
-            "bounded_operator_residual": top["bounded_operator_residual"],
-        })
+        summary.append(
+            {
+                "iteration": iteration,
+                "component": "xyz"[component],
+                "worst_cell": top["cell"],
+                "x": top["x"],
+                "y": top["y"],
+                "convection": top["convection"],
+                "viscous": top["viscous"],
+                "pressure": top["pressure"],
+                "collocated_flux_difference": top["collocated_difference"],
+                "physical_residual": top["physical_residual"],
+                "bounded_operator_residual": top["bounded_operator_residual"],
+            }
+        )
     return {
         "status": "DIAGNOSTIC_ONLY_NOT_A_SOLVER_CERTIFICATE",
         "latest_sampled_iteration": latest,

@@ -26,15 +26,24 @@ def verify_three_grid(summary: dict) -> dict:
             raise TypeError(f"N{n}: metrics must be a mapping")
         for key in ("Cd", "Cl", "continuity", "Cd_pressure", "Cd_viscous"):
             value = metrics.get(key)
-            if (isinstance(value, bool) or not isinstance(value, (int, float))
-                    or not math.isfinite(value)):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+            ):
                 raise ValueError(f"N{n}: invalid {key}")
-        if not (0 <= metrics["continuity"] < 1e-7 and abs(metrics["Cl"]) <= 2e-2
-                and metrics["Cd_pressure"] > 0):
+        if not (
+            0 <= metrics["continuity"] < 1e-7
+            and abs(metrics["Cl"]) <= 2e-2
+            and metrics["Cd_pressure"] > 0
+        ):
             raise ValueError(f"N{n}: physical gate failed")
         if not math.isclose(
-                metrics["Cd"], metrics["Cd_pressure"] + metrics["Cd_viscous"],
-                rel_tol=1e-7, abs_tol=1e-9):
+            metrics["Cd"],
+            metrics["Cd_pressure"] + metrics["Cd_viscous"],
+            rel_tol=1e-7,
+            abs_tol=1e-9,
+        ):
             raise ValueError(f"N{n}: nonconservative drag decomposition")
         cds.append(float(metrics["Cd"]))
     d01 = cds[1] - cds[0]
