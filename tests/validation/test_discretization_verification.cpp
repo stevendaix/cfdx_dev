@@ -2,6 +2,7 @@
 #include "cfdx/physics/low_storage_time_integration.h"
 #include "verification_metrics.h"
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
