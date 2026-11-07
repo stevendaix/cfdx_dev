@@ -66,7 +66,6 @@ inline double crank_nicolson_step(double phi_n, double dt, Function&& f) {
     return detail::fixed_point(
         phi_n,
         std::forward<Function>(f),
-        dt,
         0.5 * dt,
         phi_n + 0.5 * dt * rhs_n);
 }
@@ -85,7 +84,6 @@ inline double bdf2_step(
     return detail::fixed_point(
         phi_n,
         std::forward<Function>(f),
-        dt,
         rhs_scale,
         constant);
 }
