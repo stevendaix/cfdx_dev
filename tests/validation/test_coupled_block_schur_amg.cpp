@@ -184,7 +184,7 @@ int main(){
    EXPECT_TRUE(differs);
 
    Vector exact(32);
-   for(std::size_t i=0;i<32;++i) exact(i)=std::cos(0.09*(i+1));
+   for(std::size_t i=0;i<32;++i) exact(i)=std::cos(0.09*(static_cast<double>(i)+1.0));
    const auto b=matvec(A,exact);
    Vector x(32,0.0);
    const auto r=solve_gmres(A,b,x,20,200,1e-10,&block_pc);
