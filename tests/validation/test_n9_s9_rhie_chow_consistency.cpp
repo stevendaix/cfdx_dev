@@ -1,11 +1,13 @@
 #include "cfdx/physics/steady_incompressible_solver.h"
 #include "cfdx/physics/coupled_assembly_certificate.h"
 #include "cfdx/physics/coupled_flux_equivalence_certificate.h"
+#include "cfdx/physics/coupled_frozen_fv_certificate.h"
 #include "cfdx/core/linalg/coupled_block_extraction.h"
 #include "cfdx/core/linalg/small_dense_schur_oracle.h"
 #include "cfdx/core/linalg/schur_inverse_quality_certificate.h"
 #include "common/test_harness.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -450,6 +452,8 @@ int main()
         std::vector<double> captured_schur_diagonal_raw;
         bool captured_has_fixed_pressure = false;
         bool captured_structure_certificate = false;
+        bool frozen_fv_certificate = false;
+        bool mutated_frozen_certificate_rejected = false;
         bool captured = false;
         IncompressibleSolverControls controls;
         controls.algorithm = PressureVelocityAlgorithm::COUPLED;
@@ -475,6 +479,40 @@ int main()
             captured_has_fixed_pressure = snapshot.has_fixed_pressure;
             if (snapshot.initial_guess == nullptr)
                 throw std::runtime_error("coupled initial guess missing from evidence");
+            const auto frozen = certify_coupled_frozen_fv_operator(
+                snapshot, mesh, geometry, ubc, pbc, controls.density,
+                controls.pressure_reference_value, *snapshot.initial_guess);
+            frozen_fv_certificate = frozen.passed;
+            Vector perturbed = *snapshot.initial_guess;
+            for (std::size_t i = 0; i < perturbed.size(); ++i)
+                perturbed(i) += 0.013 * static_cast<double>(i % 7 + 1);
+            const auto perturbed_report = certify_coupled_frozen_fv_operator(
+                snapshot, mesh, geometry, ubc, pbc, controls.density,
+                controls.pressure_reference_value, perturbed);
+            frozen_fv_certificate = frozen_fv_certificate && perturbed_report.passed;
+            std::cerr << "N9_S9_FROZEN_PICARD_CERTIFICATE"
+                      << " passed=" << frozen.passed
+                      << " worst_row=" << frozen.worst_row
+                      << " momentum_linf=" << frozen.momentum_linf
+                      << " continuity_linf=" << frozen.continuity_linf << '\n';
+            // A deliberately corrupted G entry MUST be detected by the
+            // independent momentum/face-flux residual at the same state.
+            SparseMatrix tampered = *snapshot.matrix;
+            bool changed = false;
+            for (std::size_t row = 0; row < 3*mesh.n_cells() && !changed; ++row)
+                for (std::size_t k = tampered.row_offsets_data()[row];
+                     k < tampered.row_offsets_data()[row+1]; ++k)
+                    if (tampered.columns_data()[k] >= 3*mesh.n_cells()) {
+                        tampered.values_data()[k] += 0.125;
+                        changed = true;
+                        break;
+                    }
+            CoupledAssemblySnapshot broken = snapshot;
+            broken.matrix = &tampered;
+            const auto negative = certify_coupled_frozen_fv_operator(
+                broken, mesh, geometry, ubc, pbc, controls.density,
+                controls.pressure_reference_value, *snapshot.initial_guess);
+            mutated_frozen_certificate_rejected = changed && !negative.passed;
             CoupledAssemblyCertificateOptions audit_controls;
             audit_controls.pressure_schur_diagonal = snapshot.pressure_schur_diagonal;
             audit_controls.pressure_schur_diagonal_raw = snapshot.pressure_schur_diagonal_raw;
@@ -500,6 +538,8 @@ int main()
         const auto result = solve_steady_incompressible(mesh, U, p, ubc, pbc, controls);
         EXPECT_TRUE(captured);
         EXPECT_TRUE(captured_structure_certificate);
+        EXPECT_TRUE(frozen_fv_certificate);
+        EXPECT_TRUE(mutated_frozen_certificate_rejected);
         // Diagnostic for the manufactured fixed-pressure case: distinguish a
         // bad assembled operator/RHS from a Krylov solution error without
         // changing any acceptance threshold.
@@ -643,6 +683,182 @@ int main()
             const double block_residual = ax - captured_rhs(row);
             EXPECT_NEAR(block_residual, cell_divergence[cell], 1e-8);
         }
+    });
+
+    run_case("n9_s9_coupled_picard_frozen_nonzero_pressure_neumann", [] {
+        const Mesh mesh = make_four_cell_channel(
+            {0.0, 0.5, 2.0, 4.0, 7.0}, true);
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            U.set(c, 1.0, 0.0, 0.0);
+            p(c) = 2.0 + 0.5 * geometry.cell_centres[c].x;
+        }
+        VelocityBoundaryConditions ubc;
+        for (const char* name : {"wall", "inlet", "outlet"})
+            ubc[name] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {1.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        pbc["inlet"] = {ScalarBoundaryType::FIXED_GRADIENT, 0.0, 0.5};
+        pbc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 5.5, 0.0};
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::COUPLED;
+        c.pressure_gauge_policy = PressureGaugePolicy::NONE;
+        c.kinematic_viscosity = 1e-2;
+        c.coupling.schur_model = CoupledSchurModel::BlockLocal;
+        c.coupling.coupled_linear_tolerance = 1e-10;
+        c.convergence.max_iterations = 1;
+        bool captured = false;
+        c.coupled_assembly_callback = [&](const CoupledAssemblySnapshot& s) {
+            captured = true;
+            EXPECT_TRUE(s.initial_guess != nullptr && s.pressure_old != nullptr);
+            if (!s.initial_guess || !s.pressure_old) return;
+            EXPECT_TRUE(s.has_fixed_pressure);
+            // Dirichlet pressure must NOT clobber this reference-cell
+            // pressure in the Krylov initial guess.
+            EXPECT_NEAR((*s.initial_guess)(3*mesh.n_cells() + s.reference_cell),
+                        (*s.pressure_old)(s.reference_cell), 0.0);
+            const auto report = certify_coupled_frozen_fv_operator(
+                s, mesh, geometry, ubc, pbc, c.density,
+                c.pressure_reference_value, *s.initial_guess);
+            std::cerr << "N9_S9_NEUMANN_FROZEN"
+                      << " passed=" << report.passed
+                      << " worst_row=" << report.worst_row
+                      << " error=" << report.max_absolute_error
+                      << " ratio=" << report.max_tolerance_ratio << '\n';
+            EXPECT_TRUE(report.passed);
+            // Reproduce the old bug: delete the known boundary-gradient
+            // source from the assembled momentum RHS.  The FV certificate
+            // must fail even though the matrix G itself is unchanged.
+            Vector broken_rhs = *s.rhs;
+            const auto& inlet = mesh.boundary().patch(mesh.boundary().find("inlet"));
+            for (std::size_t f : inlet.face_ids) {
+                const std::size_t owner = mesh.ownership().owner(f);
+                const auto Sf = geometry.face_area_vectors[f];
+                const auto delta = geometry.face_centres[f] - geometry.cell_centres[owner];
+                const double boundary_offset = pbc.at("inlet").gradient *
+                    delta.dot(Sf * (1.0 / Sf.mag()));
+                broken_rhs(owner) += Sf.x * boundary_offset;
+                broken_rhs(mesh.n_cells()+owner) += Sf.y * boundary_offset;
+                broken_rhs(2*mesh.n_cells()+owner) += Sf.z * boundary_offset;
+            }
+            CoupledAssemblySnapshot missing_gradient_source = s;
+            missing_gradient_source.rhs = &broken_rhs;
+            const auto negative = certify_coupled_frozen_fv_operator(
+                missing_gradient_source, mesh, geometry, ubc, pbc,
+                c.density, c.pressure_reference_value, *s.initial_guess);
+            EXPECT_TRUE(!negative.passed);
+            EXPECT_TRUE(negative.momentum_linf > 1e-3);
+        };
+        (void)solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
+        EXPECT_TRUE(captured);
+    });
+
+    run_case("n9_s9_coupled_picard_xy_empty_spanwise_faces", [] {
+        Mesh mesh = make_four_cell_channel(
+            {0.0, 0.5, 2.0, 4.0, 7.0}, true);
+        // Convert only z=constant faces to EMPTY, as on NACA XY.
+        std::vector<FaceIndex> wall, front, back;
+        const std::size_t wall_patch = mesh.boundary().find("wall");
+        for (std::size_t f : mesh.boundary().patch(wall_patch).face_ids) {
+            double z = 0.0;
+            for (std::size_t k=mesh.faces().face_offset(f);
+                 k<mesh.faces().face_offset(f)+mesh.faces().face_size(f); ++k)
+                z += mesh.points().z(mesh.faces().vertices_data()[k]);
+            z /= mesh.faces().face_size(f);
+            if (std::abs(z) < 1e-12) front.push_back(f);
+            else if (std::abs(z-1.0) < 1e-12) back.push_back(f);
+            else wall.push_back(f);
+        }
+        mesh.boundary().patch(wall_patch).face_ids = std::move(wall);
+        mesh.boundary().add_patch(Patch{"front", PatchType::EMPTY, front});
+        mesh.boundary().add_patch(Patch{"back", PatchType::EMPTY, back});
+        EXPECT_TRUE(front.size() == mesh.n_cells());
+        EXPECT_TRUE(back.size() == mesh.n_cells());
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double,Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double,Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        for(std::size_t cell=0; cell<mesh.n_cells(); ++cell) {
+            U.set(cell, 1.0, 0.0, 0.0);
+            p(cell) = 1.0 + geometry.cell_centres[cell].x;
+        }
+        VelocityBoundaryConditions ubc;
+        for(const char* name:{"inlet","outlet","wall"})
+            ubc[name]={VelocityBoundaryCondition::Type::FIXED_VALUE,{1.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        pbc["inlet"]={ScalarBoundaryType::FIXED_VALUE,1.0,0.0};
+        pbc["outlet"]={ScalarBoundaryType::FIXED_VALUE,8.0,0.0};
+        IncompressibleSolverControls c;
+        c.algorithm=PressureVelocityAlgorithm::COUPLED;
+        c.pressure_gauge_policy=PressureGaugePolicy::NONE;
+        c.kinematic_viscosity=1e-2;
+        c.coupling.schur_model=CoupledSchurModel::BlockLocal;
+        c.coupling.coupled_linear_tolerance=1e-10;
+        c.convergence.max_iterations=1;
+        bool checked=false;
+        c.coupled_assembly_callback=[&](const CoupledAssemblySnapshot& snap) {
+            if (!snap.initial_guess) return;
+            checked=true;
+            Vector x=*snap.initial_guess;
+            for (std::size_t i=0; i<x.size(); ++i)
+                x(i)+=0.009*(i%5+1);
+            const auto check=certify_coupled_frozen_fv_operator(
+                snap,mesh,geometry,ubc,pbc,c.density,
+                c.pressure_reference_value,x);
+            std::cerr << "N9_S9_XY_EMPTY_FROZEN passed=" << check.passed
+                      << " error=" << check.max_absolute_error << '\n';
+            EXPECT_TRUE(check.passed);
+        };
+        (void)solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
+        EXPECT_TRUE(checked);
+    });
+
+    run_case("n9_s9_coupled_picard_frozen_pure_neumann_gauge", [] {
+        const Mesh mesh = make_four_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        Field<double, Location::CELL> p(mesh.n_cells(), "p", "Pa", 1);
+        for (std::size_t i = 0; i < mesh.n_cells(); ++i) {
+            U.set(i, 0.5, 0.0, 0.0);
+            p(i) = 1.0 + 0.2 * geometry.cell_centres[i].x;
+        }
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,
+                       {0.5,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        IncompressibleSolverControls c;
+        c.algorithm = PressureVelocityAlgorithm::COUPLED;
+        c.coupling.schur_model = CoupledSchurModel::BlockLocal;
+        c.kinematic_viscosity = 1e-2;
+        c.pressure_reference_cell = 1;
+        c.pressure_reference_value = 0.0;
+        c.coupling.coupled_linear_tolerance = 1e-10;
+        c.convergence.max_iterations = 1;
+        bool checked = false;
+        c.coupled_assembly_callback = [&](const CoupledAssemblySnapshot& snap) {
+            if (!snap.initial_guess) return;
+            checked = true;
+            EXPECT_TRUE(!snap.has_fixed_pressure);
+            Vector perturbed = *snap.initial_guess;
+            for (std::size_t i = 0; i < perturbed.size(); ++i)
+                perturbed(i) += 0.008 * (i % 11 + 1);
+            const auto report = certify_coupled_frozen_fv_operator(
+                snap, mesh, geometry, ubc, pbc, c.density,
+                c.pressure_reference_value, perturbed);
+            std::cerr << "N9_S9_GAUGE_FROZEN passed=" << report.passed
+                      << " worst_row=" << report.worst_row
+                      << " error=" << report.max_absolute_error
+                      << " ratio=" << report.max_tolerance_ratio << '\n';
+            EXPECT_TRUE(report.passed);
+            // The gauge row is p_ref=value, not a continuity equation.
+            EXPECT_NEAR((*snap.initial_guess)(3*mesh.n_cells()+snap.reference_cell),
+                        0.0, 0.0);
+        };
+        (void)solve_steady_incompressible(mesh, U, p, ubc, pbc, c);
+        EXPECT_TRUE(checked);
     });
 
     run_case("n9_s9_coupled_schwarz_optin_manufactured_four_cell", [] {
@@ -1334,6 +1550,227 @@ int main()
         }
         EXPECT_TRUE(identity_same == 0.0);
         EXPECT_TRUE(identity_stale > 1e-12);
+    });
+
+    run_case("n9_s9_coupled_symmetry_continuity_matches_authoritative_flux", [] {
+        Mesh mesh = make_two_cell_channel();
+        auto& walls = mesh.boundary().patch(0).face_ids;
+        walls.erase(std::remove(walls.begin(), walls.end(), FaceIndex{8}), walls.end());
+        Patch symmetry;
+        symmetry.name = "sym";
+        symmetry.type = PatchType::SYMMETRY;
+        symmetry.face_ids = {8};
+        mesh.boundary().add_patch(symmetry);
+        const auto geometry = build_fv_geometry(mesh);
+        const std::size_t nc = mesh.n_cells();
+        Field<double, Location::CELL> U_old(nc, "U", "m/s", 3);
+        Field<double, Location::CELL> p_old(nc, "p", "Pa", 1);
+        U_old.fill(0.0); p_old.fill(0.0);
+        U_old.component_data(1)[1] = 1.0; // Not yet tangent to symmetry: flux still MUST be zero.
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        pbc["sym"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        auto diagonal_equation = [&]() {
+            ScalarEquation eq;
+            eq.matrix = SparseMatrix(nc,nc);
+            eq.diagonal.assign(nc,2.0);
+            eq.rhs = Vector(nc,0.0);
+            for (std::size_t c=0; c<nc; ++c) eq.matrix.push_back(c,c,2.0);
+            eq.matrix.finalize();
+            return eq;
+        };
+        auto ex=diagonal_equation(), ey=diagonal_equation(), ez=diagonal_equation();
+        auto U = U_old; auto p = p_old;
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::COUPLED;
+        controls.coupling.schur_model = CoupledSchurModel::BlockLocal;
+        bool captured = false;
+        controls.coupled_assembly_callback = [&](const CoupledAssemblySnapshot& snap) {
+            captured = true;
+            const auto& A = *snap.matrix;
+            const auto& b = *snap.rhs;
+            const auto& x = *snap.initial_guess;
+            const std::size_t row = 3*nc + 1;
+            double algebraic = -b(row);
+            for (std::size_t k=A.row_offsets_data()[row];
+                 k<A.row_offsets_data()[row+1]; ++k)
+                algebraic += A.values_data()[k]*x(A.columns_data()[k]);
+            std::array<std::vector<double>,3> rAU{
+                std::vector<double>(nc,0.5),
+                std::vector<double>(nc,0.5),
+                std::vector<double>(nc,0.5)};
+            const auto flux = make_rhie_chow_flux_from_physical_velocity(
+                mesh,geometry,U_old,p_old,rAU,1.0,ubc,pbc);
+            double independent = 0.0;
+            for (std::size_t f=0; f<mesh.n_faces(); ++f) {
+                if (mesh.ownership().owner(f)==1) independent += flux(f);
+                if (mesh.ownership().neighbour(f)==1) independent -= flux(f);
+            }
+            std::cerr << "SYMMETRY_COUPLED_MISMATCH=" << (algebraic-independent) << '\n';
+            EXPECT_NEAR(algebraic, independent, 1e-12);
+        };
+        (void)solve_coupled_momentum_continuity(
+            mesh,geometry,ex,ey,ez,U_old,p_old,ubc,pbc,
+            1.0,0.01,0,0.0,40,1e-10,controls.diagnostics,
+            controls.coupling.schur_model,controls.coupled_linear_solver,controls,
+            1.0,U,p);
+        EXPECT_TRUE(captured);
+    });
+
+    run_case("n9_s9_coupled_fixed_gradient_boundary_momentum_matches_gauss", [] {
+        Mesh mesh = make_two_cell_channel();
+        auto& walls = mesh.boundary().patch(0).face_ids;
+        walls.erase(std::remove(walls.begin(), walls.end(), FaceIndex{8}), walls.end());
+        Patch gradient_patch;
+        gradient_patch.name = "grad";
+        gradient_patch.type = PatchType::WALL;
+        gradient_patch.face_ids = {8};
+        mesh.boundary().add_patch(gradient_patch);
+        const auto geometry = build_fv_geometry(mesh);
+        const std::size_t nc = mesh.n_cells();
+        Field<double, Location::CELL> U_old(nc,"U","m/s",3);
+        Field<double, Location::CELL> p_old(nc,"p","Pa",1);
+        U_old.fill(0.0); p_old.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0,0.0,0.0}};
+        ubc["grad"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        pbc["grad"] = {ScalarBoundaryType::FIXED_GRADIENT,0.0,3.0};
+        const auto true_gradient = gauss_gradient_with_boundary(p_old,mesh,geometry,pbc);
+        const double expected = true_gradient.component_data(1)[1]*geometry.cell_volumes[1];
+        EXPECT_TRUE(std::abs(expected)>1e-8);
+        auto diagonal_equation = [&](std::size_t component) {
+            ScalarEquation eq;
+            eq.matrix = SparseMatrix(nc,nc);
+            eq.diagonal.assign(nc,2.0);
+            eq.rhs = Vector(nc,0.0);
+            for (std::size_t c=0; c<nc; ++c) {
+                eq.matrix.push_back(c,c,2.0);
+                eq.rhs(c) = -true_gradient.component_data(component)[c]*geometry.cell_volumes[c];
+            }
+            eq.matrix.finalize();
+            return eq;
+        };
+        auto ex=diagonal_equation(0), ey=diagonal_equation(1), ez=diagonal_equation(2);
+        auto U=U_old; auto p=p_old;
+        IncompressibleSolverControls controls;
+        controls.algorithm=PressureVelocityAlgorithm::COUPLED;
+        controls.coupling.schur_model=CoupledSchurModel::BlockLocal;
+        bool captured = false;
+        controls.coupled_assembly_callback = [&](const CoupledAssemblySnapshot& snap) {
+            captured = true;
+            const auto& A=*snap.matrix; const auto& b=*snap.rhs;
+            const auto& x=*snap.initial_guess;
+            const std::size_t row = nc + 1;
+            double algebraic = -b(row);
+            for (std::size_t k=A.row_offsets_data()[row];
+                 k<A.row_offsets_data()[row+1]; ++k)
+                algebraic += A.values_data()[k]*x(A.columns_data()[k]);
+            std::cerr << "FIXED_GRADIENT_GAUSS_MISMATCH=" << (algebraic-expected) << '\n';
+            EXPECT_NEAR(algebraic,expected,1e-12);
+        };
+        (void)solve_coupled_momentum_continuity(
+            mesh,geometry,ex,ey,ez,U_old,p_old,ubc,pbc,
+            1.0,0.01,0,0.0,40,1e-10,controls.diagnostics,
+            controls.coupling.schur_model,controls.coupled_linear_solver,controls,
+            1.0,U,p);
+        EXPECT_TRUE(captured);
+    });
+
+    run_case("n9_s9_coupled_empty_face_gradient_matches_gauss", [] {
+        Mesh mesh = make_two_cell_channel();
+        auto& walls = mesh.boundary().patch(0).face_ids;
+        walls.erase(std::remove(walls.begin(),walls.end(),FaceIndex{8}),walls.end());
+        Patch empty;
+        empty.name="front_back"; empty.type=PatchType::EMPTY; empty.face_ids={8};
+        mesh.boundary().add_patch(empty);
+        const auto geometry=build_fv_geometry(mesh);
+        const std::size_t nc=mesh.n_cells();
+        Field<double,Location::CELL> U_old(nc,"U","m/s",3);
+        Field<double,Location::CELL> p_old(nc,"p","Pa",1);
+        U_old.fill(0.0); p_old.fill(0.0); p_old(1)=4.0;
+        VelocityBoundaryConditions ubc;
+        ubc["wall"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        const auto grad=gauss_gradient_with_boundary(p_old,mesh,geometry,pbc);
+        auto mk_eq=[&](std::size_t component) {
+            ScalarEquation eq;
+            eq.matrix=SparseMatrix(nc,nc);
+            eq.diagonal.assign(nc,2.0);
+            eq.rhs=Vector(nc,0.0);
+            for(std::size_t c=0;c<nc;++c) {
+                eq.matrix.push_back(c,c,2.0);
+                eq.rhs(c)=-geometry.cell_volumes[c]*grad.component_data(component)[c];
+            }
+            eq.matrix.finalize(); return eq;
+        };
+        auto ex=mk_eq(0),ey=mk_eq(1),ez=mk_eq(2);
+        auto U=U_old,p=p_old;
+        IncompressibleSolverControls controls;
+        controls.algorithm=PressureVelocityAlgorithm::COUPLED;
+        bool captured=false;
+        controls.coupled_assembly_callback=[&](const CoupledAssemblySnapshot& snap) {
+            captured=true;
+            const std::size_t row=nc+1;
+            const auto& A=*snap.matrix; const auto& b=*snap.rhs;
+            const auto& x=*snap.initial_guess;
+            double algebraic=-b(row);
+            for(std::size_t k=A.row_offsets_data()[row]; k<A.row_offsets_data()[row+1];++k)
+                algebraic+=A.values_data()[k]*x(A.columns_data()[k]);
+            const double expected=geometry.cell_volumes[1]*grad.component_data(1)[1];
+            std::cerr << "EMPTY_GAUSS_MISMATCH=" << algebraic-expected << '\n';
+            EXPECT_NEAR(algebraic,expected,1e-12);
+        };
+        (void)solve_coupled_momentum_continuity(
+            mesh,geometry,ex,ey,ez,U_old,p_old,ubc,pbc,1.0,0.01,
+            0,0.0,40,1e-10,controls.diagnostics,controls.coupling.schur_model,
+            controls.coupled_linear_solver,controls,1.0,U,p);
+        EXPECT_TRUE(captured);
+    });
+
+    run_case("n9_s9_coupled_fixed_pressure_warm_start_is_not_gauge_pinned", [] {
+        const Mesh mesh=make_two_cell_channel();
+        const auto geometry=build_fv_geometry(mesh);
+        const std::size_t nc=mesh.n_cells();
+        Field<double,Location::CELL> U_old(nc,"U","m/s",3);
+        Field<double,Location::CELL> p_old(nc,"p","Pa",1);
+        U_old.fill(0.0); p_old(0)=3.0; p_old(1)=4.0;
+        VelocityBoundaryConditions ubc;
+        ubc["wall"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        const auto grad=gauss_gradient_with_boundary(p_old,mesh,geometry,pbc);
+        auto mk_eq=[&](std::size_t component) {
+            ScalarEquation eq;
+            eq.matrix=SparseMatrix(nc,nc); eq.diagonal.assign(nc,2.0);
+            eq.rhs=Vector(nc,0.0);
+            for(std::size_t c=0;c<nc;++c) {
+                eq.matrix.push_back(c,c,2.0);
+                eq.rhs(c)=-geometry.cell_volumes[c]*grad.component_data(component)[c];
+            }
+            eq.matrix.finalize();return eq;
+        };
+        auto ex=mk_eq(0),ey=mk_eq(1),ez=mk_eq(2);
+        auto U=U_old,p=p_old;
+        IncompressibleSolverControls controls;
+        controls.algorithm=PressureVelocityAlgorithm::COUPLED;
+        bool captured=false;
+        controls.coupled_assembly_callback=[&](const CoupledAssemblySnapshot& snap) {
+            captured=true;
+            EXPECT_TRUE(snap.has_fixed_pressure);
+            EXPECT_NEAR((*snap.initial_guess)(3*nc),3.0,0.0);
+            EXPECT_NEAR((*snap.initial_guess)(3*nc+1),4.0,0.0);
+        };
+        (void)solve_coupled_momentum_continuity(
+            mesh,geometry,ex,ey,ez,U_old,p_old,ubc,pbc,1.0,0.01,
+            0,0.0,40,1e-10,controls.diagnostics,controls.coupling.schur_model,
+            controls.coupled_linear_solver,controls,1.0,U,p);
+        EXPECT_TRUE(captured);
     });
 
     return run_all();

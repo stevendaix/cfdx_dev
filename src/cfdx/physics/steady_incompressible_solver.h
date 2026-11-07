@@ -205,6 +205,11 @@ struct CoupledAssemblySnapshot {
     const cfdx::core::Field<double, cfdx::core::Location::CELL>* velocity_old = nullptr;
     std::size_t reference_cell = 0;
     bool has_fixed_pressure = false;
+    // Optional, read-only momentum and frozen-pressure evidence.  Valid only
+    // inside coupled_assembly_callback; an external audit must not retain it.
+    // These are the very scalar equations handed to the monolithic assembler.
+    std::array<const ScalarEquation*, 3> momentum_equations{{nullptr, nullptr, nullptr}};
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* pressure_old = nullptr;
 };
 
 struct SSTProductionRuntime {
@@ -2833,6 +2838,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 A.push_back(2*nc + c, 3*nc + ncell, Sf.z * weight_n);
             } else {
                 const std::size_t patch = geometry.face_patch[f];
+                // gauss_gradient_with_boundary() omits EMPTY faces.  The
+                // coupled G block must omit them too, even on a distorted
+                // nominally two-dimensional extrusion.
+                if (patch < mesh.boundary().n_patches() &&
+                    mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                    continue;
                 const ScalarBoundaryCondition* bc = nullptr;
                 ScalarBoundaryCondition local_bc;
                 if (patch < mesh.boundary().n_patches()) {
@@ -2849,10 +2860,26 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     b(nc + c) -= Sf.y * bc->value;
                     b(2*nc + c) -= Sf.z * bc->value;
                 } else {
-                    // The transport-layer Gauss gradient treats zero-gradient
-                    // pressure as owner-cell extrapolation. Retain that exact
-                    // operator here so the coupled and segregated residuals
-                    // remain comparable.
+                    // The Gauss face value is p_owner + gradient *
+                    // (C_face-C_cell).n for FIXED_GRADIENT, and simply
+                    // p_owner for ZERO_GRADIENT.  The constant gradient
+                    // contribution belongs to the RHS, not to G.
+                    if (bc && bc->type == ScalarBoundaryType::FIXED_GRADIENT) {
+                        const double area = Sf.mag();
+                        if (!(area > 0.0) || !std::isfinite(area))
+                            throw std::runtime_error(
+                                "solve_coupled_momentum_continuity: invalid gradient boundary face area");
+                        const Vec3 outward = Sf * (1.0 / area);
+                        const Vec3 centre_to_face =
+                            geometry.face_centres[f] - geometry.cell_centres[c];
+                        const double offset = bc->gradient * centre_to_face.dot(outward);
+                        if (!std::isfinite(offset))
+                            throw std::runtime_error(
+                                "solve_coupled_momentum_continuity: invalid pressure boundary gradient contribution");
+                        b(c) -= Sf.x * offset;
+                        b(nc + c) -= Sf.y * offset;
+                        b(2*nc + c) -= Sf.z * offset;
+                    }
                     A.push_back(c, 3*nc + c, Sf.x);
                     A.push_back(nc + c, 3*nc + c, Sf.y);
                     A.push_back(2*nc + c, 3*nc + c, Sf.z);
@@ -3008,8 +3035,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 coupled_explicit_continuity_correction[c] += explicit_correction;
             } else {
                 const std::size_t patch = geometry.face_patch[f];
+                // The authoritative mass-flux reconstruction enforces zero
+                // normal flux on both EMPTY and SYMMETRY boundaries,
+                // regardless of the cell-centred velocity trial state.
+                // Therefore neither face contributes a D row or RHS term.
                 if (patch < mesh.boundary().n_patches() &&
-                    mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                    (mesh.boundary().patch(patch).type == PatchType::EMPTY ||
+                     mesh.boundary().patch(patch).type == PatchType::SYMMETRY))
                     continue;
                 const VelocityBoundaryCondition* vbc = nullptr;
                 VelocityBoundaryCondition local_vbc;
@@ -3134,13 +3166,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         x(nv + c) = p_old(c);
     }
 
-    // PR #832 fix: zero the gauge row of the initial guess before GMRES.
-    // The gauge row is an identity row with rhs = reference_value (default 0.0).
-    // If x0(gauge) = p_old(reference_cell) is non-zero, the right-preconditioned
-    // GMRES may struggle to correct it because the preconditioner preserves
-    // the gauge component. Setting x0(gauge) = 0.0 gives the solver the correct
-    // starting point and avoids the stagnation observed in PR #830.
-    x(nv + reference_cell) = controls.pressure_reference_value;
+    // A reference row exists only for pure-Neumann pressure.  When a fixed
+    // pressure boundary is present the row is physical continuity and must
+    // retain its genuine warm-start value.  Use the argument that also pins
+    // the assembled matrix, not an unrelated control field.
+    if (!has_fixed_pressure)
+        x(nv + reference_cell) = reference_value;
 
     // Reject non-finite coefficients before entering GMRES. A bad local
     // coefficient must be diagnosed at assembly time rather than surfacing as
@@ -3856,7 +3887,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             evidence_pcd_ops ? &evidence_pcd_ops->mass : nullptr,
             evidence_pcd_ops ? &evidence_pcd_ops->laplacian : nullptr,
             evidence_pcd_ops ? &evidence_pcd_ops->convection_diffusion : nullptr,
-            &U_old, reference_cell, has_fixed_pressure};
+            &U_old, reference_cell, has_fixed_pressure,
+            {{&ex, &ey, &ez}}, &p_old};
         controls.coupled_assembly_callback(snapshot);
     }
 
