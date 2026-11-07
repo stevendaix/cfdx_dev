@@ -67,8 +67,8 @@ int main() {
         // Pentagono regular inscrito en circulo radio 1, premier vértice en (1,0)
         const double pi = std::acos(-1.0);
         std::vector<double> px(5), py(5), pz(5, 0.0);
-        for (int i = 0; i < 5; ++i) {
-            double a = 2.0 * pi * i / 5.0;
+        for (std::size_t i = 0; i < 5; ++i) {
+            const double a = 2.0 * pi * static_cast<double>(i) / 5.0;
             px[i] = std::cos(a);
             py[i] = std::sin(a);
         }
