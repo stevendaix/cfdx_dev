@@ -174,9 +174,9 @@ Mesh make_cartesian_cube(std::size_t n)
             for (std::size_t i = 0; i < n; ++i) {
                 const std::size_t c = cell_id(i, j, k);
                 const std::size_t b = 8 * c;
-                const double x0 = i * h, x1 = (i + 1) * h;
-                const double y0 = j * h, y1 = (j + 1) * h;
-                const double z0 = k * h, z1 = (k + 1) * h;
+                const double x0 = static_cast<double>(i) * h, x1 = (static_cast<double>(i) + 1.0) * h;
+                const double y0 = static_cast<double>(j) * h, y1 = (static_cast<double>(j) + 1.0) * h;
+                const double z0 = static_cast<double>(k) * h, z1 = (static_cast<double>(k) + 1.0) * h;
                 const double p[8][3] = {
                     {x0,y0,z0}, {x1,y0,z0}, {x1,y1,z0}, {x0,y1,z0},
                     {x0,y0,z1}, {x1,y0,z1}, {x1,y1,z1}, {x0,y1,z1}
