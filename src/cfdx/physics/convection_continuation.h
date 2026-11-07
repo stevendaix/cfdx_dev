@@ -66,12 +66,6 @@ inline bool convection_residuals_share_operator(
 // The nonlinear monitor receives a dimensionless, RHS-normalized synthetic
 // residual. A reference from an intermediate discretization cannot be used as
 // the denominator for a full-order convergence certificate. Preserve the
-        static_cast<double>(controls.high_order_ramp_iterations);
-}
-
-// The nonlinear monitor receives a dimensionless, RHS-normalized synthetic
-// residual. A reference from an intermediate discretization cannot be used as
-// the denominator for a full-order convergence certificate. Preserve the
 // ordinary absolute criterion when continuation is disabled.
 inline double convection_monitor_residual_threshold(
     const ConvectionContinuationControls& controls,
