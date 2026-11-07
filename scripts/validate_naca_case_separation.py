@@ -3,6 +3,7 @@
 This checks case declarations and *optional* TMR mesh provenance. It does NOT
 qualify a turbulent flow or infer an SST solution from imported mesh metadata.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -32,7 +33,9 @@ def check_registry(data: dict) -> tuple[dict, dict]:
     # This tool does not read a physical solution or independent reference.
     # No PASS can be certified using only the registry or mesh metadata.
     if sst.get("status") == "PASS":
-        raise ValueError("TUR-NACA0012 PASS requires independent physical evidence, not this metadata gate")
+        raise ValueError(
+            "TUR-NACA0012 PASS requires independent physical evidence, not this metadata gate"
+        )
     return laminar, sst
 
 
@@ -43,13 +46,17 @@ def check_tmr_mesh(path: Path) -> str:
         if h.attrs.get("validation_source") != "NASA TMR NACA0012":
             raise ValueError("SST case requires explicitly sourced NASA/TMR NACA mesh")
         if h.attrs.get("validation_status") != "imported-provenance-only":
-            raise ValueError("TMR mesh must remain import-only, not a fabricated CFD result")
+            raise ValueError(
+                "TMR mesh must remain import-only, not a fabricated CFD result"
+            )
         if "turbmodels/naca0012_grids.html" not in str(
             h.attrs.get("validation_source_url", "")
         ):
             raise ValueError("unexpected NACA mesh family source")
         fingerprint = str(h.attrs.get("validation_source_sha256", ""))
-        if len(fingerprint) != 64 or any(ch not in "0123456789abcdef" for ch in fingerprint):
+        if len(fingerprint) != 64 or any(
+            ch not in "0123456789abcdef" for ch in fingerprint
+        ):
             raise ValueError("missing/invalid TMR source sha256")
         patch_types = {}
         for entry in str(h.attrs.get("boundary_patches", "")).split(";"):
@@ -71,8 +78,11 @@ def check_tmr_mesh(path: Path) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--registry", type=Path, default=Path(
-        "docs/validation/CFDX_QUALIFICATION_REGISTRY.json"))
+    parser.add_argument(
+        "--registry",
+        type=Path,
+        default=Path("docs/validation/CFDX_QUALIFICATION_REGISTRY.json"),
+    )
     parser.add_argument("--tmr-mesh", type=Path, help="optional imported NASA/TMR HDF5")
     args = parser.parse_args()
     try:
@@ -81,9 +91,11 @@ def main() -> int:
     except (OSError, ValueError, KeyError) as exc:
         print(f"NACA_CASE_SEPARATION: FAIL {exc}")
         return 2
-    print(f"NACA_CASE_SEPARATION: PASS laminar=EXT-NACA0012 "
-          f"turbulent=TUR-NACA0012 sst_status={sst['status']} "
-          f"tmr_mesh={grid} scope=METADATA_ONLY_NOT_PHYSICAL_VALIDATION")
+    print(
+        f"NACA_CASE_SEPARATION: PASS laminar=EXT-NACA0012 "
+        f"turbulent=TUR-NACA0012 sst_status={sst['status']} "
+        f"tmr_mesh={grid} scope=METADATA_ONLY_NOT_PHYSICAL_VALIDATION"
+    )
     return 0
 
 
