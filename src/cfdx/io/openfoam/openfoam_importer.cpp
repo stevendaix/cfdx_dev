@@ -240,6 +240,10 @@ bool read_boundary(const std::filesystem::path& path,
 
         std::size_t nfaces = 0;
         std::size_t start_face = 0;
+        if (count_value.find_first_not_of("0123456789") != std::string::npos ||
+            start_value.find_first_not_of("0123456789") != std::string::npos) {
+            return false;
+        }
         try {
             const auto parsed_count = std::stoull(count_value);
             const auto parsed_start = std::stoull(start_value);
@@ -252,9 +256,10 @@ bool read_boundary(const std::filesystem::path& path,
         } catch (const std::exception&) {
             return false;
         }
-        if (nfaces > std::numeric_limits<std::size_t>::max() - start_face ||
-            start_face + nfaces >
-                static_cast<std::size_t>(std::numeric_limits<cfdx::core::FaceIndex>::max()) + 1u) {
+        const auto max_face_index =
+            static_cast<std::size_t>(std::numeric_limits<cfdx::core::FaceIndex>::max());
+        if (start_face > max_face_index ||
+            (nfaces != 0 && nfaces - 1 > max_face_index - start_face)) {
             return false;
         }
 
