@@ -113,6 +113,7 @@ jobs:
               encoding="utf-8",
           )
           PY
+          ruff format "${files[@]}"
           chmod +x scripts/naca_convergence_diagnosis.py scripts/naca_momentum_budget_diagnosis.py
           ruff format --check "${files[@]}"
           ruff check "${files[@]}"
