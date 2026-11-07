@@ -1,8 +1,15 @@
-# NACA0012 — campagne forensique de recherche de la stagnation momentum
+# FICHE MÉTHODE 34 — Campagne forensique de convergence NACA0012
 
 **Statut :** protocole de diagnostic uniquement. Aucun changement de schéma, coefficient, relaxation, tolérance ou critère d'acceptation. Les sorties ne sont jamais des certificats de convergence.
 
-## 1. Question à résoudre
+## 1. Références sources
+
+- F. Moukalled, L. Mangani, M. Darwish, *The Finite Volume Method in Computational Fluid Dynamics*, Springer, 2016, DOI 10.1007/978-3-319-16874-6.
+- J. H. Ferziger, M. Perić, R. L. Street, *Computational Methods for Fluid Dynamics*, Springer, DOI 10.1007/978-3-319-99693-6.
+- W. L. Oberkampf, C. J. Roy, *Verification and Validation in Scientific Computing*, Cambridge University Press, DOI 10.1017/CBO9780511760396.
+- NASA NPARC, *Examining Spatial (Grid) Convergence*, https://www.grc.nasa.gov/www/wind/valid/tutorial/spatconv.html.
+
+## 2. Formulation continue
 
 Sur N64, la continuation atteint 100 % de TVD à l'itération 120, puis la solution stagne et termine non convergée à l'itération 330. Valeurs observées :
 
@@ -14,7 +21,9 @@ Sur N64, la continuation atteint 100 % de TVD à l'itération 120, puis la solut
 
 Le résidu linéaire de pression ne permet pas d'attribuer la stagnation à la pression, ni de conclure que le système non linéaire est convergé. Il faut identifier quelle contribution physique, quelle région et quelle composante empêchent la diminution du résidu momentum.
 
-## 2. Instrumentation déjà disponible après le merge #1187
+## 3. Discrétisation Volume Fini
+
+### Instrumentation disponible après le merge #1187
 
 Ne pas réimplémenter ces mécanismes avant d'avoir exploité leurs sorties :
 
@@ -30,9 +39,9 @@ Ne pas réimplémenter ces mécanismes avant d'avoir exploité leurs sorties :
 
 Les callbacks de budget sont opt-in et observateurs : ils ne doivent pas modifier l'état, la matrice, les tolérances ou la décision d'acceptation.
 
-## 3. Exécution reproductible
+### Exécution reproductible
 
-Construire le binaire de validation habituel du dépôt : test_naca0012_qualification, compilé depuis tests/validation/test_naca0012_geometry.cpp. Utiliser exactement le même fichier de maillage N64 pour tous les essais.
+Construire le binaire de validation test_naca0012_qualification depuis tests/validation/test_naca0012_geometry.cpp. Utiliser exactement le même fichier de maillage N64 pour tous les essais.
 
 ~~~bash
 mkdir -p artifacts/naca-forensics/upwind
@@ -60,7 +69,7 @@ python scripts/naca_momentum_budget_diagnosis.py "$CASE/momentum_budget.csv" \
 
 Le mode --single mesh.h5 conserve les paramètres par défaut du test (dont alpha_u=0.6, alpha_p=0.25 et 8000 itérations maximum). Ne pas comparer des historiques issus de maillages, paramètres, initialisations ou budgets différents.
 
-## 4. Matrice A/B — une seule modification à la fois
+### Matrice A/B — une seule modification à la fois
 
 Tous les essais utilisent N64, Re=1000, alpha=0, la même initialisation uniforme, les mêmes tolérances physiques, le même budget maximal et le même réglage de relaxation, sauf la dimension explicitement testée.
 
@@ -74,11 +83,25 @@ Tous les essais utilisent N64, Re=1000, alpha=0, la même initialisation uniform
 | A5 | CFDX_NACA_SKEW_GRADIENT=1 (avec A1) | Le gradient corrigé du skewness est-il déterminant ? |
 | A6 | CFDX_NACA_PRESSURE_LINE_SEARCH=1 (avec A1) | Les corrections de pression sur-amplifient-elles le défaut de continuité ? |
 
-Ne pas activer plusieurs variantes de convection simultanément. A4–A6 sont comparés séparément à A1. Le pseudo-temps, alpha_u=0.8 et les essais de prolongement restent hors de cette première matrice : ils ajouteraient des facteurs confondants.
+Ne pas activer plusieurs variantes de convection simultanément. A4–A6 sont comparés séparément à A1. Le pseudo-temps, alpha_u=0.8 et les essais de prolongement restent hors de cette première matrice : ils ajouteraient des facteurs confondants. Pour chaque essai, recopier la commande A0 et ajouter uniquement les variables indiquées. Chaque essai doit avoir ses propres chemins de sortie.
 
-Pour chaque essai, recopier la commande A0 et ajouter uniquement les variables indiquées. Chaque essai doit avoir ses propres chemins de sortie.
+## 4. Traitement des frontières
 
-## 5. Lecture causale des résultats
+Conserver strictement les mêmes conditions aux limites et la même référence de pression pour tous les essais. Les champs importés d'un état prolongé ne changent pas les conditions aux limites. Le flux de masse utilisé pour le budget doit rester le flux conservatif corrigé réellement consommé par le solveur ; le flux interpolé collocated n'est qu'une observable de comparaison.
+
+Les flux de frontière, leur orientation et leur contribution au bilan de masse doivent être rapportés séparément. Une différence entre flux autoritaire et flux collocated ne doit pas être appelée « correction Rhie–Chow pure » : elle inclut aussi le partage pression-relaxation.
+
+## 5. Pièges connus
+
+- Un résidu linéaire pression faible n'est pas une preuve de convergence non linéaire.
+- Un résidu global peut masquer une composante y dominante.
+- Une contribution signée importante peut être compensée par une autre ; examiner les sommes signées **et** les maxima de valeurs absolues par cellule.
+- Les diagnostics cellwise sont échantillonnés ; vérifier les itérations échantillonnées et ne pas supposer une évolution monotone entre deux échantillons.
+- Le résidu relatif peut être amplifié par une échelle RHS de référence très petite ; rapporter les normes absolues, relatives et leurs dénominateurs sans remplacer le critère officiel.
+- Une corrélation avec le skewness ou le rapport d'aspect ne suffit pas à démontrer la causalité ; exiger une comparaison A/B contrôlée.
+- Les solutions non convergées ne peuvent alimenter un GCI qualifié.
+
+## 6. Ordre de précision attendu et validation exigée
 
 Pour les 8 à 12 dernières itérations échantillonnées, produire par composante :
 
@@ -99,9 +122,7 @@ Hypothèses à départager — ce ne sont pas des conclusions acquises :
 5. **Conditionnement momentum :** diagonale faible, ratio hors-diagonale/diagonale élevé, somme de ligne anormale ou RHS local dominant sur les mêmes cellules.
 6. **Normalisation :** le résidu relatif y est élevé parce que son RHS de référence est petit ; rapporter normes absolues, relatives et échelles de référence sans remplacer le critère officiel.
 
-Une contribution signée peut être grande et compensée par une autre. Examiner les sommes signées **et** les valeurs absolues/maxima par cellule. L'écart collocated est la différence entre flux de masse corrigé et flux interpolé directement ; ce n'est pas une mesure pure de Rhie–Chow.
-
-## 6. Livrables avant toute correction du solveur
+Livrables avant toute correction du solveur :
 
 - Un dossier d'artefacts par essai : commande exacte, environnement, hash du binaire, hash du maillage, stdout, trace forensique, historique physique, budget cellwise et JSON d'analyse.
 - Un tableau comparatif des dernières itérations acceptées, sans mélanger les normes ou leurs dénominateurs.
@@ -111,6 +132,10 @@ Une contribution signée peut être grande et compensée par une autre. Examiner
 
 **Interdictions :** ne pas relâcher les tolérances, augmenter les seuils, supprimer les gates, déclarer une convergence à partir du seul résidu linéaire, ni calculer un GCI à partir de solutions non convergées. Cette campagne ne qualifie ni N64 TVD, ni N128/N256, ni les coefficients aérodynamiques.
 
-## 7. Critère de sortie
+## 7. Statut d'implémentation
 
-La campagne est terminée lorsque les résultats isolent une cause dominante suffisamment étayée pour justifier un correctif de production. Si plusieurs mécanismes restent confondus, lancer une seconde matrice A/B ciblée plutôt que modifier plusieurs opérateurs simultanément.
+- Le protocole est ajouté dans cette PR ; les mécanismes de collecte et d'analyse référencés sont déjà présents dans le code fusionné par #1187.
+- La campagne A/B n'a pas encore été exécutée par cette PR.
+- Aucune cause dominante n'est établie à ce stade.
+- Aucun correctif de production, changement de tolérance, certificat de convergence ou résultat GCI n'est revendiqué.
+- La campagne est terminée lorsque les résultats isolent une cause dominante suffisamment étayée pour justifier un correctif de production. Si plusieurs mécanismes restent confondus, lancer une seconde matrice A/B ciblée plutôt que modifier plusieurs opérateurs simultanément.
