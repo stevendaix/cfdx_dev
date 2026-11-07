@@ -337,7 +337,7 @@ int main()
         setup.materials[0].dynamic_viscosity=0.012;
         setup.materials[0].extra_properties["thermal_expansion_coefficient"]="0.001";
         Field<double,Location::CELL> loaded_T(3,"T","K",1);
-        for (std::size_t cell=0;cell<3;++cell) loaded_T(cell)=310.0+10.0*cell;
+        for (std::size_t cell=0;cell<3;++cell) loaded_T(cell)=310.0+10.0*static_cast<double>(cell);
         auto expected_U=carrier.U; auto expected_p=carrier.p;
         auto reference_controls=carrier.controls;
         // Build the oracle directly, independently of the thermal seeding
@@ -357,7 +357,7 @@ int main()
                 EXPECT_NEAR(carrier.U(cell,d),expected_U(cell,d),1e-13);
             EXPECT_NEAR(carrier.p(cell),expected_p(cell),1e-13);
             vertical_motion=std::max(vertical_motion,std::abs(carrier.U(cell,1)));
-            EXPECT_NEAR(loaded_T(cell),310.0+10.0*cell,0.0);
+            EXPECT_NEAR(loaded_T(cell),310.0+10.0*static_cast<double>(cell),0.0);
         }
         EXPECT_TRUE(vertical_motion>1e-4);
         std::cout << "    restored buoyancy: first-iterate max Uy=" << vertical_motion << " m/s\n";
