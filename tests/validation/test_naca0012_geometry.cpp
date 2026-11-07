@@ -95,6 +95,33 @@ static Forces run(const std::string& path,std::size_t level,
 
     IncompressibleSolverControls c;
     c.algorithm=PressureVelocityAlgorithm::SIMPLE;
+    // Isolated A/B only. Both algorithms retain the exact same nonlinear
+    // momentum, continuity and independent-face convergence criteria.
+    if (const char* algorithm=std::getenv("CFDX_NACA_ALGORITHM")) {
+        const std::string requested(algorithm);
+        if (requested == "SIMPLEC")
+            c.algorithm=PressureVelocityAlgorithm::SIMPLEC;
+        else if (requested != "SIMPLE")
+            throw std::invalid_argument("CFDX_NACA_ALGORITHM expects SIMPLE or SIMPLEC");
+    }
+    if (const char* pseudo=std::getenv("CFDX_NACA_PSEUDO_MOMENTUM")) {
+        if (std::string(pseudo) != "1")
+            throw std::invalid_argument("CFDX_NACA_PSEUDO_MOMENTUM must be 1");
+        c.pseudo_momentum.enabled = true;
+    }
+    if (const char* cap=std::getenv("CFDX_NACA_PSEUDO_DIAGONAL_CAP")) {
+        if (!c.pseudo_momentum.enabled)
+            throw std::invalid_argument(
+                "CFDX_NACA_PSEUDO_DIAGONAL_CAP requires pseudo momentum");
+        std::size_t parsed = 0;
+        const std::string raw(cap);
+        const double fraction = std::stod(raw, &parsed);
+        if (parsed != raw.size() || !std::isfinite(fraction) ||
+            !(fraction > 0.0 && fraction <= 2.0))
+            throw std::invalid_argument(
+                "CFDX_NACA_PSEUDO_DIAGONAL_CAP expects a finite fraction in (0,2]");
+        c.pseudo_momentum.maximum_diagonal_fraction = fraction;
+    }
     c.density=rho; c.kinematic_viscosity=nu;
     c.linear_max_iterations=4000; c.linear_tolerance=1e-10;
     c.convergence.max_iterations=max_iterations;
@@ -103,6 +130,17 @@ static Forces run(const std::string& path,std::size_t level,
     // Force/GCI output is forbidden until the independent face-transport
     // momentum residual reaches the same strict nonlinear tolerance.
     c.require_independent_face_residual_for_convergence = true;
+    c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
+    c.nonlinear_retry.reject_severe_physical_growth=growth_guard;
+    cfdx::validation::apply_naca_relaxation_ab(c);
+
+    IncompressibleSolverControls c;
+    c.algorithm=PressureVelocityAlgorithm::SIMPLE;
+    c.density=rho; c.kinematic_viscosity=nu;
+    c.linear_max_iterations=4000; c.linear_tolerance=1e-10;
+    c.convergence.max_iterations=max_iterations;
+    c.convergence.relative_tolerance=1e-8;
+    c.convergence.continuity_tolerance=1e-8;
     c.coupling.alpha_u=alpha_u; c.coupling.alpha_p=alpha_p;
     c.nonlinear_retry.reject_severe_physical_growth=growth_guard;
     cfdx::validation::apply_naca_relaxation_ab(c);
@@ -260,6 +298,15 @@ static Forces run(const std::string& path,std::size_t level,
                                       solve_started).count();
     std::cout << "NACA_SOLVE_WALL elapsed_seconds=" << solve_elapsed_seconds
               << " accepted_iterations=" << solve.history.size()
+              << " converged=" << solve.converged
+              << " algorithm=" << (c.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                     ? "SIMPLEC" : "SIMPLE")
+              << " pseudo_momentum=" << c.pseudo_momentum.enabled << '\n';
+    // Save physical nonlinear diagnostics even when the full CFD gate fails.
+    // The official force/GCI checks still require solve.converged == true.
+    // This opt-in creates no matrix dumps and can be used for long runs.
+    std::cout << "NACA_SOLVE_WALL elapsed_seconds=" << solve_elapsed_seconds
+              << " accepted_iterations=" << solve.history.size()
               << " converged=" << solve.converged << '\n';
     // Save physical nonlinear diagnostics even when the full CFD gate fails.
     // The official force/GCI checks still require solve.converged == true.
@@ -274,7 +321,18 @@ static Forces run(const std::string& path,std::size_t level,
                "high_order_fraction,face_momentum_x_relative,"
                "face_momentum_y_relative,face_momentum_z_relative,"
                "face_momentum_x_linf,face_momentum_y_linf,face_momentum_z_linf,"
-               "convection_scheme\n";
+               "convection_scheme,momentum_reference_relative,"
+               "momentum_x_rhs_relative,momentum_y_rhs_relative,"
+               "momentum_z_rhs_relative,momentum_component_max,"
+               "velocity_change_inf,pressure_change_inf,pressure_residual,"
+               "alpha_u,alpha_p,pseudo_cfl,nonlinear_metric,"
+               "algorithm,pseudo_capped_cells\n";
+        out << std::setprecision(17);
+        for (const auto& h : solve.history)
+            out << h.iteration << ',' << h.continuity_normalized << ','
+               "flux_velocity_mismatch_normalized,pressure_linear_iterations,"
+               "momentum_linear_iterations,nonfinite_mass_faces,nonfinite_velocities,"
+               "high_order_fraction\n";
         out << std::setprecision(17);
         for (const auto& h : solve.history)
             out << h.iteration << ',' << h.continuity_normalized << ','
@@ -295,13 +353,41 @@ static Forces run(const std::string& path,std::size_t level,
                 << (c.convection_scheme == ConvectionScheme::TVD ? "TVD" :
                     c.convection_scheme == ConvectionScheme::TVD_VANLEER ? "TVD_VANLEER" :
                     c.convection_scheme == ConvectionScheme::UPWIND ? "UPWIND" :
-                    "OTHER") << '\n';
+                    "OTHER") << ','
+                << h.momentum_equation_residual_relative << ','
+                << h.momentum_equation_residual_rhs_relative_components[0] << ','
+                << h.momentum_equation_residual_rhs_relative_components[1] << ','
+                << h.momentum_equation_residual_rhs_relative_components[2] << ','
+                << h.momentum_equation_residual_rhs_active_component_max << ','
+                << h.velocity_change_inf << ',' << h.pressure_change_inf << ','
+                << h.pressure_residual << ','
+                << h.effective_alpha_u << ',' << h.effective_alpha_p << ','
+                << (c.pseudo_momentum.enabled ? h.v17_pseudo_cfl : 0.0) << ','
+                << h.nonlinear_convergence_metric << ','
+                << (c.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                        ? "SIMPLEC" : "SIMPLE") << ','
+                << h.v17_pseudo_capped_cells << '\n';
+        out.flush();
+        if (!out) throw std::runtime_error("failed writing NACA physical history CSV");
+    };
+                << h.mass_nonfinite_faces << ','
+                << h.boundedness_nonfinite_velocity << ','
+                << h.high_order_fraction << '\n';
         out.flush();
         if (!out) throw std::runtime_error("failed writing NACA physical history CSV");
     };
     if (const char* path = std::getenv("CFDX_NACA_PHYSICAL_HISTORY_CSV")) {
         if (!*path) throw std::invalid_argument("empty NACA history path");
         write_outer_history(path);
+        std::cout << "NACA_PHYSICAL_HISTORY path=" << path
+                  << " accepted_iterations=" << solve.history.size()
+                  << " converged=" << solve.converged
+              << " algorithm=" << (c.algorithm == PressureVelocityAlgorithm::SIMPLEC
+                     ? "SIMPLEC" : "SIMPLE")
+              << " pseudo_momentum=" << c.pseudo_momentum.enabled << '\n';
+    }
+
+    if(!solve.converged) {
         std::cout << "NACA_PHYSICAL_HISTORY path=" << path
                   << " accepted_iterations=" << solve.history.size()
                   << " converged=" << solve.converged << '\n';

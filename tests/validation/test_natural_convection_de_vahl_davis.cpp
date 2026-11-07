@@ -425,4 +425,10 @@ int main(int argc, char** argv)
                   << " Ra=" << benchmark.ra << " grids=" << grids.size() << '\n';
     });
     return run_all();
+        if(!single && !(errors[2]<errors[1] && errors[1]<errors[0]))
+            throw std::runtime_error("three-grid physical Nu error not decreasing");
+        std::cout << "CAVITY_DVD_STATUS: PREQUALIFICATION_PASS"
+                  << " Ra=" << benchmark.ra << " grids=" << grids.size() << '\n';
+    });
+    return run_all();
 }

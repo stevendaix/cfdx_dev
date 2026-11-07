@@ -1332,3 +1332,460 @@ int main()
         EXPECT_NEAR(actual, expected, 1e-12);
     });
 
+    run_case("n9_s9_skew_boundary_deferred_flux_preserves_linear_pressure", [] {
+        // A prescribed boundary pressure lies along an oblique centre-to-face
+        // vector. The implicit jump plus deferred remainder must reproduce the
+        // full anisotropic pressure-response flux for a linear pressure field.
+        const Vec3 Sf{1.0, 0.4, 0.0};
+        const Vec3 dvec{1.0, 0.3, 0.0};
+        const Vec3 dAU{1.0, 4.0, 9.0};
+        const Vec3 grad_p{0.0, 2.0, 0.0};
+        const double pressure_jump = grad_p.dot(dvec);
+        const double implicit = pressure_face_orthogonal_coefficient(
+            Sf, dvec, dAU) * pressure_jump;
+        const double deferred = pressure_face_nonorthogonal_flux(
+            Sf, dvec, dAU, grad_p);
+        const double full_flux = dAU.x * grad_p.x * Sf.x +
+                                 dAU.y * grad_p.y * Sf.y +
+                                 dAU.z * grad_p.z * Sf.z;
+        EXPECT_NEAR(implicit + deferred, full_flux, 1e-12);
+        EXPECT_TRUE(std::abs(deferred) > 1.0);
+    });
+
+
+    run_case("n9_s9_rhie_chow_oblique_3d_face_operator_and_relaxation_scaling", [] {
+        // An affine shear creates a valid 3D hexahedral mesh whose internal
+        // face normal is not parallel to the owner-neighbour centre vector.
+        // For an exact linear pressure field, the production face operator
+        // (#923 contract: implicit orthogonal coefficient plus deferred
+        // non-orthogonal flux) must return the full anisotropic directional
+        // flux rho * sum_d dAU_d * grad_d(p) * Sf_d, with
+        // dAU_d = 0.5*(V_P*rAU_d[P] + V_N*rAU_d[N]). The complete pressure
+        // flux must then scale linearly with the relaxed inverse momentum
+        // diagonal; no extra alpha_u factor belongs in Rhie-Chow.
+        const Mesh mesh = make_two_cell_channel_oblique();
+        const auto geometry = build_fv_geometry(mesh);
+        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        Field<double, Location::CELL> grad_p(2, "grad_p", "Pa/m", 3);
+        const Vec3 exact_gradient{2.0, -1.25, 0.75};
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            const Vec3 centre = geometry.cell_centres[c];
+            p(c) = exact_gradient.dot(centre);
+            grad_p.set(c, exact_gradient.x, exact_gradient.y, exact_gradient.z);
+        }
+
+        const Vec3 Sf = geometry.face_area_vectors[1];
+        const Vec3 dvec = geometry.cell_centres[1] - geometry.cell_centres[0];
+        const double d = dvec.mag();
+        const Vec3 e{dvec.x / d, dvec.y / d, dvec.z / d};
+        const double orthogonal_area = Sf.dot(e);
+        const Vec3 Snon = Sf - e * orthogonal_area;
+        EXPECT_TRUE(Snon.mag() > 1e-3);
+        EXPECT_TRUE(std::abs(exact_gradient.dot(Snon)) > 1e-3);
+
+        std::array<std::vector<double>, 3> rAU{
+            std::vector<double>{0.7, 1.3},
+            std::vector<double>{1.1, 0.6},
+            std::vector<double>{0.9, 1.8}};
+        constexpr double rho = 1.7;
+        const double actual = rhie_chow_pressure_flux_internal(
+            mesh, geometry, 1, p, grad_p, rAU, rho);
+
+        const double cx = 0.5 * (geometry.cell_volumes[0] * rAU[0][0] +
+                                 geometry.cell_volumes[1] * rAU[0][1]);
+        const double cy = 0.5 * (geometry.cell_volumes[0] * rAU[1][0] +
+                                 geometry.cell_volumes[1] * rAU[1][1]);
+        const double cz = 0.5 * (geometry.cell_volumes[0] * rAU[2][0] +
+                                 geometry.cell_volumes[1] * rAU[2][1]);
+        // Oracle adapted to the #923 operator contract: the implicit
+        // orthogonal coefficient plus the deferred non-orthogonal flux
+        // equals the full directional tensor contraction for a linear
+        // pressure field.
+        const double expected = rho * (cx * exact_gradient.x * Sf.x +
+                                       cy * exact_gradient.y * Sf.y +
+                                       cz * exact_gradient.z * Sf.z);
+        EXPECT_NEAR(actual, expected, 1e-12);
+
+        constexpr double alpha_u = 0.4;
+        const auto relaxed_rAU = scale_rAU(rAU, alpha_u);
+        const double relaxed_actual = rhie_chow_pressure_flux_internal(
+            mesh, geometry, 1, p, grad_p, relaxed_rAU, rho);
+        EXPECT_NEAR(relaxed_actual, alpha_u * actual, 1e-12);
+    });
+
+    run_case("n9_s9_flux_velocity_mismatch_detects_known_inconsistency", [] {
+        // Sensitivity proof for the restored independent audit channel:
+        // phi_U (plain interpolation of the corrected velocity) and phi_RC
+        // (authoritative Rhie-Chow flux) are two independent paths. For the
+        // checkerboard pressure mode the channels MUST disagree by the known
+        // Rhie-Chow correction (the channel is not blind); for the consistent
+        // linear pressure field the internal-face mismatch MUST read zero
+        // (the channel does not report an artifact when the identity holds).
+        const Mesh mesh = make_four_cell_channel({0.0, 1.0, 2.0, 3.0, 4.0}, true);
+        const auto geometry = build_fv_geometry(mesh);
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ubc["inlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ubc["outlet"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        pbc["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        pbc["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 4.0, 0.0};
+        const auto rAU = unit_rAU(mesh.n_cells());
+
+        Field<double, Location::CELL> U(mesh.n_cells(), "U", "m/s", 3);
+        U.fill(0.0);
+        Field<double, Location::CELL> p_check(mesh.n_cells(), "p", "Pa", 1);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+            p_check(c) = (c % 2 == 0) ? 1.0 : -1.0;
+        // Compare against the physical cell velocity, not an H/A predictor.
+        // The checkerboard pressure jump must remain visible in the physical
+        // Rhie-Chow flux, while an affine pressure field must be exactly
+        // compensated by the physical-velocity contract.
+        const auto phi_rc_check = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_check, rAU, 1.0, ubc, pbc,
+            RhieChowVelocityContract::PHYSICAL_VELOCITY);
+        const auto phi_u = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+        const double mismatch_check = std::abs(phi_rc_check(1) - phi_u(1));
+        EXPECT_TRUE(mismatch_check > 1e-12);
+
+        Field<double, Location::CELL> p_linear(mesh.n_cells(), "p", "Pa", 1);
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c)
+            p_linear(c) = geometry.cell_centres[c].x;
+        const auto phi_rc_linear = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_linear, rAU, 1.0, ubc, pbc,
+            RhieChowVelocityContract::PHYSICAL_VELOCITY);
+        for (std::size_t f = 1; f <= 3; ++f)
+            EXPECT_NEAR(phi_rc_linear(f), phi_u(f), 1e-12);
+    });
+
+    run_case("n9_s9_flux_velocity_mismatch_boundary_channel_sees_expected_correction", [] {
+        // The boundary channel must not be blind either: on a fixed-pressure
+        // boundary face the two reconstruction paths differ by exactly the
+        // Rhie-Chow boundary correction
+        // rho*(implicit_coeff*(p_bc - p_P) + deferred), evaluated with the
+        // owner-cell dAU = V*rAU and the owner-centre -> face-centre
+        // distance, using the same production coefficient helpers.
+        const Mesh mesh = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+
+        Field<double, Location::CELL> U(2, "U", "m/s", 3);
+        U.fill(0.0);
+        Field<double, Location::CELL> p(2, "p", "Pa", 1);
+        p(0) = 1.0;
+        p(1) = 3.0;
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::FIXED_VALUE, 0.5, 0.0};
+
+        const auto rAU = unit_rAU(mesh.n_cells());
+        const auto phi_rc = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p, rAU, 1.0, ubc, pbc);
+        const auto phi_u = make_mass_flux(mesh, geometry, U, 1.0, ubc);
+
+        const std::size_t f = 0;  // x = 0 plane, owner = cell 0
+        const std::size_t o = mesh.ownership().owner(f);
+        const Vec3 Sf = geometry.face_area_vectors[f];
+        const Vec3 dvec = geometry.face_centres[f] - geometry.cell_centres[o];
+        const auto grad_p = gauss_gradient_with_boundary(p, mesh, geometry, pbc);
+        const Vec3 dAU_boundary{
+            geometry.cell_volumes[o] * rAU[0][o],
+            geometry.cell_volumes[o] * rAU[1][o],
+            geometry.cell_volumes[o] * rAU[2][o]};
+        const double implicit_coefficient =
+            pressure_face_orthogonal_coefficient(Sf, dvec, dAU_boundary);
+        const Vec3 gp{
+            grad_p.component_data(0)[o],
+            grad_p.component_data(1)[o],
+            grad_p.component_data(2)[o]};
+        const double deferred =
+            pressure_face_nonorthogonal_flux(Sf, dvec, dAU_boundary, gp);
+        const double expected_correction =
+            1.0 * (implicit_coefficient * (0.5 - p(o)) + deferred);
+
+        EXPECT_TRUE(std::abs(expected_correction) > 1e-12);
+        EXPECT_NEAR(phi_u(f), 0.0, 1e-12);
+        EXPECT_NEAR(phi_rc(f), -expected_correction, 1e-12);
+        EXPECT_NEAR(phi_rc(f) - phi_u(f), -expected_correction, 1e-12);
+    });
+
+    run_case("n9_s9_rhie_chow_identity_detects_stale_state", [] {
+        // The identity channel re-derives the authoritative flux from the
+        // current state: re-deriving from the same state reads exactly zero,
+        // while a stored flux built from a different (stale) state MUST be
+        // detected as a nonzero identity error.
+        const Mesh mesh = make_two_cell_channel();
+        const auto geometry = build_fv_geometry(mesh);
+
+        Field<double, Location::CELL> U(2, "U", "m/s", 3);
+        U.fill(0.0);
+        Field<double, Location::CELL> p_a(2, "p", "Pa", 1);
+        Field<double, Location::CELL> p_b(2, "p", "Pa", 1);
+        p_a(0) = 1.0; p_a(1) = -1.0;
+        p_b(0) = 4.0; p_b(1) = -2.0;
+
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0, 0.0, 0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+        const auto rAU = unit_rAU(mesh.n_cells());
+
+        const auto phi_stored = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_a, rAU, 1.0, ubc, pbc);
+        const auto phi_rederived_same = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_a, rAU, 1.0, ubc, pbc);
+        const auto phi_rederived_stale = make_rhie_chow_mass_flux(
+            mesh, geometry, U, p_b, rAU, 1.0, ubc, pbc);
+
+        double identity_same = 0.0;
+        double identity_stale = 0.0;
+        for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+            identity_same = std::max(
+                identity_same, std::abs(phi_stored(f) - phi_rederived_same(f)));
+            identity_stale = std::max(
+                identity_stale, std::abs(phi_stored(f) - phi_rederived_stale(f)));
+        }
+        EXPECT_TRUE(identity_same == 0.0);
+        EXPECT_TRUE(identity_stale > 1e-12);
+    });
+
+    run_case("n9_s9_coupled_symmetry_continuity_matches_authoritative_flux", [] {
+        Mesh mesh = make_two_cell_channel();
+        auto& walls = mesh.boundary().patch(0).face_ids;
+        walls.erase(std::remove(walls.begin(), walls.end(), FaceIndex{8}), walls.end());
+        Patch symmetry;
+        symmetry.name = "sym";
+        symmetry.type = PatchType::SYMMETRY;
+        symmetry.face_ids = {8};
+        mesh.boundary().add_patch(symmetry);
+        const auto geometry = build_fv_geometry(mesh);
+        const std::size_t nc = mesh.n_cells();
+        Field<double, Location::CELL> U_old(nc, "U", "m/s", 3);
+        Field<double, Location::CELL> p_old(nc, "p", "Pa", 1);
+        U_old.fill(0.0); p_old.fill(0.0);
+        U_old.component_data(1)[1] = 1.0; // Not yet tangent to symmetry: flux still MUST be zero.
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::FIXED_VALUE, 0.0, 0.0};
+        pbc["sym"] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+
+        auto diagonal_equation = [&]() {
+            ScalarEquation eq;
+            eq.matrix = SparseMatrix(nc,nc);
+            eq.diagonal.assign(nc,2.0);
+            eq.rhs = Vector(nc,0.0);
+            for (std::size_t c=0; c<nc; ++c) eq.matrix.push_back(c,c,2.0);
+            eq.matrix.finalize();
+            return eq;
+        };
+        auto ex=diagonal_equation(), ey=diagonal_equation(), ez=diagonal_equation();
+        auto U = U_old; auto p = p_old;
+        IncompressibleSolverControls controls;
+        controls.algorithm = PressureVelocityAlgorithm::COUPLED;
+        controls.coupling.schur_model = CoupledSchurModel::BlockLocal;
+        bool captured = false;
+        controls.coupled_assembly_callback = [&](const CoupledAssemblySnapshot& snap) {
+            captured = true;
+            const auto& A = *snap.matrix;
+            const auto& b = *snap.rhs;
+            const auto& x = *snap.initial_guess;
+            // The FV oracle must suppress impermeable SYMMETRY faces exactly
+            // as the COUPLED assembly does, even for a non-tangent trial U.
+            const auto frozen = certify_coupled_frozen_fv_operator(
+                snap, mesh, geometry, ubc, pbc, controls.density,
+                controls.pressure_reference_value, x);
+            std::cerr << "SYMMETRY_FROZEN_FV passed=" << frozen.passed
+                      << " continuity_error=" << frozen.continuity_linf << '\n';
+            EXPECT_TRUE(frozen.passed);
+            const std::size_t row = 3*nc + 1;
+            double algebraic = -b(row);
+            for (std::size_t k=A.row_offsets_data()[row];
+            const auto& A = *snap.matrix;
+            const auto& b = *snap.rhs;
+            const auto& x = *snap.initial_guess;
+            const std::size_t row = 3*nc + 1;
+            double algebraic = -b(row);
+            for (std::size_t k=A.row_offsets_data()[row];
+                 k<A.row_offsets_data()[row+1]; ++k)
+                algebraic += A.values_data()[k]*x(A.columns_data()[k]);
+            std::array<std::vector<double>,3> rAU{
+                std::vector<double>(nc,0.5),
+                std::vector<double>(nc,0.5),
+                std::vector<double>(nc,0.5)};
+            const auto flux = make_rhie_chow_flux_from_physical_velocity(
+                mesh,geometry,U_old,p_old,rAU,1.0,ubc,pbc);
+            double independent = 0.0;
+            for (std::size_t f=0; f<mesh.n_faces(); ++f) {
+                if (mesh.ownership().owner(f)==1) independent += flux(f);
+                if (mesh.ownership().neighbour(f)==1) independent -= flux(f);
+            }
+            std::cerr << "SYMMETRY_COUPLED_MISMATCH=" << (algebraic-independent) << '\n';
+            EXPECT_NEAR(algebraic, independent, 1e-12);
+        };
+        (void)solve_coupled_momentum_continuity(
+            mesh,geometry,ex,ey,ez,U_old,p_old,ubc,pbc,
+            1.0,0.01,0,0.0,40,1e-10,controls.diagnostics,
+            controls.coupling.schur_model,controls.coupled_linear_solver,controls,
+            1.0,U,p);
+        EXPECT_TRUE(captured);
+    });
+
+    run_case("n9_s9_coupled_fixed_gradient_boundary_momentum_matches_gauss", [] {
+        Mesh mesh = make_two_cell_channel();
+        auto& walls = mesh.boundary().patch(0).face_ids;
+        walls.erase(std::remove(walls.begin(), walls.end(), FaceIndex{8}), walls.end());
+        Patch gradient_patch;
+        gradient_patch.name = "grad";
+        gradient_patch.type = PatchType::WALL;
+        gradient_patch.face_ids = {8};
+        mesh.boundary().add_patch(gradient_patch);
+        const auto geometry = build_fv_geometry(mesh);
+        const std::size_t nc = mesh.n_cells();
+        Field<double, Location::CELL> U_old(nc,"U","m/s",3);
+        Field<double, Location::CELL> p_old(nc,"p","Pa",1);
+        U_old.fill(0.0); p_old.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0,0.0,0.0}};
+        ubc["grad"] = {VelocityBoundaryCondition::Type::FIXED_VALUE, {0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        pbc["grad"] = {ScalarBoundaryType::FIXED_GRADIENT,0.0,3.0};
+        const auto true_gradient = gauss_gradient_with_boundary(p_old,mesh,geometry,pbc);
+        const double expected = true_gradient.component_data(1)[1]*geometry.cell_volumes[1];
+        EXPECT_TRUE(std::abs(expected)>1e-8);
+        auto diagonal_equation = [&](std::size_t component) {
+            ScalarEquation eq;
+            eq.matrix = SparseMatrix(nc,nc);
+            eq.diagonal.assign(nc,2.0);
+            eq.rhs = Vector(nc,0.0);
+            for (std::size_t c=0; c<nc; ++c) {
+                eq.matrix.push_back(c,c,2.0);
+                eq.rhs(c) = -true_gradient.component_data(component)[c]*geometry.cell_volumes[c];
+            }
+            eq.matrix.finalize();
+            return eq;
+        };
+        auto ex=diagonal_equation(0), ey=diagonal_equation(1), ez=diagonal_equation(2);
+        auto U=U_old; auto p=p_old;
+        IncompressibleSolverControls controls;
+        controls.algorithm=PressureVelocityAlgorithm::COUPLED;
+        controls.coupling.schur_model=CoupledSchurModel::BlockLocal;
+        bool captured = false;
+        controls.coupled_assembly_callback = [&](const CoupledAssemblySnapshot& snap) {
+            captured = true;
+            const auto& A=*snap.matrix; const auto& b=*snap.rhs;
+            const auto& x=*snap.initial_guess;
+            const std::size_t row = nc + 1;
+            double algebraic = -b(row);
+            for (std::size_t k=A.row_offsets_data()[row];
+                 k<A.row_offsets_data()[row+1]; ++k)
+                algebraic += A.values_data()[k]*x(A.columns_data()[k]);
+            std::cerr << "FIXED_GRADIENT_GAUSS_MISMATCH=" << (algebraic-expected) << '\n';
+            EXPECT_NEAR(algebraic,expected,1e-12);
+        };
+        (void)solve_coupled_momentum_continuity(
+            mesh,geometry,ex,ey,ez,U_old,p_old,ubc,pbc,
+            1.0,0.01,0,0.0,40,1e-10,controls.diagnostics,
+            controls.coupling.schur_model,controls.coupled_linear_solver,controls,
+            1.0,U,p);
+        EXPECT_TRUE(captured);
+    });
+
+    run_case("n9_s9_coupled_empty_face_gradient_matches_gauss", [] {
+        Mesh mesh = make_two_cell_channel();
+        auto& walls = mesh.boundary().patch(0).face_ids;
+        walls.erase(std::remove(walls.begin(),walls.end(),FaceIndex{8}),walls.end());
+        Patch empty;
+        empty.name="front_back"; empty.type=PatchType::EMPTY; empty.face_ids={8};
+        mesh.boundary().add_patch(empty);
+        const auto geometry=build_fv_geometry(mesh);
+        const std::size_t nc=mesh.n_cells();
+        Field<double,Location::CELL> U_old(nc,"U","m/s",3);
+        Field<double,Location::CELL> p_old(nc,"p","Pa",1);
+        U_old.fill(0.0); p_old.fill(0.0); p_old(1)=4.0;
+        VelocityBoundaryConditions ubc;
+        ubc["wall"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"]={ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        const auto grad=gauss_gradient_with_boundary(p_old,mesh,geometry,pbc);
+        auto mk_eq=[&](std::size_t component) {
+            ScalarEquation eq;
+            eq.matrix=SparseMatrix(nc,nc);
+            eq.diagonal.assign(nc,2.0);
+            eq.rhs=Vector(nc,0.0);
+            for(std::size_t c=0;c<nc;++c) {
+                eq.matrix.push_back(c,c,2.0);
+                eq.rhs(c)=-geometry.cell_volumes[c]*grad.component_data(component)[c];
+            }
+            eq.matrix.finalize(); return eq;
+        };
+        auto ex=mk_eq(0),ey=mk_eq(1),ez=mk_eq(2);
+        auto U=U_old,p=p_old;
+        IncompressibleSolverControls controls;
+        controls.algorithm=PressureVelocityAlgorithm::COUPLED;
+        bool captured=false;
+        controls.coupled_assembly_callback=[&](const CoupledAssemblySnapshot& snap) {
+            captured=true;
+            const std::size_t row=nc+1;
+            const auto& A=*snap.matrix; const auto& b=*snap.rhs;
+            const auto& x=*snap.initial_guess;
+            double algebraic=-b(row);
+            for(std::size_t k=A.row_offsets_data()[row]; k<A.row_offsets_data()[row+1];++k)
+                algebraic+=A.values_data()[k]*x(A.columns_data()[k]);
+            const double expected=geometry.cell_volumes[1]*grad.component_data(1)[1];
+            std::cerr << "EMPTY_GAUSS_MISMATCH=" << algebraic-expected << '\n';
+            EXPECT_NEAR(algebraic,expected,1e-12);
+        };
+        (void)solve_coupled_momentum_continuity(
+            mesh,geometry,ex,ey,ez,U_old,p_old,ubc,pbc,1.0,0.01,
+            0,0.0,40,1e-10,controls.diagnostics,controls.coupling.schur_model,
+            controls.coupled_linear_solver,controls,1.0,U,p);
+        EXPECT_TRUE(captured);
+    });
+
+    run_case("n9_s9_coupled_fixed_pressure_warm_start_is_not_gauge_pinned", [] {
+        const Mesh mesh=make_two_cell_channel();
+        const auto geometry=build_fv_geometry(mesh);
+        const std::size_t nc=mesh.n_cells();
+        Field<double,Location::CELL> U_old(nc,"U","m/s",3);
+        Field<double,Location::CELL> p_old(nc,"p","Pa",1);
+        U_old.fill(0.0); p_old(0)=3.0; p_old(1)=4.0;
+        VelocityBoundaryConditions ubc;
+        ubc["wall"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"]={ScalarBoundaryType::FIXED_VALUE,0.0,0.0};
+        const auto grad=gauss_gradient_with_boundary(p_old,mesh,geometry,pbc);
+        auto mk_eq=[&](std::size_t component) {
+            ScalarEquation eq;
+            eq.matrix=SparseMatrix(nc,nc); eq.diagonal.assign(nc,2.0);
+            eq.rhs=Vector(nc,0.0);
+            for(std::size_t c=0;c<nc;++c) {
+                eq.matrix.push_back(c,c,2.0);
+                eq.rhs(c)=-geometry.cell_volumes[c]*grad.component_data(component)[c];
+            }
+            eq.matrix.finalize();return eq;
+        };
+        auto ex=mk_eq(0),ey=mk_eq(1),ez=mk_eq(2);
+        auto U=U_old,p=p_old;
+        IncompressibleSolverControls controls;
+        controls.algorithm=PressureVelocityAlgorithm::COUPLED;
+        bool captured=false;
+        controls.coupled_assembly_callback=[&](const CoupledAssemblySnapshot& snap) {
+            captured=true;
+            EXPECT_TRUE(snap.has_fixed_pressure);
+            EXPECT_NEAR((*snap.initial_guess)(3*nc),3.0,0.0);
+            EXPECT_NEAR((*snap.initial_guess)(3*nc+1),4.0,0.0);
+        };
+        (void)solve_coupled_momentum_continuity(
+            mesh,geometry,ex,ey,ez,U_old,p_old,ubc,pbc,1.0,0.01,
+            0,0.0,40,1e-10,controls.diagnostics,controls.coupling.schur_model,
+            controls.coupled_linear_solver,controls,1.0,U,p);
+        EXPECT_TRUE(captured);
+    });
+
+    return run_all();
+}
