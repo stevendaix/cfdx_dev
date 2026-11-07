@@ -1,5 +1,8 @@
-#!/usr/bin/env python3
-import pathlib, subprocess, sys, tempfile
+import pathlib
+import subprocess
+import sys
+import tempfile
+
 import h5py
 import meshio
 import numpy as np
@@ -9,8 +12,8 @@ with tempfile.TemporaryDirectory() as d:
     root = pathlib.Path(d)
     src = root / "two_tetra.msh"
     dst = root / "mesh.h5"
-    points = np.array([[0,0,0],[1,0,0],[0,1,0],[0,0,1]], dtype=float)
-    cells = [("tetra", np.array([[0,1,2,3]], dtype=int))]
+    points = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float)
+    cells = [("tetra", np.array([[0, 1, 2, 3]], dtype=int))]
     mesh = meshio.Mesh(points, cells)
     meshio.write(src, mesh, file_format="gmsh", binary=False)
     subprocess.check_call([sys.executable, str(bridge), str(src), str(dst)])
