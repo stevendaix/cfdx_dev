@@ -91,8 +91,8 @@ Result solve_conv_diff(std::size_t n,double H,double D,double V)
 void temporal_convergence()
 {
     std::vector<double> errors;
-    for(int level=0;level<4;++level){
-        const double dt=0.1/std::pow(2.0,level); const int steps=static_cast<int>(1.0/dt);
+    for(std::size_t level=0;level<4;++level){
+        const double dt=0.1/std::pow(2.0,static_cast<double>(level)); const int steps=static_cast<int>(1.0/dt);
         Field<double,Location::CELL> u(1,"u");u(0)=1.0;
         for(int i=0;i<steps;++i)low_storage_rk2_step(u,dt,[](const auto& x,auto& r){r(0)=-x(0);});
         const double e=std::abs(u(0)-std::exp(-1.0));errors.push_back(e);
