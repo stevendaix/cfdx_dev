@@ -25,7 +25,7 @@ Sur trois grilles géométriquement comparables, un ordre observé et un GCI peu
 - Un fichier tronqué ou non fini, un nombre d'itérations nul/fractionnaire, une norme négative, une fermeture des forces fausse ou un certificat incompatible avec l'historique provoquent un refus explicite.
 
 ## 5. Pièges connus
-- `-1e-12 < 1e-8` ne démontre pas une convergence : une norme négative traduit une preuve corrompue, même si elle Â« passe Â» une comparaison naïve.
+- `-1e-12 < 1e-8` ne démontre pas une convergence : une norme négative traduit une preuve corrompue, même si elle « passe » une comparaison naïve.
 - Le triplet `(N64,N128,N256)` ne garantit ni des familles géométriquement semblables ni un ordre observé asymptotique.
 - `naca_three_grid_gci.py` est **DIAGNOSTIC_ONLY** : il ne lit pas les historiques physiques ni le rapport de qualité des trois maillages. La voie de certification forte est `naca_force_mesh_qualification.py`, qui contrôle aussi les certificats d'efforts et la similarité des grilles.
 - Un marqueur `PASS` isolé ou des champs JSON cohérents entre eux ne sont pas une validation expérimentale.

@@ -36,11 +36,11 @@ Les flux aux frontières reprennent les lois de paroi, de symétrie et les condi
 La famille candidate compte 3 096, 12 336 et 49 248 cellules ; les ratios mesurés de première couche sont environ 2,027 et 2,014, avec zéro cellule inversée. Ce contrôle est géométrique ; il ne prouve pas la convergence des coefficients aérodynamiques, ni l'entrée en régime asymptotique.
 
 ## 5. Pièges connus — Faux positifs désormais bloqués
-- Deux résidus locaux égaux et opposés ne peuvent plus donner un Â« bilan parfaitement fermé Â».
+- Deux résidus locaux égaux et opposés ne peuvent plus donner un « bilan parfaitement fermé ».
 - Un résidu de pression/AMG de $10^{-11}$ ne fait pas disparaître un défaut de momentum ou de masse.
 - Une valeur `high_order_fraction = 1` est insuffisante si le schéma est encore `UPWIND` : la qualification exige un schéma TVD borné et l'opérateur complet sur le dernier état.
 - Un $C_d$ monotone peut masquer l'absence de convergence de $C_{d,p}$ et $C_{d,v}$, compensant leurs erreurs. Les trois doivent présenter une signature de Richardson acceptable.
-- Les grilles sans certificats d'efforts d'états convergés produisent `BLOCKED`, jamais une valeur de GCI Â« estimée Â» à partir des résidus linéaires.
+- Les grilles sans certificats d'efforts d'états convergés produisent `BLOCKED`, jamais une valeur de GCI « estimée » à partir des résidus linéaires.
 
 ## 6. Ordre de précision et validation exigée
 Avec des rapports de raffinement $r_{21}$ et $r_{32}$ légèrement différents, l'ordre observé $p$ est résolu par
@@ -50,11 +50,11 @@ Avec des rapports de raffinement $r_{21}$ et $r_{32}$ légèrement différents, 
 \]
 au lieu de remplacer les deux rapports par leur moyenne géométrique. Les GCI $C_d$, $C_{d,p}$ et $C_{d,v}$ sont candidats uniquement après convergence de **toutes** les grilles et contrôle géométrique. Un triplet seul ne démontre pas rigoureusement le régime asymptotique : il faut confronter les profils $C_p/C_f$, une famille plus fine et les références expérimentales indépendantes.
 
-Tests SST, énergie, rayonnement et S2S vérifient des contrats/équations élémentaires. La validation NASA TMR du SST, les bilans CHT sur une étude de grille et les références radiatives P1/S2S/DOM exigent encore des campagnes dédiées ; Â« test vert Â» ne signifie pas Â« modèle validé Â».
+Tests SST, énergie, rayonnement et S2S vérifient des contrats/équations élémentaires. La validation NASA TMR du SST, les bilans CHT sur une étude de grille et les références radiatives P1/S2S/DOM exigent encore des campagnes dédiées ; « test vert » ne signifie pas « modèle validé ».
 
 ## 7. Statut d'implémentation et preuves locales
 - Le certificat local et le contrôle Euler/BDF2 ont été compilés avec régressions C++ ; l'opt-in strict et les cas de zéro physique SIMPLE/SIMPLEC passent.
 - Le GCI inégal, le maillage radial emboîté, les contrôles de schéma borné, la somme des efforts et les résidus indépendants sont couverts par des tests négatifs Python.
 - Les diagnostics NACA de 120/18/6 itérations respectivement N64/N128/N256 restent **non convergés** ; aucune donnée de force obtenue à ces budgets n'est certifiée. Le budget était diagnostique, pas une preuve d'échec à un budget intégral.
-- Convection naturelle de Vahl Davis Ra=1000 : essais isolés sur 8 et 12 cellules par côté convergés avec bilans énergétiques de l'ordre de $10^{-12}$ ; l'essai 16Ã16 a atteint une limite de 200 s sans résultat. Le binaire distingue désormais explicitement `SINGLE_GRID_DIAGNOSTIC_PASS` de `PREQUALIFICATION_PASS` sur trois grilles ; preuve sur trois grilles distinctes et convergence vers les vitesses de référence encore ouvertes.
+- Convection naturelle de Vahl Davis Ra=1000 : essais isolés sur 8 et 12 cellules par côté convergés avec bilans énergétiques de l'ordre de $10^{-12}$ ; l'essai 16×16 a atteint une limite de 200 s sans résultat. Le binaire distingue désormais explicitement `SINGLE_GRID_DIAGNOSTIC_PASS` de `PREQUALIFICATION_PASS` sur trois grilles ; preuve sur trois grilles distinctes et convergence vers les vitesses de référence encore ouvertes.
 - Les tests élémentaires SST, thermique et radiatifs passent ; la promotion scientifique des modèles n'est pas autorisée à ce stade.

@@ -51,4 +51,4 @@ Une ligne de jauge imposée à l'indice \(g\) doit être \(A_{gg}=1\), \(A_{gj}=
 ## 7. Statut d'implémentation
 - 2026-11-07, base ZIP locale : correctifs intégrés dans les trois entêtes et tests négatifs régressifs. Voir le rapport de qualification livré avec le patch exact.
 - La suite CTest Debug ciblée et les jeux rapides NACA/thermiques sont verts sur cette copie. Il n'existe pas à cette date, dans cette campagne locale, de preuve de convergence non linéaire complète N256 ni d'incertitude aérodynamique GCI.
-- Pour fusion, vérifier la compatibilité des préimages avec le HEAD exact et refaire les gates Release, DebugSanitizers et les campagnes physiques. Le présent statut n'est **pas** une promotion en Â« parfaitement qualifié Â».
+- Pour fusion, vérifier la compatibilité des préimages avec le HEAD exact et refaire les gates Release, DebugSanitizers et les campagnes physiques. Le présent statut n'est **pas** une promotion en « parfaitement qualifié ».
