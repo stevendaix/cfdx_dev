@@ -26,6 +26,7 @@
 #include "cfdx/physics/solver_control.h"
 #include "cfdx/physics/sst_production_coupling.h"
 #include "cfdx/physics/momentum_residual_certification.h"
+#include "cfdx/physics/nonlinear_face_residual_certificate.h"
 #include "cfdx/physics/timestep_control.h"
 #include "cfdx/core/numerics/conservation.h"
 #include "cfdx/core/numerics/temporal.h"
@@ -274,6 +275,11 @@ struct IncompressibleSolverControls {
     V17PseudoMomentumControls pseudo_momentum;
     CouplingControls coupling;
     ConvergenceCriteria convergence;
+    // Opt-in for verification/qualification: require an independently
+    // reassembled local face momentum balance on the accepted state before
+    // declaring nonlinear convergence. Shared by SIMPLE/SIMPLEC/COUPLED;
+    // disabled by default to preserve existing solver behaviour.
+    bool require_independent_face_residual_for_convergence = false;
     std::size_t linear_max_iterations = 1000;
     double linear_tolerance = 1e-10;
     // Optional independent pressure linear budget; zero inherits the global one.
@@ -567,6 +573,17 @@ struct IncompressibleIteration {
         std::numeric_limits<double>::infinity(),
         std::numeric_limits<double>::infinity()};
     std::array<std::size_t, 3> momentum_conservation_worst_cell{0,0,0};
+    // True nonlinear face-flux balance: worst per-cell defect, not the
+    // global signed sum (which can cancel), on the accepted physical state.
+    // A transient audit includes BE/BDF2 accumulation; pseudo-time is excluded.
+    std::array<double, 3> momentum_face_local_linf{
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity()};
+    std::array<double, 3> momentum_face_local_relative{
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity()};
 };
 
 struct IncompressibleSolveResult {
@@ -1196,21 +1213,3 @@ inline double pressure_face_orthogonal_coefficient(
 {
     const double d = dvec.mag();
     const double area = Sf.mag();
-    if (!(d > 0.0) || !std::isfinite(d) || !(area > 0.0) || !std::isfinite(area))
-        throw std::runtime_error("pressure_face_orthogonal_coefficient: invalid face geometry");
-    const cfdx::core::Vec3 e{dvec.x / d, dvec.y / d, dvec.z / d};
-    const double orthogonal_area = Sf.dot(e);
-    if (!(orthogonal_area > 0.0) || !std::isfinite(orthogonal_area))
-        throw std::runtime_error(
-            "pressure_face_orthogonal_coefficient: face orientation is inconsistent with cell-centre direction");
-    const double rfn = dAU_diagonal.x * e.x * e.x +
-                       dAU_diagonal.y * e.y * e.y +
-                       dAU_diagonal.z * e.z * e.z;
-    const double coefficient = rfn * orthogonal_area / d;
-    if (!std::isfinite(coefficient))
-        throw std::runtime_error("pressure_face_orthogonal_coefficient: non-finite coefficient");
-    return coefficient;
-}
-
-// Deferred part of the pressure-response face flux. The implicit term uses
-// only the centre-line pressure jump; this remainder makes the sum equal to
