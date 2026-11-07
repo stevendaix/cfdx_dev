@@ -61,7 +61,7 @@ def parse_sources(path: Path) -> dict[str, dict[str, str]]:
                 current = None
             section = line[:-1]
             continue
-        if line.startswith("version:") or line.startswith("schema:"):
+        if line.startswith(("version:", "schema:")):
             continue
         if section == "sources" and line.startswith("- id:"):
             if current is not None:
@@ -185,11 +185,54 @@ def acquire_directory(
     with tempfile.TemporaryDirectory(prefix="cfdx-n10-fixture-") as tmp:
         checkout = Path(tmp) / "repo"
         try:
-            subprocess.run(["git", "init", "--quiet", "--initial-branch=main", str(checkout)], check=True, capture_output=True, text=True)
-            subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin", repository], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            subprocess.run(["git", "-C", str(checkout), "fetch", "--filter=blob:none", "--depth", "1", "origin", ref], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            subprocess.run(["git", "-C", str(checkout), "sparse-checkout", "set", "--no-cone", relative_path], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            subprocess.run(["git", "-C", str(checkout), "checkout", "--detach", "FETCH_HEAD"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            subprocess.run(
+                ["git", "init", "--quiet", "--initial-branch=main", str(checkout)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(checkout), "remote", "add", "origin", repository],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(checkout),
+                    "fetch",
+                    "--filter=blob:none",
+                    "--depth",
+                    "1",
+                    "origin",
+                    ref,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(checkout),
+                    "sparse-checkout",
+                    "set",
+                    "--no-cone",
+                    relative_path,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(checkout), "checkout", "--detach", "FETCH_HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
         except (OSError, subprocess.CalledProcessError) as exc:
             fail(f"git acquisition failed for {relative_path}: {exc}")
         source_dir = checkout / relative_path
