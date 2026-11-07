@@ -1639,6 +1639,37 @@ int main()
         EXPECT_NEAR((5.0+m)*4.0-eq.rhs(0),5.0*4.0-4.0+m,1e-12);
         EXPECT_THROW(add_v17_pseudo_momentum_term(eq,old,{},0),std::invalid_argument);
     });
+    run_case("v17_pseudo_diagonal_cap_preserves_physical_fixed_point", [] {
+        using namespace cfdx::core;
+        ScalarEquation equation;
+        equation.matrix=SparseMatrix(1,1);
+        equation.matrix.push_back(0,0,4.0); equation.matrix.finalize();
+        equation.rhs=Vector(1,5.0);
+        equation.diagonal={4.0};
+        std::vector<double> mass{100.0};
+        EXPECT_TRUE(cap_v17_pseudo_momentum_masses(
+            mass,equation,equation,equation,0.25)==1);
+        EXPECT_NEAR(mass[0],1.0,1e-14);
+        Field<double,Location::CELL> old(1,"U","m/s",3);
+        old.fill(0.0); old.component_data(0)[0]=2.0;
+        add_v17_pseudo_momentum_term(equation,old,mass,0);
+        EXPECT_NEAR(equation.diagonal[0],5.0,1e-14);
+        EXPECT_NEAR(equation.rhs(0),7.0,1e-14);
+        EXPECT_NEAR((5.0*2.0-7.0),(4.0*2.0-5.0),1e-14);
+        std::vector<double> no_cap{100.0};
+        EXPECT_TRUE(cap_v17_pseudo_momentum_masses(
+            no_cap,equation,equation,equation,
+            std::numeric_limits<double>::infinity())==0);
+        EXPECT_NEAR(no_cap[0],100.0,1e-14);
+        EXPECT_THROW(cap_v17_pseudo_momentum_masses(
+            mass,equation,equation,equation,0.0),std::invalid_argument);
+    });
+    run_case("v17_adaptive_CFL_falls_on_bad_continuity_and_grows_on_joint_progress", [] {
+        V17PseudoMomentumControls cfg;
+        EXPECT_NEAR(next_v17_pseudo_cfl(0.3,0.2,0.1,0.1,0.02,cfg),0.375,1e-14);
+        EXPECT_NEAR((5.0+m)*4.0-eq.rhs(0),5.0*4.0-4.0+m,1e-12);
+        EXPECT_THROW(add_v17_pseudo_momentum_term(eq,old,{},0),std::invalid_argument);
+    });
     run_case("v17_adaptive_CFL_falls_on_bad_continuity_and_grows_on_joint_progress", [] {
         V17PseudoMomentumControls cfg;
         EXPECT_NEAR(next_v17_pseudo_cfl(0.3,0.2,0.1,0.1,0.02,cfg),0.375,1e-14);

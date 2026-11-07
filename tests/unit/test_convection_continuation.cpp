@@ -26,6 +26,30 @@ int main() {
         EXPECT_TRUE(!convection_full_order_eligible(c,7));
         EXPECT_TRUE(convection_full_order_eligible(c,8));
     });
+    run_case("nonlinear_growth_guard_never_compares_different_operators", [] {
+        ConvectionContinuationControls c;
+        for (std::size_t it = 1; it <= 10; ++it)
+            EXPECT_TRUE(convection_residuals_share_operator(c,it));
+        c.enabled=true;
+        c.upwind_warmup_iterations=2;
+        c.high_order_ramp_iterations=4;
+        c.full_order_hold_iterations=3;
+        EXPECT_TRUE(convection_residuals_share_operator(c,1));
+        EXPECT_TRUE(convection_residuals_share_operator(c,2));
+        EXPECT_TRUE(!convection_residuals_share_operator(c,3));
+        EXPECT_TRUE(!convection_residuals_share_operator(c,4));
+        EXPECT_TRUE(!convection_residuals_share_operator(c,5));
+        EXPECT_TRUE(!convection_residuals_share_operator(c,6));
+        EXPECT_TRUE(convection_residuals_share_operator(c,7));
+        EXPECT_TRUE(convection_residuals_share_operator(c,8));
+        EXPECT_THROW(convection_residuals_share_operator(c,0), std::invalid_argument);
+    });
+    run_case("ramp_refuses_budget_that_can_only_converge_at_partial_order", [] {
+        ConvectionContinuationControls c;
+        c.enabled=true; c.upwind_warmup_iterations=2;
+        EXPECT_TRUE(!convection_full_order_eligible(c,7));
+        EXPECT_TRUE(convection_full_order_eligible(c,8));
+    });
     run_case("ramp_refuses_budget_that_can_only_converge_at_partial_order", [] {
         ConvectionContinuationControls c;
         c.enabled=true; c.upwind_warmup_iterations=2;

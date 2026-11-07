@@ -68,6 +68,12 @@ int main() {
     run_case("coupled_assembly_certificate_rejects_zero_and_nonfinite_rows", [&] {
         SparseMatrix zero(4,4);
         zero.push_back(0,0,4.0); zero.push_back(1,1,3.0);
+        auto bad=options; bad.pressure_schur_diagonal=&wrong_adjusted;
+        EXPECT_TRUE(!certify_coupled_assembly_structure(A,rhs,guess,2,2,bad).passed);
+    });
+    run_case("coupled_assembly_certificate_rejects_zero_and_nonfinite_rows", [&] {
+        SparseMatrix zero(4,4);
+        zero.push_back(0,0,4.0); zero.push_back(1,1,3.0);
         zero.push_back(2,2,0.1); zero.finalize();
         EXPECT_TRUE(!certify_coupled_assembly_structure(
             zero,rhs,guess,2,2,options).passed);

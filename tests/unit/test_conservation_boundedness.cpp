@@ -3,6 +3,10 @@
 #include "cfdx/core/mesh/mesh.h"
 #include "common/test_harness.h"
 #include <limits>
+#include "cfdx/core/numerics/conservation.h"
+#include "cfdx/core/mesh/mesh.h"
+#include "common/test_harness.h"
+#include <limits>
 #include <vector>
 
 using namespace cfdx::core;
@@ -248,6 +252,12 @@ int main()
             {0.0, std::numeric_limits<double>::quiet_NaN(), 0.0}, 1e-8));
         EXPECT_THROW((void)independent_momentum_face_residual_gate(
             {0.0, 0.0, 0.0}, 0.0), std::invalid_argument);
+    });
+
+    run_case("boundedness_reports_worst_cell_without_clipping", [] {
+        Field<double,Location::CELL> phi(4,"phi","1",1);
+        phi(0)=0.0; phi(1)=1.0; phi(2)=1.25; phi(3)=-0.2;
+        EXPECT_TRUE(r.worst_cell == 0);
     });
 
     run_case("boundedness_reports_worst_cell_without_clipping", [] {
