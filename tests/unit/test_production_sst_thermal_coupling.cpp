@@ -30,7 +30,7 @@ static SSTProductionState state() {
         s.omega(i)=2;
         s.wall_distance(i)=0.1;
         s.strain_rate(i)=0;
-        s.nu_t(i)=(i+1)*0.04;
+        s.nu_t(i)=(static_cast<double>(i)+1.0)*0.04;
     }
     return s;
 }
