@@ -35,7 +35,8 @@ jobs:
           )
 
           if ((${#python_files[@]} > 0)); then
-            pre-commit run --files "${python_files[@]}" --show-diff-on-failure || status=$?
+            pre-commit run ruff-check --files "${python_files[@]}" --show-diff-on-failure || status=$?
+            pre-commit run ruff-format --files "${python_files[@]}" --show-diff-on-failure || status=$?
           else
             echo "No changed Python files in $CFDX_PRECOMMIT_RANGE; skipping Python hooks."
           fi
