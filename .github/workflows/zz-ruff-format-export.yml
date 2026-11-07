@@ -36,7 +36,6 @@ jobs:
           ruff format "${files[@]}"
           python - <<'PY'
           from pathlib import Path
-          import re
 
           def replace_once(path: str, old: str, new: str) -> None:
               file = Path(path)
@@ -95,20 +94,13 @@ jobs:
 
           test_file = Path("tests/python/test_naca_force_mesh_qualification.py")
           test_source = test_file.read_text(encoding="utf-8")
-          pattern = re.compile(r"dict\(\s*case=f['\"]N\{n\}['\"],.*?cm=0,?\s*\)", re.S)
-          replacement = (
-              '{"case": f"N{n}", "h": 1 / n, "converged": "yes", '
-              '"res_mom": 1e-11, "res_mass": 2e-11, "cd": cd, '
-              '"cdp": cd * 0.4, "cdv": cd * 0.6, "cl": 0, "cm": 0}'
+          old = "record = list(csv.DictReader(stream))[0]"
+          if test_source.count(old) != 1:
+              raise SystemExit("test_naca_force_mesh_qualification.py: RUF015 patch anchor not found")
+          test_file.write_text(
+              test_source.replace(old, "record = next(iter(csv.DictReader(stream)))"),
+              encoding="utf-8",
           )
-          test_source, count = pattern.subn(replacement, test_source, count=1)
-          if count != 1:
-              raise SystemExit("test_naca_force_mesh_qualification.py: C408 patch anchor not found")
-          test_source = test_source.replace(
-              "list(csv.DictReader(stream))[0]",
-              "next(iter(csv.DictReader(stream)))",
-          )
-          test_file.write_text(test_source, encoding="utf-8")
           PY
           chmod +x scripts/naca_convergence_diagnosis.py scripts/naca_momentum_budget_diagnosis.py
           ruff format --check "${files[@]}"
