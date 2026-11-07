@@ -11,7 +11,7 @@ int main() {
     Field<double, Location::CELL> kb(3, "k_new", "m2/s2", 1);
     Field<double, Location::CELL> wa(3, "omega_old", "1/s", 1);
     Field<double, Location::CELL> wb(3, "omega_new", "1/s", 1);
-    for (int i=0;i<3;++i) {
+    for (std::size_t i=0;i<3;++i) {
         ka(i) = 1.0e-3;
         kb(i) = 1.001e-3;
         wa(i) = 1.0e5;
@@ -23,7 +23,7 @@ int main() {
     if (!(std::abs(k.absolute_inf-w.absolute_inf) > 1.0)) return 2;
     if (!(k.reference_scale < 0.01 && w.reference_scale > 1e4)) return 3;
     // Rescaling the units of BOTH iterates must not alter the relative change.
-    for (int i=0;i<3;++i) { wa(i) *= 60; wb(i) *= 60; }
+    for (std::size_t i=0;i<3;++i) { wa(i) *= 60; wb(i) *= 60; }
     if (!(std::abs(sst_field_update_diagnostic(wa,wb,1e-12).relative_global_inf-
                    w.relative_global_inf) < 1e-14)) return 4;
     wb(2) = std::numeric_limits<double>::quiet_NaN();
