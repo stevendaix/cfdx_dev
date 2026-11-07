@@ -37,16 +37,17 @@ Construire le binaire de validation habituel du dépôt : test_naca0012_qualific
 ~~~bash
 mkdir -p artifacts/naca-forensics/upwind
 CASE=artifacts/naca-forensics/upwind
+NACA_N64_MESH=/path/to/naca0012_n64.h5
 env CFDX_NACA_PHYSICAL_HISTORY_CSV="$CASE/history.csv" \
     CFDX_NACA_MOMENTUM_BUDGET_CSV="$CASE/momentum_budget.csv" \
     CFDX_NACA_MOMENTUM_BUDGET_EVERY=10 \
     CFDX_NACA_MOMENTUM_BUDGET_ALL_CELLS=1 \
     CFDX_NACA_FORENSICS=1 \
-    ./build/tests/test_naca0012_qualification --single validation_meshes/naca0012_n64.h5 \
+    ./build/test_naca0012_qualification --single "$NACA_N64_MESH" \
     >"$CASE/stdout.log" 2>"$CASE/forensics.log"
 ~~~
 
-Adapter uniquement le chemin du binaire et du maillage au répertoire de build réel. Créer un sous-répertoire distinct pour chaque essai. Le test peut retourner un code non nul si la convergence n'est pas atteinte : conserver les CSV et logs, c'est précisément le résultat diagnostique recherché.
+Adapter le chemin du binaire et du maillage au répertoire de build réel. Créer un sous-répertoire distinct pour chaque essai. Le test peut retourner un code non nul si la convergence n'est pas atteinte : conserver les CSV et logs, c'est précisément le résultat diagnostique recherché.
 
 Analyser les sorties sans écraser les sources :
 
