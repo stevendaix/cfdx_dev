@@ -64,4 +64,49 @@ with tempfile.TemporaryDirectory() as d:
         assert patch_offsets.tolist() == [0, 1, 2, 3, 4], patch_offsets
         assert np.count_nonzero(np.asarray(h5["neighbour"]) < 0) == 4
 
+    # SU2 marker names are strings. The importer normalizes them for
+    # meshio, then restores the names as CFDX physical boundary patches.
+    su2_source = root / "named_markers.su2"
+    su2_output = root / "named_markers.h5"
+    su2_source.write_text(
+        "NDIME= 2\\n"
+        "NPOIN= 4\\n"
+        "0.0 0.0\\n"
+        "1.0 0.0\\n"
+        "1.0 1.0\\n"
+        "0.0 1.0\\n"
+        "NELEM= 2\\n"
+        "5 0 1 2\\n"
+        "5 0 2 3\\n"
+        "NMARK= 4\\n"
+        "MARKER_TAG= inlet\\n"
+        "MARKER_ELEMS= 1\\n"
+        "3 0 1\\n"
+        "MARKER_TAG= outlet\\n"
+        "MARKER_ELEMS= 1\\n"
+        "3 1 2\\n"
+        "MARKER_TAG= top_wall\\n"
+        "MARKER_ELEMS= 1\\n"
+        "3 2 3\\n"
+        "MARKER_TAG= bottom_wall\\n"
+        "MARKER_ELEMS= 1\\n"
+        "3 3 0\\n",
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [sys.executable, str(bridge), str(su2_source), str(su2_output)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert "tags of string type" not in result.stderr, result.stderr
+    with h5py.File(su2_output, "r") as h5:
+        patch_metadata = h5.attrs["boundary_patches"]
+        if isinstance(patch_metadata, bytes):
+            patch_metadata = patch_metadata.decode("ascii")
+        for name in ("inlet", "outlet", "top_wall", "bottom_wall"):
+            assert name in patch_metadata, (name, patch_metadata)
+        assert np.asarray(h5["patch_face_ids"]).size == 4
+        assert np.asarray(h5["patch_face_offsets"]).tolist() == [0, 1, 2, 3, 4]
+
 print("meshio bridge test passed")
