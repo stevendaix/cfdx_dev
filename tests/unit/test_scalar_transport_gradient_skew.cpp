@@ -152,8 +152,8 @@ int main() {
         // The affine Dirichlet fixture above makes both certified WLS
         // implementations exact, so it cannot distinguish their dispatch.
         // Use a deliberately non-affine state with Neumann wall data here:
-        // the two WLS variants have different ghost-point constructions and
-        // must therefore produce a measurable cross-diffusion response.
+        // both WLS variants are exercised by the SST transport path; this
+        // minimal two-cell stencil is not assumed to distinguish their fits.
         auto kbc_solver=kbc, wbc_solver=wbc;
         // Use distinct, non-zero outward Neumann data on each wall. A
         // zero-gradient-only fixture is too symmetric: on this two-cell mesh
