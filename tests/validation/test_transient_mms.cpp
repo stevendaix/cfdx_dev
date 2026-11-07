@@ -41,11 +41,6 @@ namespace {
 
 const double pi = std::acos(-1.0);
 
-// Manufactured solution and its exact profile.
-double exact(double x, double t, double D) {
-    return std::exp(-D * pi * pi * t) * std::sin(pi * x);
-}
-
 // ---- Periodic linear advection dphi/dt = -vel dphi/dx on [0,1] ----
 // Manufactured solution phi(x,t) = sin(2pi(x - vel t)) (periodic). The
 // operator is non-stiff for the implicit `advance_time` fixed-point
@@ -88,47 +83,6 @@ double adv_error(const Field<double, Location::CELL>& phi,
         const double x = (i + 0.5) * h;
         if (x < 0.25 || x > 0.75) continue;
         const double d = phi(i) - adv_exact(x, t, vel);
-        e2 += d * d;
-        w += 1.0;
-    }
-    return std::sqrt(e2 / w);
-}
-
-// Discrete RHS: f_i = D*(phi_{i-1} - 2 phi_i + phi_{i+1})/h^2, Dirichlet 0.
-void heat_rhs(const Field<double, Location::CELL>& phi,
-              Field<double, Location::CELL>& rhs, double D, double h)
-{
-    const std::size_t n = phi.size();
-    for (std::size_t i = 0; i < n; ++i) {
-        const double left = (i == 0) ? 0.0 : phi(i - 1);
-        const double right = (i + 1 == n) ? 0.0 : phi(i + 1);
-        rhs(i) = D * (left - 2.0 * phi(i) + right) / (h * h);
-    }
-}
-
-// RHS as a std::function for advance_time.
-auto make_rhs(double D, double h) {
-    return [D, h](const Field<double, Location::CELL>& in,
-                  Field<double, Location::CELL>& out) { heat_rhs(in, out, D, h); };
-}
-
-Field<double, Location::CELL> node_field(std::size_t n, double h, double t, double D)
-{
-    Field<double, Location::CELL> f(n, "phi", "1", 1);
-    for (std::size_t i = 0; i < n; ++i) f(i) = exact((i + 0.5) * h, t, D);
-    return f;
-}
-
-// L2 error over interior nodes x in [0.25, 0.75].
-double transient_error(const Field<double, Location::CELL>& phi,
-                       double h, double t, double D)
-{
-    double e2 = 0.0, w = 0.0;
-    const std::size_t n = phi.size();
-    for (std::size_t i = 0; i < n; ++i) {
-        const double x = (i + 0.5) * h;
-        if (x < 0.25 || x > 0.75) continue;
-        const double d = phi(i) - exact(x, t, D);
         e2 += d * d;
         w += 1.0;
     }
