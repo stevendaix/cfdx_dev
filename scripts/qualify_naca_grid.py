@@ -41,6 +41,8 @@ def qualify(rows, residual_gate=1e-8):
                 continue
             if not math.isfinite(float(row[key])):
                 raise ValueError(f"{row['case']}: nonfinite {key}")
+        if float(row["res_mom"]) < 0 or float(row["res_mass"]) < 0:
+            raise ValueError(f"{row['case']}: negative residual norm")
         if max(float(row["res_mom"]), float(row["res_mass"])) > residual_gate:
             raise ValueError(
                 f"{row['case']}: physical residual exceeds {residual_gate}"

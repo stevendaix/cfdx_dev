@@ -45,6 +45,12 @@ class GridQualificationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exceeds"):
             qualify(rows)
 
+    def test_negative_residual_is_rejected(self):
+        rows = [row(0.25), row(0.125), row(0.0625)]
+        rows[2]["res_mass"] = "-1e-10"
+        with self.assertRaisesRegex(ValueError, "negative"):
+            qualify(rows)
+
     def test_invalid_residual_gate_is_rejected(self):
         rows = [row(0.25), row(0.125), row(0.0625)]
         for gate in (float("nan"), float("inf"), 0.0, -1.0):

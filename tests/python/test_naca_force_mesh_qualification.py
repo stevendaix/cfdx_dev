@@ -75,6 +75,20 @@ class NacaForceMeshTests(unittest.TestCase):
         report = m.certify(mesh(), self.certs, self.histories)
         self.assertEqual(report['status'], 'BLOCKED')
 
+    def test_negative_certificate_residual_is_not_a_small_residual(self):
+        path = self.certs[64]
+        path.write_text(path.read_text().replace('1e-11', '-1e-11'))
+        history = self.histories[64]
+        history.write_text(history.read_text().replace('1e-11', '-1e-11'))
+        report = m.certify(mesh(), self.certs, self.histories)
+        self.assertEqual(report['status'], 'BLOCKED')
+
+    def test_negative_continuity_in_history_cannot_be_certified(self):
+        path = self.histories[128]
+        path.write_text(path.read_text().replace('1e-12', '-1e-12'))
+        report = m.certify(mesh(), self.certs, self.histories)
+        self.assertEqual(report['status'], 'BLOCKED')
+
 
 if __name__ == '__main__':
     unittest.main()

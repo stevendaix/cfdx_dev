@@ -42,6 +42,8 @@ def read_one_certificate(path: Path, level: int) -> dict[str, str]:
     for key in ("h", "res_mom", "res_mass", "cd", "cdp", "cdv", "cl", "cm"):
         if not math.isfinite(float(row[key])):
             raise ValueError(f"N{level}: nonfinite {key}")
+    if float(row["res_mom"]) < 0 or float(row["res_mass"]) < 0:
+        raise ValueError(f"N{level}: negative residual norm in force certificate")
     if abs(float(row["h"]) - 1.0 / level) > 1e-12:
         raise ValueError(f"N{level}: wrong characteristic tangential spacing")
     if max(float(row["res_mom"]), float(row["res_mass"])) > RELATIVE_GATE:
@@ -72,6 +74,9 @@ def verify_physical_history(path: Path, level: int, certificate: dict[str, str])
             for key in needed - {"iteration"}:
                 if not math.isfinite(float(row[key])):
                     raise ValueError(f"N{level}: nonfinite history {key}")
+            for key in ("momentum_rhs_relative", "continuity_normalized", "mass_local_linf"):
+                if float(row[key]) < 0:
+                    raise ValueError(f"N{level}: negative physical residual norm {key}")
             if int(row["nonfinite_mass_faces"]) != 0 or int(row["nonfinite_velocities"]) != 0:
                 raise ValueError(f"N{level}: nonfinite conservation or velocity")
             last = row

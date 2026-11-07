@@ -35,6 +35,18 @@ class ControlledNacaTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_result(self.sample.replace("Cd=0.09", "Cd=nan"))
 
+    def test_negative_continuity_rejected(self):
+        with self.assertRaises(ValueError):
+            parse_result(self.sample.replace("continuity=1e-10", "continuity=-1e-10"))
+
+    def test_inconsistent_drag_partition_rejected(self):
+        with self.assertRaises(ValueError):
+            parse_result(self.sample.replace("Cd_viscous=0.06", "Cd_viscous=0.02"))
+
+    def test_fractional_iterations_rejected(self):
+        with self.assertRaises(ValueError):
+            parse_result(self.sample.replace("iterations=456", "iterations=456.5"))
+
     def test_timeout_is_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

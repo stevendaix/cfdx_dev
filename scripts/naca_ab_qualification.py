@@ -46,10 +46,12 @@ def parse_output(output: str, returncode: int) -> dict:
     if not all(math.isfinite(v) for v in values):
         raise ValueError("nonfinite force or continuity")
     cd, cl, cm, cdp, cdv, continuity = values
-    if not (continuity < 1e-7) or abs(cl) > 0.02 or cdp <= 0:
+    if not (0 <= continuity < 1e-7) or abs(cl) > 0.02 or cdp <= 0:
         raise ValueError("NACA physical gate rejected result")
     if not math.isclose(cd, cdp + cdv, rel_tol=1e-7, abs_tol=1e-9):
         raise ValueError("force decomposition is not conservative")
+    if int(x.group(7)) < 1:
+        raise ValueError("a completed physical run must have positive iterations")
     return {
         "cd": cd, "cl": cl, "cm": cm, "cd_pressure": cdp,
         "cd_viscous": cdv, "continuity": continuity,
