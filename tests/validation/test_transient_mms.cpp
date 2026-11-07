@@ -70,7 +70,7 @@ auto make_adv_rhs(double vel, double h) {
 Field<double, Location::CELL> adv_node_field(std::size_t n, double h, double t, double vel)
 {
     Field<double, Location::CELL> f(n, "phi", "1", 1);
-    for (std::size_t i = 0; i < n; ++i) f(i) = adv_exact((i + 0.5) * h, t, vel);
+    for (std::size_t i = 0; i < n; ++i) f(i) = adv_exact((static_cast<double>(i) + 0.5) * h, t, vel);
     return f;
 }
 
@@ -80,7 +80,7 @@ double adv_error(const Field<double, Location::CELL>& phi,
     double e2 = 0.0, w = 0.0;
     const std::size_t n = phi.size();
     for (std::size_t i = 0; i < n; ++i) {
-        const double x = (i + 0.5) * h;
+        const double x = (static_cast<double>(i) + 0.5) * h;
         if (x < 0.25 || x > 0.75) continue;
         const double d = phi(i) - adv_exact(x, t, vel);
         e2 += d * d;
@@ -124,7 +124,7 @@ int main()
             double mu_analytic = D * pi * pi;
             std::vector<double> errs;
             for (const std::size_t n : {16u, 32u, 64u, 128u}) {
-                const double h = 1.0 / n;
+                const double h = 1.0 / static_cast<double>(n);
                 const double mu_disc = D * (2.0 / (h * h)) * (1.0 - std::cos(pi * h));
                 errs.push_back(std::abs(mu_disc - mu_analytic));
                 std::cout << "N5_SPATIAL_EIG n=" << n << " err=" << errs.back()
@@ -148,7 +148,7 @@ int main()
                 std::pair<const char*, TimeScheme>{"bdf2", TimeScheme::BDF2}}) {
             const double vel = 1.0;
             const std::size_t n = 256;
-            const double h = 1.0 / n;
+            const double h = 1.0 / static_cast<double>(n);
             const double T = 0.5;
             const double dt0 = 0.002;
             std::vector<double> errs;
@@ -198,7 +198,7 @@ int main()
         {
             const double vel = 1.0;
             const std::size_t n = 400;
-            const double h = 1.0 / n;
+            const double h = 1.0 / static_cast<double>(n);
             const double dt = 0.0005;                    // dt << h
             const double T = 0.1;
             auto run = [&](bool restart) {
