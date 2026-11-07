@@ -357,7 +357,7 @@ inline void exchange_halo_faces(
         if (remote_send_count != recv_count || remote_recv_count != send_count)
             throw std::runtime_error("exchange_halo_faces: asymmetric send/recv counts");
 
-        std::vector<double> recv_buffer(recv_count);
+        std::vector<double> recv_buffer(static_cast<std::size_t>(recv_count));
         MPI_Sendrecv(
             send_buffers[peer].data(), send_count, MPI_DOUBLE, r, 0,
             recv_buffer.data(), recv_count, MPI_DOUBLE, r, 0,
