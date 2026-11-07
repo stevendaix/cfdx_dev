@@ -204,3 +204,62 @@ Les faces internes doivent s'annuler dans la somme globale. Cet audit permet don
 
 **Décision en attente des résultats exact-HEAD :** ne pas changer la ligne de jauge ni le signe de la correction différée sans comparer les nouvelles sommes et les contributions sur la même solution monolithique. Une correction numérique n'est justifiée qu'après localisation causale ; N9 physique, qualification N9 et validation totale doivent ensuite repasser sur le même HEAD.
 
+
+
+## 16. Contrat d'assemblage COUPLED gelé — Picard, frontières et certificat FV (2026-11-07)
+
+Cette section documente le périmètre précis du correctif de la PR #1186. Elle complète le contrat Rhie–Chow précédent ; elle ne constitue pas une qualification physique du solveur COUPLED.
+
+### 16.1 Assemblage des contributions de frontière
+
+Pour l'assemblage du bloc monolithique `[M G; D C]`, les contributions de frontière doivent suivre le même opérateur discret que le flux autoritaire et le gradient utilisé par l'itération de Picard :
+
+- **SYMMETRY** : une face de symétrie impose un flux normal nul. Elle ne doit donc pas injecter une contribution artificielle dans la ligne de continuité `D`. Le traitement de cette face ne doit pas être confondu avec une condition de pression de type Dirichlet.
+- **EMPTY** : une face `EMPTY` ne porte pas de flux physique dans la direction supprimée et ne doit pas créer de couplage pression implicite dans `G`. Les contributions correspondantes sont omises, de manière cohérente avec le gradient Gauss et la géométrie du patch.
+- **FIXED_GRADIENT** : la contribution constante du gradient de pression prescrit doit être portée dans le second membre momentum, avec la même projection normale et la même distance centre-face que l'opérateur `gauss_gradient_with_boundary`. Elle ne doit pas être perdue ni comptée une seconde fois dans le bloc pression.
+- **Jauge** : la contrainte de référence de pression ne s'applique qu'au problème purement Neumann. En présence d'au moins une pression imposée, la ligne de Dirichlet conserve son rôle physique ; le warm-start de pression ne doit pas être écrasé par une jauge artificielle.
+
+Ces règles sont des contrats d'assemblage. Elles ne prouvent pas, à elles seules, que la solution non linéaire converge ni que les conditions physiques d'un cas industriel sont correctement représentées.
+
+### 16.2 Certificat du système de Picard gelé
+
+Le certificat `src/cfdx/physics/coupled_frozen_fv_certificate.h` réévalue les équations volumes finis réellement assemblées et gelées au point de Picard courant, puis compare leur résidu à celui du système linéaire capturé :
+
+\[
+r_{\mathrm{alg}} = A_{\mathrm{Picard}}x-b_{\mathrm{Picard}},
+\qquad
+r_{\mathrm{FV,gelé}} = R_{\mathrm{FV}}(x;\,q_{\mathrm{Picard}}).
+\]
+
+L'objet vérifié est l'identité d'assemblage entre les équations FV gelées et leur représentation matricielle. Le certificat consomme les `ScalarEquation` de production ; il ne prétend pas reconstruire indépendamment la physique continue ou les flux à partir d'un second appel au même helper.
+
+**Limite fondamentale :** ce certificat n'est ni un Jacobien Newton, ni une preuve de convergence de Picard, ni un critère de convergence physique. La convergence physique exige de réévaluer les résidus pertinents sur l'état accepté, avec les critères indépendants du cas.
+
+Le snapshot d'assemblage expose les équations momentum et la pression précédente nécessaires à cette vérification. Ces données sont de l'évidence en lecture seule ; elles ne doivent pas modifier le calcul de production.
+
+### 16.3 Contre-exemples et couverture de non-régression
+
+La régression `tests/validation/test_n9_s9_rhie_chow_consistency.cpp` ajoute des cas qui doivent échouer si les contrats ci-dessus sont violés :
+
+- contribution artificielle d'une face SYMMETRY dans `D` ;
+- perte de la contribution `FIXED_GRADIENT` ;
+- couplage indu d'une face EMPTY dans `G` ;
+- écrasement du warm-start de pression lorsqu'une frontière Dirichlet existe ;
+- matrice de gradient volontairement altérée ;
+- source de gradient volontairement omise.
+
+Les cas du certificat couvrent notamment une source Neumann non nulle, une géométrie XY avec spanwise EMPTY et l'invariance de jauge du cas purement Neumann. Les contrôles négatifs sont essentiels : un certificat qui ne détecterait pas une matrice ou une source volontairement corrompue ne serait pas un oracle utile.
+
+### 16.4 Critères de preuve et limites de qualification
+
+Pour promouvoir ces changements, conserver les contrôles suivants sur un HEAD GitHub unique et identifié :
+
+1. Compilation et tests Release.
+2. Compilation et tests DebugSanitizers (ASan/UBSan), sans suppression de test ni suppression de diagnostic.
+3. Exécution exacte de la régression N9/S9 et vérification des cas positifs et négatifs du certificat.
+4. Gates documentaires, audit et maturité numérique.
+5. Vérification des campagnes physiques applicables ; distinguer explicitement un test d'identité d'assemblage d'une preuve de convergence physique.
+
+Aucune tolérance, condition d'acceptation physique, limite d'itérations, fenêtre de stagnation ou politique de fallback ne doit être relâchée pour faire passer ces contrôles.
+
+**Statut de cette mise à jour :** complément méthodologique associé à la PR #1186 ; validation CI exacte et qualification physique restent en attente. La fiche demeure DRAFT tant que les preuves de promotion ne sont pas réunies.
