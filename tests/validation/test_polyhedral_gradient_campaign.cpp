@@ -1052,7 +1052,8 @@ StencilDiagnostics quadratic_stencil_diagnostics(const Grid& grid, std::size_t c
     }
 
     std::array<double,9> lambda{};
-    for (int i = 0; i < 9; ++i) lambda[i] = std::max(0.0, D[i][i]);
+    for (std::size_t i = 0; i < lambda.size(); ++i)
+        lambda[i] = std::max(0.0, D[i][i]);
     std::sort(lambda.begin(), lambda.end());
     const double scale = lambda.back();
     const double tol = 4096.0 * std::numeric_limits<double>::epsilon() * scale;
