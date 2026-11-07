@@ -471,7 +471,6 @@ int main()
         // 6. Bootstrap restart study: gap is O(dt) and decreases.
         {
             const Grid g = make_slab(128);
-            const double h = 1.0 / 128.0;
             const double u = 1.0;
             const double T = 0.03;
             const std::size_t ck_step = 20;
