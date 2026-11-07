@@ -21,7 +21,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Test the exact-HEAD campaign evidence gate
         run: python3 tests/python/test_n10_campaign_evidence.py
@@ -127,7 +127,7 @@ jobs:
             --report build/n10-fixtures/n10_fixture_evidence_gate.json
 
       - name: Publish verification evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: n10-public-fixture-verification
           retention-days: 90
