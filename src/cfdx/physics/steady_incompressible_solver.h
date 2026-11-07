@@ -3457,6 +3457,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 schur->last_error());
         }
         coupled_preconditioner = std::move(schur);
+    } else if (controls.coupling.coupled_schwarz_experimental) {
+        // Experimental Schwarz (#1183): set up before the dispatch chain;
+        // fail-closed there (misconfiguration rejects before any solve).
+        coupled_preconditioner = std::move(coupled_schwarz_preconditioner);
     } else if (use_lsc_bfbt) {
         if (!use_n8_block_schur)
             throw std::invalid_argument(
@@ -3776,16 +3780,12 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         auto schur_amg = std::make_unique<CoupledBlockSchurAMGPreconditioner>(
             nc, options, has_fixed_pressure
                 ? std::numeric_limits<std::size_t>::max() : reference_cell);
-        if (coupled_schwarz_preconditioner) {
-            coupled_preconditioner = std::move(coupled_schwarz_preconditioner);
-        } else {
-            if (!schur_amg->setup(A)) {
-                throw std::runtime_error(
-                    std::string("N8 coupled BlockSchur AMG setup failed: ") +
-                    schur_amg->last_error());
-            }
-            coupled_preconditioner = std::move(schur_amg);
+        if (!schur_amg->setup(A)) {
+            throw std::runtime_error(
+                std::string("N8 coupled BlockSchur AMG setup failed: ") +
+                schur_amg->last_error());
         }
+        coupled_preconditioner = std::move(schur_amg);
     } else {
         std::vector<std::size_t> fine_variables(nv);
         std::vector<std::size_t> coarse_variables(np);
