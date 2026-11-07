@@ -99,7 +99,7 @@ def read_mesh(path, file_format=None):
         with tempfile.NamedTemporaryFile(
             mode="w",encoding="utf-8",suffix=".su2",delete=False
         ) as handle:
-            handle.write("\\n".join(normalized)+"\\n")
+            handle.write("\n".join(normalized)+"\n")
             temporary_path=pathlib.Path(handle.name)
         mesh=meshio.read(temporary_path,file_format="su2")
     finally:
