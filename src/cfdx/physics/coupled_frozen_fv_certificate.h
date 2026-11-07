@@ -151,6 +151,13 @@ inline CoupledFrozenFvReport certify_coupled_frozen_fv_operator(
                 continue;
             const std::string name = patch < mesh.boundary().n_patches()
                 ? mesh.boundary().patch(patch).name : "";
+        } else {
+            const std::size_t patch = geometry.face_patch[f];
+            if (patch < mesh.boundary().n_patches() &&
+                mesh.boundary().patch(patch).type == PatchType::EMPTY)
+                continue;
+            const std::string name = patch < mesh.boundary().n_patches()
+                ? mesh.boundary().patch(patch).name : "";
             const auto vit = velocity_bcs.find(name);
             if (vit != velocity_bcs.end() &&
                 vit->second.type == VelocityBoundaryCondition::Type::FIXED_VALUE) {

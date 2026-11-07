@@ -76,6 +76,12 @@ inline CoupledAssemblyCertificate certify_coupled_assembly_structure(
     for (std::size_t c = 0; c < pressure_unknowns; ++c) {
         if ((diag && !std::isfinite((*diag)[c])) ||
             (raw && !std::isfinite((*raw)[c]))) return result;
+    const auto* raw = controls.pressure_schur_diagonal_raw;
+    if ((diag && diag->size() != pressure_unknowns) ||
+        (raw && raw->size() != pressure_unknowns)) return result;
+    for (std::size_t c = 0; c < pressure_unknowns; ++c) {
+        if ((diag && !std::isfinite((*diag)[c])) ||
+            (raw && !std::isfinite((*raw)[c]))) return result;
         // The reference cell is the ONLY row whose diagnostic Schur
         // diagonal may differ after gauge replacement.
         if (diag && raw && (!controls.pressure_reference_cell ||
