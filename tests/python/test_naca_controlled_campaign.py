@@ -50,12 +50,6 @@ class ControlledNacaTests(unittest.TestCase):
     def test_timeout_is_failure(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-        with self.assertRaises(ValueError):
-            parse_result(self.sample.replace("Cd=0.09", "Cd=nan"))
-
-    def test_timeout_is_failure(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
             mesh = root / "mesh.h5"
             mesh.write_text("fixture")
             script = root / "slow.py"

@@ -45,12 +45,6 @@ class NacaForceMeshTests(unittest.TestCase):
             self.certs[n] = c
             self.histories[n] = h
 
-            h.write_text('iteration,momentum_rhs_relative,continuity_normalized,'
-                         'mass_local_linf,nonfinite_mass_faces,nonfinite_velocities\n'
-                         '1,1e-11,1e-12,2e-11,0,0\n', encoding='utf-8')
-            self.certs[n] = c
-            self.histories[n] = h
-
     def test_valid_evidence_produces_only_richardson_candidate(self):
         report = m.certify(mesh(), self.certs, self.histories)
         self.assertEqual(report['status'], 'GCI_CANDIDATE')
@@ -149,12 +143,6 @@ class NacaForceMeshTests(unittest.TestCase):
     def test_negative_continuity_in_history_cannot_be_certified(self):
         path = self.histories[128]
         path.write_text(path.read_text().replace('1e-12', '-1e-12'))
-        report = m.certify(mesh(), self.certs, self.histories)
-        self.assertEqual(report['status'], 'BLOCKED')
-
-
-if __name__ == '__main__':
-    unittest.main()
         report = m.certify(mesh(), self.certs, self.histories)
         self.assertEqual(report['status'], 'BLOCKED')
 

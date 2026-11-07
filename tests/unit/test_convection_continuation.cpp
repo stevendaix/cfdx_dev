@@ -47,12 +47,6 @@ int main() {
     run_case("ramp_refuses_budget_that_can_only_converge_at_partial_order", [] {
         ConvectionContinuationControls c;
         c.enabled=true; c.upwind_warmup_iterations=2;
-        EXPECT_TRUE(!convection_full_order_eligible(c,7));
-        EXPECT_TRUE(convection_full_order_eligible(c,8));
-    });
-    run_case("ramp_refuses_budget_that_can_only_converge_at_partial_order", [] {
-        ConvectionContinuationControls c;
-        c.enabled=true; c.upwind_warmup_iterations=2;
         c.high_order_ramp_iterations=4; c.full_order_hold_iterations=3;
         EXPECT_THROW(validate_convection_continuation(c,7),std::invalid_argument);
         c.high_order_ramp_iterations=0;

@@ -1,9 +1,7 @@
 #include "cfdx/core/numerics/conservation.h"
 #include "cfdx/physics/nonlinear_face_residual_certificate.h"
-#include "cfdx/core/mesh/mesh.h"
-#include "common/test_harness.h"
-#include <limits>
-#include "cfdx/core/numerics/conservation.h"
+#include "cfdx/physics/momentum_face_budget.h"
+#include "../validation/naca_qualification_state_io.h"
 #include "cfdx/core/mesh/mesh.h"
 #include "common/test_harness.h"
 #include <limits>
@@ -74,6 +72,79 @@ static Mesh make_two_cell_chain()
 
 int main()
 {
+    run_case("naca_same_mesh_face_flux_roundtrip_and_geometry_guard", [] {
+        const Mesh m=make_unit_cube();
+        const auto g=cfdx::physics::build_fv_geometry(m);
+        Field<double,Location::FACE> flux(m.n_faces(),"mass","kg/s",1);
+        for (std::size_t f=0; f<m.n_faces(); ++f)
+            flux(f)=0.0025*static_cast<double>(f+1);
+        const std::string path="cfdx_naca_flux_restart_roundtrip.csv";
+        cfdx::validation::naca_write_face_flux_csv(path,m,g,flux);
+        const auto read=cfdx::validation::naca_read_face_flux_csv(path,m,g);
+        EXPECT_TRUE(read.size() == m.n_faces());
+        for (std::size_t f=0; f<m.n_faces(); ++f)
+            EXPECT_NEAR(read[f],flux(f),1e-15);
+        auto bad_geometry=g;
+        bad_geometry.face_area_vectors[0].x+=1.0;
+        EXPECT_THROW(cfdx::validation::naca_read_face_flux_csv(
+            path,m,bad_geometry),std::invalid_argument);
+        std::remove(path.c_str());
+    });
+    run_case("momentum_face_budget_separates_physical_and_bounded_operator", [] {
+        const Mesh m = make_unit_cube();
+        const auto g = cfdx::physics::build_fv_geometry(m);
+        Field<double,Location::FACE> mass(m.n_faces(), "mass", "kg/s", 1);
+        Field<double,Location::FACE> collocated(m.n_faces(), "Uface", "kg/s", 1);
+        Field<double,Location::CELL> u(m.n_cells(), "u", "m/s", 1);
+        Field<double,Location::CELL> gradp(m.n_cells(), "gradp", "N/m3", 1);
+        Field<double,Location::CELL> body(m.n_cells(), "body", "N/m3", 1);
+        mass.fill(0.0); collocated.fill(0.0);
+        mass(0) = 1.0; collocated(0) = 0.5;
+        u(0) = 2.0; gradp(0) = 1.0; body(0) = 0.25;
+        const auto budget = cfdx::physics::diagnose_momentum_face_budget(
+            m, g, mass, u, gradp, body, {0.0}, {},
+            cfdx::physics::ConvectionScheme::UPWIND, 1.0, true, &collocated);
+        const auto& b = budget.cells.at(0);
+        EXPECT_NEAR(b.convection, 2.0, 1e-12);
+        EXPECT_NEAR(b.viscous, 0.0, 1e-12);
+        EXPECT_NEAR(b.pressure, 1.0, 1e-12);
+        EXPECT_NEAR(b.body_force, -0.25, 1e-12);
+        EXPECT_NEAR(b.mass_divergence, 1.0, 1e-12);
+        EXPECT_NEAR(b.bounded_divergence, -2.0, 1e-12);
+        EXPECT_NEAR(b.collocated_difference, 1.0, 1e-12);
+        EXPECT_NEAR(b.physical_residual, 2.75, 1e-12);
+        EXPECT_NEAR(b.bounded_operator_residual, 0.75, 1e-12);
+    });
+    run_case("momentum_face_budget_two_cell_internal_flux_is_antisymmetric", [] {
+        const Mesh m = make_two_cell_chain();
+        // This minimal topology fixture has deliberately degenerate vertex
+        // faces. Supply an explicit nondegenerate two-cell FVM geometry: the
+        // diagnostic must use owner/neighbour signs, not a vertex fan.
+        cfdx::physics::FvGeometry g;
+        g.cell_centres = {{0,0,0},{1,0,0}};
+        g.cell_volumes = {1.0,1.0};
+        g.face_centres.resize(m.n_faces());
+        g.face_area_vectors.resize(m.n_faces(), {1,0,0});
+        g.face_patch.assign(m.n_faces(), m.boundary().n_patches());
+        for (std::size_t f = 0; f < m.n_faces(); ++f) {
+            const auto owner = m.ownership().owner(f);
+            g.face_centres[f] = g.cell_centres[owner] + cfdx::core::Vec3{0.5,0,0};
+        }
+        Field<double,Location::FACE> mass(m.n_faces(), "mass", "kg/s", 1);
+        Field<double,Location::CELL> u(m.n_cells(), "u", "m/s", 1);
+        Field<double,Location::CELL> zero(m.n_cells(), "zero", "N/m3", 1);
+        mass.fill(0.0); zero.fill(0.0);
+        mass(1) = 3.0; u(0) = 2.0; u(1) = 4.0;
+        const auto budget = cfdx::physics::diagnose_momentum_face_budget(
+            m, g, mass, u, zero, zero, {0.0,0.0}, {},
+            cfdx::physics::ConvectionScheme::UPWIND, 1.0, true);
+        EXPECT_NEAR(budget.cells[0].convection, 6.0, 1e-12);
+        EXPECT_NEAR(budget.cells[1].convection, -6.0, 1e-12);
+        EXPECT_NEAR(budget.cells[0].mass_divergence, 3.0, 1e-12);
+        EXPECT_NEAR(budget.cells[1].mass_divergence, -3.0, 1e-12);
+        EXPECT_NEAR(budget.cells[0].bounded_operator_residual, 0.0, 1e-12);
+        EXPECT_NEAR(budget.cells[1].bounded_operator_residual, 6.0, 1e-12);
+    });
     run_case("uniform_closed_flux_has_zero_local_and_global_balance", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::FACE> phi(m.n_faces(),"phi","m3/s",1);
@@ -252,12 +323,6 @@ int main()
             {0.0, std::numeric_limits<double>::quiet_NaN(), 0.0}, 1e-8));
         EXPECT_THROW((void)independent_momentum_face_residual_gate(
             {0.0, 0.0, 0.0}, 0.0), std::invalid_argument);
-    });
-
-    run_case("boundedness_reports_worst_cell_without_clipping", [] {
-        Field<double,Location::CELL> phi(4,"phi","1",1);
-        phi(0)=0.0; phi(1)=1.0; phi(2)=1.25; phi(3)=-0.2;
-        EXPECT_TRUE(r.worst_cell == 0);
     });
 
     run_case("boundedness_reports_worst_cell_without_clipping", [] {

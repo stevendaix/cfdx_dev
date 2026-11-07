@@ -48,12 +48,6 @@ class MeshFamilyTests(unittest.TestCase):
     def test_nonfinite_spacing_fails_closed(self):
         rows = [row(64,24,0.04),row(128,48,float("nan")),row(256,96,0.01)]
         with self.assertRaisesRegex(ValueError, "invalid mesh characteristic"):
-        rows[2]["inverted_or_degenerate_cells"] = 1
-        self.assertEqual(MODULE.verify_mesh_family(rows)["status"], "BLOCKED")
-
-    def test_nonfinite_spacing_fails_closed(self):
-        rows = [row(64,24,0.04),row(128,48,float("nan")),row(256,96,0.01)]
-        with self.assertRaisesRegex(ValueError, "invalid mesh characteristic"):
             MODULE.verify_mesh_family(rows)
 
 
