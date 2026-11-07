@@ -1219,6 +1219,7 @@ int main()
         check_wls_mesh_stencil_campaign();
         check_wls_conditioning_reference_campaign();
         check_wls_conditioning();
+        check_non_affine_polyhedral_convergence();
         std::cout << "POLYHEDRAL_GRADIENT_CAMPAIGN: PASS\n";
         return 0;
     } catch (const std::exception& e) {
