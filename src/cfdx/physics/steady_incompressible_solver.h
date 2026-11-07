@@ -2746,7 +2746,6 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         const auto* ro = eq.matrix.row_offsets_data();
         const auto* co = eq.matrix.columns_data();
         const auto* va = eq.matrix.values_data();
-        const double* old_component = U_old.component_data(component);
         for (std::size_t r = 0; r < nc; ++r) {
             const double diagonal = eq.diagonal[r];
             if (!(diagonal > 0.0) || !std::isfinite(diagonal))

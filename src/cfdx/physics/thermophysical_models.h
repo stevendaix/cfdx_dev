@@ -178,7 +178,10 @@ struct ThermophysicalProperties {
             };
             const std::size_t n=static_cast<std::size_t>(intervals);
             for(std::size_t i=0;i<n;++i) {
-                const double l=a+(b-a)*i/n,r=a+(b-a)*(i+1)/n;
+                const double fraction_left = static_cast<double>(i) / static_cast<double>(n);
+                const double fraction_right = static_cast<double>(i + 1) / static_cast<double>(n);
+                const double l = a + (b - a) * fraction_left;
+                const double r = a + (b - a) * fraction_right;
                 const double fl=cp(l),fm=cp((l+r)*0.5),fr=cp(r);
                 const double whole=(r-l)*(fl+4*fm+fr)/6;
                 integral+=adapt(l,r,fl,fm,fr,whole,1e-11*std::max(1.0,std::abs(whole)),20);
