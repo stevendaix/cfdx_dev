@@ -39,7 +39,7 @@ int main() {
                 std::cout<<name<<"\tdt="<<dt<<"\trelax="<<relaxation<<'\t'<<(ok?"PASS":"FAIL")<<'\t'<<std::setprecision(17)<<value<<'\n';};
             try {
                 auto r=solve_two_region_cht(a,ga,b,gb,fa,fb,ta,tb,qa,qb,ea,eb,c,ba,bb);
-                check("cht/status",r.converged,r.iterations);
+                check("cht/status",r.converged,static_cast<double>(r.iterations));
                 check("cht/temperature1",std::isfinite(ta(0))&&std::abs(ta(0)-exact1)<1e-8,ta(0)-exact1);
                 check("cht/temperature2",std::isfinite(tb(0))&&std::abs(tb(0)-exact2)<1e-8,tb(0)-exact2);
                 const double balance=2*(ta(0)-300)+3*(tb(0)-400)-dt*5;

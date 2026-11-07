@@ -503,7 +503,7 @@ int main(int argc,char** argv)
         if(rows[i].case_name!=rows[i-1].case_name) continue;
         if(rows[i].boundary_flux_error<=0.0 || rows[i-1].boundary_flux_error<=0.0) continue;
         const double flux_order=std::log(rows[i-1].boundary_flux_error/rows[i].boundary_flux_error) /
-                                std::log(static_cast<double>(rows[i].n)/rows[i-1].n);
+                                std::log(static_cast<double>(rows[i].n)/static_cast<double>(rows[i-1].n));
         if(flux_order<0.8 || flux_order>1.2) {
             std::cerr << "FAIL legacy boundary-flux order: case=" << rows[i].case_name
                       << " N=" << rows[i-1].n << "->" << rows[i].n

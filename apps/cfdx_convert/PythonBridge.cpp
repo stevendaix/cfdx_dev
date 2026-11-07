@@ -12,6 +12,13 @@
 #include <sys/wait.h>
 
 namespace fs = std::filesystem;
+namespace {
+struct PipeCloser {
+    void operator()(FILE* pipe) const noexcept {
+        if (pipe) (void)::pclose(pipe);
+    }
+};
+} // namespace
 namespace cfdx {
 
 std::optional<std::string> PythonBridge::findPythonExecutable() const {
@@ -31,7 +38,7 @@ std::optional<std::string> PythonBridge::findPythonExecutable() const {
     for (const char* cmd : candidates) {
         std::array<char, 128> buffer;
         std::string whichCmd = "which " + std::string(cmd);
-        std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(whichCmd.c_str(), "r"), pclose);
+        std::unique_ptr<FILE, PipeCloser> pipe(popen(whichCmd.c_str(), "r"));
         if (pipe && std::fgets(buffer.data(), buffer.size(), pipe.get())) {
             std::string path = buffer.data();
             path.erase(path.find_last_not_of("\n\r") + 1);
@@ -109,7 +116,7 @@ PythonBridgeResult PythonBridge::convert(const std::string& sourcePath, const st
     std::array<char, 4096> buffer;
     std::string fullCmd = cmdStr + " 2>&1";
 
-    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(fullCmd.c_str(), "r"), pclose);
+    std::unique_ptr<FILE, PipeCloser> pipe(popen(fullCmd.c_str(), "r"));
     if (!pipe) {
         result.errorMessage = "Failed to launch Python subprocess: " + cmdStr;
         return result;

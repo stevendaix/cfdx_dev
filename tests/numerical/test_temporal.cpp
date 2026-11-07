@@ -42,7 +42,7 @@ Mesh make_test_mesh() {
     for(std::size_t i=0;i<=cells;++i) {
         mesh.ownership().set_owner(i,i==0 ? 0 : i-1);
         mesh.ownership().set_neighbour(i,i>0 && i<cells
-            ? static_cast<CellIndex>(i) : FaceOwnership::BOUNDARY);
+            ? static_cast<std::int64_t>(i) : FaceOwnership::BOUNDARY);
     }
     for(std::size_t i=0;i<cells;++i)
         for(std::size_t side=0;side<4;++side) {

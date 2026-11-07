@@ -1097,7 +1097,7 @@ reconstruct_scalar_transport_flux(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& field,
     double diffusion_coefficient,
     const ScalarBoundaryConditions& boundary_conditions = {},
-    bool,
+    bool /*bounded_convection*/ = true,
     ConvectionScheme convection_scheme = ConvectionScheme::UPWIND,
     const ScalarBoundaryFaceConditions* face_conditions = nullptr,
     const std::vector<double>* cell_diffusion = nullptr,

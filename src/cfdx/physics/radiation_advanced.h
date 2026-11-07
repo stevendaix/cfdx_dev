@@ -682,7 +682,7 @@ private:
         nodes_[id].begin=static_cast<std::uint32_t>(begin);
         nodes_[id].count=static_cast<std::uint32_t>(end-begin);
         constexpr std::size_t leaf_size=8;
-        if (end-begin<=leaf_size) return id;
+        if (end-begin<=leaf_size) return static_cast<std::int32_t>(id);
 
         const std::array<double,3> extent{
             centroids.hi[0]-centroids.lo[0],
