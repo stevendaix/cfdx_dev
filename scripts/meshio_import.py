@@ -1,7 +1,11 @@
-#!/usr/bin/env python3
 """meshio -> CFDX-HDF5 mesh bridge."""
 from __future__ import annotations
-import argparse, collections, pathlib, sys, tempfile
+import argparse
+import collections
+import pathlib
+import sys
+import tempfile
+
 import h5py
 import meshio
 import numpy as np
@@ -253,7 +257,8 @@ def write(path,mesh,topo):
             ncorner=LINE[b.type]
         else:
             continue
-        tags=block_tags(mesh,"gmsh:physical",bi)\n        if tags is None: tags=block_tags(mesh,"su2:tag",bi)
+        tags=block_tags(mesh,"gmsh:physical",bi)
+        if tags is None: tags=block_tags(mesh,"su2:tag",bi)
         for j,row in enumerate(np.asarray(b.data)):
             fid=lookup.get(tuple(sorted(int(x) for x in row[:ncorner])))
             if fid is None: continue
