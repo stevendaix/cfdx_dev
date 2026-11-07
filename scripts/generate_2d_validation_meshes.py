@@ -307,6 +307,7 @@ def naca_o_grid(
     span: float = 1.0,
     split_farfield: bool = False,
     radial_power: float = 1.8,
+    base_radial_layers: int | None = None,
 ):
     """Build the deterministic transfinite-blend NACA0012 O-grid.
 
@@ -321,6 +322,11 @@ def naca_o_grid(
         raise ValueError("radius must be finite and positive")
     if not math.isfinite(radial_power) or not 1.0 <= radial_power <= 3.0:
         raise ValueError("radial_power must be finite in [1, 3]")
+
+    if base_radial_layers is not None and (
+        base_radial_layers < 1 or n_radial % base_radial_layers != 0
+    ):
+        raise ValueError("nested radial refinement requires an integer subdivision of the base grid")
 
     surf = naca0012_surface(n_surface)
     m = len(surf)
@@ -343,17 +349,45 @@ def naca_o_grid(
     pts = []
     for j in range(n_radial + 1):
         eta = j / n_radial
-        rfac = eta**radial_power
-        normal_weight = (1.0 - eta) ** 10
+        if base_radial_layers is None:
+            rfac = eta**radial_power
+            normal_weight = (1.0 - eta) ** 10
+        else:
+            # Re-sample the ACTUAL coarse-grid trajectory, not its independent
+            # r(eta) and normal-blend weights. Interpolating those weights and
+            # multiplying them later introduces a quadratic cross-term: the
+            # first-layer displacement then does NOT halve on refinement.
+            # Interpolating the endpoint coordinates themselves gives exact
+            # geometric radial nesting and a true factor-two first layer at
+            # fixed tangential positions.
+            subdivision = n_radial // base_radial_layers
+            lower = min(j // subdivision, base_radial_layers)
+            upper = min(lower + 1, base_radial_layers)
+            fraction = (j % subdivision) / subdivision
+            base_lo = lower / base_radial_layers
+            base_hi = upper / base_radial_layers
         for i, (x, y) in enumerate(surf):
             theta = 2.0 * math.pi * (i + 0.5) / m
             xo, yo = radius * math.cos(theta), radius * math.sin(theta)
             dx, dy = xo - x, yo - y
             radial_length = math.hypot(dx, dy)
             nx, ny = normals[i]
-            vx = (1.0 - normal_weight) * dx + normal_weight * radial_length * nx
-            vy = (1.0 - normal_weight) * dy + normal_weight * radial_length * ny
-            pts.append((x + rfac * vx, y + rfac * vy))
+            if base_radial_layers is None:
+                vx = (1.0 - normal_weight) * dx + normal_weight * radial_length * nx
+                vy = (1.0 - normal_weight) * dy + normal_weight * radial_length * ny
+                pts.append((x + rfac * vx, y + rfac * vy))
+            else:
+                def at_base_eta(base_eta):
+                    r = base_eta ** radial_power
+                    w = (1.0 - base_eta) ** 10
+                    return (
+                        x + r * ((1.0-w) * dx + w * radial_length * nx),
+                        y + r * ((1.0-w) * dy + w * radial_length * ny),
+                    )
+                xlo, ylo = at_base_eta(base_lo)
+                xhi, yhi = at_base_eta(base_hi)
+                pts.append(((1.0-fraction)*xlo + fraction*xhi,
+                            (1.0-fraction)*ylo + fraction*yhi))
 
     def P(j, i):
         return j * m + (i % m)
@@ -394,7 +428,8 @@ def naca_o_grid(
 
 
 def naca_o_grid_quality(
-    n_surface: int, n_radial: int, radius: float = 20.0, radial_power: float = 1.8
+    n_surface: int, n_radial: int, radius: float = 20.0, radial_power: float = 1.8,
+    base_radial_layers: int | None = None,
 ):
     """Return geometric quality indicators for the 2-D NACA0012 O-grid.
 
@@ -403,7 +438,8 @@ def naca_o_grid_quality(
     is measured between corresponding nodes on adjacent layers.
     """
     points, _cells, _ = naca_o_grid(
-        n_surface, n_radial, radius, radial_power=radial_power
+        n_surface, n_radial, radius, radial_power=radial_power,
+        base_radial_layers=base_radial_layers,
     )
     points = np.asarray(points, dtype=np.float64)
     m = 2 * n_surface + 1
@@ -484,6 +520,10 @@ def naca_o_grid_quality(
         )
     )
     return {
+        "radial_refinement_strategy": (
+            f"nested_base_{base_radial_layers}"
+            if base_radial_layers is not None else "powerlaw_resampled"
+        ),
         "n_surface": int(n_surface),
         "n_radial": int(n_radial),
         "radius": float(radius),
@@ -564,6 +604,10 @@ def main():
         action="store_true",
         help="experimental inlet/outlet outer patches; distinct mesh filenames",
     )
+    ap.add_argument(
+        "--naca-nested-radial", action="store_true",
+        help="subdivide N64 radial intervals, keeping wall-normal h ratio near 2",
+    )
     args = ap.parse_args()
 
     out = args.output_dir
@@ -586,13 +630,17 @@ def main():
                 20.0,
                 split_farfield=args.split_naca_farfield,
                 radial_power=args.naca_radial_power,
+                base_radial_layers=24 if args.naca_nested_radial else None,
             )
             suffix = "_split" if args.split_naca_farfield else ""
+            if args.naca_nested_radial:
+                suffix += "_nested"
             if args.naca_radial_power != 1.8:
                 suffix += "_rp" + str(args.naca_radial_power).replace(".", "p")
             write_mesh(out / f"naca0012_laminar_n{n}{suffix}.h5", p, c, b)
             quality = naca_o_grid_quality(
-                n, nr, 20.0, radial_power=args.naca_radial_power
+                n, nr, 20.0, radial_power=args.naca_radial_power,
+                base_radial_layers=24 if args.naca_nested_radial else None,
             )
             quality_reports.append(quality)
             print(
@@ -606,6 +654,9 @@ def main():
             if args.split_naca_farfield
             else "naca0012_mesh_quality.json"
         )
+        if args.naca_nested_radial:
+            report_path = report_path.with_name(
+                report_path.stem + "_nested" + report_path.suffix)
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(
             json.dumps(quality_reports, indent=2) + "\n", encoding="utf-8"

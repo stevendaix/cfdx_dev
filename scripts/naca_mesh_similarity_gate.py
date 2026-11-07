@@ -30,6 +30,9 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
                 raise ValueError(f"invalid mesh characteristic {key}")
         if int(row["inverted_or_degenerate_cells"]) != 0:
             diagnostic["reasons"].append("inverted_or_degenerate_cells")
+    strategies = {row.get("radial_refinement_strategy", "unspecified") for row in items}
+    if len(strategies) != 1:
+        diagnostic["reasons"].append("inconsistent_radial_refinement_strategy")
     for a, b in zip(items, items[1:]):
         tangential = float(b["n_surface"]) / float(a["n_surface"])
         radial = float(b["n_radial"]) / float(a["n_radial"])

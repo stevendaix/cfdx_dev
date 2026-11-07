@@ -36,6 +36,15 @@ class MeshFamilyTests(unittest.TestCase):
         rows[2]["inverted_or_degenerate_cells"] = 1
         self.assertEqual(MODULE.verify_mesh_family(rows)["status"], "BLOCKED")
 
+    def test_mixed_radial_distributions_are_not_comparable(self):
+        rows = [row(64,24,0.04), row(128,48,0.02), row(256,96,0.01)]
+        rows[0]["radial_refinement_strategy"] = "powerlaw_resampled"
+        rows[1]["radial_refinement_strategy"] = "nested_base_24"
+        rows[2]["radial_refinement_strategy"] = "nested_base_24"
+        result = MODULE.verify_mesh_family(rows)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertIn("inconsistent_radial_refinement_strategy", result["reasons"])
+
     def test_nonfinite_spacing_fails_closed(self):
         rows = [row(64,24,0.04),row(128,48,float("nan")),row(256,96,0.01)]
         with self.assertRaisesRegex(ValueError, "invalid mesh characteristic"):

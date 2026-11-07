@@ -35,8 +35,13 @@ class NacaForceMeshTests(unittest.TestCase):
                                      cl=0, cm=0))
             h = self.folder / f'history_{n}.csv'
             h.write_text('iteration,momentum_rhs_relative,continuity_normalized,'
-                         'mass_local_linf,nonfinite_mass_faces,nonfinite_velocities\n'
-                         '1,1e-11,1e-12,2e-11,0,0\n', encoding='utf-8')
+                         'mass_local_linf,nonfinite_mass_faces,nonfinite_velocities,'
+                         'high_order_fraction,face_momentum_x_relative,'
+                         'face_momentum_y_relative,face_momentum_z_relative,'
+                         'face_momentum_x_linf,face_momentum_y_linf,face_momentum_z_linf,'
+                         'convection_scheme\n'
+                         '1,1e-11,1e-12,2e-11,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,TVD\n',
+                         encoding='utf-8')
             self.certs[n] = c
             self.histories[n] = h
 
@@ -72,6 +77,58 @@ class NacaForceMeshTests(unittest.TestCase):
     def test_non_monotone_drag_is_not_richardson(self):
         path = self.certs[256]
         path.write_text(path.read_text().replace('0.138', '0.115'))
+        report = m.certify(mesh(), self.certs, self.histories)
+        self.assertEqual(report['status'], 'BLOCKED')
+
+    def test_total_drag_gci_cannot_hide_nonmonotone_pressure_and_viscous_components(self):
+        # Cd stays on an exact quadratic trend while Cd_pressure reverses.
+        # A valid total Cd alone must not certify a pressure+skin-friction GCI.
+        path = self.certs[128]
+        with path.open(newline='') as stream:
+            record = list(csv.DictReader(stream))[0]
+        record['cdp'] = '0.06'
+        record['cdv'] = str(float(record['cd']) - float(record['cdp']))
+        with path.open('w', newline='') as stream:
+            writer = csv.DictWriter(stream, fieldnames=m.REQUIRED)
+            writer.writeheader()
+            writer.writerow(record)
+        report = m.certify(mesh(), self.certs, self.histories)
+        self.assertEqual(report['status'], 'BLOCKED')
+        self.assertTrue(any('cdp:' in reason for reason in report['reasons']))
+
+    def test_independent_face_residual_blocks_false_matrix_convergence(self):
+        path = self.histories[128]
+        old = path.read_text()
+        path.write_text(old.replace('1,1e-11,1e-12,2e-11,0,0,1,1e-11',
+                                    '1,1e-11,1e-12,2e-11,0,0,1,0.002'))
+        report = m.certify(mesh(), self.certs, self.histories)
+        self.assertEqual(report['status'], 'BLOCKED')
+        self.assertTrue(any('independent local face momentum' in reason
+                            for reason in report['reasons']))
+
+    def test_missing_independent_residual_schema_blocks_gci(self):
+        path = self.histories[64]
+        path.write_text('iteration,momentum_rhs_relative,continuity_normalized,'
+                        'mass_local_linf,nonfinite_mass_faces,nonfinite_velocities\n'
+                        '1,1e-11,1e-12,2e-11,0,0\n')
+        report = m.certify(mesh(), self.certs, self.histories)
+        self.assertEqual(report['status'], 'BLOCKED')
+        self.assertTrue(any('incomplete physical history' in reason
+                            for reason in report['reasons']))
+
+    def test_first_order_upwind_cannot_claim_final_high_order_operator(self):
+        path = self.histories[64]
+        path.write_text(path.read_text().replace(',TVD\n', ',UPWIND\n'))
+        report = m.certify(mesh(), self.certs, self.histories)
+        self.assertEqual(report['status'], 'BLOCKED')
+        self.assertTrue(any('bounded second-order TVD' in reason
+                            for reason in report['reasons']))
+
+    def test_incomplete_final_convection_operator_blocks_gci(self):
+        path = self.histories[256]
+        path.write_text(path.read_text().replace(
+            '1,1e-11,1e-12,2e-11,0,0,1,1e-11',
+            '1,1e-11,1e-12,2e-11,0,0,0.5,1e-11'))
         report = m.certify(mesh(), self.certs, self.histories)
         self.assertEqual(report['status'], 'BLOCKED')
 
