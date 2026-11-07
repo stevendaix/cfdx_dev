@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install dependencies
         run: |
@@ -36,7 +36,7 @@ jobs:
       # build-type restore prefix so source edits reuse ccache and each run
       # can publish the updated cache, even when a later test step fails.
       - name: Restore compiler cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ccache
           key: ccache-${{ runner.os }}-${{ matrix.build_type }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -51,7 +51,7 @@ jobs:
       # Keep pip's wheel/HTTP cache across source and test changes. The unique
       # run key lets actions/cache save newly downloaded packages on each run.
       - name: Restore Python package cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: cfdx-pip-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -172,7 +172,7 @@ jobs:
 
       - name: Upload diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-ci-${{ matrix.build_type }}-diagnostics
           path: |
