@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """meshio -> CFDX-HDF5 mesh bridge."""
 from __future__ import annotations
-import argparse, collections, pathlib, sys
+import argparse, collections, pathlib, sys, tempfile
 import h5py
 import meshio
 import numpy as np
@@ -38,6 +38,77 @@ def physical_names(mesh):
 def block_tags(mesh,key,i):
     values=getattr(mesh,"cell_data",{}).get(key)
     return None if values is None or i>=len(values) else np.asarray(values[i])
+
+
+def read_mesh(path, file_format=None):
+    """Read meshes while preserving named SU2 marker tags.
+
+    meshio currently replaces string-valued SU2 MARKER_TAG names with integer
+    IDs after emitting one warning per marker. Normalize only those header
+    values before delegating to meshio, then restore the original names as
+    field_data so the normal patch writer can retain the physical boundaries.
+    """
+    detected_format=(file_format or path.suffix.lstrip(".")).lower()
+    if detected_format != "su2":
+        return meshio.read(path,file_format=file_format)
+
+    source=path.read_text(encoding="utf-8")
+    lines=source.splitlines()
+    numeric_ids=set()
+    has_named_markers=False
+    dimension=2
+    for line in lines:
+        if "=" not in line:
+            continue
+        key,value=(part.strip() for part in line.split("=",1))
+        if key=="NDIME":
+            dimension=int(value)
+        elif key=="MARKER_TAG":
+            try:
+                numeric_ids.add(int(value))
+            except ValueError:
+                has_named_markers=True
+    if not has_named_markers:
+        return meshio.read(path,file_format="su2")
+
+    next_id=max(numeric_ids,default=0)
+    name_to_id={}
+    id_to_name={}
+    normalized=[]
+    for line in lines:
+        if "=" not in line:
+            normalized.append(line)
+            continue
+        key,value=(part.strip() for part in line.split("=",1))
+        if key!="MARKER_TAG":
+            normalized.append(line)
+            continue
+        try:
+            tag_id=int(value)
+            id_to_name.setdefault(tag_id,value)
+        except ValueError:
+            if value not in name_to_id:
+                next_id+=1
+                name_to_id[value]=next_id
+            tag_id=name_to_id[value]
+            id_to_name[tag_id]=value
+        normalized.append(f"{key}= {tag_id}")
+
+    temporary_path=None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",encoding="utf-8",suffix=".su2",delete=False
+        ) as handle:
+            handle.write("\\n".join(normalized)+"\\n")
+            temporary_path=pathlib.Path(handle.name)
+        mesh=meshio.read(temporary_path,file_format="su2")
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+    for tag_id,name in id_to_name.items():
+        mesh.field_data[name]=np.asarray([tag_id,dimension-1],dtype=np.int32)
+    return mesh
 
 def build(mesh):
     points=np.asarray(mesh.points,dtype=np.float64)
@@ -182,7 +253,7 @@ def write(path,mesh,topo):
             ncorner=LINE[b.type]
         else:
             continue
-        tags=block_tags(mesh,"gmsh:physical",bi)
+        tags=block_tags(mesh,"gmsh:physical",bi)\n        if tags is None: tags=block_tags(mesh,"su2:tag",bi)
         for j,row in enumerate(np.asarray(b.data)):
             fid=lookup.get(tuple(sorted(int(x) for x in row[:ncorner])))
             if fid is None: continue
@@ -236,6 +307,6 @@ def write(path,mesh,topo):
 def main():
     p=argparse.ArgumentParser(); p.add_argument("input",type=pathlib.Path); p.add_argument("output",type=pathlib.Path); p.add_argument("--file-format")
     a=p.parse_args()
-    try: mesh=meshio.read(a.input,file_format=a.file_format); write(a.output,mesh,build(mesh)); return 0
+    try: mesh=read_mesh(a.input,a.file_format); write(a.output,mesh,build(mesh)); return 0
     except Exception as e: print(f"CFDX meshio import failed: {e}",file=sys.stderr); return 2
 if __name__=="__main__": raise SystemExit(main())
