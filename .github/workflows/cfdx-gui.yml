@@ -24,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install GUI system dependencies
         run: |
@@ -44,7 +44,7 @@ jobs:
             libxkbcommon-x11-0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.10"
           cache: pip
@@ -116,7 +116,7 @@ jobs:
 
       - name: Upload GUI regression report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-gui-regression-junit
           path: artifacts/gui-regression-junit.xml
@@ -134,7 +134,7 @@ jobs:
 
       - name: Upload HDF5 inspection benchmark
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-hdf5-inspector-benchmark
           path: artifacts/cfdx-hdf5-inspector-benchmark.json
@@ -152,7 +152,7 @@ jobs:
 
       - name: Upload surface quality report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-surface-quality-report
           path: artifacts/cfdx-surface-quality.json
@@ -169,7 +169,7 @@ jobs:
 
       - name: Upload volumetric skewness report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-volume-skewness-report
           path: artifacts/cfdx-volume-skewness.json
@@ -188,7 +188,7 @@ jobs:
 
       - name: Upload Workbench screenshot
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cfdx-workbench-screenshot
           path: artifacts/cfdx-workbench.png
@@ -210,7 +210,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install build and GUI dependencies
         run: |
@@ -222,7 +222,7 @@ jobs:
             libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxkbcommon-x11-0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.10"
           cache: pip
