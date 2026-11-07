@@ -175,7 +175,7 @@ def acquire_directory(source: dict[str, str], relative_path: str, destination: P
     with tempfile.TemporaryDirectory(prefix="cfdx-n10-fixture-") as tmp:
         checkout = Path(tmp) / "repo"
         try:
-            subprocess.run(["git", "init", "--quiet", str(checkout)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            subprocess.run(["git", "init", "--quiet", "--initial-branch=main", str(checkout)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin", repository], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             subprocess.run(["git", "-C", str(checkout), "fetch", "--filter=blob:none", "--depth", "1", "origin", ref], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             subprocess.run(["git", "-C", str(checkout), "sparse-checkout", "set", "--no-cone", relative_path], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
