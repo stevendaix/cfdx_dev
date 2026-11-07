@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed separation of CFDX laminar NACA and NASA/TMR SST campaigns.
 
 This checks case declarations and *optional* TMR mesh provenance. It does NOT
@@ -14,7 +13,7 @@ from pathlib import Path
 def check_registry(data: dict) -> tuple[dict, dict]:
     cases = data.get("cases")
     if not isinstance(cases, list):
-        raise ValueError("missing case registry")
+        raise TypeError("case registry must be a list")
     by_id = {c.get("id"): c for c in cases if isinstance(c, dict)}
     if len(by_id) != len(cases):
         raise ValueError("duplicate/invalid NACA qualification case IDs")
