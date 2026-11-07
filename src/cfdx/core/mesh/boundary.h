@@ -66,7 +66,7 @@ struct Patch {
     std::string name;
     PatchType type = PatchType::UNKNOWN;
     std::vector<FaceIndex> face_ids;
-    std::map<std::string, std::string> metadata;
+    std::map<std::string, std::string> metadata{};
 
     std::size_t size() const noexcept { return face_ids.size(); }
     bool empty() const noexcept { return face_ids.empty(); }

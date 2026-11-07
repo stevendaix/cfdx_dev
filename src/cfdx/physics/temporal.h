@@ -24,7 +24,6 @@ template<class Function>
 inline double fixed_point(
     double initial,
     Function&& f,
-    double dt,
     double rhs_scale,
     double constant,
     int max_iterations = 100,
@@ -56,7 +55,7 @@ inline double explicit_euler_step(double phi_n, double dt, Function&& f) {
 template<class Function>
 inline double implicit_euler_step(double phi_n, double dt, Function&& f) {
     detail::validate_dt(dt);
-    return detail::fixed_point(phi_n, std::forward<Function>(f), dt, dt, phi_n);
+    return detail::fixed_point(phi_n, std::forward<Function>(f), dt, phi_n);
 }
 
 // phi^{n+1} = phi^n + dt/2 [f(phi^n) + f(phi^{n+1})]

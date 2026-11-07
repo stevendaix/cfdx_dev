@@ -22,7 +22,7 @@ struct LinearOperator {
     std::function<void(const Vector&, Vector&)> apply;
     // Optional original-precision application used only for certification.
     // Matrix-free callers that omit it are certified against apply() itself.
-    std::function<void(const Vector&, Vector&)> apply_fp64;
+    std::function<void(const Vector&, Vector&)> apply_fp64{};
 };
 
 inline SolverResult solve_gmres(
@@ -231,11 +231,11 @@ inline SolverResult solve_gmres(
         std::fill(w.g.begin(), w.g.end(), 0.0);
         w.g[0] = beta;
 
-        int used = 0;
+        std::size_t used = 0;
         double estimated_residual = beta;
         bool arnoldi_breakdown = false;
 
-        for (int j = 0; j < current_restart && iterations < max_iter; ++j) {
+        for (std::size_t j = 0; j < static_cast<std::size_t>(current_restart) && iterations < max_iter; ++j) {
             if (preconditioner) {
                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
                 if (!preconditioner->apply(w.z, w.vout)) {
