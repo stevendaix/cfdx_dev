@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """CFDX V5 fair production-captured COUPLED benchmarking, fail-closed.
 
 Each grid is captured ONCE at the third nonlinear iteration of the real
@@ -15,12 +14,12 @@ import csv
 import hashlib
 import json
 import os
-from pathlib import Path
 import platform
 import re
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 METHODS = ("amg", "schwarz", "bfbt", "lsc", "pcd")
 KEY_VALUE = re.compile(r"([a-z][a-z0-9_]*)=([^\s]+)")
@@ -242,8 +241,8 @@ def main() -> int:
                         f"{kind.upper()} grid={grid} method={method} rep={rep} "
                         f"pass={int(passed)} "
                         f"iters={row.get('outer_iterations', row.get('iterations', '?'))} "
-                        f"true_rr={row.get('true_relative_residual','?')} "
-                        f"wall_ms={row.get('total_linear_ms',row.get('wall_ms','?'))}",
+                        f"true_rr={row.get('true_relative_residual', '?')} "
+                        f"wall_ms={row.get('total_linear_ms', row.get('wall_ms', '?'))}",
                         flush=True,
                     )
     # Cross-method physical consistency is independent of convergence flags:
