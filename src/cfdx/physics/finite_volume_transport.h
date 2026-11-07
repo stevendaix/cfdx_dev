@@ -674,7 +674,7 @@ inline ScalarEquation assemble_scalar_equation(
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& source_explicit,
     const cfdx::core::Field<double, cfdx::core::Location::CELL>& source_implicit,
     const ScalarBoundaryConditions& boundary_conditions = {},
-    bool bounded_convection = true,
+    bool,
     const ScalarBoundaryFaceValues* face_values = nullptr,
     const std::vector<double>* extra_diagonal = nullptr,
     const std::vector<double>* extra_rhs = nullptr,

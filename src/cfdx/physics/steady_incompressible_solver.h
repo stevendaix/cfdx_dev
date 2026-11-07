@@ -2790,16 +2790,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             if (nr >= 0) {
                 // Same owner/neighbour rule as the continuity block below:
                 // if c is the neighbour, nr points back to c itself.
-                const int other_cell = owner
-                    ? nr
-                    : static_cast<int>(mesh.ownership().owner(f));
-                if (other_cell < 0 ||
-                    static_cast<std::size_t>(other_cell) >= nc ||
-                    static_cast<std::size_t>(other_cell) == c)
+                const std::size_t ncell = owner
+                    ? static_cast<std::size_t>(nr)
+                    : mesh.ownership().owner(f);
+                if (ncell >= nc || ncell == c)
                     throw std::runtime_error(
                         "solve_coupled_momentum_continuity: invalid face topology on face " +
                         std::to_string(f) + " cell " + std::to_string(c));
-                const std::size_t ncell = static_cast<std::size_t>(other_cell);
                 // Match gauss_gradient_with_boundary() exactly: the
                 // cell-centred pressure gradient uses a distance-weighted
                 // face value, not an unconditional arithmetic average.
@@ -2879,16 +2876,13 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 // When c is the neighbour, neighbour(f) == c; using it directly
                 // creates a self-coupled face (zero centre distance) and corrupts
                 // the coupled pressure Schur coefficient.
-                const int other_cell = owner
-                    ? nr
-                    : static_cast<int>(mesh.ownership().owner(f));
-                if (other_cell < 0 ||
-                    static_cast<std::size_t>(other_cell) >= nc ||
-                    static_cast<std::size_t>(other_cell) == c)
+                const std::size_t ncell = owner
+                    ? static_cast<std::size_t>(nr)
+                    : mesh.ownership().owner(f);
+                if (ncell >= nc || ncell == c)
                     throw std::runtime_error(
                         "solve_coupled_momentum_continuity: invalid face topology on face " +
                         std::to_string(f) + " cell " + std::to_string(c));
-                const std::size_t ncell = static_cast<std::size_t>(other_cell);
                 const double half_rho = 0.5 * rho;
                 A.push_back(row, c, half_rho * Sf.x);
                 A.push_back(row, ncell, half_rho * Sf.x);
@@ -6700,7 +6694,7 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         const double pressure_gradient_l2 =
             std::sqrt(pressure_gradient_l2_sum /
-                      std::max<std::size_t>(mesh.n_cells(), 1));
+                      static_cast<double>(std::max<std::size_t>(mesh.n_cells(), 1)));
 
         double l1 = 0.0, linf = 0.0;
         const auto* cell_faces = mesh.cells().faces_data();

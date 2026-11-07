@@ -322,22 +322,7 @@ inline DatRestartState read_dat_restart_fields(
         throw std::runtime_error("read_dat_restart_fields: invalid time");
     validate_dat_restart_identity(mesh, version, in);
 
-    auto read_scalar_field = [&](const char* expected,
-                                 cfdx::core::Field<double, cfdx::core::Location::CELL>* field) {
-        if (!(in >> key)) throw std::runtime_error("read_dat_restart_fields: missing field");
-        std::size_t dimension = 0;
-        if (!(in >> key >> dimension) || key != expected || dimension != 1)
-            throw std::runtime_error(std::string("read_dat_restart_fields: invalid ") + expected + " field");
-        if (!field) {
-            for (std::size_t c = 0; c < mesh.n_cells(); ++c) { double ignored; if (!(in >> ignored)) throw std::runtime_error("read_dat_restart_fields: invalid field values"); }
-            return;
-        }
-        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
-            double value = 0.0;
-            if (!(in >> value) || !std::isfinite(value)) throw std::runtime_error("read_dat_restart_fields: invalid field value");
-            (*field)(c) = value;
-        }
-    };
+
 
     if (!(in >> key) || key != "field") throw std::runtime_error("read_dat_restart_fields: missing U field");
     std::size_t dimension = 0;
