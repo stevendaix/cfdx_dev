@@ -32,33 +32,33 @@ with tempfile.TemporaryDirectory() as d:
     # requires gmsh:dim_tags for mixed line/triangle blocks; that writer
     # constraint is unrelated to the importer contract tested below.
     src_2d.write_text(
-        "$MeshFormat\\n"
-        "2.2 0 8\\n"
-        "$EndMeshFormat\\n"
-        "$PhysicalNames\\n"
-        "5\\n"
-        '1 1 "inlet"\\n'
-        '1 2 "outlet"\\n'
-        '1 3 "top_wall"\\n'
-        '1 4 "bottom_wall"\\n'
-        '2 5 "fluid"\\n'
-        "$EndPhysicalNames\\n"
-        "$Nodes\\n"
-        "4\\n"
-        "1 0 0 0\\n"
-        "2 1 0 0\\n"
-        "3 1 1 0\\n"
-        "4 0 1 0\\n"
-        "$EndNodes\\n"
-        "$Elements\\n"
-        "6\\n"
-        "1 1 2 1 1 1 2\\n"
-        "2 1 2 2 1 2 3\\n"
-        "3 1 2 3 1 3 4\\n"
-        "4 1 2 4 1 4 1\\n"
-        "5 2 2 5 1 1 2 3\\n"
-        "6 2 2 5 1 1 3 4\\n"
-        "$EndElements\\n",
+        "$MeshFormat\n"
+        "2.2 0 8\n"
+        "$EndMeshFormat\n"
+        "$PhysicalNames\n"
+        "5\n"
+        '1 1 "inlet"\n'
+        '1 2 "outlet"\n'
+        '1 3 "top_wall"\n'
+        '1 4 "bottom_wall"\n'
+        '2 5 "fluid"\n'
+        "$EndPhysicalNames\n"
+        "$Nodes\n"
+        "4\n"
+        "1 0 0 0\n"
+        "2 1 0 0\n"
+        "3 1 1 0\n"
+        "4 0 1 0\n"
+        "$EndNodes\n"
+        "$Elements\n"
+        "6\n"
+        "1 1 2 1 1 1 2\n"
+        "2 1 2 2 1 2 3\n"
+        "3 1 2 3 1 3 4\n"
+        "4 1 2 4 1 4 1\n"
+        "5 2 2 5 1 1 2 3\n"
+        "6 2 2 5 1 1 3 4\n"
+        "$EndElements\n",
         encoding="utf-8",
     )
     subprocess.check_call([sys.executable, str(bridge), str(src_2d), str(dst_2d)])
