@@ -1,5 +1,6 @@
 """meshio -> CFDX-HDF5 mesh bridge."""
 from __future__ import annotations
+
 import argparse
 import collections
 import pathlib
