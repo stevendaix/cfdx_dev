@@ -155,10 +155,20 @@ int main() {
         // the two WLS variants have different ghost-point constructions and
         // must therefore produce a measurable cross-diffusion response.
         auto kbc_solver=kbc, wbc_solver=wbc;
-        for (auto& entry : kbc_solver)
-            entry.second.type=ScalarBoundaryType::ZERO_GRADIENT;
-        for (auto& entry : wbc_solver)
-            entry.second.type=ScalarBoundaryType::ZERO_GRADIENT;
+        // Use distinct, non-zero outward Neumann data on each wall. A
+        // zero-gradient-only fixture is too symmetric: on this two-cell mesh
+        // the two ghost constructions can collapse to the same fitted
+        // gradient and therefore cannot certify the production dispatch.
+        for (auto& [name, condition] : kbc_solver) {
+            const auto face = static_cast<double>(std::stoi(name.substr(5)));
+            condition = {ScalarBoundaryType::FIXED_GRADIENT, 0.0,
+                         0.07 * (face + 1.0)};
+        }
+        for (auto& [name, condition] : wbc_solver) {
+            const auto face = static_cast<double>(std::stoi(name.substr(5)));
+            condition = {ScalarBoundaryType::FIXED_GRADIENT, 0.0,
+                         -0.11 * (face + 1.0)};
+        }
         auto k_legacy=k, w_legacy=omega, k_wls=k, w_wls=omega;
         k_legacy(0)+=0.3;
         w_legacy(1)+=0.2;
