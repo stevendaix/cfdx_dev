@@ -116,7 +116,7 @@ void VtuWriter::decompose_polyhedra(const cfdx::core::Mesh& mesh,
 
 void VtuWriter::write_header(std::ofstream& os, const cfdx::core::Mesh& mesh,
                              const std::vector<std::vector<cfdx::core::PointIndex>>& vtk_cells,
-                             const std::vector<VtkCellType>& vtk_cell_types,
+                             const std::vector<VtkCellType>&,
                              double physical_time, std::size_t iteration, bool write_time_metadata)
 {
     const std::size_t n_points = mesh.n_points();

@@ -8,7 +8,7 @@ namespace cfdx::runtime::gpu {
 
 void gradient_gauss_reference(
     const double* phi,
-    const double* sx, const double* sy, const double* sz,
+    const double*, const double*, const double*,
     const std::size_t* owner, const std::int64_t* neighbour,
     const double* volume, std::size_t n_faces, std::size_t n_cells,
     double* gx, double* gy, double* gz)

@@ -93,7 +93,8 @@ std::string encode_probe_name_hex(const std::string& name)
     constexpr char digits[] = "0123456789abcdef";
     std::string encoded;
     encoded.reserve(name.size() * 2);
-    for (const unsigned char byte : name) {
+    for (const char raw_byte : name) {
+        const auto byte = static_cast<unsigned char>(raw_byte);
         encoded.push_back(digits[byte >> 4]);
         encoded.push_back(digits[byte & 0x0f]);
     }
