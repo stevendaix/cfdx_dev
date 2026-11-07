@@ -146,6 +146,35 @@ int main()
     });
 
 
+    run_case("actual_pressure_replay_is_post_gauge_and_opt_in", [] {
+        const auto mesh = make_two_cell_channel();
+        Field<double,Location::CELL> u(2,"U","m/s",3);
+        Field<double,Location::CELL> p(2,"p","Pa",1);
+        u.fill(0.0); p.fill(0.0);
+        VelocityBoundaryConditions ubc;
+        ubc["wall"] = {VelocityBoundaryCondition::Type::FIXED_VALUE,{0.0,0.0,0.0}};
+        ScalarBoundaryConditions pbc;
+        pbc["wall"] = {ScalarBoundaryType::ZERO_GRADIENT,0.0,0.0};
+        IncompressibleSolverControls controls;
+        controls.convergence.max_iterations = 2;
+        controls.pressure_reference_cell = 0;
+        controls.pressure_replay_iterations = {1};
+        const auto prefix = std::filesystem::temp_directory_path() / "cfdx_real_pressure_capture";
+        controls.pressure_replay_prefix = prefix.string();
+        const auto file = prefix.string() + "_i1_c0.cfdxlin";
+        std::filesystem::remove(file);
+        (void)solve_steady_incompressible(mesh,u,p,ubc,pbc,controls);
+        EXPECT_TRUE(std::filesystem::exists(file));
+        const auto captured = cfdx::core::read_linear_system_capture(file);
+        // The two-cell pure Neumann operator is gauge-reduced to 1x1.
+        EXPECT_TRUE(captured.matrix.n_rows() == 1);
+        EXPECT_TRUE(captured.matrix.n_cols() == 1);
+        EXPECT_TRUE(captured.rhs.size() == 1);
+        EXPECT_NEAR(captured.initial_solution(0), 0.0, 0.0);
+        EXPECT_TRUE(captured.problem == LinearProblemKind::PressurePoisson);
+        std::filesystem::remove(file);
+    });
+
     run_case("native_solver_consumes_dat_restart", [] {
         const Mesh m = make_unit_cube();
         Field<double,Location::CELL> seed_u(1,"U","m/s",3);

@@ -189,8 +189,47 @@ int main() {
         }
         std::cout << "SST_CROSS_DIFFUSION_DISPATCH difference="
                   << omega_difference << "\n";
-        require(omega_difference>1e-9,
-            "SST transport ignored WLS gradient control in inner cross-diffusion");
+        // Both production paths already reconstruct affine boundary values
+        // with WLS. An affine manufactured field cannot prove dispatch by
+        // demanding a nonzero difference between mathematically equal values.
+        // Verify their exact source against the independent analytic gradient
+        // and that the SST source actually depends on the cross term.
+        require(omega_difference<1e-10,
+            "affine-equivalent SST gradient paths returned different omega");
+        const auto default_cross=sst_boundary_gradient_dot(
+            k,omega,mesh,geometry,kbc,wbc,nullptr,false,3);
+        const auto opt_cross=sst_boundary_gradient_dot(
+            k,omega,mesh,geometry,kbc,wbc,nullptr,true,3);
+        for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+            require(std::abs(default_cross[cell]+1.0)<1e-11,
+                "default SST boundary WLS cross-diffusion is not affine-exact");
+            require(std::abs(opt_cross[cell]+1.0)<1e-11,
+                "opt-in SST boundary WLS cross-diffusion is not affine-exact");
+            const auto with_cross=sst_cell_sources(k(cell),omega(cell),0.0,
+                0.25,0.25,opt_cross[cell],wls_controls);
+            const auto without_cross=sst_cell_sources(k(cell),omega(cell),0.0,
+                0.25,0.25,0.0,wls_controls);
+            require(std::abs(with_cross.spw-without_cross.spw)>1e-6,
+                "SST omega equation discarded the physical cross-diffusion source");
+        }
+        // End-to-end dispatch certificate: forcing an intrinsic 2-D WLS
+        // gradient on this genuinely 3-D stencil must reject the solve before
+        // changing either field. Without the opt-in the dimension is unused.
+        auto mismatched_controls=wls_controls;
+        mismatched_controls.sst_gradient_dimension=2;
+        auto invalid_k=k,invalid_omega=omega;
+        bool end_to_end_rejected=false;
+        try {
+            (void)solve_sst_transport(mesh,geometry,mass_flux,
+                invalid_k,invalid_omega,strain,F1,F2,mismatched_controls,
+                kbc,wbc,1,1e-9);
+        } catch (const std::runtime_error&) { end_to_end_rejected=true; }
+        require(end_to_end_rejected,
+            "SST transport did not dispatch the requested intrinsic WLS dimension");
+        for (std::size_t cell=0;cell<mesh.n_cells();++cell) {
+            require(invalid_k(cell)==k(cell) && invalid_omega(cell)==omega(cell),
+                "rejected SST WLS transport mutated the previous state");
+        }
         bool dimension_rejected=false;
         try { (void)scalar_gradient_with_transport_boundaries_wls(
             k,mesh,geometry,kbc,nullptr,2); }

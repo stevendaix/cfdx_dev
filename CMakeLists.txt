@@ -586,7 +586,41 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_cg_solver tests/unit/test_cg_solver.cpp)
     add_cfdx_test(test_amg_dispatch_certificate tests/unit/test_amg_dispatch_certificate.cpp)
     add_cfdx_test(test_v24_anisotropic_line_amg tests/unit/test_v24_anisotropic_line_amg.cpp)
+    add_cfdx_test(test_anisotropic_line_integrity tests/unit/test_anisotropic_line_integrity.cpp)
+    add_cfdx_test(test_directional_semicoarsening tests/unit/test_directional_semicoarsening.cpp)
+    add_cfdx_test(test_mgr_transactional tests/unit/test_mgr_transactional.cpp)
+    set_tests_properties(test_mgr_transactional PROPERTIES LABELS "linalg;coupled;regression" TIMEOUT 120)
+    add_cfdx_test(test_braess_sarazin tests/unit/test_braess_sarazin.cpp)
+    set_tests_properties(test_braess_sarazin PROPERTIES LABELS "linalg;coupled;qualification" TIMEOUT 120)
+    add_cfdx_test(test_vanka_pressure_patch tests/unit/test_vanka_pressure_patch.cpp)
+    set_tests_properties(test_vanka_pressure_patch PROPERTIES LABELS "linalg;coupled;qualification" TIMEOUT 120)
+    add_executable(cfdx_benchmark_energy_vanka EXCLUDE_FROM_ALL
+        tools/benchmarks/benchmark_energy_vanka.cpp)
+    target_link_libraries(cfdx_benchmark_energy_vanka PRIVATE cfdx_core)
+    add_executable(cfdx_benchmark_gmres_arnoldi EXCLUDE_FROM_ALL
+        tools/benchmarks/benchmark_gmres_arnoldi.cpp)
+    target_link_libraries(cfdx_benchmark_gmres_arnoldi PRIVATE cfdx_core)
+    add_executable(cfdx_anisotropy_report EXCLUDE_FROM_ALL
+        tools/diagnostics/cfdx_anisotropy_report.cpp)
+    target_link_libraries(cfdx_anisotropy_report PRIVATE cfdx_core)
+    add_executable(cfdx_linear_replay EXCLUDE_FROM_ALL
+        tools/diagnostics/cfdx_linear_replay.cpp)
+    target_link_libraries(cfdx_linear_replay PRIVATE cfdx_core)
+    add_cfdx_test(test_linear_system_capture tests/unit/test_linear_system_capture.cpp)
+    set_tests_properties(test_linear_system_capture PROPERTIES
+        LABELS "linalg;diagnostic;replay;regression" TIMEOUT 60)
+    add_cfdx_test(test_anisotropy_energy tests/unit/test_anisotropy_energy.cpp)
+    set_tests_properties(test_anisotropy_energy PROPERTIES LABELS "linalg;anisotropy;qualification" TIMEOUT 120)
+    set_tests_properties(test_directional_semicoarsening PROPERTIES LABELS "linalg;anisotropy;regression" TIMEOUT 120)
+    set_tests_properties(test_anisotropic_line_integrity PROPERTIES LABELS "linalg;anisotropy;regression" TIMEOUT 60)
     add_cfdx_test(test_v26_pressure_refinement tests/unit/test_v26_pressure_refinement.cpp)
+    # Explicit opt-in: the Line-AMG benchmark is not a CI pass/fail oracle.
+    add_executable(cfdx_benchmark_directional_semicoarsening EXCLUDE_FROM_ALL
+        tools/benchmarks/benchmark_directional_semicoarsening.cpp)
+    target_link_libraries(cfdx_benchmark_directional_semicoarsening PRIVATE cfdx_core)
+    add_executable(cfdx_benchmark_anisotropic_line_apply EXCLUDE_FROM_ALL
+        tools/benchmarks/benchmark_anisotropic_line_apply.cpp)
+    target_link_libraries(cfdx_benchmark_anisotropic_line_apply PRIVATE cfdx_core)
     add_executable(cfdx_benchmark_galerkin_workspace
         tools/benchmarks/benchmark_galerkin_workspace.cpp)
     target_link_libraries(cfdx_benchmark_galerkin_workspace PRIVATE cfdx_core)
@@ -711,6 +745,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     set_tests_properties(test_n11_scalar_conservation PROPERTIES
         LABELS "n11;qualification;validation")
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
+    add_cfdx_test(test_convection_continuation tests/unit/test_convection_continuation.cpp)
+    set_tests_properties(test_convection_continuation PROPERTIES LABELS "fv;convection;regression")
     add_cfdx_test(test_vof_curvature_contract tests/unit/test_vof_curvature_contract.cpp)
     add_cfdx_test(test_variable_viscosity_transpose_stress tests/unit/test_variable_viscosity_transpose_stress.cpp)
     add_cfdx_test(test_steady_incompressible_solver tests/validation/test_steady_incompressible_solver.cpp)
@@ -1687,6 +1723,8 @@ endif()
 # Experimental pressure-gradient skewness correction: affine face reconstruction.
 if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_pressure_skew_gradient_affine tests/validation/test_pressure_skew_gradient_affine.cpp)
+    add_cfdx_test(test_pressure_anisotropic_affine_flux tests/validation/test_pressure_anisotropic_affine_flux.cpp)
+    set_tests_properties(test_pressure_anisotropic_affine_flux PROPERTIES LABELS "validation;pressure;anisotropy" TIMEOUT 120)
 endif()
 
 # NACA 3-grid trailing-edge affine MMS: gradient verification, NOT flow validation.

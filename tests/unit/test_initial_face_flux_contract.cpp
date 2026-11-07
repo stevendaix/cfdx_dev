@@ -91,5 +91,7 @@ int main()
         EXPECT_THROW(initial_face_flux_continuity_report(mesh,
             {0.2, 0.2, 0.2, 0.2}, -1.0), std::invalid_argument);
     });
+    // run_case() only registers deferred tests: execute all six and propagate
+    // their failures to CTest. A plain return 0 was a false-positive pass.
     return run_all();
 }
