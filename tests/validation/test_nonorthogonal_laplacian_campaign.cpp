@@ -69,9 +69,9 @@ Grid make_affine_cube(std::size_t n, double shear, bool nonuniform = false)
                 const auto coordinate = [nonuniform](double value) {
                     return nonuniform ? value + 0.20*value*value : value;
                 };
-                const double x0 = coordinate(i * h), x1 = coordinate((i + 1) * h);
-                const double y0 = coordinate(j * h), y1 = coordinate((j + 1) * h);
-                const double z0 = coordinate(k * h), z1 = coordinate((k + 1) * h);
+                const double x0 = coordinate(static_cast<double>(i) * h), x1 = coordinate(static_cast<double>(i + 1) * h);
+                const double y0 = coordinate(static_cast<double>(j) * h), y1 = coordinate(static_cast<double>(j + 1) * h);
+                const double z0 = coordinate(static_cast<double>(k) * h), z1 = coordinate(static_cast<double>(k + 1) * h);
                 const double raw[8][3] = {
                     {x0,y0,z0}, {x1,y0,z0}, {x1,y1,z0}, {x0,y1,z0},
                     {x0,y0,z1}, {x1,y0,z1}, {x1,y1,z1}, {x0,y1,z1}
