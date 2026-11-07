@@ -1771,3 +1771,42 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_momentum_residual_certification_v11 tests/unit/test_momentum_residual_certification_v11.cpp)
     add_cfdx_test(test_sst_relative_convergence_v11 tests/unit/test_sst_relative_convergence_v11.cpp)
 endif()
+
+# CFDX V5: comparaison des preconditionneurs COUPLED.
+# Desactive par defaut pour eviter de ralentir les builds CI.
+option(
+    CFDX_BUILD_COUPLED_COMPARISON
+    "Build production-captured COUPLED comparison"
+    OFF
+)
+
+if(CFDX_BUILD_COUPLED_COMPARISON)
+    add_executable(
+        cfdx_coupled_production_comparison
+        tools/benchmarks/cfdx_coupled_production_comparison.cpp
+    )
+
+    target_link_libraries(
+        cfdx_coupled_production_comparison
+        PRIVATE cfdx_core
+    )
+
+    target_include_directories(
+        cfdx_coupled_production_comparison
+        PRIVATE ${CMAKE_SOURCE_DIR}/tests
+    )
+endif()
+
+if(CFDX_BUILD_TESTS AND Python3_Interpreter_FOUND)
+    add_test(
+        NAME test_coupled_comparison_v5_protocol
+        COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/tools/benchmarks/run_coupled_preconditioner_comparison.py
+        --selftest
+    )
+
+    set_tests_properties(
+        test_coupled_comparison_v5_protocol
+        PROPERTIES LABELS "schur;benchmark;unit;v5"
+    )
+endif()
