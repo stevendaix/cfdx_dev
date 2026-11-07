@@ -166,7 +166,7 @@ Mesh make_two_cell_channel()
 
     m.ownership().resize(11);
     for (std::size_t f = 0; f < 11; ++f) {
-        const auto owner = (f == 2 || f >= 7) ? 1 : 0;
+        const std::size_t owner = (f == 2 || f >= 7) ? 1u : 0u;
         m.ownership().set_owner(f, owner);
         m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
     }
@@ -230,7 +230,7 @@ int main() {
                 [&](const Vector& rhs,Vector& x){x=matvec(finv,rhs);return true;});
             EXPECT_TRUE(pcd.setup(blocks));
 
-            Vector q(cfg.n); for(std::size_t i=0;i<cfg.n;++i) q(i)=std::sin(0.31*(i+1));
+            Vector q(cfg.n); for(std::size_t i=0;i<cfg.n;++i) q(i)=std::sin(0.31*static_cast<double>(i+1));
             Vector exact_Sq(cfg.n,0.0); EXPECT_TRUE(exact.apply_schur(q,exact_Sq));
             Vector simple_Sq(cfg.n,0.0),simplec_Sq(cfg.n,0.0);
             EXPECT_TRUE(simple.apply(q,simple_Sq)); EXPECT_TRUE(simplec.apply(q,simplec_Sq));
@@ -251,7 +251,7 @@ int main() {
             EXPECT_TRUE(std::isfinite(simplec_operator_error) &&
                         simplec_operator_error < 10.0);
 
-            Vector rhs(cfg.n); for(std::size_t i=0;i<cfg.n;++i) rhs(i)=std::cos(0.17*(i+1));
+            Vector rhs(cfg.n); for(std::size_t i=0;i<cfg.n;++i) rhs(i)=std::cos(0.17*static_cast<double>(i+1));
             Vector exact_inv=matvec(inverse(Soracle),rhs);
             Vector z(cfg.n,0.0);
             EXPECT_TRUE(lsc.apply(rhs,z));
@@ -272,7 +272,7 @@ int main() {
         const auto d=make_case({n,4.0});
         const std::size_t N=4*n;
         const SparseMatrix K = make_block_matrix(d);
-        Vector exact(N); for(std::size_t i=0;i<N;++i) exact(i)=std::sin(0.071*(i+1));
+        Vector exact(N); for(std::size_t i=0;i<N;++i) exact(i)=std::sin(0.071*static_cast<double>(i+1));
         const auto kb=K.matvec(exact);
         Vector b(N,0.0);
         for(std::size_t i=0;i<N;++i) b(i)=kb[i];
@@ -368,7 +368,7 @@ int main() {
         // Passthrough: the gauged solve returns the rhs gauge component
         // at the reference, and the other components solve the reduced
         // system exactly.
-        Vector rhs(n); for(std::size_t i=0;i<n;++i) rhs(i)=std::cos(0.4*(i+1));
+        Vector rhs(n); for(std::size_t i=0;i<n;++i) rhs(i)=std::cos(0.4*static_cast<double>(i+1));
         const Vector x=matvec(inverse(dense(A)),rhs);
         EXPECT_NEAR(x(2),rhs(2),1e-12);
         Dense red(n-1,std::vector<double>(n-1,0.0));

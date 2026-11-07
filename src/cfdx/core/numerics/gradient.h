@@ -564,9 +564,9 @@ inline Field<double, Location::CELL> compute_quadratic_fit_least_squares(
         fit(c, 1) = g.y;
         fit(c, 2) = g.z;
         if (have_quad) {
-            for (int d = 3; d < 9; ++d) fit(c, d) = x[d];
+            for (std::size_t d = 3; d < 9; ++d) fit(c, d) = x[d];
         } else {
-            for (int d = 3; d < 9; ++d) fit(c, d) = 0.0;
+            for (std::size_t d = 3; d < 9; ++d) fit(c, d) = 0.0;
         }
     }
     return fit;

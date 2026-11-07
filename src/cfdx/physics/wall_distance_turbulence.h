@@ -69,7 +69,7 @@ inline WallDistanceTurbulenceDiagnostics audit_wall_distance_turbulence_coupling
  o.min_distance=*std::min_element(d.begin(),d.end()); o.max_distance=*std::max_element(d.begin(),d.end());
  o.min_y_plus=*std::min_element(yp.begin(),yp.end()); o.max_y_plus=*std::max_element(yp.begin(),yp.end());
  std::size_t a=0,b=0,c=0; for(std::size_t i=0;i<d.size();++i){if(des_wall_transition_ratio(d[i],delta,Cdes)>1)++a; const double fd=ddes_shielding_from_wall_distance(1e-4,1.0,d[i],nu); if(fd<.5)++b; if(iddes_shielding(0.5*fd,0.5)<.5)++c;}
- o.des_les_fraction=double(a)/o.samples;o.ddes_les_fraction=double(b)/o.samples;o.iddes_les_fraction=double(c)/o.samples;return o;
+ const double sample_count = static_cast<double>(o.samples); o.des_les_fraction=static_cast<double>(a)/sample_count;o.ddes_les_fraction=static_cast<double>(b)/sample_count;o.iddes_les_fraction=static_cast<double>(c)/sample_count;return o;
 }
 inline void require_wall_distance_resolves_surface(
     const WallDistanceGrid& g, const std::vector<double>& d) {

@@ -2328,9 +2328,6 @@ inline std::vector<double> hybrid_poisson_hamilton_jacobi_distance(
     if(active_nodes_out) *active_nodes_out=active_ids.size();
     if(seed_count_out) *seed_count_out=seeds.size();
 
-    const double inv_h2=1.0/(g.spacing.x*g.spacing.x)
-                       +1.0/(g.spacing.y*g.spacing.y)
-                       +1.0/(g.spacing.z*g.spacing.z);
     const double relaxation_factor=std::clamp(relaxation,0.1,1.0);
     const double alpha=std::clamp(poisson_weight,0.0,1.0);
     const std::size_t steps=std::max<std::size_t>(20,max_iter);

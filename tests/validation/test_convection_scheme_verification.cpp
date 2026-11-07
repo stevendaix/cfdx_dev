@@ -49,7 +49,7 @@ Grid make_1d_slab_grid(std::size_t n)
     const double yz[4][2] = {{0,0},{1,0},{1,1},{0,1}};
     for (std::size_t i = 0; i <= n; ++i)
         for (unsigned q = 0; q < 4; ++q)
-            m.points().set(4 * i + q, i * h, yz[q][0], yz[q][1]);
+            m.points().set(4 * i + q, static_cast<double>(i) * h, yz[q][0], yz[q][1]);
 
     std::vector<std::vector<std::size_t>> cell_faces(n);
     const auto cross_face = [&](std::size_t i) {

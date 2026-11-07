@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <stdexcept>
 #include <map>
+#include <utility>
 
 namespace cfdx {
 namespace core {
@@ -66,7 +67,16 @@ struct Patch {
     std::string name;
     PatchType type = PatchType::UNKNOWN;
     std::vector<FaceIndex> face_ids;
-    std::map<std::string, std::string> metadata;
+    std::map<std::string, std::string> metadata{};
+
+    Patch() = default;
+    Patch(std::string patch_name, PatchType patch_type,
+          std::vector<FaceIndex> patch_face_ids = {},
+          std::map<std::string, std::string> patch_metadata = {})
+        : name(std::move(patch_name)),
+          type(patch_type),
+          face_ids(std::move(patch_face_ids)),
+          metadata(std::move(patch_metadata)) {}
 
     std::size_t size() const noexcept { return face_ids.size(); }
     bool empty() const noexcept { return face_ids.empty(); }

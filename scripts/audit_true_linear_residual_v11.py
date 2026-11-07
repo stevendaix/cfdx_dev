@@ -19,7 +19,7 @@ from scipy.sparse.linalg import splu
 def audit(prefix: Path, target: float = 1.0e-11) -> dict:
     if not np.isfinite(target) or target <= 0:
         raise ValueError("target must be positive and finite")
-    matrix = mmread(str(prefix) + ".mtx").tocsr()
+    matrix = mmread(str(prefix) + ".mtx", spmatrix=True).tocsr()
     rhs = np.loadtxt(str(prefix) + ".rhs", ndmin=1)
     n = matrix.shape[0]
     if n == 0 or matrix.shape != (n, n) or rhs.shape != (n,):

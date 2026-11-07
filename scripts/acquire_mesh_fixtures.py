@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Acquire N10 external mesh fixtures deterministically from pinned sources.
 
 The manifest is the source of truth. This tool never changes the manifest and
@@ -32,7 +31,7 @@ def parse_manifest(path: Path) -> list[dict[str, str]]:
         if line in {"sources:", "fixtures:"}:
             section = line[:-1]
             continue
-        if line.startswith("version:") or line.startswith("schema:"):
+        if line.startswith(("version:", "schema:")):
             continue
         if line.startswith("- id:"):
             if section == "fixtures":
@@ -62,7 +61,7 @@ def parse_sources(path: Path) -> dict[str, dict[str, str]]:
                 current = None
             section = line[:-1]
             continue
-        if line.startswith("version:") or line.startswith("schema:"):
+        if line.startswith(("version:", "schema:")):
             continue
         if section == "sources" and line.startswith("- id:"):
             if current is not None:
@@ -97,7 +96,9 @@ def sha256_tree(path: Path) -> str:
     return digest.hexdigest()
 
 
-def verify_sha256(path: Path, expected: str | None, fixture_id: str, *, directory: bool = False) -> str:
+def verify_sha256(
+    path: Path, expected: str | None, fixture_id: str, *, directory: bool = False
+) -> str:
     actual = sha256_tree(path) if directory else sha256(path)
     if expected not in {None, "", "null"} and actual.lower() != expected.lower():
         fail(
@@ -118,11 +119,16 @@ def is_lfs_pointer(path: Path) -> bool:
 def github_media_url(repository: str, ref: str, relative_path: str) -> str:
     owner_repo = repository.removeprefix("https://github.com/").rstrip("/")
     encoded_path = quote(relative_path, safe="/")
-    return f"https://media.githubusercontent.com/media/{owner_repo}/{ref}/{encoded_path}"
+    return (
+        f"https://media.githubusercontent.com/media/{owner_repo}/{ref}/{encoded_path}"
+    )
 
 
 def download_url(url: str, destination: Path) -> None:
-    with urllib.request.urlopen(url, timeout=30) as response, destination.open("wb") as out:
+    with (
+        urllib.request.urlopen(url, timeout=30) as response,
+        destination.open("wb") as out,
+    ):
         shutil.copyfileobj(response, out)
 
 
@@ -157,29 +163,76 @@ def acquire_file(source: dict[str, str], relative_path: str, destination: Path) 
                     f"fixture {relative_path}: GitHub LFS media endpoint still returned "
                     "a pointer; actual payload bytes were not acquired"
                 )
-    except Exception as exc:
+    except OSError as exc:
         destination.unlink(missing_ok=True)
         if str(exc).startswith("fixture "):
             fail(str(exc))
         fail(f"download failed for {relative_path}: {exc}")
 
 
-def acquire_directory(source: dict[str, str], relative_path: str, destination: Path) -> None:
+def acquire_directory(
+    source: dict[str, str], relative_path: str, destination: Path
+) -> None:
     repository = source.get("repository", "")
     ref = source.get("ref", "")
     if not repository or repository == "null" or not ref:
-        fail(f"source {source['id']}: repository/ref required for directory acquisition")
+        fail(
+            f"source {source['id']}: repository/ref required for directory acquisition"
+        )
     if destination.exists():
         shutil.rmtree(destination)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="cfdx-n10-fixture-") as tmp:
         checkout = Path(tmp) / "repo"
         try:
-            subprocess.run(["git", "init", "--quiet", str(checkout)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            subprocess.run(["git", "-C", str(checkout), "remote", "add", "origin", repository], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            subprocess.run(["git", "-C", str(checkout), "fetch", "--filter=blob:none", "--depth", "1", "origin", ref], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            subprocess.run(["git", "-C", str(checkout), "sparse-checkout", "set", "--no-cone", relative_path], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            subprocess.run(["git", "-C", str(checkout), "checkout", "--detach", "FETCH_HEAD"], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            subprocess.run(
+                ["git", "init", "--quiet", "--initial-branch=main", str(checkout)],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(checkout), "remote", "add", "origin", repository],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(checkout),
+                    "fetch",
+                    "--filter=blob:none",
+                    "--depth",
+                    "1",
+                    "origin",
+                    ref,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(checkout),
+                    "sparse-checkout",
+                    "set",
+                    "--no-cone",
+                    relative_path,
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(checkout), "checkout", "--detach", "FETCH_HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
         except (OSError, subprocess.CalledProcessError) as exc:
             fail(f"git acquisition failed for {relative_path}: {exc}")
         source_dir = checkout / relative_path
@@ -190,11 +243,16 @@ def acquire_directory(source: dict[str, str], relative_path: str, destination: P
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--manifest", type=Path, default=Path("tests/fixtures/mesh_sources.yaml"))
+    parser.add_argument(
+        "--manifest", type=Path, default=Path("tests/fixtures/mesh_sources.yaml")
+    )
     parser.add_argument("--fixture", action="append", dest="fixtures")
     parser.add_argument("--output-root", type=Path, default=Path("build/n10-fixtures"))
-    parser.add_argument("--allow-unverified", action="store_true",
-                        help="permit acquisition when manifest sha256 is null; never marks it verified")
+    parser.add_argument(
+        "--allow-unverified",
+        action="store_true",
+        help="permit acquisition when manifest sha256 is null; never marks it verified",
+    )
     args = parser.parse_args()
 
     sources = parse_sources(args.manifest)
@@ -205,9 +263,13 @@ def main() -> int:
         if fixture["id"] not in selected:
             continue
         if fixture.get("source") == "ansys-vmfl":
-            fail(f"fixture {fixture['id']}: proprietary source requires an authorized external artifact")
+            fail(
+                f"fixture {fixture['id']}: proprietary source requires an authorized external artifact"
+            )
         if fixture.get("sha256") in {None, "null"} and not args.allow_unverified:
-            fail(f"fixture {fixture['id']}: sha256 is null; use --allow-unverified only for acquisition staging")
+            fail(
+                f"fixture {fixture['id']}: sha256 is null; use --allow-unverified only for acquisition staging"
+            )
         source = sources.get(fixture.get("source", ""))
         if source is None:
             fail(f"fixture {fixture['id']}: unknown source {fixture.get('source')}")
@@ -218,9 +280,13 @@ def main() -> int:
             acquire_directory(source, relative, destination)
         else:
             acquire_file(source, relative, destination)
-        actual = verify_sha256(destination, fixture.get("sha256"), fixture["id"], directory=is_directory)
+        actual = verify_sha256(
+            destination, fixture.get("sha256"), fixture["id"], directory=is_directory
+        )
         kind = "directory" if is_directory else "file"
-        print(f"{fixture['id']}: acquired {kind} {destination} sha256={actual} expected={fixture.get('sha256', 'null')}")
+        print(
+            f"{fixture['id']}: acquired {kind} {destination} sha256={actual} expected={fixture.get('sha256', 'null')}"
+        )
     return 0
 
 

@@ -77,7 +77,7 @@ make_validation_face_flux(
         cfdx::core::Vec3 uf;
         U.get(o, uf.x, uf.y, uf.z);
 
-        const int n = own.neighbour(f);
+        const auto n = own.neighbour(f);
         if (n >= 0) {
             cfdx::core::Vec3 un;
             U.get(static_cast<std::size_t>(n), un.x, un.y, un.z);
@@ -127,7 +127,7 @@ inline void exercise_new_velocity_bc_contract(
             mesh, geometry.face_centres, constraints, field, 0.0, &mass_flux);
 
         for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
-            const int n = mesh.ownership().neighbour(face);
+            const auto n = mesh.ownership().neighbour(face);
             if (n >= 0) continue;
             const std::size_t patch = geometry.face_patch[face];
             if (patch >= mesh.boundary().n_patches()) continue;

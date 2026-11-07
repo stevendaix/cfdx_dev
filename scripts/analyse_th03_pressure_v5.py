@@ -18,7 +18,7 @@ from scipy.sparse.linalg import LinearOperator, onenormest, splu
 def analyse(prefix: Path, target: float = 1e-11) -> dict:
     if not np.isfinite(target) or target <= 0:
         raise ValueError("target must be finite and positive")
-    matrix = mmread(str(prefix) + ".mtx").tocsc()
+    matrix = mmread(str(prefix) + ".mtx", spmatrix=True).tocsc()
     rhs = np.loadtxt(str(prefix) + ".rhs", ndmin=1)
     if matrix.shape[0] != matrix.shape[1] or matrix.shape[0] != len(rhs):
         raise ValueError("invalid matrix/right-hand-side dimensions")

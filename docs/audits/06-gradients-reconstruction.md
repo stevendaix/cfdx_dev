@@ -134,3 +134,6 @@ physique SST/NACA n'est revendiqué par la PR #1172.
 - 2026-11-04 — PR #1172 : contrat minimum-norm LS rang-déficient, WLS contraint
   aux frontières et limites de qualification explicités ; aucune promotion
   des campagnes N2/SST n'est induite par les tests unitaires.
+
+## Note d'implémentation — sûreté des indices
+Les boucles et tableaux du noyau WLS utilisent des indices non signés (`std::size_t`) cohérents avec les dimensions des conteneurs C++. Cette convention évite les conversions signées implicites lors de l'accès aux colonnes de la factorisation de Jacobi. Elle ne modifie ni l'ordre des opérations flottantes, ni le rang retenu, ni les seuils de troncature, ni la formulation du gradient. Toute conversion de dimension vers un type entier plus étroit doit rester précédée d'une vérification de plage.

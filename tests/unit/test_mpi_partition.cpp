@@ -126,13 +126,13 @@ int main() {
         m.points().set(10, 2.0, 0.0, 1.0);
         m.points().set(11, 3.0, 0.0, 1.0);
 
-        for (int i = 0; i < 4; ++i) {
-            m.faces().push_face({static_cast<std::size_t>(i), static_cast<std::size_t>(i + 3), static_cast<std::size_t>(i + 4), static_cast<std::size_t>(i + 1)});
-            m.faces().push_face({static_cast<std::size_t>(i + 4), static_cast<std::size_t>(i + 7), static_cast<std::size_t>(i + 8), static_cast<std::size_t>(i + 5)});
+        for (std::size_t i = 0; i < 4; ++i) {
+            m.faces().push_face({i, i + 3, i + 4, i + 1});
+            m.faces().push_face({i + 4, i + 7, i + 8, i + 5});
         }
 
         m.ownership().resize(8);
-        for (int i = 0; i < 8; ++i) {
+        for (std::size_t i = 0; i < 8; ++i) {
             m.ownership().set_owner(i, i/2);
             m.ownership().set_neighbour(i, FaceOwnership::BOUNDARY);
         }
@@ -200,8 +200,8 @@ int main() {
 
             // Every receive entry contains a global owner-cell slot. After
             // exchange it must contain the value sent by that owner rank.
-            for (int owner_rank = 0; owner_rank < 2; ++owner_rank) {
-                if (owner_rank == rank) continue;
+            for (std::size_t owner_rank = 0; owner_rank < 2; ++owner_rank) {
+                if (static_cast<int>(owner_rank) == rank) continue;
                 for (const int cell : plan.recv_cells[owner_rank])
                     EXPECT_NEAR(values(static_cast<std::size_t>(cell)),
                                 static_cast<double>(owner_rank), 1e-14);
@@ -212,13 +212,14 @@ int main() {
     run_case("mpi_halo_plan_rejects_malformed_counts", []() {
         const int size = mpi_size(MPI_COMM_WORLD);
         HaloPlan plan;
-        plan.send_faces.resize(size);
-        plan.recv_faces.resize(size);
-        plan.send_cells.resize(size);
-        plan.recv_cells.resize(size);
+        const auto peer_count = static_cast<std::size_t>(size);
+        plan.send_faces.resize(peer_count);
+        plan.recv_faces.resize(peer_count);
+        plan.send_cells.resize(peer_count);
+        plan.recv_cells.resize(peer_count);
 
         if (size >= 2) {
-            plan.send_faces[1].push_back(0);
+            plan.send_faces[1u].push_back(0);
             bool rejected = false;
             try {
                 validate_halo_plan(plan, size);
@@ -232,14 +233,15 @@ int main() {
     run_case("mpi_halo_plan_rejects_negative_indices", []() {
         const int size = mpi_size(MPI_COMM_WORLD);
         HaloPlan plan;
-        plan.send_faces.resize(size);
-        plan.recv_faces.resize(size);
-        plan.send_cells.resize(size);
-        plan.recv_cells.resize(size);
+        const auto peer_count = static_cast<std::size_t>(size);
+        plan.send_faces.resize(peer_count);
+        plan.recv_faces.resize(peer_count);
+        plan.send_cells.resize(peer_count);
+        plan.recv_cells.resize(peer_count);
 
         if (size >= 2) {
-            plan.send_faces[1].push_back(-1);
-            plan.send_cells[1].push_back(0);
+            plan.send_faces[1u].push_back(-1);
+            plan.send_cells[1u].push_back(0);
             bool rejected = false;
             try {
                 validate_halo_plan(plan, size);
@@ -256,16 +258,17 @@ int main() {
             return;
 
         HaloPlan plan;
-        plan.send_faces.resize(size);
-        plan.recv_faces.resize(size);
-        plan.send_cells.resize(size);
-        plan.recv_cells.resize(size);
+        const auto peer_count = static_cast<std::size_t>(size);
+        plan.send_faces.resize(peer_count);
+        plan.recv_faces.resize(peer_count);
+        plan.send_cells.resize(peer_count);
+        plan.recv_cells.resize(peer_count);
         // Keep send/receive cardinalities paired so plan validation passes;
         // the index itself is deliberately outside the field bounds.
-        plan.send_faces[1].push_back(0);
-        plan.recv_faces[1].push_back(0);
-        plan.send_cells[1].push_back(1);
-        plan.recv_cells[1].push_back(1);
+        plan.send_faces[1u].push_back(0);
+        plan.recv_faces[1u].push_back(0);
+        plan.send_cells[1u].push_back(1);
+        plan.recv_cells[1u].push_back(1);
 
         Field<double, Location::CELL> values(1, "phi", "1", 1);
         values.fill(0.0);
@@ -286,14 +289,15 @@ int main() {
 
         const int rank = mpi_rank(MPI_COMM_WORLD);
         HaloPlan plan;
-        plan.send_faces.resize(size);
-        plan.recv_faces.resize(size);
-        plan.send_cells.resize(size);
-        plan.recv_cells.resize(size);
+        const auto peer_count = static_cast<std::size_t>(size);
+        plan.send_faces.resize(peer_count);
+        plan.recv_faces.resize(peer_count);
+        plan.send_cells.resize(peer_count);
+        plan.recv_cells.resize(peer_count);
 
         if (rank == 0) {
-            plan.send_faces[1].push_back(0);
-            plan.send_cells[1].push_back(0);
+            plan.send_faces[1u].push_back(0);
+            plan.send_cells[1u].push_back(0);
         }
 
         Field<double, Location::CELL> values(1, "phi", "1", 1);
@@ -319,9 +323,9 @@ int main() {
         constexpr int n_cells = 4;
         constexpr int n_faces = 5;
         m.points().resize(20);
-        for (int i = 0; i < 5; ++i) {
+        for (std::size_t i = 0; i < 5; ++i) {
             const double x = static_cast<double>(i);
-            const std::size_t b = static_cast<std::size_t>(4 * i);
+            const std::size_t b = 4 * i;
             m.points().set(b + 0, x, 0.0, 0.0);
             m.points().set(b + 1, x, 1.0, 0.0);
             m.points().set(b + 2, x, 1.0, 1.0);
@@ -332,10 +336,11 @@ int main() {
             m.faces().push_face({b + 0, b + 1, b + 2, b + 3});
         }
         m.ownership().resize(n_faces);
-        for (int f = 0; f < n_faces; ++f) {
-            m.ownership().set_owner(f, f == 4 ? 3 : f);
+        for (std::size_t f = 0; f < static_cast<std::size_t>(n_faces); ++f) {
+            m.ownership().set_owner(f, f == 4 ? 3u : f);
             m.ownership().set_neighbour(
-                f, (f == 0 || f == 4) ? FaceOwnership::BOUNDARY : f - 1);
+                f, (f == 0 || f == 4) ? FaceOwnership::BOUNDARY
+                                      : static_cast<std::int64_t>(f - 1));
         }
         m.cells().push_cell({0, 1});
         m.cells().push_cell({1, 2});
@@ -391,10 +396,11 @@ int main() {
             m.faces().push_face({b + 0, b + 1, b + 2, b + 3});
         }
         m.ownership().resize(5);
-        for (int f = 0; f < 5; ++f) {
-            m.ownership().set_owner(f, f == 4 ? 3 : f);
+        for (std::size_t f = 0; f < 5; ++f) {
+            m.ownership().set_owner(f, f == 4 ? 3u : f);
             m.ownership().set_neighbour(
-                f, (f == 0 || f == 4) ? FaceOwnership::BOUNDARY : f - 1);
+                f, (f == 0 || f == 4) ? FaceOwnership::BOUNDARY
+                                      : static_cast<std::int64_t>(f - 1));
         }
         m.cells().push_cell({0, 1});
         m.cells().push_cell({1, 2});

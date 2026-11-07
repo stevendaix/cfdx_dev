@@ -119,7 +119,12 @@ public:
     const std::string& name()const noexcept{return meta_.name;}
     Location loc()const noexcept{return meta_.location;}
 
-    void fill(T value){std::fill(data_.begin(),data_.begin()+n_,value);if(dim_>1)for(std::size_t c=1;c<dim_;++c)std::fill(data_.begin()+c*n_,data_.begin()+(c+1)*n_,value);}
+    void fill(T value){
+        if (n_ == 0) return;
+        std::fill_n(data_.data(), n_, value);
+        for (std::size_t c = 1; c < dim_; ++c)
+            std::fill_n(data_.data() + c * n_, n_, value);
+    }
     void resize(std::size_t n){n_=n;allocate_storage();}
     void clear(){n_=0;data_.clear();component_ptrs_.clear();}
     const T* const* data()const noexcept{return component_ptrs_.data();}

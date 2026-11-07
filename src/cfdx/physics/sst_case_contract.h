@@ -79,7 +79,8 @@ inline void validate_sst_case_prerequisites(
     validate_turbulence_controls(controls);
 
     std::string model;
-    for (const unsigned char ch : setup.turbulence_model) {
+    for (const char raw_ch : setup.turbulence_model) {
+        const auto ch = static_cast<unsigned char>(raw_ch);
         if (std::isalnum(ch))
             model.push_back(static_cast<char>(std::tolower(ch)));
     }

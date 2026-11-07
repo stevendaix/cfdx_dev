@@ -66,7 +66,7 @@ int main() {
             NativeMGRPreconditioner::FineRelaxation::ILU0);
         EXPECT_TRUE(mgr.setup(assemble(4.0,3.0)));
         Vector rhs(8,0.0), expected(8,0.0);
-        for(std::size_t i=0;i<8;++i) rhs(i)=0.35+0.17*i;
+        for(std::size_t i=0;i<8;++i) rhs(i)=0.35+0.17*static_cast<double>(i);
         EXPECT_TRUE(mgr.apply(rhs,expected));
         Vector in_place=rhs;
         EXPECT_TRUE(mgr.apply(in_place,in_place));

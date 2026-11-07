@@ -261,8 +261,8 @@ RunResult run_couette_channel(
                       << " bounded=" << (bounded ? "true" : "false")
                       << " gradp_linf=" << gradp_linf
                       << " gradp_l2=" << std::sqrt(
-                             gradp_l2_sum / std::max<std::size_t>(
-                                 callback_mesh.n_cells(), 1))
+                             gradp_l2_sum / static_cast<double>(std::max<std::size_t>(
+                                 callback_mesh.n_cells(), 1)))
                       << " U_linf=" << u_linf
                       << " reconstructed_continuity=" << reconstructed_cont_linf
                       << "\n";

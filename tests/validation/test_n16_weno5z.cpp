@@ -32,7 +32,7 @@ void smooth_order(){
     for(const auto n:ns){
         const double h=1.0/static_cast<double>(n);
         std::vector<double> a(n);
-        for(std::size_t i=0;i<n;++i) a[i]=sine_average(i*h,h);
+        for(std::size_t i=0;i<n;++i) a[i]=sine_average(static_cast<double>(i)*h,h);
         double s=0.0; std::size_t count=0;
         for(std::size_t i=2;i+2<n;++i){
             const std::array<double,5> u{{a[i-2],a[i-1],a[i],a[i+1],a[i+2]}};

@@ -22,7 +22,7 @@ struct LinearOperator {
     std::function<void(const Vector&, Vector&)> apply;
     // Optional original-precision application used only for certification.
     // Matrix-free callers that omit it are certified against apply() itself.
-    std::function<void(const Vector&, Vector&)> apply_fp64;
+    std::function<void(const Vector&, Vector&)> apply_fp64{};
 };
 
 inline SolverResult solve_gmres(
@@ -231,11 +231,11 @@ inline SolverResult solve_gmres(
         std::fill(w.g.begin(), w.g.end(), 0.0);
         w.g[0] = beta;
 
-        int used = 0;
+        std::size_t used = 0;
         double estimated_residual = beta;
         bool arnoldi_breakdown = false;
 
-        for (int j = 0; j < current_restart && iterations < max_iter; ++j) {
+        for (std::size_t j = 0; j < static_cast<std::size_t>(current_restart) && iterations < max_iter; ++j) {
             if (preconditioner) {
                 for (std::size_t i = 0; i < n; ++i) w.z(i) = w.v(j)[i];
                 if (!preconditioner->apply(w.z, w.vout)) {
@@ -271,14 +271,14 @@ inline SolverResult solve_gmres(
             // systems and substantially improves the Hessenberg relation.
             // Use the same owned-entry/MPI reduction contract as Krylov norms.
             // Ghost copies are updated, but never double-counted in projections.
-            for (int i = 0; i <= j; ++i) {
+            for (std::size_t i = 0; i <= j; ++i) {
                 const double* vi = w.v(static_cast<std::size_t>(i));
                 const double h = krylov_dot_view(
                     vi, w.w.data(), n, SolverPrecision::FP64, controls.reduction);
                 w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) = h;
                 for (std::size_t k = 0; k < n; ++k) w.w(k) -= h * vi[k];
             }
-            for (int i = 0; i <= j; ++i) {
+            for (std::size_t i = 0; i <= j; ++i) {
                 const double* vi = w.v(static_cast<std::size_t>(i));
                 const double correction = krylov_dot_view(
                     vi, w.w.data(), n, SolverPrecision::FP64, controls.reduction);
@@ -319,7 +319,7 @@ inline SolverResult solve_gmres(
                 for (std::size_t k = 0; k < n; ++k) vnext[k] = w.w(k) / hnext;
             }
 
-            for (int i = 0; i < j; ++i) {
+            for (std::size_t i = 0; i < j; ++i) {
                 const double h0 = w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j));
                 const double h1 = w.H(static_cast<std::size_t>(i + 1), static_cast<std::size_t>(j));
                 w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) =
@@ -388,14 +388,14 @@ inline SolverResult solve_gmres(
         if (used == 0) break;
 
         std::fill(w.y.begin(), w.y.end(), 0.0);
-        for (int i = used - 1; i >= 0; --i) {
+        for (std::size_t i = used; i-- > 0;) {
             double sum = w.g[static_cast<std::size_t>(i)];
-            for (int j = i + 1; j < used; ++j)
+            for (std::size_t j = i + 1; j < used; ++j)
                 sum -= w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(j)) *
                        w.y[static_cast<std::size_t>(j)];
             const double diag = w.H(static_cast<std::size_t>(i), static_cast<std::size_t>(i));
             double h_scale = std::abs(diag);
-            for (int k = 0; k < used; ++k)
+            for (std::size_t k = 0; k < used; ++k)
                 h_scale = std::max(
                     h_scale,
                     std::abs(w.H(static_cast<std::size_t>(k), static_cast<std::size_t>(i))));
@@ -430,7 +430,7 @@ inline SolverResult solve_gmres(
             w.y[static_cast<std::size_t>(i)] = sum / diag;
         }
 
-        for (int j = 0; j < used; ++j) {
+        for (std::size_t j = 0; j < used; ++j) {
             const double alpha = w.y[static_cast<std::size_t>(j)];
             const double* zj = w.zv(static_cast<std::size_t>(j));
             for (std::size_t i = 0; i < n; ++i) x(i) += alpha * zj[i];

@@ -57,7 +57,7 @@ inline WallFaceTraction reconstruct_wall_face_traction(
     std::array<Vec3, 3> corrected = cell_velocity_gradients;
     const double cell_u[3] = {cell_velocity.x, cell_velocity.y, cell_velocity.z};
     const double wall_u[3] = {wall_velocity.x, wall_velocity.y, wall_velocity.z};
-    for (int i = 0; i < 3; ++i) {
+    for (std::size_t i = 0; i < 3; ++i) {
         const double defect = wall_u[i] - cell_u[i] - corrected[i].dot(d);
         corrected[i] += d * (defect/d2);
     }

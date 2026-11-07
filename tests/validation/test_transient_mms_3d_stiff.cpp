@@ -36,13 +36,13 @@ const double kPi = std::acos(-1.0);
 struct Slab { Mesh mesh; GeometryCache geometry; };
 Slab make_slab(std::size_t n)
 {
-    const double h = 1.0 / n;
+    const double h = 1.0 / static_cast<double>(n);
     Mesh m;
     m.points().resize(4 * (n + 1));
     const double yz[4][2] = {{0,0},{1,0},{1,1},{0,1}};
     for (std::size_t i = 0; i <= n; ++i)
         for (unsigned q = 0; q < 4; ++q)
-            m.points().set(4 * i + q, i * h, yz[q][0], yz[q][1]);
+            m.points().set(4 * i + q, static_cast<double>(i) * h, yz[q][0], yz[q][1]);
     std::vector<std::size_t> cross(n + 1);
     const auto cf = [&](std::size_t i) {
         const std::size_t id = m.faces().n_faces();
@@ -161,7 +161,7 @@ int main()
             const double mu3 = 3.0 * kPi * kPi;
             std::vector<double> errs;
             for (const std::size_t n : {8u, 16u, 32u, 64u}) {
-                const double h = 1.0 / n;
+                const double h = 1.0 / static_cast<double>(n);
                 const double mu_disc = 3.0 * (2.0 / (h * h)) * (1.0 - std::cos(kPi * h));
                 errs.push_back(std::abs(mu_disc - mu3));
                 std::cout << "N5D_SPATIAL3 n=" << n << " err=" << errs.back();

@@ -60,13 +60,13 @@ struct Grid { Mesh mesh; GeometryCache geometry; };
 Grid make_slab(std::size_t n)
 {
     if (n < 4) throw std::invalid_argument("make_slab: n >= 4");
-    const double h = 1.0 / n;
+    const double h = 1.0 / static_cast<double>(n);
     Mesh m;
     m.points().resize(4 * (n + 1));
     const double yz[4][2] = {{0,0},{1,0},{1,1},{0,1}};
     for (std::size_t i = 0; i <= n; ++i)
         for (unsigned q = 0; q < 4; ++q)
-            m.points().set(4 * i + q, i * h, yz[q][0], yz[q][1]);
+            m.points().set(4 * i + q, static_cast<double>(i) * h, yz[q][0], yz[q][1]);
 
     std::vector<std::size_t> cross(n + 1);
     const auto cross_face = [&](std::size_t i) {
@@ -298,7 +298,7 @@ int main()
         {
             std::vector<double> errs;
             for (const std::size_t n : {16u, 32u, 64u, 128u}) {
-                const double h = 1.0 / n;
+                const double h = 1.0 / static_cast<double>(n);
                 const double mu_disc = (2.0 / (h * h)) * (1.0 - std::cos(kPi * h));
                 errs.push_back(std::abs(mu_disc - kMu));
                 std::cout << "N5C_SPATIAL_EIG n=" << n << " err=" << errs.back();
@@ -317,7 +317,7 @@ int main()
             std::vector<double> errs;
             for (const std::size_t n : {32u, 64u, 128u, 256u}) {
                 const Grid g = make_slab(n);
-                const double h = 1.0 / n;
+                const double h = 1.0 / static_cast<double>(n);
                 const double dt = (h * h) / 16.0;
                 const auto init = node_field(g, 0.0);
                 const auto fin = integrate_heat(g, T, dt, TimeScheme::CRANK_NICOLSON);
@@ -376,7 +376,7 @@ int main()
             std::vector<double> errs;
             for (const std::size_t n : {32u, 64u, 128u, 256u}) {
                 const Grid g = make_slab(n);
-                const double h = 1.0 / n;
+                const double h = 1.0 / static_cast<double>(n);
                 const double dt = (h * h) / 16.0;
                 const auto init = node_field(g, 0.0);
                 const auto fin = integrate_heat(g, T, dt, TimeScheme::CRANK_NICOLSON);
@@ -471,7 +471,6 @@ int main()
         // 6. Bootstrap restart study: gap is O(dt) and decreases.
         {
             const Grid g = make_slab(128);
-            const double h = 1.0 / 128.0;
             const double u = 1.0;
             const double T = 0.03;
             const std::size_t ck_step = 20;

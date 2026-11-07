@@ -9,7 +9,7 @@
 #include <utility>
 
 namespace cfdx::core {
-namespace {
+namespace detail {
 
 class OwnedSparseOperator final : public LinearOperatorBase {
 public:
@@ -34,7 +34,7 @@ private:
     SparseMatrix matrix_;
 };
 
-} // namespace
+} // namespace detail
 
 struct NativeAMGPreconditioner::Impl {
     explicit Impl(NativeAMGMethod selected_method, bool use_constant_null_space,
@@ -57,7 +57,7 @@ struct NativeAMGPreconditioner::Impl {
     double prolongator_filter = 0.0;
     std::size_t cf_interpolation_limit = 0;
     AMGMemoryPolicy policy = AMGMemoryPolicy::Balanced;
-    std::unique_ptr<OwnedSparseOperator> op;
+    std::unique_ptr<detail::OwnedSparseOperator> op;
     std::unique_ptr<MatrixFreeVcyclePreconditioner> amg;
     std::string error;
     std::size_t hierarchy_builds = 0;
@@ -136,7 +136,7 @@ bool NativeAMGPreconditioner::setup(const SparseMatrix& matrix) {
         pre_sweeps = 2;
         post_sweeps = 2;
     }
-    auto next_op = std::make_unique<OwnedSparseOperator>(matrix);
+    auto next_op = std::make_unique<detail::OwnedSparseOperator>(matrix);
     auto next_amg = std::make_unique<MatrixFreeVcyclePreconditioner>(
         *next_op, omega, pre_sweeps, post_sweeps, 0.25,
         impl_->policy == AMGMemoryPolicy::Low ? 15 : 25,

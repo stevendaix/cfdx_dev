@@ -25,8 +25,8 @@ Mesh make_channel_mesh(std::size_t nx, std::size_t ny)
     };
     for (std::size_t j = 0; j <= ny; ++j)
         for (std::size_t i = 0; i <= nx; ++i) {
-            const double x = static_cast<double>(i) / nx;
-            const double y = static_cast<double>(j) / ny;
+            const double x = static_cast<double>(i) / static_cast<double>(nx);
+            const double y = static_cast<double>(j) / static_cast<double>(ny);
             mesh.points().set(id(i,j,0), x, y, 0.0);
             mesh.points().set(id(i,j,1), x, y, 1.0);
         }
@@ -72,7 +72,8 @@ Mesh make_channel_mesh(std::size_t nx, std::size_t ny)
         auto end=it+static_cast<std::ptrdiff_t>(mesh.faces().face_size(f));
         double x=0,y=0,z=0; std::size_t n=0;
         for(;it!=end;++it){x+=mesh.points().x(*it);y+=mesh.points().y(*it);z+=mesh.points().z(*it);++n;}
-        x/=n;y/=n;z/=n;
+        const double inverse_vertex_count = 1.0 / static_cast<double>(n);
+        x*=inverse_vertex_count;y*=inverse_vertex_count;z*=inverse_vertex_count;
         if(std::abs(x)<1e-12) inlet.face_ids.push_back(f);
         else if(std::abs(x-1)<1e-12) outlet.face_ids.push_back(f);
         else if(std::abs(y)<1e-12) bottom.face_ids.push_back(f);

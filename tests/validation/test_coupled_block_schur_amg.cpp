@@ -41,7 +41,7 @@ double relres(const SparseMatrix&A,const Vector&x,const Vector&b){auto ax=A.matv
 int main(){
  run_case("coupled_4n_block_schur_uses_pressure_amg",[] {
    const auto A=make_coupled(16); Vector exact(64);
-   for(std::size_t i=0;i<64;++i) exact(i)=std::sin(0.07*(i+1));
+   for(std::size_t i=0;i<64;++i) exact(i)=std::sin(0.07*(static_cast<double>(i)+1.0));
    const auto b=matvec(A,exact); Vector x(64,0.0);
    CoupledBlockSchurAMGPreconditioner pc(16);
    EXPECT_TRUE(pc.setup(A)); EXPECT_TRUE(pc.is_ready());
@@ -64,7 +64,7 @@ int main(){
  });
  run_case("coupled_4n_gmres_converges_with_block_schur_amg",[] {
    const auto A=make_coupled(16); Vector exact(64);
-   for(std::size_t i=0;i<64;++i) exact(i)=std::cos(0.05*(i+1));
+   for(std::size_t i=0;i<64;++i) exact(i)=std::cos(0.05*(static_cast<double>(i)+1.0));
    const auto b=matvec(A,exact); Vector x(64,0.0);
    CoupledBlockSchurAMGPreconditioner pc(16);
    const auto r=solve_gmres(A,b,x,20,200,1e-10,&pc);
@@ -82,7 +82,7 @@ int main(){
    EXPECT_TRUE(pc.is_ready());
    EXPECT_TRUE(pc.pressure_hierarchy_builds()==1);
    Vector exact(4*n);
-   for(std::size_t i=0;i<4*n;++i) exact(i)=std::cos(0.031*(i+1));
+   for(std::size_t i=0;i<4*n;++i) exact(i)=std::cos(0.031*(static_cast<double>(i)+1.0));
    const auto b=matvec(A,exact); Vector x(4*n,0.0);
    const auto r=solve_gmres(A,b,x,20,400,1e-10,&pc);
    const double rr=relres(A,x,b);
@@ -100,7 +100,7 @@ int main(){
 
  run_case("coupled_4n_petsc_style_schur_factorizations",[] {
    const auto A=make_coupled(16); Vector exact(64);
-   for(std::size_t i=0;i<64;++i) exact(i)=std::sin(0.11*(i+1));
+   for(std::size_t i=0;i<64;++i) exact(i)=std::sin(0.11*(static_cast<double>(i)+1.0));
    const auto b=matvec(A,exact);
    const CoupledSchurFactorization modes[] = {
        CoupledSchurFactorization::Diagonal,
@@ -108,7 +108,7 @@ int main(){
        CoupledSchurFactorization::Upper,
        CoupledSchurFactorization::Full};
    Vector rp_only(64,0.0), z_diag(64,0.0), z_lower(64,0.0), z_upper(64,0.0), z_full(64,0.0);
-   for(std::size_t c=0;c<16;++c) rp_only(48+c)=1.0+0.01*c;
+   for(std::size_t c=0;c<16;++c) rp_only(48+c)=1.0+0.01*static_cast<double>(c);
    for(const auto mode : modes) {
      CoupledBlockSchurOptions options;
      options.factorization=mode;
@@ -184,7 +184,7 @@ int main(){
    EXPECT_TRUE(differs);
 
    Vector exact(32);
-   for(std::size_t i=0;i<32;++i) exact(i)=std::cos(0.09*(i+1));
+   for(std::size_t i=0;i<32;++i) exact(i)=std::cos(0.09*(static_cast<double>(i)+1.0));
    const auto b=matvec(A,exact);
    Vector x(32,0.0);
    const auto r=solve_gmres(A,b,x,20,200,1e-10,&block_pc);

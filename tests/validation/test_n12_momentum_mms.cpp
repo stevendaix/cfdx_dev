@@ -50,8 +50,8 @@ Mesh make_channel(std::size_t n)
     const double dy = 1.0 / static_cast<double>(n);
 
     for (std::size_t j = 0; j < n; ++j) {
-        const double y0 = j * dy;
-        const double y1 = (j + 1) * dy;
+        const double y0 = static_cast<double>(j) * dy;
+        const double y1 = static_cast<double>(j + 1) * dy;
         const std::size_t b = 8 * j;
         const double p[8][3] = {
             {0.0,y0,0.0}, {1.0,y0,0.0}, {1.0,y1,0.0}, {0.0,y1,0.0},

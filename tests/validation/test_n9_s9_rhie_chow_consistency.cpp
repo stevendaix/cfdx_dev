@@ -44,7 +44,7 @@ static Mesh make_two_cell_channel()
 
     m.ownership().resize(11);
     for (std::size_t f = 0; f < 11; ++f) {
-        const auto owner = (f == 2 || f >= 7) ? 1 : 0;
+        const std::size_t owner = (f == 2 || f >= 7) ? 1u : 0u;
         m.ownership().set_owner(f, owner);
         m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
     }
@@ -100,7 +100,7 @@ static Mesh make_two_cell_channel_stretched()
 
     m.ownership().resize(11);
     for (std::size_t f = 0; f < 11; ++f) {
-        const auto owner = (f == 2 || f >= 7) ? 1 : 0;
+        const std::size_t owner = (f == 2 || f >= 7) ? 1u : 0u;
         m.ownership().set_owner(f, owner);
         m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
     }
@@ -178,7 +178,7 @@ static Mesh make_two_cell_channel_oblique()
 
     m.ownership().resize(11);
     for (std::size_t f = 0; f < 11; ++f) {
-        const auto owner = (f == 2 || f >= 7) ? 1 : 0;
+        const std::size_t owner = (f == 2 || f >= 7) ? 1u : 0u;
         m.ownership().set_owner(f, owner);
         m.ownership().set_neighbour(f, FaceOwnership::BOUNDARY);
     }

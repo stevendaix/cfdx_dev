@@ -103,8 +103,9 @@ public:
     explicit CellBlockJacobiPreconditioner(std::size_t n_cells) : n_cells_(n_cells) {}
 
     bool setup(const SparseMatrix& A) override {
-        if (n_cells_ == 0 || A.n_rows() != A.n_cols() ||
-            A.n_rows() != 4 * n_cells_)
+        if (n_cells_ == 0 ||
+            n_cells_ > static_cast<std::size_t>(std::numeric_limits<std::uint32_t>::max()) ||
+            A.n_rows() != A.n_cols() || A.n_rows() != 4 * n_cells_)
             return false;
 
         inv_blocks_.assign(n_cells_, {});
@@ -415,8 +416,11 @@ public:
                 }
             }
 
-            schur_row_offsets_[c + 1] =
-                schur_row_offsets_[c] + entries.size();
+            if (entries.size() > static_cast<std::size_t>(
+                    std::numeric_limits<std::uint32_t>::max() - schur_row_offsets_[c]))
+                return false;
+            schur_row_offsets_[c + 1] = schur_row_offsets_[c] +
+                static_cast<std::uint32_t>(entries.size());
         }
 
         schur_columns_.reserve(schur_row_offsets_.back());

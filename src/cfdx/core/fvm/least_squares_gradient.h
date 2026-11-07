@@ -126,10 +126,10 @@ inline Vec3 weighted_least_squares_gradient_robust(
     // by one-sided Jacobi sweeps; no squared condition number is formed.
     std::array<std::array<double,3>,3> V{{
         {{1.0,0.0,0.0}}, {{0.0,1.0,0.0}}, {{0.0,0.0,1.0}}}};
-    for (int sweep = 0; sweep < 40; ++sweep) {
+    for (std::size_t sweep = 0; sweep < 40; ++sweep) {
         bool changed = false;
-        for (int p = 0; p < 2; ++p) {
-            for (int k = p+1; k < 3; ++k) {
+        for (std::size_t p = 0; p < 2; ++p) {
+            for (std::size_t k = p+1; k < 3; ++k) {
                 double alpha = 0.0, beta = 0.0, gamma = 0.0;
                 for (const auto& row : design) {
                     alpha += row[p]*row[p];
@@ -161,17 +161,17 @@ inline Vec3 weighted_least_squares_gradient_robust(
         if (!changed) break;
     }
     std::array<double,3> sigma{};
-    for (int j=0;j<3;++j) {
+    for (std::size_t j=0;j<3;++j) {
         for (const auto& row:design) sigma[j] += row[j]*row[j];
         sigma[j] = std::sqrt(sigma[j]);
     }
-    std::array<int,3> order{{0,1,2}};
+    std::array<std::size_t,3> order{{0,1,2}};
     std::sort(order.begin(),order.end(),
-              [&](int a,int b){return sigma[a]>sigma[b];});
+              [&](std::size_t a,std::size_t b){return sigma[a]>sigma[b];});
     q.scale = sigma[order[0]];
     q.max_pivot = q.scale;
     const double cutoff = 128.0*std::numeric_limits<double>::epsilon()*q.scale;
-    for (int j : order)
+    for (const std::size_t j : order)
         if (sigma[j] > cutoff) ++q.rank;
     // Rounding of polyhedral centres can produce a tiny spurious third
     // singular value on a geometrically planar 2-D extrusion. Do not reject
@@ -180,7 +180,7 @@ inline Vec3 weighted_least_squares_gradient_robust(
     if (requested_dimension == 2 && q.rank == 3 &&
         sigma[order[2]] <= 1e-10 * sigma[order[0]])
         q.rank = 2;
-    const int solve_rank = automatic_rank ? q.rank : requested_dimension;
+    const std::size_t solve_rank = automatic_rank ? static_cast<std::size_t>(q.rank) : static_cast<std::size_t>(requested_dimension);
     q.full_rank = (q.rank == q.dimension);
     q.min_pivot = q.full_rank && solve_rank > 0
         ? sigma[order[solve_rank-1]] : 0.0;
@@ -191,13 +191,13 @@ inline Vec3 weighted_least_squares_gradient_robust(
     if (!automatic_rank && q.rank != requested_dimension)
         fail("robust WLS: stencil rank differs from requested dimension");
     std::array<double,3> g{{0.0,0.0,0.0}};
-    for (int oi=0;oi<solve_rank;++oi) {
-        const int j=order[oi];
+    for (std::size_t oi=0;oi<solve_rank;++oi) {
+        const std::size_t j=order[oi];
         double proj=0.0;
         for (std::size_t row=0;row<design.size();++row)
             proj += design[row][j]*rhs[row];
         const double coeff = proj/(sigma[j]*sigma[j]);
-        for (int k=0;k<3;++k) g[k] += V[k][j]*coeff;
+        for (std::size_t k=0;k<3;++k) g[k] += V[k][j]*coeff;
     }
     if (!std::isfinite(g[0]) || !std::isfinite(g[1]) || !std::isfinite(g[2]))
         fail("robust WLS: non-finite gradient");

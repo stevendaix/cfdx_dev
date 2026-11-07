@@ -34,7 +34,7 @@ void gradient_gauss_reference(
 
 void divergence_reference(
     const double* phi_face,
-    const double* sx, const double* sy, const double* sz,
+    const double*, const double*, const double*,
     const std::size_t* owner, const std::int64_t* neighbour,
     std::size_t n_faces, std::size_t n_cells, double* div)
 {

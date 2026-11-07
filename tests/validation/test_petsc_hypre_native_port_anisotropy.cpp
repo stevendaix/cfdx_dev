@@ -68,8 +68,9 @@ Vector exact_solution(std::size_t nx, std::size_t ny) {
     constexpr double pi = 3.14159265358979323846264;
     for (std::size_t j = 0; j < ny; ++j)
         for (std::size_t i = 0; i < nx; ++i)
-            x(j * nx + i) = 0.25 + std::sin(pi * (i + 0.5) / nx) *
-                                             std::sin(2.0 * pi * (j + 0.5) / ny);
+            x(j * nx + i) = 0.25 +
+                std::sin(pi * (static_cast<double>(i) + 0.5) / static_cast<double>(nx)) *
+                std::sin(2.0 * pi * (static_cast<double>(j) + 0.5) / static_cast<double>(ny));
     return x;
 }
 

@@ -12,12 +12,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        env:
+          GIT_CONFIG_COUNT: 1
+          GIT_CONFIG_KEY_0: init.defaultBranch
+          GIT_CONFIG_VALUE_0: main
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.10"
 
@@ -35,7 +39,8 @@ jobs:
           )
 
           if ((${#python_files[@]} > 0)); then
-            pre-commit run --files "${python_files[@]}" --show-diff-on-failure || status=$?
+            pre-commit run ruff-check --files "${python_files[@]}" --show-diff-on-failure || status=$?
+            pre-commit run ruff-format --files "${python_files[@]}" --show-diff-on-failure || status=$?
           else
             echo "No changed Python files in $CFDX_PRECOMMIT_RANGE; skipping Python hooks."
           fi

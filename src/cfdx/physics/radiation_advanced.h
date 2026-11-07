@@ -538,7 +538,7 @@ inline RadiationAabb radiation_triangle_aabb(const RadiationTriangle& t)
 {
     validate_radiation_triangle_coordinates(t);
     RadiationAabb b;
-    for (int k=0;k<3;++k) {
+    for (std::size_t k=0;k<3;++k) {
         b.lo[k]=std::min({t.a[k],t.b[k],t.c[k]});
         b.hi[k]=std::max({t.a[k],t.b[k],t.c[k]});
     }
@@ -549,7 +549,7 @@ inline RadiationAabb radiation_merge_aabb(const RadiationAabb& a,
                                           const RadiationAabb& b)
 {
     RadiationAabb r;
-    for (int k=0;k<3;++k) {
+    for (std::size_t k=0;k<3;++k) {
         r.lo[k]=std::min(a.lo[k],b.lo[k]);
         r.hi[k]=std::max(a.hi[k],b.hi[k]);
     }
@@ -570,7 +570,7 @@ inline bool radiation_ray_aabb_hit(
 {
     double tmin=0.0;
     double tmax=max_distance;
-    for (int k=0;k<3;++k) {
+    for (std::size_t k=0;k<3;++k) {
         if (std::abs(direction[k])<1e-15) {
             if (origin[k]<box.lo[k] || origin[k]>box.hi[k]) return false;
             continue;
@@ -623,7 +623,7 @@ public:
                      double& distance) const
     {
         double direction_norm_squared=0.0;
-        for (int k=0;k<3;++k) {
+        for (std::size_t k=0;k<3;++k) {
             if (!std::isfinite(origin[k]) || !std::isfinite(direction[k]))
                 throw std::invalid_argument("radiation BVH ray must be finite");
             direction_norm_squared+=direction[k]*direction[k];
@@ -637,7 +637,7 @@ public:
         while (!stack.empty()) {
             const auto ni=stack.back();
             stack.pop_back();
-            const auto& node=nodes_[ni];
+            const auto& node=nodes_[static_cast<std::size_t>(ni)];
             if (!radiation_ray_aabb_hit(origin,direction,node.bounds,distance))
                 continue;
             if (node.leaf()) {
@@ -666,7 +666,9 @@ private:
 
     std::int32_t build_node(std::size_t begin,std::size_t end)
     {
-        const auto id=static_cast<std::int32_t>(nodes_.size());
+        if (nodes_.size() >= static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
+            throw std::length_error("radiation BVH node index overflow");
+        const auto id = nodes_.size();
         nodes_.push_back({});
         RadiationAabb bounds;
         RadiationAabb centroids;
@@ -680,18 +682,20 @@ private:
         nodes_[id].begin=static_cast<std::uint32_t>(begin);
         nodes_[id].count=static_cast<std::uint32_t>(end-begin);
         constexpr std::size_t leaf_size=8;
-        if (end-begin<=leaf_size) return id;
+        if (end-begin<=leaf_size) return static_cast<std::int32_t>(id);
 
         const std::array<double,3> extent{
             centroids.hi[0]-centroids.lo[0],
             centroids.hi[1]-centroids.lo[1],
             centroids.hi[2]-centroids.lo[2]};
-        int axis=0;
+        std::size_t axis=0;
         if (extent[1]>extent[axis]) axis=1;
         if (extent[2]>extent[axis]) axis=2;
         const auto mid=begin+(end-begin)/2;
-        std::nth_element(indices_.begin()+begin,indices_.begin()+mid,
-                         indices_.begin()+end,[&](std::uint32_t a,
+        const auto first = indices_.begin() + static_cast<std::ptrdiff_t>(begin);
+        const auto middle = indices_.begin() + static_cast<std::ptrdiff_t>(mid);
+        const auto last = indices_.begin() + static_cast<std::ptrdiff_t>(end);
+        std::nth_element(first, middle, last,[&](std::uint32_t a,
                                                    std::uint32_t b) {
             const auto ca=radiation_aabb_centroid(
                 radiation_triangle_aabb((*triangles_)[a]));
@@ -702,7 +706,7 @@ private:
         nodes_[id].left=build_node(begin,mid);
         nodes_[id].right=build_node(mid,end);
         nodes_[id].count=0;
-        return id;
+        return static_cast<std::int32_t>(id);
     }
 };
 

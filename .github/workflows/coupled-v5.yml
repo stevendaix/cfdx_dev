@@ -1,0 +1,44 @@
+name: COUPLED V5 build and protocol
+
+on:
+  pull_request:
+    paths:
+      - "CMakeLists.txt"
+      - "tools/benchmarks/**"
+      - ".github/workflows/coupled-v5.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coupled-v5-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-v5:
+    name: Build optional V5 executable and protocol test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build g++ zlib1g-dev libhdf5-dev libglu1-mesa
+
+      - name: Configure with V5 explicitly enabled
+        run: |
+          cmake -S . -B build-v5 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_MPI=OFF \
+            -DCFDX_BUILD_COUPLED_COMPARISON=ON
+
+      - name: Compile the production-captured comparison executable
+        run: cmake --build build-v5 --target cfdx_coupled_production_comparison --parallel 2
+
+      - name: Run V5 protocol self-test
+        run: ctest --test-dir build-v5 -R '^test_coupled_comparison_v5_protocol$' --output-on-failure --no-tests=error

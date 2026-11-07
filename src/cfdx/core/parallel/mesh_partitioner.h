@@ -83,7 +83,7 @@ inline Partition partition_geometric(const Mesh& m, int n_parts, MPI_Comm comm =
                 throw std::invalid_argument("partition_geometric: cell face index out of range");
             centre = centre + face_centres[f];
         }
-        centre = centre * (1.0 / n);
+        centre = centre * (1.0 / static_cast<double>(n));
         cell_centres[c] = centre;
     }
     
@@ -151,12 +151,13 @@ inline Partition partition_geometric(const Mesh& m, int n_parts, MPI_Comm comm =
     // Determine ghost faces (faces shared with other ranks)
     for (std::size_t f = 0; f < n_faces; ++f) {
         const int owner_rank = part.face_owner_rank[f];
-        const int neighbour = own.neighbour(f);
+        const auto neighbour = own.neighbour(f);
         
         if (neighbour >= 0) {
-            if (static_cast<std::size_t>(neighbour) >= n_cells)
+            const auto neighbour_index = static_cast<std::size_t>(neighbour);
+            if (neighbour_index >= n_cells)
                 throw std::invalid_argument("partition_geometric: face neighbour index out of range");
-            const int neighbour_rank = part.cell_rank[neighbour];
+            const int neighbour_rank = part.cell_rank[neighbour_index];
             if (neighbour_rank != owner_rank) {
                 part.face_ghost_rank[f] = neighbour_rank;
             }
@@ -182,10 +183,12 @@ inline HaloPlan build_halo_plan(const Mesh& m, const Partition& part, MPI_Comm c
     const FaceOwnership& own = m.ownership();
     
     HaloPlan plan;
-    plan.send_faces.resize(size);
-    plan.recv_faces.resize(size);
-    plan.send_cells.resize(size);
-    plan.recv_cells.resize(size);
+    if (size <= 0) throw std::runtime_error("build_halo_plan: invalid communicator size");
+    const auto peer_count = static_cast<std::size_t>(size);
+    plan.send_faces.resize(peer_count);
+    plan.recv_faces.resize(peer_count);
+    plan.send_cells.resize(peer_count);
+    plan.recv_cells.resize(peer_count);
     
     for (std::size_t f = 0; f < n_faces; ++f) {
         const int owner_rank = part.face_owner_rank[f];
@@ -193,15 +196,22 @@ inline HaloPlan build_halo_plan(const Mesh& m, const Partition& part, MPI_Comm c
         
         if (ghost_rank >= 0) {
             // Face is shared between owner_rank and ghost_rank
-            const int owner_cell = static_cast<int>(own.owner(f));
-            const int neighbour_cell = static_cast<int>(own.neighbour(f));
+            const auto owner_cell_index = own.owner(f);
+            if (owner_cell_index > static_cast<CellIndex>(std::numeric_limits<int>::max()) ||
+                f > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+                throw std::overflow_error("build_halo_plan: face or cell index exceeds MPI plan range");
+            if (owner_rank < 0 || ghost_rank < 0 || owner_rank >= size || ghost_rank >= size)
+                throw std::out_of_range("build_halo_plan: rank index out of range");
+            const int owner_cell = static_cast<int>(owner_cell_index);
             if (owner_rank == rank) {
-                plan.send_faces[ghost_rank].push_back(static_cast<int>(f));
-                plan.send_cells[ghost_rank].push_back(owner_cell);
+                const auto peer = static_cast<std::size_t>(ghost_rank);
+                plan.send_faces[peer].push_back(static_cast<int>(f));
+                plan.send_cells[peer].push_back(owner_cell);
             }
             if (ghost_rank == rank) {
-                plan.recv_faces[owner_rank].push_back(static_cast<int>(f));
-                plan.recv_cells[owner_rank].push_back(owner_cell);
+                const auto peer = static_cast<std::size_t>(owner_rank);
+                plan.recv_faces[peer].push_back(static_cast<int>(f));
+                plan.recv_cells[peer].push_back(owner_cell);
             }
         }
     }
@@ -219,7 +229,7 @@ inline void validate_halo_plan(const HaloPlan& plan, int size) {
         static_cast<int>(plan.recv_cells.size()) != size)
         throw std::invalid_argument("validate_halo_plan: plan size does not match communicator");
 
-    for (int r = 0; r < size; ++r) {
+    for (std::size_t r = 0; r < static_cast<std::size_t>(size); ++r) {
         if (plan.send_faces[r].size() != plan.send_cells[r].size())
             throw std::invalid_argument("validate_halo_plan: send face/cell counts differ");
         if (plan.recv_faces[r].size() != plan.recv_cells[r].size())
@@ -311,23 +321,25 @@ inline void exchange_halo_faces(
     validate_halo_indices_collective(plan.recv_faces, field.size(), size, comm, "receive face");
     
     // Prepare send buffers
-    std::vector<std::vector<double>> send_buffers(size);
-    for (int r = 0; r < size; ++r) {
-        const auto& faces = plan.send_faces[r];
-        send_buffers[r].resize(checked_mpi_product(faces.size(), dim, "exchange_halo_faces buffer"));
+    const auto peer_count = static_cast<std::size_t>(size);
+    std::vector<std::vector<double>> send_buffers(peer_count);
+    for (std::size_t peer = 0; peer < peer_count; ++peer) {
+        const auto& faces = plan.send_faces[peer];
+        send_buffers[peer].resize(checked_mpi_product(faces.size(), dim, "exchange_halo_faces buffer"));
         for (std::size_t i = 0; i < faces.size(); ++i) {
-            int f = faces[i];
+            const auto f = static_cast<std::size_t>(faces[i]);
             for (std::size_t comp=0; comp<dim; ++comp)
-                send_buffers[r][i*dim+comp]=field(f,comp);
+                send_buffers[peer][i*dim+comp]=field(f,comp);
         }
     }
     
     // Exchange using MPI_Sendrecv
-    for (int r = 0; r < size; ++r) {
+    for (std::size_t peer = 0; peer < peer_count; ++peer) {
+        const int r = static_cast<int>(peer);
         if (r == rank) continue;
         
-        const int send_count = checked_mpi_count(checked_mpi_product(plan.send_faces[r].size(), dim, "exchange_halo_faces send"), "exchange_halo_faces send");
-        const int recv_count = checked_mpi_count(checked_mpi_product(plan.recv_faces[r].size(), dim, "exchange_halo_faces recv"), "exchange_halo_faces recv");
+        const int send_count = checked_mpi_count(checked_mpi_product(plan.send_faces[peer].size(), dim, "exchange_halo_faces send"), "exchange_halo_faces send");
+        const int recv_count = checked_mpi_count(checked_mpi_product(plan.recv_faces[peer].size(), dim, "exchange_halo_faces recv"), "exchange_halo_faces recv");
         int remote_send_count = 0;
         int remote_recv_count = 0;
 
@@ -345,17 +357,17 @@ inline void exchange_halo_faces(
         if (remote_send_count != recv_count || remote_recv_count != send_count)
             throw std::runtime_error("exchange_halo_faces: asymmetric send/recv counts");
 
-        std::vector<double> recv_buffer(recv_count);
+        std::vector<double> recv_buffer(static_cast<std::size_t>(recv_count));
         MPI_Sendrecv(
-            send_buffers[r].data(), send_count, MPI_DOUBLE, r, 0,
+            send_buffers[peer].data(), send_count, MPI_DOUBLE, r, 0,
             recv_buffer.data(), recv_count, MPI_DOUBLE, r, 0,
             comm, &status
         );
         
         // Copy received data back to field
-        const auto& recv_faces = plan.recv_faces[r];
+        const auto& recv_faces = plan.recv_faces[peer];
         for (std::size_t i = 0; i < recv_faces.size(); ++i) {
-            int f = recv_faces[i];
+            const auto f = static_cast<std::size_t>(recv_faces[i]);
             for (std::size_t comp=0; comp<dim; ++comp)
                 field(f,comp)=recv_buffer[i*dim+comp];
         }
@@ -375,10 +387,11 @@ inline void exchange_halo_cells(
     validate_halo_indices_collective(plan.send_cells, field.size(), size, comm, "send cell");
     validate_halo_indices_collective(plan.recv_cells, field.size(), size, comm, "receive cell");
 
-    for(int r=0;r<size;++r) {
-        if(r==rank) continue;
-        const auto& send=plan.send_cells[r];
-        const auto& recv=plan.recv_cells[r];
+    for (std::size_t peer = 0; peer < static_cast<std::size_t>(size); ++peer) {
+        const int r = static_cast<int>(peer);
+        if (r == rank) continue;
+        const auto& send = plan.send_cells[peer];
+        const auto& recv = plan.recv_cells[peer];
         std::vector<double> send_buffer(checked_mpi_product(send.size(), dim, "exchange_halo_cells send buffer"));
         std::vector<double> recv_buffer(checked_mpi_product(recv.size(), dim, "exchange_halo_cells recv buffer"));
         for(std::size_t i=0;i<send.size();++i)

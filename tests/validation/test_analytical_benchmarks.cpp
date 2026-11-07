@@ -86,7 +86,6 @@ OneDimensionalMesh make_channel(std::size_t n, double height)
     m.ownership().resize(m.n_faces());
     std::vector<std::vector<std::size_t>> cell_faces(n);
     for (std::size_t i = 0; i < n; ++i) {
-        const std::size_t b = 8 * i;
         cell_faces[i] = {
             i == 0 ? bottom[0] : internal[i - 1],
             i + 1 == n ? top[0] : internal[i],

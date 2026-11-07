@@ -49,7 +49,7 @@ struct SolverResult {
     double residual_relative = 0.0;
     // Diagnostic evidence sampled during the iteration. This is intentionally
     // observational: it does not alter stopping criteria or Krylov updates.
-    std::vector<SolverDiagnosticSample> diagnostics;
+    std::vector<SolverDiagnosticSample> diagnostics{};
     // Residual-replacement evidence is observational and does not alter
     // convergence criteria. It is used to distinguish Krylov recurrence drift
     // from preconditioner/coarse-space limitations.

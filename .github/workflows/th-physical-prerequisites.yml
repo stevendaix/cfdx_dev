@@ -24,8 +24,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Install native HDF5 development libraries
@@ -95,7 +95,7 @@ jobs:
             -j 2
       - name: Upload prerequisites without claiming turbulent validation
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: th-production-prerequisites-${{ github.sha }}
           path: |

@@ -23,7 +23,7 @@ Grid make_hex_frustum_chain(std::size_t n)
     const double pi=std::acos(-1.0);
     auto pid=[](std::size_t i,std::size_t k){return 6*i+k;};
     for (std::size_t i=0;i<=n;++i) {
-        const double x=static_cast<double>(i)/n;
+        const double x=static_cast<double>(i)/static_cast<double>(n);
         const double r=0.22+0.08*x; // non-affine cross-section: frustum family
         for (std::size_t k=0;k<6;++k) {
             const double a=2.0*pi*static_cast<double>(k)/6.0;

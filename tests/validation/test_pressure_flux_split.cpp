@@ -25,7 +25,7 @@ int main() {
             const double dp = grad.dot(d);
             const double exact = r.x*grad.x*area.x+r.y*grad.y*area.y;
             std::array<PressureFluxSplit,2> schemes;
-            for (int method=0;method<2;++method) {
+            for (std::size_t method=0;method<schemes.size();++method) {
                 schemes[method]=split_pressure_flux(area,d,r,grad,
                     method==0 ? PressureFluxSplitScheme::MINIMUM_CORRECTION :
                                 PressureFluxSplitScheme::OVER_RELAXED);

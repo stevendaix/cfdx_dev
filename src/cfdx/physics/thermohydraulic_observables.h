@@ -147,7 +147,7 @@ inline ThermohydraulicObservableSummary write_thermohydraulic_observables(
                "p_solver_Pa,p_static_Pa,k_m2_s2,omega_1_s,nu_t_m2_s,"
                "temperature_K,wall_distance_m,cell_net_mass_flux_kg_s\n";
         for (std::size_t c = 0; c < cells; ++c) {
-            for (int d = 0; d < 3; ++d)
+            for (std::size_t d = 0; d < 3; ++d)
                 thermohydraulic_check_finite(velocity(c, d), "velocity");
             thermohydraulic_check_finite(pressure(c), "pressure");
             const auto& x = geometry.cell_centres[c];

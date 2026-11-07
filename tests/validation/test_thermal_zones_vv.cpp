@@ -139,7 +139,7 @@ static Mesh asymmetric_two_cell_chain_mesh()
     for (std::size_t i=0;i<2;++i)
         for (std::size_t j=0;j<4;++j) {
             const std::size_t f=3+4*i+j;
-            m.ownership().set_owner(f,static_cast<int>(i));
+            m.ownership().set_owner(f,i);
             m.ownership().set_neighbour(f,FaceOwnership::BOUNDARY);
         }
     m.cells().push_cell({0,1,3,4,5,6});

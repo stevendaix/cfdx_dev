@@ -170,8 +170,12 @@ inline DistributedPoissonResult solve_poisson_mpi(
                 throw std::runtime_error("solve_poisson_mpi: invalid face area");
 
             if (neighbour >= 0) {
-                const std::size_t n = static_cast<std::size_t>(
-                    owner == c ? neighbour : owner);
+                const auto neighbour_index = static_cast<std::uint64_t>(neighbour);
+                const std::size_t n = owner == c
+                    ? static_cast<std::size_t>(neighbour_index)
+                    : owner;
+                if (n >= mesh.n_cells())
+                    throw std::runtime_error("solve_poisson_mpi: neighbour index out of range");
                 const double d =
                     (geometry.cell_centres[n] - geometry.cell_centres[c]).mag();
                 if (!(d > std::numeric_limits<double>::epsilon()) || !std::isfinite(d))

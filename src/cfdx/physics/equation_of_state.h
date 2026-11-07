@@ -250,7 +250,7 @@ public:
         return density(p, T) * R;
     }
 
-    double drho_dp_T(double p, double T) const override {
+    double drho_dp_T(double, double T) const override {
         return 1.0 / (R * T);
     }
 

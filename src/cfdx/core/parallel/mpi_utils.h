@@ -115,13 +115,16 @@ inline double mpi_deterministic_sum(double value, MPI_Comm comm = MPI_COMM_WORLD
 // All-gather for vectors
 template <typename T>
 inline std::vector<T> mpi_allgather(const std::vector<T>& local_data, MPI_Comm comm = MPI_COMM_WORLD) {
-    int rank = mpi_rank(comm);
-    int size = mpi_size(comm);
+    const int size = mpi_size(comm);
+    if (size <= 0) throw std::runtime_error("mpi_allgather: invalid communicator size");
     
     static_assert(std::is_trivially_copyable_v<T>, "mpi_allgather requires trivially copyable T");
-    std::vector<int> recv_counts(size);
-    std::vector<int> displs(size);
+    const auto rank_count = static_cast<std::size_t>(size);
+    std::vector<int> recv_counts(rank_count);
+    std::vector<int> displs(rank_count);
 
+    if (local_data.size() > std::numeric_limits<std::size_t>::max() / sizeof(T))
+        throw std::overflow_error("mpi_allgather: local byte count overflow");
     const auto local_bytes = local_data.size() * sizeof(T);
     if (local_bytes > static_cast<std::size_t>(std::numeric_limits<int>::max()))
         throw std::overflow_error("mpi_allgather: local buffer too large for MPI int counts");
@@ -130,13 +133,15 @@ inline std::vector<T> mpi_allgather(const std::vector<T>& local_data, MPI_Comm c
     MPI_Allgather(&local_count, 1, MPI_INT, recv_counts.data(), 1, MPI_INT, comm);
 
     displs[0] = 0;
-    for (int i = 1; i < size; ++i) {
+    for (std::size_t i = 1; i < rank_count; ++i) {
         if (recv_counts[i - 1] > std::numeric_limits<int>::max() - displs[i - 1])
             throw std::overflow_error("mpi_allgather: receive buffer too large for MPI int displacements");
         displs[i] = displs[i - 1] + recv_counts[i - 1];
     }
 
-    const int total_bytes = displs[size - 1] + recv_counts[size - 1];
+    if (recv_counts.back() > std::numeric_limits<int>::max() - displs.back())
+        throw std::overflow_error("mpi_allgather: total receive buffer exceeds MPI int range");
+    const int total_bytes = displs.back() + recv_counts.back();
     if (total_bytes < 0 || static_cast<std::size_t>(total_bytes) % sizeof(T) != 0)
         throw std::runtime_error("mpi_allgather: invalid byte count alignment");
     std::vector<T> result(static_cast<std::size_t>(total_bytes) / sizeof(T));
@@ -165,13 +170,19 @@ inline void mpi_bcast(T* data, int count, int root = 0, MPI_Comm comm = MPI_COMM
 
 // Broadcast string
 inline std::string mpi_bcast_string(const std::string& str, int root = 0, MPI_Comm comm = MPI_COMM_WORLD) {
-    int len = static_cast<int>(str.size());
-    mpi_bcast(&len, 1, root, comm);
-    
-    std::string result(len, '\0');
-    if (len > 0) {
-        mpi_bcast(&result[0], len, root, comm);
+    int len = 0;
+    if (mpi_rank(comm) == root) {
+        if (str.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
+            throw std::overflow_error("mpi_bcast_string: string exceeds MPI int count limit");
+        len = static_cast<int>(str.size());
     }
+    mpi_bcast(&len, 1, root, comm);
+    if (len < 0)
+        throw std::runtime_error("mpi_bcast_string: received negative string length");
+
+    std::string result(static_cast<std::size_t>(len), '\0');
+    if (len > 0)
+        mpi_bcast(result.data(), len, root, comm);
     return result;
 }
 

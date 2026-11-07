@@ -6,6 +6,8 @@
 
 #include <array>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <numeric>
 #include <iostream>
 #include <stdexcept>
@@ -20,6 +22,8 @@ static Mesh one_d_mesh(std::size_t n, double x0 = 0.0, double x1 = 1.0,
                        const std::string& left_name = "left",
                        const std::string& right_name = "right")
 {
+    if (n > static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max()))
+        throw std::overflow_error("one_d_mesh: cell index exceeds neighbour index range");
     Mesh m;
     const std::size_t np = 4*(n+1);
     m.points().resize(np);
@@ -48,7 +52,8 @@ static Mesh one_d_mesh(std::size_t n, double x0 = 0.0, double x1 = 1.0,
     for (std::size_t i=1;i<n;++i) {
         const std::size_t p=4*i;
         m.faces().push_face({p,p+1,p+2,p+3});
-        m.ownership().set_owner(f,i-1); m.ownership().set_neighbour(f,i);
+        m.ownership().set_owner(f,i-1);
+        m.ownership().set_neighbour(f,static_cast<std::int64_t>(i));
         xf[i]=f++;
     }
     m.faces().push_face({4*n,4*n+1,4*n+2,4*n+3});

@@ -683,9 +683,9 @@ class FluentAdapter(SolverAdapter):
             return False
 
         # Extract available scalar and vector fields info
-        field_info = session.fields.field_info
-        scalar_fields = field_info.get_scalar_fields_info()
-        vector_fields = field_info.get_vector_fields_info()
+        field_data = session.fields.field_data
+        scalar_fields = field_data.scalar_fields()
+        vector_fields = field_data.vector_fields()
 
         result.available_fields = {
             "scalar": list(scalar_fields.keys()),
