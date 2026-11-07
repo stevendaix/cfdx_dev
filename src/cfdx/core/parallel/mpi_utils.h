@@ -165,19 +165,13 @@ inline void mpi_bcast(T* data, int count, int root = 0, MPI_Comm comm = MPI_COMM
 
 // Broadcast string
 inline std::string mpi_bcast_string(const std::string& str, int root = 0, MPI_Comm comm = MPI_COMM_WORLD) {
-    int len = 0;
-    if (mpi_rank(comm) == root) {
-        if (str.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
-            throw std::overflow_error("mpi_bcast_string: string exceeds MPI int count limit");
-        len = static_cast<int>(str.size());
-    }
+    int len = static_cast<int>(str.size());
     mpi_bcast(&len, 1, root, comm);
-    if (len < 0)
-        throw std::runtime_error("mpi_bcast_string: received negative string length");
-
-    std::string result(static_cast<std::size_t>(len), '\0');
-    if (len > 0)
-        mpi_bcast(result.data(), len, root, comm);
+    
+    std::string result(len, '\0');
+    if (len > 0) {
+        mpi_bcast(&result[0], len, root, comm);
+    }
     return result;
 }
 
