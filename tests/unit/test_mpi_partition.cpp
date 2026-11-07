@@ -233,13 +233,14 @@ int main() {
     run_case("mpi_halo_plan_rejects_negative_indices", []() {
         const int size = mpi_size(MPI_COMM_WORLD);
         HaloPlan plan;
-        plan.send_faces.resize(size);
-        plan.recv_faces.resize(size);
-        plan.send_cells.resize(size);
-        plan.recv_cells.resize(size);
+        const auto peer_count = static_cast<std::size_t>(size);
+        plan.send_faces.resize(peer_count);
+        plan.recv_faces.resize(peer_count);
+        plan.send_cells.resize(peer_count);
+        plan.recv_cells.resize(peer_count);
 
         if (size >= 2) {
-            plan.send_faces[1].push_back(-1);
+            plan.send_faces[1u].push_back(-1);
             plan.send_cells[1u].push_back(0);
             bool rejected = false;
             try {
@@ -257,15 +258,16 @@ int main() {
             return;
 
         HaloPlan plan;
-        plan.send_faces.resize(size);
-        plan.recv_faces.resize(size);
-        plan.send_cells.resize(size);
-        plan.recv_cells.resize(size);
+        const auto peer_count = static_cast<std::size_t>(size);
+        plan.send_faces.resize(peer_count);
+        plan.recv_faces.resize(peer_count);
+        plan.send_cells.resize(peer_count);
+        plan.recv_cells.resize(peer_count);
         // Keep send/receive cardinalities paired so plan validation passes;
         // the index itself is deliberately outside the field bounds.
-        plan.send_faces[1].push_back(0);
+        plan.send_faces[1u].push_back(0);
         plan.recv_faces[1u].push_back(0);
-        plan.send_cells[1].push_back(1);
+        plan.send_cells[1u].push_back(1);
         plan.recv_cells[1u].push_back(1);
 
         Field<double, Location::CELL> values(1, "phi", "1", 1);
@@ -287,14 +289,15 @@ int main() {
 
         const int rank = mpi_rank(MPI_COMM_WORLD);
         HaloPlan plan;
-        plan.send_faces.resize(size);
-        plan.recv_faces.resize(size);
-        plan.send_cells.resize(size);
-        plan.recv_cells.resize(size);
+        const auto peer_count = static_cast<std::size_t>(size);
+        plan.send_faces.resize(peer_count);
+        plan.recv_faces.resize(peer_count);
+        plan.send_cells.resize(peer_count);
+        plan.recv_cells.resize(peer_count);
 
         if (rank == 0) {
-            plan.send_faces[1].push_back(0);
-            plan.send_cells[1].push_back(0);
+            plan.send_faces[1u].push_back(0);
+            plan.send_cells[1u].push_back(0);
         }
 
         Field<double, Location::CELL> values(1, "phi", "1", 1);
