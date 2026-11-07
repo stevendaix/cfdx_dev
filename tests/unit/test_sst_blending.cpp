@@ -969,15 +969,15 @@ int main()
         Field<double, cfdx::core::Location::FACE> phi(3, "phi", "kg/s", 1);
         SSTProductionState state(2);
         for (std::size_t c = 0; c < 2; ++c) {
-            U.component_data(0)[c] = 1.0 + c;
-            U.component_data(1)[c] = 2.0 + c;
-            U.component_data(2)[c] = 3.0 + c;
+            U.component_data(0)[c] = 1.0 + static_cast<double>(c);
+            U.component_data(1)[c] = 2.0 + static_cast<double>(c);
+            U.component_data(2)[c] = 3.0 + static_cast<double>(c);
             p(c) = 10.0 + c;
-            state.k(c) = 0.1 + 0.1 * c;
-            state.omega(c) = 10.0 + 10.0 * c;
-            state.nu_t(c) = 0.001 + 0.001 * c;
-            state.wall_distance(c) = 0.01 + 0.01 * c;
-            state.strain_rate(c) = 1.0 + c;
+            state.k(c) = 0.1 + 0.1 * static_cast<double>(c);
+            state.omega(c) = 10.0 + 10.0 * static_cast<double>(c);
+            state.nu_t(c) = 0.001 + 0.001 * static_cast<double>(c);
+            state.wall_distance(c) = 0.01 + 0.01 * static_cast<double>(c);
+            state.strain_rate(c) = 1.0 + static_cast<double>(c);
         }
         phi(0) = 0.25; phi(1) = -0.5; phi(2) = 0.75;
 
