@@ -16,7 +16,7 @@ from .native_solver_preflight import (
 from .output import OutputThrottle
 from .results_series import discover_result_series
 from .runner import SolverRunner
-from .session import CFDXSession, SimulationState, ChangeImpact
+from .session import CFDXSession, ChangeImpact, SimulationState
 from .tui import TuiRenderer
 from .validation import validate_case
 from .watcher import ResultWatcher
