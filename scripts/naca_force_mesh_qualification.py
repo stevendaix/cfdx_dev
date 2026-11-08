@@ -19,6 +19,8 @@ import os
 from pathlib import Path
 
 from naca_mesh_similarity_gate import verify_mesh_family
+from naca_surface_force_oracle import integrate as integrate_raw_faces
+from naca_surface_force_oracle import read_rows as read_raw_faces
 from qualify_naca_grid import REQUIRED, qualify
 
 LEVELS = (64, 128, 256)
@@ -101,12 +103,13 @@ def verify_physical_history(
                     raise ValueError(f"N{level}: negative physical residual norm {key}")
             if not 0.0 <= float(row["high_order_fraction"]) <= 1.0:
                 raise ValueError(f"N{level}: invalid convection fraction")
-            # A ramp fraction of one also occurs for plain first-order UPWIND.
-            # Therefore that fraction alone cannot prove bounded second order.
-            if row["convection_scheme"] not in ("TVD", "TVD_VANLEER", "TVD_VANALBADA"):
-                raise ValueError(
-                    f"N{level}: final qualification requires bounded second-order TVD convection"
-                )
+            # A startup continuation may legitimately use UPWIND. Only the
+            # accepted FINAL state must be fully second-order bounded TVD;
+            # never reject a valid startup solely for its early scheme.
+            if row["convection_scheme"] not in (
+                "UPWIND", "TVD", "TVD_VANLEER", "TVD_VANALBADA"
+            ):
+                raise ValueError(f"N{level}: unknown convection scheme")
             if (
                 int(row["nonfinite_mass_faces"]) != 0
                 or int(row["nonfinite_velocities"]) != 0
@@ -125,6 +128,10 @@ def verify_physical_history(
         raise ValueError(f"N{level}: nonlinear history is not physically converged")
     if float(last["high_order_fraction"]) != 1.0:
         raise ValueError(f"N{level}: final convection operator is not full order")
+    if last["convection_scheme"] not in ("TVD", "TVD_VANLEER", "TVD_VANALBADA"):
+        raise ValueError(
+            f"N{level}: final qualification requires bounded second-order TVD convection"
+        )
     face_residuals = {
         axis: float(last[f"face_momentum_{axis}_relative"]) for axis in ("x", "y", "z")
     }
@@ -148,7 +155,10 @@ def verify_physical_history(
 
 
 def certify(
-    mesh_quality: list[dict], certs: dict[int, Path], histories: dict[int, Path]
+    mesh_quality: list[dict],
+    certs: dict[int, Path],
+    histories: dict[int, Path],
+    raw_faces: dict[int, Path] | None = None,
 ) -> dict:
     mesh_report = verify_mesh_family(mesh_quality)
     by_n = {int(row["n_surface"]): row for row in mesh_quality}
@@ -162,10 +172,22 @@ def certify(
         "gci": {"status": "NOT_QUALIFIED", "validation_reference": "NOT_PERFORMED"},
     }
     rows: list[dict[str, str]] = []
+    if raw_faces is None:
+        report["reasons"].append(
+            "missing independent raw wall-face traction files for N64/N128/N256"
+        )
     for level in LEVELS:
         try:
             certificate = read_one_certificate(certs[level], level)
             physical = verify_physical_history(histories[level], level, certificate)
+            # An independent script must recompute the face-area/normal,
+            # pressure/viscous and moment integrals from *raw* traction.
+            # This still does not validate the underlying wall stress model.
+            if raw_faces is None:
+                raise ValueError(f"N{level}: missing independent raw force integration")
+            face_result = integrate_raw_faces(
+                read_raw_faces(raw_faces[level]), certificate
+            )
             rows.append(certificate)
             report["cases"].append(
                 {
@@ -174,6 +196,7 @@ def certify(
                     "Cd": float(certificate["cd"]),
                     "Cd_pressure": float(certificate["cdp"]),
                     "Cd_viscous": float(certificate["cdv"]),
+                    "independent_face_integration": face_result,
                     **physical,
                 }
             )
@@ -213,13 +236,15 @@ def main() -> int:
     for level in LEVELS:
         parser.add_argument(f"--cert-{level}", required=True, type=Path)
         parser.add_argument(f"--history-{level}", required=True, type=Path)
+        parser.add_argument(f"--raw-faces-{level}", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     try:
         quality = json.loads(args.mesh_quality.read_text(encoding="utf-8"))
         certs = {level: getattr(args, f"cert_{level}") for level in LEVELS}
         histories = {level: getattr(args, f"history_{level}") for level in LEVELS}
-        result = certify(quality, certs, histories)
+        raw_faces = {level: getattr(args, f"raw_faces_{level}") for level in LEVELS}
+        result = certify(quality, certs, histories, raw_faces)
         # Replacement only after a fully written JSON, never a half-written
         # or stale SUCCESS from an older campaign.
         temporary = args.output.with_name(args.output.name + ".tmp")

@@ -24,25 +24,40 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
     items = sorted(rows, key=lambda row: int(row["n_surface"]))
     diagnostic = {"status": "BLOCKED", "pairs": [], "reasons": []}
     keys = (
-        "n_surface",
-        "n_radial",
-        "radius",
-        "radial_power",
-        "minimum_first_layer_spacing",
+        "n_surface", "n_radial", "radius", "radial_power",
+        "minimum_first_layer_spacing", "mean_first_layer_spacing",
+        "maximum_first_layer_spacing", "minimum_absolute_cell_area",
+        "maximum_cell_edge_aspect_ratio", "minimum_radial_growth_ratio",
+        "maximum_radial_growth_ratio",
     )
+    # A valid one-parameter family must have comparable *distributions*, not
+    # merely the same N and minimum near-wall spacing. Missing quality data
+    # cannot be interpreted as evidence of similarity.
+    if [row.get("n_surface") for row in items] != [64, 128, 256]:
+        diagnostic["reasons"].append("wrong_or_duplicate_naca_mesh_levels")
     for row in items:
+        for integer_key in ("n_surface", "n_radial", "inverted_or_degenerate_cells"):
+            if type(row.get(integer_key)) is not int:
+                raise ValueError(f"invalid integer mesh characteristic {integer_key}")
         for key in keys:
             value = float(row[key])
             if not math.isfinite(value) or value <= 0.0:
                 raise ValueError(f"invalid mesh characteristic {key}")
         if int(row["inverted_or_degenerate_cells"]) != 0:
             diagnostic["reasons"].append("inverted_or_degenerate_cells")
+        max_angle = float(row["maximum_nonorthogonality_degrees"])
+        p95 = float(row["p95_nonorthogonality_degrees"])
+        if not (math.isfinite(max_angle) and math.isfinite(p95) and
+                0 <= p95 <= max_angle < 90):
+            raise ValueError("invalid nonorthogonality distribution")
+        if max_angle >= 80:
+            diagnostic["reasons"].append("near_degenerate_nonorthogonality")
         te = float(row.get("trailing_edge_regularization", 0.0))
         if not math.isfinite(te) or not 0.0 <= te <= 0.08:
             raise ValueError("invalid trailing-edge regularization")
     strategies = {row.get("radial_refinement_strategy", "unspecified") for row in items}
-    if len(strategies) != 1:
-        diagnostic["reasons"].append("inconsistent_radial_refinement_strategy")
+    if len(strategies) != 1 or "unspecified" in strategies:
+        diagnostic["reasons"].append("inconsistent_or_missing_radial_refinement_strategy")
     for a, b in itertools.pairwise(items):
         tangential = float(b["n_surface"]) / float(a["n_surface"])
         radial = float(b["n_radial"]) / float(a["n_radial"])
@@ -50,6 +65,14 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
             b["minimum_first_layer_spacing"]
         )
         mismatch = abs(wall / tangential - 1.0)
+        means = float(a["mean_first_layer_spacing"]) / float(
+            b["mean_first_layer_spacing"])
+        maxima = float(a["maximum_first_layer_spacing"]) / float(
+            b["maximum_first_layer_spacing"])
+        max_angle_change = abs(float(b["maximum_nonorthogonality_degrees"]) -
+                               float(a["maximum_nonorthogonality_degrees"]))
+        p95_angle_change = abs(float(b["p95_nonorthogonality_degrees"]) -
+                               float(a["p95_nonorthogonality_degrees"]))
         pair = {
             "from": int(a["n_surface"]),
             "to": int(b["n_surface"]),
@@ -57,12 +80,23 @@ def verify_mesh_family(rows: list[dict], tolerance: float = 0.20) -> dict:
             "radial_ratio": radial,
             "first_layer_ratio": wall,
             "relative_wall_ratio_mismatch": mismatch,
+            "mean_first_layer_ratio": means,
+            "maximum_first_layer_ratio": maxima,
+            "max_nonorth_angle_change_deg": max_angle_change,
+            "p95_nonorth_angle_change_deg": p95_angle_change,
+            "aspect_ratio_coarse": float(a["maximum_cell_edge_aspect_ratio"]),
+            "aspect_ratio_fine": float(b["maximum_cell_edge_aspect_ratio"]),
         }
         diagnostic["pairs"].append(pair)
         if tangential <= 1 or abs(radial / tangential - 1.0) > tolerance:
             diagnostic["reasons"].append("different_tangential_and_radial_ratios")
-        if mismatch > tolerance:
-            diagnostic["reasons"].append("first_layer_refinement_not_similar")
+        if max(mismatch, abs(means / tangential - 1.0),
+               abs(maxima / tangential - 1.0)) > tolerance:
+            diagnostic["reasons"].append("first_layer_distribution_not_similar")
+        if max_angle_change > 10.0 or p95_angle_change > 10.0:
+            diagnostic["reasons"].append(
+                "nonorthogonality_distribution_changes_with_refinement"
+            )
         if (
             abs(float(b["radius"]) / float(a["radius"]) - 1) > 1e-12
             or abs(float(b["radial_power"]) - float(a["radial_power"])) > 1e-12

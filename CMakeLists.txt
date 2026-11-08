@@ -957,6 +957,11 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_force_mesh_qualification.py)
         set_tests_properties(test_naca_force_mesh_qualification PROPERTIES
             LABELS "forces;mesh;gci;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_naca_surface_force_oracle
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_surface_force_oracle.py)
+        set_tests_properties(test_naca_surface_force_oracle PROPERTIES
+            LABELS "forces;validation;qualification;selftest" TIMEOUT 15)
         add_test(NAME test_naca_compare_mesh_families
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_compare_mesh_families.py)
@@ -1300,6 +1305,11 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                     ${CMAKE_SOURCE_DIR}/docs/validation/CFDX_QUALIFICATION_REGISTRY.json)
         set_tests_properties(test_cfdx_qualification_registry PROPERTIES
             LABELS "qualification;validation")
+        add_test(NAME test_cfdx_qualification_evidence_selftest
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_qualification_evidence_gate.py)
+        set_tests_properties(test_cfdx_qualification_evidence_selftest PROPERTIES
+            LABELS "qualification;validation;selftest" TIMEOUT 30)
         add_test(NAME test_three_mesh_physical_gate_selftest
             COMMAND ${Python3_EXECUTABLE} -m unittest discover
                     -s ${CMAKE_SOURCE_DIR}/tests/python

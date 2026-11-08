@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 import naca_force_mesh_qualification as m
+from naca_surface_force_oracle import COLUMNS
 
 
 def mesh(similar=True):
@@ -20,6 +21,15 @@ def mesh(similar=True):
             "radial_power": 1.8,
             "minimum_first_layer_spacing": (1 / n if similar else 1 / (n**1.6)),
             "inverted_or_degenerate_cells": 0,
+            "radial_refinement_strategy": "nested_base_24",
+            "mean_first_layer_spacing": (1.25 / n if similar else 1.25 / n**1.6),
+            "maximum_first_layer_spacing": (1.5 / n if similar else 1.5 / n**1.6),
+            "minimum_absolute_cell_area": 0.001 / n,
+            "maximum_cell_edge_aspect_ratio": 8.0,
+            "minimum_radial_growth_ratio": 1.0,
+            "maximum_radial_growth_ratio": 1.2,
+            "maximum_nonorthogonality_degrees": 45.0,
+            "p95_nonorthogonality_degrees": 20.0,
         }
         for n in m.LEVELS
     ]
@@ -32,6 +42,7 @@ class NacaForceMeshTests(unittest.TestCase):
         self.folder = Path(self.tmp.name)
         self.certs = {}
         self.histories = {}
+        self.raws = {}
         for n, cd in zip(m.LEVELS, [0.11, 0.13, 0.138]):
             c = self.folder / f"cert_{n}.csv"
             with c.open("w", newline="") as stream:
@@ -64,9 +75,37 @@ class NacaForceMeshTests(unittest.TestCase):
             )
             self.certs[n] = c
             self.histories[n] = h
+            # Synthetic closed 2-D face contour, only for certificate checks.
+            # x-normal pressure p=(0.4*Cd)*x; uniform synthetic tau_n_x
+            # contributes 0.6*Cd over total area 4; origin y=0 yields Cm=0.
+            raw = self.folder / f"raw_{n}.csv"
+            with raw.open("w", newline="") as stream:
+                writer = csv.DictWriter(stream, fieldnames=COLUMNS)
+                writer.writeheader()
+                face = 0
+                for wall in ("left", "right", "bottom", "top"):
+                    for i in range(8):
+                        t = (i + 0.5) / 8
+                        x, y, nx, ny = {
+                            "left": (0, t - 0.5, -1, 0),
+                            "right": (1, t - 0.5, 1, 0),
+                            "bottom": (t, -0.5, 0, -1),
+                            "top": (t, 0.5, 0, 1),
+                        }[wall]
+                        writer.writerow({
+                            "face": face, "x": x, "y": y, "z": 0.5,
+                            "nx": nx, "ny": ny, "nz": 0, "area": 0.125,
+                            "pressure": cd * 0.4 * x,
+                            "tau_n_x": -cd * 0.6 / 4,
+                            "tau_n_y": 0, "tau_n_z": 0,
+                            "dynamic_pressure": 1, "reference_area": 1,
+                            "reference_chord": 1, "x_ref": 0.25, "y_ref": 0,
+                        })
+                        face += 1
+            self.raws[n] = raw
 
     def test_valid_evidence_produces_only_richardson_candidate(self):
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "GCI_CANDIDATE")
         self.assertEqual(report["gci"]["validation_reference"], "NOT_PERFORMED")
 
@@ -91,37 +130,71 @@ class NacaForceMeshTests(unittest.TestCase):
             writer = csv.DictWriter(stream, fieldnames=m.REQUIRED)
             writer.writeheader()
             writer.writerow(cert_row)
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "GCI_CANDIDATE")
 
+    def test_early_upwind_then_final_tvd_is_allowed(self):
+        # A continuation is legal: only the FINAL accepted operator matters.
+        path = self.histories[64]
+        lines = path.read_text().splitlines()
+        earlier = lines[1].replace("1,1e-11,", "1,1e-4,", 1)
+        earlier = earlier.replace(",TVD", ",UPWIND")
+        final = "2" + lines[1][1:]
+        path.write_text("\n".join((lines[0], earlier, final)) + "\n")
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
+        self.assertEqual(report["status"], "GCI_CANDIDATE")
+
+    def test_missing_raw_surface_cannot_promote_solver_forces(self):
+        self.raws[64].unlink()
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
+        self.assertEqual(report["status"], "BLOCKED")
+        self.assertTrue(any("raw_64" in reason for reason in report["reasons"]))
+
+    def test_false_force_coefficient_is_detected_by_raw_area_integration(self):
+        path = self.raws[64]
+        data = path.read_text()
+        # Change the pressure on a positive-x face while preserving the
+        # certificate and residual history: only raw integration sees it.
+        path.write_text(data.replace("0.044000000000000004", "0.084"))
+        # Use an unambiguous numeric mutation even if float formatting varies.
+        with path.open(newline="") as stream:
+            rows = list(csv.DictReader(stream))
+        rows[8]["pressure"] = "3.0"
+        with path.open("w", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=COLUMNS)
+            writer.writeheader()
+            writer.writerows(rows)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
+        self.assertEqual(report["status"], "BLOCKED")
+
     def test_incompatible_near_wall_refinement_refuses_gci(self):
-        report = m.certify(mesh(False), self.certs, self.histories)
+        report = m.certify(mesh(False), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertEqual(report["gci"]["status"], "NOT_QUALIFIED")
 
     def test_missing_n256_certificate_cannot_be_promoted(self):
         self.certs[256].unlink()
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertEqual(report["cases"][2]["status"], "NOT_QUALIFIED")
 
     def test_stale_incorrect_certificate_fails(self):
         self.certs[128].write_text(self.certs[128].read_text().replace("N128", "N129"))
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(any("wrong mesh label" in item for item in report["reasons"]))
 
     def test_mismatched_physical_history_fails(self):
         path = self.histories[64]
         path.write_text(path.read_text().replace("1e-11,1e-12", "8e-9,1e-12"))
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(any("stale" in item for item in report["reasons"]))
 
     def test_non_monotone_drag_is_not_richardson(self):
         path = self.certs[256]
         path.write_text(path.read_text().replace("0.138", "0.115"))
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
 
     def test_total_drag_gci_cannot_hide_nonmonotone_pressure_and_viscous_components(
@@ -138,7 +211,7 @@ class NacaForceMeshTests(unittest.TestCase):
             writer = csv.DictWriter(stream, fieldnames=m.REQUIRED)
             writer.writeheader()
             writer.writerow(record)
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(any("cdp:" in reason for reason in report["reasons"]))
 
@@ -150,7 +223,7 @@ class NacaForceMeshTests(unittest.TestCase):
                 "1,1e-11,1e-12,2e-11,0,0,1,1e-11", "1,1e-11,1e-12,2e-11,0,0,1,0.002"
             )
         )
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(
             any(
@@ -166,7 +239,7 @@ class NacaForceMeshTests(unittest.TestCase):
             "mass_local_linf,nonfinite_mass_faces,nonfinite_velocities\n"
             "1,1e-11,1e-12,2e-11,0,0\n"
         )
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(
             any("incomplete physical history" in reason for reason in report["reasons"])
@@ -175,7 +248,7 @@ class NacaForceMeshTests(unittest.TestCase):
     def test_first_order_upwind_cannot_claim_final_high_order_operator(self):
         path = self.histories[64]
         path.write_text(path.read_text().replace(",TVD\n", ",UPWIND\n"))
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
         self.assertTrue(
             any("bounded second-order TVD" in reason for reason in report["reasons"])
@@ -188,7 +261,7 @@ class NacaForceMeshTests(unittest.TestCase):
                 "1,1e-11,1e-12,2e-11,0,0,1,1e-11", "1,1e-11,1e-12,2e-11,0,0,0.5,1e-11"
             )
         )
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
 
     def test_negative_certificate_residual_is_not_a_small_residual(self):
@@ -196,13 +269,13 @@ class NacaForceMeshTests(unittest.TestCase):
         path.write_text(path.read_text().replace("1e-11", "-1e-11"))
         history = self.histories[64]
         history.write_text(history.read_text().replace("1e-11", "-1e-11"))
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
 
     def test_negative_continuity_in_history_cannot_be_certified(self):
         path = self.histories[128]
         path.write_text(path.read_text().replace("1e-12", "-1e-12"))
-        report = m.certify(mesh(), self.certs, self.histories)
+        report = m.certify(mesh(), self.certs, self.histories, self.raws)
         self.assertEqual(report["status"], "BLOCKED")
 
 

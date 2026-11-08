@@ -39,6 +39,7 @@ static Forces run(const std::string& path,std::size_t level,
         "CFDX_NACA_CONVERGED_FACE_FLUX_CSV",
         "CFDX_NACA_EXPORT_CONVERGED_STATE_CSV",
         "CFDX_NACA_FACE_PROFILES_CSV",
+        "CFDX_NACA_FACE_TRACTION_RAW_CSV",
         "CFDX_NACA_PHYSICAL_HISTORY_CSV",
         "CFDX_NACA_MOMENTUM_BUDGET_CSV"};
     std::vector<std::string> outputs;
@@ -514,6 +515,17 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::invalid_argument("CFDX_NACA_WALL_TRACTION_FACE must be 1");
         face_traction = true;
     }
+    // A/B diagnostic: the production pressure BC uses dp/dn=0 on the foil.
+    // Cell-gradient normal extrapolation is informative, not a trustworthy
+    // replacement for a physically derived wall-normal pressure BC.
+    bool use_cell_normal_dp = false;
+    if (const char* mode = std::getenv("CFDX_NACA_WALL_PRESSURE_NORMAL_MODE")) {
+        if (!face_traction || (std::string(mode) != "zero" &&
+                              std::string(mode) != "cell_gradient"))
+            throw std::invalid_argument(
+                "CFDX_NACA_WALL_PRESSURE_NORMAL_MODE requires face traction and zero or cell_gradient");
+        use_cell_normal_dp = std::string(mode) == "cell_gradient";
+    }
     Field<double, Location::CELL> wall_pressure_gradient;
     if (face_traction)
         wall_pressure_gradient = gauss_gradient_with_boundary(
@@ -529,6 +541,18 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::runtime_error("cannot open NACA face profiles CSV");
         face_profiles << std::setprecision(17);
         face_profiles << "face,x_over_c,y_over_c,Cp,Cf_tangent,Cd_pressure_face,Cd_viscous_face\n";
+    }
+    std::ofstream face_traction_raw;
+    if (const char* output = std::getenv("CFDX_NACA_FACE_TRACTION_RAW_CSV")) {
+        if (!face_traction || std::string(output).empty())
+            throw std::invalid_argument("NACA raw wall traction requires face traction and a path");
+        face_traction_raw.open(output);
+        if (!face_traction_raw)
+            throw std::runtime_error("cannot create NACA raw wall traction CSV");
+        face_traction_raw << std::setprecision(std::numeric_limits<double>::max_digits10);
+        face_traction_raw << "face,x,y,z,nx,ny,nz,area,pressure,"
+                             "tau_n_x,tau_n_y,tau_n_z,dynamic_pressure,"
+                             "reference_area,reference_chord,x_ref,y_ref\n";
     }
     double Fx=0,Fy=0,Mz=0,Fxp=0,Fyp=0,Fxv=0,Fyv=0;
     const double q=0.5*rho*Uinf*Uinf;
@@ -552,7 +576,11 @@ static Forces run(const std::string& path,std::size_t level,
                    gux.component_data(2)[o]},
                   {guy.component_data(0)[o],guy.component_data(1)[o],
                    guy.component_data(2)[o]},
-                  {0.0,0.0,0.0}}}, rho*nu);
+                  {0.0,0.0,0.0}}}, rho*nu,
+                use_cell_normal_dp ?
+                    (wall_pressure_gradient.component_data(0)[o]*n.x +
+                     wall_pressure_gradient.component_data(1)[o]*n.y +
+                     wall_pressure_gradient.component_data(2)[o]*n.z) : 0.0);
             pp = wall.pressure;
             // Existing total-force integration uses the traction components
             // of the symmetric stress tensor contracted with n.
@@ -567,6 +595,19 @@ static Forces run(const std::string& path,std::size_t level,
             Fxv -= face_txv*Sf.mag(); Fyv -= face_tyv*Sf.mag();
             const auto r = geometry.face_centres[f]-Vec3{0.25,0,0};
             Mz += r.x*ty-r.y*tx;
+            if (face_traction_raw) {
+                const auto x_face = geometry.face_centres[f];
+                // Current native force coefficient divides by q for the
+                // unit chord and unit span case. Export this area explicitly
+                // so the postprocessor detects any future normalization drift.
+                face_traction_raw << f << ',' << x_face.x << ',' << x_face.y
+                                  << ',' << x_face.z << ',' << n.x << ',' << n.y
+                                  << ',' << n.z << ',' << Sf.mag() << ',' << pp
+                                  << ',' << wall.viscous_on_fluid_normal.x
+                                  << ',' << wall.viscous_on_fluid_normal.y
+                                  << ',' << wall.viscous_on_fluid_normal.z
+                                  << ',' << q << ",1," << chord << ",0.25,0\n";
+            }
             if (face_profiles) {
                 Vec3 tangent{-n.y,n.x,0.0};
                 if (tangent.x < 0.0) tangent *= -1.0;
@@ -688,6 +729,8 @@ static Forces run(const std::string& path,std::size_t level,
     }
     if (face_profiles && !face_profiles.good())
         throw std::runtime_error("failed to write NACA face profiles CSV");
+    if (face_traction_raw && (!face_traction_raw.flush() || !face_traction_raw.good()))
+        throw std::runtime_error("failed to write NACA raw wall traction CSV");
     const double cd=Fx/q, cl=Fy/q, cm=Mz/q;
     const auto& last=solve.history.back();
     // Optional, machine-readable single-grid certificate. The three-grid

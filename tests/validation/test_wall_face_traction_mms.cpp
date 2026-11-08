@@ -23,6 +23,16 @@ int main() {
             "Couette wall shear is incorrect");
     require(std::abs(exact.viscous_on_fluid_normal.y) < 1e-12,
             "Couette generated spurious normal traction");
+    // Independent affine oracle with a NONZERO normal pressure derivative:
+    // p(x,y) = 1 + 3*x + 4*y; at d=(0.2,-0.5), p_wall=-0.4.
+    // A forced homogeneous-Neumann extrapolation would yield +1.6 instead.
+    const auto nonzero_dp_dn = reconstruct_wall_face_traction(
+        d,n,1.0,{3,4,0},{0,0,0},{-1,0,0},
+        {{{0,2,0},{0,0,0},{0,0,0}}},0.5,-4.0);
+    require(std::abs(nonzero_dp_dn.pressure+0.4) < 1e-12,
+            "prescribed wall dp/dn is not affine exact");
+    require(std::abs(nonzero_dp_dn.viscous_on_fluid_normal.x+1.0) < 1e-12,
+            "nonzero wall dp/dn contaminated the shear traction");
     // An inaccurate raw cell gradient must still meet the Dirichlet
     // constraint along d; normal traction is not guaranteed exact without a
     // convergent tangential reconstruction, so test the known exact input.
@@ -40,5 +50,13 @@ int main() {
             {0,0,0},{0,0,0},{{{0,0,0},{0,0,0},{0,0,0}}},0.5);
     } catch (const std::invalid_argument&) { refused = true; }
     require(refused, "accepted NaN pressure");
+    refused = false;
+    try {
+        (void)reconstruct_wall_face_traction(
+            d,n,1.0,{3,4,0},{0,0,0},{-1,0,0},
+            {{{0,2,0},{0,0,0},{0,0,0}}},0.5,
+            std::numeric_limits<double>::quiet_NaN());
+    } catch (const std::invalid_argument&) { refused = true; }
+    require(refused, "accepted nonfinite pressure normal derivative");
     std::cout << "WALL_FACE_TRACTION_MMS: PASS\n";
 }
