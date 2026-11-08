@@ -81,6 +81,7 @@ def write_sst_thermal_case(
                     {"field": "omega", "type": "fixed_value", "value": 2.0},
                 ]
                 if name == "inlet":
+                    patch["value_type"] = "fixed"
                     patch["turbulence_intensity"] = 0.05
                     patch["turbulence_length_scale"] = 0.1
                     patch["velocity_magnitude"] = 1.0
