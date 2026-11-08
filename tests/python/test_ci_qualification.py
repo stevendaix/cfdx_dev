@@ -89,7 +89,10 @@ class ProfileTests(unittest.TestCase):
                 {"name": "FIXTURES_REQUIRED", "value": ["mesh"]},
             ]
         )
-        fake += [make_test_case("prereq"), make_test_case("mesh_setup", FIXTURES_SETUP=["mesh"])]
+        fake += [
+            make_test_case("prereq"),
+            make_test_case("mesh_setup", FIXTURES_SETUP=["mesh"]),
+        ]
         plan = Q.plan_profile(fake, "smoke", "quick", CATALOG)
         self.assertEqual(plan["prerequisites"], ["mesh_setup", "prereq"])
         self.assertEqual(len(plan["selected_tests"]), len(set(plan["selected_tests"])))
@@ -142,11 +145,15 @@ class ProfileTests(unittest.TestCase):
                 "--require-names-file",
                 str(path / "tests.txt"),
             ]
-            self.assertNotEqual(subprocess.run(cmd, check=False, capture_output=True).returncode, 0)
+            self.assertNotEqual(
+                subprocess.run(cmd, check=False, capture_output=True).returncode, 0
+            )
             junit.write_text(
                 '<testsuite><testcase name="a" time="1"/><testcase name="b" time="2"/></testsuite>'
             )
-            self.assertEqual(subprocess.run(cmd, check=False, capture_output=True).returncode, 0)
+            self.assertEqual(
+                subprocess.run(cmd, check=False, capture_output=True).returncode, 0
+            )
             junit.write_text(
                 '<testsuite><testcase name="a" time="1"><skipped/></testcase><testcase name="b" time="2"/></testsuite>'
             )
