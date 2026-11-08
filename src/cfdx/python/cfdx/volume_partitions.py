@@ -50,36 +50,44 @@ class VolumePartition:
             points.SetPoint(index, *map(float, point))
 
         stream = self.polyhedron_stream.tolist()
-        if not stream:
-            raise ValueError("polyhedron face stream is empty")
-        face_count = int(stream[0])
-        cursor = 1
-        faces = vtk.vtkCellArray()
-        for _ in range(face_count):
-            if cursor >= len(stream):
-                raise ValueError("polyhedron face stream is truncated")
-            vertex_count = int(stream[cursor])
-            cursor += 1
-            if vertex_count < 3 or cursor + vertex_count > len(stream):
-                raise ValueError("polyhedron face has an invalid vertex count")
-            vertices = [int(value) for value in stream[cursor : cursor + vertex_count]]
-            cursor += vertex_count
-            faces.InsertNextCell(vertex_count)
-            for vertex in vertices:
-                if vertex < 0 or vertex >= len(self.points):
-                    raise ValueError("polyhedron face references an invalid point")
-                faces.InsertCellPoint(vertex)
-        if cursor != len(stream):
-            raise ValueError("polyhedron face stream contains trailing values")
-
+        cursor = 0
         grid = vtk.vtkUnstructuredGrid()
         grid.SetPoints(points)
         grid.Allocate(len(self.original_cell_ids))
-        point_ids = list(range(len(self.points)))
+
         for _ in self.original_cell_ids:
+            if cursor >= len(stream):
+                raise ValueError("polyhedron face stream is truncated")
+            face_count = int(stream[cursor])
+            cursor += 1
+            if face_count < 4:
+                raise ValueError("polyhedron must contain at least four faces")
+            faces = vtk.vtkCellArray()
+            cell_point_ids = set()
+            for _ in range(face_count):
+                if cursor >= len(stream):
+                    raise ValueError("polyhedron face stream is truncated")
+                vertex_count = int(stream[cursor])
+                cursor += 1
+                if vertex_count < 3 or cursor + vertex_count > len(stream):
+                    raise ValueError("polyhedron face has an invalid vertex count")
+                vertices = [int(value) for value in stream[cursor : cursor + vertex_count]]
+                cursor += vertex_count
+                if any(vertex < 0 or vertex >= len(self.points) for vertex in vertices):
+                    raise ValueError("polyhedron face references an invalid point")
+                cell_point_ids.update(vertices)
+                faces.InsertNextCell(vertex_count)
+                for vertex in vertices:
+                    faces.InsertCellPoint(vertex)
+            point_ids = sorted(cell_point_ids)
+            if len(point_ids) < 4:
+                raise ValueError("polyhedron has fewer than four unique points")
             grid.InsertNextCell(
                 vtk.VTK_POLYHEDRON, len(point_ids), point_ids, faces
             )
+
+        if cursor != len(stream):
+            raise ValueError("polyhedron face stream contains trailing values")
         result = pv.wrap(grid)
         result.cell_data["CFDX_original_cell_id"] = self.original_cell_ids
         result.point_data["CFDX_original_point_id"] = self.original_point_ids
