@@ -41,11 +41,11 @@ def _finite_positive(value: object, name: str) -> float:
 
 def _quality_records(value: object) -> dict[int, dict]:
     if not isinstance(value, list) or not value:
-        raise ValueError("mesh quality must be a nonempty JSON list")
+        raise TypeError("mesh quality must be a nonempty JSON list")
     records = {}
     for row in value:
         if not isinstance(row, dict):
-            raise ValueError("invalid mesh quality record")
+            raise TypeError("invalid mesh quality record")
         level = int(row["n_surface"])
         if level in records:
             raise ValueError(f"duplicate mesh N{level}")
@@ -106,7 +106,7 @@ def _mesh_diagnostics(a: dict[int, dict], b: dict[int, dict]) -> dict:
 
 def _candidate(result: object, family: str) -> dict:
     if not isinstance(result, dict):
-        raise ValueError(f"{family}: invalid physical report")
+        raise TypeError(f"{family}: invalid physical report")
     if result.get("status") != "GCI_CANDIDATE":
         raise ValueError(
             f"{family}: complete three-grid nonlinear certification missing"
@@ -169,7 +169,7 @@ def compare(
         )
         return result
     if not isinstance(metadata_a, dict) or not isinstance(metadata_b, dict):
-        raise ValueError("physics metadata must be JSON objects")
+        raise TypeError("physics metadata must be JSON objects")
     for key in REQUIRED_PARAMETERS:
         if key not in metadata_a or key not in metadata_b:
             result["reasons"].append(f"missing physical provenance: {key}")
