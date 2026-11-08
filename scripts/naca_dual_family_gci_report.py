@@ -329,8 +329,10 @@ def markdown(result: dict) -> str:
     ]
     for name, fam in result["families"].items():
         for obs in fam.get("observations", []):
+
             def fmt(k, obs=obs):
                 return f"{obs[k]:.9f}" if k in obs else "—"
+
             status = "exécuté" if obs["converged"] else "manquant/échec"
             lines.append(
                 f"| {name} | N{obs['N']} | {fmt('cd')} | {fmt('cdp')} "
@@ -406,10 +408,8 @@ def markdown(result: dict) -> str:
         lines.extend(
             [
                 "| Grandeur | Limite quasi-isotrope "
-                (
-                    "| Limite famille anisotrope (cosinus) | Écart relatif "
-                    "| GCI compatibles |"
-                ),
+                "| Limite famille anisotrope (cosinus) | Écart relatif "
+                "| GCI compatibles |",
                 "|---|---:|---:|---:|---|",
             ]
         )
@@ -445,15 +445,11 @@ def markdown(result: dict) -> str:
                 "décomposition Cp/Cf indépendante ici."
             ),
             "- Les deux familles comparées utilisent des échantillonnages "
-            (
-                "différents du profil analytique; leur accord ne prouve pas une "
-                "invariance à anisotropie pure, à géométrie discrète strictement fixée."
-            ),
+            "différents du profil analytique; leur accord ne prouve pas une "
+            "invariance à anisotropie pure, à géométrie discrète strictement fixée.",
             "- L’arête de fermeture du bord de fuite (épaisseur NACA non nulle) "
-            (
-                "reste un seul segment : ce défaut de raffinement géométrique doit "
-                "être suivi."
-            ),
+            "reste un seul segment : ce défaut de raffinement géométrique doit "
+            "être suivi.",
             (
                 "- La famille cosinus historique accroît fortement son aspect maximal "
                 "au bord d’attaque."
