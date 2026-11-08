@@ -24,6 +24,7 @@
 #include "cfdx/physics/momentum_viscous_stress.h"
 #include "cfdx/physics/pressure_velocity_algorithms.h"
 #include "cfdx/physics/pcd_fp_equilibration.h"
+#include "cfdx/physics/pcd_fp_capture.h"
 #include "cfdx/physics/pressure_velocity_system.h"
 #include "cfdx/physics/pressure_continuity_line_search.h"
 #include "cfdx/physics/convection_continuation.h"
@@ -4052,9 +4053,21 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 result, x, matrix.n_rows());
         };
 
+        // Exact nested-system capture: the production CSR, RHS and warm start,
+        // BEFORE equilibration, for identical offline ILU0/AMG comparisons.
+        // Never alter the Schur action or the outer nonlinear acceptance gate.
         const auto solve_fp = [pcd_ops, controls](
             const Vector& rhs, Vector& x) {
             const auto& original_matrix = pcd_ops->convection_diffusion;
+            if (const char* prefix = std::getenv("CFDX_PCD_FP_CAPTURE_PREFIX")) {
+                if (*prefix) {
+                    const auto slot = reserve_pcd_fp_capture_slot(false);
+                    if (slot) write_pcd_fp_capture(
+                        std::string(prefix) + "_rhs" +
+                            std::to_string(slot) + ".cfp",
+                        original_matrix, rhs, x);
+                }
+            }
             const auto& solving_matrix = pcd_ops->convection_diffusion_equilibrated
                 ? pcd_ops->convection_diffusion_equilibrated->matrix
                 : original_matrix;
@@ -4063,6 +4076,37 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                     pcd_ops->convection_diffusion_equilibrated->row_multipliers)
                 : rhs;
             auto* preconditioner = pcd_ops->convection_diffusion_preconditioner.get();
+            // Native AMG can SET UP on this nonsymmetric Fp, then return an
+            // image A*M^-1*r amplified by 1e14: stop explicitly before a
+            // catastrophic Arnoldi loss, without silent ILU0 substitution.
+            if (controls.pcd_convection_diffusion_linear_solver.preconditioner ==
+                cfdx::core::PreconditionerModel::NativeAMG) {
+                Vector initial_residual(rhs.size(), 0.0);
+                const auto* ro = solving_matrix.row_offsets_data();
+                const auto* co = solving_matrix.columns_data();
+                const auto* va = solving_matrix.values_data();
+                for (std::size_t row = 0; row < rhs.size(); ++row) {
+                    long double ax = 0.0L;
+                    for (std::size_t k = ro[row]; k < ro[row+1]; ++k)
+                        ax += static_cast<long double>(va[k]) * x(co[k]);
+                    initial_residual(row) = solving_rhs(row) - static_cast<double>(ax);
+                }
+                const auto probe = pcd_fp_action_probe(
+                    solving_matrix, *preconditioner, initial_residual);
+                const bool safe = probe.applied && probe.finite &&
+                    probe.amplification <= 1e6;
+                // Do not produce tens of thousands of probe log lines on a
+                // successful physical N9 campaign unless explicitly requested.
+                const char* trace_env = std::getenv("CFDX_PCD_FP_AMG_TRACE");
+                if (!safe || (trace_env && std::string(trace_env) == "1"))
+                    std::cerr << "COUPLED_PCD_FP_AMG_ACTION"
+                              << " applied=" << (probe.applied ? 1 : 0)
+                              << " correction_l2=" << probe.correction_l2
+                              << " image_l2=" << probe.image_l2
+                              << " amplification=" << probe.amplification
+                              << " safe=" << (safe ? 1 : 0) << "\n";
+                if (!safe) return false;
+            }
             const int restart = std::min<int>(
                 controls.pcd_convection_diffusion_linear_solver.gmres_restart,
                 static_cast<int>(solving_matrix.n_rows()));
@@ -4084,6 +4128,18 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             };
             auto result = solve_once(x);
             auto quality = pcd_fp_true_residual(original_matrix, rhs, x_initial, x);
+            // Also preserve the first three troublesome production RHS. The
+            // first Krylov RHS can be easy even when later Schur actions fail.
+            if (const char* prefix = std::getenv("CFDX_PCD_FP_CAPTURE_DIFFICULT_PREFIX")) {
+                if (*prefix && (!std::isfinite(quality.relative_rhs) ||
+                                quality.relative_rhs > 1e-3)) {
+                    const auto slot = reserve_pcd_fp_capture_slot(true);
+                    if (slot) write_pcd_fp_capture(
+                        std::string(prefix) + "_rhs" +
+                            std::to_string(slot) + ".cfp",
+                        original_matrix, rhs, x_initial);
+                }
+            }
             const auto usable = [&](const cfdx::core::SolverResult& candidate,
                                     const PcdFpTrueResidual& q) {
                 return nested_schur_pressure_solve_usable(
