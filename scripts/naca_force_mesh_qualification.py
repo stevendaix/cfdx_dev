@@ -71,6 +71,7 @@ def verify_physical_history(
             "momentum_rhs_relative",
             "continuity_normalized",
             "mass_local_linf",
+            "mass_normalized_imbalance",
             "nonfinite_mass_faces",
             "nonfinite_velocities",
             "high_order_fraction",
@@ -94,6 +95,7 @@ def verify_physical_history(
                 "momentum_rhs_relative",
                 "continuity_normalized",
                 "mass_local_linf",
+                "mass_normalized_imbalance",
             } | independent:
                 if float(row[key]) < 0:
                     raise ValueError(f"N{level}: negative physical residual norm {key}")
@@ -114,9 +116,12 @@ def verify_physical_history(
     if count == 0 or last is None:
         raise ValueError(f"N{level}: missing physical history")
     momentum = float(last["momentum_rhs_relative"])
-    mass = float(last["mass_local_linf"])
+    mass_local = float(last["mass_local_linf"])
+    mass_imbalance = float(last["mass_normalized_imbalance"])
     continuity = float(last["continuity_normalized"])
-    if momentum > RELATIVE_GATE or continuity > RELATIVE_GATE or mass > RELATIVE_GATE:
+    # Must match the C++ force certificate writer exactly.
+    mass = max(continuity, mass_imbalance, mass_local)
+    if momentum > RELATIVE_GATE or mass > RELATIVE_GATE:
         raise ValueError(f"N{level}: nonlinear history is not physically converged")
     if float(last["high_order_fraction"]) != 1.0:
         raise ValueError(f"N{level}: final convection operator is not full order")
@@ -135,7 +140,9 @@ def verify_physical_history(
         "iterations": count,
         "final_momentum_rhs_relative": momentum,
         "final_continuity_normalized": continuity,
-        "final_mass_local_linf": mass,
+        "final_mass_local_linf": mass_local,
+        "final_mass_normalized_imbalance": mass_imbalance,
+        "final_certificate_mass_residual": mass,
         "final_independent_face_momentum_relative": face_residuals,
     }
 

@@ -58,8 +58,8 @@ class NacaForceMeshTests(unittest.TestCase):
                 "high_order_fraction,face_momentum_x_relative,"
                 "face_momentum_y_relative,face_momentum_z_relative,"
                 "face_momentum_x_linf,face_momentum_y_linf,face_momentum_z_linf,"
-                "convection_scheme\n"
-                "1,1e-11,1e-12,2e-11,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,TVD\n",
+                "mass_normalized_imbalance,convection_scheme\n"
+                "1,1e-11,1e-12,2e-11,0,0,1,1e-11,1e-11,0,1e-11,1e-11,0,1e-13,TVD\n",
                 encoding="utf-8",
             )
             self.certs[n] = c
@@ -69,6 +69,30 @@ class NacaForceMeshTests(unittest.TestCase):
         report = m.certify(mesh(), self.certs, self.histories)
         self.assertEqual(report["status"], "GCI_CANDIDATE")
         self.assertEqual(report["gci"]["validation_reference"], "NOT_PERFORMED")
+
+    def test_force_certificate_mass_is_maximum_of_three_measures(self):
+        # C++ writes max(continuity, global imbalance, local L_inf).
+        # A valid solution must not be rejected when continuity dominates.
+        path = self.histories[64]
+        with path.open(newline="") as stream:
+            row = next(csv.DictReader(stream))
+        row["continuity_normalized"] = "9e-9"
+        row["mass_normalized_imbalance"] = "7e-9"
+        row["mass_local_linf"] = "2e-9"
+        with path.open("w", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=list(row))
+            writer.writeheader()
+            writer.writerow(row)
+        cert = self.certs[64]
+        with cert.open(newline="") as stream:
+            cert_row = next(csv.DictReader(stream))
+        cert_row["res_mass"] = "9e-9"
+        with cert.open("w", newline="") as stream:
+            writer = csv.DictWriter(stream, fieldnames=m.REQUIRED)
+            writer.writeheader()
+            writer.writerow(cert_row)
+        report = m.certify(mesh(), self.certs, self.histories)
+        self.assertEqual(report["status"], "GCI_CANDIDATE")
 
     def test_incompatible_near_wall_refinement_refuses_gci(self):
         report = m.certify(mesh(False), self.certs, self.histories)
