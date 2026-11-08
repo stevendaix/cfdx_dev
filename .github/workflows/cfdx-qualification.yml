@@ -1,0 +1,145 @@
+name: CFDX qualification - activate a profile
+
+# One selector for targeted qualifications; the total campaign is delegated
+# to cfdx-validation.yml (the single physical-validation authority).
+# On PRs, add exactly one qualification:<profile> label to opt in.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Select a qualification profile (total = entire CI)"
+        type: choice
+        required: true
+        default: naca
+        options:
+          - smoke
+          - naca
+          - momentum
+          - sst
+          - thermal
+          - wall-distance
+          - linalg
+          - n9
+          - ghia
+          - total
+      scope:
+        description: "quick = selected regression; extended = all related CTest, including long"
+        type: choice
+        required: true
+        default: quick
+        options:
+          - quick
+          - extended
+  pull_request:
+    types: [opened, labeled, unlabeled, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cfdx-qualification-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'workflow_dispatch' && inputs.profile || 'pr' }}
+  cancel-in-progress: true
+
+jobs:
+  select:
+    name: Resolve qualification profile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      profile: ${{ steps.selection.outputs.profile }}
+      scope: ${{ steps.selection.outputs.scope }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Resolve dispatch inputs or PR labels
+        id: selection
+        env:
+          MANUAL_PROFILE: ${{ inputs.profile }}
+          MANUAL_SCOPE: ${{ inputs.scope }}
+        run: |
+          python3 scripts/ci/qualification.py resolve \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --event-file "$GITHUB_EVENT_PATH" \
+            --manual-profile "${MANUAL_PROFILE:-naca}" \
+            --manual-scope "${MANUAL_SCOPE:-quick}" \
+            --github-output "$GITHUB_OUTPUT"
+
+  targeted:
+    name: CTest qualification - ${{ needs.select.outputs.profile }} / ${{ needs.select.outputs.scope }}
+    needs: select
+    if: needs.select.outputs.profile != 'none' && needs.select.outputs.profile != 'total'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env:
+      BUILD_DIR: build-qualification
+      VENV_DIR: .venv-qualification
+      CFDX_PROFILE: ${{ needs.select.outputs.profile }}
+      CFDX_SCOPE: ${{ needs.select.outputs.scope }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install C++ and Python prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            cmake ninja-build g++ ccache \
+            python3 python3-venv libhdf5-openmpi-dev libopenmpi-dev
+      - name: Cache C++ compilation
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ccache
+          key: cfdx-qualify-ccache-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            cfdx-qualify-ccache-${{ runner.os }}-
+      - name: Install validation Python dependencies
+        run: |
+          python3 -m venv "$VENV_DIR"
+          "$VENV_DIR/bin/python" -m pip install --upgrade pip
+          "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
+          "$VENV_DIR/bin/python" -m pip install -e .
+      - name: Configure qualification CMake (same physics configuration as total)
+        run: |
+          cmake -S . -B "$BUILD_DIR" -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCFDX_BUILD_TESTS=ON \
+            -DCFDX_ENABLE_LONG_VALIDATION=ON \
+            -DCFDX_ENABLE_MPI=ON \
+            -DCFDX_BUILD_PYTHON=OFF \
+            -DCFDX_USE_HDF5_SERIAL=OFF \
+            -DCFDX_ENABLE_PARALLEL_HDF5=ON \
+            -DPython3_EXECUTABLE="$PWD/$VENV_DIR/bin/python" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+      - name: Plan selected tests (must not be empty or missing)
+        run: |
+          python3 scripts/ci/qualification.py plan \
+            --profile "$CFDX_PROFILE" --scope "$CFDX_SCOPE" \
+            --build-dir "$BUILD_DIR"
+      - name: Build only selected C++ targets in quick mode
+        run: |
+          python3 scripts/ci/qualification.py build \
+            --profile "$CFDX_PROFILE" --scope "$CFDX_SCOPE" \
+            --build-dir "$BUILD_DIR" --parallel 2
+      - name: Run CTest and verify each selected test with JUnit
+        id: qualification
+        run: |
+          python3 scripts/ci/qualification.py run \
+            --profile "$CFDX_PROFILE" --scope "$CFDX_SCOPE" \
+            --build-dir "$BUILD_DIR" --parallel 3
+      - name: Upload profile plan, JUnit and timings
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cfdx-qualification-${{ needs.select.outputs.profile }}-${{ needs.select.outputs.scope }}-${{ github.sha }}
+          path: |
+            ${{ env.BUILD_DIR }}/qualification/
+            ${{ env.BUILD_DIR }}/Testing/Temporary/LastTestsFailed.log
+            ${{ env.BUILD_DIR }}/naca-pressure-*
+          if-no-files-found: warn
+          retention-days: 30
+
+  total:
+    name: Full physical qualification (canonical workflow)
+    needs: select
+    if: needs.select.outputs.profile == 'total'
+    uses: ./.github/workflows/cfdx-validation.yml
+    permissions:
+      contents: read

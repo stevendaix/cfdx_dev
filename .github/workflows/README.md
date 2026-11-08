@@ -29,3 +29,17 @@ explicitement le ruleset/processus de fusion de l'équipe (voir guide).
 **Aucune promesse de durée avant mesure :** le planificateur équilibre des
 `TIMEOUT` (bornes supérieures), pas des temps réels. Les artefacts JUnit et
 `*-timings.json` permettent enfin de mesurer la vraie durée par test.
+
+## Activer une qualification sur demande
+
+**Un point d'entree unique :** Actions > **CFDX qualification - activate a profile**,
+choisir le profil et `quick`/`extended`, puis `Run workflow`. Sur PR, une seule
+etiquette `qualification:naca`, `qualification:sst`, `qualification:thermal`,
+`qualification:momentum`, `qualification:linalg`, `qualification:wall-distance`,
+`qualification:n9`, `qualification:ghia` ou `qualification:smoke` active le
+profil approfondi et le relance apres chaque commit. `validation-total`
+conserve la validation physique canonique et a priorite sur ces etiquettes.
+
+Guide et commandes locales : [Activation des qualifications](../../docs/ci/QUALIFICATION_ACTIVATION.md).
+**Attention :** un profil CTest au vert n'est pas une preuve physique de
+qualification complete (NACA N256, GCI, SST, thermique, etc.).

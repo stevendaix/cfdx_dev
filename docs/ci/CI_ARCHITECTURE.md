@@ -190,3 +190,17 @@ aux géométries ou aux critères de qualification. Les nouveaux tests Python
 contrôlent le protocole, pas l'écoulement. Il faut toujours faire exécuter
 la CI GitHub complète et les cas physiques pour valider ce changement sur le
 HEAD de la PR.
+
+## 9. Activer les qualifications par domaine
+
+Le workflow `cfdx-qualification.yml` ajoute un seul menu `workflow_dispatch`
+(`smoke`, `naca`, `momentum`, `sst`, `thermal`, `wall-distance`, `linalg`,
+`n9`, `ghia`, `total`) et des etiquettes PR `qualification:<profil>`.
+Il permet des campagnes ciblees **sans supprimer la qualification physique
+canonique** : `total` reutilise `cfdx-validation.yml` par `workflow_call`.
+La selection fail-closed est implantee dans `scripts/ci/qualification.py`
+avec le catalogue `qualification_profiles.json` ; toute modification est
+surveillee par `ci_policy.py` et les tests `test_ci_qualification.py`.
+
+Voir [guide d'activation](QUALIFICATION_ACTIVATION.md) pour les commandes et
+les limites de ce perimetre CTest.

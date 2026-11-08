@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -24,6 +25,16 @@ class CIPolicyTests(unittest.TestCase):
             file.write_text('name: hi\non:\n  push:\n  push:\njobs:\n  foo: {}\n')
             with self.assertRaisesRegex(ValueError, "duplicate YAML key"):
                 MODULE.load(file)
+
+    def test_qualification_dropdown_drift_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            copied = Path(tmp) / "workflows"
+            shutil.copytree(ROOT / ".github/workflows", copied)
+            selector = copied / "cfdx-qualification.yml"
+            data = selector.read_text()
+            selector.write_text(data.replace("          - naca\n", "", 1))
+            with self.assertRaisesRegex(ValueError, "dropdown is out of sync"):
+                MODULE.audit(copied)
 
     def test_github_on_key_is_not_automatic_yaml_boolean(self):
         with tempfile.TemporaryDirectory() as td:

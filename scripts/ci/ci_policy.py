@@ -8,6 +8,7 @@ Requires PyYAML; authoritative GitHub execution still happens on runners.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -50,6 +51,7 @@ def audit(workflows: Path) -> dict:
     required = {
         "cfdx-ci.yml", "cfdx-numerical.yml", "cfdx-validation.yml",
         "n9-campaign.yml", "n9-physical-validation.yml", "precommit.yml",
+        "cfdx-qualification.yml",
     }
     if not required.issubset(definitions):
         raise ValueError(f"missing mandatory workflow definitions: {sorted(required - set(definitions))}")
@@ -64,8 +66,9 @@ def audit(workflows: Path) -> dict:
     final = jobs.get("final-gate")
     if not final or set(final.get("needs", [])) != partitions:
         raise ValueError("final-gate must depend on every total-validation partition")
-    if "schedule" not in full["on"] or "workflow_dispatch" not in full["on"]:
-        raise ValueError("missing weekly/manual total-validation triggers")
+    if ("schedule" not in full["on"] or "workflow_dispatch" not in full["on"]
+            or "workflow_call" not in full["on"]):
+        raise ValueError("missing weekly/manual/reusable total-validation triggers")
     long = jobs["long-tests"]
     matrix = long.get("strategy", {}).get("matrix", {})
     if matrix.get("shard") != ["0", "1", "2", "3"] or long.get("strategy", {}).get("fail-fast") != "false":
@@ -78,7 +81,37 @@ def audit(workflows: Path) -> dict:
             raise ValueError(f"{name} repeats a N9 PR/scheduled campaign: {sorted(triggers)}")
     if "pull_request" not in definitions["cfdx-ci.yml"]["on"]:
         raise ValueError("mandatory fast PR workflow is not triggered on PRs")
-    return {"workflows_checked": len(definitions), "mandatory_partitions": len(partitions)}
+    catalog_path = Path(__file__).with_name("qualification_profiles.json")
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    profiles = [p["id"] for p in catalog["profiles"]]
+    if len(profiles) != len(set(profiles)):
+        raise ValueError("qualification profile IDs are not unique")
+    selector = definitions["cfdx-qualification.yml"]
+    events = selector["on"]
+    if "workflow_dispatch" not in events or "pull_request" not in events:
+        raise ValueError("qualification needs manual and PR-label activation")
+    inputs = events["workflow_dispatch"].get("inputs", {})
+    actual_profiles = inputs.get("profile", {}).get("options")
+    actual_scopes = inputs.get("scope", {}).get("options")
+    if actual_profiles != [*profiles, "total"]:
+        raise ValueError("manual qualification profile dropdown is out of sync with catalog")
+    if actual_scopes != ["quick", "extended"]:
+        raise ValueError("manual qualification scope dropdown has drifted")
+    if selector["jobs"].get("total", {}).get("uses") != "./.github/workflows/cfdx-validation.yml":
+        raise ValueError("total qualification must reuse the canonical full workflow")
+    selected = selector["jobs"].get("targeted", {})
+    if selected.get("needs") != "select":
+        raise ValueError("targeted qualification must consume the validated selector")
+    steps = selected.get("steps", [])
+    if not any("qualification.py plan" in step.get("run", "") for step in steps):
+        raise ValueError("targeted qualification is missing fail-closed test planning")
+    if not any("qualification.py run" in step.get("run", "") for step in steps):
+        raise ValueError("targeted qualification is missing JUnit coverage verification")
+    return {
+        "workflows_checked": len(definitions),
+        "mandatory_partitions": len(partitions),
+        "qualification_profiles": len(profiles),
+    }
 
 
 def main() -> int:
