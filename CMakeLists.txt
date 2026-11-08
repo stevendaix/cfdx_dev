@@ -658,6 +658,18 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_phase6_memory_benchmark tests/benchmark/benchmark_phase6_memory.cpp)
     add_cfdx_test(test_amg_chebyshev tests/unit/test_amg_chebyshev.cpp)
     add_cfdx_test(test_naca_relaxation_controls tests/unit/test_naca_relaxation_controls.cpp)
+    add_cfdx_test(test_picard_physical_globalization tests/unit/test_picard_physical_globalization.cpp)
+    add_cfdx_test(test_tvd_deferred_defect_memory tests/unit/test_tvd_deferred_defect_memory.cpp)
+    add_cfdx_test(test_tvd_memory_solver_integration tests/validation/test_tvd_memory_solver_integration.cpp)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_tvd_memory_solver_integration PRIVATE -O0)
+    endif()
+    add_cfdx_test(test_tvd_secant_implicit tests/unit/test_tvd_secant_implicit.cpp)
+    add_cfdx_test(test_nonlinear_multisecant tests/unit/test_nonlinear_multisecant.cpp)
+    add_cfdx_test(test_multisecant_picard_fallback tests/unit/test_multisecant_picard_fallback.cpp)
+    set_tests_properties(test_multisecant_picard_fallback PROPERTIES LABELS "momentum;anderson;transactional;regression" TIMEOUT 30)
+    add_cfdx_test(test_coupled_newton_krylov tests/validation/test_coupled_newton_krylov.cpp)
+    set_tests_properties(test_coupled_newton_krylov PROPERTIES LABELS "momentum;jfnk;coupled;experimental;regression" TIMEOUT 90)
     add_cfdx_test(test_native_external_methods tests/unit/test_native_external_methods.cpp)
     add_cfdx_test(test_matrix_characteristics tests/unit/test_matrix_characteristics.cpp)
     add_cfdx_test(test_amg_preconditioner_qualification tests/validation/test_amg_preconditioner_qualification.cpp)
@@ -745,6 +757,8 @@ set_tests_properties(test_phase12_radiation_vv PROPERTIES LABELS "phase12;valida
     set_tests_properties(test_n11_scalar_conservation PROPERTIES
         LABELS "n11;qualification;validation")
     add_cfdx_test(test_finite_volume_transport tests/unit/test_finite_volume_transport.cpp)
+    add_cfdx_test(test_tvd_skew_affine_mms tests/validation/test_tvd_skew_affine_mms.cpp)
+    set_tests_properties(test_tvd_skew_affine_mms PROPERTIES LABELS "naca;fv;anisotropy;regression" TIMEOUT 60)
     add_cfdx_test(test_convection_continuation tests/unit/test_convection_continuation.cpp)
     set_tests_properties(test_convection_continuation PROPERTIES LABELS "fv;convection;regression")
     add_cfdx_test(test_vof_curvature_contract tests/unit/test_vof_curvature_contract.cpp)
@@ -945,8 +959,15 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_test(NAME test_bfs_quick COMMAND test_bfs_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/bfs_re200_n16.h5)
     set_tests_properties(test_bfs_quick PROPERTIES LABELS "qualification;validation")
     add_executable(test_naca0012_qualification tests/validation/test_naca0012_geometry.cpp)
+    # Header-heavy qualification target: keep incremental compile cost tractable.
+    target_compile_options(test_naca0012_qualification PRIVATE -O1)
     target_link_libraries(test_naca0012_qualification PRIVATE cfdx_core)
     if(Python3_Interpreter_FOUND)
+        add_test(NAME test_naca_farfield_face_flux_audit
+            COMMAND ${Python3_EXECUTABLE} -m pytest -q
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_farfield_face_flux.py)
+        set_tests_properties(test_naca_farfield_face_flux_audit PROPERTIES
+            LABELS "boundary;momentum;diagnostic;regression" TIMEOUT 30)
         add_test(NAME test_naca_mesh_similarity_gate
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_mesh_similarity_gate.py)
@@ -957,6 +978,20 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_force_mesh_qualification.py)
         set_tests_properties(test_naca_force_mesh_qualification PROPERTIES
             LABELS "forces;mesh;gci;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_naca_surface_force_oracle
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/python/test_naca_surface_force_oracle.py)
+        set_tests_properties(test_naca_surface_force_oracle PROPERTIES
+            LABELS "naca;forces;qualification;regression" TIMEOUT 20)
+        add_test(NAME test_naca_compare_mesh_families
+            COMMAND ${Python3_EXECUTABLE}
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_compare_mesh_families.py)
+        set_tests_properties(test_naca_compare_mesh_families PROPERTIES
+            LABELS "anisotropy;mesh;gci;qualification;regression" TIMEOUT 15)
+        add_test(NAME test_naca_wall_radial_comparison
+            COMMAND ${Python3_EXECUTABLE} -m pytest -q
+                ${CMAKE_SOURCE_DIR}/tests/python/test_naca_wall_radial_comparison.py)
+        set_tests_properties(test_naca_wall_radial_comparison PROPERTIES
+            LABELS "forces;anisotropy;mesh;regression" TIMEOUT 20)
         add_test(NAME test_naca_force_certificate_fail_closed
             COMMAND ${Python3_EXECUTABLE}
                 ${CMAKE_SOURCE_DIR}/tests/python/test_naca_force_certificate_fail_closed.py
@@ -1134,6 +1169,9 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_wall_face_traction_mms tests/validation/test_wall_face_traction_mms.cpp)
     add_cfdx_test(test_wall_shear_quadratic_fit tests/validation/test_wall_shear_quadratic_fit.cpp)
     add_cfdx_test(test_naca_state_io tests/validation/test_naca_state_io.cpp)
+    add_cfdx_test(test_naca_paired_restart tests/validation/test_naca_paired_restart.cpp)
+    add_cfdx_test(test_naca_farfield_flux_contract tests/validation/test_naca_farfield_flux_contract.cpp)
+    add_cfdx_test(test_inlet_outlet_velocity_faces tests/validation/test_inlet_outlet_velocity_faces.cpp)
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_naca_wall_pressure_grid_audit
             COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/validation/test_naca_wall_pressure_grid_audit.py)
@@ -1295,6 +1333,13 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
                     ${CMAKE_SOURCE_DIR}/docs/validation/CFDX_QUALIFICATION_REGISTRY.json)
         set_tests_properties(test_cfdx_qualification_registry PROPERTIES
             LABELS "qualification;validation")
+        # Keep the evidence verifier's mutation tests: a physically unproved
+        # NACA result must not be promoted only because its executable exits 0.
+        add_test(NAME test_cfdx_qualification_evidence_selftest
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_SOURCE_DIR}/tests/python/test_qualification_evidence_gate.py)
+        set_tests_properties(test_cfdx_qualification_evidence_selftest PROPERTIES
+            LABELS "qualification;validation;selftest" TIMEOUT 30)
         add_test(NAME test_three_mesh_physical_gate_selftest
             COMMAND ${Python3_EXECUTABLE} -m unittest discover
                     -s ${CMAKE_SOURCE_DIR}/tests/python
@@ -1747,6 +1792,12 @@ if(CFDX_BUILD_TESTS)
         tests/validation/test_production_boundary_wls_v6.cpp)
     set_tests_properties(test_production_boundary_wls_v6 PROPERTIES
         LABELS "verification;gradient;diffusion;pressure;geometry")
+    # Verify the physical Neumann (normal-gradient) face flux on skew meshes:
+    # never add a deferred non-orthogonal flux to a prescribed normal flux.
+    add_cfdx_test(test_neumann_skew_flux_equation
+        tests/validation/test_neumann_skew_flux_equation.cpp)
+    set_tests_properties(test_neumann_skew_flux_equation PROPERTIES
+        LABELS "verification;diffusion;boundary;geometry")
 endif()
 
 # TH-03 V9: opt-in pressure equilibration must not bypass the reusable

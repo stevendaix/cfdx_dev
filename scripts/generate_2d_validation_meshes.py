@@ -278,10 +278,30 @@ def bfs(n: int):
     )
 
 
-def naca0012_surface(n: int):
+def naca0012_surface(n: int, trailing_edge_regularization: float = 0.0):
+    """NACA0012 polygon with opt-in trailing-edge sampling regularization.
+
+    Preserve the analytic profile and its leading/trailing-edge endpoints.
+    The smooth parameterization is shared across all resolutions, so coarse
+    surface nodes remain present in a surface grid with twice as many nodes.
+    This changes the *mesh*, not the physical airfoil, and requires new CFD
+    mesh/force qualification before it can replace the baseline.
+    """
+    if (
+        not math.isfinite(trailing_edge_regularization)
+        or not 0.0 <= trailing_edge_regularization <= 0.08
+    ):
+        raise ValueError("NACA trailing-edge regularization must be in [0,0.08]")
     t = 0.12
     beta = np.linspace(0.0, math.pi, n + 1)
     x = 0.5 * (1.0 - np.cos(beta))
+    if trailing_edge_regularization:
+        s = beta / math.pi
+        # Reduce the cosine-induced O(1/n^2) edge length at the trailing
+        # edge, leaving the leading-edge clustering nearly unchanged.
+        x -= trailing_edge_regularization * s**12 * (1.0 - s)
+        if not np.all(np.diff(x) > 0.0):
+            raise ValueError("NACA trailing-edge sampling is not monotonic")
     yt = (
         5.0
         * t
@@ -308,6 +328,7 @@ def naca_o_grid(
     split_farfield: bool = False,
     radial_power: float = 1.8,
     base_radial_layers: int | None = None,
+    trailing_edge_regularization: float = 0.0,
 ):
     """Build the deterministic transfinite-blend NACA0012 O-grid.
 
@@ -330,7 +351,7 @@ def naca_o_grid(
             "nested radial refinement requires an integer subdivision of the base grid"
         )
 
-    surf = naca0012_surface(n_surface)
+    surf = naca0012_surface(n_surface, trailing_edge_regularization)
     m = len(surf)
     # Parameterize the outer boundary by the same closed-loop index. The
     # surface itself is not a mesh oracle; this is only a deterministic,
@@ -451,6 +472,7 @@ def naca_o_grid_quality(
     radius: float = 20.0,
     radial_power: float = 1.8,
     base_radial_layers: int | None = None,
+    trailing_edge_regularization: float = 0.0,
 ):
     """Return geometric quality indicators for the 2-D NACA0012 O-grid.
 
@@ -464,6 +486,7 @@ def naca_o_grid_quality(
         radius,
         radial_power=radial_power,
         base_radial_layers=base_radial_layers,
+        trailing_edge_regularization=trailing_edge_regularization,
     )
     points = np.asarray(points, dtype=np.float64)
     m = 2 * n_surface + 1
@@ -543,7 +566,13 @@ def naca_o_grid_quality(
             | (np.sign(signed_areas) != dominant_sign)
         )
     )
+    # The maximum edge aspect ratio may be confined to a few cells next to
+    # the trailing edge; report where it occurs and the distribution tail.
+    # A maximum alone can misrepresent the quality of the whole O-grid.
+    worst_index = int(np.argmax(aspect_ratios))
+    worst_j, worst_i = divmod(worst_index, m)
     return {
+        "trailing_edge_regularization": float(trailing_edge_regularization),
         "radial_refinement_strategy": (
             f"nested_base_{base_radial_layers}"
             if base_radial_layers is not None
@@ -562,6 +591,16 @@ def naca_o_grid_quality(
         "minimum_radial_growth_ratio": float(np.min(growth)),
         "maximum_radial_growth_ratio": float(np.max(growth)),
         "maximum_cell_edge_aspect_ratio": float(np.max(aspect_ratios)),
+        "p99_cell_edge_aspect_ratio": float(np.quantile(aspect_ratios, 0.99)),
+        "cells_with_edge_aspect_above_100": int(
+            np.count_nonzero(np.asarray(aspect_ratios) > 100.0)
+        ),
+        "worst_aspect_radial_layer": worst_j,
+        "worst_aspect_azimuthal_cell": worst_i,
+        "worst_aspect_cell_centre_xy": [
+            float(cell_centres[worst_j, worst_i, 0]),
+            float(cell_centres[worst_j, worst_i, 1]),
+        ],
         "maximum_nonorthogonality_degrees": float(np.max(nonorthogonality)),
         "p95_nonorthogonality_degrees": float(np.percentile(nonorthogonality, 95.0)),
     }
@@ -625,6 +664,12 @@ def main():
         help="experimental O-grid radial spacing power; baseline 1.8",
     )
     ap.add_argument(
+        "--naca-te-regularization",
+        type=float,
+        default=0.0,
+        help="experimental trailing-edge sampling change, [0,0.08]; baseline 0",
+    )
+    ap.add_argument(
         "--split-naca-farfield",
         action="store_true",
         help="experimental inlet/outlet outer patches; distinct mesh filenames",
@@ -657,12 +702,15 @@ def main():
                 split_farfield=args.split_naca_farfield,
                 radial_power=args.naca_radial_power,
                 base_radial_layers=24 if args.naca_nested_radial else None,
+                trailing_edge_regularization=args.naca_te_regularization,
             )
             suffix = "_split" if args.split_naca_farfield else ""
             if args.naca_nested_radial:
                 suffix += "_nested"
             if args.naca_radial_power != 1.8:
                 suffix += "_rp" + str(args.naca_radial_power).replace(".", "p")
+            if args.naca_te_regularization != 0.0:
+                suffix += "_te" + str(args.naca_te_regularization).replace(".", "p")
             write_mesh(out / f"naca0012_laminar_n{n}{suffix}.h5", p, c, b)
             quality = naca_o_grid_quality(
                 n,
@@ -670,6 +718,7 @@ def main():
                 20.0,
                 radial_power=args.naca_radial_power,
                 base_radial_layers=24 if args.naca_nested_radial else None,
+                trailing_edge_regularization=args.naca_te_regularization,
             )
             quality_reports.append(quality)
             print(
@@ -686,6 +735,13 @@ def main():
         if args.naca_nested_radial:
             report_path = report_path.with_name(
                 report_path.stem + "_nested" + report_path.suffix
+            )
+        if args.naca_te_regularization != 0.0:
+            report_path = report_path.with_name(
+                report_path.stem
+                + "_te"
+                + str(args.naca_te_regularization).replace(".", "p")
+                + report_path.suffix
             )
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(

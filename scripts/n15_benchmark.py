@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import hashlib
 import json
 import locale
 import os
@@ -18,21 +19,78 @@ import subprocess
 import sys
 import tempfile
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
 SCHEMA_VERSION = "1.0"
 
 
+def sha256_file(path: Path) -> str:
+    result = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            result.update(chunk)
+    return result.hexdigest()
+
+
 def git_sha(repo: Path) -> str | None:
+    """A commit is a source identity only for its own clean repository root."""
     try:
-        return subprocess.check_output(
+        top = subprocess.check_output(
+            ["git", "-C", str(repo), "rev-parse", "--show-toplevel"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        if Path(top).resolve() != repo.resolve():
+            return None
+        modified = subprocess.check_output(
+            ["git", "-C", str(repo), "status", "--porcelain", "--untracked-files=no"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        if modified.strip():
+            return None
+        commit = subprocess.check_output(
             ["git", "-C", str(repo), "rev-parse", "HEAD"],
             text=True,
             stderr=subprocess.DEVNULL,
         ).strip()
-    except (OSError, subprocess.CalledProcessError):
+        if len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
+            return None
+        return commit
+    except (OSError, subprocess.CalledProcessError, ValueError):
         return None
+
+
+def source_identity(args: argparse.Namespace) -> dict[str, Any]:
+    """Never invent a git SHA on an extracted archive.
+
+    An explicit archive identifies exact SOURCE BYTES, but does not prove the
+    measured executable was built from them. Keep that limitation visible.
+    """
+    if args.source_archive is not None:
+        archive = Path(args.source_archive)
+        if not archive.is_file() or not zipfile.is_zipfile(archive):
+            raise ValueError("--source-archive requires an existing valid ZIP")
+        return {
+            "git_sha": None,
+            "source_kind": "archive",
+            "source_revision": sha256_file(archive),
+            "source_archive_path": str(archive.resolve()),
+            "source_identity_warning": (
+                "Archive hash does not prove binary/source equivalence"
+            ),
+        }
+    commit = git_sha(Path(args.repo))
+    if commit:
+        return {"git_sha": commit, "source_kind": "git", "source_revision": commit}
+    return {
+        "git_sha": None,
+        "source_kind": "unverified",
+        "source_revision": None,
+        "source_identity_warning": "No clean Git HEAD or explicit source ZIP",
+    }
 
 
 def compiler_info() -> dict[str, str | None]:
@@ -237,6 +295,12 @@ def run_once(
     finished = dt.datetime.now(dt.timezone.utc)
     metrics = load_json(Path(args.metrics_file)) if args.metrics_file else {}
     metrics.setdefault("total", elapsed)
+    source = source_identity(args)
+    command_path = Path(command[0])
+    if not command_path.is_file():
+        resolved = shutil.which(command[0])
+        command_path = Path(resolved) if resolved else command_path
+    executable_hash = sha256_file(command_path) if command_path.is_file() else None
     if "peak_rss_bytes" not in metrics:
         metrics["peak_rss_bytes"] = child_peak_rss
         metrics["peak_rss_source"] = rss_source
@@ -246,7 +310,9 @@ def run_once(
         "schema_version": SCHEMA_VERSION,
         "benchmark": case,
         "provenance": {
-            "git_sha": git_sha(Path(args.repo)),
+            **source,
+            "executable_sha256": executable_hash,
+            "case_sha256": sha256_file(Path(args.case)),
             "timestamp_start_utc": started.isoformat(),
             "timestamp_end_utc": finished.isoformat(),
             "command": command,
@@ -264,7 +330,13 @@ def run_once(
         "mesh": case.get("mesh", {}),
         "numerics": case.get("numerics", {}),
         "performance": metrics,
-        "status": "PASS" if completed.returncode == 0 else "FAIL",
+        "status": (
+            "FAIL"
+            if completed.returncode != 0
+            else "PASS"
+            if source["source_revision"] and executable_hash
+            else "UNVERIFIED_SOURCE"
+        ),
         "stdout": completed.stdout if not args.inherit_output else None,
         "stderr": completed.stderr if not args.inherit_output else None,
     }
@@ -352,6 +424,10 @@ def make_parser() -> argparse.ArgumentParser:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--case", required=True)
     common.add_argument("--repo", default=".")
+    common.add_argument(
+        "--source-archive",
+        help="ZIP with SHA-256 source identity when Git is unavailable",
+    )
     common.add_argument("--cwd", default=".")
     common.add_argument("--build-type", default="Release")
     common.add_argument("--mpi", default="unknown")
@@ -386,7 +462,11 @@ def main() -> int:
             raise SystemExit("run requires a command after '--'")
         result = run_once(args, load_json(Path(args.case)))
         write_json(result, Path(args.output))
-        return 0 if result["status"] == "PASS" else 1
+        if result["status"] == "PASS":
+            return 0
+        if result["status"] == "UNVERIFIED_SOURCE":
+            return 2
+        return 1
     if args.mode == "scale":
         if not args.command:
             raise SystemExit("scale requires a command after '--'")
