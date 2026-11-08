@@ -157,6 +157,23 @@ jobs:
             "build/ctest-${{ matrix.build_type }}.xml" \
             --output "build/ctest-${{ matrix.build_type }}-timings.json"
 
+      - name: Update qualification portfolio from this CTest execution
+        if: always() && steps.build.outcome == 'success'
+        shell: bash
+        run: |
+          # Reuse the CTest run already performed by this CI. No second build
+          # or physical campaign is needed to display test-level progress.
+          # Long tests are intentionally unregistered in this fast build;
+          # the all-case inventory workflow checks those anchors separately.
+          ctest --test-dir build --show-only=json-v1 > build/qualification-ctest-manifest.json
+          junit="build/ctest-${{ matrix.build_type }}.xml"
+          junit_args=()
+          if [[ -s "$junit" ]]; then junit_args+=(--junit "$junit"); fi
+          python3 scripts/qualification_portfolio.py \
+            --ctest-manifest build/qualification-ctest-manifest.json \
+            "${junit_args[@]}" \
+            --output-dir build/qualification-portfolio
+
       - name: Compiler cache diagnostics
         if: always()
         run: |
@@ -190,6 +207,8 @@ jobs:
             build/n12-mms-quick/
             build/ctest-*.xml
             build/ctest-*-timings.json
+            build/qualification-portfolio/
+            build/qualification-ctest-manifest.json
             build/wall_distance_naca0012_refined.csv
             build.log
           if-no-files-found: ignore

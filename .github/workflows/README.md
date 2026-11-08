@@ -15,6 +15,8 @@ commandes locales : [Guide de la CI](../../docs/ci/CI_ARCHITECTURE.md).
 | **Diagnostic N9** | `n9-campaign.yml`, `n9-physical-validation.yml` | Manuel **uniquement** | Reproduction ciblée; N9 est déjà qualifié au niveau 3 |
 | **Fonctions spécialisées** | GUI, docs, CUDA, TH, contrats, autres | Selon leur workflow | Ne sont pas toutes des qualifications physiques CFDX |
 
+**Vue de portefeuille :** les workflows `cfdx-qualification.yml`, `cfdx-ci.yml` et `cfdx-validation.yml` publient désormais une matrice commune des 25 cas, sans promouvoir automatiquement une réussite CTest en qualification physique. Guide : [Portefeuille des qualifications](../../docs/ci/QUALIFICATION_PORTFOLIO.md).
+
 **Une seule autorité pour la campagne longue :** `cfdx-validation.yml`.
 Les deux workflows N9 manuels ne tournent plus en parallèle lorsque le label
 `validation-total` est ajouté à une PR.

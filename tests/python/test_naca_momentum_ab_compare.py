@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
-sys.path.insert(0, str(SCRIPTS))
+sys.path.append(str(SCRIPTS))
 spec = importlib.util.spec_from_file_location(
     "naca_momentum_ab_compare", SCRIPTS / "naca_momentum_ab_compare.py"
 )

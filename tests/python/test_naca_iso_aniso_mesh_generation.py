@@ -13,7 +13,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 if str(SCRIPTS) not in sys.path:
-    sys.path.insert(0, str(SCRIPTS))
+    sys.path.append(str(SCRIPTS))
 
 
 def load(name: str):
@@ -37,8 +37,8 @@ shear_interior_rings = GENERATOR.shear_interior_rings
 def test_sheared_mesh_retains_exact_wall_and_farfield_nodes(n):
     generator = load_generator()
     original_surface = generator.naca0012_surface
-    generator.naca0012_surface = lambda level: arc_length_surface(
-        level, original_surface
+    generator.naca0012_surface = lambda level, te=0.0: arc_length_surface(
+        level, lambda dense: original_surface(dense, te)
     )
     nradial = 24 * n // 64
     nodes, cells, boundaries = generator.naca_o_grid(
@@ -76,3 +76,13 @@ def test_shear_strength_is_physically_bounded(tmp_path):
             only_family="sheared_isosurface",
             shear_strength=0.1,
         )
+
+
+@pytest.mark.parametrize("family", ["quasi_isotropic", "anisotropic"])
+def test_valid_n64_generation_end_to_end(family, tmp_path):
+    rows = build_families(
+        tmp_path, levels=(64,), make_hdf5=False, only_family=family
+    )
+    assert [row["n_surface"] for row in rows[family]] == [64]
+    assert rows[family][0]["inverted_or_degenerate_cells"] == 0
+    assert (tmp_path / family / "quality.json").exists()

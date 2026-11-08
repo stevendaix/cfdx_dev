@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "scripts/naca_initialization_ab.py"
-sys.path.insert(0, str(SCRIPT.parent))
+sys.path.append(str(SCRIPT.parent))
 spec = importlib.util.spec_from_file_location("naca_initialization_ab", SCRIPT)
 module = importlib.util.module_from_spec(spec)
 assert spec and spec.loader

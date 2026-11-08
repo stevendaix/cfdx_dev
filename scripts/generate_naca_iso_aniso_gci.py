@@ -180,9 +180,23 @@ def build_families(
             gen.naca0012_surface = native
         else:
             cluster = clusters.get(family, 0.0)
-            gen.naca0012_surface = lambda n, native=native, cluster=cluster: (
-                arc_length_surface(n, native, cluster=cluster)
-            )
+            # naca_o_grid passes BOTH n_surface and trailing-edge regularization.
+            # A default-bound `native` in position 2 receives the regularization
+            # float instead of the original callable (the N64 TypeError).
+            def family_surface(
+                n: int,
+                trailing_edge_regularization: float = 0.0,
+                *,
+                _native=native,
+                _cluster=cluster,
+            ):
+                return arc_length_surface(
+                    n,
+                    lambda dense_n: _native(dense_n, trailing_edge_regularization),
+                    cluster=_cluster,
+                )
+
+            gen.naca0012_surface = family_surface
         if family == "sheared_isosurface":
             gen.naca_o_grid = lambda n, nr, *a, **kw: shear_interior_rings(
                 original_grid(n, nr, *a, **kw), n, nr, strength=shear_strength
