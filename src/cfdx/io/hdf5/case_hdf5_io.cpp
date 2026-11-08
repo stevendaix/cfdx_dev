@@ -1,3 +1,4 @@
+#include <cmath>
 // M0.10-T04: CFDX case-level HDF5 I/O implementation
 #include "case_hdf5_io.h"
 #include "schema.h"
@@ -449,6 +450,17 @@ static void case_setup_to_json(const CaseSetup& setup, mini_json::value& obj) {
             sst_scalar_arr.push_back(std::move(scalar_obj));
         }
         bc_obj.object["sst_scalar_conditions"] = std::move(sst_scalar_arr);
+        mini_json::value field_object(mini_json::value_type::object);
+        for (const auto& [name, condition] : bc.field_conditions) {
+            mini_json::value item(mini_json::value_type::object);
+            item.object["type"] = condition.type;
+            mini_json::array_t values;
+            for (double value : condition.value) values.emplace_back(mini_json::value(value));
+            item.object["value"] = std::move(values);
+            item.object["gradient"] = mini_json::value(condition.gradient);
+            field_object.object[name] = std::move(item);
+        }
+        bc_obj.object["field_conditions"] = std::move(field_object);
         bc_obj.object["roughness_height"] = mini_json::value(bc.roughness_height);
         bc_obj.object["wall_temperature"] = mini_json::value(bc.wall_temperature);
         bc_obj.object["back_pressure"] = mini_json::value(bc.back_pressure);
@@ -707,6 +719,40 @@ static void case_setup_from_json(const mini_json::value& json, CaseSetup& setup)
                     else scalar_bc.type = SSTScalarBoundaryType::UNKNOWN;
                     scalar_bc.value = json_get_number(scalar_v, "value");
                     bc.sst_scalar_conditions.push_back(std::move(scalar_bc));
+                }
+            }
+            const auto* field_conditions = mini_json::find(bc_v, "field_conditions");
+            if (field_conditions != nullptr) {
+                if (!field_conditions->is_object())
+                    throw std::invalid_argument("field_conditions must be a JSON object");
+                for (const auto& [name, data] : field_conditions->object) {
+                    if (name != "velocity" && name != "pressure" && name != "temperature")
+                        throw std::invalid_argument("unsupported native field boundary: " + name);
+                    if (!data.is_object())
+                        throw std::invalid_argument("native field boundary must be an object");
+                    NativeFieldBoundary condition;
+                    condition.type = json_get_string(data, "type");
+                    if (condition.type != "FIXED_VALUE" && condition.type != "ZERO_GRADIENT" &&
+                        condition.type != "FIXED_GRADIENT")
+                        throw std::invalid_argument("unsupported native field boundary mode");
+                    if (name == "velocity" && condition.type == "FIXED_GRADIENT")
+                        throw std::invalid_argument("velocity fixed gradient is not supported");
+                    const auto* vector = mini_json::find(data, "value");
+                    if (!vector || !vector->is_array() ||
+                        vector->array.size() != (name == "velocity" ? 3u : 1u))
+                        throw std::invalid_argument("native field value length mismatch");
+                    for (const auto& value : vector->array) {
+                        if (!value.is_number() || !std::isfinite(value.number))
+                            throw std::invalid_argument("native field requires finite numeric values");
+                        condition.value.push_back(value.number);
+                    }
+                    condition.gradient = json_get_number(data, "gradient");
+                    if (!std::isfinite(condition.gradient))
+                        throw std::invalid_argument("non-finite native field gradient");
+                    if (name == "temperature" && condition.type == "FIXED_VALUE" &&
+                        condition.value[0] <= 0)
+                        throw std::invalid_argument("native temperature must be positive K");
+                    bc.field_conditions.emplace(name, std::move(condition));
                 }
             }
             bc.roughness_height = json_get_number(bc_v, "roughness_height");

@@ -23,6 +23,7 @@
 #include <array>
 #include <cmath>
 #include <csignal>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -83,6 +84,9 @@ struct Options {
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
     bool benchmark_export = false;
+    bool cell_hotspots = false;
+    bool cell_map_full = false;
+    std::size_t cell_hotspots_every = 5;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
     bool probe_stream = false;
@@ -700,6 +704,16 @@ Options parse(int argc, char** argv)
         else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--benchmark-export") o.benchmark_export = true;
+        else if (arg == "--cell-hotspots") o.cell_hotspots = true;
+        else if (arg == "--cell-map-full") { o.cell_map_full = true; o.cell_hotspots = true; }
+        else if (arg == "--cell-hotspots-every") {
+            const auto raw = value("--cell-hotspots-every");
+            std::size_t used = 0;
+            try { o.cell_hotspots_every = std::stoull(raw, &used); }
+            catch (const std::exception&) { throw std::invalid_argument("invalid --cell-hotspots-every"); }
+            if (used != raw.size() || o.cell_hotspots_every < 1 || o.cell_hotspots_every > 100000)
+                throw std::invalid_argument("--cell-hotspots-every must be in [1,100000]");
+        }
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
         else if (arg == "--probe-stream") o.probe_stream = true;
@@ -713,6 +727,7 @@ Options parse(int argc, char** argv)
                          "  [--wall-forces-quadratic] (opt-in 3-D quadratic WLS wall-force artifact; rank-deficient stencils fail)\n"
                          "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
                          "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
+                         "  [--cell-hotspots] [--cell-hotspots-every N] [--cell-map-full] (full map <=512 MiB)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::cout << "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n";
@@ -740,6 +755,11 @@ Options parse(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
+    const auto process_started = std::chrono::steady_clock::now();
+    const auto elapsed_wall_seconds = [&]() -> double {
+        return std::chrono::duration<double>(
+            std::chrono::steady_clock::now() - process_started).count();
+    };
     std::signal(SIGINT, handle_stop_signal);
     std::signal(SIGTERM, handle_stop_signal);
     std::filesystem::path execution_output_dir;
@@ -931,7 +951,17 @@ int main(int argc, char** argv)
                     "production solver: case has no boundary condition for mesh patch '" +
                     patch.name + "'");
 
-            if (bc->value_type == BCValueType::FIXED ||
+            // Explicit per-field conditions override the legacy shared value_type.
+            // Never infer the pressure boundary from the velocity mode.
+            if (const auto* explicit_u = bc->find_field("velocity")) {
+                if (explicit_u->type == "FIXED_VALUE") {
+                    ubc[patch.name] = {VelocityBoundaryCondition::Type::FIXED_VALUE,
+                        {explicit_u->value.at(0), explicit_u->value.at(1), explicit_u->value.at(2)}};
+                } else if (explicit_u->type == "ZERO_GRADIENT") {
+                    ubc[patch.name] = {VelocityBoundaryCondition::Type::ZERO_GRADIENT,
+                        {0.0, 0.0, 0.0}};
+                } else throw std::invalid_argument("unsupported native velocity field condition");
+            } else if (bc->value_type == BCValueType::FIXED ||
                 bc->value_type == BCValueType::WALL_NO_SLIP ||
                 bc->value_type == BCValueType::WALL_THERMAL) {
                 cfdx::core::Vec3 value{0.0, 0.0, 0.0};
@@ -963,7 +993,15 @@ int main(int argc, char** argv)
                     patch.name + "'");
             }
 
-            if (bc->value_type == BCValueType::OUTLET_PRESSURE) {
+            if (const auto* explicit_p = bc->find_field("pressure")) {
+                if (explicit_p->type == "FIXED_VALUE")
+                    pbc[patch.name] = {ScalarBoundaryType::FIXED_VALUE, explicit_p->value.at(0), 0.0};
+                else if (explicit_p->type == "FIXED_GRADIENT")
+                    pbc[patch.name] = {ScalarBoundaryType::FIXED_GRADIENT, 0.0, explicit_p->gradient};
+                else if (explicit_p->type == "ZERO_GRADIENT")
+                    pbc[patch.name] = {ScalarBoundaryType::ZERO_GRADIENT, 0.0, 0.0};
+                else throw std::invalid_argument("unsupported native pressure field condition");
+            } else if (bc->value_type == BCValueType::OUTLET_PRESSURE) {
                 pbc[patch.name] = {
                     ScalarBoundaryType::FIXED_VALUE, bc->pressure, 0.0};
             } else {
@@ -1189,6 +1227,31 @@ int main(int argc, char** argv)
         // requires the authoritative convergence gates below.
         controls.diagnostics.iteration_trace = true;
         controls.diagnostics.iteration_trace_frequency = 1;
+        // Opt-in trace is a spatial diagnostic, not part of convergence.json
+        // or execution.json acceptance. Truncate stale trace on every new run;
+        // otherwise a previous run could be mistaken for current evidence.
+        const auto cell_trace_path = options.output_dir / "cell_convergence.jsonl";
+        if (std::filesystem::is_symlink(cell_trace_path))
+            throw std::invalid_argument("cell convergence trace output cannot be a symlink");
+        if (std::filesystem::exists(cell_trace_path) &&
+            !std::filesystem::is_regular_file(cell_trace_path))
+            throw std::invalid_argument("cell convergence trace output must be a file");
+        if (std::filesystem::exists(cell_trace_path))
+            std::filesystem::remove(cell_trace_path);
+        const auto cell_map_path = options.output_dir / "cell_convergence_map.bin";
+        if (std::filesystem::is_symlink(cell_map_path) ||
+            (std::filesystem::exists(cell_map_path) && !std::filesystem::is_regular_file(cell_map_path)))
+            throw std::invalid_argument("cell convergence full map output must be a regular file, not a symlink");
+        if (std::filesystem::exists(cell_map_path))
+            std::filesystem::remove(cell_map_path);
+        if (options.cell_hotspots) {
+            if (options.cell_map_full)
+                controls.diagnostics.cell_convergence_full_map_path = cell_map_path.string();
+            controls.diagnostics.cell_convergence_trace_path = cell_trace_path.string();
+            controls.diagnostics.cell_convergence_mesh_source =
+                std::filesystem::absolute(options.mesh).lexically_normal().string();
+            controls.diagnostics.cell_convergence_every = options.cell_hotspots_every;
+        }
         if (is_case_hdf5) {
             const auto& raw=case_setup.numerics.raw_settings;
             const auto flag=[&](const char* name) {
@@ -1766,7 +1829,8 @@ int main(int argc, char** argv)
             static_cast<int>(result.convergence_status),
             result.convergence_reason,
             false,
-            false});
+            false,
+            elapsed_wall_seconds()});
         if (options.wall_forces_quadratic) {
             if (!result.converged)
                 throw std::runtime_error(
@@ -2028,7 +2092,8 @@ int main(int argc, char** argv)
             static_cast<int>(overall_status),
             overall_reason,
             std::filesystem::is_regular_file(dat),
-            std::filesystem::is_regular_file(convergence)});
+            std::filesystem::is_regular_file(convergence),
+            elapsed_wall_seconds()});
         std::cout << "Checkpoint " << dat.string() << "\n";
         std::cout << "Convergence history " << convergence.string() << "\n";
         std::cout << "Execution summary " << execution.string() << "\n";
@@ -2058,7 +2123,8 @@ int main(int argc, char** argv)
                     static_cast<int>(cfdx::core::ConvergenceStatus::DIVERGED),
                     exc.what(),
                     has_restart,
-                    has_convergence});
+                    has_convergence,
+                    elapsed_wall_seconds()});
             } catch (const std::exception& summary_exc) {
                 std::cerr << "CFDX production solver: failed to persist execution summary: "
                           << summary_exc.what() << "\n";

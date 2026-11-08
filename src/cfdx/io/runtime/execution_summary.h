@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -31,6 +32,9 @@ struct ExecutionSummary {
     std::string convergence_reason;
     bool restart_artifact = false;
     bool convergence_artifact = false;
+    // Monotonic elapsed time measured from process entry to this snapshot.
+    // Negative = legacy caller has no measurement; serialize as JSON null.
+    double elapsed_wall_seconds = -1.0;
 };
 
 inline void execution_json_string(std::ostream& out, const std::string& value)
@@ -61,6 +65,9 @@ inline void write_execution_summary(
     const std::string& path,
     const ExecutionSummary& summary)
 {
+    if ((!std::isfinite(summary.elapsed_wall_seconds)) ||
+        (summary.elapsed_wall_seconds < 0.0 && summary.elapsed_wall_seconds != -1.0))
+        throw std::invalid_argument("execution elapsed_wall_seconds must be nonnegative or unavailable (-1)");
     if (summary.process_exit_code != kExecutionExitSuccess &&
         summary.process_exit_code != kExecutionExitNotConverged &&
         summary.process_exit_code != kExecutionExitError)
@@ -89,6 +96,12 @@ inline void write_execution_summary(
             << "  \"convergence_status\": " << summary.convergence_status << ",\n"
             << "  \"convergence_reason\": ";
         execution_json_string(out, summary.convergence_reason);
+        out << ",\n"
+            << "  \"elapsed_wall_seconds\": ";
+        if (summary.elapsed_wall_seconds >= 0.0)
+            out << std::setprecision(17) << summary.elapsed_wall_seconds;
+        else
+            out << "null";
         out << ",\n"
             << "  \"artifacts\": {\n"
             << "    \"restart_dat\": " << (summary.restart_artifact ? "true" : "false") << ",\n"

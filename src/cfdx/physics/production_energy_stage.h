@@ -287,7 +287,19 @@ inline ScalarBoundaryConditions build_production_temperature_bcs(
         bc.type = ScalarBoundaryType::ZERO_GRADIENT;  // adiabatic by default
         const auto* spec = setup.find_boundary(patch.name);
         bool fixed_value = false;
-        if (spec != nullptr) {
+        if (spec != nullptr && spec->find_field("temperature")) {
+            const auto& condition = *spec->find_field("temperature");
+            if (condition.type == "FIXED_VALUE") {
+                bc.type = ScalarBoundaryType::FIXED_VALUE;
+                bc.value = condition.value.at(0);
+                fixed_value = true;
+            } else if (condition.type == "FIXED_GRADIENT") {
+                bc.type = ScalarBoundaryType::FIXED_GRADIENT;
+                bc.gradient = condition.gradient;
+            } else if (condition.type != "ZERO_GRADIENT") {
+                throw std::invalid_argument("unsupported explicit temperature boundary");
+            }
+        } else if (spec != nullptr) {
             // Zero means "not declared" (stage-1 convention); a declared
             // value must be finite and physically admissible. Temperatures
             // are absolute (kelvin): a declared value must be > 0. 0 K is
@@ -339,6 +351,9 @@ inline ScalarBoundaryConditions build_production_temperature_bcs(
         if (spec != nullptr) {
             const auto flux_it = spec->raw_params.find("heat_flux");
             if (flux_it != spec->raw_params.end() || has_radiative_flux) {
+                if (spec->find_field("temperature") &&
+                    spec->find_field("temperature")->type == "FIXED_GRADIENT")
+                    throw std::invalid_argument("explicit temperature gradient conflicts with heat flux");
                 // heat_flux (W/m^2, positive into the domain) is a WALL
                 // boundary condition: fiche 14 defines it as an imposed
                 // wall flux. Declaring it on an inlet or outlet patch is a

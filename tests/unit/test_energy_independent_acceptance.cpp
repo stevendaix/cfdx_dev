@@ -91,6 +91,25 @@ int main() {
         EXPECT_TRUE(local.max_cell_residual_normalized > 0.1);
         EXPECT_FALSE(result.converged);
     });
+    run_case("native_temperature_dirichlet_linear_profile_and_balance", [] {
+        // Representative physical boundary check: a 1 m rod, constant lambda,
+        // no flow, T(0)=300 K, T(1)=400 K. Exact T(x)=300+100*x.
+        EnergyFixture f(16);
+        f.controls.conductivity = 2.0;
+        f.controls.max_iterations = 20;
+        f.controls.tolerance = 1e-11;
+        f.temperature.fill(280.0);
+        f.bcs["inlet"] = {ScalarBoundaryType::FIXED_VALUE, 300.0, 0.0};
+        f.bcs["outlet"] = {ScalarBoundaryType::FIXED_VALUE, 400.0, 0.0};
+        const auto result = f.solve();
+        EXPECT_TRUE(result.converged);
+        EXPECT_TRUE(result.history.back().independent_conservation_accepted);
+        for (std::size_t i=0; i<16; ++i) {
+            const double x = (static_cast<double>(i)+0.5)/16.0;
+            EXPECT_NEAR(f.temperature(i), 300.0+100.0*x, 1e-8);
+        }
+        EXPECT_TRUE(result.history.back().independent_conservation_local_normalized <= 1e-10);
+    });
     run_case("manufactured_conduction_requires_independent_closure", [] {
         // T = x^2, div(-grad T) = -2. A three-mesh thermal campaign
         // exposed matrix-relative convergence before the independent watts
