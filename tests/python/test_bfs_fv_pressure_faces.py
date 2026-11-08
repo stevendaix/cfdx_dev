@@ -13,7 +13,7 @@ SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
-from audit_bfs_fv_pressure_faces import (  # noqa: E402
+from audit_bfs_fv_pressure_faces import (
     read_split,
     refine_implicit_faces,
     verify_face_operator,
