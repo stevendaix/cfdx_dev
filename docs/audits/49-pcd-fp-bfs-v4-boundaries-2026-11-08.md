@@ -176,6 +176,8 @@ Les tests doivent couvrir le sens du flux, l'ensemble des types de patches, l'ab
 
 Le type de patch et l'opérateur de champ sont deux informations distinctes. Un patch topologique INLET peut porter soit une vitesse prescrite \(u=u_{in}\) (\(\texttt{FIXED}\)), soit un opérateur ouvert à gradient nul \(\partial_n u=0\) (\(\texttt{ZERO_GRADIENT}\)). Le second cas est utilisé par les canaux entraînés par force volumique; il ne doit pas être confondu avec un inlet pression/débit importé. Les sources \(\texttt{pressure-inlet}\), \(\texttt{mass-flow-inlet}\) et \(\texttt{pressure-far-field}\) restent rejetées tant que leurs opérateurs dédiés ne sont pas implémentés.
 
+Dans les fixtures SST à vitesse d'entrée prescrite, l'inlet FIXED est associé à un outlet PRESSURE_OUTLET/OUTLET_PRESSURE avec une pression de référence explicite; un outlet à pression ZERO_GRADIENT ne ferme pas le bilan de masse d'une entrée à débit imposé. Les canaux entraînés par force volumique conservent, eux, leurs frontières ouvertes à gradient nul.
+
 Le contrat de production vérifie la concordance du type topologique \(\texttt{PatchType::INLET}\) et du type physique \(\texttt{BCType::INLET}\), puis sélectionne explicitement FIXED ou ZERO_GRADIENT. Les tests unitaires couvrent les deux branches et le rejet des inlets pression/débit. Les fixtures N10 génériques déclarent explicitement leurs patches comme WALL avant d'attacher des conditions no-slip; elles ne déduisent pas une physique de l'ordre des patches VTK.
 
 **Statut :** opérateurs FIXED et ZERO_GRADIENT pris en charge sur patch INLET; pression/débit/far-field non pris en charge et rejetés. Cette extension ne constitue pas une validation physique du cas de canal.
