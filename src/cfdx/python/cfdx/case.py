@@ -66,11 +66,14 @@ class Case:
         if not self.execution.solver:
             raise ValueError("execution.solver must be set before run()")
         from .native_solver_preflight import (
-            is_native_production_solver, native_production_command,
+            is_native_production_solver,
+            native_production_command,
         )
+
         if is_native_production_solver(self.execution.solver):
             command = native_production_command(
-                self.execution.solver, Path(case_file),
+                self.execution.solver,
+                Path(case_file),
                 output_dir=(
                     self.execution.output_dir or Path(case_file).parent / "results"
                 ),
