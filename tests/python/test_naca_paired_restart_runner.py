@@ -133,3 +133,40 @@ def test_runner_refuses_success_without_positive_flux_audit(tmp_path, monkeypatc
     assert summary["exit_code"] == 2
     assert summary["kinematic_face_flux_certified"] is False
     assert "FAIL missing positive" in (output / "run.log").read_text()
+
+
+def test_runner_muscl_candidate_is_explicit_and_fail_closed(tmp_path, monkeypatch):
+    mesh, exe = tmp_path / "mesh.h5", tmp_path / "solver"
+    mesh.touch()
+    exe.touch()
+    captured = {}
+
+    def fake_run(argv, **kwargs):
+        captured["env"] = kwargs["env"]
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(RUNNER.subprocess, "run", fake_run)
+    monkeypatch.setenv("CFDX_NACA_CONVECTION_TVD", "1")
+    monkeypatch.setenv("CFDX_NACA_CONVECTION_CELL_LIMITED", "1")
+    dest = tmp_path / "muscl"
+    status = run_case(mesh, dest, exe, 100, 20,
+                      farfield_pressure_neumann=True,
+                      convection_scheme="MUSCL_CELL_LIMITED",
+                      linear_tolerance=1e-10)
+    assert status == 1
+    env = captured["env"]
+    assert env["CFDX_NACA_CONVECTION_CELL_LIMITED"] == "1"
+    assert "CFDX_NACA_CONVECTION_VANLEER" not in env
+    assert "CFDX_NACA_CONVECTION_TVD" not in env
+    assert env["CFDX_NACA_ALGORITHM"] == "SIMPLE"
+    assert env["CFDX_NACA_LINEAR_TOLERANCE"] == "1e-10"
+    assert env["CFDX_NACA_FARFIELD_PRESSURE_NEUMANN"] == "1"
+    assert env["CFDX_NACA_REQUIRE_KINEMATIC_FACE_FLUX"] == "1"
+    summary = json.loads((dest / "run_summary.json").read_text())
+    assert summary["scheme"] == "MUSCL_CELL_LIMITED"
+    assert summary["linear_tolerance"] == 1e-10
+    assert summary["nonlinear_tolerance"] == 1e-8
+    assert not summary["kinematic_face_flux_certified"]
+    with pytest.raises(ValueError, match="unrecognized"):
+        run_case(mesh, dest, exe, 100, 20,
+                 convection_scheme="UPWIND_LOW_ORDER")

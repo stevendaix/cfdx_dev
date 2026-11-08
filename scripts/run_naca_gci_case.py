@@ -19,7 +19,13 @@ def run_case(mesh: Path, output: Path, exe: Path, maxit: int, seconds: int,
              checkpoint_every: int = 300,
              stagnation_diagnostic_only: bool = False,
              farfield_pressure_neumann: bool = False,
-             require_kinematic_face_flux: bool = False):
+             require_kinematic_face_flux: bool = False,
+             convection_scheme: str = "TVD_VANLEER",
+             linear_tolerance: float = 1e-12):
+    if linear_tolerance not in (1e-12, 1e-10):
+        raise ValueError("NACA campaign: unqualified linear tolerance")
+    if convection_scheme not in {"TVD_VANLEER", "MUSCL_CELL_LIMITED"}:
+        raise ValueError("NACA campaign: unrecognized final convection scheme")
     if checkpoint_every < 10 or checkpoint_every > 10000:
         raise ValueError("checkpoint interval must be in [10,10000]")
     if initial_paired_checkpoint is not None and (
@@ -47,8 +53,7 @@ def run_case(mesh: Path, output: Path, exe: Path, maxit: int, seconds: int,
     manifest.unlink(missing_ok=True)
     env = os.environ.copy()
     env.update({
-        "CFDX_NACA_CONVECTION_VANLEER": "1",
-        "CFDX_NACA_LINEAR_TOLERANCE": "1e-12",
+        "CFDX_NACA_LINEAR_TOLERANCE": f"{linear_tolerance:.0e}",
         "CFDX_NACA_WALL_TRACTION_FACE": "1",
         "CFDX_NACA_WALL_GRADIENT_WLS": "1",
         "CFDX_NACA_CONVERGED_FORCE_CSV": str(output / "force.csv"),
@@ -58,6 +63,15 @@ def run_case(mesh: Path, output: Path, exe: Path, maxit: int, seconds: int,
         "CFDX_NACA_CHECKPOINT_PAIRED_MANIFEST": str(manifest),
         "CFDX_NACA_CHECKPOINT_EVERY": str(checkpoint_every),
     })
+    # A campaign must not silently inherit the other scheme from the shell.
+    env.pop("CFDX_NACA_CONVECTION_CELL_LIMITED", None)
+    env.pop("CFDX_NACA_CONVECTION_TVD", None)
+    env.pop("CFDX_NACA_CONVECTION_VANLEER", None)
+    if convection_scheme == "TVD_VANLEER":
+        env["CFDX_NACA_CONVECTION_VANLEER"] = "1"
+    if convection_scheme == "MUSCL_CELL_LIMITED":
+        env["CFDX_NACA_CONVECTION_CELL_LIMITED"] = "1"
+        env["CFDX_NACA_ALGORITHM"] = "SIMPLE"
     if stagnation_diagnostic_only:
         env["CFDX_NACA_STAGNATION_DIAGNOSTIC_ONLY"] = "1"
     # The qualification contract owns these toggles. Do not inherit an
@@ -116,8 +130,8 @@ def run_case(mesh: Path, output: Path, exe: Path, maxit: int, seconds: int,
                       " face-flux audit\n")
     (output / "run_summary.json").write_text(
         json.dumps({
-            "mesh": str(mesh), "scheme": "TVD_VANLEER",
-            "linear_tolerance": 1e-12, "wall_traction": "FACE_WLS",
+            "mesh": str(mesh), "scheme": convection_scheme,
+            "linear_tolerance": linear_tolerance, "wall_traction": "FACE_WLS",
             "stagnation_diagnostic_only": stagnation_diagnostic_only,
             "nonlinear_tolerance": 1e-8, "max_iter": maxit,
             "pressure_boundary_policy": ("ZERO_NORMAL_GRADIENT"
@@ -164,6 +178,10 @@ if __name__ == "__main__":
         "--exe", type=Path,
         default=Path("/mnt/data/cfdx_work/build/test_naca0012_qualification"))
     parser.add_argument("--maxit", type=int, default=2600)
+    parser.add_argument("--linear-tolerance", type=float, choices=(1e-12, 1e-10),
+                        default=1e-12, help="true linear residual target, not physical gate")
+    parser.add_argument("--scheme", choices=("TVD_VANLEER", "MUSCL_CELL_LIMITED"),
+                        default="TVD_VANLEER", help="fixed final convection operator")
     parser.add_argument("--seconds", type=int, default=1100)
     parser.add_argument("--initial-state", type=Path)
     parser.add_argument("--export-converged-state", type=Path)
@@ -195,4 +213,5 @@ if __name__ == "__main__":
         args.initial_face_flux, args.export_converged_face_flux,
         args.initial_paired_checkpoint, args.checkpoint_every,
         args.stagnation_diagnostic_only,
-        args.farfield_pressure_neumann, args.require_kinematic_face_flux))
+        args.farfield_pressure_neumann, args.require_kinematic_face_flux,
+        args.scheme, args.linear_tolerance))
