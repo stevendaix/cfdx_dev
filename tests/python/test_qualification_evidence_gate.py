@@ -350,7 +350,7 @@ class EvidenceGateTests(unittest.TestCase):
             str(output),
         ]
         p = subprocess.run(
-            cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            cmd, text=True, capture_output=True
         )
         self.assertEqual(p.returncode, 2)
         self.assertEqual(json.loads(output.read_text())["coverage"]["evidence_pass"], 0)
