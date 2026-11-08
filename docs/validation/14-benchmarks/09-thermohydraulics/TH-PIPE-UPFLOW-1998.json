@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "case_id": "TH-PIPE-UPFLOW-1998",
+  "portfolio_id": "TH-MIXED-CONVECTION-PIPE",
+  "title": "Turbulent buoyancy-influenced upflow in a heated vertical circular pipe",
+  "reference": {
+    "type": "EXPERIMENT",
+    "citation": "Upflow turbulent mixed convection heat transfer in vertical pipes (1998), International Journal of Heat and Mass Transfer, 41(24), 4037-4054",
+    "doi": "10.1016/S0017-9310(98)00177-X",
+    "reference_url": "https://doi.org/10.1016/S0017-9310(98)00177-X",
+    "source_data": "NOT_INGESTED",
+    "measurements_policy": "Transcribe exact pipe diameters, Reynolds, Grashof, heating, fluid properties, temperatures, and errors from original tables before constructing cases. No guesses."
+  },
+  "physics": {
+    "geometry": "vertical circular pipe (not a differentially heated plane channel)",
+    "fluid": "water (temperature-dependent properties must be checked)",
+    "flow": "upward, forced to buoyancy-aided mixed convection",
+    "boundary_conditions": "Original wall heating and inlet/outlet profiles must be frozen from the experiment",
+    "dimensionless": "Re=Ub*D/nu, Pr=nu/alpha, Gr=g*beta*DeltaT*D^3/nu^2, Ri=Gr/Re^2 with documented reference temperature and length D"
+  },
+  "qoi": [
+    "local and mean Nusselt numbers",
+    "velocity and temperature profiles where measured",
+    "wall shear and pressure drop",
+    "mean energy and mass balances",
+    "mesh refinement and property-model sensitivity"
+  ],
+  "not_equivalent_to": "TH-07 (Wagner-Wetzel 2022 DNS, vertical plane channel)",
+  "campaign_implementation": "UNREGISTERED_REFERENCE_PREPARATION_ONLY",
+  "physical_validation": "BLOCKED_MISSING_PRIMARY_TABLES_REAL_MESHES_AND_SOLVER_RUNS"
+}

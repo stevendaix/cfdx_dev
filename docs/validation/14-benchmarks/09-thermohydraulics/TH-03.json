@@ -86,7 +86,7 @@
   },
   "status": {
     "contract": "READY_FOR_CONTRACT_CI",
-    "physical_validation": "BLOCKED_UNTIL_TURBULENCE_PRODUCTION_PATH_AND_CMP32_RAW_DATA_INGESTION",
-    "reason": "The existing SEP-BFS Armaly/Re=200 test is not this case and cannot be used as its substitute."
+    "physical_validation": "BLOCKED_UNTIL_CMP32_REAL_CASES_PROFILES_AND_THREE_MESH_EVIDENCE",
+    "reason": "Experimental production SST momentum transport exists, but the measured CMP32 inlet, three real converged meshes and independent reattachment/Cp/Cf evidence are still missing. The Armaly/Re=200 benchmark is not a substitute."
   }
 }
