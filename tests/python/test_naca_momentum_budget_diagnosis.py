@@ -111,7 +111,7 @@ def test_accepts_cellwise_algebraic_closure(tmp_path):
 def test_rejects_bad_algebraic_closure(tmp_path, field, value):
     file = make_file(tmp_path)
     with file.open(newline="", encoding="utf8") as stream:
-        row = list(csv.DictReader(stream))[0]
+        row = next(iter(csv.DictReader(stream)))
     row.update(
         temporal="0",
         algebraic_residual="0.001",
