@@ -43,7 +43,10 @@ static Forces run(const std::string& path,std::size_t level,
         "CFDX_NACA_FACE_PROFILES_CSV",
         "CFDX_NACA_FACE_TRACTION_RAW_CSV",
         "CFDX_NACA_PHYSICAL_HISTORY_CSV",
-        "CFDX_NACA_MOMENTUM_BUDGET_CSV"};
+        "CFDX_NACA_MOMENTUM_BUDGET_CSV",
+        "CFDX_NACA_SAME_STATE_FACE_CSV",
+        "CFDX_NACA_PICARD_TVD_FACE_CSV",
+        "CFDX_NACA_LINEAR_AUDIT_CSV"};
     std::vector<std::string> outputs;
     for (const char* name : output_names) {
         const char* candidate = std::getenv(name);
@@ -159,6 +162,23 @@ static Forces run(const std::string& path,std::size_t level,
                 "CFDX_NACA_LINEAR_TOLERANCE requires [1e-14,1e-10]");
         c.linear_tolerance = tolerance;
     }
+    // Experimental A/B, no change to the physical acceptance thresholds.
+    if (const char* raw=std::getenv("CFDX_NACA_AB_LINEAR_TOLERANCE")) {
+        std::size_t used=0;
+        const std::string value(raw);
+        const double tol=std::stod(value,&used);
+        if (used!=value.size() || !std::isfinite(tol) || tol<1e-14 || tol>1e-6)
+            throw std::invalid_argument("NACA AB linear tolerance must be in [1e-14,1e-6]");
+        c.linear_tolerance=tol;
+    }
+    if (const char* raw=std::getenv("CFDX_NACA_AB_PRESSURE_LINEAR_TOLERANCE")) {
+        std::size_t used=0;
+        const std::string value(raw);
+        const double tol=std::stod(value,&used);
+        if (used!=value.size() || !std::isfinite(tol) || tol<1e-14 || tol>1e-6)
+            throw std::invalid_argument("NACA AB pressure linear tolerance must be in [1e-14,1e-6]");
+        c.pressure_linear_tolerance=tol;
+    }
     c.convergence.max_iterations=max_iterations;
     c.convergence.relative_tolerance=1e-8;
     c.convergence.continuity_tolerance=1e-8;
@@ -250,6 +270,122 @@ static Forces run(const std::string& path,std::size_t level,
     c.diagnostics.iteration_trace_frequency=growth_guard ? 10 : 200;
 
     const auto geometry=build_fv_geometry(mesh);
+    // Optional accepted-state, cell-targeted per-face TVD/RC/HbyA trace.
+    std::ofstream same_state_output;
+    if (const char* path=std::getenv("CFDX_NACA_SAME_STATE_FACE_CSV")) {
+        if (!*path) throw std::invalid_argument("empty NACA same-state face path");
+        std::vector<std::size_t> selected_cells;
+        if (const char* raw=std::getenv("CFDX_NACA_SAME_STATE_CELLS")) {
+            std::stringstream input(raw);
+            std::string token;
+            while (std::getline(input,token,',')) {
+                if (token.empty() || !std::all_of(token.begin(),token.end(),
+                        [](unsigned char c){return c>='0' && c<='9';}))
+                    throw std::invalid_argument("invalid NACA same-state cell list");
+                const auto cell=std::stoull(token);
+                if (cell>=mesh.n_cells())
+                    throw std::invalid_argument("NACA same-state cell outside mesh");
+                selected_cells.push_back(static_cast<std::size_t>(cell));
+            }
+            if (selected_cells.empty() || selected_cells.size()>128)
+                throw std::invalid_argument("NACA same-state cell list needs 1-128 cells");
+        }
+        same_state_output.open(path);
+        if (!same_state_output)
+            throw std::runtime_error("cannot open NACA same-state face output");
+        same_state_output << std::setprecision(17);
+        same_state_output << "iteration,face,owner,neighbour,mass_flux,"
+            "upwind_convection,tvd_convection,deferred_tvd_flux,"
+            "predictor_hbya_flux,rc_relaxed_flux,rc_full_flux,"
+            "conservative_flux,rc_pressure_response,"
+            "pressure_relaxation_split,simplec_extra_flux,decomposition_error,"
+            "internal_pressure_operator,pressure_operator_error\n";
+        c.momentum_same_state_face_callback=
+            [&same_state_output,selected_cells=std::move(selected_cells)](
+                std::size_t iteration,const MomentumSameStateTrace& trace) {
+                for (const auto& f:trace.faces) {
+                    const bool selected=selected_cells.empty() ||
+                        std::find(selected_cells.begin(),selected_cells.end(),f.owner)!=selected_cells.end() ||
+                        (f.neighbour>=0 && std::find(selected_cells.begin(),selected_cells.end(),
+                            static_cast<std::size_t>(f.neighbour))!=selected_cells.end());
+                    if (!selected) continue;
+                    same_state_output<<iteration<<','<<f.face<<','<<f.owner<<','<<f.neighbour
+                        <<','<<f.mass_flux<<','<<f.upwind_convection
+                        <<','<<f.selected_convection<<','<<f.deferred_tvd_flux
+                        <<','<<f.predictor_hbya_flux<<','<<f.rc_relaxed_flux
+                        <<','<<f.rc_full_flux<<','<<f.conservative_flux
+                        <<','<<f.rc_pressure_response<<','<<f.pressure_relaxation_split
+                        <<','<<f.simplec_extra_flux<<','<<f.decomposition_error
+                        <<','<<f.internal_pressure_operator<<','<<f.pressure_operator_error<<'\n';
+                }
+            };
+    }
+    // Optional pre-correction Picard trace. Do not call this an accepted-state
+    // TVD correction: phi and U here are the values used by the matrix build.
+    std::ofstream picard_face_output;
+    if (const char* path=std::getenv("CFDX_NACA_PICARD_TVD_FACE_CSV")) {
+        if (!*path) throw std::invalid_argument("empty NACA Picard TVD face path");
+        std::vector<std::size_t> selected_cells;
+        if (const char* raw=std::getenv("CFDX_NACA_SAME_STATE_CELLS")) {
+            std::stringstream input(raw);
+            std::string token;
+            while (std::getline(input,token,',')) {
+                if (token.empty() || !std::all_of(token.begin(),token.end(),
+                        [](unsigned char c){return c>='0' && c<='9';}))
+                    throw std::invalid_argument("invalid NACA Picard cell list");
+                const auto cell=std::stoull(token);
+                if (cell>=mesh.n_cells())
+                    throw std::invalid_argument("NACA Picard cell outside mesh");
+                selected_cells.push_back(static_cast<std::size_t>(cell));
+            }
+            if (selected_cells.empty() || selected_cells.size()>128)
+                throw std::invalid_argument("NACA Picard cell list needs 1-128 cells");
+        }
+        picard_face_output.open(path);
+        if (!picard_face_output)
+            throw std::runtime_error("cannot open Picard TVD face CSV");
+        picard_face_output<<std::setprecision(17);
+        picard_face_output<<"iteration,face,owner,neighbour,high_order_fraction,"
+            "assembly_mass_flux,upwind_flux,selected_flux,deferred_tvd_flux\n";
+        c.momentum_picard_tvd_face_callback=
+            [&picard_face_output,selected_cells=std::move(selected_cells)](
+                std::size_t iteration,const MomentumPicardTvdTrace& trace) {
+                for (const auto& f:trace.faces) {
+                    const bool selected=selected_cells.empty() ||
+                        std::find(selected_cells.begin(),selected_cells.end(),f.owner)!=selected_cells.end() ||
+                        (f.neighbour>=0 && std::find(selected_cells.begin(),selected_cells.end(),
+                            static_cast<std::size_t>(f.neighbour))!=selected_cells.end());
+                    if (!selected) continue;
+                    picard_face_output<<iteration<<','<<f.face<<','<<f.owner<<','<<f.neighbour
+                        <<','<<trace.high_order_fraction<<','<<f.mass_flux_old
+                        <<','<<f.upwind_flux<<','<<f.selected_flux
+                        <<','<<f.deferred_tvd_flux<<'\n';
+                }
+            };
+    }
+    std::ofstream linear_audit_output;
+    if (const char* path=std::getenv("CFDX_NACA_LINEAR_AUDIT_CSV")) {
+        if (!*path) throw std::invalid_argument("empty NACA linear audit path");
+        linear_audit_output.open(path);
+        if (!linear_audit_output)
+            throw std::runtime_error("cannot open NACA linear audit output");
+        linear_audit_output << std::setprecision(17)
+            << "iteration,component,alpha_u,linear_tolerance,"
+               "relaxed_true_l2,relaxed_true_relative,"
+               "unrelaxed_original_l2,unrelaxed_original_relative,"
+               "relaxation_displacement_l2,velocity_change_linf,"
+               "relaxed_true_linf,original_operator_linf,worst_original_cell\n";
+        c.momentum_linear_relaxation_callback=
+            [&linear_audit_output](std::size_t iteration,std::size_t d,
+               const MomentumLinearRelaxationEvidence& e,double alpha,double tolerance) {
+                linear_audit_output<<iteration<<','<<d<<','<<alpha<<','<<tolerance
+                    <<','<<e.relaxed_true_l2<<','<<e.relaxed_true_relative
+                    <<','<<e.original_operator_l2<<','<<e.original_operator_relative
+                    <<','<<e.relaxation_displacement_l2<<','<<e.velocity_change_linf
+                    <<','<<e.relaxed_true_linf<<','<<e.original_operator_linf
+                    <<','<<e.worst_original_cell<<'\n';
+            };
+    }
     if (const char* checkpoint = std::getenv("CFDX_NACA_CHECKPOINT_STATE_CSV")) {
         const char* frequency = std::getenv("CFDX_NACA_CHECKPOINT_EVERY");
         if (!frequency || !*checkpoint)

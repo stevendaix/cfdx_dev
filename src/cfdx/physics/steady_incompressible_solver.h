@@ -28,6 +28,7 @@
 #include "cfdx/physics/momentum_residual_certification.h"
 #include "cfdx/physics/nonlinear_face_residual_certificate.h"
 #include "cfdx/physics/momentum_face_budget.h"
+#include "cfdx/physics/momentum_same_state_audit.h"
 #include "cfdx/physics/timestep_control.h"
 #include "cfdx/core/numerics/conservation.h"
 #include "cfdx/core/numerics/temporal.h"
@@ -485,6 +486,20 @@ struct IncompressibleSolverControls {
     std::function<void(std::size_t, std::size_t, const MomentumFaceBudget&,
                        const FvGeometry&)> momentum_face_budget_callback;
     std::size_t momentum_face_budget_every = 1;
+    // Opt-in true residual of the RELAXED linear system and the ORIGINAL
+    // frozen momentum equation at the same predictor. A small relaxed Krylov
+    // residual does not imply a small original/nonlinear residual.
+    std::function<void(std::size_t, std::size_t,
+                       const MomentumLinearRelaxationEvidence&,
+                       double, double)> momentum_linear_relaxation_callback;
+    // Same H/A, pressure state and authoritative flux: only published after
+    // nonlinear transaction commit, never on a rejected retry.
+    std::function<void(std::size_t, const MomentumSameStateTrace&)>
+        momentum_same_state_face_callback;
+    // Pre-correction Picard assembly: U_old, phi_old and the exact
+    // deferred-convection reconstruction. Published only after commit.
+    std::function<void(std::size_t, const MomentumPicardTvdTrace&)>
+        momentum_picard_tvd_face_callback;
     // Evidence-only hook: invoked at the exact Krylov call point of the
     // coupled solve - after assembly, gauge treatment, finite checks and
     // preconditioner setup - so the snapshot matrix, RHS and initial guess
@@ -4688,6 +4703,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // transaction commits.
             stop_after_iteration = false;
             transaction.begin();
+            std::optional<MomentumSameStateTrace> pending_same_state_trace;
+            std::optional<MomentumPicardTvdTrace> pending_picard_tvd_trace;
+            std::array<std::optional<MomentumLinearRelaxationEvidence>,3>
+                pending_linear_relaxation;
+            const double pending_linear_tolerance = controls.linear_tolerance;
+            double pending_alpha_u = controls.coupling.alpha_u;
             const auto convergence_monitor_snapshot = convergence_monitor;
             const auto result_history_size = result.history.size();
             const auto probe_samples_size = result.probe_samples.size();
@@ -4905,6 +4926,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             controls.use_bounded_convection, controls.convection_scheme,
             &u_z_field, nullptr, sst_molecular_wall_mu,
             outer_high_order_fraction);
+        if (controls.momentum_picard_tvd_face_callback) {
+            // This is the same U_y and phi passed to assemble_momentum_component
+            // above, including the iteration's continuation fraction. It is
+            // intentionally distinct from the accepted-state reconstruction.
+            pending_picard_tvd_trace = audit_momentum_picard_tvd_faces(
+                mesh,geometry,mass_flux,u_y_field,ubc_y,
+                controls.convection_scheme,outer_high_order_fraction);
+        }
+
 
         if (controls.momentum_equation_forensic_callback) {
             controls.momentum_equation_forensic_callback(
@@ -5262,6 +5292,15 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         require_linear_convergence("Ux", rx);
         require_linear_convergence("Uy", ry);
         require_linear_convergence("Uz", rz);
+        if (controls.momentum_linear_relaxation_callback) {
+            pending_alpha_u = retry_controller.alpha_u(effective_alpha_u);
+            pending_linear_relaxation[0] = audit_momentum_linear_relaxation(
+                ex, ux, ux_old, pending_alpha_u);
+            pending_linear_relaxation[1] = audit_momentum_linear_relaxation(
+                ey, uy, uy_old, pending_alpha_u);
+            pending_linear_relaxation[2] = audit_momentum_linear_relaxation(
+                ez, uz, uz_old, pending_alpha_u);
+        }
 
         for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
             U.component_data(0)[c] = ux(c);
@@ -6696,6 +6735,62 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     rhie_chow_identity_audit_linf,
                     std::abs(mass_flux(f) - rederived_flux(f)));
             rhie_chow_identity_evaluated = true;
+        }
+        if (controls.momentum_same_state_face_callback) {
+            // Capture the EXACT live predictor and pressure states before
+            // the nonlinear step can advance or replace the flux. Keep it
+            // pending until the transaction is committed.
+            const auto predictor_base = make_mass_flux(
+                mesh, geometry, HbyA, controls.density, velocity_bcs,
+                {}, controls.pressure_projected_face_interpolation);
+            const auto& response_inverse =
+                controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
+            const auto pressure_relaxed_flux = make_rhie_chow_mass_flux(
+                mesh, geometry, HbyA, p, response_inverse, controls.density,
+                velocity_bcs, pressure_bcs,
+                RhieChowVelocityContract::HBYA_PREDICTOR,
+                controls.pressure_skew_corrected_gradient,
+                controls.pressure_projected_face_interpolation);
+            const auto pressure_full_flux = make_rhie_chow_mass_flux(
+                mesh, geometry, HbyA, v19_flux_pressure_state, response_inverse,
+                controls.density, velocity_bcs, pressure_bcs,
+                RhieChowVelocityContract::HBYA_PREDICTOR,
+                controls.pressure_skew_corrected_gradient,
+                controls.pressure_projected_face_interpolation);
+            // Independent internal-face pressure Schur action at the same
+            // flux-pressure state and rAU/rAtU. Boundaries are not compared
+            // to the internal-face formula (they have different BC terms).
+            const auto full_grad = gauss_gradient_with_boundary(
+                v19_flux_pressure_state, mesh, geometry, pressure_bcs,
+                controls.pressure_skew_corrected_gradient,
+                controls.pressure_projected_face_interpolation);
+            cfdx::core::Field<double,cfdx::core::Location::FACE> independent_pressure(
+                mesh.n_faces(), "rc_pressure_face", "kg/s", 1);
+            independent_pressure.fill(0.0);
+            for (std::size_t f=0; f<mesh.n_faces(); ++f)
+                if (mesh.ownership().neighbour(f)>=0)
+                    independent_pressure(f) = rhie_chow_pressure_flux_internal(
+                        mesh, geometry, f, v19_flux_pressure_state, full_grad,
+                        response_inverse, controls.density,
+                        controls.pressure_projected_face_interpolation);
+            cfdx::core::Field<double,cfdx::core::Location::CELL> uy_trace(
+                mesh.n_cells(), "Uy_same_state", "m/s", 1);
+            for (std::size_t cell=0; cell<mesh.n_cells(); ++cell)
+                uy_trace(cell)=U.component_data(1)[cell];
+            pending_same_state_trace = audit_momentum_same_state_faces(
+                mesh, geometry, mass_flux, uy_trace, ubc_y,
+                controls.convection_scheme, outer_high_order_fraction,
+                predictor_base, pressure_relaxed_flux, pressure_full_flux,
+                &independent_pressure);
+            const double op_scale = [&] {
+                double scale = 1.0;
+                for (std::size_t f=0; f<mesh.n_faces(); ++f)
+                    scale = std::max(scale, std::abs(mass_flux(f)));
+                return scale;
+            }();
+            if (pending_same_state_trace->max_pressure_operator_error >
+                5e-10*op_scale)
+                throw std::runtime_error("same-state RC pressure response/operator mismatch");
         }
 
         }
@@ -8264,6 +8359,23 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 result.iterations = iter;
                 stop_after_iteration = true;
             }
+            if (iteration_completed && controls.momentum_linear_relaxation_callback) {
+                const double used_tolerance = result.history.empty()
+                    ? pending_linear_tolerance : result.history.back().linear_tolerance_used;
+                for (std::size_t d=0;d<3;++d)
+                    if (pending_linear_relaxation[d])
+                        controls.momentum_linear_relaxation_callback(
+                            iter,d,*pending_linear_relaxation[d],
+                            pending_alpha_u,used_tolerance);
+            }
+            if (iteration_completed && pending_picard_tvd_trace &&
+                controls.momentum_picard_tvd_face_callback)
+                controls.momentum_picard_tvd_face_callback(
+                    iter, *pending_picard_tvd_trace);
+            if (iteration_completed && pending_same_state_trace &&
+                controls.momentum_same_state_face_callback)
+                controls.momentum_same_state_face_callback(
+                    iter, *pending_same_state_trace);
             if (iteration_completed && controls.probe_callback) {
                 for (std::size_t sample_index = probe_samples_size;
                      sample_index < result.probe_samples.size(); ++sample_index)

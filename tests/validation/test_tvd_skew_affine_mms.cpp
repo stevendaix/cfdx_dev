@@ -1,5 +1,6 @@
 // Multidimensional TVD affine-skew MMS and matrix/face-flux identity.
 #include "cfdx/physics/finite_volume_transport.h"
+#include "cfdx/physics/momentum_same_state_audit.h"
 #include "cfdx/core/geometry/face_geometry.h"
 #include "common/test_harness.h"
 #include <algorithm>
@@ -187,5 +188,107 @@ int main() {
                 (!(limited(f)>=-1e-12) || !(limited(f)<=1+1e-12)))
                 throw std::runtime_error("TVD introduced a new local extremum");
     }
+    // Relaxed true linear residual and unrelaxed frozen equation must be
+    // distinguished, even when a solver would report CONVERGED on A_rel.
+    {
+        ScalarEquation equation;
+        equation.matrix=SparseMatrix(2,2);
+        equation.matrix.push_back(0,0,4.0);
+        equation.matrix.push_back(0,1,-1.0);
+        equation.matrix.push_back(1,0,-1.0);
+        equation.matrix.push_back(1,1,6.0);
+        equation.matrix.finalize();
+        equation.diagonal={4.0,6.0};
+        equation.rhs=Vector(2);
+        equation.rhs(0)=4.0;
+        equation.rhs(1)=6.0;
+        Vector old(2),current(2);
+        old(0)=2.0;old(1)=1.5;
+        current(0)=2.0;current(1)=1.5;
+        const double alpha=0.5;
+        // Apply the SAME equation-relaxation algebra as the production solver.
+        const auto* row=equation.matrix.row_offsets_data();
+        const auto* cols=equation.matrix.columns_data();
+        auto* vals=equation.matrix.values_data();
+        for (std::size_t i=0;i<2;++i) {
+            const double added=equation.diagonal[i]*(1.0/alpha-1.0);
+            for (auto k=row[i];k<row[i+1];++k)
+                if(cols[k]==i)vals[k]+=added;
+            equation.diagonal[i]+=added;
+            equation.rhs(i)+=added*old(i);
+        }
+        // Construct the EXACT solution of the relaxed equation by 2x2 LU.
+        const double d=8.0*12.0-1.0;
+        current(0)=(12.0*equation.rhs(0)+equation.rhs(1))/d;
+        current(1)=(equation.rhs(0)+8.0*equation.rhs(1))/d;
+        const auto certificate=audit_momentum_linear_relaxation(equation,current,old,alpha);
+        if (certificate.relaxed_true_relative>1e-14 ||
+            !(certificate.original_operator_relative>1e-2) ||
+            !(certificate.relaxation_displacement_l2>0.0))
+            throw std::runtime_error("relaxed linear convergence hidden original-equation defect");
+        auto bad=equation;
+        bad.rhs(0)+=0.05;
+        const auto corrupted=audit_momentum_linear_relaxation(bad,current,old,alpha);
+        if (!(corrupted.relaxed_true_relative>1e-4))
+            throw std::runtime_error("linear true residual oracle missed corrupted RHS");
+        std::cout << "RELAXATION_TRUE_LINEAR_CERTIFICATE relaxed="
+                  << certificate.relaxed_true_relative
+                  << " original=" << certificate.original_operator_relative << "\n";
+    }
+    // At the exact SAME flux/pressure/predictor state, TVD-UPWIND must
+    // equal the signed deferred convection and the Rhie-Chow decomposition
+    // must be facewise closed. This is a diagnostic identity, not a proof
+    // that either momentum or pressure has converged.
+    {
+        Field<double,Location::FACE> predictor(m.n_faces(),"predictor","kg/s",1);
+        Field<double,Location::FACE> relaxed(m.n_faces(),"relaxed","kg/s",1);
+        Field<double,Location::FACE> full(m.n_faces(),"full","kg/s",1);
+        Field<double,Location::FACE> authoritative(m.n_faces(),"authoritative","kg/s",1);
+        for (std::size_t face=0;face<m.n_faces();++face) {
+            predictor(face)=flux(face);
+            relaxed(face)=predictor(face)-0.03*static_cast<double>(face%5);
+            full(face)=relaxed(face)+0.01*static_cast<double>(face%3);
+            authoritative(face)=full(face)+0.002*static_cast<double>(face%2);
+        }
+        Field<double,Location::FACE> pressure_operator(m.n_faces(),"rc_ref","kg/s",1);
+        for (std::size_t f=0;f<m.n_faces();++f)
+            pressure_operator(f)=predictor(f)-full(f);
+        const auto trace=audit_momentum_same_state_faces(
+            m,g,authoritative,phi,momentum_bcs,ConvectionScheme::TVD,1.0,
+            predictor,relaxed,full,&pressure_operator);
+        const auto tvd=reconstruct_scalar_transport_flux(
+            m,g,authoritative,phi,0.0,momentum_bcs,true,ConvectionScheme::TVD);
+        const auto upwind=reconstruct_scalar_transport_flux(
+            m,g,authoritative,phi,0.0,momentum_bcs,true,ConvectionScheme::UPWIND);
+        for (const auto& face:trace.faces) {
+            if (std::abs(face.deferred_tvd_flux-
+                (tvd(face.face)-upwind(face.face)))>2e-13 ||
+                std::abs(face.decomposition_error)>1e-14 ||
+                (face.neighbour>=0 && std::abs(face.pressure_operator_error)>1e-14))
+                throw std::runtime_error("same-state TVD/RC face audit failed");
+        }
+        if (trace.faces.size()!=m.n_faces() ||
+            !(trace.max_deferred_tvd_flux>1e-5))
+            throw std::runtime_error("same-state trace missed nonzero TVD correction");
+        std::cout << "SAME_STATE_FACE_TVD_RC: PASS max_deferred="
+                  << trace.max_deferred_tvd_flux << "\n";
+    }
+    // The Picard assembly uses U_old and phi_old, not the final corrected
+    // velocity/flux. Test partial continuation and nonzero deferred flux.
+    for (double continuation : {0.0,0.5,1.0}) {
+        const auto trace=audit_momentum_picard_tvd_faces(
+            m,g,flux,phi,momentum_bcs,ConvectionScheme::TVD,continuation);
+        const auto expected=reconstruct_scalar_transport_flux(
+            m,g,flux,phi,0.0,momentum_bcs,true,ConvectionScheme::TVD,
+            nullptr,nullptr,nullptr,nullptr,continuation);
+        if (trace.faces.size()!=m.n_faces() ||
+            std::abs(trace.high_order_fraction-continuation)>1e-14)
+            throw std::runtime_error("Picard TVD trace size or continuation mismatch");
+        for (const auto& face:trace.faces)
+            if (std::abs(face.selected_flux-expected(face.face))>2e-13 ||
+                (continuation==0.0 && std::abs(face.deferred_tvd_flux)>2e-13))
+                throw std::runtime_error("Picard TVD did not match frozen operator");
+    }
+    std::cout << "PICARD_DEFERRED_TVD: PASS\n";
     std::cout << "TVD_SKEW_AFFINE_MMS: PASS\n";
 }
