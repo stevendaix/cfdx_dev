@@ -15,6 +15,7 @@ from cfdx.native_solver_preflight import (
     is_native_production_solver,
     native_production_command,
 )
+
 from cfdx import CFDXSession
 
 
