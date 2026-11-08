@@ -140,9 +140,7 @@ def build_commands(args: argparse.Namespace):
                 # Clear options that could silently change the numerical setup
                 # between models/runs through inherited shell variables.
                 for key in list(env):
-                    if key.startswith("CFDX_NACA_") or key.startswith(
-                        "CFDX_PCD_FP_CAPTURE_"
-                    ):
+                    if key.startswith(("CFDX_NACA_", "CFDX_PCD_FP_CAPTURE_")):
                         env.pop(key)
                 env.update(
                     {
@@ -192,9 +190,7 @@ def build_commands(args: argparse.Namespace):
             tag = f"n9_{model}"
             env = os.environ.copy()
             for key in list(env):
-                if key.startswith("CFDX_NACA_") or key.startswith(
-                    "CFDX_PCD_FP_CAPTURE_"
-                ):
+                if key.startswith(("CFDX_NACA_", "CFDX_PCD_FP_CAPTURE_")):
                     env.pop(key)
             env["CFDX_PCD_FP_CAPTURE_PREFIX"] = str(args.out.resolve() / (tag + "_Fp"))
             env["CFDX_PCD_FP_CAPTURE_DIFFICULT_PREFIX"] = str(
