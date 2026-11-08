@@ -142,7 +142,7 @@ class NacaSurfaceOracleTests(unittest.TestCase):
                 "--output",
                 str(output),
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True)
             self.assertEqual(result.returncode, 2)
             self.assertFalse(output.exists())
 
