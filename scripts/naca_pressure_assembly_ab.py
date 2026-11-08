@@ -42,25 +42,25 @@ def parse_results(run_dir: Path) -> dict:
     wall = re.findall(
         r"^NACA_SOLVE_WALL .*accepted_iterations=(\d+) converged=(\d+) algorithm=(\w+)",
         log,
-        flags=re.M,
+        flags=re.MULTILINE,
     )
     if len(wall) != 1 or wall[0][1:] != ("1", "SIMPLE"):
         raise ValueError("NACA A/B: solver did not physically converge with SIMPLE")
     if not re.search(
         r"^NACA_FARFIELD_FLUX_AUDIT .*kinematic_match=1 .*physically_converged=1",
         log,
-        re.M,
+        re.MULTILINE,
     ):
         raise ValueError("NACA A/B: missing physical farfield flux certificate")
     # The five-argument --single continuation branch reports its own
     # converged force certificate, rather than the legacy two-argument PASS.
     # Require the actual production certificate and its matching iteration.
     if not re.search(
-        r"^NACA_CONVERGED_FORCE_CERTIFICATE .*qualification=ONE_GRID_ONLY$", log, re.M
+        r"^NACA_CONVERGED_FORCE_CERTIFICATE .*qualification=ONE_GRID_ONLY$", log, re.MULTILINE
     ):
         raise ValueError("NACA A/B: missing one-grid converged force certificate")
     reported_iterations = re.findall(
-        r"^NACA0012_RE1000_A0 .*iterations=(\d+)$", log, re.M
+        r"^NACA0012_RE1000_A0 .*iterations=(\d+)$", log, re.MULTILINE
     )
     if reported_iterations != [wall[0][0]]:
         raise ValueError("NACA A/B: NACA result line missing or iteration mismatch")
