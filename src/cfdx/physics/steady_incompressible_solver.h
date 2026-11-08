@@ -12,6 +12,9 @@
 #include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/pressure_roundoff_leakage.h"
+#include "cfdx/core/linalg/pressure_compensated_refinement.h"
+#include "cfdx/core/linalg/pressure_conservative_face_operator.h"
+#include "cfdx/core/linalg/hypre_amg.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/numerics/gradient.h"
 #include "cfdx/io/restart/dat_restart.h"
@@ -323,6 +326,11 @@ struct IncompressibleSolverControls {
     // rounding and thus requires independent NACA/BFS qualification.
     // It does NOT carry a two-part pressure field into Rhie-Chow fluxes.
     bool pressure_compensated_assembly = false;
+    // Validation-only replay on the ACTUAL pressure matrix, after an FP64
+    // linear failure. Native AMG/CG plus a high/low correction can certify
+    // the algebraic CSR without declaring a full FV pressure correction.
+    // It does not overwrite the physical pressure, fluxes or solver status.
+    bool pressure_compensated_refinement_diagnostic = false;
     ConvergenceAccelerationControls acceleration;
     double density = 1.0;
     double kinematic_viscosity = 1.0e-3;
@@ -6110,6 +6118,12 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             // The legacy path uses exactly its original double reductions;
             // only an explicit opt-in constructs extended accumulators.
             const bool compensated_assembly = controls.pressure_compensated_assembly;
+            // Optional exact face connectivity for the diagnostic high/low
+            // pressure Schur operator. Stored only on explicitly requested
+            // validation runs; all ordinary production paths are unchanged.
+            std::vector<double> pressure_face_coefficients;
+            if (controls.pressure_compensated_refinement_diagnostic)
+                pressure_face_coefficients.assign(mesh.n_faces(), 0.0);
             std::unique_ptr<PressureFaceAssemblyAccumulator> pressure_accumulator;
             if (compensated_assembly)
                 pressure_accumulator = std::make_unique<PressureFaceAssemblyAccumulator>(nc);
@@ -6157,6 +6171,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     controls.algorithm == PressureVelocityAlgorithm::SIMPLEC ? rAtU : rAU;
                 const double coeff = controls.density * directional_face_coefficient(
                     pressure_coeff, f, o, n, Sf, dvec);
+                if (controls.pressure_compensated_refinement_diagnostic)
+                    pressure_face_coefficients[f] = coeff;
                 if (compensated_assembly)
                     pressure_accumulator->add_internal_pair(o, n, coeff);
                 else {
@@ -6193,6 +6209,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                     geometry.cell_volumes[o] * pressure_coeff[2][o]};
                 const double boundary_coeff = pressure_face_orthogonal_coefficient(
                     Sf, dvec, dAU_boundary);
+                if (controls.pressure_compensated_refinement_diagnostic)
+                    pressure_face_coefficients[f] = controls.density * boundary_coeff;
                 if (!compensated_assembly)
                     rows[o][o] += controls.density * boundary_coeff;
                 // Explicit pressure flux at fixed-pressure boundaries (#894):
@@ -6879,6 +6897,119 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                           << " local_gate_pass=" << diagnostic.valid
                           << " qualified=0\n";
             }
+            // Opt-in high/low refinement on the EXACT assembled production
+            // matrix. This is an observation only: a reduced split CSR
+            // residual cannot certify the actual FP64 pressure field, its
+            // Rhie-Chow face flux or any nonlinear convergence gate.
+            if (controls.pressure_compensated_refinement_diagnostic &&
+                rp.status != cfdx::core::SolverStatus::CONVERGED &&
+                has_fixed_pressure_boundary &&
+                solved_pressure_matrix->n_rows() == nc &&
+                iter == 1 && corr == 0) {
+                const auto& original_matrix = *solved_pressure_matrix;
+                const auto& original_rhs = *solved_pressure_rhs;
+                try {
+                    cfdx::core::Vector high = p_corr;
+                    cfdx::core::Vector low(nc, 0.0);
+                    cfdx::core::NativeAMGPreconditioner amg(
+                        cfdx::core::NativeAMGMethod::BoomerStyle);
+                    if (!amg.setup(original_matrix)) {
+                        std::cerr << "PRESSURE_HILO_LIVE status=SETUP_REJECTED"
+                                  << " physical_fv_qualified=0\n";
+                    } else {
+                        const double final_tolerance =
+                            controls.pressure_linear_tolerance > 0.0
+                                ? controls.pressure_linear_tolerance
+                                : linear_tolerance;
+                        const auto split = cfdx::core::refine_pressure_high_low(
+                            original_matrix, original_rhs, high, low,
+                            final_tolerance, 2,
+                            [&](const cfdx::core::SparseMatrix& mat,
+                                const cfdx::core::Vector& residual,
+                                cfdx::core::Vector& increment) {
+                                const auto inner = cfdx::core::solve_cg_prepared(
+                                    mat, residual, increment, amg, 350, 1e-7);
+                                return inner.status !=
+                                           cfdx::core::SolverStatus::NOT_APPLICABLE &&
+                                       inner.status !=
+                                           cfdx::core::SolverStatus::DIVERGED;
+                            });
+                        // Solve the IMPLICIT face pressure operator as a
+                        // distinct object, using the exact live owner/neighbour
+                        // and fixed-pressure boundary coefficients. The CSR's
+                        // tiny floating row sums must not become fake face
+                        // leakage on a Neumann cell. Only a complete FV
+                        // Rhie-Chow/momentum update may qualify the CFD run.
+                        std::vector<cfdx::core::ConservativePressureFaceOperator::Face>
+                            face_entries;
+                        face_entries.reserve(mesh.n_faces());
+                        for (std::size_t face = 0; face < mesh.n_faces(); ++face) {
+                            const double coefficient = pressure_face_coefficients[face];
+                            if (coefficient <= 0.0) continue;
+                            face_entries.push_back({
+                                mesh.ownership().owner(face),
+                                mesh.ownership().neighbour(face), coefficient});
+                        }
+                        const cfdx::core::ConservativePressureFaceOperator
+                            physical_implicit_faces(nc, std::move(face_entries));
+                        const auto face_report =
+                            cfdx::core::refine_pressure_on_implicit_faces(
+                                physical_implicit_faces, original_matrix,
+                                original_rhs, high, low, final_tolerance, 2,
+                                [&](const cfdx::core::SparseMatrix& mat,
+                                    const cfdx::core::Vector& residual,
+                                    cfdx::core::Vector& increment) {
+                                    const auto inner = cfdx::core::solve_cg_prepared(
+                                        mat, residual, increment, amg, 350, 1e-7);
+                                    return inner.status !=
+                                               cfdx::core::SolverStatus::NOT_APPLICABLE &&
+                                           inner.status !=
+                                               cfdx::core::SolverStatus::DIVERGED;
+                                });
+                        std::cerr << std::scientific << std::setprecision(16)
+                                  << "PRESSURE_HILO_FACES_LIVE"
+                                  << " iter=" << iter << " corrector=" << corr
+                                  << " active_faces="
+                                  << physical_implicit_faces.active_face_count()
+                                  << " before_relative="
+                                  << face_report.initial_face_relative
+                                  << " after_relative="
+                                  << face_report.final_face_relative
+                                  << " original_csr_after_relative="
+                                  << face_report.final_csr_relative
+                                  << " accepted_refinements="
+                                  << face_report.accepted_refinements
+                                  << " implicit_face_converged="
+                                  << face_report.implicit_face_converged
+                                  << " original_csr_converged="
+                                  << face_report.original_csr_converged
+                                  << " full_rhie_chow_qualified=0"
+                                  << " original_status_unchanged=1\n";
+                        std::cerr << std::scientific << std::setprecision(16)
+                                  << "PRESSURE_HILO_LIVE"
+                                  << " iter=" << iter << " corrector=" << corr
+                                  << " n=" << nc
+                                  << " original_double_relative=" << rp.residual_relative
+                                  << " initial_split_relative="
+                                  << split.initial_relative_residual
+                                  << " final_split_relative="
+                                  << split.final_relative_residual
+                                  << " final_fp64_relative="
+                                  << split.final_double_only_residual
+                                  << " accepted_refinements="
+                                  << split.passes_accepted
+                                  << " algebraic_converged="
+                                  << split.algebraic_converged
+                                  << " physical_fv_qualified=0"
+                                  << " original_status_unchanged=1\n";
+                    }
+                } catch (const std::exception& e) {
+                    std::cerr << "PRESSURE_HILO_LIVE status=DIAGNOSTIC_REJECTED"
+                              << " detail=" << e.what()
+                              << " physical_fv_qualified=0\n";
+                }
+            }
+
             if (rp.status != cfdx::core::SolverStatus::CONVERGED) {
                 if (controls.momentum_assembly_forensic_callback) {
                     const auto& matrix = *solved_pressure_matrix;
