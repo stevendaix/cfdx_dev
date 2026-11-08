@@ -286,7 +286,8 @@ Run solve_coupled_case(
     const VelocityBoundaryConditions& ubc,
     const ScalarBoundaryConditions& pbc,
     double body_force_x,
-    double viscosity = 0.1)
+    double viscosity = 0.1,
+    bool strict_independent_face = false)
 {
     Field<double, Location::CELL> U(mesh.n_cells(),"U","m/s",3);
     Field<double, Location::CELL> p(mesh.n_cells(),"p","Pa",1);
@@ -323,6 +324,10 @@ Run solve_coupled_case(
         throw std::runtime_error("N9 physical matrix Schur selection mismatch");
     }
     auto c = controls_for(PressureVelocityAlgorithm::COUPLED, resolved_schur, viscosity);
+    // Strict scientific candidate: require the independent reconstructed
+    // nonlinear momentum fluxes, not just the carrier/Picard monitor.
+    // Off by default to retain the pre-existing N9 regression executable.
+    c.require_independent_face_residual_for_convergence = strict_independent_face;
     c.body_force = {body_force_x,0.0,0.0};
     const auto result = solve_steady_incompressible(mesh,U,p,ubc,pbc,c);
     return {std::move(U),std::move(p),std::move(result)};
@@ -479,12 +484,14 @@ std::array<PressureVelocityAlgorithm,6> algorithms()
             PressureVelocityAlgorithm::FRACTIONAL_STEP,PressureVelocityAlgorithm::COUPLED};
 }
 
-std::array<CoupledSchurModel,5> qualified_schur_models()
+std::array<CoupledSchurModel,6> qualified_schur_models()
 {
-    // Production Schur models qualified by N8. BlockLocal is the exact/oracle
-    // model and not a production model in this N9 integration matrix.
+    // Available N9 production COUPLED paths, not a claim of qualification.
+    // The BlockLocal action is included so physical failure is visible rather
+    // than inferring it from the success of an algebraic N8 test.
     return {CoupledSchurModel::PCD, CoupledSchurModel::LSC,
-            CoupledSchurModel::BFBT, CoupledSchurModel::SIMPLE, CoupledSchurModel::SIMPLEC};
+            CoupledSchurModel::BFBT, CoupledSchurModel::SIMPLE,
+            CoupledSchurModel::SIMPLEC, CoupledSchurModel::BlockLocal};
 }
 
 const char* schur_model_name(CoupledSchurModel model)
@@ -504,11 +511,20 @@ int main(int argc, char** argv)
     const auto algs=algorithms();
     const auto schur_models=qualified_schur_models();
     std::string selected_schur_model;
-    if (argc == 3 && std::string(argv[1]) == "--schur-model") {
-        selected_schur_model = argv[2];
-    } else if (argc != 1) {
-        std::cerr << "Usage: test_n9_physical_matrix [--schur-model pcd|lsc|bfbt|simple|simplec]\n";
-        return 2;
+    bool strict_independent_face = false;
+    for (int i=1; i<argc; ++i) {
+        if (std::string(argv[i]) == "--schur-model" && i+1<argc &&
+            selected_schur_model.empty()) {
+            selected_schur_model = argv[++i];
+        } else if (std::string(argv[i]) == "--require-independent-face" &&
+                   !strict_independent_face) {
+            strict_independent_face = true;
+        } else {
+            std::cerr << "Usage: test_n9_physical_matrix "
+                         "[--schur-model pcd|lsc|bfbt|simple|simplec|block_local] "
+                         "[--require-independent-face]\n";
+            return 2;
+        }
     }
     if (!selected_schur_model.empty() &&
         std::none_of(schur_models.begin(), schur_models.end(),
@@ -571,7 +587,31 @@ int main(int argc, char** argv)
             throw std::runtime_error("Ghia Re=100 centreline oracle gate failed");
     }
 
-    // Exercise every production Schur model already qualified by N8 through
+    // A completion record is emitted ONLY after convergence and independent
+    // analytic/profile gates pass, so the campaign runner cannot turn a
+    // STARTING marker into a false completed physical case.
+    const auto completed_coupled_case = [&](CoupledSchurModel model,
+                                           const char* name, const Run& run) {
+        const auto& history = run.result.history;
+        if (!run.result.converged || history.empty())
+            throw std::runtime_error("N9 completion without accepted converged state");
+        const auto& last = history.back();
+        char message[640];
+        const auto len = std::snprintf(message, sizeof(message),
+            "COMPLETED COUPLED %s %s iterations=%zu momentum_rhs_relative=%.17g "
+            "continuity_normalized=%.17g mass_local_linf=%.17g "
+            "face_momentum_x_relative=%.17g face_momentum_y_relative=%.17g\n",
+            schur_model_name(model), name, run.result.iterations,
+            last.momentum_equation_residual_rhs_relative,
+            last.continuity_normalized, last.mass_local_linf,
+            last.momentum_face_local_relative[0],
+            last.momentum_face_local_relative[1]);
+        if (len < 0 || static_cast<std::size_t>(len) >= sizeof(message))
+            throw std::runtime_error("N9 completion diagnostic overflow");
+        write_stderr(message, static_cast<std::size_t>(len));
+    };
+
+    // Exercise every available production Schur model through
     // the N9 physical matrix. Requested and resolved identities are checked
     // explicitly so no silent model substitution can satisfy this campaign.
     for (const auto schur_model : schur_models) {
@@ -594,21 +634,23 @@ int main(int argc, char** argv)
         write_stderr(msg2.data(), msg2.size());
         const auto coupled_couette = solve_coupled_case(
             make_channel_mesh(12,16,0.0), schur_model,
-            u_channel, p_open_channel, 0.0);
+            u_channel, p_open_channel, 0.0, 0.1, strict_independent_face);
         require_physical_convergence(coupled_couette, "COUPLED Couette", PressureVelocityAlgorithm::COUPLED);
         check_model(coupled_couette, "Couette");
         if (couette_l2(coupled_couette,12,16)>2e-3)
             throw std::runtime_error(std::string("COUPLED Couette analytic L2 gate failed: ") + schur_model_name(schur_model));
+        completed_coupled_case(schur_model, "Couette", coupled_couette);
 
         std::string msg3 = std::string("COUPLED ") + schur_model_name(schur_model) + " Poiseuille\n";
         write_stderr(msg3.data(), msg3.size());
         const auto coupled_poiseuille = solve_coupled_case(
             make_channel_mesh(12,16,0.0), schur_model,
-            channel_velocity_bc(0.0), p_open_channel, 1.0);
+            channel_velocity_bc(0.0), p_open_channel, 1.0, 0.1, strict_independent_face);
         require_physical_convergence(coupled_poiseuille, "COUPLED Poiseuille", PressureVelocityAlgorithm::COUPLED);
         check_model(coupled_poiseuille, "Poiseuille");
         if (poiseuille_l2(coupled_poiseuille,12,16,1.0,0.1)>5e-3)
             throw std::runtime_error(std::string("COUPLED Poiseuille analytic L2 gate failed: ") + schur_model_name(schur_model));
+        completed_coupled_case(schur_model, "Poiseuille", coupled_poiseuille);
 
         auto coupled_cavity_bc=channel_velocity_bc(0.0);
         coupled_cavity_bc["inlet"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{0,0,0}};
@@ -617,19 +659,21 @@ int main(int argc, char** argv)
         coupled_cavity_bc["top"]={VelocityBoundaryCondition::Type::FIXED_VALUE,{1,0,0}};
         const auto coupled_cavity = solve_coupled_case(
             make_cavity_mesh(32,32), schur_model,
-            coupled_cavity_bc, p_channel, 0.0, 0.01);
+            coupled_cavity_bc, p_channel, 0.0, 0.01, strict_independent_face);
         require_physical_convergence(coupled_cavity, "COUPLED Ghia Re=100 cavity", PressureVelocityAlgorithm::COUPLED);
         check_model(coupled_cavity, "Ghia Re=100 cavity");
         if (cavity_profile_linf(coupled_cavity,32,32)>0.20)
             throw std::runtime_error(std::string("COUPLED Ghia Re=100 centreline oracle gate failed: ") + schur_model_name(schur_model));
+        completed_coupled_case(schur_model, "Ghia_Re100", coupled_cavity);
 
         const auto coupled_skew = solve_coupled_case(
             make_channel_mesh(12,16,0.25), schur_model,
-            u_channel, p_open_channel, 0.0);
+            u_channel, p_open_channel, 0.0, 0.1, strict_independent_face);
         require_physical_convergence(coupled_skew, "COUPLED skew Couette", PressureVelocityAlgorithm::COUPLED);
         check_model(coupled_skew, "skew Couette");
         if (couette_l2(coupled_skew,12,16)>2e-2)
             throw std::runtime_error(std::string("COUPLED skew Couette analytic L2 gate failed: ") + schur_model_name(schur_model));
+        completed_coupled_case(schur_model, "skew_Couette", coupled_skew);
     }
 
     // A sharded invocation qualifies only its selected COUPLED Schur model.
