@@ -3940,6 +3940,10 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             assemble_pcd_pressure_operators(
                 mesh, geometry, U_old, rho, kinematic_viscosity, velocity_bcs, pressure_bcs,
                 reference_cell, ConvectionScheme::UPWIND/* exact matrix for every scheme, see assemble_pcd_pressure_operators */));
+        if (controls.coupling.pcd_consistent_gauge_experimental && !has_fixed_pressure) {
+            apply_nested_schur_pressure_gauge(pcd_ops->laplacian, reference_cell);
+            apply_nested_schur_pressure_gauge(pcd_ops->convection_diffusion, reference_cell);
+        }
 
         const auto prepare_pcd_solver =
             [](const cfdx::core::SparseMatrix& matrix,
@@ -3974,6 +3978,16 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         const auto solve_kp = [pcd_ops, controls](
             const Vector& rhs, Vector& x) {
             const auto& matrix = pcd_ops->laplacian;
+            // A complete PCD commutator validates Kp^{-1} against a separate
+            // true-residual certificate at 1e-9 (+1e-12 absolute). A nested
+            // solve configured at 1e-8 can legitimately return CONVERGED yet
+            // fail that certificate, making the Schur action NOT_APPLICABLE.
+            // Request a strictly smaller inner target for this mode only;
+            // never loosen either the inverse certificate or the physical gate.
+            const double kp_effective_tolerance =
+                controls.coupling.pcd_lumped_mass_commutator_experimental
+                    ? std::min(controls.pcd_laplacian_tolerance, 1e-10)
+                    : controls.pcd_laplacian_tolerance;
             auto* preconditioner = pcd_ops->laplacian_preconditioner.get();
             const int restart = std::min<int>(
                 controls.pcd_laplacian_linear_solver.gmres_restart,
@@ -3984,24 +3998,33 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 result = solve_cg_prepared(
                     matrix, rhs, x, *preconditioner,
                     controls.pcd_laplacian_max_iterations,
-                    controls.pcd_laplacian_tolerance);
+                    kp_effective_tolerance);
             } else if (controls.pcd_laplacian_linear_solver.krylov ==
                        cfdx::core::KrylovModel::GMRES) {
                 result = solve_gmres(
                     matrix, rhs, x, restart,
                     controls.pcd_laplacian_max_iterations,
-                    controls.pcd_laplacian_tolerance,
+                    kp_effective_tolerance,
                     preconditioner, {}, {}, false);
             } else if (controls.pcd_laplacian_linear_solver.krylov ==
                        cfdx::core::KrylovModel::FGMRES) {
                 result = solve_fgmres(
                     matrix, rhs, x, restart,
                     controls.pcd_laplacian_max_iterations,
-                    controls.pcd_laplacian_tolerance,
+                    kp_effective_tolerance,
                     preconditioner, {}, {}, false);
             } else {
                 throw std::invalid_argument(
                     "unsupported PCD Laplacian Krylov model");
+            }
+            if (controls.diagnostics.coupled_matrix_summary) {
+                std::cerr << "COUPLED_NESTED_PCD_KP"
+                          << " requested_tolerance=" << controls.pcd_laplacian_tolerance
+                          << " effective_tolerance=" << kp_effective_tolerance
+                          << " status=" << static_cast<int>(result.status)
+                          << " iterations=" << result.iterations
+                          << " true_residual=" << result.residual
+                          << " true_relative=" << result.residual_relative << "\n";
             }
             return nested_schur_pressure_solve_usable(
                 result, x, matrix.n_rows());
