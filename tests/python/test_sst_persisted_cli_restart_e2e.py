@@ -105,6 +105,10 @@ def _prepare_persisted_sst_case(case_path: Path) -> None:
         for boundary in setup.get("boundary_conditions", []):
             patch_type = str(boundary.get("type", "")).lower()
             value_type = str(boundary.get("value_type", "")).lower()
+            if str(boundary.get("patch_name", "")).lower() == "outlet":
+                boundary["type"] = "pressure_outlet"
+                boundary["value_type"] = "outlet_pressure"
+                boundary["pressure"] = 0.0
             if patch_type == "inlet":
                 # The production SST path derives inlet k/omega from these
                 # explicit, dimensionally consistent inputs. Defaults of zero
