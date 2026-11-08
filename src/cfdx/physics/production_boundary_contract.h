@@ -70,8 +70,11 @@ inline void validate_production_incompressible_boundary(
             reject("no-slip wall cannot prescribe non-zero motion; use FIXED moving-wall BC explicitly");
         return;
     case BCType::INLET:
-        if (mesh_patch_type != PatchType::INLET)
-            reject("INLET case type requires an INLET mesh patch");
+        // A generic imported patch has no intrinsic CFD semantics. An
+        // explicit, supported case BC may assign those semantics; known
+        // incompatible patch types remain rejected.
+        if (mesh_patch_type != PatchType::INLET && mesh_patch_type != PatchType::UNKNOWN)
+            reject("INLET case type requires an INLET or generic UNKNOWN mesh patch");
         if (bc.source_type_name == "pressure-inlet" ||
             bc.source_type_name == "mass-flow-inlet" ||
             bc.source_type_name == "pressure-far-field")
@@ -85,8 +88,8 @@ inline void validate_production_incompressible_boundary(
             reject("inlet requires FIXED velocity or ZERO_GRADIENT; pressure/debit inlet needs a dedicated operator");
         return;
     case BCType::PRESSURE_OUTLET:
-        if (mesh_patch_type != PatchType::OUTLET)
-            reject("PRESSURE_OUTLET requires an OUTLET mesh patch");
+        if (mesh_patch_type != PatchType::OUTLET && mesh_patch_type != PatchType::UNKNOWN)
+            reject("PRESSURE_OUTLET requires an OUTLET or generic UNKNOWN mesh patch");
         if (bc.value_type != BCValueType::OUTLET_PRESSURE)
             reject("pressure outlet requires OUTLET_PRESSURE: otherwise p becomes zeroGradient");
         // `pressure` is the actual fixed pressure consumed by the solver.
@@ -95,8 +98,8 @@ inline void validate_production_incompressible_boundary(
             reject("back_pressure differs from pressure; solver only consumes pressure");
         return;
     case BCType::OUTLET:
-        if (mesh_patch_type != PatchType::OUTLET)
-            reject("OUTLET case type requires an OUTLET mesh patch");
+        if (mesh_patch_type != PatchType::OUTLET && mesh_patch_type != PatchType::UNKNOWN)
+            reject("OUTLET case type requires an OUTLET or generic UNKNOWN mesh patch");
         if (bc.source_type_name == "pressure-far-field")
             reject("Fluent compressible pressure-far-field is not a generic incompressible outlet");
         if (bc.value_type != BCValueType::ZERO_GRADIENT)
