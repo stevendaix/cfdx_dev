@@ -8,7 +8,7 @@ or zero-gradient. This module is GUI-independent and can be used from a CLI.
 from __future__ import annotations
 
 from math import isfinite
-from typing import Sequence
+from collections.abc import Sequence
 
 from .io.schema import BCType, BCValueType, BoundarySpec
 
