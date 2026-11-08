@@ -1,8 +1,8 @@
 """Executable topology regressions for the NASA/TMR NACA C-grid importer."""
 
-from pathlib import Path
 import gzip
 import sys
+from pathlib import Path
 
 import h5py
 import numpy as np
@@ -10,8 +10,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT / "scripts"))
-from import_tmr_naca0012 import convert, read_plot3d_2d, main
 from generate_2d_validation_meshes import write_mesh
+from import_tmr_naca0012 import convert, main, read_plot3d_2d
 
 
 def miniature_c_grid():
