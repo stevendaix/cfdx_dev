@@ -3841,6 +3841,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
                 ? momentum_under_relaxation
                 : 1.0);
         CoupledBlockSchurOptions options;
+        options.max_action_amplification =
+            controls.coupling.schur_action_growth_guard_experimental ? 1e10 : 0.0;
         options.factorization = CoupledSchurFactorization::Full;
         options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
         options.schur_approximation =
@@ -3950,6 +3952,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             std::move(q_diagonal));
 
         CoupledBlockSchurOptions options;
+        options.max_action_amplification =
+            controls.coupling.schur_action_growth_guard_experimental ? 1e10 : 0.0;
         options.factorization = CoupledSchurFactorization::Full;
         options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
         options.schur_approximation =
@@ -4256,6 +4260,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
             evidence_pcd_ops = pcd_ops;
 
         CoupledBlockSchurOptions options;
+        options.max_action_amplification =
+            controls.coupling.schur_action_growth_guard_experimental ? 1e10 : 0.0;
         options.factorization = CoupledSchurFactorization::Full;
         options.velocity_approximation = CoupledSchurVelocityApproximation::Block;
         switch (schur_model) {
@@ -4296,6 +4302,8 @@ inline cfdx::core::SolverResult solve_coupled_momentum_continuity(
         coupled_preconditioner = std::move(schur);
     } else if (use_n8_block_schur) {
         CoupledBlockSchurOptions options;
+        options.max_action_amplification =
+            controls.coupling.schur_action_growth_guard_experimental ? 1e10 : 0.0;
         if (solver_plan.preconditioner == PreconditionerModel::BraessSarazin) {
             options.velocity_approximation = CoupledSchurVelocityApproximation::Diagonal;
             options.velocity_inverse_scale = 1.0 / solver_request.braess_sarazin_alpha;
