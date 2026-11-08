@@ -53,15 +53,15 @@ def load_manifest(path: Path) -> dict:
     for fp, expected in zip(paths, fields[7:9]):
         if fnv64(fp) != expected:
             raise ValueError(f"checkpoint checksum mismatch: {fp}")
-    return dict(
-        iteration=step,
-        n_cells=cells,
-        n_faces=faces,
-        momentum_reference=momentum_reference,
-        nonlinear_reference=monitor_reference,
-        files=paths,
-        physics_identity=physics_identity,
-    )
+    return {
+        "iteration": step,
+        "n_cells": cells,
+        "n_faces": faces,
+        "momentum_reference": momentum_reference,
+        "nonlinear_reference": monitor_reference,
+        "files": paths,
+        "physics_identity": physics_identity,
+    }
 
 
 def compare(a: Path, b: Path, *, tolerance: float = 1e-12) -> dict:
@@ -135,13 +135,13 @@ def compare(a: Path, b: Path, *, tolerance: float = 1e-12) -> dict:
     max_difference = max(
         v["linf"] for family in results.values() for v in family.values()
     )
-    return dict(
-        iteration=left["iteration"],
-        max_abs_difference=max_difference,
-        tolerance=tolerance,
-        verdict="PASS" if max_difference <= tolerance else "FAIL",
-        norms=results,
-    )
+    return {
+        "iteration": left["iteration"],
+        "max_abs_difference": max_difference,
+        "tolerance": tolerance,
+        "verdict": "PASS" if max_difference <= tolerance else "FAIL",
+        "norms": results,
+    }
 
 
 def main() -> int:
@@ -153,7 +153,7 @@ def main() -> int:
     try:
         report = compare(args.continuous, args.resumed, tolerance=args.atol)
     except (OSError, ValueError, KeyError) as exc:
-        report = dict(verdict="ERROR", error=str(exc))
+        report = {"verdict": "ERROR", "error": str(exc)}
     print(json.dumps(report, indent=2))
     return 0 if report.get("verdict") == "PASS" else 1
 
