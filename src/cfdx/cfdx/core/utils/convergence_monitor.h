@@ -105,11 +105,21 @@ public:
         status_ = ConvergenceStatus::CONTINUE;
     }
 
+    // Preserve the ORIGINAL relative normalization across an accepted-state
+    // restart. Per-criterion physical tolerances are never changed.
+    // History/stagnation windows are deliberately reset; restarts are marked
+    // separately in provenance and are not exact monitor-history snapshots.
+    void restore_initial_reference(double value) {
+        if (!history_.empty() || !std::isfinite(value) || !(value > 0.0))
+            throw std::invalid_argument("invalid restored convergence reference");
+        initial_residual_ = value;
+    }
+
     ConvergenceReport update(const ConvergenceSample& sample) {
         validate_sample(sample);
         if (!history_.empty() && sample.iteration <= history_.back().iteration)
             throw std::invalid_argument("convergence iterations must be strictly increasing");
-        if (history_.empty())
+        if (history_.empty() && !std::isfinite(initial_residual_))
             initial_residual_ = std::max(sample.residual, std::numeric_limits<double>::min());
 
         history_.push_back(sample);

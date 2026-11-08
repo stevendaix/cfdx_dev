@@ -26,8 +26,15 @@ struct MomentumFaceCellBudget {
     double transpose_viscous = 0.0;
     double mass_divergence = 0.0;
     double collocated_difference = 0.0;
+    // Positive physical time derivative, zero for steady/pseudo-time solves.
+    double temporal = 0.0;
     double physical_residual = 0.0;
     double bounded_operator_residual = 0.0;
+    // Independently evaluated CSR row A(U)U-b(U) at the same accepted state.
+    // Filled only by reconcile_momentum_budget_with_matrix().
+    double algebraic_residual = std::numeric_limits<double>::quiet_NaN();
+    double matrix_face_difference = std::numeric_limits<double>::quiet_NaN();
+    double matrix_face_scale = std::numeric_limits<double>::quiet_NaN();
 };
 
 struct MomentumFaceBudget {
@@ -36,6 +43,10 @@ struct MomentumFaceBudget {
     double worst_absolute_residual = 0.0;
     double worst_bounded_operator_residual = 0.0;
     double flux_decomposition_error = 0.0;
+    bool matrix_closure_checked = false;
+    double matrix_closure_linf = std::numeric_limits<double>::infinity();
+    double matrix_closure_relative_linf = std::numeric_limits<double>::infinity();
+    std::size_t matrix_closure_worst_cell = 0;
 };
 
 // Inputs represent the ACCEPTED iterate; the mass flux must be the same
@@ -56,7 +67,8 @@ inline MomentumFaceBudget diagnose_momentum_face_budget(
     const cfdx::core::Field<double, cfdx::core::Location::FACE>* collocated_mass_flux = nullptr,
     const cfdx::core::Field<double, cfdx::core::Location::FACE>* transpose_stress_flux = nullptr,
     const std::vector<double>* wall_face_viscosity = nullptr,
-    const cfdx::core::Field<double, cfdx::core::Location::CELL>* negative_accumulation = nullptr)
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>* negative_accumulation = nullptr,
+    const ScalarBoundaryFaceConditions* face_conditions = nullptr)
 {
     using cfdx::core::Field;
     using cfdx::core::Location;
@@ -84,17 +96,17 @@ inline MomentumFaceBudget diagnose_momentum_face_budget(
     // flux, so internal faces are accounted for once with opposite signs.
     const auto full_flux = reconstruct_scalar_transport_flux(
         mesh, geometry, mass_flux, component, 0.0, component_bcs,
-        bounded_convection, scheme, nullptr, &cell_viscosity, nullptr,
+        bounded_convection, scheme, face_conditions, &cell_viscosity, nullptr,
         wall_face_viscosity, high_order_fraction);
     const auto convection_flux = reconstruct_scalar_transport_flux(
         mesh, geometry, mass_flux, component, 0.0, component_bcs,
-        bounded_convection, scheme, nullptr, nullptr, nullptr,
+        bounded_convection, scheme, face_conditions, nullptr, nullptr,
         nullptr, high_order_fraction);
     Field<double, Location::FACE> collocated_convection;
     if (collocated_mass_flux) {
         collocated_convection = reconstruct_scalar_transport_flux(
             mesh, geometry, *collocated_mass_flux, component, 0.0,
-            component_bcs, bounded_convection, scheme, nullptr, nullptr,
+            component_bcs, bounded_convection, scheme, face_conditions, nullptr,
             nullptr, nullptr, high_order_fraction);
     }
 
@@ -149,8 +161,9 @@ inline MomentumFaceBudget diagnose_momentum_face_budget(
             ? (*negative_accumulation)(cell) : 0.0;
         if (!std::isfinite(temporal))
             throw std::invalid_argument("momentum face budget: nonfinite accumulation");
+        b.temporal = -temporal;
         b.physical_residual = b.convection + b.viscous + b.transpose_viscous +
-                              b.pressure + b.body_force - temporal;
+                              b.pressure + b.body_force + b.temporal;
         b.bounded_operator_residual = b.physical_residual + b.bounded_divergence;
         const double magnitude = std::abs(b.physical_residual);
         if (magnitude > out.worst_absolute_residual) {
@@ -162,6 +175,83 @@ inline MomentumFaceBudget diagnose_momentum_face_budget(
             std::abs(b.bounded_operator_residual));
     }
     return out;
+}
+
+// This is NOT a second pressure or convection discretization. It is an
+// independent arithmetic path (CSR matrix row versus signed face loop)
+// which detects missing/double-counted source, TVD deferred correction,
+// transpose stress, non-orthogonal diffusion and bounded-divergence terms.
+// Critically, compare SIGNED values for EVERY cell, not just two maxima.
+inline void reconcile_momentum_budget_with_matrix(
+    MomentumFaceBudget& budget,
+    const ScalarEquation& equation,
+    const cfdx::core::Field<double, cfdx::core::Location::CELL>& component)
+{
+    const std::size_t nc = budget.cells.size();
+    const auto& A = equation.matrix;
+    if (nc == 0 || component.size() != nc || component.dimension() != 1 ||
+        equation.rhs.size() != nc || A.n_rows() != nc || A.n_cols() != nc)
+        throw std::invalid_argument("momentum matrix/face closure: field shape mismatch");
+
+    budget.matrix_closure_checked = true;
+    budget.matrix_closure_linf = 0.0;
+    budget.matrix_closure_relative_linf = 0.0;
+    budget.matrix_closure_worst_cell = 0;
+    const auto* offsets = A.row_offsets_data();
+    const auto* columns = A.columns_data();
+    const auto* values = A.values_data();
+    for (std::size_t row = 0; row < nc; ++row) {
+        // Evaluate A*U-b by walking the CSR row independently of the
+        // face-flux reconstruction. Sum absolute terms to set a round-off
+        // SCALE without relaxing any actual physical convergence criterion.
+        double ax = 0.0;
+        double scale = std::abs(equation.rhs(row));
+        for (auto k = offsets[row]; k < offsets[row+1]; ++k) {
+            if (columns[k] >= nc)
+                throw std::invalid_argument("momentum matrix/face closure: invalid CSR column");
+            const double term = values[k] * component(columns[k]);
+            if (!std::isfinite(term))
+                throw std::invalid_argument("momentum matrix/face closure: nonfinite CSR term");
+            ax += term;
+            scale += std::abs(term);
+        }
+        const double algebraic = ax - equation.rhs(row);
+        auto& face = budget.cells[row];
+        scale = std::max(scale,
+            std::abs(face.convection) + std::abs(face.viscous) +
+            std::abs(face.transpose_viscous) + std::abs(face.pressure) +
+            std::abs(face.body_force) + std::abs(face.temporal) +
+            std::abs(face.bounded_divergence));
+        const double error = algebraic - face.bounded_operator_residual;
+        if (!std::isfinite(algebraic) || !std::isfinite(error) || !std::isfinite(scale))
+            throw std::invalid_argument("momentum matrix/face closure: nonfinite result");
+        face.algebraic_residual = algebraic;
+        face.matrix_face_difference = error;
+        face.matrix_face_scale = scale;
+        const double relative = std::abs(error) / std::max(scale, 1e-300);
+        if (std::abs(error) > budget.matrix_closure_linf) {
+            budget.matrix_closure_linf = std::abs(error);
+            budget.matrix_closure_worst_cell = row;
+        }
+        budget.matrix_closure_relative_linf = std::max(
+            budget.matrix_closure_relative_linf, relative);
+    }
+}
+
+inline bool momentum_matrix_face_closure_consistent(
+    const MomentumFaceBudget& budget, double arithmetic_relative_tolerance = 2e-10)
+{
+    if (!budget.matrix_closure_checked || !(arithmetic_relative_tolerance > 0.0) ||
+        !std::isfinite(arithmetic_relative_tolerance))
+        return false;
+    for (const auto& cell : budget.cells) {
+        if (!std::isfinite(cell.matrix_face_difference) ||
+            !std::isfinite(cell.matrix_face_scale) ||
+            std::abs(cell.matrix_face_difference) >
+                arithmetic_relative_tolerance * std::max(cell.matrix_face_scale, 1e-15))
+            return false;
+    }
+    return true;
 }
 
 } // namespace cfdx::physics

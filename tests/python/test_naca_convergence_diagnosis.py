@@ -48,6 +48,15 @@ def test_good_history_stays_diagnostic_not_certified(tmp_path):
     assert report["three_grid_gci_proven"] is False
 
 
+def test_multidimensional_muscl_is_diagnostic_not_a_certificate(tmp_path):
+    rows = DIAG.read_history(history(tmp_path, convection_scheme="MUSCL_CELL_LIMITED"))
+    result = DIAG.diagnose(rows)
+    assert result["full_order_scheme"]
+    assert result["experimental_multidimensional_limiter"]
+    assert result["solver_convergence_proven"] is False
+    assert result["three_grid_gci_proven"] is False
+
+
 def test_transverse_momentum_detected_independently(tmp_path):
     path = history(
         tmp_path, momentum_y_rhs_relative="2e-4", momentum_component_max="2e-4"

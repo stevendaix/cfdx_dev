@@ -560,7 +560,7 @@ int main()
                         EXPECT_NEAR(flux(face), first_flux(face), 0.0);
                 }
             };
-        c.controls.iteration_output_callback =
+        c.controls.tentative_iteration_gate_callback =
             [&](std::size_t, double, const auto&, const auto&, const auto&) {
                 if (++output_calls == 1) {
                     EXPECT_TRUE(c.state.k(0) != original.k(0));
@@ -704,6 +704,7 @@ int main()
 
         IncompressibleSolverControls c;
         c.algorithm = PressureVelocityAlgorithm::SIMPLEC;
+        c.require_simplec_same_state_flux_identity = true;
         c.require_independent_face_residual_for_convergence = true;
         c.convergence.max_iterations = 5;
         c.convergence.continuity_tolerance = 1e-12;
@@ -714,6 +715,8 @@ int main()
         const auto r = solve_steady_incompressible(m,U,p,ubc,pbc,c);
         EXPECT_TRUE(r.converged);
         EXPECT_TRUE(!r.history.empty());
+        EXPECT_TRUE(std::isfinite(r.history.back().simplec_plain_rau_flux_gap_linf));
+        EXPECT_NEAR(r.history.back().simplec_plain_rau_flux_gap_linf,0.0,1e-12);
     });
 
     run_case("piso_zero_state_runs_multiple_pressure_corrections", [] {
@@ -1306,7 +1309,7 @@ int main()
             published_probe_samples.push_back(sample);
         };
         std::size_t output_calls = 0;
-        controls.iteration_output_callback =
+        controls.tentative_iteration_gate_callback =
             [&](std::size_t, double, const auto&, const auto&, const auto&) {
                 if (++output_calls == 1)
                     throw NonlinearRetryableFailure("deliberate probe-publication rejection");

@@ -1,11 +1,13 @@
 """Self-tests for the N15 benchmark contracts."""
 
+import hashlib
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,6 +29,9 @@ class N15Tests(unittest.TestCase):
             d = Path(d)
             case = d / "case.json"
             result = d / "result.json"
+            archive = d / "cfdx_source.zip"
+            with zipfile.ZipFile(archive, "w") as z:
+                z.writestr("source/README.md", "synthetic source identity for test")
             case.write_text(
                 json.dumps(
                     {
@@ -42,6 +47,8 @@ class N15Tests(unittest.TestCase):
                 str(case),
                 "--repo",
                 str(ROOT),
+                "--source-archive",
+                str(archive),
                 "--output",
                 str(result),
                 "--",
@@ -53,7 +60,14 @@ class N15Tests(unittest.TestCase):
             data = json.loads(result.read_text())
             self.assertEqual(data["schema_version"], "1.0")
             self.assertEqual(data["status"], "PASS")
-            self.assertTrue(data["provenance"]["git_sha"])
+            self.assertIsNone(data["provenance"]["git_sha"])
+            self.assertEqual(data["provenance"]["source_kind"], "archive")
+            self.assertEqual(
+                data["provenance"]["source_revision"],
+                hashlib.sha256(archive.read_bytes()).hexdigest(),
+            )
+            self.assertTrue(data["provenance"]["executable_sha256"])
+            self.assertTrue(data["provenance"]["case_sha256"])
             self.assertTrue(data["hardware"]["logical_cpus"])
             if sys.platform.startswith("linux") or sys.platform == "darwin":
                 self.assertGreater(data["performance"]["peak_rss_bytes"], 0)
@@ -66,6 +80,56 @@ class N15Tests(unittest.TestCase):
                     data["performance"]["peak_rss_source"], expected_source
                 )
 
+    def test_missing_source_identity_cannot_claim_pass(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            case, result = d / "case.json", d / "result.json"
+            case.write_text(json.dumps({"id": "n15-source-fail-closed"}))
+            p = run(
+                "run",
+                "--case",
+                str(case),
+                "--repo",
+                str(d),
+                "--output",
+                str(result),
+                "--",
+                sys.executable,
+                "-c",
+                "print('ok')",
+            )
+            self.assertEqual(p.returncode, 2, p.stderr)
+            record = json.loads(result.read_text())
+            self.assertEqual(record["status"], "UNVERIFIED_SOURCE")
+            self.assertIsNone(record["provenance"]["git_sha"])
+            self.assertIsNone(record["provenance"]["source_revision"])
+
+    def test_invalid_archive_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            case = d / "case.json"
+            archive = d / "bad.zip"
+            result = d / "result.json"
+            case.write_text(json.dumps({"id": "n15-bad-archive"}))
+            archive.write_bytes(b"not really a ZIP")
+            p = run(
+                "run",
+                "--case",
+                str(case),
+                "--repo",
+                str(ROOT),
+                "--source-archive",
+                str(archive),
+                "--output",
+                str(result),
+                "--",
+                sys.executable,
+                "-c",
+                "print('ok')",
+            )
+            self.assertNotEqual(p.returncode, 0)
+            self.assertIn("valid ZIP", p.stderr)
+
     def test_scale_reports_peak_rss_per_child(self):
         if not hasattr(os, "wait4") or not sys.platform.startswith("linux"):
             self.skipTest("post-exec RSS sampling requires Linux /proc")
@@ -76,6 +140,9 @@ class N15Tests(unittest.TestCase):
             case.write_text(
                 json.dumps({"id": "n15-rss-isolation", "mesh": {"cells_per_rank": 16}})
             )
+            archive = d / "source.zip"
+            with zipfile.ZipFile(archive, "w") as z:
+                z.writestr("source/README.md", "synthetic source archive")
             # Commit each 4KiB page: bytearray's lazy zero pages are NOT a
             # valid physical-RSS stress on overcommitting Linux kernels.
             child = (
@@ -91,6 +158,8 @@ class N15Tests(unittest.TestCase):
                 str(case),
                 "--repo",
                 str(ROOT),
+                "--source-archive",
+                str(archive),
                 "--kind",
                 "strong",
                 "--values",
