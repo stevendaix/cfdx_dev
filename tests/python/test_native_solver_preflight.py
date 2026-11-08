@@ -1,4 +1,5 @@
 """GUI and native production solver must agree about runnable case schema."""
+
 from __future__ import annotations
 
 import json
