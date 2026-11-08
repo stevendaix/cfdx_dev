@@ -18,10 +18,10 @@ import math
 from pathlib import Path
 
 import numpy as np
-from scipy.sparse import csr_matrix
-from scipy.sparse.linalg import splu
 
 from seed_bfs_pressure_from_capture import read_capture
+from scipy.sparse import csr_matrix
+from scipy.sparse.linalg import splu
 
 
 def _sha(path: Path) -> str:
