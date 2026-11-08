@@ -180,6 +180,7 @@ def build_families(
             gen.naca0012_surface = native
         else:
             cluster = clusters.get(family, 0.0)
+
             # naca_o_grid passes BOTH n_surface and trailing-edge regularization.
             # A default-bound `native` in position 2 receives the regularization
             # float instead of the original callable (the N64 TypeError).
