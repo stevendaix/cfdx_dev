@@ -47,6 +47,29 @@ int main() {
         bc.back_pressure=120.0;
         EXPECT_THROW(validate_production_incompressible_boundary(bc,PatchType::OUTLET),std::invalid_argument);
     });
+    run_case("explicit_case_conditions_resolve_generic_imported_patches", [] {
+        BoundarySpec inlet;
+        inlet.patch_name="generic_inlet";
+        inlet.type=BCType::INLET;
+        inlet.value_type=BCValueType::FIXED;
+        inlet.velocity_vector={1.0,0.0,0.0};
+        validate_production_incompressible_boundary(inlet,PatchType::UNKNOWN);
+
+        BoundarySpec outlet;
+        outlet.patch_name="generic_outlet";
+        outlet.type=BCType::OUTLET;
+        outlet.value_type=BCValueType::ZERO_GRADIENT;
+        validate_production_incompressible_boundary(outlet,PatchType::UNKNOWN);
+
+        BoundarySpec pressure_outlet;
+        pressure_outlet.patch_name="generic_pressure_outlet";
+        pressure_outlet.type=BCType::PRESSURE_OUTLET;
+        pressure_outlet.value_type=BCValueType::OUTLET_PRESSURE;
+        pressure_outlet.pressure=0.0;
+        validate_production_incompressible_boundary(pressure_outlet,PatchType::UNKNOWN);
+
+        EXPECT_THROW(validate_production_incompressible_boundary(inlet,PatchType::WALL),std::invalid_argument);
+    });
     run_case("periodic_and_interface_cannot_fall_through", [] {
         BoundarySpec bc;
         bc.patch_name="paired";
