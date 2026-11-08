@@ -56,7 +56,9 @@ def parse_results(run_dir: Path) -> dict:
     # converged force certificate, rather than the legacy two-argument PASS.
     # Require the actual production certificate and its matching iteration.
     if not re.search(
-        r"^NACA_CONVERGED_FORCE_CERTIFICATE .*qualification=ONE_GRID_ONLY$", log, re.MULTILINE
+        r"^NACA_CONVERGED_FORCE_CERTIFICATE .*qualification=ONE_GRID_ONLY$",
+        log,
+        re.MULTILINE,
     ):
         raise ValueError("NACA A/B: missing one-grid converged force certificate")
     reported_iterations = re.findall(
