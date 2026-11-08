@@ -622,7 +622,7 @@ def verify_mesh_series(meshes: list[dict], case: dict) -> dict:
     hs = [number(row["h"], f"{row['id']}.h", positive=True) for row in ordered]
     if any(h0 <= h1 for h0, h1 in itertools.pairwise(hs)):
         raise ValueError("mesh_series: duplicate or nondecreasing spacing")
-    refinement = [h0 / h1 for h0, h1 in zip(hs, hs[1:])]
+    refinement = [h0 / h1 for h0, h1 in itertools.pairwise(hs)]
     if any(r < 1.25 for r in refinement):
         raise ValueError("mesh_series: insufficient refinement ratio")
     if max(refinement) / min(refinement) > 1.05:
