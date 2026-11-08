@@ -11,8 +11,8 @@ import argparse
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
+from pathlib import Path
 import subprocess
 import sys
 from typing import Any
@@ -188,8 +188,7 @@ def run_campaign(
                 cmd,
                 cwd=location,
                 env=clean,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
