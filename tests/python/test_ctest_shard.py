@@ -86,6 +86,7 @@ class CTestShardTests(unittest.TestCase):
                 regex = (
                     (Path(td) / f"long-shard-{lane['index']}.regex").read_text().strip()
                 )
+
                 import re
                 self.assertTrue(re.fullmatch(regex, name))
                 self.assertFalse(re.fullmatch(regex, "testaaaa"))
