@@ -57,13 +57,11 @@ def parse_microscope(log: str) -> dict:
             )
         elif "rhie_chow_expected_linf=" in line:
             data = dict(SUMMARY.findall(line))
-            if set(data) != set(
-                (
-                    "rhie_chow_expected_linf",
-                    "rhie_chow_actual_linf",
-                    "delta_rhie_chow_linf",
-                )
-            ):
+            if set(data) != {
+                "rhie_chow_expected_linf",
+                "rhie_chow_actual_linf",
+                "delta_rhie_chow_linf",
+            }:
                 raise ValueError("incomplete Rhie-Chow final summary")
             summary = {k: float(v) for k, v in data.items()}
             if any(not math.isfinite(v) for v in summary.values()):
