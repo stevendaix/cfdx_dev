@@ -172,7 +172,7 @@ class EvidenceGateTests(unittest.TestCase):
     def test_synthetic_positive_contract_only(self):
         report = self.result()
         self.assertEqual(report["verification_status"], "EVIDENCE_GATES_PASS")
-        self.assertEqual(set(x["status"] for x in report["checks"]), {"PASS"})
+        self.assertEqual({x["status"] for x in report["checks"]}, {"PASS"})
 
     def test_registry_historical_pass_with_no_evidence_is_blocked(self):
         reg = json.loads(
@@ -350,7 +350,7 @@ class EvidenceGateTests(unittest.TestCase):
             str(output),
         ]
         p = subprocess.run(
-            cmd, text=True, capture_output=True
+            cmd, check=False, text=True, capture_output=True
         )
         self.assertEqual(p.returncode, 2)
         self.assertEqual(json.loads(output.read_text())["coverage"]["evidence_pass"], 0)
