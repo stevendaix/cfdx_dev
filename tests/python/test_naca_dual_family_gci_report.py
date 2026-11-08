@@ -66,18 +66,18 @@ def test_gci_separately_recovers_known_power_laws():
         cdp = cdp_inf + a_p * h**p_p
         cdv = cdv_inf + a_v * h**p_v
         rows.append(
-            dict(
-                case=f"N{n}",
-                h=str(h),
-                converged="yes",
-                res_mom="1e-11",
-                res_mass="1e-11",
-                cd=str(cdp + cdv),
-                cdp=str(cdp),
-                cdv=str(cdv),
-                cl="0",
-                cm="0",
-            )
+            {
+                "case": f"N{n}",
+                "h": str(h),
+                "converged": "yes",
+                "res_mom": "1e-11",
+                "res_mass": "1e-11",
+                "cd": str(cdp + cdv),
+                "cdp": str(cdp),
+                "cdv": str(cdv),
+                "cl": "0",
+                "cm": "0",
+            }
         )
     gci = qualify(rows)
     for key, exact, order in (("cdp", cdp_inf, p_p), ("cdv", cdv_inf, p_v)):
@@ -93,18 +93,18 @@ def test_total_cd_monotone_is_not_sufficient_for_viscous_gci():
     rows = []
     for n, cd, cdp in ((64, 0.14, 0.042), (128, 0.13, 0.041), (256, 0.125, 0.0421)):
         rows.append(
-            dict(
-                case=f"N{n}",
-                h=str(1 / n),
-                converged="yes",
-                res_mom="1e-11",
-                res_mass="1e-11",
-                cd=str(cd),
-                cdp=str(cdp),
-                cdv=str(cd - cdp),
-                cl="0",
-                cm="0",
-            )
+            {
+                "case": f"N{n}",
+                "h": str(1 / n),
+                "converged": "yes",
+                "res_mom": "1e-11",
+                "res_mass": "1e-11",
+                "cd": str(cd),
+                "cdp": str(cdp),
+                "cdv": str(cd - cdp),
+                "cl": "0",
+                "cm": "0",
+            }
         )
     gci = qualify(rows)
     assert gci["quantities"]["cd"]["status"] == "asymptotic_candidate"
