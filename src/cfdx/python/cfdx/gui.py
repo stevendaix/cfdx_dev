@@ -5,21 +5,21 @@ from __future__ import annotations
 from pathlib import Path
 
 from .case_io import read_case, read_case_with_dat, save_case, save_case_with_dat
+from .dat_io import read_dat_restart
+from .execution import ExecutionController
+from .mesh_model import read_mesh_catalog
 from .native_solver_preflight import (
     check_native_production_case,
     is_native_production_solver,
     native_production_command,
 )
-from .dat_io import read_dat_restart
-from .execution import ExecutionController
 from .output import OutputThrottle
+from .results_series import discover_result_series
 from .runner import SolverRunner
 from .session import CFDXSession, SimulationState, ChangeImpact
 from .tui import TuiRenderer
-from .watcher import ResultWatcher
-from .mesh_model import read_mesh_catalog
-from .results_series import discover_result_series
 from .validation import validate_case
+from .watcher import ResultWatcher
 
 try:
     from PySide6.QtCore import QObject, QTimer, Qt, Signal
@@ -47,10 +47,10 @@ except ImportError:  # pragma: no cover
 
 
 if QApplication is not None:
+    from .gui_3d import PyVistaQtView
     from .mesh_browser_panel import MeshBrowserPanel
     from .results_series_panel import ResultsSeriesPanel
     from .setup_panel import CaseSetupPanel
-    from .gui_3d import PyVistaQtView
 
     class SessionSignals(QObject):
         state_changed = Signal(object)
