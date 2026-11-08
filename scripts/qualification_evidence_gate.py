@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import itertools
 import json
 import math
 import os
@@ -107,7 +108,7 @@ def number(
     value: Any, name: str, *, positive: bool = False, nonnegative: bool = False
 ) -> float:
     if isinstance(value, bool) or not isinstance(value, (float, int)):
-        raise ValueError(f"{name}: numeric value required")
+        raise TypeError(f"{name}: numeric value required")
     result = float(value)
     if not math.isfinite(result):
         raise ValueError(f"{name}: nonfinite value")
@@ -149,7 +150,7 @@ def verify_artifact(base: Path, artifact: Any, context: str) -> dict:
 def verify_provenance(evidence: dict, base: Path) -> dict:
     provenance = evidence["provenance"]
     if not isinstance(provenance, dict):
-        raise ValueError("provenance: invalid structure")
+        raise TypeError("provenance: invalid structure")
     kind = provenance.get("source_kind")
     revision = provenance.get("source_revision")
     if kind == "git":
@@ -171,7 +172,7 @@ def verify_provenance(evidence: dict, base: Path) -> dict:
         raise ValueError("provenance: unknown source kind")
     artifacts = provenance.get("artifacts")
     if not isinstance(artifacts, dict):
-        raise ValueError("provenance: missing artifacts")
+        raise TypeError("provenance: missing artifacts")
     required = {"binary", "configuration", "solver_log", "reference", "oracle_source"}
     if kind == "archive":
         required.add("source_archive")
@@ -343,7 +344,7 @@ def verify_solver(meshes: Any) -> dict:
     seen = set()
     for mesh in meshes:
         if not isinstance(mesh, dict):
-            raise ValueError("solver: malformed mesh record")
+            raise TypeError("solver: malformed mesh record")
         name = mesh.get("id")
         if not isinstance(name, str) or not name or name in seen:
             raise ValueError("solver: missing/duplicate mesh ID")
@@ -447,7 +448,7 @@ def verify_qoi_stability(
         for key in required:
             spec = expected.get(key)
             if not isinstance(spec, dict):
-                raise ValueError(
+                raise TypeError(
                     f"qoi_stability: {name} missing independent tolerance for {key}"
                 )
             allowed = (
@@ -501,7 +502,7 @@ def verify_conservation(meshes: list[dict], case: dict) -> dict:
             )
         for name, terms in balances.items():
             if not isinstance(terms, dict):
-                raise ValueError(f"conservation: {name} bad balance")
+                raise TypeError(f"conservation: {name} bad balance")
             # Outward includes all boundary fluxes in the declared convention.
             values = {
                 key: number(terms.get(key), f"{name}.{key}")
@@ -536,7 +537,7 @@ def verify_force(meshes: list[dict], case: dict) -> dict:
     for mesh in meshes:
         observable = mesh.get("quantities", {})
         if not isinstance(observable, dict):
-            raise ValueError("force_decomposition: missing quantities")
+            raise TypeError("force_decomposition: missing quantities")
         for key in ("Cd", "Cd_pressure", "Cd_viscous"):
             number(observable.get(key), f"{mesh['id']}.{key}")
         if not math.isclose(
@@ -576,7 +577,7 @@ def verify_reference(meshes: list[dict], reference: dict, case: dict) -> dict:
     errors = {}
     for key, spec in expected.items():
         if not isinstance(spec, dict):
-            raise ValueError(f"reference: invalid {key} contract")
+            raise TypeError(f"reference: invalid {key} contract")
         if not isinstance(spec.get("unit"), str) or not spec["unit"].strip():
             raise ValueError(f"reference: missing {key} units")
         target = number(spec.get("value"), f"reference.{key}")
@@ -619,7 +620,7 @@ def verify_mesh_series(meshes: list[dict], case: dict) -> dict:
         reverse=True,
     )
     hs = [number(row["h"], f"{row['id']}.h", positive=True) for row in ordered]
-    if any(h0 <= h1 for h0, h1 in zip(hs, hs[1:])):
+    if any(h0 <= h1 for h0, h1 in itertools.pairwise(hs)):
         raise ValueError("mesh_series: duplicate or nondecreasing spacing")
     refinement = [h0 / h1 for h0, h1 in zip(hs, hs[1:])]
     if any(r < 1.25 for r in refinement):
@@ -638,7 +639,7 @@ def verify_mesh_series(meshes: list[dict], case: dict) -> dict:
     for row in ordered:
         quality = row.get("mesh_quality")
         if not isinstance(quality, dict):
-            raise ValueError("mesh_series: missing mesh quality")
+            raise TypeError("mesh_series: missing mesh quality")
         if (
             quality.get("inverted_cells") != 0
             or number(
@@ -726,7 +727,7 @@ def verify_order(meshes: list[dict], reference: dict) -> dict:
         log21, log32 = math.log(r21), math.log(r32)
         factor = abs(d01 / d12)
 
-        def diff_ratio(p):
+        def diff_ratio(p, log21=log21, log32=log32):
             return math.expm1(p * log21) / (-math.expm1(-p * log32))
 
         if factor <= log21 / log32 or factor >= diff_ratio(8):
