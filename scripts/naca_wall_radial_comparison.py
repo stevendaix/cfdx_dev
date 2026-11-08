@@ -11,10 +11,7 @@ import argparse
 import csv
 import json
 import math
-import sys
 from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from naca_wall_pressure_grid_audit import BINS, read_profile
 
