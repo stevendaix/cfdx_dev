@@ -299,6 +299,9 @@ struct IncompressibleSolverControls {
     // declaring nonlinear convergence. Shared by SIMPLE/SIMPLEC/COUPLED;
     // disabled by default to preserve existing solver behaviour.
     bool require_independent_face_residual_for_convergence = false;
+    // Optional fail-closed independent SIMPLEC rAtU-to-rAU face identity.
+    // Keep separate from the nonlinear physical conservation gates.
+    bool require_simplec_same_state_flux_identity = false;
     // Opt-in for a long validation run: STAGNATED remains diagnostic and
     // MUST NOT count as converged. Divergence, maximum-iteration, component
     // residual, conservation and true-face momentum gates remain unchanged.
@@ -452,6 +455,16 @@ struct IncompressibleSolverControls {
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
         const cfdx::core::Field<double, cfdx::core::Location::CELL>&)>;
     IterationOutputCallback iteration_output_callback;
+    // Optional PURE candidate-validation gate, evaluated BEFORE the nonlinear
+    // U,p,phi transaction commits. Throw NonlinearRetryableFailure to reject
+    // the whole tentative step; this is not an output/stop callback. Do not
+    // perform disk I/O or irreversible side effects here; use the accepted
+    // iteration callback for checkpoints, or iteration_output_callback for
+    // post-commit visualization/output.
+    std::function<void(std::size_t, double, const cfdx::core::Mesh&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&,
+        const cfdx::core::Field<double, cfdx::core::Location::CELL>&)>
+        tentative_iteration_gate_callback;
     // Called only after a nonlinear U,p,phi transaction has committed.
     // Unlike diagnostic assembly hooks, this cannot expose a rejected candidate.
     // phi is the authoritative accepted Rhie-Chow face flux (kg/s), not
@@ -617,6 +630,12 @@ struct IncompressibleIteration {
     // Expected zero up to round-off; nonzero flags a stale or mutated
     // authoritative flux, or an omitted/duplicated SIMPLEC response term.
     double rhie_chow_identity_linf = std::numeric_limits<double>::infinity();
+    // Independent SIMPLEC fixed-point equivalent: the fully corrected
+    // rAtU flux must match Rhie-Chow reconstructed from the same H/A and
+    // physical pressure with the unmodified rAU response. This catches
+    // a missing or duplicated (rAtU-rAU) correction on skewed faces.
+    double simplec_plain_rau_flux_gap_linf = 0.0;
+    std::size_t simplec_plain_rau_worst_face = 0;
     // SIMPLEC coefficient audit: compare the signed row sum used by the
     // production denominator with the absolute-value alternative. These are
     // diagnostics only; validation gates remain independent.
@@ -818,6 +837,10 @@ inline void validate_incompressible_controls(
     if (c.tvd_secant_implicit.enabled && c.tvd_deferred_memory.enabled)
         throw std::invalid_argument(
             "TVD secant and deferred memory require a qualified combined scheme");
+    if (c.require_simplec_same_state_flux_identity &&
+        c.algorithm != PressureVelocityAlgorithm::SIMPLEC)
+        throw std::invalid_argument(
+            "SIMPLEC same-state flux identity requires SIMPLEC algorithm");
     validate_nonlinear_multisecant(c.nonlinear_multisecant);
     if (c.nonlinear_multisecant.method != NonlinearMultisecantMethod::OFF &&
         (c.algorithm != PressureVelocityAlgorithm::SIMPLE ||
@@ -830,7 +853,8 @@ inline void validate_incompressible_controls(
          c.v19_full_pressure_flux_step ||
          (c.convection_scheme != ConvectionScheme::TVD &&
           c.convection_scheme != ConvectionScheme::TVD_VANLEER &&
-          c.convection_scheme != ConvectionScheme::TVD_VANALBADA)))
+          c.convection_scheme != ConvectionScheme::TVD_VANALBADA &&
+          c.convection_scheme != ConvectionScheme::MUSCL_CELL_LIMITED)))
         throw std::invalid_argument(
             "nonlinear multisecant requires steady SIMPLE with full TVD, "
             "no transient/SST/ramp, and no simultaneous experimental acceleration");
@@ -4880,13 +4904,6 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // vector has [Ux,Uy,Uz,p,phi] in that order; phi is an INDEPENDENT,
     // conservative state variable and is not silently replaced by interp(U).
     NonlinearMultisecantHistory multisecant_history(controls.nonlinear_multisecant);
-    // Predictor-failure isolation (plan du 2026-11-08): a multisecant trial
-    // rejected by the physical growth gate counts here, while a failure of
-    // the ordinary Picard fallback is accounted separately by the retry
-    // controller. Two consecutive predictor rejections discard the whole
-    // multisecant history: the extrapolation basis itself is then suspect.
-    std::size_t multisecant_consecutive_rejections = 0;
-    const std::size_t multisecant_maximum_consecutive_rejections = 2;
     const std::size_t nc_multisecant = mesh.n_cells();
     const std::size_t nf_multisecant = mesh.n_faces();
     const auto pack_nonlinear_state = [&](const auto& velocity, const auto& pressure,
@@ -4954,6 +4971,10 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         NonlinearStateRollback transaction(U, p);
         const auto mass_flux_snapshot = mass_flux;
         bool iteration_completed = false;
+        // A rejected multisecant predictor gets exactly one ordinary Picard
+        // retry at UNCHANGED alpha_u/alpha_p. Reset the multisecant history;
+        // a rejected prediction must not seed the next nonlinear proposal.
+        bool picard_fallback_after_multisecant = false;
         while (!iteration_completed) {
             // A retry must restore not only physical fields but also any
             // convergence/history state tentatively updated before the outer
@@ -4981,11 +5002,14 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 ? std::optional<SSTProductionState>(
                     snapshot_sst_production_state(*controls.sst_runtime->state))
                 : std::nullopt;
+            // Visible to the exception handlers: pressure/linear failures may
+            // occur before a candidate reaches the physical-residual gate.
+            bool multisecant_trial_used = false;
             try {
-        bool multisecant_trial_used = false;
         MultisecantProposal multisecant_proposal;
         if (controls.nonlinear_multisecant.method != NonlinearMultisecantMethod::OFF &&
             iter >= controls.nonlinear_multisecant.start_iteration &&
+            !picard_fallback_after_multisecant &&
             retry_controller.retries() == 0 && full_order_eligible &&
             same_convection_operator_as_previous) {
             multisecant_proposal = multisecant_history.propose();
@@ -5374,6 +5398,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         // Evidence channel only; no acceptance criterion consumes it.
         bool rhie_chow_identity_evaluated = false;
         double rhie_chow_identity_audit_linf = 0.0;
+        double simplec_plain_rau_gap = 0.0;
+        std::size_t simplec_plain_rau_worst = 0;
         // V20 diagnostic-only reference for the V19 split pressure state.
         std::optional<Field<double,Location::FACE>> v20_relaxed_pressure_flux;
 
@@ -7163,6 +7189,32 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 throw std::runtime_error("same-state RC pressure response/operator mismatch");
         }
 
+        if (controls.algorithm == PressureVelocityAlgorithm::SIMPLEC) {
+            // DIFFERENT operator path from the assembled rAtU correction:
+            // use the plain momentum inverse rAU on the very same accepted
+            // HbyA/pressure/face BCs. No stale pressure, nor relaxed-U flux.
+            const auto plain_flux = make_rhie_chow_mass_flux(
+                mesh, geometry, HbyA, v19_flux_pressure_state,
+                rAU, controls.density, velocity_bcs, pressure_bcs,
+                RhieChowVelocityContract::HBYA_PREDICTOR,
+                controls.pressure_skew_corrected_gradient,
+                controls.pressure_projected_face_interpolation,
+                face_velocity_conditions ? &*face_velocity_conditions : nullptr);
+            double gap = 0.0, phi_scale = 1.0;
+            std::size_t worst_face = 0;
+            for (std::size_t f = 0; f < mesh.n_faces(); ++f) {
+                const double error = std::abs(mass_flux(f)-plain_flux(f));
+                if (error > gap) { gap = error; worst_face = f; }
+                phi_scale = std::max(phi_scale, std::abs(mass_flux(f)));
+            }
+            simplec_plain_rau_gap = gap;
+            simplec_plain_rau_worst = worst_face;
+            if (controls.require_simplec_same_state_flux_identity &&
+                gap > 1e-10 * phi_scale)
+                throw NonlinearRetryableFailure(
+                    "SIMPLEC same-state rAtU/rAU flux identity mismatch");
+        }
+
         }
         
         // Independent final momentum residual: evaluate the actual corrected
@@ -7620,6 +7672,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
         }
         h.rhie_chow_identity_linf =
             rhie_chow_identity_evaluated ? rhie_chow_identity_audit_linf : 0.0;
+        h.simplec_plain_rau_flux_gap_linf = simplec_plain_rau_gap;
+        h.simplec_plain_rau_worst_face = simplec_plain_rau_worst;
         h.momentum_equation_residual_components =
             std::array<double, 3>{rx_diag.global, ry_diag.global, rz_diag.global};
         h.momentum_equation_residual_internal =
@@ -7806,34 +7860,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                               << " prior=" << previous.momentum_equation_residual_rhs_active_component_max
                               << " continuity=" << h.continuity_normalized
                               << " prior_continuity=" << previous.continuity_normalized << '\n';
-                // Keep the SAME alpha_u and alpha_p on the fallback. This
-                // isolates the predictor effect, rather than double changing
-                // the fixed-point map and masking the mechanism.
-                transaction.reject();
-                mass_flux=mass_flux_snapshot;
-                convergence_monitor=convergence_monitor_snapshot;
-                result.history.resize(result_history_size);
-                result.probe_samples.resize(probe_samples_size);
-                result.converged=previous_result_converged;
-                result.convergence_status=previous_result_status;
-                result.convergence_reason=previous_result_reason;
-                result.iterations=previous_result_iterations;
-                ++multisecant_consecutive_rejections;
-                if (multisecant_consecutive_rejections >=
-                        multisecant_maximum_consecutive_rejections) {
-                    multisecant_history.reset();
-                    multisecant_consecutive_rejections = 0;
-                    if (controls.diagnostics.iteration_trace)
-                        std::cerr << "MULTISECANT_HISTORY_RESET iteration="
-                                  << iter
-                                  << " reason=repeated predictor rejection\\n";
-                }
-                retry_controller.retry_without_relaxation();
-                continue;
+                // A trial failure (including one before the monitor below)
+                // has a single recovery path in the catch handler. The monitor
+                // never observes a rejected candidate.
+                throw NonlinearRetryableFailure(
+                    "multisecant physical-residual growth; retry ordinary Picard");
             }
         }
-        if (multisecant_trial_used)
-            multisecant_consecutive_rejections = 0;
         h.multisecant_proposed=multisecant_proposal.available;
         h.multisecant_accepted=multisecant_trial_used;
         if (multisecant_trial_used) {
@@ -8838,6 +8871,11 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             stop_after_iteration = true;
         }
         result.iterations = iter;
+            // The gate runs on a complete trial state *before* any mutation
+            // of committed TVD histories, before transaction.commit(), and
+            // before any irreversible output or checkpoint is published.
+            if (controls.tentative_iteration_gate_callback)
+                controls.tentative_iteration_gate_callback(iter,0.0,mesh,U,p);
             // A retry must never reuse a deferred TVD flux from a rejected
             // attempt: the filtered memory is only promoted on commit.
             if (controls.tvd_deferred_memory.enabled || controls.tvd_secant_implicit.enabled) {
@@ -8961,14 +8999,60 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 frozen_state_valid = false;
                 if (!retry_controller.can_retry())
                     throw;
+                if (multisecant_trial_used &&
+                    !picard_fallback_after_multisecant) {
+                    // Do NOT shrink equation relaxation on an Anderson/NGMRES
+                    // failure. The predictor changed the input state, not the
+                    // convergence tolerances or the fixed-point map.
+                    picard_fallback_after_multisecant = true;
+                    multisecant_history.reset();
+                    retry_controller.retry_without_relaxation();
+                    std::cerr << "MULTISECANT_FALLBACK iteration=" << iter
+                              << " reason=" << error.what()
+                              << " alpha_u=" << retry_controller.alpha_u(effective_alpha_u)
+                              << " alpha_p=" << retry_controller.alpha_p(effective_alpha_p)
+                              << " history_reset=1\n";
+                    continue;
+                }
                 retry_controller.reject();
                 std::cerr << "CFDX nonlinear iteration " << iter
                           << " rejected; retry=" << retry_controller.retries()
                           << " alpha_u=" << retry_controller.alpha_u(effective_alpha_u)
                           << " alpha_p=" << retry_controller.alpha_p(effective_alpha_p)
                           << " reason=" << error.what() << "\n";
-            } catch (...) {
+            } catch (const std::runtime_error& error) {
+                // A post-commit diagnostics/I/O failure is NOT a nonlinear
+                // trial rejection. Never roll back an already committed state.
+                if (!transaction.active()) throw;
                 transaction.reject();
+                mass_flux = mass_flux_snapshot;
+                if (controls.sst_runtime && sst_attempt_snapshot)
+                    restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
+                convergence_monitor = convergence_monitor_snapshot;
+                result.history.resize(result_history_size);
+                result.probe_samples.resize(probe_samples_size);
+                result.converged = previous_result_converged;
+                result.convergence_status = previous_result_status;
+                result.convergence_reason = previous_result_reason;
+                result.iterations = previous_result_iterations;
+                frozen_state_valid = false;
+                if (multisecant_trial_used &&
+                    !picard_fallback_after_multisecant &&
+                    retry_controller.can_retry()) {
+                    picard_fallback_after_multisecant = true;
+                    multisecant_history.reset();
+                    retry_controller.retry_without_relaxation();
+                    std::cerr << "MULTISECANT_FALLBACK iteration=" << iter
+                              << " before_physical_gate=1"
+                              << " reason=" << error.what()
+                              << " alpha_u=" << retry_controller.alpha_u(effective_alpha_u)
+                              << " alpha_p=" << retry_controller.alpha_p(effective_alpha_p)
+                              << " history_reset=1\n";
+                    continue;
+                }
+                throw;
+            } catch (...) {
+                if (transaction.active()) transaction.reject();
                 mass_flux = mass_flux_snapshot;
                 if (controls.sst_runtime && sst_attempt_snapshot)
                     restore_sst_production_state(*controls.sst_runtime->state, *sst_attempt_snapshot);
@@ -9026,5 +9110,3 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 }
 
 } // namespace cfdx::physics
-
-
