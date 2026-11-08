@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import itertools
 import json
 import math
 from collections import defaultdict
@@ -132,7 +133,7 @@ def load_faces(path: Path, independent: bool = True):
                 ),
             )
 
-        def match(a, b, name):
+        def match(a, b, name, pre=pre):
             err = abs(a - b)
             max_err[name] = max(max_err[name], err)
             if not close(a, b):
