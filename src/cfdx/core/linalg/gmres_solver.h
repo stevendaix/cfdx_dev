@@ -378,6 +378,14 @@ inline SolverResult solve_gmres(
             // (DIVERGED), rather than allowing the solver to continue into
             // another restart and eventually report MAX_ITER_REACHED.
             if (arnoldi_breakdown_detected) {
+                if (krylov_diagnostics_enabled())
+                    std::cerr << "KRYLOV_ARNOLDI_BREAKDOWN"
+                              << " iterations=" << iterations
+                              << " arnoldi_action_norm=" << arnoldi_action_norm
+                              << " hnext=" << hnext
+                              << " breakdown_floor=" << arnoldi_breakdown_floor
+                              << " projected_residual=" << estimated_residual
+                              << " requested_residual=" << tol << "\n";
                 arnoldi_breakdown = true;
                 break;
             }
@@ -421,6 +429,12 @@ inline SolverResult solve_gmres(
                     x = best_x;
                     breakdown_residual = best_residual;
                 }
+                if (krylov_diagnostics_enabled())
+                    std::cerr << "KRYLOV_HESSENBERG_BREAKDOWN"
+                              << " iterations=" << iterations << " row=" << i
+                              << " diag=" << diag << " floor=" << diag_floor
+                              << " rhs_component=" << sum
+                              << " true_residual=" << breakdown_residual << "\n";
                 result.status = SolverStatus::DIVERGED;
                 result.iterations = iterations;
                 result.residual = breakdown_residual;
@@ -463,6 +477,12 @@ inline SolverResult solve_gmres(
         // singular/inconsistent system as MAX_ITER_REACHED. Report the
         // physical residual as a genuine solver failure instead.
         if (arnoldi_breakdown) {
+            if (krylov_diagnostics_enabled())
+                std::cerr << "KRYLOV_UNHAPPY_ARNOLDI_BREAKDOWN"
+                          << " iterations=" << iterations
+                          << " true_residual=" << beta
+                          << " relative=" << beta / rhs_scale
+                          << " requested_relative=" << tolerance << "\n";
             if (best_residual < beta) {
                 x = best_x;
                 beta = best_residual;

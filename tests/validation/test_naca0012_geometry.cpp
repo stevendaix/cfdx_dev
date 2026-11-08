@@ -141,6 +141,28 @@ static Forces run(const std::string& path,std::size_t level,
         std::getenv("CFDX_NACA_ALGORITHM"), std::getenv("CFDX_NACA_COUPLED_SCHUR"));
     c.algorithm = naca_selection.algorithm;
     c.coupling.schur_model = naca_selection.schur_model;
+    // Diagnostic-only block/PCD traces; never changes solver coefficients.
+    if (const char* raw=std::getenv("CFDX_NACA_COUPLED_MATRIX_SUMMARY")) {
+        if (std::string(raw)!="1" || c.algorithm!=PressureVelocityAlgorithm::COUPLED)
+            throw std::invalid_argument("CFDX_NACA_COUPLED_MATRIX_SUMMARY requires COUPLED and 1");
+        c.diagnostics.coupled_matrix_summary=true;
+    }
+    // Research PCD commutator for a controlled A/B. It is not the legacy
+    // -Fp^-1 action, and a successful algebraic step does not certify NACA.
+    if (const char* raw=std::getenv("CFDX_NACA_PCD_LUMPED_MASS")) {
+        if (std::string(raw)!="1" || c.algorithm!=PressureVelocityAlgorithm::COUPLED ||
+            c.coupling.schur_model!=CoupledSchurModel::PCD)
+            throw std::invalid_argument("CFDX_NACA_PCD_LUMPED_MASS requires COUPLED/pcd and 1");
+        c.coupling.pcd_lumped_mass_commutator_experimental=true;
+        // Production's PCD commutator now tightens only its effective Kp
+        // target to satisfy the unchanged inverse certificate.
+    }
+    if (const char* raw=std::getenv("CFDX_NACA_PCD_GAUGE_COLUMN")) {
+        if (std::string(raw)!="1" || c.algorithm!=PressureVelocityAlgorithm::COUPLED ||
+            c.coupling.schur_model!=CoupledSchurModel::PCD)
+            throw std::invalid_argument("CFDX_NACA_PCD_GAUGE_COLUMN requires COUPLED/pcd and 1");
+        c.coupling.pcd_consistent_gauge_experimental=true;
+    }
     // The stagnation detector is an early-stop heuristic, not a convergence
     // criterion. Long N256 replay can opt into diagnostic-only stagnation.
     if (const char* flag=std::getenv("CFDX_NACA_STAGNATION_DIAGNOSTIC_ONLY")) {
