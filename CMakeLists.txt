@@ -608,6 +608,9 @@ if(CFDX_BUILD_TESTS)
     add_executable(cfdx_linear_replay EXCLUDE_FROM_ALL
         tools/diagnostics/cfdx_linear_replay.cpp)
     target_link_libraries(cfdx_linear_replay PRIVATE cfdx_core)
+    add_executable(cfdx_compensated_pressure_replay EXCLUDE_FROM_ALL
+        tools/diagnostics/cfdx_compensated_pressure_replay.cpp)
+    target_link_libraries(cfdx_compensated_pressure_replay PRIVATE cfdx_core)
     add_cfdx_test(test_linear_system_capture tests/unit/test_linear_system_capture.cpp)
     set_tests_properties(test_linear_system_capture PROPERTIES
         LABELS "linalg;diagnostic;replay;regression" TIMEOUT 60)
@@ -653,6 +656,7 @@ if(CFDX_BUILD_TESTS)
     add_cfdx_test(test_gmres_solver tests/unit/test_gmres_solver.cpp)
     add_cfdx_test(test_fgmres_solver tests/unit/test_fgmres_solver.cpp)
     add_cfdx_test(test_gmres_reliable_replay tests/unit/test_gmres_reliable_replay.cpp)
+    add_cfdx_test(test_compensated_pressure_balance tests/unit/test_compensated_pressure_balance.cpp)
     add_cfdx_test(test_krylov_preconditioning tests/unit/test_krylov_preconditioning.cpp)
     add_cfdx_test(test_krylov_diagnostics tests/unit/test_krylov_diagnostics.cpp)
     add_cfdx_test(test_stationary_solvers tests/unit/test_stationary_solvers.cpp)
