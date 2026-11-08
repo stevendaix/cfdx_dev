@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Fail-closed cellwise NACA momentum budget audit (never a CFD certificate)."""
 
 from __future__ import annotations
