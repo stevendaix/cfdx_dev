@@ -1265,3 +1265,532 @@ reconstruct_scalar_transport_flux(
             gamma = boundary_face_diffusion ? (*boundary_face_diffusion)[f]
                 : (cell_diffusion ? (*cell_diffusion)[o] : diffusion_coefficient);
             if (!(gamma >= 0.0) || !std::isfinite(gamma))
+                throw std::invalid_argument("reconstruct_scalar_transport_flux: invalid boundary diffusion");
+            if (bc.type == ScalarBoundaryType::FIXED_VALUE) {
+                // For a fixed-value boundary, the prescribed value enters the
+                // convective flux only on inflow. On outflow the upwind state
+                // is the owner-cell value, exactly as in matrix assembly.
+                // Diffusion still uses the prescribed boundary value in both
+                // flow directions.
+                const double convective_face_value = F < 0.0 ? bc.value : field(o);
+                result(f) = F * convective_face_value
+                    - gamma * area / d * (bc.value - field(o))
+                    - nonorthogonal_diffusion_flux[f];
+            } else if (bc.type == ScalarBoundaryType::FIXED_GRADIENT) {
+                psi_face=field(o)+bc.gradient*d;
+                result(f)=F*psi_face - gamma*area*bc.gradient
+                    - nonorthogonal_diffusion_flux[f];
+            } else {
+                // Zero-gradient: no diffusive boundary flux and psi_f=psi_P.
+                psi_face=field(o);
+                result(f)=F*psi_face;
+            }
+        }
+    }
+    return result;
+}
+
+// CG is a valid fallback only for certified SPD operators. A scalar
+// transport matrix is generally NON-symmetric when convection is present.
+// This conservative sufficient certificate (symmetric + strictly row-diagonally
+// dominant with positive diagonals) may reject some legitimate SPD matrices;
+// that is preferable to silently applying CG outside its mathematical domain.
+// The explicit Diffusion/Pressure solver dispatch remains independently usable.
+inline bool scalar_cg_fallback_spd_certificate(const cfdx::core::SparseMatrix& A)
+{
+    if (A.n_rows() == 0 || A.n_rows() != A.n_cols() || !A.is_consistent())
+        return false;
+    const auto* row = A.row_offsets_data();
+    const auto* col = A.columns_data();
+    const auto* val = A.values_data();
+    for (std::size_t i=0; i<A.n_rows(); ++i) {
+        double diagonal = 0.0;
+        double off_diagonal_abs = 0.0;
+        for (std::uint32_t j=row[i]; j<row[i+1]; ++j) {
+            const double aij = val[j];
+            if (!std::isfinite(aij)) return false;
+            if (col[j] == i) {
+                diagonal += aij;
+                continue;
+            }
+            const double aji = A(col[j], i);
+            const double scale = std::max({std::abs(aij), std::abs(aji), 1e-300});
+            if (!std::isfinite(aji) ||
+                std::abs(aij-aji) > 64.0*std::numeric_limits<double>::epsilon()*scale)
+                return false;
+            off_diagonal_abs += std::abs(aij);
+        }
+        if (!(diagonal > off_diagonal_abs) || !std::isfinite(diagonal) ||
+            !std::isfinite(off_diagonal_abs))
+            return false;
+    }
+    return true;
+}
+
+inline cfdx::core::SolverResult solve_scalar_equation(
+    const ScalarEquation& equation,
+    cfdx::core::Vector& solution,
+    const ScalarSolveControls& controls = {})
+{
+    validate_scalar_controls(controls);
+    if (solution.size() != equation.rhs.size())
+        throw std::invalid_argument("solve_scalar_equation: solution size mismatch");
+
+    if (solution.size() == 1) {
+        const auto begin = equation.matrix.row_offsets_data()[0];
+        const auto end = equation.matrix.row_offsets_data()[1];
+        double diagonal = 0.0;
+        for (std::uint32_t k = begin; k < end; ++k) {
+            if (equation.matrix.columns_data()[k] == 0)
+                diagonal += equation.matrix.values_data()[k];
+        }
+        if (!(std::abs(diagonal) > 0.0) || !std::isfinite(diagonal))
+            throw std::runtime_error("solve_scalar_equation: singular 1x1 system");
+        const double candidate_value = equation.rhs(0) / diagonal;
+        const double candidate_residual =
+            std::abs(diagonal * candidate_value - equation.rhs(0));
+        // H04: the tolerance is relative, as on the Krylov paths. Keep the
+        // candidate/returned-state diagnostics introduced by PR #1088.
+        const double rhs_scale = std::abs(equation.rhs(0));
+        const double relative = rhs_scale > 0.0
+            ? candidate_residual / rhs_scale : candidate_residual;
+        if (!std::isfinite(candidate_value) || !std::isfinite(candidate_residual) ||
+            !std::isfinite(relative)) {
+            return {cfdx::core::SolverStatus::DIVERGED, 1,
+                    candidate_residual, relative, {}};
+        }
+        if (relative <= controls.tolerance) {
+            // Preserve the established exact 1x1 predictor contract.
+            solution(0) = candidate_value;
+            cfdx::core::SolverResult result{
+                cfdx::core::SolverStatus::CONVERGED,
+                1, candidate_residual, relative, {}
+            };
+            result.residual_before_relaxation = candidate_residual;
+            result.residual_after_relaxation = candidate_residual;
+            result.residual_relative_before_relaxation = relative;
+            result.residual_relative_after_relaxation = result.residual_relative_before_relaxation;
+            return result;
+        }
+        // A rejected predictor must not replace the accepted iterate.
+        const double residual =
+            std::abs(diagonal * solution(0) - equation.rhs(0));
+        cfdx::core::SolverResult result{
+            cfdx::core::SolverStatus::MAX_ITER_REACHED,
+            1, residual, rhs_scale > 0.0 ? residual / rhs_scale : residual, {}
+        };
+        result.residual_before_relaxation = candidate_residual;
+        result.residual_after_relaxation = residual;
+        result.residual_relative_before_relaxation = relative;
+        result.residual_relative_after_relaxation = result.residual_relative;
+        return result;
+    }
+
+    cfdx::core::Vector candidate = solution;
+
+    const auto selected = cfdx::core::solve_linear_system(
+        equation.matrix, equation.rhs, candidate, controls.problem,
+        controls.linear_solver, controls.max_iterations, controls.tolerance);
+    auto result = selected.result;
+    const auto log_attempt = [](const char* stage,
+                                const cfdx::core::SolverResult& attempt) {
+        if (attempt.status == cfdx::core::SolverStatus::CONVERGED) return;
+        std::cerr << "SCALAR_LINEAR_ATTEMPT"
+                  << " stage=" << stage
+                  << " status=" << static_cast<int>(attempt.status)
+                  << " iterations=" << attempt.iterations
+                  << " residual=" << attempt.residual
+                  << " relative=" << attempt.residual_relative
+                  << " samples=" << attempt.diagnostics.size();
+        if (!attempt.diagnostics.empty()) {
+            const auto& sample = attempt.diagnostics.back();
+            std::cerr << " last_iteration=" << sample.iteration
+                      << " last_true_residual=" << sample.true_residual
+                      << " last_recursive_residual=" << sample.recursive_residual
+                      << " last_rMz=" << sample.preconditioned_dot
+                      << " last_pAp=" << sample.pAp
+                      << " last_alpha=" << sample.alpha
+                      << " last_beta=" << sample.beta;
+        }
+        std::cerr << '\n';
+    };
+    log_attempt("requested", result);
+
+    const bool fallback_allowed = controls.linear_solver.allow_fallback ||
+        (controls.linear_solver.krylov == cfdx::core::KrylovModel::Auto &&
+         controls.linear_solver.preconditioner ==
+             cfdx::core::PreconditionerModel::Auto);
+
+    // Keep all retries anchored to the same nonlinear iterate; the accepted
+    // predictor is updated only after a solver reports convergence.
+    // Momentum matrices can move between nearly symmetric diffusion-dominated
+    // states and mildly nonsymmetric convection-dominated states. BiCGStab may
+    // either stagnate or break down on the former even though the linear
+    // system is well posed. Retry from the original nonlinear iterate with
+    // restarted GMRES. CG is a last resort ONLY for certified SPD operators;
+    // a generic convective scalar transport matrix is not SPD. Every retry starts
+    // from the original iterate so no unconverged Krylov state is injected.
+    if (fallback_allowed &&
+        result.status != cfdx::core::SolverStatus::CONVERGED) {
+        candidate = solution;
+        result = cfdx::core::solve_gmres(
+            equation.matrix, equation.rhs, candidate,
+            64, controls.max_iterations, controls.tolerance);
+        log_attempt("fallback_gmres", result);
+    }
+
+    if (fallback_allowed &&
+        result.status != cfdx::core::SolverStatus::CONVERGED) {
+        candidate = solution;
+        result = cfdx::core::solve_gauss_seidel(
+            equation.matrix, equation.rhs, candidate,
+            controls.max_iterations, controls.tolerance);
+        log_attempt("fallback_gauss_seidel", result);
+    }
+
+    if (fallback_allowed &&
+        result.status != cfdx::core::SolverStatus::CONVERGED &&
+        scalar_cg_fallback_spd_certificate(equation.matrix)) {
+        candidate = solution;
+        result = cfdx::core::solve_cg(
+            equation.matrix, equation.rhs, candidate,
+            controls.max_iterations, controls.tolerance);
+        log_attempt("fallback_cg", result);
+    }
+
+    // Very small coupled momentum systems (notably the analytical
+    // acceptance meshes) can legitimately defeat every Krylov/stationary
+    // applicability criterion while remaining perfectly nonsingular. Use a
+    // bounded dense LU fallback only for small systems; production-size
+    // systems continue to use the sparse iterative path above.
+    if (fallback_allowed &&
+        result.status != cfdx::core::SolverStatus::CONVERGED &&
+        solution.size() <= 256) {
+        const std::size_t n = solution.size();
+        std::vector<double> a(n * n, 0.0);
+        std::vector<double> b(n, 0.0);
+        const auto* row = equation.matrix.row_offsets_data();
+        const auto* col = equation.matrix.columns_data();
+        const auto* val = equation.matrix.values_data();
+        for (std::size_t i = 0; i < n; ++i) {
+            b[i] = equation.rhs(i);
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k)
+                a[i * n + col[k]] += val[k];
+        }
+
+        bool singular = false;
+        for (std::size_t k = 0; k < n && !singular; ++k) {
+            std::size_t pivot = k;
+            double pivot_abs = std::abs(a[k * n + k]);
+            for (std::size_t i = k + 1; i < n; ++i) {
+                const double candidate_abs = std::abs(a[i * n + k]);
+                if (candidate_abs > pivot_abs) {
+                    pivot = i;
+                    pivot_abs = candidate_abs;
+                }
+            }
+            const double scale = std::max(1.0, pivot_abs);
+            if (!(pivot_abs > 100.0 * std::numeric_limits<double>::epsilon() * scale) ||
+                !std::isfinite(pivot_abs)) {
+                singular = true;
+                break;
+            }
+            if (pivot != k) {
+                for (std::size_t j = k; j < n; ++j)
+                    std::swap(a[k * n + j], a[pivot * n + j]);
+                std::swap(b[k], b[pivot]);
+            }
+            for (std::size_t i = k + 1; i < n; ++i) {
+                const double factor = a[i * n + k] / a[k * n + k];
+                if (!std::isfinite(factor)) {
+                    singular = true;
+                    break;
+                }
+                a[i * n + k] = 0.0;
+                for (std::size_t j = k + 1; j < n; ++j)
+                    a[i * n + j] -= factor * a[k * n + j];
+                b[i] -= factor * b[k];
+            }
+        }
+
+        if (!singular) {
+            candidate = solution;
+            for (std::size_t ii = n; ii-- > 0;) {
+                double value = b[ii];
+                for (std::size_t j = ii + 1; j < n; ++j)
+                    value -= a[ii * n + j] * candidate(j);
+                const double d = a[ii * n + ii];
+                if (!(std::abs(d) > 0.0) || !std::isfinite(d)) {
+                    singular = true;
+                    break;
+                }
+                candidate(ii) = value / d;
+                if (!std::isfinite(candidate(ii))) {
+                    singular = true;
+                    break;
+                }
+            }
+        }
+
+        if (!singular) {
+            double residual = 0.0;
+            for (std::size_t i = 0; i < n; ++i) {
+                double ri = -equation.rhs(i);
+                for (std::uint32_t k = row[i]; k < row[i + 1]; ++k)
+                    ri += val[k] * candidate(col[k]);
+                residual = std::max(residual, std::abs(ri));
+            }
+            if (std::isfinite(residual)) {
+                double rhs_norm = 0.0;
+                for (std::size_t i = 0; i < n; ++i)
+                    rhs_norm = std::max(rhs_norm, std::abs(equation.rhs(i)));
+                const double relative = residual / std::max(rhs_norm, 1e-300);
+                result = {
+                    relative <= controls.tolerance
+                        ? cfdx::core::SolverStatus::CONVERGED
+                        : cfdx::core::SolverStatus::MAX_ITER_REACHED,
+                    0, residual, relative, {}
+                };
+            }
+        }
+    }
+
+    if (result.status != cfdx::core::SolverStatus::CONVERGED) {
+        // Failure-only microscope: retain assembled-operator and final Krylov
+        // evidence without changing fallback policy or convergence criteria.
+        double matrix_inf = 0.0;
+        double symmetry_defect_inf = 0.0;
+        double diagonal_min = std::numeric_limits<double>::infinity();
+        double diagonal_max = 0.0;
+        double rhs_inf = 0.0;
+        std::size_t nonfinite_matrix = 0;
+        std::size_t nonfinite_rhs = 0;
+        const auto* row = equation.matrix.row_offsets_data();
+        const auto* col = equation.matrix.columns_data();
+        const auto* val = equation.matrix.values_data();
+        for (std::size_t i = 0; i < equation.matrix.n_rows(); ++i) {
+            double row_sum = 0.0;
+            bool diagonal_found = false;
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+                if (!std::isfinite(val[k])) {
+                    ++nonfinite_matrix;
+                    continue;
+                }
+                row_sum += std::abs(val[k]);
+                if (col[k] == i) {
+                    diagonal_found = true;
+                    diagonal_min = std::min(diagonal_min, val[k]);
+                    diagonal_max = std::max(diagonal_max, val[k]);
+                }
+            }
+            matrix_inf = std::max(matrix_inf, row_sum);
+            if (!diagonal_found) diagonal_min = -std::numeric_limits<double>::infinity();
+            for (std::uint32_t k = row[i]; k < row[i + 1]; ++k) {
+                if (col[k] == i || !std::isfinite(val[k])) continue;
+                const std::size_t j = col[k];
+                double transpose_value = 0.0;
+                bool transpose_found = false;
+                for (std::uint32_t q = row[j]; q < row[j + 1]; ++q) {
+                    if (col[q] == i) {
+                        transpose_value += val[q];
+                        transpose_found = true;
+                    }
+                }
+                const double defect = std::abs(val[k] -
+                    (transpose_found ? transpose_value : 0.0));
+                if (std::isfinite(defect))
+                    symmetry_defect_inf = std::max(symmetry_defect_inf, defect);
+                else
+                    symmetry_defect_inf = std::numeric_limits<double>::infinity();
+            }
+            if (!std::isfinite(equation.rhs(i))) ++nonfinite_rhs;
+            else rhs_inf = std::max(rhs_inf, std::abs(equation.rhs(i)));
+        }
+        std::cerr << "SCALAR_LINEAR_FAILURE"
+                  << " n=" << equation.matrix.n_rows()
+                  << " nnz=" << equation.matrix.nnz()
+                  << " status=" << static_cast<int>(result.status)
+                  << " iterations=" << result.iterations
+                  << " residual=" << result.residual
+                  << " relative=" << result.residual_relative
+                  << " rhs_inf=" << rhs_inf
+                  << " matrix_inf=" << matrix_inf
+                  << " symmetry_defect_inf=" << symmetry_defect_inf
+                  << " requested_krylov=" << static_cast<int>(selected.plan.krylov)
+                  << " requested_preconditioner=" << static_cast<int>(selected.plan.preconditioner)
+                  << " fallback_allowed=" << (fallback_allowed ? 1 : 0)
+                  << " diagonal_min=" << diagonal_min
+                  << " diagonal_max=" << diagonal_max
+                  << " nonfinite_matrix=" << nonfinite_matrix
+                  << " nonfinite_rhs=" << nonfinite_rhs
+                  << " krylov_samples=" << result.diagnostics.size() << '\n';
+        for (const auto& sample : result.diagnostics) {
+            std::cerr << "SCALAR_LINEAR_KRYLOV_SAMPLE"
+                      << " iteration=" << sample.iteration
+                      << " true_residual=" << sample.true_residual
+                      << " recursive_residual=" << sample.recursive_residual
+                      << " rMz=" << sample.preconditioned_dot
+                      << " pAp=" << sample.pAp
+                      << " alpha=" << sample.alpha
+                      << " beta=" << sample.beta << '\n';
+        }
+    }
+
+    if (result.status == cfdx::core::SolverStatus::CONVERGED) {
+        for (std::size_t i = 0; i < candidate.size(); ++i) {
+            if (!std::isfinite(candidate(i))) {
+                result.status = cfdx::core::SolverStatus::DIVERGED;
+                return result;
+            }
+        }
+        if (!std::isfinite(result.residual) || !std::isfinite(result.residual_relative)) {
+            result.status = cfdx::core::SolverStatus::DIVERGED;
+            return result;
+        }
+        // These paired diagnostics use the same physical operator, L-infinity
+        // norm, and RHS normalization. Solver-native Krylov diagnostics remain
+        // available in residual/residual_relative and are intentionally separate.
+        const auto physical_residual_inf = [&](const cfdx::core::Vector& state) {
+            if (state.size() != equation.rhs.size()) {
+                return std::numeric_limits<double>::infinity();
+            }
+            if (equation.matrix.row_offsets_data() == nullptr ||
+                equation.matrix.columns_data() == nullptr ||
+                equation.matrix.values_data() == nullptr) {
+                return std::numeric_limits<double>::infinity();
+            }
+            double norm = 0.0;
+            for (std::size_t i = 0; i < state.size(); ++i) {
+                const double rhs_i = equation.rhs(i);
+                if (!std::isfinite(rhs_i)) {
+                    return std::numeric_limits<double>::infinity();
+                }
+                double ri = -rhs_i;
+                if (!std::isfinite(ri)) {
+                    return std::numeric_limits<double>::infinity();
+                }
+                const std::uint32_t row_begin = equation.matrix.row_offsets_data()[i];
+                const std::uint32_t row_end = equation.matrix.row_offsets_data()[i + 1];
+                for (std::uint32_t k = row_begin; k < row_end; ++k) {
+                    const std::uint32_t cidx = equation.matrix.columns_data()[k];
+                    if (cidx >= state.size()) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                    const double mval = equation.matrix.values_data()[k];
+                    if (!std::isfinite(mval)) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                    const double sval = state(cidx);
+                    if (!std::isfinite(sval)) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                    const double term = mval * sval;
+                    if (!std::isfinite(term)) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                    ri += term;
+                    if (!std::isfinite(ri)) {
+                        return std::numeric_limits<double>::infinity();
+                    }
+                }
+                const double ari = std::abs(ri);
+                if (!std::isfinite(ari)) {
+                    return std::numeric_limits<double>::infinity();
+                }
+                if (ari > norm) {
+                    norm = ari;
+                }
+            }
+            return norm;
+        };
+        double rhs_norm = 0.0;
+        if (solution.size() == equation.rhs.size()) {
+            for (std::size_t i = 0; i < solution.size(); ++i) {
+                const double rv = std::abs(equation.rhs(i));
+                if (!std::isfinite(rv)) {
+                    rhs_norm = 0.0;
+                    break;
+                }
+                if (rv > rhs_norm) {
+                    rhs_norm = rv;
+                }
+            }
+        }
+        if (!std::isfinite(rhs_norm)) {
+            rhs_norm = 0.0;
+        }
+        const double rhs_scale = std::max(rhs_norm, 1e-300);
+        result.residual_before_relaxation = physical_residual_inf(candidate);
+        if (!std::isfinite(result.residual_before_relaxation)) {
+            result.status = cfdx::core::SolverStatus::DIVERGED;
+            return result;
+        }
+        result.residual_relative_before_relaxation =
+            result.residual_before_relaxation / rhs_scale;
+
+        for (std::size_t i = 0; i < solution.size(); ++i) {
+            if (!std::isfinite(candidate(i))) {
+                result.status = cfdx::core::SolverStatus::DIVERGED;
+                return result;
+            }
+            solution(i) += controls.relaxation * (candidate(i) - solution(i));
+            if (!std::isfinite(solution(i))) {
+                result.status = cfdx::core::SolverStatus::DIVERGED;
+                return result;
+            }
+        }
+
+        result.residual_after_relaxation = physical_residual_inf(solution);
+        if (!std::isfinite(result.residual_after_relaxation)) {
+            result.status = cfdx::core::SolverStatus::DIVERGED;
+            return result;
+        }
+        result.residual_relative_after_relaxation =
+            result.residual_after_relaxation / rhs_scale;
+    }
+    // A MAX_ITER_REACHED result is not an acceptable predictor solution.
+    // Do not inject an unconverged Krylov iterate into the nonlinear solver:
+    // doing so can create an apparently finite but numerically meaningless
+    // state that subsequently corrupts the face mass flux.
+    return result;
+}
+
+inline double scalar_equation_residual_inf(
+    const ScalarEquation& equation,
+    const cfdx::core::Vector& solution)
+{
+    if (solution.size() != equation.rhs.size())
+        throw std::invalid_argument("scalar_equation_residual_inf: dimension mismatch");
+    if (equation.matrix.row_offsets_data() == nullptr ||
+        equation.matrix.columns_data() == nullptr ||
+        equation.matrix.values_data() == nullptr) {
+        return std::numeric_limits<double>::infinity();
+    }
+    double max_r = 0.0;
+    for (std::size_t i = 0; i < solution.size(); ++i) {
+        const double rhs_i = equation.rhs(i);
+        if (!std::isfinite(rhs_i)) return std::numeric_limits<double>::infinity();
+        double r = -rhs_i;
+        if (!std::isfinite(r)) return std::numeric_limits<double>::infinity();
+        const std::uint32_t row_begin = equation.matrix.row_offsets_data()[i];
+        const std::uint32_t row_end = equation.matrix.row_offsets_data()[i + 1];
+        for (std::uint32_t k = row_begin; k < row_end; ++k) {
+            const std::uint32_t cidx = equation.matrix.columns_data()[k];
+            if (cidx >= solution.size()) return std::numeric_limits<double>::infinity();
+            const double mval = equation.matrix.values_data()[k];
+            const double sval = solution(cidx);
+            if (!std::isfinite(mval) || !std::isfinite(sval))
+                return std::numeric_limits<double>::infinity();
+            const double term = mval * sval;
+            if (!std::isfinite(term)) return std::numeric_limits<double>::infinity();
+            r += term;
+            if (!std::isfinite(r)) return std::numeric_limits<double>::infinity();
+        }
+        const double ar = std::abs(r);
+        if (!std::isfinite(ar)) return std::numeric_limits<double>::infinity();
+        max_r = std::max(max_r, ar);
+    }
+    return max_r;
+}
+
+} // namespace cfdx::physics
