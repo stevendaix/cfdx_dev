@@ -153,6 +153,8 @@ def test_registry_covers_every_workbench_command() -> None:
         "workbench.action.contour",
         "workbench.action.slice",
         "workbench.action.glyph",
+        "workbench.action.clip",
+        "workbench.action.threshold",
         "workbench.action.run",
         "workbench.action.check",
         "workbench.action.save",
@@ -164,10 +166,12 @@ def test_registry_covers_every_workbench_command() -> None:
         "workbench.action.open_mesh",
         "workbench.action.open_dat_result",
         "workbench.action.open_dat_checkpoint",
+        "workbench.workspace.overview",
         "workbench.workspace.setup",
         "workbench.workspace.mesh",
         "workbench.workspace.run",
         "workbench.workspace.analyze",
+        "workbench.workspace.validate",
     }
 
 
@@ -183,6 +187,7 @@ def test_file_and_workspace_commands_are_always_available() -> None:
         "workbench.workspace.mesh",
         "workbench.workspace.run",
         "workbench.workspace.analyze",
+        "workbench.workspace.validate",
     ):
         status = evaluate_capability(capability_id, context)
         assert status.available

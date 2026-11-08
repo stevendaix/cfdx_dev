@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+import json
+
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
 from PySide6.QtWidgets import (
     QApplication,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -26,6 +29,32 @@ from .mesh_quality import (
     analyze_cfdx_surface_file,
 )
 from .volume_skewness_view import VolumeSkewnessDialog
+from .mesh_health import analyze_mesh_health_file, mesh_health_text
+
+
+class _QualityTaskSignals(QObject):
+    ready = Signal(int, object, object)
+
+
+class _QualityTask(QRunnable):
+    """Analyze numeric topology in a worker, never on the Qt GUI thread."""
+
+    def __init__(self, job_id: int, path, signature) -> None:
+        super().__init__()
+        self.job_id = job_id
+        self.path = path
+        self.signature = signature
+        self.signals = _QualityTaskSignals()
+
+    def run(self) -> None:
+        try:
+            result = analyze_mesh_health_file(
+                self.path, expected_signature=self.signature,
+            )
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError) as exc:
+            self.signals.ready.emit(self.job_id, None, str(exc))
+        else:
+            self.signals.ready.emit(self.job_id, result, None)
 
 
 class CaseFilePanel(QWidget):
@@ -62,6 +91,15 @@ class CaseFilePanel(QWidget):
         self.volume_quality_button.setObjectName("workbench.case_file.volume_skewness")
         self.volume_quality_button.setEnabled(False)
         self._volume_quality_dialog = None
+        self._mesh_health_snapshot = None
+        self._quality_job_id = 0
+        self._quality_tasks: dict[int, _QualityTask] = {}
+        self.volume_health_button = QPushButton("Mesh health dashboard")
+        self.volume_health_button.setObjectName("workbench.case_file.volume_health")
+        self.volume_health_button.setEnabled(False)
+        self.mesh_health_export = QPushButton("Export mesh audit")
+        self.mesh_health_export.setObjectName("workbench.case_file.export_mesh_health")
+        self.mesh_health_export.setEnabled(False)
         self.preview = QPlainTextEdit()
         self.preview.setObjectName("workbench.case_file.dataset_preview")
         self.preview.setReadOnly(True)
@@ -76,6 +114,8 @@ class CaseFilePanel(QWidget):
         controls.addStretch(1)
         controls.addWidget(self.mesh_quality_button)
         controls.addWidget(self.volume_quality_button)
+        controls.addWidget(self.volume_health_button)
+        controls.addWidget(self.mesh_health_export)
         controls.addWidget(self.statistics_button)
         controls.addWidget(self.copy_path_button)
         layout.addLayout(controls)
@@ -91,6 +131,8 @@ class CaseFilePanel(QWidget):
         self.statistics_button.clicked.connect(self.compute_selected_statistics)
         self.mesh_quality_button.clicked.connect(self.compute_surface_quality)
         self.volume_quality_button.clicked.connect(self.open_volume_skewness)
+        self.volume_health_button.clicked.connect(self.compute_volume_health)
+        self.mesh_health_export.clicked.connect(self.export_mesh_health)
 
     def clear(self) -> None:
         self.summary = None
@@ -100,6 +142,10 @@ class CaseFilePanel(QWidget):
         self.statistics_button.setEnabled(False)
         self.mesh_quality_button.setEnabled(False)
         self.volume_quality_button.setEnabled(False)
+        self.volume_health_button.setEnabled(False)
+        self.mesh_health_export.setEnabled(False)
+        self._mesh_health_snapshot = None
+        self._quality_job_id += 1
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         self.status.setText("No CFDX file inspected")
 
@@ -221,6 +267,67 @@ class CaseFilePanel(QWidget):
         except (OSError, RuntimeError, TypeError, ValueError, KeyError) as exc:
             self.preview.setPlainText(f"Unable to open volume skewness view: {exc}")
 
+    def compute_volume_health(self) -> None:
+        """Opt-in, bounded computation with stale-selection protection."""
+        summary = self.summary
+        if summary is None or not self.volume_health_button.isEnabled():
+            return
+        self._quality_job_id += 1
+        job_id = self._quality_job_id
+        self._mesh_health_snapshot = None
+        self.mesh_health_export.setEnabled(False)
+        self.volume_health_button.setEnabled(False)
+        self.preview.setPlainText("Computing bounded volume quality in a worker…")
+        task = _QualityTask(job_id, summary.path, summary.file_signature)
+        self._quality_tasks[job_id] = task
+        task.signals.ready.connect(self._volume_health_ready)
+        QThreadPool.globalInstance().start(task)
+
+    def _volume_health_ready(self, job_id: int, snapshot, error) -> None:
+        self._quality_tasks.pop(job_id, None)
+        if job_id != self._quality_job_id or self.summary is None:
+            return  # File or selection replaced before this worker completed.
+        self.volume_health_button.setEnabled(self.volume_quality_button.isEnabled())
+        if error is not None:
+            self.preview.setPlainText(f"Mesh health analysis failed: {error}")
+            return
+        if (snapshot.source_file != str(self.summary.path)
+                or snapshot.file_signature != self.summary.file_signature):
+            self.preview.setPlainText("Mesh health result ignored: inspected file changed")
+            return
+        self._mesh_health_snapshot = snapshot
+        self.mesh_health_export.setEnabled(True)
+        self.preview.setPlainText(mesh_health_text(snapshot))
+
+    def export_mesh_health(self) -> None:
+        snapshot = self._mesh_health_snapshot
+        if snapshot is None or self.summary is None:
+            return
+        try:
+            source = self.summary.path
+            stat = source.stat()
+            identity = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+            if identity != snapshot.file_signature:
+                raise RuntimeError("source mesh has changed; recalculate the quality report")
+        except (OSError, RuntimeError) as exc:
+            self.preview.setPlainText(f"Mesh audit export rejected: {exc}")
+            self.mesh_health_export.setEnabled(False)
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export mesh quality evidence", "cfdx-mesh-health.json", "JSON (*.json)"
+        )
+        if not path:
+            return
+        try:
+            import json
+            from pathlib import Path
+            Path(path).write_text(
+                json.dumps(snapshot.to_dict(), indent=2, sort_keys=True, allow_nan=False) + "\n",
+                encoding="utf-8",
+            )
+        except (OSError, ValueError, TypeError) as exc:
+            self.preview.setPlainText(f"Mesh audit export failed: {exc}")
+
     def copy_selected_dataset_path(self) -> None:
         """Copy the selected HDF5 dataset path without reading its payload."""
         item = self.tree.currentItem()
@@ -259,6 +366,9 @@ class CaseFilePanel(QWidget):
 
     def set_summary(self, summary: CaseFileSummary) -> None:
         self.summary = summary
+        self._quality_job_id += 1
+        self._mesh_health_snapshot = None
+        self.mesh_health_export.setEnabled(False)
         self.filter_input.clear()
         self.tree.clear()
         self.copy_path_button.setEnabled(False)
@@ -284,6 +394,7 @@ class CaseFilePanel(QWidget):
                 )
             }.issubset(dataset_paths)
         )
+        self.volume_health_button.setEnabled(self.volume_quality_button.isEnabled())
         self.preview.setPlainText("Select a dataset to inspect a bounded sample.")
         state = "CFDX" if summary.is_cfdx else "HDF5 (unrecognised CFDX layout)"
         self.status.setText(f"{summary.path.name} · {state}")

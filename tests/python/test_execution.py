@@ -17,7 +17,9 @@ def test_controller_propagates_metrics_and_success(tmp_path: Path) -> None:
     controller.start()
     assert runner._thread is not None
     runner._thread.join(timeout=5)
-    assert session.state.value == "CONVERGED"
+    # Clean exit alone is not convergence evidence.
+    assert session.state.value == "STOPPED"
+    assert controller.convergence_verdict is None
     assert session.iteration == 4
     assert session.time == 0.25
 
@@ -100,7 +102,9 @@ def test_controller_restart_uses_configured_option(tmp_path: Path) -> None:
     controller.restart(dat)
     assert runner._thread is not None
     runner._thread.join(timeout=5)
-    assert session.state.value == "CONVERGED"
+    # A restart without fresh native artifacts must remain unverified.
+    assert session.state.value == "STOPPED"
+    assert controller.convergence_verdict is None
     assert session.iteration == 12
     assert session.time == 3.5
 

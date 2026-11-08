@@ -103,11 +103,16 @@ def main() -> int:
         default=Path("artifacts/cfdx-workbench.png"),
         help="PNG path to write (default: artifacts/cfdx-workbench.png)",
     )
+    parser.add_argument(
+        "--theme", choices=("black", "graphite", "light"), default="black",
+        help="Appearance for the deterministic GUI screenshot",
+    )
     args = parser.parse_args()
 
     app = QApplication.instance() or QApplication(["cfdx-workbench-screenshot"])
     app.setApplicationName("CFDX Workbench Screenshot")
     window = CFDXWorkbenchWindow()
+    window._apply_theme(args.theme, persist=False)
     window.setWindowTitle("CFDX Workbench — Case Inspector")
     screen = app.primaryScreen()
     if screen is None:
@@ -181,6 +186,7 @@ def main() -> int:
 
         print(
             f"Populated Workbench screenshot saved: {args.output} "
+            f"theme={args.theme}; "
             f"({screenshot.width()}x{screenshot.height()}); "
             f"datasets={len(summary.datasets)}, cells={summary.n_cells}, "
             f"sample=/fields/scalar/pressure, surface_quality=passed"

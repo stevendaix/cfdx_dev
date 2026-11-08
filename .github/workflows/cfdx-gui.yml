@@ -100,8 +100,31 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x1024x24" \
             python -m pytest -q \
               tests/python/test_capabilities.py \
+              tests/python/test_boundary_setup.py \
+              tests/python/test_boundary_editor_modern.py \
+              tests/python/test_setup_contracts.py \
               tests/python/test_specialized_setup.py \
+              tests/python/test_convergence_diagnostics.py \
+              tests/python/test_cell_convergence.py \
+              tests/python/test_cell_hotspots_gui.py \
+              tests/python/test_metrics.py \
+              tests/python/test_run_center.py \
+              tests/python/test_modern_methods.py \
+              tests/python/test_theme.py \
+              tests/python/test_workbench_lot3_prototype.py \
+              tests/python/test_workbench_lot4_gui.py \
+              tests/python/test_workbench_lot4_evidence.py \
+              tests/python/test_workbench_lot4_boundary_matrix.py \
+              tests/python/test_workbench_lot4_mesh_health.py \
+              tests/python/test_workbench_lot8_industrial.py \
+              tests/python/test_workbench_lot9_industrial.py \
+              tests/python/test_workbench_lot10_polyhedral.py \
+              tests/python/test_workbench_lot9_gui.py \
+              tests/python/test_workbench_modern_gui.py \
               tests/python/test_workbench.py \
+              tests/python/test_qualification_center.py \
+              tests/python/test_visualization_pipeline.py \
+              tests/python/test_visualization_renderer_transaction.py \
               tests/python/test_case_inspector.py \
               tests/python/test_mesh_quality.py \
               tests/python/test_volume_mesh_quality.py \
@@ -120,6 +143,25 @@ jobs:
         with:
           name: cfdx-gui-regression-junit
           path: artifacts/gui-regression-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Benchmark real volume tile I/O on synthetic meshes
+        if: always() && steps.install_gui.outcome == 'success'
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
+        run: |
+          mkdir -p artifacts
+          python -m scripts.benchmark_volume_tiling \
+            --sizes 1000,10000 --tile 128 \
+            --output artifacts/cfdx-volume-tiles-benchmark.json
+
+      - name: Upload bounded volume tile benchmark
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cfdx-volume-tiles-benchmark
+          path: artifacts/cfdx-volume-tiles-benchmark.json
           if-no-files-found: warn
           retention-days: 14
 
@@ -184,7 +226,12 @@ jobs:
         run: |
           xvfb-run -a -s "-screen 0 1280x1024x24" \
             python scripts/capture_workbench_screenshot.py \
+              --theme black \
               --output artifacts/cfdx-workbench.png
+          xvfb-run -a -s "-screen 0 1280x1024x24" \
+            python scripts/capture_workbench_screenshot.py \
+              --theme light \
+              --output artifacts/cfdx-workbench-light.png
 
       - name: Upload Workbench screenshot
         if: always()

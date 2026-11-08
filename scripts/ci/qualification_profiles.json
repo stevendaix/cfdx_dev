@@ -45,6 +45,21 @@
       ]
     },
     {
+      "id": "bfs",
+      "label": "qualification:bfs",
+      "description": "Backward-facing-step: same mesh family and Armaly comparison only when physical gate runs; CTest alone is not qualification",
+      "quick": [
+        "test_bfs_quick"
+      ],
+      "quick_targets": [
+        "test_bfs_qualification"
+      ],
+      "required_extended": [
+        "test_bfs_qualification"
+      ],
+      "extended_regex": "^(test_bfs_quick|test_bfs_qualification)$"
+    },
+    {
       "id": "momentum",
       "label": "qualification:momentum",
       "description": "Couplage pression-vitesse, momentum, Rhie-Chow et MMS",

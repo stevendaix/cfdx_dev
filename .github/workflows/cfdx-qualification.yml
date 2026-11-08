@@ -14,6 +14,7 @@ on:
         options:
           - smoke
           - naca
+          - bfs
           - momentum
           - sst
           - thermal
@@ -124,6 +125,15 @@ jobs:
           python3 scripts/ci/qualification.py run \
             --profile "$CFDX_PROFILE" --scope "$CFDX_SCOPE" \
             --build-dir "$BUILD_DIR" --parallel 3
+      - name: Build commit-bound Workbench qualification evidence index
+        if: always()
+        run: |
+          mkdir -p "$BUILD_DIR/qualification/physical-evidence"
+          python3 scripts/ci/collect_workbench_evidence.py \
+            --registry docs/validation/CFDX_QUALIFICATION_REGISTRY.json \
+            --evidence-root "$BUILD_DIR/qualification/physical-evidence" \
+            --commit "$(git rev-parse HEAD)" \
+            --output "$BUILD_DIR/qualification/cfdx-qualification-evidence.json"
       - name: Upload profile plan, JUnit and timings
         if: always()
         uses: actions/upload-artifact@v7

@@ -65,6 +65,11 @@ class Application:
         self.selection = SelectionState()
         self.diagnostics: tuple[Any, ...] = ()
         self.dirty = False
+        # Read-only provenance for setup checks. Direct editing widgets signal
+        # changes through set_project_path(dirty=True), invalidating this scope.
+        self._edit_generation = 0
+        self._validation_signature = None
+        self._validation_with_mesh = False
         self.events = EventBus()
         self.history = EditHistory()
         self.results = ResultsState()
@@ -74,8 +79,14 @@ class Application:
         if self.run_center is not None:
             self._wire_run_center(self.run_center)
 
+    def _case_signature(self) -> tuple[int, int, int, int, int, int]:
+        session = self.session
+        return (id(session), session.case_revision, session.mesh_revision,
+                session.physics_revision, session.numerics_revision, self._edit_generation)
+
     @property
     def state(self) -> ApplicationState:
+        checked = self._validation_signature is not None
         return build_application_state(
             self.session,
             project_path=self.project_path,
@@ -85,12 +96,16 @@ class Application:
             capabilities=self.capabilities,
             diagnostics=self.diagnostics,
             results=self.results,
+            validation_performed=checked,
+            validation_current=checked and self._validation_signature == self._case_signature(),
+            validation_with_mesh=self._validation_with_mesh if checked else False,
         )
 
     def execute(self, command: Command) -> ApplicationState:
         command.execute(self)
         if isinstance(command, (SetNumericalOption, SetProperty)):
             self.dirty = True
+            self._edit_generation += 1
         return self._publish_state()
 
     def _publish_state(self) -> ApplicationState:
@@ -135,10 +150,18 @@ class Application:
         self._restart_dat = None
         self.mesh_catalog = None
         self.dirty = False
+        self._edit_generation = 0
+        self._validation_signature = None
+        self._validation_with_mesh = False
         # Undo entries reference values of the replaced case; they would be
         # incoherent across sessions, so the history is reset with the rest.
         self.history.clear()
-        return self._publish_state()
+        snapshot = self._publish_state()
+        # A project switch invalidates the *visual* results and selection too;
+        # clients subscribed only to ResultsChanged must clear old frames.
+        self.events.publish(ResultsChanged(snapshot))
+        self.events.publish(SelectionChanged(snapshot))
+        return snapshot
 
     def open_project(
         self,
@@ -327,6 +350,8 @@ class Application:
         self.project_path = path
         if dirty is not None:
             self.dirty = dirty
+            if dirty:
+                self._edit_generation += 1
         return self._publish_state()
 
     def set_numerical_option(
@@ -387,12 +412,21 @@ class Application:
         return description
 
     def set_diagnostics(self, diagnostics: Iterable[Any]) -> ApplicationState:
+        # Unsolicited diagnostics are useful, but they are NOT evidence that
+        # validate_case ran on the currently displayed setup.
         self.diagnostics = tuple(diagnostics)
+        if self._validation_signature is not None:
+            self._edit_generation += 1
         return self._publish_state()
 
     def validate(self, validator, mesh=None) -> ApplicationState:
         report = validator(self.session.case, mesh)
-        return self.set_diagnostics(report.diagnostics)
+        # Commit diagnostics and provenance in the same event; no intermediate
+        # snapshot may claim that a successful check is still pending.
+        self.diagnostics = tuple(report.diagnostics)
+        self._validation_signature = self._case_signature()
+        self._validation_with_mesh = mesh is not None
+        return self._publish_state()
 
     def read_probe_results(self, path: str | Path) -> tuple[ProbeSeries, ...]:
         """Read native solver probe history through the shared application API."""

@@ -14,6 +14,7 @@ from .watcher import ResultWatcher
 from .mesh_model import read_mesh_catalog
 from .results_series import discover_result_series
 from .validation import validate_case
+from .theme import apply_workbench_theme
 
 try:
     from PySide6.QtCore import QObject, QTimer, Qt, Signal
@@ -76,6 +77,7 @@ if QApplication is not None:
             self._connect_controller()
             self._install_shortcuts()
             self.refresh()
+            apply_workbench_theme(self)
             if self._result_watcher is not None:
                 self._result_watcher.start()
 

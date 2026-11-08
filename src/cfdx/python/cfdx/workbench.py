@@ -24,17 +24,23 @@ from .capabilities import (
 )
 from .selection import parse_selection_id, selection_label
 from .session import CFDXSession
+from .recent_projects import normalize_recent_projects, remember_recent_project
 from .solver_states import session_state_view
-from .theme import TOKENS, apply_workbench_theme
+from .theme import (
+    DEFAULT_THEME, THEME_LABELS, apply_workbench_theme, theme_tokens,
+)
 from .visualization_pipeline import VisualizationOperation
 
 try:
     from PySide6.QtCore import QSettings, Qt, Signal
     from PySide6.QtGui import QAction, QActionGroup, QBrush, QColor
     from PySide6.QtWidgets import (
+        QCheckBox,
         QComboBox,
         QDialog,
         QDockWidget,
+        QFrame,
+        QGridLayout,
         QDoubleSpinBox,
         QFileDialog,
         QFormLayout,
@@ -49,6 +55,7 @@ try:
         QStackedLayout,
         QStatusBar,
         QToolBar,
+        QToolButton,
         QTreeWidget,
         QTreeWidgetItem,
         QVBoxLayout,
@@ -62,7 +69,11 @@ if QMainWindow is not object:
     from .case_file_panel import CaseFilePanel
     from .gui_3d import PyVistaQtView
     from .mesh_browser_panel import MeshBrowserPanel
+    from .methods_panel import MethodsPanel
+    from .industrial_tools_panel import IndustrialToolsPanel
+    from .operations_overview_panel import OperationsOverviewPanel
     from .probes_panel import ProbesPanel
+    from .qualification_panel import QualificationCenterPanel
     from .properties_panel import PropertiesPanel
     from .results_panel import ResultsPanel
     from .run_center_panel import RunCenterPanel
@@ -129,6 +140,26 @@ if QMainWindow is not object:
             self.normal_combo = QComboBox(self)
             self.normal_combo.setObjectName("workbench.visualization.dialog.normal")
             self.normal_combo.addItems(list(_SLICE_AXES))
+            self.origin_spins: list[QDoubleSpinBox] = []
+            for axis in ("x", "y", "z"):
+                spin = QDoubleSpinBox(self)
+                spin.setObjectName(f"workbench.visualization.dialog.origin_{axis}")
+                spin.setRange(-1e12, 1e12)
+                spin.setDecimals(6)
+                self.origin_spins.append(spin)
+            self.min_spin = QDoubleSpinBox(self)
+            self.min_spin.setObjectName("workbench.visualization.dialog.minimum")
+            self.min_spin.setRange(-1e12, 1e12)
+            self.min_spin.setDecimals(6)
+            self.max_spin = QDoubleSpinBox(self)
+            self.max_spin.setObjectName("workbench.visualization.dialog.maximum")
+            self.max_spin.setRange(-1e12, 1e12)
+            self.max_spin.setDecimals(6)
+            self.max_spin.setValue(1.0)
+            self.invert_check = QCheckBox("Invert selection", self)
+            self.invert_check.setObjectName("workbench.visualization.dialog.invert")
+            self.error_label = QLabel("", self)
+            self.error_label.setObjectName("workbench.visualization.dialog.error")
             if kind == "contour":
                 layout.addRow("Field", self.field_combo)
                 layout.addRow("Isosurfaces", self.isosurfaces_spin)
@@ -137,8 +168,20 @@ if QMainWindow is not object:
                 layout.addRow("Scale factor", self.factor_spin)
             elif kind == "slice":
                 layout.addRow("Normal axis", self.normal_combo)
+            elif kind == "clip":
+                layout.addRow("Normal axis", self.normal_combo)
+                for axis, spin in zip(("X", "Y", "Z"), self.origin_spins):
+                    layout.addRow(f"Plane origin {axis}", spin)
+                self.invert_check.setChecked(True)
+                layout.addRow(self.invert_check)
+            elif kind == "threshold":
+                layout.addRow("Scalar field", self.field_combo)
+                layout.addRow("Minimum", self.min_spin)
+                layout.addRow("Maximum", self.max_spin)
+                layout.addRow(self.invert_check)
             else:
                 raise ValueError(f"unsupported visualization operation: {kind!r}")
+            layout.addRow(self.error_label)
             buttons = QHBoxLayout()
             apply_button = QPushButton("Apply", self)
             apply_button.setObjectName("workbench.visualization.dialog.apply")
@@ -161,21 +204,44 @@ if QMainWindow is not object:
             self.isosurfaces_spin.setValue(operation.isosurfaces)
             self.factor_spin.setValue(operation.factor)
             self.normal_combo.setCurrentText(_slice_axis(operation.normal))
+            for spin, value in zip(self.origin_spins, operation.origin):
+                spin.setValue(value)
+            self.min_spin.setValue(operation.minimum)
+            self.max_spin.setValue(operation.maximum)
+            self.invert_check.setChecked(operation.invert)
 
         def _emit_operation(self) -> None:
-            """Build and emit the operation described by the editors."""
-            if self._kind == "contour":
-                operation = VisualizationOperation.contour(
-                    self.field_combo.currentText(), self.isosurfaces_spin.value()
-                )
-            elif self._kind == "glyph":
-                operation = VisualizationOperation.glyph(
-                    self.field_combo.currentText(), self.factor_spin.value()
-                )
-            else:
-                operation = VisualizationOperation.slice(
-                    _slice_normal(self.normal_combo.currentText())
-                )
+            """Validate input before publishing an immutable operation."""
+            try:
+                if self._kind == "contour":
+                    operation = VisualizationOperation.contour(
+                        self.field_combo.currentText(), self.isosurfaces_spin.value()
+                    )
+                elif self._kind == "glyph":
+                    operation = VisualizationOperation.glyph(
+                        self.field_combo.currentText(), self.factor_spin.value()
+                    )
+                elif self._kind == "slice":
+                    operation = VisualizationOperation.slice(
+                        _slice_normal(self.normal_combo.currentText())
+                    )
+                elif self._kind == "clip":
+                    operation = VisualizationOperation.clip(
+                        _slice_normal(self.normal_combo.currentText()),
+                        tuple(spin.value() for spin in self.origin_spins),
+                        invert=self.invert_check.isChecked(),
+                    )
+                elif self._kind == "threshold":
+                    operation = VisualizationOperation.threshold(
+                        self.field_combo.currentText(), self.min_spin.value(),
+                        self.max_spin.value(), invert=self.invert_check.isChecked(),
+                    )
+                else:
+                    raise ValueError(f"unsupported visualization operation: {self._kind}")
+            except ValueError as exc:
+                self.error_label.setText(str(exc))
+                return
+            self.error_label.clear()
             self.applied.emit(operation)
 
     class CFDXWorkbenchWindow(QMainWindow):
@@ -204,13 +270,15 @@ if QMainWindow is not object:
             self._state_event.connect(self._state_changed)
             self._results_event.connect(self._results_changed)
             self._selection_event.connect(self._selection_state_changed)
-            self.application.events.subscribe(
-                ApplicationStateChanged, self._state_event.emit
+            # Retain the exact callback objects for deterministic unsubscription.
+            # Old windows must not receive telemetry after they have closed.
+            self._event_subscriptions = (
+                (ApplicationStateChanged, self._state_event.emit),
+                (ResultsChanged, self._results_event.emit),
+                (SelectionChanged, self._selection_event.emit),
             )
-            self.application.events.subscribe(ResultsChanged, self._results_event.emit)
-            self.application.events.subscribe(
-                SelectionChanged, self._selection_event.emit
-            )
+            for event_type, callback in self._event_subscriptions:
+                self.application.events.subscribe(event_type, callback)
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
             self.resize(1440, 900)
             self.setDockNestingEnabled(True)
@@ -219,20 +287,37 @@ if QMainWindow is not object:
             )
             self._docks: dict[str, QDockWidget] = {}
             self._workspace = "setup"
+            self._theme = DEFAULT_THEME
             self._build_toolbar()
+            self._build_appearance_controls()
             self._build_docks()
             self._build_status_bar()
-            apply_workbench_theme(self)
+            # Snapshot deterministic initial layout before restoring user preferences.
+            self._default_dock_state = self.saveState()
+            selected = str(self._settings.value("appearance/theme", DEFAULT_THEME))
+            self._apply_theme(selected if selected in THEME_LABELS else DEFAULT_THEME, persist=False)
             self._restore_layout()
             self._set_workspace(str(self._settings.value("workspace", "setup")))
             self._refresh_action_availability()
+            self._refresh_operations_overview(self._application_state)
 
         def _build_toolbar(self) -> None:
             toolbar = QToolBar("Workbench", self)
             toolbar.setObjectName("workbench.toolbar")
             toolbar.setMovable(False)
             self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
-
+            brand = QLabel("CFDX  /  WORKBENCH", toolbar)
+            brand.setObjectName("workbench.brand")
+            brand.setProperty("role", "eyebrow")
+            brand.setContentsMargins(8, 0, 16, 0)
+            toolbar.addWidget(brand)
+            toolbar.addSeparator()
+            file_menu = self.menuBar().addMenu("&File")
+            file_menu.setObjectName("workbench.file_menu")
+            self.file_menu = file_menu
+            self.recent_menu = file_menu.addMenu("Open Recent")
+            self.recent_menu.setObjectName("workbench.file.recent")
+            self.recent_menu.aboutToShow.connect(self._refresh_recent_menu)
             for label in (
                 "New Project",
                 "Open",
@@ -245,7 +330,9 @@ if QMainWindow is not object:
                 action.setObjectName(
                     f"workbench.action.{label.lower().replace(' ', '_')}"
                 )
-                toolbar.addAction(action)
+                file_menu.addAction(action)
+                if label in {"Open", "Save", "Open Mesh"}:
+                    toolbar.addAction(action)
                 if label == "New Project":
                     action.triggered.connect(self._new_project)
                     self.new_project_action = action
@@ -268,6 +355,10 @@ if QMainWindow is not object:
                 else:
                     action.triggered.connect(self._save_case)
                     self.save_case_action = action
+            export_bcs = QAction("Export native solver boundaries…", self)
+            export_bcs.setObjectName("workbench.action.export_native_boundary_case")
+            export_bcs.triggered.connect(self._export_native_boundary_case)
+            file_menu.addAction(export_bcs)
             toolbar.addSeparator()
             for label in ("Check", "Run", "Stop"):
                 action = QAction(label, self)
@@ -283,6 +374,8 @@ if QMainWindow is not object:
                     action.triggered.connect(self._stop)
                     self.stop_action = action
             toolbar.addSeparator()
+            edit_menu = self.menuBar().addMenu("&Edit")
+            edit_menu.setObjectName("workbench.edit_menu")
             for label in ("Undo", "Redo"):
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.action.{label.lower()}")
@@ -290,7 +383,7 @@ if QMainWindow is not object:
                 capability = get_capability(action.objectName())
                 if capability is not None:
                     action.setStatusTip(capability.prerequisites_tip)
-                toolbar.addAction(action)
+                edit_menu.addAction(action)
                 if label == "Undo":
                     action.setShortcut("Ctrl+Z")
                     action.triggered.connect(self._undo)
@@ -300,7 +393,9 @@ if QMainWindow is not object:
                     action.triggered.connect(self._redo)
                     self.redo_action = action
             toolbar.addSeparator()
-            for label in ("Contour", "Slice", "Glyph"):
+            visualization_menu = self.menuBar().addMenu("&Visualization")
+            visualization_menu.setObjectName("workbench.visualization_menu")
+            for label in ("Contour", "Slice", "Glyph", "Clip", "Threshold"):
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.action.{label.lower()}")
                 action.setEnabled(False)
@@ -311,7 +406,9 @@ if QMainWindow is not object:
                 action.triggered.connect(
                     lambda _checked=False, mode=mode: self._postprocess(mode)
                 )
-                toolbar.addAction(action)
+                visualization_menu.addAction(action)
+                if label in {"Slice", "Clip"}:
+                    toolbar.addAction(action)
                 setattr(self, f"{label.lower()}_action", action)
             toolbar.addSeparator()
             search = QAction("Search", self)
@@ -322,6 +419,9 @@ if QMainWindow is not object:
             toolbar.addAction(search)
             self.search_action = search
             self.toolbar = toolbar
+            run_control = toolbar.widgetForAction(self.run_action)
+            if run_control is not None:
+                run_control.setProperty("workbenchRun", True)
             self._build_workspace_toolbar()
             self._register_capability_actions()
 
@@ -334,17 +434,24 @@ if QMainWindow is not object:
             group = QActionGroup(self)
             group.setExclusive(True)
             self.workspace_actions: dict[str, QAction] = {}
-            for workspace, label in (
+            for index, (workspace, label) in enumerate((
+                ("overview", "Overview"),
                 ("setup", "Setup"),
                 ("mesh", "Mesh"),
                 ("run", "Run"),
                 ("analyze", "Analyze"),
-            ):
+                ("validate", "Validate"),
+            )):
                 action = QAction(label, self)
                 action.setObjectName(f"workbench.workspace.{workspace}")
                 action.setCheckable(True)
+                action.setShortcut("Ctrl+0" if workspace == "overview" else f"Ctrl+{index}")
                 group.addAction(action)
                 toolbar.addAction(action)
+                control = toolbar.widgetForAction(action)
+                if control is not None:
+                    control.setProperty("workbenchNav", True)
+                action.setToolTip(f"Open the {label} workspace")
                 action.triggered.connect(
                     lambda _checked=False, key=workspace: self._set_workspace(key)
                 )
@@ -352,12 +459,78 @@ if QMainWindow is not object:
             self.addToolBar(Qt.ToolBarArea.TopToolBarArea, toolbar)
             self.workspace_toolbar = toolbar
 
+        def _build_appearance_controls(self) -> None:
+            """Expose a reversible theme preference without changing CFD state."""
+            view_menu = self.menuBar().addMenu("&View")
+            view_menu.setObjectName("workbench.view_menu")
+            self.appearance_menu = view_menu.addMenu("Appearance")
+            self.appearance_menu.setObjectName("workbench.appearance_menu")
+            theme_group = QActionGroup(self)
+            theme_group.setExclusive(True)
+            self.theme_actions: dict[str, QAction] = {}
+            for key, label in THEME_LABELS.items():
+                action = QAction(label, self)
+                action.setCheckable(True)
+                action.setObjectName(f"workbench.appearance.{key}")
+                action.triggered.connect(
+                    lambda _checked=False, value=key: self._apply_theme(value)
+                )
+                theme_group.addAction(action)
+                self.appearance_menu.addAction(action)
+                self.theme_actions[key] = action
+            view_menu.addSeparator()
+            reset = QAction("Reset panel layout", self)
+            reset.setObjectName("workbench.appearance.reset_layout")
+            reset.triggered.connect(self._reset_layout)
+            view_menu.addAction(reset)
+            self.reset_layout_action = reset
+            switch = QToolButton(self)
+            switch.setObjectName("workbench.theme_switcher")
+            switch.setProperty("workbenchTheme", True)
+            switch.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            switch.setMinimumWidth(150)
+            switch.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+            switch.setMenu(self.appearance_menu)
+            switch.setToolTip("Choose appearance (black is the default)")
+            self.toolbar.addSeparator()
+            self.toolbar.addWidget(switch)
+            self.theme_switcher = switch
+
+        def _apply_theme(self, theme: str, *, persist: bool = True) -> None:
+            """Update dock shell and plots, retaining the current data and layout."""
+            tokens = theme_tokens(theme)
+            apply_workbench_theme(self, theme)
+            self._theme = theme
+            self.theme_switcher.setText(f"Theme: {THEME_LABELS[theme]}")
+            for key, action in self.theme_actions.items():
+                action.setChecked(key == theme)
+            if persist:
+                self._settings.setValue("appearance/theme", theme)
+            if getattr(self, "view3d", None) is not None:
+                self.view3d.set_workbench_background(tokens["surface.canvas"])
+            for panel_name in ("run_panel", "probes_panel", "overview_panel"):
+                panel = getattr(self, panel_name, None)
+                if panel is not None:
+                    panel.apply_theme(theme)
+            if hasattr(self, "workflow_tree") and hasattr(self, "_application_state"):
+                self._refresh_workflow(self._application_state)
+                self._refresh_operations_overview(self._application_state)
+
+        def _reset_layout(self) -> None:
+            """Restore initial dock geometry without discarding the case or theme."""
+            self.restoreState(self._default_dock_state)
+            self.resize(1440, 900)
+            self._set_workspace("setup")
+            self._settings.remove("geometry")
+            self._settings.remove("dock_state")
+            self.statusBar().showMessage("Panel layout reset to defaults")
+
         def _register_capability_actions(self) -> None:
             """Bind every registered capability id to its Qt action.
 
             The stable capability id equals the Qt action objectName, so the
-            binding stays declarative: an action outside the registry never
-            enters the palette, and tests guard the bijection.
+            registry binding stays declarative: actions outside the capability
+            registry enter the palette only via the explicit appearance section.
             """
             self._capability_actions = {
                 action.objectName(): action
@@ -398,12 +571,37 @@ if QMainWindow is not object:
                     if status.available:
                         item = QListWidgetItem(capability.label)
                     else:
-                        # P0 (Phase 0 audit, G3): never hide a disabled
-                        # command silently; show why it is unavailable.
+                        # Never hide a disabled command; explain why it is unavailable.
                         reason = status.tip or "not available in the current state"
                         item = QListWidgetItem(f"{capability.label} — {reason}")
                         item.setToolTip(reason)
                     item.setData(Qt.ItemDataRole.UserRole, action)
+                    results.addItem(item)
+                # Appearance actions are UI-only, separate from CFD capabilities.
+                for theme, action in self.theme_actions.items():
+                    label = f"Appearance: {THEME_LABELS[theme]}"
+                    if needle and needle not in label.casefold():
+                        continue
+                    item = QListWidgetItem(label)
+                    item.setData(Qt.ItemDataRole.UserRole, action)
+                    results.addItem(item)
+                # Recent projects are loaded through the same guarded HDF5
+                # lifecycle as File/Open; never execute arbitrary files.
+                for file_path in self._recent_project_paths():
+                    label = f"Recent project: {Path(file_path).name}"
+                    if needle and needle not in label.casefold() and needle not in file_path.casefold():
+                        continue
+                    action = QAction(label, dialog)
+                    action.triggered.connect(
+                        lambda _checked=False, path=file_path: self._open_case_path(path)
+                    )
+                    item = QListWidgetItem(label)
+                    item.setToolTip(file_path)
+                    item.setData(Qt.ItemDataRole.UserRole, action)
+                    results.addItem(item)
+                if not needle or needle in "reset panel layout":
+                    item = QListWidgetItem("Reset panel layout")
+                    item.setData(Qt.ItemDataRole.UserRole, self.reset_layout_action)
                     results.addItem(item)
                 if results.count():
                     results.setCurrentRow(0)
@@ -430,11 +628,17 @@ if QMainWindow is not object:
         def _set_workspace(self, workspace: str) -> None:
             """Apply a named dock layout while preserving all panel instances."""
             layouts = {
+                "overview": {
+                    "workbench.dock.workflow",
+                    "workbench.dock.overview",
+                    "workbench.dock.monitor",
+                },
                 "setup": {
                     "workbench.dock.workflow",
                     "workbench.dock.mesh",
                     "workbench.dock.case_file",
                     "workbench.dock.setup",
+                    "workbench.dock.methods",
                     "workbench.dock.properties",
                 },
                 "mesh": {
@@ -445,15 +649,24 @@ if QMainWindow is not object:
                 },
                 "run": {
                     "workbench.dock.workflow",
+                    "workbench.dock.overview",
                     "workbench.dock.setup",
                     "workbench.dock.properties",
                     "workbench.dock.monitor",
                 },
                 "analyze": {
                     "workbench.dock.results",
+                    "workbench.dock.industrial",
                     "workbench.dock.probes",
                     "workbench.dock.visualization_pipeline",
                     "workbench.dock.properties",
+                    "workbench.dock.monitor",
+                },
+                "validate": {
+                    "workbench.dock.workflow",
+                    "workbench.dock.overview",
+                    "workbench.dock.qualification",
+                    "workbench.dock.methods",
                     "workbench.dock.monitor",
                 },
             }
@@ -470,20 +683,59 @@ if QMainWindow is not object:
             self.application.new_project()
             self.session = self.application.session
             self._refresh_setup_case()
+            # Reset all view-specific context, rather than painting the last
+            # project's patches or fields over a newly created case.
+            self.case_file_panel.clear()
+            self.mesh_browser.clear()
+            if self.view3d is not None:
+                self.view3d.clear()
+                self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
+            self._refresh_action_availability()
+            self._refresh_operations_overview(self.application.state)
             self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
 
         def _open_case(self) -> None:
             path, _ = QFileDialog.getOpenFileName(
                 self, "Open CFDX File", "", "CFDX/HDF5 files (*.cfdx.h5 *.h5)"
             )
-            if not path:
-                return
+            if path:
+                self._open_case_path(path)
+
+        def _recent_project_paths(self) -> tuple[str, ...]:
+            return normalize_recent_projects(self._settings.value("recent/projects", []))
+
+        def _remember_project(self, path: str | Path) -> None:
+            recent = remember_recent_project(path, self._settings.value("recent/projects", []))
+            self._settings.setValue("recent/projects", list(recent))
+
+        def _refresh_recent_menu(self) -> None:
+            """Recheck entries on opening the menu; never create fake projects."""
+            self.recent_menu.clear()
+            for project_path in self._recent_project_paths():
+                action = self.recent_menu.addAction(Path(project_path).name)
+                action.setToolTip(project_path)
+                action.setData(project_path)
+                action.triggered.connect(
+                    lambda _checked=False, path=project_path: self._open_case_path(path)
+                )
+            if not self.recent_menu.actions():
+                disabled = self.recent_menu.addAction("No recent projects")
+                disabled.setEnabled(False)
+            else:
+                self.recent_menu.addSeparator()
+                clear = self.recent_menu.addAction("Clear recent projects")
+                clear.triggered.connect(lambda: self._settings.remove("recent/projects"))
+
+        def _open_case_path(self, path: str | Path) -> None:
+            """Guarded shared loader for both Open and Open Recent actions."""
             try:
                 summary = self.application.inspect_case_file(path)
                 if not summary.is_cfdx:
                     raise ValueError("file does not contain a recognised CFDX layout")
-                self.case_file_panel.set_summary(summary)
                 if not summary.has_project_config:
+                    # Mesh-interchange inspection is non-destructive: it does
+                    # not swap the active case or its existing result viewport.
+                    self.case_file_panel.set_summary(summary)
                     if not summary.has_mesh:
                         raise ValueError(
                             "CFDX HDF5 file has neither a project configuration "
@@ -496,6 +748,9 @@ if QMainWindow is not object:
                     )
                     return
                 self.application.open_project(path)
+                # Display the metadata only after the project switch succeeds.
+                self.case_file_panel.set_summary(summary)
+                self._remember_project(path)
                 self.session = self.application.session
                 self._refresh_setup_case()
                 self.setWindowTitle(f"CFDX Workbench — {self.session.case.name}")
@@ -518,10 +773,11 @@ if QMainWindow is not object:
                         self.view3d.clear()
                         self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
                     self._refresh_action_availability()
+                    if self.view3d is not None:
+                        self.view3d.load_progressive_surface(path, summary=summary)
                     self.statusBar().showMessage(
-                        "CFDX file opened metadata-only: "
-                        f"{summary.n_cells or 'unknown'} cells; "
-                        f"3D preview deferred: {summary.preview_block_reason}"
+                        "CFDX metadata opened; safe bounded surface-only preview queued "
+                        f"({summary.n_cells or 'unknown'} cells in source mesh)"
                     )
                 else:
                     self.mesh_browser.clear()
@@ -535,6 +791,50 @@ if QMainWindow is not object:
                     )
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Open failed: {exc}")
+
+        def _export_native_boundary_case(self) -> None:
+            """Explicit native bridge. Never silently rewrite the editor case."""
+            from .native_boundary_bridge import write_native_boundary_case
+            project = self.application.project_path
+            if not project:
+                self.statusBar().showMessage("Save/open a native CFDX case first")
+                return
+            target, _ = QFileDialog.getSaveFileName(
+                self, "Export separate native solver case", "exported.native.cfdx.h5",
+                "Native CFDX Case (*.cfdx.h5)")
+            if not target:
+                return
+            try:
+                result = write_native_boundary_case(project, target,
+                                                    self.session.case.boundaries)
+            except (ValueError, OSError, KeyError, TypeError) as exc:
+                self.statusBar().showMessage(f"Native BC export rejected: {exc}")
+            else:
+                self.statusBar().showMessage(
+                    f"Native boundary case exported: {result}; select it explicitly for a solver run")
+
+        def _show_volume_partition(self, source: str, start: int,
+                                   count: int, field: str | None) -> None:
+            if self.view3d is None:
+                self.statusBar().showMessage("3D backend unavailable (VTK/Qt required)")
+                return
+            try:
+                self.view3d.load_progressive_volume(source,start_cell=start,count=count,field=field)
+            except (ValueError,OSError,RuntimeError) as exc:
+                self.statusBar().showMessage(f"Volume tile refused: {exc}")
+            else:
+                self.statusBar().showMessage(f"Reading actual CFDX volume tile {start}-{start+count-1}")
+
+        def _show_simulation_difference(self, left: str, right: str, field: str) -> None:
+            if self.view3d is None:
+                self.statusBar().showMessage("3D backend unavailable")
+                return
+            try:
+                self.view3d.show_simulation_difference(left, right, field)
+            except (OSError, ValueError, RuntimeError, KeyError, ImportError) as exc:
+                self.statusBar().showMessage(f"3D comparison rejected: {exc}")
+            else:
+                self.statusBar().showMessage(f"Displaying signed difference for {field}")
 
         def _save_case(self) -> None:
             path = (
@@ -554,6 +854,7 @@ if QMainWindow is not object:
                 path = Path(selected)
             try:
                 self.application.save_project(path)
+                self._remember_project(path)
                 if self.application.restart_dat is not None:
                     self.statusBar().showMessage(
                         f"Case and restart checkpoint saved: {path.name}"
@@ -588,6 +889,14 @@ if QMainWindow is not object:
                 self.statusBar().showMessage(f"Stop failed: {exc}")
 
         def _build_docks(self) -> None:
+            self.overview_panel = OperationsOverviewPanel(self)
+            self.overview_panel.workspace_requested.connect(self._set_workspace)
+            self.overview_panel.check_requested.connect(self._check_case)
+            self.overview_panel.open_mesh_requested.connect(self._open_mesh)
+            self._add_dock(
+                "Mission Control", "workbench.dock.overview", self.overview_panel,
+                Qt.DockWidgetArea.RightDockWidgetArea,
+            )
             self.workflow_tree = QTreeWidget()
             self.workflow_tree.setObjectName("workbench.workflow_tree")
             self.workflow_tree.setHeaderLabel("Workflow")
@@ -623,6 +932,12 @@ if QMainWindow is not object:
                 self.results_panel,
                 Qt.DockWidgetArea.LeftDockWidgetArea,
             )
+
+            self.industrial_tools = IndustrialToolsPanel(self)
+            self.industrial_tools.show_difference.connect(self._show_simulation_difference)
+            self.industrial_tools.volume_partition_requested.connect(self._show_volume_partition)
+            self._add_dock("Industrial data / Compare", "workbench.dock.industrial",
+                           self.industrial_tools, Qt.DockWidgetArea.RightDockWidgetArea)
 
             self.visualization_operations = QListWidget()
             self.visualization_operations.setObjectName(
@@ -704,10 +1019,23 @@ if QMainWindow is not object:
                 Qt.DockWidgetArea.RightDockWidgetArea,
             )
 
+            self.methods_panel = MethodsPanel()
+            self._add_dock(
+                "Numerical Methods Explorer",
+                "workbench.dock.methods",
+                self.methods_panel,
+                Qt.DockWidgetArea.RightDockWidgetArea,
+            )
+
             try:
                 renderer = PyVistaQtView()
                 self.view3d = renderer
                 self.view3d.selection_changed.connect(self._mesh_view_selection_changed)
+                self.view3d.progressive_preview_ready.connect(self._on_progressive_preview_ready)
+                self.view3d.volume_partition_ready.connect(self._on_volume_partition_ready)
+                self.view3d.volume_partition_failed.connect(self._on_volume_partition_failed)
+                self.view3d.progressive_preview_failed.connect(
+                    lambda error: self.statusBar().showMessage(f"Surface preview unavailable: {error}"))
             except RuntimeError as exc:
                 renderer = QLabel(f"3D renderer unavailable\n\n{exc}")
                 self.view3d = None
@@ -719,6 +1047,11 @@ if QMainWindow is not object:
             empty_layout = QVBoxLayout(self.viewport_placeholder)
             empty_layout.setContentsMargins(32, 32, 32, 32)
             empty_layout.addStretch(1)
+            eyebrow = QLabel("CFDX  /  SIMULATION WORKSPACE")
+            eyebrow.setObjectName("workbench.viewport.eyebrow")
+            eyebrow.setProperty("role", "eyebrow")
+            eyebrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty_layout.addWidget(eyebrow)
             empty_title_text = (
                 "3D renderer unavailable"
                 if self.view3d is None
@@ -773,6 +1106,37 @@ if QMainWindow is not object:
                 button.clicked.connect(callback)
                 actions_layout.addWidget(button)
             empty_layout.addWidget(empty_actions)
+            # Actual navigation shortcuts; these cards do not invent simulation data.
+            cards = QWidget(self.viewport_placeholder)
+            cards.setObjectName("workbench.viewport.quickstart")
+            cards_layout = QGridLayout(cards)
+            cards_layout.setContentsMargins(0, 14, 0, 0)
+            cards_layout.setHorizontalSpacing(12)
+            for index, (heading, description, label, target) in enumerate((
+                ("01  Configure", "Set models and boundary conditions", "Open setup", "setup"),
+                ("02  Inspect", "Explore mesh and patches", "Open mesh", "mesh"),
+                ("03  Solve", "Monitor real solver evidence", "Open run", "run"),
+                ("04  Qualify", "Review cross-domain qualification", "Open validation", "validate"),
+            )):
+                card = QFrame(cards)
+                card.setProperty("role", "dashboardCard")
+                card.setObjectName(f"workbench.viewport.card.{target}")
+                card_layout = QVBoxLayout(card)
+                title = QLabel(heading, card)
+                title.setProperty("role", "dashboardValue")
+                card_layout.addWidget(title)
+                description_label = QLabel(description, card)
+                description_label.setWordWrap(True)
+                description_label.setProperty("role", "secondary")
+                card_layout.addWidget(description_label)
+                button = QPushButton(label, card)
+                button.setObjectName(f"workbench.viewport.go.{target}")
+                button.clicked.connect(
+                    lambda _checked=False, workspace=target: self._set_workspace(workspace)
+                )
+                card_layout.addWidget(button)
+                cards_layout.addWidget(card, index // 2, index % 2)
+            empty_layout.addWidget(cards)
             empty_layout.addStretch(1)
 
             self.viewport_stack = QStackedLayout()
@@ -791,14 +1155,65 @@ if QMainWindow is not object:
                 Qt.DockWidgetArea.RightDockWidgetArea,
             )
 
+            self.qualification_panel = QualificationCenterPanel()
+            self._add_dock(
+                "Qualification Center",
+                "workbench.dock.qualification",
+                self.qualification_panel,
+                Qt.DockWidgetArea.RightDockWidgetArea,
+            )
+
             monitor = RunCenterPanel(self.application)
             monitor.setObjectName("workbench.monitor")
+            self.run_panel = monitor
+            monitor.cell_frame_selected.connect(self._show_cell_hotspot_frame)
+            monitor.full_cell_map_selected.connect(self._show_full_cell_map)
+            monitor.cell_hotspot_selected.connect(self._show_cell_hotspot)
             self._add_dock(
                 "Monitors / Console",
                 "workbench.dock.monitor",
                 monitor,
                 Qt.DockWidgetArea.BottomDockWidgetArea,
             )
+
+        def _show_cell_hotspot_frame(self, trace, frame, metric: str) -> None:
+            """Keep spatial evidence tied to its actual source mesh."""
+            if self.view3d is None:
+                return
+            try:
+                self.view3d.show_cell_hotspots(trace, frame, metric)
+                self._show_viewport()
+                self.statusBar().showMessage(
+                    f"Cell hotspots: accepted iteration {frame.iteration}, "
+                    f"{len(frame.cells)} sampled cells (not a full-cell heatmap)"
+                )
+            except (RuntimeError, ValueError, OSError) as exc:
+                self.statusBar().showMessage(f"Hotspot overlay unavailable: {exc}")
+
+        def _show_full_cell_map(self, payload) -> None:
+            if self.view3d is None:
+                return
+            try:
+                self.view3d.show_full_cell_map(payload)
+                self._show_viewport()
+                self.statusBar().showMessage(
+                    f"Full per-cell diagnostics: accepted iteration {payload['iteration']} (not qualification)")
+            except (OSError, RuntimeError, ValueError, KeyError) as exc:
+                self.statusBar().showMessage(f"Full cell map rejected: {exc}")
+
+        def _show_cell_hotspot(self, trace, cell) -> None:
+            if self.view3d is None:
+                return
+            try:
+                self.view3d.highlight_cell_hotspot(trace, cell)
+                self._show_viewport()
+                self.statusBar().showMessage(
+                    f"CFDX cell {cell.cell_id}: momentum / RHS={cell.momentum_scaled:.5g}, "
+                    f"|mass defect|={cell.mass_imbalance_abs:.5g}, "
+                    f"non-decrease streak={cell.nondecrease_streak}"
+                )
+            except (RuntimeError, ValueError, OSError) as exc:
+                self.statusBar().showMessage(f"Cannot locate cell: {exc}")
 
         def _build_properties_panel(self) -> QWidget:
             """Compose the typed contextual inspector over the selection."""
@@ -817,6 +1232,20 @@ if QMainWindow is not object:
             except (OSError, ValueError) as exc:
                 self.statusBar().showMessage(f"Results error: {exc}")
 
+        def _on_volume_partition_ready(self, message: str) -> None:
+            self.industrial_tools.volume_note.setText(message)
+            self._on_progressive_preview_ready(message)
+
+        def _on_volume_partition_failed(self, error: str) -> None:
+            message = f"Volume tile refused: {error}"
+            self.industrial_tools.volume_note.setText(message)
+            self.statusBar().showMessage(message)
+
+        def _on_progressive_preview_ready(self, message: str) -> None:
+            if self.view3d is not None:
+                self._show_viewport()
+            self.statusBar().showMessage(message)
+
         def _open_mesh(self) -> None:
             path, _ = QFileDialog.getOpenFileName(
                 self, "Open CFDX Mesh", "", "CFDX/HDF5 mesh (*.h5);;All files (*)"
@@ -828,6 +1257,7 @@ if QMainWindow is not object:
                 if not summary.is_cfdx or not summary.has_mesh:
                     raise ValueError("file does not contain a recognised CFDX mesh")
                 self.case_file_panel.set_summary(summary)
+                self.industrial_tools.volume_file.setText(str(path))
                 if not summary.preview_supported:
                     self.application.clear_mesh_catalog()
                     self.mesh_browser.clear()
@@ -835,9 +1265,11 @@ if QMainWindow is not object:
                         self.view3d.clear()
                         self.viewport_stack.setCurrentWidget(self.viewport_placeholder)
                     self._refresh_action_availability()
+                    if self.view3d is not None:
+                        self.view3d.load_progressive_surface(path, summary=summary)
                     self.statusBar().showMessage(
                         f"Mesh metadata loaded ({summary.n_cells or 'unknown'} cells); "
-                        f"full in-memory preview deferred: {summary.preview_block_reason}"
+                        "bounded boundary-surface preview requested (not full volume)"
                     )
                     return
                 catalog = self.application.load_mesh(path)
@@ -846,6 +1278,7 @@ if QMainWindow is not object:
                     self.view3d.load_cfdx_mesh(path)
                     self._show_viewport()
                 self._refresh_action_availability()
+                self._refresh_operations_overview(self.application.state)
                 self.statusBar().showMessage(f"Mesh loaded: {path}")
             except (OSError, RuntimeError, ValueError) as exc:
                 self.statusBar().showMessage(f"Mesh error: {exc}")
@@ -888,6 +1321,7 @@ if QMainWindow is not object:
                             f"{summary.preview_block_reason or 'mesh is not previewable'}"
                         )
                     self._refresh_action_availability()
+                self._refresh_operations_overview(self.application.state)
                 self.statusBar().showMessage(
                     f"DAT loaded: {Path(path).name} | iteration={loaded.iteration} | "
                     f"time={loaded.time:g} | fields={len(fields or loaded.fields)}"
@@ -898,6 +1332,7 @@ if QMainWindow is not object:
                 self.statusBar().showMessage(f"DAT error: {exc}")
 
         def _results_changed(self, event) -> None:
+            self._refresh_operations_overview(event.state)
             result = event.state.results.selected_frame
             if self.view3d is None or result is None or not result.complete:
                 return
@@ -958,7 +1393,12 @@ if QMainWindow is not object:
                     values = attributes[name]
                     shape = getattr(values, "shape", ())
                     is_vector = len(shape) == 2 and shape[1] == 3
-                    if is_vector == vector:
+                    # Do not offer multi-component arrays as scalar
+                    # thresholds; PyVista requires explicit components there.
+                    is_scalar = len(shape) <= 1 or (
+                        len(shape) == 2 and shape[1] == 1
+                    )
+                    if (is_vector if vector else is_scalar):
                         names.add(str(name))
             return sorted(names, key=str.casefold)
 
@@ -968,7 +1408,7 @@ if QMainWindow is not object:
                 return
             fields: list[str] = []
             try:
-                if mode in {"contour", "glyph"}:
+                if mode in {"contour", "glyph", "threshold"}:
                     fields = self._postprocess_fields(vector=mode == "glyph")
                     if not fields:
                         kind = "vector" if mode == "glyph" else "scalar"
@@ -981,7 +1421,7 @@ if QMainWindow is not object:
                 self.statusBar().showMessage(f"Post-processing error: {exc}")
                 return
             selected = self._application_state.results.selected_field
-            if mode in {"contour", "glyph"} and selected in fields:
+            if mode in {"contour", "glyph", "threshold"} and selected in fields:
                 dialog.field_combo.setCurrentText(selected)
             dialog.applied.connect(
                 lambda operation: self._apply_visualization_operation(mode, operation)
@@ -1004,6 +1444,16 @@ if QMainWindow is not object:
                     self.view3d.glyph(operation.scalars, factor=operation.factor)
                 elif mode == "slice":
                     self.view3d.slice(normal=operation.normal)
+                elif mode == "clip":
+                    self.view3d.clip(
+                        normal=operation.normal, origin=operation.origin,
+                        invert=operation.invert,
+                    )
+                elif mode == "threshold":
+                    self.view3d.threshold(
+                        operation.scalars, operation.minimum, operation.maximum,
+                        invert=operation.invert,
+                    )
                 else:
                     raise ValueError(f"unsupported visualization operation: {mode}")
             except (KeyError, RuntimeError, ValueError) as exc:
@@ -1042,6 +1492,13 @@ if QMainWindow is not object:
                     details += f" — {operation.scalars}, scale {operation.factor:g}"
                 elif operation.kind == "slice":
                     details += f" — normal {operation.normal}"
+                elif operation.kind == "clip":
+                    details += f" — normal {operation.normal}, origin {operation.origin}"
+                elif operation.kind == "threshold":
+                    details += (
+                        f" — {operation.scalars} in "
+                        f"[{operation.minimum:g}, {operation.maximum:g}]"
+                    )
                 item = QListWidgetItem(f"{index}. {details}")
                 item.setData(Qt.ItemDataRole.UserRole, index - 1)
                 self.visualization_operations.addItem(item)
@@ -1081,7 +1538,7 @@ if QMainWindow is not object:
             operation = operations[index]
             fields: list[str] = []
             try:
-                if operation.kind in {"contour", "glyph"}:
+                if operation.kind in {"contour", "glyph", "threshold"}:
                     fields = self._postprocess_fields(vector=operation.kind == "glyph")
                     if operation.scalars not in fields:
                         fields = [operation.scalars, *fields]
@@ -1245,15 +1702,25 @@ if QMainWindow is not object:
                 f"State: {initial_view.marker} {initial_view.label} | Iteration: {self.session.iteration} | Time: {self.session.time:g}"
             )
             self.setStatusBar(status)
+            self.setup_indicator = QLabel("Setup: not checked", status)
+            self.setup_indicator.setObjectName("workbench.status.setup")
+            self.setup_indicator.setToolTip("CFDX setup validator status; not a physical qualification")
+            self.solver_indicator = QLabel("Solver: no certificate", status)
+            self.solver_indicator.setObjectName("workbench.status.solver")
+            self.solver_indicator.setToolTip(
+                "Verified native CFDX execution + convergence evidence only"
+            )
+            status.addPermanentWidget(self.setup_indicator)
+            status.addPermanentWidget(self.solver_indicator)
 
-        @staticmethod
-        def _status_color(status: WorkflowStatus) -> str:
+        def _status_color(self, status: WorkflowStatus) -> str:
+            tokens = theme_tokens(self._theme)
             return {
-                WorkflowStatus.COMPLETE: TOKENS["status.success"],
-                WorkflowStatus.WARNING: TOKENS["status.warning"],
-                WorkflowStatus.ERROR: TOKENS["status.error"],
-                WorkflowStatus.NOT_CONFIGURED: TOKENS["text.muted"],
-                WorkflowStatus.CONDITIONAL: TOKENS["status.info"],
+                WorkflowStatus.COMPLETE: tokens["status.success"],
+                WorkflowStatus.WARNING: tokens["status.warning"],
+                WorkflowStatus.ERROR: tokens["status.error"],
+                WorkflowStatus.NOT_CONFIGURED: tokens["text.muted"],
+                WorkflowStatus.CONDITIONAL: tokens["status.info"],
             }[status]
 
         @staticmethod
@@ -1296,9 +1763,49 @@ if QMainWindow is not object:
                     root.addChild(item)
                 root.setExpanded(True)
 
+        def _refresh_operations_overview(self, state) -> None:
+            """Project, run and mesh provenance from the shared application."""
+            if not hasattr(self, "overview_panel"):
+                return
+            run = self.application.run_center.state if self.application.run_center else None
+            self.overview_panel.update_state(
+                state, run=run,
+                mesh_catalog_loaded=self.application.mesh_catalog is not None,
+            )
+            snapshot = self.overview_panel.snapshot
+            if snapshot is not None and hasattr(self, "setup_indicator"):
+                self.setup_indicator.setText({
+                    "passed": "Setup: checked",
+                    "warnings": "Setup: warnings",
+                    "errors": "Setup: errors",
+                    "stale": "Setup: outdated",
+                    "not_checked": "Setup: unchecked",
+                }[snapshot.check_state])
+                self.solver_indicator.setText({
+                    "converged": "Solver: converged",
+                    "not_converged": "Solver: not converged",
+                    "missing_or_unverified": "Solver: unverified",
+                }[snapshot.solver_evidence])
+                tokens = theme_tokens(self._theme)
+                check_color = {
+                    "passed": tokens["status.success"],
+                    "warnings": tokens["status.warning"],
+                    "errors": tokens["status.error"],
+                    "stale": tokens["status.warning"],
+                    "not_checked": tokens["text.muted"],
+                }[snapshot.check_state]
+                solver_color = (
+                    tokens["status.success"] if snapshot.solver_evidence == "converged"
+                    else tokens["status.error"] if snapshot.solver_evidence == "not_converged"
+                    else tokens["text.muted"]
+                )
+                self.setup_indicator.setStyleSheet(f"color: {check_color}; padding: 0 8px;")
+                self.solver_indicator.setStyleSheet(f"color: {solver_color}; padding: 0 8px;")
+
         def _state_changed(self, event) -> None:
             state = event.state
             self._application_state = state
+            self._refresh_operations_overview(state)
             self._refresh_workflow(state)
             view = session_state_view(state.simulation_state.value)
             self.statusBar().showMessage(
@@ -1332,6 +1839,8 @@ if QMainWindow is not object:
                 self.restoreState(state)
 
         def closeEvent(self, event) -> None:
+            for event_type, callback in self._event_subscriptions:
+                self.application.events.unsubscribe(event_type, callback)
             self._settings.setValue("geometry", self.saveGeometry())
             self._settings.setValue("dock_state", self.saveState())
             self._settings.setValue("workspace", self._workspace)

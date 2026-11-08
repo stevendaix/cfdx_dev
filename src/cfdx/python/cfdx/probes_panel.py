@@ -27,6 +27,7 @@ from .application import Application, ApplicationStateChanged, ProbeSampleReceiv
 from .application.commands import ConfigureProbes
 from .probe import Probe, ProbeCatalog, ProbeField
 from .probe_plot import create_probe_plot, update_probe_plot
+from .theme import DEFAULT_THEME, style_scientific_plot
 from .probe_validation import ProbeSample, ProbeSeries
 from .session import SimulationState
 
@@ -92,6 +93,7 @@ class ProbesPanel(QWidget):
         self._live_run_active = False
         self._live_dirty = False
         self._rendered_probe_catalog: tuple[Probe, ...] = ()
+        self._plot_theme = DEFAULT_THEME
         self._plot_field_selector = QComboBox()
         self._plot_field_selector.setObjectName("workbench.probes.plot_field")
         self._plot_field_selector.setEnabled(False)
@@ -515,6 +517,13 @@ class ProbesPanel(QWidget):
         self._plot_probe_list.blockSignals(False)
         self._redraw_probe_plot()
 
+    def apply_theme(self, theme: str) -> None:
+        """Match probe plot to shell while retaining actual sample records."""
+        if self._probe_plot is not None:
+            style_scientific_plot(self._probe_plot, theme)
+        self._plot_theme = theme
+        self._redraw_probe_plot()
+
     def _redraw_probe_plot(self, *_args: object) -> None:
         if self._probe_plot is None:
             return
@@ -535,6 +544,7 @@ class ProbesPanel(QWidget):
             self._probe_plot,
             visible,
             x_axis=self._plot_axis_selector.currentData() or "time",
+            theme=self._plot_theme,
         )
 
     def _export_results(self) -> None:

@@ -5,15 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 from .probe_validation import ProbeSeries
-from .theme import TOKENS
-
-_CURVE_COLORS = (
-    TOKENS["accent.primary"],
-    TOKENS["accent.secondary"],
-    TOKENS["status.info"],
-    TOKENS["status.warning"],
-    TOKENS["status.error"],
-)
+from .theme import DEFAULT_THEME, style_scientific_plot, theme_tokens
 
 
 def _pyqtgraph():
@@ -32,7 +24,7 @@ def create_probe_plot():
     pg = _pyqtgraph()
     plot = pg.PlotWidget()
     plot.setObjectName("workbench.probes.history_plot")
-    plot.setBackground(TOKENS["surface.canvas"])
+    style_scientific_plot(plot, DEFAULT_THEME)
     plot.showGrid(x=True, y=True, alpha=0.25)
     plot.setMouseEnabled(x=True, y=True)
     plot.setMenuEnabled(True)
@@ -48,11 +40,17 @@ def update_probe_plot(
     series: Sequence[ProbeSeries],
     *,
     x_axis: str = "time",
+    theme: str = DEFAULT_THEME,
 ) -> None:
     """Redraw selected probe series, keeping unit groups separate in the caller."""
     pg = _pyqtgraph()
     if x_axis not in {"time", "iteration"}:
         raise ValueError("x_axis must be 'time' or 'iteration'")
+    tokens = theme_tokens(theme)
+    colors = (
+        tokens["accent.primary"], tokens["accent.secondary"],
+        tokens["status.info"], tokens["status.warning"], tokens["status.error"],
+    )
     plot.clear()
     plot.addLegend(offset=(10, 10))
     if x_axis == "time":
@@ -77,7 +75,7 @@ def update_probe_plot(
         plot.plot(
             x_values,
             y_values,
-            pen=pg.mkPen(_CURVE_COLORS[index % len(_CURVE_COLORS)], width=2),
+            pen=pg.mkPen(colors[index % len(colors)], width=2),
             name=probe.name,
         )
     plot.enableAutoRange()

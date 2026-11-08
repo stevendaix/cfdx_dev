@@ -54,6 +54,11 @@ class ApplicationState:
     case_tree: tuple[Any, ...]
     workflow: tuple[WorkflowStepState, ...]
     results: ResultsState
+    # A successful setup-validator invocation, not a physical qualification.
+    # Retains the difference between no errors and no validation performed.
+    validation_performed: bool = False
+    validation_current: bool = False
+    validation_with_mesh: bool = False
 
     @property
     def dirty(self) -> bool:
@@ -71,6 +76,9 @@ def build_application_state(
     capabilities: Iterable[str] = (),
     diagnostics: Iterable[Any] = (),
     results: ResultsState | None = None,
+    validation_performed: bool = False,
+    validation_current: bool = False,
+    validation_with_mesh: bool = False,
 ) -> ApplicationState:
     """Build a snapshot without copying or mutating CFD domain state."""
     diagnostics_tuple = tuple(diagnostics)
@@ -108,4 +116,7 @@ def build_application_state(
         case_tree=tuple(session.case_tree()),
         workflow=build_workflow_state(session, diagnostics=diagnostics_tuple),
         results=results or ResultsState(),
+        validation_performed=validation_performed,
+        validation_current=validation_current,
+        validation_with_mesh=validation_with_mesh,
     )

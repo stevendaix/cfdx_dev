@@ -24,6 +24,12 @@ class FakeDataset:
     def glyph(self, **kwargs):
         return FakeDataset((*self.history, ("glyph", kwargs)))
 
+    def clip(self, **kwargs):
+        return FakeDataset((*self.history, ("clip", kwargs)))
+
+    def threshold(self, **kwargs):
+        return FakeDataset((*self.history, ("threshold", kwargs)))
+
 
 def test_pipeline_replays_ordered_operations_without_mutating_source():
     source = FakeDataset()
@@ -130,3 +136,53 @@ def test_operation_checks_field_availability_and_supports_vector_glyphs():
 
     result = VisualizationOperation.glyph("U", factor=2.0).apply(source)
     assert result.history == (("glyph", {"scale": "U", "factor": 2.0, "orient": "U"}),)
+
+
+def test_clip_and_threshold_are_replayable_and_source_safe():
+    source = FakeDataset()
+    pipeline = (
+        VisualizationPipeline()
+        .append(VisualizationOperation.clip((0, 1, 0), (0.5, 0, 0), invert=True))
+        .append(VisualizationOperation.threshold("p", -2.0, 2.0))
+    )
+    result = pipeline.evaluate(source)
+    assert source.history == ()
+    assert result.history == (
+        ("clip", {"normal": (0, 1, 0), "origin": (0.5, 0, 0),
+                  "invert": True, "inplace": False}),
+        ("threshold", {"value": (-2.0, 2.0), "scalars": "p",
+                       "invert": False, "preference": "cell"}),
+    )
+    assert pipeline.operations[0].kind == "clip"
+
+
+@pytest.mark.parametrize("operation", [
+    lambda: VisualizationOperation.threshold("p", 2, 1),
+    lambda: VisualizationOperation.threshold("p", float("nan"), 1),
+    lambda: VisualizationOperation.threshold("p", 0, float("inf")),
+    lambda: VisualizationOperation.threshold("", 0, 1),
+    lambda: VisualizationOperation.clip((float("nan"), 0, 1)),
+    lambda: VisualizationOperation.clip((0, 0, 0)),
+    lambda: VisualizationOperation.clip(origin=(0, float("inf"), 0)),
+    lambda: VisualizationOperation.clip(invert="yes"),
+    lambda: VisualizationOperation.glyph("U", float("inf")),
+    lambda: VisualizationOperation.slice((0, 0, float("nan"))),
+])
+def test_new_filters_fail_closed_on_invalid_physics(operation):
+    with pytest.raises(ValueError):
+        operation()
+
+
+def test_visualization_pipeline_does_not_accept_unknown_operation_types():
+    with pytest.raises(TypeError, match="VisualizationOperation"):
+        VisualizationPipeline().append("nonexistent")
+
+
+def test_invalid_filter_cannot_mutate_original_pipeline_or_source():
+    source = FakeDataset()
+    good = VisualizationPipeline().append(VisualizationOperation.clip())
+    bad = good.append(VisualizationOperation.threshold("missing", 0, 1))
+    with pytest.raises(KeyError, match="missing"):
+        bad.evaluate(source)
+    assert source.history == ()
+    assert good.evaluate(source).history[0][0] == "clip"
