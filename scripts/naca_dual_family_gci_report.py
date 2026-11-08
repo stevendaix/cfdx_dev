@@ -407,9 +407,11 @@ def markdown(result: dict) -> str:
     if comparison:
         lines.extend(
             [
-                "| Grandeur | Limite quasi-isotrope "
-                "| Limite famille anisotrope (cosinus) | Écart relatif "
-                "| GCI compatibles |",
+                (
+                    "| Grandeur | Limite quasi-isotrope "
+                    "| Limite famille anisotrope (cosinus) | Écart relatif "
+                    "| GCI compatibles |"
+                ),
                 "|---|---:|---:|---:|---|",
             ]
         )
@@ -444,12 +446,16 @@ def markdown(result: dict) -> str:
                 "- La valeur Cd≈0,119 est une référence numérique publiée, sans "
                 "décomposition Cp/Cf indépendante ici."
             ),
-            "- Les deux familles comparées utilisent des échantillonnages "
-            "différents du profil analytique; leur accord ne prouve pas une "
-            "invariance à anisotropie pure, à géométrie discrète strictement fixée.",
-            "- L’arête de fermeture du bord de fuite (épaisseur NACA non nulle) "
-            "reste un seul segment : ce défaut de raffinement géométrique doit "
-            "être suivi.",
+            (
+                "- Les deux familles comparées utilisent des échantillonnages "
+                "différents du profil analytique; leur accord ne prouve pas une "
+                "invariance à anisotropie pure, à géométrie discrète strictement fixée."
+            ),
+            (
+                "- L’arête de fermeture du bord de fuite (épaisseur NACA non nulle) "
+                "reste un seul segment : ce défaut de raffinement géométrique doit "
+                "être suivi."
+            ),
             (
                 "- La famille cosinus historique accroît fortement son aspect maximal "
                 "au bord d’attaque."
