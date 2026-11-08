@@ -224,7 +224,7 @@ def compare(manifest_path: pathlib.Path) -> dict[str, Any]:
     if not isinstance(runs, list) or not runs:
         raise EvidenceError("manifest needs runs")
     output = [parse_run(root, run, config, shared_hashes) for run in runs]
-    if len(set(result["name"] for result in output)) != len(output):
+    if len({result["name"] for result in output}) != len(output):
         raise EvidenceError("duplicate run names")
     if not any(result["method"] == "OFF" for result in output):
         raise EvidenceError("baseline Picard OFF missing")
