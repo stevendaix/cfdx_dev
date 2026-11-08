@@ -10,8 +10,8 @@ import numpy as np
 import pytest
 
 from scripts.audit_bfs_pressure_roundoff import audit
-from scripts.seed_bfs_pressure_from_capture import build_seed, read_capture
 from scripts.generate_th03_openfoam_blockmesh import make_structured_mesh, write_case
+from scripts.seed_bfs_pressure_from_capture import build_seed, read_capture
 
 
 def _floathex(value: float) -> str:
