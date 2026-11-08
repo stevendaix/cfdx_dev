@@ -58,24 +58,33 @@ class VerifyShardsTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = evidence(Path(tmp))
             import shutil
+
             shutil.rmtree(root / "cfdx-total-validation-long-evidence-1")
             with self.assertRaisesRegex(ValueError, "missing long-test artifact"):
                 MODULE.verify(root, "long", 2)
 
     def test_skipped_test_fails(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaisesRegex(ValueError, "no CTest JUnit test cases|expected one execution"):
-                MODULE.verify(evidence(Path(tmp), omitted=True), "long", 2)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            self.assertRaisesRegex(
+                ValueError, "no CTest JUnit test cases|expected one execution"
+            ),
+        ):
+            MODULE.verify(evidence(Path(tmp), omitted=True), "long", 2)
 
     def test_wrong_lane_is_rejected(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaisesRegex(ValueError, "wrong shard"):
-                MODULE.verify(evidence(Path(tmp), duplicate=True), "long", 2)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            self.assertRaisesRegex(ValueError, "wrong shard"),
+        ):
+            MODULE.verify(evidence(Path(tmp), duplicate=True), "long", 2)
 
     def test_failure_rejected(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaisesRegex(ValueError, "non-passing test"):
-                MODULE.verify(evidence(Path(tmp), failed=True), "long", 2)
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            self.assertRaisesRegex(ValueError, "non-passing test"),
+        ):
+            MODULE.verify(evidence(Path(tmp), failed=True), "long", 2)
 
 
 if __name__ == "__main__":
