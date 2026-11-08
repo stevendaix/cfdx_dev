@@ -320,7 +320,7 @@ def markdown(result: dict) -> str:
         "# NACA0012 — GCI par contribution de traînée",
         "",
         (
-            **Convention :** Cd = Cd_pressure + Cd_viscous. "
+            "**Convention :** Cd = Cd_pressure + Cd_viscous. "
             "Trois solutions convergées avec le même schéma sont indispensables."
         ),
         "",
@@ -342,12 +342,12 @@ def markdown(result: dict) -> str:
             "## GCI conditionnel à deux grilles (p=2 supposé, Fs=3)",
             "",
             (
-                **Non certifié :** ces chiffres utilisent N64/N128 uniquement; "
+                "**Non certifié :** ces chiffres utilisent N64/N128 uniquement; "
                 "leur ordre n’est pas mesuré."
             ),
             "",
             (
-                | Famille | Grandeur | GCI conditionnel (%) "
+                "| Famille | Grandeur | GCI conditionnel (%) "
                 "| Limite sous hypothèse p=2 (non validée) |"
             ),
             "|---|---|---:|---:|",
@@ -373,7 +373,7 @@ def markdown(result: dict) -> str:
             "## GCI à ordre observé sur trois grilles",
             "",
             (
-                | Famille | Grandeur | ordre observé | Extrapolation h→0 "
+                "| Famille | Grandeur | ordre observé | Extrapolation h→0 "
                 "| GCI fin (%) | Statut |"
             ),
             "|---|---|---:|---:|---:|---|",
@@ -407,7 +407,7 @@ def markdown(result: dict) -> str:
             [
                 "| Grandeur | Limite quasi-isotrope "
                 (
-                    | Limite famille anisotrope (cosinus) | Écart relatif "
+                    "| Limite famille anisotrope (cosinus) | Écart relatif "
                     "| GCI compatibles |"
                 ),
                 "|---|---:|---:|---:|---|",
@@ -437,29 +437,29 @@ def markdown(result: dict) -> str:
             "## Réserves et contrôles",
             "",
             (
-                - Les tendances et GCI sont des estimations de discrétisation, "
+                "- Les tendances et GCI sont des estimations de discrétisation, "
                 "non une validation expérimentale."
             ),
             (
-                - La valeur Cd≈0,119 est une référence numérique publiée, sans "
+                "- La valeur Cd≈0,119 est une référence numérique publiée, sans "
                 "décomposition Cp/Cf indépendante ici."
             ),
             "- Les deux familles comparées utilisent des échantillonnages "
             (
-                différents du profil analytique; leur accord ne prouve pas une "
+                "différents du profil analytique; leur accord ne prouve pas une "
                 "invariance à anisotropie pure, à géométrie discrète strictement fixée."
             ),
             "- L’arête de fermeture du bord de fuite (épaisseur NACA non nulle) "
             (
-                reste un seul segment : ce défaut de raffinement géométrique doit "
+                "reste un seul segment : ce défaut de raffinement géométrique doit "
                 "être suivi."
             ),
             (
-                - La famille cosinus historique accroît fortement son aspect maximal "
+                "- La famille cosinus historique accroît fortement son aspect maximal "
                 "au bord d’attaque."
             ),
             (
-                - Une compensation entre erreurs de pression et de frottement "
+                "- Une compensation entre erreurs de pression et de frottement "
                 "n’est jamais une preuve d’indépendance du Cd total."
             ),
             "",
