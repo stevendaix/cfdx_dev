@@ -327,7 +327,8 @@ def markdown(result: dict) -> str:
     ]
     for name, fam in result["families"].items():
         for obs in fam.get("observations", []):
-            fmt = lambda k: f"{obs[k]:.9f}" if k in obs else "—"
+            def fmt(k, obs=obs):
+                return f"{obs[k]:.9f}" if k in obs else "—"
             status = "exécuté" if obs["converged"] else "manquant/échec"
             lines.append(
                 f"| {name} | N{obs['N']} | {fmt('cd')} | {fmt('cdp')} "
