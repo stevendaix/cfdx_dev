@@ -1,4 +1,5 @@
 """Report the longest executed tests from CTest JUnit without hiding failures."""
+
 from __future__ import annotations
 
 import argparse
