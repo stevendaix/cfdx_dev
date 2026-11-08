@@ -20,7 +20,7 @@ SPEC.loader.exec_module(Q)
 CATALOG = Q.read_catalog()
 
 
-def test(name: str, **properties):
+def make_test_case(name: str, **properties):
     return {"name": name, "properties": [{"name": k, "value": v} for k, v in properties.items()]}
 
 
@@ -33,47 +33,47 @@ class ProfileTests(unittest.TestCase):
         self.assertEqual(len({p["label"] for p in CATALOG.values()}), len(CATALOG))
 
     def test_quick_profile_is_exact_not_fuzzy(self):
-        fake = [test(n) for n in CATALOG["smoke"]["quick"]]
-        fake.append(test("test_huge_campaign", LABELS=["long"]))
+        fake = [make_test_case(n) for n in CATALOG["smoke"]["quick"]]
+        fake.append(make_test_case("test_huge_campaign", LABELS=["long"]))
         plan = Q.plan_profile(fake, "smoke", "quick", CATALOG)
         self.assertEqual(plan["test_count"], len(CATALOG["smoke"]["quick"]))
         self.assertNotIn("test_huge_campaign", plan["selected_tests"])
 
     def test_mandatory_anchor_missing_rejects_plan(self):
-        selected = [test(n) for n in CATALOG["naca"]["quick"] if n != "test_naca0012_quick"]
+        selected = [make_test_case(n) for n in CATALOG["naca"]["quick"] if n != "test_naca0012_quick"]
         with self.assertRaisesRegex(Q.QualificationError, "required qualification tests missing"):
             Q.plan_profile(selected, "naca", "quick", CATALOG)
 
     def test_extended_requires_hard_physical_anchor(self):
-        selected = [test(n) for n in CATALOG["n9"]["quick"]]
+        selected = [make_test_case(n) for n in CATALOG["n9"]["quick"]]
         with self.assertRaisesRegex(Q.QualificationError, "does not select mandatory"):
             Q.plan_profile(selected, "n9", "extended", CATALOG)
 
     def test_mandatory_long_not_selected_by_quick(self):
-        fake = [test(n) for n in CATALOG["ghia"]["quick"]]
+        fake = [make_test_case(n) for n in CATALOG["ghia"]["quick"]]
         fake[0]["properties"].append({"name": "LABELS", "value": ["long"]})
         with self.assertRaisesRegex(Q.QualificationError, "quick profile.*long test"):
             Q.plan_profile(fake, "ghia", "quick", CATALOG)
 
     def test_disabled_selected_test_is_not_success(self):
-        fake = [test(n) for n in CATALOG["smoke"]["quick"]]
+        fake = [make_test_case(n) for n in CATALOG["smoke"]["quick"]]
         fake[1]["properties"].append({"name": "DISABLED", "value": True})
         with self.assertRaisesRegex(Q.QualificationError, "disabled qualification"):
             Q.plan_profile(fake, "smoke", "quick", CATALOG)
 
     def test_ctest_dependencies_and_fixtures_are_included_once(self):
-        fake = [test(n) for n in CATALOG["smoke"]["quick"]]
+        fake = [make_test_case(n) for n in CATALOG["smoke"]["quick"]]
         fake[0]["properties"].extend([
             {"name": "DEPENDS", "value": ["prereq"]},
             {"name": "FIXTURES_REQUIRED", "value": ["mesh"]},
         ])
-        fake += [test("prereq"), test("mesh_setup", FIXTURES_SETUP=["mesh"])]
+        fake += [make_test_case("prereq"), make_test_case("mesh_setup", FIXTURES_SETUP=["mesh"])]
         plan = Q.plan_profile(fake, "smoke", "quick", CATALOG)
         self.assertEqual(plan["prerequisites"], ["mesh_setup", "prereq"])
         self.assertEqual(len(plan["selected_tests"]), len(set(plan["selected_tests"])))
 
     def test_missing_fixture_is_fatal(self):
-        fake = [test(n) for n in CATALOG["smoke"]["quick"]]
+        fake = [make_test_case(n) for n in CATALOG["smoke"]["quick"]]
         fake[0]["properties"].append({"name": "FIXTURES_REQUIRED", "value": ["missing"]})
         with self.assertRaisesRegex(Q.QualificationError, "missing fixture producer"):
             Q.plan_profile(fake, "smoke", "quick", CATALOG)
@@ -97,7 +97,7 @@ class ProfileTests(unittest.TestCase):
                 Q.read_manifest(Path(tmp), path)
 
     def test_bad_profile_scope_rejected(self):
-        fake = [test(n) for n in CATALOG["smoke"]["quick"]]
+        fake = [make_test_case(n) for n in CATALOG["smoke"]["quick"]]
         with self.assertRaisesRegex(Q.QualificationError, "unknown qualification"):
             Q.plan_profile(fake, "does-not-exist", "quick", CATALOG)
         with self.assertRaisesRegex(Q.QualificationError, "unknown qualification scope"):
@@ -113,11 +113,11 @@ class ProfileTests(unittest.TestCase):
                 sys.executable, str(ROOT / "scripts/ci/ctest_timings.py"), str(junit),
                 "--require-names-file", str(path / "tests.txt"),
             ]
-            self.assertNotEqual(subprocess.run(cmd, capture_output=True).returncode, 0)
+            self.assertNotEqual(subprocess.run(cmd, check=False, capture_output=True).returncode, 0)
             junit.write_text('<testsuite><testcase name="a" time="1"/><testcase name="b" time="2"/></testsuite>')
-            self.assertEqual(subprocess.run(cmd, capture_output=True).returncode, 0)
+            self.assertEqual(subprocess.run(cmd, check=False, capture_output=True).returncode, 0)
             junit.write_text('<testsuite><testcase name="a" time="1"><skipped/></testcase><testcase name="b" time="2"/></testsuite>')
-            self.assertNotEqual(subprocess.run(cmd, capture_output=True).returncode, 0)
+            self.assertNotEqual(subprocess.run(cmd, check=False, capture_output=True).returncode, 0)
 
 
 class TriggerTests(unittest.TestCase):
