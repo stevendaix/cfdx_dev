@@ -31,57 +31,57 @@ class SameStateTraceTests(unittest.TestCase):
                 delta = 0.20 if face == 5 else 0.0
                 pred = mass + 0.4 if face == 5 else mass
                 self.faces.append(
-                    dict(
-                        iteration=it,
-                        face=face,
-                        owner=owner,
-                        neighbour=neighbour,
-                        mass_flux=mass,
-                        upwind_convection=up,
-                        tvd_convection=up + delta,
-                        deferred_tvd_flux=delta,
-                        predictor_hbya_flux=pred,
-                        rc_relaxed_flux=mass,
-                        rc_full_flux=mass,
-                        conservative_flux=mass,
-                        rc_pressure_response=pred - mass,
-                        pressure_relaxation_split=0,
-                        simplec_extra_flux=0,
-                        decomposition_error=0,
-                        internal_pressure_operator=pred - mass if face == 5 else "nan",
-                        pressure_operator_error=0 if face == 5 else "nan",
-                    )
+                    {
+                        "iteration": it,
+                        "face": face,
+                        "owner": owner,
+                        "neighbour": neighbour,
+                        "mass_flux": mass,
+                        "upwind_convection": up,
+                        "tvd_convection": up + delta,
+                        "deferred_tvd_flux": delta,
+                        "predictor_hbya_flux": pred,
+                        "rc_relaxed_flux": mass,
+                        "rc_full_flux": mass,
+                        "conservative_flux": mass,
+                        "rc_pressure_response": pred - mass,
+                        "pressure_relaxation_split": 0,
+                        "simplec_extra_flux": 0,
+                        "decomposition_error": 0,
+                        "internal_pressure_operator": pred - mass if face == 5 else "nan",
+                        "pressure_operator_error": 0 if face == 5 else "nan",
+                    }
                 )
                 self.picards.append(
-                    dict(
-                        iteration=it,
-                        face=face,
-                        owner=owner,
-                        neighbour=neighbour,
-                        high_order_fraction=1,
-                        assembly_mass_flux=mass,
-                        upwind_flux=up,
-                        selected_flux=up + delta,
-                        deferred_tvd_flux=delta,
-                    )
+                    {
+                        "iteration": it,
+                        "face": face,
+                        "owner": owner,
+                        "neighbour": neighbour,
+                        "high_order_fraction": 1,
+                        "assembly_mass_flux": mass,
+                        "upwind_flux": up,
+                        "selected_flux": up + delta,
+                        "deferred_tvd_flux": delta,
+                    }
                 )
             for c in (0, 1, 2):
                 self.linears.append(
-                    dict(
-                        iteration=it,
-                        component=c,
-                        alpha_u=0.6,
-                        linear_tolerance=1e-10,
-                        relaxed_true_l2=1e-13,
-                        relaxed_true_relative=1e-12,
-                        unrelaxed_original_l2=0.2,
-                        unrelaxed_original_relative=0.02,
-                        relaxation_displacement_l2=0.2,
-                        velocity_change_linf=0.001,
-                        relaxed_true_linf=1e-13,
-                        original_operator_linf=0.2,
-                        worst_original_cell=0,
-                    )
+                    {
+                        "iteration": it,
+                        "component": c,
+                        "alpha_u": 0.6,
+                        "linear_tolerance": 1e-10,
+                        "relaxed_true_l2": 1e-13,
+                        "relaxed_true_relative": 1e-12,
+                        "unrelaxed_original_l2": 0.2,
+                        "unrelaxed_original_relative": 0.02,
+                        "relaxation_displacement_l2": 0.2,
+                        "velocity_change_linf": 0.001,
+                        "relaxed_true_linf": 1e-13,
+                        "original_operator_linf": 0.2,
+                        "worst_original_cell": 0,
+                    }
                 )
         self.write()
 
