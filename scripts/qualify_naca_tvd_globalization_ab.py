@@ -135,7 +135,6 @@ def run_campaign(*, binary: Path, mesh: Path, output: Path,
                                 stdout=subprocess.PIPE,stderr=subprocess.PIPE,
                                 text=True,encoding="utf-8",errors="replace",
                                 timeout=seconds,check=False)
-                                check=False)
             stdout,stderr,return_code=proc.stdout,proc.stderr,proc.returncode
         except subprocess.TimeoutExpired as error:
             timed_out=True
