@@ -21,10 +21,10 @@ from pathlib import Path
 
 import h5py
 import numpy as np
+from audit_bfs_compensated_pressure import compensated_residual, two_sum_update
 from scipy.sparse import csr_matrix
 from scipy.sparse.linalg import splu
 
-from audit_bfs_compensated_pressure import compensated_residual, two_sum_update
 from seed_bfs_pressure_from_capture import read_capture
 
 
