@@ -1,10 +1,13 @@
 """Rejection and pairing contracts for live production high/low diagnostics."""
+
 from __future__ import annotations
 import importlib.util
 from pathlib import Path
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[2] / "scripts/qualify_bfs_pressure_hilo_live.py"
+SCRIPT = (
+    Path(__file__).resolve().parents[2] / "scripts/qualify_bfs_pressure_hilo_live.py"
+)
 spec = importlib.util.spec_from_file_location("qualify_bfs_pressure_hilo_live", SCRIPT)
 assert spec and spec.loader
 module = importlib.util.module_from_spec(spec)
@@ -13,17 +16,24 @@ spec.loader.exec_module(module)
 
 def _line(prefix, *, face):
     if face:
-        return (f"{prefix} iter=1 corrector=0 before_relative=2e-10 "
-                "after_relative=1e-13 original_csr_after_relative=2e-10 "
-                "full_rhie_chow_qualified=0")
-    return (f"{prefix} iter=1 corrector=0 original_double_relative=4e-10 "
-            "final_split_relative=1e-18 final_fp64_relative=2e-10 "
-            "physical_fv_qualified=0")
+        return (
+            f"{prefix} iter=1 corrector=0 before_relative=2e-10 "
+            "after_relative=1e-13 original_csr_after_relative=2e-10 "
+            "full_rhie_chow_qualified=0"
+        )
+    return (
+        f"{prefix} iter=1 corrector=0 original_double_relative=4e-10 "
+        "final_split_relative=1e-18 final_fp64_relative=2e-10 "
+        "physical_fv_qualified=0"
+    )
 
 
 def test_live_report_fails_closed_on_different_operator():
-    log = (_line("PRESSURE_HILO_FACES_LIVE", face=True) + "\n" +
-           _line("PRESSURE_HILO_LIVE", face=False))
+    log = (
+        _line("PRESSURE_HILO_FACES_LIVE", face=True)
+        + "\n"
+        + _line("PRESSURE_HILO_LIVE", face=False)
+    )
     report = module.parse_log(log)
     assert report["status"] == "DIAGNOSTIC_ONLY_NOT_QUALIFIED"
     assert report["comparisons"][0]["csr_split_pass"]
@@ -45,6 +55,12 @@ def test_nonfinite_and_fake_physical_qualification_rejected():
     face = _line("PRESSURE_HILO_FACES_LIVE", face=True)
     csr = _line("PRESSURE_HILO_LIVE", face=False)
     with pytest.raises(ValueError, match="nonfinite"):
-        module.parse_log(face.replace("after_relative=1e-13", "after_relative=nan") + "\n" + csr)
+        module.parse_log(
+            face.replace("after_relative=1e-13", "after_relative=nan") + "\n" + csr
+        )
     with pytest.raises(ValueError, match="unexpected physical"):
-        module.parse_log(face + "\n" + csr.replace("physical_fv_qualified=0", "physical_fv_qualified=1"))
+        module.parse_log(
+            face
+            + "\n"
+            + csr.replace("physical_fv_qualified=0", "physical_fv_qualified=1")
+        )
