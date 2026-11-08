@@ -63,12 +63,13 @@ class Case:
         }
 
     def run(self, case_file: Path, extra_args: list[str] | None = None) -> int:
-        if not self.execution.solver:
-            raise ValueError("execution.solver must be set before run()")
         from .native_solver_preflight import (
             is_native_production_solver,
             native_production_command,
         )
+
+        if not self.execution.solver:
+            raise ValueError("execution.solver must be set before run()")
 
         if is_native_production_solver(self.execution.solver):
             command = native_production_command(
