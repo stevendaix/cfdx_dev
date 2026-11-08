@@ -169,11 +169,11 @@ def load_faces(path: Path, independent: bool = True):
         )
         match(row["decomposition_error"], 0.0, "predictor_pressure")
         if neighbour >= 0 and independent:
-                match(
-                    row["predictor_hbya_flux"] - row["rc_full_flux"],
-                    row["internal_pressure_operator"],
-                    "independent_internal_pressure",
-                )
+            match(
+                row["predictor_hbya_flux"] - row["rc_full_flux"],
+                row["internal_pressure_operator"],
+                "independent_internal_pressure",
+            )
                 match(
                     row["pressure_operator_error"], 0.0, "independent_internal_pressure"
                 )
