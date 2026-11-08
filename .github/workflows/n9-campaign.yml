@@ -1,22 +1,17 @@
-name: N9 qualification campaign
+name: N9 diagnostic campaign (manual)
 
-# Full N9 pressure-velocity campaign driver (physical matrix + negative
-# diagnostics + Rhie-Chow consistency + pressure reference policies + Schur
-# qualification + production paths). Opt-in, same label as the heavy N9-S7
-# matrix job: it runs only for pull requests carrying the validation-total
-# label. The driver fails (exit 1) unless every declared test executed and
-# passed on the exact PR HEAD, with the evidence retained as a JSON report.
+# Diagnostic-only complete N9 campaign, launched explicitly on a chosen ref.
+# The regular physical qualification gate resides in cfdx-validation.yml.
+# This workflow is never triggered automatically by a PR label or push.
 
 on:
   workflow_dispatch:
-  pull_request:
-    types: [labeled, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
 
 concurrency:
-  group: n9-campaign-${{ github.event.pull_request.number }}
+  group: n9-campaign-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -24,13 +19,13 @@ env:
 
 jobs:
   n9-campaign:
-    name: N9 Qualification Campaign
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'validation-total')
+    name: N9 manual diagnosis
+    # Manual reproducer; never a substitute for the total-validation gate.
     runs-on: ubuntu-24.04
     timeout-minutes: 90
 
     steps:
-      - name: Checkout PR
+      - name: Checkout requested commit
         uses: actions/checkout@v7
 
       - name: Install build dependencies
@@ -87,7 +82,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: n9-campaign-${{ github.event.pull_request.number }}-${{ github.sha }}
+          name: n9-campaign-manual-${{ github.sha }}
           path: |
             ${{ env.BUILD_DIR }}/n9-campaign.log
             ${{ env.BUILD_DIR }}/n9_physical_campaign.json

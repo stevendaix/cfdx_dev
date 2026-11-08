@@ -99,9 +99,9 @@ jobs:
             # cfdx-validation.yml. The sanitizer-slow label is intentionally
             # narrow and is based on measured sanitizer runtime, not on test
             # importance.
-            ctest --test-dir build -LE 'long|benchmark|campaign|sanitizer-slow' --output-on-failure --no-tests=error --parallel 6
+            ctest --test-dir build -LE 'long|benchmark|campaign|sanitizer-slow' --output-on-failure --no-tests=error --parallel 6 --output-junit "$PWD/build/ctest-DebugSanitizers.xml"
           else
-            ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4
+            ctest --test-dir build -LE long --output-on-failure --no-tests=error --parallel 4 --output-junit "$PWD/build/ctest-Release.xml"
           fi
         env:
           ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
@@ -149,6 +149,14 @@ jobs:
           CFDX_THERMAL_SOLVER: ${{ github.workspace }}/build/cfdx_thermal_solver
           PYTHONPATH: ${{ github.workspace }}/src/cfdx/python
 
+      - name: CTest duration diagnostics
+        id: timing
+        if: always() && steps.ctest.outcome != 'skipped'
+        run: |
+          python3 scripts/ci/ctest_timings.py \
+            "build/ctest-${{ matrix.build_type }}.xml" \
+            --output "build/ctest-${{ matrix.build_type }}-timings.json"
+
       - name: Compiler cache diagnostics
         if: always()
         run: |
@@ -180,6 +188,8 @@ jobs:
             build/**/*.log
             build/compile_commands.json
             build/n12-mms-quick/
+            build/ctest-*.xml
+            build/ctest-*-timings.json
             build/wall_distance_naca0012_refined.csv
             build.log
           if-no-files-found: ignore
@@ -191,10 +201,11 @@ jobs:
           ctest_outcome='${{ steps.ctest.outcome }}'
           python_outcome='${{ steps.python.outcome }}'
           n12_quick_outcome='${{ steps.n12_quick.outcome }}'
+          timing_outcome='${{ steps.timing.outcome }}'
 
           echo "Final CI gate: build=$build_outcome ctest=$ctest_outcome python=$python_outcome n12_quick=$n12_quick_outcome"
 
-          if [[ "$build_outcome" != "success" || "$ctest_outcome" != "success" ]]; then
+          if [[ "$build_outcome" != "success" || "$ctest_outcome" != "success" || "$timing_outcome" != "success" ]]; then
             echo "CFDX CI FINAL DECISION: FAIL"
             exit 1
           fi

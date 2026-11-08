@@ -40,9 +40,16 @@ jobs:
           sudo apt-get install -y \
             cmake ninja-build g++ \
             libhdf5-openmpi-dev libopenmpi-dev \
-            python3 python3-venv \
-            latexmk texlive-latex-base texlive-latex-recommended \
-            texlive-latex-extra
+            python3 python3-venv ccache
+          # LaTeX is report-only: its packages belong in validation-report.
+
+      - name: Restore validation compiler cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ccache
+          key: cfdx-full-ccache-${{ runner.os }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            cfdx-full-ccache-${{ runner.os }}-
 
       - name: Install Python dependencies
         run: |
@@ -63,7 +70,9 @@ jobs:
             -DCFDX_BUILD_PYTHON=OFF \
             -DCFDX_USE_HDF5_SERIAL=OFF \
             -DCFDX_ENABLE_PARALLEL_HDF5=ON \
-            -DPython3_EXECUTABLE="$PWD/$VENV_DIR/bin/python"
+            -DPython3_EXECUTABLE="$PWD/$VENV_DIR/bin/python" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build complete validation suite
         id: build
@@ -127,10 +136,20 @@ jobs:
           # not against the launch directory, so a relative path here would
           # land in build-validation/build-validation/ and never be found.
           # Pass an absolute path so the annotate/evidence steps see the file.
+          # The previous full "fast" suite ran serially. This includes
+          # hundreds of tests and must use CTest scheduling, not one-at-a-time.
           ctest --test-dir "$BUILD_DIR" \
             -LE long \
+            --parallel 4 \
             --output-on-failure \
+            --no-tests=error \
             --output-junit "$PWD/$BUILD_DIR/ctest-fast-results.xml"
+      - name: Record slowest CTest regressions
+        if: always() && steps.fast_tests.outcome != 'skipped'
+        run: |
+          python3 scripts/ci/ctest_timings.py \
+            "$BUILD_DIR/ctest-fast-results.xml" \
+            --output "$BUILD_DIR/ctest-fast-timings.json"
       - name: Annotate failing tests
         if: always()
         shell: bash
@@ -169,6 +188,7 @@ jobs:
             ${{ env.BUILD_DIR }}/Testing/
             ${{ env.BUILD_DIR }}/**/*.log
             ${{ env.BUILD_DIR }}/ctest-fast-results.xml
+            ${{ env.BUILD_DIR }}/ctest-fast-timings.json
           if-no-files-found: warn
           retention-days: 30
       - name: Final fast-test gate
@@ -176,23 +196,27 @@ jobs:
         run: '[[ "${{ steps.fast_tests.outcome }}" == "success" ]] || exit 1'
 
   long-tests:
-    name: Long validation campaigns
+    # One serial CTest process previously combined two separate 5400-second
+    # campaigns (Ghia 160 and the N9 physical matrix). RUN_SERIAL on Ghia
+    # stopped the other campaigns on the same worker. Run four *independent*
+    # workers with a fail-closed manifest partition and unchanged physics gates.
+    name: Long validation shard ${{ matrix.shard }}/4
     needs: prepare
     runs-on: ubuntu-24.04
-    # This partition hit the 120-minute Actions deadline on 2026-10-29
-    # without a reported test failure. Extend only the job wall-clock budget;
-    # CTest per-test limits, numerical tolerances, and physical gates are unchanged.
     timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@v7
       - name: Install runtime dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build g++ libhdf5-openmpi-dev libopenmpi-dev python3 python3-venv
-      - name: Install Python dependencies
+      - name: Install Python dependencies for CTest fixtures
         run: |
           python3 -m venv "$VENV_DIR"
-          "$VENV_DIR/bin/python" -m pip install --upgrade pip
           "$VENV_DIR/bin/python" -m pip install h5py meshio pytest numpy matplotlib pydantic gmsh pyyaml
           "$VENV_DIR/bin/python" -m pip install -e .
       - uses: actions/download-artifact@v7
@@ -201,62 +225,83 @@ jobs:
           path: .
       - name: Restore validation build
         run: tar -xzf cfdx-validation-build.tar.gz
-      - name: Generate long-validation mesh fixtures
+      - name: Plan complete long CTest coverage (fail closed)
+        id: plan
         run: |
-          "$VENV_DIR/bin/python" scripts/generate_2d_validation_meshes.py all --output-dir "$BUILD_DIR/validation_meshes"
-          for mesh in \
-            channel_n16.h5 channel_n32.h5 channel_n64.h5 \
-            bfs_re200_n16.h5 bfs_re200_n32.h5 bfs_re200_n64.h5 \
-            naca0012_laminar_n64.h5 naca0012_laminar_n128.h5 naca0012_laminar_n256.h5; do
-            test -s "$BUILD_DIR/validation_meshes/$mesh" || {
-              echo "::error::required validation mesh missing after generation: $mesh"
-              exit 1
-            }
-          done
-      - name: Run long validation campaigns
+          python3 scripts/ci/ctest_shard.py \
+            --build-dir "$BUILD_DIR" \
+            --label long \
+            --lanes 4 \
+            --output-dir "$BUILD_DIR/ci-shards" \
+            --required-test test_ghia_cavity_profile_study \
+            --required-test test_ghia_cavity_order \
+            --required-test test_n9_physical_matrix \
+            --required-test test_n9_negative_diagnostics \
+            --required-test test_n9_poiseuille_body_force_production \
+            --required-test test_n7_adaptive_relaxation_re400 \
+            --required-test test_polyhedral_poisson_convergence \
+            --required-test test_wall_distance_transport_stress65 \
+            --required-test test_naca0012_qualification \
+            --required-test test_natural_convection_de_vahl_davis
+      - name: Run long validation shard ${{ matrix.shard }}
         id: long_tests
+        if: steps.plan.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
+          regex_file="$BUILD_DIR/ci-shards/long-shard-${{ matrix.shard }}.regex"
+          test -s "$regex_file"
           CFDX_NACA_FORENSICS=1 ctest --test-dir "$BUILD_DIR" \
-            -L long \
+            -R "$(cat "$regex_file")" \
             --no-tests=error \
-            --parallel 4 \
-            -V 2>&1 | tee "$BUILD_DIR/long-validation.log"
-      - name: Annotate failing long campaigns
+            --parallel 3 \
+            --output-junit "$PWD/$BUILD_DIR/ctest-long-${{ matrix.shard }}.xml" \
+            -V 2>&1 | tee "$BUILD_DIR/long-validation-shard-${{ matrix.shard }}.log"
+      - name: Verify each planned long test executed exactly once
+        id: coverage
+        if: always() && steps.plan.outcome == 'success'
+        run: |
+          python3 scripts/ci/ctest_timings.py \
+            "$BUILD_DIR/ctest-long-${{ matrix.shard }}.xml" \
+            --require-names-file "$BUILD_DIR/ci-shards/long-shard-${{ matrix.shard }}.txt" \
+            --output "$BUILD_DIR/ctest-long-${{ matrix.shard }}-timings.json"
+      - name: Report slowest tests and failure evidence
         if: always()
         shell: bash
         run: |
-          set -uo pipefail
-          LOG="$BUILD_DIR/long-validation.log"
-          if [[ ! -s "$LOG" ]]; then
-            echo "::warning::no long-validation.log produced; nothing to annotate"
-            exit 0
+          xml="$BUILD_DIR/ctest-long-${{ matrix.shard }}.xml"
+          # Successful shard coverage already publishes its timing summary.
+          # Re-run only for failed/incomplete coverage, to keep useful forensics.
+          if [[ -s "$xml" && "${{ steps.coverage.outcome }}" != "success" ]]; then
+            python3 scripts/ci/ctest_timings.py "$xml" \
+              --output "$BUILD_DIR/ctest-long-${{ matrix.shard }}-timings.json" || true
           fi
-          awk '/The following tests FAILED:/{flag=1;next} flag&&/^[[:space:]]*[0-9]+ - /{print;next} flag{exit}' "$LOG" \
-            | sed -E 's/^[[:space:]]*[0-9]+ - //; s/ \(.*//' \
-            | while IFS= read -r name; do
-                safe="${name//%/%25}"
-                echo "::error title=ctest long campaign failure::${safe}"
-              done
-          exit 0
-
-      - name: Upload evidence
+          if [[ -s "$BUILD_DIR/long-validation-shard-${{ matrix.shard }}.log" ]]; then
+            grep -E 'The following tests FAILED:|[0-9]+ - .*\(.*Failed\)' \
+              "$BUILD_DIR/long-validation-shard-${{ matrix.shard }}.log" || true
+          fi
+      - name: Upload shard evidence
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: cfdx-total-validation-long-evidence
+          name: cfdx-total-validation-long-evidence-${{ matrix.shard }}
           path: |
             ${{ env.BUILD_DIR }}/Testing/
             ${{ env.BUILD_DIR }}/**/*.log
-            ${{ env.BUILD_DIR }}/long-validation.log
+            ${{ env.BUILD_DIR }}/long-validation-shard-${{ matrix.shard }}.log
+            ${{ env.BUILD_DIR }}/ctest-long-${{ matrix.shard }}.xml
+            ${{ env.BUILD_DIR }}/ctest-long-${{ matrix.shard }}-timings.json
+            ${{ env.BUILD_DIR }}/ci-shards/
             ${{ env.BUILD_DIR }}/naca-pressure-*
           if-no-files-found: warn
           retention-days: 30
-      - name: Final long-test gate
+      - name: Final shard gate
         if: always()
-        run: '[[ "${{ steps.long_tests.outcome }}" == "success" ]] || exit 1'
+        run: |
+          [[ "${{ steps.plan.outcome }}" == "success" && \
+             "${{ steps.long_tests.outcome }}" == "success" && \
+             "${{ steps.coverage.outcome }}" == "success" ]] || exit 1
 
   wall-distance:
     name: Wall-distance benchmarks
@@ -483,23 +528,37 @@ jobs:
         run: tar -xzf cfdx-validation-build.tar.gz
       - uses: actions/download-artifact@v7
         with:
-          name: cfdx-total-validation-long-evidence
+          pattern: cfdx-total-validation-long-evidence-*
           path: long-evidence
-      - name: Verify long-validation evidence is present
-        # Artifact path layout depends on upload-artifact's common-root
-        # calculation across all matched paths. Resolve the log recursively
-        # rather than assuming it is at the download directory root.
+      - name: Verify all four long-validation logs and combine evidence
+        # A missing shard is a failure even when the remaining three have
+        # passing JUnit XMLs. The report consumes the same physical records,
+        # simply concatenated from independent workers.
         shell: bash
         run: |
           set -euo pipefail
-          LONG_LOG="$(find long-evidence -type f -name long-validation.log -print -quit)"
-          if [[ -z "$LONG_LOG" || ! -s "$LONG_LOG" ]]; then
-            echo "::error::long-validation.log missing or empty in downloaded evidence"
-            find long-evidence -maxdepth 5 -type f -print || true
-            exit 1
-          fi
-          echo "LONG_VALIDATION_LOG=$LONG_LOG" >> "$GITHUB_ENV"
-          echo "Using long validation evidence: $LONG_LOG"
+          combined="$BUILD_DIR/long-validation-combined.log"
+          : > "$combined"
+          for shard in 0 1 2 3; do
+            log="$(find "long-evidence/cfdx-total-validation-long-evidence-$shard" \
+              -type f -name "long-validation-shard-$shard.log" -print -quit)"
+            if [[ -z "$log" || ! -s "$log" ]]; then
+              echo "::error::missing long-validation-shard-$shard.log (incomplete qualification)"
+              exit 1
+            fi
+            cat "$log" >> "$combined"
+            printf '\n' >> "$combined"
+          done
+          test -s "$combined"
+          # Independent shard jobs guard their own CTest result sets. This
+          # aggregate check also rejects a missing/duplicated test across jobs.
+          python3 scripts/ci/verify_shards.py \
+            --root long-evidence \
+            --lanes 4 \
+            --label long \
+            --output "$BUILD_DIR/long-shards-coverage.json"
+          echo "LONG_VALIDATION_LOG=$combined" >> "$GITHUB_ENV"
+          echo "Combined four complete long-validation shard logs: $combined"
 
       - name: Build numerical validation report
         id: validation_report
@@ -524,6 +583,7 @@ jobs:
           path: |
             ${{ env.BUILD_DIR }}/validation-report/
             ${{ env.BUILD_DIR }}/diagnostic-evidence/
+            ${{ env.BUILD_DIR }}/long-shards-coverage.json
           if-no-files-found: warn
           retention-days: 30
       - name: Final report gate
