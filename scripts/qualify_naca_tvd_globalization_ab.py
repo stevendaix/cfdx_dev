@@ -12,9 +12,9 @@ import hashlib
 import json
 import os
 import re
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 CASES: dict[str, dict[str, str]] = {
