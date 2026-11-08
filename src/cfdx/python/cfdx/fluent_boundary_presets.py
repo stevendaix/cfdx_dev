@@ -4,6 +4,7 @@ These are *physical* boundary choices, not a replacement for the FVM operators.
 Unsupported Fluent BCs fail closed, rather than masquerading as velocity-inlet
 or zero-gradient. This module is GUI-independent and can be used from a CLI.
 """
+
 from __future__ import annotations
 
 from math import isfinite
@@ -25,8 +26,7 @@ SIMPLE_BOUNDARY_CHOICES = (
 
 UNSUPPORTED_CHOICE_REASONS = {
     "pressure-inlet": (
-        "pression totale / relation de Bernoulli non integree "
-        "au solveur incompressible"
+        "pression totale / relation de Bernoulli non integree au solveur incompressible"
     ),
     "mass-flow-inlet": (
         "conversion de debit en flux de face non integree et non qualifiee"
@@ -75,9 +75,7 @@ def make_simple_boundary(
     else:
         vector = list(velocity)
         if len(vector) != 3 or any(
-            isinstance(x, bool)
-            or not isinstance(x, (int, float))
-            or not isfinite(x)
+            isinstance(x, bool) or not isinstance(x, (int, float)) or not isfinite(x)
             for x in vector
         ):
             raise ValueError(
