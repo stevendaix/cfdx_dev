@@ -4880,6 +4880,13 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     // vector has [Ux,Uy,Uz,p,phi] in that order; phi is an INDEPENDENT,
     // conservative state variable and is not silently replaced by interp(U).
     NonlinearMultisecantHistory multisecant_history(controls.nonlinear_multisecant);
+    // Predictor-failure isolation (plan du 2026-11-08): a multisecant trial
+    // rejected by the physical growth gate counts here, while a failure of
+    // the ordinary Picard fallback is accounted separately by the retry
+    // controller. Two consecutive predictor rejections discard the whole
+    // multisecant history: the extrapolation basis itself is then suspect.
+    std::size_t multisecant_consecutive_rejections = 0;
+    const std::size_t multisecant_maximum_consecutive_rejections = 2;
     const std::size_t nc_multisecant = mesh.n_cells();
     const std::size_t nf_multisecant = mesh.n_faces();
     const auto pack_nonlinear_state = [&](const auto& velocity, const auto& pressure,
@@ -7811,10 +7818,22 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 result.convergence_status=previous_result_status;
                 result.convergence_reason=previous_result_reason;
                 result.iterations=previous_result_iterations;
+                ++multisecant_consecutive_rejections;
+                if (multisecant_consecutive_rejections >=
+                        multisecant_maximum_consecutive_rejections) {
+                    multisecant_history.reset();
+                    multisecant_consecutive_rejections = 0;
+                    if (controls.diagnostics.iteration_trace)
+                        std::cerr << "MULTISECANT_HISTORY_RESET iteration="
+                                  << iter
+                                  << " reason=repeated predictor rejection\\n";
+                }
                 retry_controller.retry_without_relaxation();
                 continue;
             }
         }
+        if (multisecant_trial_used)
+            multisecant_consecutive_rejections = 0;
         h.multisecant_proposed=multisecant_proposal.available;
         h.multisecant_accepted=multisecant_trial_used;
         if (multisecant_trial_used) {
@@ -9007,4 +9026,5 @@ inline IncompressibleSolveResult solve_steady_incompressible(
 }
 
 } // namespace cfdx::physics
+
 
