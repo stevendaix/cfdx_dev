@@ -1,4 +1,5 @@
 """Offline regression tests for the fail-closed CTest lane planner."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -7,7 +8,9 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SPEC = importlib.util.spec_from_file_location("ctest_shard", ROOT / "scripts/ci/ctest_shard.py")
+SPEC = importlib.util.spec_from_file_location(
+    "ctest_shard", ROOT / "scripts/ci/ctest_shard.py"
+)
 assert SPEC and SPEC.loader
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
@@ -29,22 +32,32 @@ class CTestShardTests(unittest.TestCase):
         tests = [fake(f"test_{i}", TIMEOUT=i * 120) for i in range(1, 13)]
         tests.append(fake("quick_only", "unit"))
         a = MODULE.build_plan(tests, "long", 4, required_tests=("test_4",))
-        b = MODULE.build_plan(list(reversed(tests)), "long", 4, required_tests=("test_4",))
+        b = MODULE.build_plan(
+            list(reversed(tests)), "long", 4, required_tests=("test_4",)
+        )
         self.assertEqual(a, b)
         assigned = [name for lane in a["lanes"] for name in lane["tests"]]
         self.assertCountEqual(assigned, [f"test_{i}" for i in range(1, 13)])
         self.assertNotIn("quick_only", assigned)
 
     def test_depends_is_not_split(self):
-        tests = [fake("first", TIMEOUT=300), fake("second", DEPENDS=["first"]),
-                 fake("third", TIMEOUT=300), fake("fourth", TIMEOUT=300)]
+        tests = [
+            fake("first", TIMEOUT=300),
+            fake("second", DEPENDS=["first"]),
+            fake("third", TIMEOUT=300),
+            fake("fourth", TIMEOUT=300),
+        ]
         plan = MODULE.build_plan(tests, "long", 2)
-        self.assertTrue(any({"first", "second"}.issubset(set(l["tests"])) for l in plan["lanes"]))
+        self.assertTrue(
+            any({"first", "second"}.issubset(set(l["tests"])) for l in plan["lanes"])
+        )
 
     def test_fixture_setup_outside_label_is_allowed(self):
-        tests = [fake("meshgen", "mesh", FIXTURES_SETUP=["generated"]),
-                 fake("a", DEPENDS=["meshgen"], FIXTURES_REQUIRED=["generated"]),
-                 fake("b", TIMEOUT=10)]
+        tests = [
+            fake("meshgen", "mesh", FIXTURES_SETUP=["generated"]),
+            fake("a", DEPENDS=["meshgen"], FIXTURES_REQUIRED=["generated"]),
+            fake("b", TIMEOUT=10),
+        ]
         self.assertEqual(MODULE.build_plan(tests, "long", 2)["total_selected"], 2)
 
     def test_uncovered_dependency_is_rejected(self):
@@ -70,7 +83,9 @@ class CTestShardTests(unittest.TestCase):
             MODULE.write_plan(plan, Path(td))
             for lane in plan["lanes"]:
                 name = lane["tests"][0]
-                regex = (Path(td) / f"long-shard-{lane['index']}.regex").read_text().strip()
+                regex = (
+                    (Path(td) / f"long-shard-{lane['index']}.regex").read_text().strip()
+                )
                 import re
                 self.assertTrue(re.fullmatch(regex, name))
                 self.assertFalse(re.fullmatch(regex, "testaaaa"))
