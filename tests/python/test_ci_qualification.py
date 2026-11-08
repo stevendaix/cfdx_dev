@@ -157,7 +157,9 @@ class ProfileTests(unittest.TestCase):
             junit.write_text(
                 '<testsuite><testcase name="a" time="1"><skipped/></testcase><testcase name="b" time="2"/></testsuite>'
             )
-            self.assertNotEqual(subprocess.run(cmd, check=False, capture_output=True).returncode, 0)
+            self.assertNotEqual(
+                subprocess.run(cmd, check=False, capture_output=True).returncode, 0
+            )
 
 
 class TriggerTests(unittest.TestCase):
