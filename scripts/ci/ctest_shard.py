@@ -42,8 +42,7 @@ def load_manifest(build_dir: Path) -> list[dict]:
     result = subprocess.run(
         ["ctest", "--test-dir", str(build_dir), "--show-only=json-v1"],
         text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         check=True,
     )
     tests = json.loads(result.stdout)["tests"]
@@ -74,7 +73,9 @@ def costs_from_ctest(path: Path | None) -> dict[str, float]:
 
 
 def build_plan(
-    tests: list[dict], label: str, lanes: int,
+    tests: list[dict],
+    label: str,
+    lanes: int,
     required_tests: tuple[str, ...] = (),
     measured_costs: dict[str, float] | None = None,
 ) -> dict:
@@ -85,7 +86,8 @@ def build_plan(
     measured_costs = measured_costs or {}
     by_name = {t["name"]: t for t in tests}
     selected = {
-        name: test for name, test in by_name.items()
+        name: test
+        for name, test in by_name.items()
         if label in array(properties(test).get("LABELS"))
     }
     if len(selected) < lanes:
@@ -152,7 +154,9 @@ def build_plan(
                 pass
         return 180.0  # heuristic only, not a measured duration
 
-    grouped = [(sum(weight(n) for n in names), sorted(names)) for names in groups.values()]
+    grouped = [
+        (sum(weight(n) for n in names), sorted(names)) for names in groups.values()
+    ]
     grouped.sort(key=lambda pair: (-pair[0], pair[1]))
     assigned: list[list[str]] = [[] for _ in range(lanes)]
     totals = [0.0] * lanes
@@ -213,7 +217,9 @@ def main() -> int:
         tests = load_manifest(args.build_dir.resolve())
         costs = costs_from_ctest(args.cost_data)
         plan = build_plan(
-            tests, args.label, args.lanes,
+            tests,
+            args.label,
+            args.lanes,
             required_tests=tuple(args.required_test),
             measured_costs=costs,
         )
@@ -221,7 +227,10 @@ def main() -> int:
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         print(f"CTest shard planning FAILED: {error}", file=sys.stderr)
         return 2
-    print(f"Fail-closed {args.label} coverage: {plan['total_selected']} tests in {args.lanes} lanes")
+    print(
+        f"Fail-closed {args.label} coverage: "
+        f"{plan['total_selected']} tests in {args.lanes} lanes"
+    )
     for lane in plan["lanes"]:
         print(
             f"  shard {lane['index']}: {lane['test_count']} tests; "
