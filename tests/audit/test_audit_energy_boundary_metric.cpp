@@ -15,8 +15,17 @@ int main() {
         const auto geometry=build_fv_geometry(m);
         Field<double,Location::FACE> flux(m.n_faces(),"F","",1);flux.fill(0);
         Field<double,Location::CELL> t(1,"T","K",1),old(1,"Told","K",1),source(1,"Q","",1);
-        old.fill(300);source.fill(0);t.fill((10.*300+4.*400)/14.);
+        old.fill(300);source.fill(0);
         EnergySolverControls c;c.cp=1;c.density=1;c.conductivity=2;c.dt=.1;
+        const auto outlet_face=m.boundary().patch(1).face_ids.front();
+        const auto owner=m.ownership().owner(outlet_face);
+        const auto area_vector=geometry.face_area_vectors[outlet_face];
+        const double area=std::sqrt(area_vector.dot(area_vector));
+        const auto delta=geometry.face_centres[outlet_face]-geometry.cell_centres[owner];
+        const double normal_distance=std::abs(delta.dot(area_vector))/area;
+        const double conductance=c.conductivity*area/normal_distance;
+        const double capacity=c.density*c.cp*geometry.cell_volumes[owner]/c.dt;
+        t.fill((capacity*300.0+conductance*400.0)/(capacity+conductance));
         ScalarBoundaryConditions bc;
         ScalarBoundaryFaceValues fv;
         if(override_value) fv.values["outlet"].assign(m.n_faces(),400.);
