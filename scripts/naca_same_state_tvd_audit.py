@@ -174,9 +174,7 @@ def load_faces(path: Path, independent: bool = True):
                 row["internal_pressure_operator"],
                 "independent_internal_pressure",
             )
-            match(
-                row["pressure_operator_error"], 0.0, "independent_internal_pressure"
-            )
+            match(row["pressure_operator_error"], 0.0, "independent_internal_pressure")
         faces[it][face] = row
     if not faces:
         raise ValueError(f"{path}: empty face evidence")
