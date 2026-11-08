@@ -171,3 +171,11 @@ Les tests doivent couvrir le sens du flux, l'ensemble des types de patches, l'ab
 **Statut des preuves :** les tests de contrat et les diagnostics de pression sont partiels. Le résidu CSR après arrondi et les résultats BFS V4 ne satisfont pas encore le critère annoncé; aucune qualification physique SST n'est revendiquée.
 
 **Références :** Kay, Loghin & Wathen (2002), DOI: 10.1137/S1064827500389549; Rhie & Chow (1983), DOI: 10.2514/3.8284; Driver & Seegmiller (1985), DOI: 10.2514/3.8890.
+
+## 8. Contrat des frontières d'entrée dans le chemin de production
+
+Le type de patch et l'opérateur de champ sont deux informations distinctes. Un patch topologique INLET peut porter soit une vitesse prescrite \(u=u_{in}\) (\(\texttt{FIXED}\)), soit un opérateur ouvert à gradient nul \(\partial_n u=0\) (\(\texttt{ZERO_GRADIENT}\)). Le second cas est utilisé par les canaux entraînés par force volumique; il ne doit pas être confondu avec un inlet pression/débit importé. Les sources \(\texttt{pressure-inlet}\), \(\texttt{mass-flow-inlet}\) et \(\texttt{pressure-far-field}\) restent rejetées tant que leurs opérateurs dédiés ne sont pas implémentés.
+
+Le contrat de production vérifie la concordance du type topologique \(\texttt{PatchType::INLET}\) et du type physique \(\texttt{BCType::INLET}\), puis sélectionne explicitement FIXED ou ZERO_GRADIENT. Les tests unitaires couvrent les deux branches et le rejet des inlets pression/débit. Les fixtures N10 génériques déclarent explicitement leurs patches comme WALL avant d'attacher des conditions no-slip; elles ne déduisent pas une physique de l'ordre des patches VTK.
+
+**Statut :** opérateurs FIXED et ZERO_GRADIENT pris en charge sur patch INLET; pression/débit/far-field non pris en charge et rejetés. Cette extension ne constitue pas une validation physique du cas de canal.
