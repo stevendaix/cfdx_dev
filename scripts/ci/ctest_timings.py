@@ -60,11 +60,11 @@ def main() -> int:
         return 2
     if args.require_names_file:
         expected = set(args.require_names_file.read_text(encoding="utf-8").splitlines())
-        all_cases = []
-        for path in args.junit:
-            root = ET.parse(path).getroot()
-            for case in root.findall(".//testcase"):
-                all_cases.append(case)
+        all_cases = [
+            case
+            for path in args.junit
+            for case in ET.parse(path).getroot().findall(".//testcase")
+        ]
         counts = {name: 0 for name in expected}
         incomplete = []
         for case in all_cases:
