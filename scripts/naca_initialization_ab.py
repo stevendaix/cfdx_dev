@@ -77,11 +77,11 @@ def compare(
         "algorithm": a["algorithm"],
         "metrics": results,
         "limitations": [
-            "Mesh equivalence is checked by hashing the two declared inputs; "
-            "the CSV format does not authenticate which mesh created each history.",
+            ("Mesh equivalence is checked by hashing the two declared inputs; "
+            "the CSV format does not authenticate which mesh created each history."),
             "Different RHS normalization scales can affect per-component comparisons.",
-            "Only independently converged cold and warm solutions, checked for "
-            "field and force agreement, can establish initialization independence.",
+            ("Only independently converged cold and warm solutions, checked for "
+            "field and force agreement, can establish initialization independence."),
         ],
     }
 
