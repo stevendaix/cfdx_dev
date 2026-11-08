@@ -34,12 +34,14 @@ def summarize(paths: list[Path]) -> dict:
                 raise ValueError(f"invalid elapsed time in {path}")
             if not case.get("name"):
                 raise ValueError(f"unnamed test case in {path}")
-            records.append({
-                "name": case.get("name", ""),
-                "seconds": seconds,
-                "status": status,
-                "file": str(path),
-            })
+            records.append(
+                {
+                    "name": case.get("name", ""),
+                    "seconds": seconds,
+                    "status": status,
+                    "file": str(path),
+                }
+            )
     return {
         "executed": len(records),
         "failed_or_skipped": [r for r in records if r["status"] != "PASS"],
@@ -72,7 +74,10 @@ def main() -> int:
             name = case.get("name", "")
             if name in counts:
                 counts[name] += 1
-                if any(case.find(kind) is not None for kind in ("failure", "error", "skipped")):
+                if any(
+                    case.find(kind) is not None
+                    for kind in ("failure", "error", "skipped")
+                ):
                     incomplete.append(name)
         missing_or_duplicate = [name for name, n in counts.items() if n != 1]
         if not expected or missing_or_duplicate or incomplete:
@@ -100,10 +105,10 @@ def main() -> int:
             stream.write("| Test | Wall time (s) | Status |\n|---|---:|---|\n")
             for test in result["slowest"][:12]:
                 name = test["name"].replace("|", "\\|")
-                stream.write(f"| `{name}` | {test['seconds']:.3f} | {test['status']} |\n")
-            stream.write(
-                "\n*Sum of test durations is not elapsed CI job time.*\n"
-            )
+                stream.write(
+                    f"| `{name}` | {test['seconds']:.3f} | {test['status']} |\n"
+                )
+            stream.write("\n*Sum of test durations is not elapsed CI job time.*\n")
     return 0  # the actual test run's exit code is the authoritative gate
 
 
