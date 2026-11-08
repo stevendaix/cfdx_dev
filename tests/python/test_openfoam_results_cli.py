@@ -69,7 +69,7 @@ def _write_hex_case(case: Path) -> None:
         _header("boundary", "polyBoundaryMesh") + "2\n(\n"
         "    inlet\n    {\n        type patch;\n"
         "        nFaces 3;\n        startFace 0;\n    }\n"
-        "    outlet\n    {\n        type wall;\n"
+        "    outlet\n    {\n        type patch;\n"
         "        nFaces 3;\n        startFace 3;\n    }\n"
         ")\n",
         encoding="utf-8",
