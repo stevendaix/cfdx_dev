@@ -230,3 +230,5 @@ inline SolverResult solve_bicgstab(
     result.status=SolverStatus::MAX_ITER_REACHED;result.iterations=max_iter;result.residual=res;
     result.residual_relative=reference_norm>0?res/reference_norm:0.0;return result;
 }
+
+} // namespace cfdx::core
