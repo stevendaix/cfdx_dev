@@ -49,8 +49,7 @@ def test_runner_pairs_manifest_and_preserves_physical_threshold(
         captured["env"] = kwargs["env"]
         return SimpleNamespace(returncode=1)
 
-    monkeypatch.setattr(
-        RUNNER, "subprocess", SimpleNamespace(run=fake_run))
+    monkeypatch.setattr(RUNNER.subprocess, "run", fake_run)
     output = tmp_path / "run"
     assert run_case(mesh, output, exe, 10, 20,
                     initial_paired_checkpoint=original, checkpoint_every=10,
