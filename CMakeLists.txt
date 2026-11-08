@@ -957,13 +957,24 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
         )
     endif()
     set_tests_properties(test_vmfl036_reference_case PROPERTIES LABELS "phase14;validation;reference")
+    # Opt-in only: compile large header-based test drivers quickly for forensic
+    # local debugging. Do not use these binaries for optimized performance claims.
+    option(CFDX_DIAGNOSTIC_FAST_COMPILE
+        "Build header-heavy validation drivers at -O0 (diagnostics only)" OFF)
     add_executable(test_bfs_qualification tests/validation/test_bfs_driver_smoke.cpp)
+    if(CFDX_DIAGNOSTIC_FAST_COMPILE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_bfs_qualification PRIVATE -O0 -g0)
+    endif()
     target_link_libraries(test_bfs_qualification PRIVATE cfdx_core)
     add_test(NAME test_bfs_quick COMMAND test_bfs_qualification --quick ${CMAKE_CURRENT_BINARY_DIR}/validation_meshes_quick/bfs_re200_n16.h5)
     set_tests_properties(test_bfs_quick PROPERTIES LABELS "qualification;validation")
     add_executable(test_naca0012_qualification tests/validation/test_naca0012_geometry.cpp)
     # Header-heavy qualification target: keep incremental compile cost tractable.
-    target_compile_options(test_naca0012_qualification PRIVATE -O1)
+    if(CFDX_DIAGNOSTIC_FAST_COMPILE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_naca0012_qualification PRIVATE -O0 -g0)
+    else()
+        target_compile_options(test_naca0012_qualification PRIVATE -O1)
+    endif()
     target_link_libraries(test_naca0012_qualification PRIVATE cfdx_core)
     if(Python3_Interpreter_FOUND)
         add_test(NAME test_naca_farfield_face_flux_audit
@@ -1371,6 +1382,9 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_lsc_bfbt_schur tests/unit/test_lsc_bfbt_schur.cpp)
     add_cfdx_test(test_pcd_schur tests/unit/test_pcd_schur.cpp)
     add_cfdx_test(test_pcd_fp_equilibration tests/unit/test_pcd_fp_equilibration.cpp)
+    add_cfdx_test(test_pcd_fp_replay tests/validation/test_pcd_fp_replay.cpp)
+    add_test(NAME test_pcd_fp_replay_capture COMMAND test_pcd_fp_replay --self-test)
+    set_tests_properties(test_pcd_fp_replay_capture PROPERTIES LABELS "pcd;linalg;replay")
     add_cfdx_test(test_pressure_velocity_jacobian_certificate
         tests/unit/test_pressure_velocity_jacobian_certificate.cpp)
     add_cfdx_test(test_schur_inverse_quality_certificate
@@ -1417,6 +1431,9 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     # The 32x32 Ghia cavity is expensive for some preconditioners; splitting
     # the cases lets CI parallelize them without weakening any physical gate.
     add_executable(test_n9_physical_matrix tests/validation/test_n9_physical_matrix.cpp)
+    if(CFDX_DIAGNOSTIC_FAST_COMPILE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(test_n9_physical_matrix PRIVATE -O0 -g0)
+    endif()
     target_link_libraries(test_n9_physical_matrix PRIVATE cfdx_core)
     target_include_directories(test_n9_physical_matrix PRIVATE ${CMAKE_SOURCE_DIR}/tests)
     foreach(schur_model IN ITEMS pcd lsc bfbt simple simplec)

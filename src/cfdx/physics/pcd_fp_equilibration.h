@@ -6,6 +6,7 @@
 
 #include "cfdx/core/linalg/sparse_matrix.h"
 #include "cfdx/core/linalg/vector.h"
+#include "cfdx/core/linalg/preconditioner.h"
 
 #include <algorithm>
 #include <cmath>
@@ -73,6 +74,54 @@ inline cfdx::core::Vector pcd_fp_scaled_rhs(
             throw std::invalid_argument("PCD Fp scaled RHS is nonfinite");
     }
     return scaled;
+}
+
+// This gate diagnoses a preconditioner that catastrophically amplifies the
+// image A*M^-1*r. It does not claim to predict a Krylov convergence rate.
+// The threshold is intentionally broad: the original NACA N64 AMG action
+// amplified the image by ~3e14, whereas ILU0 was O(1).
+struct PcdFpActionProbe {
+    bool applied = false;
+    bool finite = false;
+    double correction_l2 = 0.0;
+    double image_l2 = 0.0;
+    double residual_l2 = 0.0;
+    double amplification = std::numeric_limits<double>::infinity();
+};
+
+inline PcdFpActionProbe pcd_fp_action_probe(
+    const cfdx::core::SparseMatrix& matrix,
+    cfdx::core::Preconditioner& preconditioner,
+    const cfdx::core::Vector& residual) {
+    if (matrix.n_rows() != matrix.n_cols() || residual.size() != matrix.n_rows())
+        throw std::invalid_argument("PCD Fp action probe dimension mismatch");
+    PcdFpActionProbe result;
+    result.residual_l2 = residual.norm2();
+    if (!std::isfinite(result.residual_l2)) return result;
+    if (result.residual_l2 == 0.0) {
+        result.applied = result.finite = true;
+        result.amplification = 0.0;
+        return result;
+    }
+    cfdx::core::Vector correction(residual.size(), 0.0);
+    result.applied = preconditioner.apply(residual, correction);
+    if (!result.applied || !correction.is_valid()) return result;
+    result.correction_l2 = correction.norm2();
+    double image_norm = 0.0;
+    const auto* ro = matrix.row_offsets_data();
+    const auto* co = matrix.columns_data();
+    const auto* va = matrix.values_data();
+    for (std::size_t row = 0; row < matrix.n_rows(); ++row) {
+        long double image = 0.0L;
+        for (std::size_t k = ro[row]; k < ro[row + 1]; ++k)
+            image += static_cast<long double>(va[k]) * correction(co[k]);
+        image_norm = std::hypot(image_norm, static_cast<double>(image));
+    }
+    result.image_l2 = image_norm;
+    result.amplification = image_norm / result.residual_l2;
+    result.finite = std::isfinite(result.correction_l2) &&
+        std::isfinite(result.image_l2) && std::isfinite(result.amplification);
+    return result;
 }
 
 struct PcdFpTrueResidual {
