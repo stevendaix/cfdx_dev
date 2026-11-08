@@ -75,6 +75,18 @@ def write_sst_thermal_case(
                     {"field": "k", "type": "zero_gradient", "value": 0.0},
                     {"field": "omega", "type": "zero_gradient", "value": 0.0},
                 ]
+            elif name == "outlet":
+                # A prescribed-velocity inlet needs a pressure reference at
+                # the outlet; a zero-gradient pressure boundary leaves the
+                # all-Neumann pressure system unable to balance the imposed
+                # mass flux on this smoke-test channel.
+                patch["type"] = "pressure_outlet"
+                patch["value_type"] = "outlet_pressure"
+                patch["pressure"] = 0.0
+                patch["sst_scalar_conditions"] = [
+                    {"field": "k", "type": "fixed_value", "value": 0.01},
+                    {"field": "omega", "type": "fixed_value", "value": 2.0},
+                ]
             else:
                 patch["sst_scalar_conditions"] = [
                     {"field": "k", "type": "fixed_value", "value": 0.01},
