@@ -1,4 +1,5 @@
 """Fail-closed tests for the activation path of targeted CFDX qualification."""
+
 from __future__ import annotations
 
 import importlib.util
@@ -21,14 +22,27 @@ CATALOG = Q.read_catalog()
 
 
 def make_test_case(name: str, **properties):
-    return {"name": name, "properties": [{"name": k, "value": v} for k, v in properties.items()]}
+    return {
+        "name": name,
+        "properties": [{"name": k, "value": v} for k, v in properties.items()],
+    }
 
 
 class ProfileTests(unittest.TestCase):
     def test_catalog_has_required_domains_and_unique_labels(self):
         self.assertEqual(
             set(CATALOG),
-            {"smoke", "naca", "momentum", "sst", "thermal", "wall-distance", "linalg", "n9", "ghia"},
+            {
+                "smoke",
+                "naca",
+                "momentum",
+                "sst",
+                "thermal",
+                "wall-distance",
+                "linalg",
+                "n9",
+                "ghia",
+            },
         )
         self.assertEqual(len({p["label"] for p in CATALOG.values()}), len(CATALOG))
 
@@ -40,8 +54,14 @@ class ProfileTests(unittest.TestCase):
         self.assertNotIn("test_huge_campaign", plan["selected_tests"])
 
     def test_mandatory_anchor_missing_rejects_plan(self):
-        selected = [make_test_case(n) for n in CATALOG["naca"]["quick"] if n != "test_naca0012_quick"]
-        with self.assertRaisesRegex(Q.QualificationError, "required qualification tests missing"):
+        selected = [
+            make_test_case(n)
+            for n in CATALOG["naca"]["quick"]
+            if n != "test_naca0012_quick"
+        ]
+        with self.assertRaisesRegex(
+            Q.QualificationError, "required qualification tests missing"
+        ):
             Q.plan_profile(selected, "naca", "quick", CATALOG)
 
     def test_extended_requires_hard_physical_anchor(self):
@@ -63,10 +83,12 @@ class ProfileTests(unittest.TestCase):
 
     def test_ctest_dependencies_and_fixtures_are_included_once(self):
         fake = [make_test_case(n) for n in CATALOG["smoke"]["quick"]]
-        fake[0]["properties"].extend([
-            {"name": "DEPENDS", "value": ["prereq"]},
-            {"name": "FIXTURES_REQUIRED", "value": ["mesh"]},
-        ])
+        fake[0]["properties"].extend(
+            [
+                {"name": "DEPENDS", "value": ["prereq"]},
+                {"name": "FIXTURES_REQUIRED", "value": ["mesh"]},
+            ]
+        )
         fake += [make_test_case("prereq"), make_test_case("mesh_setup", FIXTURES_SETUP=["mesh"])]
         plan = Q.plan_profile(fake, "smoke", "quick", CATALOG)
         self.assertEqual(plan["prerequisites"], ["mesh_setup", "prereq"])
@@ -74,7 +96,9 @@ class ProfileTests(unittest.TestCase):
 
     def test_missing_fixture_is_fatal(self):
         fake = [make_test_case(n) for n in CATALOG["smoke"]["quick"]]
-        fake[0]["properties"].append({"name": "FIXTURES_REQUIRED", "value": ["missing"]})
+        fake[0]["properties"].append(
+            {"name": "FIXTURES_REQUIRED", "value": ["missing"]}
+        )
         with self.assertRaisesRegex(Q.QualificationError, "missing fixture producer"):
             Q.plan_profile(fake, "smoke", "quick", CATALOG)
 
@@ -100,7 +124,9 @@ class ProfileTests(unittest.TestCase):
         fake = [make_test_case(n) for n in CATALOG["smoke"]["quick"]]
         with self.assertRaisesRegex(Q.QualificationError, "unknown qualification"):
             Q.plan_profile(fake, "does-not-exist", "quick", CATALOG)
-        with self.assertRaisesRegex(Q.QualificationError, "unknown qualification scope"):
+        with self.assertRaisesRegex(
+            Q.QualificationError, "unknown qualification scope"
+        ):
             Q.plan_profile(fake, "smoke", "impossible", CATALOG)
 
     def test_missing_junit_is_fatal_for_coverage(self):
@@ -110,13 +136,20 @@ class ProfileTests(unittest.TestCase):
             junit = path / "results.xml"
             junit.write_text('<testsuite><testcase name="a" time="1"/></testsuite>')
             cmd = [
-                sys.executable, str(ROOT / "scripts/ci/ctest_timings.py"), str(junit),
-                "--require-names-file", str(path / "tests.txt"),
+                sys.executable,
+                str(ROOT / "scripts/ci/ctest_timings.py"),
+                str(junit),
+                "--require-names-file",
+                str(path / "tests.txt"),
             ]
             self.assertNotEqual(subprocess.run(cmd, check=False, capture_output=True).returncode, 0)
-            junit.write_text('<testsuite><testcase name="a" time="1"/><testcase name="b" time="2"/></testsuite>')
+            junit.write_text(
+                '<testsuite><testcase name="a" time="1"/><testcase name="b" time="2"/></testsuite>'
+            )
             self.assertEqual(subprocess.run(cmd, check=False, capture_output=True).returncode, 0)
-            junit.write_text('<testsuite><testcase name="a" time="1"><skipped/></testcase><testcase name="b" time="2"/></testsuite>')
+            junit.write_text(
+                '<testsuite><testcase name="a" time="1"><skipped/></testcase><testcase name="b" time="2"/></testsuite>'
+            )
             self.assertNotEqual(subprocess.run(cmd, check=False, capture_output=True).returncode, 0)
 
 
@@ -125,21 +158,51 @@ class TriggerTests(unittest.TestCase):
         return {"pull_request": {"labels": [{"name": l} for l in labels]}}
 
     def test_manual_quick_and_total(self):
-        self.assertEqual(Q.resolve("workflow_dispatch", {}, "naca", "quick", CATALOG)[:2], ("naca", "quick"))
-        self.assertEqual(Q.resolve("workflow_dispatch", {}, "total", "extended", CATALOG)[:2], ("total", "extended"))
+        self.assertEqual(
+            Q.resolve("workflow_dispatch", {}, "naca", "quick", CATALOG)[:2],
+            ("naca", "quick"),
+        )
+        self.assertEqual(
+            Q.resolve("workflow_dispatch", {}, "total", "extended", CATALOG)[:2],
+            ("total", "extended"),
+        )
 
     def test_pr_label_runs_extended_ctest(self):
-        self.assertEqual(Q.resolve("pull_request", self.pr(["qualification:naca"]), "", "", CATALOG)[:2], ("naca", "extended"))
+        self.assertEqual(
+            Q.resolve("pull_request", self.pr(["qualification:naca"]), "", "", CATALOG)[
+                :2
+            ],
+            ("naca", "extended"),
+        )
 
     def test_no_pr_label_is_not_fake_green_qualification(self):
-        self.assertEqual(Q.resolve("pull_request", self.pr(["bug"]), "", "", CATALOG)[0], "none")
+        self.assertEqual(
+            Q.resolve("pull_request", self.pr(["bug"]), "", "", CATALOG)[0], "none"
+        )
 
     def test_total_label_is_not_double_executed(self):
-        self.assertEqual(Q.resolve("pull_request", self.pr(["qualification:naca", "validation-total"]), "", "", CATALOG)[0], "none")
+        self.assertEqual(
+            Q.resolve(
+                "pull_request",
+                self.pr(["qualification:naca", "validation-total"]),
+                "",
+                "",
+                CATALOG,
+            )[0],
+            "none",
+        )
 
     def test_multiple_pr_labels_fail_closed(self):
-        with self.assertRaisesRegex(Q.QualificationError, "multiple qualification labels"):
-            Q.resolve("pull_request", self.pr(["qualification:naca", "qualification:thermal"]), "", "", CATALOG)
+        with self.assertRaisesRegex(
+            Q.QualificationError, "multiple qualification labels"
+        ):
+            Q.resolve(
+                "pull_request",
+                self.pr(["qualification:naca", "qualification:thermal"]),
+                "",
+                "",
+                CATALOG,
+            )
 
     def test_unknown_manual_selection_fails_closed(self):
         with self.assertRaisesRegex(Q.QualificationError, "unknown manual profile"):
