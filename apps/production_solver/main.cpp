@@ -1,5 +1,6 @@
 
 #include "cfdx/physics/steady_incompressible_solver.h"
+#include "cfdx/physics/production_boundary_contract.h"
 #include "cfdx/physics/continuation.h"
 #include "cfdx/physics/production_energy_stage.h"
 #include "cfdx/physics/production_turbulence_contract.h"
@@ -913,6 +914,8 @@ int main(int argc, char** argv)
         if (options.initial_velocity_field && !case_setup.has_initial_condition)
             initialization.mode = InitializationMode::Provided;
 
+        if (is_case_hdf5)
+            validate_production_boundary_unique_names(case_setup);
         VelocityBoundaryConditions ubc;
         ScalarBoundaryConditions pbc;
         for (std::size_t i = 0; i < mesh.boundary().n_patches(); ++i) {
@@ -930,6 +933,9 @@ int main(int argc, char** argv)
                 throw std::invalid_argument(
                     "production solver: case has no boundary condition for mesh patch '" +
                     patch.name + "'");
+            // A physical label must never be silently interpreted as an
+            // unrelated generic zero-gradient condition.
+            validate_production_incompressible_boundary(*bc, patch.type);
 
             if (bc->value_type == BCValueType::FIXED ||
                 bc->value_type == BCValueType::WALL_NO_SLIP ||
