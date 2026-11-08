@@ -217,15 +217,24 @@ def test_palette_lists_the_registry_and_only_the_registry() -> None:
         for action in window.findChildren(QAction)
         if action.objectName() and not action.objectName().startswith("_q_")
     }
-    assert named_actions - set(CAPABILITIES) == {"workbench.action.search"}
+    assert named_actions - set(CAPABILITIES) == {
+        "workbench.action.search",
+        "workbench.action.export_native_boundary_case",
+        "workbench.appearance.graphite",
+        "workbench.appearance.reset_layout",
+    }
 
     window._show_command_palette()
     results = window.command_palette_results
-    assert results.count() == len(CAPABILITIES)
     labels = [results.item(i).text().split(" — ")[0] for i in range(results.count())]
     expected_labels = {capability.label for capability in CAPABILITIES.values()}
-    assert set(labels) == expected_labels
-    assert labels == sorted(labels, key=str.casefold)
+    command_labels = labels[: len(CAPABILITIES)]
+    assert set(command_labels) == expected_labels
+    assert command_labels == sorted(command_labels, key=str.casefold)
+    appearance_labels = {
+        f"Appearance: {action.text()}" for action in window.theme_actions.values()
+    }
+    assert set(labels) == expected_labels | appearance_labels | {"Reset panel layout"}
 
     contour_text = results.item(labels.index("Contour")).text()
     assert "Requires:" in contour_text
