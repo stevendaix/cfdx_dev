@@ -28,6 +28,7 @@
 #include "cfdx/physics/convection_continuation.h"
 #include "cfdx/physics/pressure_affine_flux_trials.h"
 #include "cfdx/physics/solver_control.h"
+#include "cfdx/physics/cell_convergence_tracker.h"
 #include "cfdx/physics/sst_production_coupling.h"
 #include "cfdx/physics/momentum_residual_certification.h"
 #include "cfdx/physics/nonlinear_face_residual_certificate.h"
@@ -125,6 +126,13 @@ struct DiagnosticsControls {
     // Bounded progress trace for long validation solves. Disabled by default.
     bool iteration_trace = false;
     std::size_t iteration_trace_frequency = 50;
+    // Optional bounded spatial residual tracing. Explicit opt-in only. The
+    // stream is emitted after each ACCEPTED nonlinear transaction, never from
+    // rejected trials. Empty path disables all per-cell allocation and I/O.
+    std::string cell_convergence_trace_path;
+    std::string cell_convergence_mesh_source;
+    std::size_t cell_convergence_every = 5;
+    std::string cell_convergence_full_map_path;
     // V17: topology/patch mass audit on the AUTHORITATIVE Rhie-Chow flux.
     // Diagnostic only; explicitly enabled in case settings.
     bool flux_patch_audit = false;
@@ -4958,6 +4966,37 @@ inline IncompressibleSolveResult solve_steady_incompressible(
     std::array<std::vector<double>,3> committed_tvd_input_velocity;
     bool committed_tvd_deferred_valid = false;
 
+    // No spatial diagnostic allocations without explicit opt-in. The scratch
+    // fields hold accepted or tentative reassembled equation-row defects; the
+    // tracker sees them only AFTER transaction.commit(), so retries cannot
+    // contaminate per-cell stagnation trends.
+    const bool cell_trace_enabled = !controls.diagnostics.cell_convergence_trace_path.empty();
+    std::unique_ptr<CellConvergenceTracker> cell_tracker;
+    std::vector<std::array<double, 3>> cell_trace_momentum;
+    std::vector<double> cell_trace_continuity;
+    std::vector<std::array<double, 3>> cell_trace_centers;
+    if (cell_trace_enabled) {
+        if (mesh.n_cells() > 5'000'000)
+            throw std::invalid_argument("cell convergence diagnostics limited to 5 million cells; no hidden full-field allocation");
+        cell_trace_momentum.resize(mesh.n_cells());
+        cell_trace_continuity.resize(mesh.n_cells());
+        cell_trace_centers.resize(mesh.n_cells());
+        for (std::size_t c = 0; c < mesh.n_cells(); ++c) {
+            cell_trace_centers[c] = {
+                geometry.cell_centres[c].x,
+                geometry.cell_centres[c].y,
+                geometry.cell_centres[c].z};
+        }
+        cell_tracker = std::make_unique<CellConvergenceTracker>(
+            controls.diagnostics.cell_convergence_trace_path,
+            controls.diagnostics.cell_convergence_mesh_source,
+            mesh.n_cells(), mesh.n_faces(),
+            controls.diagnostics.cell_convergence_every, 24,
+            controls.convergence.relative_tolerance,
+            controls.diagnostics.cell_convergence_full_map_path);
+    }
+
+    std::array<double, 3> pending_cell_rhs_scales{1.0, 1.0, 1.0};
     for (std::size_t iter = 1; iter <= controls.convergence.max_iterations; ++iter) {
         const double outer_high_order_fraction =
             convection_high_order_fraction(controls.convection_continuation, iter);
@@ -7359,6 +7398,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                               solution(equation.matrix.columns_data()[k]);
                     const double full_signed = ax - equation.rhs(row);
                     const double residual = std::abs(full_signed);
+                    if (cell_trace_enabled)
+                        cell_trace_momentum[row][component] = residual;
                     if (residual > diagnostic.global) {
                         diagnostic.global = residual;
                         diagnostic.max_cell = row;
@@ -7430,6 +7471,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const std::size_t f = cell_faces[off+k];
                 div += mesh.ownership().owner(f) == c ? mass_flux(f) : -mass_flux(f);
             }
+            if (cell_trace_enabled)
+                cell_trace_continuity[c] = std::abs(div);
             l1 += std::abs(div);
             linf = std::max(linf, std::abs(div));
         }
@@ -7481,6 +7524,8 @@ inline IncompressibleSolveResult solve_steady_incompressible(
             momentum_rhs_scale_components[1],
             momentum_rhs_scale_components[2]});
 
+        if (cell_trace_enabled)
+            pending_cell_rhs_scales = momentum_rhs_scale_components;
         IncompressibleIteration h;
         if (controls.pseudo_momentum.enabled) {
             h.v17_pseudo_cfl=v17_pseudo_cfl;
@@ -9096,10 +9141,24 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                      sample_index < result.probe_samples.size(); ++sample_index)
                     controls.probe_callback(result.probe_samples[sample_index]);
             }
+            if (iteration_completed && cell_tracker) {
+                // Same reassembled physical state as the accepted monitor.
+                // Rejected Picard/multisecant/SST iterations never reach here.
+                cell_tracker->observe(
+                    iter + controls.initial_accepted_iteration,
+                    cell_trace_momentum, cell_trace_continuity,
+                    pending_cell_rhs_scales, cell_trace_centers,
+                    same_convection_operator_as_previous,
+                    stop_after_iteration || iter == controls.convergence.max_iterations);
+            }
         }
         if (stop_after_iteration)
             break;
     }
+
+    if (cell_tracker)
+        cell_tracker->finish(result.iterations > 0
+            ? result.iterations + controls.initial_accepted_iteration : 0);
 
     // authoritative_mass_flux is updated only after an accepted nonlinear
     // transaction above. In particular, a rejected retry cannot overwrite the
