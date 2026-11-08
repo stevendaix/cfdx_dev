@@ -11,6 +11,7 @@
 #include "cfdx/core/linalg/linear_solver_dispatch.h"
 #include "cfdx/core/linalg/preconditioner.h"
 #include "cfdx/core/linalg/sparse_matrix.h"
+#include "cfdx/core/linalg/pressure_roundoff_leakage.h"
 #include "cfdx/core/linalg/vector.h"
 #include "cfdx/core/numerics/gradient.h"
 #include "cfdx/io/restart/dat_restart.h"
@@ -6817,6 +6818,18 @@ inline IncompressibleSolveResult solve_steady_incompressible(
                 const auto diagnostic = diagnose_pressure_linear_cancellation(
                     *solved_pressure_matrix, *solved_pressure_rhs, p_corr,
                     local_scale, controls.convergence.continuity_tolerance);
+                const auto leakage = cfdx::core::diagnose_pressure_roundoff_leakage(
+                    *solved_pressure_matrix, *solved_pressure_rhs, p_corr);
+                std::cerr << std::scientific << std::setprecision(9)
+                          << "PRESSURE_GHOST_ROW_SUM_DIAGNOSTIC"
+                          << " iteration=" << iter
+                          << " corrector=" << corr
+                          << " valid=" << leakage.valid
+                          << " anchor_rows=" << leakage.pressure_anchor_rows
+                          << " roundoff_rows=" << leakage.negligible_roundoff_rows
+                          << " worst_row=" << leakage.worst_row
+                          << " spurious_relative_l2=" << leakage.spurious_leakage_relative_l2
+                          << " physical_face_certified=0 qualified=0\n";
                 std::cerr << std::scientific << std::setprecision(9)
                           << "PRESSURE_ROUNDOFF_DIAGNOSTIC iteration=" << iter
                           << " corrector=" << corr
