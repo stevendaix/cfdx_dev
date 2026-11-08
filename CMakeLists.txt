@@ -1370,6 +1370,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_simplerc_schur tests/unit/test_simplerc_schur.cpp)
     add_cfdx_test(test_lsc_bfbt_schur tests/unit/test_lsc_bfbt_schur.cpp)
     add_cfdx_test(test_pcd_schur tests/unit/test_pcd_schur.cpp)
+    add_cfdx_test(test_pcd_fp_equilibration tests/unit/test_pcd_fp_equilibration.cpp)
     add_cfdx_test(test_pressure_velocity_jacobian_certificate
         tests/unit/test_pressure_velocity_jacobian_certificate.cpp)
     add_cfdx_test(test_schur_inverse_quality_certificate

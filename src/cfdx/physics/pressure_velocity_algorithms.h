@@ -84,6 +84,11 @@ struct CouplingControls {
     // Diagnostic A/B only: align the nested pressure operators' gauge column
     // with the monolithic eliminated gauge column. No production default change.
     bool pcd_consistent_gauge_experimental = false;
+    // Research diagnostics only: exact row scaling of Fp and guarded nested
+    // actions. These change only the Schur preconditioner, not FV equations.
+    bool pcd_fp_row_equilibration_experimental = false;
+    bool pcd_fp_quality_guard_experimental = false;
+    bool pcd_fp_second_pass_experimental = false;
     // Serial, small-subdomain, experimental RAS/weighted Schwarz for COUPLED
     // with BlockLocal Schur. Explicit opt-in; setup failure is fatal rather
     // than silently replaced by AMG. No MPI / coarse-space scaling claim.

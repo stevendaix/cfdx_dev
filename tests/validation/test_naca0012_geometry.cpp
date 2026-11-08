@@ -163,6 +163,51 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::invalid_argument("CFDX_NACA_PCD_GAUGE_COLUMN requires COUPLED/pcd and 1");
         c.coupling.pcd_consistent_gauge_experimental=true;
     }
+    // Controlled A/B for the *actual* nested production Fp operator.
+    // No implicit fallback or change to the outer physical convergence gate.
+    if (const char* raw=std::getenv("CFDX_NACA_PCD_FP_PRECONDITIONER")) {
+        if (c.algorithm!=PressureVelocityAlgorithm::COUPLED ||
+            c.coupling.schur_model!=CoupledSchurModel::PCD)
+            throw std::invalid_argument("Fp preconditioner override requires COUPLED/pcd");
+        const std::string name(raw);
+        if (name=="ilu0")
+            c.pcd_convection_diffusion_linear_solver.preconditioner =
+                cfdx::core::PreconditionerModel::ILU0;
+        else if (name=="amg")
+            c.pcd_convection_diffusion_linear_solver.preconditioner =
+                cfdx::core::PreconditionerModel::NativeAMG;
+        else throw std::invalid_argument("Fp preconditioner must be ilu0 or amg");
+    }
+    if (const char* raw=std::getenv("CFDX_NACA_PCD_FP_MAX_ITERATIONS")) {
+        if (c.algorithm!=PressureVelocityAlgorithm::COUPLED ||
+            c.coupling.schur_model!=CoupledSchurModel::PCD)
+            throw std::invalid_argument("Fp budget override requires COUPLED/pcd");
+        const std::string number(raw);
+        if (number.empty() || number.find_first_not_of("0123456789")!=std::string::npos)
+            throw std::invalid_argument("Fp budget must be integer in [1,500]");
+        const auto parsed = std::stoul(number);
+        if (parsed < 1 || parsed > 500)
+            throw std::invalid_argument("Fp budget must be integer in [1,500]");
+        c.pcd_convection_diffusion_max_iterations = parsed;
+    }
+    if (const char* raw=std::getenv("CFDX_NACA_PCD_FP_EQUILIBRATE")) {
+        if (std::string(raw)!="1" || c.algorithm!=PressureVelocityAlgorithm::COUPLED ||
+            c.coupling.schur_model!=CoupledSchurModel::PCD)
+            throw std::invalid_argument("CFDX_NACA_PCD_FP_EQUILIBRATE requires COUPLED/pcd and 1");
+        c.coupling.pcd_fp_row_equilibration_experimental=true;
+    }
+    if (const char* raw=std::getenv("CFDX_NACA_PCD_FP_QUALITY_GUARD")) {
+        if (std::string(raw)!="1" || c.algorithm!=PressureVelocityAlgorithm::COUPLED ||
+            c.coupling.schur_model!=CoupledSchurModel::PCD)
+            throw std::invalid_argument("CFDX_NACA_PCD_FP_QUALITY_GUARD requires COUPLED/pcd and 1");
+        c.coupling.pcd_fp_quality_guard_experimental=true;
+    }
+    if (const char* raw=std::getenv("CFDX_NACA_PCD_FP_SECOND_PASS")) {
+        if (std::string(raw)!="1" || c.algorithm!=PressureVelocityAlgorithm::COUPLED ||
+            c.coupling.schur_model!=CoupledSchurModel::PCD)
+            throw std::invalid_argument("CFDX_NACA_PCD_FP_SECOND_PASS requires COUPLED/pcd and 1");
+        c.coupling.pcd_fp_second_pass_experimental=true;
+    }
     // The stagnation detector is an early-stop heuristic, not a convergence
     // criterion. Long N256 replay can opt into diagnostic-only stagnation.
     if (const char* flag=std::getenv("CFDX_NACA_STAGNATION_DIAGNOSTIC_ONLY")) {
