@@ -1399,6 +1399,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_small_dense_schur_oracle
         tests/unit/test_small_dense_schur_oracle.cpp)
     add_cfdx_test(test_coupled_schur_selection tests/unit/test_coupled_schur_selection.cpp)
+    add_cfdx_test(test_coupled_schur_action_guard tests/unit/test_coupled_schur_action_guard.cpp)
     add_cfdx_test(test_lsc_bfbt_schur_null_space tests/unit/test_lsc_bfbt_schur_null_space.cpp)
     add_cfdx_test(test_schur_approximation_comparison tests/unit/test_schur_approximation_comparison.cpp)
     add_cfdx_test(test_schur_quantitative_qualification tests/unit/test_schur_quantitative_qualification.cpp)

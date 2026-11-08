@@ -109,6 +109,9 @@ def build_commands(args: argparse.Namespace):
                     "CFDX_NACA_CONVERGED_FORCE_CSV": str(args.out.resolve() / (tag + "_force.csv")),
                     "CFDX_NACA_RAW_WALL_FACES_CSV": str(args.out.resolve() / (tag + "_raw_faces.csv")),
                 })
+                if getattr(args, "schur_action_guard", False):
+                    # Same option for all six; never silently switch Schur.
+                    env["CFDX_NACA_SCHUR_ACTION_GUARD"] = "1"
                 if model == "pcd":
                     env["CFDX_PCD_FP_CAPTURE_PREFIX"] = str(args.out.resolve() / (tag + "_Fp"))
                     env["CFDX_PCD_FP_CAPTURE_DIFFICULT_PREFIX"] = str(args.out.resolve() / (tag + "_difficult_Fp"))
@@ -144,6 +147,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--iterations", type=int, default=1500)
     p.add_argument("--source-archive", type=Path, help="optional immutable source ZIP; hash only")
     p.add_argument("--source-revision", help="declared Git commit (not an independently verified build link)")
+    p.add_argument("--schur-action-guard", action="store_true",
+                   help="experimental common original-A action bound; no fallback; default OFF")
     p.add_argument("--wall-timeout", type=float, default=None,
                    help="optional explicit local resource cap; default NONE")
     args = p.parse_args(argv)
@@ -163,6 +168,7 @@ def main(argv: list[str] | None = None) -> int:
                             if args.source_archive and args.source_archive.is_file() else None,
                         "declared_source_revision": args.source_revision,
                         "binary_source_correspondence_proven": False,
+                        "schur_action_guard": args.schur_action_guard,
                         "wall_timeout": args.wall_timeout,
                         "cases": records,
                         "physical_validation": "UNQUALIFIED_UNTIL_INDEPENDENT_EVIDENCE"},

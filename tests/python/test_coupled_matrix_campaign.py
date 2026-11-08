@@ -53,3 +53,20 @@ def test_missing_inputs_not_promoted(tmp_path):
     )
     assert result["execution"] == "NOT_RUN"
     assert result["physical_certificate"] == "NOT_QUALIFIED"
+
+
+def test_guard_is_identical_optin_for_six_schur_models(tmp_path):
+    a = args(tmp_path)
+    a.levels = [64]
+    a.models = list(campaign.SCHUR_MODELS)
+    a.schur_action_guard = True
+    items = list(campaign.build_commands(a))
+    assert len(items) == 6
+    assert {tag for tag, _, _ in items} == {
+        "naca_n64_" + model for model in campaign.SCHUR_MODELS
+    }
+    assert all(env["CFDX_NACA_SCHUR_ACTION_GUARD"] == "1"
+               for _, _, env in items)
+    a.schur_action_guard = False
+    assert all("CFDX_NACA_SCHUR_ACTION_GUARD" not in env
+               for _, _, env in campaign.build_commands(a))
