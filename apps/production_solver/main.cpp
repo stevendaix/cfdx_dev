@@ -84,6 +84,9 @@ struct Options {
     // Explicit opt-in only; this path remains experimental and unqualified.
     bool experimental_sst = false;
     bool benchmark_export = false;
+    // Opt-in exact pressure CSR capture for production BFS and other cases.
+    std::string pressure_replay_prefix;
+    std::vector<std::size_t> pressure_replay_iterations;
     std::vector<IncompressiblePointProbe> probes;
     std::filesystem::path probe_csv;
     bool probe_stream = false;
@@ -701,6 +704,11 @@ Options parse(int argc, char** argv)
         else if (arg == "--wall-forces-quadratic") o.wall_forces_quadratic = true;
         else if (arg == "--experimental-sst") o.experimental_sst = true;
         else if (arg == "--benchmark-export") o.benchmark_export = true;
+        else if (arg == "--pressure-replay-prefix")
+            o.pressure_replay_prefix = value("--pressure-replay-prefix");
+        else if (arg == "--pressure-replay-iterations")
+            o.pressure_replay_iterations = cfdx::core::parse_linear_capture_iterations(
+                value("--pressure-replay-iterations"));
         else if (arg == "--probe") o.probes.push_back(parse_probe(value("--probe")));
         else if (arg == "--probe-csv") o.probe_csv = value("--probe-csv");
         else if (arg == "--probe-stream") o.probe_stream = true;
@@ -714,6 +722,8 @@ Options parse(int argc, char** argv)
                          "  [--wall-forces-quadratic] (opt-in 3-D quadratic WLS wall-force artifact; rank-deficient stencils fail)\n"
                          "  [--experimental-sst] (explicit experimental k-omega SST opt-in; not qualified)\n"
                          "  [--benchmark-export] (raw cell/face CSV, wall shear diagnostic and mass balance)\n"
+                         "  [--pressure-replay-prefix PATH --pressure-replay-iterations 1,20]\n"
+                         "    (diagnostic post-gauge pressure CSR, RHS, initial guess; opt-in)\n"
                          "  [--probe <name>:<x>,<y>,<z>:<field>]... [--probe-csv PATH]\n"
                          "  probe field: p | u_x | u_y | u_z | u_mag\n";
             std::cout << "  --probe-stream emits committed samples as CFDX_PROBE_SAMPLE_V1 stdout records\n";
@@ -730,6 +740,9 @@ Options parse(int argc, char** argv)
         throw std::invalid_argument("--probe-csv requires at least one --probe");
     if (o.probe_stream && o.probes.empty())
         throw std::invalid_argument("--probe-stream requires at least one --probe");
+    if (o.pressure_replay_prefix.empty() != o.pressure_replay_iterations.empty())
+        throw std::invalid_argument(
+            "--pressure-replay-prefix and --pressure-replay-iterations must be supplied together");
     for (std::size_t i = 0; i < o.probes.size(); ++i)
         for (std::size_t j = i + 1; j < o.probes.size(); ++j)
             if (o.probes[i].name == o.probes[j].name)
@@ -1070,6 +1083,21 @@ int main(int argc, char** argv)
         // its *unscaled true residual* at the original tolerance. This does
         // not relax any of the nonlinear/physical qualification criteria.
         if (is_case_hdf5) {
+            // Auxiliary pressure-space BCs for the PCD Schur model only.
+            // A preconditioner experiment, never a modification of physical p/U BCs.
+            const auto pcd_inflow = case_setup.numerics.raw_settings.find(
+                "pcd_pressure_inflow_dirichlet_experimental");
+            if (pcd_inflow != case_setup.numerics.raw_settings.end()) {
+                if (pcd_inflow->second != "1" ||
+                    controls.algorithm != PressureVelocityAlgorithm::COUPLED ||
+                    controls.coupling.schur_model != CoupledSchurModel::PCD)
+                    throw std::invalid_argument(
+                        "pcd_pressure_inflow_dirichlet_experimental=1 "
+                        "requires COUPLED with PCD Schur");
+                controls.coupling.pcd_pressure_inflow_dirichlet_experimental = true;
+                std::cout << "PCD auxiliary pressure-inflow Dirichlet: experimental "
+                          << "(physical BCs and convergence gates unchanged)\n";
+            }
             const auto scaling = case_setup.numerics.raw_settings.find(
                 "pressure_linear_scaling");
             if (scaling != case_setup.numerics.raw_settings.end()) {
@@ -1314,6 +1342,18 @@ int main(int argc, char** argv)
 #else
             throw std::invalid_argument("hybrid face flux requires HDF5-enabled CFDX");
 #endif
+        }
+
+        if (!options.pressure_replay_prefix.empty()) {
+            controls.pressure_replay_prefix = options.pressure_replay_prefix;
+            controls.pressure_replay_iterations = options.pressure_replay_iterations;
+            const std::filesystem::path capture_path(options.pressure_replay_prefix);
+            if (!capture_path.parent_path().empty())
+                std::filesystem::create_directories(capture_path.parent_path());
+            std::cout << "Pressure CSR replay capture enabled: "
+                      << options.pressure_replay_prefix << " ("
+                      << options.pressure_replay_iterations.size()
+                      << " selected iterations; retries can overwrite a capture)\n";
         }
 
         // Own all SST runtime objects in main for the complete solver call.

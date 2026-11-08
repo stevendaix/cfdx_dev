@@ -1383,6 +1383,7 @@ add_cfdx_test(test_n11_fw2_positivity_clamp_counter tests/unit/test_n11_fw2_posi
     add_cfdx_test(test_pcd_schur tests/unit/test_pcd_schur.cpp)
     add_cfdx_test(test_pcd_fp_equilibration tests/unit/test_pcd_fp_equilibration.cpp)
     add_cfdx_test(test_pcd_fp_replay tests/validation/test_pcd_fp_replay.cpp)
+    add_cfdx_test(test_pcd_pressure_inflow_boundary tests/validation/test_pcd_pressure_inflow_boundary.cpp)
     add_test(NAME test_pcd_fp_replay_capture COMMAND test_pcd_fp_replay --self-test)
     set_tests_properties(test_pcd_fp_replay_capture PROPERTIES LABELS "pcd;linalg;replay")
     add_cfdx_test(test_pressure_velocity_jacobian_certificate

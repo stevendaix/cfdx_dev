@@ -163,6 +163,14 @@ static Forces run(const std::string& path,std::size_t level,
             throw std::invalid_argument("CFDX_NACA_PCD_GAUGE_COLUMN requires COUPLED/pcd and 1");
         c.coupling.pcd_consistent_gauge_experimental=true;
     }
+    // Alternative pressure-space BCs for PCD only; no physical pressure BC
+    // or coupled matrix alteration, and never active without an explicit A/B.
+    if (const char* raw=std::getenv("CFDX_NACA_PCD_INFLOW_DIRICHLET")) {
+        if (std::string(raw)!="1" || c.algorithm!=PressureVelocityAlgorithm::COUPLED ||
+            c.coupling.schur_model!=CoupledSchurModel::PCD)
+            throw std::invalid_argument("PCD inflow Dirichlet requires COUPLED/pcd and 1");
+        c.coupling.pcd_pressure_inflow_dirichlet_experimental=true;
+    }
     // Controlled A/B for the *actual* nested production Fp operator.
     // No implicit fallback or change to the outer physical convergence gate.
     if (const char* raw=std::getenv("CFDX_NACA_PCD_FP_PRECONDITIONER")) {

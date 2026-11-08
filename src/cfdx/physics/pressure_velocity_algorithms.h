@@ -89,6 +89,11 @@ struct CouplingControls {
     bool pcd_fp_row_equilibration_experimental = false;
     bool pcd_fp_quality_guard_experimental = false;
     bool pcd_fp_second_pass_experimental = false;
+    // Preconditioner-only A/B: pressure-space Dirichlet data on actual
+    // inflow faces, including mixed-in/out farfield patches. The physical
+    // momentum/continuity BCs and the Schur matrix A are NOT modified.
+    // Off by default until NACA/N9/BFS full physical A/B qualification.
+    bool pcd_pressure_inflow_dirichlet_experimental = false;
     // Serial, small-subdomain, experimental RAS/weighted Schwarz for COUPLED
     // with BlockLocal Schur. Explicit opt-in; setup failure is fatal rather
     // than silently replaced by AMG. No MPI / coarse-space scaling claim.
