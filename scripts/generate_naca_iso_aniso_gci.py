@@ -179,8 +179,9 @@ def build_families(
         if family == "anisotropic":
             gen.naca0012_surface = native
         else:
+            cluster = clusters.get(family, 0.0)
             gen.naca0012_surface = (
-                lambda n, native=native, cluster=clusters.get(family, 0.0): (
+                lambda n, native=native, cluster=cluster: (
                     arc_length_surface(n, native, cluster=cluster)
                 )
             )
