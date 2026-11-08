@@ -91,7 +91,7 @@ def shear_interior_rings(mesh, n: int, n_radial: int, strength: float = 0.01):
     rings = points.reshape(span_levels, n_radial + 1, m, 3).copy()
     for j in range(1, n_radial):
         shift = strength * m * math.sin(math.pi * j / n_radial)
-        base = int(math.floor(shift))
+        base = math.floor(shift)
         fraction = shift - base
         for z in range(span_levels):
             ring = rings[z, j].copy()
