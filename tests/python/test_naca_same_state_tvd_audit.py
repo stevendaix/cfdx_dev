@@ -27,7 +27,6 @@ class SameStateTraceTests(unittest.TestCase):
         self.linears = []
         for it in (1, 2):
             for face, owner, neighbour, mass in ((5, 0, 1, 1.0), (6, 1, -1, 0.2)):
-                prev = mass + (0.01 if it == 1 else 0.0)
                 up = 0.4 if face == 5 else 0.01
                 delta = 0.20 if face == 5 else 0.0
                 pred = mass + 0.4 if face == 5 else mass
