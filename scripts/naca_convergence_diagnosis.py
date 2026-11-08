@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Strict per-component NACA history diagnostics; NEVER a convergence certificate.
 
 A valid history is not evidence that the corresponding solver returned success.
