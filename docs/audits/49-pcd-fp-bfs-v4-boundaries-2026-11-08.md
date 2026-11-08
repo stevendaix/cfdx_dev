@@ -178,6 +178,8 @@ Le type de patch et l'opérateur de champ sont deux informations distinctes. Un 
 
 Dans les fixtures SST de couplage thermique à débit nul, le champ de vitesse est imposé à zéro et le pressure outlet fixe la jauge; le champ \(k,\omega\) non nul permet de vérifier l'effet de \(Pr_t\) sur \(\lambda_{eff}\) sans transformer ce smoke test en qualification d'écoulement. Pour un futur cas à vitesse d'entrée non nulle, l'inlet FIXED devra être associé à un outlet PRESSURE_OUTLET/OUTLET_PRESSURE avec une pression de référence explicite. Les canaux entraînés par force volumique conservent leurs frontières ouvertes à gradient nul.
 
+Un patch importé de type générique \(\texttt{UNKNOWN}\) peut recevoir un opérateur reconnu lorsque le fichier de cas déclare explicitement son type physique; les patches déjà typés (WALL, SYMMETRY, EMPTY, etc.) doivent rester compatibles et les incompatibilités sont rejetées. Cette règle évite de déduire une physique du seul nom du patch sans interdire les patches OpenFOAM génériques correctement configurés.
+
 Le contrat de production vérifie la concordance du type topologique \(\texttt{PatchType::INLET}\) et du type physique \(\texttt{BCType::INLET}\), puis sélectionne explicitement FIXED ou ZERO_GRADIENT. Les tests unitaires couvrent les deux branches et le rejet des inlets pression/débit. Les fixtures N10 génériques déclarent explicitement leurs patches comme WALL avant d'attacher des conditions no-slip; elles ne déduisent pas une physique de l'ordre des patches VTK.
 
 **Statut :** opérateurs FIXED et ZERO_GRADIENT pris en charge sur patch INLET; pression/débit/far-field non pris en charge et rejetés. Cette extension ne constitue pas une validation physique du cas de canal.
